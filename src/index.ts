@@ -63,7 +63,12 @@ import { logSandboxRuntimeStatus } from "./core/sandbox";
 import { onSubagentLifecycle } from "./core/subagent-registry";
 import { resolveUiPath } from "./core/runtime/ui-path";
 import { readUiIndexContent } from "./core/runtime/ui-index";
-import { getGatewayBasePath, revealGatewayApiKey, securityCheck } from "./api/security";
+import {
+  getGatewayAuthSettings,
+  getGatewayBasePath,
+  revealGatewayApiKey,
+  securityCheck,
+} from "./api/security";
 import { getClientIp } from "./api/client-ip";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -200,6 +205,14 @@ function isFileLikePath(pathname: string): boolean {
 const isExposeFlagSet = process.argv.includes("--expose");
 function isAllInterfaceHost(host: string): boolean {
   return host === "0.0.0.0" || host === "::" || host === "[::]";
+}
+
+function isLoopbackHost(host: string): boolean {
+  const normalized = host
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
+  return normalized === "localhost" || normalized === "::1" || normalized.startsWith("127.");
 }
 
 const configuredHost =
@@ -614,15 +627,10 @@ Bun.serve<WsData>({
 });
 
 // Eagerly materialize the gateway API key so onboarding always has one on
-// first boot (instead of lazily on the first authenticated request). The key
-// lives at ~/.cybara/api_key and survives app updates; only an explicit
-// rotation replaces it. The tokenized dashboard URL below authenticates the
-// browser even when the localhost bypass is off — same pattern as Jupyter.
-const gatewayKey = revealGatewayApiKey().apiKey;
+// first boot instead of waiting for the first authenticated request.
+revealGatewayApiKey();
 const startupBasePath = getGatewayBasePath();
-const tokenizedDashboardUrl = gatewayKey
-  ? `http://localhost:${PORT}${startupBasePath}/?token=${gatewayKey}`
-  : `http://localhost:${PORT}${startupBasePath}`;
+const dashboardUrl = `http://localhost:${PORT}${startupBasePath}`;
 
 console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
@@ -636,9 +644,40 @@ console.log(`
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
 
-  Authenticated dashboard link (works even with localhost auth required):
-  ${tokenizedDashboardUrl}
+  Dashboard:
+  ${dashboardUrl}
 `);
+
+function printStartupSecurityWarnings(): void {
+  const warnings: string[] = [];
+  const auth = getGatewayAuthSettings();
+  if (auth.localhostBypassActive) {
+    warnings.push(
+      "Localhost browser auth bypass is active for development. Set CYBARA_REQUIRE_AUTH=1 or enable localhost auth in Settings for stricter local access."
+    );
+  }
+  if (isAllInterfaceHost(HOST)) {
+    warnings.push(
+      "Gateway is listening on all interfaces. Keep bearer tokens private and use only on trusted networks."
+    );
+  } else if (!isLoopbackHost(HOST)) {
+    warnings.push(
+      `Gateway is listening on ${HOST}. Devices on that network can reach it if they have a valid token.`
+    );
+  }
+  if (isTerminalEnabled()) {
+    warnings.push(
+      "Web terminal is enabled. It remains auth- and scope-gated, but grants shell access."
+    );
+  }
+  if (warnings.length > 0) {
+    console.warn(
+      `\nSecurity warnings:\n${warnings.map((warning) => `  - ${warning}`).join("\n")}\n`
+    );
+  }
+}
+
+printStartupSecurityWarnings();
 
 providerManager.seedDefaults();
 

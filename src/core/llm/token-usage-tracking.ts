@@ -1,6 +1,11 @@
 import { tables } from "../database";
 import { recordUsage } from "../router";
 import { broadcastStatus } from "../status";
+import { redactSecrets } from "../redaction";
+
+function serializeMetricMetadata(metadata: Record<string, unknown>): string {
+  return JSON.stringify(redactSecrets(metadata));
+}
 
 export function trackTokenUsage(
   model: string,
@@ -37,7 +42,7 @@ export function trackTokenUsage(
       type: "token_usage_by_model",
       key: model,
       value: totalTokens,
-      metadata: JSON.stringify(tokenMetadata),
+      metadata: serializeMetricMetadata(tokenMetadata),
     });
 
     tables.metrics.add({
@@ -45,7 +50,7 @@ export function trackTokenUsage(
       type: "token_usage_by_provider",
       key: provider,
       value: totalTokens,
-      metadata: JSON.stringify({ ...tokenMetadata, url: providerUrl }),
+      metadata: serializeMetricMetadata({ ...tokenMetadata, url: providerUrl }),
     });
 
     tables.metrics.add({
@@ -53,21 +58,21 @@ export function trackTokenUsage(
       type: "token_usage",
       key: "input",
       value: inputTokens,
-      metadata: JSON.stringify({ ...tokenMetadata, direction: "input" }),
+      metadata: serializeMetricMetadata({ ...tokenMetadata, direction: "input" }),
     });
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "token_usage",
       key: "output",
       value: outputTokens,
-      metadata: JSON.stringify({ ...tokenMetadata, direction: "output" }),
+      metadata: serializeMetricMetadata({ ...tokenMetadata, direction: "output" }),
     });
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "token_usage",
       key: "all",
       value: totalTokens,
-      metadata: JSON.stringify(tokenMetadata),
+      metadata: serializeMetricMetadata(tokenMetadata),
     });
 
     tables.metrics.add({
@@ -75,14 +80,14 @@ export function trackTokenUsage(
       type: "api_call",
       key: "all",
       value: 1,
-      metadata: JSON.stringify({ url: providerUrl }),
+      metadata: serializeMetricMetadata({ url: providerUrl }),
     });
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "api_call",
       key: "success",
       value: 1,
-      metadata: JSON.stringify({ url: providerUrl }),
+      metadata: serializeMetricMetadata({ url: providerUrl }),
     });
 
     tables.metrics.add({
@@ -90,7 +95,7 @@ export function trackTokenUsage(
       type: "api_call",
       key: provider,
       value: 1,
-      metadata: JSON.stringify({ url: providerUrl }),
+      metadata: serializeMetricMetadata({ url: providerUrl }),
     });
 
     tables.metrics.add({ id: crypto.randomUUID(), type: "agent_execution", key: "all", value: 1 });
@@ -99,7 +104,7 @@ export function trackTokenUsage(
       type: "agent_execution",
       key: "message",
       value: 1,
-      metadata: JSON.stringify({ timestamp }),
+      metadata: serializeMetricMetadata({ timestamp }),
     });
 
     tables.metrics.add({
@@ -117,7 +122,7 @@ export function trackTokenUsage(
         type: "model_tps",
         key: model,
         value: tps,
-        metadata: JSON.stringify(tokenMetadata),
+        metadata: serializeMetricMetadata(tokenMetadata),
       });
 
       tables.metrics.add({
@@ -125,7 +130,7 @@ export function trackTokenUsage(
         type: "model_latency",
         key: model,
         value: durationMs,
-        metadata: JSON.stringify({ ...tokenMetadata, provider }),
+        metadata: serializeMetricMetadata({ ...tokenMetadata, provider }),
       });
 
       console.log(

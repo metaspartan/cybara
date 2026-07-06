@@ -910,7 +910,7 @@ async function rawMcpInstall(pkg: string): Promise<void> {
 
   const data = await fetchAPI<{ success: boolean; id?: string; error?: string }>(
     "/api/mcp/registry/install",
-    { method: "POST", body: JSON.stringify({ package: pkg }) }
+    { method: "POST", body: JSON.stringify({ package: pkg, trustedAction: true }) }
   );
 
   if (!data) {

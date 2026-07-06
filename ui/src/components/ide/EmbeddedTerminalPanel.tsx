@@ -5,7 +5,8 @@ import { Terminal as XTerminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { buildXtermTheme } from "../../pages/ide/xtermTheme";
 import { Button } from "@/components/ui/Button";
-import { appendApiTokenParam, apiFetch } from "@/lib/auth";
+import { appendApiTokenParam } from "@/lib/auth";
+import { checkTerminalAccess, enableTerminalAccess } from "@/lib/terminal-access";
 import { cn } from "@/lib/utils";
 
 export type IdeTerminalCapability = "checking" | "enabled" | "disabled";
@@ -40,6 +41,7 @@ export function EmbeddedTerminalPanel({
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [capability, setCapability] = useState<IdeTerminalCapability>("checking");
   const [terminalError, setTerminalError] = useState<string | null>(null);
+  const [enablingTerminal, setEnablingTerminal] = useState(false);
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const activeTermRef = useRef<{
     term: XTerminal;
@@ -65,42 +67,41 @@ export function EmbeddedTerminalPanel({
   useEffect(() => {
     let cancelled = false;
     const loadCapability = async () => {
-      try {
-        const configResponse = await apiFetch("/api/config");
-        if (cancelled) return;
-        if (configResponse.ok) {
-          const payload = await configResponse.json().catch(() => null);
-          const config = payload?.data && typeof payload.data === "object" ? payload.data : payload;
-          if (config?.terminal_enabled !== true) {
-            setCapability("disabled");
-            setTerminalError("Terminal is disabled. Enable terminal access to use IDE terminals.");
-            return;
-          }
-        }
-        const response = await apiFetch("/api/terminal/sessions");
-        if (cancelled) return;
-        if (response.status === 403) {
-          setCapability("disabled");
-          setTerminalError("Terminal is disabled. Enable terminal access to use IDE terminals.");
-          return;
-        }
-        if (!response.ok) {
-          setCapability("disabled");
-          setTerminalError(`Terminal API unavailable (${response.status}).`);
-          return;
-        }
+      const access = await checkTerminalAccess();
+      if (cancelled) return;
+      if (access.enabled) {
         setCapability("enabled");
         setTerminalError(null);
-      } catch (errorValue) {
-        if (cancelled) return;
-        setCapability("disabled");
-        setTerminalError(String(errorValue));
+        return;
       }
+      setCapability("disabled");
+      setTerminalError(access.error);
     };
     void loadCapability();
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  const enableTerminal = useCallback(async () => {
+    setEnablingTerminal(true);
+    setTerminalError(null);
+    try {
+      await enableTerminalAccess();
+      const access = await checkTerminalAccess();
+      if (access.enabled) {
+        setCapability("enabled");
+        setTerminalError(null);
+      } else {
+        setCapability("disabled");
+        setTerminalError(access.error);
+      }
+    } catch (error) {
+      setCapability("disabled");
+      setTerminalError(error instanceof Error ? error.message : "Failed to enable terminal.");
+    } finally {
+      setEnablingTerminal(false);
+    }
   }, []);
 
   const fitActiveTerminal = useCallback(() => {
@@ -340,10 +341,21 @@ export function EmbeddedTerminalPanel({
                 <span className="font-medium">Terminal access is disabled</span>
               </div>
               <p className="text-amber-200/90">
-                Enable terminal with <code>--enable-terminal</code> or{" "}
-                <code>terminal_enabled=true</code> in config.
+                Enable terminal for this gateway when you need shell access from the IDE.
               </p>
               {terminalError && <p className="mt-2 text-amber-100/80">{terminalError}</p>}
+              <div className="mt-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void enableTerminal()}
+                  disabled={enablingTerminal}
+                  className="h-7 px-2 text-xs"
+                >
+                  {enablingTerminal ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+                  Enable Web Terminal
+                </Button>
+              </div>
             </div>
           </div>
         ) : !hasSessions ? (

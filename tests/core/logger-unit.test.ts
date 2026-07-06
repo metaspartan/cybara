@@ -191,6 +191,37 @@ describe("in-process logger API", () => {
     expect(records[1].message).toBe("non-error: just a string");
   });
 
+  test("redacts secrets before writing to sinks and console output", () => {
+    const apiKey = "sk-1234567890abcdef";
+    const mobileKey = "cybara_mobile_abcdefabcdefabcdefabcdef";
+    const records: StructuredLogRecord[] = [];
+    const lines: string[] = [];
+    setLogSink((r) => void records.push(r));
+    const originalError = console.error;
+    console.error = (line: string) => void lines.push(String(line));
+    try {
+      createLogger("Secrets").error(`upstream failed with Authorization: Bearer ${apiKey}`, {
+        api_key: apiKey,
+        nested: {
+          Authorization: `Bearer ${apiKey}`,
+          callback: `https://example.test/callback?token=${mobileKey}`,
+        },
+      });
+    } finally {
+      console.error = originalError;
+    }
+
+    const serializedRecords = JSON.stringify(records);
+    const serializedConsole = lines.join("\n");
+    expect(serializedRecords).not.toContain(apiKey);
+    expect(serializedRecords).not.toContain(mobileKey);
+    expect(serializedConsole).not.toContain(apiKey);
+    expect(serializedConsole).not.toContain(mobileKey);
+    expect(serializedRecords).toContain("[REDACTED]");
+    expect(serializedConsole).toContain("[REDACTED]");
+    expect(records[0].context?.api_key).toBe("[REDACTED]");
+  });
+
   test("a throwing sink or otel bridge never breaks logging", () => {
     setLogSink(() => {
       throw new Error("sink exploded");

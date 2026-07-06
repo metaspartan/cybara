@@ -31,7 +31,8 @@ describe("Tauri wiring", () => {
     const mainRs = readFileSync(mainRsPath, "utf8");
 
     expect(mainRs).toContain('sidecar("cybara")');
-    expect(mainRs).toContain('.args(["start", "--enable-terminal"])');
+    expect(mainRs).toContain('.args(["start"])');
+    expect(mainRs).not.toContain('.args(["start", "--enable-terminal"])');
     expect(mainRs).toContain('const CYBARA_SERVER_URL: &str = "http://127.0.0.1:4269"');
     expect(mainRs).toContain("window.navigate(CYBARA_SERVER_URL.parse().unwrap())");
     expect(mainRs).toContain('.env("CYBARA_HOST", "127.0.0.1")');

@@ -3,6 +3,7 @@ import {
   broadcastStatus,
   broadcastStatusSnapshot,
   broadcastTaskEvent,
+  broadcastTokenDelta,
   createStatusSnapshotEvent,
   onStatusStream,
   setSessionPendingChatMessages,
@@ -132,5 +133,62 @@ describe("status stream events", () => {
       sessionId,
       detail: "idle",
     });
+  });
+
+  test("redacts secrets from status events, token deltas, and pending snapshots", () => {
+    const sessionId = `redacted-status-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const apiKey = "sk-1234567890abcdef";
+    const mobileKey = "cybara_mobile_abcdefabcdefabcdefabcdef";
+    const received: unknown[] = [];
+    const unsubscribe = onStatusStream((event) => {
+      received.push(event);
+    });
+
+    broadcastStatus({
+      status: "tool_executing",
+      timestamp: Date.now(),
+      sessionId,
+      detail: `Running curl -H "Authorization: Bearer ${apiKey}"`,
+      toolName: "fetch",
+    });
+    broadcastTaskEvent({
+      type: "task_completed",
+      taskId: "secret-task",
+      taskName: `token=${mobileKey}`,
+      status: "failed",
+      sessionId,
+      resultPreview: `preview ${apiKey}`,
+      error: `Authorization: Bearer ${apiKey}`,
+    });
+    broadcastTokenDelta({
+      sessionId,
+      delta: `assistant leaked token=${mobileKey}`,
+    });
+    setSessionPendingChatMessages(sessionId, [
+      {
+        id: "pending-secret",
+        sessionId,
+        content: `follow up with ${apiKey}`,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        mode: "queued",
+        sequence: 1,
+      },
+    ]);
+    const snapshot = createStatusSnapshotEvent();
+
+    unsubscribe();
+    setSessionPendingChatMessages(sessionId, []);
+    broadcastStatus({
+      status: "idle",
+      timestamp: Date.now() + 1,
+      sessionId,
+      detail: "idle",
+    });
+
+    const serialized = JSON.stringify({ received, snapshot });
+    expect(serialized).not.toContain(apiKey);
+    expect(serialized).not.toContain(mobileKey);
+    expect(serialized).toContain("[REDACTED]");
   });
 });

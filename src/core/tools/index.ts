@@ -52,7 +52,7 @@ export interface ToolContext {
   suppressStreaming?: boolean;
   /** Extra path prefixes to deny for write/edit/apply_patch (sensitive dirs). */
   denyWritePrefixes?: string[];
-  /** When true, file writes are confined to `workspaceDir`. Default false. */
+  /** When true, file writes are confined to `workspaceDir`. Agent/API contexts set this by default. */
   confineToWorkspace?: boolean;
   /** Consumes queued user steering messages at safe tool-result boundaries. */
   consumeSteeringMessages?: () => Array<{ id: string; content: string; createdAt: number }>;

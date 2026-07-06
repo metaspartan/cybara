@@ -1,4 +1,5 @@
 import { createLogger } from "./logger";
+import { redactSecrets, redactSecretText } from "./redaction";
 import { stripReasoningTagTokens } from "./agent-internals";
 
 export type AgentStatus =
@@ -153,7 +154,7 @@ function sanitizeActivityText(detail?: string): string {
   if (!detail || typeof detail !== "string") return "";
   // Streamed reasoning deltas can arrive as bare markup (e.g. "</think>");
   // never let tag tokens become visible activity text.
-  return stripReasoningTagTokens(detail)
+  return redactSecretText(stripReasoningTagTokens(detail))
     .replace(/\s{2,}/g, " ")
     .trim();
 }
@@ -403,9 +404,9 @@ export function setSessionPendingChatMessages(
 ): void {
   const key = sessionId.trim();
   if (!key) return;
-  const normalized = clonePendingMessages(pendingMessages).filter(
-    (message) => message.sessionId === key && message.content.trim().length > 0
-  );
+  const normalized = clonePendingMessages(pendingMessages)
+    .filter((message) => message.sessionId === key && message.content.trim().length > 0)
+    .map((message) => ({ ...message, content: redactSecretText(message.content) }));
   if (normalized.length === 0) {
     sessionPendingChatMessages.delete(key);
     return;
@@ -472,17 +473,18 @@ export function broadcastStatusSnapshot(): void {
 }
 
 export function broadcastStatus(status: StatusPayload): void {
-  upsertSessionStatusSnapshot(status);
+  const sanitizedStatus = redactSecrets(status) as StatusPayload;
+  upsertSessionStatusSnapshot(sanitizedStatus);
 
   for (const callback of statusCallbacks) {
     try {
-      callback(status);
+      callback(sanitizedStatus);
     } catch {
       // Ignore callback errors
     }
   }
 
-  emitStatusStreamEvent({ ...status, type: "status" });
+  emitStatusStreamEvent({ ...sanitizedStatus, type: "status" });
 
   log.debug("Broadcast status", {
     status: status.status,
@@ -493,7 +495,7 @@ export function broadcastStatus(status: StatusPayload): void {
 }
 
 export function broadcastTaskEvent(event: TaskEventPayload): void {
-  const payload = { ...event, timestamp: Date.now() };
+  const payload = redactSecrets({ ...event, timestamp: Date.now() }) as TaskEventPayload;
   emitStatusStreamEvent(payload);
 
   log.debug("Broadcast task event", {
@@ -514,7 +516,7 @@ export function broadcastTokenDelta(event: {
     type: "assistant_token",
     sessionId: event.sessionId,
     agentId: event.agentId,
-    delta: event.delta,
+    delta: redactSecretText(event.delta),
     timestamp: Date.now(),
   });
 }

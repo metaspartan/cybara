@@ -120,8 +120,11 @@ export function MCPServers() {
   };
 
   const handleInstall = async (server: MCPRegistryServer) => {
+    if (!confirm(`Install ${server.name}? MCP servers run third-party code on this machine.`)) {
+      return;
+    }
     addToast("info", `Installing ${server.name}...`);
-    const result = await mcpApi.install({ id: server.id });
+    const result = await mcpApi.install({ id: server.id, trustedAction: true });
     if (result.success && result.data?.success) {
       addToast("success", `${server.name} installed!`);
       setTab("installed");

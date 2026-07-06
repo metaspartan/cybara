@@ -3852,8 +3852,7 @@ export function IDE() {
                       </div>
                       {terminalPanelState.capability === "disabled" && (
                         <div className="mt-1 text-gray-500">
-                          Enable via <code>--enable-terminal</code> or{" "}
-                          <code>terminal_enabled=true</code>.
+                          Enable it from Settings → Safety or from the terminal panel.
                         </div>
                       )}
                     </div>

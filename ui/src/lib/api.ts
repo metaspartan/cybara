@@ -295,7 +295,7 @@ export const mcpApi = {
   popular: () => fetchApi<MCPRegistryServer[]>("/mcp/registry/popular"),
   search: (query: string) =>
     fetchApi<MCPRegistryServer[]>(`/mcp/registry/search?q=${encodeURIComponent(query)}`),
-  install: (payload: { id?: string; package?: string }) =>
+  install: (payload: { id?: string; package?: string; trustedAction: true }) =>
     fetchApi<{ success: boolean; id?: string; error?: string }>("/mcp/registry/install", {
       method: "POST",
       body: JSON.stringify(payload),

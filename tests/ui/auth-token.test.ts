@@ -48,20 +48,22 @@ describe("UI auth token helpers", () => {
     globalThis.fetch = originalFetch;
   });
 
-  test("query token has priority over localStorage tokens", () => {
+  test("normal API auth ignores query tokens and prefers stored tokens", () => {
     (globalThis as unknown as { window: Window }).window = createWindow("?token=query-token", {
       cybara_api_key: "stored-token",
     }) as unknown as Window;
 
-    expect(getApiAuthToken()).toBe("query-token");
+    expect(getApiAuthToken()).toBe("stored-token");
   });
 
-  test("api_key query param is also accepted", () => {
-    (globalThis as unknown as { window: Window }).window = createWindow("?api_key=query-key", {
-      cybara_api_key: "stored-token",
-    }) as unknown as Window;
+  test("query token is only used as a stream URL compatibility fallback", () => {
+    (globalThis as unknown as { window: Window }).window = createWindow(
+      "?api_key=query-key",
+      {}
+    ) as unknown as Window;
 
-    expect(getApiAuthToken()).toBe("query-key");
+    expect(getApiAuthToken()).toBeNull();
+    expect(appendApiTokenParam("/api/sse/status")).toBe("/api/sse/status?token=query-key");
   });
 
   test("falls back to localStorage token keys", () => {
@@ -111,7 +113,7 @@ describe("UI auth token helpers", () => {
     expect(headers.get("Authorization")).toBe("Bearer explicit");
   });
 
-  test("apiFetch adds Authorization from query token", async () => {
+  test("apiFetch does not adopt query tokens for REST auth", async () => {
     (globalThis as unknown as { window: Window }).window = createWindow(
       "?token=query-token"
     ) as unknown as Window;
@@ -127,7 +129,7 @@ describe("UI auth token helpers", () => {
 
     await apiFetch("/api/health");
     const headers = new Headers(capturedInit?.headers);
-    expect(headers.get("Authorization")).toBe("Bearer query-token");
+    expect(headers.get("Authorization")).toBeNull();
   });
 
   test("apiFetch keeps explicit Authorization header", async () => {

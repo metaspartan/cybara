@@ -24,6 +24,20 @@ describe("security-sensitive runtime defaults", () => {
     expect(serverSource).toContain('? "127.0.0.1"');
   });
 
+  test("terminal and insecure startup modes require explicit operator action", () => {
+    const serverSource = readFileSync(join(ROOT_DIR, "src", "index.ts"), "utf8");
+    const configSource = readFileSync(join(ROOT_DIR, "src", "core", "config.ts"), "utf8");
+
+    expect(configSource).not.toContain("terminal_enabled: true");
+    expect(serverSource).toContain("function isTerminalEnabled");
+    expect(serverSource).toContain('process.argv.includes("--enable-terminal")');
+    expect(serverSource).toContain('config.get<boolean>("terminal_enabled") === true');
+    expect(serverSource).toContain("function printStartupSecurityWarnings");
+    expect(serverSource).toContain("Web terminal is enabled");
+    expect(serverSource).toContain("Gateway is listening on all interfaces");
+    expect(serverSource).not.toContain("?token=${gatewayKey}");
+  });
+
   test("core and CLI storage paths honor CYBARA_HOME", () => {
     const pathsSource = readFileSync(join(ROOT_DIR, "src", "core", "paths.ts"), "utf8");
     const mainSource = readFileSync(join(ROOT_DIR, "src", "main.ts"), "utf8");

@@ -1,4 +1,5 @@
 import { tables } from "../../core/database";
+import { redactSecrets } from "../../core/redaction";
 import {
   buildAssistantOutputCloud,
   buildMetricTrend,
@@ -807,7 +808,7 @@ export const metricsRoutes: Record<string, RouteHandler> = {
       type: data.type,
       key: data.key,
       value: data.value,
-      metadata: data.metadata ? JSON.stringify(data.metadata) : undefined,
+      metadata: data.metadata ? JSON.stringify(redactSecrets(data.metadata)) : undefined,
     });
 
     return { success: true, id };

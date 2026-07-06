@@ -2,9 +2,10 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Terminal as XTerminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { SquareTerminal, Plus, Trash2, AlertTriangle } from "lucide-react";
+import { SquareTerminal, Plus, Trash2, AlertTriangle, Loader2 } from "lucide-react";
 import { buildXtermTheme } from "./ide/xtermTheme";
-import { appendApiTokenParam, apiFetch } from "@/lib/auth";
+import { appendApiTokenParam } from "@/lib/auth";
+import { checkTerminalAccess, enableTerminalAccess } from "@/lib/terminal-access";
 
 interface TermSession {
   id: string;
@@ -17,6 +18,8 @@ export function TerminalPage() {
   const [sessions, setSessions] = useState<TermSession[]>([]);
   const [activeSession, setActiveSession] = useState<string | null>(null);
   const [terminalEnabled, setTerminalEnabled] = useState<boolean | null>(null);
+  const [terminalError, setTerminalError] = useState<string | null>(null);
+  const [enablingTerminal, setEnablingTerminal] = useState(false);
   const termRef = useRef<HTMLDivElement>(null);
   const activeTermRef = useRef<{ term: XTerminal; fitAddon: FitAddon } | null>(null);
   // Mirror of `sessions` so the unmount cleanup can reach the latest set without
@@ -43,16 +46,33 @@ export function TerminalPage() {
     };
   }, []);
 
-  useEffect(() => {
-    apiFetch("/api/terminal/sessions")
-      .then((res) => {
-        if (res.status === 403) setTerminalEnabled(false);
-        else {
-          setTerminalEnabled(true);
-        }
-      })
-      .catch(() => setTerminalEnabled(false));
+  const refreshTerminalAccess = useCallback(async () => {
+    const access = await checkTerminalAccess();
+    setTerminalEnabled(access.enabled);
+    setTerminalError(access.enabled ? null : access.error);
+    return access;
   }, []);
+
+  useEffect(() => {
+    void refreshTerminalAccess();
+  }, [refreshTerminalAccess]);
+
+  const enableTerminal = useCallback(async () => {
+    setEnablingTerminal(true);
+    setTerminalError(null);
+    try {
+      await enableTerminalAccess();
+      const access = await refreshTerminalAccess();
+      if (!access.enabled) {
+        setTerminalError(access.error);
+      }
+    } catch (error) {
+      setTerminalError(error instanceof Error ? error.message : "Failed to enable terminal.");
+      setTerminalEnabled(false);
+    } finally {
+      setEnablingTerminal(false);
+    }
+  }, [refreshTerminalAccess]);
 
   const createSession = useCallback(() => {
     const id = crypto.randomUUID().slice(0, 8);
@@ -168,12 +188,35 @@ export function TerminalPage() {
           <AlertTriangle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-white mb-2">Terminal Disabled</h2>
           <p className="text-gray-400 mb-4">
-            The web terminal is disabled by default for security. Start Cybara with the{" "}
-            <code className="text-indigo-400">--enable-terminal</code> flag to activate it.
+            The web terminal is disabled by default for security. Enable it for this gateway when
+            you need shell access.
           </p>
-          <code className="block bg-white/5 rounded-lg p-3 text-sm text-gray-300 border border-white/10">
-            cybara start --enable-terminal
-          </code>
+          {terminalError && (
+            <p className="mb-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+              {terminalError}
+            </p>
+          )}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => void enableTerminal()}
+              disabled={enablingTerminal}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-indigo-400/40 bg-indigo-500/20 px-4 text-sm font-medium text-indigo-100 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {enablingTerminal ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <SquareTerminal className="h-4 w-4" />
+              )}
+              Enable Web Terminal
+            </button>
+            <a
+              href="/settings?section=safety"
+              className="text-sm text-gray-400 hover:text-gray-200"
+            >
+              Open Safety Settings
+            </a>
+          </div>
         </div>
       </div>
     );

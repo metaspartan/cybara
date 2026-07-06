@@ -1,3 +1,5 @@
+import { redactSecretText, redactSecrets } from "./redaction";
+
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface LogContext {
@@ -104,13 +106,16 @@ function log(
   if (LOG_LEVELS[level] < MIN_LEVEL_PRIORITY) return;
 
   const now = Date.now();
+  const sanitizedContext = context
+    ? (redactSecrets(context) as Record<string, unknown>)
+    : undefined;
   const entry: StructuredLogRecord = {
     timestamp: new Date(now).toISOString(),
     unixMs: now,
     level,
     module,
-    message,
-    context,
+    message: redactSecretText(message),
+    context: sanitizedContext,
   };
 
   try {

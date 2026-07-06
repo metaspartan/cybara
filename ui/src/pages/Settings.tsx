@@ -2045,8 +2045,8 @@ function FeatureSettings() {
           <div>
             <p className="text-sm text-white font-medium">Web Terminal</p>
             <p className="text-xs text-gray-400 mt-0.5">
-              Enable browser-based terminal access. Also available via{" "}
-              <code className="text-indigo-400">--enable-terminal</code> flag.
+              Enable browser-based terminal access for this gateway. Applies immediately and is also
+              available via the <code className="text-indigo-400">--enable-terminal</code> flag.
             </p>
           </div>
           <button

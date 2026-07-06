@@ -143,8 +143,7 @@ fn main() {
             }
             let (mut rx, child) = sidecar
                 .env("CYBARA_HOST", "127.0.0.1")
-                // Enable terminal APIs for desktop-sidecar runs without passing flags to cargo.
-                .args(["start", "--enable-terminal"])
+                .args(["start"])
                 .spawn()
                 .expect("Failed to spawn Cybara sidecar");
 

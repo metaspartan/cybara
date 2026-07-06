@@ -1176,6 +1176,8 @@ class AgentManager {
           ? options.requiredToolName.trim()
           : undefined,
       abortSignal: options?.abortSignal,
+      confineToWorkspace:
+        typeof options?.workspaceDir === "string" && options.workspaceDir.trim().length > 0,
       consumeSteeringMessages: options?.consumeSteeringMessages,
     };
   }
@@ -2636,11 +2638,7 @@ class AgentManager {
         continue;
       }
 
-      if (
-        contextRetryCount < 2 &&
-        response.status === 400 &&
-        isContextOverflowError(errorText)
-      ) {
+      if (contextRetryCount < 2 && response.status === 400 && isContextOverflowError(errorText)) {
         const retryBody = this.reduceOpenAITokenLimitForContextRetry(currentBody, errorText);
         if (retryBody) {
           contextRetryCount += 1;

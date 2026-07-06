@@ -174,24 +174,27 @@ describe("UI page API wiring", () => {
   test("Terminal page uses token-aware websocket URL helper", () => {
     const source = readPage("Terminal.tsx");
 
+    expect(source).toContain("import { checkTerminalAccess, enableTerminalAccess }");
+    expect(source).toContain("void refreshTerminalAccess()");
+    expect(source).toContain("await enableTerminalAccess()");
     expect(source).toContain(
       "appendApiTokenParam(`/api/terminal/ws?session=${encodeURIComponent(id)}`)"
     );
-    expect(source).toMatch(/apiFetch\(["']\/api\/terminal\/sessions["']\)/);
     expect(source).toContain("new WebSocket(`${proto}//${window.location.host}${wsPath}`)");
+    expect(source).toContain("Enable Web Terminal");
+    expect(source).toContain("/settings?section=safety");
   });
 
-  test("Embedded IDE terminal checks config before probing terminal sessions", () => {
+  test("Embedded IDE terminal uses the shared terminal access helper", () => {
     const source = readFileSync(
       new URL("../../ui/src/components/ide/EmbeddedTerminalPanel.tsx", import.meta.url),
       "utf8"
     );
 
-    expect(source).toContain('apiFetch("/api/config")');
-    expect(source).toContain("config?.terminal_enabled !== true");
-    expect(source.indexOf('apiFetch("/api/config")')).toBeLessThan(
-      source.indexOf('apiFetch("/api/terminal/sessions")')
-    );
+    expect(source).toContain("import { checkTerminalAccess, enableTerminalAccess }");
+    expect(source).toContain("const access = await checkTerminalAccess()");
+    expect(source).toContain("await enableTerminalAccess()");
+    expect(source).toContain("Enable Web Terminal");
   });
 
   test("Tasks page loads run history through tasksApi helper", () => {
@@ -252,7 +255,8 @@ describe("UI page API wiring", () => {
     expect(source).toContain("mcpApi.list()");
     expect(source).toContain("mcpApi.popular()");
     expect(source).toContain("mcpApi.search(searchQuery)");
-    expect(source).toContain("mcpApi.install({ id: server.id })");
+    expect(source).toContain("confirm(`Install ${server.name}?");
+    expect(source).toContain("mcpApi.install({ id: server.id, trustedAction: true })");
     expect(source).toContain("mcpApi.start(id)");
     expect(source).toContain("mcpApi.stop(id)");
     expect(source).toContain("mcpApi.delete(id)");

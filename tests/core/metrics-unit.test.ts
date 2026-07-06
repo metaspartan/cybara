@@ -89,11 +89,22 @@ metrics.trackMetric("custom", "k", -5);
 metrics.trackMetric("custom", "k", 15);
 out.customTotal = tables.metrics.getTotal("custom", "k"); // 10
 
+const metricSecret = "sk-1234567890abcdef";
+const metricMobileKey = "cybara_mobile_abcdefabcdefabcdefabcdef";
+metrics.trackMetric("custom", "secret-metadata", 1, {
+  api_key: metricSecret,
+  callback: "https://example.test/callback?token=" + metricMobileKey,
+});
+const secretMetricRow = tables.metrics
+  .getByTypeRecent("custom", 10)
+  .find((row) => row.key === "secret-metadata");
+out.secretMetricMetadata = secretMetricRow?.metadata || "";
+
 console.log("__RESULT__" + JSON.stringify(out));
 `;
 
 let tempHome = "";
-let r: Record<string, number | Record<string, number> | boolean>;
+let r: Record<string, number | Record<string, number> | boolean | string>;
 
 beforeAll(() => {
   tempHome = mkdtempSync(join(tmpdir(), "cybara-metrics-unit-"));
@@ -215,5 +226,12 @@ describe("metrics summary after recording", () => {
 describe("metrics trackMetric arbitrary values", () => {
   test("negative and positive values sum correctly", () => {
     expect(r.customTotal).toBe(10);
+  });
+
+  test("secret-shaped metadata is redacted", () => {
+    const metadata = String(r.secretMetricMetadata);
+    expect(metadata).toContain("[REDACTED]");
+    expect(metadata).not.toContain("sk-1234567890abcdef");
+    expect(metadata).not.toContain("cybara_mobile_abcdefabcdefabcdefabcdef");
   });
 });

@@ -112,6 +112,8 @@ function buildContext(params: Record<string, unknown> | null | undefined): ToolC
     sessionId: typeof meta.sessionId === "string" ? meta.sessionId : undefined,
     workspaceDir: typeof meta.workspaceDir === "string" ? meta.workspaceDir : undefined,
     allowDangerousTools: hostAllowsDangerousTools(),
+    confineToWorkspace:
+      typeof meta.workspaceDir === "string" && meta.workspaceDir.trim().length > 0,
   };
 }
 

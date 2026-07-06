@@ -76,9 +76,9 @@ describe("UI API client wiring", () => {
   });
 
   test("injects Authorization header from UI token", async () => {
-    (globalThis as unknown as { window: Window }).window = createWindow(
-      "?token=ui-token"
-    ) as unknown as Window;
+    (globalThis as unknown as { window: Window }).window = createWindow("", {
+      cybara_api_key: "ui-token",
+    }) as unknown as Window;
 
     await agentsApi.list();
 
@@ -372,7 +372,7 @@ describe("UI API client wiring", () => {
     await mcpApi.list();
     await mcpApi.popular();
     await mcpApi.search("filesystem tools");
-    await mcpApi.install({ id: "filesystem" });
+    await mcpApi.install({ id: "filesystem", trustedAction: true });
     await mcpApi.create({
       name: "Filesystem MCP",
       command: "bunx",
@@ -397,7 +397,10 @@ describe("UI API client wiring", () => {
 
     expect(calls[3].url).toBe("/api/mcp/registry/install");
     expect(calls[3].init?.method).toBe("POST");
-    expect(JSON.parse(String(calls[3].init?.body))).toEqual({ id: "filesystem" });
+    expect(JSON.parse(String(calls[3].init?.body))).toEqual({
+      id: "filesystem",
+      trustedAction: true,
+    });
 
     expect(calls[4].url).toBe("/api/mcp");
     expect(calls[4].init?.method).toBe("POST");

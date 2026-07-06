@@ -735,8 +735,9 @@ function route(method: string, url: URL, body: string): Response {
   }
 
   if (method === "POST" && pathname === "/api/mcp/registry/install") {
-    const parsed = body ? (JSON.parse(body) as { package?: string }) : {};
+    const parsed = body ? (JSON.parse(body) as { package?: string; trustedAction?: boolean }) : {};
     if (!parsed.package) return json({ success: false, error: "missing package" }, 400);
+    if (parsed.trustedAction !== true) return json({ success: false, error: "untrusted" }, 400);
     return json({ success: true, id: "mcp-installed-1" });
   }
 

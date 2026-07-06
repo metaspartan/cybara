@@ -1,4 +1,9 @@
 import { tables } from "./database";
+import { redactSecrets } from "./redaction";
+
+function serializeMetricMetadata(metadata?: Record<string, unknown>): string | undefined {
+  return metadata ? JSON.stringify(redactSecrets(metadata)) : undefined;
+}
 
 export function trackMetric(
   type: string,
@@ -13,7 +18,7 @@ export function trackMetric(
       type,
       key,
       value,
-      metadata: metadata ? JSON.stringify(metadata) : undefined,
+      metadata: serializeMetricMetadata(metadata),
     });
   } catch {
     void 0;

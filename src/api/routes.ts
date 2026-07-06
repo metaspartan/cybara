@@ -1000,6 +1000,9 @@ const routes: Record<string, RouteHandler> = {
       // escalation). Dangerous tools must go through the normal
       // dangerous-tool policy / approval flow regardless of the request body.
       allowDangerousTools: false,
+      confineToWorkspace:
+        typeof data.context?.workspaceDir === "string" &&
+        data.context.workspaceDir.trim().length > 0,
     };
 
     return await executeTool(data.name, data.args, {
@@ -1812,7 +1815,14 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/mcp/registry/registries": () => mcpRegistry.getRegistries(),
   "POST /api/mcp/registry/install": async (body) => {
-    const data = body as { package?: string; id?: string };
+    const data = body as { package?: string; id?: string; trustedAction?: boolean };
+    if (data.trustedAction !== true) {
+      return {
+        success: false,
+        error:
+          "MCP installs require trustedAction=true because they add executable third-party code.",
+      };
+    }
     if (data.id) {
       const server = mcpRegistry.getDetails(data.id);
       if (!server) return { success: false, error: "Server not found in registry" };
@@ -4761,6 +4771,7 @@ export async function handleRequest(req: {
     } else if (
       errorMessage.includes("Validation") ||
       errorMessage.includes("required") ||
+      errorMessage.startsWith("Refused:") ||
       errorMessage.startsWith("Invalid ")
     ) {
       userMessage = errorMessage;

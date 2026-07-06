@@ -366,7 +366,7 @@ final class SidecarManager: ObservableObject {
 
     private func resolveLaunchCommand() throws -> LaunchCommand {
         let environment = ProcessInfo.processInfo.environment
-        let arguments = ["start", "--enable-terminal"]
+        let arguments = ["start"]
 
         if let override = environment["CYBARA_NATIVE_SIDECAR_PATH"], isExecutable(at: override) {
             return LaunchCommand(

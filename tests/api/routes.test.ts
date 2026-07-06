@@ -1295,7 +1295,10 @@ describe("MCP Registry API", () => {
     expect(detailRes.status).toBe(200);
     expect(detailRes.data.id).toBe("mcp-filesystem");
 
-    const installRes = await api("POST", "/api/mcp/registry/install", { id: "mcp-filesystem" });
+    const installRes = await api("POST", "/api/mcp/registry/install", {
+      id: "mcp-filesystem",
+      trustedAction: true,
+    });
     expect(installRes.status).toBe(200);
     expect(installRes.data.success).toBe(true);
     expect(typeof installRes.data.id).toBe("string");
@@ -1307,7 +1310,12 @@ describe("MCP Registry API", () => {
   });
 
   test("install endpoint should validate missing id/package", async () => {
-    const res = await api("POST", "/api/mcp/registry/install", {});
+    const untrusted = await api("POST", "/api/mcp/registry/install", { id: "mcp-filesystem" });
+    expect(untrusted.status).toBe(200);
+    expect(untrusted.data.success).toBe(false);
+    expect(String(untrusted.data.error)).toContain("trustedAction=true");
+
+    const res = await api("POST", "/api/mcp/registry/install", { trustedAction: true });
     expect(res.status).toBe(200);
     expect(res.data.success).toBe(false);
     expect(typeof res.data.error).toBe("string");
@@ -1382,6 +1390,70 @@ describe("Tools API", () => {
     });
     expect(allowed.status).toBe(200);
     expect(allowed.data.content).toBe("permission-test");
+  });
+
+  test("POST /api/tools/execute confines file writes to the supplied workspace by default", async () => {
+    const workspaceDir = mkdtempSync(join(testHome, "tool-workspace-"));
+    const outsideDir = mkdtempSync(join(testHome, "tool-outside-"));
+    try {
+      const inside = join(workspaceDir, "notes.txt");
+      const outside = join(outsideDir, "escape.txt");
+
+      const insideWrite = await api("POST", "/api/tools/execute", {
+        name: "write",
+        args: { path: inside, content: "inside" },
+        context: { agentId: "api-tools-workspace", workspaceDir },
+      });
+      expect(insideWrite.status).toBe(200);
+      expect(insideWrite.data.success).toBe(true);
+
+      const outsideWrite = await api("POST", "/api/tools/execute", {
+        name: "write",
+        args: { path: outside, content: "outside" },
+        context: { agentId: "api-tools-workspace", workspaceDir },
+      });
+      expect(outsideWrite.status).toBe(400);
+      expect(String(outsideWrite.data.error || "")).toContain("outside the configured workspace");
+    } finally {
+      rmSync(workspaceDir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
+  });
+
+  test("POST /api/tools/execute rejects symlink escapes from the supplied workspace", async () => {
+    const workspaceDir = mkdtempSync(join(testHome, "tool-symlink-workspace-"));
+    const outsideDir = mkdtempSync(join(testHome, "tool-symlink-outside-"));
+    try {
+      const outsideFile = join(outsideDir, "target.txt");
+      const outsideFileLink = join(workspaceDir, "linked-target.txt");
+      const outsideSubdir = join(outsideDir, "subdir");
+      const outsideDirLink = join(workspaceDir, "linked-dir");
+      writeFileSync(outsideFile, "outside", "utf8");
+      mkdirSync(outsideSubdir, { recursive: true });
+      symlinkSync(outsideFile, outsideFileLink);
+      symlinkSync(outsideSubdir, outsideDirLink, "dir");
+
+      const fileLinkWrite = await api("POST", "/api/tools/execute", {
+        name: "write",
+        args: { path: outsideFileLink, content: "overwrite through link" },
+        context: { agentId: "api-tools-symlink", workspaceDir },
+      });
+      expect(fileLinkWrite.status).toBe(400);
+      expect(String(fileLinkWrite.data.error || "")).toContain("outside the configured workspace");
+
+      const parentLinkWrite = await api("POST", "/api/tools/execute", {
+        name: "write",
+        args: { path: join(outsideDirLink, "new-file.txt"), content: "escape through parent" },
+        context: { agentId: "api-tools-symlink", workspaceDir },
+      });
+      expect(parentLinkWrite.status).toBe(400);
+      expect(String(parentLinkWrite.data.error || "")).toContain(
+        "outside the configured workspace"
+      );
+    } finally {
+      rmSync(workspaceDir, { recursive: true, force: true });
+      rmSync(outsideDir, { recursive: true, force: true });
+    }
   });
 
   test("POST /api/tools/execute blocks dangerous tools when policy is enabled", async () => {

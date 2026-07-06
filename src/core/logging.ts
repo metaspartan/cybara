@@ -1,5 +1,6 @@
 import { tables } from "./database";
 import { randomUUID } from "crypto";
+import { redactSecretText, redactSecrets } from "./redaction";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -13,12 +14,14 @@ export class Logger {
   }
 
   private async log(level: LogLevel, message: string, metadata?: Record<string, unknown>) {
+    const safeMessage = redactSecretText(message);
+    const safeMetadata = redactLogMetadata(metadata);
     const logEntry = {
       id: randomUUID(),
       level,
       source: this.source,
-      message,
-      metadata: metadata ? JSON.stringify(metadata) : undefined,
+      message: safeMessage,
+      metadata: safeMetadata ? JSON.stringify(safeMetadata) : undefined,
     };
 
     try {
@@ -28,8 +31,10 @@ export class Logger {
     }
 
     const timestamp = new Date().toISOString();
-    const metaStr = metadata ? ` ${JSON.stringify(metadata)}` : "";
-    console.log(`[${timestamp}] [${this.source}] [${level.toUpperCase()}] ${message}${metaStr}`);
+    const metaStr = safeMetadata ? ` ${JSON.stringify(safeMetadata)}` : "";
+    console.log(
+      `[${timestamp}] [${this.source}] [${level.toUpperCase()}] ${safeMessage}${metaStr}`
+    );
   }
 
   debug(message: string, metadata?: Record<string, unknown>) {
@@ -56,6 +61,12 @@ export const systemLogger = new Logger("system");
 export const skillLogger = new Logger("skill");
 export const subagentLogger = new Logger("subagent");
 
+function redactLogMetadata(
+  metadata?: Record<string, unknown>
+): Record<string, unknown> | undefined {
+  return metadata ? (redactSecrets(metadata) as Record<string, unknown>) : undefined;
+}
+
 function normalizeCreatedAt(value?: string): string | undefined {
   if (typeof value !== "string" || value.trim().length === 0) return undefined;
   const parsed = Date.parse(value);
@@ -75,6 +86,7 @@ export async function logSessionMessage(
     createdAt?: string;
   }
 ) {
+  const safeMetadata = redactLogMetadata(options?.metadata);
   const message = {
     id: randomUUID(),
     session_id: sessionId,
@@ -83,7 +95,7 @@ export async function logSessionMessage(
     channel_id: options?.channelId,
     role,
     content,
-    metadata: options?.metadata ? JSON.stringify(options.metadata) : undefined,
+    metadata: safeMetadata ? JSON.stringify(safeMetadata) : undefined,
     created_at: normalizeCreatedAt(options?.createdAt),
   };
 
@@ -100,12 +112,13 @@ export async function logAgentActivity(
   details?: string,
   metadata?: Record<string, unknown>
 ) {
+  const safeMetadata = redactLogMetadata(metadata);
   const logEntry = {
     id: randomUUID(),
     agent_id: agentId,
-    action,
-    details,
-    metadata: metadata ? JSON.stringify(metadata) : undefined,
+    action: redactSecretText(action),
+    details: details ? redactSecretText(details) : details,
+    metadata: safeMetadata ? JSON.stringify(safeMetadata) : undefined,
   };
 
   try {
@@ -125,14 +138,15 @@ export async function logChannelMessage(
     metadata?: Record<string, unknown>;
   }
 ) {
+  const safeMetadata = redactLogMetadata(options?.metadata);
   const logEntry = {
     id: randomUUID(),
     channel_type: channelType,
     channel_id: options?.channelId,
     direction,
     sender_id: options?.senderId,
-    content,
-    metadata: options?.metadata ? JSON.stringify(options.metadata) : undefined,
+    content: redactSecretText(content),
+    metadata: safeMetadata ? JSON.stringify(safeMetadata) : undefined,
   };
 
   try {
@@ -157,21 +171,23 @@ export async function logToolExecution(
     status === "success"
       ? `Tool ${toolName} completed in ${durationMs}ms`
       : `Tool ${toolName} failed after ${durationMs}ms: ${options?.error || "Unknown error"}`;
+  const safeMessage = redactSecretText(message);
+  const safeMetadata = redactLogMetadata({
+    toolName,
+    status,
+    durationMs,
+    sessionId: options?.sessionId,
+    agentId: options?.agentId,
+    argsPreview: options?.argsPreview,
+    error: options?.error,
+  });
 
   const logEntry = {
     id: randomUUID(),
     level: status === "success" ? "info" : "error",
     source: "tool",
-    message,
-    metadata: JSON.stringify({
-      toolName,
-      status,
-      durationMs,
-      sessionId: options?.sessionId,
-      agentId: options?.agentId,
-      argsPreview: options?.argsPreview,
-      error: options?.error,
-    }),
+    message: safeMessage,
+    metadata: JSON.stringify(safeMetadata),
   };
 
   try {
@@ -195,20 +211,22 @@ export async function logSkillExecution(
     status === "success"
       ? `Skill ${skillName} executed in ${durationMs}ms`
       : `Skill ${skillName} failed: ${options?.error || "Unknown error"}`;
+  const safeMessage = redactSecretText(message);
+  const safeMetadata = redactLogMetadata({
+    skillName,
+    status,
+    durationMs,
+    sessionId: options?.sessionId,
+    agentId: options?.agentId,
+    error: options?.error,
+  });
 
   const logEntry = {
     id: randomUUID(),
     level: status === "success" ? "info" : "error",
     source: "skill",
-    message,
-    metadata: JSON.stringify({
-      skillName,
-      status,
-      durationMs,
-      sessionId: options?.sessionId,
-      agentId: options?.agentId,
-      error: options?.error,
-    }),
+    message: safeMessage,
+    metadata: JSON.stringify(safeMetadata),
   };
 
   try {

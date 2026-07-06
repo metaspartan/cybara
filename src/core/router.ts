@@ -18,6 +18,7 @@
 import { config } from "./config";
 import { providerManager } from "./providers";
 import { tables } from "./database";
+import { redactSecrets } from "./redaction";
 import {
   createProviderPlanEvaluationContext,
   getProviderPlanRouteConstraint,
@@ -590,7 +591,7 @@ export function recordUsage(
       type: "router_usage",
       key: providerId,
       value: estimatedCost,
-      metadata: JSON.stringify({ inputTokens, outputTokens, success, model }),
+      metadata: JSON.stringify(redactSecrets({ inputTokens, outputTokens, success, model })),
     });
   } catch {
     /* DB persistence is best-effort */

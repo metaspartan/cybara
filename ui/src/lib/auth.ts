@@ -28,29 +28,16 @@ export function withGatewayBasePath(path: string): string {
 
 let desktopTokenHydration: Promise<string | null> | null = null;
 
+function getQueryToken(): string | null {
+  if (typeof window === "undefined") return null;
+  const search = typeof window.location?.search === "string" ? window.location.search : "";
+  const query = new URLSearchParams(search);
+  return query.get("api_key") || query.get("token");
+}
+
 function getWindowToken(): string | null {
   if (typeof window === "undefined") {
     return null;
-  }
-
-  const search = typeof window.location?.search === "string" ? window.location.search : "";
-  const query = new URLSearchParams(search);
-  const fromQuery = query.get("api_key") || query.get("token");
-  if (fromQuery) {
-    // Tokenized launch links (printed by the gateway at startup) hand the key
-    // to the UI once; persist it and scrub it from the address bar/history so
-    // it doesn't linger in screenshots or shared URLs.
-    persistWindowToken(fromQuery);
-    try {
-      query.delete("api_key");
-      query.delete("token");
-      const rest = query.toString();
-      const cleaned = `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`;
-      window.history.replaceState(window.history.state, "", cleaned);
-    } catch {
-      // History API unavailable — keep the param rather than break auth.
-    }
-    return fromQuery;
   }
 
   const storage = window.localStorage;
@@ -109,7 +96,10 @@ export function setApiAuthToken(token: string): void {
   }
 }
 
-export function appendApiTokenParam(urlOrPath: string, token = getApiAuthToken()): string {
+export function appendApiTokenParam(
+  urlOrPath: string,
+  token = getApiAuthToken() || getQueryToken()
+): string {
   // Callers hand this root-relative API paths destined for fetch/WebSocket;
   // apply the gateway base path here so they stay prefix-agnostic.
   const prefixed = urlOrPath.startsWith("/") ? withGatewayBasePath(urlOrPath) : urlOrPath;

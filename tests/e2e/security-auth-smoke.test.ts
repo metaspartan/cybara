@@ -204,6 +204,13 @@ describe("Security auth e2e", () => {
       expect(missingAuth.data.error).toContain("Missing Authorization");
       expect(missingAuth.headers.get("www-authenticate")).toContain("Bearer");
 
+      const queryTokenAuth = await request(
+        baseUrl,
+        `/api/info?token=${encodeURIComponent(apiKey)}`
+      );
+      expect(queryTokenAuth.status).toBe(401);
+      expect(queryTokenAuth.data.error).toContain("Missing Authorization");
+
       const wrongAuth = await request(baseUrl, "/api/info", {
         Authorization: "Bearer wrong-key",
       });

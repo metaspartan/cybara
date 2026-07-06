@@ -41,14 +41,14 @@ describe("getApiAuthToken", () => {
     expect(getApiAuthToken()).toBe(null);
   });
 
-  test("reads api_key from query string first", () => {
+  test("ignores api_key query string for normal API auth", () => {
     setWindow("?api_key=q123", makeStorage({ cybara_api_key: "stored" }));
-    expect(getApiAuthToken()).toBe("q123");
+    expect(getApiAuthToken()).toBe("stored");
   });
 
-  test("reads token query param", () => {
+  test("ignores token query param for normal API auth", () => {
     setWindow("?token=tok", null);
-    expect(getApiAuthToken()).toBe("tok");
+    expect(getApiAuthToken()).toBe(null);
   });
 
   test("falls back to localStorage cybara_api_key", () => {
@@ -89,7 +89,7 @@ describe("appendApiTokenParam", () => {
     expect(appendApiTokenParam("/api/x", "a b/c")).toBe("/api/x?token=a%20b%2Fc");
   });
 
-  test("resolves token from window when not passed", () => {
+  test("uses query token only for URL-param compatibility fallback", () => {
     setWindow("?token=fromwin", null);
     expect(appendApiTokenParam("/api/x")).toBe("/api/x?token=fromwin");
   });
