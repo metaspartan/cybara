@@ -372,6 +372,12 @@ describe("handleChat per-session serialization", () => {
       expect(messages[3]?.process_activities?.map((activity) => activity.text)).toContain(
         "Ran long command before steering"
       );
+      expect(messages[3]?.process_activities?.map((activity) => activity.text)).not.toContain(
+        "Steering to follow-up..."
+      );
+      expect(messages[3]?.process_activities?.map((activity) => activity.text)).not.toContain(
+        "Starting queued follow-up"
+      );
       expect(messages[4]?.content).toBe("steer after command");
       expect(messages[5]?.content).toBe("tool-steer-reply-2");
       expect(messages[5]?.process_activities?.map((activity) => activity.text)).not.toContain(

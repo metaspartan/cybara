@@ -27,8 +27,9 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("chatApi.getPendingMessages");
     expect(source).toContain("clientPendingId: optimisticPendingMessageId");
     expect(source).toContain(
-      "appendSessionMessage(sessionId, response.data.message as ChatMessage, workspaceDir)"
+      "appendSessionMessages(sessionId, [preSteerMessage, steeredMessage], workspaceDir)"
     );
+    expect(source).toContain("buildPreSteeringActivityMessage(");
     expect(source).toContain("const sessionStillActive =");
     expect(source).toContain("if (!sessionStillActive) {");
     expect(source).toContain("refreshPendingMessages(sessionId)");

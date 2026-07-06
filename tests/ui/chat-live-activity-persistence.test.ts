@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
-import { pruneCanonicalizedLiveActivities } from "../../ui/src/pages/chat/chatModel";
+import {
+  buildPreSteeringActivityMessage,
+  pruneCanonicalizedLiveActivities,
+} from "../../ui/src/pages/chat/chatModel";
 import type { ChatMessage } from "../../ui/src/pages/chat/chatModel";
 import type { LiveActivityItem } from "../../ui/src/lib/chatActivities";
 
@@ -161,6 +164,72 @@ describe("Chat live activity persistence", () => {
     ];
 
     expect(pruneCanonicalizedLiveActivities(messages, activities)).toEqual([activities[1]]);
+  });
+
+  test("materializes live tool activity immediately before a steered user message", () => {
+    const steeredMessage: ChatMessage = {
+      role: "user",
+      content: "steer now",
+      timestamp: "2026-07-06T00:00:02.000Z",
+    };
+    const activity: LiveActivityItem = {
+      id: "activity-before-steer",
+      phase: "result",
+      text: "Ran slow command before steering",
+      timestamp: 1783300001000,
+      toolName: "exec",
+      toolCallId: "tool-before-steer",
+    };
+
+    const materialized = buildPreSteeringActivityMessage(steeredMessage, [activity]);
+
+    expect(materialized).toMatchObject({
+      role: "assistant",
+      content: "",
+      timestamp: "2026-07-06T00:00:01.999Z",
+      process_activities: [activity],
+    });
+  });
+
+  test("does not fold steering handoff markers into the pre-steer work row", () => {
+    const steeredMessage: ChatMessage = {
+      role: "user",
+      content: "steer now",
+      timestamp: "2026-07-06T00:00:02.000Z",
+    };
+
+    const materialized = buildPreSteeringActivityMessage(steeredMessage, [
+      {
+        id: "handoff",
+        phase: "result",
+        text: "Steering to follow-up...",
+        timestamp: 1783300001000,
+        toolName: "__thought",
+      },
+      {
+        id: "work",
+        phase: "result",
+        text: "Ran slow command before steering",
+        timestamp: 1783300001001,
+        toolName: "exec",
+        toolCallId: "tool-before-steer",
+      },
+    ]);
+
+    expect(materialized?.process_activities?.map((activity) => activity.text)).toEqual([
+      "Ran slow command before steering",
+    ]);
+  });
+
+  test("steering appends materialized work before user message and prunes live buffers", () => {
+    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    expect(source).toContain("const preSteerActivities = mergeActivityLists(");
+    expect(source).toContain("buildPreSteeringActivityMessage(");
+    expect(source).toContain(
+      "appendSessionMessages(sessionId, [preSteerMessage, steeredMessage], workspaceDir)"
+    );
+    expect(source).toContain("runActivityBufferRef.current = pruneCanonicalizedLiveActivities(");
+    expect(source).toContain("pendingProcessCaptureRef.current = {");
   });
 
   test("does not trim message process map history to last 199 entries", () => {

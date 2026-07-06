@@ -130,6 +130,7 @@ import {
   toLiveActivityItems,
   tryParseJsonRecord,
   type ArtifactSummaryView,
+  buildPreSteeringActivityMessage,
   type ChatMessage,
   type FileChangeItem,
   type FileChangeSummary,
@@ -1882,6 +1883,7 @@ export function Chat() {
     clearChat,
     loadSession,
     appendSessionMessage,
+    appendSessionMessages,
     sessionId,
     workspaceDir,
     setWorkspaceDir,
@@ -3074,6 +3076,7 @@ export function Chat() {
     async (pendingMessageId: string) => {
       if (!sessionId) return;
       setSteeringMessageId(pendingMessageId);
+      const preSteerActivities = mergeActivityLists(runActivityBufferRef.current, liveActivities);
       try {
         const response = await chatApi.steerPendingMessage(sessionId, pendingMessageId);
         if (response.success && response.data) {
@@ -3081,7 +3084,33 @@ export function Chat() {
           if (response.data.pendingMessages.length === 0) {
             clearCachedOptimisticPendingMessages(sessionId);
           }
-          appendSessionMessage(sessionId, response.data.message as ChatMessage, workspaceDir);
+          const steeredMessage = response.data.message as ChatMessage;
+          const preSteerMessage = buildPreSteeringActivityMessage(
+            steeredMessage,
+            preSteerActivities
+          );
+          if (preSteerMessage) {
+            appendSessionMessages(sessionId, [preSteerMessage, steeredMessage], workspaceDir);
+            const materializedMessages = [preSteerMessage];
+            runActivityBufferRef.current = pruneCanonicalizedLiveActivities(
+              materializedMessages,
+              runActivityBufferRef.current
+            );
+            if (pendingProcessCaptureRef.current) {
+              pendingProcessCaptureRef.current = {
+                ...pendingProcessCaptureRef.current,
+                activities: pruneCanonicalizedLiveActivities(
+                  materializedMessages,
+                  pendingProcessCaptureRef.current.activities
+                ),
+              };
+            }
+            setLiveActivities((previous) =>
+              pruneCanonicalizedLiveActivities(materializedMessages, previous)
+            );
+          } else {
+            appendSessionMessage(sessionId, steeredMessage, workspaceDir);
+          }
           const sessionStillActive =
             activeSessionIds.includes(sessionId) ||
             (isLoading && loadingSessionId === sessionId) ||
@@ -3110,10 +3139,11 @@ export function Chat() {
     [
       activeSessionIds,
       appendSessionMessage,
+      appendSessionMessages,
       isLoading,
       loadSession,
       loadSessionMutation,
-      liveActivities.length,
+      liveActivities,
       liveStatus,
       loadingSessionId,
       sessionId,

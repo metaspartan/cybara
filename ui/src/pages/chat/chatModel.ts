@@ -1,4 +1,5 @@
 import {
+  finalizeCompletedActivities,
   mergeActivityLists,
   normalizeActivityTextForPhase,
   type LiveActivityItem,
@@ -36,6 +37,7 @@ export interface ChatMessage {
     timestamp?: number | string;
     toolName?: string;
     toolCallId?: string;
+    sandboxProvider?: string;
   }>;
   thinking?: string;
   _truncated?: string;
@@ -245,6 +247,45 @@ export function pruneCanonicalizedLiveActivities(
     const key = liveActivityCanonicalKey(activity);
     return !key || !embeddedKeys.has(key);
   });
+}
+
+function parseChatMessageTimestampMs(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim().length > 0) {
+    const asNumber = Number(value);
+    if (Number.isFinite(asNumber)) return asNumber;
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+export function buildPreSteeringActivityMessage(
+  steeringMessage: ChatMessage,
+  activities: LiveActivityItem[]
+): ChatMessage | null {
+  const processActivities = finalizeCompletedActivities(activities).filter((activity) => {
+    const text = activity.text.trim().toLowerCase();
+    return (
+      text.length > 0 && text !== "steering to follow-up..." && text !== "starting queued follow-up"
+    );
+  });
+  if (processActivities.length === 0) return null;
+  const steeringTimestampMs = parseChatMessageTimestampMs(steeringMessage.timestamp) ?? Date.now();
+  return {
+    role: "assistant",
+    content: "",
+    timestamp: new Date(Math.max(0, steeringTimestampMs - 1)).toISOString(),
+    process_activities: processActivities.map((activity) => ({
+      id: activity.id,
+      phase: activity.phase,
+      text: activity.text,
+      timestamp: activity.timestamp,
+      toolName: activity.toolName,
+      toolCallId: activity.toolCallId,
+      sandboxProvider: activity.sandboxProvider,
+    })),
+  };
 }
 
 export function readStringArg(args: Record<string, unknown>, keys: string[]): string | undefined {

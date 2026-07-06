@@ -463,6 +463,11 @@ function getSessionProcessActivities(
   return activities.length > 0 ? activities : undefined;
 }
 
+function isSteeringHandoffProcessActivity(activity: ProcessActivityInfo): boolean {
+  const text = activity.text.trim().toLowerCase();
+  return text === "steering to follow-up..." || text === "starting queued follow-up";
+}
+
 function materializeInterruptedAssistantBeforeSteering(
   session: InMemoryChatSession
 ): ChatMessage | undefined {
@@ -473,7 +478,7 @@ function materializeInterruptedAssistantBeforeSteering(
 
   const processActivities = getSessionProcessActivities(session.id, {
     excludeActivityIds: collectAttachedProcessActivityIds(session.messages),
-  });
+  })?.filter((activity) => !isSteeringHandoffProcessActivity(activity));
   if (!processActivities || processActivities.length === 0) return undefined;
   if (
     !processActivities.some((activity) => activity.toolName && activity.toolName !== "__thought")

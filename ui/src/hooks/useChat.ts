@@ -201,6 +201,37 @@ export function useChat(agentId?: string) {
     []
   );
 
+  const appendSessionMessages = useCallback(
+    (sessionId: string, nextMessages: ChatMessage[], workspaceDir?: string | null) => {
+      setState((prev) => {
+        if (prev.sessionId !== sessionId || nextMessages.length === 0) return prev;
+        const existingKeys = new Set(
+          prev.messages.map(
+            (message) => `${message.role}\u0000${message.timestamp || ""}\u0000${message.content}`
+          )
+        );
+        const messagesToAppend = nextMessages.filter((message) => {
+          const messageKey = `${message.role}\u0000${message.timestamp || ""}\u0000${message.content}`;
+          if (existingKeys.has(messageKey)) return false;
+          existingKeys.add(messageKey);
+          return true;
+        });
+        if (messagesToAppend.length === 0) {
+          return {
+            ...prev,
+            workspaceDir: workspaceDir ?? prev.workspaceDir,
+          };
+        }
+        return {
+          ...prev,
+          messages: [...prev.messages, ...messagesToAppend],
+          workspaceDir: workspaceDir ?? prev.workspaceDir,
+        };
+      });
+    },
+    []
+  );
+
   const setWorkspaceDir = useCallback((workspaceDir: string | null) => {
     setState((prev) => ({
       ...prev,
@@ -249,6 +280,7 @@ export function useChat(agentId?: string) {
     clearChat,
     loadSession,
     appendSessionMessage,
+    appendSessionMessages,
     setWorkspaceDir,
     revertToMessage,
     stopGenerating,
