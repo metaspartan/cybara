@@ -177,7 +177,7 @@ export type MobileIndexingSettings = {
   semanticEnabled: boolean;
   includeHidden: boolean;
   autoReindexOnWorkspaceSet: boolean;
-  embeddingProvider: "auto" | "transformers_js" | "openai" | "gemini" | "ollama";
+  embeddingProvider: "auto" | "local" | "transformers_js" | "openai" | "voyage" | "gemini" | "ollama";
   embeddingModel: string;
 };
 
@@ -262,7 +262,7 @@ export function readMobileIndexingSettings(
   const indexer = objectRecord(configRecord?.workspace_indexer);
   const rawProvider =
     typeof indexer?.embeddingProvider === "string" ? indexer.embeddingProvider : "auto";
-  const embeddingProvider = ["auto", "transformers_js", "openai", "gemini", "ollama"].includes(
+  const embeddingProvider = ["auto", "local", "transformers_js", "openai", "voyage", "gemini", "ollama"].includes(
     rawProvider
   )
     ? (rawProvider as MobileIndexingSettings["embeddingProvider"])

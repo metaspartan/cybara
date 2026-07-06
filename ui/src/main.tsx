@@ -19,11 +19,16 @@ const platformHint = (() => {
 rootElement.dataset.runtime = desktopRuntime || "web";
 rootElement.dataset.platform = platformHint;
 
+// Data stays live without manual refresh buttons: queries go stale after 15s,
+// refetch on focus/navigation, and list views poll while mounted (intervals
+// set per-hook). Polling only runs for mounted queries and pauses in
+// background tabs, so idle cost stays near zero.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 1000 * 60 * 5, // 5 minutes
-      refetchOnWindowFocus: false,
+      staleTime: 1000 * 15,
+      refetchOnWindowFocus: true,
+      refetchIntervalInBackground: false,
       retry: 2,
     },
   },

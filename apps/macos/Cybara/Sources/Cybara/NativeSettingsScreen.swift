@@ -68,6 +68,15 @@ struct NativeSettingsScreen: View {
     @State private var savingKey: String?
     @State private var copiedURL = false
     @State private var error: String?
+    @State private var authKeyPreview = ""
+    @State private var authKeySource = ""
+    @State private var authRequireLocalhost = false
+    @State private var authRequireForced = false
+    @State private var authAvailable = false
+    @State private var authRevealedKey: String?
+    @State private var authCopied = false
+    @State private var authBusy = false
+    @State private var showRotateConfirm = false
 
     private var availableModels: [String] {
         Array(Set(providers.flatMap { $0.models ?? [] })).sorted()
@@ -202,6 +211,59 @@ struct NativeSettingsScreen: View {
                     }
                 }
 
+                if authAvailable {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("Gateway Auth")
+                                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                                Spacer()
+                                if authBusy { ProgressView().controlSize(.small) }
+                            }
+                            Text("Root API key used by native apps, the CLI, and remote clients. Paired mobile devices use their own scoped tokens.")
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.secondary)
+
+                            settingRow("API key", authRevealedKey ?? authKeyPreview)
+                            settingRow(
+                                "Source",
+                                authKeySource == "env" ? "CYBARA_API_KEY environment variable" : "~/.cybara/api_key"
+                            )
+
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 10) { authControlButtons }
+                                VStack(alignment: .leading, spacing: 10) { authControlButtons }
+                            }
+
+                            Divider().opacity(0.45)
+
+                            toggleRow(
+                                "Require API key for localhost",
+                                detail: authRequireForced
+                                    ? "Forced on by CYBARA_REQUIRE_AUTH or production mode"
+                                    : "When off, same-origin local requests skip the API key",
+                                isOn: $authRequireLocalhost
+                            ) {
+                                guard !authRequireForced else { return }
+                                Task { await updateRequireLocalhostAuth() }
+                            }
+                            .disabled(authRequireForced || authBusy)
+                        }
+                    }
+                    .confirmationDialog(
+                        "Rotate API Key?",
+                        isPresented: $showRotateConfirm,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Rotate Key", role: .destructive) {
+                            Task { await rotateAuthKey() }
+                        }
+                        Button("Cancel", role: .cancel) {}
+                    } message: {
+                        Text("The current key stops working immediately. This app keeps working (it reads the key file), but other clients must be updated.")
+                    }
+                }
+
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
@@ -235,6 +297,33 @@ struct NativeSettingsScreen: View {
             }
             .nativeSettingsContentLayout()
         }
+    }
+
+    @ViewBuilder
+    private var authControlButtons: some View {
+        Button {
+            Task { await toggleRevealAuthKey() }
+        } label: {
+            Label(authRevealedKey == nil ? "Reveal" : "Hide", systemImage: authRevealedKey == nil ? "eye" : "eye.slash")
+        }
+        .buttonStyle(.bordered)
+        .disabled(authBusy)
+
+        Button {
+            Task { await copyAuthKey() }
+        } label: {
+            Label(authCopied ? "Copied" : "Copy Key", systemImage: authCopied ? "checkmark" : "doc.on.doc")
+        }
+        .buttonStyle(.bordered)
+        .disabled(authBusy)
+
+        Button {
+            showRotateConfirm = true
+        } label: {
+            Label("Rotate Key", systemImage: "arrow.triangle.2.circlepath")
+        }
+        .buttonStyle(.bordered)
+        .disabled(authBusy || authKeySource == "env")
     }
 
     @ViewBuilder
@@ -634,11 +723,13 @@ struct NativeSettingsScreen: View {
                             saveIndexingSettings()
                         }
                         Picker("Embedding provider", selection: $indexEmbeddingProvider) {
-                            Text("Auto").tag("auto")
+                            Text("Auto (best available)").tag("auto")
+                            Text("Local database (keyword only)").tag("local")
                             Text("Local Transformers.js").tag("transformers_js")
+                            Text("Ollama (local)").tag("ollama")
                             Text("OpenAI").tag("openai")
+                            Text("Voyage AI").tag("voyage")
                             Text("Gemini").tag("gemini")
-                            Text("Ollama").tag("ollama")
                         }
                         .pickerStyle(.menu)
                         .onChange(of: indexEmbeddingProvider) { _, _ in saveIndexingSettings() }
@@ -1023,6 +1114,83 @@ struct NativeSettingsScreen: View {
         } catch {
             self.error = error.localizedDescription
         }
+
+        // Best-effort: older gateways don't expose auth management yet.
+        if let auth = try? await client.authSettings(), auth["success"] as? Bool == true {
+            readAuthSettings(auth)
+            authAvailable = true
+        } else {
+            authAvailable = false
+        }
+    }
+
+    private func readAuthSettings(_ auth: [String: Any]) {
+        authKeyPreview = auth["apiKeyPreview"] as? String ?? "No API key configured"
+        authKeySource = auth["apiKeySource"] as? String ?? ""
+        authRequireLocalhost = auth["requireAuthForLocalhost"] as? Bool ?? false
+        authRequireForced = auth["requireAuthForLocalhostForced"] as? Bool ?? false
+    }
+
+    private func toggleRevealAuthKey() async {
+        if authRevealedKey != nil {
+            authRevealedKey = nil
+            return
+        }
+        authBusy = true
+        defer { authBusy = false }
+        if let key = try? await client.revealAuthKey() {
+            authRevealedKey = key
+        }
+    }
+
+    private func copyAuthKey() async {
+        authBusy = true
+        defer { authBusy = false }
+        let key: String?
+        if let revealed = authRevealedKey {
+            key = revealed
+        } else {
+            key = try? await client.revealAuthKey()
+        }
+        guard let key, !key.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(key, forType: .string)
+        authCopied = true
+        Task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            authCopied = false
+        }
+    }
+
+    private func rotateAuthKey() async {
+        authBusy = true
+        defer { authBusy = false }
+        do {
+            if let key = try await client.rotateAuthKey() {
+                authRevealedKey = key
+            }
+            if let auth = try? await client.authSettings() {
+                readAuthSettings(auth)
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func updateRequireLocalhostAuth() async {
+        authBusy = true
+        defer { authBusy = false }
+        do {
+            let auth = try await client.updateAuthSettings(
+                requireAuthForLocalhost: authRequireLocalhost
+            )
+            readAuthSettings(auth)
+        } catch {
+            self.error = error.localizedDescription
+            if let auth = try? await client.authSettings() {
+                readAuthSettings(auth)
+            }
+        }
     }
 
     private func readConfig(_ config: [String: Any]) {
@@ -1077,7 +1245,7 @@ struct NativeSettingsScreen: View {
         indexHidden = indexer["includeHidden"] as? Bool ?? false
         indexAutoReindex = indexer["autoReindexOnWorkspaceSet"] as? Bool ?? true
         let embedding = indexer["embeddingProvider"] as? String ?? "auto"
-        indexEmbeddingProvider = ["auto", "transformers_js", "openai", "gemini", "ollama"].contains(embedding) ? embedding : "auto"
+        indexEmbeddingProvider = ["auto", "local", "transformers_js", "openai", "voyage", "gemini", "ollama"].contains(embedding) ? embedding : "auto"
         indexEmbeddingModel = indexer["embeddingModel"] as? String ?? ""
     }
 

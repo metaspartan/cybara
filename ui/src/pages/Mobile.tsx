@@ -99,17 +99,6 @@ export function Mobile() {
     <PageLayout
       title="Mobile"
       subtitle="Pair and manage Cybara Mobile devices"
-      actions={
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={<RefreshCw className="w-4 h-4" />}
-          isLoading={isFetching}
-          onClick={() => void refetch()}
-        >
-          Refresh
-        </Button>
-      }
     >
       <div className="grid gap-4 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
         <div className="space-y-4">

@@ -20,10 +20,20 @@ describe("Memory and Settings pages: memory controls", () => {
   test("renders recall provider controls with the supported providers in Settings", () => {
     expect(settings).toContain("MemoryRecallSettingsState");
     expect(settings).toContain("memoryRecallProviderOptions");
-    for (const provider of ["auto", "transformers_js", "openai", "gemini", "ollama"]) {
+    for (const provider of [
+      "auto",
+      "local",
+      "transformers_js",
+      "openai",
+      "voyage",
+      "gemini",
+      "ollama",
+    ]) {
       expect(settings).toMatch(new RegExp(`value: ["']${provider}["']`));
     }
-    expect(settings).not.toMatch(/value:\s*["']voyage["']/);
+    // Popular models are offered as a dropdown per provider, with a custom escape hatch.
+    expect(settings).toContain("memoryRecallModelSuggestions");
+    expect(settings).toContain("Custom model…");
   });
 
   test("persists memory behavior, provider, and recall settings to gateway config", () => {

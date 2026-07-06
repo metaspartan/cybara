@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   Shield,
-  RefreshCw,
   Lock,
   Unlock,
   KeyRound,
@@ -310,6 +309,50 @@ export function Wallet() {
   useEffect(() => {
     void refreshAll();
   }, []);
+
+  // Live updates without manual refresh: poll lock status frequently (cheap
+  // local read) and market data/balances on a slower cadence. Paused while
+  // the tab is hidden to stay light on RPC providers.
+  useEffect(() => {
+    const tick = (fn: () => void) => () => {
+      if (!document.hidden) fn();
+    };
+    const statusTimer = window.setInterval(
+      tick(() => void refreshStatus().catch(() => {})),
+      15_000
+    );
+    const priceTimer = window.setInterval(tick(() => void refreshPrices()), 60_000);
+    return () => {
+      window.clearInterval(statusTimer);
+      window.clearInterval(priceTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!status?.unlocked) return;
+    const portfolioTimer = window.setInterval(() => {
+      if (document.hidden) return;
+      void refreshPortfolio().catch(() => {});
+      void refreshTokenBalances().catch(() => {});
+      void refreshTransactions().catch(() => {});
+      void refreshTokenTransactions().catch(() => {});
+    }, 60_000);
+    return () => window.clearInterval(portfolioTimer);
+  }, [
+    status?.unlocked,
+    accountCount,
+    accountStartIndex,
+    tokenChain,
+    tokenIndex,
+    tokenIncludeZero,
+    txChain,
+    txIndex,
+    txLimit,
+    tokenTxChain,
+    tokenTxIndex,
+    tokenTxLimit,
+    tokenTxAddressFilter,
+  ]);
 
   useEffect(() => {
     if (!status?.unlocked) {
@@ -623,26 +666,13 @@ export function Wallet() {
       subtitle="Encrypted local multi-chain wallet for ETH, BTC, and SOL"
       actions={
         <div className="flex items-center gap-2">
+          {(loading || busy) && <Loader2 className="w-4 h-4 animate-spin text-gray-400" />}
           <Button
             variant="ghost"
             leftIcon={<SettingsIcon className="w-4 h-4" />}
             onClick={() => navigate("/settings?section=wallet")}
           >
             Wallet Settings
-          </Button>
-          <Button
-            variant="secondary"
-            leftIcon={
-              loading || busy ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4" />
-              )
-            }
-            onClick={() => void refreshAll()}
-            disabled={busy}
-          >
-            Refresh
           </Button>
         </div>
       }
@@ -943,7 +973,7 @@ export function Wallet() {
                   <CardDescription>Derived accounts from your seed phrase</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Input
                       label="Accounts per chain"
                       value={accountCountInput}
@@ -961,15 +991,6 @@ export function Wallet() {
                       onChange={(e) => setStartIndexInput(e.target.value)}
                       helperText="Derivation offset"
                     />
-                    <div className="flex items-end">
-                      <Button
-                        variant="secondary"
-                        onClick={() => void refreshPortfolio()}
-                        disabled={busy}
-                      >
-                        Refresh Balances
-                      </Button>
-                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1028,7 +1049,7 @@ export function Wallet() {
                           ERC-20 and SPL token balances for a single derivation index.
                         </p>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 w-full md:w-auto">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 w-full md:w-auto">
                         <Select
                           label="Chain"
                           value={tokenChain}
@@ -1052,15 +1073,6 @@ export function Wallet() {
                           />
                           Include zero balances
                         </label>
-                        <div className="flex items-end">
-                          <Button
-                            variant="secondary"
-                            onClick={() => void refreshTokenBalances()}
-                            disabled={busy}
-                          >
-                            Refresh Tokens
-                          </Button>
-                        </div>
                       </div>
                     </div>
 
@@ -1292,14 +1304,6 @@ export function Wallet() {
                         />
                       </div>
 
-                      <Button
-                        variant="secondary"
-                        onClick={() => void refreshTransactions()}
-                        disabled={busy}
-                      >
-                        Refresh Transactions
-                      </Button>
-
                       <div className="space-y-2 max-h-[460px] overflow-auto">
                         {transactions.length === 0 ? (
                           <p className="text-sm text-gray-500">
@@ -1378,14 +1382,6 @@ export function Wallet() {
                           onChange={(e) => setTokenTxAddressFilter(e.target.value)}
                         />
                       </div>
-
-                      <Button
-                        variant="secondary"
-                        onClick={() => void refreshTokenTransactions()}
-                        disabled={busy}
-                      >
-                        Refresh Token Transactions
-                      </Button>
 
                       <div className="space-y-2 max-h-[460px] overflow-auto">
                         {tokenTransactions.length === 0 ? (

@@ -157,6 +157,36 @@ extension GatewayClient {
         return try JSONDecoder().decode(GatewayOAuthPollResponse.self, from: data)
     }
 
+    // ─── Gateway auth ────────────────────────────────────────────────────────
+
+    func authSettings() async throws -> [String: Any] {
+        try await rawObject("api/auth/settings")
+    }
+
+    func updateAuthSettings(requireAuthForLocalhost: Bool) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(
+            withJSONObject: ["requireAuthForLocalhost": requireAuthForLocalhost]
+        )
+        let data = try await request("api/auth/settings", method: "PUT", body: body)
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GatewayClientError.invalidResponse
+        }
+        return object
+    }
+
+    func revealAuthKey() async throws -> String? {
+        let object = try await rawObject("api/auth/key")
+        return object["apiKey"] as? String
+    }
+
+    func rotateAuthKey() async throws -> String? {
+        let data = try await request("api/auth/rotate-key", method: "POST")
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GatewayClientError.invalidResponse
+        }
+        return object["apiKey"] as? String
+    }
+
     private func agentPayload(
         name: String,
         type: String,

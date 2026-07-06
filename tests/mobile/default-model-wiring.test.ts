@@ -32,10 +32,17 @@ describe("mobile: memory method toggle", () => {
     expect(screen).toContain(
       "workspace_indexer: { ...workspaceIndexer, embeddingProvider: value }"
     );
-    for (const provider of ["auto", "transformers_js", "openai", "gemini", "ollama"]) {
+    for (const provider of [
+      "auto",
+      "local",
+      "transformers_js",
+      "openai",
+      "voyage",
+      "gemini",
+      "ollama",
+    ]) {
       expect(screen).toContain(`value: "${provider}"`);
     }
-    expect(screen).not.toContain('value: "voyage"');
     // Memory settings are a drill-in detail page (MemorySettingsPanel), not an
     // inline section on the root settings tab.
     expect(screen).toContain("onPress={openMemory}");

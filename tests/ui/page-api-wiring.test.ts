@@ -249,9 +249,7 @@ describe("UI page API wiring", () => {
     expect(source).toContain("import {");
     expect(source).toContain("walletApi");
     expect(source).toContain("walletApi.status()");
-    expect(source).toContain("walletApi.rpc()");
-    expect(source).toContain("walletApi.rpcStatus()");
-    expect(source).toContain("walletApi.getAgentPolicy()");
+    expect(source).toContain("walletApi.priceQuote(");
     expect(source).toContain("walletApi.accounts(");
     expect(source).toContain("walletApi.balances(");
     expect(source).toContain("walletApi.tokenBalances(");
@@ -259,15 +257,23 @@ describe("UI page API wiring", () => {
     expect(source).toContain("walletApi.transactions(");
     expect(source).toContain("walletApi.send(");
     expect(source).toContain("walletApi.sendToken(");
+    expect(source).toContain("WALLET_TABS");
+    expect(source).not.toContain("globalThis.confirm");
+    expect(source).not.toContain("globalThis.prompt");
+    expect(source).not.toContain("apiFetch(");
+  });
+
+  test("Wallet management (RPC, policy, delete) lives in Settings", () => {
+    const source = readPage("Settings.tsx");
+
+    expect(source).toContain("walletApi.rpc()");
+    expect(source).toContain("walletApi.rpcStatus()");
+    expect(source).toContain("walletApi.getAgentPolicy()");
     expect(source).toContain("walletApi.setAgentAccess(");
     expect(source).toContain("walletApi.updateAgentPolicy(");
     expect(source).toContain("walletApi.updateRpc(");
     expect(source).toContain("walletApi.deleteWallet(");
-    expect(source).toContain("WALLET_TABS");
     expect(source).toContain('Type "DELETE" to confirm');
-    expect(source).not.toContain("globalThis.confirm");
-    expect(source).not.toContain("globalThis.prompt");
-    expect(source).not.toContain("apiFetch(");
   });
 
   test("Wallet send requires a confirmation step before moving funds", () => {

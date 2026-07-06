@@ -146,18 +146,9 @@ export function Skills() {
       title="Skills"
       subtitle="Browse and manage agent skills"
       actions={
-        <div className="flex gap-2">
-          <Button
-            variant="ghost"
-            leftIcon={<RefreshCw className="w-4 h-4" />}
-            onClick={() => refetch()}
-          >
-            Refresh
-          </Button>
-          <Button leftIcon={<Plus className="w-4 h-4" />} onClick={() => setShowAddModal(true)}>
-            Add Skill
-          </Button>
-        </div>
+        <Button leftIcon={<Plus className="w-4 h-4" />} onClick={() => setShowAddModal(true)}>
+          Add Skill
+        </Button>
       }
     >
       <div className="space-y-6">

@@ -37,10 +37,15 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
   return response.json();
 }
 
+// Shared poll cadence for list views: cheap gateway reads, only while the
+// query is mounted and the tab is focused.
+const LIST_POLL_INTERVAL_MS = 30_000;
+
 export function useAgents() {
   return useQuery({
     queryKey: ["agents"],
     queryFn: () => fetchApi<Agent[]>("/agents"),
+    refetchInterval: LIST_POLL_INTERVAL_MS,
   });
 }
 
@@ -166,6 +171,7 @@ export function useProviders() {
   return useQuery({
     queryKey: ["providers"],
     queryFn: () => fetchApi<Provider[]>("/providers"),
+    refetchInterval: LIST_POLL_INTERVAL_MS,
   });
 }
 
@@ -236,6 +242,7 @@ export function useChannels() {
   return useQuery({
     queryKey: ["channels"],
     queryFn: () => fetchApi<Channel[]>("/channels"),
+    refetchInterval: LIST_POLL_INTERVAL_MS,
   });
 }
 
@@ -294,6 +301,7 @@ export function useMobileDevices() {
   return useQuery({
     queryKey: ["mobile", "devices"],
     queryFn: () => fetchApi<{ devices: MobileDevice[] }>("/mobile/devices"),
+    refetchInterval: LIST_POLL_INTERVAL_MS,
   });
 }
 
@@ -333,6 +341,7 @@ export function useTasks() {
   return useQuery({
     queryKey: ["tasks"],
     queryFn: () => fetchApi<Task[]>("/tasks"),
+    refetchInterval: LIST_POLL_INTERVAL_MS,
   });
 }
 
@@ -384,6 +393,7 @@ export function useSkills() {
   return useQuery({
     queryKey: ["skills"],
     queryFn: () => fetchApi<Skill[]>("/skills"),
+    refetchInterval: LIST_POLL_INTERVAL_MS,
   });
 }
 
@@ -652,6 +662,7 @@ export function useSessions() {
   return useQuery({
     queryKey: ["sessions"],
     queryFn: () => fetchApi<Session[]>("/sessions"),
+    refetchInterval: LIST_POLL_INTERVAL_MS,
   });
 }
 
@@ -889,8 +900,9 @@ export function useSubagents() {
       }
       throw new Error(response.error || "Failed to fetch subagents");
     },
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
     staleTime: 10_000,
+    refetchInterval: LIST_POLL_INTERVAL_MS,
   });
 }
 
@@ -1239,11 +1251,14 @@ export interface MetricsStorage {
   }>;
 }
 
+// The gateway serves metrics from a stale-while-revalidate cache, so a steady
+// 30s poll is a cheap cache hit and keeps charts current without refresh
+// buttons. Polling pauses when the tab is unfocused.
 const METRICS_QUERY_OPTIONS = {
-  refetchInterval: false,
-  refetchOnReconnect: false,
-  refetchOnWindowFocus: false,
-  staleTime: 5 * 60 * 1000,
+  refetchInterval: 30_000,
+  refetchOnReconnect: true,
+  refetchOnWindowFocus: true,
+  staleTime: 15_000,
 } as const;
 
 export function useMetricsOverview() {

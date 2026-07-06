@@ -194,6 +194,9 @@ export function Logs() {
 
   useEffect(() => {
     void fetchLogs();
+    const pollTimer = window.setInterval(() => {
+      if (!document.hidden) void fetchLogs({ silent: true });
+    }, 20_000);
     const disconnect = connectStatusStream({
       onEvent: (event) => {
         if (!event || typeof event !== "object") return;
@@ -215,6 +218,7 @@ export function Logs() {
     });
     return () => {
       disconnect();
+      window.clearInterval(pollTimer);
       if (refreshTimerRef.current !== null) {
         window.clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = null;
@@ -305,14 +309,6 @@ export function Logs() {
       subtitle="View and search system logs"
       actions={
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void fetchLogs()}
-            leftIcon={<RefreshCw className="w-4 h-4" />}
-          >
-            Refresh
-          </Button>
           <Button
             variant="secondary"
             size="sm"

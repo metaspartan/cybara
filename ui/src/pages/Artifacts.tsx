@@ -186,14 +186,6 @@ export function Artifacts() {
                     className="w-full rounded-lg border border-white/10 bg-white/[0.03] pl-8 pr-3 py-2 text-sm text-white placeholder-gray-500 !outline-none focus:border-white/20"
                   />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => artifactsQuery.refetch()}
-                  className="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] p-2 text-gray-400 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
-                  title="Refresh artifacts"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                </button>
               </div>
 
               {artifactsQuery.isLoading ? (

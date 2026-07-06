@@ -649,29 +649,7 @@ export function Channels() {
                   {whatsAppState?.awaitingQr ? "Awaiting QR" : "No QR Needed"}
                 </Badge>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                leftIcon={
-                  <RefreshCw
-                    className={`w-4 h-4 ${isLoadingWhatsAppState ? "animate-spin" : ""}`}
-                  />
-                }
-                onClick={async () => {
-                  if (!whatsAppChannel) return;
-                  setIsLoadingWhatsAppState(true);
-                  try {
-                    const res = await channelsApi.getWhatsAppState(whatsAppChannel.id);
-                    if (res.success && res.data) {
-                      setWhatsAppState(res.data);
-                    }
-                  } finally {
-                    setIsLoadingWhatsAppState(false);
-                  }
-                }}
-              >
-                Refresh
-              </Button>
+              {isLoadingWhatsAppState && <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />}
             </div>
 
             {whatsAppState?.lastError ? (

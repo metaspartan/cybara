@@ -3044,10 +3044,12 @@ function MemoryRecallCard({
           onSelect={save}
           options={[
             { label: "Auto", value: "auto" },
-            { label: "Local", value: "transformers_js" },
+            { label: "Local database (keyword only)", value: "local" },
+            { label: "Local Transformers.js", value: "transformers_js" },
+            { label: "Ollama (local)", value: "ollama" },
             { label: "OpenAI", value: "openai" },
+            { label: "Voyage AI", value: "voyage" },
             { label: "Gemini", value: "gemini" },
-            { label: "Ollama", value: "ollama" },
           ]}
           selected={memoryMethod}
           tone={accentColor}

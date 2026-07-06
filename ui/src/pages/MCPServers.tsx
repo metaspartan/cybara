@@ -74,6 +74,11 @@ export function MCPServers() {
     } else {
       loadRegistry();
     }
+    if (tab !== "installed") return;
+    const timer = window.setInterval(() => {
+      if (!document.hidden) loadServers();
+    }, 30_000);
+    return () => window.clearInterval(timer);
   }, [tab]);
 
   useEffect(() => {
@@ -179,18 +184,9 @@ export function MCPServers() {
       title="MCP Servers"
       subtitle="Model Context Protocol servers for external tools"
       actions={
-        <div className="flex gap-2">
-          <Button
-            variant="ghost"
-            leftIcon={<RefreshCw className="w-4 h-4" />}
-            onClick={() => (tab === "installed" ? loadServers() : loadRegistry())}
-          >
-            Refresh
-          </Button>
-          <Button leftIcon={<Plus className="w-4 h-4" />} onClick={() => setShowAddModal(true)}>
-            Add Server
-          </Button>
-        </div>
+        <Button leftIcon={<Plus className="w-4 h-4" />} onClick={() => setShowAddModal(true)}>
+          Add Server
+        </Button>
       }
     >
       <div className="flex gap-2 mb-6">

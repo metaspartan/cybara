@@ -75,6 +75,10 @@ export function Memory() {
 
   useEffect(() => {
     void refreshStatus();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refreshStatus();
+    }, 60_000);
+    return () => window.clearInterval(timer);
   }, [refreshStatus]);
 
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -184,15 +188,6 @@ export function Memory() {
                 {searchModeLabel} · {memStatus.chunks ?? 0} chunks indexed
               </div>
             )}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => void refreshStatus()}
-              title="Refresh memory status"
-            >
-              <RefreshCw className="w-4 h-4" />
-            </Button>
           </div>
         </div>
       </CardHeader>

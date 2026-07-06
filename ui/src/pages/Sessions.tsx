@@ -180,16 +180,6 @@ export function Sessions() {
     <PageLayout
       title="Sessions"
       subtitle="View and manage chat sessions"
-      actions={
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void fetchSessions()}
-          leftIcon={<RefreshCw className="w-4 h-4" />}
-        >
-          Refresh
-        </Button>
-      }
     >
       <div className="space-y-6">
         <Card>

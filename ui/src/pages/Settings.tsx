@@ -1850,6 +1850,13 @@ function FeatureSettings() {
   );
 
   useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void refreshSandboxStatus(true);
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [refreshSandboxStatus]);
+
+  useEffect(() => {
     let mounted = true;
     const load = async () => {
       try {
@@ -2282,17 +2289,9 @@ function FeatureSettings() {
                   Real-time provider checks. Docker/Podman must be installed locally to be used.
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => void refreshSandboxStatus()}
-                className={`inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-white/10 hover:bg-white/5 ${
-                  refreshingSandboxStatus ? "opacity-70 cursor-not-allowed" : "cursor-pointer"
-                }`}
-                disabled={refreshingSandboxStatus}
-              >
-                <RefreshCw className={`w-3 h-3 ${refreshingSandboxStatus ? "animate-spin" : ""}`} />
-                Refresh
-              </button>
+              {refreshingSandboxStatus && (
+                <RefreshCw className="w-3 h-3 animate-spin text-gray-500" />
+              )}
             </div>
             {loadingSandboxStatus ? (
               <p className="text-[11px] text-gray-500 mt-3">Checking sandbox runtime...</p>
@@ -2799,6 +2798,13 @@ function WalletSettings() {
 
   useEffect(() => {
     void load();
+    const timer = window.setInterval(() => {
+      if (document.hidden) return;
+      void walletApi.rpcStatus().then((res) => {
+        if (res.success && res.data) setRpcStatus(res.data);
+      });
+    }, 60_000);
+    return () => window.clearInterval(timer);
   }, [load]);
 
   async function handleToggleAgentAccess(enabled: boolean) {
@@ -2996,14 +3002,6 @@ function WalletSettings() {
           <div className="flex flex-wrap items-center gap-2">
             <Button onClick={() => void handleSaveRpc()} disabled={loading || busy}>
               Save Endpoints
-            </Button>
-            <Button
-              variant="secondary"
-              leftIcon={<RefreshCw className="w-4 h-4" />}
-              onClick={() => void load()}
-              disabled={loading || busy}
-            >
-              Check Health
             </Button>
           </div>
           {rpcStatus?.services?.length ? (

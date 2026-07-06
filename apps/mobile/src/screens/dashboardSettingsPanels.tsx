@@ -2143,19 +2143,27 @@ export function MemorySettingsPanel({
           disabled={saving}
           label="Embedding provider"
           onSelect={(value) => {
-            const provider = ["auto", "transformers_js", "openai", "gemini", "ollama"].includes(
-              value
-            )
+            const provider = [
+              "auto",
+              "local",
+              "transformers_js",
+              "openai",
+              "voyage",
+              "gemini",
+              "ollama",
+            ].includes(value)
               ? (value as MobileIndexingSettings["embeddingProvider"])
               : "auto";
             saveIndexing({ embeddingProvider: provider });
           }}
           options={[
-            { label: "Auto", value: "auto" },
+            { label: "Auto (best available)", value: "auto" },
+            { label: "Local database (keyword only)", value: "local" },
             { label: "Local Transformers.js", value: "transformers_js" },
+            { label: "Ollama (local)", value: "ollama" },
             { label: "OpenAI", value: "openai" },
+            { label: "Voyage AI", value: "voyage" },
             { label: "Gemini", value: "gemini" },
-            { label: "Ollama", value: "ollama" },
           ]}
           selected={indexingDraft.embeddingProvider}
           tone={accentColor}
