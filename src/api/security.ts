@@ -269,6 +269,41 @@ function isSameOriginRequest(headers: Record<string, string>): boolean {
   }
 }
 
+/**
+ * DNS-rebinding guard for the localhost bypass. A malicious site can point its
+ * own domain at 127.0.0.1, making the victim's browser send requests that ARE
+ * same-origin (to the attacker's origin) and DO arrive from a loopback IP —
+ * but the Host header still names the attacker's domain. Browsers always send
+ * Host, so a present-but-non-local Host disqualifies the bypass; an absent
+ * Host stays neutral (non-browser clients never get the bypass anyway).
+ */
+function isLocalHostHeader(headers: Record<string, string>): boolean {
+  const rawHost = (headers.host || headers.Host || "").toString().trim().toLowerCase();
+  if (!rawHost) return true;
+
+  let hostname = rawHost;
+  if (hostname.startsWith("[")) {
+    const end = hostname.indexOf("]");
+    hostname = end > 0 ? hostname.slice(1, end) : hostname;
+  } else {
+    const colon = hostname.lastIndexOf(":");
+    if (colon > -1 && hostname.indexOf(":") === colon) {
+      hostname = hostname.slice(0, colon);
+    }
+  }
+
+  return isLocalhostIP(hostname) || hostname === "::1" || hostname === "0.0.0.0";
+}
+
+export function hasLocalhostBypass(headers: Record<string, string>, ip: string): boolean {
+  return (
+    config.allowLocalhostBypass &&
+    isLocalhostIP(ip) &&
+    isSameOriginRequest(headers) &&
+    isLocalHostHeader(headers)
+  );
+}
+
 /** Length-safe constant-time string compare, to avoid token timing leaks. */
 function constantTimeEqual(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
@@ -284,7 +319,7 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
     return { authenticated: true };
   }
 
-  if (config.allowLocalhostBypass && isLocalhostIP(ip) && isSameOriginRequest(headers)) {
+  if (hasLocalhostBypass(headers, ip)) {
     log.debug("Localhost bypass for auth", { ip });
     return { authenticated: true };
   }
@@ -706,8 +741,7 @@ export function securityCheck(
   }
 
   if (path.startsWith("/api/mobile/devices")) {
-    const sameOriginLocalhost =
-      config.allowLocalhostBypass && isLocalhostIP(ip) && isSameOriginRequest(headers);
+    const sameOriginLocalhost = hasLocalhostBypass(headers, ip);
     if (!sameOriginLocalhost && !usesRootApiKey(headers)) {
       return {
         passed: false,

@@ -3101,26 +3101,38 @@ function GatewayAuthSettingsSection() {
   const { addToast } = useUIStore();
   const [settings, setSettings] = useState<GatewayAuthSettings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [unsupported, setUnsupported] = useState(false);
   const [busy, setBusy] = useState(false);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [rotateConfirmOpen, setRotateConfirmOpen] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await authApi.settings();
-      if (res.success && res.data?.success) {
-        setSettings(res.data);
-      } else {
-        addToast("error", res.error || "Failed to load auth settings");
+  const load = useCallback(
+    async (silent = false) => {
+      if (!silent) setLoading(true);
+      try {
+        const res = await authApi.settings();
+        if (res.success && res.data?.success) {
+          setSettings(res.data);
+          setUnsupported(false);
+        } else if (/not found/i.test(res.error || "")) {
+          // Older gateway without /api/auth — show guidance instead of erroring.
+          setUnsupported(true);
+        } else if (!silent) {
+          addToast("error", res.error || "Failed to load auth settings");
+        }
+      } finally {
+        if (!silent) setLoading(false);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [addToast]);
+    },
+    [addToast]
+  );
 
   useEffect(() => {
     void load();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void load(true);
+    }, 30_000);
+    return () => window.clearInterval(timer);
   }, [load]);
 
   async function handleToggleRequireAuth(checked: boolean) {
@@ -3196,8 +3208,16 @@ function GatewayAuthSettingsSection() {
     }
   }
 
+  const controlsDisabled = loading || busy || unsupported;
+
   return (
     <div className="space-y-6">
+      {unsupported && (
+        <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+          The running gateway predates auth management — restart the gateway to enable these
+          controls. Your API key already exists at ~/.cybara/api_key and keeps working.
+        </div>
+      )}
       <Card variant="liquid">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -3229,7 +3249,7 @@ function GatewayAuthSettingsSection() {
                   variant="ghost"
                   leftIcon={<Eye className="w-4 h-4" />}
                   onClick={() => void handleReveal()}
-                  disabled={loading || busy || !settings?.apiKeyConfigured}
+                  disabled={controlsDisabled || !settings?.apiKeyConfigured}
                 >
                   {revealedKey ? "Hide" : "Reveal"}
                 </Button>
@@ -3237,7 +3257,7 @@ function GatewayAuthSettingsSection() {
                   size="sm"
                   variant="outline"
                   onClick={() => void handleCopyKey()}
-                  disabled={loading || busy || !settings?.apiKeyConfigured}
+                  disabled={controlsDisabled || !settings?.apiKeyConfigured}
                 >
                   Copy
                 </Button>
@@ -3249,7 +3269,7 @@ function GatewayAuthSettingsSection() {
               variant="secondary"
               leftIcon={<RefreshCw className="w-4 h-4" />}
               onClick={() => setRotateConfirmOpen(true)}
-              disabled={loading || busy || settings?.apiKeySource === "env"}
+              disabled={controlsDisabled || settings?.apiKeySource === "env"}
             >
               Rotate API Key
             </Button>
@@ -3281,7 +3301,7 @@ function GatewayAuthSettingsSection() {
                 : "When off, same-origin browser requests from this machine skip the API key"
             }
             checked={Boolean(settings?.requireAuthForLocalhost)}
-            disabled={loading || busy || Boolean(settings?.requireAuthForLocalhostForced)}
+            disabled={controlsDisabled || Boolean(settings?.requireAuthForLocalhostForced)}
             onChange={(checked) => void handleToggleRequireAuth(checked)}
           />
           {settings?.rateLimits && (

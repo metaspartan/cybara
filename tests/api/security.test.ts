@@ -41,6 +41,28 @@ describe("API security module", () => {
     expect(result.reason).toContain("Missing Authorization");
   });
 
+  test("authenticateRequest blocks DNS-rebinding: local IP but foreign Host header", () => {
+    // attacker.example resolves to 127.0.0.1, so the victim's browser sends a
+    // same-origin request from a loopback IP — but Host still names the
+    // attacker's domain. The bypass must refuse it.
+    const result = security.authenticateRequest(
+      { "sec-fetch-site": "same-origin", host: "attacker.example:4269" },
+      "127.0.0.1"
+    );
+    expect(result.authenticated).toBe(false);
+    expect(result.reason).toContain("Missing Authorization");
+  });
+
+  test("authenticateRequest keeps the bypass for genuine local Host headers", () => {
+    for (const host of ["localhost:4269", "127.0.0.1:4269", "[::1]:4269", "localhost"]) {
+      const result = security.authenticateRequest(
+        { "sec-fetch-site": "same-origin", host },
+        "127.0.0.1"
+      );
+      expect(result.authenticated).toBe(true);
+    }
+  });
+
   test("authenticateRequest rejects missing header for non-localhost", () => {
     const result = security.authenticateRequest({}, "203.0.113.10");
     expect(result.authenticated).toBe(false);

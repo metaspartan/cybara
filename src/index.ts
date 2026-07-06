@@ -63,7 +63,7 @@ import { logSandboxRuntimeStatus } from "./core/sandbox";
 import { onSubagentLifecycle } from "./core/subagent-registry";
 import { resolveUiPath } from "./core/runtime/ui-path";
 import { readUiIndexContent } from "./core/runtime/ui-index";
-import { securityCheck } from "./api/security";
+import { revealGatewayApiKey, securityCheck } from "./api/security";
 import { getClientIp } from "./api/client-ip";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -582,6 +582,16 @@ Bun.serve<WsData>({
   },
 });
 
+// Eagerly materialize the gateway API key so onboarding always has one on
+// first boot (instead of lazily on the first authenticated request). The key
+// lives at ~/.cybara/api_key and survives app updates; only an explicit
+// rotation replaces it. The tokenized dashboard URL below authenticates the
+// browser even when the localhost bypass is off — same pattern as Jupyter.
+const gatewayKey = revealGatewayApiKey().apiKey;
+const tokenizedDashboardUrl = gatewayKey
+  ? `http://localhost:${PORT}/?token=${gatewayKey}`
+  : `http://localhost:${PORT}`;
+
 console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
 ║                                                               ║
@@ -593,6 +603,9 @@ console.log(`
 ║   WS:         ws://localhost:${PORT}/api/ws/status            ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
+
+  Authenticated dashboard link (works even with localhost auth required):
+  ${tokenizedDashboardUrl}
 `);
 
 providerManager.seedDefaults();

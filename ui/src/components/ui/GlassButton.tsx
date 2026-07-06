@@ -28,6 +28,7 @@ export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
         className={cn(
           variants[variant],
           variant !== "primary" && variant !== "danger" && sizes[size],
+          "inline-flex items-center justify-center whitespace-nowrap",
           "cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100",
           className
         )}

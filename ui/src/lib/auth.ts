@@ -12,6 +12,19 @@ function getWindowToken(): string | null {
   const query = new URLSearchParams(search);
   const fromQuery = query.get("api_key") || query.get("token");
   if (fromQuery) {
+    // Tokenized launch links (printed by the gateway at startup) hand the key
+    // to the UI once; persist it and scrub it from the address bar/history so
+    // it doesn't linger in screenshots or shared URLs.
+    persistWindowToken(fromQuery);
+    try {
+      query.delete("api_key");
+      query.delete("token");
+      const rest = query.toString();
+      const cleaned = `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`;
+      window.history.replaceState(window.history.state, "", cleaned);
+    } catch {
+      // History API unavailable — keep the param rather than break auth.
+    }
     return fromQuery;
   }
 

@@ -120,6 +120,18 @@ struct NativeSettingsScreen: View {
         .frame(maxWidth: NativeSettingsLayout.maxContentWidth, maxHeight: .infinity, alignment: .topLeading)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task(id: sidecar.isReady) { await load() }
+        .task {
+            // Keep auth state current without a manual refresh, matching the
+            // live-updating web settings.
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
+                guard sidecar.isReady, !authBusy else { continue }
+                if let auth = try? await client.authSettings(), auth["success"] as? Bool == true {
+                    readAuthSettings(auth)
+                    authAvailable = true
+                }
+            }
+        }
     }
 
     private var generalTab: some View {
