@@ -36,7 +36,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  KeyboardAvoidingView,
+  Keyboard,
   Linking,
   Modal,
   Platform,
@@ -1921,6 +1921,22 @@ function SessionDetailPanel({
 }) {
   const insets = useSafeAreaInsets();
   const navFootprint = insets.bottom + MOBILE_NAV_CHROME.floatingMargin + MOBILE_NAV_CHROME.height;
+  // The composer bar is absolutely positioned, so KeyboardAvoidingView can't
+  // move it (and does nothing on Android). Track the keyboard height directly
+  // and lift the composer above it so what you type stays visible.
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  useEffect(() => {
+    const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSub = Keyboard.addListener(showEvent, (event) => {
+      setKeyboardHeight(event.endCoordinates?.height ?? 0);
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => setKeyboardHeight(0));
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
   const [detail, setDetail] = useState<SessionDetailSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -2635,18 +2651,17 @@ function SessionDetailPanel({
     [renderMessages]
   );
   const waitingForAssistant = chatIsWaitingForAssistant(renderMessages, sending);
+  // When the keyboard is up it already covers the nav bar, so the composer
+  // sits just above the keyboard; otherwise it floats above the nav chrome.
+  const composerBottom = keyboardHeight > 0 ? keyboardHeight + spacing.xs : navFootprint + spacing.xs;
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={navFootprint}
-      style={styles.chatShell}
-    >
+    <View style={styles.chatShell}>
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={[
           styles.chatContent,
-          { paddingBottom: navFootprint + spacing.xs + composerBarHeight + spacing.md },
+          { paddingBottom: composerBottom + composerBarHeight + spacing.md },
         ]}
         keyboardShouldPersistTaps="handled"
         onContentSizeChange={() => {
@@ -2818,7 +2833,7 @@ function SessionDetailPanel({
       <LiquidGlass
         intensity={64}
         contentStyle={styles.chatComposerContent}
-        style={[styles.chatComposerBar, { bottom: navFootprint + spacing.xs }]}
+        style={[styles.chatComposerBar, { bottom: composerBottom }]}
       >
         <View
           style={styles.composer}
@@ -2915,7 +2930,7 @@ function SessionDetailPanel({
           </View>
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

@@ -3904,20 +3904,6 @@ export function Chat() {
           >
             <Zap className="w-4 h-4" />
           </button>
-          {showWorkingTimeline && (
-            <button
-              onClick={() => void handleStopActive()}
-              disabled={stopAgent.isPending}
-              className="p-1.5 sm:p-2 rounded-lg hover:bg-red-500/10 text-red-400 hover:text-red-300 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              title="Stop active run"
-            >
-              {stopAgent.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Square className="w-4 h-4" />
-              )}
-            </button>
-          )}
           <button
             onClick={() => resetChatSession()}
             className="p-1.5 sm:p-2 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
