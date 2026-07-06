@@ -41,7 +41,7 @@ import {
   type StreamWatchdog,
 } from "./llm/stream-watchdog";
 import { consumeOpenAIChatStream } from "./llm/streaming-completions";
-import { compactCodexInputItemsForContext } from "./llm/codex-context";
+import { compactCodexInputItemsForContext, sanitizeCodexInputItems } from "./llm/codex-context";
 import { trackTokenUsage } from "./llm/token-usage-tracking";
 import {
   hasTextToolCallMarkup,
@@ -160,9 +160,6 @@ import {
 } from "@aws-sdk/client-bedrock-runtime";
 import type { DocumentType as SmithyDocumentType } from "@smithy/types";
 
-// Register credential pools from the environment so multi-key rotation is
-// available across providers. Each pool reads PREFIX, PREFIX_2, … (and
-// comma-separated lists). No-op when only the base key is set.
 registerCredentialsFromEnv("anthropic", "ANTHROPIC_API_KEY");
 registerCredentialsFromEnv("openai", "OPENAI_API_KEY");
 registerCredentialsFromEnv("google", "GEMINI_API_KEY");
@@ -170,8 +167,6 @@ registerCredentialsFromEnv("google", "GOOGLE_API_KEY");
 registerCredentialsFromEnv("deepseek", "DEEPSEEK_API_KEY");
 registerCredentialsFromEnv("xai", "XAI_API_KEY");
 
-// Register user-defined shell-script hooks from config (hooks.shell[]). Best-effort:
-// missing/invalid hooks are skipped. Safe at module load; idempotent.
 registerShellHooks();
 
 export interface AgentDefinition {
@@ -458,10 +453,6 @@ class AgentManager {
     agent: Pick<Agent, "id" | "provider_id" | "config">,
     persistIfResolved = false
   ): ReturnType<typeof providerManager.getWithCredentials> {
-    // ── Model Router integration ──
-    // If the router is enabled, use it to select the best provider based on
-    // weights, limits, spend, circuit-breaker state, and strategy. Falls through
-    // to the normal resolution if the router returns null or is disabled.
     const routerSelected = selectProvider(agent.provider_id);
     if (routerSelected) {
       const routedProvider = providerManager.getWithCredentials(routerSelected);
@@ -476,7 +467,6 @@ class AgentManager {
       }
     }
 
-    // ── Normal provider resolution (router disabled or no provider available) ──
     let resolvedProvider =
       typeof agent.provider_id === "string" && agent.provider_id.trim()
         ? providerManager.getWithCredentials(agent.provider_id)
@@ -3577,6 +3567,17 @@ class AgentManager {
         break;
       }
       iterations++;
+
+      // Protocol guard: never send a function_call_output without its matching
+      // function_call. The Codex Responses API 400s the whole request otherwise
+      // ("No tool call found for function call output"). Logging the repair
+      // count surfaces the root cause if one ever appears.
+      const sanitized = sanitizeCodexInputItems(inputItems);
+      if (sanitized.droppedOutputs > 0) {
+        console.warn(
+          `[Agent] Codex input repair: dropped ${sanitized.droppedOutputs} orphaned tool output(s) before request`
+        );
+      }
 
       const requestBody: Record<string, unknown> = {
         model: activeModelId,

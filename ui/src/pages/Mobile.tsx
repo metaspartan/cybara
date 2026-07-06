@@ -54,10 +54,6 @@ export function Mobile() {
   const connectInfo = connectInfoData;
   const devices = useMemo(() => data?.devices || [], [data?.devices]);
   const activeCount = devices.filter((device) => device.status === "active").length;
-  const alternateBaseUrls = useMemo(
-    () => (connectInfo?.candidates || []).filter((candidate) => candidate !== baseUrl).slice(0, 4),
-    [baseUrl, connectInfo?.candidates]
-  );
 
   useEffect(() => {
     if (!baseUrlTouched && connectInfo?.baseUrl) {
@@ -145,42 +141,8 @@ export function Mobile() {
                   setBaseUrl(event.target.value);
                 }}
                 placeholder="http://192.168.1.20:4269"
-                helperText="Physical phones need a LAN-reachable URL, not 127.0.0.1."
+                helperText="Used for the QR code and mobile deep link."
               />
-              {connectInfo?.warnings.length ? (
-                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
-                  <div className="space-y-1">
-                    {connectInfo.warnings.map((warning) => (
-                      <p key={warning}>{warning}</p>
-                    ))}
-                  </div>
-                  {!connectInfo.lanAccessEnabled ? (
-                    <p className="mt-2 font-mono text-xs text-amber-200">
-                      {connectInfo.exposeCommand}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-              {alternateBaseUrls.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase text-gray-500">Detected URLs</p>
-                  <div className="flex flex-wrap gap-2">
-                    {alternateBaseUrls.map((candidate) => (
-                      <Button
-                        key={candidate}
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          setBaseUrlTouched(true);
-                          setBaseUrl(candidate);
-                        }}
-                      >
-                        {candidate}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
               <Button
                 className="w-full"
                 leftIcon={<Plus className="w-4 h-4" />}

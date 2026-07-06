@@ -245,17 +245,10 @@ export function buildMobileConnectInfo(input: {
   if (!isCurrentLoopback) {
     addUniqueUrl(candidates, currentBaseUrl);
   }
-  if (lanAccessEnabled) {
-    for (const address of lanAddresses) {
-      addUniqueUrl(candidates, `${parsed.protocol}//${address}:${port}${basePath}`);
-    }
+  for (const address of lanAddresses) {
+    addUniqueUrl(candidates, `${parsed.protocol}//${address}:${port}${basePath}`);
   }
   addUniqueUrl(candidates, currentBaseUrl);
-  if (!lanAccessEnabled) {
-    for (const address of lanAddresses) {
-      addUniqueUrl(candidates, `${parsed.protocol}//${address}:${port}${basePath}`);
-    }
-  }
 
   if (isCurrentLoopback) {
     warnings.push("127.0.0.1 and localhost only work on this computer. Use a LAN URL for a phone.");

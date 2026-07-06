@@ -1,7 +1,10 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { createStreamWatchdog } from "../../src/core/llm/stream-watchdog";
 import { consumeOpenAIChatStream } from "../../src/core/llm/streaming-completions";
-import { compactCodexInputItemsForContext } from "../../src/core/llm/codex-context";
+import {
+  compactCodexInputItemsForContext,
+  sanitizeCodexInputItems,
+} from "../../src/core/llm/codex-context";
 import { agentManager } from "../../src/core/agent";
 import { providerManager } from "../../src/core/providers";
 
@@ -401,6 +404,16 @@ describe("Codex transcript compaction keeps long runs under context budget", () 
     expect(JSON.stringify(items[0])).toContain("review the repo");
     // Most recent tool output survives (compaction drops from the front).
     expect(JSON.stringify(items[items.length - 1])).toContain("function_call_output");
+    // Every surviving output MUST have its matching call — the Codex Responses
+    // API rejects orphaned function_call_output items (the deep-run failure).
+    const liveCallIds = new Set(
+      items.filter((i) => i.type === "function_call").map((i) => i.call_id as string)
+    );
+    for (const item of items) {
+      if (item.type === "function_call_output") {
+        expect(liveCallIds.has(item.call_id as string)).toBe(true);
+      }
+    }
   });
 
   test("is a no-op when already under budget", async () => {
@@ -412,5 +425,57 @@ describe("Codex transcript compaction keeps long runs under context budget", () 
     const before = items.length;
     compactCodexInputItemsForContext(items, 1_000_000);
     expect(items.length).toBe(before);
+  });
+});
+
+describe("Codex input sanitizer guarantees call/output pairing", () => {
+  test("drops an orphaned output whose call was never present", () => {
+    const items: Array<Record<string, unknown>> = [
+      { role: "user", content: [{ type: "input_text", text: "go" }] },
+      { type: "function_call", call_id: "a", name: "read", arguments: "{}" },
+      { type: "function_call_output", call_id: "a", output: "ok" },
+      { type: "function_call_output", call_id: "ghost", output: "orphan" },
+    ];
+    const result = sanitizeCodexInputItems(items);
+    expect(result.droppedOutputs).toBe(1);
+    expect(items.some((i) => i.call_id === "ghost")).toBe(false);
+    expect(items.some((i) => i.type === "function_call_output" && i.call_id === "a")).toBe(true);
+  });
+
+  test("drops a duplicate output for the same call", () => {
+    const items: Array<Record<string, unknown>> = [
+      { type: "function_call", call_id: "a", name: "read", arguments: "{}" },
+      { type: "function_call_output", call_id: "a", output: "first" },
+      { type: "function_call_output", call_id: "a", output: "dup" },
+    ];
+    const result = sanitizeCodexInputItems(items);
+    expect(result.droppedOutputs).toBe(1);
+    expect(items.filter((i) => i.type === "function_call_output").length).toBe(1);
+  });
+
+  test("leaves a valid paired transcript untouched", () => {
+    const items: Array<Record<string, unknown>> = [
+      { type: "function_call", call_id: "a", name: "read", arguments: "{}" },
+      { type: "function_call_output", call_id: "a", output: "ok" },
+      { type: "function_call", call_id: "b", name: "exec", arguments: "{}" },
+      { type: "function_call_output", call_id: "b", output: "ok" },
+    ];
+    const before = items.length;
+    const result = sanitizeCodexInputItems(items);
+    expect(result.droppedOutputs).toBe(0);
+    expect(items.length).toBe(before);
+  });
+
+  test("compaction output stays sanitizer-clean (no orphans introduced)", () => {
+    const items: Array<Record<string, unknown>> = [
+      { role: "user", content: [{ type: "input_text", text: "review" }] },
+    ];
+    for (let i = 0; i < 200; i++) {
+      items.push({ type: "function_call", call_id: `c${i}`, name: "read", arguments: "{}" });
+      items.push({ type: "function_call_output", call_id: `c${i}`, output: "x".repeat(2000) });
+    }
+    compactCodexInputItemsForContext(items, 50_000);
+    const result = sanitizeCodexInputItems(items);
+    expect(result.droppedOutputs).toBe(0);
   });
 });

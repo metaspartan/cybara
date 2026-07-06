@@ -46,6 +46,9 @@ describe("UI page API wiring", () => {
     expect(source).toContain("pairing.payload.deviceId");
     expect(source).toContain("setRevokeTarget(device)");
     expect(source).toContain("setDeleteTarget(device)");
+    expect(source).not.toContain("Detected URLs");
+    expect(source).not.toContain("connectInfo.warnings");
+    expect(source).not.toContain("exposeCommand");
     expect(source).not.toContain("apiFetch(");
     expect(source).not.toContain("window.fetch(");
     expect(source).not.toContain("globalThis.fetch(");

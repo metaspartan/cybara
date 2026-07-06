@@ -153,7 +153,7 @@ describe("mobile connect URL suggestions", () => {
     expect(info.warnings.join(" ")).toContain("127.0.0.1");
   });
 
-  test("preserves gateway base path and warns when the process is loopback-bound", () => {
+  test("preserves gateway base path and still prefers LAN when loopback-bound", () => {
     const info = buildMobileConnectInfo({
       requestUrl: "http://localhost:5199/cybara/api/mobile/connect-info",
       configuredHost: "127.0.0.1",
@@ -161,10 +161,10 @@ describe("mobile connect URL suggestions", () => {
       interfaces,
     });
 
-    expect(info.baseUrl).toBe("http://localhost:5199/cybara");
+    expect(info.baseUrl).toBe("http://192.168.1.20:5199/cybara");
     expect(info.candidates).toEqual([
-      "http://localhost:5199/cybara",
       "http://192.168.1.20:5199/cybara",
+      "http://localhost:5199/cybara",
     ]);
     expect(info.lanAccessEnabled).toBe(false);
     expect(info.warnings.join(" ")).toContain("Restart the gateway bound to a LAN address");

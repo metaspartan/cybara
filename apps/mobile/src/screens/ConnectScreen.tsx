@@ -13,7 +13,7 @@ import cybaraLogo from "../../assets/cybara.png";
 
 export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfile) => void }) {
   const [name, setName] = useState("Cybara Gateway");
-  const [baseUrl, setBaseUrl] = useState("http://127.0.0.1:4269");
+  const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [payload, setPayload] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -131,7 +131,7 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
           value={baseUrl}
           onChangeText={setBaseUrl}
           autoCapitalize="none"
-          placeholder="Gateway URL"
+          placeholder="http://192.168.1.20:4269"
           placeholderTextColor={colors.textDim}
           style={styles.input}
         />

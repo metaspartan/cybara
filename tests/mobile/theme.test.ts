@@ -141,6 +141,13 @@ describe("mobile theming", () => {
     expect(src).toContain("accessibilityState={{ selected: selected === true }}");
   });
 
+  test("mobile manual pairing does not prefill localhost for physical phones", () => {
+    const src = read("screens/ConnectScreen.tsx");
+    expect(src).toContain('const [baseUrl, setBaseUrl] = useState("");');
+    expect(src).toContain('placeholder="http://192.168.1.20:4269"');
+    expect(src).not.toContain('useState("http://127.0.0.1:4269")');
+  });
+
   test("tab bar and chat composer use the LiquidGlass surface (no opaque fill)", () => {
     const screen = read("screens/DashboardScreen.tsx");
     expect(screen).toContain("import { LiquidGlass }");
