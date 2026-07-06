@@ -1,6 +1,7 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { createStreamWatchdog } from "../../src/core/llm/stream-watchdog";
 import { consumeOpenAIChatStream } from "../../src/core/llm/streaming-completions";
+import { compactCodexInputItemsForContext } from "../../src/core/llm/codex-context";
 import { agentManager } from "../../src/core/agent";
 import { providerManager } from "../../src/core/providers";
 
@@ -75,7 +76,9 @@ const server = Bun.serve({
             )
           );
           controller.enqueue(
-            encoder.encode(sseChunk({ choices: [], usage: { prompt_tokens: 7, completion_tokens: 3 } }))
+            encoder.encode(
+              sseChunk({ choices: [], usage: { prompt_tokens: 7, completion_tokens: 3 } })
+            )
           );
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
@@ -153,7 +156,10 @@ afterAll(() => {
   server.stop(true);
 });
 
-async function fetchStreaming(model: string, watchdogOpts: Parameters<typeof createStreamWatchdog>[0]) {
+async function fetchStreaming(
+  model: string,
+  watchdogOpts: Parameters<typeof createStreamWatchdog>[0]
+) {
   const watchdog = createStreamWatchdog(watchdogOpts);
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -184,9 +190,9 @@ describe("LLM stream watchdog (inactivity, not duration)", () => {
 
   test("a provider that never produces output trips the first-token timeout", async () => {
     const startedAt = Date.now();
-    await expect(fetchStreaming("behave-silent", { firstChunkMs: 150, stallMs: 0 })).rejects.toThrow(
-      /no first token/i
-    );
+    await expect(
+      fetchStreaming("behave-silent", { firstChunkMs: 150, stallMs: 0 })
+    ).rejects.toThrow(/no first token/i);
     expect(Date.now() - startedAt).toBeLessThan(2000);
   });
 
@@ -367,20 +373,16 @@ describe("agentic loop stability against a real streaming provider", () => {
             ),
     ];
 
-    const result = await agentManager.execute(
-      agent.id,
-      [{ role: "user", content: "hello" }],
-      { useTools: false, sessionId: "watchdog-fallback-session" }
-    );
+    const result = await agentManager.execute(agent.id, [{ role: "user", content: "hello" }], {
+      useTools: false,
+      sessionId: "watchdog-fallback-session",
+    });
     expect(result.content).toBe("plain-json-ok");
   });
 });
 
 describe("Codex transcript compaction keeps long runs under context budget", () => {
   test("evicts oldest tool traffic but preserves the leading request and recent turns", async () => {
-    const { compactCodexInputItemsForContext } = await import(
-      "../../src/core/llm/codex-context"
-    );
     const items: Array<Record<string, unknown>> = [
       { type: "message", role: "user", content: [{ type: "input_text", text: "review the repo" }] },
     ];
@@ -402,9 +404,6 @@ describe("Codex transcript compaction keeps long runs under context budget", () 
   });
 
   test("is a no-op when already under budget", async () => {
-    const { compactCodexInputItemsForContext } = await import(
-      "../../src/core/llm/codex-context"
-    );
     const items: Array<Record<string, unknown>> = [
       { type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
       { type: "function_call", call_id: "c0", name: "read", arguments: "{}" },

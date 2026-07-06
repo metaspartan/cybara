@@ -1,5 +1,7 @@
 import QRCode from "qrcode";
+import { config } from "../core/config";
 import {
+  buildMobileConnectInfo,
   createMobileDevice,
   createPairingCode,
   redeemPairingCode,
@@ -9,10 +11,12 @@ import {
   type MobileDeviceView,
   type MobileConnectPayload,
 } from "../core/mobile-devices";
+import { getGatewayBasePath } from "./security";
 
 type MobileRouteHandler = (
   body?: unknown,
-  params?: Record<string, string>
+  params?: Record<string, string>,
+  ctx?: { url?: string }
 ) => Promise<unknown> | unknown;
 
 function readBodyObject(body: unknown): Record<string, unknown> {
@@ -29,6 +33,19 @@ export const mobileRoutes: Record<string, MobileRouteHandler> = {
   "GET /api/mobile/devices": () => ({
     devices: listMobileDevices(),
   }),
+
+  "GET /api/mobile/connect-info": (_body, _params, ctx) => {
+    const platformConfig = config.getAll();
+    return buildMobileConnectInfo({
+      requestUrl: ctx?.url,
+      configuredHost:
+        process.env.CYBARA_HOST ||
+        (process.argv.includes("--expose") ? "0.0.0.0" : platformConfig.host),
+      port: Number(process.env.PORT) || platformConfig.port,
+      basePath: getGatewayBasePath(),
+      mobileBaseUrl: process.env.CYBARA_MOBILE_BASE_URL,
+    });
+  },
 
   // Create a short-lived, single-use pairing code (root-gated via the
   // /api/mobile/devices path prefix). The QR carries only this code.

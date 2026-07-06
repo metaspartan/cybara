@@ -385,6 +385,17 @@ export interface MobileConnectPayload {
   createdAt: string;
 }
 
+export interface MobileConnectInfo {
+  baseUrl: string;
+  currentBaseUrl: string;
+  candidates: string[];
+  lanAddresses: string[];
+  lanAccessEnabled: boolean;
+  isCurrentLoopback: boolean;
+  warnings: string[];
+  exposeCommand: string;
+}
+
 export interface MobilePairing {
   success: boolean;
   device: MobileDevice;

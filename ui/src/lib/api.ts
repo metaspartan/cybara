@@ -10,6 +10,7 @@ import type {
   ApiResponse,
   DashboardStats,
   MobileDevice,
+  MobileConnectInfo,
   MobilePairing,
   ProviderPlanMonitoringConfig,
   ProviderPlanStatusResponse,
@@ -250,6 +251,7 @@ export const channelsApi = {
 };
 
 export const mobileApi = {
+  connectInfo: () => fetchApi<MobileConnectInfo>("/mobile/connect-info"),
   listDevices: () => fetchApi<{ devices: MobileDevice[] }>("/mobile/devices"),
   createDevice: (payload: { deviceName?: string; gatewayName?: string; baseUrl: string }) =>
     fetchApi<MobilePairing>("/mobile/devices", {

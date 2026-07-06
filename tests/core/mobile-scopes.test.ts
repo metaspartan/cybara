@@ -2,9 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   createMobileDevice,
   createPairingCode,
+  buildMobileConnectInfo,
   redeemPairingCode,
   authenticateMobileDeviceToken,
   getMobileDeviceStorePath,
+  isLoopbackMobileGatewayUrl,
   scopesForRole,
   DEFAULT_MOBILE_SCOPES,
   normalizeMobileScopes,
@@ -119,6 +121,68 @@ describe("roles", () => {
     expect(scopesForRole("readonly")).toEqual(["chat", "read"]);
     expect(scopesForRole("bogus")).toBeNull();
     expect(scopesForRole(undefined)).toBeNull();
+  });
+});
+
+describe("mobile connect URL suggestions", () => {
+  const interfaces = {
+    en0: [
+      {
+        address: "192.168.1.20",
+        netmask: "255.255.255.0",
+        family: "IPv4",
+        mac: "00:00:00:00:00:01",
+        internal: false,
+        cidr: "192.168.1.20/24",
+      },
+    ],
+  };
+
+  test("promotes a LAN URL when the browser is on loopback", () => {
+    const info = buildMobileConnectInfo({
+      requestUrl: "http://127.0.0.1:4269/api/mobile/connect-info",
+      configuredHost: "0.0.0.0",
+      interfaces,
+    });
+
+    expect(info.baseUrl).toBe("http://192.168.1.20:4269");
+    expect(info.currentBaseUrl).toBe("http://127.0.0.1:4269");
+    expect(info.candidates).toContain("http://127.0.0.1:4269");
+    expect(info.lanAccessEnabled).toBe(true);
+    expect(info.isCurrentLoopback).toBe(true);
+    expect(info.warnings.join(" ")).toContain("127.0.0.1");
+  });
+
+  test("preserves gateway base path and warns when the process is loopback-bound", () => {
+    const info = buildMobileConnectInfo({
+      requestUrl: "http://localhost:5199/cybara/api/mobile/connect-info",
+      configuredHost: "127.0.0.1",
+      basePath: "/cybara",
+      interfaces,
+    });
+
+    expect(info.baseUrl).toBe("http://localhost:5199/cybara");
+    expect(info.candidates).toEqual([
+      "http://localhost:5199/cybara",
+      "http://192.168.1.20:5199/cybara",
+    ]);
+    expect(info.lanAccessEnabled).toBe(false);
+    expect(info.warnings.join(" ")).toContain("Restart the gateway bound to a LAN address");
+    expect(info.exposeCommand).toBe("CYBARA_HOST=192.168.1.20 cybara start");
+  });
+
+  test("allows an explicit mobile base URL to override detected interfaces", () => {
+    const info = buildMobileConnectInfo({
+      requestUrl: "http://127.0.0.1:4269/api/mobile/connect-info",
+      configuredHost: "127.0.0.1",
+      mobileBaseUrl: "https://cybara.example.com/tunnel/",
+      interfaces: {},
+    });
+
+    expect(info.baseUrl).toBe("https://cybara.example.com/tunnel");
+    expect(info.candidates[0]).toBe("https://cybara.example.com/tunnel");
+    expect(isLoopbackMobileGatewayUrl("http://127.0.0.1:4269")).toBe(true);
+    expect(isLoopbackMobileGatewayUrl("http://192.168.1.20:4269")).toBe(false);
   });
 });
 

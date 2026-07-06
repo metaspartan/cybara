@@ -208,9 +208,7 @@ export function Memory() {
           <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
             <p className="text-xs text-gray-500">Indexed</p>
             <p className="mt-1 text-gray-200">{memStatus?.chunks ?? 0} chunks</p>
-            <p className="text-[11px] text-gray-500 mt-0.5">
-              across {memStatus?.files ?? 0} files
-            </p>
+            <p className="text-[11px] text-gray-500 mt-0.5">across {memStatus?.files ?? 0} files</p>
           </div>
         </div>
         {memStatus?.fallbackReason && (

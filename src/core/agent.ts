@@ -398,8 +398,6 @@ class AgentManager {
         ? `Provider server error: ${detail}`
         : "Provider had a server error (5xx). Retry shortly or switch providers.";
     }
-    // Surface the real cause instead of a blank apology so failures are
-    // actionable (Codex Responses errors, SSE parse failures, etc.).
     if (detail) {
       return `The provider request failed: ${detail}`;
     }
@@ -532,7 +530,7 @@ class AgentManager {
       return {
         ...a,
         status,
-        provider: a.provider_id, // Frontend expects provider ID as 'provider'
+        provider: a.provider_id,
         providerInfo: provider ? { name: provider.name } : undefined,
         typeConfig,
       };
@@ -549,7 +547,7 @@ class AgentManager {
     return {
       ...agent,
       status,
-      provider: agent.provider_id, // Frontend expects provider ID as 'provider'
+      provider: agent.provider_id,
       typeConfig,
     };
   }
@@ -1639,7 +1637,6 @@ class AgentManager {
     detail?: string,
     extra?: Partial<StatusPayload>
   ): void {
-    // Meta calls (title/flush/completion) must not touch the visible session.
     if (toolContext?.suppressStreaming) return;
     broadcastStatus(this.buildStatusPayload(status, toolContext, detail, extra));
   }
@@ -1726,8 +1723,6 @@ class AgentManager {
         args,
         reason,
       });
-      // Non-skipped error result: fed back so the model self-corrects instead
-      // of a single malformed call killing the run (no-progress guard bounds repeats).
       return { skipped: false, result: { error: reason } };
     }
 
@@ -3045,7 +3040,11 @@ class AgentManager {
             "Reply to the user now with your findings from the tool results above. Do not call any more tools.",
         });
         const nudgeBody: Record<string, unknown> = { model: modelId, messages: currentMessages };
-        const limit = this.resolveOpenAIRequestTokenLimit(nudgeBody, maxOutputTokens, contextWindowTokens);
+        const limit = this.resolveOpenAIRequestTokenLimit(
+          nudgeBody,
+          maxOutputTokens,
+          contextWindowTokens
+        );
         this.applyOpenAITokenLimit(nudgeBody, preferMaxCompletionTokens, limit);
         const nudgeData = await this.postOpenAIChatCompletions(
           baseUrl,

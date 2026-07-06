@@ -649,7 +649,9 @@ export function Channels() {
                   {whatsAppState?.awaitingQr ? "Awaiting QR" : "No QR Needed"}
                 </Badge>
               </div>
-              {isLoadingWhatsAppState && <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />}
+              {isLoadingWhatsAppState && (
+                <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
+              )}
             </div>
 
             {whatsAppState?.lastError ? (

@@ -1227,8 +1227,7 @@ function SubagentPanel({
               className="w-full h-32 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 resize-none"
             />
             <p className="mt-1.5 text-[11px] text-gray-500">
-              Press {navigator.platform.toLowerCase().includes("mac") ? "⌘" : "Ctrl"}+Enter to
-              spawn
+              Press {navigator.platform.toLowerCase().includes("mac") ? "⌘" : "Ctrl"}+Enter to spawn
             </p>
           </div>
           <div className="flex justify-end gap-3">

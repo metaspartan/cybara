@@ -84,6 +84,15 @@ describe("API security module", () => {
     expect(result.reason).toContain("Missing Authorization");
   });
 
+  test("authenticateRequest rejects same-origin browser signals from LAN clients without a token", () => {
+    const result = security.authenticateRequest(
+      { "sec-fetch-site": "same-origin", host: "192.168.1.155:4269" },
+      "192.168.1.42"
+    );
+    expect(result.authenticated).toBe(false);
+    expect(result.reason).toContain("Missing Authorization");
+  });
+
   test("authenticateRequest accepts matching bearer token", () => {
     const result = security.authenticateRequest(
       { authorization: "Bearer cybara_test_key_for_security_suite" },

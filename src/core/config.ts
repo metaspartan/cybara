@@ -37,7 +37,12 @@ export const DEFAULT_LLM_TIMEOUT_SETTINGS: LlmTimeoutSettings = {
   nonStreamingSeconds: 1800,
 };
 
-function normalizeTimeoutSeconds(value: unknown, fallback: number, min: number, max: number): number {
+function normalizeTimeoutSeconds(
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number
+): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   const rounded = Math.round(parsed);

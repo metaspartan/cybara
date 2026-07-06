@@ -506,6 +506,7 @@ const securityHeaders: Record<string, string> = {
 interface RouteContext {
   headers: Record<string, string>;
   rawBody?: string;
+  url?: string;
 }
 type RouteHandler = (
   body?: unknown,
@@ -4675,6 +4676,7 @@ export async function handleRequest(req: {
     const result = await routes[routeKey](req.body, params, {
       headers: req.headers,
       rawBody: req.rawBody,
+      url: req.url,
     });
     const duration = Date.now() - startTime;
 

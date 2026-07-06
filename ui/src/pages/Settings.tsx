@@ -484,14 +484,7 @@ function DesktopUpdateSettings({
 
 type SandboxProviderOption = "auto" | "apple_sandbox" | "podman" | "docker";
 type SettingsSectionId =
-  | "general"
-  | "ai-memory"
-  | "voice"
-  | "wallet"
-  | "auth"
-  | "safety"
-  | "desktop"
-  | "system";
+  "general" | "ai-memory" | "voice" | "wallet" | "auth" | "safety" | "desktop" | "system";
 
 const settingsSections: Array<{ id: SettingsSectionId; label: string }> = [
   { id: "general", label: "General" },
@@ -882,13 +875,7 @@ type MemoryBehaviorSettingsState = {
 };
 
 type MemoryRecallProvider =
-  | "auto"
-  | "local"
-  | "transformers_js"
-  | "openai"
-  | "voyage"
-  | "gemini"
-  | "ollama";
+  "auto" | "local" | "transformers_js" | "openai" | "voyage" | "gemini" | "ollama";
 
 type MemoryRecallSettingsState = {
   enabled: boolean;
@@ -2772,8 +2759,18 @@ function readLlmTimeoutSettings(value: unknown): LlmTimeoutSettingsState {
       10,
       7200
     ),
-    stallSeconds: readIntegerSetting(record.stallSeconds, defaultLlmTimeoutSettings.stallSeconds, 0, 7200),
-    totalSeconds: readIntegerSetting(record.totalSeconds, defaultLlmTimeoutSettings.totalSeconds, 0, 86400),
+    stallSeconds: readIntegerSetting(
+      record.stallSeconds,
+      defaultLlmTimeoutSettings.stallSeconds,
+      0,
+      7200
+    ),
+    totalSeconds: readIntegerSetting(
+      record.totalSeconds,
+      defaultLlmTimeoutSettings.totalSeconds,
+      0,
+      86400
+    ),
     nonStreamingSeconds: readIntegerSetting(
       record.nonStreamingSeconds,
       defaultLlmTimeoutSettings.nonStreamingSeconds,
@@ -2813,7 +2810,10 @@ function LlmTimeoutSettingsSection() {
       if (!result.success) throw new Error(result.error || "Failed to save watchdog settings");
       addToast("success", "Agent watchdog settings saved");
     } catch (error) {
-      addToast("error", error instanceof Error ? error.message : "Failed to save watchdog settings");
+      addToast(
+        "error",
+        error instanceof Error ? error.message : "Failed to save watchdog settings"
+      );
     } finally {
       setSaving(false);
     }
@@ -2847,8 +2847,8 @@ function LlmTimeoutSettingsSection() {
         </CardTitle>
         <CardDescription>
           Timeouts trigger on provider silence, never on how long an agent works — a healthy
-          multi-hour run streams continuously and is never cut off. Local model endpoints
-          auto-relax these limits. Environment variables (CYBARA_LLM_*) override saved values.
+          multi-hour run streams continuously and is never cut off. Local model endpoints auto-relax
+          these limits. Environment variables (CYBARA_LLM_*) override saved values.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -3132,13 +3132,17 @@ function WalletSettings() {
             Network Endpoints
           </CardTitle>
           <CardDescription>
-            RPC endpoints used for balances, history, and sending. Price data additionally uses
-            Pyth Hermes, Chainlink, and Jupiter.
+            RPC endpoints used for balances, history, and sending. Price data additionally uses Pyth
+            Hermes, Chainlink, and Jupiter.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Input label="Ethereum RPC" value={rpcEth} onChange={(e) => setRpcEth(e.target.value)} />
+            <Input
+              label="Ethereum RPC"
+              value={rpcEth}
+              onChange={(e) => setRpcEth(e.target.value)}
+            />
             <Input label="Solana RPC" value={rpcSol} onChange={(e) => setRpcSol(e.target.value)} />
             <Input label="Bitcoin API" value={rpcBtc} onChange={(e) => setRpcBtc(e.target.value)} />
           </div>
@@ -3217,7 +3221,9 @@ function WalletSettings() {
             value={deletePassword}
             onChange={(e) => setDeletePassword(e.target.value)}
             placeholder={
-              status?.unlocked ? "Optional verification password" : "Required while wallet is locked"
+              status?.unlocked
+                ? "Optional verification password"
+                : "Required while wallet is locked"
             }
           />
           <Input
@@ -3738,8 +3744,7 @@ function GatewayAuthSettingsSection() {
             </div>
           )}
           <p className="text-xs text-gray-500">
-            Paired mobile devices authenticate with scoped tokens — manage them on the Mobile
-            page.
+            Paired mobile devices authenticate with scoped tokens — manage them on the Mobile page.
           </p>
         </CardContent>
       </Card>
@@ -3755,8 +3760,8 @@ function GatewayAuthSettingsSection() {
         <div className="space-y-4">
           <p className="text-sm text-gray-300">
             The new key takes effect immediately — no gateway restart needed. This browser and the
-            desktop apps adopt it automatically; only scripts or remote clients holding the old
-            key need updating. Paired mobile devices are unaffected.
+            desktop apps adopt it automatically; only scripts or remote clients holding the old key
+            need updating. Paired mobile devices are unaffected.
           </p>
           <div className="flex justify-end gap-3">
             <Button variant="ghost" onClick={() => setRotateConfirmOpen(false)} disabled={busy}>

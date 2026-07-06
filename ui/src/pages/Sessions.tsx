@@ -177,10 +177,7 @@ export function Sessions() {
   );
 
   return (
-    <PageLayout
-      title="Sessions"
-      subtitle="View and manage chat sessions"
-    >
+    <PageLayout title="Sessions" subtitle="View and manage chat sessions">
       <div className="space-y-6">
         <Card>
           <CardContent className="p-4">

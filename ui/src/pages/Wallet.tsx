@@ -321,7 +321,10 @@ export function Wallet() {
       tick(() => void refreshStatus().catch(() => {})),
       15_000
     );
-    const priceTimer = window.setInterval(tick(() => void refreshPrices()), 60_000);
+    const priceTimer = window.setInterval(
+      tick(() => void refreshPrices()),
+      60_000
+    );
     return () => {
       window.clearInterval(statusTimer);
       window.clearInterval(priceTimer);
@@ -926,11 +929,7 @@ export function Wallet() {
 
             <Card variant="liquid">
               <CardContent className="p-3">
-                <div
-                  role="tablist"
-                  aria-label="Wallet sections"
-                  className="grid grid-cols-3 gap-2"
-                >
+                <div role="tablist" aria-label="Wallet sections" className="grid grid-cols-3 gap-2">
                   {WALLET_TABS.map((tab) => {
                     const isActive = activeTab === tab.id;
                     return (
@@ -1187,7 +1186,9 @@ export function Wallet() {
                     placeholder="0.0"
                     value={sendAmount}
                     onChange={(e) => setSendAmount(e.target.value)}
-                    helperText={sendUsdEstimate !== null ? `≈ ${formatUsd(sendUsdEstimate)}` : undefined}
+                    helperText={
+                      sendUsdEstimate !== null ? `≈ ${formatUsd(sendUsdEstimate)}` : undefined
+                    }
                   />
 
                   {sendAssetType === "token" && (

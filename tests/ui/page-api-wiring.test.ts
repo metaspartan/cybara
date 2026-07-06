@@ -37,6 +37,7 @@ describe("UI page API wiring", () => {
   test("Mobile page manages device pairing through mobile hooks", () => {
     const source = readPage("Mobile.tsx");
 
+    expect(source).toContain("useMobileConnectInfo");
     expect(source).toContain("useMobileDevices");
     expect(source).toContain("useCreateMobileDevice");
     expect(source).toContain("useRevokeMobileDevice");

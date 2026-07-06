@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
+import { networkInterfaces, tmpdir, type NetworkInterfaceInfo } from "os";
 import { dirname, join, resolve } from "path";
 import { secureDir } from "./paths";
 
@@ -13,6 +13,17 @@ export interface MobileConnectPayload {
   apiKey: string;
   deviceId: string;
   createdAt: string;
+}
+
+export interface MobileConnectInfo {
+  baseUrl: string;
+  currentBaseUrl: string;
+  candidates: string[];
+  lanAddresses: string[];
+  lanAccessEnabled: boolean;
+  isCurrentLoopback: boolean;
+  warnings: string[];
+  exposeCommand: string;
 }
 
 /**
@@ -153,6 +164,119 @@ export function normalizeMobileGatewayUrl(input: string): string {
   parsed.search = "";
   parsed.hash = "";
   return parsed.toString().replace(/\/+$/, "");
+}
+
+function normalizeMobileBasePath(value?: string): string {
+  const trimmed = value?.trim() || "";
+  if (!trimmed || trimmed === "/") return "";
+  return `/${trimmed.replace(/^\/+|\/+$/g, "")}`;
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return host === "localhost" || host === "::1" || host === "0.0.0.0" || host.startsWith("127.");
+}
+
+export function isLoopbackMobileGatewayUrl(input: string): boolean {
+  try {
+    const parsed = new URL(/^https?:\/\//i.test(input) ? input : `http://${input}`);
+    return isLoopbackHost(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
+function readLanIPv4Addresses(
+  interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> = networkInterfaces()
+): string[] {
+  const addresses = new Set<string>();
+  for (const entries of Object.values(interfaces)) {
+    const list: NetworkInterfaceInfo[] = entries ?? [];
+    for (const entry of list) {
+      if (entry.family !== "IPv4" || entry.internal) continue;
+      if (isLoopbackHost(entry.address) || entry.address.startsWith("169.254.")) continue;
+      addresses.add(entry.address);
+    }
+  }
+  return [...addresses].sort();
+}
+
+function addUniqueUrl(target: string[], value: string): void {
+  try {
+    const normalized = normalizeMobileGatewayUrl(value);
+    if (!target.includes(normalized)) target.push(normalized);
+  } catch {}
+}
+
+function hostEnablesLan(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase();
+  if (!host) return false;
+  if (host === "0.0.0.0" || host === "::" || host === "[::]") return true;
+  return !isLoopbackHost(host);
+}
+
+function buildLanEnableCommand(lanAddresses: string[]): string {
+  const address = lanAddresses[0];
+  return address ? `CYBARA_HOST=${address} cybara start` : "cybara start --expose";
+}
+
+export function buildMobileConnectInfo(input: {
+  requestUrl?: string;
+  configuredHost?: string;
+  port?: number;
+  basePath?: string;
+  mobileBaseUrl?: string;
+  interfaces?: NodeJS.Dict<NetworkInterfaceInfo[]>;
+}): MobileConnectInfo {
+  const basePath = normalizeMobileBasePath(input.basePath);
+  const fallbackPort = input.port || 4269;
+  const requestUrl = input.requestUrl || `http://127.0.0.1:${fallbackPort}${basePath || "/"}`;
+  const parsed = new URL(requestUrl, `http://127.0.0.1:${fallbackPort}`);
+  const port = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
+  const currentBaseUrl = normalizeMobileGatewayUrl(`${parsed.protocol}//${parsed.host}${basePath}`);
+  const lanAddresses = readLanIPv4Addresses(input.interfaces);
+  const candidates: string[] = [];
+  const mobileBaseUrl = input.mobileBaseUrl?.trim();
+  const isCurrentLoopback = isLoopbackMobileGatewayUrl(currentBaseUrl);
+  const lanAccessEnabled = hostEnablesLan(input.configuredHost || parsed.hostname);
+  const warnings: string[] = [];
+
+  if (mobileBaseUrl) addUniqueUrl(candidates, mobileBaseUrl);
+  if (!isCurrentLoopback) {
+    addUniqueUrl(candidates, currentBaseUrl);
+  }
+  if (lanAccessEnabled) {
+    for (const address of lanAddresses) {
+      addUniqueUrl(candidates, `${parsed.protocol}//${address}:${port}${basePath}`);
+    }
+  }
+  addUniqueUrl(candidates, currentBaseUrl);
+  if (!lanAccessEnabled) {
+    for (const address of lanAddresses) {
+      addUniqueUrl(candidates, `${parsed.protocol}//${address}:${port}${basePath}`);
+    }
+  }
+
+  if (isCurrentLoopback) {
+    warnings.push("127.0.0.1 and localhost only work on this computer. Use a LAN URL for a phone.");
+  }
+  if (!lanAccessEnabled) {
+    warnings.push("Restart the gateway bound to a LAN address before pairing a physical phone.");
+  }
+  if (!mobileBaseUrl && lanAddresses.length === 0) {
+    warnings.push("No non-loopback IPv4 LAN address was detected on this machine.");
+  }
+
+  return {
+    baseUrl: candidates[0] || currentBaseUrl,
+    currentBaseUrl,
+    candidates,
+    lanAddresses,
+    lanAccessEnabled,
+    isCurrentLoopback,
+    warnings,
+    exposeCommand: buildLanEnableCommand(lanAddresses),
+  };
 }
 
 function readStore(): MobileDeviceStore {

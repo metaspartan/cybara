@@ -134,6 +134,7 @@ describe("UI API client wiring", () => {
   });
 
   test("mobileApi uses managed device lifecycle endpoints", async () => {
+    await mobileApi.connectInfo();
     await mobileApi.listDevices();
     await mobileApi.createDevice({
       deviceName: "QA Phone",
@@ -143,23 +144,26 @@ describe("UI API client wiring", () => {
     await mobileApi.revokeDevice("mobile-1");
     await mobileApi.deleteDevice("mobile-1");
 
-    expect(calls).toHaveLength(4);
-    expect(calls[0].url).toBe("/api/mobile/devices");
+    expect(calls).toHaveLength(5);
+    expect(calls[0].url).toBe("/api/mobile/connect-info");
     expect(calls[0].init?.method).toBeUndefined();
 
     expect(calls[1].url).toBe("/api/mobile/devices");
-    expect(calls[1].init?.method).toBe("POST");
-    expect(JSON.parse(String(calls[1].init?.body))).toEqual({
+    expect(calls[1].init?.method).toBeUndefined();
+
+    expect(calls[2].url).toBe("/api/mobile/devices");
+    expect(calls[2].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[2].init?.body))).toEqual({
       deviceName: "QA Phone",
       gatewayName: "Studio Gateway",
       baseUrl: "http://192.168.1.20:4269",
     });
 
-    expect(calls[2].url).toBe("/api/mobile/devices/mobile-1/revoke");
-    expect(calls[2].init?.method).toBe("POST");
+    expect(calls[3].url).toBe("/api/mobile/devices/mobile-1/revoke");
+    expect(calls[3].init?.method).toBe("POST");
 
-    expect(calls[3].url).toBe("/api/mobile/devices/mobile-1");
-    expect(calls[3].init?.method).toBe("DELETE");
+    expect(calls[4].url).toBe("/api/mobile/devices/mobile-1");
+    expect(calls[4].init?.method).toBe("DELETE");
   });
 
   test("providerPlansApi uses provider plan endpoints", async () => {

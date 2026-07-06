@@ -13,6 +13,7 @@ import type {
   Session,
   Tool,
   MobileDevice,
+  MobileConnectInfo,
   MobilePairing,
 } from "../types";
 import { subagentApi, skillsApi } from "@/lib/api";
@@ -302,6 +303,14 @@ export function useMobileDevices() {
     queryKey: ["mobile", "devices"],
     queryFn: () => fetchApi<{ devices: MobileDevice[] }>("/mobile/devices"),
     refetchInterval: LIST_POLL_INTERVAL_MS,
+  });
+}
+
+export function useMobileConnectInfo() {
+  return useQuery({
+    queryKey: ["mobile", "connect-info"],
+    queryFn: () => fetchApi<MobileConnectInfo>("/mobile/connect-info"),
+    staleTime: 30_000,
   });
 }
 

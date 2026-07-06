@@ -16,8 +16,7 @@ export function compactCodexInputItemsForContext(
   let removed = 0;
   while (estimate() > budgetChars && inputItems.length > 6) {
     const index = inputItems.findIndex(
-      (item, i) =>
-        i > 0 && (item.type === "function_call" || item.type === "function_call_output")
+      (item, i) => i > 0 && (item.type === "function_call" || item.type === "function_call_output")
     );
     if (index === -1) break;
     inputItems.splice(index, 1);

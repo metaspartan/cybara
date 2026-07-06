@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Copy,
   Plus,
@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
+  useMobileConnectInfo,
   useCreateMobileDevice,
   useDeleteMobileDevice,
   useMobileDevices,
@@ -37,6 +38,7 @@ function formatDate(value?: string): string {
 
 export function Mobile() {
   const { addToast } = useUIStore();
+  const { data: connectInfoData } = useMobileConnectInfo();
   const { data, isLoading, refetch, isFetching } = useMobileDevices();
   const createMobileDevice = useCreateMobileDevice();
   const revokeMobileDevice = useRevokeMobileDevice();
@@ -44,12 +46,24 @@ export function Mobile() {
   const [deviceName, setDeviceName] = useState("My iPhone");
   const [gatewayName, setGatewayName] = useState("Cybara Gateway");
   const [baseUrl, setBaseUrl] = useState(defaultGatewayUrl);
+  const [baseUrlTouched, setBaseUrlTouched] = useState(false);
   const [pairing, setPairing] = useState<MobilePairing | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<MobileDevice | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<MobileDevice | null>(null);
 
+  const connectInfo = connectInfoData;
   const devices = useMemo(() => data?.devices || [], [data?.devices]);
   const activeCount = devices.filter((device) => device.status === "active").length;
+  const alternateBaseUrls = useMemo(
+    () => (connectInfo?.candidates || []).filter((candidate) => candidate !== baseUrl).slice(0, 4),
+    [baseUrl, connectInfo?.candidates]
+  );
+
+  useEffect(() => {
+    if (!baseUrlTouched && connectInfo?.baseUrl) {
+      setBaseUrl(connectInfo.baseUrl);
+    }
+  }, [baseUrlTouched, connectInfo?.baseUrl]);
 
   const createPairing = async () => {
     try {
@@ -97,10 +111,7 @@ export function Mobile() {
   };
 
   return (
-    <PageLayout
-      title="Mobile"
-      subtitle="Pair and manage Cybara Mobile devices"
-    >
+    <PageLayout title="Mobile" subtitle="Pair and manage Cybara Mobile devices">
       <div className="grid gap-4 xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
         <div className="space-y-4">
           <Card>
@@ -129,10 +140,47 @@ export function Mobile() {
               <Input
                 label="Gateway URL"
                 value={baseUrl}
-                onChange={(event) => setBaseUrl(event.target.value)}
+                onChange={(event) => {
+                  setBaseUrlTouched(true);
+                  setBaseUrl(event.target.value);
+                }}
                 placeholder="http://192.168.1.20:4269"
-                helperText="Use a LAN-reachable URL when pairing from a phone."
+                helperText="Physical phones need a LAN-reachable URL, not 127.0.0.1."
               />
+              {connectInfo?.warnings.length ? (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 p-3 text-sm text-amber-100">
+                  <div className="space-y-1">
+                    {connectInfo.warnings.map((warning) => (
+                      <p key={warning}>{warning}</p>
+                    ))}
+                  </div>
+                  {!connectInfo.lanAccessEnabled ? (
+                    <p className="mt-2 font-mono text-xs text-amber-200">
+                      {connectInfo.exposeCommand}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              {alternateBaseUrls.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase text-gray-500">Detected URLs</p>
+                  <div className="flex flex-wrap gap-2">
+                    {alternateBaseUrls.map((candidate) => (
+                      <Button
+                        key={candidate}
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setBaseUrlTouched(true);
+                          setBaseUrl(candidate);
+                        }}
+                      >
+                        {candidate}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <Button
                 className="w-full"
                 leftIcon={<Plus className="w-4 h-4" />}

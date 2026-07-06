@@ -138,7 +138,8 @@ export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Pr
 
   // Root-relative paths get the gateway base path here, at the single fetch
   // choke point, so no call site needs to know about the prefix.
-  const target = typeof input === "string" && input.startsWith("/") ? withGatewayBasePath(input) : input;
+  const target =
+    typeof input === "string" && input.startsWith("/") ? withGatewayBasePath(input) : input;
 
   const response = await fetch(target, {
     ...init,
