@@ -1,3 +1,5 @@
+import type { ProviderPlanStatusResponse } from "./api";
+
 export type MetricsEndpointKey =
   | "overview"
   | "tokens"
@@ -8,7 +10,8 @@ export type MetricsEndpointKey =
   | "models"
   | "insights"
   | "tokenAnalysis"
-  | "storage";
+  | "storage"
+  | "providerPlans";
 
 export interface MetricsEndpointState {
   ok: boolean;
@@ -233,6 +236,7 @@ export interface MetricsSnapshot {
   insights: MetricsInsights | null;
   tokenAnalysis: TokenAnalysisMetrics | null;
   storage: MetricsStorage | null;
+  providerPlans: ProviderPlanStatusResponse | null;
   availability: MetricsAvailability;
 }
 
@@ -248,6 +252,7 @@ export function emptyMetricsAvailability(): MetricsAvailability {
     insights: { ok: false },
     tokenAnalysis: { ok: false },
     storage: { ok: false },
+    providerPlans: { ok: false },
   };
 }
 

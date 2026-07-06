@@ -65,6 +65,8 @@ describe("provider plan monitoring", () => {
       providers: {
         "openai-codex": {
           planName: " Team ",
+          sourceMode: "browser_cookie",
+          externalSourceEnabled: true,
           monthly: { tokenLimit: "1000" },
           weekly: { spendLimit: "-4" },
         },
@@ -74,6 +76,8 @@ describe("provider plan monitoring", () => {
     expect(cfg.enabled).toBe(true);
     expect(cfg.warningThresholdPct).toBe(100);
     expect(cfg.providers["openai-codex"].planName).toBe("Team");
+    expect(cfg.providers["openai-codex"].sourceMode).toBe("browser_cookie");
+    expect(cfg.providers["openai-codex"].externalSourceEnabled).toBe(true);
     expect(cfg.providers["openai-codex"].monthly?.tokenLimit).toBe(1000);
     expect(cfg.providers["openai-codex"].weekly?.spendLimit).toBeUndefined();
   });
@@ -97,6 +101,10 @@ describe("provider plan monitoring", () => {
     expect(snapshot.monitored).toBe(true);
     expect(snapshot.providerType).toBe("openai-codex");
     expect(snapshot.planName).toBe("Codex Plus");
+    expect(snapshot.sourceMode).toBe("local");
+    expect(snapshot.sourceLabel).toBe("Local usage with configured limits");
+    expect(snapshot.externalSourceAvailable).toBe(true);
+    expect(snapshot.externalSourceLabel).toBe("OpenAI OAuth usage");
     expect(snapshot.status).toBe("warning");
     expect(snapshot.windows[0].usedTokens).toBeGreaterThanOrEqual(900);
     expect(snapshot.windows[0].usedPercent).toBeGreaterThanOrEqual(90);
@@ -146,6 +154,7 @@ describe("provider plan monitoring", () => {
     );
 
     expect(snapshot?.providerType).toBe("google-gemini-cli");
+    expect(snapshot?.externalSourceLabel).toBe("Gemini CLI OAuth quota");
     expect(status.summary.monitored).toBeGreaterThan(0);
     expect(status.summary.configured).toBeGreaterThan(0);
   });

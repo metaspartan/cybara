@@ -7,6 +7,7 @@ struct ProvidersScreen: View {
 
     @State private var providers: [GatewayProvider] = []
     @State private var availableProviders: [GatewayAvailableProvider] = []
+    @State private var providerPlanStatus: ProviderPlanStatusResponse?
     @State private var searchText = ""
     @State private var showingCreate = false
     @State private var editingProvider: GatewayProvider?
@@ -169,6 +170,9 @@ struct ProvidersScreen: View {
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                if let plan = providerPlan(for: provider) {
+                    ProviderPlanInlineView(plan: plan)
+                }
             }
 
             Spacer()
@@ -233,12 +237,18 @@ struct ProvidersScreen: View {
         do {
             async let loadedProviders = client.providers()
             async let loadedAvailable = client.availableProviders()
+            async let loadedPlanStatus = loadProviderPlanStatus()
             providers = try await loadedProviders
             availableProviders = try await loadedAvailable
+            providerPlanStatus = await loadedPlanStatus
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    private func loadProviderPlanStatus() async -> ProviderPlanStatusResponse? {
+        try? await client.providerPlanStatus()
     }
 
     private func test(_ provider: GatewayProvider) async {
@@ -281,6 +291,75 @@ struct ProvidersScreen: View {
         case nil: return nil
         }
     }
+
+    private func providerPlan(for provider: GatewayProvider) -> ProviderPlanSnapshot? {
+        providerPlanStatus?.providers.first { plan in
+            [plan.providerId, plan.configuredProviderId, plan.providerType].contains(provider.id)
+        } ?? providerPlanStatus?.providers.first { plan in
+            [plan.providerId, plan.configuredProviderId, plan.providerType].contains(provider.providerType)
+        }
+    }
+}
+
+private struct ProviderPlanInlineView: View {
+    let plan: ProviderPlanSnapshot
+
+    private var progress: Double? {
+        let values = plan.windows.compactMap(\.usedPercent)
+        guard let maxValue = values.max() else { return nil }
+        return min(100, max(0, maxValue))
+    }
+
+    private var statusTint: Color {
+        switch plan.status {
+        case "ok": return .green
+        case "warning": return .orange
+        case "exhausted": return .red
+        default: return .secondary
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 8) {
+                Text(plan.status)
+                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(statusTint)
+                    .textCase(.uppercase)
+                Text(plan.sourceLabel ?? plan.source?.replacingOccurrences(of: "_", with: " ") ?? "Local usage")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text("\(providerPlanFormatCount(plan.localTokens30d)) tokens 30d")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            if let progress {
+                ProgressView(value: progress, total: 100)
+                    .progressViewStyle(.linear)
+                    .tint(statusTint)
+                    .frame(maxWidth: 260)
+            }
+            if plan.externalSourceAvailable, let label = plan.externalSourceLabel {
+                Text("External source available: \(label)")
+                    .font(.system(size: 10.5, design: .rounded))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(.top, 3)
+    }
+}
+
+private func providerPlanFormatCount(_ value: Int) -> String {
+    if value >= 1_000_000 {
+        return String(format: "%.2fM", Double(value) / 1_000_000)
+    }
+    if value >= 1_000 {
+        return String(format: "%.1fK", Double(value) / 1_000)
+    }
+    return "\(value)"
 }
 
 struct ProviderEditorDraft {

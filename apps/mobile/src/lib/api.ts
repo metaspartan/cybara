@@ -326,6 +326,8 @@ export interface RouterStatus {
 }
 
 export type ProviderPlanStatusState = "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
+export type ProviderPlanSourceMode =
+  "local" | "provider_api" | "oauth_api" | "browser_cookie" | "cli" | "manual";
 
 export interface ProviderPlanRouteConstraint {
   monitored: boolean;
@@ -359,6 +361,14 @@ export interface ProviderPlanSnapshot {
   authType: string;
   monitored: boolean;
   planName?: string;
+  source?: string;
+  sourceMode: ProviderPlanSourceMode;
+  sourceLabel: string;
+  sourceDescription?: string;
+  externalSourceAvailable: boolean;
+  externalSourceMode?: ProviderPlanSourceMode;
+  externalSourceLabel?: string;
+  externalSourceHint?: string;
   status: ProviderPlanStatusState;
   reason?: string;
   localTokens30d: number;
@@ -375,6 +385,8 @@ export interface ProviderPlanWindowConfig {
 export interface ProviderPlanProviderConfig {
   enabled?: boolean;
   planName?: string;
+  sourceMode?: ProviderPlanSourceMode;
+  externalSourceEnabled?: boolean;
   monthly?: ProviderPlanWindowConfig;
   weekly?: ProviderPlanWindowConfig;
   fiveHour?: ProviderPlanWindowConfig;
@@ -1472,6 +1484,17 @@ function normalizeProviderPlanStatusState(value: unknown): ProviderPlanStatusSta
     : "unconfigured";
 }
 
+function normalizeProviderPlanSourceMode(value: unknown): ProviderPlanSourceMode {
+  return value === "local" ||
+    value === "provider_api" ||
+    value === "oauth_api" ||
+    value === "browser_cookie" ||
+    value === "cli" ||
+    value === "manual"
+    ? value
+    : "local";
+}
+
 function normalizeProviderPlanRouteConstraint(
   value: unknown
 ): ProviderPlanRouteConstraint | undefined {
@@ -1505,6 +1528,9 @@ function normalizeProviderPlanProviderConfig(value: unknown): ProviderPlanProvid
   return {
     enabled: record?.enabled !== false,
     planName: readString(record, ["planName", "plan_name"]),
+    sourceMode: normalizeProviderPlanSourceMode(record?.sourceMode ?? record?.source_mode),
+    externalSourceEnabled:
+      record?.externalSourceEnabled === true || record?.external_source_enabled === true,
     monthly: normalizeProviderPlanWindowConfig(record?.monthly),
     weekly: normalizeProviderPlanWindowConfig(record?.weekly),
     fiveHour: normalizeProviderPlanWindowConfig(record?.fiveHour ?? record?.five_hour),
@@ -1541,6 +1567,20 @@ function normalizeProviderPlanSnapshot(value: unknown, index = 0): ProviderPlanS
     authType: readString(record, ["authType", "auth_type"]) || "unknown",
     monitored: record?.monitored === true,
     planName: readString(record, ["planName", "plan_name"]),
+    source: readString(record, ["source"]),
+    sourceMode: normalizeProviderPlanSourceMode(record?.sourceMode ?? record?.source_mode),
+    sourceLabel:
+      readString(record, ["sourceLabel", "source_label"]) ||
+      (readString(record, ["source"]) || "local_metrics").replace(/_/g, " "),
+    sourceDescription: readString(record, ["sourceDescription", "source_description"]),
+    externalSourceAvailable:
+      record?.externalSourceAvailable === true || record?.external_source_available === true,
+    externalSourceMode:
+      record?.externalSourceMode || record?.external_source_mode
+        ? normalizeProviderPlanSourceMode(record.externalSourceMode ?? record.external_source_mode)
+        : undefined,
+    externalSourceLabel: readString(record, ["externalSourceLabel", "external_source_label"]),
+    externalSourceHint: readString(record, ["externalSourceHint", "external_source_hint"]),
     status: normalizeProviderPlanStatusState(record?.status),
     reason: readString(record, ["reason"]),
     localTokens30d: readNumber(record, ["localTokens30d", "local_tokens_30d"]) ?? 0,
@@ -2501,6 +2541,7 @@ export class CybaraMobileApi {
       insights,
       tokenAnalysis,
       storage,
+      providerPlans,
     ] = await Promise.all([
       safe("overview", null, () =>
         this.request<MetricsSnapshot["overview"]>("/api/metrics/overview")
@@ -2522,6 +2563,7 @@ export class CybaraMobileApi {
         this.request<MetricsSnapshot["tokenAnalysis"]>("/api/metrics/token-analysis")
       ),
       safe("storage", null, () => this.request<MetricsSnapshot["storage"]>("/api/metrics/storage")),
+      safe("providerPlans", null, () => this.providerPlanStatus()),
     ]);
 
     return {
@@ -2535,6 +2577,7 @@ export class CybaraMobileApi {
       insights,
       tokenAnalysis,
       storage,
+      providerPlans,
       availability,
     };
   }

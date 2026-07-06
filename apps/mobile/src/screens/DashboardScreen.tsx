@@ -1480,6 +1480,22 @@ function MetricsPanel({
   const providerRows = providerTokenShareRows(metrics);
   const modelRows = modelTokenShareRows(metrics);
   const storageRows = storageCategoryEntries(metrics?.storage ?? null).slice(0, 8);
+  const providerPlanRows =
+    metrics?.providerPlans?.providers
+      .filter((plan) => plan.monitored || plan.windows.length > 0 || plan.externalSourceAvailable)
+      .slice(0, 6)
+      .map((plan) => {
+        const usage = plan.windows
+          .map((window) => window.usedPercent)
+          .filter((value): value is number => typeof value === "number");
+        const progress = usage.length > 0 ? Math.max(...usage) : null;
+        return {
+          label: plan.providerName,
+          value: progress === null ? plan.status : `${Math.round(progress)}%`,
+          detail: `${plan.status} - ${plan.sourceLabel || plan.source || "local usage"}`,
+          amount: progress ?? plan.localTokens30d,
+        };
+      }) ?? [];
 
   return (
     <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
@@ -1509,7 +1525,7 @@ function MetricsPanel({
           Icon={Database}
           label="Storage"
           value={formatMetricBytes(metrics?.storage?.totalBytes)}
-          detail={`${availableMetrics}/10 feeds`}
+          detail={`${availableMetrics}/11 feeds`}
           tone={colors.green}
         />
       </View>
@@ -1595,6 +1611,13 @@ function MetricsPanel({
 
       <MetricSection title="Provider efficiency" detail="Tokens per provider call">
         <MetricShareRows rows={providerRows} tone={colors.blueText} />
+      </MetricSection>
+
+      <MetricSection
+        title="Provider plans"
+        detail={`${metrics?.providerPlans?.summary.configured ?? 0} configured - ${metrics?.providerPlans?.summary.warnings ?? 0} warnings`}
+      >
+        <MetricShareRows rows={providerPlanRows} tone={colors.green} />
       </MetricSection>
 
       <MetricSection title="Models" detail="Throughput, latency, and token share">
@@ -1745,7 +1768,7 @@ function MetricsPanel({
         />
       )}
 
-      <MetricSection title="Metric feeds" detail={`${availableMetrics}/10 endpoints online`}>
+      <MetricSection title="Metric feeds" detail={`${availableMetrics}/11 endpoints online`}>
         <MetricEndpointGrid availability={metrics?.availability} />
       </MetricSection>
     </GlassPanel>

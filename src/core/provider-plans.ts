@@ -5,6 +5,8 @@ import { providers, resolveProviderType, type ProviderType } from "./providers";
 export type ProviderPlanStatus = "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
 export type ProviderPlanConfidence = "exact" | "estimated" | "local";
 export type ProviderPlanWindowKind = "rolling_5h" | "rolling_week" | "billing_month";
+export type ProviderPlanSourceMode =
+  "local" | "provider_api" | "oauth_api" | "browser_cookie" | "cli" | "manual";
 
 export interface ProviderPlanWindowConfig {
   enabled?: boolean;
@@ -16,6 +18,8 @@ export interface ProviderPlanProviderConfig {
   enabled?: boolean;
   planName?: string;
   currency?: string;
+  sourceMode?: ProviderPlanSourceMode;
+  externalSourceEnabled?: boolean;
   warningThresholdPct?: number;
   hardStopPct?: number;
   billingCycleAnchorDay?: number;
@@ -56,6 +60,13 @@ export interface ProviderPlanSnapshot {
   monitored: boolean;
   planName?: string;
   source: string;
+  sourceMode: ProviderPlanSourceMode;
+  sourceLabel: string;
+  sourceDescription?: string;
+  externalSourceAvailable: boolean;
+  externalSourceMode?: ProviderPlanSourceMode;
+  externalSourceLabel?: string;
+  externalSourceHint?: string;
   status: ProviderPlanStatus;
   reason?: string;
   warningThresholdPct: number;
@@ -115,6 +126,91 @@ const DEFAULT_CONFIG: ProviderPlanMonitoringConfig = {
   providers: {},
 };
 
+interface ExternalPlanSourceInfo {
+  mode: ProviderPlanSourceMode;
+  label: string;
+  hint: string;
+}
+
+const EXTERNAL_PLAN_SOURCE_CATALOG: Record<string, ExternalPlanSourceInfo> = {
+  "openai-codex": {
+    mode: "oauth_api",
+    label: "OpenAI OAuth usage",
+    hint: "Prefer OpenAI/Codex OAuth or Admin usage APIs. Use ChatGPT dashboard cookies only as an explicit fallback for plan details unavailable through APIs.",
+  },
+  github_copilot: {
+    mode: "oauth_api",
+    label: "GitHub Copilot usage API",
+    hint: "Use GitHub device-flow credentials and Copilot usage endpoints instead of scraping the browser by default.",
+  },
+  "google-gemini-cli": {
+    mode: "cli",
+    label: "Gemini CLI OAuth quota",
+    hint: "Reuse Gemini CLI OAuth credentials and quota APIs when available.",
+  },
+  "minimax-portal": {
+    mode: "provider_api",
+    label: "MiniMax billing source",
+    hint: "Use MiniMax API tokens first; browser cookies should be opt-in for dashboard-only quota details.",
+  },
+  "qwen-portal": {
+    mode: "browser_cookie",
+    label: "Qwen portal billing",
+    hint: "Qwen plan details may require an explicitly enabled portal session source.",
+  },
+  "alibaba-coding-plan": {
+    mode: "provider_api",
+    label: "Alibaba/Qwen plan API",
+    hint: "Use authenticated provider APIs before any portal session fallback.",
+  },
+  "kimi-code": {
+    mode: "provider_api",
+    label: "Kimi usage source",
+    hint: "Use Kimi coding tokens or usage APIs; cookies should remain opt-in.",
+  },
+  opencode_zen: {
+    mode: "provider_api",
+    label: "OpenCode plan source",
+    hint: "Use OpenCode account APIs or local credentials before browser storage access.",
+  },
+  "opencode-go": {
+    mode: "provider_api",
+    label: "OpenCode Go plan source",
+    hint: "Use OpenCode account APIs or local credentials before browser storage access.",
+  },
+  kilocode: {
+    mode: "provider_api",
+    label: "Kilo Code usage API",
+    hint: "Use Kilo account APIs or gateway credentials for plan usage.",
+  },
+  openrouter: {
+    mode: "provider_api",
+    label: "OpenRouter credits API",
+    hint: "Use the OpenRouter API key for credits and spend rather than scraping account pages.",
+  },
+  elevenlabs: {
+    mode: "provider_api",
+    label: "ElevenLabs subscription API",
+    hint: "Use the ElevenLabs API key to read character/credit usage.",
+  },
+  deepgram: {
+    mode: "provider_api",
+    label: "Deepgram usage API",
+    hint: "Use Deepgram API usage endpoints when an account key is configured.",
+  },
+};
+
+function normalizeSourceMode(value: unknown): ProviderPlanSourceMode | undefined {
+  return value === "local" ||
+    value === "provider_api" ||
+    value === "oauth_api" ||
+    value === "browser_cookie" ||
+    value === "cli" ||
+    value === "manual"
+    ? value
+    : undefined;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -167,6 +263,9 @@ export function normalizeProviderPlanProviderConfig(value: unknown): ProviderPla
       typeof raw.currency === "string" && raw.currency.trim()
         ? raw.currency.trim().slice(0, 12).toUpperCase()
         : "USD",
+    sourceMode: normalizeSourceMode(raw.sourceMode ?? raw.source_mode),
+    externalSourceEnabled:
+      raw.externalSourceEnabled === true || raw.external_source_enabled === true,
     warningThresholdPct: boundedPercent(raw.warningThresholdPct ?? raw.warning_threshold_pct, 80),
     hardStopPct: boundedPercent(raw.hardStopPct ?? raw.hard_stop_pct, 100),
     billingCycleAnchorDay: Math.min(
@@ -178,6 +277,8 @@ export function normalizeProviderPlanProviderConfig(value: unknown): ProviderPla
     monthly: normalizeWindowConfig(raw.monthly),
   };
   if (!providerConfig.planName) delete providerConfig.planName;
+  if (!providerConfig.sourceMode) delete providerConfig.sourceMode;
+  if (!providerConfig.externalSourceEnabled) delete providerConfig.externalSourceEnabled;
   return providerConfig;
 }
 
@@ -222,7 +323,39 @@ function providerTypeOf(row: Partial<Provider> & { provider?: string; id?: strin
 }
 
 function isPlanCapableProvider(providerType: string, authType?: string): boolean {
-  return authType === "oauth" || CODING_PLAN_PROVIDER_TYPES.has(providerType);
+  return (
+    authType === "oauth" ||
+    CODING_PLAN_PROVIDER_TYPES.has(providerType) ||
+    Boolean(EXTERNAL_PLAN_SOURCE_CATALOG[providerType])
+  );
+}
+
+function sourceDescriptionFor(mode: ProviderPlanSourceMode): string {
+  switch (mode) {
+    case "provider_api":
+      return "Official provider billing or credits endpoint.";
+    case "oauth_api":
+      return "Provider OAuth session or device-flow usage endpoint.";
+    case "browser_cookie":
+      return "Explicit browser-session fallback for providers without usable billing APIs.";
+    case "cli":
+      return "Local provider CLI credentials or quota endpoint.";
+    case "manual":
+      return "Manually entered plan limits with local usage tracking.";
+    case "local":
+      return "Cybara local token and spend metrics, not the provider billing ledger.";
+  }
+}
+
+function sourceLabelFor(mode: ProviderPlanSourceMode, configured: boolean): string {
+  if (mode === "local") {
+    return configured ? "Local usage with configured limits" : "Local Cybara usage";
+  }
+  if (mode === "provider_api") return "Provider billing API";
+  if (mode === "oauth_api") return "OAuth usage API";
+  if (mode === "browser_cookie") return "Browser session source";
+  if (mode === "cli") return "Local CLI quota source";
+  return "Manual plan limits";
 }
 
 function configuredProviderForRoute(routeKey: string): Provider | undefined {
@@ -375,6 +508,8 @@ export function getProviderPlanSnapshot(routeKey: string): ProviderPlanSnapshot 
   const providerName = configured?.name || staticInfo?.name || routeKey;
   const providerConfig = planConfigFor(cfg, providerId, providerType);
   const monitored = cfg.enabled && isPlanCapableProvider(providerType, authType);
+  const externalSource = EXTERNAL_PLAN_SOURCE_CATALOG[providerType];
+  const activeSourceMode: ProviderPlanSourceMode = "local";
   const explicitProviderIdConfig = Boolean(cfg.providers[providerId]);
   const explicitProviderTypeConfig = Boolean(cfg.providers[providerType]);
   const keyCandidates =
@@ -440,6 +575,13 @@ export function getProviderPlanSnapshot(routeKey: string): ProviderPlanSnapshot 
     monitored,
     planName: providerConfig?.planName,
     source: providerConfig ? "local_metrics_configured_limits" : "local_metrics",
+    sourceMode: activeSourceMode,
+    sourceLabel: sourceLabelFor(activeSourceMode, Boolean(providerConfig)),
+    sourceDescription: sourceDescriptionFor(activeSourceMode),
+    externalSourceAvailable: Boolean(externalSource),
+    externalSourceMode: externalSource?.mode,
+    externalSourceLabel: externalSource?.label,
+    externalSourceHint: externalSource?.hint,
     status: resolved.status,
     reason: resolved.reason,
     warningThresholdPct: providerConfig?.warningThresholdPct ?? cfg.warningThresholdPct,

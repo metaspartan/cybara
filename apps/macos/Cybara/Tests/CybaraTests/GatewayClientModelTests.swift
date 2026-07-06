@@ -1155,6 +1155,12 @@ final class GatewayClientModelTests: XCTestCase {
                       "monitored": true,
                       "planName": "Codex Plus",
                       "source": "local_metrics_configured_limits",
+                      "sourceMode": "local",
+                      "sourceLabel": "Local usage with configured limits",
+                      "externalSourceAvailable": true,
+                      "externalSourceMode": "oauth_api",
+                      "externalSourceLabel": "OpenAI OAuth usage",
+                      "externalSourceHint": "Use OpenAI OAuth usage APIs.",
                       "status": "warning",
                       "dataConfidence": "local",
                       "updatedAt": "2026-07-06T12:00:00.000Z",
@@ -1185,6 +1191,10 @@ final class GatewayClientModelTests: XCTestCase {
 
         XCTAssertEqual(status.summary.monitored, 1)
         XCTAssertEqual(status.providers.first?.providerName, "OpenAI Codex")
+        XCTAssertEqual(status.providers.first?.sourceMode, "local")
+        XCTAssertEqual(status.providers.first?.sourceLabel, "Local usage with configured limits")
+        XCTAssertEqual(status.providers.first?.externalSourceAvailable, true)
+        XCTAssertEqual(status.providers.first?.externalSourceLabel, "OpenAI OAuth usage")
         XCTAssertEqual(status.providers.first?.windows.first?.usedPercent, 85)
         XCTAssertEqual(status.providers.first?.windows.first?.tokenLimit, 2_000_000)
     }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import {
   Cloud,
   Plus,
@@ -32,14 +32,45 @@ import {
   useDiscoverOllama,
 } from "@/hooks/useApi";
 import { useUIStore } from "@/stores/uiStore";
+import { providerPlansApi } from "@/lib/api";
 import { apiFetch } from "@/lib/auth";
-import type { Provider, AvailableProvider } from "@/types";
+import type {
+  Provider,
+  AvailableProvider,
+  ProviderPlanSnapshot,
+  ProviderPlanStatusResponse,
+} from "@/types";
+
+function providerPlanStatusClass(status: ProviderPlanSnapshot["status"]): string {
+  if (status === "ok") return "text-emerald-300";
+  if (status === "warning") return "text-amber-300";
+  if (status === "exhausted") return "text-red-300";
+  if (status === "disabled") return "text-gray-500";
+  return "text-gray-400";
+}
+
+function providerPlanProgress(plan: ProviderPlanSnapshot): number | null {
+  const usage = plan.windows
+    .map((window) => window.usedPercent)
+    .filter((value): value is number => typeof value === "number");
+  if (usage.length === 0) return null;
+  return Math.min(100, Math.max(...usage));
+}
+
+function formatCompactNumber(value: number): string {
+  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
+  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return String(Math.round(value));
+}
 
 export function Providers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [deletingProvider, setDeletingProvider] = useState<Provider | null>(null);
+  const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
+    null
+  );
 
   const { data: providers, isLoading } = useProviders();
   const { data: availableProviders } = useAvailableProviders();
@@ -55,6 +86,31 @@ export function Providers() {
       provider.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       provider.provider.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const providerPlanByKey = useMemo(() => {
+    const indexed = new Map<string, ProviderPlanSnapshot>();
+    for (const plan of providerPlanStatus?.providers || []) {
+      for (const key of [plan.providerId, plan.configuredProviderId, plan.providerType]) {
+        if (key && !indexed.has(key)) indexed.set(key, plan);
+      }
+    }
+    return indexed;
+  }, [providerPlanStatus?.providers]);
+
+  useEffect(() => {
+    let mounted = true;
+    providerPlansApi
+      .status()
+      .then((response) => {
+        if (mounted && response.success) setProviderPlanStatus(response.data ?? null);
+      })
+      .catch(() => {
+        if (mounted) setProviderPlanStatus(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [providers?.length]);
 
   const handleCreate = async (formData: FormData) => {
     try {
@@ -205,6 +261,12 @@ export function Providers() {
                           )}
                         </div>
                         <p className="text-sm text-gray-400 capitalize">{provider.provider}</p>
+                        <ProviderPlanSummary
+                          plan={
+                            providerPlanByKey.get(provider.id) ??
+                            providerPlanByKey.get(provider.provider)
+                          }
+                        />
                       </div>
                     </div>
 
@@ -298,6 +360,43 @@ export function Providers() {
         />
       </div>
     </PageLayout>
+  );
+}
+
+function ProviderPlanSummary({ plan }: { plan?: ProviderPlanSnapshot }) {
+  if (!plan) return null;
+  const progress = providerPlanProgress(plan);
+  const source = plan.sourceLabel || plan.source?.replace(/_/g, " ") || "Local Cybara usage";
+  const externalSource = plan.externalSourceAvailable
+    ? plan.externalSourceLabel || "External billing source available"
+    : null;
+
+  return (
+    <div className="mt-2 w-full max-w-xl rounded-lg border border-white/10 bg-white/[0.035] p-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+        <span className={`font-medium ${providerPlanStatusClass(plan.status)}`}>
+          {plan.status.replace("_", " ")}
+        </span>
+        <span className="text-gray-400">{source}</span>
+        <span className="text-gray-500">{formatCompactNumber(plan.localTokens30d)} tokens 30d</span>
+        {plan.localSpend30d > 0 && (
+          <span className="text-gray-500">${plan.localSpend30d.toFixed(2)} local 30d</span>
+        )}
+      </div>
+      {progress !== null && (
+        <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-cyan-400"
+            style={{ width: `${Math.min(100, progress)}%` }}
+          />
+        </div>
+      )}
+      {externalSource && (
+        <p className="mt-1 text-[11px] leading-4 text-gray-500">
+          {externalSource}: {plan.externalSourceHint}
+        </p>
+      )}
+    </div>
   );
 }
 

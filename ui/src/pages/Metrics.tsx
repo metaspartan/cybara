@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
   FileText,
@@ -37,6 +37,8 @@ import {
   type MetricsInsights,
   type MetricsStorage,
 } from "@/hooks/useApi";
+import { providerPlansApi } from "@/lib/api";
+import type { ProviderPlanSnapshot, ProviderPlanStatusResponse } from "@/types";
 
 function formatNumber(num: number): string {
   if (num >= 1000000) return (num / 1000000).toFixed(2) + "M";
@@ -51,6 +53,21 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
+function providerPlanProgress(plan: ProviderPlanSnapshot): number | null {
+  const usage = plan.windows
+    .map((window) => window.usedPercent)
+    .filter((value): value is number => typeof value === "number");
+  if (usage.length === 0) return null;
+  return Math.min(100, Math.max(...usage));
+}
+
+function providerPlanTone(plan: ProviderPlanSnapshot): string {
+  if (plan.status === "ok") return "text-emerald-300";
+  if (plan.status === "warning") return "text-amber-300";
+  if (plan.status === "exhausted") return "text-red-300";
+  return "text-gray-400";
+}
+
 export function Metrics() {
   const { data: overview, isLoading: loadingOverview } = useMetricsOverview();
   const { data: tokens } = useMetricsTokens();
@@ -62,6 +79,9 @@ export function Metrics() {
   const { data: insights } = useMetricsInsights();
   const { data: tokenAnalysis } = useMetricsTokenAnalysis();
   const { data: storage } = useMetricsStorage();
+  const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
+    null
+  );
 
   // Gate the skeleton on the overview only; the remaining sections stream in
   // as their queries resolve instead of blocking the whole page on the
@@ -70,6 +90,21 @@ export function Metrics() {
   const insightsData = insights as MetricsInsights | undefined;
   const tokenAnalysisData = tokenAnalysis as TokenAnalysisMetrics | undefined;
   const storageData = storage as MetricsStorage | undefined;
+
+  useEffect(() => {
+    let mounted = true;
+    providerPlansApi
+      .status()
+      .then((response) => {
+        if (mounted && response.success) setProviderPlanStatus(response.data ?? null);
+      })
+      .catch(() => {
+        if (mounted) setProviderPlanStatus(null);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const stats = useMemo(() => {
     if (!overview) return null;
@@ -295,6 +330,14 @@ export function Metrics() {
     [modelMetrics?.models, tokenAnalysisData?.modelThoughtProfiles]
   );
 
+  const providerPlanRows = useMemo(
+    () =>
+      (providerPlanStatus?.providers || [])
+        .filter((plan) => plan.monitored || plan.windows.length > 0 || plan.externalSourceAvailable)
+        .slice(0, 8),
+    [providerPlanStatus?.providers]
+  );
+
   if (isLoading) {
     return (
       <PageLayout title="Metrics" subtitle="Loading metrics...">
@@ -491,7 +534,7 @@ export function Metrics() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -517,6 +560,60 @@ export function Metrics() {
           </CardHeader>
           <CardContent>
             <MetricRankedRows rows={modelTokenRows} accentClass="bg-amber-400" />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Gauge className="w-5 h-5 text-emerald-400" />
+              Provider Plan Health
+            </CardTitle>
+            <CardDescription>
+              Plan limits, source quality, and billing source coverage
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {providerPlanRows.map((plan) => {
+                const progress = providerPlanProgress(plan);
+                return (
+                  <div key={plan.providerId} className="rounded-lg bg-white/5 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-sm text-white truncate">{plan.providerName}</p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {plan.sourceLabel || plan.source.replace(/_/g, " ")}
+                        </p>
+                      </div>
+                      <span className={`text-xs font-medium ${providerPlanTone(plan)}`}>
+                        {plan.status}
+                      </span>
+                    </div>
+                    {progress !== null && (
+                      <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className="h-full rounded-full bg-emerald-400"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    )}
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+                      <span>{formatNumber(plan.localTokens30d)} tokens 30d</span>
+                      {plan.localSpend30d > 0 && <span>${plan.localSpend30d.toFixed(2)} 30d</span>}
+                    </div>
+                    {plan.externalSourceAvailable && (
+                      <p className="mt-1 text-[11px] leading-4 text-gray-500">
+                        External: {plan.externalSourceLabel}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+              {providerPlanRows.length === 0 && (
+                <p className="text-sm text-gray-500">No provider plan data yet</p>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>

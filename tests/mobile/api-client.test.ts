@@ -485,6 +485,8 @@ describe("mobile API client", () => {
             "openai-codex": {
               enabled: true,
               planName: "Codex Plus",
+              sourceMode: "browser_cookie",
+              externalSourceEnabled: true,
               monthly: { enabled: true, tokenLimit: 2_000_000, spendLimit: 20 },
             },
           },
@@ -502,6 +504,13 @@ describe("mobile API client", () => {
               providerName: "OpenAI Codex",
               authType: "oauth",
               monitored: true,
+              source: "local_metrics_configured_limits",
+              sourceMode: "local",
+              sourceLabel: "Local usage with configured limits",
+              externalSourceAvailable: true,
+              externalSourceMode: "oauth_api",
+              externalSourceLabel: "OpenAI OAuth usage",
+              externalSourceHint: "Use OpenAI OAuth usage APIs.",
               status: "warning",
               localTokens30d: 1_700_000,
               localSpend30d: 17.25,
@@ -539,6 +548,8 @@ describe("mobile API client", () => {
         providers: {
           "openai-codex": {
             planName: "Codex Plus",
+            sourceMode: "browser_cookie",
+            externalSourceEnabled: true,
             monthly: { tokenLimit: 2_000_000, spendLimit: 20 },
           },
         },
@@ -549,6 +560,8 @@ describe("mobile API client", () => {
           {
             providerId: "openai-codex",
             status: "warning",
+            sourceLabel: "Local usage with configured limits",
+            externalSourceLabel: "OpenAI OAuth usage",
             windows: [{ id: "monthly", usedPercent: 85 }],
           },
         ],
@@ -2180,6 +2193,15 @@ describe("mobile API client", () => {
           components: {},
         });
       }
+      if (path === "/api/provider-plans/status") {
+        return Response.json({
+          enabled: true,
+          routerEnforcement: true,
+          warningThresholdPct: 80,
+          providers: [],
+          summary: { total: 0, monitored: 0, configured: 0, warnings: 0, exhausted: 0 },
+        });
+      }
       return new Response("missing", { status: 404 });
     }) as typeof fetch;
 
@@ -2187,6 +2209,7 @@ describe("mobile API client", () => {
       const snapshot = await new CybaraMobileApi(profile).metricsSnapshot();
       expect(snapshot.overview?.tokenUsage.total).toBe(10);
       expect(snapshot.storage?.totalBytes).toBe(2048);
+      expect(snapshot.providerPlans?.enabled).toBe(true);
       expect(Object.values(snapshot.availability).every((endpoint) => endpoint.ok)).toBe(true);
       expect(paths.sort()).toEqual(
         [
@@ -2200,6 +2223,7 @@ describe("mobile API client", () => {
           "/api/metrics/token-analysis",
           "/api/metrics/tokens",
           "/api/metrics/tools",
+          "/api/provider-plans/status",
         ].sort()
       );
     } finally {

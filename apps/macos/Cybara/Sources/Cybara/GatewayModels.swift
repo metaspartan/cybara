@@ -1365,6 +1365,13 @@ struct ProviderPlanSnapshot: Decodable, Identifiable, Hashable {
     let monitored: Bool
     let planName: String?
     let source: String?
+    let sourceMode: String?
+    let sourceLabel: String?
+    let sourceDescription: String?
+    let externalSourceAvailable: Bool
+    let externalSourceMode: String?
+    let externalSourceLabel: String?
+    let externalSourceHint: String?
     let status: String
     let reason: String?
     let warningThresholdPct: Double?
@@ -1381,6 +1388,9 @@ struct ProviderPlanSnapshot: Decodable, Identifiable, Hashable {
         case providerId, provider_id, configuredProviderId, configured_provider_id
         case providerType, provider_type, providerName, provider_name, authType, auth_type
         case monitored, planName, plan_name, source, status, reason
+        case sourceMode, source_mode, sourceLabel, source_label, sourceDescription, source_description
+        case externalSourceAvailable, external_source_available, externalSourceMode, external_source_mode
+        case externalSourceLabel, external_source_label, externalSourceHint, external_source_hint
         case warningThresholdPct, warning_threshold_pct, hardStopPct, hard_stop_pct
         case dataConfidence, data_confidence, updatedAt, updated_at
         case localTokens30d, local_tokens_30d, localSpend30d, local_spend_30d, windows
@@ -1398,6 +1408,15 @@ struct ProviderPlanSnapshot: Decodable, Identifiable, Hashable {
         monitored = try container.decodeFlexibleBool(forKeys: [.monitored]) ?? false
         planName = try container.decodeFlexibleString(forKeys: [.planName, .plan_name])
         source = try container.decodeFlexibleString(forKeys: [.source])
+        sourceMode = try container.decodeFlexibleString(forKeys: [.sourceMode, .source_mode])
+        sourceLabel = try container.decodeFlexibleString(forKeys: [.sourceLabel, .source_label])
+        sourceDescription = try container.decodeFlexibleString(forKeys: [.sourceDescription, .source_description])
+        externalSourceAvailable = try container.decodeFlexibleBool(
+            forKeys: [.externalSourceAvailable, .external_source_available]
+        ) ?? false
+        externalSourceMode = try container.decodeFlexibleString(forKeys: [.externalSourceMode, .external_source_mode])
+        externalSourceLabel = try container.decodeFlexibleString(forKeys: [.externalSourceLabel, .external_source_label])
+        externalSourceHint = try container.decodeFlexibleString(forKeys: [.externalSourceHint, .external_source_hint])
         status = try container.decodeFlexibleString(forKeys: [.status]) ?? "unconfigured"
         reason = try container.decodeFlexibleString(forKeys: [.reason])
         warningThresholdPct = try container.decodeFlexibleDouble(

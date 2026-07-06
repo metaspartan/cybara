@@ -72,7 +72,7 @@ import {
   mobileProviderAuthMode,
   readMobileRouterStrategy,
 } from "../lib/dashboard";
-import { formatMetricBytes, formatStorageBytes } from "../lib/metrics";
+import { formatMetricBytes, formatMetricNumber, formatStorageBytes } from "../lib/metrics";
 import {
   CybaraMobileApi,
   CybaraApiError,
@@ -129,6 +129,23 @@ function gatewayActionError(error: unknown, fallback: string): string {
     return `Gateway returned ${error.status}.`;
   }
   return error instanceof Error ? error.message : fallback;
+}
+
+function providerPlanProgress(
+  plan: ProviderPlanStatusResponse["providers"][number] | null
+): number | null {
+  const usage = (plan?.windows || [])
+    .map((window) => window.usedPercent)
+    .filter((value): value is number => typeof value === "number");
+  if (usage.length === 0) return null;
+  return Math.min(100, Math.max(...usage));
+}
+
+function providerPlanStatusTone(status: ProviderPlanStatusResponse["providers"][number]["status"]) {
+  if (status === "ok") return colors.green;
+  if (status === "warning") return colors.amber;
+  if (status === "exhausted") return colors.red;
+  return colors.textMuted;
 }
 
 export type WalletPolicyToggleKey = Extract<
@@ -410,6 +427,9 @@ export function ProviderSettingsPanel({
   const [oauthBusy, setOauthBusy] = useState(false);
   const [oauthStatus, setOauthStatus] = useState("");
   const [oauthDeviceCode, setOauthDeviceCode] = useState("");
+  const [providerPlan, setProviderPlan] = useState<
+    ProviderPlanStatusResponse["providers"][number] | null
+  >(null);
   const authMode = mobileProviderAuthMode(provider);
   const usesApiKey = authMode === "api_key";
   const usesOAuth = authMode === "oauth";
@@ -426,7 +446,36 @@ export function ProviderSettingsPanel({
     setOauthBusy(false);
     setOauthStatus("");
     setOauthDeviceCode("");
+    setProviderPlan(null);
   }, [provider.base_url, provider.id, provider.is_default, provider.name]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadProviderPlan = async () => {
+      try {
+        const status = await api.providerPlanStatus();
+        if (!mounted) return;
+        const match = status.providers.find((plan) =>
+          [plan.providerId, plan.configuredProviderId, plan.providerType].includes(provider.id)
+        );
+        setProviderPlan(
+          match ||
+            status.providers.find((plan) =>
+              [plan.providerId, plan.configuredProviderId, plan.providerType].includes(
+                provider.provider
+              )
+            ) ||
+            null
+        );
+      } catch {
+        if (mounted) setProviderPlan(null);
+      }
+    };
+    void loadProviderPlan();
+    return () => {
+      mounted = false;
+    };
+  }, [api, provider.id, provider.provider]);
 
   const saveProvider = async () => {
     const trimmedName = name.trim();
@@ -602,6 +651,45 @@ export function ProviderSettingsPanel({
           </Text>
         </View>
       </View>
+
+      {providerPlan ? (
+        <View style={styles.settingsInfoBox}>
+          <View style={styles.routerSummaryRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingsInfoTitle}>Provider plan</Text>
+              <Text style={styles.settingsInfoText}>
+                {providerPlan.sourceLabel || providerPlan.source || "Local Cybara usage"}
+              </Text>
+            </View>
+            <Text
+              style={[
+                styles.routerSummaryValue,
+                { color: providerPlanStatusTone(providerPlan.status) },
+              ]}
+            >
+              {providerPlan.status}
+            </Text>
+          </View>
+          {providerPlanProgress(providerPlan) !== null ? (
+            <MonitorUsageBar
+              detail={`${formatMetricNumber(providerPlan.localTokens30d)} tokens tracked over 30d`}
+              label={providerPlan.planName || "Usage window"}
+              tone={providerPlanStatusTone(providerPlan.status)}
+              value={providerPlanProgress(providerPlan) || 0}
+            />
+          ) : (
+            <Text style={styles.settingsInfoText}>
+              {formatMetricNumber(providerPlan.localTokens30d)} local tokens over 30 days.
+            </Text>
+          )}
+          {providerPlan.externalSourceAvailable ? (
+            <Text style={styles.settingsInfoText}>
+              External source available: {providerPlan.externalSourceLabel}.{" "}
+              {providerPlan.externalSourceHint}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
 
       <View style={styles.settingsForm}>
         <SettingsTextField

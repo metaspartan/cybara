@@ -56,6 +56,8 @@ export interface Provider {
 }
 
 export type ProviderPlanStatusState = "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
+export type ProviderPlanSourceMode =
+  "local" | "provider_api" | "oauth_api" | "browser_cookie" | "cli" | "manual";
 
 export interface ProviderPlanWindow {
   id: string;
@@ -81,6 +83,13 @@ export interface ProviderPlanSnapshot {
   monitored: boolean;
   planName?: string;
   source: string;
+  sourceMode: ProviderPlanSourceMode;
+  sourceLabel: string;
+  sourceDescription?: string;
+  externalSourceAvailable: boolean;
+  externalSourceMode?: ProviderPlanSourceMode;
+  externalSourceLabel?: string;
+  externalSourceHint?: string;
   status: ProviderPlanStatusState;
   reason?: string;
   warningThresholdPct: number;
@@ -102,6 +111,8 @@ export interface ProviderPlanProviderConfig {
   enabled?: boolean;
   planName?: string;
   currency?: string;
+  sourceMode?: ProviderPlanSourceMode;
+  externalSourceEnabled?: boolean;
   warningThresholdPct?: number;
   hardStopPct?: number;
   billingCycleAnchorDay?: number;

@@ -268,6 +268,39 @@ struct MetricsScreen: View {
             }
 
             MetricsPanel(
+                title: "Provider Plans",
+                subtitle: "Plan limits, billing source coverage, and local usage",
+                systemImage: "creditcard"
+            ) {
+                HStack(spacing: 10) {
+                    MetricsMiniStat(
+                        label: "Configured",
+                        value: metricsFormatCount(snapshot.providerPlans?.summary.configured),
+                        tint: .green
+                    )
+                    MetricsMiniStat(
+                        label: "Warnings",
+                        value: metricsFormatCount(snapshot.providerPlans?.summary.warnings),
+                        tint: .orange
+                    )
+                    MetricsMiniStat(
+                        label: "Stopped",
+                        value: metricsFormatCount(snapshot.providerPlans?.summary.exhausted),
+                        tint: .red
+                    )
+                }
+                MetricsBarList(title: "Plan Usage", rows: snapshot.providerPlanRows, tint: .green)
+                if let source = snapshot.providerPlans?.providers.first(where: { $0.externalSourceAvailable }),
+                   let label = source.externalSourceLabel {
+                    MetricsCallout(
+                        title: "External billing source",
+                        value: label,
+                        detail: source.externalSourceHint ?? "Available as an explicit provider setup source."
+                    )
+                }
+            }
+
+            MetricsPanel(
                 title: "Model Performance",
                 subtitle: "Throughput, latency, and token share",
                 systemImage: "gauge.with.dots.needle.50percent"
@@ -358,6 +391,9 @@ struct MetricsScreen: View {
             async let providersFetch: ProviderMetrics? = loadOptional { try await client.metricsProviders() }
             async let modelsFetch: ModelMetrics? = loadOptional { try await client.metricsModels() }
             async let insightsFetch: MetricsInsights? = loadOptional { try await client.metricsInsights() }
+            async let providerPlansFetch: ProviderPlanStatusResponse? = loadOptional {
+                try await client.providerPlanStatus()
+            }
 
             snapshot = NativeMetricsSnapshot(
                 overview: overview,
@@ -369,7 +405,8 @@ struct MetricsScreen: View {
                 storage: await storageFetch,
                 providers: await providersFetch,
                 modelMetrics: await modelsFetch,
-                insights: await insightsFetch
+                insights: await insightsFetch,
+                providerPlans: await providerPlansFetch
             )
             error = nil
         } catch {
@@ -395,6 +432,7 @@ private struct NativeMetricsSnapshot {
     let providers: ProviderMetrics?
     let modelMetrics: ModelMetrics?
     let insights: MetricsInsights?
+    let providerPlans: ProviderPlanStatusResponse?
 
     var totalTokens: Int { overview.tokenUsage?.total ?? 0 }
     var inputTokens: Int { overview.tokenUsage?.input ?? 0 }
@@ -457,6 +495,20 @@ private struct NativeMetricsSnapshot {
         return entries
             .filter { $0.bytes > 0 }
             .sorted { $0.bytes > $1.bytes }
+    }
+
+    var providerPlanRows: [MetricsBarList.Row] {
+        (providerPlans?.providers ?? [])
+            .filter { $0.monitored || !$0.windows.isEmpty || $0.externalSourceAvailable }
+            .prefix(6)
+            .map { plan in
+                let progress = plan.windows.compactMap(\.usedPercent).max()
+                return MetricsBarList.Row(
+                    label: plan.providerName,
+                    value: progress ?? Double(plan.localTokens30d),
+                    valueLabel: progress.map { "\(Int($0.rounded()))%" } ?? plan.status
+                )
+            }
     }
 }
 
