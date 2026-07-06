@@ -54,6 +54,10 @@ struct NativeSettingsScreen: View {
     @State private var memoryBackgroundReview = true
     @State private var memoryFlushEnabled = true
     @State private var memoryFlushThreshold = "4000"
+    @State private var llmFirstTokenSeconds = "300"
+    @State private var llmStallSeconds = "300"
+    @State private var llmTotalSeconds = "0"
+    @State private var llmNonStreamingSeconds = "1800"
     @State private var memoryProvider = "local"
     @State private var memoryAutoRecall = true
     @State private var memoryAutoCapture = true
@@ -665,6 +669,51 @@ struct NativeSettingsScreen: View {
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
+                            Image(systemName: "timer")
+                                .foregroundStyle(.secondary)
+                            Text("Agent Turn Watchdogs")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            Spacer()
+                        }
+                        Text("Timeouts trigger on provider silence, never on how long an agent works. Local model endpoints auto-relax these limits. Environment variables (CYBARA_LLM_*) override saved values.")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("First token (s)").font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary)
+                                TextField("300", text: $llmFirstTokenSeconds)
+                                    .textFieldStyle(.roundedBorder)
+                                    .onSubmit { saveLlmTimeoutSettings() }
+                            }
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Stall (s, 0 = off)").font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary)
+                                TextField("300", text: $llmStallSeconds)
+                                    .textFieldStyle(.roundedBorder)
+                                    .onSubmit { saveLlmTimeoutSettings() }
+                            }
+                        }
+                        HStack(spacing: 10) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Total cap (s, 0 = ∞)").font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary)
+                                TextField("0", text: $llmTotalSeconds)
+                                    .textFieldStyle(.roundedBorder)
+                                    .onSubmit { saveLlmTimeoutSettings() }
+                            }
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Non-streaming (s)").font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary)
+                                TextField("1800", text: $llmNonStreamingSeconds)
+                                    .textFieldStyle(.roundedBorder)
+                                    .onSubmit { saveLlmTimeoutSettings() }
+                            }
+                        }
+                        Button("Save Watchdogs") { saveLlmTimeoutSettings() }
+                            .buttonStyle(.borderedProminent)
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
                             Image(systemName: "externaldrive.connected.to.line.below")
                                 .foregroundStyle(.secondary)
                             Text("Memory Provider")
@@ -1069,6 +1118,16 @@ struct NativeSettingsScreen: View {
         saveConfigPatch(["memory": memory], key: "memory")
     }
 
+    private func saveLlmTimeoutSettings() {
+        let payload: [String: Any] = [
+            "firstTokenSeconds": max(10, Int(llmFirstTokenSeconds) ?? 300),
+            "stallSeconds": max(0, Int(llmStallSeconds) ?? 300),
+            "totalSeconds": max(0, Int(llmTotalSeconds) ?? 0),
+            "nonStreamingSeconds": max(60, Int(llmNonStreamingSeconds) ?? 1800),
+        ]
+        saveConfigPatch(["llm_timeouts": payload], key: "llm_timeouts")
+    }
+
     private func saveMemoryProviderSettings() {
         var payload: [String: Any] = [
             "provider": memoryProvider,
@@ -1337,6 +1396,11 @@ struct NativeSettingsScreen: View {
         memoryBackgroundReview = memory["backgroundReviewEnabled"] as? Bool ?? true
         memoryFlushEnabled = memory["memoryFlushEnabled"] as? Bool ?? true
         memoryFlushThreshold = String(memory["memoryFlushSoftThresholdTokens"] as? Int ?? 4000)
+        let timeouts = config["llm_timeouts"] as? [String: Any] ?? [:]
+        llmFirstTokenSeconds = String(timeouts["firstTokenSeconds"] as? Int ?? 300)
+        llmStallSeconds = String(timeouts["stallSeconds"] as? Int ?? 300)
+        llmTotalSeconds = String(timeouts["totalSeconds"] as? Int ?? 0)
+        llmNonStreamingSeconds = String(timeouts["nonStreamingSeconds"] as? Int ?? 1800)
         let memoryProviderConfig = config["memory_provider"] as? [String: Any] ?? [:]
         let providerId = memoryProviderConfig["provider"] as? String ?? "local"
         memoryProvider = Self.memoryProviderChoices.contains { $0.id == providerId } ? providerId : "local"

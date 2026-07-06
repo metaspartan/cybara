@@ -2749,6 +2749,145 @@ function SpeechSettingsSection() {
   );
 }
 
+type LlmTimeoutSettingsState = {
+  firstTokenSeconds: number;
+  stallSeconds: number;
+  totalSeconds: number;
+  nonStreamingSeconds: number;
+};
+
+const defaultLlmTimeoutSettings: LlmTimeoutSettingsState = {
+  firstTokenSeconds: 300,
+  stallSeconds: 300,
+  totalSeconds: 0,
+  nonStreamingSeconds: 1800,
+};
+
+function readLlmTimeoutSettings(value: unknown): LlmTimeoutSettingsState {
+  const record = asSettingsRecord(value);
+  return {
+    firstTokenSeconds: readIntegerSetting(
+      record.firstTokenSeconds,
+      defaultLlmTimeoutSettings.firstTokenSeconds,
+      10,
+      7200
+    ),
+    stallSeconds: readIntegerSetting(record.stallSeconds, defaultLlmTimeoutSettings.stallSeconds, 0, 7200),
+    totalSeconds: readIntegerSetting(record.totalSeconds, defaultLlmTimeoutSettings.totalSeconds, 0, 86400),
+    nonStreamingSeconds: readIntegerSetting(
+      record.nonStreamingSeconds,
+      defaultLlmTimeoutSettings.nonStreamingSeconds,
+      60,
+      86400
+    ),
+  };
+}
+
+function LlmTimeoutSettingsSection() {
+  const { addToast } = useUIStore();
+  const [timeouts, setTimeouts] = useState<LlmTimeoutSettingsState>(defaultLlmTimeoutSettings);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void settingsApi.getConfig().then((result) => {
+      if (!mounted) return;
+      if (result.success) {
+        setTimeouts(readLlmTimeoutSettings(result.data?.llm_timeouts));
+      }
+      setLoading(false);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const update = (patch: Partial<LlmTimeoutSettingsState>) =>
+    setTimeouts((current) => ({ ...current, ...patch }));
+
+  async function save() {
+    setSaving(true);
+    try {
+      const result = await settingsApi.updateConfig({ llm_timeouts: timeouts });
+      if (!result.success) throw new Error(result.error || "Failed to save watchdog settings");
+      addToast("success", "Agent watchdog settings saved");
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to save watchdog settings");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const numberField = (
+    label: string,
+    key: keyof LlmTimeoutSettingsState,
+    helper: string,
+    min: number
+  ) => (
+    <Input
+      label={label}
+      type="number"
+      min={min}
+      value={timeouts[key]}
+      helperText={helper}
+      disabled={loading || saving}
+      onChange={(event) =>
+        update({ [key]: readIntegerSetting(event.target.value, timeouts[key], min, 86400) })
+      }
+    />
+  );
+
+  return (
+    <Card variant="liquid">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Clock className="w-5 h-5 text-cyan-400" />
+          Agent Turn Watchdogs
+        </CardTitle>
+        <CardDescription>
+          Timeouts trigger on provider silence, never on how long an agent works — a healthy
+          multi-hour run streams continuously and is never cut off. Local model endpoints
+          auto-relax these limits. Environment variables (CYBARA_LLM_*) override saved values.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+          {numberField(
+            "First token (seconds)",
+            "firstTokenSeconds",
+            "Max wait for any output at all",
+            10
+          )}
+          {numberField(
+            "Stall (seconds)",
+            "stallSeconds",
+            "Max silent gap mid-stream · 0 disables",
+            0
+          )}
+          {numberField(
+            "Total cap (seconds)",
+            "totalSeconds",
+            "Absolute limit per call · 0 = unlimited",
+            0
+          )}
+          {numberField(
+            "Non-streaming ceiling (seconds)",
+            "nonStreamingSeconds",
+            "For providers that cannot stream",
+            60
+          )}
+        </div>
+        <div className="flex justify-end">
+          <Button onClick={() => void save()} disabled={loading || saving} isLoading={saving}>
+            Save Watchdogs
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function parseWalletAllowlistInput(value: string): string[] {
   return value
     .split(/[\n,]/)
@@ -3723,6 +3862,7 @@ export function Settings() {
         {activeSection === "ai-memory" && (
           <>
             <MemoryBehaviorSettings />
+            <LlmTimeoutSettingsSection />
             <SystemPromptSection />
           </>
         )}

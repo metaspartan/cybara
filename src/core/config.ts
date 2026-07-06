@@ -19,6 +19,65 @@ interface PlatformConfig {
   [key: string]: unknown;
 }
 
+export interface LlmTimeoutSettings {
+  /** Max seconds with zero output before a remote call is considered dead. */
+  firstTokenSeconds: number;
+  /** Max silent gap between streamed chunks (0 disables). */
+  stallSeconds: number;
+  /** Absolute cap on a single LLM call (0 = unlimited; agents may run hours). */
+  totalSeconds: number;
+  /** Ceiling for non-streaming calls, where silence is indistinguishable from work. */
+  nonStreamingSeconds: number;
+}
+
+export const DEFAULT_LLM_TIMEOUT_SETTINGS: LlmTimeoutSettings = {
+  firstTokenSeconds: 300,
+  stallSeconds: 300,
+  totalSeconds: 0,
+  nonStreamingSeconds: 1800,
+};
+
+function normalizeTimeoutSeconds(value: unknown, fallback: number, min: number, max: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const rounded = Math.round(parsed);
+  if (rounded === 0 && min === 0) return 0;
+  return Math.min(max, Math.max(min === 0 ? 0 : min, rounded));
+}
+
+export function normalizeLlmTimeoutSettings(value: unknown): LlmTimeoutSettings {
+  const record =
+    value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  return {
+    firstTokenSeconds: normalizeTimeoutSeconds(
+      record.firstTokenSeconds,
+      DEFAULT_LLM_TIMEOUT_SETTINGS.firstTokenSeconds,
+      10,
+      7200
+    ),
+    stallSeconds: normalizeTimeoutSeconds(
+      record.stallSeconds,
+      DEFAULT_LLM_TIMEOUT_SETTINGS.stallSeconds,
+      0,
+      7200
+    ),
+    totalSeconds: normalizeTimeoutSeconds(
+      record.totalSeconds,
+      DEFAULT_LLM_TIMEOUT_SETTINGS.totalSeconds,
+      0,
+      86_400
+    ),
+    nonStreamingSeconds: normalizeTimeoutSeconds(
+      record.nonStreamingSeconds,
+      DEFAULT_LLM_TIMEOUT_SETTINGS.nonStreamingSeconds,
+      60,
+      86_400
+    ),
+  };
+}
+
 export type DangerousToolPolicyMode = "audit" | "block";
 export type ToolApprovalMode = "always_allow" | "ask";
 export type SandboxProvider = "auto" | "apple_sandbox" | "podman" | "docker";
@@ -670,6 +729,16 @@ class ConfigManager {
   setWorkspaceIndexerSettings(settings: unknown): WorkspaceIndexerSettings {
     const normalized = normalizeWorkspaceIndexerSettings(settings);
     this.set("workspace_indexer", normalized);
+    return normalized;
+  }
+
+  getLlmTimeoutSettings(): LlmTimeoutSettings {
+    return normalizeLlmTimeoutSettings(this.get<unknown>("llm_timeouts"));
+  }
+
+  setLlmTimeoutSettings(settings: unknown): LlmTimeoutSettings {
+    const normalized = normalizeLlmTimeoutSettings(settings);
+    this.set("llm_timeouts", normalized);
     return normalized;
   }
 

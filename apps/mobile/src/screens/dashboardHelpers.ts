@@ -225,6 +225,25 @@ export function readMobileMemoryBehaviorSettings(
   };
 }
 
+export interface MobileLlmTimeoutSettings {
+  firstTokenSeconds: number;
+  stallSeconds: number;
+  totalSeconds: number;
+  nonStreamingSeconds: number;
+}
+
+export function readMobileLlmTimeoutSettings(
+  configRecord: Record<string, unknown> | null | undefined
+): MobileLlmTimeoutSettings {
+  const timeouts = objectRecord(configRecord?.llm_timeouts);
+  return {
+    firstTokenSeconds: numberSetting(timeouts, "firstTokenSeconds", 300),
+    stallSeconds: numberSetting(timeouts, "stallSeconds", 300),
+    totalSeconds: numberSetting(timeouts, "totalSeconds", 0),
+    nonStreamingSeconds: numberSetting(timeouts, "nonStreamingSeconds", 1800),
+  };
+}
+
 export function readMobileMemoryProviderSettings(
   configRecord: Record<string, unknown> | null | undefined
 ): MobileMemoryProviderSettings {

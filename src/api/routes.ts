@@ -688,6 +688,7 @@ const routes: Record<string, RouteHandler> = {
     sandbox_runtime: config.getSandboxRuntime(),
     workspace_indexer: config.getWorkspaceIndexerSettings(),
     memory: config.getMemoryBehaviorSettings(),
+    llm_timeouts: config.getLlmTimeoutSettings(),
     memory_provider: redactMemoryProviderSettings(config.getMemoryProviderSettings()),
     speech: config.getSpeechSettings(),
     computer_use: config.getComputerUseSettings(),
@@ -788,6 +789,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "memory") {
         config.setMemoryBehaviorSettings(value);
+        continue;
+      }
+      if (key === "llm_timeouts") {
+        config.setLlmTimeoutSettings(value);
         continue;
       }
       if (key === "memory_provider") {

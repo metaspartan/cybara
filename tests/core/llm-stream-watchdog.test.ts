@@ -375,3 +375,43 @@ describe("agentic loop stability against a real streaming provider", () => {
     expect(result.content).toBe("plain-json-ok");
   });
 });
+
+describe("Codex transcript compaction keeps long runs under context budget", () => {
+  test("evicts oldest tool traffic but preserves the leading request and recent turns", async () => {
+    const { compactCodexInputItemsForContext } = await import(
+      "../../src/core/llm/codex-context"
+    );
+    const items: Array<Record<string, unknown>> = [
+      { type: "message", role: "user", content: [{ type: "input_text", text: "review the repo" }] },
+    ];
+    // Simulate hundreds of tool rounds with large outputs.
+    for (let i = 0; i < 200; i++) {
+      items.push({ type: "function_call", call_id: `c${i}`, name: "read", arguments: "{}" });
+      items.push({ type: "function_call_output", call_id: `c${i}`, output: "x".repeat(2000) });
+    }
+    const before = items.length;
+    compactCodexInputItemsForContext(items, 50_000);
+
+    const totalChars = items.reduce((sum, item) => sum + JSON.stringify(item).length, 0);
+    expect(totalChars).toBeLessThanOrEqual(50_000);
+    expect(items.length).toBeLessThan(before);
+    // Leading user request survives.
+    expect(JSON.stringify(items[0])).toContain("review the repo");
+    // Most recent tool output survives (compaction drops from the front).
+    expect(JSON.stringify(items[items.length - 1])).toContain("function_call_output");
+  });
+
+  test("is a no-op when already under budget", async () => {
+    const { compactCodexInputItemsForContext } = await import(
+      "../../src/core/llm/codex-context"
+    );
+    const items: Array<Record<string, unknown>> = [
+      { type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
+      { type: "function_call", call_id: "c0", name: "read", arguments: "{}" },
+      { type: "function_call_output", call_id: "c0", output: "small" },
+    ];
+    const before = items.length;
+    compactCodexInputItemsForContext(items, 1_000_000);
+    expect(items.length).toBe(before);
+  });
+});

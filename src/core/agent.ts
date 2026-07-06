@@ -41,6 +41,7 @@ import {
   type StreamWatchdog,
 } from "./llm/stream-watchdog";
 import { consumeOpenAIChatStream } from "./llm/streaming-completions";
+import { compactCodexInputItemsForContext } from "./llm/codex-context";
 import { trackTokenUsage } from "./llm/token-usage-tracking";
 import {
   hasTextToolCallMarkup,
@@ -1941,7 +1942,8 @@ class AgentManager {
         tools,
         mergedHeaders,
         providerConfig,
-        toolContext
+        toolContext,
+        modelContextWindowTokens
       );
     }
 
@@ -3515,13 +3517,20 @@ class AgentManager {
     tools: ToolDefinition[],
     customHeaders?: Record<string, string>,
     providerConfig?: string,
-    toolContext?: ToolContext
+    toolContext?: ToolContext,
+    contextWindowTokens?: number
   ): Promise<{
     content: string;
     thinking?: string;
     tool_calls?: AgentToolCallResult[];
   }> {
     const codexUrl = this.resolveOpenAICodexResponsesUrl(baseUrl);
+    const codexContextWindow =
+      typeof contextWindowTokens === "number" && contextWindowTokens > 0
+        ? contextWindowTokens
+        : DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS;
+    const { contextBudgetChars: codexBudgetChars, maxSingleToolResultChars: codexMaxOutputChars } =
+      this.resolveContextGuardBudgets(codexContextWindow);
     const { instructions, input } = this.buildOpenAICodexInputFromMessages(messages);
     const inputItems: Array<Record<string, unknown>> = [...input];
     const toolDefinitions = this.buildOpenAICodexToolDefinitions(tools);
@@ -3672,7 +3681,9 @@ class AgentManager {
         functionCallOutputs.push({
           type: "function_call_output",
           call_id: toolCall.callId,
-          output: JSON.stringify(resultPayload),
+          // Cap a single tool output so one huge read/exec can't blow the
+          // context window on a deep, hundreds-of-tool-call run.
+          output: this.truncateToolResultContentForContext(resultPayload, codexMaxOutputChars),
         });
       }
 
@@ -3705,6 +3716,7 @@ class AgentManager {
           content: [{ type: "input_text", text: steeringText }],
         });
       }
+      compactCodexInputItemsForContext(inputItems, codexBudgetChars);
     }
 
     if (limitReason) {

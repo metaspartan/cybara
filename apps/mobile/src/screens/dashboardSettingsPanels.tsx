@@ -52,6 +52,8 @@ import {
   objectRecord,
   readMobileIndexingSettings,
   readMobileMemoryBehaviorSettings,
+  readMobileLlmTimeoutSettings,
+  type MobileLlmTimeoutSettings,
   readMobileMemoryProviderSettings,
   readMobileSpeechSettings,
   remoteItemEnabled,
@@ -2621,6 +2623,9 @@ export function MemorySettingsPanel({
   const providerSettings = readMobileMemoryProviderSettings(summary?.config);
   const indexingSettings = readMobileIndexingSettings(summary?.config);
   const [memoryDraft, setMemoryDraft] = useState(memorySettings);
+  const [timeoutsDraft, setTimeoutsDraft] = useState(() =>
+    readMobileLlmTimeoutSettings(summary?.config)
+  );
   const [providerDraft, setProviderDraft] = useState(providerSettings);
   const [indexingDraft, setIndexingDraft] = useState(indexingSettings);
   const [saving, setSaving] = useState(false);
@@ -2653,6 +2658,12 @@ export function MemorySettingsPanel({
     const next = { ...memoryDraft, ...patch };
     setMemoryDraft(next);
     void persist({ memory: next }, "Memory setting failed");
+  };
+
+  const saveTimeouts = (patch: Partial<MobileLlmTimeoutSettings>) => {
+    const next = { ...timeoutsDraft, ...patch };
+    setTimeoutsDraft(next);
+    void persist({ llm_timeouts: next }, "Watchdog setting failed");
   };
 
   const saveProvider = (patch: Partial<MobileMemoryProviderSettings>) => {
@@ -2742,6 +2753,64 @@ export function MemorySettingsPanel({
           }
           placeholder="4000"
           value={String(memoryDraft.memoryFlushSoftThresholdTokens || "")}
+        />
+      </SettingsSection>
+      <SettingsSection title="Agent watchdogs">
+        <Text style={styles.settingsInfoText}>
+          Timeouts fire on provider silence, never on how long the agent works. Local model
+          endpoints auto-relax these limits.
+        </Text>
+        <SettingsTextField
+          help="Max wait for any output at all (seconds)."
+          label="First token timeout"
+          onBlur={() => saveTimeouts({})}
+          onChangeText={(value) =>
+            setTimeoutsDraft((current) => ({
+              ...current,
+              firstTokenSeconds: Number.parseInt(value, 10) || current.firstTokenSeconds,
+            }))
+          }
+          placeholder="300"
+          value={String(timeoutsDraft.firstTokenSeconds || "")}
+        />
+        <SettingsTextField
+          help="Max silent gap mid-stream (seconds, 0 disables)."
+          label="Stall timeout"
+          onBlur={() => saveTimeouts({})}
+          onChangeText={(value) =>
+            setTimeoutsDraft((current) => ({
+              ...current,
+              stallSeconds: Number.parseInt(value, 10) || 0,
+            }))
+          }
+          placeholder="300"
+          value={String(timeoutsDraft.stallSeconds ?? "")}
+        />
+        <SettingsTextField
+          help="Absolute cap per LLM call (seconds, 0 = unlimited)."
+          label="Total cap"
+          onBlur={() => saveTimeouts({})}
+          onChangeText={(value) =>
+            setTimeoutsDraft((current) => ({
+              ...current,
+              totalSeconds: Number.parseInt(value, 10) || 0,
+            }))
+          }
+          placeholder="0"
+          value={String(timeoutsDraft.totalSeconds ?? "")}
+        />
+        <SettingsTextField
+          help="Ceiling for providers that cannot stream (seconds)."
+          label="Non-streaming ceiling"
+          onBlur={() => saveTimeouts({})}
+          onChangeText={(value) =>
+            setTimeoutsDraft((current) => ({
+              ...current,
+              nonStreamingSeconds: Number.parseInt(value, 10) || current.nonStreamingSeconds,
+            }))
+          }
+          placeholder="1800"
+          value={String(timeoutsDraft.nonStreamingSeconds || "")}
         />
       </SettingsSection>
       <SettingsSection title="Memory provider">

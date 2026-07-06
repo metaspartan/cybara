@@ -11,6 +11,8 @@
  * normal there) and stall detection is disabled for them.
  */
 
+import { config } from "../config";
+
 export interface StreamWatchdogOptions {
   firstChunkMs?: number;
   stallMs?: number;
@@ -59,16 +61,21 @@ export function resolveLlmWatchdogDefaults(baseUrl: string): {
   totalMs: number;
 } {
   const local = isLocalLlmEndpoint(baseUrl);
+  const configured = config.getLlmTimeoutSettings();
+  // Local endpoints auto-relax regardless of the configured remote values:
+  // long prefill before the first token is normal there, and a quiet local
+  // stream usually means heavy compute, not a dead socket.
+  const configuredFirstMs = local
+    ? Math.max(configured.firstTokenSeconds * 1000, 1_800_000)
+    : configured.firstTokenSeconds * 1000;
+  const configuredStallMs = local ? 0 : configured.stallSeconds * 1000;
   return {
-    // Remote reasoning models can think for minutes before the first byte;
-    // local models can spend far longer in prefill on big contexts.
-    firstChunkMs: readEnvMs("CYBARA_LLM_FIRST_TOKEN_TIMEOUT_MS", local ? 1_800_000 : 300_000),
-    // 0 disables. Local endpoints stream from the same machine — a stalled
-    // local stream usually means heavy compute, not a dead socket.
-    stallMs: readEnvMs("CYBARA_LLM_STALL_TIMEOUT_MS", local ? 0 : 300_000),
+    // Env overrides win over persisted settings (ops escape hatch).
+    firstChunkMs: readEnvMs("CYBARA_LLM_FIRST_TOKEN_TIMEOUT_MS", configuredFirstMs),
+    stallMs: readEnvMs("CYBARA_LLM_STALL_TIMEOUT_MS", configuredStallMs),
     // No total cap by default: agents are allowed to work for hours as long
     // as the provider keeps talking.
-    totalMs: readEnvMs("CYBARA_LLM_TIMEOUT_MS", 0),
+    totalMs: readEnvMs("CYBARA_LLM_TIMEOUT_MS", configured.totalSeconds * 1000),
   };
 }
 
