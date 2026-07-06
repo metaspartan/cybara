@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   clearCachedMobileOptimisticPendingMessages,
+  mergeMobilePendingMessages,
   readCachedMobileOptimisticPendingMessages,
   writeCachedMobileOptimisticPendingMessages,
 } from "../../apps/mobile/src/screens/dashboardPendingQueue";
@@ -64,5 +65,28 @@ describe("mobile optimistic pending queue cache", () => {
 
     clearCachedMobileOptimisticPendingMessages(sessionA);
     clearCachedMobileOptimisticPendingMessages(sessionB);
+  });
+
+  test("authoritative empty gateway queues can clear optimistic remount rows", () => {
+    const sessionId = `mobile-pending-authoritative-${Date.now()}`;
+    const optimistic = makeOptimistic(sessionId, "1", "stale after steering");
+
+    expect(mergeMobilePendingMessages([], [optimistic], { preserveOptimistic: true })).toEqual([
+      optimistic,
+    ]);
+    expect(mergeMobilePendingMessages([], [optimistic], { preserveOptimistic: false })).toEqual([]);
+  });
+
+  test("server pending rows replace acknowledged optimistic rows", () => {
+    const sessionId = `mobile-pending-ack-merge-${Date.now()}`;
+    const optimistic = makeOptimistic(sessionId, "1", "follow-up");
+    const remote: MobilePendingChatMessage = {
+      ...optimistic,
+      id: "pending-1",
+      clientPendingId: optimistic.id,
+      sequence: 2,
+    };
+
+    expect(mergeMobilePendingMessages([remote], [optimistic])).toEqual([remote]);
   });
 });

@@ -264,6 +264,19 @@ struct GatewayClient: Sendable {
         return try JSONDecoder().decode(GatewayPendingChatResponse.self, from: data)
     }
 
+    func reorderPendingMessages(
+        sessionId: String,
+        pendingIds: [String]
+    ) async throws -> GatewayPendingChatResponse {
+        let body = try JSONSerialization.data(withJSONObject: ["pendingMessageIds": pendingIds])
+        let data = try await request(
+            "api/chat/sessions/\(sessionId)/pending/reorder",
+            method: "POST",
+            body: body
+        )
+        return try JSONDecoder().decode(GatewayPendingChatResponse.self, from: data)
+    }
+
     @discardableResult
     func startAgent(_ id: String) async throws -> Data {
         try await request("api/agents/\(id)/start", method: "POST")

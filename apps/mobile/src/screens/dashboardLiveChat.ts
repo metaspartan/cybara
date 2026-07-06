@@ -66,6 +66,43 @@ export function clearCachedMobileLiveAssistant(sessionId?: string | null): void 
   if (key) mobileLiveAssistantCache.delete(key);
 }
 
+function mobileActivityKey(activity: SessionProcessActivitySummary): string {
+  const toolKey = typeof activity.toolCallId === "string" ? activity.toolCallId.trim() : "";
+  const idKey = typeof activity.id === "string" ? activity.id.trim() : "";
+  return [
+    toolKey || idKey,
+    activity.phase || "",
+    activity.toolName || "",
+    activity.text || "",
+    typeof activity.timestamp === "number" ? activity.timestamp : "",
+  ].join("|");
+}
+
+export function prunePersistedMobileLiveAssistant(
+  live: SessionDetailSummary["messages"][number] | null,
+  persistedMessages: SessionDetailSummary["messages"]
+): SessionDetailSummary["messages"][number] | null {
+  if (!live) return null;
+  const persistedActivityKeys = new Set<string>();
+  for (const message of persistedMessages) {
+    if (message.role !== "assistant") continue;
+    for (const activity of message.processActivities || []) {
+      persistedActivityKeys.add(mobileActivityKey(activity));
+    }
+  }
+  if (persistedActivityKeys.size === 0) return live;
+  const processActivities = (live.processActivities || []).filter(
+    (activity) => !persistedActivityKeys.has(mobileActivityKey(activity))
+  );
+  const hasContent = Boolean((live.content || "").trim());
+  const hasToolCalls = Boolean(live.toolCalls?.length);
+  if (!hasContent && !hasToolCalls && processActivities.length === 0) return null;
+  return {
+    ...live,
+    processActivities,
+  };
+}
+
 export function liveStatusPhase(event: StatusEvent): SessionProcessActivitySummary["phase"] | null {
   if (event.toolPhase) return event.toolPhase;
   if (event.status === "tool_executing") return "start";

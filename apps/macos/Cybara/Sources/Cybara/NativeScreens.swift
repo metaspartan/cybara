@@ -714,8 +714,8 @@ struct ChatScreen: View {
             .font(.system(size: 11, weight: .semibold, design: .rounded))
             .foregroundStyle(.secondary)
 
-            ForEach(sortedPendingMessages) { message in
-                let mutable = message.mode != "steering" && pendingMutationID != message.id
+            ForEach(Array(sortedPendingMessages.enumerated()), id: \.element.id) { index, message in
+                let mutable = message.mode != "steering" && pendingMutationID == nil
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(pendingMessageMeta(message))
@@ -729,6 +729,28 @@ struct ChatScreen: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     if message.mode != "steering" {
+                        VStack(spacing: 2) {
+                            Button {
+                                Task { await movePending(message, direction: -1) }
+                            } label: {
+                                Image(systemName: "chevron.up")
+                            }
+                            .buttonStyle(.borderless)
+                            .controlSize(.small)
+                            .help("Move queued message up")
+                            .disabled(!mutable || index == sortedPendingMessages.startIndex)
+
+                            Button {
+                                Task { await movePending(message, direction: 1) }
+                            } label: {
+                                Image(systemName: "chevron.down")
+                            }
+                            .buttonStyle(.borderless)
+                            .controlSize(.small)
+                            .help("Move queued message down")
+                            .disabled(!mutable || index == sortedPendingMessages.count - 1)
+                        }
+
                         Button {
                             editingPendingMessage = message
                             editingPendingDraft = message.content
@@ -890,6 +912,35 @@ struct ChatScreen: View {
                 pendingMessages = response.pendingMessages
             }
         } catch {
+            self.error = error.localizedDescription
+        }
+        pendingMutationID = nil
+    }
+
+    private func movePending(_ message: GatewayPendingChatMessage, direction: Int) async {
+        guard let selectedSessionID else { return }
+        guard message.mode != "steering", pendingMutationID == nil else { return }
+        let previousMessages = sortedPendingMessages
+        guard let currentIndex = previousMessages.firstIndex(where: { $0.id == message.id }) else { return }
+        let nextIndex = currentIndex + direction
+        guard previousMessages.indices.contains(nextIndex) else { return }
+        var nextMessages = previousMessages
+        nextMessages.swapAt(currentIndex, nextIndex)
+        pendingMessages = nextMessages
+        pendingMutationID = message.id
+        do {
+            let response = try await client.reorderPendingMessages(
+                sessionId: selectedSessionID,
+                pendingIds: nextMessages.map(\.id)
+            )
+            if response.success == false {
+                pendingMessages = previousMessages
+                error = response.error ?? "Failed to reorder pending messages"
+            } else {
+                pendingMessages = response.pendingMessages
+            }
+        } catch {
+            pendingMessages = previousMessages
             self.error = error.localizedDescription
         }
         pendingMutationID = nil

@@ -97,17 +97,28 @@ describe("native macOS shell wiring", () => {
     expect(configScreens).toContain("logSummary");
   });
 
-  test("native chat pending queue exposes edit and delete controls", () => {
+  test("native chat pending queue exposes reorder, edit, and delete controls", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
     const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
 
+    expect(gatewayClient).toContain("func reorderPendingMessages(");
     expect(gatewayClient).toContain("func updatePendingMessage(");
     expect(gatewayClient).toContain("func deletePendingMessage(");
+    expect(gatewayClient).toContain('"pendingMessageIds": pendingIds');
+    expect(gatewayClient).toContain('pending/reorder"');
+    expect(gatewayClient).toContain('method: "POST"');
     expect(gatewayClient).toContain('method: "PATCH"');
     expect(gatewayClient).toContain('method: "DELETE"');
+    expect(nativeScreens).toContain('Image(systemName: "chevron.up")');
+    expect(nativeScreens).toContain('Image(systemName: "chevron.down")');
     expect(nativeScreens).toContain('Image(systemName: "pencil")');
     expect(nativeScreens).toContain('Image(systemName: "trash")');
+    expect(nativeScreens).toContain("Move queued message up");
+    expect(nativeScreens).toContain("Move queued message down");
     expect(nativeScreens).toContain("Edit queued message");
+    expect(nativeScreens).toContain("await movePending(message, direction: -1)");
+    expect(nativeScreens).toContain("await movePending(message, direction: 1)");
+    expect(nativeScreens).toContain("pendingIds: nextMessages.map(\\.id)");
     expect(nativeScreens).toContain("await updatePending(message, content: editingPendingDraft)");
     expect(nativeScreens).toContain("await deletePending(message)");
   });

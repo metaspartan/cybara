@@ -231,10 +231,14 @@ import {
   liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
   mergeLiveActivity,
+  prunePersistedMobileLiveAssistant,
   readCachedMobileLiveAssistant,
   writeCachedMobileLiveAssistant,
 } from "./dashboardLiveChat";
 import {
+  clearCachedMobileOptimisticPendingMessages,
+  mergeMobilePendingMessages,
+  mobilePendingMessageIsOptimistic,
   readCachedMobileOptimisticPendingMessages,
   writeCachedMobileOptimisticPendingMessages,
 } from "./dashboardPendingQueue";
@@ -273,39 +277,12 @@ interface ChatHeaderAction {
   onPress: () => void;
 }
 
-function pendingMessageIsOptimistic(message: MobilePendingChatMessage): boolean {
-  return message.id.startsWith("optimistic-");
-}
-
 function pendingMessagesFromResponse(result: {
   pendingMessage?: MobilePendingChatMessage;
   pendingMessages?: MobilePendingChatMessage[];
 }): MobilePendingChatMessage[] {
-  if (result.pendingMessages && result.pendingMessages.length > 0) return result.pendingMessages;
+  if (Array.isArray(result.pendingMessages)) return result.pendingMessages;
   return result.pendingMessage ? [result.pendingMessage] : [];
-}
-
-function mergeOptimisticPendingMessages(
-  remoteMessages: MobilePendingChatMessage[],
-  currentMessages: MobilePendingChatMessage[]
-): MobilePendingChatMessage[] {
-  const remoteClientPendingIds = new Set(
-    remoteMessages
-      .map((message) =>
-        typeof message.clientPendingId === "string" ? message.clientPendingId.trim() : ""
-      )
-      .filter(Boolean)
-  );
-  const optimisticMessages = currentMessages.filter((message) => {
-    if (!pendingMessageIsOptimistic(message)) return false;
-    if (remoteClientPendingIds.has(message.id)) return false;
-    return !remoteMessages.some(
-      (remote) => remote.sessionId === message.sessionId && remote.content === message.content
-    );
-  });
-  return [...remoteMessages, ...optimisticMessages].sort(
-    (a, b) => a.sequence - b.sequence || a.createdAt - b.createdAt
-  );
 }
 
 const tabIcons: Record<MobileTabKey, IconGlyph> = {
@@ -1973,6 +1950,9 @@ function SessionDetailPanel({
     try {
       const nextDetail = await api.session(sessionId);
       setDetail(nextDetail);
+      commitLiveAssistant((current) =>
+        prunePersistedMobileLiveAssistant(current, nextDetail.messages)
+      );
       if (typeof nextDetail.pinned === "boolean") {
         setPinned(nextDetail.pinned);
       }
@@ -2004,12 +1984,19 @@ function SessionDetailPanel({
           snapshotStatus === "generating" ||
           snapshotStatus === "tool_executing" ||
           snapshotStatus === "tool_completed");
+      const snapshotPendingMessages = snapshot?.pendingMessages ?? [];
+      if (!sendingRef.current && snapshotPendingMessages.length === 0) {
+        clearCachedMobileOptimisticPendingMessages(sessionId);
+      }
       setPendingMessages((current) =>
-        mergeOptimisticPendingMessages(snapshot?.pendingMessages ?? [], current)
+        mergeMobilePendingMessages(snapshotPendingMessages, current, {
+          preserveOptimistic: sendingRef.current,
+        })
       );
       if (!active || !snapshot) {
         if (!sendingRef.current) {
           commitLiveAssistant(() => null);
+          clearCachedMobileOptimisticPendingMessages(sessionId);
         }
         return;
       }
@@ -2023,8 +2010,14 @@ function SessionDetailPanel({
   const hydratePendingMessages = useCallback(async () => {
     try {
       const pending = await api.pendingChatMessages(sessionId);
+      const pendingMessages = pending.pendingMessages ?? [];
+      if (!sendingRef.current && pendingMessages.length === 0) {
+        clearCachedMobileOptimisticPendingMessages(sessionId);
+      }
       setPendingMessages((current) =>
-        mergeOptimisticPendingMessages(pending.pendingMessages ?? [], current)
+        mergeMobilePendingMessages(pendingMessages, current, {
+          preserveOptimistic: sendingRef.current,
+        })
       );
     } catch {}
   }, [api, sessionId]);
@@ -2045,7 +2038,7 @@ function SessionDetailPanel({
     setLiveNowMs(cached?.nowMs ?? Date.now());
     const cachedOptimistic = readCachedMobileOptimisticPendingMessages(sessionId);
     if (cachedOptimistic.length > 0) {
-      setPendingMessages((current) => mergeOptimisticPendingMessages(cachedOptimistic, current));
+      setPendingMessages((current) => mergeMobilePendingMessages(cachedOptimistic, current));
     } else {
       setPendingMessages([]);
     }
@@ -2067,6 +2060,9 @@ function SessionDetailPanel({
       .then((nextDetail) => {
         if (!cancelled) {
           setDetail(nextDetail);
+          commitLiveAssistant((current) =>
+            prunePersistedMobileLiveAssistant(current, nextDetail.messages)
+          );
           if (typeof nextDetail.pinned === "boolean") {
             setPinned(nextDetail.pinned);
           }
@@ -2081,7 +2077,7 @@ function SessionDetailPanel({
     return () => {
       cancelled = true;
     };
-  }, [api, sessionId]);
+  }, [api, commitLiveAssistant, sessionId]);
 
   useEffect(() => {
     const disconnect = api.connectStatusStream({
@@ -2101,11 +2097,24 @@ function SessionDetailPanel({
         if (event.type === "snapshot") {
           const snapshot = event.activeSessions.find((entry) => entry.sessionId === sessionId);
           if (!snapshot) {
-            setPendingMessages((current) => mergeOptimisticPendingMessages([], current));
+            if (!sendingRef.current) {
+              clearCachedMobileOptimisticPendingMessages(sessionId);
+            }
+            setPendingMessages((current) =>
+              mergeMobilePendingMessages([], current, {
+                preserveOptimistic: sendingRef.current,
+              })
+            );
             return;
           }
+          const pendingMessages = snapshot.pendingMessages ?? [];
+          if (!sendingRef.current && pendingMessages.length === 0) {
+            clearCachedMobileOptimisticPendingMessages(sessionId);
+          }
           setPendingMessages((current) =>
-            mergeOptimisticPendingMessages(snapshot.pendingMessages ?? [], current)
+            mergeMobilePendingMessages(pendingMessages, current, {
+              preserveOptimistic: sendingRef.current,
+            })
           );
           commitLiveAssistant(
             (current) => liveAssistantFromStatusSnapshot(sessionId, current, snapshot),
@@ -2181,6 +2190,14 @@ function SessionDetailPanel({
     setComposerHeight(MOBILE_CHAT_COMPOSER.minHeight);
   };
 
+  const replacePendingMessagesFromGateway = (messages: MobilePendingChatMessage[]) => {
+    const nextMessages = mergeMobilePendingMessages(messages, [], { preserveOptimistic: false });
+    setPendingMessages(nextMessages);
+    if (nextMessages.length === 0) {
+      clearCachedMobileOptimisticPendingMessages(sessionId);
+    }
+  };
+
   const sendMessage = async () => {
     const message = draft.trim();
     const queuedSend = sending || !!liveAssistant || pendingMessages.length > 0;
@@ -2242,7 +2259,7 @@ function SessionDetailPanel({
         clientPendingId: optimisticPendingMessageId || undefined,
       });
       if (result.queued) {
-        setPendingMessages(pendingMessagesFromResponse(result));
+        replacePendingMessagesFromGateway(pendingMessagesFromResponse(result));
         setDetail((current) =>
           current
             ? {
@@ -2320,7 +2337,7 @@ function SessionDetailPanel({
     try {
       const result = await api.steerPendingMessage(sessionId, pendingMessageId);
       if (result.success) {
-        setPendingMessages(pendingMessagesFromResponse(result));
+        replacePendingMessagesFromGateway(pendingMessagesFromResponse(result));
         await loadSession(false);
       } else if (result.error) {
         setLoadError(result.error);
@@ -2338,7 +2355,7 @@ function SessionDetailPanel({
     const nextIndex = currentIndex + direction;
     if (currentIndex < 0 || nextIndex < 0 || nextIndex >= pendingMessages.length) return;
     const targetMessage = pendingMessages[nextIndex];
-    if (!targetMessage || pendingMessageIsOptimistic(targetMessage)) return;
+    if (!targetMessage || mobilePendingMessageIsOptimistic(targetMessage)) return;
     const previousMessages = pendingMessages;
     const nextMessages = [...pendingMessages];
     [nextMessages[currentIndex], nextMessages[nextIndex]] = [
@@ -2351,12 +2368,12 @@ function SessionDetailPanel({
     try {
       const result = await api.reorderPendingMessages(
         sessionId,
-        nextMessages.filter((entry) => !pendingMessageIsOptimistic(entry)).map((entry) => entry.id)
+        nextMessages
+          .filter((entry) => !mobilePendingMessageIsOptimistic(entry))
+          .map((entry) => entry.id)
       );
       if (result.success) {
-        setPendingMessages((current) =>
-          mergeOptimisticPendingMessages(result.pendingMessages ?? [], current)
-        );
+        replacePendingMessagesFromGateway(result.pendingMessages ?? []);
       } else {
         setPendingMessages(previousMessages);
         setLoadError(result.error || "Failed to reorder pending messages.");
@@ -2370,7 +2387,8 @@ function SessionDetailPanel({
   };
 
   const openEditPendingMessage = (pendingMessage: MobilePendingChatMessage) => {
-    if (pendingMessageIsOptimistic(pendingMessage) || pendingMessage.mode === "steering") return;
+    if (mobilePendingMessageIsOptimistic(pendingMessage) || pendingMessage.mode === "steering")
+      return;
     setEditingPendingMessage(pendingMessage);
     setEditingPendingDraft(pendingMessage.content);
   };
@@ -2383,7 +2401,7 @@ function SessionDetailPanel({
   const updatePendingMessage = async () => {
     const target = editingPendingMessage;
     const nextContent = editingPendingDraft.trim();
-    if (!target || !nextContent || pendingMessageIsOptimistic(target)) return;
+    if (!target || !nextContent || mobilePendingMessageIsOptimistic(target)) return;
     if (nextContent === target.content.trim()) {
       closeEditPendingMessage();
       return;
@@ -2400,9 +2418,7 @@ function SessionDetailPanel({
     try {
       const result = await api.updatePendingMessage(sessionId, target.id, nextContent);
       if (result.success) {
-        setPendingMessages((current) =>
-          mergeOptimisticPendingMessages(result.pendingMessages ?? [], current)
-        );
+        replacePendingMessagesFromGateway(result.pendingMessages ?? []);
         closeEditPendingMessage();
       } else {
         setPendingMessages(previousMessages);
@@ -2417,7 +2433,8 @@ function SessionDetailPanel({
   };
 
   const deletePendingMessage = async (pendingMessage: MobilePendingChatMessage) => {
-    if (pendingMessageIsOptimistic(pendingMessage) || pendingMessage.mode === "steering") return;
+    if (mobilePendingMessageIsOptimistic(pendingMessage) || pendingMessage.mode === "steering")
+      return;
     const previousMessages = pendingMessages;
     setPendingMessages((current) => current.filter((entry) => entry.id !== pendingMessage.id));
     setMutatingPendingId(pendingMessage.id);
@@ -2425,9 +2442,7 @@ function SessionDetailPanel({
     try {
       const result = await api.deletePendingMessage(sessionId, pendingMessage.id);
       if (result.success) {
-        setPendingMessages((current) =>
-          mergeOptimisticPendingMessages(result.pendingMessages ?? [], current)
-        );
+        replacePendingMessagesFromGateway(result.pendingMessages ?? []);
       } else {
         setPendingMessages(previousMessages);
         setLoadError(result.error || "Failed to delete pending message.");
@@ -2641,7 +2656,7 @@ function SessionDetailPanel({
                 </Text>
                 {pendingMessages.map((pendingMessage) => {
                   const steering = pendingMessage.mode === "steering";
-                  const optimisticPending = pendingMessageIsOptimistic(pendingMessage);
+                  const optimisticPending = mobilePendingMessageIsOptimistic(pendingMessage);
                   const busy =
                     steeringPendingId === pendingMessage.id ||
                     reorderingPendingId === pendingMessage.id ||

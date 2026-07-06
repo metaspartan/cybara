@@ -7,6 +7,40 @@ export type CachedMobileOptimisticPendingMessage = MobilePendingChatMessage & {
 const MOBILE_OPTIMISTIC_PENDING_QUEUE_STALE_MS = 15 * 60 * 1000;
 const mobileOptimisticPendingQueueCache = new Map<string, CachedMobileOptimisticPendingMessage[]>();
 
+export function mobilePendingMessageIsOptimistic(message: MobilePendingChatMessage): boolean {
+  return message.id.startsWith("optimistic-");
+}
+
+export function sortMobilePendingMessages(
+  messages: MobilePendingChatMessage[]
+): MobilePendingChatMessage[] {
+  return [...messages].sort((a, b) => a.sequence - b.sequence || a.createdAt - b.createdAt);
+}
+
+export function mergeMobilePendingMessages(
+  remoteMessages: MobilePendingChatMessage[],
+  currentMessages: MobilePendingChatMessage[],
+  options: { preserveOptimistic?: boolean } = {}
+): MobilePendingChatMessage[] {
+  const preserveOptimistic = options.preserveOptimistic ?? true;
+  if (!preserveOptimistic) return sortMobilePendingMessages(remoteMessages);
+  const remoteClientPendingIds = new Set(
+    remoteMessages
+      .map((message) =>
+        typeof message.clientPendingId === "string" ? message.clientPendingId.trim() : ""
+      )
+      .filter(Boolean)
+  );
+  const optimisticMessages = currentMessages.filter((message) => {
+    if (!mobilePendingMessageIsOptimistic(message)) return false;
+    if (remoteClientPendingIds.has(message.id)) return false;
+    return !remoteMessages.some(
+      (remote) => remote.sessionId === message.sessionId && remote.content === message.content
+    );
+  });
+  return sortMobilePendingMessages([...remoteMessages, ...optimisticMessages]);
+}
+
 function normalizeLiveSessionId(sessionId?: string | null): string | null {
   const trimmed = typeof sessionId === "string" ? sessionId.trim() : "";
   return trimmed || null;
@@ -49,9 +83,7 @@ export function writeCachedMobileOptimisticPendingMessages(
 ): void {
   const key = normalizeLiveSessionId(sessionId);
   if (!key) return;
-  const optimisticOnly = messages
-    .filter((message) => message.id.startsWith("optimistic-"))
-    .map(cloneMessage);
+  const optimisticOnly = messages.filter(mobilePendingMessageIsOptimistic).map(cloneMessage);
   if (optimisticOnly.length === 0) {
     mobileOptimisticPendingQueueCache.delete(key);
     return;
