@@ -11,7 +11,47 @@ import { authenticateMobileDeviceToken } from "../core/mobile-devices";
 const log = createLogger("Security");
 
 const API_KEY_FILE = join(cybaraDir, "api_key");
+const SECURITY_SETTINGS_FILE = join(cybaraDir, "security.json");
 let cachedApiKey: string | null | undefined;
+
+interface PersistedSecuritySettings {
+  requireAuthForLocalhost?: boolean;
+}
+
+let cachedSecuritySettings: PersistedSecuritySettings | undefined;
+
+function readPersistedSecuritySettings(): PersistedSecuritySettings {
+  // Tests must never pick up the developer's real ~/.cybara/security.json.
+  if (process.env.NODE_ENV === "test") return {};
+  if (cachedSecuritySettings !== undefined) return cachedSecuritySettings;
+  try {
+    if (existsSync(SECURITY_SETTINGS_FILE)) {
+      const parsed = JSON.parse(readFileSync(SECURITY_SETTINGS_FILE, "utf-8")) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const record = parsed as Record<string, unknown>;
+        cachedSecuritySettings = {
+          requireAuthForLocalhost:
+            typeof record.requireAuthForLocalhost === "boolean"
+              ? record.requireAuthForLocalhost
+              : undefined,
+        };
+        return cachedSecuritySettings;
+      }
+    }
+  } catch (error) {
+    log.warn("Failed to read security settings", { error: (error as Error).message });
+  }
+  cachedSecuritySettings = {};
+  return cachedSecuritySettings;
+}
+
+function writePersistedSecuritySettings(settings: PersistedSecuritySettings): void {
+  if (!existsSync(cybaraDir)) {
+    mkdirSync(cybaraDir, { recursive: true });
+  }
+  writeFileSync(SECURITY_SETTINGS_FILE, JSON.stringify(settings, null, 2), { mode: 0o600 });
+  cachedSecuritySettings = settings;
+}
 
 function getOrCreateApiKey(): string | null {
   if (existsSync(API_KEY_FILE)) {
@@ -70,13 +110,21 @@ function getEffectiveApiKey(): string | null {
   return cachedApiKey;
 }
 
+function isLocalhostBypassAllowed(): boolean {
+  if (process.env.CYBARA_REQUIRE_AUTH === "1") return false;
+  if (process.env.NODE_ENV === "production") return false;
+  if (readPersistedSecuritySettings().requireAuthForLocalhost === true) return false;
+  return true;
+}
+
 const config = {
   get apiKey() {
     return getEffectiveApiKey();
   },
 
-  allowLocalhostBypass:
-    process.env.CYBARA_REQUIRE_AUTH === "1" ? false : process.env.NODE_ENV !== "production",
+  get allowLocalhostBypass() {
+    return isLocalhostBypassAllowed();
+  },
 
   rateLimits: {
     global: { windowMs: 60000, maxRequests: 200 }, // 200 req/min globally
@@ -269,7 +317,72 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
  * process-management routes keep narrower high-risk scopes so paired-device
  * tokens cannot escalate into fund movement or local code execution.
  */
+export interface GatewayAuthSettings {
+  apiKeyConfigured: boolean;
+  apiKeyPreview: string | null;
+  apiKeySource: "env" | "file" | "none";
+  apiKeyPath: string;
+  requireAuthForLocalhost: boolean;
+  requireAuthForLocalhostForced: boolean;
+  localhostBypassActive: boolean;
+  rateLimits: typeof config.rateLimits;
+}
+
+export function getGatewayAuthSettings(): GatewayAuthSettings {
+  const envKey = process.env.CYBARA_API_KEY?.trim();
+  const key = config.apiKey;
+  const requireForced =
+    process.env.CYBARA_REQUIRE_AUTH === "1" || process.env.NODE_ENV === "production";
+  return {
+    apiKeyConfigured: Boolean(key),
+    apiKeyPreview: key ? `${key.slice(0, 12)}…${key.slice(-4)}` : null,
+    apiKeySource: envKey ? "env" : key ? "file" : "none",
+    apiKeyPath: API_KEY_FILE,
+    requireAuthForLocalhost: !isLocalhostBypassAllowed(),
+    requireAuthForLocalhostForced: requireForced,
+    localhostBypassActive: isLocalhostBypassAllowed(),
+    rateLimits: config.rateLimits,
+  };
+}
+
+export function revealGatewayApiKey(): { apiKey: string | null; source: "env" | "file" | "none" } {
+  const envKey = process.env.CYBARA_API_KEY?.trim();
+  const key = config.apiKey;
+  return { apiKey: key, source: envKey ? "env" : key ? "file" : "none" };
+}
+
+export function setRequireAuthForLocalhost(value: boolean): GatewayAuthSettings {
+  writePersistedSecuritySettings({
+    ...readPersistedSecuritySettings(),
+    requireAuthForLocalhost: value,
+  });
+  log.info(`Localhost auth requirement ${value ? "enabled" : "disabled"}`);
+  return getGatewayAuthSettings();
+}
+
+export function rotateGatewayApiKey(): { apiKey: string } {
+  if (process.env.CYBARA_API_KEY?.trim()) {
+    throw new Error(
+      "API key is provided via the CYBARA_API_KEY environment variable; unset it to manage the key here"
+    );
+  }
+  const newKey = `cybara_${randomBytes(24).toString("hex")}`;
+  if (!existsSync(cybaraDir)) {
+    mkdirSync(cybaraDir, { recursive: true });
+  }
+  writeFileSync(API_KEY_FILE, newKey, { mode: 0o600 });
+  cachedApiKey = newKey;
+  log.info("API key rotated", { path: API_KEY_FILE });
+  return { apiKey: newKey };
+}
+
 export function routeRequiredScope(method: string, path: string): string | null {
+  // Gateway auth management can mint/reveal the root key, so scoped
+  // principals (paired devices) must never reach it. "root" is intentionally
+  // not a grantable device scope.
+  if (path.startsWith("/api/auth")) {
+    return "root";
+  }
   if (path.startsWith("/api/wallet")) {
     if (method === "GET") return null;
     return "wallet";

@@ -238,6 +238,33 @@ export const mcpApi = {
   delete: (id: string) => fetchApi<{ success: boolean }>(`/mcp/${id}`, { method: "DELETE" }),
 };
 
+export interface GatewayAuthSettings {
+  success: boolean;
+  apiKeyConfigured: boolean;
+  apiKeyPreview: string | null;
+  apiKeySource: "env" | "file" | "none";
+  apiKeyPath: string;
+  requireAuthForLocalhost: boolean;
+  requireAuthForLocalhostForced: boolean;
+  localhostBypassActive: boolean;
+  rateLimits: Record<string, { windowMs: number; maxRequests: number }>;
+}
+
+export const authApi = {
+  settings: () => fetchApi<GatewayAuthSettings>("/auth/settings"),
+  updateSettings: (payload: { requireAuthForLocalhost: boolean }) =>
+    fetchApi<GatewayAuthSettings>("/auth/settings", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  revealKey: () =>
+    fetchApi<{ success: boolean; apiKey: string | null; source: "env" | "file" | "none" }>(
+      "/auth/key"
+    ),
+  rotateKey: () =>
+    fetchApi<{ success: boolean; apiKey: string }>("/auth/rotate-key", { method: "POST" }),
+};
+
 export const settingsApi = {
   getConfig: () => fetchApi<Record<string, unknown>>("/config"),
   getSandboxStatus: () =>

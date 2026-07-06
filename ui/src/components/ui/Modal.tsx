@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { createPortal } from "react-dom";
 import { cn } from "../../lib/utils";
 import { useEffect, useId, useRef } from "react";
 
@@ -44,8 +45,9 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
     const focusFirstElement = () => {
       const dialog = dialogRef.current;
       if (!dialog) return;
+      const preferred = dialog.querySelector<HTMLElement>("[data-autofocus]");
       const firstFocusable = dialog.querySelector<HTMLElement>(focusableSelector);
-      (firstFocusable || dialog).focus();
+      (preferred || firstFocusable || dialog).focus();
     };
 
     const animationFrame = window.requestAnimationFrame(focusFirstElement);
@@ -97,7 +99,10 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
     xl: "max-w-4xl",
   };
 
-  return (
+  // Portaled to <body>: rendering inline breaks position:fixed whenever an
+  // ancestor creates a containing block (transform/filter/backdrop-filter),
+  // which clipped the dialog and blocked clicks/typing inside side panels.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-md transition-opacity animate-in fade-in"
@@ -149,6 +154,7 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
 
         <div className="relative p-6">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

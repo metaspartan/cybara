@@ -23,11 +23,13 @@ import {
   computerUseApi,
   sandboxBrowserApi,
   walletApi,
+  authApi,
   type ComputerUseStatus,
   type SandboxBrowserStatus,
   type WalletAgentPolicy,
   type WalletRpcStatus,
   type WalletStatus,
+  type GatewayAuthSettings,
 } from "@/lib/api";
 import { Modal } from "@/components/ui/Modal";
 import { Switch } from "@/components/ui/Switch";
@@ -482,6 +484,7 @@ type SettingsSectionId =
   | "ai-memory"
   | "voice"
   | "wallet"
+  | "auth"
   | "safety"
   | "desktop"
   | "system";
@@ -491,6 +494,7 @@ const settingsSections: Array<{ id: SettingsSectionId; label: string }> = [
   { id: "ai-memory", label: "AI & Memory" },
   { id: "voice", label: "Voice" },
   { id: "wallet", label: "Wallet" },
+  { id: "auth", label: "Auth" },
   { id: "safety", label: "Safety" },
   { id: "desktop", label: "Desktop" },
   { id: "system", label: "System" },
@@ -3095,6 +3099,243 @@ function WalletSettings() {
   );
 }
 
+function GatewayAuthSettingsSection() {
+  const { addToast } = useUIStore();
+  const [settings, setSettings] = useState<GatewayAuthSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [rotateConfirmOpen, setRotateConfirmOpen] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await authApi.settings();
+      if (res.success && res.data?.success) {
+        setSettings(res.data);
+      } else {
+        addToast("error", res.error || "Failed to load auth settings");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleToggleRequireAuth(checked: boolean) {
+    setBusy(true);
+    try {
+      const res = await authApi.updateSettings({ requireAuthForLocalhost: checked });
+      if (!res.success || !res.data?.success) {
+        throw new Error(res.error || "Failed to update auth settings");
+      }
+      setSettings(res.data);
+      addToast(
+        "success",
+        checked
+          ? "Localhost requests now require the API key"
+          : "Localhost browser requests no longer require the API key"
+      );
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to update auth settings");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleReveal() {
+    if (revealedKey) {
+      setRevealedKey(null);
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await authApi.revealKey();
+      if (!res.success || !res.data?.apiKey) {
+        throw new Error(res.error || "No API key available");
+      }
+      setRevealedKey(res.data.apiKey);
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to reveal API key");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleCopyKey() {
+    try {
+      let key = revealedKey;
+      if (!key) {
+        const res = await authApi.revealKey();
+        key = res.success ? res.data?.apiKey || null : null;
+      }
+      if (!key) throw new Error("No API key available");
+      await navigator.clipboard.writeText(key);
+      addToast("success", "API key copied");
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to copy API key");
+    }
+  }
+
+  async function handleRotate() {
+    setBusy(true);
+    try {
+      const res = await authApi.rotateKey();
+      if (!res.success || !res.data?.apiKey) {
+        throw new Error(res.error || "Failed to rotate API key");
+      }
+      setRevealedKey(res.data.apiKey);
+      setRotateConfirmOpen(false);
+      addToast("success", "API key rotated — update any connected clients");
+      await load();
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to rotate API key");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card variant="liquid">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-amber-400" />
+            Gateway API Key
+          </CardTitle>
+          <CardDescription>
+            The root credential for this gateway. Native apps, the CLI, and remote clients
+            authenticate with it as a Bearer token. Paired mobile devices use their own scoped
+            tokens instead.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-mono text-sm text-white break-all">
+                  {revealedKey || settings?.apiKeyPreview || "No API key configured"}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {settings?.apiKeySource === "env"
+                    ? "Provided via CYBARA_API_KEY environment variable"
+                    : `Stored at ${settings?.apiKeyPath || "~/.cybara/api_key"}`}
+                </p>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  leftIcon={<Eye className="w-4 h-4" />}
+                  onClick={() => void handleReveal()}
+                  disabled={loading || busy || !settings?.apiKeyConfigured}
+                >
+                  {revealedKey ? "Hide" : "Reveal"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleCopyKey()}
+                  disabled={loading || busy || !settings?.apiKeyConfigured}
+                >
+                  Copy
+                </Button>
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              leftIcon={<RefreshCw className="w-4 h-4" />}
+              onClick={() => setRotateConfirmOpen(true)}
+              disabled={loading || busy || settings?.apiKeySource === "env"}
+            >
+              Rotate API Key
+            </Button>
+            {settings?.apiKeySource === "env" && (
+              <p className="text-xs text-gray-500">
+                Managed by CYBARA_API_KEY — unset the variable to rotate here.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card variant="liquid">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Server className="w-5 h-5 text-cyan-400" />
+            Access Rules
+          </CardTitle>
+          <CardDescription>
+            How requests to the gateway are authenticated and rate limited.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Switch
+            label="Require API key for localhost"
+            description={
+              settings?.requireAuthForLocalhostForced
+                ? "Forced on by CYBARA_REQUIRE_AUTH or production mode"
+                : "When off, same-origin browser requests from this machine skip the API key"
+            }
+            checked={Boolean(settings?.requireAuthForLocalhost)}
+            disabled={loading || busy || Boolean(settings?.requireAuthForLocalhostForced)}
+            onChange={(checked) => void handleToggleRequireAuth(checked)}
+          />
+          {settings?.rateLimits && (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {Object.entries(settings.rateLimits).map(([name, limit]) => (
+                <div
+                  key={name}
+                  className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2"
+                >
+                  <p className="text-xs text-gray-500 capitalize">{name}</p>
+                  <p className="mt-1 text-sm text-gray-200">
+                    {limit.maxRequests} / {Math.round(limit.windowMs / 1000)}s
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+          <p className="text-xs text-gray-500">
+            Paired mobile devices authenticate with scoped tokens — manage them on the Mobile
+            page.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Modal
+        isOpen={rotateConfirmOpen}
+        onClose={() => {
+          if (!busy) setRotateConfirmOpen(false);
+        }}
+        title="Rotate API Key"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
+            Rotating immediately invalidates the current key. Every client using it (CLI, native
+            apps, scripts) must be updated with the new key. Paired mobile devices are not
+            affected.
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="ghost" onClick={() => setRotateConfirmOpen(false)} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={() => void handleRotate()} isLoading={busy}>
+              Rotate Key
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 export function Settings() {
   const { data: health } = useHealth();
   const { data: info } = useInfo();
@@ -3193,6 +3434,8 @@ export function Settings() {
 
         {activeSection === "wallet" && <WalletSettings />}
 
+        {activeSection === "auth" && <GatewayAuthSettingsSection />}
+
         {activeSection === "safety" && (
           <>
             <FeatureSettings />
@@ -3200,18 +3443,14 @@ export function Settings() {
           </>
         )}
 
-        {activeSection === "desktop" && (
+        {activeSection === "desktop" && <ComputerUseSettings />}
+
+        {activeSection === "system" && (
           <>
-            <ComputerUseSettings />
             <DesktopUpdateSettings
               currentVersion={String(infoData.version || "unknown")}
               releaseRepositoryUrl={infoData.releaseRepositoryUrl}
             />
-          </>
-        )}
-
-        {activeSection === "system" && (
-          <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {stats.map((stat) => (
                 <Card key={stat.label} variant="liquid">

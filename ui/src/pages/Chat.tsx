@@ -67,6 +67,7 @@ import { chatApi } from "@/lib/api";
 import { PageLayout } from "@/components/layout";
 import { GlassCard, GlassButton, Input, Badge, Modal, Button } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
+import { useUIStore } from "@/stores/uiStore";
 import { appendApiTokenParam, apiFetch } from "@/lib/auth";
 import { connectStatusStream, type PendingChatMessage } from "@/lib/status-stream";
 import {
@@ -1087,10 +1088,20 @@ function SubagentPanel({
   }, [refetch]);
 
   const handleSpawn = async () => {
-    if (!newTask.trim()) return;
-    await spawnSubagent.mutateAsync({ task: newTask, label: `Task: ${newTask.slice(0, 30)}...` });
-    setNewTask("");
-    setShowSpawnModal(false);
+    const task = newTask.trim();
+    if (!task || spawnSubagent.isPending) return;
+    try {
+      await spawnSubagent.mutateAsync({
+        task,
+        label: `Task: ${task.slice(0, 30)}${task.length > 30 ? "..." : ""}`,
+      });
+      setNewTask("");
+      setShowSpawnModal(false);
+    } catch (error) {
+      useUIStore
+        .getState()
+        .addToast("error", error instanceof Error ? error.message : "Failed to spawn subagent");
+    }
   };
 
   if (!isOpen) return null;
@@ -1198,13 +1209,27 @@ function SubagentPanel({
       >
         <div className="space-y-4">
           <div>
-            <label className="text-sm text-gray-400 mb-2 block">Task Description</label>
+            <label htmlFor="subagent-task-input" className="text-sm text-gray-400 mb-2 block">
+              Task Description
+            </label>
             <textarea
+              id="subagent-task-input"
+              data-autofocus
               value={newTask}
               onChange={(e) => setNewTask(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  e.preventDefault();
+                  void handleSpawn();
+                }
+              }}
               placeholder="Describe the task for the subagent..."
               className="w-full h-32 px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-indigo-500/50 resize-none"
             />
+            <p className="mt-1.5 text-[11px] text-gray-500">
+              Press {navigator.platform.toLowerCase().includes("mac") ? "⌘" : "Ctrl"}+Enter to
+              spawn
+            </p>
           </div>
           <div className="flex justify-end gap-3">
             <GlassButton variant="ghost" onClick={() => setShowSpawnModal(false)}>

@@ -52,6 +52,14 @@ describe("mobile device scopes", () => {
 });
 
 describe("route scope requirements", () => {
+  test("gateway auth management requires a scope no device can hold", () => {
+    expect(routeRequiredScope("GET", "/api/auth/settings")).toBe("root");
+    expect(routeRequiredScope("PUT", "/api/auth/settings")).toBe("root");
+    expect(routeRequiredScope("GET", "/api/auth/key")).toBe("root");
+    expect(routeRequiredScope("POST", "/api/auth/rotate-key")).toBe("root");
+    expect(normalizeMobileScopes(["root"])).not.toContain("root");
+  });
+
   test("fund-moving wallet ops require the wallet scope", () => {
     expect(routeRequiredScope("POST", "/api/wallet/send")).toBe("wallet");
     expect(routeRequiredScope("POST", "/api/wallet/sign")).toBe("wallet");

@@ -135,7 +135,14 @@ import { validateBrowserNavigationUrl } from "../core/tools/handlers/browser";
 import { homedir } from "os";
 import { dirname, isAbsolute, resolve } from "path";
 import { createHash, randomBytes } from "crypto";
-import { securityCheck, validateUrl } from "./security";
+import {
+  getGatewayAuthSettings,
+  revealGatewayApiKey,
+  rotateGatewayApiKey,
+  securityCheck,
+  setRequireAuthForLocalhost,
+  validateUrl,
+} from "./security";
 // fs + paths imports moved to ./routes/_shared.ts (used by extracted helpers).
 import {
   browseDirectory,
@@ -681,6 +688,22 @@ const routes: Record<string, RouteHandler> = {
     reasoning_effort: config.getDefaultReasoningEffort(),
     self_improving_skills_enabled: config.get<boolean>("self_improving_skills_enabled") !== false,
   }),
+  "GET /api/auth/settings": () => ({ success: true, ...getGatewayAuthSettings() }),
+  "PUT /api/auth/settings": (body) => {
+    const data = (body || {}) as { requireAuthForLocalhost?: unknown };
+    if (typeof data.requireAuthForLocalhost !== "boolean") {
+      throw new Error("requireAuthForLocalhost must be a boolean");
+    }
+    const settings = getGatewayAuthSettings();
+    if (settings.requireAuthForLocalhostForced) {
+      throw new Error(
+        "Localhost auth requirement is forced by CYBARA_REQUIRE_AUTH/production mode and cannot be changed here"
+      );
+    }
+    return { success: true, ...setRequireAuthForLocalhost(data.requireAuthForLocalhost) };
+  },
+  "GET /api/auth/key": () => ({ success: true, ...revealGatewayApiKey() }),
+  "POST /api/auth/rotate-key": () => ({ success: true, ...rotateGatewayApiKey() }),
   "GET /api/speech/settings": () => config.getSpeechSettings(),
   "PUT /api/speech/settings": (body) => ({
     success: true,
