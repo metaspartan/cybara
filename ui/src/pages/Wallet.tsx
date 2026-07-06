@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  Wallet as WalletIcon,
   Shield,
   RefreshCw,
   Lock,
@@ -14,25 +13,22 @@ import {
   EyeOff,
   Copy,
   History,
-  Settings,
+  Settings as SettingsIcon,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { PageLayout } from "@/components/layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Textarea, Select } from "@/components/ui/Input";
-import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   walletApi,
-  type WalletAgentPolicy,
   type WalletStatus,
   type WalletChain,
   type WalletAccount,
   type WalletBalance,
-  type WalletRpcStatus,
   type WalletTransaction,
-  type WalletRpcConfig,
   type WalletTokenBalance,
   type WalletTokenTransaction,
   type WalletTokenChain,
@@ -50,29 +46,29 @@ const TOKEN_CHAIN_OPTIONS: Array<{ value: WalletTokenChain; label: string; symbo
   { value: "sol", label: "Solana", symbol: "SPL" },
 ];
 
-type WalletTab = "receive" | "send" | "history" | "settings";
+type WalletTab = "receive" | "send" | "history";
 
-const WALLET_TABS: Array<{
-  id: WalletTab;
-  label: string;
-  icon: ReactNode;
-  requiresUnlocked?: boolean;
-}> = [
-  {
-    id: "receive",
-    label: "Receive",
-    icon: <ArrowDownLeft className="h-4 w-4" />,
-    requiresUnlocked: true,
-  },
-  { id: "send", label: "Send", icon: <ArrowUpRight className="h-4 w-4" />, requiresUnlocked: true },
-  {
-    id: "history",
-    label: "History",
-    icon: <History className="h-4 w-4" />,
-    requiresUnlocked: true,
-  },
-  { id: "settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
+const WALLET_TABS: Array<{ id: WalletTab; label: string; icon: ReactNode }> = [
+  { id: "receive", label: "Receive", icon: <ArrowDownLeft className="h-4 w-4" /> },
+  { id: "send", label: "Send", icon: <ArrowUpRight className="h-4 w-4" /> },
+  { id: "history", label: "History", icon: <History className="h-4 w-4" /> },
 ];
+
+type ChainPrice = {
+  price: number;
+  source: string;
+  publishTime?: string;
+};
+
+const USD_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+});
+
+function formatUsd(value: number): string {
+  if (!Number.isFinite(value)) return "—";
+  return USD_FORMATTER.format(value);
+}
 
 function formatTimestamp(value?: string): string {
   if (!value) return "N/A";
@@ -94,25 +90,23 @@ function isValidCount(input: string): boolean {
   return Number.isFinite(value) && value >= 1 && value <= 20;
 }
 
-function parseAllowlistInput(value: string): string[] {
-  return value
-    .split(/[\n,]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
+const PRICE_SOURCE_LABELS: Record<string, string> = {
+  pyth: "Pyth",
+  chainlink: "Chainlink",
+  jupiter: "Jupiter",
+};
 
 export function Wallet() {
   const { addToast } = useUIStore();
+  const navigate = useNavigate();
 
   const [status, setStatus] = useState<WalletStatus | null>(null);
-  const [rpcConfig, setRpcConfig] = useState<WalletRpcConfig | null>(null);
-  const [rpcStatus, setRpcStatus] = useState<WalletRpcStatus | null>(null);
-  const [agentPolicy, setAgentPolicy] = useState<WalletAgentPolicy | null>(null);
   const [accounts, setAccounts] = useState<WalletAccount[]>([]);
   const [balances, setBalances] = useState<WalletBalance[]>([]);
   const [tokenBalances, setTokenBalances] = useState<WalletTokenBalance[]>([]);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [tokenTransactions, setTokenTransactions] = useState<WalletTokenTransaction[]>([]);
+  const [prices, setPrices] = useState<Partial<Record<WalletChain, ChainPrice>>>({});
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -153,15 +147,6 @@ export function Wallet() {
   const [tokenChain, setTokenChain] = useState<WalletTokenChain>("eth");
   const [tokenIndexInput, setTokenIndexInput] = useState("0");
   const [tokenIncludeZero, setTokenIncludeZero] = useState(false);
-
-  const [rpcEth, setRpcEth] = useState("");
-  const [rpcSol, setRpcSol] = useState("");
-  const [rpcBtc, setRpcBtc] = useState("");
-  const [policyEthAllowlistInput, setPolicyEthAllowlistInput] = useState("");
-  const [policySolAllowlistInput, setPolicySolAllowlistInput] = useState("");
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletePassword, setDeletePassword] = useState("");
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   const accountCount = useMemo(() => {
     const value = Number(accountCountInput);
@@ -212,38 +197,40 @@ export function Wallet() {
   }, [tokenIndexInput]);
 
   async function refreshStatus() {
-    const [statusResponse, rpcResponse, rpcStatusResponse, policyResponse] = await Promise.all([
-      walletApi.status(),
-      walletApi.rpc(),
-      walletApi.rpcStatus(),
-      walletApi.getAgentPolicy(),
-    ]);
-
+    const statusResponse = await walletApi.status();
     if (!statusResponse.success || !statusResponse.data) {
       throw new Error(statusResponse.error || "Failed to load wallet status");
     }
-    if (!rpcResponse.success || !rpcResponse.data) {
-      throw new Error(rpcResponse.error || "Failed to load wallet RPC settings");
-    }
-
     setStatus(statusResponse.data);
-    setRpcConfig(rpcResponse.data);
-    setRpcEth(rpcResponse.data.ethRpc);
-    setRpcSol(rpcResponse.data.solRpc);
-    setRpcBtc(rpcResponse.data.btcApi);
-    setRpcStatus(
-      rpcStatusResponse.success && rpcStatusResponse.data ? rpcStatusResponse.data : null
-    );
+  }
 
-    if (policyResponse.success && policyResponse.data) {
-      setAgentPolicy(policyResponse.data);
-      setPolicyEthAllowlistInput(policyResponse.data.allowedEthContracts.join("\n"));
-      setPolicySolAllowlistInput(policyResponse.data.allowedSolPrograms.join("\n"));
-    } else {
-      setAgentPolicy(null);
-      setPolicyEthAllowlistInput("");
-      setPolicySolAllowlistInput("");
-    }
+  async function refreshPrices() {
+    const entries = await Promise.all(
+      CHAIN_OPTIONS.map(async (chain) => {
+        try {
+          const response = await walletApi.priceQuote({ symbol: chain.symbol });
+          if (response.success && response.data) {
+            const price = Number(response.data.price);
+            if (Number.isFinite(price) && price > 0) {
+              return [
+                chain.value,
+                {
+                  price,
+                  source: response.data.source,
+                  publishTime: response.data.publishTime,
+                } satisfies ChainPrice,
+              ] as const;
+            }
+          }
+        } catch {
+          // Prices are best-effort; balances render without USD values.
+        }
+        return null;
+      })
+    );
+    setPrices(
+      Object.fromEntries(entries.filter((entry): entry is NonNullable<typeof entry> => !!entry))
+    );
   }
 
   async function refreshPortfolio() {
@@ -308,14 +295,6 @@ export function Wallet() {
     setTokenBalances(tokenResponse.data);
   }
 
-  async function refreshRpcStatusOnly() {
-    const response = await walletApi.rpcStatus();
-    if (!response.success || !response.data) {
-      throw new Error(response.error || "Failed to load RPC status");
-    }
-    setRpcStatus(response.data);
-  }
-
   async function refreshAll() {
     setLoading(true);
     try {
@@ -325,6 +304,7 @@ export function Wallet() {
     } finally {
       setLoading(false);
     }
+    void refreshPrices();
   }
 
   useEffect(() => {
@@ -402,13 +382,6 @@ export function Wallet() {
   }, [status?.unlocked, tokenChain, tokenIndex, tokenIncludeZero]);
 
   useEffect(() => {
-    if (!status?.exists) return;
-    if (!status.unlocked && activeTab !== "settings") {
-      setActiveTab("settings");
-    }
-  }, [status?.exists, status?.unlocked, activeTab]);
-
-  useEffect(() => {
     if (sendChain === "btc" && sendAssetType === "token") {
       setSendAssetType("native");
     }
@@ -424,6 +397,26 @@ export function Wallet() {
       { eth: [], btc: [], sol: [] }
     );
   }, [balances]);
+
+  const portfolio = useMemo(() => {
+    const chains = CHAIN_OPTIONS.map((chain) => {
+      const chainBalances = groupedBalances[chain.value] || [];
+      const amount = chainBalances.reduce((sum, balance) => {
+        const parsed = Number(balance.amount);
+        return sum + (Number.isFinite(parsed) ? parsed : 0);
+      }, 0);
+      const price = prices[chain.value];
+      return {
+        ...chain,
+        amount,
+        price,
+        usdValue: price ? amount * price.price : null,
+      };
+    });
+    const totalUsd = chains.reduce((sum, chain) => sum + (chain.usdValue ?? 0), 0);
+    const hasAnyPrice = chains.some((chain) => chain.usdValue !== null);
+    return { chains, totalUsd, hasAnyPrice };
+  }, [groupedBalances, prices]);
 
   const selectedReceiveAccount = useMemo(() => {
     return accounts.find((account) => account.chain === sendChain && account.index === sendIndex);
@@ -465,9 +458,6 @@ export function Wallet() {
         createMode === "create" ? "Wallet created and unlocked" : "Wallet imported"
       );
       await refreshStatus();
-      await refreshPortfolio();
-      await refreshTransactions();
-      await refreshTokenTransactions();
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : `Failed to ${createMode} wallet`);
     } finally {
@@ -491,9 +481,6 @@ export function Wallet() {
       setUnlockPassword("");
       addToast("success", "Wallet unlocked");
       await refreshStatus();
-      await refreshPortfolio();
-      await refreshTransactions();
-      await refreshTokenTransactions();
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to unlock wallet");
     } finally {
@@ -512,141 +499,6 @@ export function Wallet() {
       await refreshStatus();
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to lock wallet");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function resetDeleteDialogState() {
-    setDeletePassword("");
-    setDeleteConfirmText("");
-  }
-
-  function openDeleteDialog() {
-    resetDeleteDialogState();
-    setDeleteDialogOpen(true);
-  }
-
-  function closeDeleteDialog() {
-    if (busy) return;
-    setDeleteDialogOpen(false);
-    resetDeleteDialogState();
-  }
-
-  function handleSelectTab(tab: WalletTab) {
-    const tabConfig = WALLET_TABS.find((item) => item.id === tab);
-    if (tabConfig?.requiresUnlocked && !status?.unlocked) {
-      addToast("error", "Unlock wallet to access this tab");
-      setActiveTab("settings");
-      return;
-    }
-    setActiveTab(tab);
-  }
-
-  async function handleDeleteWallet() {
-    if (deleteConfirmText.trim().toUpperCase() !== "DELETE") {
-      addToast("error", "Type DELETE to confirm wallet deletion");
-      return;
-    }
-
-    const passwordForDelete = deletePassword.trim();
-    if (!status?.unlocked && !passwordForDelete) {
-      addToast("error", "Password is required while wallet is locked");
-      return;
-    }
-
-    setBusy(true);
-    try {
-      const response = await walletApi.deleteWallet(passwordForDelete || undefined);
-      if (!response.success) {
-        throw new Error(response.error || "Failed to delete wallet");
-      }
-
-      setGeneratedMnemonic("");
-      setTransactions([]);
-      setBalances([]);
-      setAccounts([]);
-      setUnlockPassword("");
-      setDeleteDialogOpen(false);
-      resetDeleteDialogState();
-      addToast("success", "Wallet deleted");
-      await refreshStatus();
-    } catch (error) {
-      addToast("error", error instanceof Error ? error.message : "Failed to delete wallet");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleToggleAgentAccess() {
-    if (!status) return;
-
-    setBusy(true);
-    try {
-      const response = await walletApi.setAgentAccess(!status.agentAccessEnabled);
-      if (!response.success) {
-        throw new Error(response.error || "Failed to update agent access");
-      }
-      addToast("success", `Agent wallet access ${response.data?.enabled ? "enabled" : "disabled"}`);
-      await refreshStatus();
-    } catch (error) {
-      addToast("error", error instanceof Error ? error.message : "Failed to update agent access");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleSaveRpcConfig() {
-    setBusy(true);
-    try {
-      const response = await walletApi.updateRpc({
-        ethRpc: rpcEth.trim(),
-        solRpc: rpcSol.trim(),
-        btcApi: rpcBtc.trim(),
-      });
-      if (!response.success || !response.data) {
-        throw new Error(response.error || "Failed to save RPC settings");
-      }
-
-      setRpcConfig(response.data.config);
-      try {
-        await refreshRpcStatusOnly();
-      } catch {}
-      addToast("success", "RPC settings updated");
-    } catch (error) {
-      addToast("error", error instanceof Error ? error.message : "Failed to save RPC settings");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleSaveAgentPolicy() {
-    if (!agentPolicy) {
-      addToast("error", "Agent policy is not available");
-      return;
-    }
-
-    setBusy(true);
-    try {
-      const response = await walletApi.updateAgentPolicy({
-        allowNativeSend: agentPolicy.allowNativeSend,
-        allowTokenSend: agentPolicy.allowTokenSend,
-        allowEthContractWrite: agentPolicy.allowEthContractWrite,
-        allowSolProgramInstruction: agentPolicy.allowSolProgramInstruction,
-        allowEthSwaps: agentPolicy.allowEthSwaps,
-        allowedEthContracts: parseAllowlistInput(policyEthAllowlistInput),
-        allowedSolPrograms: parseAllowlistInput(policySolAllowlistInput),
-      });
-      if (!response.success || !response.data) {
-        throw new Error(response.error || "Failed to save agent policy");
-      }
-
-      setAgentPolicy(response.data.policy);
-      setPolicyEthAllowlistInput(response.data.policy.allowedEthContracts.join("\n"));
-      setPolicySolAllowlistInput(response.data.policy.allowedSolPrograms.join("\n"));
-      addToast("success", "Agent wallet policy updated");
-    } catch (error) {
-      addToast("error", error instanceof Error ? error.message : "Failed to save agent policy");
     } finally {
       setBusy(false);
     }
@@ -757,54 +609,120 @@ export function Wallet() {
     }
   }
 
+  const sendUsdEstimate = useMemo(() => {
+    if (sendAssetType !== "native") return null;
+    const amount = Number(sendAmount);
+    const price = prices[sendChain];
+    if (!Number.isFinite(amount) || amount <= 0 || !price) return null;
+    return amount * price.price;
+  }, [sendAssetType, sendAmount, sendChain, prices]);
+
   return (
     <PageLayout
       title="Wallet"
       subtitle="Encrypted local multi-chain wallet for ETH, BTC, and SOL"
       actions={
-        <Button
-          variant="secondary"
-          leftIcon={
-            loading || busy ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <RefreshCw className="w-4 h-4" />
-            )
-          }
-          onClick={() => void refreshAll()}
-          disabled={busy}
-        >
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            leftIcon={<SettingsIcon className="w-4 h-4" />}
+            onClick={() => navigate("/settings?section=wallet")}
+          >
+            Wallet Settings
+          </Button>
+          <Button
+            variant="secondary"
+            leftIcon={
+              loading || busy ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )
+            }
+            onClick={() => void refreshAll()}
+            disabled={busy}
+          >
+            Refresh
+          </Button>
+        </div>
       }
     >
       <div className="space-y-6">
         <Card className="overflow-hidden border border-[rgba(var(--accent-primary),0.25)] bg-gradient-to-br from-[rgba(var(--accent-primary),0.18)] via-[#0f1220] to-[#090c16]">
           <CardContent className="p-6 sm:p-8">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-xs uppercase tracking-[0.2em] text-[rgba(var(--accent-primary),0.85)]">
                   Cybara Secure Vault
                 </p>
-                <h2 className="mt-2 text-2xl font-semibold text-white">
-                  One seed. Multiple chains.
+                <h2 className="mt-2 text-3xl font-semibold text-white">
+                  {status?.unlocked && portfolio.hasAnyPrice
+                    ? formatUsd(portfolio.totalUsd)
+                    : "One seed. Multiple chains."}
                 </h2>
                 <p className="mt-2 text-sm text-gray-300 max-w-2xl">
-                  Wallet secrets stay encrypted on this device. Agent access is opt-in and disabled
-                  by default.
+                  {status?.unlocked && portfolio.hasAnyPrice
+                    ? "Estimated portfolio value from live Pyth, Chainlink, and Jupiter price feeds."
+                    : "Wallet secrets stay encrypted on this device. Agent access is opt-in and disabled by default."}
                 </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Badge variant={status?.exists ? "success" : "warning"}>
+                    {status?.exists ? "Wallet Created" : "No Wallet"}
+                  </Badge>
+                  <Badge variant={status?.unlocked ? "info" : "default"}>
+                    {status?.unlocked ? "Unlocked" : "Locked"}
+                  </Badge>
+                  <Badge variant={status?.agentAccessEnabled ? "warning" : "default"}>
+                    Agent Access: {status?.agentAccessEnabled ? "On" : "Off"}
+                  </Badge>
+                </div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge variant={status?.exists ? "success" : "warning"}>
-                  {status?.exists ? "Wallet Created" : "Wallet Missing"}
-                </Badge>
-                <Badge variant={status?.unlocked ? "info" : "default"}>
-                  {status?.unlocked ? "Unlocked" : "Locked"}
-                </Badge>
-                <Badge variant={status?.agentAccessEnabled ? "warning" : "default"}>
-                  Agent Access: {status?.agentAccessEnabled ? "On" : "Off"}
-                </Badge>
-              </div>
+
+              {status?.exists && (
+                <div className="w-full max-w-sm">
+                  {status.unlocked ? (
+                    <div className="flex flex-col items-start gap-2 lg:items-end">
+                      <Button
+                        variant="secondary"
+                        leftIcon={<Lock className="w-4 h-4" />}
+                        onClick={() => void handleLock()}
+                        disabled={busy}
+                      >
+                        Lock Wallet
+                      </Button>
+                      {status.unlockExpiresAt && (
+                        <p className="text-xs text-gray-400">
+                          Auto-locks {formatTimestamp(status.unlockExpiresAt)}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <form
+                      className="space-y-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void handleUnlock();
+                      }}
+                    >
+                      <Input
+                        type="password"
+                        label="Wallet password"
+                        placeholder="Enter password to unlock"
+                        value={unlockPassword}
+                        onChange={(e) => setUnlockPassword(e.target.value)}
+                      />
+                      <Button
+                        type="submit"
+                        leftIcon={<Unlock className="w-4 h-4" />}
+                        disabled={busy}
+                        className="w-full"
+                      >
+                        Unlock Wallet
+                      </Button>
+                    </form>
+                  )}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -895,50 +813,95 @@ export function Wallet() {
               )}
             </CardContent>
           </Card>
+        ) : !status.unlocked ? (
+          <Card variant="liquid">
+            <CardContent className="p-8 text-center">
+              <Lock className="w-10 h-10 text-gray-500 mx-auto mb-3" />
+              <p className="text-white font-medium">Wallet is locked</p>
+              <p className="mt-1 text-sm text-gray-400">
+                Unlock above to view balances, send, and browse history. RPC endpoints and agent
+                permissions live in Wallet Settings.
+              </p>
+            </CardContent>
+          </Card>
         ) : (
           <>
-            <Card variant="liquid">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <WalletIcon className="w-5 h-5" />
-                  Wallet Status
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-gray-400">Created</p>
-                    <p className="mt-1 text-white">{formatTimestamp(status.createdAt)}</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-gray-400">Unlocked Until</p>
-                    <p className="mt-1 text-white">{formatTimestamp(status.unlockExpiresAt)}</p>
-                  </div>
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-gray-400">Primary ETH Address</p>
-                    <p className="mt-1 text-white break-all">
-                      {status.primaryAddresses?.eth || "N/A"}
-                    </p>
+            {generatedMnemonic && (
+              <div className="rounded-xl border border-amber-300/30 bg-amber-300/10 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm text-amber-100">24-word seed phrase backup reminder</p>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      leftIcon={
+                        showMnemonic ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />
+                      }
+                      onClick={() => setShowMnemonic((current) => !current)}
+                    >
+                      {showMnemonic ? "Hide" : "Show"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      leftIcon={<Copy className="w-4 h-4" />}
+                      onClick={() => void copyToClipboard("Seed phrase", generatedMnemonic)}
+                    >
+                      Copy
+                    </Button>
                   </div>
                 </div>
-                {!status.unlocked && (
-                  <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-                    Wallet is locked. Use the <span className="font-semibold">Settings</span> tab to
-                    unlock and enable send/receive/history views.
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                <p className="mt-3 text-sm break-words text-amber-50">
+                  {showMnemonic
+                    ? generatedMnemonic
+                    : "•••••••• •••••••• •••••••• •••••••• •••••••• ••••••••"}
+                </p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {portfolio.chains.map((chain) => (
+                <Card key={chain.value} variant="liquid">
+                  <CardContent className="p-5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-gray-300">{chain.label}</p>
+                      <Badge variant="info">{chain.symbol}</Badge>
+                    </div>
+                    <p className="mt-3 text-2xl font-semibold text-white">
+                      {chain.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}{" "}
+                      <span className="text-sm font-normal text-gray-400">{chain.symbol}</span>
+                    </p>
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <p className="text-sm text-emerald-300">
+                        {chain.usdValue !== null ? formatUsd(chain.usdValue) : "Price unavailable"}
+                      </p>
+                      {chain.price && (
+                        <p
+                          className="text-[11px] text-gray-500"
+                          title={
+                            chain.price.publishTime
+                              ? `Updated ${formatTimestamp(chain.price.publishTime)}`
+                              : undefined
+                          }
+                        >
+                          {formatUsd(chain.price.price)} ·{" "}
+                          {PRICE_SOURCE_LABELS[chain.price.source] || chain.price.source}
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
 
             <Card variant="liquid">
               <CardContent className="p-3">
                 <div
                   role="tablist"
                   aria-label="Wallet sections"
-                  className="grid grid-cols-2 md:grid-cols-4 gap-2"
+                  className="grid grid-cols-3 gap-2"
                 >
                   {WALLET_TABS.map((tab) => {
-                    const isLockedTab = tab.requiresUnlocked && !status.unlocked;
                     const isActive = activeTab === tab.id;
                     return (
                       <button
@@ -948,23 +911,16 @@ export function Wallet() {
                         id={`wallet-tab-button-${tab.id}`}
                         aria-controls={`wallet-tab-${tab.id}`}
                         aria-selected={isActive}
-                        aria-disabled={isLockedTab}
-                        onClick={() => handleSelectTab(tab.id)}
+                        onClick={() => setActiveTab(tab.id)}
                         className={[
-                          "flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm transition-all",
+                          "flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm transition-all",
                           isActive
                             ? "border-[rgba(var(--accent-primary),0.8)] bg-[rgba(var(--accent-primary),0.2)] text-white"
                             : "border-white/10 bg-black/20 text-gray-300 hover:border-white/25 hover:text-white",
-                          isLockedTab ? "opacity-60" : "",
                         ].join(" ")}
                       >
-                        <span className="flex items-center gap-2">
-                          {tab.icon}
-                          {tab.label}
-                        </span>
-                        {isLockedTab ? (
-                          <span className="text-[10px] uppercase tracking-wide">Locked</span>
-                        ) : null}
+                        {tab.icon}
+                        {tab.label}
                       </button>
                     );
                   })}
@@ -972,7 +928,7 @@ export function Wallet() {
               </CardContent>
             </Card>
 
-            {activeTab === "receive" && status.unlocked && (
+            {activeTab === "receive" && (
               <Card
                 variant="liquid"
                 role="tabpanel"
@@ -1051,6 +1007,11 @@ export function Wallet() {
                               <p className="mt-1 text-sm text-white break-all">{balance.address}</p>
                               <p className="mt-2 text-sm font-semibold text-emerald-300">
                                 {balance.amount} {balance.symbol}
+                                {prices[chain.value] && Number.isFinite(Number(balance.amount)) ? (
+                                  <span className="ml-2 text-xs font-normal text-gray-400">
+                                    {formatUsd(Number(balance.amount) * prices[chain.value]!.price)}
+                                  </span>
+                                ) : null}
                               </p>
                             </div>
                           ))
@@ -1141,7 +1102,7 @@ export function Wallet() {
               </Card>
             )}
 
-            {activeTab === "send" && status.unlocked && (
+            {activeTab === "send" && (
               <Card
                 variant="liquid"
                 role="tabpanel"
@@ -1214,6 +1175,7 @@ export function Wallet() {
                     placeholder="0.0"
                     value={sendAmount}
                     onChange={(e) => setSendAmount(e.target.value)}
+                    helperText={sendUsdEstimate !== null ? `≈ ${formatUsd(sendUsdEstimate)}` : undefined}
                   />
 
                   {sendAssetType === "token" && (
@@ -1272,10 +1234,12 @@ export function Wallet() {
               title="Confirm transfer"
               description={`You are about to send ${sendAmount.trim()} ${
                 sendAssetType === "token" ? "tokens" : sendChain.toUpperCase()
+              }${
+                sendUsdEstimate !== null ? ` (≈ ${formatUsd(sendUsdEstimate)})` : ""
               } to ${shortenAddress(sendTo.trim())} on ${sendChain.toUpperCase()}. This is an on-chain transaction and cannot be undone.`}
             />
 
-            {activeTab === "history" && status.unlocked && (
+            {activeTab === "history" && (
               <Card
                 variant="liquid"
                 role="tabpanel"
@@ -1490,364 +1454,20 @@ export function Wallet() {
               </Card>
             )}
 
-            {activeTab === "settings" && (
-              <Card
-                variant="liquid"
-                role="tabpanel"
-                id="wallet-tab-settings"
-                aria-labelledby="wallet-tab-button-settings"
+            <p className="flex items-center gap-2 text-xs text-gray-500">
+              <Shield className="w-3.5 h-3.5" />
+              RPC endpoints, agent permissions, and wallet deletion live in{" "}
+              <button
+                type="button"
+                className="text-[rgba(var(--accent-primary),1)] hover:underline"
+                onClick={() => navigate("/settings?section=wallet")}
               >
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Settings className="w-5 h-5" />
-                    Wallet Settings & Controls
-                  </CardTitle>
-                  <CardDescription>
-                    Security controls, agent permissions, and RPC endpoints
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-sm font-medium text-white">Security Controls</p>
-                      <p className="mt-1 text-xs text-gray-400">
-                        Agent access remains disabled unless explicitly enabled.
-                      </p>
-                      <div className="mt-4 space-y-3">
-                        {!status.unlocked ? (
-                          <div className="space-y-3">
-                            <Input
-                              type="password"
-                              label="Wallet password"
-                              placeholder="Enter password to unlock"
-                              value={unlockPassword}
-                              onChange={(e) => setUnlockPassword(e.target.value)}
-                            />
-                            <Button
-                              leftIcon={<Unlock className="w-4 h-4" />}
-                              onClick={() => void handleUnlock()}
-                              disabled={busy}
-                            >
-                              Unlock Wallet
-                            </Button>
-                          </div>
-                        ) : (
-                          <Button
-                            variant="secondary"
-                            leftIcon={<Lock className="w-4 h-4" />}
-                            onClick={() => void handleLock()}
-                            disabled={busy}
-                          >
-                            Lock Wallet
-                          </Button>
-                        )}
-
-                        <Button
-                          variant={status.agentAccessEnabled ? "danger" : "outline"}
-                          leftIcon={<Shield className="w-4 h-4" />}
-                          onClick={() => void handleToggleAgentAccess()}
-                          disabled={busy || !status.unlocked}
-                        >
-                          {status.agentAccessEnabled
-                            ? "Disable Agent Access"
-                            : "Enable Agent Access"}
-                        </Button>
-
-                        <Button
-                          variant="danger"
-                          leftIcon={<KeyRound className="w-4 h-4" />}
-                          onClick={openDeleteDialog}
-                          disabled={busy}
-                        >
-                          Delete Wallet
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                      <p className="text-sm font-medium text-white">RPC Settings</p>
-                      <p className="mt-1 text-xs text-gray-400">
-                        Public endpoints used for balances, tx history, and send operations.
-                      </p>
-                      <div className="mt-4 space-y-3">
-                        <Input
-                          label="ETH RPC"
-                          value={rpcEth}
-                          onChange={(e) => setRpcEth(e.target.value)}
-                        />
-                        <Input
-                          label="SOL RPC"
-                          value={rpcSol}
-                          onChange={(e) => setRpcSol(e.target.value)}
-                        />
-                        <Input
-                          label="BTC API"
-                          value={rpcBtc}
-                          onChange={(e) => setRpcBtc(e.target.value)}
-                        />
-                        <div className="flex flex-wrap gap-2">
-                          <Button onClick={() => void handleSaveRpcConfig()} disabled={busy}>
-                            Save RPC Settings
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            onClick={() =>
-                              void (async () => {
-                                try {
-                                  await refreshRpcStatusOnly();
-                                } catch (error) {
-                                  addToast(
-                                    "error",
-                                    error instanceof Error
-                                      ? error.message
-                                      : "Failed to refresh RPC status"
-                                  );
-                                }
-                              })()
-                            }
-                            disabled={busy}
-                          >
-                            Refresh RPC Status
-                          </Button>
-                        </div>
-                        {rpcConfig && (
-                          <p className="text-xs text-gray-500">
-                            Active BTC API: {rpcConfig.btcApi}
-                          </p>
-                        )}
-
-                        <div className="space-y-2">
-                          {rpcStatus?.services?.length ? (
-                            rpcStatus.services.map((service) => (
-                              <div
-                                key={service.chain}
-                                className="rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-gray-300"
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="font-medium text-white uppercase">
-                                    {service.chain}
-                                  </span>
-                                  <Badge variant={service.healthy ? "success" : "error"}>
-                                    {service.healthy ? "healthy" : "down"}
-                                  </Badge>
-                                </div>
-                                <p className="mt-1 break-all text-gray-400">{service.endpoint}</p>
-                                <p className="mt-1 text-gray-400">
-                                  latency: {service.latencyMs}ms
-                                  {service.latestHeight ? ` • latest: ${service.latestHeight}` : ""}
-                                </p>
-                                {service.error ? (
-                                  <p className="mt-1 text-red-300">{service.error}</p>
-                                ) : null}
-                              </div>
-                            ))
-                          ) : (
-                            <p className="text-xs text-gray-500">
-                              RPC health status is not loaded yet.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-sm font-medium text-white">Agent Wallet Policy</p>
-                    <p className="mt-1 text-xs text-gray-400">
-                      Fine-grained controls for agent/subagent write actions. Read actions remain
-                      available when access is enabled.
-                    </p>
-
-                    {agentPolicy ? (
-                      <div className="mt-4 space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-300">
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-white/20 bg-transparent"
-                              checked={agentPolicy.allowNativeSend}
-                              onChange={(e) =>
-                                setAgentPolicy((current) =>
-                                  current
-                                    ? { ...current, allowNativeSend: e.target.checked }
-                                    : current
-                                )
-                              }
-                            />
-                            Allow native sends
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-white/20 bg-transparent"
-                              checked={agentPolicy.allowTokenSend}
-                              onChange={(e) =>
-                                setAgentPolicy((current) =>
-                                  current
-                                    ? { ...current, allowTokenSend: e.target.checked }
-                                    : current
-                                )
-                              }
-                            />
-                            Allow token sends
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-white/20 bg-transparent"
-                              checked={agentPolicy.allowEthContractWrite}
-                              onChange={(e) =>
-                                setAgentPolicy((current) =>
-                                  current
-                                    ? { ...current, allowEthContractWrite: e.target.checked }
-                                    : current
-                                )
-                              }
-                            />
-                            Allow ETH contract writes
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-white/20 bg-transparent"
-                              checked={agentPolicy.allowSolProgramInstruction}
-                              onChange={(e) =>
-                                setAgentPolicy((current) =>
-                                  current
-                                    ? { ...current, allowSolProgramInstruction: e.target.checked }
-                                    : current
-                                )
-                              }
-                            />
-                            Allow Solana program instructions
-                          </label>
-                          <label className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              className="h-4 w-4 rounded border-white/20 bg-transparent"
-                              checked={agentPolicy.allowEthSwaps}
-                              onChange={(e) =>
-                                setAgentPolicy((current) =>
-                                  current
-                                    ? { ...current, allowEthSwaps: e.target.checked }
-                                    : current
-                                )
-                              }
-                            />
-                            Allow Uniswap ETH swaps
-                          </label>
-                        </div>
-
-                        <Textarea
-                          label="Allowlisted ETH contracts (optional, one per line)"
-                          placeholder="0x..."
-                          value={policyEthAllowlistInput}
-                          onChange={(e) => setPolicyEthAllowlistInput(e.target.value)}
-                        />
-                        <Textarea
-                          label="Allowlisted Solana programs (optional, one per line)"
-                          placeholder="Program pubkey"
-                          value={policySolAllowlistInput}
-                          onChange={(e) => setPolicySolAllowlistInput(e.target.value)}
-                        />
-
-                        <Button
-                          variant="secondary"
-                          onClick={() => void handleSaveAgentPolicy()}
-                          disabled={busy}
-                        >
-                          Save Agent Policy
-                        </Button>
-                      </div>
-                    ) : (
-                      <p className="mt-3 text-xs text-gray-500">Agent policy is unavailable.</p>
-                    )}
-                  </div>
-
-                  {generatedMnemonic && status.unlocked && (
-                    <div className="rounded-lg border border-amber-300/30 bg-amber-300/10 p-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm text-amber-100">
-                          24-word seed phrase backup reminder
-                        </p>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            leftIcon={
-                              showMnemonic ? (
-                                <EyeOff className="w-4 h-4" />
-                              ) : (
-                                <Eye className="w-4 h-4" />
-                              )
-                            }
-                            onClick={() => setShowMnemonic((current) => !current)}
-                          >
-                            {showMnemonic ? "Hide" : "Show"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            leftIcon={<Copy className="w-4 h-4" />}
-                            onClick={() => void copyToClipboard("Seed phrase", generatedMnemonic)}
-                          >
-                            Copy
-                          </Button>
-                        </div>
-                      </div>
-                      <p className="mt-3 text-sm break-words text-amber-50">
-                        {showMnemonic
-                          ? generatedMnemonic
-                          : "•••••••• •••••••• •••••••• •••••••• •••••••• ••••••••"}
-                      </p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
+                Settings &gt; Wallet
+              </button>
+            </p>
           </>
         )}
       </div>
-
-      <Modal
-        isOpen={deleteDialogOpen}
-        onClose={closeDeleteDialog}
-        title="Delete Wallet"
-        description="This permanently removes your encrypted wallet from this device."
-        size="sm"
-      >
-        <div className="space-y-4">
-          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
-            This action cannot be undone. Ensure your seed phrase backup is stored offline before
-            deleting.
-          </div>
-          <Input
-            type="password"
-            label={status?.unlocked ? "Wallet password (optional)" : "Wallet password"}
-            value={deletePassword}
-            onChange={(e) => setDeletePassword(e.target.value)}
-            placeholder={
-              status?.unlocked
-                ? "Optional verification password"
-                : "Required while wallet is locked"
-            }
-          />
-          <Input
-            label='Type "DELETE" to confirm'
-            value={deleteConfirmText}
-            onChange={(e) => setDeleteConfirmText(e.target.value)}
-            placeholder="DELETE"
-          />
-          <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={closeDeleteDialog} disabled={busy}>
-              Cancel
-            </Button>
-            <Button variant="danger" onClick={() => void handleDeleteWallet()} isLoading={busy}>
-              Delete Wallet
-            </Button>
-          </div>
-        </div>
-      </Modal>
     </PageLayout>
   );
 }

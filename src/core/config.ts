@@ -6,6 +6,7 @@ import {
   mergeMemoryProviderSettingsUpdate,
   normalizeMemoryProviderSettings,
 } from "./memory/providers";
+import { type EmbeddingProviderPreference } from "./memory/embeddings";
 
 interface PlatformConfig {
   name: string;
@@ -22,8 +23,7 @@ export type DangerousToolPolicyMode = "audit" | "block";
 export type ToolApprovalMode = "always_allow" | "ask";
 export type SandboxProvider = "auto" | "apple_sandbox" | "podman" | "docker";
 export type SandboxNetworkMode = "allow" | "deny";
-export type EmbeddingProviderPreference =
-  "auto" | "openai" | "gemini" | "ollama" | "transformers_js";
+export type { EmbeddingProviderPreference } from "./memory/embeddings";
 export type SpeechTtsProviderPreference = "auto" | "system" | "elevenlabs" | "openai";
 export type SpeechSttProviderPreference = "auto" | "openai";
 
@@ -307,14 +307,19 @@ function normalizeEmbeddingProvider(value: unknown): EmbeddingProviderPreference
   if (
     normalized === "auto" ||
     normalized === "openai" ||
+    normalized === "voyage" ||
     normalized === "gemini" ||
     normalized === "ollama" ||
-    normalized === "transformers_js"
+    normalized === "transformers_js" ||
+    normalized === "local"
   ) {
     return normalized as EmbeddingProviderPreference;
   }
   if (normalized === "transformers") {
     return "transformers_js";
+  }
+  if (normalized === "local_db" || normalized === "keyword" || normalized === "database") {
+    return "local";
   }
   return DEFAULT_WORKSPACE_INDEXER_SETTINGS.embeddingProvider;
 }

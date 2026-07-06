@@ -22,9 +22,14 @@ import {
   memoryApi,
   computerUseApi,
   sandboxBrowserApi,
+  walletApi,
   type ComputerUseStatus,
   type SandboxBrowserStatus,
+  type WalletAgentPolicy,
+  type WalletRpcStatus,
+  type WalletStatus,
 } from "@/lib/api";
+import { Modal } from "@/components/ui/Modal";
 import { Switch } from "@/components/ui/Switch";
 import { openExternal } from "@/utils/openExternal";
 import {
@@ -75,6 +80,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import type { Update, DownloadEvent } from "@tauri-apps/plugin-updater";
 
 function getCheckStatus(value: unknown): {
@@ -471,16 +477,28 @@ function DesktopUpdateSettings({
 }
 
 type SandboxProviderOption = "auto" | "apple_sandbox" | "podman" | "docker";
-type SettingsSectionId = "general" | "ai-memory" | "voice" | "safety" | "desktop" | "system";
+type SettingsSectionId =
+  | "general"
+  | "ai-memory"
+  | "voice"
+  | "wallet"
+  | "safety"
+  | "desktop"
+  | "system";
 
 const settingsSections: Array<{ id: SettingsSectionId; label: string }> = [
   { id: "general", label: "General" },
   { id: "ai-memory", label: "AI & Memory" },
   { id: "voice", label: "Voice" },
+  { id: "wallet", label: "Wallet" },
   { id: "safety", label: "Safety" },
   { id: "desktop", label: "Desktop" },
   { id: "system", label: "System" },
 ];
+
+function isSettingsSectionId(value: string | null): value is SettingsSectionId {
+  return settingsSections.some((section) => section.id === value);
+}
 
 interface SandboxStatusView {
   enabled: boolean;
@@ -855,7 +873,14 @@ type MemoryBehaviorSettingsState = {
   memoryFlushSystemPrompt: string;
 };
 
-type MemoryRecallProvider = "auto" | "transformers_js" | "openai" | "gemini" | "ollama";
+type MemoryRecallProvider =
+  | "auto"
+  | "local"
+  | "transformers_js"
+  | "openai"
+  | "voyage"
+  | "gemini"
+  | "ollama";
 
 type MemoryRecallSettingsState = {
   enabled: boolean;
@@ -896,12 +921,41 @@ const defaultMemoryRecallSettings: MemoryRecallSettingsState = {
 };
 
 const memoryRecallProviderOptions: Array<{ value: MemoryRecallProvider; label: string }> = [
-  { value: "auto", label: "Auto" },
+  { value: "auto", label: "Auto (best available)" },
+  { value: "local", label: "Local database (keyword only, no model)" },
   { value: "transformers_js", label: "Local Transformers.js" },
+  { value: "ollama", label: "Ollama (local)" },
   { value: "openai", label: "OpenAI" },
+  { value: "voyage", label: "Voyage AI" },
   { value: "gemini", label: "Gemini" },
-  { value: "ollama", label: "Ollama" },
 ];
+
+const memoryRecallModelSuggestions: Record<MemoryRecallProvider, string[]> = {
+  auto: [],
+  local: [],
+  transformers_js: [
+    "Xenova/all-MiniLM-L6-v2",
+    "Xenova/e5-small-v2",
+    "Xenova/gte-small",
+    "Xenova/multilingual-e5-small",
+    "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
+    "Xenova/bge-small-en-v1.5",
+    "Xenova/paraphrase-MiniLM-L3-v2",
+  ],
+  ollama: ["nomic-embed-text", "mxbai-embed-large", "snowflake-arctic-embed2"],
+  openai: ["text-embedding-3-small", "text-embedding-3-large"],
+  voyage: [
+    "voyage-3",
+    "voyage-3-large",
+    "voyage-3-lite",
+    "voyage-3.5",
+    "voyage-3.5-lite",
+    "voyage-code-3",
+  ],
+  gemini: ["text-embedding-004"],
+};
+
+const CUSTOM_MODEL_OPTION = "__custom__";
 
 function asSettingsRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -936,14 +990,19 @@ function readMemoryRecallProvider(value: unknown): MemoryRecallProvider {
     .replace(/[\s-]+/g, "_");
   if (
     normalized === "auto" ||
+    normalized === "local" ||
     normalized === "transformers_js" ||
     normalized === "openai" ||
+    normalized === "voyage" ||
     normalized === "gemini" ||
     normalized === "ollama"
   ) {
     return normalized;
   }
   if (normalized === "transformers") return "transformers_js";
+  if (normalized === "local_db" || normalized === "keyword" || normalized === "database") {
+    return "local";
+  }
   return defaultMemoryRecallSettings.embeddingProvider;
 }
 
@@ -1237,6 +1296,14 @@ function MemoryBehaviorSettings() {
   const updateRecall = (patch: Partial<MemoryRecallSettingsState>) => {
     setRecall((current) => ({ ...current, ...patch }));
   };
+
+  const [customEmbeddingModel, setCustomEmbeddingModel] = useState(false);
+  const embeddingModelSuggestions = memoryRecallModelSuggestions[recall.embeddingProvider] || [];
+  const embeddingModelIsSuggested =
+    recall.embeddingModel === "" || embeddingModelSuggestions.includes(recall.embeddingModel);
+  const showCustomEmbeddingModelInput =
+    recall.embeddingProvider !== "local" &&
+    (embeddingModelSuggestions.length === 0 || customEmbeddingModel || !embeddingModelIsSuggested);
 
   const updateProvider = (patch: Partial<MemoryProviderSettingsState>) => {
     setProviderTest(null);
@@ -1583,17 +1650,47 @@ function MemoryBehaviorSettings() {
               options={memoryRecallProviderOptions}
               value={recall.embeddingProvider}
               disabled={loading || savingRecall}
-              onChange={(value) =>
-                updateRecall({ embeddingProvider: value as MemoryRecallProvider })
-              }
+              onChange={(value) => {
+                setCustomEmbeddingModel(false);
+                updateRecall({
+                  embeddingProvider: value as MemoryRecallProvider,
+                  embeddingModel: "",
+                });
+              }}
             />
-            <Input
-              label="Model override"
-              placeholder="Auto"
-              value={recall.embeddingModel}
-              disabled={loading || savingRecall}
-              onChange={(event) => updateRecall({ embeddingModel: event.target.value })}
-            />
+            {recall.embeddingProvider !== "local" && embeddingModelSuggestions.length > 0 && (
+              <Select
+                label="Model"
+                options={[
+                  { value: "", label: "Default" },
+                  ...embeddingModelSuggestions.map((model) => ({ value: model, label: model })),
+                  { value: CUSTOM_MODEL_OPTION, label: "Custom model…" },
+                ]}
+                value={
+                  customEmbeddingModel || !embeddingModelIsSuggested
+                    ? CUSTOM_MODEL_OPTION
+                    : recall.embeddingModel
+                }
+                disabled={loading || savingRecall}
+                onChange={(value) => {
+                  if (value === CUSTOM_MODEL_OPTION) {
+                    setCustomEmbeddingModel(true);
+                    return;
+                  }
+                  setCustomEmbeddingModel(false);
+                  updateRecall({ embeddingModel: value });
+                }}
+              />
+            )}
+            {showCustomEmbeddingModelInput && (
+              <Input
+                label={embeddingModelSuggestions.length > 0 ? "Custom model" : "Model override"}
+                placeholder="Auto"
+                value={recall.embeddingModel}
+                disabled={loading || savingRecall}
+                onChange={(event) => updateRecall({ embeddingModel: event.target.value })}
+              />
+            )}
             <Input
               label="Max files"
               type="number"
@@ -2645,11 +2742,380 @@ function SpeechSettingsSection() {
   );
 }
 
+function parseWalletAllowlistInput(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function WalletSettings() {
+  const { addToast } = useUIStore();
+  const [status, setStatus] = useState<WalletStatus | null>(null);
+  const [rpcStatus, setRpcStatus] = useState<WalletRpcStatus | null>(null);
+  const [agentPolicy, setAgentPolicy] = useState<WalletAgentPolicy | null>(null);
+  const [rpcEth, setRpcEth] = useState("");
+  const [rpcSol, setRpcSol] = useState("");
+  const [rpcBtc, setRpcBtc] = useState("");
+  const [ethAllowlistInput, setEthAllowlistInput] = useState("");
+  const [solAllowlistInput, setSolAllowlistInput] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [statusRes, rpcRes, rpcStatusRes, policyRes] = await Promise.all([
+        walletApi.status(),
+        walletApi.rpc(),
+        walletApi.rpcStatus(),
+        walletApi.getAgentPolicy(),
+      ]);
+      if (statusRes.success && statusRes.data) setStatus(statusRes.data);
+      if (rpcRes.success && rpcRes.data) {
+        setRpcEth(rpcRes.data.ethRpc);
+        setRpcSol(rpcRes.data.solRpc);
+        setRpcBtc(rpcRes.data.btcApi);
+      }
+      setRpcStatus(rpcStatusRes.success && rpcStatusRes.data ? rpcStatusRes.data : null);
+      if (policyRes.success && policyRes.data) {
+        setAgentPolicy(policyRes.data);
+        setEthAllowlistInput(policyRes.data.allowedEthContracts.join("\n"));
+        setSolAllowlistInput(policyRes.data.allowedSolPrograms.join("\n"));
+      }
+    } catch {
+      addToast("error", "Failed to load wallet settings");
+    } finally {
+      setLoading(false);
+    }
+  }, [addToast]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleToggleAgentAccess(enabled: boolean) {
+    setBusy(true);
+    try {
+      const response = await walletApi.setAgentAccess(enabled);
+      if (!response.success) throw new Error(response.error || "Failed to update agent access");
+      addToast("success", `Agent wallet access ${enabled ? "enabled" : "disabled"}`);
+      const statusRes = await walletApi.status();
+      if (statusRes.success && statusRes.data) setStatus(statusRes.data);
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to update agent access");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveRpc() {
+    setBusy(true);
+    try {
+      const response = await walletApi.updateRpc({
+        ethRpc: rpcEth.trim(),
+        solRpc: rpcSol.trim(),
+        btcApi: rpcBtc.trim(),
+      });
+      if (!response.success || !response.data) {
+        throw new Error(response.error || "Failed to save RPC settings");
+      }
+      addToast("success", "RPC settings updated");
+      const rpcStatusRes = await walletApi.rpcStatus();
+      setRpcStatus(rpcStatusRes.success && rpcStatusRes.data ? rpcStatusRes.data : null);
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to save RPC settings");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSavePolicy() {
+    if (!agentPolicy) return;
+    setBusy(true);
+    try {
+      const response = await walletApi.updateAgentPolicy({
+        allowNativeSend: agentPolicy.allowNativeSend,
+        allowTokenSend: agentPolicy.allowTokenSend,
+        allowEthContractWrite: agentPolicy.allowEthContractWrite,
+        allowSolProgramInstruction: agentPolicy.allowSolProgramInstruction,
+        allowEthSwaps: agentPolicy.allowEthSwaps,
+        allowedEthContracts: parseWalletAllowlistInput(ethAllowlistInput),
+        allowedSolPrograms: parseWalletAllowlistInput(solAllowlistInput),
+      });
+      if (!response.success || !response.data) {
+        throw new Error(response.error || "Failed to save agent policy");
+      }
+      setAgentPolicy(response.data.policy);
+      setEthAllowlistInput(response.data.policy.allowedEthContracts.join("\n"));
+      setSolAllowlistInput(response.data.policy.allowedSolPrograms.join("\n"));
+      addToast("success", "Agent wallet policy updated");
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to save agent policy");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleDeleteWallet() {
+    if (deleteConfirmText.trim().toUpperCase() !== "DELETE") {
+      addToast("error", "Type DELETE to confirm wallet deletion");
+      return;
+    }
+    const passwordForDelete = deletePassword.trim();
+    if (!status?.unlocked && !passwordForDelete) {
+      addToast("error", "Password is required while wallet is locked");
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await walletApi.deleteWallet(passwordForDelete || undefined);
+      if (!response.success) throw new Error(response.error || "Failed to delete wallet");
+      setDeleteDialogOpen(false);
+      setDeletePassword("");
+      setDeleteConfirmText("");
+      addToast("success", "Wallet deleted");
+      await load();
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to delete wallet");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const policyToggles: Array<{ key: keyof WalletAgentPolicy; label: string; description: string }> =
+    [
+      { key: "allowNativeSend", label: "Native sends", description: "ETH, BTC, and SOL transfers" },
+      { key: "allowTokenSend", label: "Token sends", description: "ERC-20 and SPL transfers" },
+      {
+        key: "allowEthContractWrite",
+        label: "ETH contract writes",
+        description: "Arbitrary contract calls",
+      },
+      {
+        key: "allowSolProgramInstruction",
+        label: "Solana program instructions",
+        description: "Arbitrary program calls",
+      },
+      { key: "allowEthSwaps", label: "Swaps", description: "Uniswap and Jupiter swaps" },
+    ];
+
+  return (
+    <div className="space-y-6">
+      <Card variant="liquid">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-amber-400" />
+            Agent Access
+          </CardTitle>
+          <CardDescription>
+            Whether agents can use wallet tools at all. Off by default; write actions are further
+            gated by the policy below.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Switch
+            label="Allow agents to use the wallet"
+            description={
+              status?.unlocked
+                ? "Agents can read balances and, per policy, sign transactions"
+                : "Unlock the wallet on the Wallet page to change this"
+            }
+            checked={Boolean(status?.agentAccessEnabled)}
+            disabled={loading || busy || !status?.unlocked}
+            onChange={(checked) => void handleToggleAgentAccess(checked)}
+          />
+          {agentPolicy && (
+            <div className="space-y-3 pt-3 border-t border-white/10">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {policyToggles.map((toggle) => (
+                  <Switch
+                    key={toggle.key}
+                    label={toggle.label}
+                    description={toggle.description}
+                    checked={Boolean(agentPolicy[toggle.key])}
+                    disabled={loading || busy}
+                    onChange={(checked) =>
+                      setAgentPolicy((current) =>
+                        current ? { ...current, [toggle.key]: checked } : current
+                      )
+                    }
+                  />
+                ))}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Textarea
+                  label="Allowlisted ETH contracts (one per line)"
+                  placeholder="0x..."
+                  rows={3}
+                  value={ethAllowlistInput}
+                  onChange={(e) => setEthAllowlistInput(e.target.value)}
+                />
+                <Textarea
+                  label="Allowlisted Solana programs (one per line)"
+                  placeholder="Program pubkey"
+                  rows={3}
+                  value={solAllowlistInput}
+                  onChange={(e) => setSolAllowlistInput(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button onClick={() => void handleSavePolicy()} disabled={loading || busy}>
+                  Save Agent Policy
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card variant="liquid">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Server className="w-5 h-5 text-cyan-400" />
+            Network Endpoints
+          </CardTitle>
+          <CardDescription>
+            RPC endpoints used for balances, history, and sending. Price data additionally uses
+            Pyth Hermes, Chainlink, and Jupiter.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Input label="Ethereum RPC" value={rpcEth} onChange={(e) => setRpcEth(e.target.value)} />
+            <Input label="Solana RPC" value={rpcSol} onChange={(e) => setRpcSol(e.target.value)} />
+            <Input label="Bitcoin API" value={rpcBtc} onChange={(e) => setRpcBtc(e.target.value)} />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button onClick={() => void handleSaveRpc()} disabled={loading || busy}>
+              Save Endpoints
+            </Button>
+            <Button
+              variant="secondary"
+              leftIcon={<RefreshCw className="w-4 h-4" />}
+              onClick={() => void load()}
+              disabled={loading || busy}
+            >
+              Check Health
+            </Button>
+          </div>
+          {rpcStatus?.services?.length ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {rpcStatus.services.map((service) => (
+                <div
+                  key={service.chain}
+                  className="rounded-lg border border-white/10 bg-white/[0.02] p-3 text-xs"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-medium text-white uppercase">{service.chain}</span>
+                    <Badge variant={service.healthy ? "success" : "error"}>
+                      {service.healthy ? "healthy" : "down"}
+                    </Badge>
+                  </div>
+                  <p className="mt-1 truncate text-gray-400" title={service.endpoint}>
+                    {service.endpoint}
+                  </p>
+                  <p className="mt-1 text-gray-500">
+                    {service.latencyMs}ms
+                    {service.latestHeight ? ` · height ${service.latestHeight}` : ""}
+                  </p>
+                  {service.error ? <p className="mt-1 text-red-300">{service.error}</p> : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Card variant="liquid">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-red-400" />
+            Danger Zone
+          </CardTitle>
+          <CardDescription>
+            Permanently remove the encrypted wallet from this device. Back up your seed phrase
+            first.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="danger"
+            onClick={() => setDeleteDialogOpen(true)}
+            disabled={loading || busy || !status?.exists}
+          >
+            Delete Wallet
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Modal
+        isOpen={deleteDialogOpen}
+        onClose={() => {
+          if (!busy) setDeleteDialogOpen(false);
+        }}
+        title="Delete Wallet"
+        description="This permanently removes your encrypted wallet from this device."
+        size="sm"
+      >
+        <div className="space-y-4">
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
+            This action cannot be undone. Ensure your seed phrase backup is stored offline before
+            deleting.
+          </div>
+          <Input
+            type="password"
+            label={status?.unlocked ? "Wallet password (optional)" : "Wallet password"}
+            value={deletePassword}
+            onChange={(e) => setDeletePassword(e.target.value)}
+            placeholder={
+              status?.unlocked ? "Optional verification password" : "Required while wallet is locked"
+            }
+          />
+          <Input
+            label='Type "DELETE" to confirm'
+            value={deleteConfirmText}
+            onChange={(e) => setDeleteConfirmText(e.target.value)}
+            placeholder="DELETE"
+          />
+          <div className="flex justify-end gap-3">
+            <Button variant="ghost" onClick={() => setDeleteDialogOpen(false)} disabled={busy}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={() => void handleDeleteWallet()} isLoading={busy}>
+              Delete Wallet
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
 export function Settings() {
   const { data: health } = useHealth();
   const { data: info } = useInfo();
   const { data: systemMonitor } = useSystemMonitor();
-  const [activeSection, setActiveSection] = useState<SettingsSectionId>("general");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sectionParam = searchParams.get("section");
+  const [activeSection, setActiveSection] = useState<SettingsSectionId>(
+    isSettingsSectionId(sectionParam) ? sectionParam : "general"
+  );
+
+  useEffect(() => {
+    if (isSettingsSectionId(sectionParam) && sectionParam !== activeSection) {
+      setActiveSection(sectionParam);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sectionParam]);
+
+  const selectSection = (section: SettingsSectionId) => {
+    setActiveSection(section);
+    setSearchParams(section === "general" ? {} : { section }, { replace: true });
+  };
 
   const healthData = (health || {}) as HealthData;
   const infoData = (info || {}) as InfoData;
@@ -2701,7 +3167,7 @@ export function Settings() {
             <button
               key={section.id}
               type="button"
-              onClick={() => setActiveSection(section.id)}
+              onClick={() => selectSection(section.id)}
               className={cn(
                 "rounded-lg px-3 py-2 text-sm transition-colors",
                 activeSection === section.id
@@ -2724,6 +3190,8 @@ export function Settings() {
         )}
 
         {activeSection === "voice" && <SpeechSettingsSection />}
+
+        {activeSection === "wallet" && <WalletSettings />}
 
         {activeSection === "safety" && (
           <>

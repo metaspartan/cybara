@@ -56,6 +56,8 @@ export function Memory() {
     provider?: string;
     model?: string;
     chunks?: number;
+    files?: number;
+    fallbackReason?: string | null;
   } | null>(null);
 
   const refreshStatus = useCallback(async () => {
@@ -65,6 +67,8 @@ export function Memory() {
         provider: res.data.provider,
         model: res.data.model,
         chunks: res.data.chunks,
+        files: res.data.files,
+        fallbackReason: res.data.fallbackReason,
       });
     }
   }, []);
@@ -150,6 +154,16 @@ export function Memory() {
   };
 
   const selectedMemory = memory?.find((m) => m.file === selectedFile);
+  const semanticSearchActive =
+    memStatus?.provider && memStatus.provider !== "none" && memStatus.provider !== "local";
+  const searchModeLabel = semanticSearchActive
+    ? "Semantic + keyword"
+    : memStatus?.provider === "local"
+      ? "Keyword (local, no model)"
+      : "Keyword";
+  const searchModeDetail = semanticSearchActive
+    ? `${memStatus?.provider === "transformers_js" ? "Transformers.js" : memStatus?.provider} · ${memStatus?.model}`
+    : "No embedding model needed";
   const memoryStatusPanel = (
     <Card className="mb-6" variant="liquid">
       <CardHeader>
@@ -160,16 +174,14 @@ export function Memory() {
               Memory Store
             </CardTitle>
             <CardDescription>
-              View, search, edit, and delete durable memory files. Configure learning and recall in
-              Settings &gt; AI &amp; Memory.
+              Memories always live on this machine as markdown files plus a local SQLite search
+              index. Configure how they are searched in Settings &gt; AI &amp; Memory.
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
             {memStatus && (
               <div className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs text-gray-400">
-                {memStatus.provider === "none" || !memStatus.model
-                  ? "Keyword only"
-                  : `${memStatus.provider}/${memStatus.model} - ${memStatus.chunks ?? 0} chunks`}
+                {searchModeLabel} · {memStatus.chunks ?? 0} chunks indexed
               </div>
             )}
             <Button
@@ -187,18 +199,30 @@ export function Memory() {
       <CardContent>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
           <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-            <p className="text-xs text-gray-500">Provider</p>
-            <p className="mt-1 text-gray-200">{memStatus?.provider || "Unknown"}</p>
+            <p className="text-xs text-gray-500">Storage</p>
+            <p className="mt-1 text-gray-200">Local database</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">Markdown files + SQLite index</p>
           </div>
           <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-            <p className="text-xs text-gray-500">Model</p>
-            <p className="mt-1 text-gray-200">{memStatus?.model || "Keyword search"}</p>
+            <p className="text-xs text-gray-500">Search</p>
+            <p className="mt-1 text-gray-200">{searchModeLabel}</p>
+            <p className="text-[11px] text-gray-500 mt-0.5 truncate" title={searchModeDetail}>
+              {searchModeDetail}
+            </p>
           </div>
           <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2">
-            <p className="text-xs text-gray-500">Indexed chunks</p>
-            <p className="mt-1 text-gray-200">{memStatus?.chunks ?? 0}</p>
+            <p className="text-xs text-gray-500">Indexed</p>
+            <p className="mt-1 text-gray-200">{memStatus?.chunks ?? 0} chunks</p>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              across {memStatus?.files ?? 0} files
+            </p>
           </div>
         </div>
+        {memStatus?.fallbackReason && (
+          <p className="mt-3 text-[11px] text-amber-300/80">
+            Fallback active: {memStatus.fallbackReason}
+          </p>
+        )}
       </CardContent>
     </Card>
   );

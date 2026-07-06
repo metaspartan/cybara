@@ -9,7 +9,8 @@ export type EmbeddingProviderPreference =
     | "voyage"
     | "gemini"
     | "ollama"
-    | "transformers_js";
+    | "transformers_js"
+    | "local";
 
 export type EmbeddingProviderId =
     | "openai"
@@ -17,6 +18,7 @@ export type EmbeddingProviderId =
     | "gemini"
     | "ollama"
     | "transformers_js"
+    | "local"
     | "none";
 
 export interface EmbeddingSelection {
@@ -150,11 +152,15 @@ function normalizeProvider(provider: unknown): EmbeddingProviderPreference {
         normalized === "voyage" ||
         normalized === "gemini" ||
         normalized === "ollama" ||
-        normalized === "transformers_js"
+        normalized === "transformers_js" ||
+        normalized === "local"
     ) {
         return normalized as EmbeddingProviderPreference;
     }
     if (normalized === "transformers") return "transformers_js";
+    if (normalized === "local_db" || normalized === "keyword" || normalized === "database") {
+        return "local";
+    }
     return "auto";
 }
 
@@ -1110,6 +1116,19 @@ function createNullProvider(): EmbeddingProvider {
     };
 }
 
+// Keyword-only mode: chunks are stored and searched in the local SQLite index
+// (BM25) without computing embeddings, so memory works fully offline with no
+// model download and no external service.
+function createLocalKeywordProvider(): EmbeddingProvider {
+    return {
+        id: "local",
+        model: "keyword-index",
+        dimensions: 0,
+        embedQuery: async () => [],
+        embedBatch: async (texts) => texts.map(() => []),
+    };
+}
+
 async function tryCreateProvider(
     provider: EmbeddingProviderPreference,
     model: string
@@ -1172,6 +1191,10 @@ async function tryCreateProvider(
             provider: { ...embeddingProvider, dimensions },
             source: "ollama",
         };
+    }
+
+    if (provider === "local") {
+        return { provider: createLocalKeywordProvider(), source: "local" };
     }
 
     if (provider === "transformers_js") {
@@ -1261,6 +1284,7 @@ export async function createEmbeddingProvider(selection?: EmbeddingSelection): P
         { provider: "gemini", model: normalized.model || GEMINI_DEFAULT_MODEL },
         { provider: "ollama", model: normalized.model || OLLAMA_DEFAULT_MODEL },
         { provider: "transformers_js", model: normalized.model || TRANSFORMERS_DEFAULT_MODEL },
+        { provider: "local", model: "" },
     ];
 
     const failureReasons: string[] = [];
@@ -1361,6 +1385,14 @@ export async function getEmbeddingProviderCatalog(selection?: EmbeddingSelection
                       "Install @huggingface/transformers to enable local in-process embeddings",
                 defaultModel: TRANSFORMERS_DEFAULT_MODEL,
                 models: [...TRANSFORMERS_RECOMMENDED_MODELS],
+            },
+            {
+                id: "local",
+                label: "Local database (keyword only, no model)",
+                local: true,
+                available: true,
+                defaultModel: "",
+                models: [],
             },
         ],
     };

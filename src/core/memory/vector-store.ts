@@ -220,8 +220,15 @@ export class VectorStore {
         console.log(`[VectorStore] Loaded ${this.chunks.size} chunks from database`);
     }
 
+    // Guards against a slow older init (e.g. the constructor's "auto" probe
+    // downloading a model) resolving after a newer configureEmbeddings call
+    // and clobbering the provider the user actually selected.
+    private providerGeneration = 0;
+
     private async initProvider(): Promise<void> {
+        const generation = ++this.providerGeneration;
         const result = await createEmbeddingProvider(this.embeddingSelection);
+        if (generation !== this.providerGeneration) return;
         this.provider = result.provider;
         this.providerSource = result.source;
         this.providerFallbackReason = result.fallbackReason || null;
@@ -327,16 +334,19 @@ export class VectorStore {
         };
     }
 
+    // True when the active provider produces real vectors. "local" and "none"
+    // still index chunks into SQLite so BM25 keyword search works fully
+    // offline; they just skip embedding computation.
+    private canEmbed(): boolean {
+        return Boolean(this.provider && this.provider.id !== "none" && this.provider.id !== "local");
+    }
+
     async indexFile(
         path: string,
         content: string,
         source: "memory" | "sessions" | "workspace" = "memory"
     ): Promise<number> {
         await this.ensureReady();
-
-        if (!this.provider || this.provider.id === "none") {
-            return 0;
-        }
 
         const oldChunks = Array.from(this.chunks.values()).filter((chunk) => chunk.path === path);
         for (const chunk of oldChunks) {
@@ -348,11 +358,14 @@ export class VectorStore {
         if (textChunks.length === 0) return 0;
 
         const provider = this.provider;
-        const embeddings = await embedInSubBatches(
-            textChunks.map((chunk) => chunk.text),
-            (batch) => provider.embedBatch(batch),
-            { batchSize: 96, concurrency: 4 }
-        );
+        const withEmbeddings = this.canEmbed() && provider;
+        const embeddings = withEmbeddings
+            ? await embedInSubBatches(
+                  textChunks.map((chunk) => chunk.text),
+                  (batch) => provider.embedBatch(batch),
+                  { batchSize: 96, concurrency: 4 }
+              )
+            : textChunks.map(() => [] as number[]);
         const now = Date.now();
         const stmt = this.db.prepare(
             "INSERT OR REPLACE INTO chunks (id, path, start_line, end_line, content, embedding, source, created_at, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
@@ -361,8 +374,8 @@ export class VectorStore {
         let insertedCount = 0;
         for (let i = 0; i < textChunks.length; i += 1) {
             const chunk = textChunks[i];
-            const embedding = embeddings[i];
-            if (!embedding || embedding.length === 0) continue;
+            const embedding = embeddings[i] || [];
+            if (withEmbeddings && embedding.length === 0) continue;
 
             const hash = hashContent(chunk.text);
             const id = `${path}:${chunk.startLine}:${hash}`;
@@ -410,13 +423,13 @@ export class VectorStore {
         const maxResults = options.maxResults ?? 10;
         const minScore = options.minScore ?? 0.3;
 
-        if (!this.provider || this.provider.id === "none") {
-            return this.keywordSearch(query, maxResults);
+        if (!this.canEmbed() || !this.provider) {
+            return this.keywordSearch(query, maxResults, options.source);
         }
 
         const queryEmbedding = await this.provider.embedQuery(query);
         if (queryEmbedding.length === 0) {
-            return this.keywordSearch(query, maxResults);
+            return this.keywordSearch(query, maxResults, options.source);
         }
 
         let candidates = Array.from(this.chunks.values());
@@ -450,16 +463,23 @@ export class VectorStore {
             })
             .filter((result): result is VectorSearchResult => Boolean(result));
 
-        const keywordResults = this.keywordSearch(query, maxResults);
+        const keywordResults = this.keywordSearch(query, maxResults, options.source);
         const merged = this.mergeResults(vectorResults, keywordResults, 0.7, 0.3);
         return merged.slice(0, maxResults);
     }
 
-    private keywordSearch(query: string, maxResults: number): VectorSearchResult[] {
+    private keywordSearch(
+        query: string,
+        maxResults: number,
+        source?: "memory" | "sessions" | "workspace"
+    ): VectorSearchResult[] {
         const terms = this.tokenize(query);
         if (terms.length === 0) return [];
 
-        const chunks = Array.from(this.chunks.values());
+        let chunks = Array.from(this.chunks.values());
+        if (source) {
+            chunks = chunks.filter((chunk) => chunk.source === source);
+        }
         if (chunks.length === 0) return [];
 
         const k1 = 1.5;

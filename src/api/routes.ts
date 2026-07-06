@@ -3529,9 +3529,20 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/memory/search": async (_body, params) => {
     return await handleMemorySearch(params!.query || "");
   },
-  "GET /api/memory/status": () => {
+  "GET /api/memory/status": async () => {
     try {
-      return { success: true, ...getVectorStore().stats() };
+      const vectorStore = getVectorStore();
+      const indexerSettings = config.getWorkspaceIndexerSettings();
+      await vectorStore.configureEmbeddings({
+        provider: indexerSettings.embeddingProvider,
+        model: indexerSettings.embeddingModel,
+      });
+      return {
+        success: true,
+        ...vectorStore.stats(),
+        configuredProvider: indexerSettings.embeddingProvider,
+        configuredModel: indexerSettings.embeddingModel,
+      };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : "unavailable" };
     }

@@ -122,14 +122,14 @@ export interface WorkspaceIndexerSettings {
   semanticEnabled: boolean;
   semanticMaxFiles: number;
   semanticMinScore: number;
-  embeddingProvider: "auto" | "openai" | "gemini" | "ollama" | "transformers_js";
+  embeddingProvider: "auto" | "openai" | "voyage" | "gemini" | "ollama" | "transformers_js" | "local";
   embeddingModel: string;
   ignoreDirs: string[];
   includeExtensions: string[];
 }
 
 export interface WorkspaceEmbeddingProviderOption {
-  id: "auto" | "openai" | "gemini" | "ollama" | "transformers_js";
+  id: "auto" | "openai" | "voyage" | "gemini" | "ollama" | "transformers_js" | "local";
   label: string;
   local: boolean;
   available: boolean;

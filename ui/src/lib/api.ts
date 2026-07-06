@@ -806,6 +806,9 @@ export const memoryApi = {
       files?: number;
       provider?: string;
       model?: string;
+      configuredProvider?: string;
+      configuredModel?: string;
+      fallbackReason?: string | null;
       error?: string;
     }>("/memory/status"),
   create: (memory: Omit<Memory, "id" | "createdAt" | "updatedAt">) =>

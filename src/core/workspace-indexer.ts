@@ -308,7 +308,7 @@ class WorkspaceIndexer {
 
     const vectorStore = getVectorStore();
     await vectorStore.configureEmbeddings({
-      provider: providerPreference as "auto" | "openai" | "gemini" | "ollama" | "transformers_js",
+      provider: providerPreference as EmbeddingProviderPreference,
       model: modelPreference,
     });
 
@@ -322,7 +322,7 @@ class WorkspaceIndexer {
     const model = modelPreference || (stats.model !== "none" ? stats.model : "");
 
     const result = await vectorStore.stopLocalRuntime({
-      provider: provider as "auto" | "openai" | "gemini" | "ollama" | "transformers_js",
+      provider: provider as EmbeddingProviderPreference,
       model,
     });
 

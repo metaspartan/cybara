@@ -81,7 +81,12 @@ const cachedMetricsRouteTtls: Record<string, number> = {
   "GET /api/metrics/insights": 60_000,
 };
 
+// Caching and prewarm are disabled under `bun test`: cached/prewarmed values
+// leak across test files and mask the data each test just inserted.
+const isTestEnv = process.env.NODE_ENV === "test";
+
 export function cacheMetricsRoutes(routes: Record<string, CacheableRouteHandler>): void {
+  if (isTestEnv) return;
   for (const [routeKey, ttlMs] of Object.entries(cachedMetricsRouteTtls)) {
     const handler = routes[routeKey];
     if (handler) {
@@ -94,6 +99,7 @@ export function cacheMetricsRoutes(routes: Record<string, CacheableRouteHandler>
 // visit is served warm instead of paying the multi-second cold scans. Routes
 // run one at a time with a gap between them to avoid starving the event loop.
 export function prewarmMetricsRoutes(routes: Record<string, CacheableRouteHandler>): void {
+  if (isTestEnv) return;
   const routeKeys = Object.keys(cachedMetricsRouteTtls).filter((key) => routes[key]);
   let index = 0;
   const runNext = () => {

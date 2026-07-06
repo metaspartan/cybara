@@ -64,10 +64,28 @@ function assertWithinMemoryDir(candidate: string): void {
 
 let vectorStoreInitialized = false;
 
+// Memory tools honor the embedding provider/model configured in settings
+// (including the local keyword-only mode) instead of whatever "auto" resolved
+// to at startup. configureEmbeddings is a no-op when the selection is
+// unchanged.
+async function getConfiguredVectorStore(): Promise<ReturnType<typeof getVectorStore>> {
+  const vectorStore = getVectorStore();
+  try {
+    const settings = config.getWorkspaceIndexerSettings();
+    await vectorStore.configureEmbeddings({
+      provider: settings.embeddingProvider,
+      model: settings.embeddingModel,
+    });
+  } catch {
+    await vectorStore.ensureReady();
+  }
+  return vectorStore;
+}
+
 async function ensureVectorStoreIndexed(): Promise<void> {
   if (vectorStoreInitialized) return;
 
-  const vectorStore = getVectorStore();
+  const vectorStore = await getConfiguredVectorStore();
   await vectorStore.ensureReady();
 
   if (!existsSync(memoryDir)) {
@@ -113,9 +131,11 @@ export async function handleMemorySearch(args: Record<string, unknown>): Promise
 
   await ensureVectorStoreIndexed();
 
-  const vectorStore = getVectorStore();
+  const vectorStore = await getConfiguredVectorStore();
   const stats = vectorStore.stats();
   const externalResultsPromise = searchExternalMemoryProvider(query, maxResults);
+  const semanticProvider = stats.provider !== "none" && stats.provider !== "local";
+  const indexMethod = semanticProvider ? "semantic" : "keyword";
 
   if (stats.provider !== "none" && stats.chunks > 0) {
     try {
@@ -132,16 +152,18 @@ export async function handleMemorySearch(args: Record<string, unknown>): Promise
               file: r.path.replace("memory/", ""),
               content: r.content,
               score: r.score,
-              method: "semantic",
+              method: indexMethod,
             })),
             ...(await externalResultsPromise),
           ],
           query,
-          searchMethod: `semantic (${stats.provider}/${stats.model})`,
+          searchMethod: semanticProvider
+            ? `semantic (${stats.provider}/${stats.model})`
+            : "keyword (local index)",
         };
       }
     } catch (error) {
-      console.warn("[Memory] Semantic search failed, falling back to keyword:", error);
+      console.warn("[Memory] Indexed search failed, falling back to file scan:", error);
     }
   }
 
@@ -211,8 +233,8 @@ export async function handleMemorySearch(args: Record<string, unknown>): Promise
     query,
     searchMethod:
       stats.provider !== "none"
-        ? `keyword (semantic unavailable: ${stats.chunks} chunks indexed)`
-        : "keyword (no embedding provider)",
+        ? `keyword file scan (index returned no results: ${stats.chunks} chunks indexed)`
+        : "keyword file scan (no index available)",
   };
 }
 
@@ -308,7 +330,7 @@ export async function handleMemorySave(
 
   let indexed = false;
   try {
-    const vectorStore = getVectorStore();
+    const vectorStore = await getConfiguredVectorStore();
     await vectorStore.ensureReady();
 
     const fullContent = readFileSync(filePath, "utf-8");
