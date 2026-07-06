@@ -322,6 +322,16 @@ struct GatewayProcessActivity: Decodable, Identifiable, Hashable {
     }
 }
 
+struct GatewayProcessActivityPayload: Encodable, Hashable {
+    let id: String
+    let phase: String
+    let text: String
+    let timestamp: Double?
+    let toolName: String?
+    let toolCallId: String?
+    let sandboxProvider: String?
+}
+
 struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
     let role: String
     let content: String
@@ -1082,9 +1092,11 @@ struct GatewayPendingChatResponse: Decodable, Hashable {
     let error: String?
     let pendingMessage: GatewayPendingChatMessage?
     let pendingMessages: [GatewayPendingChatMessage]
+    let interruptedMessage: GatewaySessionMessage?
 
     private enum CodingKeys: String, CodingKey {
         case success, error, pendingMessage, pending_message, pendingMessages, pending_messages
+        case interruptedMessage, interrupted_message
     }
 
     init(from decoder: Decoder) throws {
@@ -1095,6 +1107,8 @@ struct GatewayPendingChatResponse: Decodable, Hashable {
             ?? (try? container.decodeIfPresent(GatewayPendingChatMessage.self, forKey: .pending_message))
         pendingMessages = (try? container.decodeIfPresent([GatewayPendingChatMessage].self, forKey: .pendingMessages))
             ?? ((try? container.decodeIfPresent([GatewayPendingChatMessage].self, forKey: .pending_messages)) ?? [])
+        interruptedMessage = (try? container.decodeIfPresent(GatewaySessionMessage.self, forKey: .interruptedMessage))
+            ?? (try? container.decodeIfPresent(GatewaySessionMessage.self, forKey: .interrupted_message))
     }
 }
 

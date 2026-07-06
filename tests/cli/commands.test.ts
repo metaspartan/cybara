@@ -7,6 +7,7 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 let server: ReturnType<typeof Bun.serve>;
 let apiBase = "";
 let lastLogsLimit: string | null = null;
+const chatPendingRequests: Array<{ method: string; path: string; body?: unknown }> = [];
 const configState: Record<string, unknown> = {
   host: "127.0.0.1",
   port: 4269,
@@ -432,6 +433,125 @@ function route(method: string, url: URL, body: string): Response {
         updated_at: new Date().toISOString(),
       },
     ]);
+  }
+
+  if (method === "POST" && pathname === "/api/chat") {
+    const parsed = body
+      ? (JSON.parse(body) as { sessionId?: string; message?: string; queueMode?: string })
+      : {};
+    chatPendingRequests.push({ method, path: pathname, body: parsed });
+    if (parsed.queueMode === "queue") {
+      return json({
+        sessionId: parsed.sessionId || "session-1",
+        queued: true,
+        pendingMessage: {
+          id: "pending-1",
+          sessionId: parsed.sessionId || "session-1",
+          content: parsed.message || "",
+          createdAt: 1783015200000,
+          updatedAt: 1783015200000,
+          mode: "queued",
+          sequence: 1,
+        },
+        pendingMessages: [
+          {
+            id: "pending-1",
+            sessionId: parsed.sessionId || "session-1",
+            content: parsed.message || "",
+            createdAt: 1783015200000,
+            updatedAt: 1783015200000,
+            mode: "queued",
+            sequence: 1,
+          },
+        ],
+      });
+    }
+    return json({
+      sessionId: parsed.sessionId || "session-1",
+      message: { content: `reply to ${parsed.message || ""}` },
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/chat/sessions/session-1/pending") {
+    chatPendingRequests.push({ method, path: pathname });
+    return json({
+      sessionId: "session-1",
+      pendingMessages: [
+        {
+          id: "pending-1",
+          sessionId: "session-1",
+          content: "queued follow-up",
+          createdAt: 1783015200000,
+          updatedAt: 1783015200000,
+          mode: "queued",
+          sequence: 1,
+        },
+      ],
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/chat/sessions/session-1/pending/pending-1/steer") {
+    const parsed = body ? (JSON.parse(body) as { processActivities?: unknown[] }) : {};
+    chatPendingRequests.push({ method, path: pathname, body: parsed });
+    return json({
+      success: true,
+      pendingMessages: [],
+      interruptedMessage: {
+        role: "assistant",
+        content: "",
+        process_activities: parsed.processActivities || [],
+      },
+    });
+  }
+
+  if (method === "PATCH" && pathname === "/api/chat/sessions/session-1/pending/pending-1") {
+    const parsed = body ? (JSON.parse(body) as { content?: string }) : {};
+    chatPendingRequests.push({ method, path: pathname, body: parsed });
+    return json({
+      success: true,
+      pendingMessage: {
+        id: "pending-1",
+        sessionId: "session-1",
+        content: parsed.content || "",
+        createdAt: 1783015200000,
+        updatedAt: 1783015200100,
+        mode: "queued",
+        sequence: 1,
+      },
+      pendingMessages: [
+        {
+          id: "pending-1",
+          sessionId: "session-1",
+          content: parsed.content || "",
+          createdAt: 1783015200000,
+          updatedAt: 1783015200100,
+          mode: "queued",
+          sequence: 1,
+        },
+      ],
+    });
+  }
+
+  if (method === "DELETE" && pathname === "/api/chat/sessions/session-1/pending/pending-1") {
+    chatPendingRequests.push({ method, path: pathname });
+    return json({ success: true, pendingMessages: [] });
+  }
+
+  if (method === "POST" && pathname === "/api/chat/sessions/session-1/pending/reorder") {
+    const parsed = body ? (JSON.parse(body) as { pendingMessageIds?: string[] }) : {};
+    chatPendingRequests.push({ method, path: pathname, body: parsed });
+    return json({
+      success: true,
+      pendingMessages: (parsed.pendingMessageIds || []).map((id, index) => ({
+        id,
+        sessionId: "session-1",
+        content: `queued ${index + 1}`,
+        createdAt: 1783015200000 + index,
+        updatedAt: 1783015200100,
+        mode: "queued",
+        sequence: index + 1,
+      })),
+    });
   }
 
   if (method === "GET" && pathname === "/api/memory") {
@@ -1423,6 +1543,75 @@ describe("CLI Commands", () => {
     expect(logs.stdout).toContain("CYBARA LOGS");
     expect(logs.stdout).toContain("channel");
     expect(lastLogsLimit).toBe("1");
+  });
+
+  test("chat pending CLI commands cover queue, list, steer, edit, delete, and reorder", async () => {
+    chatPendingRequests.length = 0;
+
+    const queue = await runCli(["chat", "queue", "session-1", "queued follow-up"]);
+    expect(queue.exitCode).toBe(0);
+    expect(queue.stdout).toContain("Queued pending message");
+    expect(queue.stdout).toContain("pending-1");
+
+    const pending = await runCli(["chat", "pending", "session-1"]);
+    expect(pending.exitCode).toBe(0);
+    expect(pending.stdout).toContain("queued follow-up");
+
+    const activityJson = JSON.stringify([
+      {
+        id: "activity-1",
+        phase: "result",
+        text: "Ran repo review before steering",
+        timestamp: 1783015200000,
+        toolName: "exec_command",
+        toolCallId: "tool-1",
+      },
+    ]);
+    const steer = await runCli([
+      "chat",
+      "steer",
+      "session-1",
+      "pending-1",
+      "--activity-json",
+      activityJson,
+    ]);
+    expect(steer.exitCode).toBe(0);
+    expect(steer.stdout).toContain("Steered pending message");
+    expect(steer.stdout).toContain("Persisted 1 pre-steer activities");
+
+    const edit = await runCli(["chat", "edit", "session-1", "pending-1", "edited follow-up"]);
+    expect(edit.exitCode).toBe(0);
+    expect(edit.stdout).toContain("Updated pending message");
+    expect(edit.stdout).toContain("edited follow-up");
+
+    const reorder = await runCli(["chat", "reorder", "session-1", "pending-2", "pending-1"]);
+    expect(reorder.exitCode).toBe(0);
+    expect(reorder.stdout).toContain("Reordered pending messages");
+    expect(reorder.stdout).toContain("pending-2");
+
+    const deleted = await runCli(["chat", "delete", "session-1", "pending-1"]);
+    expect(deleted.exitCode).toBe(0);
+    expect(deleted.stdout).toContain("Deleted pending message");
+
+    expect(chatPendingRequests.map((request) => `${request.method} ${request.path}`)).toEqual([
+      "POST /api/chat",
+      "GET /api/chat/sessions/session-1/pending",
+      "POST /api/chat/sessions/session-1/pending/pending-1/steer",
+      "PATCH /api/chat/sessions/session-1/pending/pending-1",
+      "POST /api/chat/sessions/session-1/pending/reorder",
+      "DELETE /api/chat/sessions/session-1/pending/pending-1",
+    ]);
+    expect(chatPendingRequests[0]?.body).toMatchObject({
+      sessionId: "session-1",
+      message: "queued follow-up",
+      queueMode: "queue",
+    });
+    expect(chatPendingRequests[2]?.body).toMatchObject({
+      processActivities: [{ text: "Ran repo review before steering", toolCallId: "tool-1" }],
+    });
+    expect(chatPendingRequests[4]?.body).toEqual({
+      pendingMessageIds: ["pending-2", "pending-1"],
+    });
   });
 
   test("plugin command group is wired", async () => {

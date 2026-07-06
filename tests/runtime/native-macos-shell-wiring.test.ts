@@ -100,15 +100,23 @@ describe("native macOS shell wiring", () => {
   test("native chat pending queue exposes reorder, edit, and delete controls", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
     const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const toolTimeline = readFileSync(join(MACOS_APP_DIR, "NativeToolTimeline.swift"), "utf8");
+    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
 
     expect(gatewayClient).toContain("func reorderPendingMessages(");
     expect(gatewayClient).toContain("func updatePendingMessage(");
     expect(gatewayClient).toContain("func deletePendingMessage(");
+    expect(gatewayClient).toContain("processActivities: [GatewayProcessActivityPayload] = []");
+    expect(gatewayClient).toContain(
+      "GatewaySteerPendingBody(processActivities: processActivities)"
+    );
     expect(gatewayClient).toContain('"pendingMessageIds": pendingIds');
     expect(gatewayClient).toContain('pending/reorder"');
     expect(gatewayClient).toContain('method: "POST"');
     expect(gatewayClient).toContain('method: "PATCH"');
     expect(gatewayClient).toContain('method: "DELETE"');
+    expect(gatewayModels).toContain("struct GatewayProcessActivityPayload: Encodable");
+    expect(toolTimeline).toContain("func nativeSteeringProcessActivityPayloads(");
     expect(nativeScreens).toContain('Image(systemName: "chevron.up")');
     expect(nativeScreens).toContain('Image(systemName: "chevron.down")');
     expect(nativeScreens).toContain('Image(systemName: "pencil")');
@@ -121,6 +129,9 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("pendingIds: nextMessages.map(\\.id)");
     expect(nativeScreens).toContain("await updatePending(message, content: editingPendingDraft)");
     expect(nativeScreens).toContain("await deletePending(message)");
+    expect(nativeScreens).toContain(
+      "processActivities: nativeSteeringProcessActivityPayloads(from: liveActivities)"
+    );
   });
 
   test("native chat prunes live tool rows after persisted steering reloads", () => {

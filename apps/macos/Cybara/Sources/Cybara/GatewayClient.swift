@@ -19,6 +19,10 @@ enum GatewayClientError: LocalizedError {
     }
 }
 
+private struct GatewaySteerPendingBody: Encodable {
+    let processActivities: [GatewayProcessActivityPayload]
+}
+
 /// Native async client for the local Cybara gateway. Authenticates with the
 /// root API key at ~/.cybara/api_key (same user as the sidecar), so the native
 /// UI has the same access the web UI gets via the localhost same-origin bypass.
@@ -230,11 +234,16 @@ struct GatewayClient: Sendable {
 
     func steerPendingMessage(
         sessionId: String,
-        pendingId: String
+        pendingId: String,
+        processActivities: [GatewayProcessActivityPayload] = []
     ) async throws -> GatewayPendingChatResponse {
+        let body = processActivities.isEmpty
+            ? nil
+            : try JSONEncoder().encode(GatewaySteerPendingBody(processActivities: processActivities))
         let data = try await request(
             "api/chat/sessions/\(sessionId)/pending/\(pendingId)/steer",
-            method: "POST"
+            method: "POST",
+            body: body
         )
         return try JSONDecoder().decode(GatewayPendingChatResponse.self, from: data)
     }

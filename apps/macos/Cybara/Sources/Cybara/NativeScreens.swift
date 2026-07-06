@@ -855,7 +855,8 @@ struct ChatScreen: View {
         do {
             let response = try await client.steerPendingMessage(
                 sessionId: selectedSessionID,
-                pendingId: message.id
+                pendingId: message.id,
+                processActivities: nativeSteeringProcessActivityPayloads(from: liveActivities)
             )
             if response.success == false {
                 error = response.error ?? "Failed to steer pending message"

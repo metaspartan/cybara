@@ -261,6 +261,25 @@ interface AgentItem {
   model?: string;
 }
 
+interface CliPendingMessage {
+  id: string;
+  sessionId?: string;
+  content: string;
+  mode?: string;
+  sequence?: number;
+  createdAt?: number;
+}
+
+interface CliPendingResponse {
+  success?: boolean;
+  sessionId?: string;
+  queued?: boolean;
+  error?: string;
+  pendingMessage?: CliPendingMessage;
+  pendingMessages?: CliPendingMessage[];
+  interruptedMessage?: { role?: string; content?: string; process_activities?: unknown[] };
+}
+
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
   try {
     const headers = withCliAuthHeaders(options?.headers, true);
@@ -2244,6 +2263,167 @@ async function rawAgent(rawArgs: string[]): Promise<void> {
   }
 }
 
+function chatPendingUsage(): void {
+  console.log("Chat Pending Commands:");
+  console.log('  cybara chat queue <session> "<message>"');
+  console.log("  cybara chat pending <session>");
+  console.log("  cybara chat steer <session> <pending-id> [--activity-json JSON]");
+  console.log('  cybara chat edit <session> <pending-id> "<message>"');
+  console.log("  cybara chat delete <session> <pending-id>");
+  console.log("  cybara chat reorder <session> <pending-id>...");
+}
+
+function printPendingMessages(messages: CliPendingMessage[] = []): void {
+  if (messages.length === 0) {
+    console.log("No pending messages");
+    return;
+  }
+  for (const message of messages) {
+    const mode = message.mode || "queued";
+    const sequence = message.sequence ? `#${message.sequence}` : "queued";
+    console.log(`${message.id} ${sequence} ${mode}: ${message.content}`);
+  }
+}
+
+function parseActivityJson(rawArgs: string[]): unknown[] | undefined {
+  const raw = getFlagValue(rawArgs, "--activity-json");
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed;
+  } catch {}
+  console.error("ERROR: --activity-json must be a JSON array");
+  process.exit(1);
+}
+
+async function rawChatPendingCommand(rawArgs: string[]): Promise<boolean> {
+  const subcommand = rawArgs[0];
+  if (!["queue", "pending", "steer", "edit", "delete", "reorder"].includes(subcommand || "")) {
+    return false;
+  }
+
+  const sessionId = rawArgs[1];
+  if (!sessionId) {
+    chatPendingUsage();
+    process.exit(1);
+  }
+
+  if (subcommand === "queue") {
+    const message = rawArgs.slice(2).join(" ").trim();
+    if (!message) {
+      chatPendingUsage();
+      process.exit(1);
+    }
+    const data = await fetchAPI<CliPendingResponse>("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId, message, queueMode: "queue" }),
+    });
+    if (!data) process.exit(1);
+    console.log(data.queued ? "Queued pending message" : "Sent message");
+    printPendingMessages(data.pendingMessages || (data.pendingMessage ? [data.pendingMessage] : []));
+    return true;
+  }
+
+  if (subcommand === "pending") {
+    const data = await fetchAPI<CliPendingResponse>(
+      `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending`
+    );
+    if (!data) process.exit(1);
+    printPendingMessages(data.pendingMessages || []);
+    return true;
+  }
+
+  const pendingId = rawArgs[2];
+  if (!pendingId) {
+    chatPendingUsage();
+    process.exit(1);
+  }
+
+  if (subcommand === "steer") {
+    const processActivities = parseActivityJson(rawArgs);
+    const data = await fetchAPI<CliPendingResponse>(
+      `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending/${encodeURIComponent(
+        pendingId
+      )}/steer`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: processActivities ? JSON.stringify({ processActivities }) : undefined,
+      }
+    );
+    if (!data) process.exit(1);
+    if (data.success === false) {
+      console.error(`ERROR: ${data.error || "Failed to steer pending message"}`);
+      process.exit(1);
+    }
+    console.log("Steered pending message");
+    if (data.interruptedMessage?.process_activities?.length) {
+      console.log(`Persisted ${data.interruptedMessage.process_activities.length} pre-steer activities`);
+    }
+    printPendingMessages(data.pendingMessages || []);
+    return true;
+  }
+
+  if (subcommand === "edit") {
+    const content = rawArgs.slice(3).join(" ").trim();
+    if (!content) {
+      chatPendingUsage();
+      process.exit(1);
+    }
+    const data = await fetchAPI<CliPendingResponse>(
+      `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending/${encodeURIComponent(
+        pendingId
+      )}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      }
+    );
+    if (!data) process.exit(1);
+    console.log("Updated pending message");
+    printPendingMessages(data.pendingMessages || (data.pendingMessage ? [data.pendingMessage] : []));
+    return true;
+  }
+
+  if (subcommand === "delete") {
+    const data = await fetchAPI<CliPendingResponse>(
+      `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending/${encodeURIComponent(
+        pendingId
+      )}`,
+      { method: "DELETE" }
+    );
+    if (!data) process.exit(1);
+    console.log("Deleted pending message");
+    printPendingMessages(data.pendingMessages || []);
+    return true;
+  }
+
+  const pendingMessageIds = rawArgs.slice(2);
+  if (pendingMessageIds.length === 0) {
+    chatPendingUsage();
+    process.exit(1);
+  }
+  const data = await fetchAPI<CliPendingResponse>(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending/reorder`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pendingMessageIds }),
+    }
+  );
+  if (!data) process.exit(1);
+  console.log("Reordered pending messages");
+  printPendingMessages(data.pendingMessages || []);
+  return true;
+}
+
+async function rawChatCommand(rawArgs: string[]): Promise<void> {
+  if (await rawChatPendingCommand(rawArgs)) return;
+  await rawChat(rawArgs[0]);
+}
+
 async function rawChat(sessionArg?: string): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
 
@@ -3790,7 +3970,7 @@ async function main() {
       break;
     }
     case "chat":
-      await rawChat(args[1]);
+      await rawChatCommand(args.slice(1));
       break;
     case "agent":
       await rawAgent(args.slice(1));

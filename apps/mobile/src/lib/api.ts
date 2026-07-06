@@ -375,6 +375,10 @@ export interface SessionProcessActivitySummary {
   toolCallId?: string;
 }
 
+export interface MobileSteerPendingMessageOptions {
+  processActivities?: SessionProcessActivitySummary[];
+}
+
 export interface MobilePendingChatMessage {
   id: string;
   sessionId: string;
@@ -1666,24 +1670,42 @@ export class CybaraMobileApi {
 
   async steerPendingMessage(
     sessionId: string,
-    pendingMessageId: string
+    pendingMessageId: string,
+    options?: MobileSteerPendingMessageOptions
   ): Promise<{
     success: boolean;
     pendingMessage?: MobilePendingChatMessage;
     pendingMessages?: MobilePendingChatMessage[];
+    interruptedMessage?: SessionMessageSummary;
     error?: string;
   }> {
+    const processActivities = options?.processActivities?.length
+      ? options.processActivities
+      : undefined;
     const response = await this.request<unknown>(
       `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending/${encodeURIComponent(
         pendingMessageId
       )}/steer`,
-      { method: "POST" }
+      {
+        method: "POST",
+        body: processActivities ? JSON.stringify({ processActivities }) : undefined,
+      }
     );
     const record = asRecord(response);
+    const interruptedRecord = asRecord(record?.interruptedMessage);
     return {
       success: record?.success === true,
       pendingMessage: normalizePendingChatMessages(record?.pendingMessage)[0],
       pendingMessages: normalizePendingChatMessages(record?.pendingMessages),
+      interruptedMessage: interruptedRecord
+        ? normalizeSessionDetail(
+            {
+              id: sessionId,
+              messages: [interruptedRecord],
+            },
+            sessionId
+          ).messages[0]
+        : undefined,
       error: readString(record, ["error"]),
     };
   }

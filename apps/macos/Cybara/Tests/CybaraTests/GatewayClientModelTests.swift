@@ -830,6 +830,71 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(nativeLiveActivities(from: snapshot.activeSessions[0]).first?.phase, .start)
     }
 
+    func testNativeSteeringPayloadsKeepWorkAndDropHandoffRows() throws {
+        let payloads = nativeSteeringProcessActivityPayloads(from: [
+            NativeToolActivity(
+                id: "activity-1",
+                phase: .result,
+                text: "Ran repo review before steering",
+                timestamp: 1_783_015_200_500,
+                toolName: "exec_command",
+                toolCallId: "tool-1",
+                sandboxProvider: "host"
+            ),
+            NativeToolActivity(
+                id: "handoff",
+                phase: .result,
+                text: "Steering to follow-up...",
+                timestamp: 1_783_015_200_600,
+                toolName: "__thought",
+                toolCallId: nil,
+                sandboxProvider: nil
+            ),
+        ])
+
+        XCTAssertEqual(payloads.count, 1)
+        XCTAssertEqual(payloads.first?.text, "Ran repo review before steering")
+        XCTAssertEqual(payloads.first?.toolCallId, "tool-1")
+
+        let data = try JSONEncoder().encode(["processActivities": payloads])
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let activities = object?["processActivities"] as? [[String: Any]]
+        XCTAssertEqual(activities?.first?["toolName"] as? String, "exec_command")
+        XCTAssertEqual(activities?.first?["sandboxProvider"] as? String, "host")
+    }
+
+    func testPendingChatResponseDecodesInterruptedMessage() throws {
+        let response = try JSONDecoder().decode(
+            GatewayPendingChatResponse.self,
+            from: Data(
+                #"""
+                {
+                  "success": true,
+                  "pendingMessages": [],
+                  "interruptedMessage": {
+                    "role": "assistant",
+                    "content": "",
+                    "process_activities": [
+                      {
+                        "id": "activity-1",
+                        "phase": "result",
+                        "text": "Ran repo review before steering",
+                        "timestamp": 1783015200500,
+                        "toolName": "exec_command",
+                        "toolCallId": "tool-1"
+                      }
+                    ]
+                  }
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(response.success, true)
+        XCTAssertEqual(response.interruptedMessage?.process_activities?.first?.text, "Ran repo review before steering")
+        XCTAssertEqual(response.interruptedMessage?.process_activities?.first?.toolCallId, "tool-1")
+    }
+
     func testNativeStatusEventsDecodeScopedSessionStatusResponse() throws {
         let status = try decodeStatusEvent(
             #"""

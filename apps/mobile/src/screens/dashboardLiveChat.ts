@@ -178,6 +178,22 @@ export function mergeLiveActivity(
   return next.slice(-12);
 }
 
+export function mobilePreSteerProcessActivities(
+  message: SessionDetailSummary["messages"][number] | null
+): SessionProcessActivitySummary[] {
+  return (message?.processActivities || [])
+    .filter((activity) => {
+      const text = (activity.text || "").trim().toLowerCase();
+      return (
+        text.length > 0 &&
+        !text.includes("steering to follow-up") &&
+        !text.includes("starting queued follow-up")
+      );
+    })
+    .map((activity) => ({ ...activity }))
+    .slice(-12);
+}
+
 export function liveAssistantMessage(
   sessionId: string,
   current: SessionDetailSummary["messages"][number] | null,

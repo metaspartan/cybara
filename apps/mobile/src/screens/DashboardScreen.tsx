@@ -231,6 +231,7 @@ import {
   liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
   mergeLiveActivity,
+  mobilePreSteerProcessActivities,
   prunePersistedMobileLiveAssistant,
   readCachedMobileLiveAssistant,
   writeCachedMobileLiveAssistant,
@@ -2335,7 +2336,9 @@ function SessionDetailPanel({
     if (pendingMessageId.startsWith("optimistic-")) return;
     setSteeringPendingId(pendingMessageId);
     try {
-      const result = await api.steerPendingMessage(sessionId, pendingMessageId);
+      const result = await api.steerPendingMessage(sessionId, pendingMessageId, {
+        processActivities: mobilePreSteerProcessActivities(liveAssistant),
+      });
       if (result.success) {
         replacePendingMessagesFromGateway(pendingMessagesFromResponse(result));
         await loadSession(false);

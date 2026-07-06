@@ -1616,6 +1616,77 @@ describe("mobile API client", () => {
     }
   });
 
+  test("steers pending mobile messages with captured pre-steer activity", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (
+        parsedUrl.pathname === "/api/chat/sessions/s1/pending/pending-1/steer" &&
+        method === "POST"
+      ) {
+        const processActivities = (body as { processActivities?: unknown })?.processActivities;
+        return Response.json({
+          success: true,
+          pendingMessages: [],
+          interruptedMessage: {
+            role: "assistant",
+            content: "",
+            timestamp: "2026-07-02T18:00:00.000Z",
+            process_activities: processActivities,
+          },
+        });
+      }
+
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const result = await new CybaraMobileApi(profile).steerPendingMessage("s1", "pending-1", {
+        processActivities: [
+          {
+            id: "activity-1",
+            phase: "result",
+            text: "Ran repo review before steering",
+            timestamp: 1783015200000,
+            toolName: "exec_command",
+            toolCallId: "tool-1",
+          },
+        ],
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.interruptedMessage?.processActivities?.[0]).toMatchObject({
+        text: "Ran repo review before steering",
+        toolCallId: "tool-1",
+      });
+      expect(calls).toEqual([
+        {
+          method: "POST",
+          path: "/api/chat/sessions/s1/pending/pending-1/steer",
+          body: {
+            processActivities: [
+              {
+                id: "activity-1",
+                phase: "result",
+                text: "Ran repo review before steering",
+                timestamp: 1783015200000,
+                toolName: "exec_command",
+                toolCallId: "tool-1",
+              },
+            ],
+          },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("deletes sessions through the canonical gateway sessions route", async () => {
     const calls: Array<{ method: string; path: string }> = [];
     const originalFetch = globalThis.fetch;

@@ -405,6 +405,30 @@ func nativeToolActivities(for message: GatewaySessionMessage) -> [NativeToolActi
         }
 }
 
+func nativeSteeringProcessActivityPayloads(
+    from activities: [NativeToolActivity]
+) -> [GatewayProcessActivityPayload] {
+    activities
+        .filter { activity in
+            let text = activity.text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return !text.isEmpty &&
+                !text.contains("steering to follow-up") &&
+                !text.contains("starting queued follow-up")
+        }
+        .suffix(12)
+        .map { activity in
+            GatewayProcessActivityPayload(
+                id: activity.id,
+                phase: activity.phase.rawValue,
+                text: activity.text,
+                timestamp: activity.timestamp,
+                toolName: activity.toolName,
+                toolCallId: activity.toolCallId,
+                sandboxProvider: activity.sandboxProvider
+            )
+        }
+}
+
 func nativeLiveActivity(from event: GatewayStatusEvent) -> NativeToolActivity? {
     guard (event.type ?? "status") == "status" else { return nil }
     let status = event.status?.lowercased() ?? ""

@@ -3,6 +3,7 @@ import {
   clearCachedMobileLiveAssistant,
   liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
+  mobilePreSteerProcessActivities,
   prunePersistedMobileLiveAssistant,
   readCachedMobileLiveAssistant,
   writeCachedMobileLiveAssistant,
@@ -215,6 +216,41 @@ describe("mobile live chat cache", () => {
 
     expect(pruned?.processActivities?.map((activity) => activity.text)).toEqual([
       "Steering to follow-up...",
+    ]);
+  });
+
+  test("captures only meaningful live work for mobile steering payloads", () => {
+    const sessionId = `mobile-pre-steer-${Date.now()}`;
+    const live = {
+      ...liveAssistantMessage(sessionId, null, 1783015200000),
+      processActivities: [
+        {
+          id: "tool-1",
+          phase: "result" as const,
+          text: "Ran repo review before steering",
+          timestamp: 1783015200100,
+          toolName: "exec",
+          toolCallId: "tool-1",
+        },
+        {
+          id: "handoff",
+          phase: "result" as const,
+          text: "Steering to follow-up...",
+          timestamp: 1783015200200,
+          toolName: "__thought",
+        },
+      ],
+    };
+
+    expect(mobilePreSteerProcessActivities(live)).toEqual([
+      {
+        id: "tool-1",
+        phase: "result",
+        text: "Ran repo review before steering",
+        timestamp: 1783015200100,
+        toolName: "exec",
+        toolCallId: "tool-1",
+      },
     ]);
   });
 });
