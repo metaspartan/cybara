@@ -4387,6 +4387,38 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "GET /api/system/monitor": () => getSystemMonitorSnapshot(),
+
+  "POST /api/system/restart": () => {
+    // Under the macOS app the sidecar supervisor auto-restarts an exited
+    // gateway, so exiting is enough (self-respawning too would race it for
+    // the port). Everywhere else (CLI, screen/systemd, Tauri) a detached
+    // replacement re-execs the same command after the port frees up.
+    const supervised = process.env.CYBARA_NATIVE_APP === "1";
+    setTimeout(() => {
+      if (!supervised) {
+        const argv = [process.execPath, ...process.argv.slice(1)];
+        const quoted = argv.map((part) => `'${part.replaceAll("'", "'\\''")}'`).join(" ");
+        // nohup + background: when this process exits, its parent shell (or a
+        // screen/tmux session) may tear down the process group with SIGHUP —
+        // the replacement must ignore it or it dies during its startup sleep.
+        const child = Bun.spawn(
+          ["sh", "-c", `nohup sh -c 'sleep 2; exec ${quoted.replaceAll("'", "'\\''")}' &`],
+          {
+            cwd: process.cwd(),
+            env: process.env,
+            stdin: "ignore",
+            stdout: "inherit",
+            stderr: "inherit",
+          }
+        );
+        child.unref();
+      }
+      // Exit on a delay so the nohup grandchild is fully established before
+      // any SIGHUP from a dying parent shell can reach the process group.
+      setTimeout(() => process.exit(0), 700);
+    }, 400);
+    return { success: true, supervised, message: "Gateway restarting" };
+  },
 };
 
 cacheMetricsRoutes(routes);

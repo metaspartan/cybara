@@ -24,13 +24,17 @@ import {
   sandboxBrowserApi,
   walletApi,
   authApi,
+  systemApi,
+  logsApi,
   type ComputerUseStatus,
   type SandboxBrowserStatus,
   type WalletAgentPolicy,
   type WalletRpcStatus,
   type WalletStatus,
   type GatewayAuthSettings,
+  type LogPageEntry,
 } from "@/lib/api";
+import { setApiAuthToken } from "@/lib/auth";
 import { Modal } from "@/components/ui/Modal";
 import { Switch } from "@/components/ui/Switch";
 import { openExternal } from "@/utils/openExternal";
@@ -3097,6 +3101,131 @@ function WalletSettings() {
   );
 }
 
+function GatewayControlSection() {
+  const { addToast } = useUIStore();
+  const [restarting, setRestarting] = useState(false);
+  const [logs, setLogs] = useState<LogPageEntry[]>([]);
+  const [logsUnavailable, setLogsUnavailable] = useState(false);
+
+  const loadLogs = useCallback(async () => {
+    const res = await logsApi.getPage(30, 0);
+    if (res.success && res.data?.logs) {
+      setLogs(res.data.logs);
+      setLogsUnavailable(false);
+    } else {
+      setLogsUnavailable(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadLogs();
+    const timer = window.setInterval(() => {
+      if (!document.hidden) void loadLogs();
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [loadLogs]);
+
+  async function waitForGateway(timeoutMs = 45_000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1_500));
+      try {
+        const res = await systemApi.health();
+        if (res.success) return true;
+      } catch {
+        // Gateway still down — keep waiting.
+      }
+    }
+    return false;
+  }
+
+  async function handleRestart() {
+    setRestarting(true);
+    try {
+      const res = await systemApi.restart();
+      if (!res.success) {
+        throw new Error(res.error || "Restart endpoint unavailable — restart the gateway manually");
+      }
+      addToast("info", "Gateway restarting…");
+      const backUp = await waitForGateway();
+      if (backUp) {
+        addToast("success", "Gateway is back online");
+        void loadLogs();
+      } else {
+        addToast("error", "Gateway did not come back within 45s — check its logs");
+      }
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to restart gateway");
+    } finally {
+      setRestarting(false);
+    }
+  }
+
+  return (
+    <Card variant="liquid">
+      <CardHeader>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Server className="w-5 h-5 text-emerald-400" />
+              Gateway
+            </CardTitle>
+            <CardDescription>
+              Restart the gateway process and watch its recent activity. Restarting picks up new
+              gateway code and settings.
+            </CardDescription>
+          </div>
+          <Button
+            variant="secondary"
+            leftIcon={
+              restarting ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )
+            }
+            onClick={() => void handleRestart()}
+            disabled={restarting}
+          >
+            {restarting ? "Restarting…" : "Restart Gateway"}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className="text-xs text-gray-500 mb-2">Recent gateway logs (live)</p>
+        <div className="rounded-lg border border-white/10 bg-black/30 p-3 max-h-64 overflow-y-auto space-y-1">
+          {logsUnavailable ? (
+            <p className="text-xs text-gray-500">Logs unavailable.</p>
+          ) : logs.length === 0 ? (
+            <p className="text-xs text-gray-500">No recent log entries.</p>
+          ) : (
+            logs.map((entry) => (
+              <div key={entry.id} className="flex items-start gap-2 text-[11px] font-mono">
+                <span className="shrink-0 text-gray-600">
+                  {new Date(entry.created_at).toLocaleTimeString()}
+                </span>
+                <span
+                  className={`shrink-0 uppercase ${
+                    entry.level === "error"
+                      ? "text-red-400"
+                      : entry.level === "warn"
+                        ? "text-amber-300"
+                        : "text-gray-500"
+                  }`}
+                >
+                  {entry.level}
+                </span>
+                <span className="shrink-0 text-gray-500">[{entry.source}]</span>
+                <span className="text-gray-300 break-all">{entry.message}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function GatewayAuthSettingsSection() {
   const { addToast } = useUIStore();
   const [settings, setSettings] = useState<GatewayAuthSettings | null>(null);
@@ -3198,8 +3327,12 @@ function GatewayAuthSettingsSection() {
         throw new Error(res.error || "Failed to rotate API key");
       }
       setRevealedKey(res.data.apiKey);
+      // The gateway swaps to the new key instantly (no restart needed); adopt
+      // it in this browser too so the session keeps working even with the
+      // localhost bypass off.
+      setApiAuthToken(res.data.apiKey);
       setRotateConfirmOpen(false);
-      addToast("success", "API key rotated — update any connected clients");
+      addToast("success", "API key rotated — desktop apps pick it up automatically");
       await load();
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to rotate API key");
@@ -3214,8 +3347,9 @@ function GatewayAuthSettingsSection() {
     <div className="space-y-6">
       {unsupported && (
         <div className="rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
-          The running gateway predates auth management — restart the gateway to enable these
-          controls. Your API key already exists at ~/.cybara/api_key and keeps working.
+          The running gateway predates auth management — restart it (Settings &gt; System &gt;
+          Restart Gateway) to enable these controls. Your API key already exists at
+          ~/.cybara/api_key and keeps working.
         </div>
       )}
       <Card variant="liquid">
@@ -3335,11 +3469,11 @@ function GatewayAuthSettingsSection() {
         size="sm"
       >
         <div className="space-y-4">
-          <div className="rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-100">
-            Rotating immediately invalidates the current key. Every client using it (CLI, native
-            apps, scripts) must be updated with the new key. Paired mobile devices are not
-            affected.
-          </div>
+          <p className="text-sm text-gray-300">
+            The new key takes effect immediately — no gateway restart needed. This browser and the
+            desktop apps adopt it automatically; only scripts or remote clients holding the old
+            key need updating. Paired mobile devices are unaffected.
+          </p>
           <div className="flex justify-end gap-3">
             <Button variant="ghost" onClick={() => setRotateConfirmOpen(false)} disabled={busy}>
               Cancel
@@ -3465,6 +3599,7 @@ export function Settings() {
 
         {activeSection === "system" && (
           <>
+            <GatewayControlSection />
             <DesktopUpdateSettings
               currentVersion={String(infoData.version || "unknown")}
               releaseRepositoryUrl={infoData.releaseRepositoryUrl}

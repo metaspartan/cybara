@@ -250,6 +250,14 @@ export interface GatewayAuthSettings {
   rateLimits: Record<string, { windowMs: number; maxRequests: number }>;
 }
 
+export const systemApi = {
+  restart: () =>
+    fetchApi<{ success: boolean; supervised: boolean; message: string }>("/system/restart", {
+      method: "POST",
+    }),
+  health: () => fetchApi<{ status?: string; uptime?: number }>("/health"),
+};
+
 export const authApi = {
   settings: () => fetchApi<GatewayAuthSettings>("/auth/settings"),
   updateSettings: (payload: { requireAuthForLocalhost: boolean }) =>

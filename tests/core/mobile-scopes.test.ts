@@ -60,6 +60,10 @@ describe("route scope requirements", () => {
     expect(normalizeMobileScopes(["root"])).not.toContain("root");
   });
 
+  test("gateway restart requires the manage scope", () => {
+    expect(routeRequiredScope("POST", "/api/system/restart")).toBe("manage");
+  });
+
   test("fund-moving wallet ops require the wallet scope", () => {
     expect(routeRequiredScope("POST", "/api/wallet/send")).toBe("wallet");
     expect(routeRequiredScope("POST", "/api/wallet/sign")).toBe("wallet");

@@ -77,6 +77,13 @@ export function getApiAuthToken(): string | null {
   return getWindowToken();
 }
 
+/** Adopt a new key (e.g. right after rotation) so the UI keeps working. */
+export function setApiAuthToken(token: string): void {
+  if (token.trim()) {
+    persistWindowToken(token.trim());
+  }
+}
+
 export function appendApiTokenParam(urlOrPath: string, token = getApiAuthToken()): string {
   if (!token) {
     return urlOrPath;

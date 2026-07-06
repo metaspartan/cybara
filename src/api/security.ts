@@ -418,6 +418,9 @@ export function routeRequiredScope(method: string, path: string): string | null 
   if (path.startsWith("/api/auth")) {
     return "root";
   }
+  if (path === "/api/system/restart") {
+    return "manage";
+  }
   if (path.startsWith("/api/wallet")) {
     if (method === "GET") return null;
     return "wallet";
