@@ -2274,10 +2274,9 @@ class AgentManager {
         continue;
       }
 
-      // Anthropic nests tool_result blocks inside a user message's content
-      // array, so we elide at the block level — same shared notice and
-      // elide-in-place philosophy as the flat Chat Completions / Responses
-      // formats, just adapted to the nested shape.
+      // Anthropic nests tool_result blocks in a user message's content array,
+      // so we elide at the block level — same notice + elide-in-place as the
+      // flat formats, adapted to the nested shape.
       let changed = false;
       const nextContent = message.content.map((block) => {
         if (!block || typeof block !== "object") return block;
@@ -3605,11 +3604,7 @@ class AgentManager {
         // Reactive compaction (OpenClaw's second trigger): honor the
         // provider's own overflow error by eliding hard and retrying once.
         if (!isContextOverflowError(this.normalizeErrorMessage(error))) throw error;
-        compactCodexInputItemsForContext(
-          inputItems,
-          Math.max(4096, Math.floor(codexBudgetChars * 0.65)),
-          true
-        );
+        compactCodexInputItemsForContext(inputItems, Math.max(4096, codexBudgetChars * 0.65), true);
         turn = await runCodexTurn();
       }
       activeModelId = turn.resolvedModel;
