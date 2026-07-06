@@ -42,7 +42,11 @@ import {
 } from "./llm/stream-watchdog";
 import { consumeOpenAIChatStream } from "./llm/streaming-completions";
 import { compactCodexInputItemsForContext, sanitizeCodexInputItems } from "./llm/codex-context";
-import { compactToolTranscriptInPlace, TOOL_RESULT_COMPACTION_NOTICE } from "./llm/tool-transcript";
+import {
+  compactToolTranscriptInPlace,
+  isContextOverflowError,
+  TOOL_RESULT_COMPACTION_NOTICE,
+} from "./llm/tool-transcript";
 import { trackTokenUsage } from "./llm/token-usage-tracking";
 import {
   hasTextToolCallMarkup,
@@ -2325,19 +2329,6 @@ class AgentManager {
     return elided > 0;
   }
 
-  private isContextWindowExceededError(errorText: string): boolean {
-    const lower = errorText.toLowerCase();
-    return (
-      lower.includes("context window") ||
-      lower.includes("context length") ||
-      lower.includes("request_too_large") ||
-      lower.includes("prompt is too long") ||
-      lower.includes("maximum context length") ||
-      lower.includes("token limit") ||
-      lower.includes("exceeded model token limit")
-    );
-  }
-
   private shouldRetryWithMaxCompletionTokens(status: number, errorText: string): boolean {
     if (status !== 400) return false;
     const normalized = errorText.toLowerCase();
@@ -2649,7 +2640,7 @@ class AgentManager {
       if (
         contextRetryCount < 2 &&
         response.status === 400 &&
-        this.isContextWindowExceededError(errorText)
+        isContextOverflowError(errorText)
       ) {
         const retryBody = this.reduceOpenAITokenLimitForContextRetry(currentBody, errorText);
         if (retryBody) {
@@ -2979,7 +2970,7 @@ class AgentManager {
         );
       } catch (error) {
         const errorMessage = this.normalizeErrorMessage(error);
-        if (!this.isContextWindowExceededError(errorMessage)) {
+        if (!isContextOverflowError(errorMessage)) {
           throw error;
         }
         const compacted = this.compactOpenAILoopMessagesForContext(
@@ -3596,16 +3587,31 @@ class AgentManager {
       }
 
       const startTime = performance.now();
-      const turn = await this.postOpenAICodexTurn(
-        codexUrl,
-        headers,
-        requestBody,
-        activeModelId,
-        // Suppress token streaming for meta calls (no sessionId => no broadcast).
-        toolContext?.suppressStreaming ? undefined : toolContext?.sessionId,
-        toolContext?.agentId,
-        toolContext?.abortSignal
-      );
+      const runCodexTurn = () =>
+        this.postOpenAICodexTurn(
+          codexUrl,
+          headers,
+          requestBody,
+          activeModelId,
+          // Suppress token streaming for meta calls (no sessionId => no broadcast).
+          toolContext?.suppressStreaming ? undefined : toolContext?.sessionId,
+          toolContext?.agentId,
+          toolContext?.abortSignal
+        );
+      let turn: OpenAICodexTurnResult & { resolvedModel: string };
+      try {
+        turn = await runCodexTurn();
+      } catch (error) {
+        // Reactive compaction (OpenClaw's second trigger): honor the
+        // provider's own overflow error by eliding hard and retrying once.
+        if (!isContextOverflowError(this.normalizeErrorMessage(error))) throw error;
+        compactCodexInputItemsForContext(
+          inputItems,
+          Math.max(4096, Math.floor(codexBudgetChars * 0.65)),
+          true
+        );
+        turn = await runCodexTurn();
+      }
       activeModelId = turn.resolvedModel;
       const durationMs = Math.round(performance.now() - startTime);
 
@@ -4588,7 +4594,7 @@ class AgentManager {
           lastLoopError = await loopResponse.text();
 
           // Context window exceeded — compact and retry immediately
-          if (loopResponse.status === 400 && this.isContextWindowExceededError(lastLoopError)) {
+          if (loopResponse.status === 400 && isContextOverflowError(lastLoopError)) {
             this.compactAnthropicLoopMessagesForContext(
               currentMessages,
               Math.max(4096, Math.floor(contextGuard.contextBudgetChars * 0.65)),
@@ -4913,7 +4919,7 @@ class AgentManager {
         );
       } catch (error) {
         const errorMessage = this.normalizeErrorMessage(error);
-        if (!this.isContextWindowExceededError(errorMessage)) {
+        if (!isContextOverflowError(errorMessage)) {
           throw error;
         }
         const compacted = this.compactOpenAILoopMessagesForContext(

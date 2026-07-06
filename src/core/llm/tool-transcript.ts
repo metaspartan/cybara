@@ -110,3 +110,21 @@ export function assertResponsesToolPairing(items: Array<Record<string, unknown>>
   }
   return dropped;
 }
+
+/**
+ * Shared context-overflow error matcher. Following OpenClaw, a single list of
+ * provider error substrings (OpenAI, Anthropic, Bedrock, Gemini, Ollama,
+ * OpenRouter, …) drives reactive compaction across every provider path.
+ */
+export function isContextOverflowError(errorText: string): boolean {
+  const lower = errorText.toLowerCase();
+  return (
+    lower.includes("context window") ||
+    lower.includes("context length") ||
+    lower.includes("request_too_large") ||
+    lower.includes("prompt is too long") ||
+    lower.includes("maximum context length") ||
+    lower.includes("token limit") ||
+    lower.includes("exceeded model token limit")
+  );
+}
