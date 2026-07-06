@@ -80,6 +80,8 @@ import {
   type AgentSummary,
   type FeatureSummary,
   type GatewayAuthSettings,
+  type ProviderPlanMonitoringConfig,
+  type ProviderPlanStatusResponse,
   type ProviderSummary,
   type RemoteItemSummary,
   type RouterConfig,
@@ -1645,9 +1647,13 @@ export function ModelRouterPanel({
 }) {
   const [routerConfig, setRouterConfig] = useState<RouterConfig | null>(null);
   const [routerStatus, setRouterStatus] = useState<RouterStatus | null>(null);
+  const [planConfig, setPlanConfig] = useState<ProviderPlanMonitoringConfig | null>(null);
+  const [planStatus, setPlanStatus] = useState<ProviderPlanStatusResponse | null>(null);
   const [routerError, setRouterError] = useState<string | null>(null);
   const [routerDailyLimitDraft, setRouterDailyLimitDraft] = useState("");
   const [moaMaxAgentsDraft, setMoaMaxAgentsDraft] = useState("");
+  const [monthlyTokenDrafts, setMonthlyTokenDrafts] = useState<Record<string, string>>({});
+  const [monthlySpendDrafts, setMonthlySpendDrafts] = useState<Record<string, string>>({});
   const [savingRouterConfig, setSavingRouterConfig] = useState(false);
 
   const routerStrategy = readMobileRouterStrategy(routerConfig?.strategy);
@@ -1656,24 +1662,48 @@ export function ModelRouterPanel({
   const routerAvailableCount = routerStatus?.routes.filter((route) => route.available).length;
   const routerSpendToday =
     typeof routerStatus?.globalSpendToday === "number" ? routerStatus.globalSpendToday : null;
+  const planByRoute = new Map<string, ProviderPlanStatusResponse["providers"][number]>();
+  for (const plan of planStatus?.providers || []) {
+    for (const key of [plan.providerId, plan.configuredProviderId, plan.providerType]) {
+      if (key && !planByRoute.has(key)) planByRoute.set(key, plan);
+    }
+  }
 
   useEffect(() => {
     let mounted = true;
     const load = async () => {
       try {
-        const [nextConfig, nextStatus] = await Promise.all([
+        const [nextConfig, nextStatus, nextPlanConfig, nextPlanStatus] = await Promise.all([
           api.routerConfig(),
           api.routerStatus().catch(() => null),
+          api.providerPlanConfig().catch(() => null),
+          api.providerPlanStatus().catch(() => null),
         ]);
         if (!mounted) return;
         setRouterConfig(nextConfig);
         setRouterStatus(nextStatus);
+        setPlanConfig(nextPlanConfig);
+        setPlanStatus(nextPlanStatus);
         setRouterDailyLimitDraft(
           nextConfig.globalSpendLimitDaily && nextConfig.globalSpendLimitDaily > 0
             ? String(nextConfig.globalSpendLimitDaily)
             : ""
         );
         setMoaMaxAgentsDraft(nextConfig.moaMaxAgents ? String(nextConfig.moaMaxAgents) : "");
+        if (nextPlanConfig) {
+          const tokenDrafts: Record<string, string> = {};
+          const spendDrafts: Record<string, string> = {};
+          for (const [key, providerConfig] of Object.entries(nextPlanConfig.providers)) {
+            if (providerConfig.monthly?.tokenLimit) {
+              tokenDrafts[key] = String(providerConfig.monthly.tokenLimit);
+            }
+            if (providerConfig.monthly?.spendLimit) {
+              spendDrafts[key] = String(providerConfig.monthly.spendLimit);
+            }
+          }
+          setMonthlyTokenDrafts(tokenDrafts);
+          setMonthlySpendDrafts(spendDrafts);
+        }
         setRouterError(null);
       } catch (error) {
         if (mounted) setRouterError(error instanceof Error ? error.message : String(error));
@@ -1701,6 +1731,42 @@ export function ModelRouterPanel({
       setRouterConfig(previous);
       setRouterError(error instanceof Error ? error.message : String(error));
       Alert.alert("Router update failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setSavingRouterConfig(false);
+    }
+  };
+
+  const savePlanConfigPatch = async (
+    providerKey: string,
+    patch: Partial<NonNullable<ProviderPlanMonitoringConfig["providers"][string]>>
+  ) => {
+    if (!planConfig || savingRouterConfig) return;
+    const previous = planConfig;
+    const current = planConfig.providers[providerKey] || {};
+    const next: ProviderPlanMonitoringConfig = {
+      ...planConfig,
+      providers: {
+        ...planConfig.providers,
+        [providerKey]: {
+          ...current,
+          ...patch,
+          monthly: patch.monthly
+            ? { ...(current.monthly || {}), ...patch.monthly }
+            : current.monthly,
+        },
+      },
+    };
+    setPlanConfig(next);
+    setSavingRouterConfig(true);
+    setRouterError(null);
+    try {
+      const saved = await api.updateProviderPlanConfig(next);
+      setPlanConfig(saved);
+      setPlanStatus(await api.providerPlanStatus().catch(() => null));
+    } catch (error) {
+      setPlanConfig(previous);
+      setRouterError(error instanceof Error ? error.message : String(error));
+      Alert.alert("Plan update failed", error instanceof Error ? error.message : String(error));
     } finally {
       setSavingRouterConfig(false);
     }
@@ -1858,6 +1924,91 @@ export function ModelRouterPanel({
               },
             ]}
           />
+          <SettingsSection title="Provider plans">
+            <DetailInfoSection
+              title="Plan monitor"
+              fields={[
+                { label: "Monitored", value: String(planStatus?.summary.monitored ?? 0) },
+                { label: "Configured", value: String(planStatus?.summary.configured ?? 0) },
+                { label: "Warnings", value: String(planStatus?.summary.warnings ?? 0) },
+                { label: "Exhausted", value: String(planStatus?.summary.exhausted ?? 0) },
+              ]}
+            />
+            {(routerStatus?.routes || []).slice(0, 6).map((route) => {
+              const plan = planByRoute.get(route.providerId);
+              const providerPlanConfig = planConfig?.providers[route.providerId] || {};
+              const monthly = providerPlanConfig.monthly || {};
+              const tokenDraft =
+                monthlyTokenDrafts[route.providerId] ??
+                (monthly.tokenLimit ? String(monthly.tokenLimit) : "");
+              const spendDraft =
+                monthlySpendDrafts[route.providerId] ??
+                (monthly.spendLimit ? String(monthly.spendLimit) : "");
+              const firstWindow = plan?.windows[0];
+              return (
+                <View key={route.providerId} style={styles.settingsSegmentField}>
+                  <Text style={styles.settingsFieldLabel}>
+                    {plan?.providerName || route.providerId}
+                  </Text>
+                  <Text style={styles.settingsFieldHelp}>
+                    {plan
+                      ? `${plan.status} - ${firstWindow?.usedPercent?.toFixed(1) ?? "0"}% used`
+                      : "No plan snapshot yet"}
+                  </Text>
+                  <View style={styles.settingsActionRow}>
+                    <TextInput
+                      editable={!savingRouterConfig}
+                      keyboardType="number-pad"
+                      onBlur={() => {
+                        const parsed = Number(tokenDraft.trim());
+                        void savePlanConfigPatch(route.providerId, {
+                          monthly: {
+                            enabled: true,
+                            tokenLimit: Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
+                          },
+                        });
+                      }}
+                      onChangeText={(value) =>
+                        setMonthlyTokenDrafts((current) => ({
+                          ...current,
+                          [route.providerId]: value,
+                        }))
+                      }
+                      placeholder="Monthly tokens"
+                      placeholderTextColor={colors.textDim}
+                      returnKeyType="done"
+                      style={[styles.settingsInput, { flex: 1 }]}
+                      value={tokenDraft}
+                    />
+                    <TextInput
+                      editable={!savingRouterConfig}
+                      keyboardType="decimal-pad"
+                      onBlur={() => {
+                        const parsed = Number(spendDraft.trim());
+                        void savePlanConfigPatch(route.providerId, {
+                          monthly: {
+                            enabled: true,
+                            spendLimit: Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
+                          },
+                        });
+                      }}
+                      onChangeText={(value) =>
+                        setMonthlySpendDrafts((current) => ({
+                          ...current,
+                          [route.providerId]: value,
+                        }))
+                      }
+                      placeholder="Monthly $"
+                      placeholderTextColor={colors.textDim}
+                      returnKeyType="done"
+                      style={[styles.settingsInput, { flex: 1 }]}
+                      value={spendDraft}
+                    />
+                  </View>
+                </View>
+              );
+            })}
+          </SettingsSection>
           {routerError ? <Text style={styles.errorText}>{routerError}</Text> : null}
         </>
       ) : (

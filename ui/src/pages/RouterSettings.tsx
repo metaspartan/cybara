@@ -28,6 +28,7 @@ interface RouteStatus {
   spendThisWeek: number;
   priceInputPerM?: number;
   priceOutputPerM?: number;
+  plan?: ProviderPlanRouteConstraint;
 }
 
 interface RouterStatus {
@@ -52,6 +53,77 @@ interface ProviderMeta {
   type: string;
   name: string;
   models: string[];
+}
+
+interface ProviderPlanRouteConstraint {
+  monitored: boolean;
+  configured: boolean;
+  enforced: boolean;
+  status: "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
+  reason?: string;
+  primaryRemainingPercent?: number;
+}
+
+interface ProviderPlanWindow {
+  id: string;
+  title: string;
+  usedTokens: number;
+  tokenLimit?: number;
+  usedSpend: number;
+  spendLimit?: number;
+  usedPercent?: number;
+  remainingPercent?: number;
+  resetDescription: string;
+}
+
+interface ProviderPlanSnapshot {
+  providerId: string;
+  configuredProviderId?: string;
+  providerType: string;
+  providerName: string;
+  monitored: boolean;
+  planName?: string;
+  status: "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
+  reason?: string;
+  localTokens30d: number;
+  localSpend30d: number;
+  windows: ProviderPlanWindow[];
+}
+
+interface ProviderPlanStatus {
+  enabled: boolean;
+  routerEnforcement: boolean;
+  warningThresholdPct: number;
+  providers: ProviderPlanSnapshot[];
+  summary: {
+    total: number;
+    monitored: number;
+    configured: number;
+    warnings: number;
+    exhausted: number;
+  };
+}
+
+interface ProviderPlanWindowConfig {
+  enabled?: boolean;
+  tokenLimit?: number;
+  spendLimit?: number;
+}
+
+interface ProviderPlanProviderConfig {
+  enabled?: boolean;
+  planName?: string;
+  monthly?: ProviderPlanWindowConfig;
+  weekly?: ProviderPlanWindowConfig;
+  fiveHour?: ProviderPlanWindowConfig;
+}
+
+interface ProviderPlanConfig {
+  enabled: boolean;
+  routerEnforcement: boolean;
+  warningThresholdPct: number;
+  staleAfterMinutes: number;
+  providers: Record<string, ProviderPlanProviderConfig>;
 }
 
 const STRATEGY_HELP: Record<RouterConfig["strategy"], string> = {
@@ -96,7 +168,19 @@ function formatTokenPrice(input?: number, output?: number): string {
   } out per 1M`;
 }
 
+function formatCompactNumber(value: number | undefined): string {
+  const num = Number.isFinite(value) ? Number(value) : 0;
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(num >= 10_000_000 ? 1 : 2)}M`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(num >= 100_000 ? 0 : 1)}K`;
+  return String(Math.round(num));
+}
+
 function normalizedSpendLimit(value: string): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function normalizedPositiveNumber(value: string): number | undefined {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
@@ -104,6 +188,8 @@ function normalizedSpendLimit(value: string): number | undefined {
 export function RouterSettings() {
   const [status, setStatus] = useState<RouterStatus | null>(null);
   const [config, setConfig] = useState<RouterConfig | null>(null);
+  const [planStatus, setPlanStatus] = useState<ProviderPlanStatus | null>(null);
+  const [planConfig, setPlanConfig] = useState<ProviderPlanConfig | null>(null);
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
   const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -126,6 +212,24 @@ export function RouterSettings() {
       /* ignore */
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  const fetchPlanStatus = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/provider-plans/status");
+      setPlanStatus(await res.json());
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const fetchPlanConfig = useCallback(async () => {
+    try {
+      const res = await apiFetch("/api/provider-plans/config");
+      setPlanConfig(await res.json());
+    } catch {
+      /* ignore */
     }
   }, []);
 
@@ -169,11 +273,16 @@ export function RouterSettings() {
   useEffect(() => {
     void fetchConfig();
     void fetchStatus();
+    void fetchPlanStatus();
+    void fetchPlanConfig();
     void fetchProviders();
     void fetchAgents();
-    const interval = setInterval(fetchStatus, 5000);
+    const interval = setInterval(() => {
+      void fetchStatus();
+      void fetchPlanStatus();
+    }, 5000);
     return () => clearInterval(interval);
-  }, [fetchStatus, fetchConfig, fetchProviders, fetchAgents]);
+  }, [fetchStatus, fetchConfig, fetchPlanStatus, fetchPlanConfig, fetchProviders, fetchAgents]);
 
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -193,6 +302,23 @@ export function RouterSettings() {
       setSaveError(error instanceof Error ? error.message : "Save failed");
     } finally {
       setSaving(false);
+    }
+  };
+
+  const savePlanConfig = async (cfg: ProviderPlanConfig) => {
+    try {
+      const res = await apiFetch("/api/provider-plans/config", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cfg),
+      });
+      if (!res.ok) throw new Error(`Plan save failed (${res.status})`);
+      const saved = await res.json();
+      setPlanConfig(saved);
+      setSaveError(null);
+      await fetchPlanStatus();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Plan save failed");
     }
   };
 
@@ -222,6 +348,12 @@ export function RouterSettings() {
     (route) => Number(route.priceInputPerM || 0) > 0 || Number(route.priceOutputPerM || 0) > 0
   );
   const configuredPricingCount = pricedRoutes?.length || 0;
+  const planByRoute = new Map<string, ProviderPlanSnapshot>();
+  for (const plan of planStatus?.providers || []) {
+    for (const key of [plan.providerId, plan.configuredProviderId, plan.providerType]) {
+      if (key && !planByRoute.has(key)) planByRoute.set(key, plan);
+    }
+  }
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
@@ -236,7 +368,7 @@ export function RouterSettings() {
             selection strategies, provider limits, and cash spend caps.
           </p>
         </div>
-        <div className="grid grid-cols-3 gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2 text-center">
+        <div className="grid grid-cols-4 gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2 text-center">
           <div className="rounded-lg bg-black/25 px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-gray-500">Active</p>
             <p className="text-sm font-semibold text-white">
@@ -251,6 +383,12 @@ export function RouterSettings() {
             <p className="text-[10px] uppercase tracking-wide text-gray-500">Prices</p>
             <p className="text-sm font-semibold text-cyan-300">
               {configuredPricingCount}/{status?.routes.length || 0}
+            </p>
+          </div>
+          <div className="rounded-lg bg-black/25 px-3 py-2">
+            <p className="text-[10px] uppercase tracking-wide text-gray-500">Plans</p>
+            <p className="text-sm font-semibold text-amber-300">
+              {planStatus?.summary.configured || 0}/{planStatus?.summary.monitored || 0}
             </p>
           </div>
         </div>
@@ -534,6 +672,24 @@ export function RouterSettings() {
               onSave={saveConfig}
               displayName={providerName(route.providerId)}
               models={providerModels(route.providerId)}
+              plan={planByRoute.get(route.providerId)}
+              planConfig={planConfig?.providers[route.providerId] || null}
+              onPlanConfigChange={(next) => {
+                const base = planConfig || {
+                  enabled: true,
+                  routerEnforcement: true,
+                  warningThresholdPct: 80,
+                  staleAfterMinutes: 120,
+                  providers: {},
+                };
+                void savePlanConfig({
+                  ...base,
+                  providers: {
+                    ...base.providers,
+                    [route.providerId]: next,
+                  },
+                });
+              }}
             />
           ))
         ) : (
@@ -560,12 +716,18 @@ function RouteRow({
   onSave,
   displayName,
   models,
+  plan,
+  planConfig,
+  onPlanConfigChange,
 }: {
   route: RouteStatus;
   config: RouterConfig;
   onSave: (cfg: RouterConfig) => Promise<void>;
   displayName: string;
   models: string[];
+  plan?: ProviderPlanSnapshot;
+  planConfig: ProviderPlanProviderConfig | null;
+  onPlanConfigChange: (next: ProviderPlanProviderConfig) => void;
 }) {
   const [open, setOpen] = useState(false);
   const routeCfg = (config.routes[route.providerId] ?? {}) as Record<string, number | boolean>;
@@ -580,6 +742,25 @@ function RouteRow({
     const routes = { ...config.routes };
     delete routes[route.providerId];
     void onSave({ ...config, routes });
+  };
+
+  const updatePlan = (
+    key: "planName" | "monthlyTokenLimit" | "monthlySpendLimit",
+    value: string
+  ) => {
+    const next: ProviderPlanProviderConfig = {
+      ...(planConfig || {}),
+      enabled: true,
+    };
+    if (key === "planName") {
+      next.planName = value.trim() || undefined;
+    } else {
+      const monthly = { ...(next.monthly || {}), enabled: true };
+      if (key === "monthlyTokenLimit") monthly.tokenLimit = normalizedPositiveNumber(value);
+      if (key === "monthlySpendLimit") monthly.spendLimit = normalizedPositiveNumber(value);
+      next.monthly = monthly;
+    }
+    onPlanConfigChange(next);
   };
 
   return (
@@ -652,6 +833,8 @@ function RouteRow({
         </div>
       )}
 
+      {plan && <PlanStatusPanel plan={plan} />}
+
       <div className="flex items-center gap-3 text-[11px] text-gray-500">
         <button
           type="button"
@@ -701,9 +884,103 @@ function RouteRow({
               step={0.5}
             />
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] p-3">
+            <label className="flex flex-col gap-0.5">
+              <span className="text-[10px] text-amber-200/70">Plan name</span>
+              <input
+                defaultValue={planConfig?.planName || plan?.planName || ""}
+                placeholder="$20 coding plan"
+                onBlur={(e) => updatePlan("planName", e.target.value)}
+                className="w-full rounded bg-black/25 border border-white/10 px-2 py-1 text-xs text-white placeholder:text-gray-600"
+              />
+            </label>
+            <RoutePlanField
+              label="Monthly tokens"
+              value={planConfig?.monthly?.tokenLimit}
+              placeholder="20000000"
+              onChange={(value) => updatePlan("monthlyTokenLimit", value)}
+            />
+            <RoutePlanField
+              label="Monthly spend"
+              value={planConfig?.monthly?.spendLimit}
+              placeholder="20"
+              step={0.5}
+              onChange={(value) => updatePlan("monthlySpendLimit", value)}
+            />
+          </div>
           <p className="text-[10px] text-gray-600">
-            Limits of 0 mean unlimited. Pricing is used by the Lowest Cost strategy.
+            Route limits of 0 mean unlimited. Plan limits feed usage monitoring and can block an
+            exhausted provider before the router chooses it.
           </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PlanStatusPanel({ plan }: { plan: ProviderPlanSnapshot }) {
+  const statusClass =
+    plan.status === "exhausted"
+      ? "border-red-400/25 bg-red-500/10 text-red-200"
+      : plan.status === "warning"
+        ? "border-amber-400/25 bg-amber-400/10 text-amber-100"
+        : plan.status === "ok"
+          ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-100"
+          : "border-white/10 bg-white/[0.025] text-gray-300";
+
+  return (
+    <div className={cn("rounded-lg border p-3", statusClass)}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold">
+            {plan.planName || "Provider plan"} · {plan.status}
+          </p>
+          <p className="mt-0.5 text-[11px] opacity-75">
+            {plan.reason ||
+              `${formatCompactNumber(plan.localTokens30d)} local tokens · ${formatMoney(
+                plan.localSpend30d,
+                4
+              )} local spend in 30d`}
+          </p>
+        </div>
+        {plan.monitored && (
+          <span className="rounded-full bg-black/25 px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-80">
+            monitored
+          </span>
+        )}
+      </div>
+      {plan.windows.length > 0 && (
+        <div className="mt-3 grid gap-2">
+          {plan.windows.map((window) => {
+            const percentValue = Math.min(100, Math.max(0, window.usedPercent ?? 0));
+            return (
+              <div key={window.id}>
+                <div className="mb-1 flex items-center justify-between gap-2 text-[10px] opacity-80">
+                  <span>
+                    {window.title} · {window.resetDescription}
+                  </span>
+                  <span>
+                    {window.usedPercent === undefined
+                      ? `${formatCompactNumber(window.usedTokens)} tokens`
+                      : `${window.usedPercent.toFixed(1)}%`}
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-black/30">
+                  <div
+                    className={cn(
+                      "h-full rounded-full",
+                      percentValue >= 95
+                        ? "bg-red-300"
+                        : percentValue >= 80
+                          ? "bg-amber-300"
+                          : "bg-emerald-300"
+                    )}
+                    style={{ width: `${Math.max(2, percentValue)}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -736,6 +1013,35 @@ function RouteField({
         className="w-full rounded bg-white/5 border border-white/10 px-2 py-1 text-xs text-white"
       />
     </div>
+  );
+}
+
+function RoutePlanField({
+  label,
+  value,
+  placeholder,
+  onChange,
+  step = 1,
+}: {
+  label: string;
+  value?: number;
+  placeholder: string;
+  onChange: (value: string) => void;
+  step?: number;
+}) {
+  return (
+    <label className="flex flex-col gap-0.5">
+      <span className="text-[10px] text-amber-200/70">{label}</span>
+      <input
+        type="number"
+        min={0}
+        step={step}
+        defaultValue={value || ""}
+        placeholder={placeholder}
+        onBlur={(e) => onChange(e.target.value)}
+        className="w-full rounded bg-black/25 border border-white/10 px-2 py-1 text-xs text-white placeholder:text-gray-600"
+      />
+    </label>
   );
 }
 

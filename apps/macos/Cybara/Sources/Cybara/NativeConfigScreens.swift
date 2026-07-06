@@ -7,9 +7,14 @@ struct RouterScreen: View {
 
     @State private var config: [String: Any] = [:]
     @State private var status: RouterStatusSummary?
+    @State private var planConfig: [String: Any] = [:]
+    @State private var planStatus: ProviderPlanStatusResponse?
+    @State private var monthlyTokenDrafts: [String: String] = [:]
+    @State private var monthlySpendDrafts: [String: String] = [:]
     @State private var agents: [GatewayAgent] = []
     @State private var loaded = false
     @State private var saving = false
+    @State private var savingPlanProvider: String?
     @State private var error: String?
 
     private static let strategies: [(value: String, label: String)] = [
@@ -111,6 +116,8 @@ struct RouterScreen: View {
                             )
                         }
                     }
+
+                    providerPlanCard
                 }
 
                 if saving { ProgressView().controlSize(.small) }
@@ -123,6 +130,118 @@ struct RouterScreen: View {
             .padding(24)
         }
         .task { await load() }
+    }
+
+    private var providerPlanCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Provider plans")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                        Text("Track coding-plan usage and keep exhausted providers out of routing.")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(planStatus?.routerEnforcement == true ? "Enforced" : "Monitor only")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.thinMaterial, in: Capsule())
+                }
+
+                HStack(spacing: 12) {
+                    planMetric("Monitored", "\(planStatus?.summary.monitored ?? 0)")
+                    planMetric("Configured", "\(planStatus?.summary.configured ?? 0)")
+                    planMetric("Warnings", "\(planStatus?.summary.warnings ?? 0)")
+                    planMetric("Exhausted", "\(planStatus?.summary.exhausted ?? 0)")
+                }
+
+                let routes = status?.routes ?? []
+                if routes.isEmpty {
+                    Text("Add provider routes to configure plan limits for router decisions.")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(spacing: 10) {
+                        ForEach(routes.prefix(8)) { route in
+                            providerPlanRouteRow(route)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func planMetric(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+            Text(label)
+                .font(.system(size: 10, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func providerPlanRouteRow(_ route: RouterAvailabilityStatus) -> some View {
+        let plan = providerPlan(for: route)
+        let primaryWindow = plan?.windows.first
+        let tokenBinding = Binding(
+            get: { monthlyTokenDrafts[route.providerId] ?? "" },
+            set: { monthlyTokenDrafts[route.providerId] = $0 }
+        )
+        let spendBinding = Binding(
+            get: { monthlySpendDrafts[route.providerId] ?? "" },
+            set: { monthlySpendDrafts[route.providerId] = $0 }
+        )
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(plan?.providerName ?? route.providerId)
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    Text(providerPlanSubtitle(plan: plan, route: route))
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Text(planStatusLabel(plan?.status ?? route.plan?.status ?? "unconfigured"))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(planStatusColor(plan?.status ?? route.plan?.status ?? "unconfigured"))
+            }
+
+            if let percent = primaryWindow?.usedPercent {
+                ProgressView(value: min(max(percent, 0), 100), total: 100)
+                    .tint(planStatusColor(plan?.status ?? "ok"))
+            }
+
+            HStack(spacing: 8) {
+                TextField("Monthly tokens", text: tokenBinding)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12, design: .rounded))
+                    .onSubmit { saveProviderPlan(route.providerId) }
+                TextField("Monthly $", text: spendBinding)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: 12, design: .rounded))
+                    .onSubmit { saveProviderPlan(route.providerId) }
+                Button {
+                    saveProviderPlan(route.providerId)
+                } label: {
+                    if savingPlanProvider == route.providerId {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Save", systemImage: "checkmark")
+                    }
+                }
+                .disabled(savingPlanProvider == route.providerId)
+                .labelStyle(.iconOnly)
+                .help("Save provider plan limits")
+            }
+        }
+        .padding(10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func infoRow(_ label: String, _ value: String) -> some View {
@@ -172,10 +291,144 @@ struct RouterScreen: View {
         }
     }
 
+    private func providerPlan(for route: RouterAvailabilityStatus) -> ProviderPlanSnapshot? {
+        planStatus?.providers.first {
+            $0.providerId == route.providerId ||
+                $0.configuredProviderId == route.providerId ||
+                $0.providerType == route.providerId
+        }
+    }
+
+    private func providerPlanSubtitle(
+        plan: ProviderPlanSnapshot?,
+        route: RouterAvailabilityStatus
+    ) -> String {
+        if let window = plan?.windows.first,
+           let percent = window.usedPercent {
+            return "\(window.title): \(String(format: "%.1f", percent))% used · \(window.resetDescription)"
+        }
+        if let plan,
+           plan.monitored {
+            return "\(formatLargeNumber(plan.localTokens30d)) tokens · \(String(format: "$%.4f", plan.localSpend30d)) last 30d"
+        }
+        if let reason = route.plan?.reason {
+            return reason
+        }
+        return "No plan limits configured"
+    }
+
+    private func planStatusLabel(_ status: String) -> String {
+        switch status.lowercased() {
+        case "ok": return "OK"
+        case "warning": return "Warning"
+        case "exhausted": return "Exhausted"
+        case "disabled": return "Disabled"
+        default: return "Unconfigured"
+        }
+    }
+
+    private func planStatusColor(_ status: String) -> Color {
+        switch status.lowercased() {
+        case "ok": return .green
+        case "warning": return .orange
+        case "exhausted": return .red
+        default: return .secondary
+        }
+    }
+
+    private func seedProviderPlanDrafts() {
+        let providers = planConfig["providers"] as? [String: Any] ?? [:]
+        var tokenDrafts: [String: String] = [:]
+        var spendDrafts: [String: String] = [:]
+        for route in status?.routes ?? [] {
+            let providerConfig = providers[route.providerId] as? [String: Any] ?? [:]
+            let monthly = providerConfig["monthly"] as? [String: Any] ?? [:]
+            tokenDrafts[route.providerId] = limitText(monthly["tokenLimit"] ?? monthly["token_limit"])
+            spendDrafts[route.providerId] = limitText(monthly["spendLimit"] ?? monthly["spend_limit"])
+        }
+        monthlyTokenDrafts = tokenDrafts
+        monthlySpendDrafts = spendDrafts
+    }
+
+    private func limitText(_ value: Any?) -> String {
+        let number: Double?
+        if let value = value as? Double {
+            number = value
+        } else if let value = value as? Int {
+            number = Double(value)
+        } else if let value = value as? String {
+            number = Double(value.trimmingCharacters(in: .whitespacesAndNewlines))
+        } else {
+            number = nil
+        }
+        guard let number, number > 0 else { return "" }
+        return number.rounded() == number ? String(Int(number)) : String(number)
+    }
+
+    private func positiveLimit(_ value: String?) -> Double? {
+        guard let value else { return nil }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ",", with: "")
+            .replacingOccurrences(of: "$", with: "")
+        guard let parsed = Double(normalized), parsed > 0, parsed.isFinite else { return nil }
+        return parsed
+    }
+
+    private func saveProviderPlan(_ providerId: String) {
+        var next = planConfig
+        var providers = next["providers"] as? [String: Any] ?? [:]
+        var providerConfig = providers[providerId] as? [String: Any] ?? [:]
+        var monthly = providerConfig["monthly"] as? [String: Any] ?? [:]
+        monthly["enabled"] = true
+        if let tokenLimit = positiveLimit(monthlyTokenDrafts[providerId]) {
+            monthly["tokenLimit"] = tokenLimit
+        } else {
+            monthly.removeValue(forKey: "tokenLimit")
+            monthly.removeValue(forKey: "token_limit")
+        }
+        if let spendLimit = positiveLimit(monthlySpendDrafts[providerId]) {
+            monthly["spendLimit"] = spendLimit
+        } else {
+            monthly.removeValue(forKey: "spendLimit")
+            monthly.removeValue(forKey: "spend_limit")
+        }
+        providerConfig["enabled"] = true
+        providerConfig["monthly"] = monthly
+        providers[providerId] = providerConfig
+        next["providers"] = providers
+        guard let body = try? JSONSerialization.data(withJSONObject: next) else { return }
+        planConfig = next
+        savingPlanProvider = providerId
+        Task {
+            do {
+                planConfig = try await client.updateProviderPlanConfig(body)
+                planStatus = try? await client.providerPlanStatus()
+                seedProviderPlanDrafts()
+                error = nil
+            } catch {
+                self.error = error.localizedDescription
+            }
+            savingPlanProvider = nil
+        }
+    }
+
+    private func formatLargeNumber(_ value: Int) -> String {
+        if value >= 1_000_000 {
+            return String(format: "%.1fM", Double(value) / 1_000_000)
+        }
+        if value >= 1_000 {
+            return String(format: "%.1fK", Double(value) / 1_000)
+        }
+        return "\(value)"
+    }
+
     private func load() async {
         do {
             config = try await client.routerConfig()
             status = try? await client.routerStatus()
+            planConfig = (try? await client.providerPlanConfig()) ?? [:]
+            planStatus = try? await client.providerPlanStatus()
+            seedProviderPlanDrafts()
             agents = (try? await client.agents()) ?? []
             loaded = true
             error = nil

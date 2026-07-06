@@ -11,6 +11,8 @@ import type {
   DashboardStats,
   MobileDevice,
   MobilePairing,
+  ProviderPlanMonitoringConfig,
+  ProviderPlanStatusResponse,
 } from "@/types";
 import { apiFetch } from "@/lib/auth";
 import type { PendingChatMessage } from "@/lib/status-stream";
@@ -99,6 +101,16 @@ export const providersApi = {
   delete: (id: string) => fetchApi<void>(`/providers/${id}`, { method: "DELETE" }),
   test: (id: string) =>
     fetchApi<{ success: boolean; latency: number }>(`/providers/${id}/test`, { method: "POST" }),
+};
+
+export const providerPlansApi = {
+  config: () => fetchApi<ProviderPlanMonitoringConfig>("/provider-plans/config"),
+  status: () => fetchApi<ProviderPlanStatusResponse>("/provider-plans/status"),
+  updateConfig: (payload: ProviderPlanMonitoringConfig) =>
+    fetchApi<ProviderPlanMonitoringConfig>("/provider-plans/config", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
 };
 
 export const channelsApi = {

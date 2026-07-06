@@ -665,6 +665,9 @@ const stmts = {
   metrics: {
     add: prepare("INSERT INTO metrics (id, type, key, value, metadata) VALUES (?, ?, ?, ?, ?)"),
     getByType: prepare("SELECT * FROM metrics WHERE type = ? ORDER BY created_at DESC"),
+    getByTypeSince: prepare(
+      "SELECT * FROM metrics WHERE type = ? AND created_at >= ? ORDER BY created_at DESC"
+    ),
     getByTypeRecent: prepare(
       "SELECT * FROM metrics WHERE type = ? ORDER BY created_at DESC LIMIT ?"
     ),
@@ -1057,6 +1060,8 @@ export const tables = {
     add: (m: { id: string; type: string; key: string; value: number; metadata?: string }) =>
       stmts.metrics?.add.run(m.id, m.type, m.key, m.value, m.metadata || null),
     getByType: (type: string) => stmts.metrics?.getByType.all(type) || [],
+    getByTypeSince: (type: string, sinceSql: string) =>
+      stmts.metrics?.getByTypeSince.all(type, sinceSql) || [],
     getByTypeRecent: (type: string, limit = 50) =>
       stmts.metrics?.getByTypeRecent.all(type, limit) || [],
     getTotal: (type: string, key: string) =>

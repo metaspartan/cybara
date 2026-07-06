@@ -466,6 +466,136 @@ describe("mobile API client", () => {
     }
   });
 
+  test("loads and updates provider plan monitoring through gateway routes", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (parsedUrl.pathname === "/api/provider-plans/config" && method === "GET") {
+        return Response.json({
+          enabled: true,
+          routerEnforcement: true,
+          warningThresholdPct: 80,
+          staleAfterMinutes: 120,
+          providers: {
+            "openai-codex": {
+              enabled: true,
+              planName: "Codex Plus",
+              monthly: { enabled: true, tokenLimit: 2_000_000, spendLimit: 20 },
+            },
+          },
+        });
+      }
+      if (parsedUrl.pathname === "/api/provider-plans/status" && method === "GET") {
+        return Response.json({
+          enabled: true,
+          routerEnforcement: true,
+          warningThresholdPct: 80,
+          providers: [
+            {
+              providerId: "openai-codex",
+              providerType: "openai-codex",
+              providerName: "OpenAI Codex",
+              authType: "oauth",
+              monitored: true,
+              status: "warning",
+              localTokens30d: 1_700_000,
+              localSpend30d: 17.25,
+              windows: [
+                {
+                  id: "monthly",
+                  title: "Billing month",
+                  kind: "billing_month",
+                  usedTokens: 1_700_000,
+                  tokenLimit: 2_000_000,
+                  usedSpend: 17.25,
+                  spendLimit: 20,
+                  usedPercent: 85,
+                  remainingPercent: 15,
+                  resetDescription: "Resets Aug 1",
+                  usageKnown: true,
+                },
+              ],
+            },
+          ],
+          summary: { total: 1, monitored: 1, configured: 1, warnings: 1, exhausted: 0 },
+        });
+      }
+      if (parsedUrl.pathname === "/api/provider-plans/config" && method === "PUT") {
+        return Response.json(body);
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.providerPlanConfig()).resolves.toMatchObject({
+        enabled: true,
+        routerEnforcement: true,
+        providers: {
+          "openai-codex": {
+            planName: "Codex Plus",
+            monthly: { tokenLimit: 2_000_000, spendLimit: 20 },
+          },
+        },
+      });
+      await expect(api.providerPlanStatus()).resolves.toMatchObject({
+        summary: { monitored: 1, configured: 1, warnings: 1 },
+        providers: [
+          {
+            providerId: "openai-codex",
+            status: "warning",
+            windows: [{ id: "monthly", usedPercent: 85 }],
+          },
+        ],
+      });
+      await expect(
+        api.updateProviderPlanConfig({
+          enabled: true,
+          routerEnforcement: true,
+          warningThresholdPct: 75,
+          staleAfterMinutes: 120,
+          providers: {
+            "openai-codex": {
+              enabled: true,
+              monthly: { enabled: true, tokenLimit: 2_500_000 },
+            },
+          },
+        })
+      ).resolves.toMatchObject({
+        warningThresholdPct: 75,
+        providers: { "openai-codex": { monthly: { tokenLimit: 2_500_000 } } },
+      });
+
+      expect(calls).toEqual([
+        { method: "GET", path: "/api/provider-plans/config", body: undefined },
+        { method: "GET", path: "/api/provider-plans/status", body: undefined },
+        {
+          method: "PUT",
+          path: "/api/provider-plans/config",
+          body: {
+            enabled: true,
+            routerEnforcement: true,
+            warningThresholdPct: 75,
+            staleAfterMinutes: 120,
+            providers: {
+              "openai-codex": {
+                enabled: true,
+                monthly: { enabled: true, tokenLimit: 2_500_000 },
+              },
+            },
+          },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("loads and updates system prompt settings through gateway routes", async () => {
     const calls: Array<{ method: string; path: string; body?: unknown }> = [];
     const originalFetch = globalThis.fetch;

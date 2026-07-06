@@ -7,6 +7,7 @@ import {
   mcpApi,
   memoryApi,
   mobileApi,
+  providerPlansApi,
   providersApi,
   settingsApi,
   setupApi,
@@ -159,6 +160,43 @@ describe("UI API client wiring", () => {
 
     expect(calls[3].url).toBe("/api/mobile/devices/mobile-1");
     expect(calls[3].init?.method).toBe("DELETE");
+  });
+
+  test("providerPlansApi uses provider plan endpoints", async () => {
+    await providerPlansApi.config();
+    await providerPlansApi.status();
+    await providerPlansApi.updateConfig({
+      enabled: true,
+      routerEnforcement: true,
+      warningThresholdPct: 80,
+      staleAfterMinutes: 120,
+      providers: {
+        "openai-codex": {
+          planName: "Codex Plus",
+          monthly: { tokenLimit: 20_000_000, spendLimit: 20 },
+        },
+      },
+    });
+
+    expect(calls).toHaveLength(3);
+    expect(calls[0].url).toBe("/api/provider-plans/config");
+    expect(calls[0].init?.method).toBeUndefined();
+    expect(calls[1].url).toBe("/api/provider-plans/status");
+    expect(calls[1].init?.method).toBeUndefined();
+    expect(calls[2].url).toBe("/api/provider-plans/config");
+    expect(calls[2].init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[2].init?.body))).toEqual({
+      enabled: true,
+      routerEnforcement: true,
+      warningThresholdPct: 80,
+      staleAfterMinutes: 120,
+      providers: {
+        "openai-codex": {
+          planName: "Codex Plus",
+          monthly: { tokenLimit: 20_000_000, spendLimit: 20 },
+        },
+      },
+    });
   });
 
   test("memoryApi.list encodes query params", async () => {

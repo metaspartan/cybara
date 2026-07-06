@@ -1095,6 +1095,100 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(storage.topLevel?.first?.name, "data")
     }
 
+    func testRouterStatusDecodesProviderPlanConstraints() throws {
+        let status = try JSONDecoder().decode(
+            RouterStatusSummary.self,
+            from: Data(
+                #"""
+                {
+                  "enabled": true,
+                  "strategy": "lowest_cost",
+                  "globalSpendToday": 1.25,
+                  "totalRequests": 7,
+                  "routes": [
+                    {
+                      "providerId": "openai-codex",
+                      "weight": 80,
+                      "priority": 1,
+                      "enabled": true,
+                      "available": false,
+                      "reason": "Provider plan exhausted",
+                      "requestsIn5hWindow": 3,
+                      "requestsInWeekWindow": 12,
+                      "spendToday": 1.25,
+                      "spendThisWeek": 6.5,
+                      "plan": {
+                        "monitored": true,
+                        "configured": true,
+                        "enforced": true,
+                        "status": "exhausted",
+                        "primaryRemainingPercent": 0
+                      }
+                    }
+                  ]
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(status.routes.first?.providerId, "openai-codex")
+        XCTAssertEqual(status.routes.first?.plan?.status, "exhausted")
+        XCTAssertEqual(status.routes.first?.plan?.enforced, true)
+        XCTAssertEqual(status.routes.first?.requestsInWeekWindow, 12)
+    }
+
+    func testProviderPlanStatusDecodesUsageWindows() throws {
+        let status = try JSONDecoder().decode(
+            ProviderPlanStatusResponse.self,
+            from: Data(
+                #"""
+                {
+                  "enabled": true,
+                  "routerEnforcement": true,
+                  "warningThresholdPct": 80,
+                  "providers": [
+                    {
+                      "providerId": "openai-codex",
+                      "providerType": "openai-codex",
+                      "providerName": "OpenAI Codex",
+                      "authType": "oauth",
+                      "monitored": true,
+                      "planName": "Codex Plus",
+                      "source": "local_metrics_configured_limits",
+                      "status": "warning",
+                      "dataConfidence": "local",
+                      "updatedAt": "2026-07-06T12:00:00.000Z",
+                      "localTokens30d": 1700000,
+                      "localSpend30d": 17.25,
+                      "windows": [
+                        {
+                          "id": "monthly",
+                          "title": "Billing month",
+                          "kind": "billing_month",
+                          "usedTokens": 1700000,
+                          "tokenLimit": 2000000,
+                          "usedSpend": 17.25,
+                          "spendLimit": 20,
+                          "usedPercent": 85,
+                          "remainingPercent": 15,
+                          "resetDescription": "Resets Aug 1",
+                          "usageKnown": true
+                        }
+                      ]
+                    }
+                  ],
+                  "summary": {"total": 1, "monitored": 1, "configured": 1, "warnings": 1, "exhausted": 0}
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(status.summary.monitored, 1)
+        XCTAssertEqual(status.providers.first?.providerName, "OpenAI Codex")
+        XCTAssertEqual(status.providers.first?.windows.first?.usedPercent, 85)
+        XCTAssertEqual(status.providers.first?.windows.first?.tokenLimit, 2_000_000)
+    }
+
     func testTokenAnalysisMetricsDecodeNativeChartData() throws {
         let analysis = try JSONDecoder().decode(
             TokenAnalysisMetrics.self,

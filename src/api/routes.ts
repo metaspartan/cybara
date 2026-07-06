@@ -123,6 +123,11 @@ import {
   createCheckpoint,
   restoreCheckpoint,
 } from "../core/checkpoint";
+import {
+  getProviderPlanMonitoringConfig,
+  getProviderPlanStatus,
+  setProviderPlanMonitoringConfig,
+} from "../core/provider-plans";
 import { getRouterStatus, selectProvider, getAllPricing, type RouterConfig } from "../core/router";
 import { getSystemMonitorSnapshot } from "../core/system-monitor";
 import * as pwManager from "../core/browser/pw-manager";
@@ -1005,6 +1010,9 @@ const routes: Record<string, RouteHandler> = {
       providers: providerStates,
     };
   },
+  "GET /api/provider-plans/config": () => getProviderPlanMonitoringConfig(),
+  "PUT /api/provider-plans/config": (body) => setProviderPlanMonitoringConfig(body),
+  "GET /api/provider-plans/status": () => getProviderPlanStatus(),
   "POST /api/providers/:id/test": async (_body, params) => {
     const provider = providerManager.getWithCredentials(params!.id);
     if (!provider) {

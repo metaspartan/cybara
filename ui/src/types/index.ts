@@ -55,6 +55,83 @@ export interface Provider {
   created_at?: string;
 }
 
+export type ProviderPlanStatusState = "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
+
+export interface ProviderPlanWindow {
+  id: string;
+  title: string;
+  kind: "rolling_5h" | "rolling_week" | "billing_month";
+  usedTokens: number;
+  tokenLimit?: number;
+  usedSpend: number;
+  spendLimit?: number;
+  usedPercent?: number;
+  remainingPercent?: number;
+  resetsAt?: string;
+  resetDescription: string;
+  usageKnown: boolean;
+}
+
+export interface ProviderPlanSnapshot {
+  providerId: string;
+  configuredProviderId?: string;
+  providerType: string;
+  providerName: string;
+  authType: string;
+  monitored: boolean;
+  planName?: string;
+  source: string;
+  status: ProviderPlanStatusState;
+  reason?: string;
+  warningThresholdPct: number;
+  hardStopPct: number;
+  dataConfidence: "exact" | "estimated" | "local";
+  updatedAt: string;
+  localTokens30d: number;
+  localSpend30d: number;
+  windows: ProviderPlanWindow[];
+}
+
+export interface ProviderPlanWindowConfig {
+  enabled?: boolean;
+  tokenLimit?: number;
+  spendLimit?: number;
+}
+
+export interface ProviderPlanProviderConfig {
+  enabled?: boolean;
+  planName?: string;
+  currency?: string;
+  warningThresholdPct?: number;
+  hardStopPct?: number;
+  billingCycleAnchorDay?: number;
+  fiveHour?: ProviderPlanWindowConfig;
+  weekly?: ProviderPlanWindowConfig;
+  monthly?: ProviderPlanWindowConfig;
+}
+
+export interface ProviderPlanMonitoringConfig {
+  enabled: boolean;
+  routerEnforcement: boolean;
+  warningThresholdPct: number;
+  staleAfterMinutes: number;
+  providers: Record<string, ProviderPlanProviderConfig>;
+}
+
+export interface ProviderPlanStatusResponse {
+  enabled: boolean;
+  routerEnforcement: boolean;
+  warningThresholdPct: number;
+  providers: ProviderPlanSnapshot[];
+  summary: {
+    total: number;
+    monitored: number;
+    configured: number;
+    warnings: number;
+    exhausted: number;
+  };
+}
+
 export interface Channel {
   id: string;
   name: string;

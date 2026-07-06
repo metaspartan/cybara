@@ -423,6 +423,22 @@ struct GatewayClient: Sendable {
         try await get("api/router/status", as: RouterStatusSummary.self)
     }
 
+    func providerPlanConfig() async throws -> [String: Any] {
+        try await rawObject("api/provider-plans/config")
+    }
+
+    func updateProviderPlanConfig(_ body: Data) async throws -> [String: Any] {
+        let data = try await putJSON("api/provider-plans/config", body: body)
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GatewayClientError.invalidResponse
+        }
+        return object
+    }
+
+    func providerPlanStatus() async throws -> ProviderPlanStatusResponse {
+        try await get("api/provider-plans/status", as: ProviderPlanStatusResponse.self)
+    }
+
     // ─── Gateway config ──────────────────────────────────────────────────────
 
     func appConfig() async throws -> [String: Any] {

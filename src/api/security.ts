@@ -440,6 +440,10 @@ export function routeRequiredScope(method: string, path: string): string | null 
     if (method === "GET") return null;
     return "manage";
   }
+  if (path.startsWith("/api/provider-plans")) {
+    if (method === "GET") return null;
+    return "manage";
+  }
   if (path.startsWith("/api/router")) {
     if (method === "GET") return null;
     return "manage";

@@ -314,6 +314,7 @@ export interface RouterRouteStatus {
   outputPerM?: number;
   circuitOpen?: boolean;
   inCooldown?: boolean;
+  plan?: ProviderPlanRouteConstraint;
 }
 
 export interface RouterStatus {
@@ -322,6 +323,83 @@ export interface RouterStatus {
   globalSpendToday?: number;
   globalSpendLimitDaily?: number;
   routes: RouterRouteStatus[];
+}
+
+export type ProviderPlanStatusState = "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
+
+export interface ProviderPlanRouteConstraint {
+  monitored: boolean;
+  configured: boolean;
+  enforced: boolean;
+  status: ProviderPlanStatusState;
+  reason?: string;
+  primaryRemainingPercent?: number;
+}
+
+export interface ProviderPlanWindow {
+  id: string;
+  title: string;
+  kind: "rolling_5h" | "rolling_week" | "billing_month";
+  usedTokens: number;
+  tokenLimit?: number;
+  usedSpend: number;
+  spendLimit?: number;
+  usedPercent?: number;
+  remainingPercent?: number;
+  resetsAt?: string;
+  resetDescription: string;
+  usageKnown: boolean;
+}
+
+export interface ProviderPlanSnapshot {
+  providerId: string;
+  configuredProviderId?: string;
+  providerType: string;
+  providerName: string;
+  authType: string;
+  monitored: boolean;
+  planName?: string;
+  status: ProviderPlanStatusState;
+  reason?: string;
+  localTokens30d: number;
+  localSpend30d: number;
+  windows: ProviderPlanWindow[];
+}
+
+export interface ProviderPlanWindowConfig {
+  enabled?: boolean;
+  tokenLimit?: number;
+  spendLimit?: number;
+}
+
+export interface ProviderPlanProviderConfig {
+  enabled?: boolean;
+  planName?: string;
+  monthly?: ProviderPlanWindowConfig;
+  weekly?: ProviderPlanWindowConfig;
+  fiveHour?: ProviderPlanWindowConfig;
+}
+
+export interface ProviderPlanMonitoringConfig {
+  enabled: boolean;
+  routerEnforcement: boolean;
+  warningThresholdPct: number;
+  staleAfterMinutes: number;
+  providers: Record<string, ProviderPlanProviderConfig>;
+}
+
+export interface ProviderPlanStatusResponse {
+  enabled: boolean;
+  routerEnforcement: boolean;
+  warningThresholdPct: number;
+  providers: ProviderPlanSnapshot[];
+  summary: {
+    total: number;
+    monitored: number;
+    configured: number;
+    warnings: number;
+    exhausted: number;
+  };
 }
 
 export type FeatureEndpointKey =
@@ -1384,6 +1462,134 @@ function normalizeRouterConfig(value: unknown): RouterConfig {
   };
 }
 
+function normalizeProviderPlanStatusState(value: unknown): ProviderPlanStatusState {
+  return value === "ok" ||
+    value === "warning" ||
+    value === "exhausted" ||
+    value === "unconfigured" ||
+    value === "disabled"
+    ? value
+    : "unconfigured";
+}
+
+function normalizeProviderPlanRouteConstraint(
+  value: unknown
+): ProviderPlanRouteConstraint | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  return {
+    monitored: record.monitored === true,
+    configured: record.configured === true,
+    enforced: record.enforced === true,
+    status: normalizeProviderPlanStatusState(record.status),
+    reason: readString(record, ["reason"]),
+    primaryRemainingPercent: readNumber(record, [
+      "primaryRemainingPercent",
+      "primary_remaining_percent",
+    ]),
+  };
+}
+
+function normalizeProviderPlanWindowConfig(value: unknown): ProviderPlanWindowConfig | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  return {
+    enabled: record.enabled !== false,
+    tokenLimit: readNumber(record, ["tokenLimit", "token_limit"]),
+    spendLimit: readNumber(record, ["spendLimit", "spend_limit"]),
+  };
+}
+
+function normalizeProviderPlanProviderConfig(value: unknown): ProviderPlanProviderConfig {
+  const record = asRecord(value);
+  return {
+    enabled: record?.enabled !== false,
+    planName: readString(record, ["planName", "plan_name"]),
+    monthly: normalizeProviderPlanWindowConfig(record?.monthly),
+    weekly: normalizeProviderPlanWindowConfig(record?.weekly),
+    fiveHour: normalizeProviderPlanWindowConfig(record?.fiveHour ?? record?.five_hour),
+  };
+}
+
+function normalizeProviderPlanMonitoringConfig(value: unknown): ProviderPlanMonitoringConfig {
+  const record = asRecord(value);
+  const providersRecord = asRecord(record?.providers);
+  const providerConfigs: Record<string, ProviderPlanProviderConfig> = {};
+  if (providersRecord) {
+    for (const [key, providerConfig] of Object.entries(providersRecord)) {
+      providerConfigs[key] = normalizeProviderPlanProviderConfig(providerConfig);
+    }
+  }
+  return {
+    enabled: record?.enabled !== false,
+    routerEnforcement: record?.routerEnforcement !== false && record?.router_enforcement !== false,
+    warningThresholdPct: readNumber(record, ["warningThresholdPct", "warning_threshold_pct"]) ?? 80,
+    staleAfterMinutes: readNumber(record, ["staleAfterMinutes", "stale_after_minutes"]) ?? 120,
+    providers: providerConfigs,
+  };
+}
+
+function normalizeProviderPlanSnapshot(value: unknown, index = 0): ProviderPlanSnapshot {
+  const record = asRecord(value);
+  const providerId =
+    readString(record, ["providerId", "provider_id", "id"]) || `provider-${index + 1}`;
+  return {
+    providerId,
+    configuredProviderId: readString(record, ["configuredProviderId", "configured_provider_id"]),
+    providerType: readString(record, ["providerType", "provider_type"]) || providerId,
+    providerName: readString(record, ["providerName", "provider_name", "name"]) || providerId,
+    authType: readString(record, ["authType", "auth_type"]) || "unknown",
+    monitored: record?.monitored === true,
+    planName: readString(record, ["planName", "plan_name"]),
+    status: normalizeProviderPlanStatusState(record?.status),
+    reason: readString(record, ["reason"]),
+    localTokens30d: readNumber(record, ["localTokens30d", "local_tokens_30d"]) ?? 0,
+    localSpend30d: readNumber(record, ["localSpend30d", "local_spend_30d"]) ?? 0,
+    windows: normalizeArrayResponse(record?.windows, ["windows"]).map((window, windowIndex) => {
+      const windowRecord = asRecord(window);
+      return {
+        id: readString(windowRecord, ["id"]) || `window-${windowIndex + 1}`,
+        title: readString(windowRecord, ["title"]) || "Plan window",
+        kind:
+          windowRecord?.kind === "rolling_5h" ||
+          windowRecord?.kind === "rolling_week" ||
+          windowRecord?.kind === "billing_month"
+            ? windowRecord.kind
+            : "billing_month",
+        usedTokens: readNumber(windowRecord, ["usedTokens", "used_tokens"]) ?? 0,
+        tokenLimit: readNumber(windowRecord, ["tokenLimit", "token_limit"]),
+        usedSpend: readNumber(windowRecord, ["usedSpend", "used_spend"]) ?? 0,
+        spendLimit: readNumber(windowRecord, ["spendLimit", "spend_limit"]),
+        usedPercent: readNumber(windowRecord, ["usedPercent", "used_percent"]),
+        remainingPercent: readNumber(windowRecord, ["remainingPercent", "remaining_percent"]),
+        resetsAt: readString(windowRecord, ["resetsAt", "resets_at"]),
+        resetDescription: readString(windowRecord, ["resetDescription", "reset_description"]) || "",
+        usageKnown: windowRecord?.usageKnown !== false && windowRecord?.usage_known !== false,
+      };
+    }),
+  };
+}
+
+function normalizeProviderPlanStatus(value: unknown): ProviderPlanStatusResponse {
+  const record = asRecord(value);
+  const summary = asRecord(record?.summary);
+  return {
+    enabled: record?.enabled !== false,
+    routerEnforcement: record?.routerEnforcement !== false && record?.router_enforcement !== false,
+    warningThresholdPct: readNumber(record, ["warningThresholdPct", "warning_threshold_pct"]) ?? 80,
+    providers: normalizeArrayResponse(record?.providers, ["providers", "items"]).map(
+      normalizeProviderPlanSnapshot
+    ),
+    summary: {
+      total: readNumber(summary, ["total"]) ?? 0,
+      monitored: readNumber(summary, ["monitored"]) ?? 0,
+      configured: readNumber(summary, ["configured"]) ?? 0,
+      warnings: readNumber(summary, ["warnings"]) ?? 0,
+      exhausted: readNumber(summary, ["exhausted"]) ?? 0,
+    },
+  };
+}
+
 function normalizeRouterStatus(value: unknown): RouterStatus {
   const record = asRecord(value);
   return {
@@ -1413,6 +1619,7 @@ function normalizeRouterStatus(value: unknown): RouterStatus {
         outputPerM: readNumber(routeRecord, ["outputPerM", "priceOutputPerM"]),
         circuitOpen: routeRecord?.circuitOpen === true,
         inCooldown: routeRecord?.inCooldown === true,
+        plan: normalizeProviderPlanRouteConstraint(routeRecord?.plan),
       };
     }),
   };
@@ -2047,6 +2254,25 @@ export class CybaraMobileApi {
 
   async routerStatus(): Promise<RouterStatus> {
     return normalizeRouterStatus(await this.request<unknown>("/api/router/status"));
+  }
+
+  async providerPlanConfig(): Promise<ProviderPlanMonitoringConfig> {
+    return normalizeProviderPlanMonitoringConfig(
+      await this.request<unknown>("/api/provider-plans/config")
+    );
+  }
+
+  updateProviderPlanConfig(
+    data: ProviderPlanMonitoringConfig
+  ): Promise<ProviderPlanMonitoringConfig> {
+    return this.request<ProviderPlanMonitoringConfig>("/api/provider-plans/config", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }).then(normalizeProviderPlanMonitoringConfig);
+  }
+
+  async providerPlanStatus(): Promise<ProviderPlanStatusResponse> {
+    return normalizeProviderPlanStatus(await this.request<unknown>("/api/provider-plans/status"));
   }
 
   systemPrompt(): Promise<SystemPromptConfig> {

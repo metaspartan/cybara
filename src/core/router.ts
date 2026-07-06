@@ -18,6 +18,7 @@
 import { config } from "./config";
 import { providerManager } from "./providers";
 import { tables } from "./database";
+import { getProviderPlanRouteConstraint, type ProviderPlanRouteConstraint } from "./provider-plans";
 
 // ─── Built-in pricing data ($USD per 1M tokens) ─────────────────────────────
 // Stamped pricing data + estimates.
@@ -218,6 +219,7 @@ export interface ProviderAvailability {
   circuitOpen: boolean;
   /** True if the provider is in rate-limit cooldown. */
   inCooldown: boolean;
+  plan?: ProviderPlanRouteConstraint;
 }
 
 // ─── State (in-memory cache + DB persistence) ───────────────────────────────
@@ -386,6 +388,7 @@ export function getProviderAvailability(providerId: string): ProviderAvailabilit
   const price = resolvePrice(route, providerId);
   const circuitOpen = isCircuitOpen(providerId);
   const inCooldown = isInCooldown(providerId);
+  const plan = getProviderPlanRouteConstraint(providerId);
 
   let available = route.enabled !== false;
   let reason: string | undefined;
@@ -418,6 +421,10 @@ export function getProviderAvailability(providerId: string): ProviderAvailabilit
     available = false;
     reason = `Weekly spend ($${spendWeek.toFixed(2)}/$${spendWeekly})`;
   }
+  if (plan.enforced) {
+    available = false;
+    reason = plan.reason || "Provider plan exhausted";
+  }
 
   const globalLimit = routerCfg.globalSpendLimitDaily;
   const globalToday = getWindowedSpend(null, WINDOW_DAY_MS);
@@ -441,6 +448,7 @@ export function getProviderAvailability(providerId: string): ProviderAvailabilit
     outputPerM: price.outputPerM,
     circuitOpen,
     inCooldown,
+    plan,
   };
 }
 
