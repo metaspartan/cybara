@@ -123,6 +123,18 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("await deletePending(message)");
   });
 
+  test("native chat prunes live tool rows after persisted steering reloads", () => {
+    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const toolTimeline = readFileSync(join(MACOS_APP_DIR, "NativeToolTimeline.swift"), "utf8");
+
+    expect(toolTimeline).toContain("func nativePrunePersistedLiveActivities(");
+    expect(toolTimeline).toContain("nativeActivityDedupeKey(");
+    expect(nativeScreens).toContain("let loadedMessages = try await client.sessionMessages(id)");
+    expect(nativeScreens).toContain("liveActivities = nativePrunePersistedLiveActivities(");
+    expect(nativeScreens).toContain("await loadMessages(selectedSessionID)");
+    expect(nativeScreens).not.toContain("messages.append(response.message");
+  });
+
   test("gateway model labels trim blank titles before falling back", () => {
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
     const modelTests = readFileSync(

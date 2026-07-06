@@ -1115,7 +1115,12 @@ struct ChatScreen: View {
 
     private func loadMessages(_ id: String) async {
         do {
-            messages = try await client.sessionMessages(id)
+            let loadedMessages = try await client.sessionMessages(id)
+            messages = loadedMessages
+            liveActivities = nativePrunePersistedLiveActivities(
+                liveActivities,
+                persistedMessages: loadedMessages
+            )
             error = nil
         } catch {
             self.error = error.localizedDescription

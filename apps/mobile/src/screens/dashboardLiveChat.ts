@@ -68,14 +68,13 @@ export function clearCachedMobileLiveAssistant(sessionId?: string | null): void 
 
 function mobileActivityKey(activity: SessionProcessActivitySummary): string {
   const toolKey = typeof activity.toolCallId === "string" ? activity.toolCallId.trim() : "";
-  const idKey = typeof activity.id === "string" ? activity.id.trim() : "";
-  return [
-    toolKey || idKey,
-    activity.phase || "",
-    activity.toolName || "",
-    activity.text || "",
-    typeof activity.timestamp === "number" ? activity.timestamp : "",
-  ].join("|");
+  const phase = activity.phase === "start" ? "result" : activity.phase || "";
+  const text = (activity.text || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/^Running\b/i, "Ran")
+    .toLowerCase();
+  return [toolKey, phase, (activity.toolName || "").toLowerCase(), text].join("|");
 }
 
 export function prunePersistedMobileLiveAssistant(

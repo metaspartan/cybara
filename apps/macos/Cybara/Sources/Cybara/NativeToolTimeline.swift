@@ -563,6 +563,21 @@ func nativeMergeLiveActivities(
     }
 }
 
+func nativePrunePersistedLiveActivities(
+    _ live: [NativeToolActivity],
+    persistedMessages: [GatewaySessionMessage]
+) -> [NativeToolActivity] {
+    guard !live.isEmpty else { return live }
+    var persistedKeys = Set<String>()
+    for message in persistedMessages where message.role.lowercased() == "assistant" {
+        for activity in nativeToolActivities(for: message) {
+            persistedKeys.insert(nativeActivityDedupeKey(activity))
+        }
+    }
+    guard !persistedKeys.isEmpty else { return live }
+    return live.filter { !persistedKeys.contains(nativeActivityDedupeKey($0)) }
+}
+
 func nativeWorkedDurationLabel(for message: GatewaySessionMessage) -> String {
     let activities = nativeToolActivities(for: message)
     let timestamps = activities.map(\.timestamp).filter { $0 > 0 && $0.isFinite }
@@ -743,6 +758,14 @@ private func nativeDeduplicateActivities(_ activities: [NativeToolActivity]) -> 
         results.append(activity)
     }
     return results
+}
+
+private func nativeActivityDedupeKey(_ activity: NativeToolActivity) -> String {
+    let phase = nativeFinalizedPhase(activity.phase)
+    let text = nativeNormalizeVerb(nativeNormalizeActivityText(activity.text), phase: phase)
+        .lowercased()
+    let toolCallId = nativeFirstNonEmpty(activity.toolCallId) ?? ""
+    return "\(toolCallId):\(phase.rawValue):\(activity.toolName ?? ""):\(text)"
 }
 
 private func nativeSortedDedupedLiveActivities(_ activities: [NativeToolActivity]) -> [NativeToolActivity] {
