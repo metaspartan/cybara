@@ -27,6 +27,11 @@ function AppShell() {
     setProfile(saved);
   };
 
+  const updateProfile = async (nextProfile: GatewayProfile) => {
+    await saveProfile(nextProfile);
+    setProfile(nextProfile);
+  };
+
   const disconnect = async () => {
     await clearActiveProfile();
     setProfile(null);
@@ -37,7 +42,11 @@ function AppShell() {
       <StatusBar barStyle={scheme === "light" ? "dark-content" : "light-content"} />
       <View style={styles.content}>
         {ready && profile ? (
-          <DashboardScreen profile={profile} onDisconnect={disconnect} />
+          <DashboardScreen
+            profile={profile}
+            onDisconnect={disconnect}
+            onProfileUpdated={updateProfile}
+          />
         ) : (
           <ConnectScreen onConnect={connect} />
         )}

@@ -29,6 +29,8 @@ struct NativeSettingsScreen: View {
     @State private var health: GatewayHealth?
     @State private var config: [String: Any] = [:]
     @State private var providers: [GatewayProvider] = []
+    @State private var gatewayLogs: [GatewayLogEntry] = []
+    @State private var gatewayRestarting = false
     @State private var selectedAccent = "indigo"
     @State private var defaultModel = ""
     @State private var reasoningEffort = ""
@@ -130,6 +132,9 @@ struct NativeSettingsScreen: View {
                     readAuthSettings(auth)
                     authAvailable = true
                 }
+                if let page = try? await client.systemLogsPage(limit: 80) {
+                    gatewayLogs = page.logs
+                }
             }
         }
     }
@@ -216,6 +221,9 @@ struct NativeSettingsScreen: View {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Runtime Controls")
                             .font(.system(size: 15, weight: .bold, design: .rounded))
+                        Text(sidecar.managesGateway ? "Restart the managed sidecar process." : "Ask the attached gateway to restart itself, then wait for it to become healthy again.")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: 10) { gatewayControlButtons }
                             VStack(alignment: .leading, spacing: 10) { gatewayControlButtons }
@@ -273,6 +281,51 @@ struct NativeSettingsScreen: View {
                         Button("Cancel", role: .cancel) {}
                     } message: {
                         Text("The current key stops working immediately. This app keeps working (it reads the key file), but other clients must be updated.")
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Gateway Logs")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            Spacer()
+                            Text("\(gatewayLogs.count) entries")
+                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        if gatewayLogs.isEmpty {
+                            Label("No gateway log entries loaded.", systemImage: "text.page")
+                                .font(.system(size: 12, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.vertical, 8)
+                        } else {
+                            LazyVStack(alignment: .leading, spacing: 8) {
+                                ForEach(gatewayLogs.suffix(80)) { entry in
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Text(entry.created_at ?? "")
+                                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                            .foregroundStyle(.tertiary)
+                                            .frame(width: 132, alignment: .leading)
+                                        Text((entry.level ?? "info").uppercased())
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(logColor(entry.level))
+                                            .frame(width: 44, alignment: .leading)
+                                        Text("[\(entry.source ?? "gateway")]")
+                                            .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 84, alignment: .leading)
+                                        Text(entry.message ?? "")
+                                            .font(.system(size: 11, weight: .regular, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .textSelection(.enabled)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -341,11 +394,12 @@ struct NativeSettingsScreen: View {
     @ViewBuilder
     private var gatewayControlButtons: some View {
         Button {
-            Task { await sidecar.restart() }
+            Task { await restartGateway() }
         } label: {
-            Label("Restart Gateway", systemImage: "arrow.clockwise")
+            Label(gatewayRestarting ? "Restarting" : "Restart Gateway", systemImage: "arrow.clockwise")
         }
         .buttonStyle(.borderedProminent)
+        .disabled(gatewayRestarting)
 
         Button {
             openURL(sidecar.serverURL)
@@ -1105,11 +1159,55 @@ struct NativeSettingsScreen: View {
         }
     }
 
+    private func restartGateway() async {
+        gatewayRestarting = true
+        defer { gatewayRestarting = false }
+
+        if sidecar.managesGateway {
+            await sidecar.restart()
+            await load()
+            return
+        }
+
+        do {
+            let response = try await client.restartGateway()
+            if response["success"] as? Bool == false {
+                throw GatewayClientError.invalidResponse
+            }
+            await sidecar.waitForAttachedGatewayRestart()
+            await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func refreshGatewayLogs() async {
+        guard sidecar.isReady else {
+            gatewayLogs = []
+            return
+        }
+        if let page = try? await client.systemLogsPage(limit: 80) {
+            gatewayLogs = page.logs
+        }
+    }
+
+    private func logColor(_ level: String?) -> Color {
+        switch level?.lowercased() {
+        case "error":
+            return .red
+        case "warn", "warning":
+            return .orange
+        default:
+            return .secondary
+        }
+    }
+
     private func load() async {
         guard sidecar.isReady else {
             health = nil
             config = [:]
             providers = []
+            gatewayLogs = []
             error = nil
             return
         }
@@ -1134,6 +1232,8 @@ struct NativeSettingsScreen: View {
         } else {
             authAvailable = false
         }
+
+        await refreshGatewayLogs()
     }
 
     private func readAuthSettings(_ auth: [String: Any]) {

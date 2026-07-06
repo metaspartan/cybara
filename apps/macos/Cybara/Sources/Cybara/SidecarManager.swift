@@ -233,6 +233,23 @@ final class SidecarManager: ObservableObject {
         await start()
     }
 
+    func waitForAttachedGatewayRestart() async {
+        status = .starting
+        gatewayMode = .attached
+        appendLog("Waiting for attached Cybara gateway to restart at \(serverURL.absoluteString)")
+        let deadline = Date().addingTimeInterval(30)
+        while Date() < deadline {
+            if await isGatewayHealthy() {
+                status = .ready
+                appendLog("Attached Cybara gateway is healthy at \(serverURL.absoluteString)")
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(500))
+        }
+        status = .failed("Timed out waiting for attached gateway restart.")
+        appendLog("Timed out waiting for attached gateway restart.")
+    }
+
     /// Recover from an unexpected managed-sidecar exit by restarting with a
     /// capped exponential backoff. Gives up after `maxRestartAttempts` so a
     /// crash-looping sidecar surfaces a failure instead of restarting forever.

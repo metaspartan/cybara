@@ -97,6 +97,37 @@ describe("native macOS shell wiring", () => {
     expect(configScreens).toContain("logSummary");
   });
 
+  test("native settings exposes gateway restart, auth, and logs through GatewayClient", () => {
+    const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const managementClient = readFileSync(
+      join(MACOS_APP_DIR, "GatewayManagementClient.swift"),
+      "utf8"
+    );
+    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+    const sidecarManager = readFileSync(join(MACOS_APP_DIR, "SidecarManager.swift"), "utf8");
+
+    expect(gatewayClient).toContain("func restartGateway() async throws -> [String: Any]");
+    expect(gatewayClient).toContain('request("api/system/restart", method: "POST")');
+    expect(managementClient).toContain("extension GatewayClient");
+    expect(managementClient).toContain("func authSettings() async throws -> [String: Any]");
+    expect(managementClient).toContain('rawObject("api/auth/settings")');
+    expect(managementClient).toContain("func updateAuthSettings(requireAuthForLocalhost: Bool)");
+    expect(managementClient).toContain('request("api/auth/settings", method: "PUT"');
+    expect(managementClient).toContain("func revealAuthKey() async throws -> String?");
+    expect(managementClient).toContain('rawObject("api/auth/key")');
+    expect(managementClient).toContain("func rotateAuthKey() async throws -> String?");
+    expect(managementClient).toContain('request("api/auth/rotate-key", method: "POST")');
+    expect(settings).toContain('Text("Gateway Logs")');
+    expect(settings).toContain("client.systemLogsPage(limit: 80)");
+    expect(settings).toContain("Task { await restartGateway() }");
+    expect(settings).toContain("try await client.restartGateway()");
+    expect(settings).toContain("await sidecar.waitForAttachedGatewayRestart()");
+    expect(settings).toContain("Gateway Auth");
+    expect(settings).toContain("Rotate Key");
+    expect(sidecarManager).toContain("func waitForAttachedGatewayRestart() async");
+    expect(sidecarManager).toContain("Waiting for attached Cybara gateway to restart");
+  });
+
   test("native chat pending queue exposes reorder, edit, and delete controls", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
     const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");

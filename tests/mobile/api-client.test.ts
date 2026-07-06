@@ -221,6 +221,121 @@ describe("mobile API client", () => {
     }
   });
 
+  test("manages gateway auth and restart routes through the mobile API client", async () => {
+    const calls: Array<{ method: string; path: string; auth: string | null; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body =
+        typeof init?.body === "string"
+          ? (JSON.parse(init.body) as Record<string, unknown>)
+          : undefined;
+      const headers = new Headers(init?.headers);
+      calls.push({ method, path: parsedUrl.pathname, auth: headers.get("authorization"), body });
+
+      if (parsedUrl.pathname === "/api/auth/settings" && method === "GET") {
+        return Response.json({
+          success: true,
+          apiKeyConfigured: true,
+          apiKeyPreview: "cybara_...test",
+          apiKeySource: "file",
+          apiKeyPath: "/Users/carsen/.cybara/api_key",
+          requireAuthForLocalhost: false,
+          requireAuthForLocalhostForced: false,
+          localhostBypassActive: true,
+          rateLimits: {},
+        });
+      }
+      if (parsedUrl.pathname === "/api/auth/settings" && method === "PUT") {
+        return Response.json({
+          success: true,
+          apiKeyConfigured: true,
+          apiKeyPreview: "cybara_...test",
+          apiKeySource: "file",
+          apiKeyPath: "/Users/carsen/.cybara/api_key",
+          requireAuthForLocalhost: body?.requireAuthForLocalhost,
+          requireAuthForLocalhostForced: false,
+          localhostBypassActive: false,
+          rateLimits: {},
+        });
+      }
+      if (parsedUrl.pathname === "/api/auth/key" && method === "GET") {
+        return Response.json({ success: true, apiKey: "root-key", source: "file" });
+      }
+      if (parsedUrl.pathname === "/api/auth/rotate-key" && method === "POST") {
+        return Response.json({ success: true, apiKey: "rotated-key" });
+      }
+      if (parsedUrl.pathname === "/api/system/restart" && method === "POST") {
+        return Response.json({ success: true, supervised: false, message: "Gateway restarting" });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.gatewayAuthSettings()).resolves.toMatchObject({
+        success: true,
+        apiKeyConfigured: true,
+        apiKeySource: "file",
+      });
+      await expect(
+        api.updateGatewayAuthSettings({ requireAuthForLocalhost: true })
+      ).resolves.toMatchObject({
+        success: true,
+        requireAuthForLocalhost: true,
+      });
+      await expect(api.revealGatewayApiKey()).resolves.toEqual({
+        success: true,
+        apiKey: "root-key",
+        source: "file",
+      });
+      const rotated = await api.rotateGatewayApiKey();
+      expect(rotated.apiKey).toBe("rotated-key");
+      api.setApiKey("rotated-key");
+      await expect(api.restartGateway()).resolves.toEqual({
+        success: true,
+        supervised: false,
+        message: "Gateway restarting",
+      });
+
+      expect(calls).toEqual([
+        {
+          method: "GET",
+          path: "/api/auth/settings",
+          auth: "Bearer cybara_mobile_test",
+          body: undefined,
+        },
+        {
+          method: "PUT",
+          path: "/api/auth/settings",
+          auth: "Bearer cybara_mobile_test",
+          body: { requireAuthForLocalhost: true },
+        },
+        {
+          method: "GET",
+          path: "/api/auth/key",
+          auth: "Bearer cybara_mobile_test",
+          body: undefined,
+        },
+        {
+          method: "POST",
+          path: "/api/auth/rotate-key",
+          auth: "Bearer cybara_mobile_test",
+          body: undefined,
+        },
+        {
+          method: "POST",
+          path: "/api/system/restart",
+          auth: "Bearer rotated-key",
+          body: undefined,
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("persists mobile theme config through the gateway config endpoint", async () => {
     const calls: Array<{ method: string; path: string; body?: unknown }> = [];
     const originalFetch = globalThis.fetch;

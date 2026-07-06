@@ -10,6 +10,7 @@ import {
   AgentSettingsPanel,
   ApprovalSettingsPanel,
   ChannelSettingsPanel,
+  GatewayManagementPanel,
   MemorySettingsPanel,
   ModelRouterPanel,
   ProviderSettingsPanel,
@@ -600,9 +601,11 @@ function routeHeader(
 export function DashboardScreen({
   profile,
   onDisconnect,
+  onProfileUpdated,
 }: {
   profile: GatewayProfile;
   onDisconnect: () => void;
+  onProfileUpdated?: (profile: GatewayProfile) => void | Promise<void>;
 }) {
   const api = useMemo(() => new CybaraMobileApi(profile), [profile]);
   const insets = useSafeAreaInsets();
@@ -1066,6 +1069,7 @@ export function DashboardScreen({
               onThemeAccentChange={setAccentOverride}
               onDisconnect={onDisconnect}
               openSurface={openSurface}
+              onProfileUpdated={onProfileUpdated}
               openSystemPrompt={openSystemPrompt}
               openModelRouter={openModelRouter}
               openSpeech={openSpeech}
@@ -3308,6 +3312,7 @@ function SettingsPanel({
   summary,
   onThemeAccentChange,
   onDisconnect,
+  onProfileUpdated,
   openSurface,
   openSystemPrompt,
   openModelRouter,
@@ -3323,6 +3328,7 @@ function SettingsPanel({
   summary: FeatureSummary | null;
   onThemeAccentChange: (accent: AccentKey) => void;
   onDisconnect: () => void;
+  onProfileUpdated?: (profile: GatewayProfile) => void | Promise<void>;
   openSurface: (surface: MobileSurfaceKey) => void;
   openSystemPrompt: () => void;
   openModelRouter: () => void;
@@ -3855,6 +3861,14 @@ function SettingsPanel({
             value={endpointStatusLabel(summary?.availability.config)}
           />
         </SettingsSection>
+        <GatewayManagementPanel
+          api={api}
+          openLogs={() => openSurface("logs")}
+          profile={profile}
+          refreshSummary={refreshSummary}
+          summary={summary}
+          onProfileUpdated={onProfileUpdated}
+        />
         <SettingsSection title="Gateway management">
           {MOBILE_SETTINGS_SURFACES.map((surface) => {
             const meta = surfaceMeta[surface];

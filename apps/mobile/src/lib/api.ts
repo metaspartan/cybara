@@ -187,6 +187,30 @@ export interface GatewaySuccessResponse {
   error?: string;
 }
 
+export interface GatewayAuthSettings {
+  success: boolean;
+  apiKeyConfigured: boolean;
+  apiKeyPreview: string | null;
+  apiKeySource: "env" | "file" | "none";
+  apiKeyPath: string;
+  requireAuthForLocalhost: boolean;
+  requireAuthForLocalhostForced: boolean;
+  localhostBypassActive: boolean;
+  rateLimits?: Record<string, { windowMs: number; maxRequests: number }>;
+}
+
+export interface GatewayAuthKeyResponse {
+  success: boolean;
+  apiKey: string | null;
+  source?: "env" | "file" | "none";
+}
+
+export interface GatewayRestartResponse {
+  success: boolean;
+  supervised: boolean;
+  message: string;
+}
+
 export type WalletAgentPolicyUpdate = Partial<{
   allowNativeSend: boolean;
   allowTokenSend: boolean;
@@ -1401,6 +1425,10 @@ export class CybaraMobileApi {
     this.profile = profile;
   }
 
+  setApiKey(apiKey: string): void {
+    this.profile = { ...this.profile, apiKey };
+  }
+
   private headers(): Headers {
     const headers = new Headers();
     headers.set("Content-Type", "application/json");
@@ -1958,6 +1986,35 @@ export class CybaraMobileApi {
 
   async logs(limit = MOBILE_LOG_LIST_LIMIT): Promise<ActivitySummary[]> {
     return (await this.logsPage(limit, 0)).logs;
+  }
+
+  gatewayAuthSettings(): Promise<GatewayAuthSettings> {
+    return this.request<GatewayAuthSettings>("/api/auth/settings");
+  }
+
+  updateGatewayAuthSettings(payload: {
+    requireAuthForLocalhost: boolean;
+  }): Promise<GatewayAuthSettings> {
+    return this.request<GatewayAuthSettings>("/api/auth/settings", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  revealGatewayApiKey(): Promise<GatewayAuthKeyResponse> {
+    return this.request<GatewayAuthKeyResponse>("/api/auth/key");
+  }
+
+  rotateGatewayApiKey(): Promise<GatewayAuthKeyResponse> {
+    return this.request<GatewayAuthKeyResponse>("/api/auth/rotate-key", {
+      method: "POST",
+    });
+  }
+
+  restartGateway(): Promise<GatewayRestartResponse> {
+    return this.request<GatewayRestartResponse>("/api/system/restart", {
+      method: "POST",
+    });
   }
 
   updateConfig(data: Record<string, unknown>): Promise<{ success: boolean }> {

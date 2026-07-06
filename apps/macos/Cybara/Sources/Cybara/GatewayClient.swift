@@ -587,9 +587,16 @@ struct GatewayClient: Sendable {
         return page.logs
     }
 
+    func restartGateway() async throws -> [String: Any] {
+        let data = try await request("api/system/restart", method: "POST")
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GatewayClientError.invalidResponse
+        }
+        return object
+    }
+
     // ─── Theme ───────────────────────────────────────────────────────────────
 
-    /// The accent key shared with the web/Tauri and mobile UIs (gateway config).
     func themeAccent() async throws -> String? {
         let config = try await rawObject("api/config")
         for key in ["themeAccent", "theme_accent", "theme", "accent", "ui_accent"] {

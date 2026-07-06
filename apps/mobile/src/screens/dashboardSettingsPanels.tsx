@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Alert, Linking, Platform, Text, TextInput, View } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import {
   Bot,
   CalendarCheck,
+  Copy,
   Cpu,
   Database,
+  Eye,
   Link2,
   Mic,
   Network,
@@ -12,6 +15,7 @@ import {
   RefreshCw,
   Save,
   Send,
+  Server,
   ShieldCheck,
   Sparkles,
   Square,
@@ -71,9 +75,11 @@ import {
 import { formatMetricBytes, formatStorageBytes } from "../lib/metrics";
 import {
   CybaraMobileApi,
+  CybaraApiError,
   type ActivitySummary,
   type AgentSummary,
   type FeatureSummary,
+  type GatewayAuthSettings,
   type ProviderSummary,
   type RemoteItemSummary,
   type RouterConfig,
@@ -84,6 +90,8 @@ import {
   type WalletChain,
   type WalletTokenChain,
 } from "../lib/api";
+import type { GatewayProfile } from "../lib/connection";
+import { saveProfile } from "../lib/storage";
 
 const agentTypeOptions = ["main", "research", "coder", "planner", "ops", "worker"] as const;
 
@@ -110,6 +118,16 @@ const systemPromptFeatureRows = MOBILE_SYSTEM_PROMPT_FEATURE_KEYS.map((key) => (
   key,
   ...systemPromptFeatureCopy[key],
 }));
+
+function gatewayActionError(error: unknown, fallback: string): string {
+  if (error instanceof CybaraApiError) {
+    if (error.status === 401 || error.status === 403) {
+      return "This mobile profile does not have the scope required for that gateway action.";
+    }
+    return `Gateway returned ${error.status}.`;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
 
 export type WalletPolicyToggleKey = Extract<
   keyof WalletAgentPolicyUpdate,
@@ -1849,6 +1867,275 @@ export function ModelRouterPanel({
         />
       )}
     </GlassPanel>
+  );
+}
+
+export function GatewayManagementPanel({
+  api,
+  openLogs,
+  profile,
+  refreshSummary,
+  summary,
+  onProfileUpdated,
+}: {
+  api: CybaraMobileApi;
+  openLogs: () => void;
+  profile: GatewayProfile;
+  refreshSummary: () => void | Promise<void>;
+  summary: FeatureSummary | null;
+  onProfileUpdated?: (profile: GatewayProfile) => void | Promise<void>;
+}) {
+  const [authSettings, setAuthSettings] = useState<GatewayAuthSettings | null>(null);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [restartBusy, setRestartBusy] = useState(false);
+  const recentLogs = summary?.logs.slice(0, 4) ?? [];
+
+  const loadAuthSettings = useCallback(async () => {
+    setBusyAction((current) => current ?? "auth-load");
+    setAuthError(null);
+    try {
+      const settings = await api.gatewayAuthSettings();
+      setAuthSettings(settings);
+    } catch (error) {
+      setAuthSettings(null);
+      setAuthError(gatewayActionError(error, "Auth settings unavailable."));
+    } finally {
+      setBusyAction((current) => (current === "auth-load" ? null : current));
+    }
+  }, [api]);
+
+  useEffect(() => {
+    void loadAuthSettings();
+  }, [loadAuthSettings, profile.id]);
+
+  const revealKey = async () => {
+    if (revealedKey) {
+      setRevealedKey(null);
+      return;
+    }
+    setBusyAction("reveal");
+    try {
+      const result = await api.revealGatewayApiKey();
+      if (!result.apiKey) throw new Error("No API key is configured.");
+      setRevealedKey(result.apiKey);
+    } catch (error) {
+      Alert.alert("Reveal failed", gatewayActionError(error, "API key reveal failed."));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const copyKey = async () => {
+    setBusyAction("copy");
+    try {
+      let key = revealedKey;
+      if (!key) {
+        const result = await api.revealGatewayApiKey();
+        key = result.apiKey;
+      }
+      if (!key) throw new Error("No API key is configured.");
+      await Clipboard.setStringAsync(key);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (error) {
+      Alert.alert("Copy failed", gatewayActionError(error, "API key copy failed."));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const rotateKey = async () => {
+    setBusyAction("rotate");
+    try {
+      const result = await api.rotateGatewayApiKey();
+      if (!result.apiKey) throw new Error("Gateway did not return a replacement key.");
+      const nextProfile = {
+        ...profile,
+        apiKey: result.apiKey,
+        lastConnectedAt: new Date().toISOString(),
+      };
+      api.setApiKey(result.apiKey);
+      if (onProfileUpdated) {
+        await onProfileUpdated(nextProfile);
+      } else {
+        await saveProfile(nextProfile);
+      }
+      setRevealedKey(result.apiKey);
+      await loadAuthSettings();
+      Alert.alert("API key rotated", "This device has adopted the new key.");
+    } catch (error) {
+      Alert.alert("Rotation failed", gatewayActionError(error, "API key rotation failed."));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const confirmRotateKey = () => {
+    Alert.alert(
+      "Rotate API key?",
+      "The current root key stops working immediately. This device adopts the new key if the gateway allows the rotation.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Rotate",
+          style: "destructive",
+          onPress: () => {
+            void rotateKey();
+          },
+        },
+      ]
+    );
+  };
+
+  const updateRequireLocalhost = async () => {
+    if (!authSettings || authSettings.requireAuthForLocalhostForced) return;
+    const next = !authSettings.requireAuthForLocalhost;
+    setBusyAction("localhost");
+    try {
+      const settings = await api.updateGatewayAuthSettings({ requireAuthForLocalhost: next });
+      setAuthSettings(settings);
+    } catch (error) {
+      Alert.alert("Auth setting failed", gatewayActionError(error, "Auth setting update failed."));
+      await loadAuthSettings();
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const restartGateway = async () => {
+    setRestartBusy(true);
+    try {
+      const result = await api.restartGateway();
+      if (result.success === false) throw new Error(result.message || "Gateway restart failed.");
+      Alert.alert("Gateway restarting", result.message || "The gateway is restarting.");
+      await new Promise((resolve) => setTimeout(resolve, 4500));
+      await refreshSummary();
+    } catch (error) {
+      Alert.alert("Restart failed", gatewayActionError(error, "Gateway restart failed."));
+    } finally {
+      setRestartBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <SettingsSection title="Gateway runtime">
+        <View style={styles.settingsInfoBox}>
+          <View style={styles.settingsInfoHeader}>
+            <Server color={colors.cyan} size={18} strokeWidth={2.2} />
+            <Text style={styles.settingsInfoTitle}>Runtime</Text>
+          </View>
+          <Text style={styles.settingsInfoText}>
+            Restart the connected gateway and refresh mobile data once it is healthy again.
+          </Text>
+          <View style={styles.settingsActionRow}>
+            <DetailActionButton
+              Icon={RefreshCw}
+              busy={restartBusy}
+              label="Restart Gateway"
+              onPress={() => {
+                void restartGateway();
+              }}
+              tone={colors.green}
+            />
+            <DetailActionButton Icon={Database} label="Open Logs" onPress={openLogs} />
+          </View>
+        </View>
+        <View style={styles.settingsInfoBox}>
+          <View style={styles.settingsInfoHeader}>
+            <ShieldCheck color={colors.amber} size={18} strokeWidth={2.2} />
+            <Text style={styles.settingsInfoTitle}>Gateway API Key</Text>
+          </View>
+          {authError ? (
+            <Text style={styles.errorText}>{authError}</Text>
+          ) : (
+            <>
+              <Text selectable style={styles.settingsInfoText}>
+                {revealedKey || authSettings?.apiKeyPreview || "Loading API key status..."}
+              </Text>
+              <Text style={styles.settingsFieldHelp}>
+                {authSettings?.apiKeySource === "env"
+                  ? "Provided by CYBARA_API_KEY."
+                  : authSettings?.apiKeyPath || "~/.cybara/api_key"}
+              </Text>
+            </>
+          )}
+          <View style={styles.settingsActionRow}>
+            <DetailActionButton
+              Icon={Eye}
+              busy={busyAction === "reveal"}
+              disabled={!authSettings?.apiKeyConfigured}
+              label={revealedKey ? "Hide" : "Reveal"}
+              onPress={() => {
+                void revealKey();
+              }}
+              tone={colors.amber}
+            />
+            <DetailActionButton
+              Icon={Copy}
+              busy={busyAction === "copy"}
+              disabled={!authSettings?.apiKeyConfigured}
+              label={copied ? "Copied" : "Copy"}
+              onPress={() => {
+                void copyKey();
+              }}
+              tone={colors.amber}
+            />
+            <DetailActionButton
+              Icon={RefreshCw}
+              busy={busyAction === "rotate"}
+              disabled={!authSettings?.apiKeyConfigured || authSettings?.apiKeySource === "env"}
+              label="Rotate"
+              onPress={confirmRotateKey}
+              tone={colors.amber}
+            />
+          </View>
+        </View>
+        {authSettings ? (
+          <SettingToggle
+            busy={busyAction === "localhost"}
+            detail={
+              authSettings.requireAuthForLocalhostForced
+                ? "Forced by environment or production mode."
+                : "When on, localhost browser requests must include the API key."
+            }
+            disabled={authSettings.requireAuthForLocalhostForced || busyAction !== null}
+            label="Require API key for localhost"
+            onPress={() => {
+              void updateRequireLocalhost();
+            }}
+            tone={colors.amber}
+            value={authSettings.requireAuthForLocalhost}
+          />
+        ) : null}
+      </SettingsSection>
+      <SettingsSection title="Recent gateway logs">
+        {recentLogs.length === 0 ? (
+          <EmptyState label="No logs loaded" detail="Open Logs to fetch recent gateway events." />
+        ) : (
+          recentLogs.map((log) => (
+            <View key={log.id} style={styles.settingsNavigationRow}>
+              <View style={styles.settingsNavigationIcon}>
+                <Database color={colors.textMuted} size={18} strokeWidth={2.1} />
+              </View>
+              <View style={styles.listText}>
+                <Text numberOfLines={1} style={styles.listTitle}>
+                  {log.title || "Gateway event"}
+                </Text>
+                <Text numberOfLines={1} style={styles.listDetail}>
+                  {[log.source, log.detail, absoluteTimestampLabel(log.createdAt)]
+                    .filter(Boolean)
+                    .join(" - ")}
+                </Text>
+              </View>
+            </View>
+          ))
+        )}
+      </SettingsSection>
+    </>
   );
 }
 
