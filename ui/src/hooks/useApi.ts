@@ -1261,6 +1261,10 @@ const METRICS_QUERY_OPTIONS = {
   staleTime: 15_000,
 } as const;
 
+type MetricsQueryControlOptions = {
+  enabled?: boolean;
+};
+
 export function useMetricsOverview() {
   return useQuery({
     queryKey: ["metrics", "overview"],
@@ -1269,59 +1273,66 @@ export function useMetricsOverview() {
   });
 }
 
-export function useMetricsTokens() {
+export function useMetricsTokens(options: MetricsQueryControlOptions = {}) {
   return useQuery({
     queryKey: ["metrics", "tokens"],
     queryFn: () => fetchApi<TokenMetrics>("/metrics/tokens"),
     ...METRICS_QUERY_OPTIONS,
+    ...options,
   });
 }
 
-export function useMetricsTokenAnalysis() {
+export function useMetricsTokenAnalysis(options: MetricsQueryControlOptions = {}) {
   return useQuery({
     queryKey: ["metrics", "token-analysis"],
     queryFn: () => fetchApi<TokenAnalysisMetrics>("/metrics/token-analysis"),
     ...METRICS_QUERY_OPTIONS,
+    ...options,
   });
 }
 
-export function useMetricsFiles() {
+export function useMetricsFiles(options: MetricsQueryControlOptions = {}) {
   return useQuery({
     queryKey: ["metrics", "files"],
     queryFn: () => fetchApi<FileMetrics>("/metrics/files"),
     ...METRICS_QUERY_OPTIONS,
+    ...options,
   });
 }
 
-export function useMetricsTools() {
+export function useMetricsTools(options: MetricsQueryControlOptions = {}) {
   return useQuery({
     queryKey: ["metrics", "tools"],
     queryFn: () => fetchApi<ToolMetrics>("/metrics/tools"),
     ...METRICS_QUERY_OPTIONS,
+    ...options,
   });
 }
 
-export function useMetricsTimeSeries() {
+export function useMetricsTimeSeries(options: MetricsQueryControlOptions = {}) {
   return useQuery({
     queryKey: ["metrics", "time-series"],
     queryFn: () => fetchApi<TimeSeriesData>("/metrics/time-series"),
     ...METRICS_QUERY_OPTIONS,
+    ...options,
   });
 }
 
-export function useMetricsStorage() {
+export function useMetricsStorage(options: MetricsQueryControlOptions = {}) {
   return useQuery({
     queryKey: ["metrics", "storage"],
     queryFn: () => fetchApi<MetricsStorage>("/metrics/storage"),
     ...METRICS_QUERY_OPTIONS,
+    ...options,
   });
 }
 
-export function useMetricsProviders() {
+export function useMetricsProviders(options: MetricsQueryControlOptions = {}) {
   return useQuery({
     queryKey: ["metrics", "providers"],
     queryFn: () => fetchApi<ProviderMetrics>("/metrics/providers"),
     ...METRICS_QUERY_OPTIONS,
+    ...options,
   });
 }
 
@@ -1396,19 +1407,21 @@ export interface MetricsInsights {
   };
 }
 
-export function useMetricsModels() {
+export function useMetricsModels(options: MetricsQueryControlOptions = {}) {
   return useQuery({
     queryKey: ["metrics", "models"],
     queryFn: () => fetchApi<ModelMetrics>("/metrics/models"),
     ...METRICS_QUERY_OPTIONS,
+    ...options,
   });
 }
 
-export function useMetricsInsights() {
+export function useMetricsInsights(options: MetricsQueryControlOptions = {}) {
   return useQuery({
     queryKey: ["metrics", "insights"],
     queryFn: () => fetchApi<MetricsInsights>("/metrics/insights"),
     ...METRICS_QUERY_OPTIONS,
+    ...options,
   });
 }
 

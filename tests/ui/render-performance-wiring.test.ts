@@ -20,6 +20,39 @@ describe("UI render performance wiring", () => {
     expect(source).not.toContain("...timeSeries.days.map((d) =>");
   });
 
+  test("Metrics defers expensive detail feeds until after overview render", () => {
+    const metricsSource = read("pages/Metrics.tsx");
+    const hooksSource = read("hooks/useApi.ts");
+
+    expect(metricsSource).toContain("DETAIL_METRICS_IDLE_DELAY_MS");
+    expect(metricsSource).toContain("requestIdleCallback");
+    expect(metricsSource).toContain("const detailQueryOptions = useMemo");
+    expect(metricsSource).toContain("useMetricsTokenAnalysis(detailQueryOptions)");
+    expect(metricsSource).toContain("useMetricsModels(detailQueryOptions)");
+    expect(metricsSource).toContain("if (!detailMetricsEnabled) return;");
+    expect(hooksSource).toContain("type MetricsQueryControlOptions");
+    expect(hooksSource).toContain(
+      "useMetricsTokenAnalysis(options: MetricsQueryControlOptions = {})"
+    );
+    expect(hooksSource).toContain("...options");
+  });
+
+  test("Metrics renders per-section skeletons for deferred panels", () => {
+    const source = read("pages/Metrics.tsx");
+
+    expect(source).toContain("function MetricChartSkeleton");
+    expect(source).toContain("function MetricRowsSkeleton");
+    expect(source).toContain("function MetricHeatmapSkeleton");
+    expect(source).toContain("function MetricCloudSkeleton");
+    expect(source).toContain("tokenAnalysisPending ? (");
+    expect(source).toContain("providerPlansPending ? (");
+    expect(source).toContain("storagePending ? (");
+    expect(source).toContain("loading={storagePending}");
+    expect(source.indexOf("tokenAnalysisPending ? (")).toBeLessThan(
+      source.indexOf('emptyLabel="No token velocity data yet"')
+    );
+  });
+
   test("IDE large-file plain overlay only renders the visible line window", () => {
     const source = read("pages/ide/CodeViewer.tsx");
 

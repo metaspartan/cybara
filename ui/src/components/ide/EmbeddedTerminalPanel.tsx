@@ -66,6 +66,17 @@ export function EmbeddedTerminalPanel({
     let cancelled = false;
     const loadCapability = async () => {
       try {
+        const configResponse = await apiFetch("/api/config");
+        if (cancelled) return;
+        if (configResponse.ok) {
+          const payload = await configResponse.json().catch(() => null);
+          const config = payload?.data && typeof payload.data === "object" ? payload.data : payload;
+          if (config?.terminal_enabled !== true) {
+            setCapability("disabled");
+            setTerminalError("Terminal is disabled. Enable terminal access to use IDE terminals.");
+            return;
+          }
+        }
         const response = await apiFetch("/api/terminal/sessions");
         if (cancelled) return;
         if (response.status === 403) {

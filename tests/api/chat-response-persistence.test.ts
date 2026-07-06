@@ -8,7 +8,12 @@ describe("chat response persistence guards", () => {
   test("builds fallback process activities when status snapshot is empty", () => {
     const source = readFileSync(chatSourcePath, "utf8");
     expect(source).toContain("function buildFallbackProcessActivities(");
-    expect(source).toContain("const statusSnapshotActivities = (() => {");
+    expect(source).toContain(
+      "const statusSnapshotActivities = getSessionProcessActivities(session.id"
+    );
+    expect(source).toContain(
+      "excludeActivityIds: collectAttachedProcessActivityIds(session.messages)"
+    );
     expect(source).toContain("const fallbackProcessActivities =");
     expect(source).toContain("buildFallbackProcessActivities(");
   });

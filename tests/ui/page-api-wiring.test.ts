@@ -177,6 +177,19 @@ describe("UI page API wiring", () => {
     expect(source).toContain("new WebSocket(`${proto}//${window.location.host}${wsPath}`)");
   });
 
+  test("Embedded IDE terminal checks config before probing terminal sessions", () => {
+    const source = readFileSync(
+      new URL("../../ui/src/components/ide/EmbeddedTerminalPanel.tsx", import.meta.url),
+      "utf8"
+    );
+
+    expect(source).toContain('apiFetch("/api/config")');
+    expect(source).toContain("config?.terminal_enabled !== true");
+    expect(source.indexOf('apiFetch("/api/config")')).toBeLessThan(
+      source.indexOf('apiFetch("/api/terminal/sessions")')
+    );
+  });
+
   test("Tasks page loads run history through tasksApi helper", () => {
     const source = readPage("Tasks.tsx");
 

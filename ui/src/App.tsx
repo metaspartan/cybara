@@ -113,6 +113,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<Dashboard />} />
+      <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/agents" element={<Agents />} />
       <Route path="/providers" element={<Providers />} />
       <Route path="/router" element={<RouterSettings />} />

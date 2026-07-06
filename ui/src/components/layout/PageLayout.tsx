@@ -13,8 +13,8 @@ export function PageLayout({ children, title, subtitle, actions, noPadding }: Pa
   return (
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-30 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl">
-        <div className="px-4 sm:px-6 py-3">
-          <div className="flex items-center justify-between gap-4">
+        <div className="px-4 py-3 max-md:pr-14 sm:px-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
             <div className="min-w-0 flex items-center gap-3">
               <h1 className="text-base sm:text-lg font-semibold text-white">{title}</h1>
               {subtitle && (
@@ -23,7 +23,11 @@ export function PageLayout({ children, title, subtitle, actions, noPadding }: Pa
                 </span>
               )}
             </div>
-            {actions && <div className="flex items-center gap-2 flex-shrink-0">{actions}</div>}
+            {actions && (
+              <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 max-sm:w-full sm:justify-end">
+                {actions}
+              </div>
+            )}
           </div>
         </div>
       </header>

@@ -84,8 +84,12 @@ describe("session listing pagination", () => {
       assistantReply: "new reply",
     });
 
-    const firstPage = await listSessions({ limit: 2, offset: 0 });
-    const secondPage = await listSessions({ limit: 2, offset: 2 });
+    const orderedSessions = await listSessions({ limit: 1000, offset: 0 });
+    const seededOffset = orderedSessions.findIndex((session) => session.id === newest);
+    expect(seededOffset).toBeGreaterThanOrEqual(0);
+
+    const firstPage = await listSessions({ limit: 2, offset: seededOffset });
+    const secondPage = await listSessions({ limit: 1, offset: seededOffset + 2 });
 
     const firstPageIds = firstPage.slice(0, 2).map((session) => session.id);
     const secondPageFirstId = secondPage[0]?.id;

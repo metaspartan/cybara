@@ -283,7 +283,15 @@ describe("Persistence + SSE e2e", () => {
       expect(firstChunk.done).toBe(false);
       const text = new TextDecoder().decode(firstChunk.value);
       expect(text).toContain("data:");
-      expect(text).toContain('"status":"idle"');
+      const dataLine = text
+        .split("\n")
+        .find((line) => line.startsWith("data: "))
+        ?.slice("data: ".length);
+      expect(dataLine).toBeTruthy();
+      const payload = JSON.parse(dataLine || "{}");
+      expect(payload.type).toBe("snapshot");
+      expect(Array.isArray(payload.activeSessions)).toBe(true);
+      expect(payload.count).toBe(payload.activeSessions.length);
     } finally {
       try {
         await reader?.cancel();

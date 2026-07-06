@@ -2483,12 +2483,12 @@ export function IDE() {
   );
 
   return (
-    <div className="h-screen flex flex-col bg-[#050508]">
+    <div className="h-screen max-md:h-[calc(100vh-3.5rem)] flex min-w-0 flex-col overflow-hidden bg-[#050508]">
       <div
         ref={menuRef}
-        className="h-8 px-2 border-b border-white/10 bg-white/[0.02] flex items-center justify-between text-xs"
+        className="h-8 px-2 max-md:pr-14 border-b border-white/10 bg-white/[0.02] flex min-w-0 items-center justify-between text-xs"
       >
-        <div className="flex items-center gap-1 relative">
+        <div className="hidden items-center gap-1 relative md:flex">
           {topMenus.map((menu) => (
             <div key={`top-menu:${menu.id}`} className="relative">
               <button
@@ -2533,8 +2533,11 @@ export function IDE() {
             </div>
           ))}
         </div>
-        <div className="flex items-center gap-2 min-w-0 max-w-[70vw]">
-          <div className="text-gray-500 truncate" title={rootInfo?.path || currentPath}>
+        <div className="ml-auto flex min-w-0 max-w-full items-center gap-1 md:gap-2 md:max-w-[70vw]">
+          <div
+            className="min-w-0 flex-1 truncate text-gray-500"
+            title={rootInfo?.path || currentPath}
+          >
             {(rootInfo?.path || currentPath)
               .replace(/^\/Users\/[^/]+/, "~")
               .replace(/^C:\\Users\\[^\\]+/, "~")}
@@ -2543,7 +2546,7 @@ export function IDE() {
             type="button"
             onClick={() => toggleTerminalPanel()}
             className={cn(
-              "px-2 py-1 rounded text-xs border transition-colors flex items-center gap-1",
+              "px-2 py-1 rounded text-xs border transition-colors flex items-center justify-center gap-1 max-md:h-7 max-md:w-7 max-md:px-0",
               isTerminalPanelOpen
                 ? "border-indigo-500/40 bg-indigo-500/20 text-indigo-200"
                 : "border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/5"
@@ -2551,13 +2554,13 @@ export function IDE() {
             title={isTerminalPanelOpen ? "Hide terminal panel" : "Show terminal panel"}
           >
             <TerminalSquare className="w-3.5 h-3.5" />
-            Terminal
+            <span className="max-md:hidden">Terminal</span>
           </button>
           <button
             type="button"
             onClick={() => setIsIdeChatOpen((previous) => !previous)}
             className={cn(
-              "px-2 py-1 rounded text-xs border transition-colors flex items-center gap-1",
+              "px-2 py-1 rounded text-xs border transition-colors flex items-center justify-center gap-1 max-md:h-7 max-md:w-7 max-md:px-0",
               isIdeChatOpen
                 ? "border-indigo-500/40 bg-indigo-500/20 text-indigo-200"
                 : "border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/5"
@@ -2565,23 +2568,23 @@ export function IDE() {
             title={isIdeChatOpen ? "Hide IDE chat panel" : "Show IDE chat panel"}
           >
             <MessageSquare className="w-3.5 h-3.5" />
-            Chat
+            <span className="max-md:hidden">Chat</span>
           </button>
           <button
             type="button"
             onClick={() => openIdeSettings("general")}
-            className="px-2 py-1 rounded text-xs border border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/5 transition-colors flex items-center gap-1"
+            className="px-2 py-1 rounded text-xs border border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/5 transition-colors flex items-center justify-center gap-1 max-md:h-7 max-md:w-7 max-md:px-0"
             title="Open IDE settings"
           >
             <Settings2 className="w-3.5 h-3.5" />
-            Settings
+            <span className="max-md:hidden">Settings</span>
           </button>
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden" ref={workspacePaneRef}>
+      <div className="flex-1 flex min-w-0 overflow-hidden" ref={workspacePaneRef}>
         <div
-          className="border-r border-white/10 flex flex-col overflow-hidden bg-white/[0.01] relative"
+          className="hidden border-r border-white/10 flex-col overflow-hidden bg-white/[0.01] relative md:flex"
           style={{ width: `${sidebarWidth}px` }}
         >
           <div className="px-3 py-2 border-b border-white/10 bg-white/5 text-xs uppercase tracking-wide text-gray-500">
@@ -2981,11 +2984,11 @@ export function IDE() {
             aria-label="Resize file tree"
             aria-orientation="vertical"
             onMouseDown={handleSidebarResizeStart}
-            className="absolute top-0 right-0 h-full w-1.5 cursor-col-resize bg-transparent hover:bg-indigo-500/40 transition-colors"
+            className="absolute top-0 right-0 hidden h-full w-1.5 cursor-col-resize bg-transparent hover:bg-indigo-500/40 transition-colors md:block"
           />
         </div>
 
-        <div className="flex-1 flex overflow-hidden bg-[#0d0d12]">
+        <div className="flex-1 flex min-w-0 overflow-hidden bg-[#0d0d12]">
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
               <div
@@ -3213,10 +3216,10 @@ export function IDE() {
                 aria-label="Resize IDE chat panel"
                 aria-orientation="vertical"
                 onMouseDown={handleChatResizeStart}
-                className="w-1.5 cursor-col-resize bg-transparent hover:bg-indigo-500/40 transition-colors"
+                className="hidden w-1.5 cursor-col-resize bg-transparent hover:bg-indigo-500/40 transition-colors md:block"
               />
               <div
-                className="border-l border-white/10 bg-[#0b0b12] h-full"
+                className="hidden border-l border-white/10 bg-[#0b0b12] h-full md:block"
                 style={{ width: `${chatPanelWidth}px` }}
               >
                 <IDEChatPanel
@@ -4471,25 +4474,25 @@ export function IDE() {
           );
         })()}
 
-      <div className="h-8 border-t border-white/10 bg-black/30 px-3 flex items-center justify-between text-xs">
-        <div className="flex items-center gap-3">
+      <div className="h-8 border-t border-white/10 bg-black/30 px-3 flex min-w-0 items-center justify-between gap-3 text-xs">
+        <div className="flex min-w-0 items-center gap-3">
           <span className="text-gray-600">Ready</span>
           <GitStatus path={rootInfo?.path || currentPath} compact />
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-gray-500 tabular-nums">
+        <div className="flex min-w-0 items-center justify-end gap-2 md:gap-3">
+          <span className="shrink-0 text-gray-500 tabular-nums">
             {selectedFile
               ? `Ln ${cursorPosition?.line || 1}, Col ${cursorPosition?.column || 1}`
               : "Ln -, Col -"}
           </span>
-          <span className="text-gray-600">{statusEncoding || "-"}</span>
-          <span className="text-gray-600">{statusEol || "-"}</span>
-          <span className="text-gray-600">{statusIndent || "-"}</span>
-          <span className="text-gray-500">{statusLanguage || "-"}</span>
+          <span className="hidden text-gray-600 md:inline">{statusEncoding || "-"}</span>
+          <span className="hidden text-gray-600 md:inline">{statusEol || "-"}</span>
+          <span className="hidden text-gray-600 md:inline">{statusIndent || "-"}</span>
+          <span className="hidden text-gray-500 md:inline">{statusLanguage || "-"}</span>
           {gitHistoryStatusLabel && (
             <span
               className={cn(
-                "inline-flex items-center gap-1",
+                "hidden items-center gap-1 md:inline-flex",
                 gitHistoryStatus === "loading"
                   ? "text-indigo-300"
                   : gitHistoryStatus === "error"
@@ -4504,7 +4507,7 @@ export function IDE() {
               {gitHistoryStatusLabel}
             </span>
           )}
-          <span className="text-gray-600">
+          <span className="hidden text-gray-600 md:inline">
             {sidebarMode === "search"
               ? "Global Search"
               : sidebarMode === "outline"
@@ -4515,7 +4518,7 @@ export function IDE() {
             type="button"
             onClick={() => toggleTerminalPanel()}
             className={cn(
-              "text-xs transition-colors inline-flex items-center gap-1",
+              "inline-flex shrink-0 items-center gap-1 text-xs transition-colors",
               terminalPanelState.capability === "disabled"
                 ? "text-amber-300 hover:text-amber-200"
                 : isTerminalPanelOpen
@@ -4542,7 +4545,7 @@ export function IDE() {
                 openIdeSettings("indexing");
               }}
               className={cn(
-                "text-xs transition-colors",
+                "min-w-0 truncate text-xs transition-colors max-md:max-w-24",
                 indexStatus?.state === "error"
                   ? "text-red-300 hover:text-red-200"
                   : indexStatus?.isIndexing
@@ -4554,11 +4557,13 @@ export function IDE() {
               {indexStatusLabel}
             </button>
           )}
-          <LSPStatus
-            compact
-            activeFilePath={selectedFile?.path || null}
-            activeExtension={selectedFile?.extension || null}
-          />
+          <div className="hidden md:block">
+            <LSPStatus
+              compact
+              activeFilePath={selectedFile?.path || null}
+              activeExtension={selectedFile?.extension || null}
+            />
+          </div>
         </div>
       </div>
 

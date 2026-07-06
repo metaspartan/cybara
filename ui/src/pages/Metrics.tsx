@@ -40,6 +40,13 @@ import {
 import { providerPlansApi } from "@/lib/api";
 import type { ProviderPlanSnapshot, ProviderPlanStatusResponse } from "@/types";
 
+const DETAIL_METRICS_IDLE_DELAY_MS = 120;
+
+type MetricsIdleWindow = Window & {
+  requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+  cancelIdleCallback?: (handle: number) => void;
+};
+
 function formatNumber(num: number): string {
   if (num >= 1000000) return (num / 1000000).toFixed(2) + "M";
   if (num >= 1000) return (num / 1000).toFixed(1) + "K";
@@ -70,29 +77,58 @@ function providerPlanTone(plan: ProviderPlanSnapshot): string {
 
 export function Metrics() {
   const { data: overview, isLoading: loadingOverview } = useMetricsOverview();
-  const { data: tokens } = useMetricsTokens();
-  const { data: files } = useMetricsFiles();
-  const { data: tools } = useMetricsTools();
-  const { data: timeSeries } = useMetricsTimeSeries();
-  const { data: providers } = useMetricsProviders();
-  const { data: modelMetrics } = useMetricsModels();
-  const { data: insights } = useMetricsInsights();
-  const { data: tokenAnalysis } = useMetricsTokenAnalysis();
-  const { data: storage } = useMetricsStorage();
+  const [detailMetricsEnabled, setDetailMetricsEnabled] = useState(false);
+  const detailQueryOptions = useMemo(
+    () => ({ enabled: detailMetricsEnabled }),
+    [detailMetricsEnabled]
+  );
+  const { data: tokens, isLoading: loadingTokens } = useMetricsTokens(detailQueryOptions);
+  const { data: files, isLoading: loadingFiles } = useMetricsFiles(detailQueryOptions);
+  const { data: tools, isLoading: loadingTools } = useMetricsTools(detailQueryOptions);
+  const { data: timeSeries, isLoading: loadingTimeSeries } =
+    useMetricsTimeSeries(detailQueryOptions);
+  const { data: providers, isLoading: loadingProviders } = useMetricsProviders(detailQueryOptions);
+  const { data: modelMetrics, isLoading: loadingModels } = useMetricsModels(detailQueryOptions);
+  const { data: insights, isLoading: loadingInsights } = useMetricsInsights(detailQueryOptions);
+  const { data: tokenAnalysis, isLoading: loadingTokenAnalysis } =
+    useMetricsTokenAnalysis(detailQueryOptions);
+  const { data: storage, isLoading: loadingStorage } = useMetricsStorage(detailQueryOptions);
   const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
     null
   );
+  const [loadingProviderPlans, setLoadingProviderPlans] = useState(false);
 
-  // Gate the skeleton on the overview only; the remaining sections stream in
-  // as their queries resolve instead of blocking the whole page on the
-  // slowest endpoint.
   const isLoading = loadingOverview;
   const insightsData = insights as MetricsInsights | undefined;
   const tokenAnalysisData = tokenAnalysis as TokenAnalysisMetrics | undefined;
   const storageData = storage as MetricsStorage | undefined;
 
   useEffect(() => {
+    if (loadingOverview) {
+      setDetailMetricsEnabled(false);
+      return;
+    }
+
+    const activate = () => setDetailMetricsEnabled(true);
+    const idleWindow = window as MetricsIdleWindow;
+    if (
+      typeof idleWindow.requestIdleCallback === "function" &&
+      typeof idleWindow.cancelIdleCallback === "function"
+    ) {
+      const id = idleWindow.requestIdleCallback(activate, {
+        timeout: DETAIL_METRICS_IDLE_DELAY_MS,
+      });
+      return () => idleWindow.cancelIdleCallback?.(id);
+    }
+
+    const timeout = window.setTimeout(activate, DETAIL_METRICS_IDLE_DELAY_MS);
+    return () => window.clearTimeout(timeout);
+  }, [loadingOverview]);
+
+  useEffect(() => {
+    if (!detailMetricsEnabled) return;
     let mounted = true;
+    setLoadingProviderPlans(true);
     providerPlansApi
       .status()
       .then((response) => {
@@ -100,11 +136,27 @@ export function Metrics() {
       })
       .catch(() => {
         if (mounted) setProviderPlanStatus(null);
+      })
+      .finally(() => {
+        if (mounted) setLoadingProviderPlans(false);
       });
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [detailMetricsEnabled]);
+
+  const tokensPending = !tokens && (!detailMetricsEnabled || loadingTokens);
+  const filesPending = !files && (!detailMetricsEnabled || loadingFiles);
+  const toolsPending = !tools && (!detailMetricsEnabled || loadingTools);
+  const timeSeriesPending = !timeSeries && (!detailMetricsEnabled || loadingTimeSeries);
+  const providersPending = !providers && (!detailMetricsEnabled || loadingProviders);
+  const modelsPending = !modelMetrics && (!detailMetricsEnabled || loadingModels);
+  const insightsPending = !insightsData && (!detailMetricsEnabled || loadingInsights);
+  const tokenAnalysisPending =
+    !tokenAnalysisData && (!detailMetricsEnabled || loadingTokenAnalysis);
+  const storagePending = !storageData && (!detailMetricsEnabled || loadingStorage);
+  const providerPlansPending =
+    !providerPlanStatus && (!detailMetricsEnabled || loadingProviderPlans);
 
   const stats = useMemo(() => {
     if (!overview) return null;
@@ -392,6 +444,7 @@ export function Metrics() {
           value={formatBytes(storageData?.totalBytes || 0)}
           color="text-cyan-300"
           bgColor="bg-cyan-500/20"
+          loading={storagePending}
         />
       </div>
 
@@ -405,12 +458,16 @@ export function Metrics() {
             <CardDescription>24-hour area trend for recent input/output workloads</CardDescription>
           </CardHeader>
           <CardContent>
-            <MetricAreaChart
-              rows={tokenVelocityRows}
-              strokeColor="#22d3ee"
-              fillColor="#22d3ee"
-              emptyLabel="No token velocity data yet"
-            />
+            {tokenAnalysisPending ? (
+              <MetricChartSkeleton />
+            ) : (
+              <MetricAreaChart
+                rows={tokenVelocityRows}
+                strokeColor="#22d3ee"
+                fillColor="#22d3ee"
+                emptyLabel="No token velocity data yet"
+              />
+            )}
           </CardContent>
         </Card>
 
@@ -440,8 +497,10 @@ export function Metrics() {
             <CardDescription>7-day intensity map by hour with hottest usage window</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {tokenAnalysisData?.tokenHeatmap?.days &&
-            tokenAnalysisData.tokenHeatmap.days.length > 0 ? (
+            {tokenAnalysisPending ? (
+              <MetricHeatmapSkeleton />
+            ) : tokenAnalysisData?.tokenHeatmap?.days &&
+              tokenAnalysisData.tokenHeatmap.days.length > 0 ? (
               <>
                 <div className="space-y-2">
                   {tokenAnalysisData.tokenHeatmap.days.map((day) => (
@@ -488,48 +547,54 @@ export function Metrics() {
             <CardDescription>Token flow ratios and distribution</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="rounded-lg bg-white/5 p-3">
-              <p className="text-xs text-gray-500 mb-1">Input:Output</p>
-              <p className="text-lg font-semibold text-white">
-                {tokenAnalysisData?.summary?.inputToOutputRatio !== null &&
-                tokenAnalysisData?.summary?.inputToOutputRatio !== undefined
-                  ? `${tokenAnalysisData.summary.inputToOutputRatio}:1`
-                  : "n/a"}
-              </p>
-            </div>
-            <div className="rounded-lg bg-white/5 p-3">
-              <p className="text-xs text-gray-500 mb-2">Distribution</p>
-              <div className="space-y-2">
-                {tokenAnalysisData?.promptOutputDistribution?.bands?.map((band) => (
-                  <div key={band.band}>
-                    <div className="flex items-center justify-between text-xs mb-1">
-                      <span className="text-gray-300">{band.band.split("_").join(" ")}</span>
-                      <span className="text-gray-500">{band.sharePct}%</span>
-                    </div>
-                    <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-emerald-500 rounded-full"
-                        style={{ width: `${Math.min(100, band.sharePct)}%` }}
-                      />
-                    </div>
+            {tokenAnalysisPending ? (
+              <MetricPanelSkeleton rows={4} />
+            ) : (
+              <>
+                <div className="rounded-lg bg-white/5 p-3">
+                  <p className="text-xs text-gray-500 mb-1">Input:Output</p>
+                  <p className="text-lg font-semibold text-white">
+                    {tokenAnalysisData?.summary?.inputToOutputRatio !== null &&
+                    tokenAnalysisData?.summary?.inputToOutputRatio !== undefined
+                      ? `${tokenAnalysisData.summary.inputToOutputRatio}:1`
+                      : "n/a"}
+                  </p>
+                </div>
+                <div className="rounded-lg bg-white/5 p-3">
+                  <p className="text-xs text-gray-500 mb-2">Distribution</p>
+                  <div className="space-y-2">
+                    {tokenAnalysisData?.promptOutputDistribution?.bands?.map((band) => (
+                      <div key={band.band}>
+                        <div className="flex items-center justify-between text-xs mb-1">
+                          <span className="text-gray-300">{band.band.split("_").join(" ")}</span>
+                          <span className="text-gray-500">{band.sharePct}%</span>
+                        </div>
+                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-500 rounded-full"
+                            style={{ width: `${Math.min(100, band.sharePct)}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-lg bg-white/5 p-3 grid grid-cols-2 gap-2 text-xs">
-              <div>
-                <p className="text-gray-500">Avg/call</p>
-                <p className="text-white">
-                  {formatNumber(tokenAnalysisData?.summary?.averageTokensPerCall || 0)}
-                </p>
-              </div>
-              <div>
-                <p className="text-gray-500">Median</p>
-                <p className="text-white">
-                  {formatNumber(tokenAnalysisData?.summary?.medianTokensPerCall || 0)}
-                </p>
-              </div>
-            </div>
+                </div>
+                <div className="rounded-lg bg-white/5 p-3 grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <p className="text-gray-500">Avg/call</p>
+                    <p className="text-white">
+                      {formatNumber(tokenAnalysisData?.summary?.averageTokensPerCall || 0)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Median</p>
+                    <p className="text-white">
+                      {formatNumber(tokenAnalysisData?.summary?.medianTokensPerCall || 0)}
+                    </p>
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -546,7 +611,11 @@ export function Metrics() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <MetricRankedRows rows={providerTokenRows} accentClass="bg-blue-400" />
+            {tokensPending || insightsPending ? (
+              <MetricRowsSkeleton />
+            ) : (
+              <MetricRankedRows rows={providerTokenRows} accentClass="bg-blue-400" />
+            )}
           </CardContent>
         </Card>
 
@@ -559,7 +628,11 @@ export function Metrics() {
             <CardDescription>Top models by tracked token volume and behavior</CardDescription>
           </CardHeader>
           <CardContent>
-            <MetricRankedRows rows={modelTokenRows} accentClass="bg-amber-400" />
+            {modelsPending || tokenAnalysisPending ? (
+              <MetricRowsSkeleton />
+            ) : (
+              <MetricRankedRows rows={modelTokenRows} accentClass="bg-amber-400" />
+            )}
           </CardContent>
         </Card>
 
@@ -574,46 +647,52 @@ export function Metrics() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {providerPlanRows.map((plan) => {
-                const progress = providerPlanProgress(plan);
-                return (
-                  <div key={plan.providerId} className="rounded-lg bg-white/5 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-sm text-white truncate">{plan.providerName}</p>
-                        <p className="text-xs text-gray-500 truncate">
-                          {plan.sourceLabel || plan.source.replace(/_/g, " ")}
+            {providerPlansPending ? (
+              <MetricRowsSkeleton />
+            ) : (
+              <div className="space-y-3">
+                {providerPlanRows.map((plan) => {
+                  const progress = providerPlanProgress(plan);
+                  return (
+                    <div key={plan.providerId} className="rounded-lg bg-white/5 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm text-white truncate">{plan.providerName}</p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {plan.sourceLabel || plan.source.replace(/_/g, " ")}
+                          </p>
+                        </div>
+                        <span className={`text-xs font-medium ${providerPlanTone(plan)}`}>
+                          {plan.status}
+                        </span>
+                      </div>
+                      {progress !== null && (
+                        <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-emerald-400"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                      )}
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+                        <span>{formatNumber(plan.localTokens30d)} tokens 30d</span>
+                        {plan.localSpend30d > 0 && (
+                          <span>${plan.localSpend30d.toFixed(2)} 30d</span>
+                        )}
+                      </div>
+                      {plan.externalSourceAvailable && (
+                        <p className="mt-1 text-[11px] leading-4 text-gray-500">
+                          External: {plan.externalSourceLabel}
                         </p>
-                      </div>
-                      <span className={`text-xs font-medium ${providerPlanTone(plan)}`}>
-                        {plan.status}
-                      </span>
+                      )}
                     </div>
-                    {progress !== null && (
-                      <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                        <div
-                          className="h-full rounded-full bg-emerald-400"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                    )}
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
-                      <span>{formatNumber(plan.localTokens30d)} tokens 30d</span>
-                      {plan.localSpend30d > 0 && <span>${plan.localSpend30d.toFixed(2)} 30d</span>}
-                    </div>
-                    {plan.externalSourceAvailable && (
-                      <p className="mt-1 text-[11px] leading-4 text-gray-500">
-                        External: {plan.externalSourceLabel}
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-              {providerPlanRows.length === 0 && (
-                <p className="text-sm text-gray-500">No provider plan data yet</p>
-              )}
-            </div>
+                  );
+                })}
+                {providerPlanRows.length === 0 && (
+                  <p className="text-sm text-gray-500">No provider plan data yet</p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -630,7 +709,9 @@ export function Metrics() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {tokenCloudEntries.length > 0 ? (
+            {tokenAnalysisPending ? (
+              <MetricCloudSkeleton />
+            ) : tokenCloudEntries.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {tokenCloudEntries.map((entry) => {
                   const size = Math.min(26, 11 + entry.sharePct * 0.5);
@@ -671,31 +752,35 @@ export function Metrics() {
             <CardDescription>Prompt/output style, latency, and throughput by model</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {tokenAnalysisData?.modelThoughtProfiles?.slice(0, 8).map((profile) => (
-                <div
-                  key={`${profile.provider}-${profile.model}`}
-                  className="rounded-lg bg-white/5 p-3"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm text-white">{profile.model}</p>
-                    <span className="text-[11px] uppercase tracking-wide text-rose-300">
-                      {profile.behavior}
-                    </span>
+            {tokenAnalysisPending ? (
+              <MetricRowsSkeleton />
+            ) : (
+              <div className="space-y-3">
+                {tokenAnalysisData?.modelThoughtProfiles?.slice(0, 8).map((profile) => (
+                  <div
+                    key={`${profile.provider}-${profile.model}`}
+                    className="rounded-lg bg-white/5 p-3"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-sm text-white">{profile.model}</p>
+                      <span className="text-[11px] uppercase tracking-wide text-rose-300">
+                        {profile.behavior}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-gray-400">
+                      <span>{profile.promptSharePct}% prompt</span>
+                      <span>{profile.responseSharePct}% output</span>
+                      <span>{profile.avgTps} tok/s</span>
+                      <span>{profile.avgLatencyMs}ms</span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs text-gray-400">
-                    <span>{profile.promptSharePct}% prompt</span>
-                    <span>{profile.responseSharePct}% output</span>
-                    <span>{profile.avgTps} tok/s</span>
-                    <span>{profile.avgLatencyMs}ms</span>
-                  </div>
-                </div>
-              ))}
-              {(!tokenAnalysisData?.modelThoughtProfiles ||
-                tokenAnalysisData.modelThoughtProfiles.length === 0) && (
-                <p className="text-sm text-gray-500">No model thought profile data yet</p>
-              )}
-            </div>
+                ))}
+                {(!tokenAnalysisData?.modelThoughtProfiles ||
+                  tokenAnalysisData.modelThoughtProfiles.length === 0) && (
+                  <p className="text-sm text-gray-500">No model thought profile data yet</p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -710,39 +795,45 @@ export function Metrics() {
             <CardDescription>24h trend, cache share, and top model concentration</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-lg bg-white/5 p-3">
-                <p className="text-xs text-gray-500 mb-1">24h Trend</p>
-                <p
-                  className={`text-lg font-semibold ${insightsData?.tokenTrend24h.direction === "up" ? "text-emerald-400" : insightsData?.tokenTrend24h.direction === "down" ? "text-red-400" : "text-gray-300"}`}
-                >
-                  {insightsData?.tokenTrend24h.changePct ?? 0}%
-                </p>
-              </div>
-              <div className="rounded-lg bg-white/5 p-3">
-                <p className="text-xs text-gray-500 mb-1">Cache Share</p>
-                <p className="text-lg font-semibold text-purple-300">
-                  {insightsData?.cacheEfficiency.cacheSharePct ?? 0}%
-                </p>
-              </div>
-              <div className="rounded-lg bg-white/5 p-3">
-                <p className="text-xs text-gray-500 mb-1">Top Model Share</p>
-                <p className="text-lg font-semibold text-amber-300">
-                  {insightsData?.topModel?.sharePct ?? 0}%
-                </p>
-              </div>
-            </div>
-            <div className="pt-3 border-t border-white/10">
-              <p className="text-sm text-gray-400 mb-1">Most used model</p>
-              <p className="text-sm text-white font-medium">
-                {insightsData?.topModel?.model || "No model data yet"}
-              </p>
-              {insightsData?.topModel && (
-                <p className="text-xs text-gray-500 mt-1">
-                  {formatNumber(insightsData.topModel.tokens)} tokens tracked
-                </p>
-              )}
-            </div>
+            {insightsPending ? (
+              <MetricPanelSkeleton rows={4} />
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="rounded-lg bg-white/5 p-3">
+                    <p className="text-xs text-gray-500 mb-1">24h Trend</p>
+                    <p
+                      className={`text-lg font-semibold ${insightsData?.tokenTrend24h.direction === "up" ? "text-emerald-400" : insightsData?.tokenTrend24h.direction === "down" ? "text-red-400" : "text-gray-300"}`}
+                    >
+                      {insightsData?.tokenTrend24h.changePct ?? 0}%
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-white/5 p-3">
+                    <p className="text-xs text-gray-500 mb-1">Cache Share</p>
+                    <p className="text-lg font-semibold text-purple-300">
+                      {insightsData?.cacheEfficiency.cacheSharePct ?? 0}%
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-white/5 p-3">
+                    <p className="text-xs text-gray-500 mb-1">Top Model Share</p>
+                    <p className="text-lg font-semibold text-amber-300">
+                      {insightsData?.topModel?.sharePct ?? 0}%
+                    </p>
+                  </div>
+                </div>
+                <div className="pt-3 border-t border-white/10">
+                  <p className="text-sm text-gray-400 mb-1">Most used model</p>
+                  <p className="text-sm text-white font-medium">
+                    {insightsData?.topModel?.model || "No model data yet"}
+                  </p>
+                  {insightsData?.topModel && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {formatNumber(insightsData.topModel.tokens)} tokens tracked
+                    </p>
+                  )}
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -755,28 +846,32 @@ export function Metrics() {
             <CardDescription>Tokens per provider call with share breakdown</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {insightsData?.providerEfficiency.slice(0, 6).map((provider, i) => (
-                <div key={i} className="rounded-lg bg-white/5 p-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <p className="text-sm text-white">{provider.provider}</p>
-                    <p className="text-xs text-gray-400">{provider.sharePct}% share</p>
+            {insightsPending ? (
+              <MetricRowsSkeleton />
+            ) : (
+              <div className="space-y-3">
+                {insightsData?.providerEfficiency.slice(0, 6).map((provider, i) => (
+                  <div key={i} className="rounded-lg bg-white/5 p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-sm text-white">{provider.provider}</p>
+                      <p className="text-xs text-gray-400">{provider.sharePct}% share</p>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-cyan-300">
+                        {formatNumber(provider.tokensPerCall)} tok/call
+                      </span>
+                      <span className="text-gray-500">{formatNumber(provider.calls)} calls</span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-cyan-300">
-                      {formatNumber(provider.tokensPerCall)} tok/call
-                    </span>
-                    <span className="text-gray-500">{formatNumber(provider.calls)} calls</span>
-                  </div>
-                </div>
-              ))}
-              {(!insightsData?.providerEfficiency ||
-                insightsData.providerEfficiency.length === 0) && (
-                <p className="text-sm text-gray-500 text-center py-4">
-                  No provider efficiency data yet
-                </p>
-              )}
-            </div>
+                ))}
+                {(!insightsData?.providerEfficiency ||
+                  insightsData.providerEfficiency.length === 0) && (
+                  <p className="text-sm text-gray-500 text-center py-4">
+                    No provider efficiency data yet
+                  </p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -791,56 +886,62 @@ export function Metrics() {
             <CardDescription>Breakdown of token consumption</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <TokenBar
-                label="Input"
-                value={overview?.tokenUsage.input || 0}
-                total={overview?.tokenUsage.total || 1}
-                color="bg-blue-500"
-              />
-              <TokenBar
-                label="Output"
-                value={overview?.tokenUsage.output || 0}
-                total={overview?.tokenUsage.total || 1}
-                color="bg-green-500"
-              />
-              <TokenBar
-                label="Cache"
-                value={overview?.tokenUsage.cache || 0}
-                total={overview?.tokenUsage.total || 1}
-                color="bg-purple-500"
-              />
+            {tokensPending ? (
+              <MetricPanelSkeleton rows={7} />
+            ) : (
+              <div className="space-y-4">
+                <TokenBar
+                  label="Input"
+                  value={overview?.tokenUsage.input || 0}
+                  total={overview?.tokenUsage.total || 1}
+                  color="bg-blue-500"
+                />
+                <TokenBar
+                  label="Output"
+                  value={overview?.tokenUsage.output || 0}
+                  total={overview?.tokenUsage.total || 1}
+                  color="bg-green-500"
+                />
+                <TokenBar
+                  label="Cache"
+                  value={overview?.tokenUsage.cache || 0}
+                  total={overview?.tokenUsage.total || 1}
+                  color="bg-purple-500"
+                />
 
-              <div className="pt-4 border-t border-white/10">
-                <p className="text-sm text-gray-400 mb-2">By Model</p>
-                <div className="space-y-2">
-                  {tokens?.topModels.slice(0, 5).map((model, i) => (
-                    <div key={i} className="flex items-center justify-between">
-                      <span className="text-sm text-gray-300">{model.model}</span>
-                      <span className="text-sm text-gray-500">{formatNumber(model.tokens)}</span>
-                    </div>
-                  ))}
-                  {(!tokens?.topModels || tokens.topModels.length === 0) && (
-                    <p className="text-sm text-gray-500">No model data yet</p>
-                  )}
+                <div className="pt-4 border-t border-white/10">
+                  <p className="text-sm text-gray-400 mb-2">By Model</p>
+                  <div className="space-y-2">
+                    {tokens?.topModels.slice(0, 5).map((model, i) => (
+                      <div key={i} className="flex items-center justify-between">
+                        <span className="text-sm text-gray-300">{model.model}</span>
+                        <span className="text-sm text-gray-500">{formatNumber(model.tokens)}</span>
+                      </div>
+                    ))}
+                    {(!tokens?.topModels || tokens.topModels.length === 0) && (
+                      <p className="text-sm text-gray-500">No model data yet</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t border-white/10">
+                  <p className="text-sm text-gray-400 mb-2">By Provider</p>
+                  <div className="space-y-2">
+                    {tokens?.topProviders.slice(0, 5).map((provider, i) => (
+                      <div key={i} className="flex items-center justify-between">
+                        <span className="text-sm text-gray-300">{provider.provider}</span>
+                        <span className="text-sm text-gray-500">
+                          {formatNumber(provider.tokens)}
+                        </span>
+                      </div>
+                    ))}
+                    {(!tokens?.topProviders || tokens.topProviders.length === 0) && (
+                      <p className="text-sm text-gray-500">No provider data yet</p>
+                    )}
+                  </div>
                 </div>
               </div>
-
-              <div className="pt-4 border-t border-white/10">
-                <p className="text-sm text-gray-400 mb-2">By Provider</p>
-                <div className="space-y-2">
-                  {tokens?.topProviders.slice(0, 5).map((provider, i) => (
-                    <div key={i} className="flex items-center justify-between">
-                      <span className="text-sm text-gray-300">{provider.provider}</span>
-                      <span className="text-sm text-gray-500">{formatNumber(provider.tokens)}</span>
-                    </div>
-                  ))}
-                  {(!tokens?.topProviders || tokens.topProviders.length === 0) && (
-                    <p className="text-sm text-gray-500">No provider data yet</p>
-                  )}
-                </div>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
@@ -871,56 +972,62 @@ export function Metrics() {
               />
             </div>
 
-            <div>
-              <p className="text-sm text-gray-400 mb-2">Most Read Files</p>
-              <div className="space-y-2">
-                {files?.mostRead.slice(0, 5).map((file, i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300 truncate max-w-[200px]">
-                      {file.path.split("/").pop()}
-                    </span>
-                    <span className="text-sm text-gray-500">{formatNumber(file.count)}</span>
+            {filesPending ? (
+              <MetricRowsSkeleton rows={6} />
+            ) : (
+              <>
+                <div>
+                  <p className="text-sm text-gray-400 mb-2">Most Read Files</p>
+                  <div className="space-y-2">
+                    {files?.mostRead.slice(0, 5).map((file, i) => (
+                      <div key={i} className="flex items-center justify-between">
+                        <span className="text-sm text-gray-300 truncate max-w-[200px]">
+                          {file.path.split("/").pop()}
+                        </span>
+                        <span className="text-sm text-gray-500">{formatNumber(file.count)}</span>
+                      </div>
+                    ))}
+                    {(!files?.mostRead || files.mostRead.length === 0) && (
+                      <p className="text-sm text-gray-500">No file data yet</p>
+                    )}
                   </div>
-                ))}
-                {(!files?.mostRead || files.mostRead.length === 0) && (
-                  <p className="text-sm text-gray-500">No file data yet</p>
-                )}
-              </div>
-            </div>
+                </div>
 
-            <div className="pt-4 border-t border-white/10">
-              <p className="text-sm text-gray-400 mb-2">Most Written Files</p>
-              <div className="space-y-2">
-                {files?.mostWritten.slice(0, 5).map((file, i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300 truncate max-w-[200px]">
-                      {file.path.split("/").pop()}
-                    </span>
-                    <span className="text-sm text-gray-500">{formatNumber(file.count)}</span>
+                <div className="pt-4 border-t border-white/10">
+                  <p className="text-sm text-gray-400 mb-2">Most Written Files</p>
+                  <div className="space-y-2">
+                    {files?.mostWritten.slice(0, 5).map((file, i) => (
+                      <div key={i} className="flex items-center justify-between">
+                        <span className="text-sm text-gray-300 truncate max-w-[200px]">
+                          {file.path.split("/").pop()}
+                        </span>
+                        <span className="text-sm text-gray-500">{formatNumber(file.count)}</span>
+                      </div>
+                    ))}
+                    {(!files?.mostWritten || files.mostWritten.length === 0) && (
+                      <p className="text-sm text-gray-500">No file data yet</p>
+                    )}
                   </div>
-                ))}
-                {(!files?.mostWritten || files.mostWritten.length === 0) && (
-                  <p className="text-sm text-gray-500">No file data yet</p>
-                )}
-              </div>
-            </div>
+                </div>
 
-            <div className="pt-4 border-t border-white/10">
-              <p className="text-sm text-gray-400 mb-2">Most Edited Files</p>
-              <div className="space-y-2">
-                {files?.mostEdited.slice(0, 5).map((file, i) => (
-                  <div key={i} className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300 truncate max-w-[200px]">
-                      {file.path.split("/").pop()}
-                    </span>
-                    <span className="text-sm text-gray-500">{formatNumber(file.count)}</span>
+                <div className="pt-4 border-t border-white/10">
+                  <p className="text-sm text-gray-400 mb-2">Most Edited Files</p>
+                  <div className="space-y-2">
+                    {files?.mostEdited.slice(0, 5).map((file, i) => (
+                      <div key={i} className="flex items-center justify-between">
+                        <span className="text-sm text-gray-300 truncate max-w-[200px]">
+                          {file.path.split("/").pop()}
+                        </span>
+                        <span className="text-sm text-gray-500">{formatNumber(file.count)}</span>
+                      </div>
+                    ))}
+                    {(!files?.mostEdited || files.mostEdited.length === 0) && (
+                      <p className="text-sm text-gray-500">No file data yet</p>
+                    )}
                   </div>
-                ))}
-                {(!files?.mostEdited || files.mostEdited.length === 0) && (
-                  <p className="text-sm text-gray-500">No file data yet</p>
-                )}
-              </div>
-            </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -935,53 +1042,59 @@ export function Metrics() {
             <CardDescription>Most frequently used tools</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              {tools?.mostUsed.slice(0, 8).map((tool, i) => (
-                <div key={i} className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
-                    <Terminal className="w-4 h-4 text-cyan-400" />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm text-gray-300">{tool.tool}</span>
-                      <span className="text-sm text-gray-500">{formatNumber(tool.calls)}</span>
+            {toolsPending || insightsPending ? (
+              <MetricRowsSkeleton rows={8} />
+            ) : (
+              <>
+                <div className="space-y-3">
+                  {tools?.mostUsed.slice(0, 8).map((tool, i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                        <Terminal className="w-4 h-4 text-cyan-400" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm text-gray-300">{tool.tool}</span>
+                          <span className="text-sm text-gray-500">{formatNumber(tool.calls)}</span>
+                        </div>
+                        <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-cyan-500 rounded-full"
+                            style={{
+                              width: `${Math.min(100, (tool.calls / (tools?.mostUsed[0]?.calls || 1)) * 100)}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
                     </div>
-                    <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-cyan-500 rounded-full"
-                        style={{
-                          width: `${Math.min(100, (tool.calls / (tools?.mostUsed[0]?.calls || 1)) * 100)}%`,
-                        }}
-                      />
+                  ))}
+                  {(!tools?.mostUsed || tools.mostUsed.length === 0) && (
+                    <p className="text-sm text-gray-500 text-center py-4">No tool data yet</p>
+                  )}
+                </div>
+                {insightsData?.toolReliability && (
+                  <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded bg-white/5 p-2 text-center">
+                      <p className="text-gray-500">Success</p>
+                      <p className="text-emerald-400 font-semibold">
+                        {insightsData.toolReliability.successRatePct}%
+                      </p>
+                    </div>
+                    <div className="rounded bg-white/5 p-2 text-center">
+                      <p className="text-gray-500">Calls</p>
+                      <p className="text-white font-semibold">
+                        {formatNumber(insightsData.toolReliability.totalCalls)}
+                      </p>
+                    </div>
+                    <div className="rounded bg-white/5 p-2 text-center">
+                      <p className="text-gray-500">Errors</p>
+                      <p className="text-red-400 font-semibold">
+                        {formatNumber(insightsData.toolReliability.totalErrors)}
+                      </p>
                     </div>
                   </div>
-                </div>
-              ))}
-              {(!tools?.mostUsed || tools.mostUsed.length === 0) && (
-                <p className="text-sm text-gray-500 text-center py-4">No tool data yet</p>
-              )}
-            </div>
-            {insightsData?.toolReliability && (
-              <div className="mt-4 pt-4 border-t border-white/10 grid grid-cols-3 gap-2 text-xs">
-                <div className="rounded bg-white/5 p-2 text-center">
-                  <p className="text-gray-500">Success</p>
-                  <p className="text-emerald-400 font-semibold">
-                    {insightsData.toolReliability.successRatePct}%
-                  </p>
-                </div>
-                <div className="rounded bg-white/5 p-2 text-center">
-                  <p className="text-gray-500">Calls</p>
-                  <p className="text-white font-semibold">
-                    {formatNumber(insightsData.toolReliability.totalCalls)}
-                  </p>
-                </div>
-                <div className="rounded bg-white/5 p-2 text-center">
-                  <p className="text-gray-500">Errors</p>
-                  <p className="text-red-400 font-semibold">
-                    {formatNumber(insightsData.toolReliability.totalErrors)}
-                  </p>
-                </div>
-              </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -1047,7 +1160,9 @@ export function Metrics() {
             <CardDescription>API provider usage and hits</CardDescription>
           </CardHeader>
           <CardContent>
-            {visibleProviders.length > 0 ? (
+            {providersPending ? (
+              <MetricRowsSkeleton />
+            ) : visibleProviders.length > 0 ? (
               <div className="space-y-4">
                 {visibleProviders.map((provider, i) => (
                   <div
@@ -1090,52 +1205,58 @@ export function Metrics() {
             <CardDescription>Autonomy and model behavior telemetry</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="rounded-lg bg-white/5 p-3">
-                <p className="text-xs text-gray-500 mb-1">Autonomy</p>
-                <p className="text-lg font-semibold text-indigo-300">
-                  {cybaraSignals.toolsPerMessage}
-                </p>
-                <p className="text-[11px] text-gray-500">tools/message</p>
-              </div>
-              <div className="rounded-lg bg-white/5 p-3">
-                <p className="text-xs text-gray-500 mb-1">Memory Share</p>
-                <p className="text-lg font-semibold text-emerald-300">
-                  {cybaraSignals.memorySharePct}%
-                </p>
-                <p className="text-[11px] text-gray-500">memory tool calls</p>
-              </div>
-              <div className="rounded-lg bg-white/5 p-3">
-                <p className="text-xs text-gray-500 mb-1">Provider Balance</p>
-                <p className="text-lg font-semibold text-cyan-300">
-                  {cybaraSignals.providerBalance}
-                </p>
-                <p className="text-[11px] text-gray-500">100 - top provider share</p>
-              </div>
-              <div className="rounded-lg bg-white/5 p-3">
-                <p className="text-xs text-gray-500 mb-1">Output-Heavy</p>
-                <p className="text-lg font-semibold text-amber-300">
-                  {cybaraSignals.outputHeavyShare}%
-                </p>
-                <p className="text-[11px] text-gray-500">response-forward calls</p>
-              </div>
-            </div>
+            {toolsPending || insightsPending || tokenAnalysisPending ? (
+              <MetricPanelSkeleton rows={5} />
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg bg-white/5 p-3">
+                    <p className="text-xs text-gray-500 mb-1">Autonomy</p>
+                    <p className="text-lg font-semibold text-indigo-300">
+                      {cybaraSignals.toolsPerMessage}
+                    </p>
+                    <p className="text-[11px] text-gray-500">tools/message</p>
+                  </div>
+                  <div className="rounded-lg bg-white/5 p-3">
+                    <p className="text-xs text-gray-500 mb-1">Memory Share</p>
+                    <p className="text-lg font-semibold text-emerald-300">
+                      {cybaraSignals.memorySharePct}%
+                    </p>
+                    <p className="text-[11px] text-gray-500">memory tool calls</p>
+                  </div>
+                  <div className="rounded-lg bg-white/5 p-3">
+                    <p className="text-xs text-gray-500 mb-1">Provider Balance</p>
+                    <p className="text-lg font-semibold text-cyan-300">
+                      {cybaraSignals.providerBalance}
+                    </p>
+                    <p className="text-[11px] text-gray-500">100 - top provider share</p>
+                  </div>
+                  <div className="rounded-lg bg-white/5 p-3">
+                    <p className="text-xs text-gray-500 mb-1">Output-Heavy</p>
+                    <p className="text-lg font-semibold text-amber-300">
+                      {cybaraSignals.outputHeavyShare}%
+                    </p>
+                    <p className="text-[11px] text-gray-500">response-forward calls</p>
+                  </div>
+                </div>
 
-            <div className="rounded-lg bg-white/5 p-3 border border-white/10">
-              <p className="text-xs text-gray-500 mb-1">Dominant Thinking Style</p>
-              <p className="text-sm font-medium text-white">{cybaraSignals.dominantBehavior}</p>
-            </div>
+                <div className="rounded-lg bg-white/5 p-3 border border-white/10">
+                  <p className="text-xs text-gray-500 mb-1">Dominant Thinking Style</p>
+                  <p className="text-sm font-medium text-white">{cybaraSignals.dominantBehavior}</p>
+                </div>
 
-            {cybaraSignals.topBurst && (
-              <div className="rounded-lg bg-white/5 p-3 border border-white/10">
-                <p className="text-xs text-gray-500 mb-1">Top Burst</p>
-                <p className="text-sm text-indigo-300">
-                  {formatNumber(cybaraSignals.topBurst.totalTokens)} tokens in one call
-                </p>
-                <p className="text-xs text-gray-500 mt-1">
-                  {cybaraSignals.topBurst.model} · {cybaraSignals.topBurst.provider}
-                </p>
-              </div>
+                {cybaraSignals.topBurst && (
+                  <div className="rounded-lg bg-white/5 p-3 border border-white/10">
+                    <p className="text-xs text-gray-500 mb-1">Top Burst</p>
+                    <p className="text-sm text-indigo-300">
+                      {formatNumber(cybaraSignals.topBurst.totalTokens)} tokens in one call
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {cybaraSignals.topBurst.model} · {cybaraSignals.topBurst.provider}
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
@@ -1150,7 +1271,9 @@ export function Metrics() {
           <CardDescription>Tokens per second and latency by model</CardDescription>
         </CardHeader>
         <CardContent>
-          {modelPerformanceRows.length > 0 ? (
+          {modelsPending ? (
+            <MetricRowsSkeleton rows={5} />
+          ) : modelPerformanceRows.length > 0 ? (
             <div className="space-y-3">
               {modelPerformanceRows.map((model) => (
                 <div key={model.key} className="p-4 rounded-lg bg-white/5 border border-white/10">
@@ -1205,7 +1328,9 @@ export function Metrics() {
           <CardDescription>Local disk usage for Cybara data and runtime files</CardDescription>
         </CardHeader>
         <CardContent>
-          {storageData ? (
+          {storagePending ? (
+            <MetricPanelSkeleton rows={8} />
+          ) : storageData ? (
             <div className="space-y-4">
               <div className="rounded-lg bg-white/5 p-3">
                 <p className="text-xs text-gray-500 mb-1">Total Local Storage</p>
@@ -1346,7 +1471,9 @@ export function Metrics() {
           <CardDescription>Daily activity over the past month</CardDescription>
         </CardHeader>
         <CardContent>
-          {activityDayRows.length > 0 ? (
+          {timeSeriesPending ? (
+            <MetricChartSkeleton />
+          ) : activityDayRows.length > 0 ? (
             <>
               <div className="h-48 flex items-end gap-1">
                 {activityDayRows.map((day) => (
@@ -1528,18 +1655,104 @@ function MetricRankedRows({
   );
 }
 
+function MetricSkeletonLine({ className = "h-3 w-full" }: { className?: string }) {
+  return <div className={`rounded-full bg-white/10 ${className}`} />;
+}
+
+function MetricPanelSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="animate-pulse space-y-3" aria-label="Loading metrics">
+      {Array.from({ length: rows }).map((_, index) => (
+        <div key={index} className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+          <MetricSkeletonLine className="h-3 w-2/5" />
+          <MetricSkeletonLine className="mt-3 h-5 w-3/4" />
+          <MetricSkeletonLine className="mt-3 h-2 w-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MetricRowsSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div className="animate-pulse space-y-3" aria-label="Loading metrics rows">
+      {Array.from({ length: rows }).map((_, index) => (
+        <div key={index} className="space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <MetricSkeletonLine className="h-3 w-2/3" />
+              <MetricSkeletonLine className="mt-2 h-2 w-1/2" />
+            </div>
+            <MetricSkeletonLine className="h-3 w-12" />
+          </div>
+          <MetricSkeletonLine className="h-2 w-full" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MetricChartSkeleton() {
+  return (
+    <div
+      className="h-48 animate-pulse rounded-lg border border-white/10 bg-white/[0.02] p-4"
+      aria-label="Loading metrics chart"
+    >
+      <div className="flex h-full items-end gap-2">
+        {Array.from({ length: 18 }).map((_, index) => (
+          <div
+            key={index}
+            className="flex-1 rounded-t bg-white/10"
+            style={{ height: `${18 + ((index * 17) % 68)}%` }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MetricHeatmapSkeleton() {
+  return (
+    <div className="animate-pulse space-y-2" aria-label="Loading token heatmap">
+      {Array.from({ length: 7 }).map((_, rowIndex) => (
+        <div key={rowIndex} className="grid grid-cols-[64px,1fr] gap-2 items-center">
+          <MetricSkeletonLine className="h-3 w-10" />
+          <div className="grid gap-1" style={{ gridTemplateColumns: "repeat(24, minmax(0, 1fr))" }}>
+            {Array.from({ length: 24 }).map((_, index) => (
+              <div key={index} className="h-3 rounded-sm bg-white/10" />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function MetricCloudSkeleton() {
+  const widths = ["w-16", "w-24", "w-20", "w-28", "w-14", "w-32", "w-20", "w-24"];
+  return (
+    <div className="flex animate-pulse flex-wrap gap-2" aria-label="Loading token cloud">
+      {widths.map((width, index) => (
+        <MetricSkeletonLine key={`${width}:${index}`} className={`h-8 ${width}`} />
+      ))}
+    </div>
+  );
+}
+
 function StatCard({
   icon,
   label,
   value,
   color,
   bgColor,
+  loading,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   color: string;
   bgColor: string;
+  loading?: boolean;
 }) {
   return (
     <Card>
@@ -1548,7 +1761,11 @@ function StatCard({
           <div className={`p-2 rounded-lg ${bgColor}`}>{icon}</div>
           <span className="text-sm text-gray-400">{label}</span>
         </div>
-        <p className={`text-2xl font-bold ${color}`}>{value}</p>
+        {loading ? (
+          <div className="h-8 w-24 animate-pulse rounded bg-white/10" />
+        ) : (
+          <p className={`text-2xl font-bold ${color}`}>{value}</p>
+        )}
       </CardContent>
     </Card>
   );

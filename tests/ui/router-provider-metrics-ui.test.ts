@@ -32,6 +32,20 @@ describe("router, provider, and metrics UI wiring", () => {
     expect(source).toContain("Lowest cost");
   });
 
+  test("router plan polling is slower than route health polling and guarded while loading", () => {
+    const source = read("ui/src/pages/RouterSettings.tsx");
+
+    expect(source).toContain("const statusInterval = setInterval(() => void fetchStatus(), 5000)");
+    expect(source).toContain(
+      "const planInterval = setInterval(() => void fetchPlanStatus(), 15000)"
+    );
+    expect(source).toContain("if (!planConfig) return Promise.resolve()");
+    expect(source).toContain("disabled={!planConfigLoaded}");
+    expect(source).toContain("planStatusLoaded");
+    expect(source).toContain("planSummary?.configured || 0");
+    expect(source).toContain("planSummary?.monitored || 0");
+  });
+
   test("providers page renders empty model lists without a stray zero label", () => {
     const source = read("ui/src/pages/Providers.tsx");
 

@@ -171,7 +171,7 @@ export function Tasks() {
       title="Tasks"
       subtitle="Schedule automated agent tasks"
       actions={
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             variant={permission === "granted" ? "secondary" : "ghost"}
             size="sm"
@@ -234,14 +234,16 @@ export function Tasks() {
             {filteredTasks?.map((task) => (
               <Card key={task.id} hover>
                 <CardContent className="p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex min-w-0 items-start gap-4">
+                      <div className="w-12 h-12 flex-shrink-0 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
                         <Clock className="w-6 h-6 text-white" />
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-medium text-white">{task.name}</h3>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h3 className="min-w-0 break-words font-medium text-white">
+                            {task.name}
+                          </h3>
                           <Badge variant={task.enabled ? "success" : "default"} size="sm">
                             {task.enabled ? "Active" : "Paused"}
                           </Badge>
@@ -249,26 +251,31 @@ export function Tasks() {
                         {task.description && (
                           <p className="text-sm text-gray-400 mt-1">{task.description}</p>
                         )}
-                        <div className="flex flex-wrap items-center gap-4 mt-3 text-sm">
-                          <div className="flex items-center gap-1.5 text-gray-400">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-3 text-sm">
+                          <div className="flex min-w-0 items-center gap-1.5 text-gray-400">
                             <Repeat className="w-4 h-4" />
-                            <span>{formatSchedule(task.schedule)}</span>
+                            <span className="min-w-0 break-words">
+                              {formatSchedule(task.schedule)}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-1.5 text-gray-400">
+                          <div className="flex min-w-0 items-center gap-1.5 text-gray-400">
                             <Calendar className="w-4 h-4" />
-                            <span>Last run: {formatLastRun(task.last_run)}</span>
+                            <span className="min-w-0 break-words">
+                              Last run: {formatLastRun(task.last_run)}
+                            </span>
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
                       <Button
                         variant="ghost"
                         size="sm"
                         leftIcon={<Zap className="w-4 h-4" />}
                         onClick={() => handleTrigger(task)}
                         isLoading={triggerTask.isPending}
+                        className="w-full sm:w-auto"
                       >
                         Run Now
                       </Button>
@@ -283,6 +290,7 @@ export function Tasks() {
                           )
                         }
                         onClick={() => handleToggle(task)}
+                        className="w-full sm:w-auto"
                       >
                         {task.enabled ? "Pause" : "Resume"}
                       </Button>
@@ -299,6 +307,7 @@ export function Tasks() {
                         onClick={() =>
                           setExpandedTaskId(expandedTaskId === task.id ? null : task.id)
                         }
+                        className="w-full sm:w-auto"
                       >
                         History
                       </Button>
@@ -307,6 +316,7 @@ export function Tasks() {
                         size="sm"
                         leftIcon={<Trash2 className="w-4 h-4" />}
                         onClick={() => setDeletingTask(task)}
+                        className="w-full sm:w-auto"
                       >
                         Delete
                       </Button>
