@@ -567,6 +567,9 @@ Actions: `capture` | `click` | `double_click` | `right_click` | `middle_click` |
 
 - `captureAfter: true` re-captures after an action so the model can verify the result.
 - `set_value` sets a native accessibility value (e.g. selects a dropdown option) without stealing focus.
+- `screenshot`, `screen_capture`, `desktop_screenshot`, `capture_screen`, and `take_screenshot`
+  are compatibility aliases for full-desktop capture. Bare `capture` keeps the interactive
+  cua-driver/SOM path so agents can still capture a window and then click/type by element.
 - Results carry a `screenshot` (base64) + `screenshotMime` so vision models receive a real image block; the driver auto-reconnects once on a closed session.
 
 

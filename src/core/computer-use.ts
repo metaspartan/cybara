@@ -501,6 +501,14 @@ export const COMPUTER_USE_ACTION_TOOL_ALIASES: readonly ComputerUseAction[] = [
   "focus_app",
 ];
 
+export const COMPUTER_USE_COMPAT_TOOL_ALIASES: Readonly<Record<string, ComputerUseAction>> = {
+  screenshot: "capture",
+  screen_capture: "capture",
+  desktop_screenshot: "capture",
+  capture_screen: "capture",
+  take_screenshot: "capture",
+};
+
 export interface ComputerUseArgs {
   action: ComputerUseAction;
   mode?: "som" | "vision" | "ax";
@@ -557,6 +565,17 @@ export function normalizeComputerUseActionArgs(
     normalized.text = args.value;
   }
 
+  return normalized;
+}
+
+export function normalizeComputerUseCompatToolArgs(
+  action: ComputerUseAction,
+  args: Record<string, unknown>
+): Record<string, unknown> {
+  const normalized = normalizeComputerUseActionArgs(action, args);
+  if (action === "capture" && normalized.app === undefined) {
+    normalized.app = "desktop";
+  }
   return normalized;
 }
 
@@ -717,6 +736,25 @@ const WINDOWS_CAPTURE_PS = [
   "[Convert]::ToBase64String($ms.ToArray())",
 ].join(" ");
 
+export function isFullDesktopCaptureRequest(
+  args: Pick<ComputerUseArgs, "action" | "app">
+): boolean {
+  if (args.action !== "capture") return false;
+  const app = typeof args.app === "string" ? args.app.trim().toLowerCase() : "";
+  return (
+    !!app &&
+    [
+      "screen",
+      "desktop",
+      "display",
+      "monitor",
+      "full_screen",
+      "full-screen",
+      "entire_screen",
+    ].includes(app)
+  );
+}
+
 async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
   try {
     if (!existsSync(SCREENSHOTS_DIR)) {
@@ -744,7 +782,7 @@ async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
           return {
             action: "capture",
             ok: true,
-            text: "Captured the screen using PowerShell (cua-driver not installed — capture only).",
+            text: "Captured the full desktop using PowerShell.",
             screenshot: base64,
             screenshotMime: "image/png",
             filePath,
@@ -797,7 +835,7 @@ async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
     return {
       action: "capture",
       ok: true,
-      text: "Captured the screen using the native OS screenshot tool (cua-driver is not installed, so click/type/scroll control is unavailable — capture only).",
+      text: "Captured the full desktop using the native OS screenshot tool.",
       screenshot,
       screenshotMime: "image/png",
       filePath,
@@ -1073,6 +1111,10 @@ export async function handleComputerUse(args: Record<string, unknown>): Promise<
     };
   }
   try {
+    if (isFullDesktopCaptureRequest(typedArgs)) {
+      const native = await nativeScreenCapture();
+      if (native) return native;
+    }
     await ensureDriver();
     const result = await performDriverAction(typedArgs);
     let screenshot = result.screenshot;

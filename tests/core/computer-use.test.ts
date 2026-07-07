@@ -5,9 +5,12 @@ import { dirname, join } from "path";
 import {
   assertActionAllowed,
   COMPUTER_USE_ACTION_TOOL_ALIASES,
+  COMPUTER_USE_COMPAT_TOOL_ALIASES,
+  isFullDesktopCaptureRequest,
   isBlockedKeyCombo,
   isBlockedTypeText,
   normalizeComputerUseActionArgs,
+  normalizeComputerUseCompatToolArgs,
   parseCuaDriverVersion,
   resolveCuaDriverCommand,
   setComputerUseAutoApprove,
@@ -85,6 +88,16 @@ describe("computer_use action validation", () => {
     expect(new Set(COMPUTER_USE_ACTION_TOOL_ALIASES)).toEqual(VALID_ACTIONS);
   });
 
+  test("compatibility aliases cover common provider screenshot tool names", () => {
+    expect(COMPUTER_USE_COMPAT_TOOL_ALIASES).toMatchObject({
+      screenshot: "capture",
+      screen_capture: "capture",
+      desktop_screenshot: "capture",
+      capture_screen: "capture",
+      take_screenshot: "capture",
+    });
+  });
+
   test("normalizes direct action tool calls into canonical computer_use arguments", () => {
     expect(normalizeComputerUseActionArgs("capture", { mode: "som" })).toEqual({
       action: "capture",
@@ -106,6 +119,25 @@ describe("computer_use action validation", () => {
       value: "hello",
       text: "hello",
     });
+  });
+
+  test("normalizes screenshot compatibility tools to full desktop capture", () => {
+    expect(normalizeComputerUseCompatToolArgs("capture", {})).toEqual({
+      action: "capture",
+      app: "desktop",
+    });
+    expect(normalizeComputerUseCompatToolArgs("capture", { app: "Chrome" })).toEqual({
+      action: "capture",
+      app: "Chrome",
+    });
+  });
+
+  test("detects full desktop capture requests that should not require a target window", () => {
+    expect(isFullDesktopCaptureRequest({ action: "capture" })).toBe(false);
+    expect(isFullDesktopCaptureRequest({ action: "capture", app: "desktop" })).toBe(true);
+    expect(isFullDesktopCaptureRequest({ action: "capture", app: "screen" })).toBe(true);
+    expect(isFullDesktopCaptureRequest({ action: "capture", app: "Chrome" })).toBe(false);
+    expect(isFullDesktopCaptureRequest({ action: "wait", app: "desktop" })).toBe(false);
   });
 
   test("assertActionAllowed throws on blocked key combos even with auto-approve", () => {

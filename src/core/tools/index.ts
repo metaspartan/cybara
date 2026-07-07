@@ -1,8 +1,10 @@
 import { telegramBot, channelManager } from "../channels";
 import {
   COMPUTER_USE_ACTION_TOOL_ALIASES,
+  COMPUTER_USE_COMPAT_TOOL_ALIASES,
   handleComputerUse,
   normalizeComputerUseActionArgs,
+  normalizeComputerUseCompatToolArgs,
 } from "../computer-use";
 import { config } from "../config";
 import { getSkillExecutors } from "../skills/index";
@@ -2461,15 +2463,18 @@ ACTIONS:
   },
 };
 
-function createComputerUseActionAliasSchema(action: string): Omit<Tool, "handler"> {
+function createComputerUseActionAliasSchema(
+  toolName: string,
+  action: string
+): Omit<Tool, "handler"> {
   const baseSchema = toolSchemas.computer_use.input_schema as {
     type?: string;
     properties?: Record<string, unknown>;
   };
   const { action: _action, ...properties } = baseSchema.properties || {};
   return {
-    name: action,
-    description: `Compatibility alias for computer_use with action='${action}'. Use this when a provider emits '${action}' as a direct computer-use tool name.`,
+    name: toolName,
+    description: `Compatibility alias for computer_use with action='${action}'. Use this when a provider emits '${toolName}' as a direct computer-use tool name.`,
     category: "media",
     input_schema: {
       type: "object",
@@ -2480,8 +2485,13 @@ function createComputerUseActionAliasSchema(action: string): Omit<Tool, "handler
 }
 
 for (const action of COMPUTER_USE_ACTION_TOOL_ALIASES) {
-  toolSchemas[action] = createComputerUseActionAliasSchema(action);
+  toolSchemas[action] = createComputerUseActionAliasSchema(action, action);
   dangerousToolNames.add(action);
+}
+
+for (const [toolName, action] of Object.entries(COMPUTER_USE_COMPAT_TOOL_ALIASES)) {
+  toolSchemas[toolName] = createComputerUseActionAliasSchema(toolName, action);
+  dangerousToolNames.add(toolName);
 }
 
 export function isToolEnabledForAgent(toolName: string): boolean {
@@ -2570,6 +2580,11 @@ _toolHandlers.set("computer_use", handleComputerUse);
 for (const action of COMPUTER_USE_ACTION_TOOL_ALIASES) {
   _toolHandlers.set(action, async (args) =>
     handleComputerUse(normalizeComputerUseActionArgs(action, args))
+  );
+}
+for (const [toolName, action] of Object.entries(COMPUTER_USE_COMPAT_TOOL_ALIASES)) {
+  _toolHandlers.set(toolName, async (args) =>
+    handleComputerUse(normalizeComputerUseCompatToolArgs(action, args))
   );
 }
 getSkillExecutors()

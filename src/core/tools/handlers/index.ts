@@ -41,8 +41,10 @@ import { handleExecuteCode } from "./execute-code";
 import { handleImageGenerate, handleVideoGenerate, handleMusicGenerate } from "./media-generation";
 import {
   COMPUTER_USE_ACTION_TOOL_ALIASES,
+  COMPUTER_USE_COMPAT_TOOL_ALIASES,
   handleComputerUse,
   normalizeComputerUseActionArgs,
+  normalizeComputerUseCompatToolArgs,
 } from "../../computer-use";
 import {
   handleKanbanShow,
@@ -281,6 +283,10 @@ const toolHandlers: Record<
 for (const action of COMPUTER_USE_ACTION_TOOL_ALIASES) {
   toolHandlers[action] = async (args: Record<string, unknown>) =>
     handleComputerUse(normalizeComputerUseActionArgs(action, args));
+}
+for (const [toolName, action] of Object.entries(COMPUTER_USE_COMPAT_TOOL_ALIASES)) {
+  toolHandlers[toolName] = async (args: Record<string, unknown>) =>
+    handleComputerUse(normalizeComputerUseCompatToolArgs(action, args));
 }
 
 function getDangerousToolPolicy(): { enabled: boolean; mode: "audit" | "block" } {
