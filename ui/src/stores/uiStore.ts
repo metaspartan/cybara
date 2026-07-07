@@ -65,12 +65,16 @@ export function themeConfigPayload(accent: ThemeAccent): Record<string, string> 
   };
 }
 
-export type ThemeMode = "dark" | "light";
+export type ThemeMode = "system" | "dark" | "light";
+
+const themeModes = new Set<ThemeMode>(["system", "dark", "light"]);
 
 export function readThemeModeFromIdentity(
   identity: Record<string, unknown> | undefined
 ): ThemeMode {
-  return identity?.theme === "light" ? "light" : "dark";
+  return typeof identity?.theme === "string" && themeModes.has(identity.theme as ThemeMode)
+    ? (identity.theme as ThemeMode)
+    : "dark";
 }
 
 interface UIState {
@@ -102,10 +106,45 @@ const applyTheme = (accent: ThemeAccent) => {
   document.documentElement.style.setProperty("--accent-primary", colors.primary);
 };
 
-const applyThemeMode = (mode: ThemeMode) => {
-  if (typeof document === "undefined") return;
-  document.documentElement.classList.toggle("light", mode === "light");
+const systemThemeQuery = "(prefers-color-scheme: light)";
+let activeThemeMode: ThemeMode = "dark";
+let systemThemeListenerBound = false;
+
+const prefersLightTheme = () =>
+  typeof window !== "undefined" &&
+  typeof window.matchMedia === "function" &&
+  window.matchMedia(systemThemeQuery).matches;
+
+const resolveThemeMode = (mode: ThemeMode): "dark" | "light" =>
+  mode === "system" ? (prefersLightTheme() ? "light" : "dark") : mode;
+
+const ensureSystemThemeListener = () => {
+  if (
+    systemThemeListenerBound ||
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
+    return;
+  }
+  const query = window.matchMedia(systemThemeQuery);
+  const onSystemThemeChange = () => {
+    if (activeThemeMode === "system") applyThemeMode("system");
+  };
+  if (typeof query.addEventListener === "function") {
+    query.addEventListener("change", onSystemThemeChange);
+  } else if (typeof query.addListener === "function") {
+    query.addListener(onSystemThemeChange);
+  }
+  systemThemeListenerBound = true;
 };
+
+function applyThemeMode(mode: ThemeMode) {
+  if (typeof document === "undefined") return;
+  activeThemeMode = mode;
+  ensureSystemThemeListener();
+  document.documentElement.dataset.themeMode = mode;
+  document.documentElement.classList.toggle("light", resolveThemeMode(mode) === "light");
+}
 
 export const useUIStore = create<UIState>()(
   persist(
@@ -158,7 +197,9 @@ export const useUIStore = create<UIState>()(
       partialize: (state) => ({ accent: state.accent, mode: state.mode }),
       onRehydrateStorage: () => (state) => {
         if (state?.accent) applyTheme(state.accent);
-        applyThemeMode(state?.mode === "light" ? "light" : "dark");
+        applyThemeMode(
+          themeModes.has(state?.mode as ThemeMode) ? (state?.mode as ThemeMode) : "dark"
+        );
       },
     }
   )

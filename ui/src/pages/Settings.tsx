@@ -64,11 +64,13 @@ import { Input, Textarea, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import {
   readThemeAccentFromConfig,
+  readThemeModeFromIdentity,
   themeAccentKeys,
   themeAccents,
   themeConfigPayload,
   useUIStore,
   type ThemeAccent,
+  type ThemeMode,
 } from "@/stores/uiStore";
 import {
   Activity,
@@ -94,6 +96,9 @@ import {
   FolderSync,
   MonitorUp,
   Mic,
+  Monitor,
+  Moon,
+  Sun,
   Volume2,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -147,20 +152,22 @@ function ThemeSettings() {
   const [savingAccent, setSavingAccent] = useState<ThemeAccent | null>(null);
   const { data: identity, isLoading: identityLoading } = useIdentity();
   const updateIdentity = useUpdateIdentity();
-  const lightMode = mode === "light";
 
   useEffect(() => {
-    const identityTheme = (identity as IdentityConfig | undefined)?.theme;
-    if (identityTheme === "light" || identityTheme === "dark") setMode(identityTheme);
+    const nextMode = readThemeModeFromIdentity(
+      identity as unknown as Record<string, unknown> | undefined
+    );
+    setMode(nextMode);
   }, [identity, setMode]);
 
-  const toggleLightMode = async (next: boolean) => {
+  const updateThemeMode = async (next: ThemeMode) => {
+    if (next === mode) return;
     const previous = mode;
-    setMode(next ? "light" : "dark");
+    setMode(next);
     try {
       const current = (identity as IdentityConfig | undefined) ?? {};
-      await updateIdentity.mutateAsync({ ...current, theme: next ? "light" : "dark" });
-      addToast("success", `Theme set to ${next ? "light" : "dark"}`);
+      await updateIdentity.mutateAsync({ ...current, theme: next });
+      addToast("success", `Theme set to ${next}`);
     } catch (error) {
       setMode(previous);
       addToast("error", error instanceof Error ? error.message : "Failed to update theme");
@@ -225,14 +232,62 @@ function ThemeSettings() {
         <CardDescription>Appearance and UI accent color</CardDescription>
       </CardHeader>
       <CardContent>
-        <Switch
-          label="Light theme"
-          description="Use the light appearance instead of dark."
-          checked={lightMode}
-          disabled={updateIdentity.isPending || identityLoading}
-          onChange={(checked) => void toggleLightMode(checked)}
-          className="mb-4"
-        />
+        <div className="mb-5 space-y-2">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-gray-200">Theme</p>
+              <p className="text-xs text-gray-500">
+                Follow the device or pin a specific appearance.
+              </p>
+            </div>
+          </div>
+          <div
+            role="radiogroup"
+            aria-label="Theme"
+            className="grid grid-cols-3 gap-1 rounded-xl border border-white/10 bg-black/20 p-1"
+          >
+            {[
+              {
+                value: "system" as const,
+                label: "System",
+                icon: Monitor,
+              },
+              {
+                value: "light" as const,
+                label: "Light",
+                icon: Sun,
+              },
+              {
+                value: "dark" as const,
+                label: "Dark",
+                icon: Moon,
+              },
+            ].map((option) => {
+              const selected = mode === option.value;
+              const Icon = option.icon;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  disabled={updateIdentity.isPending || identityLoading}
+                  onClick={() => void updateThemeMode(option.value)}
+                  className={cn(
+                    "flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors",
+                    selected
+                      ? "bg-white text-[#0a0a0f] shadow-sm"
+                      : "text-gray-400 hover:bg-white/5 hover:text-gray-200",
+                    (updateIdentity.isPending || identityLoading) && "cursor-not-allowed opacity-60"
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <div className="flex flex-wrap gap-3">
           {themeAccentKeys.map((key) => (
             <button

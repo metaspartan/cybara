@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import {
+  readThemeModeFromIdentity,
   readThemeAccentFromConfig,
   themeAccentKeys,
   themeAccents,
@@ -46,6 +47,7 @@ beforeEach(() => {
   g.localStorage = storage;
   useUIStore.setState({
     accent: "indigo",
+    mode: "dark",
     loading: {},
     toasts: [],
     activeModal: null,
@@ -190,6 +192,23 @@ describe("themeConfigPayload", () => {
   });
 });
 
+describe("readThemeModeFromIdentity", () => {
+  test("accepts system, light, and dark", () => {
+    expect(readThemeModeFromIdentity({ theme: "system" })).toBe("system");
+    expect(readThemeModeFromIdentity({ theme: "light" })).toBe("light");
+    expect(readThemeModeFromIdentity({ theme: "dark" })).toBe("dark");
+  });
+
+  test("falls back to dark for older or invalid identity values", () => {
+    expect(readThemeModeFromIdentity(undefined)).toBe("dark");
+    expect(readThemeModeFromIdentity({})).toBe("dark");
+    expect(readThemeModeFromIdentity({ theme: "rose" })).toBe("dark");
+    expect(readThemeModeFromIdentity({ theme: 5 } as unknown as Record<string, unknown>)).toBe(
+      "dark"
+    );
+  });
+});
+
 describe("useUIStore actions", () => {
   test("setAccent updates state", () => {
     useUIStore.getState().setAccent("rose");
@@ -238,6 +257,7 @@ describe("useUIStore actions", () => {
 interface PersistenceReport {
   persistedAfterSet: { state: Record<string, unknown> } | null;
   rehydratedAccent: string;
+  rehydratedMode: string;
   garbageRehydrateThrew: boolean;
   accentAfterGarbage: string;
   hasPersistApi: boolean;
@@ -278,6 +298,7 @@ import { useUIStore } from "${STORE_PATH}";
 const ls = (globalThis as { localStorage: Storage }).localStorage;
 
 useUIStore.getState().setAccent("amber");
+useUIStore.getState().setMode("system");
 useUIStore.getState().setLoading("x", true);
 useUIStore.getState().openModal("m");
 const raw = ls.getItem("cybara-ui-settings");
@@ -286,6 +307,7 @@ const persistedAfterSet = raw ? JSON.parse(raw) : null;
 ls.setItem("cybara-ui-settings", JSON.stringify({ state: { accent: "purple" }, version: 0 }));
 await useUIStore.persist.rehydrate();
 const rehydratedAccent = useUIStore.getState().accent;
+const rehydratedMode = useUIStore.getState().mode;
 
 ls.setItem("cybara-ui-settings", "{definitely not json");
 let garbageRehydrateThrew = false;
@@ -300,6 +322,7 @@ console.log(
     JSON.stringify({
       persistedAfterSet,
       rehydratedAccent,
+      rehydratedMode,
       garbageRehydrateThrew,
       accentAfterGarbage: useUIStore.getState().accent,
       hasPersistApi: typeof useUIStore.persist?.rehydrate === "function",
@@ -330,13 +353,14 @@ describe("useUIStore persistence", () => {
     expect(report.hasPersistApi).toBe(true);
   });
 
-  test("persists only the accent", () => {
+  test("persists only appearance settings", () => {
     expect(report.persistedAfterSet).not.toBeNull();
-    expect(report.persistedAfterSet?.state).toEqual({ accent: "amber" });
+    expect(report.persistedAfterSet?.state).toEqual({ accent: "amber", mode: "system" });
   });
 
-  test("rehydrates the accent from storage", () => {
+  test("rehydrates appearance settings from storage", () => {
     expect(report.rehydratedAccent).toBe("purple");
+    expect(report.rehydratedMode).toBe("system");
   });
 
   test("rehydrating garbage storage does not throw and keeps a valid accent", () => {

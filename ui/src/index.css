@@ -707,7 +707,7 @@ textarea[data-chat-composer-input="true"]:focus-visible {
 
 /* ==================== LIGHT THEME ====================
    The app is authored in dark utilities; `html.light` (set from
-   Settings > General > Light theme, persisted as identity.theme) remaps the
+   Settings > General > Theme, persisted as identity.theme) remaps the
    design tokens and the dark utility classes used across the app. Selectors
    are scoped under html.light so they outrank the single-class utilities. */
 
