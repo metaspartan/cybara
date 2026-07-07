@@ -36,6 +36,8 @@ jobs:
         run: cd ui && bash ../scripts/ci-install.sh
       - name: Install mobile dependencies
         run: cd apps/mobile && bash ../../scripts/ci-install.sh
+      - name: Sync version metadata
+        run: bun run version:sync
       - name: Run CI checks
         run: bun run check:ci
       - name: Security audit

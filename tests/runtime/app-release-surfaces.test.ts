@@ -10,6 +10,19 @@ function read(rel: string): string {
 }
 
 describe("app release surface wiring", () => {
+  test("CI quality gates sync mobile release metadata before checks", () => {
+    const ciWorkflow = read(".github/workflows/ci.yml");
+    const releaseWorkflow = read(".github/workflows/release.yml");
+
+    expect(ciWorkflow).toContain('CYBARA_RELEASE_VERSION="$VERSION" bun run version:sync');
+    expect(ciWorkflow.indexOf("name: Sync version metadata")).toBeLessThan(
+      ciWorkflow.indexOf("name: Run CI checks")
+    );
+    expect(releaseWorkflow.indexOf("name: Sync version metadata")).toBeLessThan(
+      releaseWorkflow.indexOf("name: Run CI checks")
+    );
+  });
+
   test("release workflow keeps mobile Expo bundles gated by dependency and type checks", () => {
     const workflow = read(".github/workflows/release.yml");
 
