@@ -548,6 +548,13 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(var(--accent-primary), 0.1);
 }
 
+textarea[data-chat-composer-input="true"]:focus,
+textarea[data-chat-composer-input="true"]:focus-visible {
+  outline: none;
+  border-color: transparent;
+  box-shadow: none;
+}
+
 /* ==================== RESPONSIVE LAYOUTS ==================== */
 
 @media (max-width: 768px) {

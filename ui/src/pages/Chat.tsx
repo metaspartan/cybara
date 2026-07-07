@@ -4643,6 +4643,7 @@ export function Chat() {
                 <div className="rounded-[22px] border border-white/10 bg-white/[0.035] px-3 py-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.35)]">
                   <textarea
                     ref={inputRef}
+                    data-chat-composer-input="true"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}

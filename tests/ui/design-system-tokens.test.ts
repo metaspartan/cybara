@@ -27,6 +27,14 @@ describe("index.css design-system utilities", () => {
     expect(css).not.toContain("outline: none !important");
   });
 
+  test("chat composer textarea opts out of the global input focus shadow", () => {
+    expect(css).toContain('textarea[data-chat-composer-input="true"]:focus');
+    expect(css).toContain('textarea[data-chat-composer-input="true"]:focus-visible');
+    expect(css).toMatch(
+      /textarea\[data-chat-composer-input="true"\]:focus,[\s\S]*?box-shadow:\s*none;/
+    );
+  });
+
   test("honors prefers-reduced-motion", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
   });
