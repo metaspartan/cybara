@@ -141,7 +141,10 @@ describe("mobile theming", () => {
     const src = read("components/Glass.tsx");
     expect(src).toContain('accessibilityRole="button"');
     expect(src).toContain("accessibilityLabel={detail ? `${label}, ${detail}` : label}");
-    expect(src).toContain("accessibilityState={{ selected: selected === true }}");
+    expect(src).toContain(
+      "accessibilityState={{ disabled: disabled === true, selected: selected === true }}"
+    );
+    expect(src).toContain("disabled={disabled}");
   });
 
   test("mobile manual pairing does not prefill localhost for physical phones", () => {
@@ -149,6 +152,14 @@ describe("mobile theming", () => {
     expect(src).toContain('const [baseUrl, setBaseUrl] = useState("");');
     expect(src).toContain('placeholder="http://192.168.1.20:4269"');
     expect(src).not.toContain('useState("http://127.0.0.1:4269")');
+  });
+
+  test("mobile pairing verifies the gateway and surfaces connect failures", () => {
+    const src = read("screens/ConnectScreen.tsx");
+    expect(src).toContain("await verifyGatewayProfile(profile)");
+    expect(src).toContain("await onConnect(profile)");
+    expect(src).toContain('Alert.alert("Could not connect", message)');
+    expect(src).toContain("disabled={connectBusy}");
   });
 
   test("tab bar and chat composer use the LiquidGlass surface (no opaque fill)", () => {

@@ -20,6 +20,75 @@ export interface MobileConnectPayload {
   createdAt?: string;
 }
 
+function urlHost(input: string): string {
+  try {
+    return new URL(normalizeGatewayUrl(input)).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+export function isLoopbackGatewayUrl(input: string): boolean {
+  const host = urlHost(input);
+  return (
+    host === "localhost" || host === "::1" || host === "[::1]" || /^127(?:\.\d{1,3}){3}$/.test(host)
+  );
+}
+
+function connectionFailureMessage(profile: GatewayProfile): string {
+  if (isLoopbackGatewayUrl(profile.baseUrl)) {
+    return "This QR points to localhost on the phone, not the computer running Cybara. In Cybara Settings > Gateway, turn on Listen on local network, create a new QR, and use the LAN URL.";
+  }
+  return `Could not reach ${profile.baseUrl}. Make sure this phone is on the same Wi-Fi, the gateway is running, and Settings > Gateway > Listen on local network is enabled.`;
+}
+
+function authFailureMessage(status: number): string {
+  if (status === 401) {
+    return "The gateway rejected this mobile token. Create a fresh QR code and scan it again.";
+  }
+  if (status === 403) {
+    return "This mobile device does not have access to that gateway action. Create a new QR with Standard access or higher.";
+  }
+  return `The gateway responded with HTTP ${status}.`;
+}
+
+export async function verifyGatewayProfile(
+  profile: GatewayProfile,
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = 8000
+): Promise<void> {
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timeout =
+    controller && timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
+
+  try {
+    const response = await fetchImpl(`${profile.baseUrl}/api/sessions?limit=1`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${profile.apiKey}`,
+        ...(profile.gatewayPassword?.trim()
+          ? { "X-Cybara-Gateway-Password": profile.gatewayPassword.trim() }
+          : {}),
+      },
+      signal: controller?.signal,
+    });
+    if (!response.ok) {
+      throw new Error(authFailureMessage(response.status));
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      (/^The gateway /.test(error.message) || /^This mobile device /.test(error.message))
+    ) {
+      throw error;
+    }
+    throw new Error(connectionFailureMessage(profile));
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 export function normalizeGatewayUrl(input: string): string {
   const trimmed = input.trim();
   if (!trimmed) {

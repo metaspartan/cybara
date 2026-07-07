@@ -4,10 +4,12 @@ import {
   MOBILE_PAIRING_PROTOCOL,
   buildMobileConnectPayload,
   encodeMobileConnectPayload,
+  isLoopbackGatewayUrl,
   normalizeGatewayUrl,
   parseMobileConnectPayload,
   profileFromPayload,
   resolveGatewayProfile,
+  verifyGatewayProfile,
 } from "../../apps/mobile/src/lib/connection";
 
 describe("mobile gateway connection payloads", () => {
@@ -16,6 +18,9 @@ describe("mobile gateway connection payloads", () => {
     expect(normalizeGatewayUrl("https://cybara.example.com/api?x=1")).toBe(
       "https://cybara.example.com/api"
     );
+    expect(isLoopbackGatewayUrl("http://127.0.0.1:4269")).toBe(true);
+    expect(isLoopbackGatewayUrl("http://localhost:4269")).toBe(true);
+    expect(isLoopbackGatewayUrl("http://192.168.1.10:4269")).toBe(false);
   });
 
   test("builds and parses QR-safe JSON payloads", () => {
@@ -52,6 +57,67 @@ describe("mobile gateway connection payloads", () => {
     expect(() =>
       buildMobileConnectPayload({ baseUrl: "http://localhost:4269", apiKey: " " })
     ).toThrow("API key is required");
+  });
+});
+
+describe("mobile gateway connection verification", () => {
+  const profile = {
+    id: "studio:http://192.168.1.20:4269",
+    name: "Studio",
+    baseUrl: "http://192.168.1.20:4269",
+    apiKey: "cybara_mobile_test",
+    createdAt: "2026-07-07T00:00:00.000Z",
+  };
+
+  test("checks an authenticated gateway route before storing a profile", async () => {
+    const calls: Array<{ url: string; auth: string | null }> = [];
+    const okFetch: typeof fetch = (async (url, init) => {
+      calls.push({
+        url: String(url),
+        auth: new Headers(init?.headers).get("authorization"),
+      });
+      return new Response(JSON.stringify({ sessions: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    await expect(verifyGatewayProfile(profile, okFetch, 0)).resolves.toBeUndefined();
+    expect(calls).toEqual([
+      {
+        url: "http://192.168.1.20:4269/api/sessions?limit=1",
+        auth: "Bearer cybara_mobile_test",
+      },
+    ]);
+  });
+
+  test("reports rejected mobile tokens as a fresh-QR problem", async () => {
+    const unauthorizedFetch: typeof fetch = (async () =>
+      new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401 })) as typeof fetch;
+
+    await expect(verifyGatewayProfile(profile, unauthorizedFetch, 0)).rejects.toThrow(
+      "Create a fresh QR code"
+    );
+  });
+
+  test("reports unreachable LAN gateways with the local-network fix", async () => {
+    const failingFetch: typeof fetch = (async () => {
+      throw new Error("Network request failed");
+    }) as typeof fetch;
+
+    await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow(
+      "Listen on local network"
+    );
+  });
+
+  test("reports loopback QR payloads as unusable on a phone", async () => {
+    const failingFetch: typeof fetch = (async () => {
+      throw new Error("Network request failed");
+    }) as typeof fetch;
+
+    await expect(
+      verifyGatewayProfile({ ...profile, baseUrl: "http://127.0.0.1:4269" }, failingFetch, 0)
+    ).rejects.toThrow("localhost on the phone");
   });
 });
 

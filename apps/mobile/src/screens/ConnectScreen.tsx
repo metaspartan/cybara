@@ -6,36 +6,67 @@ import {
   buildMobileConnectPayload,
   profileFromPayload,
   resolveGatewayProfile,
+  verifyGatewayProfile,
   type GatewayProfile,
 } from "../lib/connection";
 import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
 import cybaraLogo from "../../assets/cybara.png";
 
-export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfile) => void }) {
+export function ConnectScreen({
+  onConnect,
+}: {
+  onConnect: (profile: GatewayProfile) => void | Promise<void>;
+}) {
   const [name, setName] = useState("Cybara Gateway");
   const [baseUrl, setBaseUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [payload, setPayload] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanLocked, setScanLocked] = useState(false);
+  const [connectBusy, setConnectBusy] = useState(false);
+  const [connectStatus, setConnectStatus] = useState("");
+  const [connectError, setConnectError] = useState("");
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
-  const connectManual = () => {
+  const showConnectError = (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    setConnectError(message);
+    setConnectStatus("");
+    Alert.alert("Could not connect", message);
+  };
+
+  const finishConnect = async (profile: GatewayProfile) => {
+    setConnectStatus("Checking gateway...");
+    await verifyGatewayProfile(profile);
+    setConnectStatus("Saving connection...");
+    await onConnect(profile);
+    setConnectStatus("Connected");
+  };
+
+  const connectManual = async () => {
+    if (connectBusy) return;
+    setConnectBusy(true);
+    setConnectError("");
     try {
-      onConnect(profileFromPayload(buildMobileConnectPayload({ name, baseUrl, apiKey })));
+      await finishConnect(profileFromPayload(buildMobileConnectPayload({ name, baseUrl, apiKey })));
     } catch (error) {
-      Alert.alert(
-        "Connection details are incomplete",
-        error instanceof Error ? error.message : String(error)
-      );
+      showConnectError(error);
+    } finally {
+      setConnectBusy(false);
     }
   };
 
   const connectPayload = async () => {
+    if (connectBusy) return;
+    setConnectBusy(true);
+    setConnectError("");
     try {
-      onConnect(await resolveGatewayProfile(payload));
+      setConnectStatus("Reading pairing payload...");
+      await finishConnect(await resolveGatewayProfile(payload));
     } catch (error) {
-      Alert.alert("Could not connect", error instanceof Error ? error.message : String(error));
+      showConnectError(error);
+    } finally {
+      setConnectBusy(false);
     }
   };
 
@@ -55,15 +86,20 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
   };
 
   const connectScannedPayload = async (result: BarcodeScanningResult) => {
-    if (scanLocked) return;
+    if (scanLocked || connectBusy) return;
     setScanLocked(true);
+    setConnectBusy(true);
+    setConnectError("");
     setPayload(result.data);
     try {
-      onConnect(await resolveGatewayProfile(result.data));
+      setConnectStatus("Reading QR code...");
+      await finishConnect(await resolveGatewayProfile(result.data));
       setScannerOpen(false);
     } catch (error) {
+      showConnectError(error);
+    } finally {
       setScanLocked(false);
-      Alert.alert("Could not connect", error instanceof Error ? error.message : String(error));
+      setConnectBusy(false);
     }
   };
 
@@ -86,6 +122,7 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
           detail="Camera pairing"
           onPress={openScanner}
           selected={scannerOpen}
+          disabled={connectBusy}
         />
         {scannerOpen ? (
           <View style={styles.cameraWrap}>
@@ -109,12 +146,18 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
           style={[styles.input, styles.payload]}
         />
         <GlassButton
-          label="Connect from payload"
-          detail="QR/manual payload"
+          label={connectBusy ? "Connecting..." : "Connect from payload"}
+          detail={connectStatus || "QR/manual payload"}
           onPress={connectPayload}
+          disabled={connectBusy}
         />
+        {connectError ? <Text style={styles.errorText}>{connectError}</Text> : null}
         {scannerOpen ? (
-          <GlassButton label="Cancel scan" onPress={() => setScannerOpen(false)} />
+          <GlassButton
+            label="Cancel scan"
+            onPress={() => setScannerOpen(false)}
+            disabled={connectBusy}
+          />
         ) : null}
       </GlassPanel>
 
@@ -145,9 +188,10 @@ export function ConnectScreen({ onConnect }: { onConnect: (profile: GatewayProfi
           style={styles.input}
         />
         <GlassButton
-          label="Connect gateway"
-          detail="Stores this profile locally"
+          label={connectBusy ? "Connecting..." : "Connect gateway"}
+          detail={connectStatus || "Stores this profile locally"}
           onPress={connectManual}
+          disabled={connectBusy}
         />
       </GlassPanel>
     </View>
@@ -207,6 +251,11 @@ const makeStyles = () =>
       color: colors.textMuted,
       fontSize: typography.label,
       lineHeight: 18,
+    },
+    errorText: {
+      color: colors.red,
+      fontSize: typography.label,
+      lineHeight: 19,
     },
     input: {
       minHeight: 46,

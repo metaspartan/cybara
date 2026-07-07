@@ -63,22 +63,26 @@ export function GlassButton({
   detail,
   onPress,
   selected,
+  disabled,
 }: {
   label: string;
   detail?: string;
   onPress?: () => void;
   selected?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
       accessibilityLabel={detail ? `${label}, ${detail}` : label}
       accessibilityRole="button"
-      accessibilityState={{ selected: selected === true }}
+      accessibilityState={{ disabled: disabled === true, selected: selected === true }}
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         styles.button,
         selected && styles.selected,
-        pressed && styles.pressed,
+        disabled && styles.disabled,
+        pressed && !disabled && styles.pressed,
       ]}
     >
       <Text style={styles.buttonLabel}>{label}</Text>
@@ -154,6 +158,9 @@ const makeStyles = () =>
     },
     pressed: {
       backgroundColor: colors.glassPressed,
+    },
+    disabled: {
+      opacity: 0.55,
     },
     buttonLabel: {
       color: colors.text,
