@@ -537,7 +537,7 @@ jobs:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.ck.cybara
           releaseFiles: ${{ steps.build.outputs.aab }}
-          track: internal
+          tracks: internal
           status: completed
 
   # ── iOS build (local Xcode build via Expo prebuild) ────────────────────────

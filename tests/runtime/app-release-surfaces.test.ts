@@ -59,6 +59,8 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain(
       "if: steps.build.outputs.aab != '' && env.GOOGLE_PLAY_PUBLISH_CONFIGURED == 'true'"
     );
+    expect(workflow).toContain("tracks: internal");
+    expect(workflow).not.toContain("track: internal");
 
     expect(workflow).toContain("build-ios:");
     expect(workflow).toContain("name: iOS build");
