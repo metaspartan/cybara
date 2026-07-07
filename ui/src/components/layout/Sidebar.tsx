@@ -8,6 +8,7 @@ import {
   MessageSquare,
   MessagesSquare,
   Brain,
+  Sparkles,
   ListTodo,
   Logs,
   LibraryBig,
@@ -192,6 +193,7 @@ const navCategories = [
     label: "System",
     items: [
       { path: "/memory", icon: Brain, label: "Memory" },
+      { path: "/journey", icon: Sparkles, label: "Journey" },
       { path: "/wallet", icon: WalletIcon, label: "Wallet" },
       { path: "/artifacts", icon: FileText, label: "Artifacts" },
       { path: "/metrics", icon: BarChart3, label: "Metrics" },

@@ -10,6 +10,7 @@ import { RouterSettings } from "@/pages/RouterSettings";
 import { Channels } from "@/pages/Channels";
 import { Tasks } from "@/pages/Tasks";
 import { Skills } from "@/pages/Skills";
+import { Journey } from "@/pages/Journey";
 import { Tools } from "@/pages/Tools";
 import { Memory } from "@/pages/Memory";
 import { Settings } from "@/pages/Settings";
@@ -122,6 +123,7 @@ function AppRoutes() {
       <Route path="/mobile" element={<Mobile />} />
       <Route path="/tasks" element={<Tasks />} />
       <Route path="/skills" element={<Skills />} />
+      <Route path="/journey" element={<Journey />} />
       <Route path="/lsp" element={<LSP />} />
       <Route path="/ide" element={<IDE />} />
       <Route path="/terminal" element={<TerminalPage />} />

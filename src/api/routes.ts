@@ -172,6 +172,7 @@ import {
   getFileHistoryUrl,
 } from "./ide-api";
 import { getGitStatus, getGitBranch, getGitDiff } from "./git-api";
+import { buildJourney } from "./journey";
 import { createLogger } from "../core/logger";
 import { openUrlInBrowser } from "../core/runtime/open-url";
 import { trackApiCall, trackFileOperation, trackMetric } from "../core/metrics";
@@ -3723,6 +3724,7 @@ const routes: Record<string, RouteHandler> = {
     );
   },
   "GET /api/skills": () => getSkills(),
+  "GET /api/journey": () => buildJourney(),
   "GET /api/skills/categories": () => getSkillCategories(),
   "GET /api/skills/status": async () => {
     const homeDir = process.env.HOME || homedir();
