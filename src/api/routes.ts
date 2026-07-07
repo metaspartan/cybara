@@ -1,5 +1,6 @@
 import { config } from "../core/config";
 import { cybaraDir, homeDir as runtimeHomeDir } from "../core/paths";
+import { resolveCybaraHome, setCybaraHomeOverride } from "../core/cybara-home";
 import { cacheMetricsRoutes, prewarmMetricsRoutes } from "./route-cache";
 import { mobileRoutes } from "./mobile";
 import {
@@ -481,6 +482,32 @@ function redactSecretConfig(cfg: Record<string, unknown>): Record<string, unknow
   return out;
 }
 
+function getCybaraDataDirInfo(): Record<string, unknown> {
+  const configured = resolveCybaraHome();
+  return {
+    cybaraDataDir: cybaraDir,
+    configuredCybaraDataDir: configured.dir,
+    cybaraDataDirSource: configured.source,
+    cybaraDataDirForced: configured.forced,
+    cybaraDataDirRestartRequired: configured.dir !== cybaraDir,
+    cybaraDataDirOverrideFile: configured.overrideFile,
+    defaultCybaraDataDir: configured.defaultDir,
+  };
+}
+
+function getCybaraDataDirConfigInfo(): Record<string, unknown> {
+  const info = getCybaraDataDirInfo();
+  return {
+    cybara_data_dir: info.cybaraDataDir,
+    configured_cybara_data_dir: info.configuredCybaraDataDir,
+    cybara_data_dir_source: info.cybaraDataDirSource,
+    cybara_data_dir_forced: info.cybaraDataDirForced,
+    cybara_data_dir_restart_required: info.cybaraDataDirRestartRequired,
+    cybara_data_dir_override_file: info.cybaraDataDirOverrideFile,
+    default_cybara_data_dir: info.defaultCybaraDataDir,
+  };
+}
+
 function parseBoundedQueryNumber(
   raw: string | undefined,
   min: number,
@@ -652,7 +679,7 @@ const routes: Record<string, RouteHandler> = {
     releaseRepositoryUrl: getReleaseRepositoryUrl(),
     setupComplete: config.isSetupComplete(),
     homeDir: runtimeHomeDir,
-    cybaraDataDir: cybaraDir,
+    ...getCybaraDataDirInfo(),
     defaultWorkspaceDir: config.getDefaultWorkspaceDir(),
     stats: {
       agents: agentManager.getStats(),
@@ -712,6 +739,7 @@ const routes: Record<string, RouteHandler> = {
     speech: config.getSpeechSettings(),
     computer_use: config.getComputerUseSettings(),
     default_workspace_dir: config.getDefaultWorkspaceDir(),
+    ...getCybaraDataDirConfigInfo(),
     reasoning_effort: config.getDefaultReasoningEffort(),
     self_improving_skills_enabled: config.get<boolean>("self_improving_skills_enabled") !== false,
   }),
@@ -785,6 +813,7 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/sandbox/status": () => getSandboxRuntimeStatus(),
   "PUT /api/config": async (body) => {
     const data = body as Record<string, unknown>;
+    let cybaraDataDirChanged = false;
     for (const [key, value] of Object.entries(data)) {
       if (key === "dangerous_tool_policy") {
         config.setDangerousToolPolicy(value);
@@ -833,13 +862,22 @@ const routes: Record<string, RouteHandler> = {
         config.setDefaultWorkspaceDir(value);
         continue;
       }
+      if (key === "cybara_data_dir") {
+        const next = setCybaraHomeOverride(value);
+        cybaraDataDirChanged = next.dir !== cybaraDir;
+        continue;
+      }
       if (key === "reasoning_effort") {
         config.setDefaultReasoningEffort(value);
         continue;
       }
       config.set(key, value);
     }
-    return { success: true };
+    return {
+      success: true,
+      restartRequired: cybaraDataDirChanged || getCybaraDataDirInfo().cybaraDataDirRestartRequired,
+      ...getCybaraDataDirConfigInfo(),
+    };
   },
 
   "GET /api/agents": () => agentManager.list(),

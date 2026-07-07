@@ -1,7 +1,8 @@
 import { chmodSync, existsSync, mkdirSync, writeFileSync } from "fs";
-import { homedir, platform } from "os";
+import { platform } from "os";
 import { join } from "path";
 import { config, type SpeechSettings, type SpeechTtsProviderPreference } from "./config";
+import { resolveCybaraHome } from "./cybara-home";
 import { providerManager, providers, resolveProviderType } from "./providers";
 import type { Provider } from "./database";
 
@@ -132,10 +133,7 @@ function resolveOutputFormat(value: string | undefined, fallback: string): strin
 }
 
 function mediaDir(): string {
-  const cybaraHome =
-    process.env.CYBARA_HOME?.trim() ||
-    join(process.env.HOME || process.env.USERPROFILE || homedir(), ".cybara");
-  const dir = join(cybaraHome, "media");
+  const dir = join(resolveCybaraHome().dir, "media");
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   return dir;
 }

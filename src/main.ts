@@ -2,10 +2,10 @@
 import { spawn } from "bun";
 import { existsSync, readFileSync, writeFileSync, unlinkSync, appendFileSync, mkdirSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
+import { resolveCybaraHome, runtimeHomeDir } from "./core/cybara-home";
 
-const USER_HOME = process.env.HOME || process.env.USERPROFILE || homedir();
-const CYBARA_DIR = process.env.CYBARA_HOME || join(USER_HOME, ".cybara");
+const USER_HOME = runtimeHomeDir;
+const CYBARA_DIR = resolveCybaraHome().dir;
 const PID_FILE = join(CYBARA_DIR, "cybara.pid");
 const LOG_FILE = join(CYBARA_DIR, "cybara.log");
 

@@ -1,14 +1,20 @@
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
-import { homedir } from "os";
 import { existsSync, mkdirSync } from "fs";
+import {
+  cybaraHomeOverrideFile,
+  resolveCybaraHome,
+  runtimeHomeDir,
+  type CybaraHomeSource,
+} from "./cybara-home";
 
-export const homeDir = process.env.HOME || process.env.USERPROFILE || homedir();
-
-const configuredCybaraHome = process.env.CYBARA_HOME?.trim();
-export const cybaraDir = configuredCybaraHome
-  ? resolve(configuredCybaraHome)
-  : join(homeDir, ".cybara");
+export const homeDir = runtimeHomeDir;
+const cybaraHome = resolveCybaraHome();
+export const cybaraDir = cybaraHome.dir;
+export const cybaraHomeSource: CybaraHomeSource = cybaraHome.source;
+export const cybaraHomeForced = cybaraHome.forced;
+export const defaultCybaraDir = cybaraHome.defaultDir;
+export { cybaraHomeOverrideFile };
 
 export const dataDir = join(cybaraDir, "data");
 export const memoryDir = join(cybaraDir, "memory");

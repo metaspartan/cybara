@@ -20,6 +20,7 @@ import {
 } from "./core/versioning";
 import { checkForUpdateInBackground, isUpdateCheckDisabled } from "./core/update-check";
 import { runMcpStdioServer } from "./core/mcp-host-server";
+import { resolveCybaraHome } from "./core/cybara-home";
 import { runMobileCommand } from "./cli-mobile";
 import { rawHelp } from "./cli-help";
 import { rawComputerUse } from "./cli-computer-use";
@@ -62,13 +63,8 @@ function resolveCliApiKey(): string | null {
     return envKey;
   }
 
-  const home = process.env.HOME || process.env.USERPROFILE;
-  if (!home) {
-    return null;
-  }
-
   try {
-    const cybaraHome = process.env.CYBARA_HOME || join(home, ".cybara");
+    const cybaraHome = resolveCybaraHome().dir;
     const keyFromFile = readFileSync(join(cybaraHome, "api_key"), "utf-8").trim();
     return keyFromFile || null;
   } catch {

@@ -18,6 +18,7 @@ import type {
   InstalledCybaraPlugin,
   PluginValidationResult,
 } from "./types";
+import { resolveCybaraHome } from "../cybara-home";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const CYBARA_PLUGIN_MANIFEST = "cybara-plugin.json";
@@ -27,7 +28,7 @@ function getUserHomeDir(): string {
 }
 
 function getCybaraHomeDir(): string {
-  return process.env.CYBARA_HOME || join(getUserHomeDir(), ".cybara");
+  return resolveCybaraHome().dir;
 }
 
 function normalizePluginId(value: string): string {
