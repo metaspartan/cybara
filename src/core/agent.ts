@@ -63,6 +63,7 @@ import { coalesceSystemMessages } from "./llm/system-messages";
 import {
   buildCompactedConversation,
   conversationNeedsCompaction,
+  resolveCompactionTriggerRatio,
   estimateConversationChars,
   planCompactionCut,
 } from "./conversation-window";
@@ -102,7 +103,6 @@ import {
   CONTEXT_CHARS_PER_TOKEN_ESTIMATE,
   CONTEXT_INPUT_HEADROOM_RATIO,
   CONTEXT_LIMIT_TRUNCATION_NOTICE,
-  CONVERSATION_COMPACT_TRIGGER_RATIO,
   CONVERSATION_KEEP_RECENT_MESSAGES,
   CONVERSATION_MAX_MESSAGES,
   CONVERSATION_SUMMARY_MAX_CHARS,
@@ -801,8 +801,13 @@ class AgentManager {
         providerId,
         activeModel || ""
       );
-      const { contextBudgetChars } = this.resolveContextGuardBudgets(contextWindowTokens);
-      const threshold = Math.floor(contextBudgetChars * CONVERSATION_COMPACT_TRIGGER_RATIO);
+      // Model-aware summarizing-compaction trigger (see Hermes PR #59814).
+      const compactTokens = Math.max(1024, Math.floor(contextWindowTokens));
+      const threshold = Math.floor(
+        compactTokens *
+          CONTEXT_CHARS_PER_TOKEN_ESTIMATE *
+          resolveCompactionTriggerRatio(compactTokens, Number(config.get<number>("compaction_trigger_ratio")))
+      );
       const convoChars = estimateConversationChars(convo);
       if (
         !conversationNeedsCompaction({

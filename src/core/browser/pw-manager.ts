@@ -605,6 +605,31 @@ export async function evaluate<T = unknown>(pageId: string, script: string): Pro
   return await page.evaluate(script);
 }
 
+/**
+ * Detect a CAPTCHA challenge on the page so the agent can bail out gracefully
+ * instead of silently failing to interact (OpenClaw browser field-test #6).
+ * Checks the DOM for the common vendors' iframe/script/widget signatures.
+ */
+export async function detectCaptcha(
+  pageId: string
+): Promise<{ detected: boolean; vendor?: string }> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) return { detected: false };
+  try {
+    const vendor = (await page.evaluate(`(function(){
+      var h = document.documentElement.outerHTML;
+      if (/recaptcha|g-recaptcha|google\\.com\\/recaptcha/i.test(h)) return "reCAPTCHA";
+      if (/hcaptcha\\.com|h-captcha/i.test(h)) return "hCaptcha";
+      if (/challenges\\.cloudflare\\.com\\/turnstile|cf-turnstile/i.test(h)) return "Cloudflare Turnstile";
+      if (/funcaptcha|arkoselabs/i.test(h)) return "FunCaptcha/Arkose";
+      return "";
+    })()`)) as string;
+    return vendor ? { detected: true, vendor } : { detected: false };
+  } catch {
+    return { detected: false };
+  }
+}
+
 export async function wait(pageId: string, timeMs: number): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);

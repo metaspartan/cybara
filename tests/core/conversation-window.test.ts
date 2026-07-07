@@ -4,6 +4,7 @@ import {
   conversationNeedsCompaction,
   estimateConversationChars,
   planCompactionCut,
+  resolveCompactionTriggerRatio,
   type WindowMessage,
 } from "../../src/core/conversation-window";
 
@@ -120,5 +121,29 @@ describe("conversation windowing", () => {
     expect(noConsecutiveDuplicateRoles(out)).toBe(true);
     expect(out[0].role).toBe("system");
     expect(out.length).toBeLessThan(messages.length);
+  });
+});
+
+describe("model-aware compaction trigger ratio (Hermes PR #59814)", () => {
+  test("large-context models run closer to full before compacting", () => {
+    // 272K (gpt-5.4-class) should compact at 85%, not the old ~41%.
+    expect(resolveCompactionTriggerRatio(272_000)).toBe(0.85);
+    expect(resolveCompactionTriggerRatio(200_000)).toBe(0.85);
+    // 128K (spark-class) at 80%.
+    expect(resolveCompactionTriggerRatio(128_000)).toBe(0.8);
+    // Default/small windows keep headroom for the summary call.
+    expect(resolveCompactionTriggerRatio(65_536)).toBe(0.72);
+  });
+
+  test("user override can only RAISE the model default, never lower it", () => {
+    // A high user threshold is honored (never clamped down — the PR's bug 3).
+    expect(resolveCompactionTriggerRatio(272_000, 0.9)).toBe(0.9);
+    // A low user threshold cannot drag a large model below its safe default.
+    expect(resolveCompactionTriggerRatio(272_000, 0.4)).toBe(0.85);
+    // Out-of-range / invalid user values are ignored.
+    expect(resolveCompactionTriggerRatio(65_536, 0)).toBe(0.72);
+    expect(resolveCompactionTriggerRatio(65_536, Number.NaN)).toBe(0.72);
+    // Clamped to the sane ceiling.
+    expect(resolveCompactionTriggerRatio(65_536, 5)).toBe(0.95);
   });
 });

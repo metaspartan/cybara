@@ -129,7 +129,6 @@ export const MIN_TOOL_RESULT_CHARS = 2_000;
 export const CONTEXT_LIMIT_TRUNCATION_NOTICE = "[truncated: output exceeded context limit]";
 export const CONVERSATION_KEEP_RECENT_MESSAGES = 16;
 export const CONVERSATION_MAX_MESSAGES = 60;
-export const CONVERSATION_COMPACT_TRIGGER_RATIO = 0.55;
 export const CONVERSATION_SUMMARY_MAX_CHARS = 4_000;
 export const CONVERSATION_SUMMARY_PREFIX =
   "[Earlier conversation summary - prior turns condensed to save context]";

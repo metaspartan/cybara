@@ -470,11 +470,15 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
           refs: (args.refs as "aria" | "role") || "role",
         });
 
+        const captcha = await pwManager.detectCaptcha(pageId);
+
         return {
           success: true,
           mode: "headless",
           format,
           ...result,
+          captchaDetected: captcha.detected,
+          ...(captcha.detected ? { captchaVendor: captcha.vendor } : {}),
         };
       }
 
@@ -591,7 +595,26 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         snapshot = snapshot.slice(0, maxChars) + "\n\n[...TRUNCATED - page too large]";
       }
 
-      const usageHint = `# Page: ${title}\n# URL: ${url}\n# Interactive elements have [ref=eN] - use browser({action:'act', request:{kind:'click', ref:'eN'}}) to interact\n\n`;
+      // CAPTCHA detection (OpenClaw browser field-test #6): surface a warning
+      // so the agent bails out gracefully instead of silently failing.
+      let captchaLine = "";
+      try {
+        const vendor = (await page.evaluate(`(function(){
+          var h = document.documentElement.outerHTML;
+          if (/recaptcha|g-recaptcha|google\\.com\\/recaptcha/i.test(h)) return "reCAPTCHA";
+          if (/hcaptcha\\.com|h-captcha/i.test(h)) return "hCaptcha";
+          if (/challenges\\.cloudflare\\.com\\/turnstile|cf-turnstile/i.test(h)) return "Cloudflare Turnstile";
+          if (/funcaptcha|arkoselabs/i.test(h)) return "FunCaptcha/Arkose";
+          return "";
+        })()`)) as string;
+        if (vendor) {
+          captchaLine = `# ⚠ CAPTCHA detected (${vendor}) — automated interaction will likely be blocked\n`;
+        }
+      } catch {
+        /* detection is best-effort */
+      }
+
+      const usageHint = `# Page: ${title}\n# URL: ${url}\n${captchaLine}# Interactive elements have [ref=eN] - use browser({action:'act', request:{kind:'click', ref:'eN'}}) to interact\n\n`;
 
       console.log(
         `[Browser] Snapshot stats: ${snapshotLines.length} lines, ${snapshot.length} chars, truncated=${truncated}`

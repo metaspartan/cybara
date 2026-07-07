@@ -10,6 +10,25 @@ export function estimateConversationChars(convo: WindowMessage[]): number {
   );
 }
 
+/**
+ * Model-aware compaction trigger ratio (fraction of the context window at which
+ * session summarization fires). Larger windows have more absolute headroom, so
+ * they run closer to full before compacting. Mirrors Hermes PR #59814, which
+ * raised large-context models to ~85% after they compacted prematurely at ~50%.
+ * A user override can only RAISE the model default, never lower it (the PR's
+ * never-lower semantics), and is clamped to a sane (0, 0.95] range.
+ */
+export function resolveCompactionTriggerRatio(
+  contextWindowTokens: number,
+  userRatio?: number
+): number {
+  const tokens = Math.max(1024, Math.floor(contextWindowTokens || 0));
+  const modelDefault = tokens >= 200_000 ? 0.85 : tokens >= 100_000 ? 0.8 : 0.72;
+  const user =
+    Number.isFinite(userRatio) && (userRatio ?? 0) > 0 ? Math.min(userRatio ?? 0, 0.95) : 0;
+  return Math.max(modelDefault, user);
+}
+
 export function conversationNeedsCompaction(opts: {
   convoLength: number;
   convoChars: number;
