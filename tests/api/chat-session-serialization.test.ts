@@ -10,6 +10,7 @@ import {
   reorderPendingChatMessages,
   steerPendingChatMessage,
   updatePendingChatMessage,
+  updateSessionAgent,
 } from "../../src/api/chat";
 import { broadcastStatus, onStatusStream } from "../../src/core/status";
 import { loadPersistedSession } from "../../src/core/session-context";
@@ -38,6 +39,78 @@ afterEach(async () => {
 });
 
 describe("handleChat per-session serialization", () => {
+  test("existing sessions can switch active agents and retain context usage", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Switch Agent Provider",
+      api_key: "sk-switch-agent",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const firstAgent = agentManager.create({
+      name: "Switch Agent A",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-switch-a",
+      memory_enabled: false,
+    });
+    const secondAgent = agentManager.create({
+      name: "Switch Agent B",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-switch-b",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(firstAgent.id, secondAgent.id);
+
+    globalThis.fetch = (async (_url, init) => {
+      const request = JSON.parse(String(init?.body || "{}")) as { model?: string };
+      const model = request.model || "unknown-model";
+      return new Response(
+        JSON.stringify({
+          id: `switch-${model}`,
+          object: "chat.completion",
+          model,
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: `reply from ${model}` },
+            },
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const sessionId = `switch-agent-${Date.now()}`;
+    createdSessionIds.push(sessionId);
+
+    const first = await handleChat({
+      message: "first",
+      agentId: firstAgent.id,
+      sessionId,
+      tools: false,
+    });
+    expect(first.agent?.id).toBe(firstAgent.id);
+    expect(first.message.content).toBe("reply from gpt-switch-a");
+
+    const updated = await updateSessionAgent(sessionId, secondAgent.id);
+    expect(updated.agentId).toBe(secondAgent.id);
+    expect(updated.contextUsage.usedTokens).toBeGreaterThan(0);
+    expect(updated.contextUsage.limitTokens).toBeGreaterThan(updated.contextUsage.usedTokens);
+
+    const second = await handleChat({ message: "second", sessionId, tools: false });
+    expect(second.agent?.id).toBe(secondAgent.id);
+    expect(second.message.content).toBe("reply from gpt-switch-b");
+    expect(second.contextUsage?.usedTokens).toBeGreaterThan(updated.contextUsage.usedTokens);
+
+    const persisted = await loadPersistedSession(sessionId);
+    expect(persisted?.agentId).toBe(secondAgent.id);
+  });
+
   test("two concurrent messages to one session do not interleave", async () => {
     const provider = providerManager.create({
       provider: "openai",

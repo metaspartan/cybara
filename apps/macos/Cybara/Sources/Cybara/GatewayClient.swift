@@ -171,13 +171,16 @@ struct GatewayClient: Sendable {
         return try await getList("api/sessions", keys: ["sessions", "items"], queryItems: queryItems)
     }
 
-    func sessionMessages(_ id: String) async throws -> [GatewaySessionMessage] {
-        // Session detail carries its transcript under `messagesList`.
-        try await getList(
+    func sessionDetail(_ id: String) async throws -> GatewaySession {
+        try await get(
             "api/sessions/\(id)",
-            keys: ["messagesList", "messages"],
+            as: GatewaySession.self,
             queryItems: [URLQueryItem(name: "includeFullToolCalls", value: "1")]
         )
+    }
+
+    func sessionMessages(_ id: String) async throws -> [GatewaySessionMessage] {
+        try await sessionDetail(id).messagesList ?? []
     }
 
     func sessionStatus(_ id: String? = nil) async throws -> GatewayStatusEvent {
@@ -722,6 +725,15 @@ struct GatewayClient: Sendable {
         )
         let data = try await request("api/sessions/\(id)/workspace", method: "PUT", body: body)
         return try JSONDecoder().decode(GatewaySessionWorkspaceUpdateResponse.self, from: data)
+    }
+
+    func updateSessionAgent(
+        _ id: String,
+        agentId: String
+    ) async throws -> GatewaySessionAgentUpdateResponse {
+        let body = try JSONSerialization.data(withJSONObject: ["agentId": agentId])
+        let data = try await request("api/sessions/\(id)/agent", method: "PUT", body: body)
+        return try JSONDecoder().decode(GatewaySessionAgentUpdateResponse.self, from: data)
     }
 
 }

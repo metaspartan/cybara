@@ -128,6 +128,7 @@ import {
 import {
   getProviderPlanMonitoringConfig,
   getProviderPlanStatus,
+  enrichProviderPlanStatusWithLiveUsage,
   setProviderPlanMonitoringConfig,
 } from "../core/provider-plans";
 import {
@@ -1083,7 +1084,8 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/provider-plans/config": () => getProviderPlanMonitoringConfig(),
   "PUT /api/provider-plans/config": (body) => setProviderPlanMonitoringConfig(body),
-  "GET /api/provider-plans/status": () => getProviderPlanStatus(),
+  "GET /api/provider-plans/status": () =>
+    enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus()),
   "POST /api/providers/:id/test": async (_body, params) => {
     const provider = providerManager.getWithCredentials(params!.id);
     if (!provider) {

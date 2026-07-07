@@ -1553,6 +1553,13 @@ describe("mobile API client", () => {
           provider_id: "provider-openai",
           model: "gpt-5-mini",
           workspace_dir: "/repo",
+          contextUsage: {
+            usedTokens: 1200,
+            limitTokens: 128000,
+            remainingTokens: 126800,
+            usedPercent: 0.9,
+            messageCount: 1,
+          },
           messagesList: [
             {
               id: "m1",
@@ -1578,6 +1585,13 @@ describe("mobile API client", () => {
         return Response.json({
           sessionId: "s1",
           workspaceDir: "/repo",
+          contextUsage: {
+            usedTokens: 1500,
+            limitTokens: 128000,
+            remainingTokens: 126500,
+            usedPercent: 1.2,
+            messageCount: 2,
+          },
           thinking: "top-level thought",
           message: {
             id: "m2",
@@ -1598,6 +1612,26 @@ describe("mobile API client", () => {
         });
       }
 
+      if (parsedUrl.pathname === "/api/sessions/s1/agent" && method === "PUT") {
+        return Response.json({
+          success: true,
+          sessionId: "s1",
+          agentId: "agent-2",
+          agentName: "Coder",
+          provider: "openai",
+          providerId: "provider-openai",
+          providerName: "OpenAI",
+          model: "gpt-5-codex",
+          contextUsage: {
+            usedTokens: 1800,
+            limitTokens: 128000,
+            remainingTokens: 126200,
+            usedPercent: 1.4,
+            messageCount: 2,
+          },
+        });
+      }
+
       return new Response("missing", { status: 404 });
     }) as typeof fetch;
 
@@ -1606,6 +1640,7 @@ describe("mobile API client", () => {
       const sessions = await api.sessions();
       const detail = await api.session("s1");
       const sent = await api.sendChat({ sessionId: "s1", message: "continue", agentId: "agent-1" });
+      const updatedAgent = await api.updateSessionAgent("s1", "agent-2");
 
       expect(sessions[0]).toMatchObject({
         id: "s1",
@@ -1624,6 +1659,15 @@ describe("mobile API client", () => {
       });
       expect(detail.messages[0].toolCalls?.[0].name).toBe("read_file");
       expect(detail.messages[0].processActivities?.[0].text).toBe("Read DashboardScreen");
+      expect(detail.contextUsage?.usedTokens).toBe(1200);
+      expect(detail.contextUsage?.limitTokens).toBe(128000);
+      expect(sent.contextUsage?.usedTokens).toBe(1500);
+      expect(updatedAgent).toMatchObject({
+        success: true,
+        agentId: "agent-2",
+        model: "gpt-5-codex",
+      });
+      expect(updatedAgent.contextUsage?.usedTokens).toBe(1800);
       expect(sent.message.thinking).toBe("top-level thought");
       expect(sent.message.toolCalls?.[0].name).toBe("shell");
       expect(sent.message.toolCalls?.[0]).toMatchObject({
@@ -1636,12 +1680,14 @@ describe("mobile API client", () => {
         "GET /api/sessions?limit=100&includeTotal=1",
         "GET /api/sessions/s1?includeFullToolCalls=1",
         "POST /api/chat",
+        "PUT /api/sessions/s1/agent",
       ]);
       expect(calls[2].body).toMatchObject({
         sessionId: "s1",
         agentId: "agent-1",
         message: "continue",
       });
+      expect(calls[3].body).toMatchObject({ agentId: "agent-2" });
     } finally {
       globalThis.fetch = originalFetch;
     }

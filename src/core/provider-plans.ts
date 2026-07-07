@@ -1,6 +1,7 @@
 import { config } from "./config";
 import { tables, type Provider } from "./database";
-import { providers, resolveProviderType, type ProviderType } from "./providers";
+import { providerManager, providers, resolveProviderType, type ProviderType } from "./providers";
+import { fetchLiveProviderUsage, type LiveProviderUsage } from "./provider-usage-source";
 
 export type ProviderPlanStatus = "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
 export type ProviderPlanConfidence = "exact" | "estimated" | "local";
@@ -1118,6 +1119,115 @@ export function getProviderPlanStatus(): ProviderPlanStatusResponse {
       configured: configured.length,
       warnings: snapshots.filter((snapshot) => snapshot.status === "warning").length,
       exhausted: snapshots.filter((snapshot) => snapshot.status === "exhausted").length,
+    },
+  };
+}
+
+function liveUsageWindow(
+  base: ProviderPlanUsageWindow | undefined,
+  id: string,
+  title: string,
+  kind: ProviderPlanWindowKind,
+  live: { usedPercent: number; resetsAt?: string } | undefined,
+  resetDescription: string
+): ProviderPlanUsageWindow | null {
+  if (!live) return base ?? null;
+  return {
+    id,
+    title,
+    kind,
+    usedTokens: base?.usedTokens ?? 0,
+    tokenLimit: base?.tokenLimit,
+    usedSpend: base?.usedSpend ?? 0,
+    spendLimit: base?.spendLimit,
+    usedPercent: live.usedPercent,
+    remainingPercent: Math.max(0, 100 - live.usedPercent),
+    resetsAt: live.resetsAt ?? base?.resetsAt,
+    resetDescription: base?.resetDescription ?? resetDescription,
+    usageKnown: true,
+  };
+}
+
+function applyLiveUsageToSnapshot(
+  snapshot: ProviderPlanSnapshot,
+  live: LiveProviderUsage
+): ProviderPlanSnapshot {
+  const byId = new Map(snapshot.windows.map((window) => [window.id, window]));
+  const fiveHour = liveUsageWindow(
+    byId.get("5h"),
+    "5h",
+    "5h window",
+    "rolling_5h",
+    live.fiveHour,
+    "Rolling 5h"
+  );
+  const weekly = liveUsageWindow(
+    byId.get("weekly"),
+    "weekly",
+    "Weekly window",
+    "rolling_week",
+    live.weekly,
+    "Rolling 7d"
+  );
+  const others = snapshot.windows.filter((window) => window.id !== "5h" && window.id !== "weekly");
+  const windows = [fiveHour, weekly, ...others].filter(
+    (window): window is ProviderPlanUsageWindow => Boolean(window)
+  );
+  const worst = windows.reduce((max, window) => Math.max(max, window.usedPercent ?? 0), 0);
+  const warning = snapshot.warningThresholdPct;
+  const hardStop = snapshot.hardStopPct;
+  const status: ProviderPlanStatus =
+    worst >= hardStop ? "exhausted" : worst >= warning ? "warning" : "ok";
+  return {
+    ...snapshot,
+    windows,
+    planName: snapshot.planName || live.planLabel,
+    status,
+    reason:
+      status === "ok"
+        ? `Live usage ${Math.round(worst)}%`
+        : `Live usage reached ${Math.round(worst)}%`,
+    source: "provider_oauth_api",
+    sourceMode: live.source,
+    sourceLabel: "Live provider usage",
+    dataConfidence: "exact",
+    monitored: true,
+    updatedAt: new Date(live.fetchedAt).toISOString(),
+  };
+}
+
+/**
+ * Enrich a plan-status response with live usage windows fetched from each
+ * provider's own usage API (Codex / Anthropic OAuth). Providers with live data
+ * get real 5h/weekly percentages and reset times without any manual limit
+ * configuration; the rest are returned unchanged. Best-effort and cached.
+ */
+export async function enrichProviderPlanStatusWithLiveUsage(
+  status: ProviderPlanStatusResponse
+): Promise<ProviderPlanStatusResponse> {
+  const rows = tables.providers.all() as Provider[];
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const enriched = await Promise.all(
+    status.providers.map(async (snapshot) => {
+      const row = byId.get(snapshot.configuredProviderId ?? snapshot.providerId);
+      if (!row) return snapshot;
+      // Raw DB rows store the token encrypted; getWithCredentials decrypts it.
+      const withCreds = providerManager.getWithCredentials(row.id);
+      const live = await fetchLiveProviderUsage({
+        id: row.id,
+        providerType: providerTypeOf(row),
+        accessToken: withCreds?.access_token,
+      });
+      return live ? applyLiveUsageToSnapshot(snapshot, live) : snapshot;
+    })
+  );
+  return {
+    ...status,
+    providers: enriched,
+    summary: {
+      ...status.summary,
+      warnings: enriched.filter((snapshot) => snapshot.status === "warning").length,
+      exhausted: enriched.filter((snapshot) => snapshot.status === "exhausted").length,
     },
   };
 }

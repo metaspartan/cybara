@@ -940,7 +940,8 @@ export function normalizeJourney(value: unknown): JourneyResponse {
     };
   });
   const countsRecord = asRecord(record?.counts);
-  const skills = readNumber(countsRecord, ["skills"]) ?? events.filter((e) => e.kind === "skill").length;
+  const skills =
+    readNumber(countsRecord, ["skills"]) ?? events.filter((e) => e.kind === "skill").length;
   const memories = readNumber(countsRecord, ["memories"]) ?? events.length - skills;
   return {
     events,

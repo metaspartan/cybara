@@ -881,7 +881,10 @@ export async function setPersistedSessionTitle(
   return normalizedTitle;
 }
 
-export async function setPersistedSessionAgent(sessionId: string, agentId: string): Promise<boolean> {
+export async function setPersistedSessionAgent(
+  sessionId: string,
+  agentId: string
+): Promise<boolean> {
   const normalizedAgentId = nonEmptyString(agentId);
   if (!normalizedAgentId) return false;
   const result = db

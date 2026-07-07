@@ -281,8 +281,11 @@ struct ChatScreen: View {
     @State private var renameTarget: GatewaySession?
     @State private var renameDraft = ""
     @State private var deleteTarget: GatewaySession?
+    @State private var pendingAgentID = ""
     @State private var pendingWorkspaceDir = ""
     @State private var workspaceSaving = false
+    @State private var agentSaving = false
+    @State private var showContextPopover = false
     @State private var liveStatus = "idle"
     @State private var revertCandidate: GatewaySessionMessage?
     @State private var showRevertConfirm = false
@@ -660,6 +663,34 @@ struct ChatScreen: View {
         gatewayWorkspaceLabel(activeWorkspaceDir, maxLength: 42)
     }
 
+    private var selectedChatAgentID: String {
+        firstNonEmptyGatewayString(activeSession?.agent_id, pendingAgentID) ?? ""
+    }
+
+    private var selectedChatAgent: GatewayAgent? {
+        agents.first { $0.id == selectedChatAgentID }
+    }
+
+    private var agentSelectionBinding: Binding<String> {
+        Binding(
+            get: { selectedChatAgentID },
+            set: { nextValue in
+                Task { await changeChatAgent(nextValue) }
+            }
+        )
+    }
+
+    private var activeContextUsage: GatewaySessionContextUsage? {
+        activeSession?.contextUsage
+    }
+
+    private var contextUsageText: String {
+        guard let usage = activeContextUsage else {
+            return "Context usage is available after the session loads."
+        }
+        return "\(formatNativeTokenCount(usage.usedTokens)) of \(formatNativeTokenCount(usage.limitTokens)) tokens used (\(formatNativePercent(usage.usedPercent))). \(formatNativeTokenCount(usage.remainingTokens)) tokens remaining."
+    }
+
     private var workspaceHelpText: String {
         if let activeWorkspaceDir {
             return "Switch workspace: \(activeWorkspaceDir)"
@@ -848,6 +879,20 @@ struct ChatScreen: View {
         return "\(mode) - \(relative.localizedString(for: date, relativeTo: Date()))"
     }
 
+    private func formatNativeTokenCount(_ value: Int) -> String {
+        if abs(value) >= 1_000_000 {
+            return String(format: "%.1fM", Double(value) / 1_000_000)
+        }
+        if abs(value) >= 1_000 {
+            return "\(Int((Double(value) / 1_000).rounded()))k"
+        }
+        return "\(max(0, value))"
+    }
+
+    private func formatNativePercent(_ value: Double) -> String {
+        String(format: value.rounded() == value ? "%.0f%%" : "%.1f%%", value)
+    }
+
     private func steerPending(_ message: GatewayPendingChatMessage) async {
         guard let selectedSessionID else { return }
         steeringPendingID = message.id
@@ -971,6 +1016,7 @@ struct ChatScreen: View {
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            composerControls
             HStack(alignment: .bottom, spacing: 10) {
                 TextField("Message Cybara…", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
@@ -997,6 +1043,60 @@ struct ChatScreen: View {
         .cybaraGlass(cornerRadius: 0)
     }
 
+    private var composerControls: some View {
+        HStack(spacing: 8) {
+            Button {
+                showContextPopover.toggle()
+            } label: {
+                ZStack {
+                    Circle()
+                        .stroke(contextColor.opacity(0.85), lineWidth: 2)
+                        .background(Circle().fill(contextColor.opacity(0.12)))
+                    Text(activeContextUsage.map { "\(Int($0.usedPercent.rounded()))%" } ?? "?")
+                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                        .foregroundStyle(contextColor)
+                }
+                .frame(width: 24, height: 24)
+            }
+            .buttonStyle(.plain)
+            .help(contextUsageText)
+            .popover(isPresented: $showContextPopover) {
+                Text(contextUsageText)
+                    .font(.system(size: 12, design: .rounded))
+                    .padding(14)
+                    .frame(width: 260, alignment: .leading)
+            }
+
+            Picker("Agent", selection: agentSelectionBinding) {
+                Text("Gateway default").tag("")
+                ForEach(agents) { agent in
+                    Text(agent.model.map { "\(agent.name) - \($0)" } ?? agent.name).tag(agent.id)
+                }
+            }
+            .labelsHidden()
+            .frame(maxWidth: 240)
+            .disabled(agentSaving || agents.isEmpty)
+
+            if agentSaving {
+                ProgressView().controlSize(.small)
+            }
+
+            Text(selectedChatAgent?.model ?? activeSession?.model ?? "Gateway routing")
+                .font(.system(size: 11, weight: .medium, design: .rounded))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var contextColor: Color {
+        let percent = activeContextUsage?.usedPercent ?? 0
+        if percent >= 90 { return .red }
+        if percent >= 70 { return .orange }
+        return .green
+    }
+
     private func loadSessions() async {
         do {
             async let loadedSessions = client.sessions(limit: 150)
@@ -1008,6 +1108,14 @@ struct ChatScreen: View {
             error = nil
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    private func updateSessionList(with session: GatewaySession) {
+        if let index = sessions.firstIndex(where: { $0.id == session.id }) {
+            sessions[index] = session
+        } else {
+            sessions.insert(session, at: 0)
         }
     }
 
@@ -1050,6 +1158,7 @@ struct ChatScreen: View {
         selectedSessionID = nil
         messages = []
         pendingMessages = []
+        pendingAgentID = ""
         pendingWorkspaceDir = ""
         error = nil
     }
@@ -1098,6 +1207,32 @@ struct ChatScreen: View {
         workspaceSaving = false
     }
 
+    private func changeChatAgent(_ agentID: String) async {
+        guard !agentSaving else { return }
+        guard !agentID.isEmpty else {
+            if selectedSessionID == nil { pendingAgentID = "" }
+            return
+        }
+        if selectedSessionID == nil {
+            pendingAgentID = agentID
+            return
+        }
+        guard let selectedSessionID else { return }
+        agentSaving = true
+        do {
+            let response = try await client.updateSessionAgent(selectedSessionID, agentId: agentID)
+            if response.success == false {
+                throw GatewayClientError.badStatus(200, response.error ?? "Failed to update session agent")
+            }
+            await loadSessions()
+            await loadMessages(selectedSessionID)
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+        agentSaving = false
+    }
+
     @MainActor
     private func presentWorkspacePanel(defaultPath: String?) -> String? {
         let panel = NSOpenPanel()
@@ -1116,11 +1251,12 @@ struct ChatScreen: View {
 
     private func loadMessages(_ id: String) async {
         do {
-            let loadedMessages = try await client.sessionMessages(id)
-            messages = loadedMessages
+            let detail = try await client.sessionDetail(id)
+            updateSessionList(with: detail)
+            messages = detail.messagesList ?? []
             liveActivities = nativePrunePersistedLiveActivities(
                 liveActivities,
-                persistedMessages: loadedMessages
+                persistedMessages: messages
             )
             error = nil
         } catch {
@@ -1164,7 +1300,7 @@ struct ChatScreen: View {
             let result = try await client.sendChat(
                 message: text,
                 sessionId: selectedSessionID,
-                agentId: nil,
+                agentId: selectedChatAgentID.isEmpty ? nil : selectedChatAgentID,
                 workspaceDir: activeWorkspaceDir,
                 queueMode: queuedSend ? "queue" : nil
             )
@@ -1185,6 +1321,7 @@ struct ChatScreen: View {
             if selectedSessionID == nil, let newId = result.sessionId {
                 selectedSessionID = newId
             }
+            await loadSessions()
             if let resolvedSessionID {
                 await loadMessages(resolvedSessionID)
             } else if let reply = result.message {
@@ -1192,7 +1329,6 @@ struct ChatScreen: View {
             } else if let reply = result.response, !reply.isEmpty {
                 messages.append(GatewaySessionMessage(role: "assistant", content: reply, timestamp: gatewayTimestampNow()))
             }
-            await loadSessions()
             resetLiveTimeline(clearStartedAt: true)
         } catch {
             self.error = error.localizedDescription

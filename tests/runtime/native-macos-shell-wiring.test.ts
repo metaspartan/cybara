@@ -198,10 +198,30 @@ describe("native macOS shell wiring", () => {
 
     expect(toolTimeline).toContain("func nativePrunePersistedLiveActivities(");
     expect(toolTimeline).toContain("nativeActivityDedupeKey(");
-    expect(nativeScreens).toContain("let loadedMessages = try await client.sessionMessages(id)");
+    expect(nativeScreens).toContain("let detail = try await client.sessionDetail(id)");
     expect(nativeScreens).toContain("liveActivities = nativePrunePersistedLiveActivities(");
     expect(nativeScreens).toContain("await loadMessages(selectedSessionID)");
     expect(nativeScreens).not.toContain("messages.append(response.message");
+  });
+
+  test("native chat composer exposes agent switching and context usage", () => {
+    const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+
+    expect(gatewayModels).toContain("struct GatewaySessionContextUsage");
+    expect(gatewayModels).toContain("let contextUsage: GatewaySessionContextUsage?");
+    expect(gatewayModels).toContain("let messagesList: [GatewaySessionMessage]?");
+    expect(gatewayClient).toContain("func sessionDetail(_ id: String)");
+    expect(gatewayClient).toContain("func updateSessionAgent(");
+    expect(gatewayClient).toContain('request("api/sessions/\\(id)/agent", method: "PUT"');
+    expect(nativeScreens).toContain("private var composerControls: some View");
+    expect(nativeScreens).toContain('Picker("Agent", selection: agentSelectionBinding)');
+    expect(nativeScreens).toContain("private var contextUsageText: String");
+    expect(nativeScreens).toContain("private func changeChatAgent(_ agentID: String) async");
+    expect(nativeScreens).toContain(
+      "agentId: selectedChatAgentID.isEmpty ? nil : selectedChatAgentID"
+    );
   });
 
   test("gateway model labels trim blank titles before falling back", () => {

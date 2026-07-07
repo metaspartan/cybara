@@ -2666,20 +2666,21 @@ function SessionDetailPanel({
       );
       return;
     }
-    Alert.alert(
-      "Chat agent",
-      "Choose the agent that should continue this conversation.",
-      agentOptions
-        .filter((option) => option.value)
-        .slice(0, 8)
-        .map((option) => ({
-          text: option.label,
-          onPress: () => {
-            void changeSessionAgent(option.value);
-          },
-        }))
-        .concat([{ text: "Cancel", style: "cancel" }])
-    );
+    const buttons: Array<{
+      text: string;
+      onPress?: () => void;
+      style?: "default" | "cancel" | "destructive";
+    }> = agentOptions
+      .filter((option) => option.value)
+      .slice(0, 8)
+      .map((option) => ({
+        text: option.label,
+        onPress: () => {
+          void changeSessionAgent(option.value);
+        },
+      }));
+    buttons.push({ text: "Cancel", style: "cancel" });
+    Alert.alert("Chat agent", "Choose the agent that should continue this conversation.", buttons);
   };
 
   const showChatActions = () => {

@@ -25,6 +25,11 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("chatApi.updatePendingMessage");
     expect(source).toContain("chatApi.deletePendingMessage");
     expect(source).toContain("chatApi.getPendingMessages");
+    expect(source).toContain("ChatAgentControls");
+    expect(source).toContain("useUpdateSessionAgent");
+    expect(source).toContain("contextUsageLabel");
+    expect(source).toContain('id="chat-agent-selector"');
+    expect(source).toContain("setSessionContextUsage(updated.contextUsage ?? null)");
     expect(source).toContain("clientPendingId: optimisticPendingMessageId");
     expect(source).toContain(
       "appendSessionMessages(sessionId, [preSteerMessage, steeredMessage], workspaceDir)"

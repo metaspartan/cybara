@@ -78,4 +78,23 @@ describe("mobile: chat management", () => {
     expect(optimisticUserAppend).toBeGreaterThan(0);
     expect(screen.indexOf("if (!queuedSend)", optimisticUserAppend - 700)).toBeGreaterThan(0);
   });
+
+  test("chat composer exposes agent switching and context usage", () => {
+    const api = read("lib/api.ts");
+    const styles = read("screens/dashboardStyles.ts");
+    expect(api).toContain("interface SessionContextUsage");
+    expect(api).toContain("updateSessionAgent(");
+    expect(api).toContain("/api/sessions/${encodeURIComponent(id)}/agent");
+    expect(screen).toContain("const changeSessionAgent");
+    expect(screen).toContain("const openAgentSelector");
+    expect(screen).toContain("mobileContextUsageDetail(contextUsage)");
+    expect(screen).toContain('accessibilityLabel="Change chat agent"');
+    expect(screen).toContain(
+      "accessibilityLabel={`Context usage: ${mobileContextUsageDetail(contextUsage)}`}"
+    );
+    expect(screen).toContain("contextUsage: result.contextUsage ?? current.contextUsage");
+    expect(styles).toContain("composerMetaRow:");
+    expect(styles).toContain("contextUsageCircle:");
+    expect(styles).toContain("composerAgentButton:");
+  });
 });
