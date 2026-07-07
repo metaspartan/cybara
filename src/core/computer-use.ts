@@ -20,7 +20,7 @@
  * cua-driver's identity (verified by computerUseDoctor()).
  */
 import { spawn, type ChildProcess } from "child_process";
-import { mkdirSync, existsSync, readFileSync, readdirSync, statSync } from "fs";
+import { mkdirSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { config } from "./config";
@@ -685,6 +685,38 @@ const SCREENSHOTS_DIR = join(
  * permission, or the image will be of the desktop wallpaper only — macOS will
  * prompt once on first use.
  */
+/** True when running inside WSL (process.platform is "linux" but the host is Windows). */
+function isWsl(): boolean {
+  if (process.platform !== "linux") return false;
+  if (process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP) return true;
+  try {
+    return /microsoft|wsl/i.test(readFileSync("/proc/version", "utf8"));
+  } catch {
+    return false;
+  }
+}
+
+/** First available Windows-PowerShell executable (also reachable from WSL via interop). */
+function resolvePowerShell(): string | null {
+  for (const exe of ["powershell.exe", "pwsh.exe", "powershell", "pwsh"]) {
+    if (Bun.which(exe)) return exe;
+  }
+  return null;
+}
+
+// Emits the primary/virtual screen as base64 PNG on stdout — no file path or
+// /mnt bridging, so it works identically on native Windows and inside WSL.
+const WINDOWS_CAPTURE_PS = [
+  "Add-Type -AssemblyName System.Windows.Forms,System.Drawing;",
+  "$b=[System.Windows.Forms.SystemInformation]::VirtualScreen;",
+  "$bmp=New-Object System.Drawing.Bitmap($b.Width,$b.Height);",
+  "$g=[System.Drawing.Graphics]::FromImage($bmp);",
+  "$g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size);",
+  "$ms=New-Object System.IO.MemoryStream;",
+  "$bmp.Save($ms,[System.Drawing.Imaging.ImageFormat]::Png);",
+  "[Convert]::ToBase64String($ms.ToArray())",
+].join(" ");
+
 async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
   try {
     if (!existsSync(SCREENSHOTS_DIR)) {
@@ -692,6 +724,42 @@ async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
     }
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const filePath = join(SCREENSHOTS_DIR, `screen_${stamp}.png`);
+
+    // Windows (and WSL bridging to the Windows host) capture over stdout as
+    // base64, avoiding all path-escaping / mount issues.
+    const wantsWindowsCapture = process.platform === "win32" || isWsl();
+    if (wantsWindowsCapture) {
+      const ps = resolvePowerShell();
+      if (ps) {
+        const proc = Bun.spawnSync([ps, "-NoProfile", "-NonInteractive", "-Command", WINDOWS_CAPTURE_PS], {
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        const base64 = proc.stdout?.toString().trim().replace(/\s+/g, "");
+        if (proc.success && base64 && base64.length > 32) {
+          writeFileSync(filePath, Buffer.from(base64, "base64"));
+          return {
+            action: "capture",
+            ok: true,
+            text: "Captured the screen using PowerShell (cua-driver not installed — capture only).",
+            screenshot: base64,
+            screenshotMime: "image/png",
+            filePath,
+          };
+        }
+        // On native Windows there's no other tool; on WSL fall through to any
+        // Linux capture tool (captures the WSLg Linux desktop, if present).
+        if (process.platform === "win32") {
+          console.warn(
+            `[computer_use] windows screenshot failed: ${proc.stderr?.toString().trim() || "no output"}`
+          );
+          return null;
+        }
+      } else if (process.platform === "win32") {
+        console.warn("[computer_use] no PowerShell executable found (powershell.exe / pwsh)");
+        return null;
+      }
+    }
 
     let cmd: string[] | null = null;
     if (process.platform === "darwin") {
@@ -702,16 +770,17 @@ async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
       if (Bun.which("grim")) cmd = ["grim", filePath];
       else if (Bun.which("scrot")) cmd = ["scrot", "-o", filePath];
       else if (Bun.which("import")) cmd = ["import", "-window", "root", filePath];
-    } else if (process.platform === "win32") {
-      cmd = [
-        "powershell",
-        "-NoProfile",
-        "-Command",
-        `Add-Type -AssemblyName System.Windows.Forms,System.Drawing; $b=[System.Windows.Forms.SystemInformation]::VirtualScreen; $bmp=New-Object System.Drawing.Bitmap($b.Width,$b.Height); $g=[System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen($b.Location,[System.Drawing.Point]::Empty,$b.Size); $bmp.Save('${filePath.replace(/\\/g, "\\\\")}',[System.Drawing.Imaging.ImageFormat]::Png)`,
-      ];
+      else if (Bun.which("spectacle")) cmd = ["spectacle", "-b", "-n", "-o", filePath];
     }
 
-    if (!cmd) return null;
+    if (!cmd) {
+      if (process.platform === "linux") {
+        console.warn(
+          "[computer_use] no screenshot tool found — install grim, scrot, or imagemagick (or run in WSL with PowerShell available)"
+        );
+      }
+      return null;
+    }
 
     const proc = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "pipe" });
     if (!proc.success || !existsSync(filePath) || statSync(filePath).size === 0) {
