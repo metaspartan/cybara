@@ -746,6 +746,11 @@ function persistedSessionListSql(
   sql: string;
   params: number[];
 } {
+  // The last-message subqueries resolve the target rowid FIRST (sorting only
+  // rowids), then fetch that one row's columns. Sorting rows directly pulls
+  // their payloads through the temp b-tree — with large stored messages that
+  // meant re-reading hundreds of MB per list call. Content is also substr'd to
+  // the preview budget so the list never ships whole messages.
   const sql = `
       SELECT
         cs.id,
@@ -761,28 +766,28 @@ function persistedSessionListSql(
           WHERE sm.session_id = cs.id
         ), 0), json_array_length(cs.messages), 0) as messageCount,
         COALESCE((
-          SELECT lm.role
-          FROM session_messages lm
-          WHERE lm.session_id = cs.id
-          ORDER BY lm.created_at DESC, lm.rowid DESC
-          LIMIT 1
+          SELECT lm.role FROM session_messages lm WHERE lm.rowid = (
+            SELECT lm2.rowid FROM session_messages lm2
+            WHERE lm2.session_id = cs.id
+            ORDER BY lm2.created_at DESC, lm2.rowid DESC LIMIT 1
+          )
         ), json_extract(cs.messages, '$[#-1].role')) as lastMessageRole,
         COALESCE((
-          SELECT lm.content
-          FROM session_messages lm
-          WHERE lm.session_id = cs.id
-          ORDER BY lm.created_at DESC, lm.rowid DESC
-          LIMIT 1
-        ), json_extract(cs.messages, '$[#-1].content')) as lastMessageContent,
+          SELECT substr(lm.content, 1, 501) FROM session_messages lm WHERE lm.rowid = (
+            SELECT lm2.rowid FROM session_messages lm2
+            WHERE lm2.session_id = cs.id
+            ORDER BY lm2.created_at DESC, lm2.rowid DESC LIMIT 1
+          )
+        ), substr(json_extract(cs.messages, '$[#-1].content'), 1, 501)) as lastMessageContent,
         (
-          SELECT lm.metadata
-          FROM session_messages lm
-          WHERE lm.session_id = cs.id
-            AND lm.role = 'assistant'
-            AND lm.metadata IS NOT NULL
-            AND TRIM(lm.metadata) != ''
-          ORDER BY lm.created_at DESC, lm.rowid DESC
-          LIMIT 1
+          SELECT lm.metadata FROM session_messages lm WHERE lm.rowid = (
+            SELECT lm2.rowid FROM session_messages lm2
+            WHERE lm2.session_id = cs.id
+              AND lm2.role = 'assistant'
+              AND lm2.metadata IS NOT NULL
+              AND LENGTH(lm2.metadata) > 0
+            ORDER BY lm2.created_at DESC, lm2.rowid DESC LIMIT 1
+          )
         ) as lastModelMetadata
       FROM chat_sessions cs
       ORDER BY cs.pinned DESC, cs.updated_at DESC

@@ -128,6 +128,11 @@ import {
   getProviderPlanStatus,
   setProviderPlanMonitoringConfig,
 } from "../core/provider-plans";
+import {
+  detectMigrationSources,
+  runSourceMigration,
+  type SourceMigrationRequest,
+} from "../core/source-migration";
 import { getRouterStatus, selectProvider, getAllPricing, type RouterConfig } from "../core/router";
 import { getSystemMonitorSnapshot } from "../core/system-monitor";
 import * as pwManager from "../core/browser/pw-manager";
@@ -681,6 +686,13 @@ const routes: Record<string, RouteHandler> = {
     }
     return { success: true };
   },
+  "GET /api/migrations/sources": () => ({
+    sources: detectMigrationSources(),
+  }),
+  "POST /api/migrations/preview": async (body) =>
+    runSourceMigration({ ...((body || {}) as SourceMigrationRequest), dryRun: true }),
+  "POST /api/migrations/run": async (body) =>
+    runSourceMigration({ ...((body || {}) as SourceMigrationRequest), dryRun: false }),
   "GET /api/config": () => ({
     ...redactSecretConfig(config.getAll()),
     dangerous_tool_policy: config.getDangerousToolPolicy(),

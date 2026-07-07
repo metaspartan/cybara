@@ -154,6 +154,7 @@ import {
 import { homedir } from "os";
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
 import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
+import { resolveAgentToolSelection } from "./agent-tool-selection";
 import {
   BedrockRuntimeClient,
   ConverseCommand,
@@ -163,6 +164,8 @@ import {
   type ToolUseBlock,
 } from "@aws-sdk/client-bedrock-runtime";
 import type { DocumentType as SmithyDocumentType } from "@smithy/types";
+
+export { resolveAgentToolSelection } from "./agent-tool-selection";
 
 registerCredentialsFromEnv("anthropic", "ANTHROPIC_API_KEY");
 registerCredentialsFromEnv("openai", "OPENAI_API_KEY");
@@ -185,41 +188,6 @@ export interface AgentDefinition {
   tools?: ToolDefinition[];
   memory_enabled?: boolean;
   config?: Record<string, unknown>;
-}
-
-/**
- * Decide how to interpret an agent's stored `tools` value. Pure and exported so
- * the security-sensitive "empty/corrupt restriction must not widen to ALL tools"
- * behavior is unit-testable. Returns:
- *  - `builtins`: no restriction configured → use the full builtin set.
- *  - `explicit`: an explicit list (INCLUDING an empty one) → use it verbatim.
- *  - `malformed`: a present-but-unparseable/non-array value → fail closed.
- */
-export function resolveAgentToolSelection(
-  rawTools: unknown
-):
-  | { kind: "builtins" }
-  | { kind: "explicit"; tools: unknown[] }
-  | { kind: "malformed"; reason: string } {
-  if (rawTools === undefined || rawTools === null) return { kind: "builtins" };
-  if (Array.isArray(rawTools)) return { kind: "explicit", tools: rawTools };
-  if (typeof rawTools === "string") {
-    let current: unknown = rawTools;
-    for (let depth = 0; depth < 5; depth++) {
-      if (Array.isArray(current)) return { kind: "explicit", tools: current };
-      if (typeof current !== "string") break;
-      const trimmed = current.trim();
-      if (!trimmed) return { kind: "builtins" };
-      try {
-        current = JSON.parse(trimmed);
-      } catch {
-        return { kind: "malformed", reason: "unparseable" };
-      }
-    }
-    if (Array.isArray(current)) return { kind: "explicit", tools: current };
-    return { kind: "malformed", reason: "non-array" };
-  }
-  return { kind: "malformed", reason: "non-array" };
 }
 
 function shouldPreferMaxCompletionTokens(providerConfig?: string): boolean {
@@ -803,11 +771,11 @@ class AgentManager {
       );
       // Model-aware summarizing-compaction trigger (see Hermes PR #59814).
       const compactTokens = Math.max(1024, Math.floor(contextWindowTokens));
-      const threshold = Math.floor(
-        compactTokens *
-          CONTEXT_CHARS_PER_TOKEN_ESTIMATE *
-          resolveCompactionTriggerRatio(compactTokens, Number(config.get<number>("compaction_trigger_ratio")))
+      const compactRatio = resolveCompactionTriggerRatio(
+        compactTokens,
+        Number(config.get<number>("compaction_trigger_ratio"))
       );
+      const threshold = Math.floor(compactTokens * CONTEXT_CHARS_PER_TOKEN_ESTIMATE * compactRatio);
       const convoChars = estimateConversationChars(convo);
       if (
         !conversationNeedsCompaction({

@@ -303,6 +303,76 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T |
   }
 }
 
+async function rawMigrate(args: string[]): Promise<void> {
+  const { detectMigrationSources, runSourceMigration } = await import("./core/source-migration");
+  const json = hasFlag(args, "--json");
+  const subcommand = args.find((arg) => !arg.startsWith("--"));
+  if (subcommand === "sources" || subcommand === "detect") {
+    const sources = detectMigrationSources();
+    if (json) {
+      console.log(JSON.stringify({ sources }, null, 2));
+      return;
+    }
+    console.log("Migration Sources");
+    console.log("=================");
+    for (const source of sources) {
+      const status = source.exists ? "found" : "missing";
+      console.log(`${status.padEnd(7)} ${source.kind.padEnd(8)} ${source.path}`);
+      if (source.exists) {
+        console.log(
+          `        memory=${source.detected.memoryFiles} skills=${source.detected.skillCount} config=${source.detected.configFiles}`
+        );
+      }
+    }
+    return;
+  }
+
+  const sourceKind = (getFlagValue(args, "--from") ||
+    (subcommand === "openclaw" || subcommand === "hermes" ? subcommand : undefined)) as
+    "openclaw" | "hermes" | undefined;
+  const presetFlag = getFlagValue(args, "--preset");
+  const skillConflictFlag = getFlagValue(args, "--skill-conflict");
+  const apply = hasFlag(args, "--apply") || hasFlag(args, "--execute") || hasFlag(args, "--yes");
+  const report = await runSourceMigration({
+    sourceKind,
+    sourcePath: getFlagValue(args, "--source"),
+    preset: presetFlag === "full" ? "full" : "user-data",
+    dryRun: !apply,
+    overwrite: hasFlag(args, "--overwrite"),
+    migrateSecrets: hasFlag(args, "--migrate-secrets"),
+    skillConflict:
+      skillConflictFlag === "overwrite" || skillConflictFlag === "rename"
+        ? skillConflictFlag
+        : "skip",
+    workspaceTarget: getFlagValue(args, "--workspace-target"),
+  });
+
+  if (json) {
+    console.log(JSON.stringify(report, null, 2));
+    return;
+  }
+
+  console.log(report.dryRun ? "Migration Preview" : "Migration Complete");
+  console.log("=================");
+  console.log(`source: ${report.sourceKind} ${report.sourceRoot}`);
+  console.log(`target: ${report.targetRoot}`);
+  console.log(
+    `items: ${report.summary.migrated} migrated, ${report.summary.planned} planned, ${report.summary.conflict} conflicts, ${report.summary.skipped} skipped, ${report.summary.error} errors`
+  );
+  for (const warning of report.warnings) {
+    console.log(`warning: ${warning}`);
+  }
+  for (const entry of report.items) {
+    console.log(`${entry.status.padEnd(9)} ${entry.category.padEnd(9)} ${entry.name}`);
+    if (entry.detail) console.log(`          ${entry.detail}`);
+  }
+  if (report.reportPath) console.log(`report: ${report.reportPath}`);
+  if (report.dryRun) {
+    console.log("");
+    console.log("Apply with: cybara migrate --apply");
+  }
+}
+
 async function rawStatus(): Promise<void> {
   const data = await fetchAPI<StatusResponse>("/api/health");
   if (!data) {
@@ -2321,7 +2391,9 @@ async function rawChatPendingCommand(rawArgs: string[]): Promise<boolean> {
     });
     if (!data) process.exit(1);
     console.log(data.queued ? "Queued pending message" : "Sent message");
-    printPendingMessages(data.pendingMessages || (data.pendingMessage ? [data.pendingMessage] : []));
+    printPendingMessages(
+      data.pendingMessages || (data.pendingMessage ? [data.pendingMessage] : [])
+    );
     return true;
   }
 
@@ -2359,7 +2431,9 @@ async function rawChatPendingCommand(rawArgs: string[]): Promise<boolean> {
     }
     console.log("Steered pending message");
     if (data.interruptedMessage?.process_activities?.length) {
-      console.log(`Persisted ${data.interruptedMessage.process_activities.length} pre-steer activities`);
+      console.log(
+        `Persisted ${data.interruptedMessage.process_activities.length} pre-steer activities`
+      );
     }
     printPendingMessages(data.pendingMessages || []);
     return true;
@@ -2383,7 +2457,9 @@ async function rawChatPendingCommand(rawArgs: string[]): Promise<boolean> {
     );
     if (!data) process.exit(1);
     console.log("Updated pending message");
-    printPendingMessages(data.pendingMessages || (data.pendingMessage ? [data.pendingMessage] : []));
+    printPendingMessages(
+      data.pendingMessages || (data.pendingMessage ? [data.pendingMessage] : [])
+    );
     return true;
   }
 
@@ -2549,7 +2625,14 @@ async function rawConfig(subCmd?: string, key?: string, value?: string): Promise
     const val = (data as Record<string, unknown>)[key];
     console.log(val !== undefined ? `${key} = ${JSON.stringify(val)}` : `Key '${key}' not found`);
   } else if (subCmd === "set" && key && value !== undefined) {
-    const coerced: unknown = value === "true" ? true : value === "false" ? false : /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value; // boolean/number coercion
+    const coerced: unknown =
+      value === "true"
+        ? true
+        : value === "false"
+          ? false
+          : /^-?\d+(\.\d+)?$/.test(value)
+            ? Number(value)
+            : value; // boolean/number coercion
     const resp = await fetch(`${API_BASE}/api/config`, {
       method: "PUT",
       headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
@@ -3977,6 +4060,10 @@ async function main() {
       break;
     case "config":
       await rawConfig(args[1], args[2], args[3]);
+      break;
+    case "migrate":
+    case "migration":
+      await rawMigrate(args.slice(1));
       break;
     case "router":
       await rawRouter(args.slice(1));

@@ -67,7 +67,13 @@ describe("UI page API wiring", () => {
     expect(source).toContain("settingsApi.updateConfig({");
     expect(source).toContain("computer_use: { driverCommand: trimmed }");
     expect(source).toContain("function ComputerUseSettings()");
+    expect(source).toContain("function MigrationSettingsSection()");
+    expect(source).toContain("migrationApi.sources()");
+    expect(source).toContain("migrationApi.preview(payload())");
+    expect(source).toContain("migrationApi.run(payload())");
+    expect(source).toContain('useState<MigrationSourceKind>("openclaw")');
     expect(source).toContain("openDesktopFileDialog");
+    expect(source).toContain("openDesktopDirectoryDialog");
     expect(source).toContain("Driver path override");
     expect(source).toContain("ElevenLabs");
     expect(source).toContain("gpt-4o-mini-transcribe");

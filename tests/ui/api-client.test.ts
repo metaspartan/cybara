@@ -6,6 +6,7 @@ import {
   logsApi,
   mcpApi,
   memoryApi,
+  migrationApi,
   mobileApi,
   providerPlansApi,
   providersApi,
@@ -203,6 +204,45 @@ describe("UI API client wiring", () => {
           monthly: { tokenLimit: 20_000_000, spendLimit: 20 },
         },
       },
+    });
+  });
+
+  test("migrationApi uses managed preview and run endpoints", async () => {
+    await migrationApi.sources();
+    await migrationApi.preview({
+      sourceKind: "openclaw",
+      sourcePath: "/tmp/.openclaw",
+      preset: "user-data",
+    });
+    await migrationApi.run({
+      sourceKind: "hermes",
+      sourcePath: "/tmp/.hermes",
+      preset: "full",
+      migrateSecrets: true,
+      overwrite: true,
+      skillConflict: "rename",
+    });
+
+    expect(calls).toHaveLength(3);
+    expect(calls[0].url).toBe("/api/migrations/sources");
+    expect(calls[1].url).toBe("/api/migrations/preview");
+    expect(calls[1].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[1].init?.body))).toEqual({
+      sourceKind: "openclaw",
+      sourcePath: "/tmp/.openclaw",
+      preset: "user-data",
+      dryRun: true,
+    });
+    expect(calls[2].url).toBe("/api/migrations/run");
+    expect(calls[2].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[2].init?.body))).toEqual({
+      sourceKind: "hermes",
+      sourcePath: "/tmp/.hermes",
+      preset: "full",
+      migrateSecrets: true,
+      overwrite: true,
+      skillConflict: "rename",
+      dryRun: false,
     });
   });
 

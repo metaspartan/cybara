@@ -129,6 +129,32 @@ describe("native macOS shell wiring", () => {
     expect(sidecarManager).toContain("Waiting for attached Cybara gateway to restart");
   });
 
+  test("native settings exposes OpenClaw and Hermes migration controls", () => {
+    const gatewayClient = readFileSync(
+      join(MACOS_APP_DIR, "GatewayManagementClient.swift"),
+      "utf8"
+    );
+    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+
+    expect(gatewayModels).toContain("struct GatewayMigrationSource");
+    expect(gatewayModels).toContain("struct GatewayMigrationReport");
+    expect(gatewayClient).toContain("func migrationSources() async throws");
+    expect(gatewayClient).toContain('request("api/migrations/sources"');
+    expect(gatewayClient).toContain("func previewMigration(body: Data)");
+    expect(gatewayClient).toContain('request("api/migrations/preview", method: "POST"');
+    expect(gatewayClient).toContain("func runMigration(body: Data)");
+    expect(gatewayClient).toContain('request("api/migrations/run", method: "POST"');
+    expect(settings).toContain('migrationTab.tabItem { Label("Migration"');
+    expect(settings).toContain('Text("OpenClaw").tag("openclaw")');
+    expect(settings).toContain('Text("Hermes").tag("hermes")');
+    expect(settings).toContain("migrationImportSecrets");
+    expect(settings).toContain("migrationOverwrite");
+    expect(settings).toContain("client.previewMigration(body: body)");
+    expect(settings).toContain("client.runMigration(body: body)");
+    expect(settings).toContain("NSOpenPanel()");
+  });
+
   test("native chat pending queue exposes reorder, edit, and delete controls", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
     const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");

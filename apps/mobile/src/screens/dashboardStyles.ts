@@ -1506,6 +1506,9 @@ const makeStyles = () =>
       fontSize: typography.body,
       fontWeight: "800",
     },
+    loadingSpinner: {
+      marginBottom: spacing.xs,
+    },
     emptyDetail: {
       color: colors.textMuted,
       fontSize: typography.label,

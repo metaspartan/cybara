@@ -98,6 +98,9 @@ describe("route scope requirements", () => {
   test("mutating management surfaces require the manage scope", () => {
     expect(routeRequiredScope("GET", "/api/config")).toBeNull();
     expect(routeRequiredScope("PUT", "/api/config")).toBe("manage");
+    expect(routeRequiredScope("GET", "/api/migrations/sources")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/migrations/preview")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/migrations/run")).toBe("manage");
     expect(routeRequiredScope("GET", "/api/providers")).toBeNull();
     expect(routeRequiredScope("POST", "/api/providers")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/providers/provider-1/test")).toBe("manage");

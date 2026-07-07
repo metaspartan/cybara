@@ -26,6 +26,7 @@ import {
   authApi,
   systemApi,
   logsApi,
+  migrationApi,
   type ComputerUseStatus,
   type SandboxBrowserStatus,
   type WalletAgentPolicy,
@@ -33,6 +34,12 @@ import {
   type WalletStatus,
   type GatewayAuthSettings,
   type LogPageEntry,
+  type MigrationItem,
+  type MigrationPreset,
+  type MigrationSkillConflictMode,
+  type MigrationSourceCandidate,
+  type MigrationSourceKind,
+  type SourceMigrationReport,
 } from "@/lib/api";
 import { setApiAuthToken } from "@/lib/auth";
 import { Modal } from "@/components/ui/Modal";
@@ -48,6 +55,7 @@ import {
   getDesktopHostRuntime,
   getDesktopRuntimeLabel,
   isDesktopUpdaterSupported,
+  openDesktopDirectoryDialog,
   openDesktopFileDialog,
 } from "@/lib/desktopHost";
 import { Input, Textarea, Select } from "@/components/ui/Input";
@@ -81,6 +89,7 @@ import {
   Shield,
   Download,
   ExternalLink,
+  FolderSync,
   MonitorUp,
   Mic,
   Volume2,
@@ -484,7 +493,15 @@ function DesktopUpdateSettings({
 
 type SandboxProviderOption = "auto" | "apple_sandbox" | "podman" | "docker";
 type SettingsSectionId =
-  "general" | "ai-memory" | "voice" | "wallet" | "auth" | "safety" | "desktop" | "system";
+  | "general"
+  | "ai-memory"
+  | "voice"
+  | "wallet"
+  | "auth"
+  | "migration"
+  | "safety"
+  | "desktop"
+  | "system";
 
 const settingsSections: Array<{ id: SettingsSectionId; label: string }> = [
   { id: "general", label: "General" },
@@ -492,6 +509,7 @@ const settingsSections: Array<{ id: SettingsSectionId; label: string }> = [
   { id: "voice", label: "Voice" },
   { id: "wallet", label: "Wallet" },
   { id: "auth", label: "Auth" },
+  { id: "migration", label: "Migration" },
   { id: "safety", label: "Safety" },
   { id: "desktop", label: "Desktop" },
   { id: "system", label: "System" },
@@ -3246,6 +3264,317 @@ function WalletSettings() {
   );
 }
 
+function migrationStatusClass(status: MigrationItem["status"]): string {
+  switch (status) {
+    case "migrated":
+      return "text-emerald-300";
+    case "planned":
+      return "text-blue-300";
+    case "conflict":
+    case "error":
+      return "text-red-300";
+    case "archived":
+      return "text-amber-300";
+    default:
+      return "text-gray-400";
+  }
+}
+
+function MigrationSettingsSection() {
+  const { addToast } = useUIStore();
+  const [sources, setSources] = useState<MigrationSourceCandidate[]>([]);
+  const [sourceKind, setSourceKind] = useState<MigrationSourceKind>("openclaw");
+  const [sourcePath, setSourcePath] = useState("");
+  const [preset, setPreset] = useState<MigrationPreset>("user-data");
+  const [skillConflict, setSkillConflict] = useState<MigrationSkillConflictMode>("skip");
+  const [workspaceTarget, setWorkspaceTarget] = useState("");
+  const [migrateSecrets, setMigrateSecrets] = useState(false);
+  const [overwrite, setOverwrite] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [running, setRunning] = useState(false);
+  const [report, setReport] = useState<SourceMigrationReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadSources = useCallback(async () => {
+    setLoading(true);
+    const res = await migrationApi.sources();
+    if (res.success && res.data?.sources) {
+      setSources(res.data.sources);
+      const detected = res.data.sources.find((source) => source.exists);
+      if (detected && !sourcePath) {
+        setSourceKind(detected.kind);
+        setSourcePath(detected.path);
+      }
+    } else {
+      setError(extractApiError(res, "Could not detect migration sources"));
+    }
+    setLoading(false);
+  }, [sourcePath]);
+
+  useEffect(() => {
+    void loadSources();
+  }, [loadSources]);
+
+  const payload = useCallback(
+    () => ({
+      sourceKind,
+      sourcePath: sourcePath.trim() || undefined,
+      preset,
+      migrateSecrets,
+      overwrite,
+      skillConflict,
+      workspaceTarget: workspaceTarget.trim() || undefined,
+    }),
+    [migrateSecrets, overwrite, preset, skillConflict, sourceKind, sourcePath, workspaceTarget]
+  );
+
+  const pickSource = useCallback(async () => {
+    const selected = await openDesktopDirectoryDialog({
+      defaultPath: sourcePath,
+      title: "Choose OpenClaw or Hermes directory",
+    });
+    if (selected) setSourcePath(selected);
+  }, [sourcePath]);
+
+  const pickWorkspaceTarget = useCallback(async () => {
+    const selected = await openDesktopDirectoryDialog({
+      defaultPath: workspaceTarget,
+      title: "Choose workspace for AGENTS.md import",
+    });
+    if (selected) setWorkspaceTarget(selected);
+  }, [workspaceTarget]);
+
+  const runPreview = useCallback(async () => {
+    setRunning(true);
+    setError(null);
+    const res = await migrationApi.preview(payload());
+    if (res.success && res.data) {
+      setReport(res.data);
+      addToast("success", "Migration preview ready");
+    } else {
+      setError(extractApiError(res, "Migration preview failed"));
+    }
+    setRunning(false);
+  }, [addToast, payload]);
+
+  const runMigration = useCallback(async () => {
+    setRunning(true);
+    setError(null);
+    const res = await migrationApi.run(payload());
+    if (res.success && res.data) {
+      setReport(res.data);
+      addToast("success", "Migration complete");
+    } else {
+      setError(extractApiError(res, "Migration failed"));
+    }
+    setRunning(false);
+  }, [addToast, payload]);
+
+  const detectedOptions = sources.filter((source) => source.exists);
+
+  return (
+    <div className="space-y-6">
+      <Card variant="liquid">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FolderSync className="w-5 h-5 text-indigo-300" />
+            Import from OpenClaw or Hermes
+          </CardTitle>
+          <CardDescription>
+            Preview settings, memories, skills, workspace instructions, and optional provider keys
+            before anything is written.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          {detectedOptions.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {detectedOptions.map((source) => (
+                <button
+                  key={`${source.kind}-${source.path}`}
+                  type="button"
+                  onClick={() => {
+                    setSourceKind(source.kind);
+                    setSourcePath(source.path);
+                  }}
+                  className={cn(
+                    "rounded-xl border p-4 text-left transition-colors",
+                    sourcePath === source.path
+                      ? "border-indigo-400/60 bg-indigo-500/10"
+                      : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold text-white">{source.label}</span>
+                    <Badge variant={source.exists ? "success" : "default"}>Detected</Badge>
+                  </div>
+                  <p className="mt-2 truncate font-mono text-xs text-gray-400">{source.path}</p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-gray-400">
+                    <span>{source.detected.memoryFiles} memories</span>
+                    <span>{source.detected.skillCount} skills</span>
+                    <span>{source.detected.configFiles} config files</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-[180px_1fr_auto] gap-3">
+            <Select
+              label="Source"
+              value={sourceKind}
+              options={[
+                { value: "openclaw", label: "OpenClaw" },
+                { value: "hermes", label: "Hermes" },
+              ]}
+              onChange={(value) => setSourceKind(value as MigrationSourceKind)}
+            />
+            <Input
+              label="Source directory"
+              value={sourcePath}
+              onChange={(event) => setSourcePath(event.target.value)}
+              placeholder="~/.openclaw or ~/.hermes"
+            />
+            <div className="flex items-end">
+              <Button variant="secondary" onClick={() => void pickSource()}>
+                Browse
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <Select
+              label="Preset"
+              value={preset}
+              options={[
+                { value: "user-data", label: "User data" },
+                { value: "full", label: "Full" },
+              ]}
+              helperText="Full includes provider credentials only when secret import is enabled."
+              onChange={(value) => setPreset(value as MigrationPreset)}
+            />
+            <Select
+              label="Skill conflicts"
+              value={skillConflict}
+              options={[
+                { value: "skip", label: "Skip" },
+                { value: "rename", label: "Rename" },
+                { value: "overwrite", label: "Overwrite" },
+              ]}
+              onChange={(value) => setSkillConflict(value as MigrationSkillConflictMode)}
+            />
+            <div className="space-y-2">
+              <Switch
+                checked={migrateSecrets}
+                onChange={setMigrateSecrets}
+                label="Import provider keys"
+                description="Off by default. Reports never show key values."
+              />
+              <Switch
+                checked={overwrite}
+                onChange={setOverwrite}
+                label="Allow overwrite"
+                description="Required for existing prompts, providers, or workspace files."
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-3">
+            <Input
+              label="Workspace target for AGENTS.md"
+              value={workspaceTarget}
+              onChange={(event) => setWorkspaceTarget(event.target.value)}
+              placeholder="Optional project folder"
+            />
+            <div className="flex items-end">
+              <Button variant="secondary" onClick={() => void pickWorkspaceTarget()}>
+                Browse
+              </Button>
+            </div>
+          </div>
+
+          {error && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
+              {error}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-3">
+            <Button variant="secondary" onClick={() => void loadSources()} isLoading={loading}>
+              Refresh Sources
+            </Button>
+            <Button variant="secondary" onClick={() => void runPreview()} isLoading={running}>
+              Preview
+            </Button>
+            <Button onClick={() => void runMigration()} isLoading={running}>
+              Run Migration
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {report && (
+        <Card variant="liquid">
+          <CardHeader>
+            <CardTitle>{report.dryRun ? "Preview Report" : "Migration Report"}</CardTitle>
+            <CardDescription>
+              {report.sourceKind} {"->"} {report.targetRoot}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+              {(["total", "planned", "migrated", "conflict", "skipped", "error"] as const).map(
+                (key) => (
+                  <div key={key} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                    <p className="text-xs uppercase tracking-wide text-gray-500">{key}</p>
+                    <p className="mt-1 text-xl font-semibold text-white">{report.summary[key]}</p>
+                  </div>
+                )
+              )}
+            </div>
+
+            {report.warnings.length > 0 && (
+              <div className="rounded-lg border border-amber-400/25 bg-amber-500/10 p-3 text-sm text-amber-100">
+                {report.warnings.join(" ")}
+              </div>
+            )}
+
+            <div className="rounded-lg border border-white/10 overflow-hidden">
+              <div className="grid grid-cols-[110px_120px_1fr] gap-3 bg-white/[0.04] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <span>Status</span>
+                <span>Area</span>
+                <span>Item</span>
+              </div>
+              <div className="max-h-96 overflow-y-auto divide-y divide-white/10">
+                {report.items.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="grid grid-cols-[110px_120px_1fr] gap-3 px-3 py-2 text-sm"
+                  >
+                    <span className={cn("font-medium", migrationStatusClass(entry.status))}>
+                      {entry.status}
+                    </span>
+                    <span className="text-gray-400">{entry.category}</span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-gray-200">{entry.name}</span>
+                      {entry.detail && (
+                        <span className="block truncate text-xs text-gray-500">{entry.detail}</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {report.reportPath && (
+              <p className="font-mono text-xs text-gray-500">Report saved to {report.reportPath}</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function GatewayControlSection() {
   const { addToast } = useUIStore();
   const [restarting, setRestarting] = useState(false);
@@ -3877,6 +4206,8 @@ export function Settings() {
         {activeSection === "wallet" && <WalletSettings />}
 
         {activeSection === "auth" && <GatewayAuthSettingsSection />}
+
+        {activeSection === "migration" && <MigrationSettingsSection />}
 
         {activeSection === "safety" && (
           <>

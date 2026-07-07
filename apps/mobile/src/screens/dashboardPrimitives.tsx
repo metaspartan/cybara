@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 import { colors } from "../theme/liquidGlass";
 import { styles } from "./dashboardStyles";
 
@@ -72,6 +72,22 @@ export function SettingsRow({
 export function EmptyState({ label, detail }: { label: string; detail: string }) {
   return (
     <View style={styles.emptyState}>
+      <Text style={styles.emptyTitle}>{label}</Text>
+      <Text style={styles.emptyDetail}>{detail}</Text>
+    </View>
+  );
+}
+
+export function LoadingState({
+  label = "Loading",
+  detail = "Fetching the latest data from the gateway.",
+}: {
+  label?: string;
+  detail?: string;
+}) {
+  return (
+    <View style={styles.emptyState}>
+      <ActivityIndicator color={colors.textMuted} size="small" style={styles.loadingSpinner} />
       <Text style={styles.emptyTitle}>{label}</Text>
       <Text style={styles.emptyDetail}>{detail}</Text>
     </View>

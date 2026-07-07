@@ -1,0 +1,24 @@
+import { describe, expect, test } from "bun:test";
+import { readFileSync } from "fs";
+import { join } from "path";
+
+const ROOT_DIR = join(import.meta.dir, "..", "..");
+
+describe("CLI migration wiring", () => {
+  test("cybara migrate previews and applies through the core migration engine", () => {
+    const cli = readFileSync(join(ROOT_DIR, "src", "cli.tsx"), "utf8");
+    const help = readFileSync(join(ROOT_DIR, "src", "cli-help.ts"), "utf8");
+
+    expect(cli).toContain("async function rawMigrate");
+    expect(cli).toContain("./core/source-migration");
+    expect(cli).toContain("runSourceMigration");
+    expect(cli).toContain("detectMigrationSources");
+    expect(cli).toContain('case "migrate":');
+    expect(cli).toContain('case "migration":');
+    expect(cli).toContain('hasFlag(args, "--apply")');
+    expect(cli).toContain('hasFlag(args, "--migrate-secrets")');
+    expect(help).toContain("migrate     Import OpenClaw or Hermes user data");
+    expect(help).toContain("migrate sources");
+    expect(help).toContain("migrate --migrate-secrets --overwrite");
+  });
+});

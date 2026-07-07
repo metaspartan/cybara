@@ -1319,6 +1319,80 @@ export interface LogPageEntry {
   created_at: string;
 }
 
+export type MigrationSourceKind = "openclaw" | "hermes";
+export type MigrationPreset = "user-data" | "full";
+export type MigrationSkillConflictMode = "skip" | "overwrite" | "rename";
+export type MigrationItemStatus =
+  "planned" | "migrated" | "archived" | "skipped" | "conflict" | "error";
+
+export interface MigrationSourceCandidate {
+  kind: MigrationSourceKind;
+  path: string;
+  exists: boolean;
+  label: string;
+  confidence: "high" | "medium" | "manual";
+  detected: {
+    persona: boolean;
+    memoryFiles: number;
+    skillCount: number;
+    configFiles: number;
+    envFiles: number;
+  };
+}
+
+export interface SourceMigrationRequest {
+  sourceKind?: MigrationSourceKind;
+  sourcePath?: string;
+  preset?: MigrationPreset;
+  dryRun?: boolean;
+  overwrite?: boolean;
+  migrateSecrets?: boolean;
+  skillConflict?: MigrationSkillConflictMode;
+  workspaceTarget?: string;
+}
+
+export interface MigrationItem {
+  id: string;
+  category: string;
+  name: string;
+  source?: string;
+  target?: string;
+  status: MigrationItemStatus;
+  detail?: string;
+}
+
+export interface SourceMigrationReport {
+  success: boolean;
+  dryRun: boolean;
+  sourceKind: MigrationSourceKind;
+  sourceRoot: string;
+  targetRoot: string;
+  preset: MigrationPreset;
+  migrateSecrets: boolean;
+  overwrite: boolean;
+  skillConflict: MigrationSkillConflictMode;
+  reportPath?: string;
+  createdAt: string;
+  summary: Record<MigrationItemStatus | "total", number>;
+  warnings: string[];
+  items: MigrationItem[];
+  nextSteps: string[];
+}
+
+export const migrationApi = {
+  sources: () => fetchApi<{ sources: MigrationSourceCandidate[] }>("/migrations/sources"),
+  preview: (payload: SourceMigrationRequest) =>
+    fetchApi<SourceMigrationReport>("/migrations/preview", {
+      method: "POST",
+      body: JSON.stringify({ ...payload, dryRun: true }),
+    }),
+  run: (payload: SourceMigrationRequest) =>
+    fetchApi<SourceMigrationReport>("/migrations/run", {
+      method: "POST",
+      body: JSON.stringify({ ...payload, dryRun: false }),
+    }),
+};
+
 export const logsApi = {
   getSystem: () =>
     fetchApi<{ id: string; level: string; source: string; message: string; created_at: string }[]>(

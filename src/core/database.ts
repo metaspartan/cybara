@@ -232,6 +232,20 @@ try {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+  -- Lifetime rollup per (type, key), maintained on every metric insert so
+  -- dashboard aggregates read ~10K rollup rows instead of scanning millions of
+  -- raw rows. Raw-row retention pruning intentionally does NOT reduce these:
+  -- they are all-time counters. metadata holds the most recent row's metadata.
+  CREATE TABLE IF NOT EXISTS metrics_totals (
+    type TEXT NOT NULL,
+    key TEXT NOT NULL,
+    total REAL NOT NULL DEFAULT 0,
+    count INTEGER NOT NULL DEFAULT 0,
+    metadata TEXT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (type, key)
+  );
+
   -- Daily aggregates for fast querying
   CREATE TABLE IF NOT EXISTS metrics_daily (
     id TEXT PRIMARY KEY,
@@ -288,6 +302,56 @@ try {
   CREATE INDEX IF NOT EXISTS idx_metrics_daily_date ON metrics_daily(date);
 `);
   console.log("[Database] Schema created successfully");
+
+  try {
+    const totalsEmpty =
+      (db.query("SELECT COUNT(*) as c FROM metrics_totals").get() as { c: number }).c === 0;
+    if (totalsEmpty) {
+      const started = Date.now();
+      // Bare `metadata` alongside MAX(created_at) selects it from the newest
+      // row of each group (documented SQLite behavior for min/max queries).
+      db.exec(
+        `INSERT INTO metrics_totals (type, key, total, count, metadata, updated_at)
+         SELECT type, key, SUM(value), COUNT(*), metadata, MAX(created_at)
+         FROM metrics GROUP BY type, key`
+      );
+      const rows = (db.query("SELECT COUNT(*) as c FROM metrics_totals").get() as { c: number }).c;
+      if (rows > 0) {
+        console.log(
+          `[Database] Migration: backfilled metrics_totals (${rows} rollup rows in ${Date.now() - started}ms)`
+        );
+      }
+    }
+  } catch (error) {
+    console.warn("[Database] metrics_totals backfill failed:", error);
+  }
+
+  try {
+    // Repair pathological session_messages rows written before storage caps
+    // existed (single rows near 200MB made session-list queries re-read
+    // hundreds of MB). Idempotent: repaired rows no longer match the WHERE.
+    const repaired = db
+      .prepare(
+        `UPDATE session_messages SET
+           content = CASE
+             WHEN LENGTH(content) > 2097152
+             THEN substr(content, 1, 2000000) || char(10) || '[...elided: oversized message truncated for storage...]'
+             ELSE content END,
+           metadata = CASE
+             WHEN LENGTH(COALESCE(metadata, '')) > 262144
+             THEN json_object('elided', 1, 'originalChars', LENGTH(metadata))
+             ELSE metadata END
+         WHERE LENGTH(content) > 2097152 OR LENGTH(COALESCE(metadata, '')) > 262144`
+      )
+      .run();
+    if (repaired.changes > 0) {
+      console.log(
+        `[Database] Migration: truncated ${repaired.changes} oversized session message(s)`
+      );
+    }
+  } catch (error) {
+    console.warn("[Database] session_messages size repair failed:", error);
+  }
 
   try {
     db.exec("ALTER TABLE agents ADD COLUMN fallback_provider_id TEXT");
@@ -664,6 +728,14 @@ const stmts = {
   },
   metrics: {
     add: prepare("INSERT INTO metrics (id, type, key, value, metadata) VALUES (?, ?, ?, ?, ?)"),
+    addTotal: prepare(
+      `INSERT INTO metrics_totals (type, key, total, count, metadata) VALUES (?, ?, ?, 1, ?)
+       ON CONFLICT(type, key) DO UPDATE SET
+         total = total + excluded.total,
+         count = count + 1,
+         metadata = COALESCE(excluded.metadata, metadata),
+         updated_at = CURRENT_TIMESTAMP`
+    ),
     getByType: prepare("SELECT * FROM metrics WHERE type = ? ORDER BY created_at DESC"),
     getByTypeSince: prepare(
       "SELECT * FROM metrics WHERE type = ? AND created_at >= ? ORDER BY created_at DESC"
@@ -671,9 +743,10 @@ const stmts = {
     getByTypeRecent: prepare(
       "SELECT * FROM metrics WHERE type = ? ORDER BY created_at DESC LIMIT ?"
     ),
-    getTotal: prepare("SELECT SUM(value) as total FROM metrics WHERE type = ? AND key = ?"),
-    getTotalByType: prepare("SELECT SUM(value) as total FROM metrics WHERE type = ?"),
-    countByType: prepare("SELECT COUNT(*) as count FROM metrics WHERE type = ?"),
+    // lifetime aggregates read the rollup (~10K rows), never the raw table
+    getTotal: prepare("SELECT total FROM metrics_totals WHERE type = ? AND key = ?"),
+    getTotalByType: prepare("SELECT SUM(total) as total FROM metrics_totals WHERE type = ?"),
+    countByType: prepare("SELECT SUM(count) as count FROM metrics_totals WHERE type = ?"),
     countByTypeMetadataLike: prepare(
       "SELECT COUNT(*) as count FROM metrics WHERE type = ? AND metadata LIKE ?"
     ),
@@ -684,10 +757,10 @@ const stmts = {
       "SELECT COUNT(*) as count FROM metrics WHERE type = ? AND metadata LIKE ? AND created_at >= ?"
     ),
     getKeyTotalsWithLatestMetadata: prepare(
-      "SELECT key, SUM(value) as total, metadata, MAX(created_at) as created_at FROM metrics WHERE type = ? GROUP BY key"
+      "SELECT key, total, metadata, updated_at as created_at FROM metrics_totals WHERE type = ?"
     ),
     getKeyAggregates: prepare(
-      "SELECT key, SUM(value) as total, COUNT(*) as count FROM metrics WHERE type = ? GROUP BY key"
+      "SELECT key, total, count FROM metrics_totals WHERE type = ?"
     ),
     getKeyTotalsSince: prepare(
       "SELECT key, SUM(value) as total FROM metrics WHERE type = ? AND created_at >= ? GROUP BY key"
@@ -699,7 +772,7 @@ const stmts = {
       "SELECT value FROM metrics WHERE type = ? AND key = ? ORDER BY created_at DESC LIMIT 1"
     ),
     getTopKeys: prepare(
-      "SELECT key, SUM(value) as total FROM metrics WHERE type = ? GROUP BY key ORDER BY total DESC LIMIT 20"
+      "SELECT key, total FROM metrics_totals WHERE type = ? ORDER BY total DESC LIMIT 20"
     ),
     getByDate: prepare(
       "SELECT * FROM metrics WHERE type = ? AND date(created_at) = ? ORDER BY created_at DESC"
@@ -1057,8 +1130,10 @@ export const tables = {
     list: () => stmts.channelLogs?.list.all() || [],
   },
   metrics: {
-    add: (m: { id: string; type: string; key: string; value: number; metadata?: string }) =>
-      stmts.metrics?.add.run(m.id, m.type, m.key, m.value, m.metadata || null),
+    add: (m: { id: string; type: string; key: string; value: number; metadata?: string }) => {
+      stmts.metrics?.add.run(m.id, m.type, m.key, m.value, m.metadata || null);
+      stmts.metrics?.addTotal.run(m.type, m.key, m.value, m.metadata || null);
+    },
     getByType: (type: string) => stmts.metrics?.getByType.all(type) || [],
     getByTypeSince: (type: string, sinceSql: string) =>
       stmts.metrics?.getByTypeSince.all(type, sinceSql) || [],

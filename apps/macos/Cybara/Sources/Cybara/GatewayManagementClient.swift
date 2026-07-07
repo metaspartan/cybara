@@ -187,6 +187,21 @@ extension GatewayClient {
         return object["apiKey"] as? String
     }
 
+    func migrationSources() async throws -> [GatewayMigrationSource] {
+        let data = try await request("api/migrations/sources")
+        return try JSONDecoder().decode(GatewayMigrationSourcesResponse.self, from: data).sources
+    }
+
+    func previewMigration(body: Data) async throws -> GatewayMigrationReport {
+        let data = try await request("api/migrations/preview", method: "POST", body: body)
+        return try JSONDecoder().decode(GatewayMigrationReport.self, from: data)
+    }
+
+    func runMigration(body: Data) async throws -> GatewayMigrationReport {
+        let data = try await request("api/migrations/run", method: "POST", body: body)
+        return try JSONDecoder().decode(GatewayMigrationReport.self, from: data)
+    }
+
     private func agentPayload(
         name: String,
         type: String,

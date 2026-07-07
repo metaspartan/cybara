@@ -247,6 +247,7 @@ import {
 import {
   EmptyState,
   GatewayDetailPill,
+  LoadingState,
   SettingsRow,
   SummaryTile,
   type IconGlyph,
@@ -1429,7 +1430,9 @@ function SessionsPanel({
         </Pressable>
       ))}
       {sessions.length === 0 ? (
-        endpoint?.ok === false ? (
+        !summary ? (
+          <LoadingState label="Loading chats" detail="Fetching sessions from the gateway." />
+        ) : endpoint?.ok === false ? (
           <EmptyState
             label="Chats unavailable"
             detail={endpointErrorDetail(endpoint, "The gateway did not return chats.")}
@@ -1742,7 +1745,7 @@ function MetricsPanel({
           );
         })
       ) : (
-        <EmptyState label="Metrics loading" detail="Waiting for gateway health checks." />
+        <LoadingState label="Loading metrics" detail="Waiting for gateway health checks." />
       )}
 
       <View style={styles.subsectionHeader}>
@@ -2983,7 +2986,7 @@ function TasksPanel({
 
       <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
         {!summary ? (
-          <EmptyState label="Tasks loading" detail="Refreshing from the gateway." />
+          <LoadingState label="Loading tasks" detail="Refreshing from the gateway." />
         ) : unavailable ? (
           <EmptyState
             label="Tasks unavailable"
@@ -3100,6 +3103,8 @@ function MemoryRecallCard({
           tone={accentColor}
           variant="menu"
         />
+      ) : !summary ? (
+        <LoadingState label="Loading memory settings" detail="Fetching config from the gateway." />
       ) : (
         <EmptyState
           label="Memory settings unavailable"
@@ -3170,7 +3175,7 @@ function SurfaceDetailPanel({
           </Text>
         ) : null}
         {!summary ? (
-          <EmptyState label={`${meta.title} loading`} detail="Refreshing from the gateway." />
+          <LoadingState label={`Loading ${meta.title.toLowerCase()}`} detail="Refreshing from the gateway." />
         ) : endpoint?.ok === false ? (
           <EmptyState
             label={`${meta.title} unavailable`}
@@ -3801,6 +3806,8 @@ function SettingsPanel({
                 />
               ) : null}
             </>
+          ) : !summary ? (
+            <LoadingState label="Loading settings" detail="Fetching config from the gateway." />
           ) : (
             <EmptyState
               label="Config unavailable"

@@ -27,7 +27,7 @@ import { haptics } from "../lib/haptics";
 import { colors } from "../theme/liquidGlass";
 import { GlassPanel } from "../components/Glass";
 import { styles } from "./dashboardStyles";
-import { EmptyState } from "./dashboardPrimitives";
+import { EmptyState, LoadingState } from "./dashboardPrimitives";
 import {
   DetailActionButton,
   DetailInfoSection,
@@ -1481,6 +1481,8 @@ export function WalletPolicyPanel({
               detail="Unlock the wallet from the desktop or web wallet screen before sending."
             />
           )
+        ) : !summary ? (
+          <LoadingState label="Loading wallet" detail="Fetching wallet status from the gateway." />
         ) : (
           <EmptyState
             label="Wallet status unavailable"
@@ -1506,6 +1508,8 @@ export function WalletPolicyPanel({
             </View>
           ))}
         </View>
+      ) : !summary ? (
+        <LoadingState label="Loading policy" detail="Fetching wallet policy from the gateway." />
       ) : (
         <EmptyState
           label="Wallet policy unavailable"
@@ -1709,6 +1713,8 @@ export function SystemMonitorDetailPanel({
             />
           ) : null}
         </View>
+      ) : !summary ? (
+        <LoadingState label="Loading telemetry" detail="Fetching host telemetry from the gateway." />
       ) : (
         <EmptyState
           label="System telemetry unavailable"
@@ -2286,11 +2292,10 @@ export function ModelRouterPanel({
           </SettingsSection>
           {routerError ? <Text style={styles.errorText}>{routerError}</Text> : null}
         </>
+      ) : !routerError ? (
+        <LoadingState label="Loading router" detail="Fetching model router settings." />
       ) : (
-        <EmptyState
-          label="Router unavailable"
-          detail={routerError || "The gateway did not return model router settings."}
-        />
+        <EmptyState label="Router unavailable" detail={routerError} />
       )}
     </GlassPanel>
   );
@@ -2697,13 +2702,20 @@ export function MemorySettingsPanel({
   if (!configAvailable) {
     return (
       <SettingsSection title="Memory">
-        <EmptyState
-          label="Memory settings unavailable"
-          detail={endpointErrorDetail(
-            summary?.availability.config,
-            "The gateway did not return editable memory settings."
-          )}
-        />
+        {!summary ? (
+          <LoadingState
+            label="Loading memory settings"
+            detail="Fetching config from the gateway."
+          />
+        ) : (
+          <EmptyState
+            label="Memory settings unavailable"
+            detail={endpointErrorDetail(
+              summary?.availability.config,
+              "The gateway did not return editable memory settings."
+            )}
+          />
+        )}
       </SettingsSection>
     );
   }
@@ -3021,13 +3033,20 @@ export function SpeechSettingsPanel({
   if (!configAvailable) {
     return (
       <SettingsSection title="Speech">
-        <EmptyState
-          label="Speech settings unavailable"
-          detail={endpointErrorDetail(
-            summary?.availability.config,
-            "The gateway did not return editable speech settings."
-          )}
-        />
+        {!summary ? (
+          <LoadingState
+            label="Loading speech settings"
+            detail="Fetching config from the gateway."
+          />
+        ) : (
+          <EmptyState
+            label="Speech settings unavailable"
+            detail={endpointErrorDetail(
+              summary?.availability.config,
+              "The gateway did not return editable speech settings."
+            )}
+          />
+        )}
       </SettingsSection>
     );
   }
@@ -3334,6 +3353,8 @@ export function SystemPromptPanel({
             ))}
           </View>
         </>
+      ) : !summary ? (
+        <LoadingState label="Loading prompt settings" detail="Fetching system prompt settings." />
       ) : (
         <EmptyState
           label="Prompt settings unavailable"

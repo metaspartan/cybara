@@ -83,6 +83,17 @@ struct NativeSettingsScreen: View {
     @State private var authCopied = false
     @State private var authBusy = false
     @State private var showRotateConfirm = false
+    @State private var migrationSources: [GatewayMigrationSource] = []
+    @State private var migrationSourceKind = "openclaw"
+    @State private var migrationSourcePath = ""
+    @State private var migrationPreset = "user-data"
+    @State private var migrationSkillConflict = "skip"
+    @State private var migrationWorkspaceTarget = ""
+    @State private var migrationImportSecrets = false
+    @State private var migrationOverwrite = false
+    @State private var migrationBusy = false
+    @State private var migrationReport: GatewayMigrationReport?
+    @State private var migrationMessage: String?
 
     private var availableModels: [String] {
         Array(Set(providers.flatMap { $0.models ?? [] })).sorted()
@@ -111,6 +122,7 @@ struct NativeSettingsScreen: View {
                 modelTab.tabItem { Label("Model", systemImage: "brain") }.tag(SettingsTab.model)
                 speechTab.tabItem { Label("Speech", systemImage: "waveform") }.tag(SettingsTab.speech)
                 memoryTab.tabItem { Label("Memory", systemImage: "memorychip") }.tag(SettingsTab.memory)
+                migrationTab.tabItem { Label("Migration", systemImage: "folder.badge.gearshape") }.tag(SettingsTab.migration)
                 featuresTab.tabItem { Label("Features", systemImage: "slider.horizontal.3") }.tag(SettingsTab.features)
                 advancedTab.tabItem { Label("Advanced", systemImage: "square.grid.3x3") }.tag(SettingsTab.advanced)
             }
@@ -859,6 +871,188 @@ struct NativeSettingsScreen: View {
         }
     }
 
+    private var migrationTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "folder.badge.gearshape")
+                                .foregroundStyle(.secondary)
+                            Text("Import from OpenClaw or Hermes")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            Spacer()
+                            Button {
+                                Task { await refreshMigrationSources() }
+                            } label: {
+                                Label("Refresh", systemImage: "arrow.clockwise")
+                            }
+                            .controlSize(.small)
+                        }
+                        Text("Preview memories, skills, persona, workspace instructions, and optional provider keys before applying changes.")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+
+                        if !migrationSources.filter({ $0.exists }).isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(migrationSources.filter { $0.exists }) { source in
+                                    Button {
+                                        migrationSourceKind = source.kind
+                                        migrationSourcePath = source.path
+                                    } label: {
+                                        HStack {
+                                            VStack(alignment: .leading, spacing: 3) {
+                                                Text(source.label)
+                                                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                                Text("\(source.detected.memoryFiles) memories, \(source.detected.skillCount) skills, \(source.detected.configFiles) config files")
+                                                    .font(.system(size: 11, design: .rounded))
+                                                    .foregroundStyle(.secondary)
+                                                Text(source.path)
+                                                    .font(.system(size: 10, design: .monospaced))
+                                                    .foregroundStyle(.tertiary)
+                                                    .lineLimit(1)
+                                            }
+                                            Spacer()
+                                            if migrationSourcePath == source.path {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .foregroundStyle(.green)
+                                            }
+                                        }
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(10)
+                                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                }
+                            }
+                        }
+
+                        Picker("Source", selection: $migrationSourceKind) {
+                            Text("OpenClaw").tag("openclaw")
+                            Text("Hermes").tag("hermes")
+                        }
+                        .pickerStyle(.segmented)
+
+                        HStack(spacing: 8) {
+                            TextField("Source directory", text: $migrationSourcePath)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Browse") {
+                                chooseMigrationSourceDirectory()
+                            }
+                        }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Options")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                        HStack(spacing: 12) {
+                            Picker("Preset", selection: $migrationPreset) {
+                                Text("User Data").tag("user-data")
+                                Text("Full").tag("full")
+                            }
+                            .pickerStyle(.menu)
+                            Picker("Skill conflicts", selection: $migrationSkillConflict) {
+                                Text("Skip").tag("skip")
+                                Text("Rename").tag("rename")
+                                Text("Overwrite").tag("overwrite")
+                            }
+                            .pickerStyle(.menu)
+                        }
+                        Toggle("Import provider keys", isOn: $migrationImportSecrets)
+                        Toggle("Allow overwrite", isOn: $migrationOverwrite)
+                        HStack(spacing: 8) {
+                            TextField("Workspace target for AGENTS.md", text: $migrationWorkspaceTarget)
+                                .textFieldStyle(.roundedBorder)
+                            Button("Browse") {
+                                chooseMigrationWorkspaceDirectory()
+                            }
+                        }
+                        HStack(spacing: 10) {
+                            Button {
+                                Task { await previewMigration() }
+                            } label: {
+                                Label("Preview", systemImage: "doc.text.magnifyingglass")
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(migrationBusy)
+
+                            Button {
+                                Task { await applyMigration() }
+                            } label: {
+                                Label("Run Migration", systemImage: "arrow.down.doc")
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(migrationBusy)
+
+                            if migrationBusy {
+                                ProgressView().controlSize(.small)
+                            }
+                        }
+                        if let migrationMessage {
+                            Text(migrationMessage)
+                                .font(.system(size: 12, design: .rounded))
+                                .foregroundStyle(migrationMessage.lowercased().contains("failed") ? .red : .secondary)
+                        }
+                    }
+                }
+
+                if let migrationReport {
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text(migrationReport.dryRun ? "Preview Report" : "Migration Report")
+                                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                                Spacer()
+                                Text("\(migrationReport.summary["migrated"] ?? 0) migrated, \(migrationReport.summary["conflict"] ?? 0) conflicts")
+                                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
+                            if !migrationReport.warnings.isEmpty {
+                                Text(migrationReport.warnings.joined(separator: " "))
+                                    .font(.system(size: 11, design: .rounded))
+                                    .foregroundStyle(.orange)
+                            }
+                            VStack(alignment: .leading, spacing: 6) {
+                                ForEach(migrationReport.items.prefix(24)) { item in
+                                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                        Text(item.status)
+                                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                            .foregroundStyle(migrationStatusColor(item.status))
+                                            .frame(width: 72, alignment: .leading)
+                                        Text(item.category)
+                                            .font(.system(size: 11, design: .rounded))
+                                            .foregroundStyle(.secondary)
+                                            .frame(width: 80, alignment: .leading)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(item.name)
+                                                .font(.system(size: 12, weight: .medium, design: .rounded))
+                                                .lineLimit(1)
+                                            if let detail = item.detail {
+                                                Text(detail)
+                                                    .font(.system(size: 10, design: .rounded))
+                                                    .foregroundStyle(.secondary)
+                                                    .lineLimit(1)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if let reportPath = migrationReport.reportPath {
+                                Text(reportPath)
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.tertiary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                }
+            }
+            .nativeSettingsContentLayout()
+        }
+    }
+
     private var featuresTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
@@ -1267,6 +1461,7 @@ struct NativeSettingsScreen: View {
             config = [:]
             providers = []
             gatewayLogs = []
+            migrationSources = []
             error = nil
             return
         }
@@ -1293,6 +1488,100 @@ struct NativeSettingsScreen: View {
         }
 
         await refreshGatewayLogs()
+        await refreshMigrationSources()
+    }
+
+    private func refreshMigrationSources() async {
+        guard sidecar.isReady else {
+            migrationSources = []
+            return
+        }
+        if let sources = try? await client.migrationSources() {
+            migrationSources = sources
+            if migrationSourcePath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               let detected = sources.first(where: { $0.exists }) {
+                migrationSourceKind = detected.kind
+                migrationSourcePath = detected.path
+            }
+        }
+    }
+
+    private func migrationPayloadData() -> Data? {
+        var payload: [String: Any] = [
+            "sourceKind": migrationSourceKind,
+            "preset": migrationPreset,
+            "migrateSecrets": migrationImportSecrets,
+            "overwrite": migrationOverwrite,
+            "skillConflict": migrationSkillConflict,
+        ]
+        let source = migrationSourcePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !source.isEmpty { payload["sourcePath"] = source }
+        let workspace = migrationWorkspaceTarget.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !workspace.isEmpty { payload["workspaceTarget"] = workspace }
+        return try? JSONSerialization.data(withJSONObject: payload)
+    }
+
+    private func previewMigration() async {
+        guard let body = migrationPayloadData() else { return }
+        migrationBusy = true
+        defer { migrationBusy = false }
+        do {
+            migrationReport = try await client.previewMigration(body: body)
+            migrationMessage = "Preview ready"
+        } catch {
+            migrationMessage = "Preview failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func applyMigration() async {
+        guard let body = migrationPayloadData() else { return }
+        migrationBusy = true
+        defer { migrationBusy = false }
+        do {
+            migrationReport = try await client.runMigration(body: body)
+            migrationMessage = "Migration complete"
+            await refreshMigrationSources()
+        } catch {
+            migrationMessage = "Migration failed: \(error.localizedDescription)"
+        }
+    }
+
+    private func chooseMigrationSourceDirectory() {
+        chooseMigrationDirectory(title: "Choose OpenClaw or Hermes Directory") { path in
+            migrationSourcePath = path
+        }
+    }
+
+    private func chooseMigrationWorkspaceDirectory() {
+        chooseMigrationDirectory(title: "Choose Workspace Directory") { path in
+            migrationWorkspaceTarget = path
+        }
+    }
+
+    private func chooseMigrationDirectory(title: String, update: (String) -> Void) {
+        let panel = NSOpenPanel()
+        panel.title = title
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK, let url = panel.url {
+            update(url.path)
+        }
+    }
+
+    private func migrationStatusColor(_ status: String) -> Color {
+        switch status.lowercased() {
+        case "migrated":
+            return .green
+        case "planned":
+            return .blue
+        case "conflict", "error":
+            return .red
+        case "archived":
+            return .orange
+        default:
+            return .secondary
+        }
     }
 
     private func readAuthSettings(_ auth: [String: Any]) {
@@ -1442,6 +1731,7 @@ struct NativeSettingsScreen: View {
         case model
         case speech
         case memory
+        case migration
         case features
         case advanced
     }

@@ -1140,6 +1140,57 @@ struct GatewayLogPage: Decodable, Hashable {
     let hasMore: Bool?
 }
 
+struct GatewayMigrationSourcesResponse: Decodable, Hashable {
+    let sources: [GatewayMigrationSource]
+}
+
+struct GatewayMigrationSource: Decodable, Identifiable, Hashable {
+    let kind: String
+    let path: String
+    let exists: Bool
+    let label: String
+    let confidence: String?
+    let detected: GatewayMigrationDetected
+
+    var id: String { "\(kind):\(path)" }
+}
+
+struct GatewayMigrationDetected: Decodable, Hashable {
+    let persona: Bool
+    let memoryFiles: Int
+    let skillCount: Int
+    let configFiles: Int
+    let envFiles: Int
+}
+
+struct GatewayMigrationReport: Decodable, Hashable {
+    let success: Bool
+    let dryRun: Bool
+    let sourceKind: String
+    let sourceRoot: String
+    let targetRoot: String
+    let preset: String
+    let migrateSecrets: Bool
+    let overwrite: Bool
+    let skillConflict: String
+    let reportPath: String?
+    let createdAt: String
+    let summary: [String: Int]
+    let warnings: [String]
+    let items: [GatewayMigrationItem]
+    let nextSteps: [String]
+}
+
+struct GatewayMigrationItem: Decodable, Identifiable, Hashable {
+    let id: String
+    let category: String
+    let name: String
+    let source: String?
+    let target: String?
+    let status: String
+    let detail: String?
+}
+
 struct GatewaySkill: Decodable, Identifiable, Hashable {
     let name: String
     let description: String?
