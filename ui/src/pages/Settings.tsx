@@ -276,7 +276,7 @@ function ThemeSettings() {
                   className={cn(
                     "flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors",
                     selected
-                      ? "bg-white text-[#0a0a0f] shadow-sm"
+                      ? "border border-white/10 bg-white/10 text-white shadow-sm"
                       : "text-gray-400 hover:bg-white/5 hover:text-gray-200",
                     (updateIdentity.isPending || identityLoading) && "cursor-not-allowed opacity-60"
                   )}
