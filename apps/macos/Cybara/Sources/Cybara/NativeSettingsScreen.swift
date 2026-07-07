@@ -29,6 +29,8 @@ struct NativeSettingsScreen: View {
     @State private var health: GatewayHealth?
     @State private var config: [String: Any] = [:]
     @State private var providers: [GatewayProvider] = []
+    @State private var agents: [GatewayAgent] = []
+    @State private var backgroundAgentId = ""
     @State private var gatewayLogs: [GatewayLogEntry] = []
     @State private var gatewayRestarting = false
     @State private var selectedAccent = "indigo"
@@ -1075,6 +1077,20 @@ struct NativeSettingsScreen: View {
                         toggleRow("Self-improving skills", detail: "Allow agents to save reusable skills.", isOn: $selfImprovingSkills) {
                             saveConfigPatch(["self_improving_skills_enabled": selfImprovingSkills], key: "self_improving_skills_enabled")
                         }
+                        if !agents.isEmpty {
+                            Picker("Background model", selection: $backgroundAgentId) {
+                                Text("Same agent as the turn (default)").tag("")
+                                ForEach(agents) { agent in
+                                    Text(agent.model.map { "\(agent.name) — \($0)" } ?? agent.name).tag(agent.id)
+                                }
+                            }
+                            .onChange(of: backgroundAgentId) { _, value in
+                                saveConfigPatch(["background_agent_id": value], key: "background_agent_id")
+                            }
+                            Text("Memory and skill review run silently after most turns. Point them at a cheaper agent to cut cost over time.")
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
                         toggleRow("Dangerous tool policy", detail: "Audit or block high-risk tool requests.", isOn: $dangerousPolicyEnabled) {
                             saveDangerousPolicy()
                         }
@@ -1484,6 +1500,10 @@ struct NativeSettingsScreen: View {
             providers = try await p
             readConfig(config)
             error = nil
+            // Best-effort: agents power the background self-improvement picker.
+            if let loadedAgents = try? await client.agents() {
+                agents = loadedAgents
+            }
         } catch {
             self.error = error.localizedDescription
         }
@@ -1667,6 +1687,7 @@ struct NativeSettingsScreen: View {
         onAccentChanged(selectedAccent)
         defaultModel = config["default_model"] as? String ?? ""
         reasoningEffort = config["reasoning_effort"] as? String ?? ""
+        backgroundAgentId = config["background_agent_id"] as? String ?? ""
         terminalEnabled = config["terminal_enabled"] as? Bool ?? false
         selfImprovingSkills = (config["self_improving_skills_enabled"] as? Bool) ?? true
         let policy = config["dangerous_tool_policy"] as? [String: Any] ?? [:]

@@ -9,6 +9,8 @@ describe("mobile: iOS-style detail layout", () => {
   const screen = read("screens/DashboardScreen.tsx");
   // Styles were extracted out of the god component into a dedicated module.
   const styleSrc = read("screens/dashboardStyles.ts");
+  const controls = read("screens/dashboardControls.tsx");
+  const settingsPanels = read("screens/dashboardSettingsPanels.tsx");
 
   test("detail info renders through a grouped DetailInfoSection", () => {
     // Definition lives in the extracted controls module; usage stays in the screen.
@@ -31,5 +33,19 @@ describe("mobile: iOS-style detail layout", () => {
     // The old pattern paired listTitle + listDetail inside a listText block for
     // key/value dumps; detail info now uses DetailInfoSection instead.
     expect(screen).not.toContain("numberOfLines={2} style={styles.listDetail}");
+  });
+
+  test("long scrollable mobile detail panes use a stable grouped surface", () => {
+    expect(controls).toContain("function StableDetailPanel(");
+    expect(controls).toContain("styles.stableDetailPanel");
+    expect(styleSrc).toContain("stableDetailPanel:");
+    expect(styleSrc).toContain("backgroundColor: colors.background");
+    expect(screen).toContain("<StableDetailPanel");
+    expect(settingsPanels).toContain("<StableDetailPanel>");
+    expect(settingsPanels).not.toContain('from "../components/Glass"');
+    expect(screen).not.toContain("<GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}");
+    expect(settingsPanels).not.toContain(
+      "<GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}"
+    );
   });
 });

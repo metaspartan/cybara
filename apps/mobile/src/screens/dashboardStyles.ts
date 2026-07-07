@@ -357,6 +357,10 @@ const makeStyles = () =>
       borderRadius: MOBILE_MAIN_TAB_CHROME.panelRadius,
       borderRightWidth: 0,
     },
+    stableDetailPanel: {
+      backgroundColor: colors.background,
+      padding: spacing.lg,
+    },
     settingsRootContent: {
       gap: 0,
       paddingHorizontal: 0,

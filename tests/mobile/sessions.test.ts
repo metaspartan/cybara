@@ -65,4 +65,17 @@ describe("mobile: chat management", () => {
     expect(styles).toContain("pendingEditCard:");
     expect(styles).toContain("pendingOrderControls:");
   });
+
+  test("queued follow-ups stay above the composer instead of entering the message transcript", () => {
+    const messageLoop = screen.indexOf("{visibleMessages.map((message, index) => (");
+    const pendingQueue = screen.indexOf("{pendingMessages.length > 0 ? (");
+    const composer = screen.indexOf("<LiquidGlass", pendingQueue);
+    const optimisticUserAppend = screen.indexOf("messages: [...current.messages, optimistic]");
+
+    expect(messageLoop).toBeGreaterThan(0);
+    expect(pendingQueue).toBeGreaterThan(messageLoop);
+    expect(composer).toBeGreaterThan(pendingQueue);
+    expect(optimisticUserAppend).toBeGreaterThan(0);
+    expect(screen.indexOf("if (!queuedSend)", optimisticUserAppend - 700)).toBeGreaterThan(0);
+  });
 });

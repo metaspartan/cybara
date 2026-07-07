@@ -17,6 +17,27 @@ import { colors } from "../theme/liquidGlass";
 import { styles } from "./dashboardStyles";
 import type { IconGlyph } from "./dashboardPrimitives";
 
+export function StableDetailPanel({
+  children,
+  edgeToEdge,
+}: {
+  children: ReactNode;
+  edgeToEdge?: boolean;
+}) {
+  return (
+    <View
+      style={[
+        styles.detailPanel,
+        styles.mainTabPanel,
+        styles.stableDetailPanel,
+        edgeToEdge && styles.settingsRootContent,
+      ]}
+    >
+      {children}
+    </View>
+  );
+}
+
 export function SettingsTextField({
   autoCapitalize = "none",
   help,

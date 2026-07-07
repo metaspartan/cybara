@@ -25,7 +25,6 @@ import {
 } from "lucide-react-native";
 import { haptics } from "../lib/haptics";
 import { colors } from "../theme/liquidGlass";
-import { GlassPanel } from "../components/Glass";
 import { styles } from "./dashboardStyles";
 import { EmptyState, LoadingState } from "./dashboardPrimitives";
 import {
@@ -33,6 +32,7 @@ import {
   DetailInfoSection,
   SettingSelector,
   SettingToggle,
+  StableDetailPanel,
   SettingsSection,
   SettingsTextField,
 } from "./dashboardControls";
@@ -331,7 +331,7 @@ export function AgentSettingsPanel({
   };
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <StableDetailPanel>
       <View style={styles.itemHero}>
         <View style={[styles.summaryIcon, { backgroundColor: `${colors.cyan}18` }]}>
           <Bot color={colors.cyan} size={21} strokeWidth={2.2} />
@@ -404,7 +404,7 @@ export function AgentSettingsPanel({
           tone={colors.red}
         />
       </View>
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }
 
@@ -783,7 +783,7 @@ export function ProviderSettingsPanel({
   };
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <StableDetailPanel>
       <View style={styles.itemHero}>
         <View style={[styles.summaryIcon, { backgroundColor: `${colors.blueText}18` }]}>
           <Database color={colors.blueText} size={21} strokeWidth={2.2} />
@@ -1022,7 +1022,7 @@ export function ProviderSettingsPanel({
           tone={colors.red}
         />
       </View>
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }
 
@@ -1115,7 +1115,7 @@ export function ChannelSettingsPanel({
   };
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <StableDetailPanel>
       <View style={styles.itemHero}>
         <View style={[styles.summaryIcon, { backgroundColor: `${colors.cyan}18` }]}>
           <Link2 color={colors.cyan} size={21} strokeWidth={2.2} />
@@ -1163,7 +1163,7 @@ export function ChannelSettingsPanel({
           tone={colors.red}
         />
       </View>
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }
 
@@ -1248,7 +1248,7 @@ export function TaskSettingsPanel({
   ];
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <StableDetailPanel>
       <View style={styles.itemHero}>
         <View style={[styles.summaryIcon, { backgroundColor: `${colors.blueText}18` }]}>
           <CalendarCheck color={colors.blueText} size={21} strokeWidth={2.2} />
@@ -1295,7 +1295,7 @@ export function TaskSettingsPanel({
           tone={colors.red}
         />
       </View>
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }
 
@@ -1330,7 +1330,7 @@ export function ApprovalSettingsPanel({
   };
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <StableDetailPanel>
       <View style={styles.itemHero}>
         <View style={[styles.summaryIcon, { backgroundColor: `${colors.amber}18` }]}>
           <ShieldCheck color={colors.amber} size={21} strokeWidth={2.2} />
@@ -1385,7 +1385,7 @@ export function ApprovalSettingsPanel({
           tone={colors.red}
         />
       </View>
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }
 
@@ -1554,7 +1554,7 @@ export function WalletPolicyPanel({
   );
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <StableDetailPanel>
       <View style={styles.itemHero}>
         <View style={[styles.summaryIcon, { backgroundColor: `${colors.green}18` }]}>
           <ShieldCheck color={colors.green} size={21} strokeWidth={2.2} />
@@ -1729,7 +1729,7 @@ export function WalletPolicyPanel({
       )}
 
       <DetailInfoSection title="Wallet status" fields={statusFields} />
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }
 
@@ -1839,7 +1839,7 @@ export function SystemMonitorDetailPanel({
   };
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <StableDetailPanel>
       <View style={styles.itemHero}>
         <View style={[styles.summaryIcon, { backgroundColor: `${colors.blueText}18` }]}>
           <Cpu color={colors.blueText} size={21} strokeWidth={2.2} />
@@ -1949,7 +1949,7 @@ export function SystemMonitorDetailPanel({
           tone={colors.blueText}
         />
       </View>
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }
 
@@ -2214,7 +2214,7 @@ export function ModelRouterPanel({
   };
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <StableDetailPanel>
       <View style={styles.itemHero}>
         <View style={[styles.summaryIcon, { backgroundColor: `${accentColor}18` }]}>
           <Network color={accentColor} size={21} strokeWidth={2.2} />
@@ -2508,7 +2508,7 @@ export function ModelRouterPanel({
       ) : (
         <EmptyState label="Router unavailable" detail={routerError} />
       )}
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }
 
@@ -3036,6 +3036,31 @@ export function MemorySettingsPanel({
           value={String(timeoutsDraft.nonStreamingSeconds || "")}
         />
       </SettingsSection>
+      <SettingsSection title="Self-improvement">
+        <SettingSelector
+          disabled={saving}
+          label="Background model"
+          onSelect={(value) => void persist({ background_agent_id: value }, "Background model failed")}
+          options={[
+            { label: "Same agent as the turn (default)", value: "" },
+            ...(summary?.agents ?? []).map((agent) => ({
+              label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
+              value: agent.id,
+            })),
+          ]}
+          selected={
+            typeof summary?.config?.background_agent_id === "string"
+              ? summary.config.background_agent_id
+              : ""
+          }
+          tone={accentColor}
+          variant="menu"
+        />
+        <Text style={styles.settingsFieldHelp}>
+          Memory and skill review run silently after most turns. Point them at a cheaper agent to
+          cut cost over time.
+        </Text>
+      </SettingsSection>
       <SettingsSection title="Memory provider">
         <SettingSelector
           disabled={saving}
@@ -3500,7 +3525,7 @@ export function SystemPromptPanel({
   };
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <StableDetailPanel>
       <View style={styles.itemHero}>
         <View style={[styles.summaryIcon, { backgroundColor: `${accentColor}18` }]}>
           <Sparkles color={accentColor} size={21} strokeWidth={2.2} />
@@ -3591,6 +3616,6 @@ export function SystemPromptPanel({
           )}
         />
       )}
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }

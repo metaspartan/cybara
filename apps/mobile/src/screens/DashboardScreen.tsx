@@ -5,6 +5,7 @@ import {
   SettingToggle,
   SettingsSection,
   SettingsTextField,
+  StableDetailPanel,
 } from "./dashboardControls";
 import {
   AgentSettingsPanel,
@@ -1356,7 +1357,7 @@ function SessionsPanel({
     totalChats > visibleSessionCount ? `showing ${visibleSessionCount} recent` : "total";
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <StableDetailPanel>
       <View style={styles.summaryGrid}>
         <SummaryTile
           Icon={MessageCircle}
@@ -1441,7 +1442,7 @@ function SessionsPanel({
           <EmptyState label="No chats yet" detail="Create a Cybara chat from the gateway." />
         )
       ) : null}
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }
 
@@ -1501,7 +1502,7 @@ function MetricsPanel({
       }) ?? [];
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <StableDetailPanel>
       <View style={styles.summaryGrid}>
         <SummaryTile
           Icon={HeartPulse}
@@ -1776,7 +1777,7 @@ function MetricsPanel({
       <MetricSection title="Metric feeds" detail={`${availableMetrics}/11 endpoints online`}>
         <MetricEndpointGrid availability={metrics?.availability} />
       </MetricSection>
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }
 
@@ -2984,7 +2985,7 @@ function TasksPanel({
         </Pressable>
       </View>
 
-      <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+      <StableDetailPanel>
         {!summary ? (
           <LoadingState label="Loading tasks" detail="Refreshing from the gateway." />
         ) : unavailable ? (
@@ -3034,7 +3035,7 @@ function TasksPanel({
             </Pressable>
           ))
         )}
-      </GlassPanel>
+      </StableDetailPanel>
     </>
   );
 }
@@ -3081,7 +3082,7 @@ function MemoryRecallCard({
   };
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <StableDetailPanel>
       <View style={styles.subsectionHeader}>
         <Text style={styles.subsectionTitle}>Recall</Text>
       </View>
@@ -3114,7 +3115,7 @@ function MemoryRecallCard({
           )}
         />
       )}
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }
 
@@ -3164,7 +3165,7 @@ function SurfaceDetailPanel({
           refreshSummary={refreshSummary}
         />
       ) : null}
-      <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+      <StableDetailPanel>
         <View style={styles.subsectionHeader}>
           <Text style={styles.subsectionTitle}>Live records</Text>
           <Text style={styles.counterText}>{counterLabel}</Text>
@@ -3232,7 +3233,7 @@ function SurfaceDetailPanel({
             )}
           </View>
         ) : null}
-      </GlassPanel>
+      </StableDetailPanel>
     </>
   );
 }
@@ -3325,7 +3326,7 @@ function ItemDetailPanel({
   ];
 
   return (
-    <GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}>
+    <StableDetailPanel>
       <View style={styles.itemHero}>
         <View style={[styles.summaryIcon, { backgroundColor: `${meta.tone}18` }]}>
           <Icon color={meta.tone} size={21} strokeWidth={2.2} />
@@ -3347,7 +3348,7 @@ function ItemDetailPanel({
       ) : (
         <DetailInfoSection title="Details" fields={fields} />
       )}
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }
 
@@ -3482,15 +3483,7 @@ function SettingsPanel({
   };
 
   return (
-    <GlassPanel
-      elevated
-      contentStyle={
-        MOBILE_SETTINGS_ROOT_CHROME.settingsEdgeToEdgeContent
-          ? styles.settingsRootContent
-          : undefined
-      }
-      style={[styles.detailPanel, styles.mainTabPanel]}
-    >
+    <StableDetailPanel edgeToEdge={MOBILE_SETTINGS_ROOT_CHROME.settingsEdgeToEdgeContent}>
       <View style={styles.settingsNativePage}>
         {MOBILE_SETTINGS_ROOT_CHROME.gatewayConnectionDetails ? (
           <View style={styles.settingsSection}>
@@ -3976,6 +3969,6 @@ function SettingsPanel({
           </Pressable>
         </View>
       </View>
-    </GlassPanel>
+    </StableDetailPanel>
   );
 }
