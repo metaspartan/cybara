@@ -1,8 +1,22 @@
 import { describe, expect, test } from "bun:test";
 
-import { broadcastStatus, getSessionStatusSnapshot } from "../../src/core/status";
+import {
+  broadcastStatus,
+  getSessionStatusSnapshot,
+  listSessionStatusSnapshots,
+} from "../../src/core/status";
+import { isSessionStatusActive } from "../../src/api/routes/_shared";
 
 describe("session status snapshots", () => {
+  test("classifies only in-progress statuses as active", () => {
+    expect(isSessionStatusActive("thinking")).toBe(true);
+    expect(isSessionStatusActive("generating")).toBe(true);
+    expect(isSessionStatusActive("tool_executing")).toBe(true);
+    expect(isSessionStatusActive("compacting")).toBe(true);
+    expect(isSessionStatusActive("tool_completed")).toBe(false);
+    expect(isSessionStatusActive("idle")).toBe(false);
+  });
+
   test("persists meaningful thought details and excludes generic generating text", () => {
     const sessionId = `status-thought-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
@@ -156,6 +170,44 @@ describe("session status snapshots", () => {
     expect(snapshot?.activities).toHaveLength(1);
     expect(snapshot?.activities[0]?.phase).toBe("result");
     expect(snapshot?.activities[0]?.text).toBe("Explored src/core/agent.ts");
+
+    broadcastStatus({
+      status: "idle",
+      timestamp: baseTimestamp + 20,
+      sessionId,
+      detail: "idle",
+    });
+  });
+
+  test("does not list tool completion result snapshots as active sessions", () => {
+    const sessionId = `status-tool-result-inactive-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const baseTimestamp = Date.now();
+
+    broadcastStatus({
+      status: "tool_executing",
+      timestamp: baseTimestamp,
+      sessionId,
+      toolName: "read",
+      detail: "Exploring src/index.ts",
+    });
+
+    expect(listSessionStatusSnapshots().some((snapshot) => snapshot.sessionId === sessionId)).toBe(
+      true
+    );
+
+    broadcastStatus({
+      status: "tool_completed",
+      timestamp: baseTimestamp + 10,
+      sessionId,
+      toolName: "read",
+      detail: "Explored src/index.ts",
+    });
+
+    const snapshot = getSessionStatusSnapshot(sessionId);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.status).toBe("tool_completed");
+    expect(snapshot?.activities[0]?.phase).toBe("result");
+    expect(listSessionStatusSnapshots().some((entry) => entry.sessionId === sessionId)).toBe(false);
 
     broadcastStatus({
       status: "idle",

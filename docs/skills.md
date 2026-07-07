@@ -20,11 +20,7 @@ my-skill/
 ---
 name: git-commit
 description: Generate semantic commit messages from staged changes
-os: [darwin, linux]          # Optional: OS filter
-env:                         # Optional: required env vars
-  - GITHUB_TOKEN
-binaries:                    # Optional: required binaries
-  - git
+metadata: {"cybara":{"os":["darwin","linux"],"requires":{"bins":["git"],"env":["GITHUB_TOKEN"]}}}
 ---
 
 # Git Commit Skill
@@ -58,13 +54,38 @@ Skills can specify requirements:
 
 ```yaml
 ---
-os: [darwin, linux]      # Only macOS/Linux
-env: [OPENAI_API_KEY]    # Require env var
-binaries: [ffmpeg, git]  # Require binaries
+metadata: {"cybara":{"os":["darwin","linux"],"requires":{"bins":["ffmpeg","git"],"env":["OPENAI_API_KEY"]}}}
 ---
 ```
 
 Ineligible skills are hidden from the agent.
+
+Requirement shapes:
+
+- `os`: allowed Node platforms: `darwin`, `linux`, or `win32`
+- `requires.bins`: all binaries must exist on `PATH`
+- `requires.anyBins`: one binary from the list must exist on `PATH`
+- `requires.env`: all env vars must be set
+- `requires.anyEnv`: one env var from the list must be set
+- `requires.config`: all config paths must be truthy
+
+Bundled examples:
+
+```yaml
+---
+name: fal.ai
+description: Generate images, videos, and music through Cybara's fal.ai media providers.
+metadata: {"cybara":{"primaryEnv":"FAL_KEY","homepage":"https://fal.ai","requires":{"anyEnv":["FAL_KEY","FAL_API_KEY"]}}}
+---
+```
+
+```yaml
+---
+name: mactop
+description: Retrieve real-time hardware metrics from Apple Silicon Macs using mactop.
+metadata: {"cybara":{"os":["darwin"],"requires":{"bins":["mactop"]},"install":[{"kind":"brew","formula":"mactop","bins":["mactop"],"label":"Install mactop (brew)","os":["darwin"]}]}}
+---
+```
 
 ## Installing Skills
 
@@ -113,7 +134,7 @@ gating, and hot-reloading rules apply as for hand-authored skills.
 ---
 name: code-review
 description: Review code for best practices and issues
-binaries: [git]
+metadata: {"cybara":{"requires":{"bins":["git"]}}}
 ---
 
 # Code Review Skill

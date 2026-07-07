@@ -998,19 +998,25 @@ html.light .text-violet-300 { color: #7c3aed; }
 html.light .text-purple-300 { color: #9333ea; }
 html.light .text-orange-300 { color: #ea580c; }
 
-/* Sidebar logo activity halo: slow breathing pulse while any session works. */
-@keyframes cybara-activity-pulse {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(1);
+@keyframes cybara-thinking-sprite {
+  from {
+    background-position: 0 0;
   }
-  50% {
-    opacity: 0.9;
-    transform: scale(1.08);
+  to {
+    background-position: -23rem 0;
   }
 }
 
-.cybara-activity-pulse {
-  animation: cybara-activity-pulse 2.6s ease-in-out infinite;
+.cybara-thinking-sprite {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 2.875rem;
+  height: 2.875rem;
+  transform: translate(-50%, -50%);
+  background-image: url("/cybara-thinking-sprite.png");
+  background-repeat: no-repeat;
+  background-size: 23rem 2.875rem;
+  animation: cybara-thinking-sprite 1.05s steps(8) infinite;
+  pointer-events: none;
 }

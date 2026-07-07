@@ -1,14 +1,15 @@
 ---
 name: mactop
 description: |
-  Retrieve real-time hardware metrics from Apple Silicon Macs using mactop's TOON format.
+  Retrieve real-time hardware metrics from Apple Silicon Macs using mactop.
   Provides CPU, RAM, GPU, power, thermal, network, disk I/O, and Thunderbolt bus information.
   Use when the user wants system stats, hardware monitoring, or performance metrics on Apple Silicon Macs.
+metadata: {"cybara":{"os":["darwin"],"requires":{"bins":["mactop"]},"install":[{"id":"brew","kind":"brew","formula":"mactop","bins":["mactop"],"label":"Install mactop (brew)","os":["darwin"]}]}}
 ---
 
 # Mactop Skill
 
-Execute mactop in headless TOON mode and parse the output for hardware metrics.
+Execute mactop in headless mode and parse the output for Apple Silicon hardware metrics.
 
 ## Prerequisites
 
@@ -20,8 +21,10 @@ Execute mactop in headless TOON mode and parse the output for hardware metrics.
 ### Get Full Metrics
 
 ```bash
-mactop --format toon --headless --count 1
+mactop --headless --count 1 --format json
 ```
+
+Use `--format toon` when a compact human-readable stream is better than JSON.
 
 ### Parse Key Metrics
 

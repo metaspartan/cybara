@@ -51,6 +51,8 @@ export type SkillMetadata = {
         anyBins?: string[];
         /** All env vars must be set (or provided in config) */
         env?: string[];
+        /** At least one env var must be set (or provided in config) */
+        anyEnv?: string[];
         /** All config paths must be truthy */
         config?: string[];
     };
@@ -157,6 +159,7 @@ export type SkillStatus = SkillEntry & {
         bins: string[];
         anyBins: string[];
         env: string[];
+        anyEnv: string[];
         config: string[];
         os: string[];
     };
@@ -164,6 +167,7 @@ export type SkillStatus = SkillEntry & {
         bins: string[];
         anyBins: string[];
         env: string[];
+        anyEnv: string[];
         config: string[];
         os: string[];
     };

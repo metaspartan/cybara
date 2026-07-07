@@ -109,7 +109,9 @@ export async function handleImageGenerate(
     ? getMediaProvider("image", providerId)
     : resolveDefaultProvider("image");
   if (!provider)
-    throw new Error("No image generation provider is configured (set OPENAI_API_KEY or FAL_KEY).");
+    throw new Error(
+      "No image generation provider is configured (set OPENAI_API_KEY or FAL_KEY/FAL_API_KEY)."
+    );
   const req: ImageGenerationRequest = {
     provider: provider.id,
     model: typeof args.model === "string" ? args.model : undefined,
@@ -141,7 +143,8 @@ export async function handleVideoGenerate(
   const provider = providerId
     ? getMediaProvider("video", providerId)
     : resolveDefaultProvider("video");
-  if (!provider) throw new Error("No video generation provider is configured (set FAL_KEY).");
+  if (!provider)
+    throw new Error("No video generation provider is configured (set FAL_KEY/FAL_API_KEY).");
   const req: VideoGenerationRequest = {
     provider: provider.id,
     model: typeof args.model === "string" ? args.model : undefined,
@@ -172,7 +175,8 @@ export async function handleMusicGenerate(
   const provider = providerId
     ? getMediaProvider("music", providerId)
     : resolveDefaultProvider("music");
-  if (!provider) throw new Error("No music generation provider is configured (set FAL_KEY).");
+  if (!provider)
+    throw new Error("No music generation provider is configured (set FAL_KEY/FAL_API_KEY).");
   const req: MusicGenerationRequest = {
     provider: provider.id,
     model: typeof args.model === "string" ? args.model : undefined,

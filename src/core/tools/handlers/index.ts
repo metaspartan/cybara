@@ -68,6 +68,12 @@ import { handlePhoneCall, handleVoiceCall } from "./phone";
 import { handleWallet } from "./wallet";
 import { handleWorkspaceIndexSearch } from "./workspace-index";
 import {
+  collectMacSystemFallback,
+  hasMactopBinary,
+  normalizeMactopSampleCount,
+  runMactopJsonSamples,
+} from "../mactop";
+import {
   handleLSPDiagnostics,
   handleLSPDefinition,
   handleLSPReferences,
@@ -136,47 +142,45 @@ const toolHandlers: Record<
   process: handleProcess,
   git: handleGit,
   mactop: async (args: Record<string, unknown>) => {
-    const seconds = (args.seconds as number) || 3;
-    const count = Math.min(seconds, 10); // mactop count
+    const count = normalizeMactopSampleCount(args.seconds, 3, 10);
 
     try {
-      const env = { ...process.env, PATH: "/usr/sbin:" + (process.env.PATH || "") };
-      const result = Bun.spawnSync(
-        [
-          "sh",
-          "-c",
-          `mactop --headless --count ${count} --format json 2>&1 || echo "mactop error"`,
-        ],
-        {
-          timeout: (seconds + 5) * 1000,
-          env,
+      if (process.platform !== "darwin") {
+        return {
+          error: "mactop is only available on macOS with Apple Silicon.",
+          installHint: "This tool requires macOS.",
+        };
+      }
+
+      if (hasMactopBinary()) {
+        const result = runMactopJsonSamples(count);
+        if (result.exitCode === 0 && result.stdout.trim()) {
+          return {
+            source: "mactop",
+            output: result.stdout,
+            count,
+            format: "json",
+          };
         }
-      );
+
+        return {
+          ...collectMacSystemFallback(),
+          count,
+          note: result.stderr.trim() || "mactop returned no metrics - check installation",
+        };
+      }
+
       return {
-        source: "mactop",
-        output: result.stdout.toString(),
+        ...collectMacSystemFallback(),
         count,
-        format: "json",
+        note: "mactop not found. Install mactop to enable Apple Silicon hardware metrics.",
+        installHint: "brew install mactop",
       };
     } catch {
       try {
-        const env = { ...process.env, PATH: "/usr/sbin:" + (process.env.PATH || "") };
-        const cpuInfo = Bun.spawnSync(["sysctl", "-n", "machdep.cpu.brand_string"], { env })
-          .stdout.toString()
-          .trim();
-        const coreCount = Bun.spawnSync(["sysctl", "-n", "machdep.cpu.core_count"], { env })
-          .stdout.toString()
-          .trim();
-        const memResult = Bun.spawnSync(
-          ["sh", "-c", "vm_stat 2>/dev/null | head -5 || echo 'Unknown'"],
-          { env }
-        );
-        const memory = memResult.stdout.toString().trim();
-
         return {
-          source: "system_fallback",
-          cpu: { model: cpuInfo, cores: coreCount },
-          memory,
+          ...collectMacSystemFallback(),
+          count,
           note: "mactop returned error - check installation",
         };
       } catch {

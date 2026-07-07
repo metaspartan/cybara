@@ -2148,7 +2148,7 @@ function SessionDetailPanel({
           snapshotStatus === "thinking" ||
           snapshotStatus === "generating" ||
           snapshotStatus === "tool_executing" ||
-          snapshotStatus === "tool_completed");
+          snapshotStatus === "compacting");
       const snapshotPendingMessages = snapshot?.pendingMessages ?? [];
       if (!sendingRef.current && snapshotPendingMessages.length === 0) {
         clearCachedMobileOptimisticPendingMessages(sessionId);

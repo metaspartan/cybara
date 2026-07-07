@@ -28,6 +28,8 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
     const source = read("apps/mobile/src/screens/DashboardScreen.tsx");
     expect(source).toContain("void loadSession(false).finally(() => {");
     expect(source).toContain("commitLiveAssistant(() => null, event.timestamp);");
+    expect(source).toContain('snapshotStatus === "compacting"');
+    expect(source).not.toContain('snapshotStatus === "tool_completed"');
     // The old instant-clear form must not come back.
     expect(source).not.toMatch(
       /if \(event\.status === "idle"\) \{\s*\n\s*if \(!sendingRef\.current\) \{\s*\n\s*commitLiveAssistant\(\(\) => null, event\.timestamp\);/
@@ -41,6 +43,12 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
     const loadIndex = idleBlock.indexOf("await loadMessages(id)");
     expect(loadIndex).toBeGreaterThan(-1);
     expect(resetIndex).toBeGreaterThan(loadIndex);
+    const workingTimelineBlock = source.slice(
+      source.indexOf("private var showWorkingTimeline: Bool"),
+      source.indexOf("private var sortedPendingMessages")
+    );
+    expect(workingTimelineBlock).toContain('"compacting"');
+    expect(workingTimelineBlock).not.toContain('"tool_completed"');
   });
 });
 

@@ -75,13 +75,7 @@ function useAgentStatus() {
 
   useEffect(() => {
     const ACTIVE_WINDOW_MS = 60_000;
-    const ACTIVE_STATUSES = new Set([
-      "thinking",
-      "generating",
-      "tool_executing",
-      "tool_completed",
-      "compacting",
-    ]);
+    const ACTIVE_STATUSES = new Set(["thinking", "generating", "tool_executing", "compacting"]);
 
     const refreshDerivedStatus = () => {
       const now = Date.now();
@@ -122,6 +116,18 @@ function useAgentStatus() {
           return;
         }
 
+        if (data.type === "task_completed") {
+          const sessionId = typeof data.sessionId === "string" ? data.sessionId.trim() : "";
+          if (sessionId) {
+            activeSessionLastSeenRef.current.delete(sessionId);
+          } else {
+            activeSessionLastSeenRef.current.clear();
+            globalLastSeenRef.current = 0;
+          }
+          refreshDerivedStatus();
+          return;
+        }
+
         if (data.type !== "status") return;
 
         const statusValue = typeof data.status === "string" ? data.status : "";
@@ -132,13 +138,21 @@ function useAgentStatus() {
         if (sessionId) {
           if (isActiveStatus) {
             activeSessionLastSeenRef.current.set(sessionId, now);
-          } else if (statusValue === "idle" || statusValue === "error") {
+          } else if (
+            statusValue === "idle" ||
+            statusValue === "error" ||
+            statusValue === "tool_completed"
+          ) {
             activeSessionLastSeenRef.current.delete(sessionId);
           }
         } else {
           if (isActiveStatus) {
             globalLastSeenRef.current = now;
-          } else if (statusValue === "idle" || statusValue === "error") {
+          } else if (
+            statusValue === "idle" ||
+            statusValue === "error" ||
+            statusValue === "tool_completed"
+          ) {
             globalLastSeenRef.current = 0;
           }
         }
@@ -293,22 +307,17 @@ export function Sidebar() {
               collapsed ? "px-3 py-4 justify-center" : "px-5 py-4 gap-3"
             )}
           >
-            <div className="relative flex-shrink-0">
+            <div className="relative flex-shrink-0 w-10 h-10">
               <div
                 className={cn(
-                  "w-10 h-10 rounded-xl overflow-hidden transition-all duration-700",
-                  status === "active" &&
-                    "ring-2 ring-amber-400/60 ring-offset-2 ring-offset-[#12121a]"
+                  "w-10 h-10 rounded-xl overflow-hidden",
+                  status === "active" && "opacity-0"
                 )}
               >
-                <img
-                  src="/cybara.png"
-                  alt="Cybara"
-                  className={cn("w-full h-full object-cover transition-all duration-300")}
-                />
+                <img src="/cybara.png" alt="Cybara" className="w-full h-full object-cover" />
               </div>
               {status === "active" && (
-                <div className="absolute -inset-1 rounded-xl bg-amber-400/20 cybara-activity-pulse" />
+                <span className="cybara-thinking-sprite" aria-hidden="true" />
               )}
             </div>
             {!collapsed && (

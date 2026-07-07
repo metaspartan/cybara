@@ -1,6 +1,6 @@
 # Cybara Documentation
 
-Welcome to Cybara — a self-hosted AI agent platform with modular skills, browser automation, multi-channel messaging, desktop/mobile shells, provider-plan-aware routing, source migration, speech controls, and a React web UI.
+Welcome to Cybara — a self-hosted AI agent platform with modular skills, fal.ai/OpenAI media generation, optional mactop hardware monitoring, browser automation, multi-channel messaging, desktop/mobile shells, provider-plan-aware routing, source migration, speech controls, and a React web UI.
 
 ## Quick Start
 

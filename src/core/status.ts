@@ -104,7 +104,6 @@ const ACTIVE_STATUSES = new Set<AgentStatus>([
   "thinking",
   "generating",
   "tool_executing",
-  "tool_completed",
   "compacting",
 ]);
 const STATUS_STALE_MS = 15 * 60 * 1000;

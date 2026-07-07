@@ -10,6 +10,7 @@
 | `CYBARA_API_KEY` | auto-generated | API key for auth |
 | `CYBARA_API` | `http://localhost:4269` | API endpoint for CLI |
 | `BRAVE_API_KEY` | - | Web search (optional, falls back to DuckDuckGo) |
+| `FAL_KEY` / `FAL_API_KEY` | - | fal.ai media generation key for images, videos, music, and the bundled `fal.ai` skill |
 | `LOG_LEVEL` | info | Logging verbosity |
 | `LOG_FORMAT` | pretty | Log output format (`pretty` or `json`) |
 | `CYBARA_RESOURCE_DIR` | - | Sidecar resource root used by packaged Tauri/native apps for bundled UI, `node_modules`, `secp256k1.wasm`, and ONNX runtime assets |

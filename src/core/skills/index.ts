@@ -7,6 +7,11 @@ import { handlePdf } from "./pdf";
 import { handleOcr, handleImageDescribe } from "./ocr";
 import { parseSkillFile } from "./loader";
 import { cybaraDir } from "../paths";
+import {
+  hasMactopBinary,
+  normalizeMactopSampleCount,
+  runMactopJsonSamples,
+} from "../tools/mactop";
 
 export type {
   SkillInstallSpec,
@@ -443,7 +448,7 @@ builtinExecutors.video_frames = async (args: Record<string, unknown>) => {
 };
 
 builtinExecutors.mactop = async (args: Record<string, unknown>) => {
-  const seconds = (args.seconds as number) || 5;
+  const seconds = normalizeMactopSampleCount(args.seconds, 5, 60);
   const mode = (args.mode as string) || "efficient";
 
   try {
@@ -453,17 +458,23 @@ builtinExecutors.mactop = async (args: Record<string, unknown>) => {
         installHint: "This skill requires macOS.",
       };
     }
-    const whichResult = Bun.spawnSync(["which", "mactop"]);
-    if (whichResult.exitCode !== 0) {
+    if (!hasMactopBinary()) {
       return {
         error: "mactop not found. Install mactop to enable hardware metrics.",
         installHint: "brew install mactop",
       };
     }
 
-    const cmd = `mactop -t ${seconds} -j`;
-    const result = Bun.spawnSync(["sh", "-c", cmd], { timeout: (seconds + 2) * 1000 });
-    const output = result.stdout.toString();
+    const result = runMactopJsonSamples(seconds);
+    const output = result.stdout;
+    if (result.exitCode !== 0 && !output.trim()) {
+      return {
+        error: result.stderr.trim() || "mactop returned no metrics.",
+        installHint: "brew install mactop",
+        seconds,
+        mode,
+      };
+    }
 
     try {
       const data = JSON.parse(output);

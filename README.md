@@ -52,7 +52,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - Self-improving skills: agents can codify a verified multi-step procedure with `skill_save`, and the loader picks it up for future sessions
 - ACP (Agent Client Protocol) server so editors like Zed can drive an agent (`cybara acp`)
 - A web UI with dashboard, chat, IDE, terminal, tools, MCP, mobile pairing, wallet, and settings surfaces
-- Bundled skills (`skills/`)
+- Bundled skills (`skills/`), including fal.ai media guidance and mactop hardware monitoring when available on macOS
 - Anthropic prompt caching, multi-key credential pools + rate-limit rotation, and a centralized LLM error taxonomy
 - Smart context compaction (token-aware chunking + structured summaries with identifier preservation)
 - Interactive tool approval with per-session/persistent allowlists, filesystem checkpoint/snapshot+rollback, and transform hooks (tool_result/llm_output/terminal_output)
@@ -188,8 +188,8 @@ Tool categories currently shipped:
 - `memory`: search/get/save/context/durable save
 - `core`: sessions/agents/artifacts/wallet/http/env/data/nodes/clipboard/cron/gateway/etc.
 - `lsp`: diagnostics/definition/references/hover/languages
-- `media`: image/tts + **image_generate** / **video_generate** / **music_generate** via a swappable provider registry (OpenAI, fal.ai)
-- `skill`: calc/convert/pdf/ocr/summarization/video_frames/weather + **skill_save** (agents codify a successful procedure as a reusable skill for future sessions)
+- `media`: image/tts + **image_generate** / **video_generate** / **music_generate** via a swappable provider registry (OpenAI, fal.ai with `FAL_KEY` or `FAL_API_KEY`)
+- `skill`: calc/convert/pdf/ocr/summarization/video_frames/weather/mactop + **skill_save** (agents codify a successful procedure as a reusable skill for future sessions)
 - `channel`: message/telegram_media
 - `planning`: **todo** (session task-list with status discipline) + **clarify** (structured multi-choice questions to the user)
 - `discovery`: **tool_search** / **tool_describe** / **tool_call** (dynamic discovery over built-in + MCP + skills) + **execute_code** (run code that calls cybara tools programmatically)

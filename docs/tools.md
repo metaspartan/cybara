@@ -504,8 +504,10 @@ The last expression's value is returned. Runs with a timeout (default 15s, max 6
 ## Media Generation
 
 Image, video, and music generation via a swappable provider registry (`src/core/media-generation.ts`).
-Set `OPENAI_API_KEY` for OpenAI images or `FAL_KEY` for fal.ai image/video/music. Generated files are
-saved to `<workspace>/.cybara/media/` and their paths returned.
+Set `OPENAI_API_KEY` for OpenAI images or `FAL_KEY`/`FAL_API_KEY` for fal.ai
+image/video/music. The bundled `fal.ai` skill becomes eligible when either fal
+key is present and routes agents through these same media tools. Generated files
+are saved to `<workspace>/.cybara/media/` and their paths returned.
 
 ### image_generate
 Generate images from a text prompt.
@@ -527,6 +529,12 @@ Generate music/audio from a text prompt (fal.ai: minimax-music, ace-step, stable
 ```
 
 ## Desktop Control
+
+### mactop
+Retrieve Apple Silicon hardware metrics when Cybara is running on macOS and the
+`mactop` binary is installed. The bundled `mactop` skill is gated by platform and
+binary availability, so it appears for agents by default only when it can run.
+Install with `brew install mactop`.
 
 ### computer_use
 Control the desktop (capture, click, type, scroll, drag, key, set_value, focus app)

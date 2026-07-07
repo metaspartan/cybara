@@ -136,10 +136,10 @@ export function registerFalProviders(): void {
   registerImageProvider({
     id: "fal",
     label: "fal.ai",
-    isConfigured: (ctx) => !!falApiKey() || !!ctx.env?.FAL_KEY,
+    isConfigured: (ctx) => !!falApiKey() || !!ctx.env?.FAL_KEY || !!ctx.env?.FAL_API_KEY,
     generate: async (req: ImageGenerationRequest): Promise<GenerationResult> => {
       const k = key();
-      if (!k) throw new Error("FAL_KEY is not configured.");
+      if (!k) throw new Error("FAL_KEY or FAL_API_KEY is not configured.");
       const model = req.model || "fal-ai/flux/schnell";
       const response = await fetch(`https://fal.run/${model}`, {
         method: "POST",
@@ -170,10 +170,10 @@ export function registerFalProviders(): void {
     id: "fal",
     label: "fal.ai",
     models: ["fal-ai/minimax/video-01", "fal-ai/kling-video", "fal-ai/veo3"],
-    isConfigured: (ctx) => !!falApiKey() || !!ctx.env?.FAL_KEY,
+    isConfigured: (ctx) => !!falApiKey() || !!ctx.env?.FAL_KEY || !!ctx.env?.FAL_API_KEY,
     generate: async (req: VideoGenerationRequest): Promise<GenerationResult> => {
       const k = key();
-      if (!k) throw new Error("FAL_KEY is not configured.");
+      if (!k) throw new Error("FAL_KEY or FAL_API_KEY is not configured.");
       const model = req.model || "fal-ai/minimax/video-01";
       const queueBase = "https://queue.fal.run";
       const submit = await fetch(`${queueBase}/${model}`, {
@@ -219,10 +219,10 @@ export function registerFalProviders(): void {
       "fal-ai/ace-step/prompt-to-audio",
       "fal-ai/stable-audio-25/text-to-audio",
     ],
-    isConfigured: (ctx) => !!falApiKey() || !!ctx.env?.FAL_KEY,
+    isConfigured: (ctx) => !!falApiKey() || !!ctx.env?.FAL_KEY || !!ctx.env?.FAL_API_KEY,
     generate: async (req: MusicGenerationRequest): Promise<GenerationResult> => {
       const k = key();
-      if (!k) throw new Error("FAL_KEY is not configured.");
+      if (!k) throw new Error("FAL_KEY or FAL_API_KEY is not configured.");
       const model = req.model || "fal-ai/minimax-music/v2.6";
       const response = await fetch(`https://fal.run/${model}`, {
         method: "POST",

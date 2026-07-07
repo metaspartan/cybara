@@ -5,7 +5,36 @@ import type {
     SkillStatus,
     SkillEligibilityContext,
     SkillsConfig,
+    SkillMetadata,
 } from "./types";
+
+function fallbackMetadataForSkill(skillName: string): SkillMetadata | undefined {
+    const normalized = skillName.trim().toLowerCase();
+    if (normalized === "mactop") {
+        return {
+            os: ["darwin"],
+            requires: { bins: ["mactop"] },
+            install: [
+                {
+                    id: "brew",
+                    kind: "brew",
+                    formula: "mactop",
+                    bins: ["mactop"],
+                    label: "Install mactop (brew)",
+                    os: ["darwin"],
+                },
+            ],
+        };
+    }
+    if (normalized === "fal.ai" || normalized === "fal-ai") {
+        return {
+            primaryEnv: "FAL_KEY",
+            homepage: "https://fal.ai",
+            requires: { anyEnv: ["FAL_KEY", "FAL_API_KEY"] },
+        };
+    }
+    return undefined;
+}
 
 export function hasBinary(bin: string): boolean {
     if (!bin || typeof bin !== "string") return false;
@@ -67,13 +96,14 @@ export function checkSkillEligibility(
     context: SkillEligibilityContext,
     config?: SkillsConfig
 ): SkillStatus {
-    const metadata = entry.metadata;
     const skillName = entry.skill.name;
+    const metadata = entry.metadata ?? fallbackMetadataForSkill(skillName);
 
     const requirements = {
         bins: metadata?.requires?.bins ?? [],
         anyBins: metadata?.requires?.anyBins ?? [],
         env: metadata?.requires?.env ?? [],
+        anyEnv: metadata?.requires?.anyEnv ?? [],
         config: metadata?.requires?.config ?? [],
         os: metadata?.os ?? [],
     };
@@ -82,6 +112,7 @@ export function checkSkillEligibility(
         bins: [] as string[],
         anyBins: [] as string[],
         env: [] as string[],
+        anyEnv: [] as string[],
         config: [] as string[],
         os: [] as string[],
     };
@@ -124,9 +155,19 @@ export function checkSkillEligibility(
         }
     }
 
+    const hasEnv = (envVar: string) =>
+        context.hasEnv(envVar) || hasEnvVar(envVar, config, skillName);
+
     for (const envVar of requirements.env) {
-        if (!context.hasEnv(envVar)) {
+        if (!hasEnv(envVar)) {
             missing.env.push(envVar);
+        }
+    }
+
+    if (requirements.anyEnv.length > 0) {
+        const hasAny = requirements.anyEnv.some(envVar => hasEnv(envVar));
+        if (!hasAny) {
+            missing.anyEnv = requirements.anyEnv;
         }
     }
 
@@ -140,6 +181,7 @@ export function checkSkillEligibility(
         missing.bins.length > 0 ||
         missing.anyBins.length > 0 ||
         missing.env.length > 0 ||
+        missing.anyEnv.length > 0 ||
         missing.config.length > 0 ||
         missing.os.length > 0;
 

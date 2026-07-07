@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, test } from "bun:test";
-import { clearSkillsCache, executeSkill, getSkill } from "../../src/core/skills";
+import {
+  checkSkillEligibility,
+  clearSkillsCache,
+  executeSkill,
+  getSkill,
+  loadAllSkills,
+  type SkillEligibilityContext,
+} from "../../src/core/skills";
 
 beforeEach(() => {
   clearSkillsCache();
@@ -49,5 +56,74 @@ describe("Skills SKILL.md resolution", () => {
       expect(skill?.description.length).toBeGreaterThan(20);
       expect(skill?.location).toMatch(/skills[\\/]+/);
     }
+  });
+
+  test("loads fal.ai bundled skill by name and folder slug", () => {
+    const byName = getSkill("fal.ai");
+    const bySlug = getSkill("fal-ai");
+
+    expect(byName).toBeDefined();
+    expect(bySlug).toBeDefined();
+    expect(byName?.name).toBe("fal.ai");
+    expect(bySlug?.name).toBe("fal.ai");
+  });
+
+  test("gates fal.ai on either supported fal env var", async () => {
+    const entry = (await loadAllSkills({})).find((skill) => skill.skill.name === "fal.ai");
+    expect(entry).toBeDefined();
+
+    const baseContext: SkillEligibilityContext = {
+      platform: "darwin",
+      hasBin: () => true,
+      hasEnv: () => false,
+      hasConfig: () => false,
+    };
+
+    const blocked = checkSkillEligibility(entry!, baseContext);
+    expect(blocked.eligible).toBe(false);
+    expect(blocked.missing.anyEnv).toEqual(["FAL_KEY", "FAL_API_KEY"]);
+
+    const withFalKey = checkSkillEligibility(entry!, {
+      ...baseContext,
+      hasEnv: (name) => name === "FAL_KEY",
+    });
+    expect(withFalKey.eligible).toBe(true);
+
+    const withFalApiKey = checkSkillEligibility(entry!, {
+      ...baseContext,
+      hasEnv: (name) => name === "FAL_API_KEY",
+    });
+    expect(withFalApiKey.eligible).toBe(true);
+  });
+
+  test("gates mactop to macOS with mactop installed", async () => {
+    const entry = (await loadAllSkills({})).find((skill) => skill.skill.name === "mactop");
+    expect(entry).toBeDefined();
+
+    const missingBinary = checkSkillEligibility(entry!, {
+      platform: "darwin",
+      hasBin: () => false,
+      hasEnv: () => true,
+      hasConfig: () => true,
+    });
+    expect(missingBinary.eligible).toBe(false);
+    expect(missingBinary.missing.bins).toEqual(["mactop"]);
+
+    const linux = checkSkillEligibility(entry!, {
+      platform: "linux",
+      hasBin: () => true,
+      hasEnv: () => true,
+      hasConfig: () => true,
+    });
+    expect(linux.eligible).toBe(false);
+    expect(linux.missing.os).toEqual(["darwin"]);
+
+    const ready = checkSkillEligibility(entry!, {
+      platform: "darwin",
+      hasBin: (name) => name === "mactop",
+      hasEnv: () => true,
+      hasConfig: () => true,
+    });
+    expect(ready.eligible).toBe(true);
   });
 });

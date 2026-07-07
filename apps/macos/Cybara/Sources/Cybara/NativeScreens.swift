@@ -814,7 +814,7 @@ struct ChatScreen: View {
         sending ||
             !liveActivities.isEmpty ||
             streamingContent != nil ||
-            ["thinking", "generating", "compacting", "tool_executing", "tool_completed"].contains(liveStatus.lowercased())
+            ["thinking", "generating", "compacting", "tool_executing"].contains(liveStatus.lowercased())
     }
 
     private var sortedPendingMessages: [GatewayPendingChatMessage] {

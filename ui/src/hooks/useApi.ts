@@ -435,6 +435,7 @@ export interface SkillStatusInfo {
     bins: string[];
     anyBins: string[];
     env: string[];
+    anyEnv: string[];
     config: string[];
     os: string[];
   };
@@ -442,6 +443,7 @@ export interface SkillStatusInfo {
     bins: string[];
     anyBins: string[];
     env: string[];
+    anyEnv: string[];
     config: string[];
     os: string[];
   };

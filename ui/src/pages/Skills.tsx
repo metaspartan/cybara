@@ -320,12 +320,19 @@ function SkillDetailModal({ skill, isOpen, onClose }: SkillDetailModalProps) {
 
   if (!skill) return null;
 
+  const missingBins = skill.missing.bins ?? [];
+  const missingAnyBins = skill.missing.anyBins ?? [];
+  const missingEnv = skill.missing.env ?? [];
+  const missingAnyEnv = skill.missing.anyEnv ?? [];
+  const missingConfig = skill.missing.config ?? [];
+  const missingOs = skill.missing.os ?? [];
   const hasMissingRequirements =
-    skill.missing.bins.length > 0 ||
-    skill.missing.anyBins.length > 0 ||
-    skill.missing.env.length > 0 ||
-    skill.missing.config.length > 0 ||
-    skill.missing.os.length > 0;
+    missingBins.length > 0 ||
+    missingAnyBins.length > 0 ||
+    missingEnv.length > 0 ||
+    missingAnyEnv.length > 0 ||
+    missingConfig.length > 0 ||
+    missingOs.length > 0;
 
   const handleUninstall = async () => {
     try {
@@ -379,39 +386,53 @@ function SkillDetailModal({ skill, isOpen, onClose }: SkillDetailModalProps) {
               Missing Requirements
             </h4>
             <div className="space-y-2">
-              {skill.missing.bins.length > 0 && (
+              {missingBins.length > 0 && (
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-red-500/10">
                   <XCircle className="w-4 h-4 text-red-400" />
                   <span className="text-gray-300 text-sm">
-                    Missing binaries:{" "}
-                    <code className="text-red-300">{skill.missing.bins.join(", ")}</code>
+                    Missing binaries: <code className="text-red-300">{missingBins.join(", ")}</code>
                   </span>
                 </div>
               )}
-              {skill.missing.anyBins.length > 0 && (
+              {missingAnyBins.length > 0 && (
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10">
                   <AlertTriangle className="w-4 h-4 text-amber-400" />
                   <span className="text-gray-300 text-sm">
                     Need one of:{" "}
-                    <code className="text-amber-300">{skill.missing.anyBins.join(" | ")}</code>
+                    <code className="text-amber-300">{missingAnyBins.join(" | ")}</code>
                   </span>
                 </div>
               )}
-              {skill.missing.env.length > 0 && (
+              {missingEnv.length > 0 && (
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-red-500/10">
                   <XCircle className="w-4 h-4 text-red-400" />
                   <span className="text-gray-300 text-sm">
-                    Missing env vars:{" "}
-                    <code className="text-red-300">{skill.missing.env.join(", ")}</code>
+                    Missing env vars: <code className="text-red-300">{missingEnv.join(", ")}</code>
                   </span>
                 </div>
               )}
-              {skill.missing.os.length > 0 && (
+              {missingAnyEnv.length > 0 && (
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-500/10">
+                  <AlertTriangle className="w-4 h-4 text-amber-400" />
+                  <span className="text-gray-300 text-sm">
+                    Need one of these env vars:{" "}
+                    <code className="text-amber-300">{missingAnyEnv.join(" | ")}</code>
+                  </span>
+                </div>
+              )}
+              {missingOs.length > 0 && (
                 <div className="flex items-center gap-2 p-2 rounded-lg bg-red-500/10">
                   <XCircle className="w-4 h-4 text-red-400" />
                   <span className="text-gray-300 text-sm">
-                    Requires OS:{" "}
-                    <code className="text-red-300">{skill.missing.os.join(" or ")}</code>
+                    Requires OS: <code className="text-red-300">{missingOs.join(" or ")}</code>
+                  </span>
+                </div>
+              )}
+              {missingConfig.length > 0 && (
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-red-500/10">
+                  <XCircle className="w-4 h-4 text-red-400" />
+                  <span className="text-gray-300 text-sm">
+                    Missing config: <code className="text-red-300">{missingConfig.join(", ")}</code>
                   </span>
                 </div>
               )}

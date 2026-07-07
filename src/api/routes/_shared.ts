@@ -418,7 +418,7 @@ export const ACTIVE_SESSION_STATUSES = new Set([
   "thinking",
   "generating",
   "tool_executing",
-  "tool_completed",
+  "compacting",
 ]);
 
 export function isSessionStatusActive(status?: string): boolean {

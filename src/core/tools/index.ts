@@ -2179,7 +2179,7 @@ ACTIONS:
   image_generate: {
     name: "image_generate",
     description:
-      "Generate images from a text prompt (OpenAI DALL-E / gpt-image or fal.ai). Generated files are saved to the workspace and their paths returned. Set OPENAI_API_KEY or FAL_KEY to enable.",
+      "Generate images from a text prompt (OpenAI DALL-E / gpt-image or fal.ai). Generated files are saved to the workspace and their paths returned. Set OPENAI_API_KEY or FAL_KEY/FAL_API_KEY to enable.",
     category: "media",
     input_schema: {
       type: "object",
@@ -2209,7 +2209,7 @@ ACTIONS:
   video_generate: {
     name: "video_generate",
     description:
-      "Generate video from a text prompt (fal.ai: minimax, kling, veo3). Async job; the tool waits for completion. Set FAL_KEY to enable. Output saved to the workspace.",
+      "Generate video from a text prompt (fal.ai: minimax, kling, veo3). Async job; the tool waits for completion. Set FAL_KEY/FAL_API_KEY to enable. Output saved to the workspace.",
     category: "media",
     input_schema: {
       type: "object",
@@ -2228,7 +2228,7 @@ ACTIONS:
   music_generate: {
     name: "music_generate",
     description:
-      "Generate music/audio from a text prompt (fal.ai: minimax-music, ace-step, stable-audio). Set FAL_KEY to enable. Output saved to the workspace.",
+      "Generate music/audio from a text prompt (fal.ai: minimax-music, ace-step, stable-audio). Set FAL_KEY/FAL_API_KEY to enable. Output saved to the workspace.",
     category: "media",
     input_schema: {
       type: "object",
