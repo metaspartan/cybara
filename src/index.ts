@@ -1,5 +1,5 @@
 import { readFileSync, existsSync, statSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, resolve, sep } from "path";
 import { fileURLToPath } from "url";
 import { agentManager } from "./core/agent";
 import { handleChat, listSessions, sendToSession, type ChatMessage } from "./api/chat";
@@ -509,10 +509,14 @@ Bun.serve<WsData>({
       return new Response(readUiIndex(), { headers: htmlHeaders });
     }
 
-    const safePath = pathname.replace(/\.\./g, "").replace(/^\/+/, ""); // Prevent directory traversal
-    const filePath = join(uiPath, safePath);
+    // Canonicalize and confine to uiPath: resolving handles ..%2f / encoded and
+    // stacked traversal that a naive `.replace(/\.\./g, "")` misses, and the
+    // prefix check rejects anything that escapes the UI root.
+    const uiRoot = resolve(uiPath);
+    const filePath = resolve(uiRoot, pathname.replace(/^\/+/, ""));
+    const withinUiRoot = filePath === uiRoot || filePath.startsWith(uiRoot + sep);
 
-    if (existsSync(filePath) && !filePath.includes(".git")) {
+    if (withinUiRoot && existsSync(filePath) && !filePath.includes(".git")) {
       if (statSync(filePath).isDirectory()) {
         return new Response("Directory listing not allowed", {
           status: 403,

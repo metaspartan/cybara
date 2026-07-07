@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
+import { constantTimeEqual } from "../constant-time";
 import { parseSynologyForm } from "../synology-events";
 
 export const synologySessions = new Map<string, string>();
@@ -79,7 +80,8 @@ export class SynologyAdapter implements ChannelAdapter {
 
     const inbound = parseSynologyForm(payload.rawBody);
     if (!inbound) return { status: 200, body: {} };
-    if (inbound.token !== cfg.token) return { status: 401, body: { error: "invalid token" } };
+    if (!constantTimeEqual(inbound.token ?? "", cfg.token ?? ""))
+      return { status: 401, body: { error: "invalid token" } };
 
     const reply = await this.dispatch(channelId, inbound.userId, inbound.username, inbound.text);
     return { status: 200, body: reply ? { text: reply } : {} };

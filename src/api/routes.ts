@@ -178,6 +178,7 @@ import {
 } from "./ide-api";
 import { getGitStatus, getGitBranch, getGitDiff } from "./git-api";
 import { buildJourney } from "./journey";
+import { escapeHtml } from "./html-escape";
 import { createLogger } from "../core/logger";
 import { openUrlInBrowser } from "../core/runtime/open-url";
 import { trackApiCall, trackFileOperation, trackMetric } from "../core/metrics";
@@ -1676,8 +1677,14 @@ const routes: Record<string, RouteHandler> = {
     const callbackPath = oauthConfig.callbackPath || "/callback";
     const redirectUri = `http://localhost:${callbackPort}${callbackPath}`;
 
-    const renderOAuthCallbackHtml = (title: string, message: string, tone: "success" | "error") =>
-      `<!doctype html>
+    const renderOAuthCallbackHtml = (
+      rawTitle: string,
+      rawMessage: string,
+      tone: "success" | "error"
+    ) => {
+      const title = escapeHtml(rawTitle);
+      const message = escapeHtml(rawMessage);
+      return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -1718,6 +1725,7 @@ const routes: Record<string, RouteHandler> = {
     </main>
   </body>
 </html>`;
+    };
 
     const callbackServer = Bun.serve({
       port: callbackPort,

@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
+import { constantTimeEqual } from "../constant-time";
 import { parseGoogleChatEvent } from "../googlechat-events";
 
 export const googleChatSessions = new Map<string, string>();
@@ -79,7 +80,8 @@ export class GoogleChatAdapter implements ChannelAdapter {
         payload.query.token ||
         (payload.headers.authorization || "").replace(/^Bearer\s+/i, "") ||
         "";
-      if (provided !== cfg.verifyToken) return { status: 401, body: { error: "invalid token" } };
+      if (!constantTimeEqual(provided, cfg.verifyToken))
+        return { status: 401, body: { error: "invalid token" } };
     }
 
     const event = parseGoogleChatEvent(payload.body);

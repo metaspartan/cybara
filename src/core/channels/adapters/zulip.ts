@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
+import { constantTimeEqual } from "../constant-time";
 import { parseZulipMessage } from "../zulip-events";
 
 export const zulipSessions = new Map<string, string>();
@@ -92,7 +93,7 @@ export class ZulipAdapter implements ChannelAdapter {
     const message = parseZulipMessage(payload.body);
     if (!message) return { status: 200, body: {} };
 
-    if (cfg.token && message.token && message.token !== cfg.token) {
+    if (cfg.token && message.token && !constantTimeEqual(message.token, cfg.token)) {
       return { status: 401, body: { error: "invalid token" } };
     }
 

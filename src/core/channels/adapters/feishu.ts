@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
+import { constantTimeEqual } from "../constant-time";
 import {
   parseFeishuMessage,
   extractFeishuChallenge,
@@ -157,7 +158,7 @@ export class FeishuAdapter implements ChannelAdapter {
         (body as { token?: string; header?: { token?: string } })?.token ||
         (body as { header?: { token?: string } })?.header?.token ||
         "";
-      if (token && token !== cfg.verificationToken) {
+      if (token && !constantTimeEqual(token, cfg.verificationToken)) {
         return { status: 401, body: { error: "invalid token" } };
       }
     }

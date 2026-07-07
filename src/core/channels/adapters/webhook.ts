@@ -7,8 +7,10 @@
  * routed to the channel's bound agent as a message. Outbound sendMessage is a
  * no-op (webhook is inbound-only — replies go via other channels).
  */
+import { createHmac } from "crypto";
 import type { ChannelAdapter, ToolCallInfo } from "../types";
 import { formatToolCallsPlain } from "../formatting";
+import { constantTimeEqual } from "../constant-time";
 
 export class WebhookAdapter implements ChannelAdapter {
   type = "webhook" as const;
@@ -57,14 +59,9 @@ export function verifyWebhookSignature(
   if (!secret) return true; // No secret configured = unsigned webhooks allowed.
   if (!signature) return false;
   try {
-    const { createHmac } = require("crypto");
     const expected = createHmac("sha256", secret).update(rawBody).digest("hex");
     const sig = signature.startsWith("sha256=") ? signature.slice(7) : signature;
-    // Constant-time-ish comparison.
-    if (expected.length !== sig.length) return false;
-    let diff = 0;
-    for (let i = 0; i < expected.length; i += 1) diff |= expected.charCodeAt(i) ^ sig.charCodeAt(i);
-    return diff === 0;
+    return constantTimeEqual(expected, sig);
   } catch {
     return false;
   }

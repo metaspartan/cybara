@@ -80,14 +80,17 @@ function getOrCreateApiKey(): string | null {
   try {
     writeFileSync(API_KEY_FILE, newKey, { mode: 0o600 }); // Read/write only by owner
     log.info("Generated new API key", { path: API_KEY_FILE });
+    // Never print key material to stdout — it leaks into terminal history,
+    // container logs, and log-aggregation systems. Point the operator at the
+    // 0600 file instead.
     console.log(`
 ╔══════════════════════════════════════════════════════════════════╗
 ║  🔐 API KEY GENERATED                                            ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║  Your API key has been saved to: ~/.cybara/api_key               ║
+║  Read it with:  cat ~/.cybara/api_key                            ║
 ║                                                                  ║
-║  To authenticate API requests, use:                              ║
-║    curl -H "Authorization: Bearer ${newKey.slice(0, 20)}..."     ║
+║  Send it as:    Authorization: Bearer <your key>                 ║
 ║                                                                  ║
 ║  Localhost connections are allowed without auth in dev mode.     ║
 ║  Set CYBARA_API_KEY env var to override.                         ║

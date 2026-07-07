@@ -116,6 +116,30 @@ else:
             pass
 `;
 
+// Secrets in the gateway's environment (provider API keys, CYBARA_API_KEY,
+// wallet material, OAuth tokens) must not be inherited by the interactive
+// terminal, where `env`/`printenv` would expose them. Strip them but keep the
+// operational vars a shell needs (PATH, HOME, LANG, etc.).
+const TERMINAL_ENV_SENSITIVE =
+  /(key|token|secret|password|passwd|credential|mnemonic|seed|private|apikey|auth)/i;
+
+function buildTerminalEnv(shell: string, home: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined) continue;
+    if (TERMINAL_ENV_SENSITIVE.test(key)) continue;
+    env[key] = value;
+  }
+  return {
+    ...env,
+    SHELL: shell,
+    TERM: "xterm-256color",
+    COLORTERM: "truecolor",
+    HOME: home,
+    PYTHONUNBUFFERED: "1",
+  };
+}
+
 export function createTerminalSession(sessionId: string): TerminalSession {
   const shell = process.env.SHELL || "/bin/zsh";
   const home = homedir();
@@ -125,14 +149,7 @@ export function createTerminalSession(sessionId: string): TerminalSession {
     stdin: "pipe",
     stdout: "pipe",
     stderr: "pipe",
-    env: {
-      ...process.env,
-      SHELL: shell,
-      TERM: "xterm-256color",
-      COLORTERM: "truecolor",
-      HOME: home,
-      PYTHONUNBUFFERED: "1",
-    },
+    env: buildTerminalEnv(shell, home),
   });
 
   const session: TerminalSession = {

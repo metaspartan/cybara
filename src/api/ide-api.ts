@@ -888,7 +888,7 @@ export async function searchWorkspace(
   };
 }
 
-function applyReplacements(
+export function applyReplacements(
   content: string,
   query: string,
   replacement: string,
@@ -905,12 +905,15 @@ function applyReplacements(
   } catch {
     return { content, replacements: 0 }; // invalid regex → no changes
   }
-  let replacements = 0;
-  const nextContent = content.replace(regex, () => {
-    replacements += 1;
-    // In regex mode, pass match through so $1/$& work; otherwise literal replacement.
-    return options?.useRegex ? replacement.replace(/\$[0-9&]/g, "") || replacement : replacement;
-  });
+  const matches = content.match(regex);
+  const replacements = matches ? matches.length : 0;
+  if (replacements === 0) return { content, replacements: 0 };
+  // Regex mode: pass the replacement as a STRING so String.replace expands
+  // $1/$2/$& capture-group references. Literal mode: use a function that
+  // returns the replacement verbatim, so a literal "$1" is not expanded.
+  const nextContent = options?.useRegex
+    ? content.replace(regex, replacement)
+    : content.replace(regex, () => replacement);
   return { content: nextContent, replacements };
 }
 
@@ -1599,8 +1602,12 @@ export async function openInSystemTerminal(inputPath: string): Promise<RevealRes
     }
 
     if (process.platform === "win32") {
-      const command = `cd /d "${workingDir}"`;
-      const result = Bun.spawnSync(["cmd", "/c", "start", "cmd", "/k", command], {
+      // Set the new terminal's directory via the spawn cwd (inherited by the
+      // launched window) rather than interpolating workingDir into a `cmd /k`
+      // string — that string is shell-parsed and a path containing a quote or
+      // `&`/`|` would be command injection.
+      const result = Bun.spawnSync(["cmd", "/c", "start", "cmd"], {
+        cwd: workingDir,
         stdout: "pipe",
         stderr: "pipe",
       });

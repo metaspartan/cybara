@@ -8,6 +8,18 @@ function redactEnvValue(key: string, value: string | undefined): string | null {
   return value.slice(0, 100) + (value.length > 100 ? "..." : "");
 }
 
+// Env vars an agent must never set/unset: secrets (so it can't plant a
+// credential a later tool call picks up) and operational vars that would
+// weaken auth, enable IP spoofing, redirect binaries, or inject code into
+// every subprocess.
+const PROTECTED_ENV_KEY =
+  /^(CYBARA_(API_KEY|REQUIRE_AUTH|TRUST_PROXY|BASE_PATH|HOME|DATA_DIR)|PATH|NODE_OPTIONS|NODE_ENV|LD_PRELOAD|LD_LIBRARY_PATH|DYLD_.*|HTTP_PROXY|HTTPS_PROXY|npm_config_.*)$/i;
+
+/** True when an agent must not modify this env var via the tool. */
+export function isProtectedEnvKey(key: string): boolean {
+  return PROTECTED_ENV_KEY.test(key) || SENSITIVE_ENV_KEY.test(key);
+}
+
 export async function handleEnv(args: Record<string, unknown>): Promise<unknown> {
   const action = (args.action as string) || "info";
   const key = args.key as string | undefined;
@@ -44,6 +56,11 @@ export async function handleEnv(args: Record<string, unknown>): Promise<unknown>
       if (value === undefined) {
         throw new Error("Value is required for set action");
       }
+      if (isProtectedEnvKey(key)) {
+        return {
+          error: `Refused: '${key}' is a protected/sensitive environment variable and cannot be set via this tool.`,
+        };
+      }
       process.env[key] = value;
       return { success: true, key, note: "Set for current process only" };
     }
@@ -51,6 +68,11 @@ export async function handleEnv(args: Record<string, unknown>): Promise<unknown>
     case "unset": {
       if (!key) {
         throw new Error("Key is required for unset action");
+      }
+      if (isProtectedEnvKey(key)) {
+        return {
+          error: `Refused: '${key}' is a protected/sensitive environment variable and cannot be unset via this tool.`,
+        };
       }
       delete process.env[key];
       return { success: true, key };

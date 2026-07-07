@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
+import { constantTimeEqual } from "../constant-time";
 import { parseHomeAssistantWebhook, notifyTarget } from "../homeassistant-events";
 
 export const homeAssistantSessions = new Map<string, string>();
@@ -92,7 +93,8 @@ export class HomeAssistantAdapter implements ChannelAdapter {
         payload.query.token ||
         (payload.headers.authorization || "").replace(/^Bearer\s+/i, "") ||
         "";
-      if (provided !== cfg.verifyToken) return { status: 401, body: { error: "invalid token" } };
+      if (!constantTimeEqual(provided, cfg.verifyToken))
+        return { status: 401, body: { error: "invalid token" } };
     }
 
     const event = parseHomeAssistantWebhook(payload.body, payload.query);

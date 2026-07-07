@@ -176,8 +176,26 @@ export function getCombinedLogs(
   return sorted.slice(offset, offset + Math.max(0, options.limit));
 }
 
+// SQLite cannot parameterize a table name, so an allowlist is the only safe way
+// to interpolate one. Every caller passes a hardcoded literal today; this guard
+// ensures a future (or user-influenced) caller can never inject SQL.
+const COUNTABLE_TABLES = new Set([
+  "system_logs",
+  "agent_logs",
+  "channel_logs",
+  "session_messages",
+]);
+
+export function assertCountableTable(table: string): string {
+  if (!COUNTABLE_TABLES.has(table)) {
+    throw new Error(`Invalid table name: ${table}`);
+  }
+  return table;
+}
+
 function countRows(table: string): number {
-  const row = db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get() as CountResult | null;
+  const safe = assertCountableTable(table);
+  const row = db.prepare(`SELECT COUNT(*) as count FROM ${safe}`).get() as CountResult | null;
   return Number(row?.count || 0);
 }
 
@@ -357,8 +375,9 @@ export function getLogStats(hours: number = 24): LogStats {
   // so the window compares real instants instead of raw strings. Counting in SQL
   // also avoids the LIMIT 1000 cap of the list() helpers.
   const countSince = (table: string): number => {
+    const safe = assertCountableTable(table);
     const row = db
-      .prepare(`SELECT COUNT(*) as count FROM ${table} WHERE datetime(created_at) > datetime(?)`)
+      .prepare(`SELECT COUNT(*) as count FROM ${safe} WHERE datetime(created_at) > datetime(?)`)
       .get(sinceIso) as CountResult | null;
     return Number(row?.count || 0);
   };
