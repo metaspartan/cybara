@@ -303,12 +303,28 @@ export async function handleMemoryGet(
   };
 }
 
+/** Coerce a caller-supplied `tags` value into a clean string[] regardless of shape. */
+function normalizeTagList(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.map((t) => String(t).trim()).filter((t) => t.length > 0);
+  }
+  if (typeof raw === "string") {
+    return raw
+      .split(",")
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+  }
+  return [];
+}
+
 export async function handleMemorySave(
   args: Record<string, unknown>
 ): Promise<{ success: boolean; path: string; type: string; indexed: boolean }> {
   const content = args.content as string;
   const type = (args.type as string) || "context";
-  const tags = (args.tags as string[]) || [];
+  // Coerce tags robustly: models pass an array, a comma-separated string, or
+  // omit it entirely. Never assume Array so `.join` can't blow up the call.
+  const tags = normalizeTagList(args.tags);
 
   if (!content) {
     throw new Error("Content is required");

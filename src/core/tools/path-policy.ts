@@ -224,17 +224,37 @@ export function assertWritablePath(
   return decision.resolvedPath;
 }
 
+// The agent's OWN memory and skills live under ~/.cybara but are meant to be
+// readable — an agent reading its MEMORY.md or a SKILL.md is normal, and
+// blocking it (the whole `.cybara` dir is denied to protect the keys DB and
+// wallet) caused spurious "sensitive credential" tool failures. These read-only
+// carve-outs re-permit exactly those subtrees; the sensitive parts (data/*.db,
+// api_key, security.json, wallet) remain blocked by the deny-list.
+const READABLE_CYBARA_SUBDIRS: readonly string[] = [".cybara/memory", ".cybara/skills"];
+
 /**
  * Read-side guard. The same sensitive-file deny-list applies to reads — an
  * agent/prompt-injection must not be able to read `~/.ssh/id_rsa`, `.env`,
  * `~/.aws/credentials`, etc. and exfiltrate them. Reuses checkWritePath's rules
- * (workspace confinement is opt-in via options, same as writes).
+ * (workspace confinement is opt-in via options, same as writes), but re-permits
+ * the agent's own memory/skills subtrees.
  */
 export function assertReadablePath(
   rawPath: string | undefined,
   options?: PathPolicyOptions
 ): string {
   const decision = checkWritePath(rawPath, options);
+  if (!decision.allowed && decision.reason === "sensitive-path" && rawPath) {
+    const candidates = policyPaths(rawPath);
+    const inReadableSubdir = candidates.some((candidate) =>
+      READABLE_CYBARA_SUBDIRS.some((subdir) => isUnderHomeSubdir(candidate, subdir))
+    );
+    // Still honor filename-level denials (e.g. a stray .env inside memory/).
+    const hitsFilenameDeny = candidates.some((candidate) => matchesDenyPattern(candidate));
+    if (inReadableSubdir && !hitsFilenameDeny) {
+      return decision.resolvedPath;
+    }
+  }
   if (!decision.allowed) {
     const message =
       decision.reason === "sensitive-path"
