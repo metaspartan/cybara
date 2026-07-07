@@ -261,7 +261,12 @@ function toolApprovalModeLabel(mode: ToolApprovalMode): string {
 function ContextUsageRing({ usage }: { usage?: SessionContextUsage | null }) {
   const [open, setOpen] = useState(false);
   const percent = usage ? Math.min(100, Math.max(0, usage.usedPercent)) : 0;
-  const color = percent >= 90 ? "#f87171" : percent >= 70 ? "#fbbf24" : "#34d399";
+  const color =
+    percent >= 90
+      ? "var(--context-ring-danger)"
+      : percent >= 70
+        ? "var(--context-ring-warn)"
+        : "var(--context-ring-ok)";
   const tooltip = contextUsageTooltip(usage);
   const label = contextUsageLabel(usage);
   return (
@@ -278,21 +283,21 @@ function ContextUsageRing({ usage }: { usage?: SessionContextUsage | null }) {
       <div
         className="absolute inset-[3px] rounded-full p-[1.5px]"
         style={{
-          background: `conic-gradient(${color} ${percent * 3.6}deg, rgba(255,255,255,0.18) 0deg)`,
+          background: `conic-gradient(${color} ${percent * 3.6}deg, var(--context-ring-track) 0deg)`,
         }}
       >
-        <div className="h-full w-full rounded-full bg-[#171820]" />
+        <div className="context-usage-ring-fill h-full w-full rounded-full" />
       </div>
       <div
         role="tooltip"
         className={cn(
-          "pointer-events-none absolute bottom-full left-1/2 z-50 mb-3 w-max max-w-[240px] -translate-x-1/2 rounded-lg border border-white/10 bg-[#2b2b2f] px-3 py-2 text-center text-[12px] leading-5 text-gray-100 shadow-[0_14px_40px_rgba(0,0,0,0.55)]",
+          "context-usage-tooltip pointer-events-none absolute bottom-full left-1/2 z-50 mb-3 w-max max-w-[240px] -translate-x-1/2 rounded-lg border px-3 py-2 text-center text-[12px] leading-5",
           open ? "block" : "hidden"
         )}
       >
-        <div className="text-gray-400">{tooltip.title}</div>
-        <div className="font-medium text-gray-200">{tooltip.body}</div>
-        <div className="text-gray-100">{tooltip.detail}</div>
+        <div className="context-usage-tooltip-title">{tooltip.title}</div>
+        <div className="context-usage-tooltip-body font-medium">{tooltip.body}</div>
+        <div className="context-usage-tooltip-detail">{tooltip.detail}</div>
       </div>
     </div>
   );

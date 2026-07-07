@@ -25,6 +25,17 @@
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-surface: rgba(255, 255, 255, 0.03);
   --glass-highlight: rgba(255, 255, 255, 0.12);
+  --context-ring-ok: #34d399;
+  --context-ring-warn: #fbbf24;
+  --context-ring-danger: #f87171;
+  --context-ring-track: rgba(255, 255, 255, 0.18);
+  --context-ring-inner: #171820;
+  --context-tooltip-bg: rgba(43, 43, 47, 0.96);
+  --context-tooltip-border: rgba(255, 255, 255, 0.1);
+  --context-tooltip-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+  --context-tooltip-title: #9ca3af;
+  --context-tooltip-body: #e5e7eb;
+  --context-tooltip-detail: #f3f4f6;
 
   /* Theme accent color (set dynamically via JS) */
   --accent-primary: 99, 102, 241;
@@ -652,6 +663,31 @@ textarea[data-chat-composer-input="true"]:focus-visible {
   contain-intrinsic-size: 0 180px;
 }
 
+.context-usage-ring-fill {
+  background: var(--context-ring-inner);
+}
+
+.context-usage-tooltip {
+  background: var(--context-tooltip-bg);
+  border-color: var(--context-tooltip-border);
+  box-shadow: var(--context-tooltip-shadow);
+  color: var(--context-tooltip-detail);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.context-usage-tooltip-title {
+  color: var(--context-tooltip-title);
+}
+
+.context-usage-tooltip-body {
+  color: var(--context-tooltip-body);
+}
+
+.context-usage-tooltip-detail {
+  color: var(--context-tooltip-detail);
+}
+
 /* Print Styles */
 @media print {
   body {
@@ -682,6 +718,17 @@ html.light {
   --glass-border: rgba(15, 23, 42, 0.1);
   --glass-surface: rgba(15, 23, 42, 0.03);
   --glass-highlight: rgba(15, 23, 42, 0.08);
+  --context-ring-ok: #059669;
+  --context-ring-warn: #d97706;
+  --context-ring-danger: #dc2626;
+  --context-ring-track: rgba(15, 23, 42, 0.16);
+  --context-ring-inner: #f8fafc;
+  --context-tooltip-bg: rgba(255, 255, 255, 0.96);
+  --context-tooltip-border: rgba(15, 23, 42, 0.14);
+  --context-tooltip-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
+  --context-tooltip-title: #64748b;
+  --context-tooltip-body: #1f2937;
+  --context-tooltip-detail: #111827;
 }
 
 html.light body {

@@ -29,6 +29,13 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("useUpdateSessionAgent");
     expect(source).toContain("contextUsageLabel");
     expect(source).toContain("contextUsageTooltip");
+    expect(source).toContain("var(--context-ring-track)");
+    expect(source).toContain("context-usage-ring-fill");
+    expect(source).toContain("context-usage-tooltip");
+    expect(source).toContain("context-usage-tooltip-title");
+    expect(source).not.toContain("bg-[#2b2b2f]");
+    expect(source).not.toContain("bg-[#171820]");
+    expect(source).not.toContain("rgba(255,255,255,0.18)");
     expect(source).toContain("ChatApprovalControls");
     expect(source).toContain('id="chat-tool-approval-mode"');
     expect(source).toContain(

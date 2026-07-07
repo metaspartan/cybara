@@ -35,6 +35,27 @@ describe("index.css design-system utilities", () => {
     );
   });
 
+  test("chat context ring and tooltip have light and dark theme tokens", () => {
+    expect(css).toContain("--context-ring-ok");
+    expect(css).toContain("--context-ring-warn");
+    expect(css).toContain("--context-ring-danger");
+    expect(css).toContain("--context-ring-track");
+    expect(css).toContain("--context-ring-inner");
+    expect(css).toContain("--context-tooltip-bg");
+    expect(css).toContain(".context-usage-ring-fill");
+    expect(css).toContain(".context-usage-tooltip");
+    expect(css).toContain(".context-usage-tooltip-title");
+    expect(css).toMatch(/html\.light\s*\{[\s\S]*--context-ring-ok:/);
+    expect(css).toMatch(/html\.light\s*\{[\s\S]*--context-ring-track:/);
+    expect(css).toMatch(/html\.light\s*\{[\s\S]*--context-tooltip-bg:/);
+    expect(css).toMatch(
+      /\.context-usage-tooltip\s*\{[\s\S]*background:\s*var\(--context-tooltip-bg\)/
+    );
+    expect(css).toMatch(
+      /\.context-usage-ring-fill\s*\{[\s\S]*background:\s*var\(--context-ring-inner\)/
+    );
+  });
+
   test("honors prefers-reduced-motion", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
   });
