@@ -28,7 +28,10 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("ChatAgentControls");
     expect(source).toContain("useUpdateSessionAgent");
     expect(source).toContain("contextUsageLabel");
+    expect(source).toContain("contextUsageTooltip");
     expect(source).toContain('id="chat-agent-selector"');
+    expect(source).not.toContain('<Zap className="pointer-events-none absolute left-2');
+    expect(source).toContain("setSessionAgentId(nextAgentId ?? null)");
     expect(source).toContain("setSessionContextUsage(updated.contextUsage ?? null)");
     expect(source).toContain("clientPendingId: optimisticPendingMessageId");
     expect(source).toContain(

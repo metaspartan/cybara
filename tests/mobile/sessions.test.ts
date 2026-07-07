@@ -87,14 +87,12 @@ describe("mobile: chat management", () => {
     expect(api).toContain("/api/sessions/${encodeURIComponent(id)}/agent");
     expect(screen).toContain("const changeSessionAgent");
     expect(screen).toContain("const openAgentSelector");
-    expect(screen).toContain("mobileContextUsageDetail(contextUsage)");
-    expect(screen).toContain('accessibilityLabel="Change chat agent"');
-    expect(screen).toContain(
-      "accessibilityLabel={`Context usage: ${mobileContextUsageDetail(contextUsage)}`}"
-    );
+    expect(screen).toContain("mobileContextUsageDetail(");
+    expect(screen).toContain("Context: ${mobileContextUsageDetail(contextUsage)}");
+    expect(screen).toContain('text: "Change agent"');
+    expect(screen).toContain("setPendingSessionAgentId(agentId)");
     expect(screen).toContain("contextUsage: result.contextUsage ?? current.contextUsage");
-    expect(styles).toContain("composerMetaRow:");
-    expect(styles).toContain("contextUsageCircle:");
-    expect(styles).toContain("composerAgentButton:");
+    expect(styles).not.toContain("composerSettingsButton:");
+    expect(styles).not.toContain("contextUsageDot:");
   });
 });

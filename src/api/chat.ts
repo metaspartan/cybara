@@ -3,6 +3,7 @@ import { KeyedMutex } from "../core/keyed-mutex";
 import { type AgentImage, hasImages, sanitizeAgentImages } from "../core/llm/image-blocks";
 import { providerManager } from "../core/providers";
 import { config } from "../core/config";
+import { expandPromptCommand } from "../core/prompt-commands";
 import {
   getToolSchemasForLLM,
   checkCircuit,
@@ -1239,6 +1240,14 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
 
   if (!request.message.trim()) {
     throw new Error("Message is required");
+  }
+
+  // Expand slash commands (e.g. /learn <url|prompt>) into a standards-guided
+  // prompt handed to the agent as a normal turn. Done here so every client
+  // (web, mobile, macOS, channels) gets the same commands with no extra wiring.
+  const expandedCommand = expandPromptCommand(request.message);
+  if (expandedCommand) {
+    request = { ...request, message: expandedCommand };
   }
 
   // Serialize the turn per session. A provided sessionId is the contended key;

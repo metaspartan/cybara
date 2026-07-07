@@ -72,24 +72,31 @@ function parseCodexWindow(raw: unknown): LiveUsageWindow | undefined {
   };
 }
 
+/** Parse a chatgpt.com/backend-api/wham/usage response body into usage windows. */
+export function parseCodexUsageResponse(body: unknown, now: number): LiveProviderUsage | null {
+  const json = asRecord(body);
+  const rateLimit = asRecord(json?.rate_limit);
+  if (!rateLimit) return null;
+  const planType = typeof json?.plan_type === "string" ? json.plan_type : undefined;
+  const planLabel = planType
+    ? `Codex ${planType.charAt(0).toUpperCase()}${planType.slice(1)}`
+    : undefined;
+  return {
+    planLabel,
+    fiveHour: parseCodexWindow(rateLimit.primary_window),
+    weekly: parseCodexWindow(rateLimit.secondary_window),
+    source: "oauth_api",
+    fetchedAt: now,
+  };
+}
+
 async function fetchCodexUsage(token: string): Promise<LiveProviderUsage | null> {
   const res = await fetch("https://chatgpt.com/backend-api/wham/usage", {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) return null;
-  const json = asRecord(await res.json());
-  const rateLimit = asRecord(json?.rate_limit);
-  if (!rateLimit) return null;
-  const planType = typeof json?.plan_type === "string" ? json.plan_type : undefined;
-  const planLabel = planType ? `Codex ${planType.charAt(0).toUpperCase()}${planType.slice(1)}` : undefined;
-  return {
-    planLabel,
-    fiveHour: parseCodexWindow(rateLimit.primary_window),
-    weekly: parseCodexWindow(rateLimit.secondary_window),
-    source: "oauth_api",
-    fetchedAt: Date.now(),
-  };
+  return parseCodexUsageResponse(await res.json(), Date.now());
 }
 
 function parseAnthropicWindow(raw: unknown): LiveUsageWindow | undefined {
@@ -99,8 +106,29 @@ function parseAnthropicWindow(raw: unknown): LiveUsageWindow | undefined {
   if (usedPercent === undefined) return undefined;
   return {
     usedPercent: Math.max(0, Math.min(100, usedPercent)),
-    resetsAt: epochToIso(record.resets_at ?? record.reset_at) ??
+    resetsAt:
+      epochToIso(record.resets_at ?? record.reset_at) ??
       (typeof record.resets_at === "string" ? record.resets_at : undefined),
+  };
+}
+
+/** Parse an api.anthropic.com/api/oauth/usage response body into usage windows. */
+export function parseAnthropicUsageResponse(body: unknown, now: number): LiveProviderUsage | null {
+  const json = asRecord(body);
+  if (!json) return null;
+  const tier =
+    (typeof json.subscriptionType === "string" && json.subscriptionType) ||
+    (typeof json.rate_limit_tier === "string" && json.rate_limit_tier) ||
+    undefined;
+  const fiveHour = parseAnthropicWindow(json.five_hour);
+  const weekly = parseAnthropicWindow(json.seven_day);
+  if (!fiveHour && !weekly && !tier) return null;
+  return {
+    planLabel: tier ? `Claude ${tier}` : undefined,
+    fiveHour,
+    weekly,
+    source: "oauth_api",
+    fetchedAt: now,
   };
 }
 
@@ -114,19 +142,7 @@ async function fetchAnthropicUsage(token: string): Promise<LiveProviderUsage | n
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) return null;
-  const json = asRecord(await res.json());
-  if (!json) return null;
-  const tier =
-    (typeof json.subscriptionType === "string" && json.subscriptionType) ||
-    (typeof json.rate_limit_tier === "string" && json.rate_limit_tier) ||
-    undefined;
-  return {
-    planLabel: tier ? `Claude ${tier}` : undefined,
-    fiveHour: parseAnthropicWindow(json.five_hour),
-    weekly: parseAnthropicWindow(json.seven_day),
-    source: "oauth_api",
-    fetchedAt: Date.now(),
-  };
+  return parseAnthropicUsageResponse(await res.json(), Date.now());
 }
 
 function looksLikeOAuthToken(token?: string): token is string {

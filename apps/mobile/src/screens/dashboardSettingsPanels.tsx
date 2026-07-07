@@ -3634,7 +3634,11 @@ function journeyRelativeTime(ms: number): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return new Date(ms).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function journeyDayKey(ms: number): string {
@@ -3719,7 +3723,9 @@ export function JourneyPanel({ accentColor, api }: { accentColor: string; api: C
                 <Text style={[styles.settingsInfoTitle, { flex: 1 }]} numberOfLines={2}>
                   {event.title}
                 </Text>
-                <Text style={styles.settingsInfoText}>{journeyRelativeTime(event.createdAtMs)}</Text>
+                <Text style={styles.settingsInfoText}>
+                  {journeyRelativeTime(event.createdAtMs)}
+                </Text>
               </View>
               {event.detail && event.detail !== event.title ? (
                 <Text style={styles.settingsInfoText} numberOfLines={3}>

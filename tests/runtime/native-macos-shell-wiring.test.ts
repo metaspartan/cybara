@@ -217,7 +217,10 @@ describe("native macOS shell wiring", () => {
     expect(gatewayClient).toContain('request("api/sessions/\\(id)/agent", method: "PUT"');
     expect(nativeScreens).toContain("private var composerControls: some View");
     expect(nativeScreens).toContain('Picker("Agent", selection: agentSelectionBinding)');
+    expect(nativeScreens).toContain(".frame(width: 190)");
     expect(nativeScreens).toContain("private var contextUsageText: String");
+    expect(nativeScreens).toContain("private var contextUsagePopover: some View");
+    expect(nativeScreens).toContain("pendingAgentSessionID = selectedSessionID");
     expect(nativeScreens).toContain("private func changeChatAgent(_ agentID: String) async");
     expect(nativeScreens).toContain(
       "agentId: selectedChatAgentID.isEmpty ? nil : selectedChatAgentID"

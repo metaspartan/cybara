@@ -282,6 +282,7 @@ struct ChatScreen: View {
     @State private var renameDraft = ""
     @State private var deleteTarget: GatewaySession?
     @State private var pendingAgentID = ""
+    @State private var pendingAgentSessionID: String?
     @State private var pendingWorkspaceDir = ""
     @State private var workspaceSaving = false
     @State private var agentSaving = false
@@ -315,6 +316,10 @@ struct ChatScreen: View {
         .task(id: selectedSessionID) {
             resetLiveTimeline(clearStartedAt: true)
             pendingMessages = []
+            if pendingAgentSessionID != selectedSessionID {
+                pendingAgentSessionID = nil
+                if selectedSessionID != nil { pendingAgentID = "" }
+            }
             guard let selectedSessionID else {
                 messages = []
                 return
@@ -664,7 +669,15 @@ struct ChatScreen: View {
     }
 
     private var selectedChatAgentID: String {
-        firstNonEmptyGatewayString(activeSession?.agent_id, pendingAgentID) ?? ""
+        if let selectedSessionID,
+           pendingAgentSessionID == selectedSessionID,
+           let pending = firstNonEmptyGatewayString(pendingAgentID) {
+            return pending
+        }
+        if selectedSessionID == nil {
+            return firstNonEmptyGatewayString(pendingAgentID) ?? ""
+        }
+        return firstNonEmptyGatewayString(activeSession?.agent_id) ?? ""
     }
 
     private var selectedChatAgent: GatewayAgent? {
@@ -1016,35 +1029,45 @@ struct ChatScreen: View {
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            composerControls
-            HStack(alignment: .bottom, spacing: 10) {
+            VStack(spacing: 6) {
                 TextField("Message Cybara…", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1 ... 6)
                     .font(.system(size: 13, design: .rounded))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 9)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.white.opacity(0.06))
-                    )
                     .onSubmit { Task { await send() } }
-                Button {
-                    Task { await send() }
-                } label: {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 24))
+                    .padding(.horizontal, 4)
+                    .padding(.top, 2)
+                HStack(spacing: 6) {
+                    Spacer(minLength: 6)
+                    composerControls
+                    Button {
+                        Task { await send() }
+                    } label: {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 24))
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
-                .buttonStyle(.borderless)
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .frame(maxWidth: .infinity, alignment: .trailing)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white.opacity(0.06))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
         }
         .padding(14)
         .cybaraGlass(cornerRadius: 0)
     }
 
     private var composerControls: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 4) {
             Button {
                 showContextPopover.toggle()
             } label: {
@@ -1052,19 +1075,16 @@ struct ChatScreen: View {
                     Circle()
                         .stroke(contextColor.opacity(0.85), lineWidth: 2)
                         .background(Circle().fill(contextColor.opacity(0.12)))
-                    Text(activeContextUsage.map { "\(Int($0.usedPercent.rounded()))%" } ?? "?")
-                        .font(.system(size: 8, weight: .bold, design: .rounded))
+                    Text(activeContextUsage.map { "\(Int($0.usedPercent.rounded()))" } ?? "?")
+                        .font(.system(size: 7.5, weight: .bold, design: .rounded))
                         .foregroundStyle(contextColor)
                 }
-                .frame(width: 24, height: 24)
+                .frame(width: 22, height: 22)
             }
             .buttonStyle(.plain)
             .help(contextUsageText)
             .popover(isPresented: $showContextPopover) {
-                Text(contextUsageText)
-                    .font(.system(size: 12, design: .rounded))
-                    .padding(14)
-                    .frame(width: 260, alignment: .leading)
+                contextUsagePopover
             }
 
             Picker("Agent", selection: agentSelectionBinding) {
@@ -1074,20 +1094,36 @@ struct ChatScreen: View {
                 }
             }
             .labelsHidden()
-            .frame(maxWidth: 240)
+            .pickerStyle(.menu)
+            .controlSize(.small)
+            .frame(width: 190)
             .disabled(agentSaving || agents.isEmpty)
 
             if agentSaving {
                 ProgressView().controlSize(.small)
             }
-
-            Text(selectedChatAgent?.model ?? activeSession?.model ?? "Gateway routing")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Spacer()
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var contextUsagePopover: some View {
+        VStack(spacing: 3) {
+            Text("Context window:")
+                .foregroundStyle(.secondary)
+            if let usage = activeContextUsage {
+                Text("\(formatNativePercent(usage.usedPercent)) full")
+                    .fontWeight(.medium)
+                Text("\(formatNativeTokenCount(usage.usedTokens)) / \(formatNativeTokenCount(usage.limitTokens)) tokens used")
+            } else {
+                Text("Not loaded yet")
+                    .fontWeight(.medium)
+                Text("Open a session or send a message to estimate usage.")
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .font(.system(size: 12, design: .rounded))
+        .padding(14)
+        .frame(width: 260, alignment: .center)
     }
 
     private var contextColor: Color {
@@ -1159,6 +1195,7 @@ struct ChatScreen: View {
         messages = []
         pendingMessages = []
         pendingAgentID = ""
+        pendingAgentSessionID = nil
         pendingWorkspaceDir = ""
         error = nil
     }
@@ -1218,6 +1255,8 @@ struct ChatScreen: View {
             return
         }
         guard let selectedSessionID else { return }
+        pendingAgentID = agentID
+        pendingAgentSessionID = selectedSessionID
         agentSaving = true
         do {
             let response = try await client.updateSessionAgent(selectedSessionID, agentId: agentID)
@@ -1226,8 +1265,12 @@ struct ChatScreen: View {
             }
             await loadSessions()
             await loadMessages(selectedSessionID)
+            pendingAgentSessionID = nil
+            pendingAgentID = ""
             error = nil
         } catch {
+            pendingAgentSessionID = nil
+            pendingAgentID = ""
             self.error = error.localizedDescription
         }
         agentSaving = false

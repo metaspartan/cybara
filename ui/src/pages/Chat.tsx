@@ -226,20 +226,62 @@ function contextUsageLabel(usage?: SessionContextUsage | null): string {
   )} tokens remaining.`;
 }
 
+function contextUsageTooltip(usage?: SessionContextUsage | null) {
+  if (!usage) {
+    return {
+      percent: "?",
+      title: "Context window:",
+      body: "Not loaded yet",
+      detail: "Open a session or send a message to estimate usage.",
+    };
+  }
+  const percent = Math.min(100, Math.max(0, usage.usedPercent));
+  return {
+    percent: `${Math.round(percent)}%`,
+    title: "Context window:",
+    body: `${Math.round(percent)}% full`,
+    detail: `${formatTokenCount(usage.usedTokens)} / ${formatTokenCount(
+      usage.limitTokens
+    )} tokens used`,
+  };
+}
+
 function ContextUsageRing({ usage }: { usage?: SessionContextUsage | null }) {
+  const [open, setOpen] = useState(false);
   const percent = usage ? Math.min(100, Math.max(0, usage.usedPercent)) : 0;
   const color = percent >= 90 ? "#f87171" : percent >= 70 ? "#fbbf24" : "#34d399";
-  const title = contextUsageLabel(usage);
+  const tooltip = contextUsageTooltip(usage);
+  const label = contextUsageLabel(usage);
   return (
     <div
-      aria-label={title}
-      title={title}
-      className="h-5 w-5 shrink-0 rounded-full p-[2px]"
-      style={{
-        background: `conic-gradient(${color} ${percent * 3.6}deg, rgba(255,255,255,0.18) 0deg)`,
-      }}
+      aria-label={label}
+      className="relative h-6 w-6 shrink-0 rounded-full outline-none"
+      onBlur={() => setOpen(false)}
+      onClick={() => setOpen((value) => !value)}
+      onFocus={() => setOpen(true)}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+      tabIndex={0}
     >
-      <div className="h-full w-full rounded-full bg-[#11131c]" />
+      <div
+        className="absolute inset-[4px] rounded-full p-[1.5px]"
+        style={{
+          background: `conic-gradient(${color} ${percent * 3.6}deg, rgba(255,255,255,0.18) 0deg)`,
+        }}
+      >
+        <div className="h-full w-full rounded-full bg-[#171820]" />
+      </div>
+      <div
+        role="tooltip"
+        className={cn(
+          "pointer-events-none absolute bottom-full left-1/2 z-50 mb-3 w-max max-w-[240px] -translate-x-1/2 rounded-lg border border-white/10 bg-[#2b2b2f] px-3 py-2 text-center text-[12px] leading-5 text-gray-100 shadow-[0_14px_40px_rgba(0,0,0,0.55)]",
+          open ? "block" : "hidden"
+        )}
+      >
+        <div className="text-gray-400">{tooltip.title}</div>
+        <div className="font-medium text-gray-200">{tooltip.body}</div>
+        <div className="text-gray-100">{tooltip.detail}</div>
+      </div>
     </div>
   );
 }
@@ -258,32 +300,34 @@ function ChatAgentControls({
   updating?: boolean;
 }) {
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
-  const routeLabel = selectedAgent?.model || "Gateway default";
+  const routeLabel = selectedAgent?.model || selectedAgent?.name || "Gateway default";
   return (
-    <div className="flex min-w-0 flex-wrap items-center gap-2 px-1 pb-2">
+    <div className="flex min-w-0 items-center gap-1">
       <ContextUsageRing usage={contextUsage} />
       <label className="sr-only" htmlFor="chat-agent-selector">
         Chat agent
       </label>
-      <select
-        id="chat-agent-selector"
-        value={selectedAgentId || ""}
-        disabled={updating}
-        onChange={(event) => onSelectAgent(event.target.value || undefined)}
-        className="max-w-[220px] rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-[12px] text-white outline-none transition-colors [color-scheme:dark] hover:bg-white/[0.08] focus:border-white/25 disabled:opacity-60"
-      >
-        <option value="" className="bg-[#11131c] text-white">
-          Gateway default
-        </option>
-        {agents.map((agent) => (
-          <option key={agent.id} value={agent.id} className="bg-[#11131c] text-white">
-            {agent.name}
+      <div className="relative min-w-0">
+        <select
+          id="chat-agent-selector"
+          value={selectedAgentId || ""}
+          disabled={updating}
+          onChange={(event) => onSelectAgent(event.target.value || undefined)}
+          title={routeLabel}
+          className="h-7 min-w-[116px] max-w-[220px] appearance-none truncate rounded-full border border-transparent bg-transparent py-1 pl-2.5 pr-6 text-[12px] font-medium text-gray-300 outline-none transition-colors [color-scheme:dark] hover:bg-white/[0.06] hover:text-white focus:border-white/15 focus:bg-white/[0.06] disabled:opacity-60"
+        >
+          <option value="" className="bg-[#11131c] text-white">
+            Gateway default
           </option>
-        ))}
-      </select>
-      <span className="min-w-0 max-w-[260px] truncate text-[11px] text-gray-400">
-        {updating ? "Updating agent..." : routeLabel}
-      </span>
+          {agents.map((agent) => (
+            <option key={agent.id} value={agent.id} className="bg-[#11131c] text-white">
+              {agent.model ? `${agent.name} - ${agent.model}` : agent.name}
+            </option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-500" />
+      </div>
+      {updating ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-gray-400" /> : null}
     </div>
   );
 }
@@ -2201,12 +2245,16 @@ export function Chat() {
       const previousSessionAgentId = sessionAgentId;
       const nextAgentId = resolveSelectableSessionAgentId(agentId);
       setSelectedAgentId(nextAgentId);
+      setSessionAgentId(nextAgentId ?? null);
 
       if (!nextAgentId) {
-        if (!sessionId) {
-          setSessionAgentId(null);
-          setSessionContextUsage(null);
+        if (sessionId) {
+          setSelectedAgentId(previousSelectedAgentId);
+          setSessionAgentId(previousSessionAgentId);
+          return;
         }
+        setSessionAgentId(null);
+        setSessionContextUsage(null);
         return;
       }
 
@@ -4433,14 +4481,7 @@ export function Chat() {
                     </span>
                   </div>
                 )}
-                <ChatAgentControls
-                  agents={agents}
-                  selectedAgentId={selectedAgentId}
-                  contextUsage={sessionContextUsage}
-                  onSelectAgent={(agentId) => void handleSelectAgent(agentId)}
-                  updating={updateSessionAgent.isPending}
-                />
-                <div className="flex items-end gap-2 sm:gap-3">
+                <div className="rounded-[22px] border border-white/10 bg-white/[0.035] px-3 py-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors focus-within:border-white/20">
                   <textarea
                     ref={inputRef}
                     value={input}
@@ -4448,70 +4489,80 @@ export function Chat() {
                     onKeyDown={handleKeyDown}
                     placeholder="Type a message..."
                     rows={1}
-                    className="flex-1 min-h-[42px] max-h-[220px] overflow-y-auto resize-none px-3 sm:px-4 py-2.5 rounded-xl bg-white/[0.03] border border-white/10 text-[12px] text-white placeholder-gray-500 !outline-none focus:border-white/20 transition-colors"
+                    className="w-full min-h-[38px] max-h-[220px] overflow-y-auto resize-none bg-transparent px-0 py-1 text-[13px] leading-5 text-white placeholder-gray-500 !outline-none"
                   />
-                  <button
-                    type="button"
-                    onClick={() => void handleToggleDictation()}
-                    disabled={showWorkingTimeline || dictationTranscribing}
-                    className={cn(
-                      "h-[42px] w-[42px] shrink-0 self-end inline-flex items-center justify-center rounded-xl border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
-                      dictating
-                        ? "border-red-500/40 bg-red-500/20 text-red-300"
-                        : dictationRuntime.engine
-                          ? "border-white/10 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
-                          : "border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15"
-                    )}
-                    title={
-                      dictationTranscribing
-                        ? "Transcribing..."
-                        : dictating
-                          ? "Stop dictation"
-                          : dictationRuntime.engine
-                            ? `Start ${dictationRuntime.label.toLowerCase()}`
-                            : dictationRuntime.unsupportedReason || "Dictation unavailable"
-                    }
-                    aria-label={
-                      dictationTranscribing
-                        ? "Transcribing dictation"
-                        : dictating
-                          ? "Stop dictation"
-                          : dictationRuntime.engine
-                            ? `Start ${dictationRuntime.label.toLowerCase()}`
-                            : "Show dictation support issue"
-                    }
-                  >
-                    {dictationTranscribing ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : dictating ? (
-                      <MicOff className="w-4 h-4" />
-                    ) : (
-                      <Mic className="w-4 h-4" />
-                    )}
-                  </button>
-                  {showWorkingTimeline && (
+                  <div className="mt-0.5 flex min-h-8 items-center gap-1.5">
+                    <div className="min-w-0 flex-1" />
+                    <ChatAgentControls
+                      agents={agents}
+                      selectedAgentId={selectedAgentId}
+                      contextUsage={sessionContextUsage}
+                      onSelectAgent={(agentId) => void handleSelectAgent(agentId)}
+                      updating={updateSessionAgent.isPending}
+                    />
                     <button
                       type="button"
-                      onClick={() => void handleStopActive()}
-                      className="h-[42px] w-[42px] shrink-0 self-end inline-flex items-center justify-center rounded-xl border border-red-500/40 bg-red-500/20 text-red-300 hover:bg-red-500/30 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                      disabled={stopAgent.isPending}
-                      title="Stop active run"
+                      onClick={() => void handleToggleDictation()}
+                      disabled={showWorkingTimeline || dictationTranscribing}
+                      className={cn(
+                        "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-gray-400 transition-colors cursor-pointer hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-50",
+                        dictating
+                          ? "bg-red-500/20 text-red-300"
+                          : !dictationRuntime.engine
+                            ? "text-amber-200 hover:bg-amber-500/15"
+                            : ""
+                      )}
+                      title={
+                        dictationTranscribing
+                          ? "Transcribing..."
+                          : dictating
+                            ? "Stop dictation"
+                            : dictationRuntime.engine
+                              ? `Start ${dictationRuntime.label.toLowerCase()}`
+                              : dictationRuntime.unsupportedReason || "Dictation unavailable"
+                      }
+                      aria-label={
+                        dictationTranscribing
+                          ? "Transcribing dictation"
+                          : dictating
+                            ? "Stop dictation"
+                            : dictationRuntime.engine
+                              ? `Start ${dictationRuntime.label.toLowerCase()}`
+                              : "Show dictation support issue"
+                      }
                     >
-                      {stopAgent.isPending ? (
+                      {dictationTranscribing ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : dictating ? (
+                        <MicOff className="w-4 h-4" />
                       ) : (
-                        <Square className="w-4 h-4" />
+                        <Mic className="w-4 h-4" />
                       )}
                     </button>
-                  )}
-                  <button
-                    onClick={handleSend}
-                    disabled={!input.trim() || (isLoading && !sendQueuesFollowUp)}
-                    className="h-[42px] w-[42px] shrink-0 self-end inline-flex items-center justify-center rounded-xl accent-button disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-                    title={sendQueuesFollowUp ? "Queue follow-up" : "Send message"}
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
+                    {showWorkingTimeline && (
+                      <button
+                        type="button"
+                        onClick={() => void handleStopActive()}
+                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-500/35 bg-red-500/15 text-red-300 transition-colors hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                        disabled={stopAgent.isPending}
+                        title="Stop active run"
+                      >
+                        {stopAgent.isPending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </button>
+                    )}
+                    <button
+                      onClick={handleSend}
+                      disabled={!input.trim() || (isLoading && !sendQueuesFollowUp)}
+                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full accent-button disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                      title={sendQueuesFollowUp ? "Queue follow-up" : "Send message"}
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
                 {/* <div className="mt-1 px-1 text-[10px] text-gray-500">
                   Enter to send • Shift+Enter for newline

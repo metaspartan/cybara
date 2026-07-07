@@ -69,7 +69,6 @@ import {
   CalendarCheck,
   Check,
   CheckCircle2,
-  ChevronDown,
   ChevronRight,
   Clock,
   Cpu,
@@ -1980,6 +1979,7 @@ function SessionDetailPanel({
   const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
   const [pinning, setPinning] = useState(false);
   const [agentUpdating, setAgentUpdating] = useState(false);
+  const [pendingSessionAgentId, setPendingSessionAgentId] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const headerActionRef = useRef<() => void>(() => {});
   const sessionRefreshInFlight = useRef(false);
@@ -2097,6 +2097,10 @@ function SessionDetailPanel({
       setPinned(sessionSummary.pinned);
     }
   }, [sessionId, sessionSummary?.pinned]);
+
+  useEffect(() => {
+    setPendingSessionAgentId(null);
+  }, [sessionId]);
 
   useEffect(() => {
     sendingRef.current = sending;
@@ -2601,7 +2605,10 @@ function SessionDetailPanel({
     }
   };
 
-  const currentAgentId = mobileFirstNonEmptyString(detail?.agentId, sessionSummary?.agent_id) || "";
+  const currentAgentId =
+    pendingSessionAgentId ||
+    mobileFirstNonEmptyString(detail?.agentId, sessionSummary?.agent_id) ||
+    "";
   const selectedAgent = agents.find((agent) => agent.id === currentAgentId);
   const agentOptions = useMemo(
     () => [
@@ -2614,13 +2621,11 @@ function SessionDetailPanel({
     [agents]
   );
   const contextUsage = detail?.contextUsage;
-  const contextPercent = contextUsage ? Math.min(100, Math.max(0, contextUsage.usedPercent)) : 0;
-  const contextTone =
-    contextPercent >= 90 ? colors.red : contextPercent >= 70 ? colors.amber : colors.green;
 
   const changeSessionAgent = async (agentId: string) => {
     if (!agentId || agentId === currentAgentId || agentUpdating) return;
     setAgentUpdating(true);
+    setPendingSessionAgentId(agentId);
     haptics.select();
     try {
       const result = await api.updateSessionAgent(sessionId, agentId);
@@ -2640,8 +2645,10 @@ function SessionDetailPanel({
             }
           : current
       );
+      setPendingSessionAgentId(null);
       refreshSummary();
     } catch (error) {
+      setPendingSessionAgentId(null);
       setLoadError(error instanceof Error ? error.message : String(error));
     } finally {
       setAgentUpdating(false);
@@ -2652,16 +2659,23 @@ function SessionDetailPanel({
     if (agentUpdating || agents.length === 0) return;
     haptics.select();
     if (Platform.OS === "ios") {
-      const labels = agentOptions.map((option) => option.label);
+      const labels = agentOptions.map((option) =>
+        option.value === currentAgentId ? `${option.label} ✓` : option.label
+      );
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          title: "Chat agent",
+          title: "Chat settings",
+          message: `Agent: ${selectedAgent?.name ?? "Gateway default"}\n${mobileContextUsageDetail(
+            contextUsage
+          )}`,
           options: [...labels, "Cancel"],
           cancelButtonIndex: labels.length,
         },
         (index) => {
           const option = agentOptions[index];
-          if (option?.value) void changeSessionAgent(option.value);
+          if (option?.value && option.value !== currentAgentId) {
+            void changeSessionAgent(option.value);
+          }
         }
       );
       return;
@@ -2674,13 +2688,19 @@ function SessionDetailPanel({
       .filter((option) => option.value)
       .slice(0, 8)
       .map((option) => ({
-        text: option.label,
+        text: option.value === currentAgentId ? `${option.label} ✓` : option.label,
         onPress: () => {
-          void changeSessionAgent(option.value);
+          if (option.value !== currentAgentId) void changeSessionAgent(option.value);
         },
       }));
     buttons.push({ text: "Cancel", style: "cancel" });
-    Alert.alert("Chat agent", "Choose the agent that should continue this conversation.", buttons);
+    Alert.alert(
+      "Chat settings",
+      `Agent: ${selectedAgent?.name ?? "Gateway default"}\n${mobileContextUsageDetail(
+        contextUsage
+      )}`,
+      buttons
+    );
   };
 
   const showChatActions = () => {
@@ -2709,18 +2729,29 @@ function SessionDetailPanel({
     );
     Alert.alert(
       "Chat settings",
-      buildMobileChatSettingsLines({
-        agentId,
-        model,
-        messageCount,
-        provider,
-        providerName,
-        sessionId,
-        title,
-        updatedLabel: absoluteTimestampLabel(updatedAt),
-        workspaceDir,
-      }).join("\n"),
       [
+        ...buildMobileChatSettingsLines({
+          agentId,
+          model,
+          messageCount,
+          provider,
+          providerName,
+          sessionId,
+          title,
+          updatedLabel: absoluteTimestampLabel(updatedAt),
+          workspaceDir,
+        }),
+        `Context: ${mobileContextUsageDetail(contextUsage)}`,
+      ].join("\n"),
+      [
+        ...(agents.length
+          ? [
+              {
+                text: "Change agent",
+                onPress: openAgentSelector,
+              },
+            ]
+          : []),
         {
           text: pinned ? "Unpin chat" : "Pin chat",
           onPress: () => {
@@ -2742,10 +2773,10 @@ function SessionDetailPanel({
 
   useEffect(() => {
     setHeaderAction?.({
-      busy: pinning,
+      busy: pinning || agentUpdating,
       onPress: () => headerActionRef.current(),
     });
-  }, [setHeaderAction, sessionId, pinning]);
+  }, [agentUpdating, pinning, sessionId, setHeaderAction]);
 
   const renderMessages = useMemo(() => {
     const messages = detail?.messages ?? [];
@@ -2943,45 +2974,6 @@ function SessionDetailPanel({
         contentStyle={styles.chatComposerContent}
         style={[styles.chatComposerBar, { bottom: composerBottom }]}
       >
-        <View style={styles.composerMetaRow}>
-          <Pressable
-            accessibilityLabel={`Context usage: ${mobileContextUsageDetail(contextUsage)}`}
-            accessibilityRole="button"
-            onPress={() => Alert.alert("Context", mobileContextUsageDetail(contextUsage))}
-            style={styles.contextUsageButton}
-          >
-            <View
-              style={[
-                styles.contextUsageCircle,
-                { borderColor: contextTone, backgroundColor: `${contextTone}18` },
-              ]}
-            >
-              <Text style={[styles.contextUsageCircleText, { color: contextTone }]}>
-                {contextUsage ? `${Math.round(contextPercent)}%` : "?"}
-              </Text>
-            </View>
-          </Pressable>
-          <Pressable
-            accessibilityLabel="Change chat agent"
-            accessibilityRole="button"
-            disabled={agentUpdating || agents.length === 0}
-            onPress={openAgentSelector}
-            style={[styles.composerAgentButton, agentUpdating ? { opacity: 0.72 } : null]}
-          >
-            {agentUpdating ? (
-              <ActivityIndicator color={colors.textMuted} size="small" />
-            ) : (
-              <Bot color={accentColor} size={15} strokeWidth={2.3} />
-            )}
-            <Text numberOfLines={1} style={styles.composerAgentText}>
-              {selectedAgent?.name ?? "Gateway default"}
-            </Text>
-            <ChevronDown color={colors.textDim} size={14} strokeWidth={2.4} />
-          </Pressable>
-          <Text numberOfLines={1} style={styles.composerModelText}>
-            {detail?.model ?? selectedAgent?.model ?? "Gateway routing"}
-          </Text>
-        </View>
         <View
           style={styles.composer}
           onLayout={(event) =>

@@ -31,7 +31,11 @@ function relativeTime(ms: number): string {
   if (hours < 24) return `${hours}h ago`;
   const days = Math.floor(hours / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return new Date(ms).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function dayKey(ms: number): string {
@@ -83,12 +87,30 @@ export function Journey() {
   }, [data?.events]);
 
   return (
-    <PageLayout title="Journey" subtitle="Everything your agent has learned — skills and memories over time">
+    <PageLayout
+      title="Journey"
+      subtitle="Everything your agent has learned — skills and memories over time"
+    >
       <div className="space-y-6">
         <div className="grid grid-cols-3 gap-3">
-          <StatCard icon={LibraryBig} label="Skills" value={data?.counts.skills ?? 0} tone="text-cyan-300" />
-          <StatCard icon={Brain} label="Memories" value={data?.counts.memories ?? 0} tone="text-indigo-300" />
-          <StatCard icon={Sparkles} label="Total learned" value={data?.counts.total ?? 0} tone="text-amber-300" />
+          <StatCard
+            icon={LibraryBig}
+            label="Skills"
+            value={data?.counts.skills ?? 0}
+            tone="text-cyan-300"
+          />
+          <StatCard
+            icon={Brain}
+            label="Memories"
+            value={data?.counts.memories ?? 0}
+            tone="text-indigo-300"
+          />
+          <StatCard
+            icon={Sparkles}
+            label="Total learned"
+            value={data?.counts.total ?? 0}
+            tone="text-amber-300"
+          />
         </div>
 
         {error && (
@@ -110,7 +132,9 @@ export function Journey() {
           {grouped.map(([day, events]) => (
             <div key={day}>
               <div className="sticky top-0 z-10 -mx-1 mb-3 bg-gradient-to-r from-white/[0.06] to-transparent px-3 py-1.5 rounded-lg">
-                <span className="text-xs font-semibold uppercase tracking-wide text-gray-300">{day}</span>
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-300">
+                  {day}
+                </span>
               </div>
               <div className="relative ml-3 border-l border-white/10 pl-6 space-y-4">
                 {events.map((event) => (
@@ -153,7 +177,9 @@ function JourneyRow({ event }: { event: JourneyEvent }) {
   const dot = isSkill ? "bg-cyan-400" : "bg-indigo-400";
   return (
     <div className="relative">
-      <span className={`absolute -left-[31px] top-1.5 h-3 w-3 rounded-full ring-4 ring-black/40 ${dot}`} />
+      <span
+        className={`absolute -left-[31px] top-1.5 h-3 w-3 rounded-full ring-4 ring-black/40 ${dot}`}
+      />
       <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-2 min-w-0">
@@ -163,7 +189,9 @@ function JourneyRow({ event }: { event: JourneyEvent }) {
           <span className="shrink-0 text-xs text-gray-500">{relativeTime(event.createdAtMs)}</span>
         </div>
         {event.detail && event.detail !== event.title && (
-          <p className="mt-1.5 text-xs text-gray-400 line-clamp-3 whitespace-pre-wrap">{event.detail}</p>
+          <p className="mt-1.5 text-xs text-gray-400 line-clamp-3 whitespace-pre-wrap">
+            {event.detail}
+          </p>
         )}
         <div className="mt-2 flex items-center gap-2">
           <span

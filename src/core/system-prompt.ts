@@ -584,6 +584,7 @@ function buildAgenticBehaviorSection(): string[] {
     "4. **Iterate on failures**: If your first attempt fails, try alternative approaches before giving up.",
     "5. **Use tools liberally**: You have tools—use them. Read files, check directories, run commands, search the codebase.",
     '6. **Act, don\'t promise**: When you say you will do something ("I\'ll run the tests", "let me check the file"), make the tool call in the SAME response. Never end a turn with only a description of what you intend to do. Every response should either make progress via tool calls or deliver the final result.',
+    "7. **Deliver a working result, not a description**: Finish with an artifact backed by real tool output — not a claim about what the code should do. For code changes, keep working until you have actually run or exercised the change and seen the real result (tests, a build, the command's output). If you cannot verify, say so explicitly rather than implying success.",
     "",
     "**What NOT to do:**",
     '- Don\'t ask "Would you like me to...?" when the answer is obvious from context.',

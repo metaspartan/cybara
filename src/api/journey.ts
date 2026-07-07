@@ -89,7 +89,9 @@ export async function buildJourney(): Promise<JourneyResponse> {
   return {
     events,
     counts: { skills: skillsCount, memories: events.length - skillsCount, total: events.length },
-    firstAt: withTime.length ? new Date(withTime[withTime.length - 1].createdAtMs).toISOString() : null,
+    firstAt: withTime.length
+      ? new Date(withTime[withTime.length - 1].createdAtMs).toISOString()
+      : null,
     lastAt: withTime.length ? new Date(withTime[0].createdAtMs).toISOString() : null,
   };
 }
