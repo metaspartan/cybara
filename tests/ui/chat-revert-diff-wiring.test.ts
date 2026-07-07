@@ -6,6 +6,9 @@ const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import
 const chatModelPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/chatModel.ts", import.meta.url)
 );
+const sessionSidebarPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/SessionSidebar.tsx", import.meta.url)
+);
 const activityTimelinePath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ActivityTimeline.tsx", import.meta.url)
 );
@@ -15,6 +18,7 @@ function readChatSource(): string {
   return (
     readFileSync(chatPagePath, "utf8") +
     readFileSync(chatModelPath, "utf8") +
+    readFileSync(sessionSidebarPath, "utf8") +
     readFileSync(activityTimelinePath, "utf8")
   );
 }
@@ -101,16 +105,17 @@ describe("Chat revert and diff wiring", () => {
     );
   });
 
-  test("shows route metadata beside the message count instead of prefixing chat titles", () => {
+  test("keeps route metadata in compact chat row tooltips instead of title prefixes", () => {
     const source = readChatSource();
     expect(source).toContain("function sessionRouteLabel");
     expect(source).toContain("function sessionDisplayTitle");
     expect(source).toContain("const routeLabel = sessionRouteLabel");
-    expect(source).toContain(
-      '<span className="flex-shrink-0">{session.message_count || 0} messages</span>'
-    );
-    expect(source).toContain('<span className="min-w-0 flex-1 truncate" title={routeLabel}>');
-    expect(source).toContain("rawTitle.toLowerCase().startsWith(`${agentName.toLowerCase()}:`)");
+    expect(source).toContain("function sessionTooltip");
+    expect(source).toContain("if (routeLabel) details.push(`Model: ${routeLabel}`)");
+    expect(source).toContain("details.push(`${session.message_count || 0} messages`)");
+    expect(source).toContain("title={tooltip}");
+    expect(source).toContain("function stripDisplayTitleAgentPrefix");
+    expect(source).toContain("(?::|[-–—])");
   });
 
   test("restores last active session when chat page is reopened", () => {

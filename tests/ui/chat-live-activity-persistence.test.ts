@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
 import {
+  applyLiveActivityEvent,
   buildPreSteeringActivityMessage,
   pruneCanonicalizedLiveActivities,
   resolveDictationRuntime,
@@ -43,7 +44,7 @@ describe("Chat live activity persistence", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
     expect(source).toContain("eventTimestamp?: number");
     expect(source).toContain(
-      'typeof eventTimestamp === "number" && Number.isFinite(eventTimestamp)'
+      'typeof event.timestamp === "number" && Number.isFinite(event.timestamp)'
     );
     expect(source).toMatch(
       /appendLiveActivity\(\s*phase,\s*text,\s*payload\.toolName,\s*eventTimestamp,\s*payload\.toolCallId,\s*payload\.sandboxProvider\s*\);/
@@ -53,7 +54,7 @@ describe("Chat live activity persistence", () => {
   test("ignores stale polling snapshots that arrive after newer SSE events", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
     expect(source).toContain("latestStatusTimestampBySessionRef");
-    expect(source).toContain("snapshotLatestTimestamp + 25 < latestKnownTimestamp");
+    expect(source).toContain("snapshotLatest + 25 < latestKnownTimestamp");
   });
 
   test("keeps remounted live activities when queue snapshots have no activity rows", () => {
@@ -91,9 +92,8 @@ describe("Chat live activity persistence", () => {
     );
     expect(source).toContain("const liveActivitiesRef = useRef<LiveActivityItem[]>([])");
     expect(source).toContain("resolveStatusSnapshotActivities(");
-    expect(source).toContain(
-      "const activeStep = getLatestInFlightStep(resolvedSnapshotActivities)"
-    );
+    expect(source).toContain("const resolveSnapshotLiveState = useCallback");
+    expect(source).toContain("cacheLiveStatusSnapshot(snapshot)");
   });
 
   test("clears stale running step text after a tool completion with no in-flight step", () => {
@@ -263,15 +263,44 @@ describe("Chat live activity persistence", () => {
     ]);
   });
 
-  test("steering appends materialized work before user message and prunes live buffers", () => {
+  test("steering reloads canonical gateway order and prunes live buffers", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
     expect(source).toContain("const preSteerActivities = mergeActivityLists(");
     expect(source).toContain("buildPreSteeringActivityMessage(");
-    expect(source).toContain(
-      "appendSessionMessages(sessionId, [preSteerMessage, steeredMessage], workspaceDir)"
-    );
+    expect(source).toContain("const refreshed = await loadSessionMutation.mutateAsync(sessionId)");
+    expect(source).toContain("materializedMessages = refreshed.messagesList as ChatMessage[]");
+    expect(source).not.toContain("appendSessionMessages(sessionId, [preSteerMessage");
     expect(source).toContain("runActivityBufferRef.current = pruneCanonicalizedLiveActivities(");
     expect(source).toContain("pendingProcessCaptureRef.current = {");
+  });
+
+  test("shared live activity event merge upgrades starts with matching results", () => {
+    const merged = applyLiveActivityEvent(
+      [
+        {
+          id: "start-1",
+          phase: "start",
+          text: "Running bun test",
+          timestamp: 1783300001000,
+          toolName: "exec",
+          toolCallId: "tool-1",
+        },
+      ],
+      {
+        phase: "result",
+        text: "Ran bun test",
+        timestamp: 1783300002000,
+        toolName: "exec",
+        toolCallId: "tool-1",
+      }
+    );
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({
+      phase: "result",
+      text: "Ran bun test",
+      toolCallId: "tool-1",
+    });
   });
 
   test("does not trim message process map history to last 199 entries", () => {

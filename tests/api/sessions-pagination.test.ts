@@ -21,6 +21,7 @@ async function createPersistedSession(params: {
   updatedAt: string;
   userPrompt: string;
   assistantReply: string;
+  title?: string;
 }): Promise<string> {
   const sessionId = makeSessionId(params.label);
   const messages: ChatMessage[] = [
@@ -41,7 +42,13 @@ async function createPersistedSession(params: {
     },
   ];
 
-  await persistSession(sessionId, "test-agent", messages, null, `Title ${params.label}`);
+  await persistSession(
+    sessionId,
+    "test-agent",
+    messages,
+    null,
+    params.title ?? `Title ${params.label}`
+  );
   for (const message of messages) {
     await logSessionMessage(sessionId, message.role, message.content, {
       agentId: "test-agent",
@@ -202,6 +209,20 @@ describe("session listing pagination", () => {
     const session = after.find((s) => s.id === id);
     expect(session?.pinned).toBe(true);
     expect(session?.title).toBe("Renamed while pinned");
+  });
+
+  test("strips legacy agent prefixes from listed chat titles", async () => {
+    const id = await createPersistedSession({
+      label: "prefixed-title",
+      updatedAt: "2099-04-01T00:00:10.000Z",
+      userPrompt: "audit agent platform",
+      assistantReply: "audit reply",
+      title: "test-agent: Audit agent platform",
+    });
+
+    const session = (await listSessions()).find((s) => s.id === id);
+
+    expect(session?.title).toBe("Audit agent platform");
   });
 
   test("setSessionPinned reports found=false for an unknown session", async () => {

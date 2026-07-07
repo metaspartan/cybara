@@ -803,7 +803,7 @@ function normalizePersistedIndexEntry(
       ? {
           role: entry.lastMessage.role,
           content: truncateSessionPreviewContent(entry.lastMessage.content),
-      }
+        }
       : null,
     modelMetadata,
   };
@@ -2277,10 +2277,10 @@ export async function getSession(sessionId: string) {
   if (session) {
     const modelMetadata = resolveSessionModelMetadata(session.agentId);
     if (shouldRegenerateSessionTitle(session.title)) {
-      session.title = stripSessionTitleAgentPrefix(deriveSessionTitleFromMessages(session.messages), [
-        modelMetadata?.agent_name,
-        session.agentId,
-      ]);
+      session.title = stripSessionTitleAgentPrefix(
+        deriveSessionTitleFromMessages(session.messages),
+        [modelMetadata?.agent_name, session.agentId]
+      );
     } else {
       session.title = stripSessionTitleAgentPrefix(session.title, [
         modelMetadata?.agent_name,
@@ -2316,7 +2316,10 @@ export async function getSession(sessionId: string) {
           modelMetadata?.agent_name,
           persisted.agentId,
         ])
-      : stripSessionTitleAgentPrefix(persisted.title, [modelMetadata?.agent_name, persisted.agentId]);
+      : stripSessionTitleAgentPrefix(persisted.title, [
+          modelMetadata?.agent_name,
+          persisted.agentId,
+        ]);
     const createdAt = indexed?.createdAt || new Date().toISOString();
     const updatedAt = indexed?.updatedAt || createdAt;
     const workspaceDir = persisted.workspaceDir ?? indexed?.workspaceDir ?? null;

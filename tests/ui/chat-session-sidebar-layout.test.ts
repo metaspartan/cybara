@@ -4,7 +4,9 @@ import { join } from "path";
 
 const chatSource = () =>
   readFileSync(join(process.cwd(), "ui", "src", "pages", "Chat.tsx"), "utf8") +
-  readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts"), "utf8");
+  readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts"), "utf8") +
+  readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "SessionSidebar.tsx"), "utf8") +
+  readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "sessionGrouping.ts"), "utf8");
 
 describe("chat session sidebar layout", () => {
   test("lets session text use the full row width while actions float above it", () => {
@@ -13,11 +15,13 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain("const SESSION_PREVIEW_LIMIT = 160");
     expect(source).toContain("function sessionPreviewText");
     expect(source).toContain('content.replace(/\\s+/g, " ").trim()');
-    expect(source).toContain("sessionPreviewText(session.last_message?.content)?.toLowerCase()");
+    expect(source).toContain("sessionPreviewText(session.last_message?.content),");
+    expect(source).toContain('join(" ")');
+    expect(source).toContain(".toLowerCase()");
     expect(source).toContain(
       "const previewText = sessionPreviewText(session.last_message?.content)"
     );
-    expect(source).toContain("deferred-list-row relative p-2.5");
+    expect(source).toContain("deferred-list-row relative px-2.5 py-2");
     expect(source).toContain('className="min-w-0 w-full"');
     expect(source).toContain('className="text-[12px] text-white font-medium flex w-full min-w-0');
     expect(source).toContain('className="min-w-0 flex-1 truncate">{displayTitle}</span>');
@@ -28,6 +32,12 @@ describe("chat session sidebar layout", () => {
     expect(source).not.toContain(
       'session.pinned\n                            ? "pointer-events-auto opacity-100"'
     );
+    expect(source).toContain(
+      "const tooltip = sessionTooltip(session, displayTitle, routeLabel, previewText)"
+    );
+    expect(source).toContain("details.push(`${session.message_count || 0} messages`);");
+    expect(source).toContain("title={tooltip}");
+    expect(source).toContain("aria-label={tooltip}");
     expect(source).not.toContain("session.last_message.content");
   });
 
@@ -35,8 +45,21 @@ describe("chat session sidebar layout", () => {
     const source = chatSource();
     expect(source).toContain('aria-label="Search sessions"');
     expect(source).toContain('aria-label="Clear session search"');
-    // Escape while there is a query clears it.
     expect(source).toContain('event.key === "Escape" && searchQuery');
     expect(source).toContain('setSearchQuery("")');
+  });
+
+  test("groups chat sessions into pinned and workspace sections", () => {
+    const source = chatSource();
+    expect(source).toContain("groupSessionsForSidebar(sessions, deferredSearchQuery)");
+    expect(source).toContain('label: "Pinned"');
+    expect(source).toContain("workspaceSidebarLabel(session.workspace_dir)");
+    expect(source).toContain('group.kind === "pinned"');
+    expect(source).toContain('group.kind === "workspace"');
+    expect(source).toContain("collapsedGroupIds");
+    expect(source).toContain("toggleGroupCollapsed(group.id)");
+    expect(source).toContain('data-testid="chat-session-group-header"');
+    expect(source).toContain("data-group-kind={group.kind}");
+    expect(source).toContain('if (a.kind === "workspace" && b.kind === "unassigned") return -1;');
   });
 });

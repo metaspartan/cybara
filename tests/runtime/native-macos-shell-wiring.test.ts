@@ -287,6 +287,19 @@ describe("native macOS shell wiring", () => {
     );
   });
 
+  test("native chat sidebar groups sessions compactly by workspace", () => {
+    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+
+    expect(nativeScreens).toContain("private struct NativeSessionGroup");
+    expect(nativeScreens).toContain("collapsedSessionGroupIDs");
+    expect(nativeScreens).toContain("toggleSessionGroup(group.id)");
+    expect(nativeScreens).toContain("if $0.kind == .workspace && $1.kind == .unassigned");
+    expect(nativeScreens).toContain("private func sessionListTooltip(for session: GatewaySession)");
+    expect(nativeScreens).toContain(".help(sessionListTooltip(for: session))");
+    expect(nativeScreens).toContain("sessionListRow(for: session)");
+    expect(nativeScreens).not.toContain("Text(sessionListDetail(for: session");
+  });
+
   test("gateway model labels trim blank titles before falling back", () => {
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
     const modelTests = readFileSync(
@@ -303,9 +316,10 @@ describe("native macOS shell wiring", () => {
     );
 
     expect(gatewayModels).toContain("func firstNonEmptyGatewayString");
-    expect(gatewayModels).toContain(
-      "var displayTitle: String { firstNonEmptyGatewayString(title) ?? String(id.prefix(8)) }"
-    );
+    expect(gatewayModels).toContain("var displayTitle: String {");
+    expect(gatewayModels).toContain("gatewaySessionDisplayTitle(");
+    expect(gatewayModels).toContain("prefixes: [agent_name, agent_id],");
+    expect(gatewayModels).toContain("func gatewaySessionDisplayTitle(");
     expect(gatewayModels).toContain(
       "var displayName: String { firstNonEmptyGatewayString(name, provider, id) ?? id }"
     );

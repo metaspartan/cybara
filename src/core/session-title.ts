@@ -40,6 +40,25 @@ const GENERIC_SESSION_TITLES = new Set([
   "conversation",
 ]);
 
+const KNOWN_AGENT_TITLE_PREFIXES = [
+  "Anthropic",
+  "Claude",
+  "Codex",
+  "DeepSeek",
+  "Gemini",
+  "GLM",
+  "GPT",
+  "Grok",
+  "Kimi",
+  "Mini",
+  "MiniMax",
+  "Ollama",
+  "OpenAI",
+  "OpenRouter",
+  "Qwen",
+  "Zai",
+];
+
 function cleanTitleText(value: string): string {
   return value
     .replace(/^\s*(?:#+\s*|[-*+]\s+|\d+\.\s+)/, "")
@@ -91,7 +110,7 @@ export function stripSessionTitleAgentPrefix(
   if (!cleaned) return null;
 
   let stripped = cleaned;
-  for (const prefix of prefixes) {
+  for (const prefix of [...prefixes, ...KNOWN_AGENT_TITLE_PREFIXES]) {
     const normalizedPrefix = normalizeSessionTitle(prefix);
     if (!normalizedPrefix) continue;
     const pattern = new RegExp(`^${escapeRegExp(normalizedPrefix)}\\s*(?::|[-–—])\\s*`, "i");

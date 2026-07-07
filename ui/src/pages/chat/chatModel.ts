@@ -569,10 +569,30 @@ export function sessionRouteLabel(session: Record<string, unknown>): string | nu
   return agentName || (agentId && agentId !== "default" ? `Agent ${agentId}` : null);
 }
 
+const KNOWN_SESSION_TITLE_PREFIXES = [
+  "Anthropic",
+  "Claude",
+  "Codex",
+  "DeepSeek",
+  "Gemini",
+  "GLM",
+  "GPT",
+  "Grok",
+  "Kimi",
+  "Mini",
+  "MiniMax",
+  "Ollama",
+  "OpenAI",
+  "OpenRouter",
+  "Qwen",
+  "Zai",
+];
+
 function stripDisplayTitleAgentPrefix(rawTitle: string, session: Record<string, unknown>): string {
   const candidates = [
     typeof session.agent_name === "string" ? session.agent_name : null,
     typeof session.agent_id === "string" ? session.agent_id : null,
+    ...KNOWN_SESSION_TITLE_PREFIXES,
   ]
     .map((value) => value?.trim())
     .filter((value): value is string => !!value);
@@ -641,6 +661,134 @@ export function getLatestInFlightStep(activities: LiveActivityItem[]): string | 
     return step;
   }
   return null;
+}
+
+export function applyLiveActivityEvent(
+  previous: LiveActivityItem[],
+  event: {
+    phase: "start" | "result" | "error";
+    text: string;
+    timestamp?: number;
+    toolName?: string;
+    toolCallId?: string;
+    sandboxProvider?: string;
+  }
+): LiveActivityItem[] {
+  const trimmed = event.text.trim();
+  if (!trimmed) return previous;
+
+  const normalizedText = normalizeActivityTextForPhase(trimmed, event.phase);
+  if (isGenericStatusLabel(normalizedText)) return previous;
+  const nextTimestamp =
+    typeof event.timestamp === "number" && Number.isFinite(event.timestamp)
+      ? event.timestamp
+      : Date.now();
+  const normalizedToolName =
+    typeof event.toolName === "string" ? event.toolName.trim().toLowerCase() : "";
+  const normalizedToolCallId =
+    typeof event.toolCallId === "string" && event.toolCallId.trim()
+      ? event.toolCallId.trim().toLowerCase()
+      : "";
+  const normalizedSandboxProvider = normalizeSandboxProviderValue(event.sandboxProvider);
+  const nextId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const sortAndMergeActivities = (items: LiveActivityItem[]): LiveActivityItem[] =>
+    mergeActivityLists(
+      [],
+      [...items].sort((left, right) =>
+        left.timestamp === right.timestamp
+          ? left.id.localeCompare(right.id)
+          : left.timestamp - right.timestamp
+      )
+    );
+
+  if (event.phase !== "start") {
+    if (normalizedToolCallId) {
+      for (let index = previous.length - 1; index >= 0; index -= 1) {
+        const candidate = previous[index];
+        if (candidate.phase !== "start") continue;
+        if ((candidate.toolCallId || "").trim().toLowerCase() !== normalizedToolCallId) continue;
+        if (nextTimestamp - candidate.timestamp > 60_000) continue;
+        const updated = [...previous];
+        updated[index] = {
+          ...candidate,
+          phase: event.phase,
+          text: normalizedText,
+          timestamp: nextTimestamp,
+          toolName: normalizedToolName || candidate.toolName,
+          toolCallId: normalizedToolCallId,
+          sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
+        };
+        return sortAndMergeActivities(updated);
+      }
+    }
+
+    if (normalizedToolName) {
+      for (let index = previous.length - 1; index >= 0; index -= 1) {
+        const candidate = previous[index];
+        if (candidate.phase !== "start") continue;
+        if ((candidate.toolName || "").trim().toLowerCase() !== normalizedToolName) continue;
+        if (nextTimestamp - candidate.timestamp > 60_000) continue;
+        const updated = [...previous];
+        updated[index] = {
+          ...candidate,
+          phase: event.phase,
+          text: normalizedText,
+          timestamp: nextTimestamp,
+          toolName: normalizedToolName,
+          toolCallId: normalizedToolCallId || candidate.toolCallId,
+          sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
+        };
+        return sortAndMergeActivities(updated);
+      }
+    }
+
+    for (let index = previous.length - 1; index >= 0; index -= 1) {
+      const candidate = previous[index];
+      if (candidate.phase !== "start") continue;
+      if (nextTimestamp - candidate.timestamp > 60_000) continue;
+      if (normalizeActivityTextForPhase(candidate.text, event.phase) !== normalizedText) continue;
+      const updated = [...previous];
+      updated[index] = {
+        ...candidate,
+        phase: event.phase,
+        text: normalizedText,
+        timestamp: nextTimestamp,
+        toolName: normalizedToolName || candidate.toolName,
+        toolCallId: normalizedToolCallId || candidate.toolCallId,
+        sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
+      };
+      return sortAndMergeActivities(updated);
+    }
+  }
+
+  const previousLast = previous[previous.length - 1];
+  if (
+    previousLast &&
+    previousLast.phase === event.phase &&
+    normalizeActivityTextForPhase(previousLast.text, event.phase) === normalizedText &&
+    (normalizedToolCallId
+      ? (previousLast.toolCallId || "").trim().toLowerCase() === normalizedToolCallId
+      : true) &&
+    (normalizedToolName
+      ? (previousLast.toolName || "").trim().toLowerCase() === normalizedToolName
+      : true) &&
+    nextTimestamp - previousLast.timestamp < 750
+  ) {
+    return previous;
+  }
+
+  return sortAndMergeActivities([
+    ...previous,
+    {
+      id: nextId,
+      phase: event.phase,
+      text: normalizedText,
+      timestamp: nextTimestamp,
+      toolName: normalizedToolName || undefined,
+      toolCallId: normalizedToolCallId || undefined,
+      sandboxProvider: normalizedSandboxProvider,
+    },
+  ]);
 }
 
 export function normalizeSnapshotActivities(

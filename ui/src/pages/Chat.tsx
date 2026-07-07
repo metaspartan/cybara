@@ -4,7 +4,6 @@ import {
   useEffect,
   useCallback,
   useMemo,
-  useDeferredValue,
   isValidElement,
   type ComponentPropsWithoutRef,
   type KeyboardEvent,
@@ -39,23 +38,12 @@ import {
   MicOff,
   CircleHelp,
   ShieldAlert,
-  Pin,
-  PinOff,
-  Search,
   GripVertical,
 } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import {
-  useChat,
-  useSessions,
-  useDeleteSession,
-  useLoadSession,
-  useRenameSession,
-  usePinSession,
-  useUpdateSessionAgent,
-} from "@/hooks/useChat";
+import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
 import {
   useAgents,
   useInfo,
@@ -72,12 +60,17 @@ import { GlassCard, GlassButton, Input, Badge, Modal, Button } from "@/component
 import { formatRelativeTime } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
 import { appendApiTokenParam, apiFetch } from "@/lib/auth";
-import { connectStatusStream, type PendingChatMessage } from "@/lib/status-stream";
+import {
+  connectStatusStream,
+  type PendingChatMessage,
+  type StatusSessionSnapshot,
+  type StatusStreamStatusEvent,
+  type StatusStreamTokenEvent,
+} from "@/lib/status-stream";
 import {
   buildActivitiesFromToolCalls,
   finalizeCompletedActivities,
   mergeActivityLists,
-  normalizeActivityTextForPhase,
   type LiveActivityItem,
 } from "@/lib/chatActivities";
 import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
@@ -113,7 +106,6 @@ import {
   isRecord,
   normalizeMessageProcessActivities,
   normalizeDictationMode,
-  normalizeSandboxProviderValue,
   normalizeSessionStatus,
   normalizeSnapshotActivities,
   persistDiffPanelWidth,
@@ -129,13 +121,11 @@ import {
   resolveDictationRuntime,
   resolvePathForIde,
   resolveToolCallSandboxProvider,
-  sessionDisplayTitle,
-  sessionPreviewText,
-  sessionRouteLabel,
   summarizeMessageFileChanges,
   summarizeSessionFileChanges,
   toLiveActivityItems,
   tryParseJsonRecord,
+  applyLiveActivityEvent,
   type ArtifactSummaryView,
   buildPreSteeringActivityMessage,
   type ChatMessage,
@@ -146,13 +136,17 @@ import {
   type PendingProcessCapture,
   type RevertTarget,
   type SessionStatusResponse,
+  type SessionStatusSnapshot,
   type SpeechRecognitionLike,
   type SpeechRecognitionWindow,
   type ToolCall,
 } from "./chat/chatModel";
 import { LiveActivityTimeline, ProcessActivityList } from "./chat/ActivityTimeline";
 import { DiffCodeBlock, MessageContent } from "./chat/MessageContent";
+import { SessionsPanel } from "./chat/SessionSidebar";
 import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
+
+type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
 
 function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
   const [expanded, setExpanded] = useState(false);
@@ -1564,452 +1558,6 @@ function SubagentPanel({
   );
 }
 
-function SessionsPanel({
-  isOpen,
-  onClose,
-  currentSessionId,
-  activeSessionIds,
-  currentSessionLoading,
-  onLoadSession,
-  onNewSession,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  currentSessionId: string | null;
-  activeSessionIds: string[];
-  currentSessionLoading: boolean;
-  onLoadSession: (
-    sessionId: string,
-    messages: ChatMessage[],
-    workspaceDir?: string | null,
-    agentId?: string | null,
-    contextUsage?: SessionContextUsage | null
-  ) => void;
-  onNewSession: () => void;
-}) {
-  const { data: sessions, isLoading, refetch } = useSessions();
-  const deleteSession = useDeleteSession();
-  const loadSession = useLoadSession();
-  const renameSession = useRenameSession();
-  const pinSession = usePinSession();
-  const [showDeleteModal, setShowDeleteModal] = useState<string | null>(null);
-  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
-  const deferredSearchQuery = useDeferredValue(searchQuery);
-  const sessionsRefreshTimerRef = useRef<number | null>(null);
-
-  // Pinned first, then most-recently-updated. Client-side safeguard so order is
-  // correct even if the API response arrives unsorted, plus title/preview search.
-  const visibleSessions = useMemo(() => {
-    const list = Array.isArray(sessions) ? [...sessions] : [];
-    const query = deferredSearchQuery.trim().toLowerCase();
-    const filtered = query
-      ? list.filter((session) => {
-          const title = typeof session.title === "string" ? session.title.toLowerCase() : "";
-          const preview = sessionPreviewText(session.last_message?.content)?.toLowerCase() || "";
-          return title.includes(query) || preview.includes(query) || session.id.includes(query);
-        })
-      : list;
-    return filtered.sort((a, b) => {
-      const pinnedDelta = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
-      if (pinnedDelta !== 0) return pinnedDelta;
-      const aTime = new Date(a.updated_at || a.created_at || 0).getTime();
-      const bTime = new Date(b.updated_at || b.created_at || 0).getTime();
-      return bTime - aTime;
-    });
-  }, [sessions, deferredSearchQuery]);
-
-  const handleTogglePin = useCallback(
-    (event: React.MouseEvent, sessionId: string, pinned: boolean) => {
-      event.stopPropagation();
-      void pinSession.mutateAsync({ sessionId, pinned: !pinned }).catch((error) => {
-        console.error("Failed to toggle pin:", error);
-      });
-    },
-    [pinSession]
-  );
-
-  useEffect(() => {
-    const disconnect = connectStatusStream({
-      onEvent: (event) => {
-        if (!event || typeof event !== "object") return;
-        if (
-          event.type !== "status" &&
-          event.type !== "snapshot" &&
-          event.type !== "task_completed"
-        ) {
-          return;
-        }
-        if (sessionsRefreshTimerRef.current !== null) {
-          window.clearTimeout(sessionsRefreshTimerRef.current);
-        }
-        sessionsRefreshTimerRef.current = window.setTimeout(() => {
-          void refetch();
-          sessionsRefreshTimerRef.current = null;
-        }, 600);
-      },
-    });
-
-    return () => {
-      disconnect();
-      if (sessionsRefreshTimerRef.current !== null) {
-        window.clearTimeout(sessionsRefreshTimerRef.current);
-        sessionsRefreshTimerRef.current = null;
-      }
-    };
-  }, [refetch]);
-
-  const handleLoadSession = async (sessionId: string) => {
-    try {
-      const result = await loadSession.mutateAsync(sessionId);
-      if (result?.messagesList) {
-        onLoadSession(
-          sessionId,
-          result.messagesList as ChatMessage[],
-          (result as { workspace_dir?: string | null }).workspace_dir || null,
-          (result as { agent_id?: string | null }).agent_id || null,
-          (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
-        );
-      }
-    } catch (error) {
-      console.error("Failed to load session:", error);
-    }
-  };
-
-  const beginRenameSession = (
-    event: React.MouseEvent,
-    session: { id: string; title?: string | null }
-  ) => {
-    event.stopPropagation();
-    setEditingSessionId(session.id);
-    setEditingTitle(
-      typeof session.title === "string" && session.title.trim()
-        ? session.title.trim()
-        : `Session ${session.id.slice(0, 8)}`
-    );
-  };
-
-  const cancelRenameSession = () => {
-    setEditingSessionId(null);
-    setEditingTitle("");
-  };
-
-  const submitRenameSession = async (sessionId: string) => {
-    const nextTitle = editingTitle.trim();
-    if (!nextTitle) return;
-    try {
-      await renameSession.mutateAsync({ sessionId, title: nextTitle });
-      setEditingSessionId(null);
-      setEditingTitle("");
-      await refetch();
-    } catch (error) {
-      console.error("Failed to rename session:", error);
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <>
-      <div className="w-72 glass-strong border-r border-white/5 flex flex-col">
-        <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-3.5 h-3.5 accent-text" />
-            <h3 className="text-sm font-medium text-white">Sessions</h3>
-            {sessions && sessions.length > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-gray-400">
-                {sessions.length}
-              </span>
-            )}
-          </div>
-          <div className="flex items-center">
-            <button
-              onClick={onNewSession}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {sessions && sessions.length > 0 && (
-          <div className="px-3 py-2 border-b border-white/5">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
-              <input
-                type="search"
-                aria-label="Search sessions"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape" && searchQuery) {
-                    event.preventDefault();
-                    setSearchQuery("");
-                  }
-                }}
-                placeholder="Search sessions..."
-                className="w-full rounded-lg border border-white/10 bg-black/30 pl-8 pr-7 py-1.5 text-[12px] text-white placeholder:text-gray-600 !outline-none focus:border-indigo-400/50"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white cursor-pointer"
-                  title="Clear search"
-                  aria-label="Clear session search"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
-          <button
-            onClick={onNewSession}
-            className="w-full p-2.5 rounded-lg bg-[rgba(var(--accent-primary),0.1)] border border-[rgba(var(--accent-primary),0.2)] hover:bg-[rgba(var(--accent-primary),0.15)] text-white text-[12px] font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            New Session
-          </button>
-
-          {isLoading ? (
-            <div className="text-center py-8 text-gray-500">
-              <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
-              <p className="text-xs">Loading...</p>
-            </div>
-          ) : sessions?.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <MessageSquare className="w-6 h-6 mx-auto mb-2 opacity-30" />
-              <p className="text-xs">No sessions yet</p>
-              <p className="text-[10px] mt-1 text-gray-600">Start chatting to create one</p>
-            </div>
-          ) : visibleSessions.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <Search className="w-6 h-6 mx-auto mb-2 opacity-30" />
-              <p className="text-xs">No matching sessions</p>
-              <p className="text-[10px] mt-1 text-gray-600">Try a different search</p>
-            </div>
-          ) : (
-            visibleSessions.map((session) => {
-              const displayTitle = sessionDisplayTitle(session as Record<string, unknown>);
-              const routeLabel = sessionRouteLabel(session as Record<string, unknown>);
-              const previewText = sessionPreviewText(session.last_message?.content);
-              const isSessionActive =
-                activeSessionIds.includes(session.id) ||
-                (currentSessionLoading && currentSessionId === session.id);
-              return (
-                <div
-                  key={session.id}
-                  className={`deferred-list-row relative p-2.5 rounded-lg transition-all cursor-pointer group ${
-                    currentSessionId === session.id
-                      ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
-                      : "bg-white/[0.03] border border-white/5 hover:border-white/15"
-                  }`}
-                  onClick={() => handleLoadSession(session.id)}
-                >
-                  <div className="min-w-0 w-full">
-                    <div className="min-w-0 w-full">
-                      {editingSessionId === session.id ? (
-                        <div
-                          className="flex items-center gap-1.5"
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <input
-                            value={editingTitle}
-                            autoFocus
-                            onChange={(event) => setEditingTitle(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                void submitRenameSession(session.id);
-                              } else if (event.key === "Escape") {
-                                event.preventDefault();
-                                cancelRenameSession();
-                              }
-                            }}
-                            className="min-w-0 flex-1 rounded-md border border-white/20 bg-black/40 px-2 py-1 text-[12px] text-white !outline-none focus:border-indigo-400/50"
-                          />
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void submitRenameSession(session.id);
-                            }}
-                            disabled={renameSession.isPending}
-                            className="p-1 rounded hover:bg-emerald-500/20 text-emerald-300 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                            title="Save title"
-                          >
-                            {renameSession.isPending ? (
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                            ) : (
-                              <Check className="w-3 h-3" />
-                            )}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              cancelRenameSession();
-                            }}
-                            className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer"
-                            title="Cancel rename"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ) : (
-                        <p className="text-[12px] text-white font-medium flex w-full min-w-0 items-center gap-1.5">
-                          {isSessionActive ? (
-                            <Loader2 className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />
-                          ) : (
-                            currentSessionId === session.id && (
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                            )
-                          )}
-                          {session.pinned && (
-                            <Pin className="w-3 h-3 text-amber-400 flex-shrink-0 fill-amber-400/30" />
-                          )}
-                          <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
-                        </p>
-                      )}
-                      <p className="text-[10px] text-gray-500 mt-0.5 flex w-full min-w-0 items-center gap-1.5 overflow-hidden">
-                        <span className="flex-shrink-0">{session.message_count || 0} messages</span>
-                        {routeLabel && (
-                          <>
-                            <span className="flex-shrink-0 text-gray-700">·</span>
-                            <span className="min-w-0 flex-1 truncate" title={routeLabel}>
-                              {routeLabel}
-                            </span>
-                          </>
-                        )}
-                        {(session.updated_at || session.created_at) && (
-                          <>
-                            <span className="flex-shrink-0 text-gray-700">·</span>
-                            <span
-                              className="flex-shrink-0"
-                              title={new Date(
-                                session.updated_at || session.created_at
-                              ).toLocaleString()}
-                            >
-                              {formatRelativeTime(session.updated_at || session.created_at)}
-                            </span>
-                          </>
-                        )}
-                      </p>
-                      {typeof (session as { workspace_dir?: string | null }).workspace_dir ===
-                        "string" && (
-                        <p className="text-[10px] text-blue-300/90 mt-0.5 truncate">
-                          {(session as { workspace_dir?: string }).workspace_dir}
-                        </p>
-                      )}
-                      {previewText && (
-                        <p
-                          className="text-[10px] text-gray-500 mt-0.5 w-full truncate"
-                          title={previewText}
-                        >
-                          {previewText}
-                        </p>
-                      )}
-                    </div>
-                    {editingSessionId !== session.id && (
-                      <div
-                        className={cn(
-                          "pointer-events-none absolute right-2 top-2 flex items-center gap-1 rounded-md bg-[#11111a]/90 px-1 py-0.5 shadow-lg shadow-black/30 backdrop-blur transition-opacity",
-                          "opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
-                        )}
-                      >
-                        <button
-                          className={cn(
-                            "p-1 rounded cursor-pointer",
-                            session.pinned
-                              ? "text-amber-400 hover:bg-amber-500/20"
-                              : "text-gray-400 hover:bg-amber-500/20 hover:text-amber-300"
-                          )}
-                          onClick={(event) => handleTogglePin(event, session.id, !!session.pinned)}
-                          aria-label={session.pinned ? "Unpin session" : "Pin session"}
-                          title={session.pinned ? "Unpin session" : "Pin session"}
-                        >
-                          {session.pinned ? (
-                            <PinOff className="w-3 h-3" />
-                          ) : (
-                            <Pin className="w-3 h-3" />
-                          )}
-                        </button>
-                        <button
-                          className="p-1 rounded hover:bg-indigo-500/20 text-indigo-300 cursor-pointer"
-                          onClick={(event) => beginRenameSession(event, session)}
-                          aria-label="Rename session"
-                          title="Rename session"
-                        >
-                          <Pencil className="w-3 h-3" />
-                        </button>
-                        <button
-                          className="p-1 rounded hover:bg-red-500/20 text-red-400 cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setShowDeleteModal(session.id);
-                          }}
-                          aria-label="Delete session"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-
-      <Modal
-        isOpen={!!showDeleteModal}
-        onClose={() => setShowDeleteModal(null)}
-        title="Delete Session"
-        size="sm"
-      >
-        <div className="space-y-4">
-          <p className="text-gray-300">
-            Are you sure you want to delete this session? This cannot be undone.
-          </p>
-          <div className="flex justify-end gap-3">
-            <GlassButton variant="ghost" onClick={() => setShowDeleteModal(null)}>
-              Cancel
-            </GlassButton>
-            <GlassButton
-              variant="primary"
-              className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border-red-500/30"
-              onClick={async () => {
-                if (showDeleteModal) {
-                  await deleteSession.mutateAsync(showDeleteModal);
-                  setShowDeleteModal(null);
-                }
-              }}
-              disabled={deleteSession.isPending}
-            >
-              {deleteSession.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
-              ) : (
-                <Trash2 className="w-4 h-4 mr-2" />
-              )}
-              Delete
-            </GlassButton>
-          </div>
-        </div>
-      </Modal>
-    </>
-  );
-}
-
 /** Banner showing pending tool-approval requests with resolve buttons. */
 function PendingApprovalsBanner() {
   const [approvals, setApprovals] = useState<
@@ -2164,8 +1712,6 @@ export function Chat() {
     stopGenerating,
     clearChat,
     loadSession,
-    appendSessionMessage,
-    appendSessionMessages,
     sessionId,
     workspaceDir,
     setWorkspaceDir,
@@ -2782,249 +2328,312 @@ export function Chat() {
       toolCallId?: string,
       sandboxProvider?: string
     ) => {
-      const trimmed = text.trim();
-      if (!trimmed) return;
-
-      const normalizedText = normalizeActivityTextForPhase(trimmed, phase);
-      if (isGenericStatusLabel(normalizedText)) return;
-      const nextTimestamp =
-        typeof eventTimestamp === "number" && Number.isFinite(eventTimestamp)
-          ? eventTimestamp
-          : Date.now();
-      const normalizedToolName = typeof toolName === "string" ? toolName.trim().toLowerCase() : "";
-      const normalizedToolCallId =
-        typeof toolCallId === "string" && toolCallId.trim() ? toolCallId.trim().toLowerCase() : "";
-      const normalizedSandboxProvider = normalizeSandboxProviderValue(sandboxProvider);
-      const nextId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const sortAndMergeActivities = (items: LiveActivityItem[]): LiveActivityItem[] =>
-        mergeActivityLists(
-          [],
-          [...items].sort((left, right) =>
-            left.timestamp === right.timestamp
-              ? left.id.localeCompare(right.id)
-              : left.timestamp - right.timestamp
-          )
-        );
-
-      const applyActivityEvent = (previous: LiveActivityItem[]): LiveActivityItem[] => {
-        if (phase !== "start") {
-          if (normalizedToolCallId) {
-            for (let index = previous.length - 1; index >= 0; index -= 1) {
-              const candidate = previous[index];
-              if (candidate.phase !== "start") continue;
-              if ((candidate.toolCallId || "").trim().toLowerCase() !== normalizedToolCallId) {
-                continue;
-              }
-              if (nextTimestamp - candidate.timestamp > 60_000) continue;
-              const updated = [...previous];
-              updated[index] = {
-                ...candidate,
-                phase,
-                text: normalizedText,
-                timestamp: nextTimestamp,
-                toolName: normalizedToolName || candidate.toolName,
-                toolCallId: normalizedToolCallId,
-                sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
-              };
-              return sortAndMergeActivities(updated);
-            }
-          }
-
-          if (normalizedToolName) {
-            for (let index = previous.length - 1; index >= 0; index -= 1) {
-              const candidate = previous[index];
-              if (candidate.phase !== "start") continue;
-              if ((candidate.toolName || "").trim().toLowerCase() !== normalizedToolName) continue;
-              if (nextTimestamp - candidate.timestamp > 60_000) continue;
-              const updated = [...previous];
-              updated[index] = {
-                ...candidate,
-                phase,
-                text: normalizedText,
-                timestamp: nextTimestamp,
-                toolName: normalizedToolName,
-                toolCallId: normalizedToolCallId || candidate.toolCallId,
-                sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
-              };
-              return sortAndMergeActivities(updated);
-            }
-          }
-
-          for (let index = previous.length - 1; index >= 0; index -= 1) {
-            const candidate = previous[index];
-            if (candidate.phase !== "start") continue;
-            if (nextTimestamp - candidate.timestamp > 60_000) continue;
-            if (normalizeActivityTextForPhase(candidate.text, phase) !== normalizedText) continue;
-            const updated = [...previous];
-            updated[index] = {
-              ...candidate,
-              phase,
-              text: normalizedText,
-              timestamp: nextTimestamp,
-              toolName: normalizedToolName || candidate.toolName,
-              toolCallId: normalizedToolCallId || candidate.toolCallId,
-              sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
-            };
-            return sortAndMergeActivities(updated);
-          }
-        }
-
-        const previousLast = previous[previous.length - 1];
-        if (
-          previousLast &&
-          previousLast.phase === phase &&
-          normalizeActivityTextForPhase(previousLast.text, phase) === normalizedText &&
-          (normalizedToolCallId
-            ? (previousLast.toolCallId || "").trim().toLowerCase() === normalizedToolCallId
-            : true) &&
-          (normalizedToolName
-            ? (previousLast.toolName || "").trim().toLowerCase() === normalizedToolName
-            : true) &&
-          nextTimestamp - previousLast.timestamp < 750
-        ) {
-          return previous;
-        }
-
-        const next: LiveActivityItem = {
-          id: nextId,
+      const applyEvent = (previous: LiveActivityItem[]): LiveActivityItem[] =>
+        applyLiveActivityEvent(previous, {
           phase,
-          text: normalizedText,
-          timestamp: nextTimestamp,
-          toolName: normalizedToolName || undefined,
-          toolCallId: normalizedToolCallId || undefined,
-          sandboxProvider: normalizedSandboxProvider,
-        };
-        return sortAndMergeActivities([...previous, next]);
-      };
+          text,
+          timestamp: eventTimestamp,
+          toolName,
+          toolCallId,
+          sandboxProvider,
+        });
 
-      runActivityBufferRef.current = applyActivityEvent(runActivityBufferRef.current);
-      setLiveActivities((previous) => applyActivityEvent(previous));
+      runActivityBufferRef.current = applyEvent(runActivityBufferRef.current);
+      setLiveActivities((previous) => applyEvent(previous));
     },
     []
   );
 
-  const hydrateSessionStatus = useCallback(async (targetSessionId?: string | null) => {
-    const resolvedSessionId =
-      typeof targetSessionId === "string" && targetSessionId.trim().length > 0
-        ? targetSessionId.trim()
-        : null;
-
-    try {
-      const response = await chatApi.getSessionStatus(resolvedSessionId || undefined);
-      if (!response.success || !response.data) return;
-      const payload = response.data as SessionStatusResponse;
-      const rawActiveIds = Array.isArray(payload.activeSessionIds) ? payload.activeSessionIds : [];
-
-      if (!resolvedSessionId) return;
-      const snapshot = payload.session;
-      const snapshotAgeMs =
-        snapshot && typeof snapshot.timestamp === "number"
-          ? Date.now() - snapshot.timestamp
-          : Infinity;
-      const snapshotFresh = snapshotAgeMs <= SESSION_ACTIVITY_STALE_MS;
-      const nextActiveIds =
-        snapshot && !snapshotFresh
-          ? rawActiveIds.filter((candidateId) => candidateId !== resolvedSessionId)
-          : rawActiveIds;
-      setActiveSessionIds(nextActiveIds);
-      const isActive =
-        !!snapshot &&
-        snapshotFresh &&
-        (payload.active === true ||
-          snapshot.status === "thinking" ||
-          snapshot.status === "generating" ||
-          snapshot.status === "compacting" ||
-          snapshot.status === "tool_executing" ||
-          snapshot.status === "tool_completed");
-      setPendingMessages((current) => mergePendingChatMessages(snapshot?.pendingMessages, current));
-
-      if (!isActive || !snapshot) {
+  const snapshotLatestTimestamp = useCallback((snapshot: LiveStatusSnapshotLike): number => {
+    let latest =
+      typeof snapshot.timestamp === "number" && Number.isFinite(snapshot.timestamp)
+        ? snapshot.timestamp
+        : 0;
+    if (Array.isArray(snapshot.activities)) {
+      for (const activity of snapshot.activities) {
         if (
-          !loadingRef.current &&
-          activeSessionRef.current === resolvedSessionId &&
-          !nextActiveIds.includes(resolvedSessionId)
+          activity &&
+          typeof activity.timestamp === "number" &&
+          Number.isFinite(activity.timestamp) &&
+          activity.timestamp > latest
         ) {
-          setLiveStatus("idle");
-          setLiveActivities([]);
-          setLiveCurrentStep(null);
-          runActivityBufferRef.current = [];
+          latest = activity.timestamp;
         }
-        return;
       }
+    }
+    return latest;
+  }, []);
 
-      if (activeSessionRef.current !== resolvedSessionId) return;
-      const snapshotLatestTimestamp = (() => {
-        let latest =
-          typeof snapshot.timestamp === "number" && Number.isFinite(snapshot.timestamp)
-            ? snapshot.timestamp
-            : 0;
-        if (Array.isArray(snapshot.activities)) {
-          for (const activity of snapshot.activities) {
-            if (
-              activity &&
-              typeof activity.timestamp === "number" &&
-              Number.isFinite(activity.timestamp) &&
-              activity.timestamp > latest
-            ) {
-              latest = activity.timestamp;
-            }
-          }
-        }
-        return latest;
-      })();
-      const latestKnownTimestamp =
-        latestStatusTimestampBySessionRef.current[resolvedSessionId] || 0;
-      if (
-        snapshotLatestTimestamp > 0 &&
-        latestKnownTimestamp > 0 &&
-        snapshotLatestTimestamp + 25 < latestKnownTimestamp
-      ) {
-        return;
-      }
-      if (snapshotLatestTimestamp > latestKnownTimestamp) {
-        latestStatusTimestampBySessionRef.current[resolvedSessionId] = snapshotLatestTimestamp;
-      }
-      const normalizedSnapshotStatus = normalizeSessionStatus(snapshot.status);
-      setLiveStatus(normalizedSnapshotStatus);
+  const resolveSnapshotLiveState = useCallback(
+    (snapshot: LiveStatusSnapshotLike, localActivities: LiveActivityItem[]) => {
+      const normalizedStatus = normalizeSessionStatus(snapshot.status);
       const snapshotActivities = normalizeSnapshotActivities(
         mergeActivityLists([], toLiveActivityItems(snapshot.activities)),
         snapshot.status
       );
-      const localActivities = mergeActivityLists(
-        runActivityBufferRef.current,
-        liveActivitiesRef.current
-      );
-      const resolvedSnapshotActivities = resolveStatusSnapshotActivities(
+      const activities = resolveStatusSnapshotActivities(
         snapshotActivities,
         localActivities,
-        normalizedSnapshotStatus
+        normalizedStatus
       );
-      setLiveActivities(resolvedSnapshotActivities);
-      liveActivitiesRef.current = resolvedSnapshotActivities.map((activity) => ({ ...activity }));
-      runActivityBufferRef.current = resolvedSnapshotActivities.map((activity) => ({
-        ...activity,
-      }));
-      const activeStep = getLatestInFlightStep(resolvedSnapshotActivities);
+      const activeStep = getLatestInFlightStep(activities);
+      let currentStep: string | null = null;
       if (activeStep && !isGenericStatusLabel(activeStep)) {
-        setLiveCurrentStep(activeStep);
+        currentStep = activeStep;
       } else {
         const detail = typeof snapshot.detail === "string" ? snapshot.detail.trim() : "";
         if (isMeaningfulThoughtDetail(detail)) {
-          setLiveCurrentStep(detail);
-        } else if (normalizedSnapshotStatus === "generating") {
-          setLiveCurrentStep("Generating response...");
-        } else if (normalizedSnapshotStatus === "compacting") {
-          setLiveCurrentStep("Context automatically compacted");
-        } else if (normalizedSnapshotStatus === "thinking") {
-          setLiveCurrentStep("Thinking...");
-        } else {
-          setLiveCurrentStep(null);
+          currentStep = detail;
+        } else if (normalizedStatus === "generating") {
+          currentStep = "Generating response...";
+        } else if (normalizedStatus === "compacting") {
+          currentStep = "Context automatically compacted";
+        } else if (normalizedStatus === "thinking") {
+          currentStep = "Thinking...";
         }
       }
-    } catch (error) {
-      console.error("Failed to hydrate session status:", error);
+      return { status: normalizedStatus, activities, currentStep };
+    },
+    []
+  );
+
+  const cacheLiveStatusSnapshot = useCallback(
+    (snapshot: LiveStatusSnapshotLike) => {
+      const snapshotSessionId =
+        typeof snapshot.sessionId === "string" && snapshot.sessionId.trim()
+          ? snapshot.sessionId.trim()
+          : null;
+      if (!snapshotSessionId) return;
+      const cached = readCachedLiveSessionState(snapshotSessionId);
+      const localActivities = cached?.activities || [];
+      const next = resolveSnapshotLiveState(snapshot, localActivities);
+      const latestTimestamp = snapshotLatestTimestamp(snapshot);
+      if (latestTimestamp > 0) {
+        const previousTimestamp = latestStatusTimestampBySessionRef.current[snapshotSessionId] || 0;
+        if (latestTimestamp > previousTimestamp) {
+          latestStatusTimestampBySessionRef.current[snapshotSessionId] = latestTimestamp;
+        }
+      }
+      writeCachedLiveSessionState(snapshotSessionId, {
+        status: next.status,
+        activities: next.activities,
+        currentStep: next.currentStep,
+        streamingContent: cached?.streamingContent ?? null,
+      });
+    },
+    [resolveSnapshotLiveState, snapshotLatestTimestamp]
+  );
+
+  const cacheAssistantToken = useCallback((payload: StatusStreamTokenEvent) => {
+    const tokenSessionId =
+      typeof payload.sessionId === "string" && payload.sessionId.trim()
+        ? payload.sessionId.trim()
+        : null;
+    const delta = typeof payload.delta === "string" ? payload.delta : "";
+    if (!tokenSessionId || !delta) return;
+    const cached = readCachedLiveSessionState(tokenSessionId);
+    writeCachedLiveSessionState(tokenSessionId, {
+      status: "generating",
+      activities: cached?.activities || [],
+      currentStep: cached?.currentStep || "Generating response...",
+      streamingContent: `${cached?.streamingContent || ""}${delta}`,
+    });
+  }, []);
+
+  const cacheLiveStatusEvent = useCallback((payload: StatusStreamStatusEvent) => {
+    const payloadSessionId =
+      typeof payload.sessionId === "string" && payload.sessionId.trim()
+        ? payload.sessionId.trim()
+        : null;
+    if (!payloadSessionId) return;
+    const status = typeof payload.status === "string" ? payload.status : "";
+    if (!status) return;
+    const statusDetail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+    const isSteeringHandoff =
+      status === "idle" && statusDetail.toLowerCase() === "steering to follow-up...";
+    if ((status === "idle" && !isSteeringHandoff) || status === "error") {
+      clearCachedLiveSessionState(payloadSessionId);
+      return;
+    }
+
+    const cached = readCachedLiveSessionState(payloadSessionId);
+    const eventTimestamp =
+      typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
+        ? payload.timestamp
+        : undefined;
+    let activities = cached?.activities || [];
+    let currentStep = cached?.currentStep || null;
+    const normalizedStatus = normalizeSessionStatus(status);
+
+    if (status === "thinking" || status === "generating" || status === "compacting") {
+      const activeToolStep = getLatestInFlightStep(activities);
+      if (!payload.toolName) {
+        const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+        if (status === "compacting" || isMeaningfulThoughtDetail(detail)) {
+          const text =
+            status === "compacting" && !isMeaningfulThoughtDetail(detail)
+              ? "Context automatically compacted"
+              : detail;
+          activities = applyLiveActivityEvent(activities, {
+            phase: "result",
+            text,
+            timestamp: eventTimestamp,
+            toolName: "__thought",
+          });
+          currentStep = activeToolStep || text;
+        } else {
+          currentStep =
+            activeToolStep ||
+            (status === "generating"
+              ? "Generating response..."
+              : status === "thinking"
+                ? "Thinking..."
+                : null);
+        }
+      }
+      writeCachedLiveSessionState(payloadSessionId, {
+        status: normalizedStatus,
+        activities,
+        currentStep,
+        streamingContent: cached?.streamingContent ?? null,
+      });
+      return;
+    }
+
+    if (isSteeringHandoff) {
+      activities = applyLiveActivityEvent(activities, {
+        phase: "result",
+        text: statusDetail,
+        timestamp: eventTimestamp,
+        toolName: "__thought",
+      });
+      writeCachedLiveSessionState(payloadSessionId, {
+        status: "thinking",
+        activities,
+        currentStep: statusDetail,
+        streamingContent: cached?.streamingContent ?? null,
+      });
+      return;
+    }
+
+    if (status === "tool_executing" || status === "tool_completed") {
+      const phase: "start" | "result" = status === "tool_executing" ? "start" : "result";
+      const toolName = payload.toolName || "tool";
+      const text = formatToolIntent(toolName, {}, phase, payload.detail);
+      activities = applyLiveActivityEvent(activities, {
+        phase,
+        text,
+        timestamp: eventTimestamp,
+        toolName: payload.toolName,
+        toolCallId: payload.toolCallId,
+        sandboxProvider: payload.sandboxProvider,
+      });
+      writeCachedLiveSessionState(payloadSessionId, {
+        status: phase === "start" ? "thinking" : normalizedStatus,
+        activities,
+        currentStep:
+          phase === "start"
+            ? isGenericStatusLabel(text)
+              ? "Thinking..."
+              : text
+            : getLatestInFlightStep(activities),
+        streamingContent: cached?.streamingContent ?? null,
+      });
     }
   }, []);
+
+  const hydrateSessionStatus = useCallback(
+    async (targetSessionId?: string | null) => {
+      const resolvedSessionId =
+        typeof targetSessionId === "string" && targetSessionId.trim().length > 0
+          ? targetSessionId.trim()
+          : null;
+
+      try {
+        const response = await chatApi.getSessionStatus(resolvedSessionId || undefined);
+        if (!response.success || !response.data) return;
+        const payload = response.data as SessionStatusResponse;
+        const rawActiveIds = Array.isArray(payload.activeSessionIds)
+          ? payload.activeSessionIds
+          : [];
+
+        if (!resolvedSessionId) return;
+        const snapshot = payload.session;
+        const snapshotAgeMs =
+          snapshot && typeof snapshot.timestamp === "number"
+            ? Date.now() - snapshot.timestamp
+            : Infinity;
+        const snapshotFresh = snapshotAgeMs <= SESSION_ACTIVITY_STALE_MS;
+        const nextActiveIds =
+          snapshot && !snapshotFresh
+            ? rawActiveIds.filter((candidateId) => candidateId !== resolvedSessionId)
+            : rawActiveIds;
+        setActiveSessionIds(nextActiveIds);
+        const isActive =
+          !!snapshot &&
+          snapshotFresh &&
+          (payload.active === true ||
+            snapshot.status === "thinking" ||
+            snapshot.status === "generating" ||
+            snapshot.status === "compacting" ||
+            snapshot.status === "tool_executing" ||
+            snapshot.status === "tool_completed");
+        setPendingMessages((current) =>
+          mergePendingChatMessages(snapshot?.pendingMessages, current)
+        );
+        if (snapshot && snapshotFresh) {
+          cacheLiveStatusSnapshot(snapshot);
+        }
+
+        if (!isActive || !snapshot) {
+          if (
+            !loadingRef.current &&
+            activeSessionRef.current === resolvedSessionId &&
+            !nextActiveIds.includes(resolvedSessionId)
+          ) {
+            setLiveStatus("idle");
+            setLiveActivities([]);
+            setLiveCurrentStep(null);
+            runActivityBufferRef.current = [];
+          }
+          if (!nextActiveIds.includes(resolvedSessionId)) {
+            clearCachedLiveSessionState(resolvedSessionId);
+          }
+          return;
+        }
+
+        if (activeSessionRef.current !== resolvedSessionId) return;
+        const snapshotLatest = snapshotLatestTimestamp(snapshot);
+        const latestKnownTimestamp =
+          latestStatusTimestampBySessionRef.current[resolvedSessionId] || 0;
+        if (
+          snapshotLatest > 0 &&
+          latestKnownTimestamp > 0 &&
+          snapshotLatest + 25 < latestKnownTimestamp
+        ) {
+          return;
+        }
+        if (snapshotLatest > latestKnownTimestamp) {
+          latestStatusTimestampBySessionRef.current[resolvedSessionId] = snapshotLatest;
+        }
+        const localActivities = mergeActivityLists(
+          runActivityBufferRef.current,
+          liveActivitiesRef.current
+        );
+        const resolved = resolveSnapshotLiveState(snapshot, localActivities);
+        setLiveStatus(resolved.status);
+        setLiveActivities(resolved.activities);
+        liveActivitiesRef.current = resolved.activities.map((activity) => ({ ...activity }));
+        runActivityBufferRef.current = resolved.activities.map((activity) => ({
+          ...activity,
+        }));
+        setLiveCurrentStep(resolved.currentStep);
+      } catch (error) {
+        console.error("Failed to hydrate session status:", error);
+      }
+    },
+    [cacheLiveStatusSnapshot, resolveSnapshotLiveState, snapshotLatestTimestamp]
+  );
 
   const refreshPendingMessages = useCallback(async (targetSessionId?: string | null) => {
     const resolvedSessionId =
@@ -3068,6 +2677,10 @@ export function Chat() {
     },
     [clearChat]
   );
+
+  useEffect(() => {
+    activeSessionRef.current = sessionId;
+  }, [sessionId]);
 
   useEffect(() => {
     const cached = readCachedLiveSessionState(sessionId);
@@ -3191,6 +2804,9 @@ export function Chat() {
                   typeof candidate === "string" && candidate.trim().length > 0
               )
             : [];
+          for (const snapshot of payload.activeSessions || []) {
+            cacheLiveStatusSnapshot(snapshot);
+          }
           setActiveSessionIds(snapshotIds);
           const activeSession = activeSessionRef.current;
           if (activeSession) {
@@ -3203,6 +2819,7 @@ export function Chat() {
           if (payload.type === "assistant_token") {
             const delta = typeof payload.delta === "string" ? payload.delta : "";
             if (delta) {
+              cacheAssistantToken(payload);
               const sessionId = typeof payload.sessionId === "string" ? payload.sessionId : "";
               const activeSession = activeSessionRef.current;
               if (activeSession && sessionId === activeSession) {
@@ -3217,6 +2834,7 @@ export function Chat() {
         const statusDetail = typeof payload.detail === "string" ? payload.detail.trim() : "";
         const isSteeringHandoff =
           status === "idle" && statusDetail.toLowerCase() === "steering to follow-up...";
+        cacheLiveStatusEvent(payload);
         const payloadSessionId =
           typeof payload.sessionId === "string" && payload.sessionId.trim()
             ? payload.sessionId
@@ -3389,7 +3007,13 @@ export function Chat() {
     return () => {
       disconnect();
     };
-  }, [appendLiveActivity, hydrateSessionStatus]);
+  }, [
+    appendLiveActivity,
+    cacheAssistantToken,
+    cacheLiveStatusEvent,
+    cacheLiveStatusSnapshot,
+    hydrateSessionStatus,
+  ]);
 
   useEffect(() => {
     const inputEl = inputRef.current;
@@ -3552,43 +3176,14 @@ export function Chat() {
           if (response.data.pendingMessages.length === 0) {
             clearCachedOptimisticPendingMessages(sessionId);
           }
-          const steeredMessage = response.data.message as ChatMessage;
-          const preSteerMessage =
-            (response.data.interruptedMessage as ChatMessage | undefined) ||
-            buildPreSteeringActivityMessage(steeredMessage, preSteerActivities);
-          if (preSteerMessage) {
-            appendSessionMessages(sessionId, [preSteerMessage, steeredMessage], workspaceDir);
-            const materializedMessages = [preSteerMessage];
-            runActivityBufferRef.current = pruneCanonicalizedLiveActivities(
-              materializedMessages,
-              runActivityBufferRef.current
-            );
-            if (pendingProcessCaptureRef.current) {
-              pendingProcessCaptureRef.current = {
-                ...pendingProcessCaptureRef.current,
-                activities: pruneCanonicalizedLiveActivities(
-                  materializedMessages,
-                  pendingProcessCaptureRef.current.activities
-                ),
-              };
-            }
-            setLiveActivities((previous) =>
-              pruneCanonicalizedLiveActivities(materializedMessages, previous)
-            );
-          } else {
-            appendSessionMessage(sessionId, steeredMessage, workspaceDir);
-          }
-          const sessionStillActive =
-            activeSessionIds.includes(sessionId) ||
-            (isLoading && loadingSessionId === sessionId) ||
-            liveStatus !== "idle" ||
-            liveActivities.length > 0;
-          if (!sessionStillActive) {
+          let materializedMessages: ChatMessage[] = [];
+          try {
             const refreshed = await loadSessionMutation.mutateAsync(sessionId);
             if (refreshed?.messagesList) {
+              materializedMessages = refreshed.messagesList as ChatMessage[];
               loadSession(
                 sessionId,
-                refreshed.messagesList as ChatMessage[],
+                materializedMessages,
                 (refreshed as { workspace_dir?: string | null }).workspace_dir || null
               );
               syncSessionAgentSelection(
@@ -3598,7 +3193,34 @@ export function Chat() {
                 (refreshed as { contextUsage?: SessionContextUsage | null }).contextUsage || null
               );
             }
+          } catch (error) {
+            console.error("Failed to refresh steered chat session:", error);
           }
+          if (materializedMessages.length === 0) {
+            const steeredMessage = response.data.message as ChatMessage;
+            const preSteerMessage =
+              (response.data.interruptedMessage as ChatMessage | undefined) ||
+              buildPreSteeringActivityMessage(steeredMessage, preSteerActivities);
+            materializedMessages = [preSteerMessage, steeredMessage].filter(
+              (message): message is ChatMessage => !!message
+            );
+          }
+          runActivityBufferRef.current = pruneCanonicalizedLiveActivities(
+            materializedMessages,
+            runActivityBufferRef.current
+          );
+          if (pendingProcessCaptureRef.current) {
+            pendingProcessCaptureRef.current = {
+              ...pendingProcessCaptureRef.current,
+              activities: pruneCanonicalizedLiveActivities(
+                materializedMessages,
+                pendingProcessCaptureRef.current.activities
+              ),
+            };
+          }
+          setLiveActivities((previous) =>
+            pruneCanonicalizedLiveActivities(materializedMessages, previous)
+          );
           return;
         }
         console.error("Failed to steer pending message:", response.error || response.data?.error);
@@ -3606,20 +3228,7 @@ export function Chat() {
         setSteeringMessageId(null);
       }
     },
-    [
-      activeSessionIds,
-      appendSessionMessage,
-      appendSessionMessages,
-      isLoading,
-      loadSession,
-      loadSessionMutation,
-      liveActivities,
-      liveStatus,
-      loadingSessionId,
-      sessionId,
-      syncSessionAgentSelection,
-      workspaceDir,
-    ]
+    [loadSession, loadSessionMutation, liveActivities, sessionId, syncSessionAgentSelection]
   );
 
   const handleReorderPendingMessages = useCallback(
@@ -4221,6 +3830,7 @@ export function Chat() {
         if (restoreSessionGenerationRef.current !== restoreGeneration || activeSessionRef.current) {
           return true;
         }
+        activeSessionRef.current = targetSessionId;
         loadSession(
           targetSessionId,
           result.messagesList as ChatMessage[],
@@ -4403,6 +4013,7 @@ export function Chat() {
             currentSessionLoading={isLoading}
             onLoadSession={(id, msgs, loadedWorkspaceDir, loadedAgentId, loadedContextUsage) => {
               suppressAutoRestoreRef.current = false;
+              activeSessionRef.current = id;
               loadSession(id, msgs, loadedWorkspaceDir);
               syncSessionAgentSelection(loadedAgentId);
               setSessionContextUsage(loadedContextUsage ?? null);
@@ -4781,6 +4392,7 @@ export function Chat() {
               try {
                 const result = await loadSessionMutation.mutateAsync(sessionKey);
                 if (result?.messagesList) {
+                  activeSessionRef.current = sessionKey;
                   loadSession(
                     sessionKey,
                     result.messagesList as ChatMessage[],

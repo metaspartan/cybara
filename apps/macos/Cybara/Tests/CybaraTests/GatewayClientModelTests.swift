@@ -10,6 +10,22 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(session.displayTitle, "Release planning")
     }
 
+    func testSessionDisplayTitleStripsMatchingAgentPrefix() throws {
+        let session = try decodeSession(
+            #"{"id":"session-123456789","title":"Mini: Audit agent platform","agent_name":"Mini"}"#
+        )
+        let ordinary = try decodeSession(
+            #"{"id":"session-123456789","title":"Fix: CI workflow failures","agent_name":"Mini"}"#
+        )
+        let legacyDifferentAgent = try decodeSession(
+            #"{"id":"session-123456789","title":"Codex: Review release build","agent_name":"Zai"}"#
+        )
+
+        XCTAssertEqual(session.displayTitle, "Audit agent platform")
+        XCTAssertEqual(ordinary.displayTitle, "Fix: CI workflow failures")
+        XCTAssertEqual(legacyDifferentAgent.displayTitle, "Review release build")
+    }
+
     func testSessionDisplayTitleFallsBackForBlankOrMissingTitle() throws {
         let blank = try decodeSession(#"{"id":"session-abcdef123","title":"   "}"#)
         let missing = try decodeSession(#"{"id":"session-fedcba987"}"#)

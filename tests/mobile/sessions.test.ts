@@ -53,6 +53,7 @@ describe("mobile: chat management", () => {
     expect(screen).toContain("api.updatePendingMessage(");
     expect(screen).toContain("api.deletePendingMessage(");
     expect(screen).toContain("mobilePreSteerProcessActivities(liveAssistant)");
+    expect(screen).toContain("await loadSession(false);");
     expect(api).toContain("options?: MobileSteerPendingMessageOptions");
     expect(api).toContain("JSON.stringify({ processActivities })");
     expect(screen).toContain('accessibilityLabel="Move pending message up"');

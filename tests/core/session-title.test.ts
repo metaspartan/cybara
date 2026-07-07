@@ -5,6 +5,7 @@ import {
   normalizeSessionTitle,
   parseModelGeneratedSessionTitle,
   shouldRegenerateSessionTitle,
+  stripSessionTitleAgentPrefix,
 } from "../../src/core/session-title";
 
 describe("session title derivation", () => {
@@ -82,5 +83,20 @@ describe("session title derivation", () => {
 
   test("rejects generic model-generated title output", () => {
     expect(parseModelGeneratedSessionTitle("Summary")).toBeNull();
+  });
+
+  test("strips matching agent prefixes without removing normal title punctuation", () => {
+    expect(stripSessionTitleAgentPrefix("Mini: Audit agent platform", ["Mini"])).toBe(
+      "Audit agent platform"
+    );
+    expect(stripSessionTitleAgentPrefix("Mini - Fix CI workflow failures", ["mini"])).toBe(
+      "Fix CI workflow failures"
+    );
+    expect(stripSessionTitleAgentPrefix("Codex: Review release build", ["Zai"])).toBe(
+      "Review release build"
+    );
+    expect(stripSessionTitleAgentPrefix("Fix: CI workflow failures", ["Mini"])).toBe(
+      "Fix: CI workflow failures"
+    );
   });
 });

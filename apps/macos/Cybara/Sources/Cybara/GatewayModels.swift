@@ -609,7 +609,13 @@ struct GatewaySession: Decodable, Identifiable, Hashable {
             ?? (try? container.decodeIfPresent([GatewaySessionMessage].self, forKey: .messages))
     }
 
-    var displayTitle: String { firstNonEmptyGatewayString(title) ?? String(id.prefix(8)) }
+    var displayTitle: String {
+        gatewaySessionDisplayTitle(
+            title,
+            prefixes: [agent_name, agent_id],
+            fallback: String(id.prefix(8))
+        )
+    }
     var workspaceLabel: String? { gatewayWorkspaceLabel(workspace_dir) }
 
     var providerModelSummary: String {
@@ -699,6 +705,51 @@ func firstNonEmptyGatewayString(_ values: String?...) -> String? {
         if !trimmed.isEmpty { return trimmed }
     }
     return nil
+}
+
+func gatewaySessionDisplayTitle(
+    _ title: String?,
+    prefixes: [String?],
+    fallback: String
+) -> String {
+    guard let rawTitle = firstNonEmptyGatewayString(title) else { return fallback }
+    let knownPrefixes: [String?] = [
+        "Anthropic",
+        "Claude",
+        "Codex",
+        "DeepSeek",
+        "Gemini",
+        "GLM",
+        "GPT",
+        "Grok",
+        "Kimi",
+        "Mini",
+        "MiniMax",
+        "Ollama",
+        "OpenAI",
+        "OpenRouter",
+        "Qwen",
+        "Zai",
+    ]
+    var resolvedTitle = rawTitle
+    for prefix in prefixes + knownPrefixes {
+        guard let prefix = firstNonEmptyGatewayString(prefix) else { continue }
+        guard resolvedTitle.range(of: prefix, options: [.caseInsensitive, .anchored]) != nil else {
+            continue
+        }
+        let remainder = resolvedTitle.dropFirst(prefix.count)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let first = remainder.first, [":", "-", "–", "—"].contains(String(first)) else {
+            continue
+        }
+        let stripped = remainder.dropFirst()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !stripped.isEmpty {
+            resolvedTitle = stripped
+            break
+        }
+    }
+    return firstNonEmptyGatewayString(resolvedTitle) ?? rawTitle
 }
 
 func gatewayProviderDisplayName(_ value: String?) -> String? {

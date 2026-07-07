@@ -51,12 +51,15 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("setSessionAgentId(nextAgentId ?? null)");
     expect(source).toContain("setSessionContextUsage(updated.contextUsage ?? null)");
     expect(source).toContain("clientPendingId: optimisticPendingMessageId");
-    expect(source).toContain(
-      "appendSessionMessages(sessionId, [preSteerMessage, steeredMessage], workspaceDir)"
-    );
+    expect(source).toContain("cacheLiveStatusSnapshot(snapshot)");
+    expect(source).toContain("cacheLiveStatusEvent(payload)");
+    expect(source).toContain("cacheAssistantToken(payload)");
+    expect(source).toContain("activeSessionRef.current = sessionId");
+    expect(source).toContain("const refreshed = await loadSessionMutation.mutateAsync(sessionId)");
+    expect(source).not.toContain("appendSessionMessages(sessionId, [preSteerMessage");
     expect(source).toContain("buildPreSteeringActivityMessage(");
-    expect(source).toContain("const sessionStillActive =");
-    expect(source).toContain("if (!sessionStillActive) {");
+    expect(source).not.toContain("const sessionStillActive =");
+    expect(source).not.toContain("if (!sessionStillActive) {");
     expect(source).toContain("refreshPendingMessages(sessionId)");
     expect(source).toContain("mergePendingChatMessages(snapshot?.pendingMessages, current)");
     expect(source).toContain("readCachedOptimisticPendingMessages(sessionId)");

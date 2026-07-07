@@ -265,6 +265,78 @@ struct DashboardScreen: View {
 
 // ─── Chat ────────────────────────────────────────────────────────────────────
 
+private struct NativeSessionGroup: Identifiable {
+    enum Kind: Equatable {
+        case pinned
+        case workspace
+        case unassigned
+    }
+
+    let id: String
+    let label: String
+    let kind: Kind
+    let sessions: [GatewaySession]
+    let latestDate: Date
+}
+
+private func nativeSessionUpdatedDate(_ session: GatewaySession) -> Date {
+    parseGatewayDate(session.updated_at) ?? parseGatewayDate(session.created_at) ?? .distantPast
+}
+
+private func nativeWorkspaceSectionLabel(_ path: String?) -> String {
+    guard let path = firstNonEmptyGatewayString(path) else { return "No Workspace" }
+    let normalized = path.replacingOccurrences(of: "\\", with: "/")
+    return normalized.split(separator: "/").last.map(String.init) ?? normalized
+}
+
+private func nativeSessionGroups(_ sessions: [GatewaySession]) -> [NativeSessionGroup] {
+    let sortedPinned = sessions
+        .filter { $0.pinned == true }
+        .sorted { nativeSessionUpdatedDate($0) > nativeSessionUpdatedDate($1) }
+    let unpinned = sessions.filter { $0.pinned != true }
+    var groups: [NativeSessionGroup] = []
+
+    if let latestPinned = sortedPinned.first {
+        groups.append(
+            NativeSessionGroup(
+                id: "pinned",
+                label: "Pinned",
+                kind: .pinned,
+                sessions: sortedPinned,
+                latestDate: nativeSessionUpdatedDate(latestPinned)
+            )
+        )
+    }
+
+    let grouped = Dictionary(grouping: unpinned) { session -> String in
+        firstNonEmptyGatewayString(session.workspace_dir) ?? "__unassigned"
+    }
+
+    for (key, sessions) in grouped {
+        let sorted = sessions.sorted { nativeSessionUpdatedDate($0) > nativeSessionUpdatedDate($1) }
+        guard let latest = sorted.first else { continue }
+        let isUnassigned = key == "__unassigned"
+        groups.append(
+            NativeSessionGroup(
+                id: isUnassigned ? key : "workspace:\(key)",
+                label: isUnassigned ? "No Workspace" : nativeWorkspaceSectionLabel(key),
+                kind: isUnassigned ? .unassigned : .workspace,
+                sessions: sorted,
+                latestDate: nativeSessionUpdatedDate(latest)
+            )
+        )
+    }
+
+    return groups.sorted {
+        if $0.kind == .pinned { return true }
+        if $1.kind == .pinned { return false }
+        if $0.kind == .workspace && $1.kind == .unassigned { return true }
+        if $0.kind == .unassigned && $1.kind == .workspace { return false }
+        if $0.latestDate != $1.latestDate { return $0.latestDate > $1.latestDate }
+        return $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+    }
+}
+
 struct ChatScreen: View {
     let client: GatewayClient
     @Binding var selectedSessionID: String?
@@ -303,6 +375,7 @@ struct ChatScreen: View {
     @State private var pendingMutationID: String?
     @State private var editingPendingMessage: GatewayPendingChatMessage?
     @State private var editingPendingDraft = ""
+    @State private var collapsedSessionGroupIDs: Set<String> = []
     @AppStorage("cybara.chat.lastWorkspaceDir") private var lastWorkspaceDir = ""
     @StateObject private var statusStream = GatewayStatusStream()
 
@@ -442,6 +515,10 @@ struct ChatScreen: View {
         }
     }
 
+    private var groupedSessions: [NativeSessionGroup] {
+        nativeSessionGroups(filteredSessions)
+    }
+
     private var sessionList: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
@@ -472,49 +549,90 @@ struct ChatScreen: View {
                         .foregroundStyle(.secondary)
                         .padding(.vertical, 8)
                 }
-                ForEach(filteredSessions) { session in
-                    HStack(spacing: 6) {
-                        if session.pinned == true {
-                            Image(systemName: "pin.fill")
-                                .font(.system(size: 9))
-                                .foregroundStyle(.orange)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(session.displayTitle)
-                                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                                .lineLimit(1)
-                            Text(sessionListDetail(for: session))
-                                .font(.system(size: 11, design: .rounded))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                    }
-                    .tag(session.id)
-                    .contextMenu {
-                        Button("Rename…") {
-                            renameDraft = session.title ?? ""
-                            renameTarget = session
-                        }
-                        Button(session.pinned == true ? "Unpin" : "Pin") {
-                            Task { await togglePin(session) }
-                        }
-                        Button("Set Workspace…") {
-                            Task { await chooseWorkspace(for: session) }
-                        }
-                        if firstNonEmptyGatewayString(session.workspace_dir) != nil {
-                            Button("Clear Workspace") {
-                                Task { await applyWorkspace(nil, to: session) }
+                ForEach(groupedSessions) { group in
+                    Section {
+                        if group.kind == .pinned || !collapsedSessionGroupIDs.contains(group.id) {
+                            ForEach(group.sessions) { session in
+                                sessionListRow(for: session)
+                                    .tag(session.id)
+                                    .contextMenu {
+                                        Button("Rename…") {
+                                            renameDraft = session.title ?? ""
+                                            renameTarget = session
+                                        }
+                                        Button(session.pinned == true ? "Unpin" : "Pin") {
+                                            Task { await togglePin(session) }
+                                        }
+                                        Button("Set Workspace…") {
+                                            Task { await chooseWorkspace(for: session) }
+                                        }
+                                        if firstNonEmptyGatewayString(session.workspace_dir) != nil {
+                                            Button("Clear Workspace") {
+                                                Task { await applyWorkspace(nil, to: session) }
+                                            }
+                                        }
+                                        Divider()
+                                        Button("Delete…", role: .destructive) {
+                                            deleteTarget = session
+                                        }
+                                    }
                             }
                         }
-                        Divider()
-                        Button("Delete…", role: .destructive) {
-                            deleteTarget = session
+                    } header: {
+                        Button {
+                            if group.kind != .pinned {
+                                toggleSessionGroup(group.id)
+                            }
+                        } label: {
+                            HStack(spacing: 5) {
+                                if group.kind != .pinned {
+                                    Image(systemName: collapsedSessionGroupIDs.contains(group.id) ? "chevron.right" : "chevron.down")
+                                        .font(.system(size: 9, weight: .semibold))
+                                }
+                                if group.kind == .workspace {
+                                    Image(systemName: "folder")
+                                        .font(.system(size: 10, weight: .medium))
+                                }
+                                Text(group.label)
+                                    .lineLimit(1)
+                                Spacer(minLength: 4)
+                                Text("\(group.sessions.count)")
+                            }
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .help(group.kind == .pinned ? "Pinned chats" : "\(group.label) workspace")
                     }
                 }
             }
             .listStyle(.sidebar)
         }
+    }
+
+    private func toggleSessionGroup(_ groupID: String) {
+        if collapsedSessionGroupIDs.contains(groupID) {
+            collapsedSessionGroupIDs.remove(groupID)
+        } else {
+            collapsedSessionGroupIDs.insert(groupID)
+        }
+    }
+
+    private func sessionListRow(for session: GatewaySession) -> some View {
+        HStack(spacing: 6) {
+            if session.pinned == true {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 9))
+                    .foregroundStyle(.orange)
+            }
+            Text(session.displayTitle)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+            Spacer(minLength: 4)
+        }
+        .padding(.vertical, 1)
+        .help(sessionListTooltip(for: session))
     }
 
     private var transcript: some View {
@@ -732,15 +850,19 @@ struct ChatScreen: View {
         return parts.joined(separator: " · ")
     }
 
-    private func sessionListDetail(for session: GatewaySession) -> String {
-        let timestamp = relativeTimestamp(session.updated_at)
-        var parts = [
-            routeSummary(for: session),
-            session.workspaceLabel.map { "Workspace \($0)" },
-            "\(session.message_count ?? 0) messages",
-        ].compactMap { $0 }
-        if !timestamp.isEmpty { parts.append(timestamp) }
-        return parts.joined(separator: " · ")
+    private func sessionListTooltip(for session: GatewaySession) -> String {
+        var parts = [session.displayTitle, routeSummary(for: session), "\(session.message_count ?? 0) messages"]
+        if let workspace = firstNonEmptyGatewayString(session.workspace_dir) {
+            parts.append("Workspace: \(workspace)")
+        }
+        let updated = absoluteTimestamp(session.updated_at)
+        if !updated.isEmpty {
+            parts.append("Updated: \(updated)")
+        }
+        if let preview = firstNonEmptyGatewayString(session.last_message?.preview) {
+            parts.append("Latest: \(preview)")
+        }
+        return parts.joined(separator: "\n")
     }
 
     private func routeSummary(for session: GatewaySession) -> String {
