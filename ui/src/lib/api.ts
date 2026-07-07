@@ -350,6 +350,9 @@ export interface GatewayAuthSettings {
   requireAuthForLocalhost: boolean;
   requireAuthForLocalhostForced: boolean;
   localhostBypassActive: boolean;
+  host?: string;
+  configuredHost?: string;
+  hostForced?: boolean;
   basePath?: string;
   basePathForced?: boolean;
   port?: number;
@@ -370,6 +373,7 @@ export const authApi = {
   settings: () => fetchApi<GatewayAuthSettings>("/auth/settings"),
   updateSettings: (payload: {
     requireAuthForLocalhost?: boolean;
+    host?: string;
     basePath?: string;
     port?: number;
     gatewayPassword?: string;

@@ -15,10 +15,17 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ck.cybara"
+      "bundleIdentifier": "com.ck.cybara",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Connect to your Cybara gateway on your local network.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
     },
     "android": {
       "package": "com.ck.cybara",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "foregroundImage": "./assets/cybara.png",
         "backgroundColor": "#071016"

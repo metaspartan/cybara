@@ -220,13 +220,8 @@ const configuredHost =
     ? platformConfig.host.trim()
     : "127.0.0.1";
 const HOST =
-  process.env.CYBARA_HOST ||
-  (isExposeFlagSet
-    ? "0.0.0.0"
-    : isAllInterfaceHost(configuredHost)
-      ? "127.0.0.1"
-      : configuredHost) ||
-  "127.0.0.1";
+  process.env.CYBARA_HOST || (isExposeFlagSet ? "0.0.0.0" : configuredHost) || "127.0.0.1";
+process.env.CYBARA_RUNTIME_HOST = HOST;
 const TERMINAL_CLI_FLAG = process.argv.includes("--enable-terminal");
 function isTerminalEnabled(): boolean {
   return TERMINAL_CLI_FLAG || config.get<boolean>("terminal_enabled") === true;

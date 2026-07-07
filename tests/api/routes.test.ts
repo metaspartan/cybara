@@ -469,6 +469,7 @@ describe("Mobile API", () => {
     const info = await api("GET", "/api/mobile/connect-info");
 
     expect(info.status).toBe(200);
+    expect(info.data.baseUrl).toBe(BASE_URL);
     expect(info.data.currentBaseUrl).toBe(BASE_URL);
     expect(info.data.candidates).toContain(BASE_URL);
     expect(info.data.isCurrentLoopback).toBe(true);
@@ -476,6 +477,24 @@ describe("Mobile API", () => {
     expect(String(info.data.warnings.join(" "))).toContain("127.0.0.1");
     expect(String(info.data.warnings.join(" "))).toContain("LAN address");
     expect(String(info.data.exposeCommand)).toContain("cybara start");
+  });
+
+  test("auth settings persist a restart-bound gateway host", async () => {
+    const before = await api("GET", "/api/auth/settings");
+    expect(before.status).toBe(200);
+    expect(before.data.host).toBe("127.0.0.1");
+    expect(before.data.configuredHost).toBe("127.0.0.1");
+    expect(before.data.hostForced).toBe(false);
+
+    const updated = await api("PUT", "/api/auth/settings", { host: "0.0.0.0" });
+    expect(updated.status).toBe(200);
+    expect(updated.data.success).toBe(true);
+    expect(updated.data.host).toBe("127.0.0.1");
+    expect(updated.data.configuredHost).toBe("0.0.0.0");
+
+    const reset = await api("PUT", "/api/auth/settings", { host: "127.0.0.1" });
+    expect(reset.status).toBe(200);
+    expect(reset.data.configuredHost).toBe("127.0.0.1");
   });
 
   test("creates revocable mobile device tokens without exposing the root key", async () => {

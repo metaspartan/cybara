@@ -162,6 +162,11 @@ import {
   validateUrl,
 } from "./security";
 import {
+  gatewayAuthSettingsResponse,
+  isGatewayHostForced,
+  normalizeGatewayBindHost,
+} from "./gateway-network";
+import {
   browseDirectory,
   readFileContent,
   writeFileContent,
@@ -760,17 +765,12 @@ const routes: Record<string, RouteHandler> = {
     reasoning_effort: config.getDefaultReasoningEffort(),
     self_improving_skills_enabled: config.get<boolean>("self_improving_skills_enabled") !== false,
   }),
-  "GET /api/auth/settings": () => ({
-    success: true,
-    ...getGatewayAuthSettings(),
-    port: Number(process.env.PORT) || config.get<number>("port") || 4269,
-    configuredPort: config.get<number>("port") || 4269,
-    portForced: Boolean(Number(process.env.PORT)),
-  }),
+  "GET /api/auth/settings": () => gatewayAuthSettingsResponse(),
   "PUT /api/auth/settings": (body) => {
     const data = (body || {}) as {
       requireAuthForLocalhost?: unknown;
       basePath?: unknown;
+      host?: unknown;
       port?: unknown;
       gatewayPassword?: unknown;
       clearGatewayPassword?: unknown;
@@ -787,6 +787,13 @@ const routes: Record<string, RouteHandler> = {
         );
       }
       setGatewayBasePath(data.basePath);
+    }
+
+    if (data.host !== undefined) {
+      if (isGatewayHostForced()) {
+        throw new Error("Host is forced by CYBARA_HOST/--expose and cannot be changed here");
+      }
+      config.set("host", normalizeGatewayBindHost(data.host));
     }
 
     if (data.port !== undefined) {
@@ -825,13 +832,7 @@ const routes: Record<string, RouteHandler> = {
       clearGatewayPassword();
     }
 
-    return {
-      success: true,
-      ...getGatewayAuthSettings(),
-      port: Number(process.env.PORT) || config.get<number>("port") || 4269,
-      configuredPort: config.get<number>("port") || 4269,
-      portForced: Boolean(Number(process.env.PORT)),
-    };
+    return gatewayAuthSettingsResponse();
   },
   "GET /api/auth/key": () => ({ success: true, ...revealGatewayApiKey() }),
   "POST /api/auth/rotate-key": () => ({ success: true, ...rotateGatewayApiKey() }),

@@ -1,5 +1,6 @@
 import QRCode from "qrcode";
 import { config } from "../core/config";
+import { readRuntimeGatewayHost } from "./gateway-network";
 import {
   buildMobileConnectInfo,
   createMobileDevice,
@@ -38,9 +39,7 @@ export const mobileRoutes: Record<string, MobileRouteHandler> = {
     const platformConfig = config.getAll();
     return buildMobileConnectInfo({
       requestUrl: ctx?.url,
-      configuredHost:
-        process.env.CYBARA_HOST ||
-        (process.argv.includes("--expose") ? "0.0.0.0" : platformConfig.host),
+      configuredHost: readRuntimeGatewayHost() || process.env.CYBARA_HOST || platformConfig.host,
       port: Number(process.env.PORT) || platformConfig.port,
       basePath: getGatewayBasePath(),
       mobileBaseUrl: process.env.CYBARA_MOBILE_BASE_URL,

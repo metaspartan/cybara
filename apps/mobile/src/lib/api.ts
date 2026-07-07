@@ -197,6 +197,14 @@ export interface GatewayAuthSettings {
   requireAuthForLocalhost: boolean;
   requireAuthForLocalhostForced: boolean;
   localhostBypassActive: boolean;
+  host?: string;
+  configuredHost?: string;
+  hostForced?: boolean;
+  basePath?: string;
+  basePathForced?: boolean;
+  port?: number;
+  configuredPort?: number;
+  portForced?: boolean;
   rateLimits?: Record<string, { windowMs: number; maxRequests: number }>;
 }
 
@@ -2439,6 +2447,9 @@ export class CybaraMobileApi {
 
   updateGatewayAuthSettings(payload: {
     requireAuthForLocalhost?: boolean;
+    host?: string;
+    basePath?: string;
+    port?: number;
     gatewayPassword?: string;
     clearGatewayPassword?: true;
   }): Promise<GatewayAuthSettings> {

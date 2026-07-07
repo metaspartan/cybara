@@ -104,10 +104,11 @@ POST /api/auth/rotate-key
 POST /api/system/restart
 ```
 
-`PUT /api/auth/settings` can update `requireAuthForLocalhost`, `basePath`, and the configured port
-unless those values are forced by environment variables such as `CYBARA_REQUIRE_AUTH`,
-`CYBARA_BASE_PATH`, or `PORT`. API-key rotation is hot-swapped in memory and does not require a
-gateway restart. Restart requires the `manage` scope for paired mobile devices.
+`PUT /api/auth/settings` can update `requireAuthForLocalhost`, `host`, `basePath`, and the
+configured port unless those values are forced by environment variables such as `CYBARA_REQUIRE_AUTH`,
+`CYBARA_HOST`, `CYBARA_BASE_PATH`, or `PORT`. Host and port changes require a gateway restart;
+API-key rotation is hot-swapped in memory and does not require a restart. Restart requires the
+`manage` scope for paired mobile devices.
 
 ## Provider Configuration
 

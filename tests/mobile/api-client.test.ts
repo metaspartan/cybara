@@ -257,6 +257,9 @@ describe("mobile API client", () => {
           requireAuthForLocalhostForced: false,
           gatewayPasswordEnabled: false,
           localhostBypassActive: true,
+          host: "127.0.0.1",
+          configuredHost: "127.0.0.1",
+          hostForced: false,
           rateLimits: {},
         });
       }
@@ -269,6 +272,9 @@ describe("mobile API client", () => {
           apiKeyPath: "/Users/carsen/.cybara/api_key",
           requireAuthForLocalhost: body?.requireAuthForLocalhost,
           requireAuthForLocalhostForced: false,
+          host: "127.0.0.1",
+          configuredHost: body?.host || "127.0.0.1",
+          hostForced: false,
           gatewayPasswordEnabled:
             typeof body?.gatewayPassword === "string"
               ? true
@@ -303,6 +309,10 @@ describe("mobile API client", () => {
       ).resolves.toMatchObject({
         success: true,
         requireAuthForLocalhost: true,
+      });
+      await expect(api.updateGatewayAuthSettings({ host: "0.0.0.0" })).resolves.toMatchObject({
+        success: true,
+        configuredHost: "0.0.0.0",
       });
       await expect(
         api.updateGatewayAuthSettings({ gatewayPassword: "correct horse battery staple" })
@@ -346,6 +356,13 @@ describe("mobile API client", () => {
           auth: "Bearer cybara_mobile_test",
           gatewayPassword: null,
           body: { requireAuthForLocalhost: true },
+        },
+        {
+          method: "PUT",
+          path: "/api/auth/settings",
+          auth: "Bearer cybara_mobile_test",
+          gatewayPassword: null,
+          body: { host: "0.0.0.0" },
         },
         {
           method: "PUT",

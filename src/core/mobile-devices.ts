@@ -242,13 +242,20 @@ export function buildMobileConnectInfo(input: {
   const warnings: string[] = [];
 
   if (mobileBaseUrl) addUniqueUrl(candidates, mobileBaseUrl);
-  if (!isCurrentLoopback) {
+  if (lanAccessEnabled) {
+    if (!isCurrentLoopback) {
+      addUniqueUrl(candidates, currentBaseUrl);
+    }
+    for (const address of lanAddresses) {
+      addUniqueUrl(candidates, `${parsed.protocol}//${address}:${port}${basePath}`);
+    }
     addUniqueUrl(candidates, currentBaseUrl);
+  } else {
+    addUniqueUrl(candidates, currentBaseUrl);
+    for (const address of lanAddresses) {
+      addUniqueUrl(candidates, `${parsed.protocol}//${address}:${port}${basePath}`);
+    }
   }
-  for (const address of lanAddresses) {
-    addUniqueUrl(candidates, `${parsed.protocol}//${address}:${port}${basePath}`);
-  }
-  addUniqueUrl(candidates, currentBaseUrl);
 
   if (isCurrentLoopback) {
     warnings.push("127.0.0.1 and localhost only work on this computer. Use a LAN URL for a phone.");

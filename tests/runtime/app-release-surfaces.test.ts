@@ -132,8 +132,14 @@ describe("app release surface wiring", () => {
         scheme?: string;
         version?: string;
         newArchEnabled?: boolean;
-        ios?: { bundleIdentifier?: string };
-        android?: { package?: string; versionCode?: number };
+        ios?: {
+          bundleIdentifier?: string;
+          infoPlist?: {
+            NSLocalNetworkUsageDescription?: string;
+            NSAppTransportSecurity?: { NSAllowsLocalNetworking?: boolean };
+          };
+        };
+        android?: { package?: string; versionCode?: number; usesCleartextTraffic?: boolean };
         extra?: { gatewayContract?: string };
       };
     };
@@ -156,8 +162,15 @@ describe("app release surface wiring", () => {
     expect(appJson.expo?.scheme).toBe("cybara");
     expect(appJson.expo?.newArchEnabled).toBe(true);
     expect(appJson.expo?.ios?.bundleIdentifier).toBe("com.ck.cybara");
+    expect(appJson.expo?.ios?.infoPlist?.NSLocalNetworkUsageDescription).toContain(
+      "Cybara gateway"
+    );
+    expect(appJson.expo?.ios?.infoPlist?.NSAppTransportSecurity?.NSAllowsLocalNetworking).toBe(
+      true
+    );
     expect(appJson.expo?.android?.package).toBe("com.ck.cybara");
     expect(appJson.expo?.android?.versionCode).toBe(expectedVersionCode);
+    expect(appJson.expo?.android?.usesCleartextTraffic).toBe(true);
     expect(appJson.expo?.extra?.gatewayContract).toBe("cybara-mobile-connect-v1");
 
     expect(mobilePkg.scripts?.ios).toBe("bunx expo start --ios");

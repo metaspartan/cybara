@@ -67,6 +67,10 @@ describe("UI page API wiring", () => {
     expect(source).toContain("setGatewayAccessPassword(password)");
     expect(source).toContain("clearGatewayAccessPassword()");
     expect(source).toContain("gatewayPasswordEnabled");
+    expect(source).toContain("Gateway host");
+    expect(source).toContain('setHostInput("0.0.0.0")');
+    expect(source).toContain("authApi.updateSettings({ host })");
+    expect(source).toContain("Save Host & Restart");
     expect(source).toContain("settingsApi.updateConfig({ speech })");
     expect(source).toContain("settingsApi.updateConfig({");
     expect(source).toContain("computer_use: { driverCommand: trimmed }");

@@ -3809,8 +3809,11 @@ function GatewayAuthSettingsSection() {
   const [rotateConfirmOpen, setRotateConfirmOpen] = useState(false);
   const [basePathInput, setBasePathInput] = useState("");
   const basePathTouchedRef = useRef(false);
+  const [hostInput, setHostInput] = useState("");
+  const hostTouchedRef = useRef(false);
   const [portInput, setPortInput] = useState("");
   const portTouchedRef = useRef(false);
+  const [restartingForHost, setRestartingForHost] = useState(false);
   const [restartingForPort, setRestartingForPort] = useState(false);
   const [gatewayPassword, setGatewayPassword] = useState("");
   const [gatewayPasswordConfirm, setGatewayPasswordConfirm] = useState("");
@@ -3824,6 +3827,9 @@ function GatewayAuthSettingsSection() {
           setSettings(res.data);
           if (!basePathTouchedRef.current) {
             setBasePathInput(res.data.basePath || "");
+          }
+          if (!hostTouchedRef.current) {
+            setHostInput(res.data.configuredHost || res.data.host || "127.0.0.1");
           }
           if (!portTouchedRef.current) {
             setPortInput(String(res.data.configuredPort || res.data.port || 4269));
@@ -3865,6 +3871,46 @@ function GatewayAuthSettingsSection() {
       addToast("error", error instanceof Error ? error.message : "Failed to update base path");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleSaveHostAndRestart() {
+    const host = hostInput.trim();
+    if (!host) {
+      addToast("error", "Gateway host is required");
+      return;
+    }
+    setBusy(true);
+    setRestartingForHost(true);
+    try {
+      const res = await authApi.updateSettings({ host });
+      if (!res.success || !res.data?.success) {
+        throw new Error(res.error || "Failed to update host");
+      }
+      hostTouchedRef.current = false;
+      addToast("info", `Host saved — restarting gateway on ${res.data.configuredHost || host}…`);
+      await systemApi.restart();
+      const deadline = Date.now() + 45_000;
+      const basePath = res.data.basePath || "";
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 1_500));
+        try {
+          const probe = await fetch(`${window.location.origin}${basePath}/api/health`, {
+            mode: "cors",
+          });
+          if (probe.ok) {
+            await load(true);
+            addToast("success", "Gateway restarted with the updated network host");
+            return;
+          }
+        } catch {}
+      }
+      addToast("error", "Gateway did not come back within 45s — reopen the dashboard manually");
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to update host");
+    } finally {
+      setBusy(false);
+      setRestartingForHost(false);
     }
   }
 
@@ -4119,6 +4165,67 @@ function GatewayAuthSettingsSection() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="flex-1 min-w-[220px]">
+                <Input
+                  label="Gateway host"
+                  placeholder="127.0.0.1 or 0.0.0.0"
+                  value={hostInput}
+                  disabled={controlsDisabled || Boolean(settings?.hostForced) || restartingForHost}
+                  onChange={(e) => {
+                    hostTouchedRef.current = true;
+                    setHostInput(e.target.value);
+                  }}
+                />
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  hostTouchedRef.current = true;
+                  setHostInput("127.0.0.1");
+                }}
+                disabled={controlsDisabled || Boolean(settings?.hostForced) || restartingForHost}
+              >
+                Private
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  hostTouchedRef.current = true;
+                  setHostInput("0.0.0.0");
+                }}
+                disabled={controlsDisabled || Boolean(settings?.hostForced) || restartingForHost}
+              >
+                LAN
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => void handleSaveHostAndRestart()}
+                disabled={
+                  controlsDisabled ||
+                  Boolean(settings?.hostForced) ||
+                  restartingForHost ||
+                  hostInput.trim() === (settings?.configuredHost || settings?.host || "")
+                }
+              >
+                {restartingForHost ? "Restarting…" : "Save Host & Restart"}
+              </Button>
+            </div>
+            <p className="text-xs text-gray-500">
+              Current listener: <span className="font-mono">{settings?.host || "unknown"}</span>.
+              Use <span className="font-mono">127.0.0.1</span> for this computer only, or{" "}
+              <span className="font-mono">0.0.0.0</span> to pair phones on trusted Wi-Fi. Remote
+              devices still need a valid token.
+              {settings?.configuredHost && settings.configuredHost !== settings.host
+                ? ` Restart pending for ${settings.configuredHost}.`
+                : ""}
+              {settings?.hostForced
+                ? " Currently forced by CYBARA_HOST or the --expose launch flag."
+                : ""}
+            </p>
+          </div>
+
           <div className="space-y-2">
             <div className="flex flex-wrap items-end gap-2">
               <div className="w-40">

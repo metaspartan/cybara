@@ -15,6 +15,10 @@ cybara start --expose          # Binds to 0.0.0.0
 CYBARA_HOST=0.0.0.0 cybara start  # Same via env var
 ```
 
+The Web/Tauri Settings → Auth page can also save the gateway host as `0.0.0.0` and restart the
+gateway. The Mobile page only defaults to a LAN QR URL after the running gateway is actually
+LAN-bound.
+
 > **⚠️ Warning**: Only use `--expose` on trusted networks. See "Best Practices" below.
 
 ## API Key Authentication
