@@ -204,6 +204,19 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).not.toContain("messages.append(response.message");
   });
 
+  test("native chat keeps visible live work when queued snapshots are activity-empty", () => {
+    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+
+    expect(nativeScreens).toContain(
+      "let snapshotActivities = nativeLiveActivities(from: snapshot)"
+    );
+    expect(nativeScreens).toContain(
+      "let preservingLocalLiveActivities = snapshotActivities.isEmpty && !liveActivities.isEmpty"
+    );
+    expect(nativeScreens).toContain("!preservingLocalLiveActivities,");
+    expect(nativeScreens).toContain('"queued follow-up"');
+  });
+
   test("native chat composer exposes agent switching and context usage", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");

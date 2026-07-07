@@ -1628,13 +1628,15 @@ struct ChatScreen: View {
         liveStatus = snapshot.status ?? liveStatus
         if liveStartedAt == nil { liveStartedAt = Date() }
         let snapshotActivities = nativeLiveActivities(from: snapshot)
+        let preservingLocalLiveActivities = snapshotActivities.isEmpty && !liveActivities.isEmpty
         if !snapshotActivities.isEmpty {
             liveActivities = nativeMergeLiveActivities([], incoming: snapshotActivities)
         }
         if let activeStep = liveActivities.reversed().first(where: { $0.phase == .start })?.text {
             liveCurrentStep = activeStep
         } else if let detail = firstNonEmptyGatewayString(snapshot.detail),
-                  !["thinking", "thinking...", "generating response", "generating response..."].contains(detail.lowercased()) {
+                  !preservingLocalLiveActivities,
+                  !["thinking", "thinking...", "generating response", "generating response...", "queued follow-up"].contains(detail.lowercased()) {
             liveCurrentStep = detail
         }
     }

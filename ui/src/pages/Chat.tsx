@@ -125,6 +125,7 @@ import {
   readPersistedMessageProcessMap,
   readPersistedSessionId,
   readPersistedWorkspaceDir,
+  resolveStatusSnapshotActivities,
   resolveDictationRuntime,
   resolvePathForIde,
   resolveToolCallSandboxProvider,
@@ -2299,6 +2300,7 @@ export function Chat() {
   const acceptEventsUntilRef = useRef(0);
   const pendingProcessCaptureRef = useRef<PendingProcessCapture | null>(null);
   const runActivityBufferRef = useRef<LiveActivityItem[]>([]);
+  const liveActivitiesRef = useRef<LiveActivityItem[]>([]);
   const latestStatusTimestampBySessionRef = useRef<Record<string, number>>({});
   const homeWorkspaceDir =
     typeof info?.homeDir === "string" && info.homeDir.trim().length > 0
@@ -2979,15 +2981,21 @@ export function Chat() {
         mergeActivityLists([], toLiveActivityItems(snapshot.activities)),
         snapshot.status
       );
-      const shouldPreserveLocalActivities =
-        snapshotActivities.length === 0 &&
-        runActivityBufferRef.current.length > 0 &&
-        normalizedSnapshotStatus !== "idle";
-      if (!shouldPreserveLocalActivities) {
-        setLiveActivities(snapshotActivities);
-        runActivityBufferRef.current = snapshotActivities.map((activity) => ({ ...activity }));
-      }
-      const activeStep = getLatestInFlightStep(snapshotActivities);
+      const localActivities = mergeActivityLists(
+        runActivityBufferRef.current,
+        liveActivitiesRef.current
+      );
+      const resolvedSnapshotActivities = resolveStatusSnapshotActivities(
+        snapshotActivities,
+        localActivities,
+        normalizedSnapshotStatus
+      );
+      setLiveActivities(resolvedSnapshotActivities);
+      liveActivitiesRef.current = resolvedSnapshotActivities.map((activity) => ({ ...activity }));
+      runActivityBufferRef.current = resolvedSnapshotActivities.map((activity) => ({
+        ...activity,
+      }));
+      const activeStep = getLatestInFlightStep(resolvedSnapshotActivities);
       if (activeStep && !isGenericStatusLabel(activeStep)) {
         setLiveCurrentStep(activeStep);
       } else {
@@ -3057,12 +3065,14 @@ export function Chat() {
     if (cached) {
       setLiveStatus(cached.status);
       setLiveActivities(cached.activities);
+      liveActivitiesRef.current = cached.activities.map((activity) => ({ ...activity }));
       setStreamingContent(cached.streamingContent);
       setLiveCurrentStep(cached.currentStep);
       runActivityBufferRef.current = cached.activities.map((activity) => ({ ...activity }));
     } else {
       setLiveStatus("idle");
       setLiveActivities([]);
+      liveActivitiesRef.current = [];
       setStreamingContent(null);
       setLiveCurrentStep(null);
       runActivityBufferRef.current = [];
@@ -3082,6 +3092,10 @@ export function Chat() {
     void hydrateSessionStatus(sessionId);
     return;
   }, [hydrateSessionStatus, refreshPendingMessages, sessionId]);
+
+  useEffect(() => {
+    liveActivitiesRef.current = liveActivities.map((activity) => ({ ...activity }));
+  }, [liveActivities]);
 
   useEffect(() => {
     if (!sessionId || liveActivities.length === 0 || typedMessages.length === 0) return;

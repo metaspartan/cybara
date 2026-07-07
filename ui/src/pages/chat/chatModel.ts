@@ -668,6 +668,23 @@ export function normalizeSnapshotActivities(
   return mergeActivityLists([], normalized);
 }
 
+export function resolveStatusSnapshotActivities(
+  snapshotActivities: LiveActivityItem[],
+  localActivities: LiveActivityItem[],
+  status: string
+): LiveActivityItem[] {
+  const normalizedStatus = status.trim().toLowerCase();
+  if (
+    snapshotActivities.length === 0 &&
+    localActivities.length > 0 &&
+    normalizedStatus !== "idle" &&
+    normalizedStatus !== "error"
+  ) {
+    return mergeActivityLists([], localActivities);
+  }
+  return snapshotActivities;
+}
+
 export function summarizeCommand(command: string): string {
   const compact = command
     .split(/\r?\n/)

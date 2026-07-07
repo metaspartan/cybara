@@ -5,6 +5,7 @@ import {
   buildPreSteeringActivityMessage,
   pruneCanonicalizedLiveActivities,
   resolveDictationRuntime,
+  resolveStatusSnapshotActivities,
 } from "../../ui/src/pages/chat/chatModel";
 import type { ChatMessage } from "../../ui/src/pages/chat/chatModel";
 import type { LiveActivityItem } from "../../ui/src/lib/chatActivities";
@@ -53,6 +54,46 @@ describe("Chat live activity persistence", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
     expect(source).toContain("latestStatusTimestampBySessionRef");
     expect(source).toContain("snapshotLatestTimestamp + 25 < latestKnownTimestamp");
+  });
+
+  test("keeps remounted live activities when queue snapshots have no activity rows", () => {
+    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const localActivities: LiveActivityItem[] = [
+      {
+        id: "tool-1-result",
+        phase: "result",
+        text: "Ran repo review command",
+        timestamp: 1783300001000,
+        toolName: "exec",
+        toolCallId: "tool-1",
+      },
+    ];
+    const serverActivities: LiveActivityItem[] = [
+      {
+        id: "tool-2-start",
+        phase: "start",
+        text: "Exploring package.json",
+        timestamp: 1783300002000,
+        toolName: "read",
+        toolCallId: "tool-2",
+      },
+    ];
+
+    expect(resolveStatusSnapshotActivities([], localActivities, "thinking")).toEqual(
+      localActivities
+    );
+    expect(resolveStatusSnapshotActivities([], localActivities, "generating")).toEqual(
+      localActivities
+    );
+    expect(resolveStatusSnapshotActivities([], localActivities, "idle")).toEqual([]);
+    expect(resolveStatusSnapshotActivities(serverActivities, localActivities, "thinking")).toEqual(
+      serverActivities
+    );
+    expect(source).toContain("const liveActivitiesRef = useRef<LiveActivityItem[]>([])");
+    expect(source).toContain("resolveStatusSnapshotActivities(");
+    expect(source).toContain(
+      "const activeStep = getLatestInFlightStep(resolvedSnapshotActivities)"
+    );
   });
 
   test("clears stale running step text after a tool completion with no in-flight step", () => {

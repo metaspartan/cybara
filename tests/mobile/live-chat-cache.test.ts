@@ -61,6 +61,34 @@ describe("mobile live chat cache", () => {
     });
   });
 
+  test("keeps mobile live rows when queue snapshots have no activity rows", () => {
+    const sessionId = `mobile-queue-snapshot-${Date.now()}`;
+    const current = {
+      ...liveAssistantMessage(sessionId, null, 1783015200000),
+      processActivities: [
+        {
+          id: "activity-1",
+          phase: "result" as const,
+          text: "Ran repo review command",
+          timestamp: 1783015200100,
+          toolName: "exec_command",
+          toolCallId: "tool-1",
+        },
+      ],
+    };
+
+    const live = liveAssistantFromStatusSnapshot(sessionId, current, {
+      sessionId,
+      status: "thinking",
+      timestamp: 1783015200500,
+      activities: [],
+    });
+
+    expect(live.processActivities?.map((activity) => activity.text)).toEqual([
+      "Ran repo review command",
+    ]);
+  });
+
   test("drops cached live rows after matching activity is persisted", () => {
     const sessionId = `mobile-prune-live-${Date.now()}`;
     const live = {
