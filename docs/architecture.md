@@ -6,6 +6,8 @@ Cybara is a Bun + TypeScript agent platform with:
 
 - React web UI (`ui/`)
 - Tauri desktop shell (`src-tauri/`)
+- React Native iOS/Android companion (`apps/mobile/`)
+- Native SwiftUI macOS shell (`apps/macos/Cybara/`)
 - Bun sidecar/server (`src/`)
 
 Current platform shape in this repo:
@@ -14,11 +16,13 @@ Current platform shape in this repo:
 - Built-in tool schemas (`src/core/tools/index.ts`)
 - Channel adapters for the major messaging platforms (`src/core/channels/adapters/`)
 - Tool handler modules (`src/core/tools/handlers/`)
+- Provider-plan-aware model routing (`src/core/router.ts`, `src/core/provider-plans.ts`)
+- Source migration from OpenClaw/Hermes (`src/core/source-migration.ts`)
 
 ## Runtime Topology
 
 ```text
-React UI / Tauri Desktop / External Channels
+React UI / Tauri Desktop / Native macOS / Mobile / External Channels
                   |
                   v
             Bun HTTP Server
@@ -39,6 +43,7 @@ Transport model:
 - REST for primary app APIs (`/api/*`)
 - SSE for status events (`/api/sse/status`)
 - WebSocket for terminal streaming (`/api/terminal/ws`)
+- WebSocket for app status snapshots/events (`/api/ws/status`)
 
 ## Entry Points
 
@@ -54,11 +59,13 @@ Transport model:
 ## API Layer
 
 - `src/api/routes.ts`
-  - Main REST route multiplexer for providers, agents, sessions, channels, IDE, skills, memory, cron, MCP, metrics, config, OAuth, and diagnostics.
+  - Main REST route multiplexer for providers, agents, sessions, channels, IDE, skills, memory, cron, MCP, metrics, config, OAuth, source migration, speech, provider plans, gateway administration, and diagnostics.
 - `src/api/chat.ts`
   - Chat/session orchestration.
-  - Returns JSON chat responses with optional `thinking`, `tool_calls`, and `process_activities`.
+  - Returns JSON chat responses with optional `thinking`, `tool_calls`, `process_activities`, and pending-message state for queue/steer flows.
   - Persists sessions/messages and session titles.
+- `src/api/route-cache.ts`
+  - Short stale-while-revalidate caching for dashboard-heavy metrics routes.
 - `src/api/terminal.ts`
   - PTY-backed terminal control endpoints.
 - `src/api/ide-api.ts`
@@ -80,6 +87,12 @@ Transport model:
   - Model-assisted session title derivation/normalization.
 - `src/core/status.ts`
   - Live status fanout (thinking/generating/tool states) to SSE clients.
+- `src/core/router.ts`
+  - Provider/model routing strategies, fallback, cost/rate constraints, and provider-plan enforcement.
+- `src/core/provider-plans.ts`
+  - Local usage windows, coding-plan presets, and provider plan status snapshots.
+- `src/core/source-migration.ts`
+  - OpenClaw/Hermes import previews and apply runs for persona, memories, skills, providers, speech settings, and workspace instructions.
 
 ## Tools
 
@@ -108,6 +121,8 @@ Canonical discovery:
 
 - API: `GET /api/providers/available`
 - CLI: `cybara provider models <provider-id>`
+- Router status/config: `GET /api/router/status`, `GET/PUT /api/router/config`
+- Provider plan status/config: `GET /api/provider-plans/status`, `GET/PUT /api/provider-plans/config`
 
 ## Channels
 

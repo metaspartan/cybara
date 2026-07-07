@@ -124,7 +124,7 @@ curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh 
 To install a pinned CLI release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash -s -- --version 1.0.330
+curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash -s -- --version 1.0.818
 ```
 
 ## Architecture

@@ -14,6 +14,24 @@
  */
 import { handleSessionsSpawn } from "./tools/handlers/channel";
 import type { ToolContext } from "./tools/index";
+import { config } from "./config";
+import { agentManager } from "./agent";
+
+/**
+ * Resolve which agent runs background self-improvement (memory/skill review).
+ * Prefer a configured cheaper "background_agent_id" so these frequent, silent
+ * background operations run on an inexpensive model — mirroring how Hermes
+ * offloads self-improvement to cheaper models for large cost savings over time.
+ * Falls back to the requester's own agent when unset or invalid, preserving the
+ * "run on a provider the user already has working" safety property.
+ */
+export function resolveBackgroundAgentId(requesterAgentId?: string): string | undefined {
+  const configured = config.get<string>("background_agent_id");
+  if (configured && configured.trim() && agentManager.get(configured)) {
+    return configured;
+  }
+  return requesterAgentId;
+}
 
 const DEFAULT_MIN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes per session
 const DEFAULT_REVIEW_TIMEOUT_S = 90;
@@ -96,12 +114,12 @@ export async function maybeRunBackgroundReview(
       {
         task: prompt,
         label: "background-memory-review",
-        // Reuse the requester's agent so the reviewer runs on the SAME provider
-        // the user already has working. Without this, executeSubagent falls back
-        // to availableAgents[0] (often a different provider whose token may be
-        // expired), producing a spurious 401 that the user blamed on their
-        // working MiniMax setup.
-        agentId: context.agentId,
+        // Use the configured cheaper background agent when set (cost savings);
+        // otherwise reuse the requester's agent so the reviewer runs on the SAME
+        // provider the user already has working. Without a valid fallback,
+        // executeSubagent picks availableAgents[0] (often a different provider
+        // whose token may be expired), producing a spurious 401.
+        agentId: resolveBackgroundAgentId(context.agentId),
         // Restrict the reviewer to memory tools only.
         _requesterSessionKey: context.sessionId,
         workspaceDir: context.workspaceDir,

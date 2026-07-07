@@ -500,9 +500,7 @@ export function ProviderSettingsPanel({
         const entry = cfg.providers[provider.id] ?? cfg.providers[provider.provider];
         setPlanPresetId(entry?.presetId || "");
         setPlanName(entry?.planName || "");
-        setPlanFiveHourTokens(
-          entry?.fiveHour?.tokenLimit ? String(entry.fiveHour.tokenLimit) : ""
-        );
+        setPlanFiveHourTokens(entry?.fiveHour?.tokenLimit ? String(entry.fiveHour.tokenLimit) : "");
         setPlanWeeklyTokens(entry?.weekly?.tokenLimit ? String(entry.weekly.tokenLimit) : "");
         setPlanMonthlyTokens(entry?.monthly?.tokenLimit ? String(entry.monthly.tokenLimit) : "");
         setPlanMonthlySpend(entry?.monthly?.spendLimit ? String(entry.monthly.spendLimit) : "");
@@ -514,9 +512,7 @@ export function ProviderSettingsPanel({
         if (!mounted) return;
         setRouterPricingConfig(routerCfg);
         const route = routerCfg.routes[provider.id];
-        setPlanPriceInput(
-          route?.priceInputPerM !== undefined ? String(route.priceInputPerM) : ""
-        );
+        setPlanPriceInput(route?.priceInputPerM !== undefined ? String(route.priceInputPerM) : "");
         setPlanPriceOutput(
           route?.priceOutputPerM !== undefined ? String(route.priceOutputPerM) : ""
         );

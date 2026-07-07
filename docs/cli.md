@@ -34,6 +34,7 @@ cybara tui                # Main menu (interactive TUI)
 cybara status             # Show status and health
 cybara doctor             # Run API + stream + sandbox diagnostics
 cybara metrics            # Show token usage and metrics
+cybara metrics analysis   # Advanced token analysis
 cybara update            # Verify SHA256, then download + install the latest CLI release
 cybara update --check    # Only report whether a newer release exists (non-zero if stale)
 cybara update --force    # Reinstall even when already current
@@ -46,7 +47,7 @@ installing; it refuses an unverified binary unless you pass `--force`. You can a
 release:
 
 ```bash
-cybara update --version 1.0.186
+cybara update --version 1.0.818
 ```
 
 ### Agents
@@ -97,6 +98,19 @@ cybara provider delete abc12345
 ```bash
 cybara sessions           # List active chat sessions
 ```
+
+### Source Migration
+
+```bash
+cybara migrate sources                         # Detect OpenClaw/Hermes sources
+cybara migrate --from openclaw                 # Preview import
+cybara migrate --from hermes --apply           # Apply default user-data preset
+cybara migrate --apply --preset full           # Include provider/speech categories
+cybara migrate --migrate-secrets --overwrite   # Opt into API-key import and conflicts
+```
+
+The default migration run is a dry-run preview. Use `--apply` only after reviewing the report.
+Secrets are skipped unless `--migrate-secrets` is supplied.
 
 ### Memory
 

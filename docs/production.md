@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh 
 Pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash -s -- --version 1.0.330
+curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash -s -- --version 1.0.818
 ```
 
 Useful installer env vars:
@@ -75,7 +75,7 @@ Common paths:
 
 ```bash
 cybara update
-cybara update --version 1.0.330
+cybara update --version 1.0.818
 ```
 
 ### Desktop

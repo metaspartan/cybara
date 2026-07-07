@@ -1109,8 +1109,7 @@ function ProviderModal({
               <p className="text-sm font-medium text-white">Plan limits</p>
               <p className="text-xs text-gray-500 mt-0.5">
                 Subscription coding plans use rolling 5-hour and weekly windows; pay-as-you-go API
-                usage tracks a monthly budget. Leave everything empty to keep the plan
-                unconfigured.
+                usage tracks a monthly budget. Leave everything empty to keep the plan unconfigured.
               </p>
             </div>
             <input type="hidden" name="plan_preset_id" value={planPresetId} />

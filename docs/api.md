@@ -11,7 +11,9 @@ Pass your API key via header:
 curl -H "Authorization: Bearer cybara_abc123..." http://localhost:4269/api/health
 ```
 
-Localhost connections skip auth in development mode.
+Development mode keeps a narrow auth bypass for same-origin local browser requests from the Web,
+Tauri, or native macOS UI. Bare local API clients, cross-origin browser requests, DNS-rebinding
+attempts, and production mode requests still need a valid API key.
 
 ### Gateway Auth Settings
 ```http
@@ -988,7 +990,7 @@ Returns:
 {
   "status": "healthy",
   "uptime": 3600,
-  "version": "1.0.0",
+  "version": "1.0.818",
   "checks": {
     "database": true
   }

@@ -11,6 +11,7 @@ import {
   useIdentity,
   useUpdateIdentity,
   useProviders,
+  useAgents,
   type SystemPromptConfig,
   type IdentityConfig,
   type HealthData,
@@ -1804,6 +1805,8 @@ function MemoryBehaviorSettings() {
 function FeatureSettings() {
   const [terminalEnabled, setTerminalEnabled] = useState(false);
   const [selfImprovingSkills, setSelfImprovingSkills] = useState(true);
+  const [backgroundAgentId, setBackgroundAgentId] = useState("");
+  const { data: agentsForBackground } = useAgents();
   const [dangerousToolPolicyEnabled, setDangerousToolPolicyEnabled] = useState(false);
   const [dangerousToolPolicyMode, setDangerousToolPolicyMode] = useState<"audit" | "block">(
     "audit"
@@ -1896,6 +1899,9 @@ function FeatureSettings() {
         );
         setSandboxNetwork(sandboxRaw?.network === "allow" ? "allow" : "deny");
         setReasoningEffort(typeof data?.reasoning_effort === "string" ? data.reasoning_effort : "");
+        setBackgroundAgentId(
+          typeof data?.background_agent_id === "string" ? data.background_agent_id : ""
+        );
         if (sandboxResult.success && sandboxResult.data) {
           setSandboxStatus(sandboxResult.data as SandboxStatusView);
         }
@@ -1924,6 +1930,24 @@ function FeatureSettings() {
       const message = error instanceof Error ? error.message : "Failed to update terminal setting";
       addToast("error", message);
       setTerminalEnabled(!enabled);
+    }
+  };
+
+  const saveBackgroundAgent = async (agentId: string) => {
+    const previous = backgroundAgentId;
+    setBackgroundAgentId(agentId);
+    try {
+      const result = await settingsApi.updateConfig({ background_agent_id: agentId });
+      if (!result.success || !result.data?.success) {
+        throw new Error(extractApiError(result, "Config update failed"));
+      }
+      addToast("success", agentId ? "Background model updated" : "Background model reset to default");
+    } catch (error) {
+      addToast(
+        "error",
+        error instanceof Error ? error.message : "Failed to update background model"
+      );
+      setBackgroundAgentId(previous);
     }
   };
 
@@ -2110,6 +2134,28 @@ function FeatureSettings() {
               }`}
             />
           </button>
+        </div>
+
+        <div className="py-3 border-b border-white/10">
+          <p className="text-sm text-white font-medium">Background self-improvement model</p>
+          <p className="text-xs text-gray-400 mt-0.5 mb-2">
+            Memory and skill review run silently in the background after most turns. Point them at a
+            cheaper agent to cut cost over time. Defaults to the agent that handled the turn.
+          </p>
+          <select
+            value={backgroundAgentId}
+            disabled={loading}
+            onChange={(e) => void saveBackgroundAgent(e.target.value)}
+            className="w-full sm:w-72 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+          >
+            <option value="">Same agent as the turn (default)</option>
+            {(agentsForBackground ?? []).map((agent) => (
+              <option key={agent.id} value={agent.id}>
+                {agent.name}
+                {agent.model ? ` — ${agent.model}` : ""}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="py-3 border-b border-white/10">
