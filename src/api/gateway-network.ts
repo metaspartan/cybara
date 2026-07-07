@@ -2,6 +2,10 @@ import { isIP } from "net";
 import { config } from "../core/config";
 import { getGatewayAuthSettings } from "./security";
 
+type GatewayHostApplyHandler = (host: string) => void;
+
+let gatewayHostApplyHandler: GatewayHostApplyHandler | null = null;
+
 export function isGatewayHostForced(): boolean {
   return Boolean(process.env.CYBARA_HOST || process.argv.includes("--expose"));
 }
@@ -58,4 +62,33 @@ export function gatewayAuthSettingsResponse() {
     configuredPort: config.get<number>("port") || 4269,
     portForced: Boolean(Number(process.env.PORT)),
   };
+}
+
+export function setGatewayHostApplyHandler(handler: GatewayHostApplyHandler | null): void {
+  gatewayHostApplyHandler = handler;
+}
+
+export function requestGatewayHostApply(host: string): {
+  scheduled: boolean;
+  error?: string;
+} {
+  if (!gatewayHostApplyHandler) {
+    return { scheduled: false, error: "Runtime host rebind is unavailable in this process" };
+  }
+  gatewayHostApplyHandler(host);
+  return { scheduled: true };
+}
+
+export function updateGatewayHostSetting(
+  value: unknown,
+  applyNow: unknown
+): { hostApplyScheduled?: boolean; hostApplyError?: string } {
+  if (isGatewayHostForced()) {
+    throw new Error("Host is forced by CYBARA_HOST/--expose and cannot be changed here");
+  }
+  const nextHost = normalizeGatewayBindHost(value);
+  config.set("host", nextHost);
+  if (applyNow !== true) return {};
+  const apply = requestGatewayHostApply(nextHost);
+  return { hostApplyScheduled: apply.scheduled, hostApplyError: apply.error };
 }

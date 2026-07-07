@@ -161,11 +161,7 @@ import {
   setRequireAuthForLocalhost,
   validateUrl,
 } from "./security";
-import {
-  gatewayAuthSettingsResponse,
-  isGatewayHostForced,
-  normalizeGatewayBindHost,
-} from "./gateway-network";
+import { gatewayAuthSettingsResponse, updateGatewayHostSetting } from "./gateway-network";
 import {
   browseDirectory,
   readFileContent,
@@ -771,6 +767,7 @@ const routes: Record<string, RouteHandler> = {
       requireAuthForLocalhost?: unknown;
       basePath?: unknown;
       host?: unknown;
+      applyHostNow?: unknown;
       port?: unknown;
       gatewayPassword?: unknown;
       clearGatewayPassword?: unknown;
@@ -790,10 +787,8 @@ const routes: Record<string, RouteHandler> = {
     }
 
     if (data.host !== undefined) {
-      if (isGatewayHostForced()) {
-        throw new Error("Host is forced by CYBARA_HOST/--expose and cannot be changed here");
-      }
-      config.set("host", normalizeGatewayBindHost(data.host));
+      const hostApply = updateGatewayHostSetting(data.host, data.applyHostNow);
+      if (data.applyHostNow === true) return { ...gatewayAuthSettingsResponse(), ...hostApply };
     }
 
     if (data.port !== undefined) {

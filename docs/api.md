@@ -24,9 +24,10 @@ POST /api/auth/rotate-key
 POST /api/system/restart
 ```
 
-`PUT /api/auth/settings` accepts `requireAuthForLocalhost`, `host`, `basePath`, and `port` unless
-those values are forced by environment variables. Host and port changes require a gateway restart.
-`POST /api/auth/rotate-key` hot-swaps the gateway API key without requiring a restart. `POST
+`PUT /api/auth/settings` accepts `requireAuthForLocalhost`, `host`, `applyHostNow`, `basePath`, and
+`port` unless those values are forced by environment variables. Host changes can apply immediately
+through a controlled listener rebind; port changes require a gateway restart. `POST
+/api/auth/rotate-key` hot-swaps the gateway API key without requiring a restart. `POST
 /api/system/restart` requires the `manage` scope for paired mobile devices.
 
 ## Chat

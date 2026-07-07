@@ -3809,11 +3809,9 @@ function GatewayAuthSettingsSection() {
   const [rotateConfirmOpen, setRotateConfirmOpen] = useState(false);
   const [basePathInput, setBasePathInput] = useState("");
   const basePathTouchedRef = useRef(false);
-  const [hostInput, setHostInput] = useState("");
-  const hostTouchedRef = useRef(false);
   const [portInput, setPortInput] = useState("");
   const portTouchedRef = useRef(false);
-  const [restartingForHost, setRestartingForHost] = useState(false);
+  const [applyingHost, setApplyingHost] = useState(false);
   const [restartingForPort, setRestartingForPort] = useState(false);
   const [gatewayPassword, setGatewayPassword] = useState("");
   const [gatewayPasswordConfirm, setGatewayPasswordConfirm] = useState("");
@@ -3827,9 +3825,6 @@ function GatewayAuthSettingsSection() {
           setSettings(res.data);
           if (!basePathTouchedRef.current) {
             setBasePathInput(res.data.basePath || "");
-          }
-          if (!hostTouchedRef.current) {
-            setHostInput(res.data.configuredHost || res.data.host || "127.0.0.1");
           }
           if (!portTouchedRef.current) {
             setPortInput(String(res.data.configuredPort || res.data.port || 4269));
@@ -3874,43 +3869,29 @@ function GatewayAuthSettingsSection() {
     }
   }
 
-  async function handleSaveHostAndRestart() {
-    const host = hostInput.trim();
-    if (!host) {
-      addToast("error", "Gateway host is required");
-      return;
-    }
+  async function handleToggleLanAccess(enabled: boolean) {
+    const host = enabled ? "0.0.0.0" : "127.0.0.1";
     setBusy(true);
-    setRestartingForHost(true);
+    setApplyingHost(true);
     try {
-      const res = await authApi.updateSettings({ host });
+      const res = await authApi.updateSettings({ host, applyHostNow: true });
       if (!res.success || !res.data?.success) {
         throw new Error(res.error || "Failed to update host");
       }
-      hostTouchedRef.current = false;
-      addToast("info", `Host saved — restarting gateway on ${res.data.configuredHost || host}…`);
-      await systemApi.restart();
-      const deadline = Date.now() + 45_000;
-      const basePath = res.data.basePath || "";
-      while (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, 1_500));
-        try {
-          const probe = await fetch(`${window.location.origin}${basePath}/api/health`, {
-            mode: "cors",
-          });
-          if (probe.ok) {
-            await load(true);
-            addToast("success", "Gateway restarted with the updated network host");
-            return;
-          }
-        } catch {}
+      if (res.data.hostApplyError) {
+        throw new Error(res.data.hostApplyError);
       }
-      addToast("error", "Gateway did not come back within 45s — reopen the dashboard manually");
+      await new Promise((resolve) => setTimeout(resolve, 1_250));
+      await load(true);
+      addToast(
+        "success",
+        enabled ? "LAN access enabled for trusted devices" : "Gateway is private to this computer"
+      );
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to update host");
     } finally {
       setBusy(false);
-      setRestartingForHost(false);
+      setApplyingHost(false);
     }
   }
 
@@ -4080,6 +4061,8 @@ function GatewayAuthSettingsSection() {
   }
 
   const controlsDisabled = loading || busy || unsupported;
+  const configuredHost = (settings?.configuredHost || settings?.host || "127.0.0.1").toLowerCase();
+  const lanHostEnabled = configuredHost === "0.0.0.0" || configuredHost === "::";
 
   return (
     <div className="space-y-6">
@@ -4165,64 +4148,20 @@ function GatewayAuthSettingsSection() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="flex-1 min-w-[220px]">
-                <Input
-                  label="Gateway host"
-                  placeholder="127.0.0.1 or 0.0.0.0"
-                  value={hostInput}
-                  disabled={controlsDisabled || Boolean(settings?.hostForced) || restartingForHost}
-                  onChange={(e) => {
-                    hostTouchedRef.current = true;
-                    setHostInput(e.target.value);
-                  }}
-                />
-              </div>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  hostTouchedRef.current = true;
-                  setHostInput("127.0.0.1");
-                }}
-                disabled={controlsDisabled || Boolean(settings?.hostForced) || restartingForHost}
-              >
-                Private
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  hostTouchedRef.current = true;
-                  setHostInput("0.0.0.0");
-                }}
-                disabled={controlsDisabled || Boolean(settings?.hostForced) || restartingForHost}
-              >
-                LAN
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => void handleSaveHostAndRestart()}
-                disabled={
-                  controlsDisabled ||
-                  Boolean(settings?.hostForced) ||
-                  restartingForHost ||
-                  hostInput.trim() === (settings?.configuredHost || settings?.host || "")
-                }
-              >
-                {restartingForHost ? "Restarting…" : "Save Host & Restart"}
-              </Button>
-            </div>
-            <p className="text-xs text-gray-500">
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <Switch
+              label="Listen on local network"
+              description="Allow phones and trusted devices on this Wi-Fi to reach the gateway. Remote devices still need a valid token."
+              checked={lanHostEnabled}
+              disabled={controlsDisabled || Boolean(settings?.hostForced) || applyingHost}
+              onChange={(checked) => void handleToggleLanAccess(checked)}
+            />
+            <p className="mt-3 text-xs text-gray-500">
               Current listener: <span className="font-mono">{settings?.host || "unknown"}</span>.
-              Use <span className="font-mono">127.0.0.1</span> for this computer only, or{" "}
-              <span className="font-mono">0.0.0.0</span> to pair phones on trusted Wi-Fi. Remote
-              devices still need a valid token.
-              {settings?.configuredHost && settings.configuredHost !== settings.host
-                ? ` Restart pending for ${settings.configuredHost}.`
-                : ""}
+              {applyingHost ? " Applying network change…" : ""}
               {settings?.hostForced
-                ? " Currently forced by CYBARA_HOST or the --expose launch flag."
-                : ""}
+                ? " Forced by CYBARA_HOST or the --expose launch flag."
+                : " Keep this off on public or untrusted networks."}
             </p>
           </div>
 

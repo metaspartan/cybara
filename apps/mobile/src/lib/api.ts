@@ -200,6 +200,8 @@ export interface GatewayAuthSettings {
   host?: string;
   configuredHost?: string;
   hostForced?: boolean;
+  hostApplyScheduled?: boolean;
+  hostApplyError?: string;
   basePath?: string;
   basePathForced?: boolean;
   port?: number;
@@ -2448,6 +2450,7 @@ export class CybaraMobileApi {
   updateGatewayAuthSettings(payload: {
     requireAuthForLocalhost?: boolean;
     host?: string;
+    applyHostNow?: boolean;
     basePath?: string;
     port?: number;
     gatewayPassword?: string;

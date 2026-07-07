@@ -69,6 +69,7 @@ import {
   revealGatewayApiKey,
   securityCheck,
 } from "./api/security";
+import { setGatewayHostApplyHandler } from "./api/gateway-network";
 import { getClientIp } from "./api/client-ip";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -221,7 +222,8 @@ const configuredHost =
     : "127.0.0.1";
 const HOST =
   process.env.CYBARA_HOST || (isExposeFlagSet ? "0.0.0.0" : configuredHost) || "127.0.0.1";
-process.env.CYBARA_RUNTIME_HOST = HOST;
+let runtimeHost = HOST;
+process.env.CYBARA_RUNTIME_HOST = runtimeHost;
 const TERMINAL_CLI_FLAG = process.argv.includes("--enable-terminal");
 function isTerminalEnabled(): boolean {
   return TERMINAL_CLI_FLAG || config.get<boolean>("terminal_enabled") === true;
@@ -309,66 +311,101 @@ function withOptionalQueryToken(headers: Record<string, string>, url: URL): Reco
   return headers;
 }
 
-Bun.serve<WsData>({
-  port: PORT,
-  hostname: HOST,
-  idleTimeout: 255,
-  fetch: async (req, server) => {
-    const url = new URL(req.url);
-    let pathname = url.pathname;
+function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsData>> {
+  process.env.CYBARA_RUNTIME_HOST = hostname;
+  return Bun.serve<WsData>({
+    port: PORT,
+    hostname,
+    idleTimeout: 255,
+    fetch: async (req, server) => {
+      const url = new URL(req.url);
+      let pathname = url.pathname;
 
-    // Optional URL prefix (Settings > Auth): strip it once here so every
-    // route below stays prefix-agnostic. Health stays reachable unprefixed —
-    // supervisors (sidecars, scripts, load balancers) probe it directly.
-    const basePath = getGatewayBasePath();
-    if (basePath) {
-      if (pathname === basePath || pathname.startsWith(`${basePath}/`)) {
-        pathname = pathname.slice(basePath.length) || "/";
-      } else if (pathname === "/" || pathname === "/index.html") {
-        return Response.redirect(`${basePath}/`, 307);
-      } else if (!pathname.startsWith("/api/health")) {
-        return new Response(JSON.stringify({ error: "Not found" }), {
-          status: 404,
-          headers: { "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    const requestHeaders = Object.fromEntries(req.headers.entries());
-    const directIp = server.requestIP?.(req)?.address;
-    const clientIp = getClientIp(requestHeaders, directIp);
-
-    if (pathname.startsWith("/api/terminal")) {
-      const terminalHeaders = withOptionalQueryToken(requestHeaders, url);
-      const security = securityCheck(req.method, pathname, terminalHeaders, clientIp);
-      if (!security.passed) {
-        return new Response(JSON.stringify({ error: security.error }), {
-          status: security.statusCode || 403,
-          headers: {
-            "Content-Type": "application/json",
-            ...commonSecurityHeaders,
-            ...security.headers,
-          },
-        });
+      // Optional URL prefix (Settings > Auth): strip it once here so every
+      // route below stays prefix-agnostic. Health stays reachable unprefixed —
+      // supervisors (sidecars, scripts, load balancers) probe it directly.
+      const basePath = getGatewayBasePath();
+      if (basePath) {
+        if (pathname === basePath || pathname.startsWith(`${basePath}/`)) {
+          pathname = pathname.slice(basePath.length) || "/";
+        } else if (pathname === "/" || pathname === "/index.html") {
+          return Response.redirect(`${basePath}/`, 307);
+        } else if (!pathname.startsWith("/api/health")) {
+          return new Response(JSON.stringify({ error: "Not found" }), {
+            status: 404,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
       }
 
-      if (!isTerminalEnabled()) {
-        return new Response(
-          JSON.stringify({ error: "Terminal disabled. Start with --enable-terminal" }),
-          {
-            status: 403,
+      const requestHeaders = Object.fromEntries(req.headers.entries());
+      const directIp = server.requestIP?.(req)?.address;
+      const clientIp = getClientIp(requestHeaders, directIp);
+
+      if (pathname.startsWith("/api/terminal")) {
+        const terminalHeaders = withOptionalQueryToken(requestHeaders, url);
+        const security = securityCheck(req.method, pathname, terminalHeaders, clientIp);
+        if (!security.passed) {
+          return new Response(JSON.stringify({ error: security.error }), {
+            status: security.statusCode || 403,
             headers: {
               "Content-Type": "application/json",
               ...commonSecurityHeaders,
               ...security.headers,
             },
-          }
-        );
+          });
+        }
+
+        if (!isTerminalEnabled()) {
+          return new Response(
+            JSON.stringify({ error: "Terminal disabled. Start with --enable-terminal" }),
+            {
+              status: 403,
+              headers: {
+                "Content-Type": "application/json",
+                ...commonSecurityHeaders,
+                ...security.headers,
+              },
+            }
+          );
+        }
+
+        if (pathname === "/api/terminal/ws") {
+          const sessionId = url.searchParams.get("session") || crypto.randomUUID();
+          const success = server.upgrade(req, { data: { kind: "terminal", sessionId } });
+          if (success) return undefined;
+          return new Response("WebSocket upgrade failed", {
+            status: 400,
+            headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+          });
+        }
+
+        if (pathname === "/api/terminal/sessions") {
+          return new Response(JSON.stringify(listTerminalSessions()), {
+            headers: {
+              "Content-Type": "application/json",
+              ...commonSecurityHeaders,
+              ...security.headers,
+            },
+          });
+        }
       }
 
-      if (pathname === "/api/terminal/ws") {
-        const sessionId = url.searchParams.get("session") || crypto.randomUUID();
-        const success = server.upgrade(req, { data: { kind: "terminal", sessionId } });
+      if (pathname === "/api/ws/status") {
+        const statusHeaders = withOptionalQueryToken(requestHeaders, url);
+        const security = securityCheck(req.method, pathname, statusHeaders, clientIp);
+        if (!security.passed) {
+          return new Response(JSON.stringify({ error: security.error }), {
+            status: security.statusCode || 403,
+            headers: {
+              "Content-Type": "application/json",
+              ...commonSecurityHeaders,
+              ...security.headers,
+            },
+          });
+        }
+
+        const success = server.upgrade(req, { data: { kind: "status" } });
         if (success) return undefined;
         return new Response("WebSocket upgrade failed", {
           status: 400,
@@ -376,250 +413,257 @@ Bun.serve<WsData>({
         });
       }
 
-      if (pathname === "/api/terminal/sessions") {
-        return new Response(JSON.stringify(listTerminalSessions()), {
-          headers: {
-            "Content-Type": "application/json",
-            ...commonSecurityHeaders,
-            ...security.headers,
-          },
-        });
-      }
-    }
-
-    if (pathname === "/api/ws/status") {
-      const statusHeaders = withOptionalQueryToken(requestHeaders, url);
-      const security = securityCheck(req.method, pathname, statusHeaders, clientIp);
-      if (!security.passed) {
-        return new Response(JSON.stringify({ error: security.error }), {
-          status: security.statusCode || 403,
-          headers: {
-            "Content-Type": "application/json",
-            ...commonSecurityHeaders,
-            ...security.headers,
-          },
-        });
-      }
-
-      const success = server.upgrade(req, { data: { kind: "status" } });
-      if (success) return undefined;
-      return new Response("WebSocket upgrade failed", {
-        status: 400,
-        headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
-      });
-    }
-
-    if (pathname === "/api/sse/status") {
-      const sseHeaders = withOptionalQueryToken(requestHeaders, url);
-      const security = securityCheck(req.method, pathname, sseHeaders, clientIp);
-      if (!security.passed) {
-        return new Response(JSON.stringify({ error: security.error }), {
-          status: security.statusCode || 403,
-          headers: {
-            "Content-Type": "application/json",
-            ...commonSecurityHeaders,
-            ...security.headers,
-          },
-        });
-      }
-
-      return new Response(createStatusStream(), {
-        headers: {
-          "Content-Type": "text/event-stream",
-          "Cache-Control": "no-cache, no-transform",
-          Connection: "keep-alive",
-          "X-Accel-Buffering": "no",
-          ...commonSecurityHeaders,
-          ...security.headers,
-        },
-      });
-    }
-
-    if (pathname.startsWith("/api/")) {
-      let body: unknown;
-      let rawBody: string | undefined;
-      let malformedBody = false;
-      if (req.method !== "GET" && req.method !== "HEAD") {
-        const needsRaw = pathname.endsWith("/webhook") || pathname.includes("/webhooks/");
-        let text = "";
-        try {
-          text = await req.text();
-        } catch {
-          text = "";
+      if (pathname === "/api/sse/status") {
+        const sseHeaders = withOptionalQueryToken(requestHeaders, url);
+        const security = securityCheck(req.method, pathname, sseHeaders, clientIp);
+        if (!security.passed) {
+          return new Response(JSON.stringify({ error: security.error }), {
+            status: security.statusCode || 403,
+            headers: {
+              "Content-Type": "application/json",
+              ...commonSecurityHeaders,
+              ...security.headers,
+            },
+          });
         }
-        if (needsRaw) rawBody = text;
-        if (text) {
+
+        return new Response(createStatusStream(), {
+          headers: {
+            "Content-Type": "text/event-stream",
+            "Cache-Control": "no-cache, no-transform",
+            Connection: "keep-alive",
+            "X-Accel-Buffering": "no",
+            ...commonSecurityHeaders,
+            ...security.headers,
+          },
+        });
+      }
+
+      if (pathname.startsWith("/api/")) {
+        let body: unknown;
+        let rawBody: string | undefined;
+        let malformedBody = false;
+        if (req.method !== "GET" && req.method !== "HEAD") {
+          const needsRaw = pathname.endsWith("/webhook") || pathname.includes("/webhooks/");
+          let text = "";
           try {
-            body = JSON.parse(text);
+            text = await req.text();
           } catch {
-            body = undefined;
-            malformedBody = !needsRaw;
+            text = "";
+          }
+          if (needsRaw) rawBody = text;
+          if (text) {
+            try {
+              body = JSON.parse(text);
+            } catch {
+              body = undefined;
+              malformedBody = !needsRaw;
+            }
           }
         }
-      }
-      if (malformedBody) {
+        if (malformedBody) {
+          return new Response(
+            JSON.stringify({
+              error: "Invalid JSON body",
+              code: "VALIDATION_ERROR",
+              path: pathname,
+            }),
+            {
+              status: 400,
+              headers: { "Content-Type": "application/json", ...commonSecurityHeaders },
+            }
+          );
+        }
+        const response = await handleRequest({
+          method: req.method,
+          // Route matching re-parses the URL, so hand it the prefix-stripped path.
+          url: basePath ? `${url.origin}${pathname}${url.search}` : req.url,
+          headers: requestHeaders,
+          body,
+          rawBody,
+          ip: clientIp,
+        });
         return new Response(
-          JSON.stringify({ error: "Invalid JSON body", code: "VALIDATION_ERROR", path: pathname }),
+          response.raw ? String(response.body ?? "") : JSON.stringify(response.body),
           {
-            status: 400,
-            headers: { "Content-Type": "application/json", ...commonSecurityHeaders },
+            status: response.status,
+            headers: {
+              "Content-Type": "application/json",
+              ...commonSecurityHeaders,
+              ...response.headers,
+            },
           }
         );
       }
-      const response = await handleRequest({
-        method: req.method,
-        // Route matching re-parses the URL, so hand it the prefix-stripped path.
-        url: basePath ? `${url.origin}${pathname}${url.search}` : req.url,
-        headers: requestHeaders,
-        body,
-        rawBody,
-        ip: clientIp,
-      });
-      return new Response(
-        response.raw ? String(response.body ?? "") : JSON.stringify(response.body),
-        {
-          status: response.status,
-          headers: {
-            "Content-Type": "application/json",
-            ...commonSecurityHeaders,
-            ...response.headers,
-          },
+
+      const fileLikePath = isFileLikePath(pathname);
+
+      if (!uiExists) {
+        if (pathname === "/" || pathname === "/index.html" || !fileLikePath) {
+          return new Response(readUiIndex(), { headers: htmlHeaders });
         }
-      );
-    }
+        return new Response("Static asset not found", {
+          status: 404,
+          headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+        });
+      }
 
-    const fileLikePath = isFileLikePath(pathname);
-
-    if (!uiExists) {
       if (pathname === "/" || pathname === "/index.html" || !fileLikePath) {
         return new Response(readUiIndex(), { headers: htmlHeaders });
       }
-      return new Response("Static asset not found", {
-        status: 404,
-        headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
-      });
-    }
 
-    if (pathname === "/" || pathname === "/index.html" || !fileLikePath) {
-      return new Response(readUiIndex(), { headers: htmlHeaders });
-    }
+      const uiRoot = resolve(uiPath);
+      const filePath = resolve(uiRoot, pathname.replace(/^\/+/, ""));
+      const withinUiRoot = filePath === uiRoot || filePath.startsWith(uiRoot + sep);
 
-    const uiRoot = resolve(uiPath);
-    const filePath = resolve(uiRoot, pathname.replace(/^\/+/, ""));
-    const withinUiRoot = filePath === uiRoot || filePath.startsWith(uiRoot + sep);
-
-    if (withinUiRoot && existsSync(filePath) && !filePath.includes(".git")) {
-      if (statSync(filePath).isDirectory()) {
-        return new Response("Directory listing not allowed", {
-          status: 403,
-          headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
-        });
-      }
-      const ext = pathname.substring(pathname.lastIndexOf("."));
-      const contentType = mimeTypes[ext] || "application/octet-stream";
-      try {
-        const content = readFileSync(filePath);
-        return new Response(content, {
-          headers: {
-            "Content-Type": contentType,
-            "Cache-Control": cacheControlForStaticAsset(ext),
-            ...commonSecurityHeaders,
-          },
-        });
-      } catch {
-        return new Response("File error", {
-          status: 500,
-          headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
-        });
-      }
-    }
-
-    if (fileLikePath) {
-      return new Response("Static asset not found", {
-        status: 404,
-        headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
-      });
-    }
-
-    return new Response(uiContent, { headers: htmlHeaders });
-  },
-  websocket: {
-    open(ws) {
-      const data = ws.data as WsData;
-      if (data.kind === "status") {
-        try {
-          ws.send(JSON.stringify(createStatusSnapshotEvent()));
-          const unsubscribe = onStatusStream((event) => {
-            try {
-              ws.send(JSON.stringify(event));
-            } catch {
-              // Connection will be cleaned up in close handler
-            }
+      if (withinUiRoot && existsSync(filePath) && !filePath.includes(".git")) {
+        if (statSync(filePath).isDirectory()) {
+          return new Response("Directory listing not allowed", {
+            status: 403,
+            headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
           });
-          data.unsubscribe = unsubscribe;
-        } catch (error) {
-          console.debug("[Status WS] Failed to initialize websocket:", error);
-          try {
-            ws.close();
-          } catch {
-            // ignore
-          }
         }
-        return;
+        const ext = pathname.substring(pathname.lastIndexOf("."));
+        const contentType = mimeTypes[ext] || "application/octet-stream";
+        try {
+          const content = readFileSync(filePath);
+          return new Response(content, {
+            headers: {
+              "Content-Type": contentType,
+              "Cache-Control": cacheControlForStaticAsset(ext),
+              ...commonSecurityHeaders,
+            },
+          });
+        } catch {
+          return new Response("File error", {
+            status: 500,
+            headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+          });
+        }
       }
 
-      const { sessionId } = data;
-      const session = getTerminalSession(sessionId) || createTerminalSession(sessionId);
+      if (fileLikePath) {
+        return new Response("Static asset not found", {
+          status: 404,
+          headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+        });
+      }
 
-      startOutputReader(
-        session,
-        (output: string) => {
+      return new Response(uiContent, { headers: htmlHeaders });
+    },
+    websocket: {
+      open(ws) {
+        const data = ws.data as WsData;
+        if (data.kind === "status") {
           try {
-            ws.send(output);
+            ws.send(JSON.stringify(createStatusSnapshotEvent()));
+            const unsubscribe = onStatusStream((event) => {
+              try {
+                ws.send(JSON.stringify(event));
+              } catch {
+                // Connection will be cleaned up in close handler
+              }
+            });
+            data.unsubscribe = unsubscribe;
           } catch (error) {
-            console.debug("[Terminal] Failed to send websocket data:", error);
+            console.debug("[Status WS] Failed to initialize websocket:", error);
+            try {
+              ws.close();
+            } catch {
+              // ignore
+            }
           }
-        },
-        () => {
-          try {
-            ws.close();
-          } catch (error) {
-            console.debug("[Terminal] Failed to close websocket:", error);
-          }
-          destroyTerminalSession(sessionId);
+          return;
         }
+
+        const { sessionId } = data;
+        const session = getTerminalSession(sessionId) || createTerminalSession(sessionId);
+
+        startOutputReader(
+          session,
+          (output: string) => {
+            try {
+              ws.send(output);
+            } catch (error) {
+              console.debug("[Terminal] Failed to send websocket data:", error);
+            }
+          },
+          () => {
+            try {
+              ws.close();
+            } catch (error) {
+              console.debug("[Terminal] Failed to close websocket:", error);
+            }
+            destroyTerminalSession(sessionId);
+          }
+        );
+      },
+      message(ws, message) {
+        const data = ws.data as WsData;
+        if (data.kind === "status") {
+          const text = typeof message === "string" ? message : Buffer.from(message).toString();
+          if (text === "ping") {
+            try {
+              ws.send("pong");
+            } catch {
+              // ignore
+            }
+          }
+          return;
+        }
+
+        const session = getTerminalSession(data.sessionId);
+        if (session) {
+          session.lastActivity = Date.now();
+          const input = typeof message === "string" ? message : Buffer.from(message).toString();
+          writeToTerminal(session, input);
+        }
+      },
+      close(ws) {
+        const data = ws.data as WsData;
+        if (data.kind === "status") {
+          data.unsubscribe?.();
+          return;
+        }
+        destroyTerminalSession(data.sessionId);
+      },
+    },
+  });
+}
+
+let gatewayServer = createGatewayServer(runtimeHost);
+
+setGatewayHostApplyHandler((nextHost) => {
+  const requestedHost = nextHost.trim();
+  if (!requestedHost || requestedHost === runtimeHost) return;
+  setTimeout(() => {
+    const previousHost = runtimeHost;
+    try {
+      gatewayServer.stop(true);
+      gatewayServer = createGatewayServer(requestedHost);
+      runtimeHost = requestedHost;
+      console.warn(`[Gateway] Rebound listener from ${previousHost} to ${runtimeHost}:${PORT}`);
+      printStartupSecurityWarnings();
+    } catch (error) {
+      console.error(
+        `[Gateway] Failed to bind ${requestedHost}:${PORT}: ${
+          error instanceof Error ? error.message : error
+        }`
       );
-    },
-    message(ws, message) {
-      const data = ws.data as WsData;
-      if (data.kind === "status") {
-        const text = typeof message === "string" ? message : Buffer.from(message).toString();
-        if (text === "ping") {
-          try {
-            ws.send("pong");
-          } catch {
-            // ignore
-          }
-        }
-        return;
+      try {
+        gatewayServer = createGatewayServer(previousHost);
+        runtimeHost = previousHost;
+      } catch (rollbackError) {
+        console.error(
+          `[Gateway] Failed to restore ${previousHost}:${PORT}: ${
+            rollbackError instanceof Error ? rollbackError.message : rollbackError
+          }`
+        );
       }
-
-      const session = getTerminalSession(data.sessionId);
-      if (session) {
-        session.lastActivity = Date.now();
-        const input = typeof message === "string" ? message : Buffer.from(message).toString();
-        writeToTerminal(session, input);
-      }
-    },
-    close(ws) {
-      const data = ws.data as WsData;
-      if (data.kind === "status") {
-        data.unsubscribe?.();
-        return;
-      }
-      destroyTerminalSession(data.sessionId);
-    },
-  },
+    } finally {
+      process.env.CYBARA_RUNTIME_HOST = runtimeHost;
+    }
+  }, 250);
 });
 
 // Eagerly materialize the gateway API key so onboarding always has one on

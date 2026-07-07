@@ -310,7 +310,9 @@ describe("mobile API client", () => {
         success: true,
         requireAuthForLocalhost: true,
       });
-      await expect(api.updateGatewayAuthSettings({ host: "0.0.0.0" })).resolves.toMatchObject({
+      await expect(
+        api.updateGatewayAuthSettings({ host: "0.0.0.0", applyHostNow: true })
+      ).resolves.toMatchObject({
         success: true,
         configuredHost: "0.0.0.0",
       });
@@ -362,7 +364,7 @@ describe("mobile API client", () => {
           path: "/api/auth/settings",
           auth: "Bearer cybara_mobile_test",
           gatewayPassword: null,
-          body: { host: "0.0.0.0" },
+          body: { host: "0.0.0.0", applyHostNow: true },
         },
         {
           method: "PUT",
