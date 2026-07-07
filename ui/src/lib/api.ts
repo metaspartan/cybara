@@ -7,6 +7,7 @@ import type {
   Skill,
   ChatMessage,
   ChatSession,
+  SessionContextUsage,
   ApiResponse,
   DashboardStats,
   MobileDevice,
@@ -134,6 +135,7 @@ export const agentsApi = {
       message: ChatMessage;
       sessionId: string;
       workspaceDir?: string | null;
+      contextUsage?: SessionContextUsage;
       queued?: boolean;
       interrupted?: boolean;
       pendingMessage?: PendingChatMessage;
@@ -1032,6 +1034,7 @@ export const chatApi = {
       message: ChatMessage;
       sessionId: string;
       workspaceDir?: string | null;
+      contextUsage?: SessionContextUsage;
       queued?: boolean;
       interrupted?: boolean;
       pendingMessage?: PendingChatMessage;
@@ -1139,12 +1142,33 @@ export const chatApi = {
     fetchApi<{
       id: string;
       agent_id: string;
+      provider?: string;
+      provider_id?: string;
+      provider_name?: string;
+      model?: string;
       title?: string | null;
       created_at: string;
       updated_at: string;
       workspace_dir?: string | null;
+      contextUsage?: SessionContextUsage;
       messagesList: ChatMessage[];
     }>("/sessions/" + id + (options?.includeFullToolCalls ? "?includeFullToolCalls=1" : "")),
+  updateSessionAgent: (id: string, agentId: string) =>
+    fetchApi<{
+      success: boolean;
+      sessionId: string;
+      agentId: string;
+      agentName: string;
+      provider?: string;
+      providerId?: string;
+      providerName?: string;
+      model?: string;
+      contextUsage?: SessionContextUsage;
+      error?: string;
+    }>("/sessions/" + id + "/agent", {
+      method: "PUT",
+      body: JSON.stringify({ agentId }),
+    }),
   revertSession: (
     id: string,
     payload: {

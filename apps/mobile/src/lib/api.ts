@@ -536,6 +536,14 @@ export interface SessionMessageSummary {
   processActivities?: SessionProcessActivitySummary[];
 }
 
+export interface SessionContextUsage {
+  usedTokens: number;
+  limitTokens: number;
+  remainingTokens: number;
+  usedPercent: number;
+  messageCount: number;
+}
+
 export interface SessionDetailSummary {
   id: string;
   title: string | null;
@@ -548,6 +556,7 @@ export interface SessionDetailSummary {
   createdAt?: string;
   updatedAt?: string;
   pinned?: boolean;
+  contextUsage?: SessionContextUsage;
   messages: SessionMessageSummary[];
 }
 
@@ -900,6 +909,45 @@ export function normalizeMemoryEntry(value: unknown): MemoryEntrySummary {
   };
 }
 
+export interface JourneyEvent {
+  id: string;
+  kind: "skill" | "memory";
+  title: string;
+  detail: string;
+  category: string;
+  createdAt: string;
+  createdAtMs: number;
+}
+
+export interface JourneyResponse {
+  events: JourneyEvent[];
+  counts: { skills: number; memories: number; total: number };
+}
+
+export function normalizeJourney(value: unknown): JourneyResponse {
+  const record = asRecord(value);
+  const events = normalizeArrayResponse(record?.events, ["events"]).map((raw, index) => {
+    const eventRecord = asRecord(raw);
+    const kind = readString(eventRecord, ["kind"]) === "skill" ? "skill" : "memory";
+    return {
+      id: readString(eventRecord, ["id"]) || `journey-${index}`,
+      kind: kind as "skill" | "memory",
+      title: readString(eventRecord, ["title"]) || "",
+      detail: readString(eventRecord, ["detail"]) || "",
+      category: readString(eventRecord, ["category"]) || "",
+      createdAt: readString(eventRecord, ["createdAt"]) || "",
+      createdAtMs: readNumber(eventRecord, ["createdAtMs"]) || 0,
+    };
+  });
+  const countsRecord = asRecord(record?.counts);
+  const skills = readNumber(countsRecord, ["skills"]) ?? events.filter((e) => e.kind === "skill").length;
+  const memories = readNumber(countsRecord, ["memories"]) ?? events.length - skills;
+  return {
+    events,
+    counts: { skills, memories, total: readNumber(countsRecord, ["total"]) ?? events.length },
+  };
+}
+
 export function normalizeMemoryList(value: unknown): MemoryListResponse {
   const record = asRecord(value);
   if (!record) {
@@ -1154,7 +1202,30 @@ function normalizeSessionDetail(value: unknown, fallbackId: string): SessionDeta
     createdAt: readString(record, ["created_at", "createdAt"]),
     updatedAt: readString(record, ["updated_at", "updatedAt", "created_at", "createdAt"]),
     pinned: record?.pinned === true,
+    contextUsage: normalizeSessionContextUsage(record?.contextUsage ?? record?.context_usage),
     messages,
+  };
+}
+
+function normalizeSessionContextUsage(value: unknown): SessionContextUsage | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const limitTokens = readNumber(record, ["limitTokens", "limit_tokens"]);
+  if (!limitTokens || limitTokens <= 0) return undefined;
+  const usedTokens = Math.max(0, readNumber(record, ["usedTokens", "used_tokens"]) ?? 0);
+  const remainingTokens = Math.max(
+    0,
+    readNumber(record, ["remainingTokens", "remaining_tokens"]) ?? limitTokens - usedTokens
+  );
+  const usedPercent =
+    readNumber(record, ["usedPercent", "used_percent"]) ??
+    Math.min(100, Math.round((usedTokens / limitTokens) * 1000) / 10);
+  return {
+    usedTokens,
+    limitTokens,
+    remainingTokens,
+    usedPercent,
+    messageCount: Math.max(0, readNumber(record, ["messageCount", "message_count"]) ?? 0),
   };
 }
 
@@ -1888,6 +1959,7 @@ export class CybaraMobileApi {
     sessionId: string;
     message: SessionMessageSummary;
     workspaceDir?: string | null;
+    contextUsage?: SessionContextUsage;
     queued?: boolean;
     interrupted?: boolean;
     pendingMessage?: MobilePendingChatMessage;
@@ -1910,6 +1982,7 @@ export class CybaraMobileApi {
     return {
       sessionId: readString(record, ["sessionId"]) || input.sessionId || "",
       workspaceDir: readString(record, ["workspaceDir"]) || input.workspaceDir,
+      contextUsage: normalizeSessionContextUsage(record?.contextUsage ?? record?.context_usage),
       queued: record?.queued === true,
       interrupted: record?.interrupted === true,
       pendingMessage: normalizePendingChatMessages(record?.pendingMessage)[0],
@@ -2050,6 +2123,40 @@ export class CybaraMobileApi {
       method: "PUT",
       body: JSON.stringify({ title }),
     });
+  }
+
+  async updateSessionAgent(
+    id: string,
+    agentId: string
+  ): Promise<{
+    success: boolean;
+    sessionId?: string;
+    agentId?: string;
+    agentName?: string;
+    provider?: string;
+    providerId?: string;
+    providerName?: string;
+    model?: string;
+    contextUsage?: SessionContextUsage;
+    error?: string;
+  }> {
+    const response = await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}/agent`, {
+      method: "PUT",
+      body: JSON.stringify({ agentId }),
+    });
+    const record = asRecord(response);
+    return {
+      success: record?.success === true,
+      sessionId: readString(record, ["sessionId", "session_id"]),
+      agentId: readString(record, ["agentId", "agent_id"]),
+      agentName: readString(record, ["agentName", "agent_name"]),
+      provider: readString(record, ["provider"]),
+      providerId: readString(record, ["providerId", "provider_id"]),
+      providerName: readString(record, ["providerName", "provider_name"]),
+      model: readString(record, ["model"]),
+      contextUsage: normalizeSessionContextUsage(record?.contextUsage ?? record?.context_usage),
+      error: readString(record, ["error"]),
+    };
   }
 
   pinSession(id: string, pinned: boolean): Promise<{ success: boolean; pinned?: boolean }> {
@@ -2388,6 +2495,10 @@ export class CybaraMobileApi {
 
   async memoryList(): Promise<MemoryListResponse> {
     return normalizeMemoryList(await this.request<unknown>("/api/memory"));
+  }
+
+  async journey(): Promise<JourneyResponse> {
+    return normalizeJourney(await this.request<unknown>("/api/journey"));
   }
 
   async searchMemory(query: string): Promise<MemorySearchResult[]> {

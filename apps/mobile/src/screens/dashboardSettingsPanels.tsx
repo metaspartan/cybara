@@ -81,6 +81,8 @@ import {
   type ActivitySummary,
   type AgentSummary,
   type FeatureSummary,
+  type JourneyEvent,
+  type JourneyResponse,
   type GatewayAuthSettings,
   type ProviderPlanMonitoringConfig,
   type ProviderPlanStatusResponse,
@@ -3618,6 +3620,125 @@ export function SystemPromptPanel({
           )}
         />
       )}
+    </StableDetailPanel>
+  );
+}
+
+function journeyRelativeTime(ms: number): string {
+  if (!ms) return "unknown";
+  const diff = Date.now() - ms;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function journeyDayKey(ms: number): string {
+  if (!ms) return "Undated";
+  return new Date(ms).toLocaleDateString(undefined, {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+export function JourneyPanel({ accentColor, api }: { accentColor: string; api: CybaraMobileApi }) {
+  const [journey, setJourney] = useState<JourneyResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        const result = await api.journey();
+        if (mounted) {
+          setJourney(result);
+          setError(null);
+        }
+      } catch (err) {
+        if (mounted) setError(err instanceof Error ? err.message : "Failed to load journey");
+      }
+    };
+    void load();
+    const interval = setInterval(load, 15000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [api]);
+
+  const groups: Array<{ day: string; events: JourneyEvent[] }> = [];
+  const order: string[] = [];
+  const map = new Map<string, JourneyEvent[]>();
+  for (const event of journey?.events ?? []) {
+    const key = journeyDayKey(event.createdAtMs);
+    if (!map.has(key)) order.push(key);
+    map.set(key, [...(map.get(key) ?? []), event]);
+  }
+  for (const day of order) groups.push({ day, events: map.get(day) ?? [] });
+
+  return (
+    <StableDetailPanel>
+      <SettingsSection title="Journey">
+        <Text style={styles.settingsInfoText}>
+          Everything your agent has learned — skills and memories over time.
+        </Text>
+        <View style={styles.gatewayDetailGrid}>
+          <View style={styles.gatewayDetailPill}>
+            <Text style={styles.gatewayDetailLabel}>Skills</Text>
+            <Text style={[styles.gatewayDetailValue, { color: colors.cyan }]}>
+              {journey?.counts.skills ?? 0}
+            </Text>
+          </View>
+          <View style={styles.gatewayDetailPill}>
+            <Text style={styles.gatewayDetailLabel}>Memories</Text>
+            <Text style={[styles.gatewayDetailValue, { color: accentColor }]}>
+              {journey?.counts.memories ?? 0}
+            </Text>
+          </View>
+          <View style={styles.gatewayDetailPill}>
+            <Text style={styles.gatewayDetailLabel}>Total</Text>
+            <Text style={styles.gatewayDetailValue}>{journey?.counts.total ?? 0}</Text>
+          </View>
+        </View>
+      </SettingsSection>
+      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {journey && journey.events.length === 0 && !error ? (
+        <EmptyState label="No learning yet" detail="Saved skills and memories will appear here." />
+      ) : null}
+      {groups.map((group) => (
+        <SettingsSection key={group.day} title={group.day}>
+          {group.events.map((event) => (
+            <View key={event.id} style={styles.settingsInfoBox}>
+              <View style={styles.routerSummaryRow}>
+                <Text style={[styles.settingsInfoTitle, { flex: 1 }]} numberOfLines={2}>
+                  {event.title}
+                </Text>
+                <Text style={styles.settingsInfoText}>{journeyRelativeTime(event.createdAtMs)}</Text>
+              </View>
+              {event.detail && event.detail !== event.title ? (
+                <Text style={styles.settingsInfoText} numberOfLines={3}>
+                  {event.detail}
+                </Text>
+              ) : null}
+              <Text
+                style={[
+                  styles.settingsInfoText,
+                  { color: event.kind === "skill" ? colors.cyan : accentColor },
+                ]}
+              >
+                {event.kind}
+                {event.category ? ` · ${event.category}` : ""}
+              </Text>
+            </View>
+          ))}
+        </SettingsSection>
+      ))}
     </StableDetailPanel>
   );
 }

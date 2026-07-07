@@ -145,6 +145,10 @@ struct GatewayClient: Sendable {
         try await getList("api/agents", keys: ["agents", "items"])
     }
 
+    func journey() async throws -> GatewayJourney {
+        try await get("api/journey", as: GatewayJourney.self)
+    }
+
     func providers() async throws -> [GatewayProvider] {
         try await getList("api/providers", keys: ["providers", "items"])
     }

@@ -240,6 +240,31 @@ export function estimateMessagesTokens(messages: ChatMessage[]): number {
   return messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0);
 }
 
+export interface SessionContextUsage {
+  usedTokens: number;
+  limitTokens: number;
+  remainingTokens: number;
+  usedPercent: number;
+  messageCount: number;
+}
+
+export function estimateSessionContextUsage(
+  messages: ChatMessage[],
+  model?: string
+): SessionContextUsage {
+  const usedTokens = Math.max(0, estimateMessagesTokens(messages));
+  const limitTokens = Math.max(1, getContextWindow(model));
+  const remainingTokens = Math.max(0, limitTokens - usedTokens);
+  const usedPercent = Math.min(100, Math.round((usedTokens / limitTokens) * 1000) / 10);
+  return {
+    usedTokens,
+    limitTokens,
+    remainingTokens,
+    usedPercent,
+    messageCount: messages.length,
+  };
+}
+
 export function computeAdaptiveChunkRatio(messages: ChatMessage[], contextWindow: number): number {
   if (messages.length === 0) return BASE_CHUNK_RATIO;
 
@@ -591,20 +616,20 @@ export async function persistSession(
     if (existing) {
       if (hasWorkspaceUpdate && hasTitleUpdate) {
         db.prepare(
-          "UPDATE chat_sessions SET workspace_dir = ?, title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-        ).run(normalizedWorkspaceDir, normalizedTitle, sessionId);
+          "UPDATE chat_sessions SET agent_id = ?, workspace_dir = ?, title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).run(agentId, normalizedWorkspaceDir, normalizedTitle, sessionId);
       } else if (hasWorkspaceUpdate) {
         db.prepare(
-          "UPDATE chat_sessions SET workspace_dir = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-        ).run(normalizedWorkspaceDir, sessionId);
+          "UPDATE chat_sessions SET agent_id = ?, workspace_dir = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).run(agentId, normalizedWorkspaceDir, sessionId);
       } else if (hasTitleUpdate) {
         db.prepare(
-          "UPDATE chat_sessions SET title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-        ).run(normalizedTitle, sessionId);
+          "UPDATE chat_sessions SET agent_id = ?, title = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).run(agentId, normalizedTitle, sessionId);
       } else {
-        db.prepare("UPDATE chat_sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
-          sessionId
-        );
+        db.prepare(
+          "UPDATE chat_sessions SET agent_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
+        ).run(agentId, sessionId);
       }
 
       if (!hasTitleUpdate && !existingTitle && derivedTitle) {
@@ -656,33 +681,22 @@ export async function loadPersistedSession(sessionId: string): Promise<{
       ...parseSessionMessageMetadata(m.metadata),
     }));
 
-    let agentId = (sessionMessages[0] as { agent_id?: string })?.agent_id;
-    let workspaceDir: string | null = null;
-    let title: string | null = null;
-    if (!agentId) {
-      const session = db
-        .prepare("SELECT agent_id, workspace_dir, title FROM chat_sessions WHERE id = ?")
-        .get(sessionId) as {
-        agent_id?: string;
-        workspace_dir?: string | null;
-        title?: string | null;
-      } | null;
-      agentId = session?.agent_id;
-      workspaceDir =
-        typeof session?.workspace_dir === "string" && session.workspace_dir.trim().length > 0
-          ? session.workspace_dir
-          : null;
-      title = normalizeSessionTitle(session?.title);
-    } else {
-      const session = db
-        .prepare("SELECT workspace_dir, title FROM chat_sessions WHERE id = ?")
-        .get(sessionId) as { workspace_dir?: string | null; title?: string | null } | null;
-      workspaceDir =
-        typeof session?.workspace_dir === "string" && session.workspace_dir.trim().length > 0
-          ? session.workspace_dir
-          : null;
-      title = normalizeSessionTitle(session?.title);
-    }
+    const session = db
+      .prepare("SELECT agent_id, workspace_dir, title FROM chat_sessions WHERE id = ?")
+      .get(sessionId) as {
+      agent_id?: string;
+      workspace_dir?: string | null;
+      title?: string | null;
+    } | null;
+    const agentId =
+      (typeof session?.agent_id === "string" && session.agent_id.trim()
+        ? session.agent_id.trim()
+        : undefined) || (sessionMessages[0] as { agent_id?: string })?.agent_id;
+    const workspaceDir =
+      typeof session?.workspace_dir === "string" && session.workspace_dir.trim().length > 0
+        ? session.workspace_dir
+        : null;
+    const title = normalizeSessionTitle(session?.title);
 
     log.debug("Loaded persisted session", { sessionId, messageCount: messages.length });
 
@@ -865,6 +879,15 @@ export async function setPersistedSessionTitle(
   const normalizedTitle = normalizeSessionTitle(title);
   tables.chatSessions.updateTitle(sessionId, normalizedTitle);
   return normalizedTitle;
+}
+
+export async function setPersistedSessionAgent(sessionId: string, agentId: string): Promise<boolean> {
+  const normalizedAgentId = nonEmptyString(agentId);
+  if (!normalizedAgentId) return false;
+  const result = db
+    .prepare("UPDATE chat_sessions SET agent_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+    .run(normalizedAgentId, sessionId);
+  return (result.changes ?? 0) > 0;
 }
 
 /** Returns true when a chat_sessions row was actually updated (i.e. it exists). */

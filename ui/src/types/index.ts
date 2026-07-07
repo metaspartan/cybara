@@ -266,6 +266,14 @@ export interface ChatMessage {
   _tool_calls_total_count?: number;
 }
 
+export interface SessionContextUsage {
+  usedTokens: number;
+  limitTokens: number;
+  remainingTokens: number;
+  usedPercent: number;
+  messageCount: number;
+}
+
 export interface ChatSession {
   id: string;
   agentId: string;

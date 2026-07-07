@@ -19,16 +19,19 @@ import {
   listPersistedSessions,
   loadPersistedSession,
   setPersistedSessionPinned,
+  setPersistedSessionAgent,
   shouldCompactContext,
   compactContext,
   persistSession,
   upsertPersistedSessionMessage,
   deletePersistedSession,
   estimateMessagesTokens,
+  estimateSessionContextUsage,
   getContextWindow,
   normalizeSessionWorkspaceDir,
   resolveSessionModelMetadata,
   type PersistedSessionListEntry,
+  type SessionContextUsage,
   type SessionModelMetadata,
 } from "../core/session-context";
 import {
@@ -123,6 +126,7 @@ export interface ChatResponse {
   sessionId: string;
   message: ChatMessage;
   workspaceDir?: string | null;
+  contextUsage?: SessionContextUsage;
   queued?: boolean;
   interrupted?: boolean;
   pendingMessage?: PendingChatMessageSnapshot;
@@ -146,6 +150,18 @@ interface InMemoryChatSession {
   persisted: boolean;
   compactionCount?: number; // Track compaction cycles for memory flush
   lastFlushCompactionCount?: number; // Last compaction cycle we flushed
+}
+
+export interface ChatSessionAgentUpdate {
+  success: true;
+  sessionId: string;
+  agentId: string;
+  agentName: string;
+  provider?: string;
+  providerId?: string;
+  providerName?: string;
+  model?: string;
+  contextUsage: SessionContextUsage;
 }
 
 interface SessionLastMessagePreview {
@@ -197,6 +213,33 @@ const pendingChatDrainScheduled = new Set<string>();
 const activeChatTurnAbortControllers = new Map<string, AbortController>();
 const interruptedChatTurnSteeringIds = new WeakMap<AbortController, string>();
 let pendingChatSequence = 0;
+
+function activeAgentSystemPrompt(agent: { system_prompt?: string | null; type?: string | null }) {
+  return (
+    (typeof agent.system_prompt === "string" && agent.system_prompt.trim()) ||
+    "You are a helpful AI assistant with access to tools. Use tools when needed to help the user."
+  );
+}
+
+function applyActiveAgentToSession(
+  session: InMemoryChatSession,
+  agent: { id: string; system_prompt?: string | null; type?: string | null }
+): void {
+  session.agentId = agent.id;
+  const prompt = activeAgentSystemPrompt(agent);
+  const firstMessage = session.messages[0];
+  if (firstMessage?.role === "system") {
+    firstMessage.content = prompt;
+    firstMessage.timestamp = firstMessage.timestamp || new Date().toISOString();
+  } else {
+    session.messages.unshift({
+      role: "system",
+      content: prompt,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  session.updatedAt = new Date().toISOString();
+}
 
 function isChatTurnInterrupted(error: unknown, signal?: AbortSignal): boolean {
   if (signal?.aborted) return true;
@@ -1515,6 +1558,25 @@ async function handleChatTurn(
     session.workspaceDir = requestedWorkspaceDir;
   }
 
+  const requestedAgentId =
+    typeof agentId === "string" && agentId.trim().length > 0 ? agentId.trim() : undefined;
+  if (requestedAgentId && requestedAgentId !== session.agentId) {
+    const requestedAgent = agentManager.get(requestedAgentId);
+    if (!requestedAgent) {
+      return {
+        sessionId: session.id,
+        workspaceDir: session.workspaceDir ?? null,
+        message: {
+          role: "assistant",
+          content: "Selected agent is unavailable. Choose another agent and try again.",
+          timestamp: new Date().toISOString(),
+        },
+      };
+    }
+    applyActiveAgentToSession(session, requestedAgent);
+    await setPersistedSessionAgent(session.id, requestedAgent.id);
+  }
+
   const agent = agentManager.get(session.agentId);
   const hookContext = {
     agentId: agent?.id,
@@ -2140,6 +2202,7 @@ async function handleChatTurn(
   return {
     sessionId: session.id,
     workspaceDir: session.workspaceDir ?? null,
+    contextUsage: estimateSessionContextUsage(session.messages, agent?.model),
     message: assistantMessage,
     agent: agent
       ? {
@@ -2216,6 +2279,61 @@ export async function getSession(sessionId: string) {
   }
 
   return undefined;
+}
+
+export async function updateSessionAgent(
+  sessionId: string,
+  agentId: string
+): Promise<ChatSessionAgentUpdate> {
+  const normalizedAgentId =
+    typeof agentId === "string" && agentId.trim().length > 0 ? agentId.trim() : "";
+  const agent = normalizedAgentId ? agentManager.get(normalizedAgentId) : undefined;
+  if (!agent) {
+    throw new Error("Agent not found");
+  }
+
+  await getSession(sessionId);
+  const session = chatSessions.get(sessionId);
+  if (!session) {
+    throw new Error("Session not found");
+  }
+
+  applyActiveAgentToSession(session, agent);
+  const persistedAgent = await setPersistedSessionAgent(session.id, agent.id);
+  if (!persistedAgent) {
+    session.persisted = await persistSession(
+      session.id,
+      session.agentId,
+      session.messages,
+      session.workspaceDir,
+      session.title
+    );
+  }
+
+  const modelMetadata = resolveSessionModelMetadata(agent.id);
+  upsertPersistedSessionIndex({
+    id: session.id,
+    agentId: session.agentId,
+    title: session.title,
+    messageCount: session.messages.length,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    workspaceDir: session.workspaceDir ?? null,
+    lastMessage: buildLastMessagePreview(session.messages[session.messages.length - 1]),
+    modelMetadata,
+  });
+
+  return {
+    success: true,
+    sessionId: session.id,
+    agentId: agent.id,
+    agentName: agent.name,
+    provider: modelMetadata?.provider,
+    providerId: modelMetadata?.provider_id,
+    providerName: modelMetadata?.provider_name,
+    model: modelMetadata?.model,
+    contextUsage: estimateSessionContextUsage(session.messages, agent.model),
+  };
 }
 
 export async function getSessionMessages(sessionId: string): Promise<ChatMessage[]> {

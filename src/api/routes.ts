@@ -71,6 +71,7 @@ import {
   listSessionPage,
   deleteSession,
   setSessionPinned,
+  updateSessionAgent,
   revertSessionToMessage,
   updateSessionWorkspace,
   updateSessionTitle,
@@ -82,6 +83,7 @@ import {
   updatePendingChatMessage,
   type ChatMessage,
 } from "../api/chat";
+import { estimateSessionContextUsage } from "../core/session-context";
 import {
   getToolSchemasForLLM,
   getDangerousToolNames,
@@ -4038,8 +4040,26 @@ const routes: Record<string, RouteHandler> = {
         "workspaceDir" in session && typeof session.workspaceDir === "string"
           ? session.workspaceDir
           : null,
+      contextUsage: estimateSessionContextUsage(messages, detailModelMetadata.model),
       messagesList: sanitizedMessages,
     };
+  },
+  "PUT /api/sessions/:sessionId/agent": async (body, params) => {
+    const data = (body || {}) as { agentId?: string; agent_id?: string };
+    const agentId =
+      typeof data.agentId === "string" && data.agentId.trim()
+        ? data.agentId.trim()
+        : typeof data.agent_id === "string" && data.agent_id.trim()
+          ? data.agent_id.trim()
+          : "";
+    try {
+      return await updateSessionAgent(params!.sessionId, agentId);
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to update session agent",
+      };
+    }
   },
   "PUT /api/sessions/:sessionId/title": async (body, params) => {
     const data = (body || {}) as { title?: string };

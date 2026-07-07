@@ -173,6 +173,7 @@ export type MobileDetailBackInput =
   | { kind: "modelRouter" }
   | { kind: "speech" }
   | { kind: "memory" }
+  | { kind: "journey" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey };
 

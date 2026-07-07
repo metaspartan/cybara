@@ -12,6 +12,7 @@ import {
   ApprovalSettingsPanel,
   ChannelSettingsPanel,
   GatewayManagementPanel,
+  JourneyPanel,
   MemorySettingsPanel,
   ModelRouterPanel,
   ProviderSettingsPanel,
@@ -126,6 +127,7 @@ import {
   type RemoteItemSummary,
   type RouterConfig,
   type RouterStatus,
+  type SessionContextUsage,
   type SessionDetailSummary,
   type SessionSummary,
   type SystemPromptFeatureKey,
@@ -273,6 +275,7 @@ type DetailRoute =
   | { kind: "modelRouter" }
   | { kind: "speech" }
   | { kind: "memory" }
+  | { kind: "journey" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey; item: RemoteItemSummary | ActivitySummary };
 
@@ -592,6 +595,9 @@ function routeHeader(
   if (route.kind === "memory") {
     return { title: "Memory", detail: "Memory provider, learning, and indexing" };
   }
+  if (route.kind === "journey") {
+    return { title: "Journey", detail: "Skills and memories learned over time" };
+  }
   if (route.kind === "surface") {
     const meta = surfaceMeta[route.surface];
     return { title: meta.title, detail: "Live gateway data" };
@@ -820,6 +826,11 @@ export function DashboardScreen({
     setActiveTab("settings");
     setDetailRoute({ kind: "memory" });
   };
+  const openJourney = () => {
+    setChatHeaderAction(null);
+    setActiveTab("settings");
+    setDetailRoute({ kind: "journey" });
+  };
   const openModelRouter = () => {
     setChatHeaderAction(null);
     setActiveTab("settings");
@@ -969,6 +980,7 @@ export function DashboardScreen({
         <SessionDetailPanel
           accentColor={accentColor}
           api={api}
+          agents={summary?.agents ?? []}
           closeDetail={closeDetailRoute}
           refreshSummary={() => refresh(false)}
           sessionSummary={
@@ -1076,6 +1088,7 @@ export function DashboardScreen({
               openModelRouter={openModelRouter}
               openSpeech={openSpeech}
               openMemory={openMemory}
+              openJourney={openJourney}
             />
           ) : null}
         </ScrollView>
@@ -1813,6 +1826,7 @@ function DetailContent({
       <SessionDetailPanel
         accentColor={accentColor}
         api={api}
+        agents={summary?.agents ?? []}
         closeDetail={closeDetail}
         refreshSummary={refreshSummary}
         sessionSummary={summary?.sessions.find((session) => session.id === route.id) ?? null}
@@ -1879,6 +1893,9 @@ function DetailContent({
       />
     );
   }
+  if (route.kind === "journey") {
+    return <JourneyPanel accentColor={accentColor} api={api} />;
+  }
   if (route.kind === "item") {
     return (
       <ItemDetailPanel
@@ -1909,6 +1926,7 @@ function DetailContent({
 function SessionDetailPanel({
   accentColor,
   api,
+  agents,
   closeDetail,
   refreshSummary,
   sessionSummary,
@@ -1917,6 +1935,7 @@ function SessionDetailPanel({
 }: {
   accentColor: string;
   api: CybaraMobileApi;
+  agents: AgentSummary[];
   closeDetail: () => void;
   refreshSummary: () => void;
   sessionSummary?: SessionSummary | null;
@@ -1960,6 +1979,7 @@ function SessionDetailPanel({
   const [editingPendingDraft, setEditingPendingDraft] = useState("");
   const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
   const [pinning, setPinning] = useState(false);
+  const [agentUpdating, setAgentUpdating] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
   const headerActionRef = useRef<() => void>(() => {});
   const sessionRefreshInFlight = useRef(false);
@@ -2343,6 +2363,7 @@ function SessionDetailPanel({
           ? {
               ...current,
               workspaceDir: result.workspaceDir ?? current.workspaceDir,
+              contextUsage: result.contextUsage ?? current.contextUsage,
               messages: [
                 ...current.messages.filter((entry) => entry.id !== liveAssistant?.id),
                 result.message,
@@ -2578,6 +2599,87 @@ function SessionDetailPanel({
     } finally {
       setPinning(false);
     }
+  };
+
+  const currentAgentId = mobileFirstNonEmptyString(detail?.agentId, sessionSummary?.agent_id) || "";
+  const selectedAgent = agents.find((agent) => agent.id === currentAgentId);
+  const agentOptions = useMemo(
+    () => [
+      { label: "Gateway default", value: "" },
+      ...agents.map((agent) => ({
+        label: agent.model ? `${agent.name} - ${agent.model}` : agent.name,
+        value: agent.id,
+      })),
+    ],
+    [agents]
+  );
+  const contextUsage = detail?.contextUsage;
+  const contextPercent = contextUsage ? Math.min(100, Math.max(0, contextUsage.usedPercent)) : 0;
+  const contextTone =
+    contextPercent >= 90 ? colors.red : contextPercent >= 70 ? colors.amber : colors.green;
+
+  const changeSessionAgent = async (agentId: string) => {
+    if (!agentId || agentId === currentAgentId || agentUpdating) return;
+    setAgentUpdating(true);
+    haptics.select();
+    try {
+      const result = await api.updateSessionAgent(sessionId, agentId);
+      if (!result.success) {
+        throw new Error(result.error || "Failed to update session agent.");
+      }
+      setDetail((current) =>
+        current
+          ? {
+              ...current,
+              agentId: result.agentId ?? agentId,
+              provider: result.provider ?? current.provider,
+              providerId: result.providerId ?? current.providerId,
+              providerName: result.providerName ?? current.providerName,
+              model: result.model ?? current.model,
+              contextUsage: result.contextUsage ?? current.contextUsage,
+            }
+          : current
+      );
+      refreshSummary();
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setAgentUpdating(false);
+    }
+  };
+
+  const openAgentSelector = () => {
+    if (agentUpdating || agents.length === 0) return;
+    haptics.select();
+    if (Platform.OS === "ios") {
+      const labels = agentOptions.map((option) => option.label);
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: "Chat agent",
+          options: [...labels, "Cancel"],
+          cancelButtonIndex: labels.length,
+        },
+        (index) => {
+          const option = agentOptions[index];
+          if (option?.value) void changeSessionAgent(option.value);
+        }
+      );
+      return;
+    }
+    Alert.alert(
+      "Chat agent",
+      "Choose the agent that should continue this conversation.",
+      agentOptions
+        .filter((option) => option.value)
+        .slice(0, 8)
+        .map((option) => ({
+          text: option.label,
+          onPress: () => {
+            void changeSessionAgent(option.value);
+          },
+        }))
+        .concat([{ text: "Cancel", style: "cancel" }])
+    );
   };
 
   const showChatActions = () => {
@@ -2840,6 +2942,45 @@ function SessionDetailPanel({
         contentStyle={styles.chatComposerContent}
         style={[styles.chatComposerBar, { bottom: composerBottom }]}
       >
+        <View style={styles.composerMetaRow}>
+          <Pressable
+            accessibilityLabel={`Context usage: ${mobileContextUsageDetail(contextUsage)}`}
+            accessibilityRole="button"
+            onPress={() => Alert.alert("Context", mobileContextUsageDetail(contextUsage))}
+            style={styles.contextUsageButton}
+          >
+            <View
+              style={[
+                styles.contextUsageCircle,
+                { borderColor: contextTone, backgroundColor: `${contextTone}18` },
+              ]}
+            >
+              <Text style={[styles.contextUsageCircleText, { color: contextTone }]}>
+                {contextUsage ? `${Math.round(contextPercent)}%` : "?"}
+              </Text>
+            </View>
+          </Pressable>
+          <Pressable
+            accessibilityLabel="Change chat agent"
+            accessibilityRole="button"
+            disabled={agentUpdating || agents.length === 0}
+            onPress={openAgentSelector}
+            style={[styles.composerAgentButton, agentUpdating ? { opacity: 0.72 } : null]}
+          >
+            {agentUpdating ? (
+              <ActivityIndicator color={colors.textMuted} size="small" />
+            ) : (
+              <Bot color={accentColor} size={15} strokeWidth={2.3} />
+            )}
+            <Text numberOfLines={1} style={styles.composerAgentText}>
+              {selectedAgent?.name ?? "Gateway default"}
+            </Text>
+            <ChevronDown color={colors.textDim} size={14} strokeWidth={2.4} />
+          </Pressable>
+          <Text numberOfLines={1} style={styles.composerModelText}>
+            {detail?.model ?? selectedAgent?.model ?? "Gateway routing"}
+          </Text>
+        </View>
         <View
           style={styles.composer}
           onLayout={(event) =>
@@ -2944,6 +3085,22 @@ function compactWorkspace(value?: string | null): string {
   const parts = value.split(/[\\/]/).filter(Boolean);
   if (parts.length <= 2) return value;
   return `.../${parts.slice(-2).join("/")}`;
+}
+
+function mobileFormatTokenCount(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(value) >= 1_000) return `${Math.round(value / 1_000)}k`;
+  return String(Math.max(0, Math.round(value)));
+}
+
+function mobileContextUsageDetail(usage?: SessionContextUsage): string {
+  if (!usage) return "Context usage is available after the session loads from the gateway.";
+  return `${mobileFormatTokenCount(usage.usedTokens)} of ${mobileFormatTokenCount(
+    usage.limitTokens
+  )} tokens used (${usage.usedPercent}%). ${mobileFormatTokenCount(
+    usage.remainingTokens
+  )} tokens remaining.`;
 }
 
 function TasksPanel({
@@ -3368,6 +3525,7 @@ function SettingsPanel({
   openModelRouter,
   openSpeech,
   openMemory,
+  openJourney,
 }: {
   accentColor: string;
   accentKey: AccentKey;
@@ -3384,6 +3542,7 @@ function SettingsPanel({
   openModelRouter: () => void;
   openSpeech: () => void;
   openMemory: () => void;
+  openJourney: () => void;
 }) {
   const counts = summarizeFeatureCounts(summary);
   const { mode: appearanceMode, setMode: setAppearanceMode } = useThemeControls();
@@ -3849,6 +4008,22 @@ function SettingsPanel({
                 {configAvailable
                   ? "Memory provider, learning loop, and indexing"
                   : endpointStatusLabel(summary?.availability.config)}
+              </Text>
+            </View>
+            <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            style={styles.settingsNavigationRow}
+            onPress={openJourney}
+          >
+            <View style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}>
+              <Sparkles color={accentColor} size={20} strokeWidth={2.1} />
+            </View>
+            <View style={styles.listText}>
+              <Text style={styles.listTitle}>Journey</Text>
+              <Text style={styles.listDetail} numberOfLines={1}>
+                Skills and memories your agent has learned over time
               </Text>
             </View>
             <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />

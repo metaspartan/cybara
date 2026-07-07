@@ -62,6 +62,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
     case providers
     case tasks
     case metrics
+    case journey
     case settings
     case webUI
 
@@ -76,6 +77,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .providers: return "Providers"
         case .tasks: return "Tasks"
         case .metrics: return "Metrics"
+        case .journey: return "Journey"
         case .settings: return "Settings"
         case .webUI: return "Web UI"
         }
@@ -90,6 +92,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .providers: return "shippingbox"
         case .tasks: return "calendar.badge.clock"
         case .metrics: return "chart.bar"
+        case .journey: return "sparkles"
         case .settings: return "gearshape"
         case .webUI: return "globe"
         }
@@ -180,7 +183,7 @@ struct ContentView: View {
 
             List(selection: $destination) {
                 Section {
-                    ForEach([NativeDestination.dashboard, .chat, .agents, .providers, .tasks, .metrics, .mobile]) { item in
+                    ForEach([NativeDestination.dashboard, .chat, .agents, .providers, .tasks, .metrics, .journey, .mobile]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -224,6 +227,8 @@ struct ContentView: View {
                 }
             case .metrics:
                 MetricsScreen(client: client)
+            case .journey:
+                JourneyScreen(client: client)
             case .settings:
                 NativeSettingsScreen(client: client) { key in
                     accent = CybaraAccent.color(for: key)

@@ -334,7 +334,7 @@ describe("Chat live activity persistence", () => {
   test("keeps sessions panel open on session switch/new session callbacks", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
     expect(source).toContain("setShowSessionsPanel(true);");
-    expect(source).toContain("onLoadSession={(id, msgs, loadedWorkspaceDir, loadedAgentId) => {");
+    expect(source).toContain("onLoadSession={(id, msgs, loadedWorkspaceDir, loadedAgentId");
     expect(source).toContain("syncSessionAgentSelection(loadedAgentId);");
     expect(source).toContain("onNewSession={() => {");
     expect(source).toContain("setSessionAgentId(null);");

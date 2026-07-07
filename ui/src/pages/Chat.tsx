@@ -53,6 +53,7 @@ import {
   useLoadSession,
   useRenameSession,
   usePinSession,
+  useUpdateSessionAgent,
 } from "@/hooks/useChat";
 import {
   useAgents,
@@ -64,6 +65,7 @@ import {
   type Subagent,
 } from "@/hooks/useApi";
 import { chatApi, settingsApi } from "@/lib/api";
+import type { Agent, SessionContextUsage } from "@/types";
 import { PageLayout } from "@/components/layout";
 import { GlassCard, GlassButton, Input, Badge, Modal, Button } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
@@ -206,6 +208,84 @@ function formatWorkedDuration(durationMs: number): string {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
+}
+
+function formatTokenCount(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(value) >= 1_000) return `${Math.round(value / 1_000)}k`;
+  return String(Math.max(0, Math.round(value)));
+}
+
+function contextUsageLabel(usage?: SessionContextUsage | null): string {
+  if (!usage) return "Context usage unavailable until this session is loaded.";
+  return `${formatTokenCount(usage.usedTokens)} of ${formatTokenCount(
+    usage.limitTokens
+  )} tokens used (${usage.usedPercent}%). ${formatTokenCount(
+    usage.remainingTokens
+  )} tokens remaining.`;
+}
+
+function ContextUsageRing({ usage }: { usage?: SessionContextUsage | null }) {
+  const percent = usage ? Math.min(100, Math.max(0, usage.usedPercent)) : 0;
+  const color = percent >= 90 ? "#f87171" : percent >= 70 ? "#fbbf24" : "#34d399";
+  const title = contextUsageLabel(usage);
+  return (
+    <div
+      aria-label={title}
+      title={title}
+      className="h-5 w-5 shrink-0 rounded-full p-[2px]"
+      style={{
+        background: `conic-gradient(${color} ${percent * 3.6}deg, rgba(255,255,255,0.18) 0deg)`,
+      }}
+    >
+      <div className="h-full w-full rounded-full bg-[#11131c]" />
+    </div>
+  );
+}
+
+function ChatAgentControls({
+  agents,
+  selectedAgentId,
+  contextUsage,
+  onSelectAgent,
+  updating,
+}: {
+  agents: Agent[];
+  selectedAgentId?: string;
+  contextUsage?: SessionContextUsage | null;
+  onSelectAgent: (agentId?: string) => void;
+  updating?: boolean;
+}) {
+  const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
+  const routeLabel = selectedAgent?.model || "Gateway default";
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2 px-1 pb-2">
+      <ContextUsageRing usage={contextUsage} />
+      <label className="sr-only" htmlFor="chat-agent-selector">
+        Chat agent
+      </label>
+      <select
+        id="chat-agent-selector"
+        value={selectedAgentId || ""}
+        disabled={updating}
+        onChange={(event) => onSelectAgent(event.target.value || undefined)}
+        className="max-w-[220px] rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-[12px] text-white outline-none transition-colors [color-scheme:dark] hover:bg-white/[0.08] focus:border-white/25 disabled:opacity-60"
+      >
+        <option value="" className="bg-[#11131c] text-white">
+          Gateway default
+        </option>
+        {agents.map((agent) => (
+          <option key={agent.id} value={agent.id} className="bg-[#11131c] text-white">
+            {agent.name}
+          </option>
+        ))}
+      </select>
+      <span className="min-w-0 max-w-[260px] truncate text-[11px] text-gray-400">
+        {updating ? "Updating agent..." : routeLabel}
+      </span>
+    </div>
+  );
 }
 
 function parseTimestampMs(value: unknown): number | undefined {
@@ -1389,7 +1469,8 @@ function SessionsPanel({
     sessionId: string,
     messages: ChatMessage[],
     workspaceDir?: string | null,
-    agentId?: string | null
+    agentId?: string | null,
+    contextUsage?: SessionContextUsage | null
   ) => void;
   onNewSession: () => void;
 }) {
@@ -1474,7 +1555,8 @@ function SessionsPanel({
           sessionId,
           result.messagesList as ChatMessage[],
           (result as { workspace_dir?: string | null }).workspace_dir || null,
-          (result as { agent_id?: string | null }).agent_id || null
+          (result as { agent_id?: string | null }).agent_id || null,
+          (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
         );
       }
     } catch (error) {
@@ -1945,6 +2027,7 @@ export function Chat() {
     [typedMessages, turnStartedAtMsByIndex]
   );
   const loadSessionMutation = useLoadSession();
+  const updateSessionAgent = useUpdateSessionAgent();
   // Always-fresh callback so the SSE effect can refresh the open session's
   // persisted messages without re-subscribing on every render.
   const refreshSessionMessagesRef = useRef<(sid: string) => Promise<void>>(() => Promise.resolve());
@@ -2009,6 +2092,7 @@ export function Chat() {
   // reply appears when the turn completes — consistent across all providers.
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [pendingMessages, setPendingMessages] = useState<PendingChatMessage[]>([]);
+  const [sessionContextUsage, setSessionContextUsage] = useState<SessionContextUsage | null>(null);
   const [steeringMessageId, setSteeringMessageId] = useState<string | null>(null);
   const [pendingMessageMutationId, setPendingMessageMutationId] = useState<string | null>(null);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
@@ -2110,6 +2194,50 @@ export function Chat() {
     if (selectedAgentId === nextSelected) return;
     setSelectedAgentId(nextSelected);
   }, [resolveSelectableSessionAgentId, selectedAgentId, sessionAgentId]);
+
+  const handleSelectAgent = useCallback(
+    async (agentId?: string) => {
+      const previousSelectedAgentId = selectedAgentId;
+      const previousSessionAgentId = sessionAgentId;
+      const nextAgentId = resolveSelectableSessionAgentId(agentId);
+      setSelectedAgentId(nextAgentId);
+
+      if (!nextAgentId) {
+        if (!sessionId) {
+          setSessionAgentId(null);
+          setSessionContextUsage(null);
+        }
+        return;
+      }
+
+      if (!sessionId) {
+        setSessionAgentId(nextAgentId);
+        setSessionContextUsage(null);
+        return;
+      }
+
+      try {
+        const updated = await updateSessionAgent.mutateAsync({
+          sessionId,
+          agentId: nextAgentId,
+        });
+        syncSessionAgentSelection(updated.agentId);
+        setSessionContextUsage(updated.contextUsage ?? null);
+      } catch (error) {
+        setSelectedAgentId(previousSelectedAgentId);
+        setSessionAgentId(previousSessionAgentId);
+        console.error("Failed to update session agent:", error);
+      }
+    },
+    [
+      resolveSelectableSessionAgentId,
+      selectedAgentId,
+      sessionAgentId,
+      sessionId,
+      syncSessionAgentSelection,
+      updateSessionAgent,
+    ]
+  );
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -2706,6 +2834,7 @@ export function Chat() {
       setLiveCurrentStep(null);
       setStreamingContent("");
       setPendingMessages([]);
+      setSessionContextUsage(null);
       persistSessionId(null);
       clearChat();
       if (options?.resetAgentSelection) {
@@ -2810,6 +2939,9 @@ export function Chat() {
             sid,
             result.messagesList as ChatMessage[],
             (result as { workspace_dir?: string | null }).workspace_dir || null
+          );
+          setSessionContextUsage(
+            (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
           );
         }
       } catch {
@@ -3144,6 +3276,10 @@ export function Chat() {
           responseAgent && typeof responseAgent.id === "string" ? responseAgent.id : null;
         syncSessionAgentSelection(resolvedAgentId);
       }
+      if (response && typeof response === "object" && "contextUsage" in response) {
+        const usage = (response as { contextUsage?: SessionContextUsage }).contextUsage;
+        setSessionContextUsage(usage ?? null);
+      }
     } catch (error) {
       if (optimisticPendingMessageId) {
         setPendingMessages((previous) =>
@@ -3227,6 +3363,9 @@ export function Chat() {
               );
               syncSessionAgentSelection(
                 (refreshed as { agent_id?: string | null }).agent_id || null
+              );
+              setSessionContextUsage(
+                (refreshed as { contextUsage?: SessionContextUsage | null }).contextUsage || null
               );
             }
           }
@@ -3858,6 +3997,9 @@ export function Chat() {
           (result as { workspace_dir?: string | null }).workspace_dir || null
         );
         syncSessionAgentSelection((result as { agent_id?: string | null }).agent_id || null);
+        setSessionContextUsage(
+          (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
+        );
         void hydrateSessionStatus(targetSessionId);
         if (options?.replaceRoute) {
           window.history.replaceState({}, "", "/chat");
@@ -3966,18 +4108,6 @@ export function Chat() {
           )}
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
-          <select
-            value={selectedAgentId || ""}
-            onChange={(e) => setSelectedAgentId(e.target.value || undefined)}
-            className="text-[12px] bg-white/5 border border-white/10 rounded-lg px-2 py-1.5 text-white !outline-none focus:border-white/20 cursor-pointer"
-          >
-            <option value="">Default</option>
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
           <button
             onClick={() => void handleSelectWorkspace()}
             disabled={workspaceSaving}
@@ -4042,10 +4172,11 @@ export function Chat() {
             currentSessionId={sessionId}
             activeSessionIds={activeSessionIds}
             currentSessionLoading={isLoading}
-            onLoadSession={(id, msgs, loadedWorkspaceDir, loadedAgentId) => {
+            onLoadSession={(id, msgs, loadedWorkspaceDir, loadedAgentId, loadedContextUsage) => {
               suppressAutoRestoreRef.current = false;
               loadSession(id, msgs, loadedWorkspaceDir);
               syncSessionAgentSelection(loadedAgentId);
+              setSessionContextUsage(loadedContextUsage ?? null);
             }}
             onNewSession={() => {
               resetChatSession({ resetAgentSelection: true });
@@ -4302,6 +4433,13 @@ export function Chat() {
                     </span>
                   </div>
                 )}
+                <ChatAgentControls
+                  agents={agents}
+                  selectedAgentId={selectedAgentId}
+                  contextUsage={sessionContextUsage}
+                  onSelectAgent={(agentId) => void handleSelectAgent(agentId)}
+                  updating={updateSessionAgent.isPending}
+                />
                 <div className="flex items-end gap-2 sm:gap-3">
                   <textarea
                     ref={inputRef}
@@ -4411,6 +4549,9 @@ export function Chat() {
                   );
                   syncSessionAgentSelection(
                     (result as { agent_id?: string | null }).agent_id || null
+                  );
+                  setSessionContextUsage(
+                    (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
                   );
                   setShowSubagentPanel(false);
                 }

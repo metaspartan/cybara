@@ -354,6 +354,23 @@ export function usePinSession() {
   });
 }
 
+export function useUpdateSessionAgent() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ sessionId, agentId }: { sessionId: string; agentId: string }) => {
+      const response = await chatApi.updateSessionAgent(sessionId, agentId);
+      if (response.success && response.data?.success) {
+        return response.data;
+      }
+      throw new Error(extractApiError(response, "Failed to update session agent"));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions"] });
+    },
+  });
+}
+
 export function useLoadSession() {
   return useMutation({
     mutationFn: async (sessionId: string) => {
