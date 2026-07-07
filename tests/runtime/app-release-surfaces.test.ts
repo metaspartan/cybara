@@ -13,6 +13,7 @@ describe("app release surface wiring", () => {
   test("CI quality gates sync mobile release metadata before checks", () => {
     const ciWorkflow = read(".github/workflows/ci.yml");
     const releaseWorkflow = read(".github/workflows/release.yml");
+    const versionWorkflow = read(".github/workflows/main-version-tag.yml");
 
     expect(ciWorkflow).toContain('CYBARA_RELEASE_VERSION="$VERSION" bun run version:sync');
     expect(ciWorkflow.indexOf("name: Sync version metadata")).toBeLessThan(
@@ -20,6 +21,10 @@ describe("app release surface wiring", () => {
     );
     expect(releaseWorkflow.indexOf("name: Sync version metadata")).toBeLessThan(
       releaseWorkflow.indexOf("name: Run CI checks")
+    );
+    expect(versionWorkflow).toContain("apps/mobile/app.json");
+    expect(versionWorkflow).toContain(
+      "git add package.json ui/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json apps/mobile/app.json"
     );
   });
 

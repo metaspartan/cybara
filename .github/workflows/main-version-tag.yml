@@ -46,14 +46,14 @@ jobs:
 
       - name: Commit synced version
         run: |
-          if git diff --quiet -- package.json ui/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json; then
+          if git diff --quiet -- package.json ui/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json apps/mobile/app.json; then
             echo "No version changes to commit."
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json ui/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+          git add package.json ui/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json apps/mobile/app.json
           git commit -m "chore: sync release version to v${{ steps.version.outputs.value }} [skip ci]"
           git push
 
