@@ -7,10 +7,12 @@ import { resetSessionGoalsForTests } from "../../src/core/session-goals";
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
 const createdSessionIds: string[] = [];
-const originalFetch = globalThis.fetch;
+const originalExecute = agentManager.execute.bind(agentManager);
+const originalCallLLM = agentManager.callLLM.bind(agentManager);
 
 afterEach(async () => {
-  globalThis.fetch = originalFetch;
+  agentManager.execute = originalExecute as typeof agentManager.execute;
+  agentManager.callLLM = originalCallLLM as typeof agentManager.callLLM;
   resetSessionGoalsForTests();
   for (const sessionId of createdSessionIds.splice(0)) await deleteSession(sessionId);
   for (const agentId of createdAgentIds.splice(0)) agentManager.delete(agentId);
@@ -39,11 +41,11 @@ function createGoalTestAgent() {
 
 describe("chat goal commands", () => {
   test("/goal is handled locally without calling the model", async () => {
-    let fetchCalled = false;
-    globalThis.fetch = (async () => {
-      fetchCalled = true;
-      return new Response("{}", { status: 500 });
-    }) as typeof fetch;
+    let executeCalled = false;
+    agentManager.execute = (async () => {
+      executeCalled = true;
+      throw new Error("goal command should not execute the model");
+    }) as typeof agentManager.execute;
 
     const sessionId = `goal-local-${Date.now()}`;
     createdSessionIds.push(sessionId);
@@ -56,41 +58,20 @@ describe("chat goal commands", () => {
     expect(result.sessionId).toBe(sessionId);
     expect(result.message.role).toBe("assistant");
     expect(result.message.content).toBe("Goal started: fix CI");
-    expect(fetchCalled).toBe(false);
+    expect(executeCalled).toBe(false);
   });
 
   test("active goals are injected into execution context without persisting as chat text", async () => {
     const agent = createGoalTestAgent();
-    const requestBodies: Array<{ messages?: Array<{ role?: string; content?: string }> }> = [];
-    let call = 0;
+    const executionBatches: Array<Array<{ role: string; content: string }>> = [];
 
-    globalThis.fetch = (async (_url, init) => {
-      call += 1;
-      const body = JSON.parse(String(init?.body || "{}"));
-      requestBodies.push(body);
-      const isTitleCall = body.messages?.some((message: { content?: string }) =>
-        String(message.content || "").includes("Generate the best session title now")
-      );
-      return new Response(
-        JSON.stringify({
-          id: `goal-response-${call}`,
-          object: "chat.completion",
-          model: "gpt-goal-command",
-          choices: [
-            {
-              index: 0,
-              finish_reason: "stop",
-              message: {
-                role: "assistant",
-                content: isTitleCall ? "Goal Session" : "goal-aware reply",
-              },
-            },
-          ],
-          usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      );
-    }) as typeof fetch;
+    agentManager.execute = (async (_agentId, messages) => {
+      executionBatches.push(messages.map((message) => ({ ...message })));
+      return { content: "goal-aware reply" };
+    }) as typeof agentManager.execute;
+    agentManager.callLLM = (async () => ({
+      content: "Goal Session",
+    })) as typeof agentManager.callLLM;
 
     const sessionId = `goal-context-${Date.now()}`;
     createdSessionIds.push(sessionId);
@@ -104,14 +85,14 @@ describe("chat goal commands", () => {
     });
 
     expect(result.message.content).toBe("goal-aware reply");
-    const executionBody = requestBodies.find((body) =>
-      body.messages?.some((message) =>
+    const executionMessages = executionBatches.find((batch) =>
+      batch.some((message) =>
         String(message.content || "").includes("Active goal: finish the security audit")
       )
     );
-    expect(executionBody).toBeTruthy();
+    expect(executionMessages).toBeTruthy();
     expect(
-      executionBody?.messages?.find((message) =>
+      executionMessages?.find((message) =>
         String(message.content || "").includes("Active goal: finish the security audit")
       )?.role
     ).toBe("system");

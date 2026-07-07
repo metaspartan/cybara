@@ -193,13 +193,10 @@ import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../core/st
 import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbox";
 import { workspaceIndexer } from "../core/workspace-indexer";
 import { normalizeTimestamp, getCombinedLogs, getCombinedLogsPage, getLogStats } from "./queries";
+import { setOAuthCallback, deleteOAuthCallback, consumeOAuthCallback } from "./oauth-callbacks";
 
 const log = createLogger("API");
 
-const oauthCallbacks = new Map<
-  string,
-  { status: string; access_token?: string; refresh_token?: string; error?: string }
->();
 
 function validateProviderCredentialShape(
   providerType: string,
@@ -1740,10 +1737,10 @@ const routes: Record<string, RouteHandler> = {
         const error = url.searchParams.get("error");
 
         if (error) {
-          oauthCallbacks.set(state, { status: "error", error });
+          setOAuthCallback(state, { status: "error", error });
           setTimeout(() => {
             callbackServer.stop();
-            oauthCallbacks.delete(state);
+            deleteOAuthCallback(state);
           }, 5000);
           return new Response(
             renderOAuthCallbackHtml("Authorization failed", "You can close this tab.", "error"),
@@ -1752,13 +1749,13 @@ const routes: Record<string, RouteHandler> = {
         }
 
         if (!code || returnedState !== state) {
-          oauthCallbacks.set(state, {
+          setOAuthCallback(state, {
             status: "error",
             error: "Invalid callback (state mismatch)",
           });
           setTimeout(() => {
             callbackServer.stop();
-            oauthCallbacks.delete(state);
+            deleteOAuthCallback(state);
           }, 5000);
           return new Response("Invalid callback", { status: 400 });
         }
@@ -1785,13 +1782,13 @@ const routes: Record<string, RouteHandler> = {
           const tokenData = (await tokenRes.json()) as Record<string, unknown>;
 
           if (tokenData.access_token && typeof tokenData.access_token === "string") {
-            oauthCallbacks.set(state, {
+            setOAuthCallback(state, {
               status: "success",
               access_token: tokenData.access_token as string,
               refresh_token: (tokenData.refresh_token as string) || undefined,
             });
           } else {
-            oauthCallbacks.set(state, {
+            setOAuthCallback(state, {
               status: "error",
               error:
                 (tokenData.error_description as string) ||
@@ -1800,12 +1797,12 @@ const routes: Record<string, RouteHandler> = {
             });
           }
         } catch (err) {
-          oauthCallbacks.set(state, { status: "error", error: String(err) });
+          setOAuthCallback(state, { status: "error", error: String(err) });
         }
 
         setTimeout(() => {
           callbackServer.stop();
-          oauthCallbacks.delete(state);
+          deleteOAuthCallback(state);
         }, 5000);
         return new Response(
           renderOAuthCallbackHtml(
@@ -1818,7 +1815,7 @@ const routes: Record<string, RouteHandler> = {
       },
     });
 
-    oauthCallbacks.set(state, { status: "pending" });
+    setOAuthCallback(state, { status: "pending" });
 
     const authParams = new URLSearchParams({
       response_type: "code",
@@ -1848,7 +1845,7 @@ const routes: Record<string, RouteHandler> = {
 
     setTimeout(() => {
       callbackServer.stop();
-      oauthCallbacks.delete(state);
+      deleteOAuthCallback(state);
     }, 600_000);
 
     log.info(
@@ -1864,7 +1861,7 @@ const routes: Record<string, RouteHandler> = {
 
   "POST /api/providers/oauth/callback-status": async (body) => {
     const { state } = body as { state: string };
-    const result = oauthCallbacks.get(state);
+    const result = consumeOAuthCallback(state);
     if (!result) {
       return { status: "not_found" };
     }
