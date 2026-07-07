@@ -49,6 +49,12 @@ struct GatewayClient: Sendable {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    static func loadGatewayPassword() -> String? {
+        let trimmed = UserDefaults.standard.string(forKey: "cybara_gateway_password")?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
     func request(
         _ path: String,
         method: String = "GET",
@@ -67,6 +73,9 @@ struct GatewayClient: Sendable {
         req.timeoutInterval = 120
         if let key = Self.loadAPIKey() {
             req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        }
+        if let password = Self.loadGatewayPassword() {
+            req.setValue(password, forHTTPHeaderField: "X-Cybara-Gateway-Password")
         }
         if let body {
             req.httpBody = body
@@ -777,6 +786,9 @@ final class GatewayStatusStream: ObservableObject {
             request.timeoutInterval = 3600
             if let key = GatewayClient.loadAPIKey() {
                 request.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+            }
+            if let password = GatewayClient.loadGatewayPassword() {
+                request.setValue(password, forHTTPHeaderField: "X-Cybara-Gateway-Password")
             }
             while !Task.isCancelled {
                 do {

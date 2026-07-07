@@ -13,6 +13,7 @@ import type {
   Session,
   Tool,
   MobileDevice,
+  MobileDevicePairing,
   MobileConnectInfo,
   MobilePairing,
 } from "../types";
@@ -318,7 +319,24 @@ export function useCreateMobileDevice() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (data: { deviceName?: string; gatewayName?: string; baseUrl: string }) =>
-      fetchApi<MobilePairing>("/mobile/devices", {
+      fetchApi<MobileDevicePairing>("/mobile/devices", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["mobile", "devices"] }),
+  });
+}
+
+export function useCreateMobilePairingCode() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: {
+      deviceName?: string;
+      gatewayName?: string;
+      baseUrl: string;
+      role?: "standard" | "readonly" | "full";
+    }) =>
+      fetchApi<MobilePairing>("/mobile/devices/pair-code", {
         method: "POST",
         body: JSON.stringify(data),
       }),

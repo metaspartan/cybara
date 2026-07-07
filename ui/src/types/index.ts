@@ -404,10 +404,26 @@ export interface MobileConnectInfo {
   exposeCommand: string;
 }
 
-export interface MobilePairing {
+export interface MobileDevicePairing {
   success: boolean;
   device: MobileDevice;
   payload: MobileConnectPayload;
+  encoded: string;
+  qrDataUrl: string;
+}
+
+export interface MobilePairing {
+  success: boolean;
+  code: string;
+  expiresAt: number;
+  payload: {
+    protocol: "cybara-mobile-pair-v1";
+    name: string;
+    baseUrl: string;
+    code: string;
+    role?: string;
+    expiresAt: number;
+  };
   encoded: string;
   qrDataUrl: string;
 }

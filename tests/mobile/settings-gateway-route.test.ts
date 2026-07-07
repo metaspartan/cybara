@@ -45,7 +45,10 @@ describe("mobile settings: Gateway runtime controls", () => {
     expect(api).toContain('"/api/auth/key"');
     expect(api).toContain('"/api/auth/rotate-key"');
     expect(api).toContain("setApiKey(apiKey: string)");
+    expect(api).toContain("setGatewayPassword(gatewayPassword?: string)");
+    expect(api).toContain('"X-Cybara-Gateway-Password"');
     expect(api).toContain("interface GatewayAuthSettings");
+    expect(screen).toContain("Gateway Password");
     expect(api).toContain("interface GatewayRestartResponse");
   });
 });

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
+  Clock,
   Copy,
   Plus,
   QrCode,
@@ -12,12 +14,12 @@ import {
 import { PageLayout } from "@/components/layout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Input, Select } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import {
   useMobileConnectInfo,
-  useCreateMobileDevice,
+  useCreateMobilePairingCode,
   useDeleteMobileDevice,
   useMobileDevices,
   useRevokeMobileDevice,
@@ -40,11 +42,12 @@ export function Mobile() {
   const { addToast } = useUIStore();
   const { data: connectInfoData } = useMobileConnectInfo();
   const { data, isLoading, refetch, isFetching } = useMobileDevices();
-  const createMobileDevice = useCreateMobileDevice();
+  const createMobilePairingCode = useCreateMobilePairingCode();
   const revokeMobileDevice = useRevokeMobileDevice();
   const deleteMobileDevice = useDeleteMobileDevice();
   const [deviceName, setDeviceName] = useState("My iPhone");
   const [gatewayName, setGatewayName] = useState("Cybara Gateway");
+  const [role, setRole] = useState<"standard" | "readonly" | "full">("standard");
   const [baseUrl, setBaseUrl] = useState(defaultGatewayUrl);
   const [baseUrlTouched, setBaseUrlTouched] = useState(false);
   const [pairing, setPairing] = useState<MobilePairing | null>(null);
@@ -63,13 +66,14 @@ export function Mobile() {
 
   const createPairing = async () => {
     try {
-      const result = await createMobileDevice.mutateAsync({
+      const result = await createMobilePairingCode.mutateAsync({
         deviceName,
         gatewayName,
         baseUrl,
+        role,
       });
       setPairing(result);
-      addToast("success", `Mobile pairing ready for ${result.device.name}`);
+      addToast("success", `Pairing code ${result.code} is ready`);
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to create mobile pairing");
     }
@@ -117,7 +121,7 @@ export function Mobile() {
                 Pair Mobile App
               </CardTitle>
               <CardDescription>
-                Create a revocable device token and scan it from Cybara Mobile.
+                Create a short-lived one-time code and scan it from Cybara Mobile.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -141,12 +145,62 @@ export function Mobile() {
                   setBaseUrl(event.target.value);
                 }}
                 placeholder="http://192.168.1.20:4269"
-                helperText="Used for the QR code and mobile deep link."
+                helperText="A physical iPhone needs a LAN-reachable URL, not 127.0.0.1."
               />
+              <Select
+                label="Mobile access"
+                value={role}
+                onChange={(value) => setRole(value as "standard" | "readonly" | "full")}
+                options={[
+                  { value: "standard", label: "Standard: chat, read, manage" },
+                  { value: "readonly", label: "Read only: chat and read" },
+                  { value: "full", label: "Full: includes wallet, terminal, MCP" },
+                ]}
+                helperText="Start with Standard unless the phone needs high-risk capabilities."
+              />
+              {connectInfo?.warnings.length ? (
+                <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-100">
+                  <div className="mb-2 flex items-center gap-2 font-medium">
+                    <AlertTriangle className="h-4 w-4" />
+                    Physical Phone Check
+                  </div>
+                  <div className="space-y-1 text-xs text-amber-100/85">
+                    {connectInfo.warnings.map((warning) => (
+                      <p key={warning}>{warning}</p>
+                    ))}
+                    {connectInfo.exposeCommand ? (
+                      <p>
+                        Suggested start:{" "}
+                        <span className="font-mono text-amber-50">{connectInfo.exposeCommand}</span>
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+              {connectInfo?.candidates?.length ? (
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                  <p className="mb-2 text-xs font-medium uppercase text-gray-500">Detected URLs</p>
+                  <div className="space-y-2">
+                    {connectInfo.candidates.slice(0, 4).map((candidate) => (
+                      <button
+                        key={candidate}
+                        type="button"
+                        onClick={() => {
+                          setBaseUrlTouched(true);
+                          setBaseUrl(candidate);
+                        }}
+                        className="block w-full truncate rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-left font-mono text-xs text-gray-300 transition hover:border-cyan-400/40 hover:text-white"
+                      >
+                        {candidate}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <Button
                 className="w-full"
                 leftIcon={<Plus className="w-4 h-4" />}
-                isLoading={createMobileDevice.isPending}
+                isLoading={createMobilePairingCode.isPending}
                 onClick={createPairing}
               >
                 Create QR Pairing
@@ -161,7 +215,9 @@ export function Mobile() {
                   <ShieldCheck className="w-5 h-5 text-emerald-400" />
                   Ready To Scan
                 </CardTitle>
-                <CardDescription>{pairing.device.name} has a managed mobile token.</CardDescription>
+                <CardDescription>
+                  Scan within 10 minutes. The QR does not contain a live device token.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="rounded-2xl border border-white/10 bg-white p-4">
@@ -172,8 +228,14 @@ export function Mobile() {
                   />
                 </div>
                 <div className="rounded-xl border border-white/10 bg-black/30 p-3">
-                  <p className="mb-2 text-xs font-medium uppercase text-gray-500">Device ID</p>
-                  <p className="break-all font-mono text-xs text-gray-300">{pairing.device.id}</p>
+                  <p className="mb-2 text-xs font-medium uppercase text-gray-500">Pairing code</p>
+                  <p className="break-all font-mono text-lg font-semibold text-white">
+                    {pairing.code}
+                  </p>
+                  <p className="mt-2 flex items-center gap-1 text-xs text-gray-500">
+                    <Clock className="h-3.5 w-3.5" />
+                    Expires {new Date(pairing.expiresAt).toLocaleTimeString()}
+                  </p>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Button
@@ -190,7 +252,7 @@ export function Mobile() {
                     leftIcon={<Copy className="w-4 h-4" />}
                     onClick={() =>
                       void copyText(
-                        `cybara://connect?name=${encodeURIComponent(pairing.payload.name)}&baseUrl=${encodeURIComponent(pairing.payload.baseUrl)}&apiKey=${encodeURIComponent(pairing.payload.apiKey)}&deviceId=${encodeURIComponent(pairing.payload.deviceId)}`,
+                        `cybara://connect?payload=${encodeURIComponent(pairing.encoded)}`,
                         "Deep link"
                       )
                     }

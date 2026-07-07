@@ -1,5 +1,6 @@
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import * as security from "../../src/api/security";
+import { createMobileDevice, resetMobileDeviceStoreForTests } from "../../src/core/mobile-devices";
 
 let previousApiKey: string | undefined;
 
@@ -15,6 +16,11 @@ describe("API security module", () => {
       return;
     }
     process.env.CYBARA_API_KEY = previousApiKey;
+  });
+
+  afterEach(() => {
+    security.resetSecuritySettingsForTests();
+    resetMobileDeviceStoreForTests();
   });
 
   test("authenticateRequest allows localhost bypass for same-origin browser requests in dev", () => {
@@ -99,6 +105,73 @@ describe("API security module", () => {
       "203.0.113.10"
     );
     expect(result.authenticated).toBe(true);
+  });
+
+  test("gateway password adds a second factor for remote root API key requests", () => {
+    security.setGatewayPassword("correct horse battery staple");
+
+    const missing = security.authenticateRequest(
+      { authorization: "Bearer cybara_test_key_for_security_suite" },
+      "203.0.113.10"
+    );
+    expect(missing.authenticated).toBe(false);
+    expect(missing.reason).toContain("Gateway password required");
+
+    const wrong = security.authenticateRequest(
+      {
+        authorization: "Bearer cybara_test_key_for_security_suite",
+        "x-cybara-gateway-password": "wrong password value",
+      },
+      "203.0.113.10"
+    );
+    expect(wrong.authenticated).toBe(false);
+
+    const valid = security.authenticateRequest(
+      {
+        authorization: "Bearer cybara_test_key_for_security_suite",
+        "x-cybara-gateway-password": "correct horse battery staple",
+      },
+      "203.0.113.10"
+    );
+    expect(valid.authenticated).toBe(true);
+  });
+
+  test("gateway password does not break scoped mobile device tokens", () => {
+    security.setGatewayPassword("correct horse battery staple");
+    const { token } = createMobileDevice({ baseUrl: "http://192.168.1.20:4269" });
+
+    const result = security.authenticateRequest(
+      { authorization: `Bearer ${token}` },
+      "203.0.113.10"
+    );
+
+    expect(result.authenticated).toBe(true);
+    expect(result.scopes).toContain("chat");
+  });
+
+  test("securityCheck rejects remote root requests missing the gateway password", () => {
+    security.setGatewayPassword("correct horse battery staple");
+
+    const denied = security.securityCheck(
+      "GET",
+      "/api/info",
+      { authorization: "Bearer cybara_test_key_for_security_suite" },
+      "203.0.113.10"
+    );
+    expect(denied.passed).toBe(false);
+    expect(denied.statusCode).toBe(401);
+    expect(denied.error).toContain("Gateway password required");
+
+    const allowed = security.securityCheck(
+      "GET",
+      "/api/info",
+      {
+        authorization: "Bearer cybara_test_key_for_security_suite",
+        "x-cybara-gateway-password": "correct horse battery staple",
+      },
+      "203.0.113.10"
+    );
+    expect(allowed.passed).toBe(true);
   });
 
   test("checkRateLimit enforces max requests per window", () => {

@@ -11,6 +11,7 @@ import type {
   ApiResponse,
   DashboardStats,
   MobileDevice,
+  MobileDevicePairing,
   MobileConnectInfo,
   MobilePairing,
   ProviderPlanMonitoringConfig,
@@ -258,7 +259,17 @@ export const mobileApi = {
   connectInfo: () => fetchApi<MobileConnectInfo>("/mobile/connect-info"),
   listDevices: () => fetchApi<{ devices: MobileDevice[] }>("/mobile/devices"),
   createDevice: (payload: { deviceName?: string; gatewayName?: string; baseUrl: string }) =>
-    fetchApi<MobilePairing>("/mobile/devices", {
+    fetchApi<MobileDevicePairing>("/mobile/devices", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  createPairingCode: (payload: {
+    deviceName?: string;
+    gatewayName?: string;
+    baseUrl: string;
+    role?: "standard" | "readonly" | "full";
+  }) =>
+    fetchApi<MobilePairing>("/mobile/devices/pair-code", {
       method: "POST",
       body: JSON.stringify(payload),
     }),
@@ -335,6 +346,7 @@ export interface GatewayAuthSettings {
   apiKeyPreview: string | null;
   apiKeySource: "env" | "file" | "none";
   apiKeyPath: string;
+  gatewayPasswordEnabled: boolean;
   requireAuthForLocalhost: boolean;
   requireAuthForLocalhostForced: boolean;
   localhostBypassActive: boolean;
@@ -360,6 +372,8 @@ export const authApi = {
     requireAuthForLocalhost?: boolean;
     basePath?: string;
     port?: number;
+    gatewayPassword?: string;
+    clearGatewayPassword?: true;
   }) =>
     fetchApi<GatewayAuthSettings>("/auth/settings", {
       method: "PUT",

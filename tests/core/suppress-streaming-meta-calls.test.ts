@@ -29,6 +29,8 @@ describe("meta LLM calls suppress live streaming", () => {
     // Memory flush call.
     expect(chat).toContain("Memory flush is a background meta call");
     const routes = read("src/api/routes.ts");
-    expect(routes).toContain("Inline completion is a meta call");
+    expect(routes).toMatch(
+      /You are an IDE inline code completion engine[\s\S]*?suppressStreaming: true/
+    );
   });
 });

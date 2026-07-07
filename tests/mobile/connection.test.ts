@@ -83,6 +83,22 @@ describe("pairing-code redemption", () => {
     expect(profile.deviceId).toBe("mobile_abc");
   });
 
+  test("resolveGatewayProfile redeems a deep-linked pairing-code payload", async () => {
+    const raw = JSON.stringify({
+      protocol: MOBILE_PAIRING_PROTOCOL,
+      name: "Studio",
+      baseUrl: "http://192.168.1.20:4269",
+      code: "LINK-2345",
+    });
+    const profile = await resolveGatewayProfile(
+      `cybara://connect?payload=${encodeURIComponent(raw)}`,
+      new Date(),
+      okFetch
+    );
+    expect(profile.apiKey).toBe("cybara_mobile_for_LINK-2345");
+    expect(profile.baseUrl).toBe("http://192.168.1.20:4269");
+  });
+
   test("resolveGatewayProfile still handles a legacy direct-token QR", async () => {
     const raw = JSON.stringify({
       protocol: MOBILE_CONNECT_PROTOCOL,

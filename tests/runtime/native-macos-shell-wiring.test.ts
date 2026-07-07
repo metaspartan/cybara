@@ -112,8 +112,11 @@ describe("native macOS shell wiring", () => {
     expect(managementClient).toContain("extension GatewayClient");
     expect(managementClient).toContain("func authSettings() async throws -> [String: Any]");
     expect(managementClient).toContain('rawObject("api/auth/settings")');
-    expect(managementClient).toContain("func updateAuthSettings(requireAuthForLocalhost: Bool)");
+    expect(managementClient).toContain("gatewayPassword: String? = nil");
+    expect(managementClient).toContain('"gatewayPassword"] = gatewayPassword');
+    expect(managementClient).toContain('"clearGatewayPassword"] = true');
     expect(managementClient).toContain('request("api/auth/settings", method: "PUT"');
+    expect(gatewayClient).toContain('"X-Cybara-Gateway-Password"');
     expect(managementClient).toContain("func revealAuthKey() async throws -> String?");
     expect(managementClient).toContain('rawObject("api/auth/key")');
     expect(managementClient).toContain("func rotateAuthKey() async throws -> String?");
@@ -124,6 +127,10 @@ describe("native macOS shell wiring", () => {
     expect(settings).toContain("try await client.restartGateway()");
     expect(settings).toContain("await sidecar.waitForAttachedGatewayRestart()");
     expect(settings).toContain("Gateway Auth");
+    expect(settings).toContain("Gateway Password");
+    expect(settings).toContain(
+      'UserDefaults.standard.set(password, forKey: "cybara_gateway_password")'
+    );
     expect(settings).toContain("Rotate Key");
     expect(settings).toContain('Text("Default Workspace")');
     expect(settings).toContain('["default_workspace_dir": defaultWorkspaceDir]');

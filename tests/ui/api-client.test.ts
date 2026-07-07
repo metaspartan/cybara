@@ -88,6 +88,19 @@ describe("UI API client wiring", () => {
     expect(headers.get("Authorization")).toBe("Bearer ui-token");
   });
 
+  test("injects gateway password header from local UI storage", async () => {
+    (globalThis as unknown as { window: Window }).window = createWindow("", {
+      cybara_api_key: "ui-token",
+      cybara_gateway_password: "gateway-password",
+    }) as unknown as Window;
+
+    await agentsApi.list();
+
+    const headers = new Headers(calls[0].init?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer ui-token");
+    expect(headers.get("X-Cybara-Gateway-Password")).toBe("gateway-password");
+  });
+
   test("agentsApi.chat uses POST /api/agents/:id/chat", async () => {
     const res = await agentsApi.chat("agent-1", "hello", "session-1");
 
@@ -142,10 +155,16 @@ describe("UI API client wiring", () => {
       gatewayName: "Studio Gateway",
       baseUrl: "http://192.168.1.20:4269",
     });
+    await mobileApi.createPairingCode({
+      deviceName: "QA Phone",
+      gatewayName: "Studio Gateway",
+      baseUrl: "http://192.168.1.20:4269",
+      role: "standard",
+    });
     await mobileApi.revokeDevice("mobile-1");
     await mobileApi.deleteDevice("mobile-1");
 
-    expect(calls).toHaveLength(5);
+    expect(calls).toHaveLength(6);
     expect(calls[0].url).toBe("/api/mobile/connect-info");
     expect(calls[0].init?.method).toBeUndefined();
 
@@ -160,11 +179,20 @@ describe("UI API client wiring", () => {
       baseUrl: "http://192.168.1.20:4269",
     });
 
-    expect(calls[3].url).toBe("/api/mobile/devices/mobile-1/revoke");
+    expect(calls[3].url).toBe("/api/mobile/devices/pair-code");
     expect(calls[3].init?.method).toBe("POST");
+    expect(JSON.parse(String(calls[3].init?.body))).toEqual({
+      deviceName: "QA Phone",
+      gatewayName: "Studio Gateway",
+      baseUrl: "http://192.168.1.20:4269",
+      role: "standard",
+    });
 
-    expect(calls[4].url).toBe("/api/mobile/devices/mobile-1");
-    expect(calls[4].init?.method).toBe("DELETE");
+    expect(calls[4].url).toBe("/api/mobile/devices/mobile-1/revoke");
+    expect(calls[4].init?.method).toBe("POST");
+
+    expect(calls[5].url).toBe("/api/mobile/devices/mobile-1");
+    expect(calls[5].init?.method).toBe("DELETE");
   });
 
   test("providerPlansApi uses provider plan endpoints", async () => {

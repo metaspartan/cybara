@@ -2534,6 +2534,8 @@ export function GatewayManagementPanel({
   const [authError, setAuthError] = useState<string | null>(null);
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [gatewayPassword, setGatewayPassword] = useState("");
+  const [gatewayPasswordConfirm, setGatewayPasswordConfirm] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [restartBusy, setRestartBusy] = useState(false);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
@@ -2676,6 +2678,67 @@ export function GatewayManagementPanel({
       setAuthSettings(settings);
     } catch (error) {
       Alert.alert("Auth setting failed", gatewayActionError(error, "Auth setting update failed."));
+      await loadAuthSettings();
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const saveGatewayPassword = async () => {
+    const password = gatewayPassword.trim();
+    if (password.length < 12) {
+      Alert.alert("Password too short", "Use at least 12 characters.");
+      return;
+    }
+    if (password !== gatewayPasswordConfirm.trim()) {
+      Alert.alert("Passwords do not match", "Enter the same gateway password twice.");
+      return;
+    }
+    setBusyAction("gateway-password");
+    try {
+      const settings = await api.updateGatewayAuthSettings({ gatewayPassword: password });
+      setAuthSettings(settings);
+      api.setGatewayPassword(password);
+      const nextProfile = {
+        ...profile,
+        gatewayPassword: password,
+        lastConnectedAt: new Date().toISOString(),
+      };
+      if (onProfileUpdated) {
+        await onProfileUpdated(nextProfile);
+      } else {
+        await saveProfile(nextProfile);
+      }
+      setGatewayPassword("");
+      setGatewayPasswordConfirm("");
+      Alert.alert("Gateway password saved", "This device will include it on root settings calls.");
+    } catch (error) {
+      Alert.alert("Password failed", gatewayActionError(error, "Gateway password update failed."));
+      await loadAuthSettings();
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const clearGatewayPassword = async () => {
+    setBusyAction("gateway-password-clear");
+    try {
+      const settings = await api.updateGatewayAuthSettings({ clearGatewayPassword: true });
+      setAuthSettings(settings);
+      api.setGatewayPassword(undefined);
+      const { gatewayPassword: _gatewayPassword, ...rest } = profile;
+      const nextProfile = {
+        ...rest,
+        lastConnectedAt: new Date().toISOString(),
+      };
+      if (onProfileUpdated) {
+        await onProfileUpdated(nextProfile);
+      } else {
+        await saveProfile(nextProfile);
+      }
+      Alert.alert("Gateway password cleared", "Remote root access no longer requires it.");
+    } catch (error) {
+      Alert.alert("Clear failed", gatewayActionError(error, "Gateway password clear failed."));
       await loadAuthSettings();
     } finally {
       setBusyAction(null);
@@ -2904,6 +2967,62 @@ export function GatewayManagementPanel({
               label="Rotate"
               onPress={confirmRotateKey}
               tone={colors.amber}
+            />
+          </View>
+        </View>
+        <View style={styles.settingsInfoBox}>
+          <View style={styles.settingsInfoHeader}>
+            <ShieldAlert color={colors.amber} size={18} strokeWidth={2.2} />
+            <Text style={styles.settingsInfoTitle}>Gateway Password</Text>
+          </View>
+          <Text style={styles.settingsInfoText}>
+            Optional second factor for remote root/UI access when the gateway is reachable outside
+            this machine.
+          </Text>
+          <Text style={styles.settingsFieldHelp}>
+            Status: {authSettings?.gatewayPasswordEnabled ? "Enabled" : "Off"}
+          </Text>
+          <SettingsTextField
+            label="New password"
+            value={gatewayPassword}
+            onChangeText={setGatewayPassword}
+            placeholder="At least 12 characters"
+            returnKeyType="next"
+            secureTextEntry
+          />
+          <SettingsTextField
+            label="Confirm password"
+            value={gatewayPasswordConfirm}
+            onChangeText={setGatewayPasswordConfirm}
+            placeholder="Repeat password"
+            returnKeyType="done"
+            secureTextEntry
+            onSubmitEditing={() => {
+              void saveGatewayPassword();
+            }}
+          />
+          <View style={styles.settingsActionRow}>
+            <DetailActionButton
+              Icon={Save}
+              busy={busyAction === "gateway-password"}
+              disabled={
+                busyAction !== null || !gatewayPassword.trim() || !gatewayPasswordConfirm.trim()
+              }
+              label={authSettings?.gatewayPasswordEnabled ? "Update Password" : "Enable Password"}
+              onPress={() => {
+                void saveGatewayPassword();
+              }}
+              tone={colors.amber}
+            />
+            <DetailActionButton
+              Icon={Trash2}
+              busy={busyAction === "gateway-password-clear"}
+              disabled={busyAction !== null || !authSettings?.gatewayPasswordEnabled}
+              label="Clear"
+              onPress={() => {
+                void clearGatewayPassword();
+              }}
+              tone={colors.red}
             />
           </View>
         </View>

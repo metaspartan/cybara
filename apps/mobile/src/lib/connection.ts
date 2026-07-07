@@ -5,6 +5,7 @@ export interface GatewayProfile {
   name: string;
   baseUrl: string;
   apiKey: string;
+  gatewayPassword?: string;
   deviceId?: string;
   createdAt: string;
   lastConnectedAt?: string;
@@ -75,6 +76,10 @@ export function parseMobileConnectPayload(raw: string): MobileConnectPayload {
     const url = new URL(trimmed);
     if (url.protocol !== "cybara:") {
       throw new Error("Unsupported connection payload");
+    }
+    const nestedPayload = url.searchParams.get("payload");
+    if (nestedPayload) {
+      return parseMobileConnectPayload(nestedPayload);
     }
     const baseUrl = url.searchParams.get("baseUrl") || "";
     const apiKey = url.searchParams.get("apiKey") || "";
@@ -183,6 +188,14 @@ export async function resolveGatewayProfile(
 ): Promise<GatewayProfile> {
   const trimmed = raw.trim();
   if (!trimmed) throw new Error("Connection payload is empty");
+
+  try {
+    const url = new URL(trimmed);
+    const nestedPayload = url.protocol === "cybara:" ? url.searchParams.get("payload") : null;
+    if (nestedPayload && nestedPayload !== trimmed) {
+      return resolveGatewayProfile(nestedPayload, now, fetchImpl);
+    }
+  } catch {}
 
   let parsed: unknown = null;
   try {

@@ -193,6 +193,7 @@ export interface GatewayAuthSettings {
   apiKeyPreview: string | null;
   apiKeySource: "env" | "file" | "none";
   apiKeyPath: string;
+  gatewayPasswordEnabled: boolean;
   requireAuthForLocalhost: boolean;
   requireAuthForLocalhostForced: boolean;
   localhostBypassActive: boolean;
@@ -1814,10 +1815,19 @@ export class CybaraMobileApi {
     this.profile = { ...this.profile, apiKey };
   }
 
+  setGatewayPassword(gatewayPassword?: string): void {
+    this.profile = gatewayPassword?.trim()
+      ? { ...this.profile, gatewayPassword: gatewayPassword.trim() }
+      : { ...this.profile, gatewayPassword: undefined };
+  }
+
   private headers(): Headers {
     const headers = new Headers();
     headers.set("Content-Type", "application/json");
     headers.set("Authorization", `Bearer ${this.profile.apiKey}`);
+    if (this.profile.gatewayPassword?.trim()) {
+      headers.set("X-Cybara-Gateway-Password", this.profile.gatewayPassword.trim());
+    }
     return headers;
   }
 
@@ -2428,7 +2438,9 @@ export class CybaraMobileApi {
   }
 
   updateGatewayAuthSettings(payload: {
-    requireAuthForLocalhost: boolean;
+    requireAuthForLocalhost?: boolean;
+    gatewayPassword?: string;
+    clearGatewayPassword?: true;
   }): Promise<GatewayAuthSettings> {
     return this.request<GatewayAuthSettings>("/api/auth/settings", {
       method: "PUT",

@@ -152,14 +152,15 @@ import { dirname, isAbsolute, resolve } from "path";
 import { createHash, randomBytes } from "crypto";
 import {
   getGatewayAuthSettings,
+  clearGatewayPassword,
   revealGatewayApiKey,
   rotateGatewayApiKey,
   securityCheck,
   setGatewayBasePath,
+  setGatewayPassword,
   setRequireAuthForLocalhost,
   validateUrl,
 } from "./security";
-// fs + paths imports moved to ./routes/_shared.ts (used by extracted helpers).
 import {
   browseDirectory,
   readFileContent,
@@ -320,13 +321,11 @@ function sanitizeInlineCompletion(value: string, prefix: string, maxChars = 320)
     next = next.slice(prefix.length);
   }
 
-  // Keep inline completion concise and deterministic for ghost text rendering.
   const maxLength = Math.max(24, Math.min(2000, Math.floor(maxChars)));
   if (next.length > maxLength) {
     next = next.slice(0, maxLength);
   }
 
-  // Remove leading chatty labels if models ignore instruction.
   next = next.replace(/^(here(?:'s| is)\s+)?(?:the\s+)?(?:completion|suggestion)\s*[:-]\s*/i, "");
   return next;
 }
@@ -349,9 +348,7 @@ function normalizeFileUriToPath(uri: string): string {
       }
       return pathname;
     }
-  } catch {
-    // Not a valid URL; fall back to prefix stripping.
-  }
+  } catch {}
 
   if (uri.startsWith("file://")) {
     return decodeURIComponent(uri.slice("file://".length));
@@ -466,9 +463,6 @@ const corsBaseHeaders: Record<string, string> = {
   "Access-Control-Max-Age": "86400",
 };
 
-// Config rows can hold secrets (session_secret, stored tokens, etc.). The
-// config table accepts arbitrary keys, so redact anything whose key looks
-// sensitive before returning it over the API.
 const SECRET_CONFIG_KEY =
   /(secret|token|password|passwd|api[_-]?key|private[_-]?key|mnemonic|credential|seed)/i;
 function redactSecretConfig(cfg: Record<string, unknown>): Record<string, unknown> {
@@ -778,6 +772,8 @@ const routes: Record<string, RouteHandler> = {
       requireAuthForLocalhost?: unknown;
       basePath?: unknown;
       port?: unknown;
+      gatewayPassword?: unknown;
+      clearGatewayPassword?: unknown;
     };
     const settings = getGatewayAuthSettings();
 
@@ -816,6 +812,17 @@ const routes: Record<string, RouteHandler> = {
         );
       }
       setRequireAuthForLocalhost(data.requireAuthForLocalhost);
+    }
+
+    if (data.gatewayPassword !== undefined) {
+      setGatewayPassword(data.gatewayPassword);
+    }
+
+    if (data.clearGatewayPassword !== undefined) {
+      if (data.clearGatewayPassword !== true) {
+        throw new Error("clearGatewayPassword must be true");
+      }
+      clearGatewayPassword();
     }
 
     return {
@@ -2174,7 +2181,6 @@ const routes: Record<string, RouteHandler> = {
     try {
       const manager = getOrInitLspManager(workspacePath);
       const hover = await manager.getHover(normalizedPath, line, character);
-      // Normalize the LSP Hover contents into a plain string for the UI.
       let text: string | null = null;
       if (hover) {
         const contents = (hover as { contents?: unknown }).contents;
@@ -2952,7 +2958,6 @@ const routes: Record<string, RouteHandler> = {
       const result = await agentManager.callLLM(provider, selectedAgent.model, messages, [], {
         agentId: selectedAgent.id,
         workspaceDir,
-        // Inline completion is a meta call — never broadcast its status/tokens.
         suppressStreaming: true,
       });
       const completion = sanitizeInlineCompletion(result.content || "", prefix, maxChars);
@@ -3567,8 +3572,6 @@ const routes: Record<string, RouteHandler> = {
 
   "POST /api/webhooks/telegram/:channelId": async (body, params, ctx) => {
     const { channelId } = params!;
-    // Telegram sends the secret we registered with setWebhook in this header;
-    // processTelegramWebhook rejects the update when it doesn't match.
     const headers = ctx?.headers ?? {};
     const secretToken =
       headers["x-telegram-bot-api-secret-token"] || headers["X-Telegram-Bot-Api-Secret-Token"];
@@ -4410,8 +4413,6 @@ const routes: Record<string, RouteHandler> = {
         return false;
       }
     };
-    // Preview the agent the user actually runs: the active (running) one, else
-    // the one set to auto-start, else the first configured agent.
     const agent =
       candidates.find((a) => (a as { status?: string }).status === "running") ||
       candidates.find(isAutostart) ||

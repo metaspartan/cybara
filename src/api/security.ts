@@ -1,7 +1,7 @@
 import { createLogger } from "../core/logger";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
-import { randomBytes, timingSafeEqual } from "crypto";
+import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { lookup } from "dns/promises";
 import type { LookupAddress } from "dns";
 import { isIP } from "net";
@@ -17,13 +17,17 @@ let cachedApiKey: string | null | undefined;
 interface PersistedSecuritySettings {
   requireAuthForLocalhost?: boolean;
   basePath?: string;
+  gatewayPassword?: {
+    algorithm: "scrypt";
+    salt: string;
+    hash: string;
+  };
 }
 
 let cachedSecuritySettings: PersistedSecuritySettings | undefined;
 
 function readPersistedSecuritySettings(): PersistedSecuritySettings {
-  // Tests must never pick up the developer's real ~/.cybara/security.json.
-  if (process.env.NODE_ENV === "test") return {};
+  if (process.env.NODE_ENV === "test") return cachedSecuritySettings ?? {};
   if (cachedSecuritySettings !== undefined) return cachedSecuritySettings;
   try {
     if (existsSync(SECURITY_SETTINGS_FILE)) {
@@ -39,6 +43,7 @@ function readPersistedSecuritySettings(): PersistedSecuritySettings {
             typeof record.basePath === "string"
               ? normalizeGatewayBasePath(record.basePath)
               : undefined,
+          gatewayPassword: readPersistedGatewayPassword(record.gatewayPassword),
         };
         return cachedSecuritySettings;
       }
@@ -51,11 +56,29 @@ function readPersistedSecuritySettings(): PersistedSecuritySettings {
 }
 
 function writePersistedSecuritySettings(settings: PersistedSecuritySettings): void {
+  if (process.env.NODE_ENV === "test") {
+    cachedSecuritySettings = settings;
+    return;
+  }
   if (!existsSync(cybaraDir)) {
     mkdirSync(cybaraDir, { recursive: true });
   }
   writeFileSync(SECURITY_SETTINGS_FILE, JSON.stringify(settings, null, 2), { mode: 0o600 });
   cachedSecuritySettings = settings;
+}
+
+function readPersistedGatewayPassword(
+  value: unknown
+): PersistedSecuritySettings["gatewayPassword"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  return record.algorithm === "scrypt" &&
+    typeof record.salt === "string" &&
+    /^[a-f0-9]{32}$/i.test(record.salt) &&
+    typeof record.hash === "string" &&
+    /^[a-f0-9]{64}$/i.test(record.hash)
+    ? { algorithm: "scrypt", salt: record.salt.toLowerCase(), hash: record.hash.toLowerCase() }
+    : undefined;
 }
 
 function getOrCreateApiKey(): string | null {
@@ -317,6 +340,53 @@ function constantTimeEqual(a: string, b: string): boolean {
   return timingSafeEqual(bufA, bufB);
 }
 
+function gatewayPasswordHeader(headers: Record<string, string>): string {
+  return (
+    headers["x-cybara-gateway-password"] ||
+    headers["X-Cybara-Gateway-Password"] ||
+    headers["X-CYBARA-GATEWAY-PASSWORD"] ||
+    ""
+  ).toString();
+}
+
+function normalizeGatewayPassword(value: unknown): string {
+  if (typeof value !== "string") throw new Error("Gateway password must be a string");
+  const trimmed = value.trim();
+  if (trimmed.length < 12) throw new Error("Gateway password must be at least 12 characters");
+  if (Buffer.byteLength(trimmed, "utf8") > 1024) {
+    throw new Error("Gateway password must be 1024 bytes or less");
+  }
+  return trimmed;
+}
+
+function hashGatewayPassword(password: string, salt = randomBytes(16).toString("hex")) {
+  return {
+    algorithm: "scrypt" as const,
+    salt,
+    hash: scryptSync(password, salt, 32).toString("hex"),
+  };
+}
+
+function verifyGatewayPassword(
+  password: string,
+  stored: NonNullable<PersistedSecuritySettings["gatewayPassword"]>
+): boolean {
+  try {
+    const candidate = scryptSync(password, stored.salt, 32).toString("hex");
+    return constantTimeEqual(candidate, stored.hash);
+  } catch {
+    return false;
+  }
+}
+
+function gatewayPasswordSatisfied(headers: Record<string, string>, ip: string): boolean {
+  const stored = readPersistedSecuritySettings().gatewayPassword;
+  if (!stored) return true;
+  if (hasLocalhostBypass(headers, ip)) return true;
+  const provided = gatewayPasswordHeader(headers);
+  return provided ? verifyGatewayPassword(provided, stored) : false;
+}
+
 export function authenticateRequest(headers: Record<string, string>, ip: string): AuthResult {
   const effectiveApiKey = config.apiKey;
 
@@ -346,6 +416,10 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
 
     log.warn("Invalid API key attempt", { ip });
     return { authenticated: false, reason: "Invalid API key" };
+  }
+
+  if (!gatewayPasswordSatisfied(headers, ip)) {
+    return { authenticated: false, reason: "Gateway password required" };
   }
 
   return { authenticated: true };
@@ -403,6 +477,7 @@ export interface GatewayAuthSettings {
   apiKeyPreview: string | null;
   apiKeySource: "env" | "file" | "none";
   apiKeyPath: string;
+  gatewayPasswordEnabled: boolean;
   requireAuthForLocalhost: boolean;
   requireAuthForLocalhostForced: boolean;
   localhostBypassActive: boolean;
@@ -421,6 +496,7 @@ export function getGatewayAuthSettings(): GatewayAuthSettings {
     apiKeyPreview: key ? `${key.slice(0, 12)}…${key.slice(-4)}` : null,
     apiKeySource: envKey ? "env" : key ? "file" : "none",
     apiKeyPath: API_KEY_FILE,
+    gatewayPasswordEnabled: Boolean(readPersistedSecuritySettings().gatewayPassword),
     requireAuthForLocalhost: !isLocalhostBypassAllowed(),
     requireAuthForLocalhostForced: requireForced,
     localhostBypassActive: isLocalhostBypassAllowed(),
@@ -443,6 +519,29 @@ export function setRequireAuthForLocalhost(value: boolean): GatewayAuthSettings 
   });
   log.info(`Localhost auth requirement ${value ? "enabled" : "disabled"}`);
   return getGatewayAuthSettings();
+}
+
+export function setGatewayPassword(value: unknown): GatewayAuthSettings {
+  const password = normalizeGatewayPassword(value);
+  writePersistedSecuritySettings({
+    ...readPersistedSecuritySettings(),
+    gatewayPassword: hashGatewayPassword(password),
+  });
+  log.info("Gateway password enabled");
+  return getGatewayAuthSettings();
+}
+
+export function clearGatewayPassword(): GatewayAuthSettings {
+  const { gatewayPassword: _gatewayPassword, ...settings } = readPersistedSecuritySettings();
+  writePersistedSecuritySettings(settings);
+  log.info("Gateway password cleared");
+  return getGatewayAuthSettings();
+}
+
+export function resetSecuritySettingsForTests(): void {
+  if (process.env.NODE_ENV === "test") {
+    cachedSecuritySettings = undefined;
+  }
 }
 
 export function rotateGatewayApiKey(): { apiKey: string } {

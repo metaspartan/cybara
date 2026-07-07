@@ -163,10 +163,22 @@ extension GatewayClient {
         try await rawObject("api/auth/settings")
     }
 
-    func updateAuthSettings(requireAuthForLocalhost: Bool) async throws -> [String: Any] {
-        let body = try JSONSerialization.data(
-            withJSONObject: ["requireAuthForLocalhost": requireAuthForLocalhost]
-        )
+    func updateAuthSettings(
+        requireAuthForLocalhost: Bool? = nil,
+        gatewayPassword: String? = nil,
+        clearGatewayPassword: Bool? = nil
+    ) async throws -> [String: Any] {
+        var payload: [String: Any] = [:]
+        if let requireAuthForLocalhost {
+            payload["requireAuthForLocalhost"] = requireAuthForLocalhost
+        }
+        if let gatewayPassword {
+            payload["gatewayPassword"] = gatewayPassword
+        }
+        if clearGatewayPassword == true {
+            payload["clearGatewayPassword"] = true
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
         let data = try await request("api/auth/settings", method: "PUT", body: body)
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw GatewayClientError.invalidResponse

@@ -43,7 +43,7 @@ import {
   type MigrationSourceKind,
   type SourceMigrationReport,
 } from "@/lib/api";
-import { setApiAuthToken } from "@/lib/auth";
+import { clearGatewayAccessPassword, setApiAuthToken, setGatewayAccessPassword } from "@/lib/auth";
 import { Modal } from "@/components/ui/Modal";
 import { Switch } from "@/components/ui/Switch";
 import { openExternal } from "@/utils/openExternal";
@@ -3757,6 +3757,8 @@ function GatewayAuthSettingsSection() {
   const [portInput, setPortInput] = useState("");
   const portTouchedRef = useRef(false);
   const [restartingForPort, setRestartingForPort] = useState(false);
+  const [gatewayPassword, setGatewayPassword] = useState("");
+  const [gatewayPasswordConfirm, setGatewayPasswordConfirm] = useState("");
 
   const load = useCallback(
     async (silent = false) => {
@@ -3870,6 +3872,54 @@ function GatewayAuthSettingsSection() {
       );
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to update auth settings");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleSaveGatewayPassword() {
+    const password = gatewayPassword.trim();
+    if (password.length < 12) {
+      addToast("error", "Gateway password must be at least 12 characters");
+      return;
+    }
+    if (password !== gatewayPasswordConfirm.trim()) {
+      addToast("error", "Gateway password confirmation does not match");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await authApi.updateSettings({ gatewayPassword: password });
+      if (!res.success || !res.data?.success) {
+        throw new Error(res.error || "Failed to save gateway password");
+      }
+      setGatewayAccessPassword(password);
+      setSettings(res.data);
+      setGatewayPassword("");
+      setGatewayPasswordConfirm("");
+      addToast("success", "Gateway password enabled for remote root access");
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to save gateway password");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleClearGatewayPassword() {
+    setBusy(true);
+    try {
+      const res = await authApi.updateSettings({ clearGatewayPassword: true });
+      if (!res.success || !res.data?.success) {
+        throw new Error(res.error || "Failed to clear gateway password");
+      }
+      clearGatewayAccessPassword();
+      setSettings(res.data);
+      addToast("success", "Gateway password cleared");
+    } catch (error) {
+      addToast(
+        "error",
+        error instanceof Error ? error.message : "Failed to clear gateway password"
+      );
     } finally {
       setBusy(false);
     }
@@ -4081,6 +4131,59 @@ function GatewayAuthSettingsSection() {
               . Native apps just add the prefix to their gateway URL. /api/health stays reachable
               without the prefix for health checks.
             </p>
+          </div>
+
+          <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-gray-200">Gateway password</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Optional second factor for remote root/UI access when the gateway is reachable
+                  outside this machine.
+                </p>
+              </div>
+              <Badge variant={settings?.gatewayPasswordEnabled ? "success" : "default"}>
+                {settings?.gatewayPasswordEnabled ? "Enabled" : "Off"}
+              </Badge>
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <Input
+                type="password"
+                label="New password"
+                value={gatewayPassword}
+                disabled={controlsDisabled}
+                onChange={(event) => setGatewayPassword(event.target.value)}
+                placeholder="At least 12 characters"
+              />
+              <Input
+                type="password"
+                label="Confirm password"
+                value={gatewayPasswordConfirm}
+                disabled={controlsDisabled}
+                onChange={(event) => setGatewayPasswordConfirm(event.target.value)}
+                placeholder="Repeat password"
+              />
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => void handleSaveGatewayPassword()}
+                disabled={
+                  controlsDisabled ||
+                  gatewayPassword.trim().length === 0 ||
+                  gatewayPasswordConfirm.trim().length === 0
+                }
+              >
+                {settings?.gatewayPasswordEnabled ? "Update Password" : "Enable Password"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => void handleClearGatewayPassword()}
+                disabled={controlsDisabled || !settings?.gatewayPasswordEnabled}
+              >
+                Clear Password
+              </Button>
+            </div>
           </div>
 
           <Switch

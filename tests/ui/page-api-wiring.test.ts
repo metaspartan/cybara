@@ -39,16 +39,16 @@ describe("UI page API wiring", () => {
 
     expect(source).toContain("useMobileConnectInfo");
     expect(source).toContain("useMobileDevices");
-    expect(source).toContain("useCreateMobileDevice");
+    expect(source).toContain("useCreateMobilePairingCode");
     expect(source).toContain("useRevokeMobileDevice");
     expect(source).toContain("useDeleteMobileDevice");
     expect(source).toContain("pairing.qrDataUrl");
-    expect(source).toContain("pairing.payload.deviceId");
+    expect(source).toContain("pairing.code");
     expect(source).toContain("setRevokeTarget(device)");
     expect(source).toContain("setDeleteTarget(device)");
-    expect(source).not.toContain("Detected URLs");
-    expect(source).not.toContain("connectInfo.warnings");
-    expect(source).not.toContain("exposeCommand");
+    expect(source).toContain("Detected URLs");
+    expect(source).toContain("connectInfo.warnings");
+    expect(source).toContain("connectInfo.exposeCommand");
     expect(source).not.toContain("apiFetch(");
     expect(source).not.toContain("window.fetch(");
     expect(source).not.toContain("globalThis.fetch(");
@@ -64,6 +64,9 @@ describe("UI page API wiring", () => {
     expect(source).toContain("settingsApi.updateConfig({ dangerous_tool_policy: next })");
     expect(source).toContain("settingsApi.updateConfig({ tool_approval_mode: nextMode })");
     expect(source).toContain("function SpeechSettingsSection()");
+    expect(source).toContain("setGatewayAccessPassword(password)");
+    expect(source).toContain("clearGatewayAccessPassword()");
+    expect(source).toContain("gatewayPasswordEnabled");
     expect(source).toContain("settingsApi.updateConfig({ speech })");
     expect(source).toContain("settingsApi.updateConfig({");
     expect(source).toContain("computer_use: { driverCommand: trimmed }");

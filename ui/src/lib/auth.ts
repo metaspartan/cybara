@@ -48,6 +48,30 @@ function getWindowToken(): string | null {
   return storage.getItem("cybara_api_key") || storage.getItem("CYBARA_API_KEY");
 }
 
+export function getGatewayAccessPassword(): string | null {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return null;
+  }
+  return window.localStorage.getItem("cybara_gateway_password");
+}
+
+export function setGatewayAccessPassword(password: string): void {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+  const trimmed = password.trim();
+  if (trimmed) {
+    window.localStorage.setItem("cybara_gateway_password", trimmed);
+  }
+}
+
+export function clearGatewayAccessPassword(): void {
+  if (typeof window === "undefined" || !window.localStorage) {
+    return;
+  }
+  window.localStorage.removeItem("cybara_gateway_password");
+}
+
 function persistWindowToken(token: string): void {
   if (typeof window === "undefined" || !window.localStorage) {
     return;
@@ -116,6 +140,10 @@ export function withApiAuthHeaders(headers?: HeadersInit, token = getApiAuthToke
   const resolved = new Headers(headers);
   if (token && !resolved.has("Authorization")) {
     resolved.set("Authorization", `Bearer ${token}`);
+  }
+  const password = getGatewayAccessPassword();
+  if (password && !resolved.has("X-Cybara-Gateway-Password")) {
+    resolved.set("X-Cybara-Gateway-Password", password);
   }
   return resolved;
 }

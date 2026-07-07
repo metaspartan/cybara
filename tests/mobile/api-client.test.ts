@@ -222,7 +222,13 @@ describe("mobile API client", () => {
   });
 
   test("manages gateway auth and restart routes through the mobile API client", async () => {
-    const calls: Array<{ method: string; path: string; auth: string | null; body?: unknown }> = [];
+    const calls: Array<{
+      method: string;
+      path: string;
+      auth: string | null;
+      gatewayPassword: string | null;
+      body?: unknown;
+    }> = [];
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (url, init) => {
       const parsedUrl = new URL(String(url));
@@ -232,7 +238,13 @@ describe("mobile API client", () => {
           ? (JSON.parse(init.body) as Record<string, unknown>)
           : undefined;
       const headers = new Headers(init?.headers);
-      calls.push({ method, path: parsedUrl.pathname, auth: headers.get("authorization"), body });
+      calls.push({
+        method,
+        path: parsedUrl.pathname,
+        auth: headers.get("authorization"),
+        gatewayPassword: headers.get("x-cybara-gateway-password"),
+        body,
+      });
 
       if (parsedUrl.pathname === "/api/auth/settings" && method === "GET") {
         return Response.json({
@@ -243,6 +255,7 @@ describe("mobile API client", () => {
           apiKeyPath: "/Users/carsen/.cybara/api_key",
           requireAuthForLocalhost: false,
           requireAuthForLocalhostForced: false,
+          gatewayPasswordEnabled: false,
           localhostBypassActive: true,
           rateLimits: {},
         });
@@ -256,6 +269,12 @@ describe("mobile API client", () => {
           apiKeyPath: "/Users/carsen/.cybara/api_key",
           requireAuthForLocalhost: body?.requireAuthForLocalhost,
           requireAuthForLocalhostForced: false,
+          gatewayPasswordEnabled:
+            typeof body?.gatewayPassword === "string"
+              ? true
+              : body?.clearGatewayPassword
+                ? false
+                : false,
           localhostBypassActive: false,
           rateLimits: {},
         });
@@ -285,6 +304,20 @@ describe("mobile API client", () => {
         success: true,
         requireAuthForLocalhost: true,
       });
+      await expect(
+        api.updateGatewayAuthSettings({ gatewayPassword: "correct horse battery staple" })
+      ).resolves.toMatchObject({
+        success: true,
+        gatewayPasswordEnabled: true,
+      });
+      api.setGatewayPassword("correct horse battery staple");
+      await expect(
+        api.updateGatewayAuthSettings({ clearGatewayPassword: true })
+      ).resolves.toMatchObject({
+        success: true,
+        gatewayPasswordEnabled: false,
+      });
+      api.setGatewayPassword(undefined);
       await expect(api.revealGatewayApiKey()).resolves.toEqual({
         success: true,
         apiKey: "root-key",
@@ -304,30 +337,49 @@ describe("mobile API client", () => {
           method: "GET",
           path: "/api/auth/settings",
           auth: "Bearer cybara_mobile_test",
+          gatewayPassword: null,
           body: undefined,
         },
         {
           method: "PUT",
           path: "/api/auth/settings",
           auth: "Bearer cybara_mobile_test",
+          gatewayPassword: null,
           body: { requireAuthForLocalhost: true },
+        },
+        {
+          method: "PUT",
+          path: "/api/auth/settings",
+          auth: "Bearer cybara_mobile_test",
+          gatewayPassword: null,
+          body: { gatewayPassword: "correct horse battery staple" },
+        },
+        {
+          method: "PUT",
+          path: "/api/auth/settings",
+          auth: "Bearer cybara_mobile_test",
+          gatewayPassword: "correct horse battery staple",
+          body: { clearGatewayPassword: true },
         },
         {
           method: "GET",
           path: "/api/auth/key",
           auth: "Bearer cybara_mobile_test",
+          gatewayPassword: null,
           body: undefined,
         },
         {
           method: "POST",
           path: "/api/auth/rotate-key",
           auth: "Bearer cybara_mobile_test",
+          gatewayPassword: null,
           body: undefined,
         },
         {
           method: "POST",
           path: "/api/system/restart",
           auth: "Bearer rotated-key",
+          gatewayPassword: null,
           body: undefined,
         },
       ]);

@@ -34,7 +34,7 @@
     "lint": "bun eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"tests/**/*.ts\" \"scripts/**/*.ts\" \"apps/mobile/App.tsx\" \"apps/mobile/src/**/*.{ts,tsx}\"",
     "typecheck": "bunx tsc --noEmit",
     "check:loc": "bun run scripts/check-ts-max-loc.ts --max 5000",
-    "deadcode:report": "bunx ts-prune src ui/src || true",
+    "deadcode:report": "bunx ts-prune@0.10.3 src ui/src || true",
     "profile:macos": "bun run scripts/profile-cybara-macos.ts",
     "audit:root": "bun audit --audit-level=moderate",
     "audit:ui": "cd ui && bun audit --audit-level=moderate",

@@ -81,6 +81,9 @@ struct NativeSettingsScreen: View {
     @State private var authKeySource = ""
     @State private var authRequireLocalhost = false
     @State private var authRequireForced = false
+    @State private var authGatewayPasswordEnabled = false
+    @State private var gatewayPasswordDraft = ""
+    @State private var gatewayPasswordConfirm = ""
     @State private var authAvailable = false
     @State private var authRevealedKey: String?
     @State private var authCopied = false
@@ -380,6 +383,32 @@ struct NativeSettingsScreen: View {
 
                             Divider().opacity(0.45)
 
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Text("Gateway Password")
+                                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                    Spacer()
+                                    Text(authGatewayPasswordEnabled ? "Enabled" : "Off")
+                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(authGatewayPasswordEnabled ? Color.green : Color.secondary)
+                                }
+                                Text("Optional second factor for remote root/UI access when the gateway is reachable outside this Mac.")
+                                    .font(.system(size: 11, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                SecureField("New password", text: $gatewayPasswordDraft)
+                                    .textFieldStyle(.roundedBorder)
+                                    .disabled(authBusy)
+                                SecureField("Confirm password", text: $gatewayPasswordConfirm)
+                                    .textFieldStyle(.roundedBorder)
+                                    .disabled(authBusy)
+                                ViewThatFits(in: .horizontal) {
+                                    HStack(spacing: 10) { gatewayPasswordButtons }
+                                    VStack(alignment: .leading, spacing: 10) { gatewayPasswordButtons }
+                                }
+                            }
+
+                            Divider().opacity(0.45)
+
                             toggleRow(
                                 "Require API key for localhost",
                                 detail: authRequireForced
@@ -557,6 +586,32 @@ struct NativeSettingsScreen: View {
         }
         .buttonStyle(.bordered)
         .disabled(authBusy || authKeySource == "env")
+    }
+
+    @ViewBuilder
+    private var gatewayPasswordButtons: some View {
+        Button {
+            Task { await saveGatewayPassword() }
+        } label: {
+            Label(
+                authGatewayPasswordEnabled ? "Update Password" : "Enable Password",
+                systemImage: "lock.shield"
+            )
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(
+            authBusy ||
+                gatewayPasswordDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                gatewayPasswordConfirm.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        )
+
+        Button {
+            Task { await clearGatewayPassword() }
+        } label: {
+            Label("Clear Password", systemImage: "xmark.shield")
+        }
+        .buttonStyle(.bordered)
+        .disabled(authBusy || !authGatewayPasswordEnabled)
     }
 
     @ViewBuilder
@@ -1797,6 +1852,7 @@ struct NativeSettingsScreen: View {
         authKeySource = auth["apiKeySource"] as? String ?? ""
         authRequireLocalhost = auth["requireAuthForLocalhost"] as? Bool ?? false
         authRequireForced = auth["requireAuthForLocalhostForced"] as? Bool ?? false
+        authGatewayPasswordEnabled = auth["gatewayPasswordEnabled"] as? Bool ?? false
     }
 
     private func toggleRevealAuthKey() async {
@@ -1852,6 +1908,48 @@ struct NativeSettingsScreen: View {
             let auth = try await client.updateAuthSettings(
                 requireAuthForLocalhost: authRequireLocalhost
             )
+            readAuthSettings(auth)
+        } catch {
+            self.error = error.localizedDescription
+            if let auth = try? await client.authSettings() {
+                readAuthSettings(auth)
+            }
+        }
+    }
+
+    private func saveGatewayPassword() async {
+        let password = gatewayPasswordDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard password.count >= 12 else {
+            error = "Gateway password must be at least 12 characters"
+            return
+        }
+        guard password == gatewayPasswordConfirm.trimmingCharacters(in: .whitespacesAndNewlines)
+        else {
+            error = "Gateway password confirmation does not match"
+            return
+        }
+        authBusy = true
+        defer { authBusy = false }
+        do {
+            let auth = try await client.updateAuthSettings(gatewayPassword: password)
+            UserDefaults.standard.set(password, forKey: "cybara_gateway_password")
+            gatewayPasswordDraft = ""
+            gatewayPasswordConfirm = ""
+            readAuthSettings(auth)
+        } catch {
+            self.error = error.localizedDescription
+            if let auth = try? await client.authSettings() {
+                readAuthSettings(auth)
+            }
+        }
+    }
+
+    private func clearGatewayPassword() async {
+        authBusy = true
+        defer { authBusy = false }
+        do {
+            let auth = try await client.updateAuthSettings(clearGatewayPassword: true)
+            UserDefaults.standard.removeObject(forKey: "cybara_gateway_password")
             readAuthSettings(auth)
         } catch {
             self.error = error.localizedDescription
