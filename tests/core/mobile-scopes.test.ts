@@ -157,6 +157,41 @@ describe("mobile connect URL suggestions", () => {
     expect(info.troubleshooting.join(" ")).toContain("api/health");
   });
 
+  test("prefers a Windows Wi-Fi LAN address over WSL and virtual adapter addresses", () => {
+    const info = buildMobileConnectInfo({
+      requestUrl: "http://127.0.0.1:4269/api/mobile/connect-info",
+      configuredHost: "0.0.0.0",
+      platform: "win32",
+      interfaces: {
+        "vEthernet (WSL)": [
+          {
+            address: "172.23.112.1",
+            netmask: "255.255.240.0",
+            family: "IPv4",
+            mac: "00:00:00:00:00:02",
+            internal: false,
+            cidr: "172.23.112.1/20",
+          },
+        ],
+        "Wi-Fi": [
+          {
+            address: "192.168.1.73",
+            netmask: "255.255.255.0",
+            family: "IPv4",
+            mac: "00:00:00:00:00:03",
+            internal: false,
+            cidr: "192.168.1.73/24",
+          },
+        ],
+      },
+    });
+
+    expect(info.baseUrl).toBe("http://192.168.1.73:4269");
+    expect(info.lanAddresses).toEqual(["192.168.1.73", "172.23.112.1"]);
+    expect(info.candidates[0]).toBe("http://192.168.1.73:4269");
+    expect(info.candidates).toContain("http://172.23.112.1:4269");
+  });
+
   test("does not prefer LAN URLs until the gateway is LAN-bound", () => {
     const info = buildMobileConnectInfo({
       requestUrl: "http://localhost:5199/cybara/api/mobile/connect-info",
@@ -186,8 +221,9 @@ describe("mobile connect URL suggestions", () => {
     expect(info.platform).toBe("win32");
     expect(info.firewallCommand).toContain("New-NetFirewallRule");
     expect(info.firewallCommand).toContain("-LocalPort 4269");
+    expect(info.firewallCommand).toContain("-Profile Any");
     expect(info.warnings.join(" ")).toContain("Windows Firewall");
-    expect(info.troubleshooting.join(" ")).toContain("Private");
+    expect(info.troubleshooting.join(" ")).toContain("Private-only rule");
   });
 
   test("allows an explicit mobile base URL to override detected interfaces", () => {

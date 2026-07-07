@@ -192,16 +192,57 @@ export function isLoopbackMobileGatewayUrl(input: string): boolean {
 function readLanIPv4Addresses(
   interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> = networkInterfaces()
 ): string[] {
-  const addresses = new Set<string>();
-  for (const entries of Object.values(interfaces)) {
+  const addresses = new Map<string, { address: string; interfaceName: string; score: number }>();
+  for (const [interfaceName, entries] of Object.entries(interfaces)) {
     const list: NetworkInterfaceInfo[] = entries ?? [];
     for (const entry of list) {
       if (entry.family !== "IPv4" || entry.internal) continue;
       if (isLoopbackHost(entry.address) || entry.address.startsWith("169.254.")) continue;
-      addresses.add(entry.address);
+      const candidate = {
+        address: entry.address,
+        interfaceName,
+        score: scoreLanAddress(interfaceName, entry.address),
+      };
+      const existing = addresses.get(entry.address);
+      if (!existing || candidate.score < existing.score) {
+        addresses.set(entry.address, candidate);
+      }
     }
   }
-  return [...addresses].sort();
+  return [...addresses.values()]
+    .sort((a, b) => a.score - b.score || compareIPv4(a.address, b.address))
+    .map((candidate) => candidate.address);
+}
+
+function compareIPv4(a: string, b: string): number {
+  const aParts = a.split(".").map((part) => Number(part));
+  const bParts = b.split(".").map((part) => Number(part));
+  for (let i = 0; i < 4; i += 1) {
+    const diff = (aParts[i] || 0) - (bParts[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+function scoreLanAddress(interfaceName: string, address: string): number {
+  const name = interfaceName.toLowerCase();
+  let score = 100;
+
+  if (/wi-?fi|wlan|wireless|ethernet|local area connection|\ben\d+|\beth\d+/i.test(name)) {
+    score -= 40;
+  }
+  if (
+    /virtual|vethernet|hyper-v|wsl|docker|vmware|virtualbox|vpn|tailscale|zerotier|utun|bridge|npcap/i.test(
+      name
+    )
+  ) {
+    score += 80;
+  }
+  if (address.startsWith("192.168.")) score -= 30;
+  else if (address.startsWith("10.")) score -= 20;
+  else if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(address)) score += 20;
+
+  return score;
 }
 
 function addUniqueUrl(target: string[], value: string): void {
@@ -224,7 +265,7 @@ function buildLanEnableCommand(lanAddresses: string[]): string {
 }
 
 function buildWindowsFirewallCommand(port: string): string {
-  return `New-NetFirewallRule -DisplayName "Cybara Gateway ${port}" -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${port} -Profile Private`;
+  return `New-NetFirewallRule -DisplayName "Cybara Gateway ${port}" -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${port} -Profile Any`;
 }
 
 export function buildMobileConnectInfo(input: {
@@ -277,7 +318,7 @@ export function buildMobileConnectInfo(input: {
   }
   if (currentPlatform === "win32" && lanAccessEnabled) {
     warnings.push(
-      `Windows Firewall may still block phones. Allow inbound TCP ${port} for Private networks if the phone cannot open the gateway URL.`
+      `Windows Firewall may still block phones. Allow inbound TCP ${port} for all firewall profiles if the phone cannot open the gateway URL.`
     );
   }
 
@@ -290,7 +331,7 @@ export function buildMobileConnectInfo(input: {
     currentPlatform === "win32" ? buildWindowsFirewallCommand(String(port)) : undefined;
   if (firewallCommand) {
     troubleshooting.push(
-      `On Windows, make sure the Wi-Fi network is Private and Windows Defender Firewall allows inbound TCP ${port}.`
+      `On Windows, make sure Windows Defender Firewall allows inbound TCP ${port}; if a Private-only rule exists but the network is Public, the phone will still time out.`
     );
   }
 
