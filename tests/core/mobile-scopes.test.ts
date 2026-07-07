@@ -154,6 +154,7 @@ describe("mobile connect URL suggestions", () => {
     expect(info.lanAccessEnabled).toBe(true);
     expect(info.isCurrentLoopback).toBe(true);
     expect(info.warnings.join(" ")).toContain("127.0.0.1");
+    expect(info.troubleshooting.join(" ")).toContain("api/health");
   });
 
   test("does not prefer LAN URLs until the gateway is LAN-bound", () => {
@@ -172,6 +173,21 @@ describe("mobile connect URL suggestions", () => {
     expect(info.lanAccessEnabled).toBe(false);
     expect(info.warnings.join(" ")).toContain("Restart the gateway bound to a LAN address");
     expect(info.exposeCommand).toBe("CYBARA_HOST=192.168.1.20 cybara start");
+  });
+
+  test("adds Windows firewall diagnostics for LAN pairing", () => {
+    const info = buildMobileConnectInfo({
+      requestUrl: "http://127.0.0.1:4269/api/mobile/connect-info",
+      configuredHost: "0.0.0.0",
+      interfaces,
+      platform: "win32",
+    });
+
+    expect(info.platform).toBe("win32");
+    expect(info.firewallCommand).toContain("New-NetFirewallRule");
+    expect(info.firewallCommand).toContain("-LocalPort 4269");
+    expect(info.warnings.join(" ")).toContain("Windows Firewall");
+    expect(info.troubleshooting.join(" ")).toContain("Private");
   });
 
   test("allows an explicit mobile base URL to override detected interfaces", () => {

@@ -108,6 +108,9 @@ describe("mobile gateway connection verification", () => {
     await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow(
       "Listen on local network"
     );
+    await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow(
+      "Windows Firewall"
+    );
   });
 
   test("reports loopback QR payloads as unusable on a phone", async () => {
@@ -118,6 +121,12 @@ describe("mobile gateway connection verification", () => {
     await expect(
       verifyGatewayProfile({ ...profile, baseUrl: "http://127.0.0.1:4269" }, failingFetch, 0)
     ).rejects.toThrow("localhost on the phone");
+  });
+
+  test("times out authenticated verification when native fetch never resolves", async () => {
+    const hangingFetch: typeof fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+
+    await expect(verifyGatewayProfile(profile, hangingFetch, 5)).rejects.toThrow("Could not reach");
   });
 });
 
@@ -147,6 +156,41 @@ describe("pairing-code redemption", () => {
     expect(profile.apiKey).toBe("cybara_mobile_for_ABCD-2345");
     expect(profile.baseUrl).toBe("http://127.0.0.1:4269");
     expect(profile.deviceId).toBe("mobile_abc");
+  });
+
+  test("resolveGatewayProfile times out when pairing redemption never returns", async () => {
+    const hangingFetch: typeof fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
+    const raw = JSON.stringify({
+      protocol: MOBILE_PAIRING_PROTOCOL,
+      name: "Studio",
+      baseUrl: "http://192.168.1.20:4269",
+      code: "HANG-2345",
+      expiresAt: Date.now() + 60_000,
+    });
+
+    await expect(resolveGatewayProfile(raw, new Date(), hangingFetch, 5)).rejects.toThrow(
+      "Could not reach"
+    );
+  });
+
+  test("resolveGatewayProfile rejects expired pairing-code payloads before network use", async () => {
+    const calls: string[] = [];
+    const fetchImpl: typeof fetch = ((url) => {
+      calls.push(String(url));
+      return Promise.resolve(new Response("{}", { status: 500 }));
+    }) as typeof fetch;
+    const raw = JSON.stringify({
+      protocol: MOBILE_PAIRING_PROTOCOL,
+      name: "Studio",
+      baseUrl: "http://192.168.1.20:4269",
+      code: "OLD-2345",
+      expiresAt: Date.parse("2026-07-07T20:00:00.000Z"),
+    });
+
+    await expect(
+      resolveGatewayProfile(raw, new Date("2026-07-07T21:00:00.000Z"), fetchImpl, 5)
+    ).rejects.toThrow("Pairing code has expired");
+    expect(calls).toEqual([]);
   });
 
   test("resolveGatewayProfile redeems a deep-linked pairing-code payload", async () => {

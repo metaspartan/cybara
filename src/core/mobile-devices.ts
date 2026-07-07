@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "fs";
-import { networkInterfaces, tmpdir, type NetworkInterfaceInfo } from "os";
+import { networkInterfaces, platform as osPlatform, tmpdir, type NetworkInterfaceInfo } from "os";
 import { dirname, join, resolve } from "path";
 import { secureDir } from "./paths";
 
@@ -23,7 +23,10 @@ export interface MobileConnectInfo {
   lanAccessEnabled: boolean;
   isCurrentLoopback: boolean;
   warnings: string[];
+  troubleshooting: string[];
   exposeCommand: string;
+  firewallCommand?: string;
+  platform: NodeJS.Platform;
 }
 
 /**
@@ -220,6 +223,10 @@ function buildLanEnableCommand(lanAddresses: string[]): string {
   return address ? `CYBARA_HOST=${address} cybara start` : "cybara start --expose";
 }
 
+function buildWindowsFirewallCommand(port: string): string {
+  return `New-NetFirewallRule -DisplayName "Cybara Gateway ${port}" -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${port} -Profile Private`;
+}
+
 export function buildMobileConnectInfo(input: {
   requestUrl?: string;
   configuredHost?: string;
@@ -227,6 +234,7 @@ export function buildMobileConnectInfo(input: {
   basePath?: string;
   mobileBaseUrl?: string;
   interfaces?: NodeJS.Dict<NetworkInterfaceInfo[]>;
+  platform?: NodeJS.Platform;
 }): MobileConnectInfo {
   const basePath = normalizeMobileBasePath(input.basePath);
   const fallbackPort = input.port || 4269;
@@ -235,6 +243,7 @@ export function buildMobileConnectInfo(input: {
   const port = parsed.port || (parsed.protocol === "https:" ? "443" : "80");
   const currentBaseUrl = normalizeMobileGatewayUrl(`${parsed.protocol}//${parsed.host}${basePath}`);
   const lanAddresses = readLanIPv4Addresses(input.interfaces);
+  const currentPlatform = input.platform || osPlatform();
   const candidates: string[] = [];
   const mobileBaseUrl = input.mobileBaseUrl?.trim();
   const isCurrentLoopback = isLoopbackMobileGatewayUrl(currentBaseUrl);
@@ -266,9 +275,27 @@ export function buildMobileConnectInfo(input: {
   if (!mobileBaseUrl && lanAddresses.length === 0) {
     warnings.push("No non-loopback IPv4 LAN address was detected on this machine.");
   }
+  if (currentPlatform === "win32" && lanAccessEnabled) {
+    warnings.push(
+      `Windows Firewall may still block phones. Allow inbound TCP ${port} for Private networks if the phone cannot open the gateway URL.`
+    );
+  }
+
+  const selectedBaseUrl = candidates[0] || currentBaseUrl;
+  const troubleshooting = [
+    `On the phone, open ${selectedBaseUrl}/api/health before scanning. It should return gateway health JSON.`,
+    "On iOS, allow Cybara under Settings > Privacy & Security > Local Network if prompted or previously denied.",
+  ];
+  const firewallCommand =
+    currentPlatform === "win32" ? buildWindowsFirewallCommand(String(port)) : undefined;
+  if (firewallCommand) {
+    troubleshooting.push(
+      `On Windows, make sure the Wi-Fi network is Private and Windows Defender Firewall allows inbound TCP ${port}.`
+    );
+  }
 
   return {
-    baseUrl: candidates[0] || currentBaseUrl,
+    baseUrl: selectedBaseUrl,
     currentBaseUrl,
     candidates,
     lanAddresses,
@@ -276,6 +303,9 @@ export function buildMobileConnectInfo(input: {
     isCurrentLoopback,
     warnings,
     exposeCommand: buildLanEnableCommand(lanAddresses),
+    troubleshooting,
+    firewallCommand,
+    platform: currentPlatform,
   };
 }
 

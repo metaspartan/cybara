@@ -158,20 +158,31 @@ export function Mobile() {
                 ]}
                 helperText="Start with Standard unless the phone needs high-risk capabilities."
               />
-              {connectInfo?.warnings.length ? (
+              {connectInfo?.warnings.length || connectInfo?.troubleshooting?.length ? (
                 <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-100">
                   <div className="mb-2 flex items-center gap-2 font-medium">
                     <AlertTriangle className="h-4 w-4" />
                     Physical Phone Check
                   </div>
                   <div className="space-y-1 text-xs text-amber-100/85">
-                    {connectInfo.warnings.map((warning) => (
+                    {(connectInfo.warnings || []).map((warning) => (
                       <p key={warning}>{warning}</p>
+                    ))}
+                    {(connectInfo.troubleshooting || []).map((step) => (
+                      <p key={step}>{step}</p>
                     ))}
                     {connectInfo.exposeCommand ? (
                       <p>
                         Suggested start:{" "}
                         <span className="font-mono text-amber-50">{connectInfo.exposeCommand}</span>
+                      </p>
+                    ) : null}
+                    {connectInfo.firewallCommand ? (
+                      <p>
+                        Windows firewall:{" "}
+                        <span className="font-mono text-amber-50">
+                          {connectInfo.firewallCommand}
+                        </span>
                       </p>
                     ) : null}
                   </div>

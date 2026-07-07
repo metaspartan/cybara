@@ -476,6 +476,7 @@ describe("Mobile API", () => {
     expect(info.data.lanAccessEnabled).toBe(false);
     expect(String(info.data.warnings.join(" "))).toContain("127.0.0.1");
     expect(String(info.data.warnings.join(" "))).toContain("LAN address");
+    expect(String(info.data.troubleshooting.join(" "))).toContain("/api/health");
     expect(String(info.data.exposeCommand)).toContain("cybara start");
   });
 

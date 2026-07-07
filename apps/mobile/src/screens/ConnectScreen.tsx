@@ -61,7 +61,7 @@ export function ConnectScreen({
     setConnectBusy(true);
     setConnectError("");
     try {
-      setConnectStatus("Reading pairing payload...");
+      setConnectStatus("Connecting to gateway...");
       await finishConnect(await resolveGatewayProfile(payload));
     } catch (error) {
       showConnectError(error);
@@ -92,7 +92,7 @@ export function ConnectScreen({
     setConnectError("");
     setPayload(result.data);
     try {
-      setConnectStatus("Reading QR code...");
+      setConnectStatus("Connecting to gateway...");
       await finishConnect(await resolveGatewayProfile(result.data));
       setScannerOpen(false);
     } catch (error) {

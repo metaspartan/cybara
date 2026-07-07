@@ -3847,6 +3847,11 @@ function GatewayAuthSettingsSection() {
 
   async function handleToggleLanAccess(enabled: boolean) {
     const host = enabled ? "0.0.0.0" : "127.0.0.1";
+    const expectedRuntimeHost = (value?: string) => {
+      const normalized = (value || "").trim().toLowerCase();
+      if (enabled) return normalized === "0.0.0.0" || normalized === "::" || normalized === "[::]";
+      return normalized === "127.0.0.1" || normalized === "localhost" || normalized === "::1";
+    };
     setBusy(true);
     setApplyingHost(true);
     try {
@@ -3857,8 +3862,26 @@ function GatewayAuthSettingsSection() {
       if (res.data.hostApplyError) {
         throw new Error(res.data.hostApplyError);
       }
-      await new Promise((resolve) => setTimeout(resolve, 1_250));
-      await load(true);
+      let latest = res.data;
+      for (let attempt = 0; attempt < 8 && !expectedRuntimeHost(latest.host); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        const next = await authApi.settings();
+        if (!next.success || !next.data?.success) {
+          throw new Error(next.error || "Failed to confirm gateway listener");
+        }
+        latest = next.data;
+        if (latest.hostApplyError) {
+          throw new Error(latest.hostApplyError);
+        }
+      }
+      if (!expectedRuntimeHost(latest.host)) {
+        throw new Error(
+          enabled
+            ? `Gateway did not start listening on local network. Current listener is ${latest.host || "unknown"}. Check gateway logs and Windows Firewall.`
+            : `Gateway did not return to private localhost mode. Current listener is ${latest.host || "unknown"}.`
+        );
+      }
+      setSettings(latest);
       addToast(
         "success",
         enabled ? "LAN access enabled for trusted devices" : "Gateway is private to this computer"

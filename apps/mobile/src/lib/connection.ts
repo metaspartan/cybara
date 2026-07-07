@@ -20,6 +20,8 @@ export interface MobileConnectPayload {
   createdAt?: string;
 }
 
+const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS = 8000;
+
 function urlHost(input: string): string {
   try {
     return new URL(normalizeGatewayUrl(input)).hostname.toLowerCase();
@@ -36,10 +38,55 @@ export function isLoopbackGatewayUrl(input: string): boolean {
 }
 
 function connectionFailureMessage(profile: GatewayProfile): string {
-  if (isLoopbackGatewayUrl(profile.baseUrl)) {
+  return networkFailureMessage(profile.baseUrl);
+}
+
+function networkFailureMessage(baseUrl: string): string {
+  if (isLoopbackGatewayUrl(baseUrl)) {
     return "This QR points to localhost on the phone, not the computer running Cybara. In Cybara Settings > Gateway, turn on Listen on local network, create a new QR, and use the LAN URL.";
   }
-  return `Could not reach ${profile.baseUrl}. Make sure this phone is on the same Wi-Fi, the gateway is running, and Settings > Gateway > Listen on local network is enabled.`;
+  return `Could not reach ${baseUrl}. Open ${baseUrl}/api/health in Safari on this phone to verify the network path. Make sure the phone is on the same Wi-Fi, iOS Local Network access is allowed for Cybara, the gateway is running with Settings > Gateway > Listen on local network enabled, and Windows Firewall allows inbound TCP 4269 on Private networks if the gateway is on Windows.`;
+}
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  fetchImpl: typeof fetch,
+  timeoutMs: number,
+  failureMessage: string
+): Promise<Response> {
+  if (timeoutMs <= 0) {
+    return fetchImpl(url, init);
+  }
+
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  let fetchPromise: Promise<Response>;
+  try {
+    fetchPromise = Promise.resolve(fetchImpl(url, { ...init, signal: controller?.signal }));
+  } catch {
+    throw new Error(failureMessage);
+  }
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      fetchPromise,
+      new Promise<Response>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          controller?.abort();
+          reject(new Error(failureMessage));
+        }, timeoutMs);
+      }),
+    ]);
+  } catch (error) {
+    if (error instanceof Error && error.message === failureMessage) {
+      throw error;
+    }
+    throw new Error(failureMessage);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+    fetchPromise.catch(() => undefined);
+  }
 }
 
 function authFailureMessage(status: number): string {
@@ -55,37 +102,39 @@ function authFailureMessage(status: number): string {
 export async function verifyGatewayProfile(
   profile: GatewayProfile,
   fetchImpl: typeof fetch = fetch,
-  timeoutMs = 8000
+  timeoutMs = DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS
 ): Promise<void> {
-  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const timeout =
-    controller && timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : undefined;
-
   try {
-    const response = await fetchImpl(`${profile.baseUrl}/api/sessions?limit=1`, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-        Authorization: `Bearer ${profile.apiKey}`,
-        ...(profile.gatewayPassword?.trim()
-          ? { "X-Cybara-Gateway-Password": profile.gatewayPassword.trim() }
-          : {}),
+    const response = await fetchWithTimeout(
+      `${profile.baseUrl}/api/sessions?limit=1`,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${profile.apiKey}`,
+          ...(profile.gatewayPassword?.trim()
+            ? { "X-Cybara-Gateway-Password": profile.gatewayPassword.trim() }
+            : {}),
+        },
       },
-      signal: controller?.signal,
-    });
+      fetchImpl,
+      timeoutMs,
+      connectionFailureMessage(profile)
+    );
     if (!response.ok) {
       throw new Error(authFailureMessage(response.status));
     }
   } catch (error) {
     if (
       error instanceof Error &&
-      (/^The gateway /.test(error.message) || /^This mobile device /.test(error.message))
+      (/^The gateway /.test(error.message) ||
+        /^This mobile device /.test(error.message) ||
+        /^Could not reach /.test(error.message) ||
+        /^This QR points /.test(error.message))
     ) {
       throw error;
     }
     throw new Error(connectionFailureMessage(profile));
-  } finally {
-    if (timeout) clearTimeout(timeout);
   }
 }
 
@@ -212,17 +261,24 @@ export async function redeemPairingCode(
   baseUrl: string,
   code: string,
   name = "Cybara Gateway",
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS
 ): Promise<MobileConnectPayload> {
   const normalized = normalizeGatewayUrl(baseUrl);
   const trimmedCode = code.trim();
   if (!trimmedCode) throw new Error("Pairing code is missing");
 
-  const response = await fetchImpl(`${normalized}/api/mobile/pair/redeem`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code: trimmedCode }),
-  });
+  const response = await fetchWithTimeout(
+    `${normalized}/api/mobile/pair/redeem`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: trimmedCode }),
+    },
+    fetchImpl,
+    timeoutMs,
+    networkFailureMessage(normalized)
+  );
   let data: Record<string, unknown> | null = null;
   try {
     data = (await response.json()) as Record<string, unknown>;
@@ -253,7 +309,8 @@ export async function redeemPairingCode(
 export async function resolveGatewayProfile(
   raw: string,
   now = new Date(),
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS
 ): Promise<GatewayProfile> {
   const trimmed = raw.trim();
   if (!trimmed) throw new Error("Connection payload is empty");
@@ -262,7 +319,7 @@ export async function resolveGatewayProfile(
     const url = new URL(trimmed);
     const nestedPayload = url.protocol === "cybara:" ? url.searchParams.get("payload") : null;
     if (nestedPayload && nestedPayload !== trimmed) {
-      return resolveGatewayProfile(nestedPayload, now, fetchImpl);
+      return resolveGatewayProfile(nestedPayload, now, fetchImpl, timeoutMs);
     }
   } catch {}
 
@@ -281,11 +338,15 @@ export async function resolveGatewayProfile(
     if (typeof data.baseUrl !== "string" || typeof data.code !== "string") {
       throw new Error("Pairing code payload is missing baseUrl or code");
     }
+    if (typeof data.expiresAt === "number" && data.expiresAt <= now.getTime()) {
+      throw new Error("Pairing code has expired. Create a fresh QR code and scan it again.");
+    }
     const payload = await redeemPairingCode(
       data.baseUrl,
       data.code,
       typeof data.name === "string" ? data.name : undefined,
-      fetchImpl
+      fetchImpl,
+      timeoutMs
     );
     return profileFromPayload(payload, now);
   }

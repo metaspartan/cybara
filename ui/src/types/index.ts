@@ -401,7 +401,10 @@ export interface MobileConnectInfo {
   lanAccessEnabled: boolean;
   isCurrentLoopback: boolean;
   warnings: string[];
+  troubleshooting: string[];
   exposeCommand: string;
+  firewallCommand?: string;
+  platform: string;
 }
 
 export interface MobileDevicePairing {

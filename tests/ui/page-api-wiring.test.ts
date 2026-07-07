@@ -48,6 +48,8 @@ describe("UI page API wiring", () => {
     expect(source).toContain("setDeleteTarget(device)");
     expect(source).toContain("Detected URLs");
     expect(source).toContain("connectInfo.warnings");
+    expect(source).toContain("connectInfo.troubleshooting");
+    expect(source).toContain("connectInfo.firewallCommand");
     expect(source).toContain("connectInfo.exposeCommand");
     expect(source).not.toContain("apiFetch(");
     expect(source).not.toContain("window.fetch(");
@@ -70,6 +72,8 @@ describe("UI page API wiring", () => {
     expect(source).toContain("Listen on local network");
     expect(source).toContain('enabled ? "0.0.0.0" : "127.0.0.1"');
     expect(source).toContain("authApi.updateSettings({ host, applyHostNow: true })");
+    expect(source).toContain("expectedRuntimeHost(latest.host)");
+    expect(source).toContain("Failed to confirm gateway listener");
     expect(source).not.toContain("Boolean(settings?.hostForced) || applyingHost");
     expect(source).toContain("settingsApi.updateConfig({ speech })");
     expect(source).toContain("settingsApi.updateConfig({");
