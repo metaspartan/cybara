@@ -8,6 +8,7 @@ import {
   Cpu,
   Database,
   Eye,
+  Folder,
   Link2,
   Mic,
   Network,
@@ -600,7 +601,6 @@ export function ProviderSettingsPanel({
     await saveRoutePricing();
   };
 
-  // Custom pay-as-you-go pricing per 1M tokens rides on the router route config.
   const saveRoutePricing = async () => {
     if (!routerPricingConfig) return;
     const priceInput = parsePlanLimit(planPriceInput);
@@ -2536,7 +2536,17 @@ export function GatewayManagementPanel({
   const [copied, setCopied] = useState(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [restartBusy, setRestartBusy] = useState(false);
+  const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const configuredDefaultWorkspaceDir =
+    typeof summary?.config.default_workspace_dir === "string"
+      ? summary.config.default_workspace_dir
+      : "";
+  const [defaultWorkspaceDir, setDefaultWorkspaceDir] = useState(configuredDefaultWorkspaceDir);
   const recentLogs = summary?.logs.slice(0, 4) ?? [];
+
+  useEffect(() => {
+    setDefaultWorkspaceDir(configuredDefaultWorkspaceDir);
+  }, [configuredDefaultWorkspaceDir, profile.id]);
 
   const loadAuthSettings = useCallback(async () => {
     setBusyAction((current) => current ?? "auth-load");
@@ -2665,6 +2675,32 @@ export function GatewayManagementPanel({
     }
   };
 
+  const saveDefaultWorkspace = async () => {
+    if (summary?.availability.config.ok !== true) {
+      Alert.alert("Config unavailable", "The gateway config route is not available.");
+      return;
+    }
+    setWorkspaceBusy(true);
+    try {
+      const result = await api.updateConfig({
+        default_workspace_dir: defaultWorkspaceDir.trim(),
+      });
+      if (result.success === false) throw new Error("Gateway rejected the workspace setting.");
+      await refreshSummary();
+      Alert.alert(
+        "Default workspace saved",
+        "New chats use this workspace when no session folder is selected."
+      );
+    } catch (error) {
+      Alert.alert(
+        "Workspace update failed",
+        gatewayActionError(error, "Default workspace update failed.")
+      );
+    } finally {
+      setWorkspaceBusy(false);
+    }
+  };
+
   return (
     <>
       <SettingsSection title="Gateway runtime">
@@ -2687,6 +2723,38 @@ export function GatewayManagementPanel({
               tone={colors.green}
             />
             <DetailActionButton Icon={Database} label="Open Logs" onPress={openLogs} />
+          </View>
+        </View>
+        <View style={styles.settingsInfoBox}>
+          <View style={styles.settingsInfoHeader}>
+            <Folder color={colors.cyan} size={18} strokeWidth={2.2} />
+            <Text style={styles.settingsInfoTitle}>Default Workspace</Text>
+          </View>
+          <Text style={styles.settingsInfoText}>
+            New chats and agent prompts use this directory when the session does not choose a
+            workspace.
+          </Text>
+          <SettingsTextField
+            label="Workspace directory"
+            value={defaultWorkspaceDir}
+            onChangeText={setDefaultWorkspaceDir}
+            onSubmitEditing={() => {
+              void saveDefaultWorkspace();
+            }}
+            placeholder="/Users/you"
+            returnKeyType="done"
+          />
+          <View style={styles.settingsActionRow}>
+            <DetailActionButton
+              Icon={Save}
+              busy={workspaceBusy}
+              disabled={workspaceBusy}
+              label="Save Workspace"
+              onPress={() => {
+                void saveDefaultWorkspace();
+              }}
+              tone={colors.cyan}
+            />
           </View>
         </View>
         <View style={styles.settingsInfoBox}>

@@ -76,6 +76,8 @@ describe("Chat revert and diff wiring", () => {
       /\(["']__TAURI_INTERNALS__["'] in window \|\| ["']__TAURI__["'] in window\)/
     );
     expect(source).toContain("Workspace: ${effectiveWorkspaceDir}");
+    expect(source).toContain("info?.defaultWorkspaceDir");
+    expect(source).toContain("lastWorkspaceDir || configuredWorkspaceDir || homeWorkspaceDir");
     // Workspace chips are clickable-to-change (header + empty state), with no separate clear button.
     expect(source).toContain("void handleSelectWorkspace()");
     expect(source).not.toContain('title="Clear session workspace"');

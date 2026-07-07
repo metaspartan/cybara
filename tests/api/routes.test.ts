@@ -368,7 +368,26 @@ describe("Setup & Info API", () => {
     expect(data.name).toBe("Cybara");
     expect(typeof data.version).toBe("string");
     expect(typeof data.homeDir).toBe("string");
+    expect(typeof data.cybaraDataDir).toBe("string");
+    expect(typeof data.defaultWorkspaceDir).toBe("string");
     expect(data.stats).toBeDefined();
+  });
+
+  test("default workspace setting is normalized and reflected in info", async () => {
+    const workspaceDir = join(testHome, "workspaces", "primary");
+    const update = await api("PUT", "/api/config", { default_workspace_dir: workspaceDir });
+    expect(update.status).toBe(200);
+    expect(update.data.success).toBe(true);
+
+    const configRes = await api("GET", "/api/config");
+    expect(configRes.status).toBe(200);
+    expect(configRes.data.default_workspace_dir).toBe(workspaceDir);
+
+    const info = await api("GET", "/api/info");
+    expect(info.status).toBe(200);
+    expect(info.data.defaultWorkspaceDir).toBe(workspaceDir);
+
+    await api("PUT", "/api/config", { default_workspace_dir: testHome });
   });
 
   test("setup status and complete flow should return success", async () => {

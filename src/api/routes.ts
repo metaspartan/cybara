@@ -1,4 +1,5 @@
 import { config } from "../core/config";
+import { cybaraDir, homeDir as runtimeHomeDir } from "../core/paths";
 import { cacheMetricsRoutes, prewarmMetricsRoutes } from "./route-cache";
 import { mobileRoutes } from "./mobile";
 import {
@@ -145,7 +146,6 @@ import {
   stopSandboxBrowser,
 } from "../core/browser/sandbox-browser";
 import { validateBrowserNavigationUrl } from "../core/tools/handlers/browser";
-import { homedir } from "os";
 import { dirname, isAbsolute, resolve } from "path";
 import { createHash, randomBytes } from "crypto";
 import {
@@ -651,7 +651,9 @@ const routes: Record<string, RouteHandler> = {
     version: getAppVersion(),
     releaseRepositoryUrl: getReleaseRepositoryUrl(),
     setupComplete: config.isSetupComplete(),
-    homeDir: process.env.HOME || homedir(),
+    homeDir: runtimeHomeDir,
+    cybaraDataDir: cybaraDir,
+    defaultWorkspaceDir: config.getDefaultWorkspaceDir(),
     stats: {
       agents: agentManager.getStats(),
       providers: providerManager.getStats(),
@@ -709,6 +711,7 @@ const routes: Record<string, RouteHandler> = {
     memory_provider: redactMemoryProviderSettings(config.getMemoryProviderSettings()),
     speech: config.getSpeechSettings(),
     computer_use: config.getComputerUseSettings(),
+    default_workspace_dir: config.getDefaultWorkspaceDir(),
     reasoning_effort: config.getDefaultReasoningEffort(),
     self_improving_skills_enabled: config.get<boolean>("self_improving_skills_enabled") !== false,
   }),
@@ -824,6 +827,10 @@ const routes: Record<string, RouteHandler> = {
         config.setComputerUseSettings(value);
         const { stopComputerUseDriver } = await import("../core/computer-use");
         stopComputerUseDriver();
+        continue;
+      }
+      if (key === "default_workspace_dir") {
+        config.setDefaultWorkspaceDir(value);
         continue;
       }
       if (key === "reasoning_effort") {
@@ -3731,7 +3738,7 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/journey": () => buildJourney(),
   "GET /api/skills/categories": () => getSkillCategories(),
   "GET /api/skills/status": async () => {
-    const homeDir = process.env.HOME || homedir();
+    const homeDir = config.getDefaultWorkspaceDir();
     const allSkills = await loadAllSkills({ workspaceDir: homeDir });
     const context = createEligibilityContext();
     const statuses = getSkillsStatusReport(allSkills, context);
@@ -4324,7 +4331,7 @@ const routes: Record<string, RouteHandler> = {
     return { success: true, message: "System prompt configuration saved" };
   },
   "GET /api/system-prompt/preview": async () => {
-    const homeDir = process.env.HOME || homedir();
+    const homeDir = config.getDefaultWorkspaceDir();
     const agents = agentManager.list();
     const candidates = agents.filter((a) => a.type !== "subagent" && a.type !== "worker");
     const isAutostart = (a: (typeof candidates)[number]): boolean => {

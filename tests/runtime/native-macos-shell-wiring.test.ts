@@ -125,6 +125,10 @@ describe("native macOS shell wiring", () => {
     expect(settings).toContain("await sidecar.waitForAttachedGatewayRestart()");
     expect(settings).toContain("Gateway Auth");
     expect(settings).toContain("Rotate Key");
+    expect(settings).toContain('Text("Default Workspace")');
+    expect(settings).toContain('["default_workspace_dir": defaultWorkspaceDir]');
+    expect(settings).toContain("chooseDefaultWorkspaceDirectory()");
+    expect(settings).toContain('chooseMigrationDirectory(title: "Choose Default Workspace")');
     expect(sidecarManager).toContain("func waitForAttachedGatewayRestart() async");
     expect(sidecarManager).toContain("Waiting for attached Cybara gateway to restart");
   });

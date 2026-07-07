@@ -747,6 +747,8 @@ export interface InfoData {
   releaseRepositoryUrl?: string;
   setupComplete: boolean;
   homeDir?: string;
+  cybaraDataDir?: string;
+  defaultWorkspaceDir?: string;
   stats: {
     agents: { total: number; running?: number; stopped?: number };
     providers: { total: number; withAuth?: number };

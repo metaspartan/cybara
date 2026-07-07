@@ -2302,13 +2302,17 @@ export function Chat() {
   const runActivityBufferRef = useRef<LiveActivityItem[]>([]);
   const liveActivitiesRef = useRef<LiveActivityItem[]>([]);
   const latestStatusTimestampBySessionRef = useRef<Record<string, number>>({});
+  const configuredWorkspaceDir =
+    typeof info?.defaultWorkspaceDir === "string" && info.defaultWorkspaceDir.trim().length > 0
+      ? info.defaultWorkspaceDir.trim()
+      : null;
   const homeWorkspaceDir =
     typeof info?.homeDir === "string" && info.homeDir.trim().length > 0
       ? info.homeDir.trim()
       : null;
   const fallbackWorkspaceDir =
-    !sessionId && (lastWorkspaceDir || homeWorkspaceDir)
-      ? lastWorkspaceDir || homeWorkspaceDir
+    !sessionId && (lastWorkspaceDir || configuredWorkspaceDir || homeWorkspaceDir)
+      ? lastWorkspaceDir || configuredWorkspaceDir || homeWorkspaceDir
       : null;
   const effectiveWorkspaceDir = workspaceDir || fallbackWorkspaceDir || null;
   const sessionFileChanges = useMemo(

@@ -151,7 +151,6 @@ import {
   type OpenAIResponse,
   type OpenAIUsage,
 } from "./agent-internals";
-import { homedir } from "os";
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
 import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
 import { resolveAgentToolSelection } from "./agent-tool-selection";
@@ -580,7 +579,7 @@ class AgentManager {
 
   async createWithSystemPrompt(definition: Omit<AgentDefinition, "system_prompt">): Promise<Agent> {
     const typeConfig = definition.type ? AGENT_TYPES[definition.type] : undefined;
-    const homeDir = process.env.HOME || homedir();
+    const homeDir = config.getDefaultWorkspaceDir();
 
     const allSkills = await loadAllSkills({ workspaceDir: homeDir });
     const context = createEligibilityContext();
@@ -653,7 +652,7 @@ class AgentManager {
     const agent = this.get(id);
     if (!agent) return false;
 
-    const homeDir = process.env.HOME || homedir();
+    const homeDir = config.getDefaultWorkspaceDir();
 
     const allSkills = await loadAllSkills({ workspaceDir: homeDir });
     const context = createEligibilityContext();

@@ -66,6 +66,11 @@ describe("UI page API wiring", () => {
     expect(source).toContain("settingsApi.updateConfig({ speech })");
     expect(source).toContain("settingsApi.updateConfig({");
     expect(source).toContain("computer_use: { driverCommand: trimmed }");
+    expect(source).toContain("function GatewayPathSettingsSection");
+    expect(source).toContain("default_workspace_dir: defaultWorkspaceDir.trim()");
+    expect(source).toContain("<GatewayPathSettingsSection infoData={infoData} />");
+    expect(source).toContain("Gateway data home");
+    expect(source).toContain("openDesktopDirectoryDialog({");
     expect(source).toContain("function ComputerUseSettings()");
     expect(source).toContain("function MigrationSettingsSection()");
     expect(source).toContain("migrationApi.sources()");

@@ -86,6 +86,7 @@ struct NativeSettingsScreen: View {
     @State private var authCopied = false
     @State private var authBusy = false
     @State private var showRotateConfirm = false
+    @State private var defaultWorkspaceDir = ""
     @State private var migrationSources: [GatewayMigrationSource] = []
     @State private var migrationSourceKind = "openclaw"
     @State private var migrationSourcePath = ""
@@ -142,8 +143,6 @@ struct NativeSettingsScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .task(id: sidecar.isReady) { await load() }
         .task {
-            // Keep auth state current without a manual refresh, matching the
-            // live-updating web settings.
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 30_000_000_000)
                 guard sidecar.isReady, !authBusy else { continue }
@@ -233,6 +232,41 @@ struct NativeSettingsScreen: View {
                         settingRow("Uptime", uptimeLabel)
                         settingRow("Launch mode", sidecar.managesGateway ? "Managed sidecar" : "Attached gateway")
                         settingRow("Binary", sidecar.binaryPath)
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Default Workspace")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            Spacer()
+                            if savingKey == "default_workspace_dir" {
+                                ProgressView().controlSize(.small)
+                            }
+                        }
+                        Text(
+                            "New chats, agent prompts, skills status, and system prompt previews use this directory when no session workspace is selected."
+                        )
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        TextField("Default workspace directory", text: $defaultWorkspaceDir)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit {
+                                saveConfigPatch(
+                                    ["default_workspace_dir": defaultWorkspaceDir],
+                                    key: "default_workspace_dir"
+                                )
+                            }
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 10) { defaultWorkspaceButtons }
+                            VStack(alignment: .leading, spacing: 10) { defaultWorkspaceButtons }
+                        }
+                        Text(
+                            "Move gateway data by setting CYBARA_HOME before launch; this field only changes the workspace default."
+                        )
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.tertiary)
                     }
                 }
 
@@ -381,6 +415,28 @@ struct NativeSettingsScreen: View {
             }
             .nativeSettingsContentLayout()
         }
+    }
+
+    @ViewBuilder
+    private var defaultWorkspaceButtons: some View {
+        Button {
+            chooseDefaultWorkspaceDirectory()
+        } label: {
+            Label("Choose Folder", systemImage: "folder")
+        }
+        .buttonStyle(.bordered)
+        .disabled(savingKey == "default_workspace_dir")
+
+        Button {
+            saveConfigPatch(
+                ["default_workspace_dir": defaultWorkspaceDir],
+                key: "default_workspace_dir"
+            )
+        } label: {
+            Label("Save Workspace", systemImage: "checkmark.circle")
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(savingKey == "default_workspace_dir")
     }
 
     @ViewBuilder
@@ -1500,7 +1556,6 @@ struct NativeSettingsScreen: View {
             providers = try await p
             readConfig(config)
             error = nil
-            // Best-effort: agents power the background self-improvement picker.
             if let loadedAgents = try? await client.agents() {
                 agents = loadedAgents
             }
@@ -1508,7 +1563,6 @@ struct NativeSettingsScreen: View {
             self.error = error.localizedDescription
         }
 
-        // Best-effort: older gateways don't expose auth management yet.
         if let auth = try? await client.authSettings(), auth["success"] as? Bool == true {
             readAuthSettings(auth)
             authAvailable = true
@@ -1584,6 +1638,12 @@ struct NativeSettingsScreen: View {
     private func chooseMigrationWorkspaceDirectory() {
         chooseMigrationDirectory(title: "Choose Workspace Directory") { path in
             migrationWorkspaceTarget = path
+        }
+    }
+
+    private func chooseDefaultWorkspaceDirectory() {
+        chooseMigrationDirectory(title: "Choose Default Workspace") { path in
+            defaultWorkspaceDir = path
         }
     }
 
@@ -1686,6 +1746,7 @@ struct NativeSettingsScreen: View {
         selectedAccent = readAccentKey(from: config) ?? "indigo"
         onAccentChanged(selectedAccent)
         defaultModel = config["default_model"] as? String ?? ""
+        defaultWorkspaceDir = config["default_workspace_dir"] as? String ?? defaultWorkspaceDir
         reasoningEffort = config["reasoning_effort"] as? String ?? ""
         backgroundAgentId = config["background_agent_id"] as? String ?? ""
         terminalEnabled = config["terminal_enabled"] as? Bool ?? false

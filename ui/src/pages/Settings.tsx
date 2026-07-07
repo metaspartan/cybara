@@ -90,6 +90,7 @@ import {
   Shield,
   Download,
   ExternalLink,
+  Folder,
   FolderSync,
   MonitorUp,
   Mic,
@@ -155,12 +156,9 @@ function ThemeSettings() {
 
   const toggleLightMode = async (next: boolean) => {
     const previous = mode;
-    // Apply instantly (adds/removes the html.light class), then persist.
     setMode(next ? "light" : "dark");
     try {
       const current = (identity as IdentityConfig | undefined) ?? {};
-      // PUT /api/identity stores the body verbatim, so send the full identity
-      // with only the theme changed.
       await updateIdentity.mutateAsync({ ...current, theme: next ? "light" : "dark" });
       addToast("success", `Theme set to ${next ? "light" : "dark"}`);
     } catch (error) {
@@ -190,9 +188,7 @@ function ThemeSettings() {
         if (!mounted || !result.success) return;
         const configAccent = readThemeAccentFromConfig(result.data);
         if (configAccent) setAccent(configAccent);
-      } catch {
-        // Keep the locally persisted accent if the gateway is unavailable.
-      }
+      } catch {}
     };
     void loadGatewayTheme();
     return () => {
@@ -1292,7 +1288,6 @@ function MemoryBehaviorSettings() {
         setRecall(readMemoryRecallSettings(result.data?.workspace_indexer));
         setProvider(readMemoryProviderSettings(result.data?.memory_provider));
       } catch {
-        // Keep defaults available while the gateway is unavailable.
       } finally {
         if (mounted) setLoading(false);
       }
@@ -3626,6 +3621,121 @@ function MigrationSettingsSection() {
   );
 }
 
+function GatewayPathSettingsSection({ infoData }: { infoData: InfoData }) {
+  const { addToast } = useUIStore();
+  const [defaultWorkspaceDir, setDefaultWorkspaceDir] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const gatewayDataDir =
+    typeof infoData.cybaraDataDir === "string" && infoData.cybaraDataDir.trim()
+      ? infoData.cybaraDataDir.trim()
+      : "~/.cybara";
+  const detectedDefault =
+    typeof infoData.defaultWorkspaceDir === "string" && infoData.defaultWorkspaceDir.trim()
+      ? infoData.defaultWorkspaceDir.trim()
+      : typeof infoData.homeDir === "string" && infoData.homeDir.trim()
+        ? infoData.homeDir.trim()
+        : "";
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await settingsApi.getConfig();
+      if (res.success && res.data) {
+        const configured = res.data.default_workspace_dir;
+        setDefaultWorkspaceDir(
+          typeof configured === "string" && configured.trim() ? configured.trim() : detectedDefault
+        );
+      } else {
+        setDefaultWorkspaceDir(detectedDefault);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [detectedDefault]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function chooseWorkspaceDir() {
+    const selected = await openDesktopDirectoryDialog({
+      defaultPath: defaultWorkspaceDir || detectedDefault,
+      title: "Choose Default Workspace",
+    });
+    if (selected) setDefaultWorkspaceDir(selected);
+  }
+
+  async function saveWorkspaceDir() {
+    setSaving(true);
+    try {
+      const res = await settingsApi.updateConfig({
+        default_workspace_dir: defaultWorkspaceDir.trim(),
+      });
+      if (!res.success) {
+        throw new Error(res.error || "Failed to save default workspace");
+      }
+      addToast("success", "Default workspace saved");
+      await load();
+    } catch (error) {
+      addToast(
+        "error",
+        error instanceof Error ? error.message : "Failed to save default workspace"
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card variant="liquid">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Folder className="w-5 h-5 text-cyan-400" />
+          Default Workspace
+        </CardTitle>
+        <CardDescription>
+          Used for new chats, agent prompts, skills status, and system prompt previews when a
+          session has no explicit workspace.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-3 items-end">
+          <Input
+            label="Workspace directory"
+            value={defaultWorkspaceDir}
+            placeholder={detectedDefault || "/Users/you"}
+            disabled={loading || saving}
+            onChange={(event) => setDefaultWorkspaceDir(event.target.value)}
+          />
+          <Button variant="secondary" onClick={() => void chooseWorkspaceDir()} disabled={saving}>
+            Browse
+          </Button>
+          <Button
+            leftIcon={
+              saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />
+            }
+            onClick={() => void saveWorkspaceDir()}
+            disabled={loading || saving}
+          >
+            Save
+          </Button>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            Gateway data home
+          </div>
+          <div className="mt-1 font-mono text-xs text-gray-300 break-all">{gatewayDataDir}</div>
+          <p className="mt-2 text-xs text-gray-500">
+            Set CYBARA_HOME before launching the gateway to move config, database, API keys, and
+            local memory files.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function GatewayControlSection() {
   const { addToast } = useUIStore();
   const [restarting, setRestarting] = useState(false);
@@ -3657,9 +3767,7 @@ function GatewayControlSection() {
       try {
         const res = await systemApi.health();
         if (res.success) return true;
-      } catch {
-        // Gateway still down — keep waiting.
-      }
+      } catch {}
     }
     return false;
   }
@@ -3780,7 +3888,6 @@ function GatewayAuthSettingsSection() {
           }
           setUnsupported(false);
         } else if (/not found/i.test(res.error || "")) {
-          // Older gateway without /api/auth — show guidance instead of erroring.
           setUnsupported(true);
         } else if (!silent) {
           addToast("error", res.error || "Failed to load auth settings");
@@ -3837,7 +3944,6 @@ function GatewayAuthSettingsSection() {
       const nextUrl = `${nextOrigin}${res.data.basePath || ""}/`;
       addToast("info", `Port saved — restarting gateway on ${port}…`);
       await systemApi.restart();
-      // Follow the gateway to its new origin once it answers there.
       const deadline = Date.now() + 45_000;
       while (Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 1_500));
@@ -3849,9 +3955,7 @@ function GatewayAuthSettingsSection() {
             window.location.href = nextUrl;
             return;
           }
-        } catch {
-          // Not up yet.
-        }
+        } catch {}
       }
       addToast(
         "error",
@@ -3928,9 +4032,6 @@ function GatewayAuthSettingsSection() {
         throw new Error(res.error || "Failed to rotate API key");
       }
       setRevealedKey(res.data.apiKey);
-      // The gateway swaps to the new key instantly (no restart needed); adopt
-      // it in this browser too so the session keeps working even with the
-      // localhost bypass off.
       setApiAuthToken(res.data.apiKey);
       setRotateConfirmOpen(false);
       addToast("success", "API key rotated — desktop apps pick it up automatically");
@@ -4171,8 +4272,7 @@ export function Settings() {
     if (isSettingsSectionId(sectionParam) && sectionParam !== activeSection) {
       setActiveSection(sectionParam);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sectionParam]);
+  }, [activeSection, sectionParam]);
 
   const selectSection = (section: SettingsSectionId) => {
     setActiveSection(section);
@@ -4271,6 +4371,7 @@ export function Settings() {
 
         {activeSection === "system" && (
           <>
+            <GatewayPathSettingsSection infoData={infoData} />
             <GatewayControlSection />
             <DesktopUpdateSettings
               currentVersion={String(infoData.version || "unknown")}

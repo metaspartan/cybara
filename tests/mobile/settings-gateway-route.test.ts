@@ -18,9 +18,13 @@ describe("mobile settings: Gateway runtime controls", () => {
     expect(screen).toContain('label="Restart Gateway"');
     expect(screen).toContain('label="Open Logs"');
     expect(screen).toContain('label="Rotate"');
+    expect(screen).toContain("Default Workspace");
+    expect(screen).toContain("default_workspace_dir: defaultWorkspaceDir.trim()");
+    expect(screen).toContain('label="Save Workspace"');
     expect(screen).toContain("api.restartGateway()");
     expect(screen).toContain("api.gatewayAuthSettings()");
     expect(screen).toContain("api.rotateGatewayApiKey()");
+    expect(screen).toContain("api.updateConfig({");
   });
 
   test("rotated root keys are adopted by the live client and persisted profile", () => {

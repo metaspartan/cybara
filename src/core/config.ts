@@ -1,4 +1,6 @@
 import { tables } from "./database";
+import { resolve } from "path";
+import { homeDir } from "./paths";
 import { normalizeReasoningEffort } from "./llm/reasoning";
 import {
   type MemoryProviderSettings,
@@ -158,6 +160,16 @@ export interface SpeechSettings {
 
 export interface ComputerUseSettings {
   driverCommand: string;
+}
+
+function normalizeDefaultWorkspaceDir(value: unknown): string {
+  if (typeof value !== "string") return homeDir;
+  const trimmed = value.trim().replace(/\0/g, "");
+  if (!trimmed || trimmed === "~") return homeDir;
+  if (trimmed.startsWith("~/") || trimmed.startsWith("~\\")) {
+    return resolve(homeDir, trimmed.slice(2));
+  }
+  return resolve(trimmed);
 }
 
 export const DEFAULT_DANGEROUS_TOOL_POLICY: DangerousToolPolicyConfig = {
@@ -670,6 +682,7 @@ class ConfigManager {
       memory_provider: { ...DEFAULT_MEMORY_PROVIDER_SETTINGS },
       speech: { ...DEFAULT_SPEECH_SETTINGS },
       computer_use: { ...DEFAULT_COMPUTER_USE_SETTINGS },
+      default_workspace_dir: homeDir,
     };
 
     const all = tables.config.all();
@@ -688,6 +701,16 @@ class ConfigManager {
   setDefaultReasoningEffort(value: unknown): string {
     const normalized = normalizeReasoningEffort(value) || "";
     this.set("reasoning_effort", normalized);
+    return normalized;
+  }
+
+  getDefaultWorkspaceDir(): string {
+    return normalizeDefaultWorkspaceDir(this.get<unknown>("default_workspace_dir"));
+  }
+
+  setDefaultWorkspaceDir(value: unknown): string {
+    const normalized = normalizeDefaultWorkspaceDir(value);
+    this.set("default_workspace_dir", normalized);
     return normalized;
   }
 
