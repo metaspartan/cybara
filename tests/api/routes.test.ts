@@ -1044,6 +1044,28 @@ describe("Speech API", () => {
     expect(configResponse.data.speech.tts.model).toBe("eleven_flash_v2_5");
   });
 
+  test("native speech-to-text mode is normalized and blocks server transcription by default", async () => {
+    const put = await api("PUT", "/api/speech/settings", {
+      tts: { provider: "auto" },
+      stt: { provider: "native", language: "en-US" },
+    });
+    expect(put.status).toBe(200);
+    expect(put.data.speech.stt.provider).toBe("native");
+
+    const blocked = await api("POST", "/api/speech/dictate", {
+      audioBase64: "Zm9v",
+      mimeType: "audio/webm",
+      fileName: "dictation.webm",
+    });
+    expect(blocked.status).toBe(400);
+    expect(String(blocked.data.error)).toContain("native dictation");
+
+    await api("PUT", "/api/speech/settings", {
+      tts: { provider: "auto" },
+      stt: { provider: "auto" },
+    });
+  });
+
   test("POST /api/speech/dictate should reject missing audio payload", async () => {
     const { status, data } = await api("POST", "/api/speech/dictate", {});
     expect(status).toBe(400);

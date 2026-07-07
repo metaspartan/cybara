@@ -3550,12 +3550,18 @@ const routes: Record<string, RouteHandler> = {
         : "audio/webm";
     const decoded = decodeDictationAudioBase64(data.audioBase64, fallbackMimeType);
     const speechSettings = config.getSpeechSettings();
-    const provider = pickDictationProvider(
+    const requestedProviderId =
       typeof data.providerId === "string" && data.providerId.trim()
         ? data.providerId.trim()
-        : speechSettings.stt.providerId
-          ? speechSettings.stt.providerId
-          : undefined
+        : undefined;
+    if (speechSettings.stt.provider === "native" && !requestedProviderId) {
+      throw new Error(
+        "Validation error: Speech-to-text is set to native dictation; choose Auto or OpenAI-compatible transcription for server transcription."
+      );
+    }
+    const provider = pickDictationProvider(
+      requestedProviderId ||
+        (speechSettings.stt.providerId ? speechSettings.stt.providerId : undefined)
     );
     const result = await transcribeWithOpenAICompatibleProvider({
       provider,

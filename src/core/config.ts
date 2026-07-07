@@ -89,7 +89,7 @@ export type SandboxProvider = "auto" | "apple_sandbox" | "podman" | "docker";
 export type SandboxNetworkMode = "allow" | "deny";
 export type { EmbeddingProviderPreference } from "./memory/embeddings";
 export type SpeechTtsProviderPreference = "auto" | "system" | "elevenlabs" | "openai";
-export type SpeechSttProviderPreference = "auto" | "openai";
+export type SpeechSttProviderPreference = "auto" | "native" | "openai";
 
 export interface DangerousToolPolicyConfig {
   enabled: boolean;
@@ -417,6 +417,15 @@ function normalizeSpeechSttProvider(value: unknown): SpeechSttProviderPreference
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, "_");
+  if (
+    normalized === "native" ||
+    normalized === "system" ||
+    normalized === "local" ||
+    normalized === "browser" ||
+    normalized === "dictation"
+  ) {
+    return "native";
+  }
   return normalized === "openai" || normalized === "openai_codex" || normalized === "codex"
     ? "openai"
     : "auto";

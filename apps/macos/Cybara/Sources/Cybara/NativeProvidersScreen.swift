@@ -390,6 +390,10 @@ private struct ProviderEditorSheet: View {
     @State private var oauthDeviceCode: GatewayOAuthDeviceCodeResponse?
     @State private var oauthToken = ""
     @State private var oauthError: String?
+    @State private var planConfig: [String: Any]?
+    @State private var planName = ""
+    @State private var planMonthlyTokens = ""
+    @State private var planMonthlySpend = ""
 
     init(
         client: GatewayClient,
@@ -451,6 +455,16 @@ private struct ProviderEditorSheet: View {
                 TextField("Base URL", text: $baseURL)
                 credentialSection
                 Toggle("Use as default provider", isOn: $isDefault)
+                if provider != nil, planConfig != nil {
+                    Section("Plan limits") {
+                        TextField("Plan name (e.g. Pro, Team)", text: $planName)
+                        TextField("Monthly token limit", text: $planMonthlyTokens)
+                        TextField("Monthly spend limit", text: $planMonthlySpend)
+                        Text("Track monthly usage against your provider plan. Leave all fields empty to keep the plan unconfigured. Advanced windows live in Model Router settings.")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
             .formStyle(.grouped)
 
@@ -484,6 +498,7 @@ private struct ProviderEditorSheet: View {
         .padding(24)
         .frame(width: 560)
         .frame(minHeight: 430)
+        .task { await loadPlanConfig() }
         .onChange(of: providerType) { _, next in
             resetOAuth()
             if provider == nil, name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -773,10 +788,82 @@ private struct ProviderEditorSheet: View {
                 accessToken: resolvedAccessToken,
                 isDefault: isDefault
             ))
+            try await savePlanLimits()
             dismiss()
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    private var planConfigKey: String {
+        guard let provider else { return providerType }
+        let entries = planConfig?["providers"] as? [String: Any] ?? [:]
+        if entries[provider.id] != nil { return provider.id }
+        if entries[provider.providerType] != nil { return provider.providerType }
+        return provider.id
+    }
+
+    private func loadPlanConfig() async {
+        guard provider != nil else { return }
+        guard let config = try? await client.providerPlanConfig() else { return }
+        planConfig = config
+        let entries = config["providers"] as? [String: Any] ?? [:]
+        let entry = entries[planConfigKey] as? [String: Any]
+        planName = entry?["planName"] as? String ?? ""
+        let monthly = entry?["monthly"] as? [String: Any]
+        if let tokens = monthly?["tokenLimit"] as? Double, tokens > 0 {
+            planMonthlyTokens = String(Int(tokens))
+        }
+        if let spend = monthly?["spendLimit"] as? Double, spend > 0 {
+            planMonthlySpend = spend == spend.rounded() ? String(Int(spend)) : String(spend)
+        }
+    }
+
+    private func parsePlanLimit(_ value: String) -> Double? {
+        let cleaned = value.replacingOccurrences(of: ",", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let parsed = Double(cleaned), parsed > 0 else { return nil }
+        return parsed
+    }
+
+    private func savePlanLimits() async throws {
+        guard provider != nil, var config = planConfig else { return }
+        let trimmedPlanName = planName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tokenLimit = parsePlanLimit(planMonthlyTokens)
+        let spendLimit = parsePlanLimit(planMonthlySpend)
+        var entries = config["providers"] as? [String: Any] ?? [:]
+        let key = planConfigKey
+        let entry = entries[key] as? [String: Any]
+        let hasInput = !trimmedPlanName.isEmpty || tokenLimit != nil || spendLimit != nil
+        if !hasInput, entry == nil { return }
+
+        if !hasInput {
+            entries.removeValue(forKey: key)
+        } else {
+            var next = entry ?? [:]
+            next["enabled"] = true
+            if trimmedPlanName.isEmpty {
+                next.removeValue(forKey: "planName")
+            } else {
+                next["planName"] = trimmedPlanName
+            }
+            if tokenLimit != nil || spendLimit != nil {
+                var monthly = next["monthly"] as? [String: Any] ?? [:]
+                monthly["enabled"] = true
+                if let tokenLimit { monthly["tokenLimit"] = tokenLimit } else {
+                    monthly.removeValue(forKey: "tokenLimit")
+                }
+                if let spendLimit { monthly["spendLimit"] = spendLimit } else {
+                    monthly.removeValue(forKey: "spendLimit")
+                }
+                next["monthly"] = monthly
+            }
+            entries[key] = next
+        }
+        config["providers"] = entries
+        config["enabled"] = true
+        let body = try JSONSerialization.data(withJSONObject: config)
+        _ = try await client.updateProviderPlanConfig(body)
     }
 }
 

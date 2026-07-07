@@ -12,6 +12,8 @@ describe("native macOS speech settings wiring", () => {
     expect(settingsSource).toContain("private var speechTab: some View");
     expect(settingsSource).toContain('"speech": [');
     expect(settingsSource).toContain('"provider": speechTTSProvider');
+    expect(settingsSource).toContain('"provider": speechSTTProvider');
+    expect(settingsSource).toContain('Text("Native").tag("native")');
     expect(settingsSource).toContain('"providerId": speechSTTProviderId');
   });
 });

@@ -487,12 +487,65 @@ export function ProviderSettingsPanel({
       } catch {
         if (mounted) setProviderPlan(null);
       }
+      try {
+        const cfg = await api.providerPlanConfig();
+        if (!mounted) return;
+        setPlanMonitoringConfig(cfg);
+        const entry = cfg.providers[provider.id] ?? cfg.providers[provider.provider];
+        setPlanName(entry?.planName || "");
+        setPlanMonthlyTokens(entry?.monthly?.tokenLimit ? String(entry.monthly.tokenLimit) : "");
+        setPlanMonthlySpend(entry?.monthly?.spendLimit ? String(entry.monthly.spendLimit) : "");
+      } catch {
+        if (mounted) setPlanMonitoringConfig(null);
+      }
     };
     void loadProviderPlan();
     return () => {
       mounted = false;
     };
   }, [api, provider.id, provider.provider]);
+
+  const parsePlanLimit = (value: string): number | undefined => {
+    const parsed = Number(value.replace(/[,\s]/g, ""));
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  };
+
+  const savePlanLimits = async () => {
+    if (!planMonitoringConfig) return;
+    const trimmedPlanName = planName.trim();
+    const tokenLimit = parsePlanLimit(planMonthlyTokens);
+    const spendLimit = parsePlanLimit(planMonthlySpend);
+    const existingKey = planMonitoringConfig.providers[provider.id]
+      ? provider.id
+      : planMonitoringConfig.providers[provider.provider]
+        ? provider.provider
+        : provider.id;
+    const existing = planMonitoringConfig.providers[existingKey];
+    const hasInput =
+      Boolean(trimmedPlanName) || tokenLimit !== undefined || spendLimit !== undefined;
+    if (!hasInput && !existing) return;
+
+    const nextProviders = { ...planMonitoringConfig.providers };
+    if (!hasInput) {
+      delete nextProviders[existingKey];
+    } else {
+      nextProviders[existingKey] = {
+        ...(existing || {}),
+        enabled: true,
+        planName: trimmedPlanName || undefined,
+        monthly:
+          tokenLimit !== undefined || spendLimit !== undefined
+            ? { ...(existing?.monthly || {}), enabled: true, tokenLimit, spendLimit }
+            : existing?.monthly,
+      };
+    }
+    const updated = await api.updateProviderPlanConfig({
+      ...planMonitoringConfig,
+      enabled: true,
+      providers: nextProviders,
+    });
+    setPlanMonitoringConfig(updated);
+  };
 
   const saveProvider = async () => {
     const trimmedName = name.trim();
@@ -510,6 +563,7 @@ export function ProviderSettingsPanel({
         is_default: isDefault,
       });
       if (result.success === false) throw new Error("The gateway did not save this provider.");
+      await savePlanLimits();
       setApiKey("");
       setAccessToken("");
       await refreshSummary();
@@ -723,6 +777,31 @@ export function ProviderSettingsPanel({
           placeholder="Provider default"
           value={baseUrl}
         />
+        {planMonitoringConfig ? (
+          <>
+            <SettingsTextField
+              help="Track monthly usage against your provider plan. Leave empty to keep unconfigured."
+              label="Plan name"
+              onChangeText={setPlanName}
+              placeholder="e.g. Pro, Team, Pay-as-you-go"
+              value={planName}
+            />
+            <SettingsTextField
+              keyboardType="numeric"
+              label="Monthly token limit"
+              onChangeText={setPlanMonthlyTokens}
+              placeholder="e.g. 10000000"
+              value={planMonthlyTokens}
+            />
+            <SettingsTextField
+              keyboardType="numeric"
+              label="Monthly spend limit"
+              onChangeText={setPlanMonthlySpend}
+              placeholder="e.g. 100"
+              value={planMonthlySpend}
+            />
+          </>
+        ) : null}
         {usesApiKey ? (
           <SettingsTextField
             help={
@@ -3152,6 +3231,22 @@ export function SpeechSettingsPanel({
           <Mic color={accentColor} size={18} strokeWidth={2.1} />
           <Text style={styles.settingsInfoTitle}>Dictation</Text>
         </View>
+        <SettingSelector
+          disabled={saving}
+          label="STT mode"
+          onSelect={(provider) => {
+            const nextProvider = provider === "native" || provider === "openai" ? provider : "auto";
+            void saveSpeech("stt", { provider: nextProvider });
+          }}
+          options={[
+            { label: "Auto", value: "auto" },
+            { label: "Native dictation", value: "native" },
+            { label: "OpenAI compatible", value: "openai" },
+          ]}
+          selected={speechDraft.stt.provider}
+          tone={accentColor}
+          variant="menu"
+        />
         <SettingSelector
           disabled={saving}
           label="STT account"

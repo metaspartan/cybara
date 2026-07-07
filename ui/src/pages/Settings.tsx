@@ -2402,7 +2402,7 @@ type SpeechSettingsState = {
     fallbackToSystem: boolean;
   };
   stt: {
-    provider: "auto" | "openai";
+    provider: "auto" | "native" | "openai";
     providerId: string;
     model: string;
     language: string;
@@ -2442,7 +2442,8 @@ function readSpeechSettings(value: unknown): SpeechSettingsState {
     tts.provider === "system" || tts.provider === "elevenlabs" || tts.provider === "openai"
       ? tts.provider
       : "auto";
-  const sttProvider = stt.provider === "openai" ? "openai" : "auto";
+  const sttProvider =
+    stt.provider === "native" || stt.provider === "openai" ? stt.provider : "auto";
   const outputFormat =
     tts.outputFormat === "m4a" ||
     tts.outputFormat === "wav" ||
@@ -2686,8 +2687,9 @@ function SpeechSettingsSection() {
             <Select
               label="Provider"
               options={[
-                { value: "auto", label: "Auto" },
-                { value: "openai", label: "OpenAI compatible" },
+                { value: "auto", label: "Auto: native when available, then model" },
+                { value: "native", label: "Native dictation only" },
+                { value: "openai", label: "OpenAI-compatible transcription" },
               ]}
               value={speech.stt.provider}
               onChange={(provider) =>
@@ -2733,8 +2735,8 @@ function SpeechSettingsSection() {
               />
             </div>
             <p className="text-xs text-gray-500">
-              Dictation uses the saved provider when the chat composer does not send an explicit
-              provider.
+              Native dictation uses browser or OS speech recognition when available. Model
+              transcription records microphone audio and sends it to the configured provider.
             </p>
           </div>
         </div>

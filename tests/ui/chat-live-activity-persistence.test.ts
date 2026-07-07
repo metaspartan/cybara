@@ -4,6 +4,7 @@ import { join } from "path";
 import {
   buildPreSteeringActivityMessage,
   pruneCanonicalizedLiveActivities,
+  resolveDictationRuntime,
 } from "../../ui/src/pages/chat/chatModel";
 import type { ChatMessage } from "../../ui/src/pages/chat/chatModel";
 import type { LiveActivityItem } from "../../ui/src/lib/chatActivities";
@@ -295,6 +296,39 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain("<textarea");
     expect(source).toContain("Enter to send • Shift+Enter for newline");
     expect(source).toContain("handleToggleDictation");
+    expect(source).toContain("dictationRuntime.unsupportedReason");
+    expect(source).toContain('role={dictationError ? "alert" : "status"}');
+  });
+
+  test("resolves dictation runtime by explicit speech-to-text mode", () => {
+    expect(
+      resolveDictationRuntime("auto", {
+        nativeRecognition: true,
+        mediaRecorder: true,
+        microphone: true,
+      }).engine
+    ).toBe("native");
+    expect(
+      resolveDictationRuntime("auto", {
+        nativeRecognition: false,
+        mediaRecorder: true,
+        microphone: true,
+      }).engine
+    ).toBe("recording");
+    expect(
+      resolveDictationRuntime("native", {
+        nativeRecognition: false,
+        mediaRecorder: true,
+        microphone: true,
+      }).unsupportedReason
+    ).toContain("Native dictation");
+    expect(
+      resolveDictationRuntime("openai", {
+        nativeRecognition: true,
+        mediaRecorder: false,
+        microphone: true,
+      }).unsupportedReason
+    ).toContain("record audio");
   });
 
   test("keeps sessions panel open on session switch/new session callbacks", () => {

@@ -100,7 +100,7 @@ export type MobileSpeechSettings = {
     fallbackToSystem: boolean;
   };
   stt: {
-    provider: "auto" | "openai";
+    provider: "auto" | "native" | "openai";
     providerId: string;
     model: string;
     language: string;
@@ -117,7 +117,8 @@ export function readMobileSpeechSettings(
     tts?.provider === "system" || tts?.provider === "elevenlabs" || tts?.provider === "openai"
       ? tts.provider
       : "auto";
-  const sttProvider = stt?.provider === "openai" ? "openai" : "auto";
+  const sttProvider =
+    stt?.provider === "native" || stt?.provider === "openai" ? stt.provider : "auto";
   return {
     tts: {
       provider: ttsProvider,

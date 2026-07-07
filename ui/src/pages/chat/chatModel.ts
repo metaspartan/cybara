@@ -149,6 +149,65 @@ export interface SpeechRecognitionWindow extends Window {
   webkitSpeechRecognition?: SpeechRecognitionCtor;
 }
 
+export type DictationMode = "auto" | "native" | "openai";
+export type DictationEngine = "native" | "recording";
+
+export interface DictationRuntimeCapabilities {
+  nativeRecognition: boolean;
+  mediaRecorder: boolean;
+  microphone: boolean;
+}
+
+export interface DictationRuntimeResolution {
+  engine: DictationEngine | null;
+  label: string;
+  unsupportedReason: string | null;
+}
+
+export function normalizeDictationMode(value: unknown): DictationMode {
+  if (value === "native" || value === "openai") return value;
+  return "auto";
+}
+
+export function resolveDictationRuntime(
+  mode: DictationMode,
+  capabilities: DictationRuntimeCapabilities
+): DictationRuntimeResolution {
+  const recordingAvailable = capabilities.microphone && capabilities.mediaRecorder;
+  if (mode === "native") {
+    return capabilities.nativeRecognition
+      ? { engine: "native", label: "Native dictation", unsupportedReason: null }
+      : {
+          engine: null,
+          label: "Native dictation unavailable",
+          unsupportedReason:
+            "Native dictation is not available in this browser or desktop runtime.",
+        };
+  }
+  if (mode === "openai") {
+    return recordingAvailable
+      ? { engine: "recording", label: "Model transcription", unsupportedReason: null }
+      : {
+          engine: null,
+          label: "Model transcription unavailable",
+          unsupportedReason: capabilities.microphone
+            ? "This runtime cannot record audio for model transcription."
+            : "Microphone capture is not available in this browser or desktop runtime.",
+        };
+  }
+  if (capabilities.nativeRecognition) {
+    return { engine: "native", label: "Native dictation", unsupportedReason: null };
+  }
+  if (recordingAvailable) {
+    return { engine: "recording", label: "Model transcription", unsupportedReason: null };
+  }
+  return {
+    engine: null,
+    label: "Dictation unavailable",
+    unsupportedReason: "No native dictation or microphone recording support is available here.",
+  };
+}
+
 export interface PendingProcessCapture {
   assistantCountBefore: number;
   activities: LiveActivityItem[];

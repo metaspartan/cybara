@@ -48,6 +48,7 @@ struct NativeSettingsScreen: View {
     @State private var speechTTSVoice = ""
     @State private var speechTTSFormat = "mp3"
     @State private var speechTTSFallback = true
+    @State private var speechSTTProvider = "auto"
     @State private var speechSTTProviderId = ""
     @State private var speechSTTModel = ""
     @State private var speechSTTLanguage = ""
@@ -568,6 +569,14 @@ struct NativeSettingsScreen: View {
                                 .font(.system(size: 15, weight: .bold, design: .rounded))
                             Spacer()
                         }
+                        Picker("Mode", selection: $speechSTTProvider) {
+                            Text("Auto").tag("auto")
+                            Text("Native").tag("native")
+                            Text("OpenAI").tag("openai")
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: speechSTTProvider) { _, _ in saveSpeechSettings() }
+
                         Picker("Provider account", selection: $speechSTTProviderId) {
                             Text("Auto").tag("")
                             ForEach(sttProviderAccounts) { provider in
@@ -1293,7 +1302,7 @@ struct NativeSettingsScreen: View {
                         "fallbackToSystem": speechTTSFallback,
                     ],
                     "stt": [
-                        "provider": "auto",
+                        "provider": speechSTTProvider,
                         "providerId": speechSTTProviderId,
                         "model": speechSTTModel,
                         "language": speechSTTLanguage,
@@ -1678,6 +1687,8 @@ struct NativeSettingsScreen: View {
         speechTTSVoice = tts["voice"] as? String ?? ""
         speechTTSFormat = tts["outputFormat"] as? String ?? "mp3"
         speechTTSFallback = tts["fallbackToSystem"] as? Bool ?? true
+        let sttProvider = stt["provider"] as? String ?? "auto"
+        speechSTTProvider = ["auto", "native", "openai"].contains(sttProvider) ? sttProvider : "auto"
         speechSTTProviderId = stt["providerId"] as? String ?? ""
         speechSTTModel = stt["model"] as? String ?? ""
         speechSTTLanguage = stt["language"] as? String ?? ""

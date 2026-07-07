@@ -12,6 +12,8 @@ describe("mobile settings: Speech lives on its own screen", () => {
     expect(screen).toContain("function SpeechSettingsPanel(");
     expect(screen).toContain('<SettingsSection title="Text to speech">');
     expect(screen).toContain('<SettingsSection title="Speech to text">');
+    expect(screen).toContain('label="STT mode"');
+    expect(screen).toContain("Native dictation");
   });
 
   test("speech is a drill-in detail route, not an inline settings section", () => {

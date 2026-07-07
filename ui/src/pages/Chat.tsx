@@ -63,7 +63,7 @@ import {
   useStopAgent,
   type Subagent,
 } from "@/hooks/useApi";
-import { chatApi } from "@/lib/api";
+import { chatApi, settingsApi } from "@/lib/api";
 import { PageLayout } from "@/components/layout";
 import { GlassCard, GlassButton, Input, Badge, Modal, Button } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
@@ -109,6 +109,7 @@ import {
   isMeaningfulThoughtDetail,
   isRecord,
   normalizeMessageProcessActivities,
+  normalizeDictationMode,
   normalizeSandboxProviderValue,
   normalizeSessionStatus,
   normalizeSnapshotActivities,
@@ -121,6 +122,7 @@ import {
   readPersistedMessageProcessMap,
   readPersistedSessionId,
   readPersistedWorkspaceDir,
+  resolveDictationRuntime,
   resolvePathForIde,
   resolveToolCallSandboxProvider,
   sessionDisplayTitle,
@@ -133,6 +135,8 @@ import {
   type ArtifactSummaryView,
   buildPreSteeringActivityMessage,
   type ChatMessage,
+  type DictationMode,
+  type DictationRuntimeCapabilities,
   type FileChangeItem,
   type FileChangeSummary,
   type PendingProcessCapture,
@@ -2008,9 +2012,17 @@ export function Chat() {
   const [steeringMessageId, setSteeringMessageId] = useState<string | null>(null);
   const [pendingMessageMutationId, setPendingMessageMutationId] = useState<string | null>(null);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
-  const [dictationSupported, setDictationSupported] = useState(false);
+  const [dictationMode, setDictationMode] = useState<DictationMode>("auto");
+  const [dictationLanguage, setDictationLanguage] = useState("en-US");
+  const [dictationCapabilities, setDictationCapabilities] = useState<DictationRuntimeCapabilities>({
+    nativeRecognition: false,
+    mediaRecorder: false,
+    microphone: false,
+  });
   const [dictating, setDictating] = useState(false);
   const [dictationTranscribing, setDictationTranscribing] = useState(false);
+  const [dictationStatus, setDictationStatus] = useState<string | null>(null);
+  const [dictationError, setDictationError] = useState<string | null>(null);
   const [composerHeight, setComposerHeight] = useState(88);
   const [messageProcessMap, setMessageProcessMap] = useState<Record<string, LiveActivityItem[]>>(
     () => readPersistedMessageProcessMap()
@@ -2025,6 +2037,7 @@ export function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const diffPanelResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const diffPanelResizeCleanupRef = useRef<(() => void) | null>(null);
+  const dictationStatusTimerRef = useRef<number | null>(null);
   const activeSessionRef = useRef<string | null>(null);
   const restoreSessionGenerationRef = useRef(0);
   const suppressAutoRestoreRef = useRef(false);
@@ -2056,6 +2069,10 @@ export function Chat() {
       return agents.some((agent) => agent.id === trimmed) ? trimmed : undefined;
     },
     [agents]
+  );
+  const dictationRuntime = useMemo(
+    () => resolveDictationRuntime(dictationMode, dictationCapabilities),
+    [dictationCapabilities, dictationMode]
   );
   const syncSessionAgentSelection = useCallback(
     (agentId?: string | null) => {
@@ -2096,20 +2113,61 @@ export function Chat() {
 
   useEffect(() => {
     if (typeof window === "undefined") {
-      setDictationSupported(false);
+      setDictationCapabilities({
+        nativeRecognition: false,
+        mediaRecorder: false,
+        microphone: false,
+      });
       return;
     }
     const speechWindow = window as SpeechRecognitionWindow;
     const SpeechCtor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
-    const canRecordAudio =
-      !!window.navigator?.mediaDevices?.getUserMedia && typeof window.MediaRecorder !== "undefined";
-    setDictationSupported(!!SpeechCtor || canRecordAudio);
+    setDictationCapabilities({
+      nativeRecognition: !!SpeechCtor,
+      mediaRecorder: typeof window.MediaRecorder !== "undefined",
+      microphone: !!window.navigator?.mediaDevices?.getUserMedia,
+    });
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadSpeechSettings = async () => {
+      try {
+        const result = await settingsApi.getConfig();
+        if (!mounted || !result.success) return;
+        const speech =
+          result.data?.speech && typeof result.data.speech === "object"
+            ? (result.data.speech as Record<string, unknown>)
+            : {};
+        const stt =
+          speech.stt && typeof speech.stt === "object"
+            ? (speech.stt as Record<string, unknown>)
+            : {};
+        setDictationMode(normalizeDictationMode(stt.provider));
+        setDictationLanguage(
+          typeof stt.language === "string" && stt.language.trim() ? stt.language.trim() : "en-US"
+        );
+      } catch {
+        if (mounted) {
+          setDictationMode("auto");
+          setDictationLanguage("en-US");
+        }
+      }
+    };
+    void loadSpeechSettings();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
     return () => {
       diffPanelResizeCleanupRef.current?.();
       diffPanelResizeCleanupRef.current = null;
+      if (dictationStatusTimerRef.current !== null) {
+        window.clearTimeout(dictationStatusTimerRef.current);
+        dictationStatusTimerRef.current = null;
+      }
       if (speechRecognitionRef.current) {
         speechRecognitionRef.current.stop();
       }
@@ -3319,7 +3377,22 @@ export function Chat() {
   }, [selectedAgentId, sessionAgentId, stopGenerating, stopAgent, sessionId]);
 
   const handleToggleDictation = useCallback(async () => {
-    if (!dictationSupported || typeof window === "undefined") return;
+    if (typeof window === "undefined") return;
+    const flashStatus = (message: string) => {
+      setDictationStatus(message);
+      if (dictationStatusTimerRef.current !== null) {
+        window.clearTimeout(dictationStatusTimerRef.current);
+      }
+      dictationStatusTimerRef.current = window.setTimeout(() => {
+        setDictationStatus(null);
+        dictationStatusTimerRef.current = null;
+      }, 3500);
+    };
+    const failDictation = (message: string) => {
+      setDictationError(message);
+      setDictationStatus(null);
+      useUIStore.getState().addToast("error", message);
+    };
     const appendDictationText = (text: string) => {
       const normalized = text.trim();
       if (!normalized) return;
@@ -3327,16 +3400,27 @@ export function Chat() {
         const trimmed = previous.trimEnd();
         return trimmed.length > 0 ? `${trimmed} ${normalized}` : normalized;
       });
+      setDictationError(null);
+      flashStatus("Dictation inserted");
     };
+
+    if (!dictationRuntime.engine) {
+      failDictation(dictationRuntime.unsupportedReason || "Dictation is not available here.");
+      return;
+    }
 
     const speechWindow = window as SpeechRecognitionWindow;
     const SpeechCtor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
-    if (SpeechCtor) {
+    if (dictationRuntime.engine === "native") {
+      if (!SpeechCtor) {
+        failDictation("Native dictation is not available in this browser or desktop runtime.");
+        return;
+      }
       if (!speechRecognitionRef.current) {
         const recognition = new SpeechCtor();
         recognition.continuous = true;
         recognition.interimResults = true;
-        recognition.lang = "en-US";
+        recognition.lang = dictationLanguage;
         recognition.onresult = (event) => {
           const results = event.results;
           if (!results || typeof results.length !== "number" || results.length === 0) return;
@@ -3360,11 +3444,21 @@ export function Chat() {
           appendDictationText(finalChunks.join(" "));
         };
         recognition.onerror = (event) => {
-          console.error("Dictation error:", event?.error || "unknown");
+          const code = event?.error || "unknown";
+          const message =
+            code === "not-allowed" || code === "service-not-allowed"
+              ? "Microphone permission was denied for native dictation."
+              : code === "audio-capture"
+                ? "No microphone was available for native dictation."
+                : code === "no-speech"
+                  ? "No speech was detected."
+                  : `Native dictation failed: ${code}`;
+          failDictation(message);
           setDictating(false);
         };
         recognition.onend = () => {
           setDictating(false);
+          if (!dictationError) setDictationStatus(null);
         };
         speechRecognitionRef.current = recognition;
       }
@@ -3374,13 +3468,17 @@ export function Chat() {
       if (dictating) {
         recognition.stop();
         setDictating(false);
+        setDictationStatus(null);
         return;
       }
       try {
+        recognition.lang = dictationLanguage;
+        setDictationError(null);
+        setDictationStatus("Listening with native dictation...");
         recognition.start();
         setDictating(true);
       } catch (error) {
-        console.error("Failed to start dictation:", error);
+        failDictation(error instanceof Error ? error.message : "Failed to start native dictation.");
         setDictating(false);
       }
       return;
@@ -3388,7 +3486,14 @@ export function Chat() {
 
     const canRecordAudio =
       !!window.navigator?.mediaDevices?.getUserMedia && typeof window.MediaRecorder !== "undefined";
-    if (!canRecordAudio) return;
+    if (!canRecordAudio) {
+      failDictation(
+        window.navigator?.mediaDevices?.getUserMedia
+          ? "This runtime cannot record audio for model transcription."
+          : "Microphone capture is not available in this browser or desktop runtime."
+      );
+      return;
+    }
 
     if (dictationTranscribing) return;
 
@@ -3401,6 +3506,8 @@ export function Chat() {
     }
 
     try {
+      setDictationError(null);
+      setDictationStatus("Requesting microphone access...");
       const stream = await window.navigator.mediaDevices.getUserMedia({ audio: true });
       dictationStreamRef.current = stream;
       dictationChunksRef.current = [];
@@ -3423,6 +3530,7 @@ export function Chat() {
 
       recorder.onerror = (event) => {
         console.error("Dictation recorder error:", event);
+        failDictation("Audio recording failed before transcription could start.");
         setDictating(false);
         setDictationTranscribing(false);
       };
@@ -3443,6 +3551,7 @@ export function Chat() {
 
         try {
           setDictationTranscribing(true);
+          setDictationStatus("Transcribing dictation...");
           const blob = new Blob(chunks, { type: recorderMimeType });
           const bytes = new Uint8Array(await blob.arrayBuffer());
           let binary = "";
@@ -3459,13 +3568,10 @@ export function Chat() {
           if (response.success && response.data?.text) {
             appendDictationText(response.data.text);
           } else {
-            console.error(
-              "Dictation transcription failed:",
-              response.error || "No transcript was returned"
-            );
+            failDictation(response.error || "No transcript was returned.");
           }
         } catch (error) {
-          console.error("Dictation transcription error:", error);
+          failDictation(error instanceof Error ? error.message : "Dictation transcription failed.");
         } finally {
           setDictationTranscribing(false);
         }
@@ -3473,8 +3579,15 @@ export function Chat() {
 
       recorder.start(250);
       setDictating(true);
+      setDictationStatus("Recording for model transcription...");
     } catch (error) {
-      console.error("Failed to start dictation recording:", error);
+      failDictation(
+        error instanceof DOMException && error.name === "NotAllowedError"
+          ? "Microphone permission was denied."
+          : error instanceof Error
+            ? error.message
+            : "Failed to start dictation recording."
+      );
       setDictating(false);
       setDictationTranscribing(false);
       if (dictationStreamRef.current) {
@@ -3484,7 +3597,14 @@ export function Chat() {
         dictationStreamRef.current = null;
       }
     }
-  }, [dictating, dictationSupported, dictationTranscribing]);
+  }, [
+    dictating,
+    dictationError,
+    dictationLanguage,
+    dictationRuntime.engine,
+    dictationRuntime.unsupportedReason,
+    dictationTranscribing,
+  ]);
 
   const applySessionWorkspace = useCallback(
     async (nextWorkspaceDir: string | null) => {
@@ -4160,6 +4280,28 @@ export function Chat() {
                     mutatingMessageId={pendingMessageMutationId}
                   />
                 )}
+                {(dictationError || dictationStatus) && (
+                  <div
+                    className={cn(
+                      "mb-2 flex items-center gap-2 rounded-lg border px-3 py-2 text-[12px]",
+                      dictationError
+                        ? "border-red-500/25 bg-red-500/10 text-red-200"
+                        : "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
+                    )}
+                    role={dictationError ? "alert" : "status"}
+                  >
+                    {dictationError ? (
+                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    ) : dictating ? (
+                      <Mic className="h-3.5 w-3.5 shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate">
+                      {dictationError || dictationStatus}
+                    </span>
+                  </div>
+                )}
                 <div className="flex items-end gap-2 sm:gap-3">
                   <textarea
                     ref={inputRef}
@@ -4173,28 +4315,32 @@ export function Chat() {
                   <button
                     type="button"
                     onClick={() => void handleToggleDictation()}
-                    disabled={!dictationSupported || showWorkingTimeline || dictationTranscribing}
+                    disabled={showWorkingTimeline || dictationTranscribing}
                     className={cn(
                       "h-[42px] w-[42px] shrink-0 self-end inline-flex items-center justify-center rounded-xl border transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
                       dictating
                         ? "border-red-500/40 bg-red-500/20 text-red-300"
-                        : "border-white/10 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
+                        : dictationRuntime.engine
+                          ? "border-white/10 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
+                          : "border-amber-500/30 bg-amber-500/10 text-amber-200 hover:bg-amber-500/15"
                     )}
                     title={
-                      dictationSupported
-                        ? dictationTranscribing
-                          ? "Transcribing..."
-                          : dictating
-                            ? "Stop dictation"
-                            : "Start dictation"
-                        : "Dictation not supported in this browser/runtime"
+                      dictationTranscribing
+                        ? "Transcribing..."
+                        : dictating
+                          ? "Stop dictation"
+                          : dictationRuntime.engine
+                            ? `Start ${dictationRuntime.label.toLowerCase()}`
+                            : dictationRuntime.unsupportedReason || "Dictation unavailable"
                     }
                     aria-label={
                       dictationTranscribing
                         ? "Transcribing dictation"
                         : dictating
                           ? "Stop dictation"
-                          : "Start dictation"
+                          : dictationRuntime.engine
+                            ? `Start ${dictationRuntime.label.toLowerCase()}`
+                            : "Show dictation support issue"
                     }
                   >
                     {dictationTranscribing ? (

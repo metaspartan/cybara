@@ -20,6 +20,7 @@ import type { IconGlyph } from "./dashboardPrimitives";
 export function SettingsTextField({
   autoCapitalize = "none",
   help,
+  keyboardType,
   label,
   multiline,
   onBlur,
@@ -32,6 +33,7 @@ export function SettingsTextField({
 }: {
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
   help?: string;
+  keyboardType?: "default" | "numeric" | "decimal-pad" | "email-address" | "url";
   label: string;
   multiline?: boolean;
   onBlur?: () => void;
@@ -47,6 +49,7 @@ export function SettingsTextField({
       <Text style={styles.settingsFieldLabel}>{label}</Text>
       <TextInput
         autoCapitalize={autoCapitalize}
+        keyboardType={keyboardType}
         multiline={multiline}
         onBlur={onBlur}
         onChangeText={onChangeText}

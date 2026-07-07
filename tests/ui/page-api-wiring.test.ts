@@ -76,6 +76,7 @@ describe("UI page API wiring", () => {
     expect(source).toContain("openDesktopDirectoryDialog");
     expect(source).toContain("Driver path override");
     expect(source).toContain("ElevenLabs");
+    expect(source).toContain("Native dictation only");
     expect(source).toContain("gpt-4o-mini-transcribe");
     expect(source).toContain("setTerminalEnabled(enabled);");
     expect(source).toContain("setTerminalEnabled(!enabled);");
