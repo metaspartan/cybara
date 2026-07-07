@@ -43,7 +43,9 @@ describe("mobile: iOS-style detail layout", () => {
     expect(screen).toContain("<StableDetailPanel");
     expect(settingsPanels).toContain("<StableDetailPanel>");
     expect(settingsPanels).not.toContain('from "../components/Glass"');
-    expect(screen).not.toContain("<GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}");
+    expect(screen).not.toContain(
+      "<GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}"
+    );
     expect(settingsPanels).not.toContain(
       "<GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}"
     );

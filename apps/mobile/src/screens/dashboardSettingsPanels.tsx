@@ -3040,7 +3040,9 @@ export function MemorySettingsPanel({
         <SettingSelector
           disabled={saving}
           label="Background model"
-          onSelect={(value) => void persist({ background_agent_id: value }, "Background model failed")}
+          onSelect={(value) =>
+            void persist({ background_agent_id: value }, "Background model failed")
+          }
           options={[
             { label: "Same agent as the turn (default)", value: "" },
             ...(summary?.agents ?? []).map((agent) => ({

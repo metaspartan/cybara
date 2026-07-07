@@ -1941,7 +1941,10 @@ function FeatureSettings() {
       if (!result.success || !result.data?.success) {
         throw new Error(extractApiError(result, "Config update failed"));
       }
-      addToast("success", agentId ? "Background model updated" : "Background model reset to default");
+      addToast(
+        "success",
+        agentId ? "Background model updated" : "Background model reset to default"
+      );
     } catch (error) {
       addToast(
         "error",
