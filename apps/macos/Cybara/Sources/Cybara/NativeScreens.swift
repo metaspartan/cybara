@@ -1208,18 +1208,22 @@ struct ChatScreen: View {
 
     private var composerSecurityControls: some View {
         Menu {
-            Button("Always Allow") {
+            Button {
                 Task { await changeToolApprovalMode("always_allow") }
+            } label: {
+                Label("Always Allow", systemImage: "exclamationmark.shield")
             }
-            Button("Ask Me") {
+            Button {
                 Task { await changeToolApprovalMode("ask") }
+            } label: {
+                Label("Ask Me", systemImage: "questionmark.circle")
             }
         } label: {
             HStack(spacing: 5) {
                 if approvalSaving {
                     ProgressView().controlSize(.small)
                 } else {
-                    Image(systemName: "shield")
+                    Image(systemName: toolApprovalIconName)
                         .font(.system(size: 11, weight: .semibold))
                 }
                 Text(toolApprovalLabel)
@@ -1229,10 +1233,10 @@ struct ChatScreen: View {
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
-            .foregroundStyle(.orange)
+            .foregroundStyle(toolApprovalColor)
             .padding(.horizontal, 8)
             .frame(height: 26)
-            .background(Capsule().fill(Color.orange.opacity(0.08)))
+            .background(Capsule().fill(toolApprovalColor.opacity(0.08)))
         }
         .buttonStyle(.plain)
         .disabled(approvalSaving)
@@ -1268,6 +1272,14 @@ struct ChatScreen: View {
 
     private var toolApprovalLabel: String {
         toolApprovalMode == "ask" ? "Ask Me" : "Always Allow"
+    }
+
+    private var toolApprovalIconName: String {
+        toolApprovalMode == "ask" ? "questionmark.circle" : "exclamationmark.shield"
+    }
+
+    private var toolApprovalColor: Color {
+        toolApprovalMode == "ask" ? .blue : .orange
     }
 
     private func loadSessions() async {

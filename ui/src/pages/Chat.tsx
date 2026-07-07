@@ -37,6 +37,7 @@ import {
   ArrowDown,
   Mic,
   MicOff,
+  CircleHelp,
   ShieldAlert,
   Pin,
   PinOff,
@@ -305,13 +306,16 @@ function ChatApprovalControls({
   onChange: (mode: ToolApprovalMode) => void;
   updating?: boolean;
 }) {
+  const isAskMode = mode === "ask";
+  const Icon = updating ? Loader2 : isAskMode ? CircleHelp : ShieldAlert;
   return (
     <div className="relative min-w-0">
-      {updating ? (
-        <Loader2 className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-amber-300" />
-      ) : (
-        <ShieldAlert className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-amber-300" />
-      )}
+      <Icon
+        className={cn(
+          "pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2",
+          updating ? "animate-spin text-gray-400" : isAskMode ? "text-sky-300" : "text-amber-300"
+        )}
+      />
       <label className="sr-only" htmlFor="chat-tool-approval-mode">
         Tool approval mode
       </label>
@@ -321,7 +325,12 @@ function ChatApprovalControls({
         disabled={updating}
         onChange={(event) => onChange(normalizeToolApprovalMode(event.target.value))}
         title={`Tool approvals: ${toolApprovalModeLabel(mode)}`}
-        className="h-7 max-w-[140px] appearance-none truncate rounded-full border border-transparent bg-transparent py-1 pl-7 pr-6 text-[11px] font-semibold text-amber-300 outline-none transition-colors [color-scheme:dark] hover:bg-amber-500/10 hover:text-amber-200 focus:border-amber-300/20 focus:bg-amber-500/10 disabled:opacity-60"
+        className={cn(
+          "h-7 max-w-[140px] appearance-none truncate rounded-full border border-transparent bg-transparent py-1 pl-7 pr-6 text-[11px] font-semibold outline-none transition-colors [color-scheme:dark] disabled:opacity-60",
+          isAskMode
+            ? "text-sky-300 hover:bg-sky-500/10 hover:text-sky-200 focus:bg-sky-500/10"
+            : "text-amber-300 hover:bg-amber-500/10 hover:text-amber-200 focus:bg-amber-500/10"
+        )}
       >
         <option value="always_allow" className="bg-[#11131c] text-white">
           Always Allow
@@ -330,7 +339,12 @@ function ChatApprovalControls({
           Ask Me
         </option>
       </select>
-      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-amber-300/70" />
+      <ChevronDown
+        className={cn(
+          "pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2",
+          isAskMode ? "text-sky-300/70" : "text-amber-300/70"
+        )}
+      />
     </div>
   );
 }
@@ -2084,7 +2098,9 @@ function PendingApprovalRow({
           <span className="font-medium text-amber-200 shrink-0">{req.toolName}</span>
           {hasDetail && (
             <>
-              <span className="font-mono text-xs text-amber-200/60 truncate">{req.argsSummary}</span>
+              <span className="font-mono text-xs text-amber-200/60 truncate">
+                {req.argsSummary}
+              </span>
               <ChevronDown
                 className={cn(
                   "w-3.5 h-3.5 text-amber-300/70 shrink-0 transition-transform",
@@ -4624,7 +4640,7 @@ export function Chat() {
                     </span>
                   </div>
                 )}
-                <div className="rounded-[22px] border border-white/10 bg-white/[0.035] px-3 py-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors focus-within:border-white/20">
+                <div className="rounded-[22px] border border-white/10 bg-white/[0.035] px-3 py-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.35)]">
                   <textarea
                     ref={inputRef}
                     value={input}

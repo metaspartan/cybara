@@ -217,6 +217,10 @@ describe("native macOS shell wiring", () => {
     expect(gatewayClient).toContain('request("api/sessions/\\(id)/agent", method: "PUT"');
     expect(nativeScreens).toContain("private var composerControls: some View");
     expect(nativeScreens).toContain("private var composerSecurityControls: some View");
+    expect(nativeScreens).toContain('Label("Always Allow", systemImage: "exclamationmark.shield")');
+    expect(nativeScreens).toContain('Label("Ask Me", systemImage: "questionmark.circle")');
+    expect(nativeScreens).toContain("private var toolApprovalIconName: String");
+    expect(nativeScreens).toContain("private var toolApprovalColor: Color");
     expect(nativeScreens).toContain("try await client.updateAppConfig(body)");
     expect(nativeScreens).toContain('"tool_approval_mode": normalized');
     expect(nativeScreens).toContain('Picker("Agent", selection: agentSelectionBinding)');

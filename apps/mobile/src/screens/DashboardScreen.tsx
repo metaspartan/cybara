@@ -88,6 +88,7 @@ import {
   Save,
   Send,
   Settings,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
   Square,
@@ -1967,7 +1968,7 @@ function ChatApprovalBanner({ api }: { api: CybaraMobileApi }) {
         return (
           <View key={req.id} style={styles.chatApprovalRow}>
             <View style={styles.chatApprovalLine}>
-              <ShieldCheck color={colors.amber} size={16} strokeWidth={2.3} />
+              <ShieldAlert color={colors.amber} size={16} strokeWidth={2.3} />
               <Pressable
                 style={styles.chatApprovalSummary}
                 onPress={() => hasDetail && setExpandedId(expanded ? null : req.id)}
@@ -1990,7 +1991,9 @@ function ChatApprovalBanner({ api }: { api: CybaraMobileApi }) {
                   style={[styles.chatApprovalBtn, { backgroundColor: `${colors.blueText}22` }]}
                   onPress={() => void resolve(req.id, "approve_session")}
                 >
-                  <Text style={[styles.chatApprovalBtnText, { color: colors.blueText }]}>Session</Text>
+                  <Text style={[styles.chatApprovalBtnText, { color: colors.blueText }]}>
+                    Session
+                  </Text>
                 </Pressable>
                 <Pressable
                   style={[styles.chatApprovalBtn, { backgroundColor: `${colors.red}22` }]}

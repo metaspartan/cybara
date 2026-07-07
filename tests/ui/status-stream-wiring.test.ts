@@ -31,9 +31,15 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("contextUsageTooltip");
     expect(source).toContain("ChatApprovalControls");
     expect(source).toContain('id="chat-tool-approval-mode"');
+    expect(source).toContain(
+      "const Icon = updating ? Loader2 : isAskMode ? CircleHelp : ShieldAlert"
+    );
+    expect(source).toContain('"text-sky-300"');
+    expect(source).toContain('"text-amber-300"');
     expect(source).toContain("settingsApi.updateConfig({ tool_approval_mode: nextMode })");
     expect(source).toContain('id="chat-agent-selector"');
     expect(source).not.toContain('<Zap className="pointer-events-none absolute left-2');
+    expect(source).not.toContain("focus-within:border-white/20");
     expect(source).toContain("setSessionAgentId(nextAgentId ?? null)");
     expect(source).toContain("setSessionContextUsage(updated.contextUsage ?? null)");
     expect(source).toContain("clientPendingId: optimisticPendingMessageId");

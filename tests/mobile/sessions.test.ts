@@ -99,6 +99,10 @@ describe("mobile: chat management", () => {
     expect(newChat).toContain("<Text style={styles.sectionTitle}>Permissions</Text>");
     expect(newChat).toContain("api.updateConfig({ tool_approval_mode: nextMode })");
     expect(newChat).toContain("Set tool approvals to");
+    expect(newChat).toContain("CircleHelp");
+    expect(newChat).toContain("ShieldAlert");
+    expect(newChat).toContain('const tone = mode === "ask" ? colors.blueText : colors.amber');
+    expect(screen).toContain("<ShieldAlert color={colors.amber}");
     expect(styles).not.toContain("composerSettingsButton:");
     expect(styles).not.toContain("contextUsageDot:");
   });

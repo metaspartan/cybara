@@ -8,7 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Send } from "lucide-react-native";
+import { CircleHelp, Send, ShieldAlert } from "lucide-react-native";
 import { GlassPanel } from "./Glass";
 import { CybaraMobileApi, type AgentSummary } from "../lib/api";
 import {
@@ -177,6 +177,8 @@ export function NewChatPanel({
       <View style={styles.approvalRow}>
         {(["always_allow", "ask"] as const).map((mode) => {
           const selected = approvalMode === mode;
+          const Icon = mode === "ask" ? CircleHelp : ShieldAlert;
+          const tone = mode === "ask" ? colors.blueText : colors.amber;
           return (
             <Pressable
               accessibilityLabel={`Set tool approvals to ${approvalLabel(mode)}`}
@@ -188,13 +190,16 @@ export function NewChatPanel({
               }}
               style={[
                 styles.approvalChip,
-                selected && [styles.agentChipActive, { borderColor: accentColor }],
+                selected && [styles.agentChipActive, { borderColor: tone }],
                 savingApprovalMode && { opacity: 0.72 },
               ]}
             >
-              <Text style={[styles.approvalTitle, selected && { color: accentColor }]}>
-                {approvalLabel(mode)}
-              </Text>
+              <View style={styles.approvalTitleRow}>
+                <Icon color={selected ? tone : colors.textMuted} size={15} strokeWidth={2.4} />
+                <Text style={[styles.approvalTitle, selected && { color: tone }]}>
+                  {approvalLabel(mode)}
+                </Text>
+              </View>
               <Text style={styles.agentChipDetail}>
                 {mode === "ask" ? "Review risky tools" : "Run trusted tools"}
               </Text>
@@ -333,6 +338,11 @@ const makeStyles = () =>
       color: colors.text,
       fontSize: typography.label,
       fontWeight: "900",
+    },
+    approvalTitleRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 6,
     },
     composer: {
       alignItems: "flex-end",

@@ -88,6 +88,71 @@ describe("tool-approval request + resolve", () => {
     await promise;
     expect(getAlwaysAllowlist()).toContain("browser");
   });
+
+  test("approve_once does not add session approval for later calls", async () => {
+    config.set("tool_approval_mode", "ask");
+    const argsPreview = { command: "cat package.json" };
+    const approvalKey = buildApprovalKey("exec", argsPreview);
+    const promise = requestToolApproval({
+      sessionId: "s1",
+      toolName: "exec",
+      argsSummary: "cat package.json",
+      argsPreview,
+    });
+    const req = getPendingApprovals().find((r) => r.approvalKey === approvalKey)!;
+    resolveApproval(req.id, "approve_once");
+    expect(await promise).toBe("approve_once");
+    expect(isToolApproved("s1", approvalKey)).toBe(false);
+
+    const second = requestToolApproval({
+      sessionId: "s1",
+      toolName: "exec",
+      argsSummary: "cat package.json",
+      argsPreview,
+    });
+    const secondReq = getPendingApprovals().find((r) => r.status === "pending")!;
+    expect(secondReq.approvalKey).toBe(approvalKey);
+    resolveApproval(secondReq.id, "deny");
+    expect(await second).toBe("deny");
+  });
+
+  test("approve_session is scoped to the original session and approval key", async () => {
+    config.set("tool_approval_mode", "ask");
+    const argsPreview = { command: "git status" };
+    const approvalKey = buildApprovalKey("exec", argsPreview);
+    const promise = requestToolApproval({
+      sessionId: "s1",
+      toolName: "exec",
+      argsSummary: "git status",
+      argsPreview,
+    });
+    const req = getPendingApprovals().find((r) => r.approvalKey === approvalKey)!;
+    resolveApproval(req.id, "approve_session");
+    expect(await promise).toBe("approve_session");
+    expect(isToolApproved("s1", approvalKey)).toBe(true);
+    expect(isToolApproved("s2", approvalKey)).toBe(false);
+
+    await expect(
+      requestToolApproval({
+        sessionId: "s1",
+        toolName: "exec",
+        argsSummary: "git status",
+        argsPreview,
+      })
+    ).resolves.toBe("approve_session");
+
+    const otherSession = requestToolApproval({
+      sessionId: "s2",
+      toolName: "exec",
+      argsSummary: "git status",
+      argsPreview,
+    });
+    const otherReq = getPendingApprovals().find(
+      (r) => r.sessionId === "s2" && r.approvalKey === approvalKey
+    )!;
+    resolveApproval(otherReq.id, "deny");
+    expect(await otherSession).toBe("deny");
+  });
 });
 
 describe("tool-approval per-command scoping (security)", () => {

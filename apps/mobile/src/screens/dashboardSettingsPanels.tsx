@@ -16,6 +16,7 @@ import {
   Save,
   Send,
   Server,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
   Square,
@@ -1335,7 +1336,7 @@ export function ApprovalSettingsPanel({
     <StableDetailPanel>
       <View style={styles.itemHero}>
         <View style={[styles.summaryIcon, { backgroundColor: `${colors.amber}18` }]}>
-          <ShieldCheck color={colors.amber} size={21} strokeWidth={2.2} />
+          <ShieldAlert color={colors.amber} size={21} strokeWidth={2.2} />
         </View>
         <View style={styles.itemHeroText}>
           <Text numberOfLines={1} style={styles.itemTitle}>
