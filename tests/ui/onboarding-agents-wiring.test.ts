@@ -46,4 +46,14 @@ describe("Settings: system prompt preview wiring", () => {
     expect(settings).toContain("preview?.preview");
     expect(settings).toContain("No preview available");
   });
+
+  test("prompt features use switch controls instead of checkbox inputs", () => {
+    const featuresBlock = settings.slice(
+      settings.indexOf("Prompt Features"),
+      settings.indexOf("Custom System Prompt")
+    );
+    expect(featuresBlock).toContain("<Switch");
+    expect(featuresBlock).toContain("onChange={(checked)");
+    expect(featuresBlock).not.toContain('type="checkbox"');
+  });
 });

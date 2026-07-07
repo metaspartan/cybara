@@ -4628,20 +4628,15 @@ function SystemPromptSection() {
                 <Sparkles className="w-4 h-4 text-amber-400" />
                 Prompt Features
               </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {(Object.keys(features) as Array<keyof typeof features>).map((key) => (
-                  <label key={key} className="flex items-start gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={features[key]}
-                      onChange={(e) => setFeatures({ ...features, [key]: e.target.checked })}
-                      className="mt-1 w-4 h-4 rounded border-gray-600 bg-gray-700 text-indigo-500 focus:ring-indigo-500"
-                    />
-                    <div>
-                      <span className="text-white block">{featureLabels[key]?.label}</span>
-                      <span className="text-xs text-gray-500">{featureLabels[key]?.desc}</span>
-                    </div>
-                  </label>
+                  <Switch
+                    key={key}
+                    checked={features[key]}
+                    description={featureLabels[key]?.desc}
+                    label={featureLabels[key]?.label}
+                    onChange={(checked) => setFeatures({ ...features, [key]: checked })}
+                  />
                 ))}
               </div>
             </div>
