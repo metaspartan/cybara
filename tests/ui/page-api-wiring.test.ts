@@ -55,7 +55,8 @@ describe("UI page API wiring", () => {
   });
 
   test("Settings feature toggle uses settingsApi and restores state on update failure", () => {
-    const source = readPage("Settings.tsx");
+    const source =
+      readPage("Settings.tsx") + readUiSource("components/settings/GatewayPathSettingsSection.tsx");
 
     expect(source).toMatch(/import\s*\{[^}]*\bsettingsApi\b[^}]*\}\s*from\s*['"]@\/lib\/api['"]/);
     expect(source).toContain("settingsApi.getConfig()");
@@ -66,10 +67,13 @@ describe("UI page API wiring", () => {
     expect(source).toContain("settingsApi.updateConfig({ speech })");
     expect(source).toContain("settingsApi.updateConfig({");
     expect(source).toContain("computer_use: { driverCommand: trimmed }");
-    expect(source).toContain("function GatewayPathSettingsSection");
+    expect(source).toContain("export function GatewayPathSettingsSection");
     expect(source).toContain("default_workspace_dir: defaultWorkspaceDir.trim()");
+    expect(source).toContain("cybara_data_dir: cybaraDataDirDraft.trim()");
     expect(source).toContain("<GatewayPathSettingsSection infoData={infoData} />");
-    expect(source).toContain("Gateway data home");
+    expect(source).toContain("Data Directory");
+    expect(source).toContain("configured_cybara_data_dir");
+    expect(source).toContain("Restart required");
     expect(source).toContain("openDesktopDirectoryDialog({");
     expect(source).toContain("function ComputerUseSettings()");
     expect(source).toContain("function MigrationSettingsSection()");

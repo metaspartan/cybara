@@ -748,6 +748,12 @@ export interface InfoData {
   setupComplete: boolean;
   homeDir?: string;
   cybaraDataDir?: string;
+  configuredCybaraDataDir?: string;
+  cybaraDataDirSource?: string;
+  cybaraDataDirForced?: boolean;
+  cybaraDataDirRestartRequired?: boolean;
+  cybaraDataDirOverrideFile?: string;
+  defaultCybaraDataDir?: string;
   defaultWorkspaceDir?: string;
   stats: {
     agents: { total: number; running?: number; stopped?: number };

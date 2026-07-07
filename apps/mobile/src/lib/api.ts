@@ -2452,11 +2452,16 @@ export class CybaraMobileApi {
     });
   }
 
-  updateConfig(data: Record<string, unknown>): Promise<{ success: boolean }> {
-    return this.request<{ success: boolean }>("/api/config", {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
+  updateConfig(
+    data: Record<string, unknown>
+  ): Promise<{ success: boolean; restartRequired?: boolean } & Record<string, unknown>> {
+    return this.request<{ success: boolean; restartRequired?: boolean } & Record<string, unknown>>(
+      "/api/config",
+      {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }
+    );
   }
 
   testMemoryProvider(

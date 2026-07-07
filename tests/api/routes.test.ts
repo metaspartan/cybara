@@ -369,6 +369,11 @@ describe("Setup & Info API", () => {
     expect(typeof data.version).toBe("string");
     expect(typeof data.homeDir).toBe("string");
     expect(typeof data.cybaraDataDir).toBe("string");
+    expect(typeof data.configuredCybaraDataDir).toBe("string");
+    expect(typeof data.cybaraDataDirSource).toBe("string");
+    expect(typeof data.cybaraDataDirForced).toBe("boolean");
+    expect(typeof data.cybaraDataDirRestartRequired).toBe("boolean");
+    expect(typeof data.defaultCybaraDataDir).toBe("string");
     expect(typeof data.defaultWorkspaceDir).toBe("string");
     expect(data.stats).toBeDefined();
   });
@@ -388,6 +393,37 @@ describe("Setup & Info API", () => {
     expect(info.data.defaultWorkspaceDir).toBe(workspaceDir);
 
     await api("PUT", "/api/config", { default_workspace_dir: testHome });
+  });
+
+  test("cybara data directory setting records configured path until restart", async () => {
+    const activeDir = join(testHome, ".cybara");
+    const nextDir = join(testHome, "cybara-data-alt");
+    const update = await api("PUT", "/api/config", { cybara_data_dir: nextDir });
+    expect(update.status).toBe(200);
+    expect(update.data.success).toBe(true);
+    expect(update.data.restartRequired).toBe(true);
+    expect(update.data.cybara_data_dir).toBe(activeDir);
+    expect(update.data.configured_cybara_data_dir).toBe(nextDir);
+    expect(update.data.cybara_data_dir_restart_required).toBe(true);
+
+    const configRes = await api("GET", "/api/config");
+    expect(configRes.status).toBe(200);
+    expect(configRes.data.cybara_data_dir).toBe(activeDir);
+    expect(configRes.data.configured_cybara_data_dir).toBe(nextDir);
+    expect(configRes.data.cybara_data_dir_source).toBe("override");
+    expect(configRes.data.cybara_data_dir_restart_required).toBe(true);
+
+    const info = await api("GET", "/api/info");
+    expect(info.status).toBe(200);
+    expect(info.data.cybaraDataDir).toBe(activeDir);
+    expect(info.data.configuredCybaraDataDir).toBe(nextDir);
+    expect(info.data.cybaraDataDirRestartRequired).toBe(true);
+
+    const reset = await api("PUT", "/api/config", { cybara_data_dir: activeDir });
+    expect(reset.status).toBe(200);
+    expect(reset.data.success).toBe(true);
+    expect(reset.data.configured_cybara_data_dir).toBe(activeDir);
+    expect(reset.data.cybara_data_dir_restart_required).toBe(false);
   });
 
   test("setup status and complete flow should return success", async () => {

@@ -21,6 +21,10 @@ describe("mobile settings: Gateway runtime controls", () => {
     expect(screen).toContain("Default Workspace");
     expect(screen).toContain("default_workspace_dir: defaultWorkspaceDir.trim()");
     expect(screen).toContain('label="Save Workspace"');
+    expect(screen).toContain("Data Directory");
+    expect(screen).toContain("cybara_data_dir: cybaraDataDir.trim()");
+    expect(screen).toContain('label="Save Data Directory"');
+    expect(screen).toContain("cybara_data_dir_restart_required");
     expect(screen).toContain("api.restartGateway()");
     expect(screen).toContain("api.gatewayAuthSettings()");
     expect(screen).toContain("api.rotateGatewayApiKey()");

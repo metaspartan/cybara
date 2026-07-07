@@ -402,7 +402,7 @@ export const settingsApi = {
       } | null;
     }>("/sandbox/status"),
   updateConfig: (data: Record<string, unknown>) =>
-    fetchApi<{ success: boolean }>("/config", {
+    fetchApi<{ success: boolean; restartRequired?: boolean } & Record<string, unknown>>("/config", {
       method: "PUT",
       body: JSON.stringify(data),
     }),

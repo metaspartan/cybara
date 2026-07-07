@@ -87,6 +87,13 @@ struct NativeSettingsScreen: View {
     @State private var authBusy = false
     @State private var showRotateConfirm = false
     @State private var defaultWorkspaceDir = ""
+    @State private var cybaraDataDir = ""
+    @State private var configuredCybaraDataDir = ""
+    @State private var cybaraDataDirSource = "default"
+    @State private var cybaraDataDirForced = false
+    @State private var cybaraDataDirRestartRequired = false
+    @State private var cybaraDataDirOverrideFile = ""
+    @State private var defaultCybaraDataDir = ""
     @State private var migrationSources: [GatewayMigrationSource] = []
     @State private var migrationSourceKind = "openclaw"
     @State private var migrationSourcePath = ""
@@ -263,10 +270,73 @@ struct NativeSettingsScreen: View {
                             VStack(alignment: .leading, spacing: 10) { defaultWorkspaceButtons }
                         }
                         Text(
-                            "Move gateway data by setting CYBARA_HOME before launch; this field only changes the workspace default."
+                            "This field only changes the workspace default. Use Data Directory below for the gateway data root."
                         )
                             .font(.system(size: 11, design: .rounded))
                             .foregroundStyle(.tertiary)
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 10) {
+                            Text("Data Directory")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            if cybaraDataDirRestartRequired {
+                                Text("Restart required")
+                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.orange)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Capsule().fill(Color.orange.opacity(0.12)))
+                                    .overlay(Capsule().stroke(Color.orange.opacity(0.25), lineWidth: 1))
+                            }
+                            if cybaraDataDirForced {
+                                Text("CYBARA_HOME")
+                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.cyan)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(Capsule().fill(Color.cyan.opacity(0.12)))
+                                    .overlay(Capsule().stroke(Color.cyan.opacity(0.25), lineWidth: 1))
+                            }
+                            Spacer()
+                            if savingKey == "cybara_data_dir" {
+                                ProgressView().controlSize(.small)
+                            }
+                        }
+                        Text(
+                            "Stores gateway config, database, API keys, memory, logs, skills, and local media."
+                        )
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        TextField("Configured data directory", text: $configuredCybaraDataDir)
+                            .textFieldStyle(.roundedBorder)
+                            .disabled(cybaraDataDirForced || savingKey == "cybara_data_dir")
+                            .onSubmit {
+                                saveCybaraDataDirectory()
+                            }
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 10) { dataDirectoryButtons }
+                            VStack(alignment: .leading, spacing: 10) { dataDirectoryButtons }
+                        }
+                        Divider().opacity(0.45)
+                        settingRow("Active now", cybaraDataDir.isEmpty ? "Unavailable" : cybaraDataDir)
+                        if !configuredCybaraDataDir.isEmpty && configuredCybaraDataDir != cybaraDataDir {
+                            settingRow("After restart", configuredCybaraDataDir)
+                        }
+                        settingRow("Source", cybaraDataDirSource)
+                        if !defaultCybaraDataDir.isEmpty {
+                            settingRow("Default", defaultCybaraDataDir)
+                        }
+                        if !cybaraDataDirOverrideFile.isEmpty && !cybaraDataDirForced {
+                            settingRow("Override file", cybaraDataDirOverrideFile)
+                        }
+                        if cybaraDataDirForced {
+                            Text("Unset CYBARA_HOME before launch to manage this path from Settings.")
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                 }
 
@@ -437,6 +507,29 @@ struct NativeSettingsScreen: View {
         }
         .buttonStyle(.borderedProminent)
         .disabled(savingKey == "default_workspace_dir")
+    }
+
+    @ViewBuilder
+    private var dataDirectoryButtons: some View {
+        Button {
+            chooseCybaraDataDirectory()
+        } label: {
+            Label("Choose Folder", systemImage: "folder")
+        }
+        .buttonStyle(.bordered)
+        .disabled(cybaraDataDirForced || savingKey == "cybara_data_dir")
+
+        Button {
+            saveCybaraDataDirectory()
+        } label: {
+            Label("Save Data Directory", systemImage: "checkmark.circle")
+        }
+        .buttonStyle(.borderedProminent)
+        .disabled(
+            cybaraDataDirForced
+                || savingKey == "cybara_data_dir"
+                || configuredCybaraDataDir.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        )
     }
 
     @ViewBuilder
@@ -1483,6 +1576,26 @@ struct NativeSettingsScreen: View {
         }
     }
 
+    private func saveCybaraDataDirectory() {
+        let path = configuredCybaraDataDir.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !path.isEmpty,
+              let body = try? JSONSerialization.data(withJSONObject: ["cybara_data_dir": path])
+        else { return }
+        savingKey = "cybara_data_dir"
+        Task {
+            do {
+                try await client.updateAppConfig(body)
+                let refreshed = try await client.appConfig()
+                config = refreshed
+                readConfig(refreshed)
+                error = nil
+            } catch {
+                self.error = error.localizedDescription
+            }
+            savingKey = nil
+        }
+    }
+
     private func copyServerURL() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(sidecar.serverURL.absoluteString, forType: .string)
@@ -1647,6 +1760,12 @@ struct NativeSettingsScreen: View {
         }
     }
 
+    private func chooseCybaraDataDirectory() {
+        chooseMigrationDirectory(title: "Choose Cybara Data Directory") { path in
+            configuredCybaraDataDir = path
+        }
+    }
+
     private func chooseMigrationDirectory(title: String, update: (String) -> Void) {
         let panel = NSOpenPanel()
         panel.title = title
@@ -1747,6 +1866,16 @@ struct NativeSettingsScreen: View {
         onAccentChanged(selectedAccent)
         defaultModel = config["default_model"] as? String ?? ""
         defaultWorkspaceDir = config["default_workspace_dir"] as? String ?? defaultWorkspaceDir
+        cybaraDataDir = config["cybara_data_dir"] as? String ?? cybaraDataDir
+        configuredCybaraDataDir =
+            config["configured_cybara_data_dir"] as? String ?? cybaraDataDir
+        cybaraDataDirSource = config["cybara_data_dir_source"] as? String ?? "default"
+        cybaraDataDirForced = config["cybara_data_dir_forced"] as? Bool ?? false
+        cybaraDataDirRestartRequired =
+            config["cybara_data_dir_restart_required"] as? Bool
+            ?? (cybaraDataDir != configuredCybaraDataDir)
+        cybaraDataDirOverrideFile = config["cybara_data_dir_override_file"] as? String ?? ""
+        defaultCybaraDataDir = config["default_cybara_data_dir"] as? String ?? ""
         reasoningEffort = config["reasoning_effort"] as? String ?? ""
         backgroundAgentId = config["background_agent_id"] as? String ?? ""
         terminalEnabled = config["terminal_enabled"] as? Bool ?? false

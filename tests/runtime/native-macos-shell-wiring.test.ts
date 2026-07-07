@@ -129,6 +129,11 @@ describe("native macOS shell wiring", () => {
     expect(settings).toContain('["default_workspace_dir": defaultWorkspaceDir]');
     expect(settings).toContain("chooseDefaultWorkspaceDirectory()");
     expect(settings).toContain('chooseMigrationDirectory(title: "Choose Default Workspace")');
+    expect(settings).toContain('Text("Data Directory")');
+    expect(settings).toContain('["cybara_data_dir": path]');
+    expect(settings).toContain("configured_cybara_data_dir");
+    expect(settings).toContain("chooseCybaraDataDirectory()");
+    expect(settings).toContain('chooseMigrationDirectory(title: "Choose Cybara Data Directory")');
     expect(sidecarManager).toContain("func waitForAttachedGatewayRestart() async");
     expect(sidecarManager).toContain("Waiting for attached Cybara gateway to restart");
   });

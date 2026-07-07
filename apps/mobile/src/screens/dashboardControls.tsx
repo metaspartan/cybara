@@ -40,6 +40,7 @@ export function StableDetailPanel({
 
 export function SettingsTextField({
   autoCapitalize = "none",
+  editable = true,
   help,
   keyboardType,
   label,
@@ -53,6 +54,7 @@ export function SettingsTextField({
   value,
 }: {
   autoCapitalize?: "none" | "sentences" | "words" | "characters";
+  editable?: boolean;
   help?: string;
   keyboardType?: "default" | "numeric" | "decimal-pad" | "email-address" | "url";
   label: string;
@@ -70,6 +72,7 @@ export function SettingsTextField({
       <Text style={styles.settingsFieldLabel}>{label}</Text>
       <TextInput
         autoCapitalize={autoCapitalize}
+        editable={editable}
         keyboardType={keyboardType}
         multiline={multiline}
         onBlur={onBlur}
@@ -79,7 +82,11 @@ export function SettingsTextField({
         placeholderTextColor={colors.textDim}
         returnKeyType={returnKeyType}
         secureTextEntry={secureTextEntry}
-        style={[styles.settingsInput, multiline && styles.settingsTextArea]}
+        style={[
+          styles.settingsInput,
+          multiline && styles.settingsTextArea,
+          !editable && { opacity: 0.58 },
+        ]}
         textAlignVertical={multiline ? "top" : "center"}
         value={value}
       />

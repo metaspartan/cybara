@@ -2537,16 +2537,38 @@ export function GatewayManagementPanel({
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [restartBusy, setRestartBusy] = useState(false);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
+  const [dataDirBusy, setDataDirBusy] = useState(false);
   const configuredDefaultWorkspaceDir =
     typeof summary?.config.default_workspace_dir === "string"
       ? summary.config.default_workspace_dir
       : "";
   const [defaultWorkspaceDir, setDefaultWorkspaceDir] = useState(configuredDefaultWorkspaceDir);
+  const activeCybaraDataDir =
+    typeof summary?.config.cybara_data_dir === "string" ? summary.config.cybara_data_dir : "";
+  const configuredCybaraDataDir =
+    typeof summary?.config.configured_cybara_data_dir === "string"
+      ? summary.config.configured_cybara_data_dir
+      : activeCybaraDataDir;
+  const cybaraDataDirForced = summary?.config.cybara_data_dir_forced === true;
+  const cybaraDataDirRestartRequired = summary?.config.cybara_data_dir_restart_required === true;
+  const cybaraDataDirSource =
+    typeof summary?.config.cybara_data_dir_source === "string"
+      ? summary.config.cybara_data_dir_source
+      : "default";
+  const defaultCybaraDataDir =
+    typeof summary?.config.default_cybara_data_dir === "string"
+      ? summary.config.default_cybara_data_dir
+      : "";
+  const [cybaraDataDir, setCybaraDataDir] = useState(configuredCybaraDataDir);
   const recentLogs = summary?.logs.slice(0, 4) ?? [];
 
   useEffect(() => {
     setDefaultWorkspaceDir(configuredDefaultWorkspaceDir);
   }, [configuredDefaultWorkspaceDir, profile.id]);
+
+  useEffect(() => {
+    setCybaraDataDir(configuredCybaraDataDir);
+  }, [configuredCybaraDataDir, profile.id]);
 
   const loadAuthSettings = useCallback(async () => {
     setBusyAction((current) => current ?? "auth-load");
@@ -2701,6 +2723,38 @@ export function GatewayManagementPanel({
     }
   };
 
+  const saveCybaraDataDir = async () => {
+    if (summary?.availability.config.ok !== true) {
+      Alert.alert("Config unavailable", "The gateway config route is not available.");
+      return;
+    }
+    if (cybaraDataDirForced) {
+      Alert.alert("Data directory forced", "Unset CYBARA_HOME on the gateway to manage this path.");
+      return;
+    }
+    setDataDirBusy(true);
+    try {
+      const result = await api.updateConfig({
+        cybara_data_dir: cybaraDataDir.trim(),
+      });
+      if (result.success === false) throw new Error("Gateway rejected the data directory setting.");
+      await refreshSummary();
+      Alert.alert(
+        "Data directory saved",
+        result.restartRequired
+          ? "Restart the gateway for the new data directory to become active."
+          : "The gateway data directory setting is saved."
+      );
+    } catch (error) {
+      Alert.alert(
+        "Data directory failed",
+        gatewayActionError(error, "Data directory update failed.")
+      );
+    } finally {
+      setDataDirBusy(false);
+    }
+  };
+
   return (
     <>
       <SettingsSection title="Gateway runtime">
@@ -2752,6 +2806,52 @@ export function GatewayManagementPanel({
               label="Save Workspace"
               onPress={() => {
                 void saveDefaultWorkspace();
+              }}
+              tone={colors.cyan}
+            />
+          </View>
+        </View>
+        <View style={styles.settingsInfoBox}>
+          <View style={styles.settingsInfoHeader}>
+            <Database color={colors.cyan} size={18} strokeWidth={2.2} />
+            <Text style={styles.settingsInfoTitle}>Data Directory</Text>
+          </View>
+          <Text style={styles.settingsInfoText}>
+            Stores gateway config, database, API keys, memory, logs, skills, and local media on the
+            gateway host.
+          </Text>
+          <SettingsTextField
+            label="Configured data directory"
+            value={cybaraDataDir}
+            onChangeText={setCybaraDataDir}
+            onSubmitEditing={() => {
+              void saveCybaraDataDir();
+            }}
+            editable={!cybaraDataDirForced}
+            placeholder={defaultCybaraDataDir || "~/.cybara"}
+            returnKeyType="done"
+          />
+          <Text selectable style={styles.settingsInfoText}>
+            Active now: {activeCybaraDataDir || "Unavailable"}
+          </Text>
+          {configuredCybaraDataDir && configuredCybaraDataDir !== activeCybaraDataDir ? (
+            <Text selectable style={styles.settingsInfoText}>
+              After restart: {configuredCybaraDataDir}
+            </Text>
+          ) : null}
+          <Text style={styles.settingsInfoText}>
+            Source: {cybaraDataDirSource}
+            {cybaraDataDirRestartRequired ? " · restart required" : ""}
+            {cybaraDataDirForced ? " · managed by CYBARA_HOME" : ""}
+          </Text>
+          <View style={styles.settingsActionRow}>
+            <DetailActionButton
+              Icon={Save}
+              busy={dataDirBusy}
+              disabled={dataDirBusy || cybaraDataDirForced || !cybaraDataDir.trim()}
+              label="Save Data Directory"
+              onPress={() => {
+                void saveCybaraDataDir();
               }}
               tone={colors.cyan}
             />

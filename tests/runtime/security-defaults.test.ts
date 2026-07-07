@@ -38,17 +38,25 @@ describe("security-sensitive runtime defaults", () => {
     expect(serverSource).not.toContain("?token=${gatewayKey}");
   });
 
-  test("core and CLI storage paths honor CYBARA_HOME", () => {
+  test("core, CLI, speech, and plugins storage paths use shared Cybara home resolver", () => {
+    const homeSource = readFileSync(join(ROOT_DIR, "src", "core", "cybara-home.ts"), "utf8");
     const pathsSource = readFileSync(join(ROOT_DIR, "src", "core", "paths.ts"), "utf8");
     const mainSource = readFileSync(join(ROOT_DIR, "src", "main.ts"), "utf8");
     const cliSource = readFileSync(join(ROOT_DIR, "src", "cli.tsx"), "utf8");
     const speechSource = readFileSync(join(ROOT_DIR, "src", "core", "speech.ts"), "utf8");
+    const pluginsSource = readFileSync(
+      join(ROOT_DIR, "src", "core", "plugins", "index.ts"),
+      "utf8"
+    );
 
-    expect(pathsSource).toContain("process.env.CYBARA_HOME?.trim()");
-    expect(mainSource).toContain('process.env.CYBARA_HOME || join(USER_HOME, ".cybara")');
-    expect(cliSource).toContain('process.env.CYBARA_HOME || join(home, ".cybara")');
-    expect(speechSource).toContain("process.env.CYBARA_HOME?.trim()");
-    expect(speechSource).toContain('join(cybaraHome, "media")');
+    expect(homeSource).toContain('cybaraHomeOverrideFile = join(runtimeHomeDir, ".cybara_home")');
+    expect(homeSource).toContain("process.env.CYBARA_HOME?.trim()");
+    expect(homeSource).toContain("export function setCybaraHomeOverride");
+    expect(pathsSource).toContain("const cybaraHome = resolveCybaraHome()");
+    expect(mainSource).toContain("resolveCybaraHome().dir");
+    expect(cliSource).toContain("resolveCybaraHome().dir");
+    expect(speechSource).toContain('join(resolveCybaraHome().dir, "media")');
+    expect(pluginsSource).toContain("resolveCybaraHome().dir");
     expect(speechSource).toContain("chmodSync(aiffPath, 0o600)");
   });
 });

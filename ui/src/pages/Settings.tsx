@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PageLayout } from "@/components/layout";
+import { GatewayPathSettingsSection } from "@/components/settings/GatewayPathSettingsSection";
 import {
   useHealth,
   useInfo,
@@ -90,7 +91,6 @@ import {
   Shield,
   Download,
   ExternalLink,
-  Folder,
   FolderSync,
   MonitorUp,
   Mic,
@@ -3618,121 +3618,6 @@ function MigrationSettingsSection() {
         </Card>
       )}
     </div>
-  );
-}
-
-function GatewayPathSettingsSection({ infoData }: { infoData: InfoData }) {
-  const { addToast } = useUIStore();
-  const [defaultWorkspaceDir, setDefaultWorkspaceDir] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const gatewayDataDir =
-    typeof infoData.cybaraDataDir === "string" && infoData.cybaraDataDir.trim()
-      ? infoData.cybaraDataDir.trim()
-      : "~/.cybara";
-  const detectedDefault =
-    typeof infoData.defaultWorkspaceDir === "string" && infoData.defaultWorkspaceDir.trim()
-      ? infoData.defaultWorkspaceDir.trim()
-      : typeof infoData.homeDir === "string" && infoData.homeDir.trim()
-        ? infoData.homeDir.trim()
-        : "";
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await settingsApi.getConfig();
-      if (res.success && res.data) {
-        const configured = res.data.default_workspace_dir;
-        setDefaultWorkspaceDir(
-          typeof configured === "string" && configured.trim() ? configured.trim() : detectedDefault
-        );
-      } else {
-        setDefaultWorkspaceDir(detectedDefault);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [detectedDefault]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  async function chooseWorkspaceDir() {
-    const selected = await openDesktopDirectoryDialog({
-      defaultPath: defaultWorkspaceDir || detectedDefault,
-      title: "Choose Default Workspace",
-    });
-    if (selected) setDefaultWorkspaceDir(selected);
-  }
-
-  async function saveWorkspaceDir() {
-    setSaving(true);
-    try {
-      const res = await settingsApi.updateConfig({
-        default_workspace_dir: defaultWorkspaceDir.trim(),
-      });
-      if (!res.success) {
-        throw new Error(res.error || "Failed to save default workspace");
-      }
-      addToast("success", "Default workspace saved");
-      await load();
-    } catch (error) {
-      addToast(
-        "error",
-        error instanceof Error ? error.message : "Failed to save default workspace"
-      );
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <Card variant="liquid">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Folder className="w-5 h-5 text-cyan-400" />
-          Default Workspace
-        </CardTitle>
-        <CardDescription>
-          Used for new chats, agent prompts, skills status, and system prompt previews when a
-          session has no explicit workspace.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-3 items-end">
-          <Input
-            label="Workspace directory"
-            value={defaultWorkspaceDir}
-            placeholder={detectedDefault || "/Users/you"}
-            disabled={loading || saving}
-            onChange={(event) => setDefaultWorkspaceDir(event.target.value)}
-          />
-          <Button variant="secondary" onClick={() => void chooseWorkspaceDir()} disabled={saving}>
-            Browse
-          </Button>
-          <Button
-            leftIcon={
-              saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />
-            }
-            onClick={() => void saveWorkspaceDir()}
-            disabled={loading || saving}
-          >
-            Save
-          </Button>
-        </div>
-        <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-2">
-          <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
-            Gateway data home
-          </div>
-          <div className="mt-1 font-mono text-xs text-gray-300 break-all">{gatewayDataDir}</div>
-          <p className="mt-2 text-xs text-gray-500">
-            Set CYBARA_HOME before launching the gateway to move config, database, API keys, and
-            local memory files.
-          </p>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
