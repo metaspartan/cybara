@@ -12,8 +12,10 @@ import {
   ChevronDown,
   ChevronRight,
   Folder,
+  FolderOpen,
   Loader2,
   MessageSquare,
+  MoreHorizontal,
   Pencil,
   Pin,
   PinOff,
@@ -30,6 +32,7 @@ import {
   useSessions,
 } from "@/hooks/useChat";
 import { GlassButton, Modal } from "@/components/ui";
+import { apiFetch } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { connectStatusStream } from "@/lib/status-stream";
 import type { SessionContextUsage } from "@/types";
@@ -57,7 +60,52 @@ interface SessionsPanelProps {
   onNewSession: () => void;
 }
 
-function sessionTooltip(
+const PINNED_WORKSPACE_GROUPS_STORAGE_KEY = "cybara.chat.pinnedWorkspaceGroupIds";
+
+interface SessionTooltipState {
+  anchor: DOMRect;
+  displayTitle: string;
+  previewText: string | null;
+  routeLabel: string | null;
+  session: ChatSidebarSession;
+}
+
+function readPinnedWorkspaceGroupIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(PINNED_WORKSPACE_GROUPS_STORAGE_KEY) || "[]"
+    );
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((item): item is string => typeof item === "string"));
+  } catch {
+    return new Set();
+  }
+}
+
+function persistPinnedWorkspaceGroupIds(ids: Set<string>) {
+  window.localStorage.setItem(PINNED_WORKSPACE_GROUPS_STORAGE_KEY, JSON.stringify([...ids]));
+}
+
+function compactSidebarRelativeTime(value?: string | null): string {
+  const parsed = Date.parse(value || "");
+  if (!Number.isFinite(parsed)) return "now";
+  const seconds = Math.max(0, Math.floor((Date.now() - parsed) / 1000));
+  if (seconds < 60) return "now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 8) return `${weeks}w`;
+  const months = Math.max(1, Math.floor(days / 30));
+  if (months < 12) return `${months}mo`;
+  return `${Math.floor(days / 365)}y`;
+}
+
+function sessionTooltipText(
   session: ChatSidebarSession,
   displayTitle: string,
   routeLabel: string | null,
@@ -74,6 +122,41 @@ function sessionTooltip(
   }
   if (previewText) details.push(`Latest: ${previewText}`);
   return details.join("\n");
+}
+
+function SessionHoverCard({ tooltip }: { tooltip: SessionTooltipState | null }) {
+  if (!tooltip) return null;
+  const left = Math.min(tooltip.anchor.right + 10, window.innerWidth - 304);
+  const top = Math.max(10, Math.min(tooltip.anchor.top - 8, window.innerHeight - 216));
+  const updated = tooltip.session.updated_at || tooltip.session.created_at;
+
+  return (
+    <div
+      className="pointer-events-none fixed z-[80] w-72 rounded-xl border border-white/12 bg-[#181820]/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-xl"
+      style={{ left, top }}
+      data-testid="chat-session-hover-card"
+    >
+      <div className="truncate text-[13px] font-semibold text-white">{tooltip.displayTitle}</div>
+      <div className="mt-1 text-[11px] text-gray-400">{tooltip.routeLabel || "Model pending"}</div>
+      {tooltip.session.workspace_dir && (
+        <div className="mt-2 rounded-lg border border-white/8 bg-white/[0.035] px-2 py-1.5 text-[11px] leading-relaxed text-gray-300">
+          <div className="text-gray-500">Workspace</div>
+          <div className="truncate">{tooltip.session.workspace_dir}</div>
+        </div>
+      )}
+      <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-gray-500">
+        <span>{tooltip.session.message_count || 0} messages</span>
+        <span className="truncate">
+          {updated ? new Date(updated).toLocaleString() : "Updated recently"}
+        </span>
+      </div>
+      {tooltip.previewText && (
+        <div className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-gray-300">
+          {tooltip.previewText}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function SessionsPanel({
@@ -95,12 +178,26 @@ export function SessionsPanel({
   const [editingTitle, setEditingTitle] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(new Set());
+  const [hoveredSessionTooltip, setHoveredSessionTooltip] = useState<SessionTooltipState | null>(
+    null
+  );
+  const [openGroupMenuId, setOpenGroupMenuId] = useState<string | null>(null);
+  const [pinnedWorkspaceGroupIds, setPinnedWorkspaceGroupIds] = useState<Set<string>>(
+    readPinnedWorkspaceGroupIds
+  );
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const sessionsRefreshTimerRef = useRef<number | null>(null);
-  const sessionGroups = useMemo(
-    () => groupSessionsForSidebar(sessions, deferredSearchQuery),
-    [sessions, deferredSearchQuery]
-  );
+  const sessionGroups = useMemo(() => {
+    const groups = groupSessionsForSidebar(sessions, deferredSearchQuery);
+    return [...groups].sort((a, b) => {
+      if (a.kind === "pinned") return -1;
+      if (b.kind === "pinned") return 1;
+      const aPinned = a.kind === "workspace" && pinnedWorkspaceGroupIds.has(a.id);
+      const bPinned = b.kind === "workspace" && pinnedWorkspaceGroupIds.has(b.id);
+      if (aPinned !== bPinned) return aPinned ? -1 : 1;
+      return 0;
+    });
+  }, [sessions, deferredSearchQuery, pinnedWorkspaceGroupIds]);
 
   const handleTogglePin = useCallback(
     (event: MouseEvent, sessionId: string, pinned: boolean) => {
@@ -202,6 +299,41 @@ export function SessionsPanel({
     });
   };
 
+  const toggleWorkspaceGroupPin = (groupId: string) => {
+    setPinnedWorkspaceGroupIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      persistPinnedWorkspaceGroupIds(next);
+      return next;
+    });
+    setOpenGroupMenuId(null);
+  };
+
+  const revealWorkspaceGroup = async (group: ChatSidebarSessionGroup) => {
+    if (!group.workspaceDir) return;
+    setOpenGroupMenuId(null);
+    try {
+      const response = await apiFetch("/api/ide/reveal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: group.workspaceDir }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        success?: boolean;
+        error?: string;
+      } | null;
+      if (!response.ok || payload?.success === false) {
+        throw new Error(payload?.error || `Reveal failed with HTTP ${response.status}`);
+      }
+    } catch (error) {
+      console.error("Failed to reveal workspace:", error);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -296,37 +428,100 @@ export function SessionsPanel({
           ) : (
             sessionGroups.map((group) => (
               <section key={group.id} className="space-y-1.5">
-                <button
-                  type="button"
-                  onClick={() => group.kind !== "pinned" && toggleGroupCollapsed(group.id)}
+                <div
                   className={cn(
-                    "flex w-full items-center gap-1.5 rounded-md px-1.5 py-0.5 text-left text-[11px] font-medium text-gray-500 transition-colors",
-                    group.kind !== "pinned"
-                      ? "cursor-pointer hover:bg-white/[0.04] hover:text-gray-300"
-                      : "cursor-default"
+                    "group/session-folder relative flex w-full items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[11px] font-medium text-gray-500 transition-colors",
+                    group.kind !== "pinned" && "hover:bg-white/[0.04] hover:text-gray-300"
                   )}
                   data-testid="chat-session-group-header"
                   data-group-kind={group.kind}
                   data-group-id={group.id}
-                  title={group.kind === "pinned" ? "Pinned chats" : `${group.label} workspace`}
                   aria-expanded={group.kind === "pinned" || !collapsedGroupIds.has(group.id)}
                 >
-                  {group.kind === "pinned" ? null : collapsedGroupIds.has(group.id) ? (
-                    <ChevronRight className="h-3 w-3 shrink-0" />
+                  <button
+                    type="button"
+                    onClick={() => group.kind !== "pinned" && toggleGroupCollapsed(group.id)}
+                    className={cn(
+                      "flex min-w-0 flex-1 items-center gap-1.5 text-left",
+                      group.kind !== "pinned" ? "cursor-pointer" : "cursor-default"
+                    )}
+                    aria-label={
+                      group.kind === "pinned" ? "Pinned chats" : `${group.label} workspace`
+                    }
+                  >
+                    {group.kind === "pinned" ? null : collapsedGroupIds.has(group.id) ? (
+                      <ChevronRight className="h-3 w-3 shrink-0" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3 shrink-0" />
+                    )}
+                    {group.kind === "workspace" && <Folder className="h-3 w-3 shrink-0" />}
+                    <span className="min-w-0 flex-1 truncate">{group.label}</span>
+                  </button>
+                  {group.kind === "workspace" ? (
+                    <div className="relative flex h-5 w-8 shrink-0 items-center justify-end">
+                      <span className="text-[10px] text-gray-600 transition-opacity group-hover/session-folder:opacity-0">
+                        {group.sessions.length}
+                      </span>
+                      <button
+                        type="button"
+                        className="absolute right-0 rounded-md p-1 text-gray-500 opacity-0 transition-opacity hover:bg-white/10 hover:text-white group-hover/session-folder:opacity-100"
+                        aria-label={`${group.label} project actions`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setOpenGroupMenuId((current) => (current === group.id ? null : group.id));
+                        }}
+                      >
+                        <MoreHorizontal className="h-3 w-3" />
+                      </button>
+                      {openGroupMenuId === group.id && (
+                        <div className="absolute right-0 top-6 z-50 w-48 overflow-hidden rounded-xl border border-white/12 bg-[#181820]/95 p-1.5 text-[12px] text-gray-200 shadow-2xl shadow-black/45 backdrop-blur-xl">
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/[0.08]"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              toggleWorkspaceGroupPin(group.id);
+                            }}
+                          >
+                            {pinnedWorkspaceGroupIds.has(group.id) ? (
+                              <PinOff className="h-3.5 w-3.5 text-amber-300" />
+                            ) : (
+                              <Pin className="h-3.5 w-3.5 text-amber-300" />
+                            )}
+                            {pinnedWorkspaceGroupIds.has(group.id)
+                              ? "Unpin project"
+                              : "Pin project"}
+                          </button>
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/[0.08]"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void revealWorkspaceGroup(group);
+                            }}
+                          >
+                            <FolderOpen className="h-3.5 w-3.5 text-blue-300" />
+                            Reveal in Finder/Explorer
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   ) : (
-                    <ChevronDown className="h-3 w-3 shrink-0" />
+                    <span className="text-[10px] text-gray-600">{group.sessions.length}</span>
                   )}
-                  {group.kind === "workspace" && <Folder className="h-3 w-3 shrink-0" />}
-                  <span className="min-w-0 flex-1 truncate">{group.label}</span>
-                  <span className="text-[10px] text-gray-600">{group.sessions.length}</span>
-                </button>
+                </div>
                 {(group.kind === "pinned" || !collapsedGroupIds.has(group.id)) &&
                   group.sessions.map((session) => {
                     const sessionRecord = session as unknown as Record<string, unknown>;
                     const displayTitle = sessionDisplayTitle(sessionRecord);
                     const routeLabel = sessionRouteLabel(sessionRecord);
                     const previewText = sessionPreviewText(session.last_message?.content);
-                    const tooltip = sessionTooltip(session, displayTitle, routeLabel, previewText);
+                    const tooltip = sessionTooltipText(
+                      session,
+                      displayTitle,
+                      routeLabel,
+                      previewText
+                    );
                     const isSessionActive =
                       activeSessionIds.includes(session.id) ||
                       (currentSessionLoading && currentSessionId === session.id);
@@ -338,9 +533,18 @@ export function SessionsPanel({
                             ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
                             : "bg-white/[0.03] border border-white/5 hover:border-white/15"
                         }`}
-                        title={tooltip}
                         aria-label={tooltip}
                         onClick={() => handleLoadSession(session.id)}
+                        onMouseEnter={(event) =>
+                          setHoveredSessionTooltip({
+                            anchor: event.currentTarget.getBoundingClientRect(),
+                            displayTitle,
+                            previewText,
+                            routeLabel,
+                            session,
+                          })
+                        }
+                        onMouseLeave={() => setHoveredSessionTooltip(null)}
                       >
                         <div className="min-w-0 w-full">
                           {editingSessionId === session.id ? (
@@ -393,17 +597,19 @@ export function SessionsPanel({
                             </div>
                           ) : (
                             <div className="text-[12px] text-white font-medium flex w-full min-w-0 items-center gap-1.5">
-                              {isSessionActive ? (
-                                <Loader2 className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />
-                              ) : (
-                                currentSessionId === session.id && (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
-                                )
-                              )}
                               {session.pinned && (
                                 <Pin className="w-3 h-3 text-amber-400 flex-shrink-0 fill-amber-400/30" />
                               )}
                               <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
+                              <span className="ml-1 flex h-4 w-8 shrink-0 items-center justify-end text-[11px] font-medium text-gray-500">
+                                {isSessionActive ? (
+                                  <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
+                                ) : (
+                                  compactSidebarRelativeTime(
+                                    session.updated_at || session.created_at
+                                  )
+                                )}
+                              </span>
                             </div>
                           )}
                           {editingSessionId !== session.id && (
@@ -461,6 +667,7 @@ export function SessionsPanel({
           )}
         </div>
       </div>
+      <SessionHoverCard tooltip={hoveredSessionTooltip} />
 
       <Modal
         isOpen={!!showDeleteModal}

@@ -297,6 +297,20 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("private func sessionListTooltip(for session: GatewaySession)");
     expect(nativeScreens).toContain(".help(sessionListTooltip(for: session))");
     expect(nativeScreens).toContain("sessionListRow(for: session)");
+    expect(nativeScreens).toContain(
+      "compactRelativeTimestamp(session.updated_at ?? session.created_at)"
+    );
+    expect(nativeScreens).toContain("activeSessionIDs: Set<String>");
+    expect(nativeScreens).toContain("updateActiveSessionIDs(from: event)");
+    expect(nativeScreens).toContain("activeSessionIDs.contains(session.id)");
+    expect(nativeScreens).toContain("pinnedWorkspaceGroupIDs");
+    expect(nativeScreens).toContain("hoveredSessionGroupID");
+    expect(nativeScreens).toContain(".onHover { hovering in");
+    expect(nativeScreens).toContain("toggleWorkspaceProjectPin(group.id)");
+    expect(nativeScreens).toContain("revealWorkspaceProject(workspaceDir)");
+    expect(nativeScreens).toContain(
+      "NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: workspaceDir)"
+    );
     expect(nativeScreens).not.toContain("Text(sessionListDetail(for: session");
   });
 

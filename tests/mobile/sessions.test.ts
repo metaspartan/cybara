@@ -24,6 +24,8 @@ describe("mobile: chat management", () => {
 
   test("chat rows and delete confirmations use normalized titles instead of raw session ids", () => {
     expect(screen).toContain("mobileSessionTitle(session)");
+    expect(screen).toContain("compactLastUpdatedLabel(session)");
+    expect(screen).toContain("styles.sessionListTime");
     expect(screen).toContain("const title = mobileSessionTitle(session);");
     expect(screen).toContain("mobileFirstNonEmptyString(detail?.title, sessionSummary?.title)");
     expect(screen).toContain("mobileFirstNonEmptyString(detail?.model, sessionSummary?.model)");

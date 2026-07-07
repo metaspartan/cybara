@@ -100,9 +100,8 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("chatApi.getSessionStatus(");
     expect(source).toContain("hydrateSessionStatus");
     expect(source).toContain('(status === "idle" && !isSteeringHandoff) || status === "error"');
-    expect(source).toContain(
-      '<Loader2 className="w-3 h-3 animate-spin text-amber-400 flex-shrink-0" />'
-    );
+    expect(source).toContain('<Loader2 className="h-3 w-3 animate-spin text-gray-400" />');
+    expect(source).toContain("compactSidebarRelativeTime(");
   });
 
   test("keeps route metadata in compact chat row tooltips instead of title prefixes", () => {
@@ -110,10 +109,11 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("function sessionRouteLabel");
     expect(source).toContain("function sessionDisplayTitle");
     expect(source).toContain("const routeLabel = sessionRouteLabel");
-    expect(source).toContain("function sessionTooltip");
+    expect(source).toContain("function sessionTooltipText");
+    expect(source).toContain("function SessionHoverCard");
     expect(source).toContain("if (routeLabel) details.push(`Model: ${routeLabel}`)");
     expect(source).toContain("details.push(`${session.message_count || 0} messages`)");
-    expect(source).toContain("title={tooltip}");
+    expect(source).toContain('data-testid="chat-session-hover-card"');
     expect(source).toContain("function stripDisplayTitleAgentPrefix");
     expect(source).toContain("(?::|[-–—])");
   });

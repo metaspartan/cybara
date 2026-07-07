@@ -1466,6 +1466,12 @@ const makeStyles = () =>
       flex: 1,
       lineHeight: 20,
     },
+    sessionListTime: {
+      color: colors.textMuted,
+      fontSize: typography.tiny,
+      fontWeight: "700",
+      marginTop: 2,
+    },
     sessionPinnedDot: {
       alignItems: "center",
       backgroundColor: `${colors.amber}16`,

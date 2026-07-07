@@ -20,6 +20,7 @@ export interface ChatSidebarSessionGroup {
   id: string;
   label: string;
   kind: "pinned" | "workspace" | "unassigned";
+  workspaceDir?: string | null;
   sessions: ChatSidebarSession[];
   latestTime: number;
 }
@@ -71,6 +72,7 @@ export function groupSessionsForSidebar(
       id: "pinned",
       label: "Pinned",
       kind: "pinned",
+      workspaceDir: null,
       sessions: pinned,
       latestTime: sessionTime(pinned[0]),
     });
@@ -91,6 +93,7 @@ export function groupSessionsForSidebar(
       label:
         key === "__unassigned" ? "No Workspace" : workspaceSidebarLabel(sorted[0]?.workspace_dir),
       kind: key === "__unassigned" ? "unassigned" : "workspace",
+      workspaceDir: key === "__unassigned" ? null : sorted[0]?.workspace_dir || null,
       sessions: sorted,
       latestTime: sessionTime(sorted[0]),
     });

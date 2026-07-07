@@ -30,6 +30,7 @@ import {
   buildGatewayPanelMeta,
   buildMobileChatSettingsLines,
   buildMobileHeaderCopy,
+  compactLastUpdatedLabel,
   sessionProviderModelLabel,
   formatMobileValue,
   formatUptime,
@@ -611,6 +612,9 @@ describe("mobile dashboard model", () => {
     expect(lastUpdatedLabel(summary.sessions[0], Date.parse("2026-06-30T08:06:00.000Z"))).toBe(
       "6m ago"
     );
+    expect(
+      compactLastUpdatedLabel(summary.sessions[0], Date.parse("2026-06-30T08:06:00.000Z"))
+    ).toBe("6m");
   });
 
   test("formats object values for native settings rows", () => {

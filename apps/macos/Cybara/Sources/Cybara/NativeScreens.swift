@@ -47,6 +47,23 @@ func relativeTimestamp(_ iso: String?) -> String {
     return formatter.localizedString(for: date, relativeTo: Date())
 }
 
+func compactRelativeTimestamp(_ iso: String?) -> String {
+    guard let date = parseGatewayDate(iso) else { return "" }
+    let seconds = max(0, Int(Date().timeIntervalSince(date)))
+    if seconds < 60 { return "now" }
+    let minutes = seconds / 60
+    if minutes < 60 { return "\(minutes)m" }
+    let hours = minutes / 60
+    if hours < 24 { return "\(hours)h" }
+    let days = hours / 24
+    if days < 7 { return "\(days)d" }
+    let weeks = days / 7
+    if weeks < 8 { return "\(weeks)w" }
+    let months = max(1, days / 30)
+    if months < 12 { return "\(months)mo" }
+    return "\(days / 365)y"
+}
+
 func absoluteTimestamp(_ iso: String?) -> String {
     guard let date = parseGatewayDate(iso) else { return "" }
     let formatter = DateFormatter()
@@ -275,6 +292,7 @@ private struct NativeSessionGroup: Identifiable {
     let id: String
     let label: String
     let kind: Kind
+    let workspaceDir: String?
     let sessions: [GatewaySession]
     let latestDate: Date
 }
@@ -289,7 +307,10 @@ private func nativeWorkspaceSectionLabel(_ path: String?) -> String {
     return normalized.split(separator: "/").last.map(String.init) ?? normalized
 }
 
-private func nativeSessionGroups(_ sessions: [GatewaySession]) -> [NativeSessionGroup] {
+private func nativeSessionGroups(
+    _ sessions: [GatewaySession],
+    pinnedWorkspaceGroupIDs: Set<String> = []
+) -> [NativeSessionGroup] {
     let sortedPinned = sessions
         .filter { $0.pinned == true }
         .sorted { nativeSessionUpdatedDate($0) > nativeSessionUpdatedDate($1) }
@@ -302,6 +323,7 @@ private func nativeSessionGroups(_ sessions: [GatewaySession]) -> [NativeSession
                 id: "pinned",
                 label: "Pinned",
                 kind: .pinned,
+                workspaceDir: nil,
                 sessions: sortedPinned,
                 latestDate: nativeSessionUpdatedDate(latestPinned)
             )
@@ -321,6 +343,7 @@ private func nativeSessionGroups(_ sessions: [GatewaySession]) -> [NativeSession
                 id: isUnassigned ? key : "workspace:\(key)",
                 label: isUnassigned ? "No Workspace" : nativeWorkspaceSectionLabel(key),
                 kind: isUnassigned ? .unassigned : .workspace,
+                workspaceDir: isUnassigned ? nil : key,
                 sessions: sorted,
                 latestDate: nativeSessionUpdatedDate(latest)
             )
@@ -330,6 +353,9 @@ private func nativeSessionGroups(_ sessions: [GatewaySession]) -> [NativeSession
     return groups.sorted {
         if $0.kind == .pinned { return true }
         if $1.kind == .pinned { return false }
+        let leftPinnedProject = $0.kind == .workspace && pinnedWorkspaceGroupIDs.contains($0.id)
+        let rightPinnedProject = $1.kind == .workspace && pinnedWorkspaceGroupIDs.contains($1.id)
+        if leftPinnedProject != rightPinnedProject { return leftPinnedProject }
         if $0.kind == .workspace && $1.kind == .unassigned { return true }
         if $0.kind == .unassigned && $1.kind == .workspace { return false }
         if $0.latestDate != $1.latestDate { return $0.latestDate > $1.latestDate }
@@ -376,7 +402,10 @@ struct ChatScreen: View {
     @State private var editingPendingMessage: GatewayPendingChatMessage?
     @State private var editingPendingDraft = ""
     @State private var collapsedSessionGroupIDs: Set<String> = []
+    @State private var hoveredSessionGroupID: String?
+    @State private var activeSessionIDs: Set<String> = []
     @AppStorage("cybara.chat.lastWorkspaceDir") private var lastWorkspaceDir = ""
+    @AppStorage("cybara.chat.pinnedWorkspaceGroupIds") private var pinnedWorkspaceGroupIdsRaw = ""
     @StateObject private var statusStream = GatewayStatusStream()
 
     var body: some View {
@@ -516,7 +545,11 @@ struct ChatScreen: View {
     }
 
     private var groupedSessions: [NativeSessionGroup] {
-        nativeSessionGroups(filteredSessions)
+        nativeSessionGroups(filteredSessions, pinnedWorkspaceGroupIDs: pinnedWorkspaceGroupIDs)
+    }
+
+    private var pinnedWorkspaceGroupIDs: Set<String> {
+        Set(pinnedWorkspaceGroupIdsRaw.split(separator: "\n").map(String.init))
     }
 
     private var sessionList: some View {
@@ -579,31 +612,55 @@ struct ChatScreen: View {
                             }
                         }
                     } header: {
-                        Button {
-                            if group.kind != .pinned {
-                                toggleSessionGroup(group.id)
-                            }
-                        } label: {
-                            HStack(spacing: 5) {
+                        HStack(spacing: 4) {
+                            Button {
                                 if group.kind != .pinned {
-                                    Image(systemName: collapsedSessionGroupIDs.contains(group.id) ? "chevron.right" : "chevron.down")
-                                        .font(.system(size: 9, weight: .semibold))
+                                    toggleSessionGroup(group.id)
                                 }
-                                if group.kind == .workspace {
-                                    Image(systemName: "folder")
-                                        .font(.system(size: 10, weight: .medium))
+                            } label: {
+                                HStack(spacing: 5) {
+                                    if group.kind != .pinned {
+                                        Image(systemName: collapsedSessionGroupIDs.contains(group.id) ? "chevron.right" : "chevron.down")
+                                            .font(.system(size: 9, weight: .semibold))
+                                    }
+                                    if group.kind == .workspace {
+                                        Image(systemName: "folder")
+                                            .font(.system(size: 10, weight: .medium))
+                                    }
+                                    Text(group.label)
+                                        .lineLimit(1)
+                                    Spacer(minLength: 4)
+                                    Text("\(group.sessions.count)")
                                 }
-                                Text(group.label)
-                                    .lineLimit(1)
-                                Spacer(minLength: 4)
-                                Text("\(group.sessions.count)")
+                                .contentShape(Rectangle())
                             }
-                            .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            if group.kind == .workspace {
+                                Menu {
+                                    Button(pinnedWorkspaceGroupIDs.contains(group.id) ? "Unpin Project" : "Pin Project") {
+                                        toggleWorkspaceProjectPin(group.id)
+                                    }
+                                    if let workspaceDir = group.workspaceDir {
+                                        Button("Reveal in Finder") {
+                                            revealWorkspaceProject(workspaceDir)
+                                        }
+                                    }
+                                } label: {
+                                    Image(systemName: "ellipsis")
+                                        .font(.system(size: 12, weight: .semibold))
+                                }
+                                .menuStyle(.borderlessButton)
+                                .help("Project actions")
+                                .disabled(hoveredSessionGroupID != group.id)
+                                .opacity(hoveredSessionGroupID == group.id ? 1 : 0)
+                            }
                         }
-                        .buttonStyle(.plain)
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                         .help(group.kind == .pinned ? "Pinned chats" : "\(group.label) workspace")
+                        .onHover { hovering in
+                            hoveredSessionGroupID = hovering ? group.id : nil
+                        }
                     }
                 }
             }
@@ -619,6 +676,20 @@ struct ChatScreen: View {
         }
     }
 
+    private func toggleWorkspaceProjectPin(_ groupID: String) {
+        var next = pinnedWorkspaceGroupIDs
+        if next.contains(groupID) {
+            next.remove(groupID)
+        } else {
+            next.insert(groupID)
+        }
+        pinnedWorkspaceGroupIdsRaw = next.sorted().joined(separator: "\n")
+    }
+
+    private func revealWorkspaceProject(_ workspaceDir: String) {
+        NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: workspaceDir)
+    }
+
     private func sessionListRow(for session: GatewaySession) -> some View {
         HStack(spacing: 6) {
             if session.pinned == true {
@@ -630,6 +701,16 @@ struct ChatScreen: View {
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .lineLimit(1)
             Spacer(minLength: 4)
+            if activeSessionIDs.contains(session.id) || (sending && selectedSessionID == session.id) {
+                ProgressView()
+                    .controlSize(.mini)
+                    .frame(width: 28, alignment: .trailing)
+            } else {
+                Text(compactRelativeTimestamp(session.updated_at ?? session.created_at))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 32, alignment: .trailing)
+            }
         }
         .padding(.vertical, 1)
         .help(sessionListTooltip(for: session))
@@ -1608,6 +1689,7 @@ struct ChatScreen: View {
         do {
             let status = try await client.sessionStatus(id)
             guard selectedSessionID == id else { return }
+            activeSessionIDs = Set(status.activeSessionIds)
             let snapshot = status.session ?? status.activeSessions.first { $0.sessionId == id }
             if let snapshot {
                 applyStatusSnapshot(snapshot)
@@ -1679,6 +1761,7 @@ struct ChatScreen: View {
     }
 
     private func handleStatusEvent(_ event: GatewayStatusEvent) {
+        updateActiveSessionIDs(from: event)
         switch event.type {
         case "snapshot":
             guard let snapshot = snapshotForVisibleSession(event) else { return }
@@ -1693,6 +1776,27 @@ struct ChatScreen: View {
             applyStatusEvent(event)
         default:
             return
+        }
+    }
+
+    private func updateActiveSessionIDs(from event: GatewayStatusEvent) {
+        if event.type == "snapshot" || !event.activeSessionIds.isEmpty {
+            activeSessionIDs = Set(event.activeSessionIds)
+            return
+        }
+        guard let sessionID = firstNonEmptyGatewayString(event.sessionId),
+              let status = firstNonEmptyGatewayString(event.status)?.lowercased()
+        else { return }
+        if status == "idle" || status == "error" {
+            activeSessionIDs.remove(sessionID)
+        } else if [
+            "thinking",
+            "generating",
+            "compacting",
+            "tool_executing",
+            "tool_completed"
+        ].contains(status) {
+            activeSessionIDs.insert(sessionID)
         }
     }
 

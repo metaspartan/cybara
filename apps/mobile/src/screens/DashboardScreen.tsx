@@ -162,6 +162,7 @@ import {
   boundedMobileComposerHeight,
   buildMobileChatSettingsLines,
   buildMobileHeaderCopy,
+  compactLastUpdatedLabel,
   compactHost,
   formatUptime,
   formatMobileValue,
@@ -1433,6 +1434,7 @@ function SessionsPanel({
               <Text numberOfLines={2} style={[styles.listTitle, styles.sessionListTitle]}>
                 {mobileSessionTitle(session)}
               </Text>
+              <Text style={styles.sessionListTime}>{compactLastUpdatedLabel(session)}</Text>
             </View>
             <Text numberOfLines={1} style={styles.listDetail}>
               {sessionProviderModelLabel(session)} - {session.message_count} messages -{" "}

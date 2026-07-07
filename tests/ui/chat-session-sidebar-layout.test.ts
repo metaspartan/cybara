@@ -32,12 +32,15 @@ describe("chat session sidebar layout", () => {
     expect(source).not.toContain(
       'session.pinned\n                            ? "pointer-events-auto opacity-100"'
     );
-    expect(source).toContain(
-      "const tooltip = sessionTooltip(session, displayTitle, routeLabel, previewText)"
-    );
+    expect(source).toContain("const tooltip = sessionTooltipText(");
     expect(source).toContain("details.push(`${session.message_count || 0} messages`);");
-    expect(source).toContain("title={tooltip}");
     expect(source).toContain("aria-label={tooltip}");
+    expect(source).toContain('data-testid="chat-session-hover-card"');
+    expect(source).toContain("setHoveredSessionTooltip");
+    expect(source).toContain("compactSidebarRelativeTime(");
+    expect(source).toContain("session.updated_at || session.created_at");
+    expect(source).toContain("activeSessionIds.includes(session.id)");
+    expect(source).not.toContain("bg-emerald-400 flex-shrink-0");
     expect(source).not.toContain("session.last_message.content");
   });
 
@@ -61,5 +64,11 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain('data-testid="chat-session-group-header"');
     expect(source).toContain("data-group-kind={group.kind}");
     expect(source).toContain('if (a.kind === "workspace" && b.kind === "unassigned") return -1;');
+    expect(source).toContain('workspaceDir: key === "__unassigned" ? null');
+    expect(source).toContain("PINNED_WORKSPACE_GROUPS_STORAGE_KEY");
+    expect(source).toContain("toggleWorkspaceGroupPin(group.id)");
+    expect(source).toContain("Reveal in Finder/Explorer");
+    expect(source).toContain('apiFetch("/api/ide/reveal"');
+    expect(source).toContain("aria-label={`${group.label} project actions`}");
   });
 });

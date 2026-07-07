@@ -43,7 +43,9 @@ describe("chat session sidebar grouping", () => {
     expect(groups.map((group) => group.label)).toEqual(["Pinned", "cybara", "No Workspace"]);
     expect(groups[0]?.sessions.map((item) => item.id)).toEqual(["pinned"]);
     expect(groups[1]?.sessions.map((item) => item.id)).toEqual(["unpinned-a"]);
+    expect(groups[1]?.workspaceDir).toBe("/Users/carsen/Documents/GitHub/cybara");
     expect(groups[2]?.kind).toBe("unassigned");
+    expect(groups[2]?.workspaceDir).toBeNull();
   });
 
   test("search matches stripped titles, previews, routes, and workspace names", () => {

@@ -524,6 +524,10 @@ export function lastUpdatedLabel(session: SessionSummary, nowMs = Date.now()): s
   return `${Math.round(hours / 24)}d ago`;
 }
 
+export function compactLastUpdatedLabel(session: SessionSummary, nowMs = Date.now()): string {
+  return lastUpdatedLabel(session, nowMs).replace("just now", "now").replace(/ ago$/, "");
+}
+
 export function buildMobileHeaderCopy(
   tab: MobileTabKey,
   counts: FeatureCounts,
