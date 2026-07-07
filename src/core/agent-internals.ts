@@ -252,20 +252,90 @@ export function parseAgentConfig(config: unknown, agentId?: string): Record<stri
   return {};
 }
 
+function asPlainObject(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/**
+ * Extract the first balanced {...} object from a string, respecting strings and
+ * escapes so braces inside string values don't confuse the scan. Handles the
+ * common cases where a model wraps tool JSON in prose or a truncated stream
+ * leaves trailing junk.
+ */
+function extractBalancedJsonObject(text: string): string | null {
+  const start = text.indexOf("{");
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') inString = true;
+    else if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+}
+
+/**
+ * Best-effort repair of the small malformations SOTA models occasionally emit
+ * in tool-call argument JSON — markdown fences, prose wrapping, trailing
+ * commas, and truncated streams. Returns the parsed object or null. Repairs are
+ * conservative (no quote-style rewriting) so valid data is never corrupted.
+ */
+function repairJsonArguments(raw: string): Record<string, unknown> | null {
+  let text = raw.trim();
+  if (!text) return null;
+
+  // Strip a leading/trailing markdown code fence (```json ... ```).
+  text = text
+    .replace(/^```(?:json|javascript|js)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  const attempts: string[] = [text];
+  const balanced = extractBalancedJsonObject(text);
+  if (balanced && balanced !== text) attempts.push(balanced);
+  // Remove trailing commas before } or ] (a very common model mistake).
+  for (const candidate of [...attempts]) {
+    const noTrailingCommas = candidate.replace(/,(\s*[}\]])/g, "$1");
+    if (noTrailingCommas !== candidate) attempts.push(noTrailingCommas);
+  }
+
+  for (const candidate of attempts) {
+    try {
+      const parsed = asPlainObject(JSON.parse(candidate));
+      if (parsed) return parsed;
+    } catch {
+      /* try the next repair candidate */
+    }
+  }
+  return null;
+}
+
 export function parseToolArguments(raw: unknown): Record<string, unknown> {
   if (!raw) return {};
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
-    return raw as Record<string, unknown>;
-  }
+  const asObject = asPlainObject(raw);
+  if (asObject) return asObject;
   if (typeof raw !== "string") return {};
   try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {};
+    const parsed = asPlainObject(JSON.parse(raw));
+    if (parsed) return parsed;
   } catch {
-    return {};
+    // Fall through to lenient repair below.
   }
+  return repairJsonArguments(raw) ?? {};
 }
 
 export async function* parseServerSentEvents(
