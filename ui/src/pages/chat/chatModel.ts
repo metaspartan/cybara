@@ -569,21 +569,30 @@ export function sessionRouteLabel(session: Record<string, unknown>): string | nu
   return agentName || (agentId && agentId !== "default" ? `Agent ${agentId}` : null);
 }
 
+function stripDisplayTitleAgentPrefix(rawTitle: string, session: Record<string, unknown>): string {
+  const candidates = [
+    typeof session.agent_name === "string" ? session.agent_name : null,
+    typeof session.agent_id === "string" ? session.agent_id : null,
+  ]
+    .map((value) => value?.trim())
+    .filter((value): value is string => !!value);
+
+  for (const candidate of candidates) {
+    const escaped = candidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const next = rawTitle.replace(new RegExp(`^${escaped}\\s*(?::|[-–—])\\s*`, "i"), "").trim();
+    if (next && next !== rawTitle) return next;
+  }
+
+  return rawTitle;
+}
+
 export function sessionDisplayTitle(session: Record<string, unknown>): string {
   const id = typeof session.id === "string" ? session.id : "";
   const rawTitle =
     typeof session.title === "string" && session.title.trim()
       ? session.title.trim()
       : `Session ${id.slice(0, 8)}...`;
-  const agentName =
-    typeof session.agent_name === "string" && session.agent_name.trim()
-      ? session.agent_name.trim()
-      : null;
-  if (agentName && rawTitle.toLowerCase().startsWith(`${agentName.toLowerCase()}:`)) {
-    const stripped = rawTitle.slice(agentName.length + 1).trim();
-    if (stripped) return stripped;
-  }
-  return rawTitle;
+  return stripDisplayTitleAgentPrefix(rawTitle, session);
 }
 
 export const SESSION_PREVIEW_LIMIT = 160;

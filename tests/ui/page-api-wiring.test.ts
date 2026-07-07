@@ -74,6 +74,9 @@ describe("UI page API wiring", () => {
     expect(source).toContain("authApi.updateSettings({ host, applyHostNow: true })");
     expect(source).toContain("expectedRuntimeHost(latest.host)");
     expect(source).toContain("Failed to confirm gateway listener");
+    expect(source).toContain("res.data.gatewayFirewall");
+    expect(source).toContain("settings?.gatewayFirewall?.required");
+    expect(source).toContain("LAN access enabled and Windows Firewall allows the gateway");
     expect(source).not.toContain("Boolean(settings?.hostForced) || applyingHost");
     expect(source).toContain("settingsApi.updateConfig({ speech })");
     expect(source).toContain("settingsApi.updateConfig({");

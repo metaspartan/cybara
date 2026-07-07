@@ -42,6 +42,7 @@ import {
   normalizeSessionTitle,
   parseModelGeneratedSessionTitle,
   shouldRegenerateSessionTitle,
+  stripSessionTitleAgentPrefix,
 } from "../core/session-title";
 import { handleMemorySave } from "../core/tools/handlers/memory";
 import {
@@ -791,9 +792,10 @@ function normalizePersistedIndexEntry(
     modelMetadata?: SessionModelMetadata | null;
   }
 ): PersistedSessionIndexEntry {
+  const modelMetadata = entry.modelMetadata ?? resolveSessionModelMetadata(entry.agentId);
   return {
     ...entry,
-    title: normalizeSessionTitle(entry.title),
+    title: stripSessionTitleAgentPrefix(entry.title, [modelMetadata?.agent_name, entry.agentId]),
     // Preserve an existing pin when the caller doesn't supply one, so unrelated
     // index updates (new messages, title regen, etc.) never clear it.
     pinned: entry.pinned ?? persistedSessionIndex.get(entry.id)?.pinned ?? false,
@@ -801,9 +803,9 @@ function normalizePersistedIndexEntry(
       ? {
           role: entry.lastMessage.role,
           content: truncateSessionPreviewContent(entry.lastMessage.content),
-        }
+      }
       : null,
-    modelMetadata: entry.modelMetadata ?? resolveSessionModelMetadata(entry.agentId),
+    modelMetadata,
   };
 }
 
@@ -823,22 +825,28 @@ function removePersistedSessionIndex(sessionId: string): void {
 }
 
 function buildMemorySessionListEntries(): SessionListEntry[] {
-  return Array.from(chatSessions.values()).map((s) => ({
-    id: s.id,
-    agentId: s.agentId,
-    title: shouldRegenerateSessionTitle(s.title)
-      ? deriveSessionTitleFromMessages(s.messages)
-      : normalizeSessionTitle(s.title),
-    messageCount: s.messages.length,
-    createdAt: s.createdAt,
-    updatedAt: s.updatedAt || s.createdAt,
-    workspaceDir: s.workspaceDir ?? null,
-    // In-memory sessions don't track pin state; inherit it from the persisted
-    // index when the session has been saved.
-    pinned: persistedSessionIndex.get(s.id)?.pinned ?? false,
-    lastMessage: buildLastMessagePreview(s.messages[s.messages.length - 1]),
-    modelMetadata: resolveSessionModelMetadata(s.agentId),
-  }));
+  return Array.from(chatSessions.values()).map((s) => {
+    const modelMetadata = resolveSessionModelMetadata(s.agentId);
+    return {
+      id: s.id,
+      agentId: s.agentId,
+      title: shouldRegenerateSessionTitle(s.title)
+        ? stripSessionTitleAgentPrefix(deriveSessionTitleFromMessages(s.messages), [
+            modelMetadata?.agent_name,
+            s.agentId,
+          ])
+        : stripSessionTitleAgentPrefix(s.title, [modelMetadata?.agent_name, s.agentId]),
+      messageCount: s.messages.length,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt || s.createdAt,
+      workspaceDir: s.workspaceDir ?? null,
+      // In-memory sessions don't track pin state; inherit it from the persisted
+      // index when the session has been saved.
+      pinned: persistedSessionIndex.get(s.id)?.pinned ?? false,
+      lastMessage: buildLastMessagePreview(s.messages[s.messages.length - 1]),
+      modelMetadata,
+    };
+  });
 }
 
 function persistedSessionToIndexEntry(
@@ -899,10 +907,14 @@ async function restorePersistedChatSessionForChat(
     if (!persisted || persisted.messages.length === 0) return undefined;
     const indexed = persistedSessionIndex.get(sessionId);
     const createdAt = indexed?.createdAt || new Date().toISOString();
+    const modelMetadata = indexed?.modelMetadata ?? resolveSessionModelMetadata(persisted.agentId);
     const restored: InMemoryChatSession = {
       id: sessionId,
       agentId: persisted.agentId,
-      title: normalizeSessionTitle(persisted.title),
+      title: stripSessionTitleAgentPrefix(persisted.title, [
+        modelMetadata?.agent_name,
+        persisted.agentId,
+      ]),
       messages: persisted.messages,
       createdAt,
       updatedAt: indexed?.updatedAt || createdAt,
@@ -1252,15 +1264,11 @@ async function generateSessionTitleViaModel(params: {
   }
 }
 
-function withAgentTitlePrefix(agentName: string | undefined, title: string | null): string | null {
-  const normalizedTitle = normalizeSessionTitle(title);
-  if (!normalizedTitle) return null;
-  const normalizedAgent = normalizeSessionTitle(agentName);
-  if (!normalizedAgent) return normalizedTitle;
-  if (normalizedTitle.toLowerCase().startsWith(`${normalizedAgent.toLowerCase()}:`)) {
-    return normalizedTitle;
-  }
-  return normalizeSessionTitle(`${normalizedAgent}: ${normalizedTitle}`);
+function cleanGeneratedSessionTitle(
+  agentName: string | undefined,
+  title: string | null
+): string | null {
+  return stripSessionTitleAgentPrefix(title, [agentName]);
 }
 
 export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
@@ -1714,9 +1722,9 @@ async function handleChatTurn(
       workspaceDir: session.workspaceDir,
       abortSignal: turnAbortController.signal,
     });
-    session.title = withAgentTitlePrefix(agent?.name, generatedTitle);
+    session.title = cleanGeneratedSessionTitle(agent?.name, generatedTitle);
     if (!session.title) {
-      session.title = withAgentTitlePrefix(agent?.name, deriveSessionTitleFromTurn(message));
+      session.title = cleanGeneratedSessionTitle(agent?.name, deriveSessionTitleFromTurn(message));
     }
   }
 
@@ -2176,7 +2184,7 @@ async function handleChatTurn(
   };
   appendAssistantMessage(session, assistantMessage);
   if (!session.title || shouldRegenerateSessionTitle(session.title)) {
-    session.title = withAgentTitlePrefix(agent?.name, deriveSessionTitleFromTurn(message));
+    session.title = cleanGeneratedSessionTitle(agent?.name, deriveSessionTitleFromTurn(message));
   }
   const modelMetadata = resolveSessionModelMetadata(agent?.id ?? session.agentId);
 
@@ -2267,8 +2275,17 @@ async function handleChatTurn(
 export async function getSession(sessionId: string) {
   const session = chatSessions.get(sessionId);
   if (session) {
+    const modelMetadata = resolveSessionModelMetadata(session.agentId);
     if (shouldRegenerateSessionTitle(session.title)) {
-      session.title = deriveSessionTitleFromMessages(session.messages);
+      session.title = stripSessionTitleAgentPrefix(deriveSessionTitleFromMessages(session.messages), [
+        modelMetadata?.agent_name,
+        session.agentId,
+      ]);
+    } else {
+      session.title = stripSessionTitleAgentPrefix(session.title, [
+        modelMetadata?.agent_name,
+        session.agentId,
+      ]);
     }
     return session;
   }
@@ -2293,9 +2310,13 @@ export async function getSession(sessionId: string) {
   const indexed = persistedSessionIndex.get(sessionId);
   const persisted = await loadPersistedSession(sessionId);
   if (persisted) {
+    const modelMetadata = indexed?.modelMetadata ?? resolveSessionModelMetadata(persisted.agentId);
     const resolvedTitle = shouldRegenerateSessionTitle(persisted.title)
-      ? deriveSessionTitleFromMessages(persisted.messages)
-      : normalizeSessionTitle(persisted.title);
+      ? stripSessionTitleAgentPrefix(deriveSessionTitleFromMessages(persisted.messages), [
+          modelMetadata?.agent_name,
+          persisted.agentId,
+        ])
+      : stripSessionTitleAgentPrefix(persisted.title, [modelMetadata?.agent_name, persisted.agentId]);
     const createdAt = indexed?.createdAt || new Date().toISOString();
     const updatedAt = indexed?.updatedAt || createdAt;
     const workspaceDir = persisted.workspaceDir ?? indexed?.workspaceDir ?? null;
@@ -2319,6 +2340,7 @@ export async function getSession(sessionId: string) {
       updatedAt,
       workspaceDir,
       lastMessage: buildLastMessagePreview(persisted.messages[persisted.messages.length - 1]),
+      modelMetadata,
     });
     return restoredSession;
   }

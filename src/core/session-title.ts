@@ -52,6 +52,10 @@ function cleanTitleText(value: string): string {
     .trim();
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function toWordsLimitedTitle(text: string): string {
   const words = text.split(" ").filter(Boolean);
   if (words.length <= TITLE_WORD_LIMIT) return words.join(" ");
@@ -76,6 +80,29 @@ export function normalizeSessionTitle(value?: string | null): string | null {
   const compact = toWordsLimitedTitle(normalized);
   if (compact.length <= MAX_SESSION_TITLE_LENGTH) return compact;
   return `${compact.slice(0, MAX_SESSION_TITLE_LENGTH - 1).trimEnd()}…`;
+}
+
+export function stripSessionTitleAgentPrefix(
+  value?: string | null,
+  prefixes: readonly (string | null | undefined)[] = []
+): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = cleanTitleText(value);
+  if (!cleaned) return null;
+
+  let stripped = cleaned;
+  for (const prefix of prefixes) {
+    const normalizedPrefix = normalizeSessionTitle(prefix);
+    if (!normalizedPrefix) continue;
+    const pattern = new RegExp(`^${escapeRegExp(normalizedPrefix)}\\s*(?::|[-–—])\\s*`, "i");
+    const next = stripped.replace(pattern, "").trim();
+    if (next && next !== stripped) {
+      stripped = next;
+      break;
+    }
+  }
+
+  return normalizeSessionTitle(stripped);
 }
 
 export function shouldRegenerateSessionTitle(value?: string | null): boolean {

@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  buildWindowsGatewayFirewallCommand,
+  ensureWindowsGatewayFirewallRule,
   normalizeGatewayBindHost,
   requestGatewayHostApply,
   setGatewayHostApplyHandler,
@@ -46,8 +48,99 @@ describe("gateway network settings", () => {
       requested.push(host);
     });
 
-    expect(updateGatewayHostSetting("0.0.0.0", true)).toEqual({ hostApplyScheduled: true });
+    expect(updateGatewayHostSetting("0.0.0.0", true)).toMatchObject({
+      hostApplyScheduled: true,
+      gatewayFirewall: { required: false, configured: true, state: "not_required" },
+    });
     expect(config.get("host")).toBe("0.0.0.0");
     expect(requested).toEqual(["0.0.0.0"]);
+  });
+
+  test("builds a Windows firewall command that works across firewall profiles", () => {
+    expect(buildWindowsGatewayFirewallCommand(4269)).toContain("-Profile Any");
+  });
+
+  test("does not touch Windows firewall when the host is local-only", () => {
+    const calls: string[][] = [];
+    const result = ensureWindowsGatewayFirewallRule({
+      host: "127.0.0.1",
+      port: 4269,
+      platform: "win32",
+      runner: (cmd) => {
+        calls.push(cmd);
+        return { exitCode: 1, stdout: "", stderr: "should not run" };
+      },
+    });
+
+    expect(result.required).toBe(false);
+    expect(result.configured).toBe(true);
+    expect(result.state).toBe("not_required");
+    expect(calls).toEqual([]);
+  });
+
+  test("reports an existing Windows firewall rule as configured", () => {
+    const calls: string[][] = [];
+    const result = ensureWindowsGatewayFirewallRule({
+      host: "0.0.0.0",
+      port: 4269,
+      platform: "win32",
+      runner: (cmd) => {
+        calls.push(cmd);
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    });
+
+    expect(result.required).toBe(true);
+    expect(result.attempted).toBe(false);
+    expect(result.configured).toBe(true);
+    expect(result.state).toBe("configured");
+    expect(calls).toHaveLength(1);
+  });
+
+  test("uses elevated PowerShell when Windows firewall needs administrator approval", () => {
+    const results = [
+      { exitCode: 2, stdout: "", stderr: "" },
+      { exitCode: 1, stdout: "", stderr: "Access is denied." },
+      { exitCode: 2, stdout: "", stderr: "Access is denied." },
+      { exitCode: 0, stdout: "", stderr: "" },
+      { exitCode: 0, stdout: "", stderr: "" },
+    ];
+    const calls: string[][] = [];
+    const result = ensureWindowsGatewayFirewallRule({
+      host: "0.0.0.0",
+      port: 4269,
+      platform: "win32",
+      runner: (cmd) => {
+        calls.push(cmd);
+        return results.shift() || { exitCode: 1, stdout: "", stderr: "unexpected call" };
+      },
+    });
+
+    expect(result.configured).toBe(true);
+    expect(result.attempted).toBe(true);
+    expect(result.state).toBe("configured");
+    expect(calls).toHaveLength(5);
+  });
+
+  test("surfaces administrator approval when elevated firewall update is declined", () => {
+    const results = [
+      { exitCode: 2, stdout: "", stderr: "" },
+      { exitCode: 1, stdout: "", stderr: "Access is denied." },
+      { exitCode: 2, stdout: "", stderr: "Access is denied." },
+      { exitCode: 1, stdout: "", stderr: "The operation was canceled by the user." },
+      { exitCode: 2, stdout: "", stderr: "" },
+    ];
+    const result = ensureWindowsGatewayFirewallRule({
+      host: "0.0.0.0",
+      port: 4269,
+      platform: "win32",
+      runner: () => results.shift() || { exitCode: 1, stdout: "", stderr: "unexpected call" },
+    });
+
+    expect(result.configured).toBe(false);
+    expect(result.attempted).toBe(true);
+    expect(result.state).toBe("requires_admin");
+    expect(result.message).toContain("administrator approval");
+    expect(result.command).toContain("-Profile Any");
   });
 });

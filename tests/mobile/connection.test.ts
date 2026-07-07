@@ -111,6 +111,9 @@ describe("mobile gateway connection verification", () => {
     await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow(
       "Windows Firewall"
     );
+    await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow(
+      "all firewall profiles"
+    );
   });
 
   test("reports loopback QR payloads as unusable on a phone", async () => {

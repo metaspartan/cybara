@@ -355,12 +355,25 @@ export interface GatewayAuthSettings {
   hostForced?: boolean;
   hostApplyScheduled?: boolean;
   hostApplyError?: string;
+  gatewayFirewall?: GatewayFirewallResult;
   basePath?: string;
   basePathForced?: boolean;
   port?: number;
   configuredPort?: number;
   portForced?: boolean;
   rateLimits: Record<string, { windowMs: number; maxRequests: number }>;
+}
+
+export interface GatewayFirewallResult {
+  platform: string;
+  required: boolean;
+  attempted: boolean;
+  configured: boolean;
+  state: "not_required" | "configured" | "requires_admin" | "failed";
+  ruleName?: string;
+  command?: string;
+  message: string;
+  error?: string;
 }
 
 export const systemApi = {

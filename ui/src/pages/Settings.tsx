@@ -3862,6 +3862,7 @@ function GatewayAuthSettingsSection() {
       if (res.data.hostApplyError) {
         throw new Error(res.data.hostApplyError);
       }
+      const firewallResult = res.data.gatewayFirewall;
       let latest = res.data;
       for (let attempt = 0; attempt < 8 && !expectedRuntimeHost(latest.host); attempt += 1) {
         await new Promise((resolve) => setTimeout(resolve, 350));
@@ -3874,6 +3875,7 @@ function GatewayAuthSettingsSection() {
           throw new Error(latest.hostApplyError);
         }
       }
+      if (firewallResult) latest = { ...latest, gatewayFirewall: firewallResult };
       if (!expectedRuntimeHost(latest.host)) {
         throw new Error(
           enabled
@@ -3882,9 +3884,17 @@ function GatewayAuthSettingsSection() {
         );
       }
       setSettings(latest);
+      if (enabled && firewallResult?.required && !firewallResult.configured) {
+        addToast("warning", firewallResult.message);
+        return;
+      }
       addToast(
         "success",
-        enabled ? "LAN access enabled for trusted devices" : "Gateway is private to this computer"
+        enabled && firewallResult?.configured
+          ? "LAN access enabled and Windows Firewall allows the gateway"
+          : enabled
+            ? "LAN access enabled for trusted devices"
+            : "Gateway is private to this computer"
       );
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to update host");
@@ -4162,6 +4172,22 @@ function GatewayAuthSettingsSection() {
                 ? " Launch default came from CYBARA_HOST or --expose; this toggle can still rebind the running gateway."
                 : " Keep this off on public or untrusted networks."}
             </p>
+            {settings?.gatewayFirewall?.required && (
+              <div
+                className={`mt-3 rounded-lg border px-3 py-2 text-xs ${
+                  settings.gatewayFirewall.configured
+                    ? "border-emerald-400/25 bg-emerald-400/10 text-emerald-100"
+                    : "border-amber-400/30 bg-amber-400/10 text-amber-100"
+                }`}
+              >
+                <p>{settings.gatewayFirewall.message}</p>
+                {!settings.gatewayFirewall.configured && settings.gatewayFirewall.command && (
+                  <code className="mt-2 block overflow-x-auto rounded-md bg-black/30 px-2 py-1 font-mono text-[11px] text-amber-50">
+                    {settings.gatewayFirewall.command}
+                  </code>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

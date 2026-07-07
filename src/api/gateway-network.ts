@@ -1,8 +1,23 @@
 import { isIP } from "net";
+import { Buffer } from "buffer";
 import { config } from "../core/config";
 import { getGatewayAuthSettings } from "./security";
 
 type GatewayHostApplyHandler = (host: string) => void;
+type FirewallCommandResult = { exitCode: number; stdout: string; stderr: string };
+type FirewallCommandRunner = (cmd: string[]) => FirewallCommandResult;
+
+export interface GatewayFirewallResult {
+  platform: NodeJS.Platform;
+  required: boolean;
+  attempted: boolean;
+  configured: boolean;
+  state: "not_required" | "configured" | "requires_admin" | "failed";
+  ruleName?: string;
+  command?: string;
+  message: string;
+  error?: string;
+}
 
 let gatewayHostApplyHandler: GatewayHostApplyHandler | null = null;
 
@@ -64,6 +79,193 @@ export function gatewayAuthSettingsResponse() {
   };
 }
 
+function isLanBindHost(host: string): boolean {
+  const normalized = host.trim().toLowerCase();
+  return normalized === "0.0.0.0" || normalized === "::" || normalized === "[::]";
+}
+
+export function buildWindowsGatewayFirewallCommand(port: number): string {
+  return `New-NetFirewallRule -DisplayName "Cybara Gateway ${port}" -Direction Inbound -Action Allow -Protocol TCP -LocalPort ${port} -Profile Any`;
+}
+
+function ruleNameForPort(port: number): string {
+  return `Cybara Gateway ${port}`;
+}
+
+function encodePowerShell(script: string): string {
+  return Buffer.from(script, "utf16le").toString("base64");
+}
+
+function defaultFirewallRunner(cmd: string[]): FirewallCommandResult {
+  const result = Bun.spawnSync(cmd, { stdout: "pipe", stderr: "pipe" });
+  return {
+    exitCode: result.exitCode ?? 1,
+    stdout: new TextDecoder().decode(result.stdout),
+    stderr: new TextDecoder().decode(result.stderr),
+  };
+}
+
+function runPowerShell(script: string, runner: FirewallCommandRunner): FirewallCommandResult {
+  return runner([
+    "powershell.exe",
+    "-NoProfile",
+    "-NonInteractive",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-EncodedCommand",
+    encodePowerShell(script),
+  ]);
+}
+
+function buildWindowsFirewallEnsureScript(port: number): string {
+  const ruleName = ruleNameForPort(port).replace(/'/g, "''");
+  return `
+$ErrorActionPreference = 'Stop'
+$ruleName = '${ruleName}'
+$port = '${port}'
+$rules = @(Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)
+if ($rules.Count -gt 0) {
+  $rules | Set-NetFirewallRule -Enabled True -Direction Inbound -Action Allow -Profile Any | Out-Null
+  $rules | Get-NetFirewallPortFilter | Set-NetFirewallPortFilter -Protocol TCP -LocalPort $port | Out-Null
+} else {
+  New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $port -Profile Any | Out-Null
+}
+`.trim();
+}
+
+function buildWindowsFirewallCheckScript(port: number): string {
+  const ruleName = ruleNameForPort(port).replace(/'/g, "''");
+  return `
+$ErrorActionPreference = 'Stop'
+$ruleName = '${ruleName}'
+$port = '${port}'
+$ok = $false
+foreach ($rule in @(Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)) {
+  $profile = [string]$rule.Profile
+  $profileOk = $profile -eq 'Any' -or (($profile -match 'Domain') -and ($profile -match 'Private') -and ($profile -match 'Public'))
+  foreach ($filter in @($rule | Get-NetFirewallPortFilter)) {
+    if ($rule.Enabled -eq 'True' -and $rule.Direction -eq 'Inbound' -and $rule.Action -eq 'Allow' -and $profileOk -and $filter.Protocol -eq 'TCP' -and [string]$filter.LocalPort -eq $port) {
+      $ok = $true
+    }
+  }
+}
+if ($ok) { exit 0 }
+exit 2
+`.trim();
+}
+
+function buildElevatedWindowsFirewallScript(port: number): string {
+  const encodedEnsure = encodePowerShell(buildWindowsFirewallEnsureScript(port));
+  return `
+$ErrorActionPreference = 'Stop'
+$process = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand','${encodedEnsure}') -Verb RunAs -Wait -PassThru
+exit $process.ExitCode
+`.trim();
+}
+
+function isElevationError(result: FirewallCommandResult): boolean {
+  const output = `${result.stdout}\n${result.stderr}`.toLowerCase();
+  return (
+    output.includes("access is denied") ||
+    output.includes("administrator") ||
+    output.includes("elevation") ||
+    output.includes("privilege")
+  );
+}
+
+export function ensureWindowsGatewayFirewallRule(input: {
+  host: string;
+  port: number;
+  platform?: NodeJS.Platform;
+  runner?: FirewallCommandRunner;
+}): GatewayFirewallResult {
+  const platform = input.platform || process.platform;
+  const ruleName = ruleNameForPort(input.port);
+  const command = buildWindowsGatewayFirewallCommand(input.port);
+  if (platform !== "win32" || !isLanBindHost(input.host)) {
+    return {
+      platform,
+      required: false,
+      attempted: false,
+      configured: true,
+      state: "not_required",
+      ruleName,
+      command,
+      message: "No Windows firewall change is required for this gateway bind host.",
+    };
+  }
+
+  const runner = input.runner || defaultFirewallRunner;
+  const check = runPowerShell(buildWindowsFirewallCheckScript(input.port), runner);
+  if (check.exitCode === 0) {
+    return {
+      platform,
+      required: true,
+      attempted: false,
+      configured: true,
+      state: "configured",
+      ruleName,
+      command,
+      message: `Windows Firewall already allows inbound TCP ${input.port}.`,
+    };
+  }
+
+  const direct = runPowerShell(buildWindowsFirewallEnsureScript(input.port), runner);
+  const verifyDirect = runPowerShell(buildWindowsFirewallCheckScript(input.port), runner);
+  if (direct.exitCode === 0 && verifyDirect.exitCode === 0) {
+    return {
+      platform,
+      required: true,
+      attempted: true,
+      configured: true,
+      state: "configured",
+      ruleName,
+      command,
+      message: `Windows Firewall now allows inbound TCP ${input.port}.`,
+    };
+  }
+
+  if (isElevationError(direct) || isElevationError(verifyDirect)) {
+    const elevated = runPowerShell(buildElevatedWindowsFirewallScript(input.port), runner);
+    const verifyElevated = runPowerShell(buildWindowsFirewallCheckScript(input.port), runner);
+    if (elevated.exitCode === 0 && verifyElevated.exitCode === 0) {
+      return {
+        platform,
+        required: true,
+        attempted: true,
+        configured: true,
+        state: "configured",
+        ruleName,
+        command,
+        message: `Windows Firewall now allows inbound TCP ${input.port}.`,
+      };
+    }
+    return {
+      platform,
+      required: true,
+      attempted: true,
+      configured: false,
+      state: "requires_admin",
+      ruleName,
+      command,
+      message: `Windows needs administrator approval to allow inbound TCP ${input.port}. Accept the UAC prompt or run the firewall command once.`,
+      error: (elevated.stderr || elevated.stdout || direct.stderr || direct.stdout).trim(),
+    };
+  }
+
+  return {
+    platform,
+    required: true,
+    attempted: true,
+    configured: false,
+    state: "failed",
+    ruleName,
+    command,
+    message: `Cybara could not verify the Windows Firewall rule for inbound TCP ${input.port}.`,
+    error: (verifyDirect.stderr || verifyDirect.stdout || direct.stderr || direct.stdout).trim(),
+  };
+}
+
 export function setGatewayHostApplyHandler(handler: GatewayHostApplyHandler | null): void {
   gatewayHostApplyHandler = handler;
 }
@@ -81,11 +283,23 @@ export function requestGatewayHostApply(host: string): {
 
 export function updateGatewayHostSetting(
   value: unknown,
-  applyNow: unknown
-): { hostApplyScheduled?: boolean; hostApplyError?: string } {
+  applyNow: unknown,
+  options: { port?: number } = {}
+): {
+  hostApplyScheduled?: boolean;
+  hostApplyError?: string;
+  gatewayFirewall?: GatewayFirewallResult;
+} {
   const nextHost = normalizeGatewayBindHost(value);
   config.set("host", nextHost);
   if (applyNow !== true) return {};
   const apply = requestGatewayHostApply(nextHost);
-  return { hostApplyScheduled: apply.scheduled, hostApplyError: apply.error };
+  return {
+    hostApplyScheduled: apply.scheduled,
+    hostApplyError: apply.error,
+    gatewayFirewall: ensureWindowsGatewayFirewallRule({
+      host: nextHost,
+      port: options.port || Number(process.env.PORT) || config.get<number>("port") || 4269,
+    }),
+  };
 }

@@ -45,7 +45,7 @@ function networkFailureMessage(baseUrl: string): string {
   if (isLoopbackGatewayUrl(baseUrl)) {
     return "This QR points to localhost on the phone, not the computer running Cybara. In Cybara Settings > Gateway, turn on Listen on local network, create a new QR, and use the LAN URL.";
   }
-  return `Could not reach ${baseUrl}. Open ${baseUrl}/api/health in Safari on this phone to verify the network path. Make sure the phone is on the same Wi-Fi, iOS Local Network access is allowed for Cybara, the gateway is running with Settings > Gateway > Listen on local network enabled, and Windows Firewall allows inbound TCP 4269 on Private networks if the gateway is on Windows.`;
+  return `Could not reach ${baseUrl}. Open ${baseUrl}/api/health in Safari on this phone to verify the network path. Make sure the phone is on the same Wi-Fi, iOS Local Network access is allowed for Cybara, the gateway is running with Settings > Gateway > Listen on local network enabled, and Windows Firewall allows inbound TCP 4269 on all firewall profiles if the gateway is on Windows.`;
 }
 
 async function fetchWithTimeout(
