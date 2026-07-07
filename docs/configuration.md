@@ -74,13 +74,39 @@ Key-value settings are stored in the `config` table and exposed via `GET/PUT /ap
 - `dangerous_tool_policy`: `{ enabled: boolean, mode: "audit" | "block" }`
 - `web_tool_url_policy`: `{ enabled: boolean, fetch_allowlist: string[], search_result_allowlist: string[] }`
 - `sandbox_runtime`: `{ enabled: boolean, provider: "auto" | "apple_sandbox" | "podman" | "docker", network: "allow" | "deny" }`
+- `workspace_indexer`: workspace indexing provider/model/runtime settings
+- `memory`: local memory behavior and retrieval settings
+- `memory_provider`: external memory provider selection and credentials for `local`, `supermemory`, `mem0`, `honcho`, `openviking`, or `hindsight`
+- `llm_timeouts`: provider/model timeout overrides
+- `speech`: shared TTS/STT provider settings
 - `computer_use`: `{ driverCommand: string }`
+- `reasoning_effort`: default model reasoning effort
+- `self_improving_skills_enabled`: boolean toggle for `skill_save`
+- `provider_plan_monitoring`: coding-plan usage limits and router enforcement
 
 `computer_use.driverCommand` is the persisted Web/Tauri settings override for the Cua Driver
 executable. `CYBARA_CUA_DRIVER_CMD` still takes precedence for scripts and operator-managed
 deployments. If neither is set, Cybara probes PATH and the known Cua installer locations, including
 Windows `%LOCALAPPDATA%\Programs\Cua\cua-driver\bin\cua-driver.exe` and
 `%USERPROFILE%\.cua-driver\packages\current`.
+
+## Gateway Auth And Operator Controls
+
+Gateway auth settings are exposed through Settings, the Web/Tauri Auth/System panels, and these
+admin API routes:
+
+```http
+GET /api/auth/settings
+PUT /api/auth/settings
+GET /api/auth/key
+POST /api/auth/rotate-key
+POST /api/system/restart
+```
+
+`PUT /api/auth/settings` can update `requireAuthForLocalhost`, `basePath`, and the configured port
+unless those values are forced by environment variables such as `CYBARA_REQUIRE_AUTH`,
+`CYBARA_BASE_PATH`, or `PORT`. API-key rotation is hot-swapped in memory and does not require a
+gateway restart. Restart requires the `manage` scope for paired mobile devices.
 
 ## Provider Configuration
 
@@ -121,6 +147,109 @@ instead of failing the request. See `.env.example` and `src/core/credential-pool
 
 Anthropic requests automatically get `cache_control` breakpoints on the stable system prompt +
 recent turns, giving ~75% input-token savings on multi-turn sessions. No configuration required.
+
+## Provider Plan Monitoring
+
+`provider_plan_monitoring` lets the router account for flat coding plans and pay-as-you-go spend:
+
+```json
+{
+  "enabled": true,
+  "routerEnforcement": true,
+  "warningThresholdPct": 80,
+  "staleAfterMinutes": 120,
+  "providers": {
+    "openai-codex": {
+      "enabled": true,
+      "presetId": "openai-codex-plus",
+      "sourceMode": "oauth_api",
+      "fiveHour": { "enabled": true, "tokenLimit": 2500000 },
+      "weekly": { "enabled": true, "tokenLimit": 10000000 },
+      "monthly": { "enabled": true, "spendLimit": 20 }
+    }
+  }
+}
+```
+
+Supported source modes are `local`, `provider_api`, `oauth_api`, `browser_cookie`, `cli`, and
+`manual`. Cybara tracks local token/spend usage immediately; external provider sources are opt-in
+and treated as plan context for providers that expose OAuth/API/CLI billing data. When router
+enforcement is enabled, exhausted configured plans are marked unavailable in router status.
+
+Routes:
+
+```http
+GET /api/provider-plans/config
+PUT /api/provider-plans/config
+GET /api/provider-plans/status
+GET /api/router/status
+GET /api/router/config
+PUT /api/router/config
+```
+
+## Speech Settings
+
+Speech settings are shared by Web/Tauri, React Native mobile, native macOS, and the speech tools:
+
+```json
+{
+  "speech": {
+    "tts": {
+      "provider": "auto",
+      "providerId": "",
+      "model": "",
+      "voice": "",
+      "outputFormat": "mp3",
+      "speed": 1,
+      "maxTextLength": 50000,
+      "fallbackToSystem": true
+    },
+    "stt": {
+      "provider": "auto",
+      "providerId": "",
+      "model": "",
+      "language": "en-us"
+    }
+  }
+}
+```
+
+TTS provider values are `auto`, `system`, `elevenlabs`, and `openai`; STT provider values are
+`auto`, `native`, and `openai`. Native STT uses browser/OS speech recognition when available. Server
+transcription uses `/api/speech/dictate` with an OpenAI/OpenAI Codex-compatible provider.
+
+Routes:
+
+```http
+GET /api/speech/settings
+PUT /api/speech/settings
+POST /api/speech/dictate
+```
+
+## Source Migration
+
+Cybara can import user data from OpenClaw or Hermes from the CLI, Web/Tauri settings, native macOS
+settings, or the API. The default `user-data` preset imports persona files, memories, skills, and
+workspace instructions while skipping secrets. The `full` preset can also import provider secrets
+and speech preferences when `migrateSecrets` is explicitly enabled.
+
+```bash
+cybara migrate sources
+cybara migrate --from openclaw
+cybara migrate --from hermes --apply --preset user-data
+cybara migrate --from openclaw --apply --preset full --migrate-secrets --overwrite
+```
+
+API routes:
+
+```http
+GET /api/migrations/sources
+POST /api/migrations/preview
+POST /api/migrations/run
+```
+
+Migration reports are written under `$CYBARA_HOME/migrations/<source>-<timestamp>/` after an apply
+run, so operators can review exactly what was imported or skipped.
 
 ## Workspace Indexing And Local Embeddings
 

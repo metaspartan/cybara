@@ -13,6 +13,20 @@ curl -H "Authorization: Bearer cybara_abc123..." http://localhost:4269/api/healt
 
 Localhost connections skip auth in development mode.
 
+### Gateway Auth Settings
+```http
+GET /api/auth/settings
+PUT /api/auth/settings
+GET /api/auth/key
+POST /api/auth/rotate-key
+POST /api/system/restart
+```
+
+`PUT /api/auth/settings` accepts `requireAuthForLocalhost`, `basePath`, and `port` unless those
+values are forced by environment variables. `POST /api/auth/rotate-key` hot-swaps the gateway API
+key without requiring a restart. `POST /api/system/restart` requires the `manage` scope for paired
+mobile devices.
+
 ## Chat
 
 ### Send Message
@@ -23,7 +37,9 @@ Content-Type: application/json
 {
   "message": "Hello",
   "sessionId": "optional-session-id",
-  "agentId": "optional-agent-id"
+  "agentId": "optional-agent-id",
+  "workspaceDir": "/optional/workspace",
+  "queueMode": "queue"
 }
 ```
 Returns JSON:
@@ -95,6 +111,20 @@ Legacy message-only alias:
 ```http
 GET /api/chat/sessions/:id/messages
 ```
+
+### Pending Messages, Queueing, And Steering
+```http
+GET /api/chat/sessions/:id/pending
+POST /api/chat/sessions/:id/pending/reorder
+PATCH /api/chat/sessions/:id/pending/:pendingId
+DELETE /api/chat/sessions/:id/pending/:pendingId
+POST /api/chat/sessions/:id/pending/:pendingId/steer
+```
+
+When a session is already running, `POST /api/chat` can accept `queueMode: "queue"` to append a
+pending user message or `queueMode: "steer"` to interrupt the current turn and inject the follow-up
+as part of the session history. Pending messages can be edited, deleted, reordered, or explicitly
+steered from Web/Tauri and mobile clients.
 
 ### Delete Session
 ```http
@@ -269,6 +299,60 @@ Opens a browser window for OAuth authentication. Uses PKCE for security.
 POST /api/providers/oauth/callback-status
 ```
 Poll this endpoint to check if the OAuth flow completed.
+
+## Router And Provider Plans
+
+### Router Status / Config
+```http
+GET /api/router/status
+GET /api/router/config
+PUT /api/router/config
+```
+
+Router config controls provider selection strategy, model preferences, fallback behavior, rate
+limits, spend caps, and mixture-of-agents settings. Router status includes provider availability and
+plan-limit constraints.
+
+### Provider Plan Monitoring
+```http
+GET /api/provider-plans/config
+PUT /api/provider-plans/config
+GET /api/provider-plans/status
+```
+
+Provider plan monitoring tracks local token/spend usage against configured coding-plan limits.
+Supported limit windows are rolling 5-hour, rolling week, and billing month. Source modes are
+`local`, `provider_api`, `oauth_api`, `browser_cookie`, `cli`, and `manual`; external sources are
+opt-in and provider-specific.
+
+## Speech
+
+### Shared Speech Settings
+```http
+GET /api/speech/settings
+PUT /api/speech/settings
+```
+
+The speech config contains `tts` and `stt` settings shared by Web/Tauri, mobile, native macOS, and
+the speech tools. TTS supports `auto`, `system`, `elevenlabs`, and `openai`; STT supports `auto`,
+`native`, and `openai`.
+
+### Server Transcription
+```http
+POST /api/speech/dictate
+Content-Type: application/json
+
+{
+  "audioBase64": "base64-encoded-audio",
+  "mimeType": "audio/webm",
+  "fileName": "dictation.webm",
+  "providerId": "optional-provider-id",
+  "model": "optional-model"
+}
+```
+
+Returns transcribed text using an OpenAI/OpenAI Codex-compatible provider. Native dictation runs in
+the client and does not require this endpoint unless a specific server provider is requested.
 
 ## Wallet
 
@@ -825,15 +909,26 @@ GET /api/mcp/tools
 
 ## Metrics
 
-### Token Usage
+### Summary And Dashboards
 ```http
+GET /api/metrics
+GET /api/metrics/overview
+GET /api/metrics/storage
 GET /api/metrics/tokens
+GET /api/metrics/files
+GET /api/metrics/tools
+GET /api/metrics/providers
+GET /api/metrics/time-series
+GET /api/metrics/models
+GET /api/metrics/insights
+GET /api/metrics/token-analysis
+POST /api/metrics/track
 ```
 
-### Session Stats
-```http
-GET /api/metrics/sessions
-```
+Metrics include overview totals, token/provider/model breakdowns, file and tool activity, storage
+usage, time-series data, insights, and token analysis. Dashboard-heavy metric routes are cached with
+short stale-while-revalidate windows outside test mode so Web/Tauri, mobile, and native macOS can
+load the same large datasets without repeatedly rebuilding them.
 
 ## Config
 
@@ -849,6 +944,37 @@ Content-Type: application/json
 
 {"key": "value", ...}
 ```
+
+`GET /api/config` returns redacted runtime settings, including `workspace_indexer`, `memory`,
+`memory_provider`, `speech`, `computer_use`, `llm_timeouts`, `reasoning_effort`,
+`sandbox_runtime`, and the tool/security policies. `PUT /api/config` accepts partial updates for
+those config keys.
+
+## Source Migration
+
+```http
+GET /api/migrations/sources
+POST /api/migrations/preview
+POST /api/migrations/run
+```
+
+Migration routes import OpenClaw or Hermes user data. `preview` always runs as a dry run; `run`
+applies the selected preset. Request fields include `sourceKind`, `sourcePath`, `preset`,
+`migrateSecrets`, `overwrite`, `skillConflict`, and `workspaceTarget`.
+
+## Logs
+
+```http
+GET /api/logs/system
+GET /api/logs/search?q=query
+GET /api/logs/activity?minutes=120
+GET /api/logs/sessions/:sessionId/messages
+GET /api/logs/agents/:agentId
+GET /api/logs/stats?hours=1
+```
+
+Log routes back the Web/Tauri, mobile, native macOS, and CLI log viewers. `GET /api/logs/system`
+accepts bounded `limit`, `offset`, and `includeTotal=1` query params for paged mobile/native reads.
 
 ## System
 

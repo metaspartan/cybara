@@ -38,6 +38,7 @@ import type {
   Provider,
   AvailableProvider,
   ProviderPlanMonitoringConfig,
+  ProviderPlanPresetSuggestion,
   ProviderPlanProviderConfig,
   ProviderPlanSnapshot,
   ProviderPlanStatusResponse,
@@ -81,6 +82,10 @@ export function Providers() {
   const [providerPlanConfig, setProviderPlanConfig] = useState<ProviderPlanMonitoringConfig | null>(
     null
   );
+  const [editingRoutePricing, setEditingRoutePricing] = useState<{
+    priceInputPerM?: number;
+    priceOutputPerM?: number;
+  } | null>(null);
 
   const { data: providers, isLoading } = useProviders();
   const { data: availableProviders } = useAvailableProviders();
@@ -130,16 +135,62 @@ export function Providers() {
     };
   }, [providers?.length]);
 
+  useEffect(() => {
+    if (!editingProvider) {
+      setEditingRoutePricing(null);
+      return;
+    }
+    let mounted = true;
+    apiFetch("/api/router/config")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((config: { routes?: Record<string, Record<string, unknown>> } | null) => {
+        if (!mounted) return;
+        const route = config?.routes?.[editingProvider.id] || {};
+        setEditingRoutePricing({
+          priceInputPerM:
+            typeof route.priceInputPerM === "number" ? route.priceInputPerM : undefined,
+          priceOutputPerM:
+            typeof route.priceOutputPerM === "number" ? route.priceOutputPerM : undefined,
+        });
+      })
+      .catch(() => {
+        if (mounted) setEditingRoutePricing({});
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [editingProvider]);
+
   const planConfigForProvider = (provider: Provider): ProviderPlanProviderConfig | undefined =>
     providerPlanConfig?.providers[provider.id] ?? providerPlanConfig?.providers[provider.provider];
 
+  const planPresetsForProvider = (provider: Provider): ProviderPlanPresetSuggestion[] =>
+    providerPlanByKey.get(provider.id)?.presetSuggestions ??
+    providerPlanByKey.get(provider.provider)?.presetSuggestions ??
+    [];
+
   const savePlanLimits = async (provider: Provider, formData: FormData) => {
+    await savePlanWindows(provider, formData);
+    await saveRoutePricing(provider, formData);
+    const status = await providerPlansApi.status();
+    if (status.success) setProviderPlanStatus(status.data ?? null);
+  };
+
+  const savePlanWindows = async (provider: Provider, formData: FormData) => {
     if (!providerPlanConfig) return;
     const planName = String(formData.get("plan_name") ?? "").trim();
-    const tokenLimit = parsePlanLimitInput(formData.get("plan_monthly_tokens"));
-    const spendLimit = parsePlanLimitInput(formData.get("plan_monthly_spend"));
+    const presetId = String(formData.get("plan_preset_id") ?? "").trim();
+    const fiveHourTokens = parsePlanLimitInput(formData.get("plan_five_hour_tokens"));
+    const weeklyTokens = parsePlanLimitInput(formData.get("plan_weekly_tokens"));
+    const monthlyTokens = parsePlanLimitInput(formData.get("plan_monthly_tokens"));
+    const monthlySpend = parsePlanLimitInput(formData.get("plan_monthly_spend"));
     const existing = planConfigForProvider(provider);
-    const hasInput = Boolean(planName) || tokenLimit !== undefined || spendLimit !== undefined;
+    const hasInput =
+      Boolean(planName) ||
+      Boolean(presetId) ||
+      [fiveHourTokens, weeklyTokens, monthlyTokens, monthlySpend].some(
+        (value) => value !== undefined
+      );
     if (!hasInput && !existing) return;
 
     const key = providerPlanConfig.providers[provider.id]
@@ -151,19 +202,21 @@ export function Providers() {
     if (!hasInput) {
       delete nextProviders[key];
     } else {
+      const preset = planPresetsForProvider(provider).find((entry) => entry.id === presetId);
+      const window = (tokenLimit?: number, spendLimit?: number) =>
+        tokenLimit !== undefined || spendLimit !== undefined
+          ? { enabled: true, tokenLimit, spendLimit }
+          : undefined;
       nextProviders[key] = {
         ...(existing || {}),
         enabled: true,
-        planName: planName || undefined,
-        monthly:
-          tokenLimit !== undefined || spendLimit !== undefined
-            ? {
-                ...(existing?.monthly || {}),
-                enabled: true,
-                tokenLimit,
-                spendLimit,
-              }
-            : existing?.monthly,
+        presetId: preset?.id,
+        planName: planName || preset?.planName || undefined,
+        sourceMode: preset?.sourceMode ?? existing?.sourceMode,
+        externalSourceEnabled: preset?.externalSourceEnabled ?? existing?.externalSourceEnabled,
+        fiveHour: window(fiveHourTokens) ?? undefined,
+        weekly: window(weeklyTokens) ?? undefined,
+        monthly: window(monthlyTokens, monthlySpend) ?? undefined,
       };
     }
     const payload = { ...providerPlanConfig, enabled: true, providers: nextProviders };
@@ -172,8 +225,45 @@ export function Providers() {
       throw new Error(response.error || "Failed to save plan limits");
     }
     setProviderPlanConfig("data" in response && response.data ? response.data : payload);
-    const status = await providerPlansApi.status();
-    if (status.success) setProviderPlanStatus(status.data ?? null);
+  };
+
+  // Custom pay-as-you-go pricing per 1M tokens rides on the router route config
+  // (route.priceInputPerM/priceOutputPerM); the catalog price is used when unset.
+  const saveRoutePricing = async (provider: Provider, formData: FormData) => {
+    const rawInput = String(formData.get("plan_price_input") ?? "").trim();
+    const rawOutput = String(formData.get("plan_price_output") ?? "").trim();
+    const priceInput = parsePlanLimitInput(formData.get("plan_price_input"));
+    const priceOutput = parsePlanLimitInput(formData.get("plan_price_output"));
+    const wantsPricing = priceInput !== undefined || priceOutput !== undefined;
+    const wantsClear = rawInput === "" && rawOutput === "";
+
+    const res = await apiFetch("/api/router/config");
+    if (!res.ok) {
+      if (wantsPricing) throw new Error("Failed to load router config for pricing");
+      return;
+    }
+    const config = (await res.json()) as {
+      routes?: Record<string, Record<string, unknown>>;
+    } & Record<string, unknown>;
+    const routes = { ...(config.routes || {}) };
+    const route = { ...(routes[provider.id] || {}) };
+    const hadPricing = route.priceInputPerM !== undefined || route.priceOutputPerM !== undefined;
+    if (!wantsPricing && !(wantsClear && hadPricing)) return;
+
+    if (wantsPricing) {
+      route.priceInputPerM = priceInput ?? 0;
+      route.priceOutputPerM = priceOutput ?? 0;
+    } else {
+      delete route.priceInputPerM;
+      delete route.priceOutputPerM;
+    }
+    routes[provider.id] = route;
+    const putRes = await apiFetch("/api/router/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...config, routes }),
+    });
+    if (!putRes.ok) throw new Error("Failed to save custom pricing");
   };
 
   const handleCreate = async (formData: FormData) => {
@@ -413,6 +503,8 @@ export function Providers() {
           isEdit
           planConfig={editingProvider ? planConfigForProvider(editingProvider) : undefined}
           planConfigReady={providerPlanConfig !== null}
+          planPresets={editingProvider ? planPresetsForProvider(editingProvider) : []}
+          routePricing={editingRoutePricing ?? undefined}
         />
 
         <ConfirmDialog
@@ -478,6 +570,8 @@ interface ProviderModalProps {
   isEdit?: boolean;
   planConfig?: ProviderPlanProviderConfig;
   planConfigReady?: boolean;
+  planPresets?: ProviderPlanPresetSuggestion[];
+  routePricing?: { priceInputPerM?: number; priceOutputPerM?: number };
 }
 
 function ProviderModal({
@@ -491,6 +585,8 @@ function ProviderModal({
   isEdit,
   planConfig,
   planConfigReady,
+  planPresets = [],
+  routePricing,
 }: ProviderModalProps) {
   const [selectedProvider, setSelectedProvider] = useState(provider?.provider || "");
   const [oauthState, setOauthState] = useState<
@@ -505,6 +601,14 @@ function ProviderModal({
   const [oauthError, setOauthError] = useState<string>("");
   const abortRef = useRef(false);
   const { addToast } = useUIStore();
+  const [planPresetId, setPlanPresetId] = useState("");
+  const [planName, setPlanName] = useState("");
+  const [planFiveHourTokens, setPlanFiveHourTokens] = useState("");
+  const [planWeeklyTokens, setPlanWeeklyTokens] = useState("");
+  const [planMonthlyTokens, setPlanMonthlyTokens] = useState("");
+  const [planMonthlySpend, setPlanMonthlySpend] = useState("");
+  const [planPriceInput, setPlanPriceInput] = useState("");
+  const [planPriceOutput, setPlanPriceOutput] = useState("");
 
   useEffect(() => {
     if (isOpen) {
@@ -521,6 +625,41 @@ function ProviderModal({
       abortRef.current = true;
     };
   }, [isOpen, provider, availableProviders]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setPlanPresetId(planConfig?.presetId ?? "");
+    setPlanName(planConfig?.planName ?? "");
+    setPlanFiveHourTokens(
+      planConfig?.fiveHour?.tokenLimit ? String(planConfig.fiveHour.tokenLimit) : ""
+    );
+    setPlanWeeklyTokens(planConfig?.weekly?.tokenLimit ? String(planConfig.weekly.tokenLimit) : "");
+    setPlanMonthlyTokens(
+      planConfig?.monthly?.tokenLimit ? String(planConfig.monthly.tokenLimit) : ""
+    );
+    setPlanMonthlySpend(
+      planConfig?.monthly?.spendLimit ? String(planConfig.monthly.spendLimit) : ""
+    );
+    setPlanPriceInput(
+      routePricing?.priceInputPerM !== undefined ? String(routePricing.priceInputPerM) : ""
+    );
+    setPlanPriceOutput(
+      routePricing?.priceOutputPerM !== undefined ? String(routePricing.priceOutputPerM) : ""
+    );
+  }, [isOpen, planConfig, routePricing]);
+
+  const selectedPlanPreset = planPresets.find((preset) => preset.id === planPresetId);
+
+  const applyPlanPreset = (presetId: string) => {
+    setPlanPresetId(presetId);
+    const preset = planPresets.find((entry) => entry.id === presetId);
+    if (!preset) return;
+    setPlanName(preset.planName);
+    setPlanFiveHourTokens(preset.fiveHourTokenLimit ? String(preset.fiveHourTokenLimit) : "");
+    setPlanWeeklyTokens(preset.weeklyTokenLimit ? String(preset.weeklyTokenLimit) : "");
+    setPlanMonthlyTokens(preset.monthlyTokenLimit ? String(preset.monthlyTokenLimit) : "");
+    setPlanMonthlySpend(preset.monthlySpendLimit ? String(preset.monthlySpendLimit) : "");
+  };
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -969,36 +1108,87 @@ function ProviderModal({
             <div>
               <p className="text-sm font-medium text-white">Plan limits</p>
               <p className="text-xs text-gray-500 mt-0.5">
-                Track monthly usage against your provider plan. Leave all fields empty to keep the
-                plan unconfigured. Advanced windows and presets live in Model Router settings.
+                Subscription coding plans use rolling 5-hour and weekly windows; pay-as-you-go API
+                usage tracks a monthly budget. Leave everything empty to keep the plan
+                unconfigured.
               </p>
             </div>
+            <input type="hidden" name="plan_preset_id" value={planPresetId} />
+            {planPresets.length > 0 && (
+              <Select
+                label="Plan preset"
+                options={[
+                  { value: "", label: "Custom / manual" },
+                  ...planPresets.map((preset) => ({ value: preset.id, label: preset.label })),
+                ]}
+                value={planPresetId}
+                onChange={applyPlanPreset}
+                helperText={selectedPlanPreset?.limitDescription}
+              />
+            )}
             <Input
               name="plan_name"
               label="Plan name"
-              placeholder="e.g. Pro, Team, Pay-as-you-go"
-              defaultValue={planConfig?.planName ?? ""}
+              placeholder="e.g. Pro, Max 5x, Pay-as-you-go"
+              value={planName}
+              onChange={(e) => setPlanName(e.target.value)}
             />
             <div className="grid grid-cols-2 gap-3">
               <Input
+                name="plan_five_hour_tokens"
+                label="5-hour token limit"
+                placeholder="rolling window"
+                inputMode="numeric"
+                value={planFiveHourTokens}
+                onChange={(e) => setPlanFiveHourTokens(e.target.value)}
+              />
+              <Input
+                name="plan_weekly_tokens"
+                label="Weekly token limit"
+                placeholder="rolling window"
+                inputMode="numeric"
+                value={planWeeklyTokens}
+                onChange={(e) => setPlanWeeklyTokens(e.target.value)}
+              />
+              <Input
                 name="plan_monthly_tokens"
                 label="Monthly token limit"
-                placeholder="e.g. 10000000"
+                placeholder="billing month"
                 inputMode="numeric"
-                defaultValue={
-                  planConfig?.monthly?.tokenLimit ? String(planConfig.monthly.tokenLimit) : ""
-                }
+                value={planMonthlyTokens}
+                onChange={(e) => setPlanMonthlyTokens(e.target.value)}
               />
               <Input
                 name="plan_monthly_spend"
-                label="Monthly spend limit"
+                label="Monthly budget"
                 placeholder="e.g. 100"
                 inputMode="decimal"
-                defaultValue={
-                  planConfig?.monthly?.spendLimit ? String(planConfig.monthly.spendLimit) : ""
-                }
+                value={planMonthlySpend}
+                onChange={(e) => setPlanMonthlySpend(e.target.value)}
               />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                name="plan_price_input"
+                label="$ / 1M input tokens"
+                placeholder="catalog price"
+                inputMode="decimal"
+                value={planPriceInput}
+                onChange={(e) => setPlanPriceInput(e.target.value)}
+              />
+              <Input
+                name="plan_price_output"
+                label="$ / 1M output tokens"
+                placeholder="catalog price"
+                inputMode="decimal"
+                value={planPriceOutput}
+                onChange={(e) => setPlanPriceOutput(e.target.value)}
+              />
+            </div>
+            <p className="text-[11px] leading-4 text-gray-500">
+              Custom per-token pricing overrides the built-in model catalog when estimating spend.
+              Leave blank to use catalog prices.
+            </p>
           </div>
         )}
 

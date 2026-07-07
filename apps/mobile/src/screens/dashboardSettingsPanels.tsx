@@ -444,9 +444,15 @@ export function ProviderSettingsPanel({
   >(null);
   const [planMonitoringConfig, setPlanMonitoringConfig] =
     useState<ProviderPlanMonitoringConfig | null>(null);
+  const [planPresetId, setPlanPresetId] = useState("");
   const [planName, setPlanName] = useState("");
+  const [planFiveHourTokens, setPlanFiveHourTokens] = useState("");
+  const [planWeeklyTokens, setPlanWeeklyTokens] = useState("");
   const [planMonthlyTokens, setPlanMonthlyTokens] = useState("");
   const [planMonthlySpend, setPlanMonthlySpend] = useState("");
+  const [planPriceInput, setPlanPriceInput] = useState("");
+  const [planPriceOutput, setPlanPriceOutput] = useState("");
+  const [routerPricingConfig, setRouterPricingConfig] = useState<RouterConfig | null>(null);
   const authMode = mobileProviderAuthMode(provider);
   const usesApiKey = authMode === "api_key";
   const usesOAuth = authMode === "oauth";
@@ -492,11 +498,30 @@ export function ProviderSettingsPanel({
         if (!mounted) return;
         setPlanMonitoringConfig(cfg);
         const entry = cfg.providers[provider.id] ?? cfg.providers[provider.provider];
+        setPlanPresetId(entry?.presetId || "");
         setPlanName(entry?.planName || "");
+        setPlanFiveHourTokens(
+          entry?.fiveHour?.tokenLimit ? String(entry.fiveHour.tokenLimit) : ""
+        );
+        setPlanWeeklyTokens(entry?.weekly?.tokenLimit ? String(entry.weekly.tokenLimit) : "");
         setPlanMonthlyTokens(entry?.monthly?.tokenLimit ? String(entry.monthly.tokenLimit) : "");
         setPlanMonthlySpend(entry?.monthly?.spendLimit ? String(entry.monthly.spendLimit) : "");
       } catch {
         if (mounted) setPlanMonitoringConfig(null);
+      }
+      try {
+        const routerCfg = await api.routerConfig();
+        if (!mounted) return;
+        setRouterPricingConfig(routerCfg);
+        const route = routerCfg.routes[provider.id];
+        setPlanPriceInput(
+          route?.priceInputPerM !== undefined ? String(route.priceInputPerM) : ""
+        );
+        setPlanPriceOutput(
+          route?.priceOutputPerM !== undefined ? String(route.priceOutputPerM) : ""
+        );
+      } catch {
+        if (mounted) setRouterPricingConfig(null);
       }
     };
     void loadProviderPlan();
@@ -510,9 +535,25 @@ export function ProviderSettingsPanel({
     return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
   };
 
+  const planPresets = providerPlan?.presetSuggestions ?? [];
+  const selectedPlanPreset = planPresets.find((preset) => preset.id === planPresetId);
+
+  const applyPlanPreset = (presetId: string) => {
+    setPlanPresetId(presetId);
+    const preset = planPresets.find((entry) => entry.id === presetId);
+    if (!preset) return;
+    setPlanName(preset.planName);
+    setPlanFiveHourTokens(preset.fiveHourTokenLimit ? String(preset.fiveHourTokenLimit) : "");
+    setPlanWeeklyTokens(preset.weeklyTokenLimit ? String(preset.weeklyTokenLimit) : "");
+    setPlanMonthlyTokens(preset.monthlyTokenLimit ? String(preset.monthlyTokenLimit) : "");
+    setPlanMonthlySpend(preset.monthlySpendLimit ? String(preset.monthlySpendLimit) : "");
+  };
+
   const savePlanLimits = async () => {
     if (!planMonitoringConfig) return;
     const trimmedPlanName = planName.trim();
+    const fiveHourLimit = parsePlanLimit(planFiveHourTokens);
+    const weeklyLimit = parsePlanLimit(planWeeklyTokens);
     const tokenLimit = parsePlanLimit(planMonthlyTokens);
     const spendLimit = parsePlanLimit(planMonthlySpend);
     const existingKey = planMonitoringConfig.providers[provider.id]
@@ -522,21 +563,33 @@ export function ProviderSettingsPanel({
         : provider.id;
     const existing = planMonitoringConfig.providers[existingKey];
     const hasInput =
-      Boolean(trimmedPlanName) || tokenLimit !== undefined || spendLimit !== undefined;
-    if (!hasInput && !existing) return;
+      Boolean(trimmedPlanName) ||
+      Boolean(planPresetId) ||
+      [fiveHourLimit, weeklyLimit, tokenLimit, spendLimit].some((value) => value !== undefined);
+    if (!hasInput && !existing) {
+      await saveRoutePricing();
+      return;
+    }
 
     const nextProviders = { ...planMonitoringConfig.providers };
     if (!hasInput) {
       delete nextProviders[existingKey];
     } else {
+      const window = (limit?: number, spend?: number) =>
+        limit !== undefined || spend !== undefined
+          ? { enabled: true, tokenLimit: limit, spendLimit: spend }
+          : undefined;
       nextProviders[existingKey] = {
         ...(existing || {}),
         enabled: true,
-        planName: trimmedPlanName || undefined,
-        monthly:
-          tokenLimit !== undefined || spendLimit !== undefined
-            ? { ...(existing?.monthly || {}), enabled: true, tokenLimit, spendLimit }
-            : existing?.monthly,
+        presetId: selectedPlanPreset?.id,
+        planName: trimmedPlanName || selectedPlanPreset?.planName || undefined,
+        sourceMode: selectedPlanPreset?.sourceMode ?? existing?.sourceMode,
+        externalSourceEnabled:
+          selectedPlanPreset?.externalSourceEnabled ?? existing?.externalSourceEnabled,
+        fiveHour: window(fiveHourLimit),
+        weekly: window(weeklyLimit),
+        monthly: window(tokenLimit, spendLimit),
       };
     }
     const updated = await api.updateProviderPlanConfig({
@@ -545,6 +598,32 @@ export function ProviderSettingsPanel({
       providers: nextProviders,
     });
     setPlanMonitoringConfig(updated);
+    await saveRoutePricing();
+  };
+
+  // Custom pay-as-you-go pricing per 1M tokens rides on the router route config.
+  const saveRoutePricing = async () => {
+    if (!routerPricingConfig) return;
+    const priceInput = parsePlanLimit(planPriceInput);
+    const priceOutput = parsePlanLimit(planPriceOutput);
+    const wantsPricing = priceInput !== undefined || priceOutput !== undefined;
+    const route = { ...(routerPricingConfig.routes[provider.id] || { weight: 1 }) };
+    const hadPricing = route.priceInputPerM !== undefined || route.priceOutputPerM !== undefined;
+    if (!wantsPricing && !hadPricing) return;
+
+    if (wantsPricing) {
+      route.priceInputPerM = priceInput ?? 0;
+      route.priceOutputPerM = priceOutput ?? 0;
+    } else {
+      delete route.priceInputPerM;
+      delete route.priceOutputPerM;
+    }
+    const nextConfig = {
+      ...routerPricingConfig,
+      routes: { ...routerPricingConfig.routes, [provider.id]: route },
+    };
+    await api.updateRouterConfig(nextConfig);
+    setRouterPricingConfig(nextConfig);
   };
 
   const saveProvider = async () => {
@@ -779,27 +858,76 @@ export function ProviderSettingsPanel({
         />
         {planMonitoringConfig ? (
           <>
+            {planPresets.length > 0 ? (
+              <SettingSelector
+                label="Plan preset"
+                onSelect={applyPlanPreset}
+                options={[
+                  { label: "Custom / manual", value: "" },
+                  ...planPresets.map((preset) => ({ label: preset.label, value: preset.id })),
+                ]}
+                selected={planPresetId}
+                tone={colors.cyan}
+                variant="menu"
+              />
+            ) : null}
+            {selectedPlanPreset ? (
+              <Text style={styles.settingsFieldHelp}>{selectedPlanPreset.limitDescription}</Text>
+            ) : null}
             <SettingsTextField
-              help="Track monthly usage against your provider plan. Leave empty to keep unconfigured."
+              help="Subscription coding plans use rolling 5-hour and weekly windows; pay-as-you-go tracks a monthly budget. Leave empty to keep unconfigured."
               label="Plan name"
               onChangeText={setPlanName}
-              placeholder="e.g. Pro, Team, Pay-as-you-go"
+              placeholder="e.g. Pro, Max 5x, Pay-as-you-go"
               value={planName}
+            />
+            <SettingsTextField
+              keyboardType="numeric"
+              label="5-hour token limit"
+              onChangeText={setPlanFiveHourTokens}
+              placeholder="rolling window"
+              value={planFiveHourTokens}
+            />
+            <SettingsTextField
+              keyboardType="numeric"
+              label="Weekly token limit"
+              onChangeText={setPlanWeeklyTokens}
+              placeholder="rolling window"
+              value={planWeeklyTokens}
             />
             <SettingsTextField
               keyboardType="numeric"
               label="Monthly token limit"
               onChangeText={setPlanMonthlyTokens}
-              placeholder="e.g. 10000000"
+              placeholder="billing month"
               value={planMonthlyTokens}
             />
             <SettingsTextField
               keyboardType="numeric"
-              label="Monthly spend limit"
+              label="Monthly budget"
               onChangeText={setPlanMonthlySpend}
               placeholder="e.g. 100"
               value={planMonthlySpend}
             />
+            {routerPricingConfig ? (
+              <>
+                <SettingsTextField
+                  help="Custom per-token pricing overrides catalog prices when estimating spend."
+                  keyboardType="decimal-pad"
+                  label="$ / 1M input tokens"
+                  onChangeText={setPlanPriceInput}
+                  placeholder="catalog price"
+                  value={planPriceInput}
+                />
+                <SettingsTextField
+                  keyboardType="decimal-pad"
+                  label="$ / 1M output tokens"
+                  onChangeText={setPlanPriceOutput}
+                  placeholder="catalog price"
+                  value={planPriceOutput}
+                />
+              </>
+            ) : null}
           </>
         ) : null}
         {usesApiKey ? (

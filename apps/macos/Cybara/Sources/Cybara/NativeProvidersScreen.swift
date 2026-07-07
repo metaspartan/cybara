@@ -391,9 +391,16 @@ private struct ProviderEditorSheet: View {
     @State private var oauthToken = ""
     @State private var oauthError: String?
     @State private var planConfig: [String: Any]?
+    @State private var planPresets: [ProviderPlanPresetSuggestion] = []
+    @State private var planPresetId = ""
     @State private var planName = ""
+    @State private var planFiveHourTokens = ""
+    @State private var planWeeklyTokens = ""
     @State private var planMonthlyTokens = ""
     @State private var planMonthlySpend = ""
+    @State private var planPriceInput = ""
+    @State private var planPriceOutput = ""
+    @State private var routerConfig: [String: Any]?
 
     init(
         client: GatewayClient,
@@ -457,10 +464,30 @@ private struct ProviderEditorSheet: View {
                 Toggle("Use as default provider", isOn: $isDefault)
                 if provider != nil, planConfig != nil {
                     Section("Plan limits") {
-                        TextField("Plan name (e.g. Pro, Team)", text: $planName)
+                        if !planPresets.isEmpty {
+                            Picker("Plan preset", selection: $planPresetId) {
+                                Text("Custom / manual").tag("")
+                                ForEach(planPresets) { preset in
+                                    Text(preset.label).tag(preset.id)
+                                }
+                            }
+                            .onChange(of: planPresetId) { _, next in
+                                applyPlanPreset(next)
+                            }
+                            if let preset = planPresets.first(where: { $0.id == planPresetId }) {
+                                Text(preset.limitDescription)
+                                    .font(.system(size: 11, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        TextField("Plan name (e.g. Pro, Max 5x)", text: $planName)
+                        TextField("5-hour token limit (rolling)", text: $planFiveHourTokens)
+                        TextField("Weekly token limit (rolling)", text: $planWeeklyTokens)
                         TextField("Monthly token limit", text: $planMonthlyTokens)
-                        TextField("Monthly spend limit", text: $planMonthlySpend)
-                        Text("Track monthly usage against your provider plan. Leave all fields empty to keep the plan unconfigured. Advanced windows live in Model Router settings.")
+                        TextField("Monthly budget", text: $planMonthlySpend)
+                        TextField("$ / 1M input tokens (catalog when blank)", text: $planPriceInput)
+                        TextField("$ / 1M output tokens (catalog when blank)", text: $planPriceOutput)
+                        Text("Subscription coding plans use rolling 5-hour and weekly windows; pay-as-you-go tracks a monthly budget. Custom per-token pricing overrides the model catalog for spend estimates. Leave everything empty to keep the plan unconfigured.")
                             .font(.system(size: 11, design: .rounded))
                             .foregroundStyle(.secondary)
                     }
@@ -803,20 +830,56 @@ private struct ProviderEditorSheet: View {
         return provider.id
     }
 
+    private func windowTokenText(_ entry: [String: Any]?, _ window: String) -> String {
+        let config = entry?[window] as? [String: Any]
+        guard let tokens = config?["tokenLimit"] as? Double, tokens > 0 else { return "" }
+        return String(Int(tokens))
+    }
+
+    private func decimalText(_ value: Double?) -> String {
+        guard let value, value > 0 else { return "" }
+        return value == value.rounded() ? String(Int(value)) : String(value)
+    }
+
     private func loadPlanConfig() async {
-        guard provider != nil else { return }
+        guard let provider else { return }
         guard let config = try? await client.providerPlanConfig() else { return }
         planConfig = config
         let entries = config["providers"] as? [String: Any] ?? [:]
         let entry = entries[planConfigKey] as? [String: Any]
+        planPresetId = entry?["presetId"] as? String ?? ""
         planName = entry?["planName"] as? String ?? ""
+        planFiveHourTokens = windowTokenText(entry, "fiveHour")
+        planWeeklyTokens = windowTokenText(entry, "weekly")
+        planMonthlyTokens = windowTokenText(entry, "monthly")
         let monthly = entry?["monthly"] as? [String: Any]
-        if let tokens = monthly?["tokenLimit"] as? Double, tokens > 0 {
-            planMonthlyTokens = String(Int(tokens))
+        planMonthlySpend = decimalText(monthly?["spendLimit"] as? Double)
+
+        if let status = try? await client.providerPlanStatus() {
+            let snapshot = status.providers.first { plan in
+                [plan.providerId, plan.configuredProviderId, plan.providerType].contains(provider.id)
+            } ?? status.providers.first { plan in
+                [plan.providerId, plan.configuredProviderId, plan.providerType].contains(provider.providerType)
+            }
+            planPresets = snapshot?.presetSuggestions ?? []
         }
-        if let spend = monthly?["spendLimit"] as? Double, spend > 0 {
-            planMonthlySpend = spend == spend.rounded() ? String(Int(spend)) : String(spend)
+
+        if let router = try? await client.routerConfig() {
+            routerConfig = router
+            let routes = router["routes"] as? [String: Any] ?? [:]
+            let route = routes[provider.id] as? [String: Any]
+            planPriceInput = decimalText(route?["priceInputPerM"] as? Double)
+            planPriceOutput = decimalText(route?["priceOutputPerM"] as? Double)
         }
+    }
+
+    private func applyPlanPreset(_ presetId: String) {
+        guard let preset = planPresets.first(where: { $0.id == presetId }) else { return }
+        planName = preset.planName
+        planFiveHourTokens = decimalText(preset.fiveHourTokenLimit)
+        planWeeklyTokens = decimalText(preset.weeklyTokenLimit)
+        planMonthlyTokens = decimalText(preset.monthlyTokenLimit)
+        planMonthlySpend = decimalText(preset.monthlySpendLimit)
     }
 
     private func parsePlanLimit(_ value: String) -> Double? {
@@ -826,37 +889,60 @@ private struct ProviderEditorSheet: View {
         return parsed
     }
 
+    private func planWindow(tokenLimit: Double?, spendLimit: Double? = nil) -> [String: Any]? {
+        guard tokenLimit != nil || spendLimit != nil else { return nil }
+        var window: [String: Any] = ["enabled": true]
+        if let tokenLimit { window["tokenLimit"] = tokenLimit }
+        if let spendLimit { window["spendLimit"] = spendLimit }
+        return window
+    }
+
     private func savePlanLimits() async throws {
         guard provider != nil, var config = planConfig else { return }
         let trimmedPlanName = planName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let fiveHourLimit = parsePlanLimit(planFiveHourTokens)
+        let weeklyLimit = parsePlanLimit(planWeeklyTokens)
         let tokenLimit = parsePlanLimit(planMonthlyTokens)
         let spendLimit = parsePlanLimit(planMonthlySpend)
         var entries = config["providers"] as? [String: Any] ?? [:]
         let key = planConfigKey
         let entry = entries[key] as? [String: Any]
-        let hasInput = !trimmedPlanName.isEmpty || tokenLimit != nil || spendLimit != nil
-        if !hasInput, entry == nil { return }
+        let hasInput = !trimmedPlanName.isEmpty || !planPresetId.isEmpty
+            || fiveHourLimit != nil || weeklyLimit != nil || tokenLimit != nil || spendLimit != nil
+        if !hasInput, entry == nil {
+            try await saveRoutePricing()
+            return
+        }
 
         if !hasInput {
             entries.removeValue(forKey: key)
         } else {
             var next = entry ?? [:]
             next["enabled"] = true
-            if trimmedPlanName.isEmpty {
-                next.removeValue(forKey: "planName")
+            let preset = planPresets.first { $0.id == planPresetId }
+            if let preset {
+                next["presetId"] = preset.id
+                next["sourceMode"] = preset.sourceMode
+                next["externalSourceEnabled"] = preset.externalSourceEnabled
             } else {
-                next["planName"] = trimmedPlanName
+                next.removeValue(forKey: "presetId")
             }
-            if tokenLimit != nil || spendLimit != nil {
-                var monthly = next["monthly"] as? [String: Any] ?? [:]
-                monthly["enabled"] = true
-                if let tokenLimit { monthly["tokenLimit"] = tokenLimit } else {
-                    monthly.removeValue(forKey: "tokenLimit")
+            let resolvedName = trimmedPlanName.isEmpty ? preset?.planName : trimmedPlanName
+            if let resolvedName, !resolvedName.isEmpty {
+                next["planName"] = resolvedName
+            } else {
+                next.removeValue(forKey: "planName")
+            }
+            for (window, value) in [
+                ("fiveHour", planWindow(tokenLimit: fiveHourLimit)),
+                ("weekly", planWindow(tokenLimit: weeklyLimit)),
+                ("monthly", planWindow(tokenLimit: tokenLimit, spendLimit: spendLimit)),
+            ] {
+                if let value {
+                    next[window] = value
+                } else {
+                    next.removeValue(forKey: window)
                 }
-                if let spendLimit { monthly["spendLimit"] = spendLimit } else {
-                    monthly.removeValue(forKey: "spendLimit")
-                }
-                next["monthly"] = monthly
             }
             entries[key] = next
         }
@@ -864,6 +950,31 @@ private struct ProviderEditorSheet: View {
         config["enabled"] = true
         let body = try JSONSerialization.data(withJSONObject: config)
         _ = try await client.updateProviderPlanConfig(body)
+        try await saveRoutePricing()
+    }
+
+    // Custom pay-as-you-go pricing per 1M tokens rides on the router route config.
+    private func saveRoutePricing() async throws {
+        guard let provider, var config = routerConfig else { return }
+        let priceInput = parsePlanLimit(planPriceInput)
+        let priceOutput = parsePlanLimit(planPriceOutput)
+        let wantsPricing = priceInput != nil || priceOutput != nil
+        var routes = config["routes"] as? [String: Any] ?? [:]
+        var route = routes[provider.id] as? [String: Any] ?? ["weight": 1]
+        let hadPricing = route["priceInputPerM"] != nil || route["priceOutputPerM"] != nil
+        if !wantsPricing, !hadPricing { return }
+
+        if wantsPricing {
+            route["priceInputPerM"] = priceInput ?? 0
+            route["priceOutputPerM"] = priceOutput ?? 0
+        } else {
+            route.removeValue(forKey: "priceInputPerM")
+            route.removeValue(forKey: "priceOutputPerM")
+        }
+        routes[provider.id] = route
+        config["routes"] = routes
+        let body = try JSONSerialization.data(withJSONObject: config)
+        try await client.updateRouterConfig(body)
     }
 }
 

@@ -47,7 +47,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - A large built-in tool library (`src/core/tools/index.ts`)
 - A broad provider catalog with dynamic model discovery (`src/core/providers.ts`), including Azure OpenAI, Azure AI Foundry, Anthropic on Vertex AI, and Google Gemini on Vertex AI
 - Channel adapters for the major messaging platforms (`src/core/channels/adapters`)
-- Model provider router with weighted / round-robin / lowest-cost / priority / mixture-of-agents strategies, circuit breaker, rate limits, and spend caps
+- Model provider router with weighted / round-robin / lowest-cost / priority / mixture-of-agents strategies, circuit breaker, rate limits, spend caps, and coding-plan limit awareness
 - Mixture of Agents (MoA): fan a turn out to several proposer agents and synthesize one answer — available both as a `mixture_of_agents` tool and as a router strategy
 - Self-improving skills: agents can codify a verified multi-step procedure with `skill_save`, and the loader picks it up for future sessions
 - ACP (Agent Client Protocol) server so editors like Zed can drive an agent (`cybara acp`)
@@ -59,6 +59,9 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - Token streaming to the UI (real-time assistant text deltas via WebSocket)
 - MCP host mode (expose cybara's tools to other MCP clients) + MCP client (consume external servers)
 - Local workspace indexing with lexical search plus optional local Transformers.js embeddings; packaged desktop sidecars bundle Transformers.js, ONNX Runtime native binaries when available, and ONNX Web/WASM fallback assets
+- Source migration from OpenClaw and Hermes with dry-run previews, conflict handling, skill/memory import, and opt-in secret import
+- Shared speech settings for TTS via system/ElevenLabs/OpenAI and STT via native dictation or OpenAI-compatible transcription
+- Gateway operator controls for localhost auth policy, API-key reveal/rotation, gateway restart, and log viewing
 - Media generation (image/video/music) via swappable provider registry, dynamic tool discovery, a tool-calling code sandbox, desktop control with safety hardening, and a multi-agent kanban orchestration tier
 - Tauri desktop app + native SwiftUI macOS app + React Native mobile companion + Bun server/CLI runtime
 
@@ -144,7 +147,7 @@ bun run mobile:expo-check
 cybara mobile connect --url http://192.168.1.20:4269 --device "Carsen iPhone"
 ```
 
-The CLI and Web UI/Tauri `Mobile` page create QR pairings with revocable per-device tokens, so a phone can be revoked without rotating the root gateway API key. The initial mobile surface covers gateway health, sessions, agents, providers, tool approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, and settings summaries. See [apps/mobile/README.md](apps/mobile/README.md).
+The CLI and Web UI/Tauri `Mobile` page create QR pairings with revocable per-device tokens, so a phone can be revoked without rotating the root gateway API key. The mobile surface covers gateway health, sessions, agents, providers, provider plan limits, metrics, speech settings, tool approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, gateway controls, and settings summaries. See [apps/mobile/README.md](apps/mobile/README.md).
 
 Release CI exports Expo bundles for iOS and Android and can also build signed Android AAB/APK and iOS IPA/TestFlight artifacts when the relevant store signing secrets are configured.
 
@@ -245,7 +248,7 @@ DM policy modes:
 
 ### UI + Desktop
 
-- Web UI covering agents, channels, providers, routing, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, artifacts, skills, MCP servers, LSP, chat, dashboard, memory, and mobile pairing
+- Web UI covering agents, channels, providers, routing, tools, wallet, logs, metrics, tasks, sessions, IDE, terminal, setup, artifacts, skills, MCP servers, LSP, chat, dashboard, memory, mobile pairing, source migration, speech settings, and gateway controls
 - Tauri desktop app with sidecar server wiring, bundled runtime resources, and in-app signed update checks via GitHub Releases
 - Native SwiftUI macOS app in `apps/macos/Cybara` that reuses the same local Cybara sidecar contract and can be packaged into a signed/notarized `.app` bundle
 
@@ -254,6 +257,8 @@ DM policy modes:
 Cybara ships 61 provider definitions in `src/core/providers.ts`, spanning hosted frontier APIs, OAuth-backed coding providers, local runtimes, gateway/proxy providers, and AWS Bedrock. Model lists are discovered dynamically from each provider when supported.
 
 Provider definitions: OpenAI, ElevenLabs, Anthropic, Google, Antigravity, MiniMax (API + OAuth portal), Moonshot (Kimi), Qwen Portal, Z.AI + Z.AI Coding, DeepSeek, Alibaba DashScope + Coding Plan, xAI, NVIDIA, Qianfan, Together, Hugging Face, Synthetic, Venice, Xiaomi, Perplexity, Arcee, Nous, Cerebras, Cohere, Mistral, DeepInfra, Fireworks, Novita, StepFun, Tencent, Volcengine, BytePlus, GMI, Kilo Code, OpenCode Go, Ollama Cloud, Ollama, vLLM, LiteLLM, LM Studio, SGLang, llama.cpp, Cloudflare AI Gateway, GitHub Copilot, AWS Bedrock, Groq, OpenRouter, OpenCode Zen, Copilot Proxy, OpenAI Codex (ChatGPT OAuth), Chutes, Vercel AI Gateway, and Google Gemini CLI.
+
+Provider plan monitoring tracks local usage against manual limits or provider-specific coding-plan presets. The router can enforce rolling 5-hour, rolling-week, and monthly windows for flat coding plans, while pay-as-you-go routes can use token pricing and monthly budgets for spend-aware routing.
 
 Multi-key **credential pools** (`ANTHROPIC_API_KEY`, `_2`, `_3`, …) rotate automatically on rate-limit/auth errors, and **Anthropic prompt caching** (`cache_control`) is applied to every Claude request for ~75% input-token savings on multi-turn sessions.
 
@@ -322,7 +327,10 @@ Common surfaces:
 
 - Chat & sessions: `/api/chat`, `/api/sessions` (legacy `/api/chat/sessions` remains supported)
 - Agents/providers/channels/tasks/skills/memory/mcp
+- Router and provider plans: `/api/router/*`, `/api/provider-plans/*`
 - Wallet and dapp routes under `/api/wallet/*`
+- Migration and speech: `/api/migrations/*`, `/api/speech/*`
+- Gateway administration: `/api/auth/*`, `/api/system/restart`
 - Browser + terminal automation endpoints
 - Status streams:
   - SSE: `/api/sse/status`
@@ -347,6 +355,8 @@ cybara subagent spawn "Research X and return a summary"
 cybara mcp list
 cybara mcp search <query>
 cybara mcp install <package>
+cybara migrate sources
+cybara migrate --from openclaw --apply --preset user-data
 ```
 
 Full CLI reference: [docs/cli.md](docs/cli.md)

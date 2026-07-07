@@ -17,11 +17,12 @@ bun run build:all
 ## Supply Chain Checks
 
 ```bash
-bun audit
-(cd ui && bun audit)
-(cd apps/mobile && bun audit)
-(cd src-tauri && cargo audit)
-(cd src-tauri && osv-scanner scan --config ../osv-scanner.toml --lockfile Cargo.lock)
+bun run audit:root
+bun run audit:ui
+bun run audit:mobile
+bun run tauri:audit
+bun run security:osv
+bun run audit:ci
 ```
 
 ## Focused Test Runs
@@ -38,6 +39,10 @@ bun test tests/core/kanban.test.ts
 bun test tests/core/media-generation.test.ts
 bun test tests/core/planning-tools.test.ts
 bun test tests/core/versioning-helpers.test.ts
+bun test tests/core/source-migration.test.ts
+bun test tests/core/provider-plans.test.ts
+bun test tests/core/memory-providers.test.ts
+bun test tests/core/router.test.ts
 
 # CLI command integration (mocked API server)
 bun test tests/cli/commands.test.ts
@@ -47,6 +52,11 @@ bun test tests/channels
 
 # API route integration (self-hosted ephemeral server)
 bun test tests/api/routes.test.ts
+
+# Speech, gateway controls, source migration, and provider-plan API client contracts
+bun test tests/api/routes.test.ts
+bun test tests/ui/api-client.test.ts
+bun test tests/mobile/api-client.test.ts
 
 # Browser route contracts (mocked browser manager; no Playwright runtime needed)
 bun test tests/api/browser-routes-mocked.test.ts
@@ -83,6 +93,9 @@ RUN_BROWSER_E2E=1 bun test tests/e2e/ide-web-ui-browser-smoke.test.ts
 # Chat/session/log/metrics end-to-end contracts (live server)
 bun test tests/e2e/chat-logs-metrics-smoke.test.ts
 
+# Chat queue, steering, live activity, and remount persistence regression checks
+bun test tests/api/chat-session-serialization.test.ts tests/ui/chat-live-activity-persistence.test.ts
+
 # Stateful CLI + API end-to-end contracts (live server)
 bun test tests/e2e/stateful-cli-api-workflow.test.ts
 
@@ -101,6 +114,9 @@ bun test tests/runtime
 # Tauri desktop wiring guards
 bun test tests/tauri
 
+# Native macOS wiring and parity guards
+bun test tests/runtime/native-macos-shell-wiring.test.ts tests/runtime/native-macos-speech-settings.test.ts
+
 # Agent/tool governance guardrails (circular import, allowlist, permissions)
 bun test tests/core/tool-schema-import.test.ts tests/core/agent-tool-allowlist.test.ts tests/core/tool-permissions.test.ts
 ```
@@ -115,7 +131,10 @@ bun test tests/core/tool-schema-import.test.ts tests/core/agent-tool-allowlist.t
 - CLI command wiring: providers, channels, pairing, MCP, tasks, skills, sessions, memory, logs, subagents
 - UI/Tauri utility seam: `openExternal` backend-first with browser fallback
 - React Native mobile companion: gateway payload parsing, API auth/fallback behavior, profile persistence, and mobile app script wiring/typecheck
+- React Native mobile companion: provider plan settings/status, speech settings, memory providers, gateway restart/logs, metrics snapshots, and LAN pairing URL normalization
+- Native macOS shell: gateway attach/start/restart, migration controls, speech settings, provider plan status, and sidecar packaging/signing seams
 - UI API client contracts: chat/session routes, logs query params, skill execute wiring
+- Chat queue/steering: pending-message ordering, edit/delete/reorder, steer injection history order, session remount persistence, live activity grouping, and hidden-tool-call serialization
 - IDE React regression guard: `CodeViewer` keeps top-level hooks before loading/error/empty render returns, preventing React error #300 (`Rendered fewer hooks than expected`)
 - UI auth token helpers and guardrails: shared `apiFetch` bearer injection and no direct `fetch('/api/...')` bypasses
 - Tauri sidecar build target mapping
@@ -124,7 +143,10 @@ bun test tests/core/tool-schema-import.test.ts tests/core/agent-tool-allowlist.t
 - Open URL route contracts (mocked opener): valid URL delegation, localhost/private blocking, error-path header consistency
 - API security module: auth behavior, rate limiting, URL validation, input sanitization
 - API route integration extras: health/live/ready + setup/info, provider catalog + OAuth validation/callback-status, channel type metadata + telegram webhook contracts, MCP lifecycle + registry contracts, LSP status/diagnostics/install validation, tool catalog/execute validation, subagent list/get/spawn/kill contracts, skills categories/status/registry search, task lifecycle, builtin skill execution, IDE/git route contracts (including HOME sandbox sibling-prefix and symlink escape blocking), system prompt/identity persistence, open-url scheme/localhost blocking
-- Metrics route resilience: malformed `metrics.metadata` JSON does not break providers/tokens/files/tools endpoints
+- Metrics route resilience: malformed `metrics.metadata` JSON does not break providers/tokens/files/tools endpoints; large dashboard routes are guarded by cached/prewarmed route contracts and token-analysis/time-series performance checks
+- Source migration: OpenClaw/Hermes dry-run/apply flows, skill conflict modes, memory/persona/provider/speech import reporting, and CLI/API/native settings wiring
+- Provider plan monitoring: config normalization, preset suggestions, local usage windows, router enforcement constraints, and Web/mobile/native UI wiring
+- Speech: shared settings normalization, native dictation mode behavior, server transcription validation, ElevenLabs provider testing, Web/Tauri chat dictation controls, mobile speech route, and native macOS speech settings
 - Channel/session/task/agent/config JSON resilience: malformed `channels.config`, `session_messages.metadata`, `tasks.config`, `agents.config`, `config.value` (`systemPrompt`/`identity`), and runtime agent prompt config no longer break API recovery/listing/update/start flows
 - Telegram command behavior: `/model` and `/memory` summary/search command contracts
 - Cross-channel management command routing: adapter-level `/model` execution path regression checks (Slack + shared command layer)

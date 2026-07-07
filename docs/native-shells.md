@@ -16,6 +16,7 @@ Design:
 - waits on `http://127.0.0.1:4269/api/health`
 - injects `window.__CYBARA_NATIVE__` so the React app can distinguish the native macOS host from plain web
 - supports native notification permission / delivery, external-link handling, and workspace folder picking through that bridge
+- exposes native SwiftUI management screens for dashboard summaries, chats/sessions, agents, providers, router and coding-plan limits, metrics, tasks, memory, wallet, mobile pairing, source migration, speech settings, gateway logs, and gateway restart
 - can be bundled as a release-ready `Cybara.app` under `release/native-macos/<arch>/`, including the compiled sidecar, web UI, `secp256k1.wasm`, sidecar `node_modules`, and local Transformers.js/ONNX runtime assets
 - can be optionally codesigned and notarized during packaging when Apple signing credentials are configured
 - auto-restarts the managed sidecar on an unexpected crash (capped exponential backoff, then surfaces a failure)
@@ -64,7 +65,7 @@ Recommended near-term path:
   `Mobile` page
 - manage and revoke paired mobile devices from the Web UI/Tauri `Mobile` page or the
   `cybara mobile list|revoke|remove` CLI commands
-- manage sessions, agents, providers, tools/approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, and settings summaries
+- manage sessions, agents, providers, provider plan limits, metrics, speech settings, tools/approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, gateway controls, and settings summaries
 - keep API-first parity before attempting any local mobile runtime
 - add platform push notifications and deeper native share-sheet flows after the remote management foundation is stable
 

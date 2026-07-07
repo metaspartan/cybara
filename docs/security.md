@@ -33,7 +33,14 @@ CYBARA_API_KEY=my_custom_key cybara start
 
 ### Localhost Bypass
 
-In development mode (`NODE_ENV !== "production"`), localhost connections skip authentication. In production mode, all connections require a valid API key.
+In development mode (`NODE_ENV !== "production"`), Cybara keeps a narrow localhost bypass for
+same-origin browser requests from the local Web/Tauri/native UI. Local CLI tools, bare `curl`
+requests, cross-origin browser requests, DNS-rebinding attempts, and non-local requests still need a
+valid API key. In production mode, all connections require a valid API key unless the operator has
+explicitly changed auth settings.
+
+Settings exposes localhost auth policy, API-key reveal/rotation, and gateway restart. API-key
+rotation hot-swaps the key in memory without restarting the gateway.
 
 ## Rate Limiting
 
@@ -64,10 +71,11 @@ Outbound requests from tools (web fetch, browser) block:
 
 ## File System Access
 
-Tool file operations are sandboxed to:
-- `~/.cybara/` (config, data, screenshots)
-- Current working directory
-- Explicitly allowed paths
+File-writing tools enforce a hard deny-list before writes, including credentials, SSH keys, `.env`
+files, cloud credentials, and OAuth token material. Workspace confinement can be enabled through the
+execution context so agentic file writes stay inside the selected workspace; symlink escapes are
+blocked by the path policy tests. Agent file reads and writes should still be treated as privileged
+local actions and paired with tool approvals for untrusted tasks.
 
 ## Security Headers
 
@@ -86,11 +94,15 @@ The built-in web terminal is **disabled by default**. Enable with:
 cybara start --enable-terminal
 ```
 
+It can also be enabled from Web/Tauri settings for local operator workflows.
+
 When enabled:
 - Requires API key authentication
 - PTY sessions are isolated per-connection
 - Only accessible from localhost unless `--expose` is also set
 - Tauri desktop app can use terminal natively
+
+Paired mobile devices require the `terminal` scope before terminal entrypoints are usable.
 
 ## Plugins
 
@@ -102,6 +114,8 @@ Production guidance:
 - prefer workspace-local plugins for project-specific behavior
 - understand that plugin-contributed skills execute with the same host trust boundary as other local Cybara runtime code
 - use extra caution on shared operator machines until plugin signatures/integrity metadata are in place
+- treat MCP server installs the same way: they run external commands selected by the operator and
+  should only be installed from trusted packages or reviewed local paths
 
 ## Best Practices for Self-Hosting
 

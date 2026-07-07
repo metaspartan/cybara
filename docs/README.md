@@ -1,6 +1,6 @@
 # Cybara Documentation
 
-Welcome to Cybara — a self-hosted AI agent platform with modular skills, browser automation, multi-channel messaging, desktop shells, and a React web UI.
+Welcome to Cybara — a self-hosted AI agent platform with modular skills, browser automation, multi-channel messaging, desktop/mobile shells, provider-plan-aware routing, source migration, speech controls, and a React web UI.
 
 ## Quick Start
 
@@ -141,6 +141,15 @@ Vector store with hybrid BM25 search, durable MEMORY.md, and daily logs.
 
 ### Providers
 Built-in provider integrations with dynamic model discovery, covering frontier APIs, OAuth-backed coding providers, local runtimes, gateway/proxy providers, and AWS Bedrock.
+
+### Router + Provider Plans
+Router strategies include weighted, round-robin, lowest-cost, priority, and mixture-of-agents. Provider plan monitoring can track local usage against coding-plan presets, manual limits, rolling 5-hour/week windows, monthly budgets, and router enforcement.
+
+### Source Migration
+OpenClaw and Hermes imports are available through `cybara migrate`, `/api/migrations/*`, Web/Tauri settings, and the native macOS settings surface. Dry runs preview memories, skills, providers, speech settings, and opt-in secret imports before writing.
+
+### Speech
+Shared speech settings cover TTS providers (`system`, `elevenlabs`, `openai`) and STT providers (`native`, `openai`, `auto`) across the Web/Tauri chat input, mobile settings, native macOS settings, and the `tts`/`transcribe` tools.
 
 ### Security
 API key authentication, rate limiting, SSRF protection, path sandboxing. See [Security](./security.md).

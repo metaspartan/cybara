@@ -18,6 +18,8 @@ This is the native SwiftUI macOS app for Cybara. It launches the same local serv
 - keeps the Bun sidecar as the shared runtime instead of forking app-specific logic
 - injects a `window.__CYBARA_NATIVE__` bridge so the web UI can recognize the native macOS host
 - supports native external-link handling, notification permission / delivery, and workspace folder picking via the bridge
+- provides native SwiftUI screens for dashboard summaries, chats/sessions, agents, providers, router and provider plan limits, metrics, tasks, memory providers, wallet, mobile pairing, speech settings, source migration, gateway logs, and gateway restart
+- can rotate the gateway API key without restarting the sidecar and can restart the gateway when a full sidecar reload is needed
 
 ## Build
 
@@ -52,6 +54,7 @@ bun run native:macos:run
 
 - This app is intentionally thin: the Bun sidecar remains the shared runtime so CLI, Tauri, and SwiftUI stay aligned in production.
 - The target local gateway contract is the same one Tauri uses: `127.0.0.1:4269`.
+- Web/Tauri, mobile, and native macOS share the same API routes for provider plans, memory providers, source migration, speech settings, gateway logs, and gateway restart.
 - Tagged desktop releases can now publish zipped native macOS app bundles alongside the Tauri installers.
 - Local Transformers.js workspace embeddings use the bundled ONNX native binding when available for the host architecture, with ONNX Web/WASM assets bundled as fallback.
 - If `CYBARA_MACOS_SIGN_IDENTITY` is set, the bundle is codesigned during packaging.

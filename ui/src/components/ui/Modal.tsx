@@ -118,6 +118,7 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
         tabIndex={-1}
         className={cn(
           "relative w-full rounded-2xl overflow-hidden",
+          "flex flex-col max-h-[90vh]",
           "transform transition-all duration-300 ease-out",
           "animate-in zoom-in-95 slide-in-from-bottom-4",
           sizes[size],
@@ -129,7 +130,7 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
         </div>
 
         {(title || description) && (
-          <div className="relative flex items-start justify-between px-6 py-4 border-b border-white/10">
+          <div className="relative shrink-0 flex items-start justify-between px-6 py-4 border-b border-white/10">
             <div>
               {title && (
                 <h2 id={titleId} className="text-lg font-semibold text-white">
@@ -152,7 +153,7 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
           </div>
         )}
 
-        <div className="relative p-6">{children}</div>
+        <div className="relative flex-1 min-h-0 overflow-y-auto p-6">{children}</div>
       </div>
     </div>,
     document.body

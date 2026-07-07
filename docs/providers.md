@@ -40,6 +40,37 @@ curl -X POST http://localhost:4269/api/providers \
   the stable system prompt + recent turns (~75% input-token savings on multi-turn sessions). Applied
   automatically; no config needed. See `src/core/prompt-cache.ts`.
 
+## Provider Plan Monitoring + Router Enforcement
+
+Provider plan monitoring is configured separately from provider credentials. It tracks local
+token/spend usage and can apply plan presets for OAuth-backed coding providers such as OpenAI Codex,
+GitHub Copilot, Gemini CLI, MiniMax Portal, Qwen Portal, Copilot Proxy, Z.AI Coding, Alibaba Coding
+Plan, Kimi Code, OpenCode Zen, OpenCode Go, and Kilo Code.
+
+Routes:
+
+```http
+GET /api/provider-plans/config
+PUT /api/provider-plans/config
+GET /api/provider-plans/status
+```
+
+Plan source modes are:
+
+| Mode | Use |
+|------|-----|
+| `local` | Cybara local token/spend metrics only |
+| `provider_api` | Provider-owned usage or billing API |
+| `oauth_api` | OAuth-backed usage API for coding plans |
+| `browser_cookie` | Explicit fallback for web-only dashboards |
+| `cli` | Provider CLI output when that is the supported source |
+| `manual` | Operator-entered plan limits and budgets |
+
+Configured windows can include rolling 5-hour token limits, rolling-week token limits, and monthly
+token or spend budgets. When `routerEnforcement` is enabled, exhausted configured plans are marked
+unavailable in `/api/router/status` so routing can choose another provider/model before a request is
+sent.
+
 ## Provider Types
 
 | Provider ID | Name | Auth |

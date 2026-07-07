@@ -7,7 +7,7 @@ Cybara Mobile is the React Native companion app for iOS and Android. It does not
 - dark theme by default
 - Liquid Glass-inspired translucent surfaces, grouped controls, and interactive glass buttons
 - compact operator dashboard instead of a marketing screen
-- remote-first feature coverage for sessions, agents, providers, tools, approvals, wallet policy, channels, tasks, memory, terminal, logs, and settings
+- remote-first feature coverage for sessions, agents, providers, provider plan limits, metrics, speech settings, tools, approvals, wallet policy, channels, tasks, memory, terminal, gateway logs, gateway restart, and settings
 
 ## Development
 
@@ -43,7 +43,19 @@ cybara mobile revoke <device-id>
 cybara mobile remove <device-id>
 ```
 
-For LAN devices, make sure the gateway is reachable from the phone. Localhost only works from the same machine; use the host LAN IP or a trusted tunnel for remote access.
+For LAN devices, make sure the gateway is reachable from the phone. Localhost only works from the
+same machine; the pairing payload should use the host LAN IP or a trusted tunnel for remote access.
+The mobile app normalizes pasted/QR gateway URLs and stores only the revocable device token.
+
+## Runtime Coverage
+
+The app talks to the same gateway API used by Web/Tauri and native macOS. Current mobile surfaces
+include:
+
+- chat sessions with queueing, steering, live activity/tool-call timelines, workspace selection, and session persistence
+- dashboard metrics, provider/model/token summaries, provider plan status, and gateway health
+- provider, agent, memory, speech, terminal, logs, wallet policy, channel, task, and mobile-device settings
+- gateway API-key display/rotation, gateway restart, and paged system-log reads when the paired device has the required scope
 
 ## Release CI
 

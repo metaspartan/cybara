@@ -12,6 +12,7 @@ This document covers the production desktop release paths for both the Tauri des
 - **Offline Capable**: Local model support via Ollama and packaged local indexing support through Transformers.js/ONNX assets
 - **Cross-Platform**: official Tauri release builds cover macOS Apple Silicon/Intel, Windows x64, and Linux x64; the sidecar builder also maps Linux arm64 and Windows arm64 for custom/source packaging
 - **Bundled UI + Runtime Assets**: UI, sidecar, `secp256k1.wasm`, Playwright runtime, and local embedding runtime assets are embedded in release bundles
+- **Shared Gateway Controls**: Web/Tauri and native macOS settings expose API-key reveal/rotation, gateway restart, gateway logs, source migration, speech settings, memory providers, and provider plan limits over the same API contract
 
 ## Installation
 
@@ -157,7 +158,7 @@ Cybara.app/
 
 On launch:
 1. The shell attaches to an existing local Cybara gateway on `127.0.0.1:4269` when one is already healthy
-2. Otherwise it starts the sidecar binary with `cybara start --enable-terminal`
+2. Otherwise it starts the sidecar binary with `cybara start`; terminal access remains off until explicitly enabled in settings or by a dev command
 3. The sidecar starts the HTTP server on port 4269
 4. The shell webview navigates to `http://localhost:4269`
 5. Tauri release builds can consume `latest.json` for in-app signed updates
