@@ -488,6 +488,61 @@ const makeStyles = () =>
       flex: 1,
       position: "relative",
     },
+    chatApprovalBanner: {
+      backgroundColor: `${colors.amber}14`,
+      borderBottomColor: `${colors.amber}44`,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+    chatApprovalRow: {
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      gap: spacing.xs,
+    },
+    chatApprovalLine: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: spacing.sm,
+    },
+    chatApprovalSummary: {
+      alignItems: "center",
+      flex: 1,
+      flexDirection: "row",
+      gap: spacing.xs,
+      minWidth: 0,
+    },
+    chatApprovalTool: {
+      color: colors.amber,
+      fontSize: typography.label,
+      fontWeight: "800",
+    },
+    chatApprovalArgs: {
+      color: colors.textMuted,
+      flex: 1,
+      fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+      fontSize: typography.tiny,
+    },
+    chatApprovalButtons: {
+      flexDirection: "row",
+      gap: spacing.xs,
+    },
+    chatApprovalBtn: {
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 4,
+    },
+    chatApprovalBtnText: {
+      fontSize: typography.tiny,
+      fontWeight: "800",
+    },
+    chatApprovalDetail: {
+      backgroundColor: "rgba(0,0,0,0.28)",
+      borderRadius: radius.sm,
+      color: colors.text,
+      fontFamily: Platform.OS === "ios" ? "Menlo" : "monospace",
+      fontSize: typography.tiny,
+      marginLeft: 24,
+      padding: spacing.sm,
+    },
     chatScroll: {
       flex: 1,
     },

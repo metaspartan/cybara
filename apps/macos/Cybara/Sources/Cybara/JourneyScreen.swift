@@ -1,5 +1,11 @@
 import SwiftUI
 
+struct GatewayPendingApproval: Identifiable, Hashable {
+    let id: String
+    let toolName: String
+    let argsSummary: String
+}
+
 struct GatewayJourneyEvent: Decodable, Identifiable, Hashable {
     let id: String
     let kind: String

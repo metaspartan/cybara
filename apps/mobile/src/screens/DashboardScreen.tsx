@@ -123,6 +123,7 @@ import {
   type FeatureSummary,
   type MobilePendingChatMessage,
   type ProviderSummary,
+  type PendingToolApproval,
   type RemoteItemSummary,
   type RouterConfig,
   type RouterStatus,
@@ -1925,6 +1926,90 @@ function DetailContent({
   );
 }
 
+function ChatApprovalBanner({ api }: { api: CybaraMobileApi }) {
+  const [approvals, setApprovals] = useState<PendingToolApproval[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const poll = async () => {
+      try {
+        const pending = await api.toolApprovals();
+        if (active) setApprovals(pending);
+      } catch {
+        /* ignore */
+      }
+    };
+    void poll();
+    const interval = setInterval(poll, 3000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [api]);
+
+  const resolve = async (id: string, decision: ToolApprovalDecision) => {
+    setApprovals((prev) => prev.filter((a) => a.id !== id));
+    try {
+      await api.resolveToolApproval(id, decision);
+    } catch {
+      /* the next poll re-surfaces it if it failed */
+    }
+  };
+
+  if (approvals.length === 0) return null;
+
+  return (
+    <View style={styles.chatApprovalBanner}>
+      {approvals.map((req) => {
+        const expanded = expandedId === req.id;
+        const hasDetail = req.argsSummary.trim().length > 0;
+        return (
+          <View key={req.id} style={styles.chatApprovalRow}>
+            <View style={styles.chatApprovalLine}>
+              <ShieldCheck color={colors.amber} size={16} strokeWidth={2.3} />
+              <Pressable
+                style={styles.chatApprovalSummary}
+                onPress={() => hasDetail && setExpandedId(expanded ? null : req.id)}
+              >
+                <Text style={styles.chatApprovalTool}>{req.toolName}</Text>
+                {hasDetail ? (
+                  <Text numberOfLines={1} style={styles.chatApprovalArgs}>
+                    {req.argsSummary}
+                  </Text>
+                ) : null}
+              </Pressable>
+              <View style={styles.chatApprovalButtons}>
+                <Pressable
+                  style={[styles.chatApprovalBtn, { backgroundColor: `${colors.green}22` }]}
+                  onPress={() => void resolve(req.id, "approve_once")}
+                >
+                  <Text style={[styles.chatApprovalBtnText, { color: colors.green }]}>Once</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.chatApprovalBtn, { backgroundColor: `${colors.blueText}22` }]}
+                  onPress={() => void resolve(req.id, "approve_session")}
+                >
+                  <Text style={[styles.chatApprovalBtnText, { color: colors.blueText }]}>Session</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.chatApprovalBtn, { backgroundColor: `${colors.red}22` }]}
+                  onPress={() => void resolve(req.id, "deny")}
+                >
+                  <Text style={[styles.chatApprovalBtnText, { color: colors.red }]}>Deny</Text>
+                </Pressable>
+              </View>
+            </View>
+            {expanded && hasDetail ? (
+              <Text style={styles.chatApprovalDetail}>{req.argsSummary}</Text>
+            ) : null}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function SessionDetailPanel({
   accentColor,
   api,
@@ -2867,6 +2952,7 @@ function SessionDetailPanel({
 
   return (
     <View style={styles.chatShell}>
+      <ChatApprovalBanner api={api} />
       <ScrollView
         ref={scrollRef}
         contentContainerStyle={[

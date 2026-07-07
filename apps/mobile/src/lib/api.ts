@@ -273,6 +273,12 @@ export interface SystemPromptConfig {
 
 export type ToolApprovalDecision = "approve_once" | "approve_session" | "approve_always" | "deny";
 
+export interface PendingToolApproval {
+  id: string;
+  toolName: string;
+  argsSummary: string;
+}
+
 export type RouterStrategy =
   "weighted" | "round_robin" | "lowest_cost" | "priority" | "mixture_of_agents";
 
@@ -2363,6 +2369,20 @@ export class CybaraMobileApi {
       method: "POST",
       body: JSON.stringify({ requestId, decision }),
     });
+  }
+
+  async toolApprovals(): Promise<PendingToolApproval[]> {
+    const record = asRecord(await this.request<unknown>("/api/tools/approvals"));
+    return normalizeArrayResponse(record?.pending, ["pending", "approvals", "items"]).map(
+      (raw, index) => {
+        const item = asRecord(raw);
+        return {
+          id: readString(item, ["id", "requestId"]) || `approval-${index}`,
+          toolName: readString(item, ["toolName", "tool", "name"]) || "tool",
+          argsSummary: readString(item, ["argsSummary", "summary", "args"]) || "",
+        };
+      }
+    );
   }
 
   config(): Promise<Record<string, unknown>> {

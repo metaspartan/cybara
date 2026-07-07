@@ -288,6 +288,8 @@ struct ChatScreen: View {
     @State private var agentSaving = false
     @State private var approvalSaving = false
     @State private var toolApprovalMode = "always_allow"
+    @State private var pendingApprovals: [GatewayPendingApproval] = []
+    @State private var expandedApprovalID: String?
     @State private var showContextPopover = false
     @State private var liveStatus = "idle"
     @State private var revertCandidate: GatewaySessionMessage?
@@ -315,6 +317,13 @@ struct ChatScreen: View {
             statusStream.start(baseURL: client.baseURL)
             await loadSessions()
             await loadChatConfig()
+        }
+        .task {
+            // Poll pending tool approvals so the inline banner stays live.
+            while !Task.isCancelled {
+                await pollApprovals()
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+            }
         }
         .task(id: selectedSessionID) {
             resetLiveTimeline(clearStartedAt: true)
@@ -512,6 +521,7 @@ struct ChatScreen: View {
         VStack(spacing: 0) {
             transcriptHeader
             Divider().opacity(0.35)
+            approvalBanner
 
             ScrollViewReader { proxy in
                 ScrollView {
@@ -559,6 +569,92 @@ struct ChatScreen: View {
             }
 
             composer
+        }
+    }
+
+    @ViewBuilder
+    private var approvalBanner: some View {
+        if !pendingApprovals.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(pendingApprovals) { req in
+                    approvalRow(req)
+                    Divider().opacity(0.2)
+                }
+            }
+            .background(Color.orange.opacity(0.12))
+        }
+    }
+
+    private func approvalRow(_ req: GatewayPendingApproval) -> some View {
+        let expanded = expandedApprovalID == req.id
+        let hasDetail = !req.argsSummary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.shield")
+                    .foregroundStyle(.orange)
+                Button {
+                    if hasDetail { expandedApprovalID = expanded ? nil : req.id }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(req.toolName)
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundStyle(.orange)
+                        if hasDetail {
+                            Text(req.argsSummary)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                approvalButton("Allow once", .green) { resolveApproval(req.id, "approve_once") }
+                approvalButton("Allow session", .blue) { resolveApproval(req.id, "approve_session") }
+                approvalButton("Deny", .red) { resolveApproval(req.id, "deny") }
+            }
+            if expanded, hasDetail {
+                Text(req.argsSummary)
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.primary.opacity(0.85))
+                    .textSelection(.enabled)
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.25)))
+                    .padding(.leading, 24)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+    }
+
+    private func approvalButton(_ title: String, _ tint: Color, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(tint)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(RoundedRectangle(cornerRadius: 5).fill(tint.opacity(0.18)))
+        }
+        .buttonStyle(.plain)
+        .fixedSize()
+    }
+
+    private func resolveApproval(_ requestId: String, _ decision: String) {
+        pendingApprovals.removeAll { $0.id == requestId }
+        Task {
+            try? await client.resolveToolApproval(requestId, decision: decision)
+        }
+    }
+
+    private func pollApprovals() async {
+        if let pending = try? await client.pendingToolApprovals() {
+            pendingApprovals = pending
         }
     }
 

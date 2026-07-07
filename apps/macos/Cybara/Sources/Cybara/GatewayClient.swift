@@ -149,6 +149,27 @@ struct GatewayClient: Sendable {
         try await get("api/journey", as: GatewayJourney.self)
     }
 
+    func pendingToolApprovals() async throws -> [GatewayPendingApproval] {
+        let data = try await request("api/tools/approvals")
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let pending = object["pending"] as? [[String: Any]] else {
+            return []
+        }
+        return pending.compactMap { entry in
+            guard let id = entry["id"] as? String else { return nil }
+            return GatewayPendingApproval(
+                id: id,
+                toolName: (entry["toolName"] as? String) ?? "tool",
+                argsSummary: (entry["argsSummary"] as? String) ?? ""
+            )
+        }
+    }
+
+    func resolveToolApproval(_ requestId: String, decision: String) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["requestId": requestId, "decision": decision])
+        _ = try await request("api/tools/approvals/resolve", method: "POST", body: body)
+    }
+
     func providers() async throws -> [GatewayProvider] {
         try await getList("api/providers", keys: ["providers", "items"])
     }

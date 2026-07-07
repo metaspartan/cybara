@@ -2030,12 +2030,29 @@ function PendingApprovalsBanner() {
     }
   };
 
+  // Expanded state lives here (keyed by request id) so it survives the 3s poll
+  // re-render / any row remount.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const toggleExpanded = (id: string) =>
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
   if (approvals.length === 0) return null;
 
   return (
     <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10">
       {approvals.map((req) => (
-        <PendingApprovalRow key={req.id} req={req} onResolve={resolve} />
+        <PendingApprovalRow
+          key={req.id}
+          req={req}
+          onResolve={resolve}
+          expanded={expandedIds.has(req.id)}
+          onToggle={() => toggleExpanded(req.id)}
+        />
       ))}
     </div>
   );
@@ -2044,11 +2061,14 @@ function PendingApprovalsBanner() {
 function PendingApprovalRow({
   req,
   onResolve,
+  expanded,
+  onToggle,
 }: {
   req: { id: string; toolName: string; argsSummary: string };
   onResolve: (requestId: string, decision: string) => void;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const hasDetail = req.argsSummary.trim().length > 0;
 
   return (
@@ -2057,7 +2077,7 @@ function PendingApprovalRow({
         <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
         <button
           type="button"
-          onClick={() => hasDetail && setExpanded((v) => !v)}
+          onClick={() => hasDetail && onToggle()}
           className="flex items-center gap-1.5 min-w-0 flex-1 text-left"
           title={hasDetail ? "Show details" : undefined}
         >
