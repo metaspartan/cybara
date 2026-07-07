@@ -696,13 +696,13 @@ function printStartupSecurityWarnings(): void {
       "Localhost browser auth bypass is active for development. Set CYBARA_REQUIRE_AUTH=1 or enable localhost auth in Settings for stricter local access."
     );
   }
-  if (isAllInterfaceHost(HOST)) {
+  if (isAllInterfaceHost(runtimeHost)) {
     warnings.push(
       "Gateway is listening on all interfaces. Keep bearer tokens private and use only on trusted networks."
     );
-  } else if (!isLoopbackHost(HOST)) {
+  } else if (!isLoopbackHost(runtimeHost)) {
     warnings.push(
-      `Gateway is listening on ${HOST}. Devices on that network can reach it if they have a valid token.`
+      `Gateway is listening on ${runtimeHost}. Devices on that network can reach it if they have a valid token.`
     );
   }
   if (isTerminalEnabled()) {

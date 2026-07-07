@@ -20,8 +20,11 @@ describe("security-sensitive runtime defaults", () => {
     expect(serverSource).toContain("function isAllInterfaceHost");
     expect(serverSource).toContain('host === "0.0.0.0"');
     expect(serverSource).toContain('host === "::"');
-    expect(serverSource).toContain("isAllInterfaceHost(configuredHost)");
-    expect(serverSource).toContain('? "127.0.0.1"');
+    expect(serverSource).toContain(
+      'process.env.CYBARA_HOST || (isExposeFlagSet ? "0.0.0.0" : configuredHost)'
+    );
+    expect(serverSource).toContain("let runtimeHost = HOST");
+    expect(serverSource).toContain(': "127.0.0.1";');
   });
 
   test("terminal and insecure startup modes require explicit operator action", () => {
@@ -35,6 +38,7 @@ describe("security-sensitive runtime defaults", () => {
     expect(serverSource).toContain("function printStartupSecurityWarnings");
     expect(serverSource).toContain("Web terminal is enabled");
     expect(serverSource).toContain("Gateway is listening on all interfaces");
+    expect(serverSource).toContain("isAllInterfaceHost(runtimeHost)");
     expect(serverSource).not.toContain("?token=${gatewayKey}");
   });
 
