@@ -286,6 +286,8 @@ struct ChatScreen: View {
     @State private var pendingWorkspaceDir = ""
     @State private var workspaceSaving = false
     @State private var agentSaving = false
+    @State private var approvalSaving = false
+    @State private var toolApprovalMode = "always_allow"
     @State private var showContextPopover = false
     @State private var liveStatus = "idle"
     @State private var revertCandidate: GatewaySessionMessage?
@@ -312,6 +314,7 @@ struct ChatScreen: View {
         .task {
             statusStream.start(baseURL: client.baseURL)
             await loadSessions()
+            await loadChatConfig()
         }
         .task(id: selectedSessionID) {
             resetLiveTimeline(clearStartedAt: true)
@@ -1038,6 +1041,7 @@ struct ChatScreen: View {
                     .padding(.horizontal, 4)
                     .padding(.top, 2)
                 HStack(spacing: 6) {
+                    composerSecurityControls
                     Spacer(minLength: 6)
                     composerControls
                     Button {
@@ -1079,7 +1083,7 @@ struct ChatScreen: View {
                         .font(.system(size: 7.5, weight: .bold, design: .rounded))
                         .foregroundStyle(contextColor)
                 }
-                .frame(width: 22, height: 22)
+                .frame(width: 20, height: 20)
             }
             .buttonStyle(.plain)
             .help(contextUsageText)
@@ -1096,7 +1100,7 @@ struct ChatScreen: View {
             .labelsHidden()
             .pickerStyle(.menu)
             .controlSize(.small)
-            .frame(width: 190)
+            .frame(width: 176)
             .disabled(agentSaving || agents.isEmpty)
 
             if agentSaving {
@@ -1104,6 +1108,39 @@ struct ChatScreen: View {
             }
         }
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var composerSecurityControls: some View {
+        Menu {
+            Button("Always Allow") {
+                Task { await changeToolApprovalMode("always_allow") }
+            }
+            Button("Ask Me") {
+                Task { await changeToolApprovalMode("ask") }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                if approvalSaving {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "shield")
+                        .font(.system(size: 11, weight: .semibold))
+                }
+                Text(toolApprovalLabel)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 8)
+            .frame(height: 26)
+            .background(Capsule().fill(Color.orange.opacity(0.08)))
+        }
+        .buttonStyle(.plain)
+        .disabled(approvalSaving)
+        .help("Tool approvals: \(toolApprovalLabel)")
     }
 
     private var contextUsagePopover: some View {
@@ -1133,6 +1170,10 @@ struct ChatScreen: View {
         return .green
     }
 
+    private var toolApprovalLabel: String {
+        toolApprovalMode == "ask" ? "Ask Me" : "Always Allow"
+    }
+
     private func loadSessions() async {
         do {
             async let loadedSessions = client.sessions(limit: 150)
@@ -1145,6 +1186,32 @@ struct ChatScreen: View {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    private func loadChatConfig() async {
+        do {
+            let config = try await client.appConfig()
+            toolApprovalMode = config["tool_approval_mode"] as? String == "ask" ? "ask" : "always_allow"
+        } catch {
+            toolApprovalMode = "always_allow"
+        }
+    }
+
+    private func changeToolApprovalMode(_ nextMode: String) async {
+        let normalized = nextMode == "ask" ? "ask" : "always_allow"
+        guard normalized != toolApprovalMode, !approvalSaving else { return }
+        let previousMode = toolApprovalMode
+        toolApprovalMode = normalized
+        approvalSaving = true
+        do {
+            let body = try JSONSerialization.data(withJSONObject: ["tool_approval_mode": normalized])
+            try await client.updateAppConfig(body)
+            error = nil
+        } catch {
+            toolApprovalMode = previousMode
+            self.error = error.localizedDescription
+        }
+        approvalSaving = false
     }
 
     private func updateSessionList(with session: GatewaySession) {

@@ -81,17 +81,24 @@ describe("mobile: chat management", () => {
 
   test("chat composer exposes agent switching and context usage", () => {
     const api = read("lib/api.ts");
+    const newChat = read("components/NewChatPanel.tsx");
     const styles = read("screens/dashboardStyles.ts");
     expect(api).toContain("interface SessionContextUsage");
     expect(api).toContain("updateSessionAgent(");
     expect(api).toContain("/api/sessions/${encodeURIComponent(id)}/agent");
     expect(screen).toContain("const changeSessionAgent");
     expect(screen).toContain("const openAgentSelector");
+    expect(screen).toContain("const openToolApprovalSelector");
+    expect(screen).toContain("Tool approvals: ${toolApprovalLabel}");
     expect(screen).toContain("mobileContextUsageDetail(");
     expect(screen).toContain("Context: ${mobileContextUsageDetail(contextUsage)}");
     expect(screen).toContain('text: "Change agent"');
+    expect(screen).toContain('text: "Tool approvals"');
     expect(screen).toContain("setPendingSessionAgentId(agentId)");
     expect(screen).toContain("contextUsage: result.contextUsage ?? current.contextUsage");
+    expect(newChat).toContain("<Text style={styles.sectionTitle}>Permissions</Text>");
+    expect(newChat).toContain("api.updateConfig({ tool_approval_mode: nextMode })");
+    expect(newChat).toContain("Set tool approvals to");
     expect(styles).not.toContain("composerSettingsButton:");
     expect(styles).not.toContain("contextUsageDot:");
   });

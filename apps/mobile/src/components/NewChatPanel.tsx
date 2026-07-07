@@ -18,16 +18,28 @@ import {
 } from "../lib/dashboard";
 import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
 
+function normalizeApprovalMode(value?: string): "always_allow" | "ask" {
+  return value === "ask" ? "ask" : "always_allow";
+}
+
+function approvalLabel(mode: "always_allow" | "ask"): string {
+  return mode === "ask" ? "Ask Me" : "Always Allow";
+}
+
 export function NewChatPanel({
   accentColor,
   agents,
   api,
+  onConfigChanged,
   onCreated,
+  toolApprovalMode,
 }: {
   accentColor: string;
   agents: AgentSummary[];
   api: CybaraMobileApi;
+  onConfigChanged?: () => void;
   onCreated: (sessionId: string) => void;
+  toolApprovalMode?: string;
 }) {
   const defaultAgentId = agents.find((agent) => agent.status === "running")?.id || agents[0]?.id;
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(defaultAgentId);
@@ -38,6 +50,10 @@ export function NewChatPanel({
   const messageRef = useRef(message);
   const [messageHeight, setMessageHeight] = useState<number>(MOBILE_CHAT_COMPOSER.minHeight);
   const [workspaceDir, setWorkspaceDir] = useState("");
+  const [approvalMode, setApprovalMode] = useState<"always_allow" | "ask">(
+    normalizeApprovalMode(toolApprovalMode)
+  );
+  const [savingApprovalMode, setSavingApprovalMode] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -47,6 +63,12 @@ export function NewChatPanel({
       setAgentSelectionInitialized(true);
     }
   }, [agentSelectionInitialized, defaultAgentId]);
+
+  useEffect(() => {
+    if (!savingApprovalMode) {
+      setApprovalMode(normalizeApprovalMode(toolApprovalMode));
+    }
+  }, [savingApprovalMode, toolApprovalMode]);
 
   const createChat = async () => {
     const trimmed = message.trim();
@@ -74,6 +96,24 @@ export function NewChatPanel({
     messageRef.current = value;
     setMessage(value);
     setMessageHeight(mobileComposerHeightForDraft(value));
+  };
+
+  const saveApprovalMode = async (nextMode: "always_allow" | "ask") => {
+    if (nextMode === approvalMode || savingApprovalMode) return;
+    const previousMode = approvalMode;
+    setApprovalMode(nextMode);
+    setSavingApprovalMode(true);
+    setCreateError(null);
+    try {
+      const result = await api.updateConfig({ tool_approval_mode: nextMode });
+      if (!result.success) throw new Error("Gateway rejected the approval setting.");
+      onConfigChanged?.();
+    } catch (error) {
+      setApprovalMode(previousMode);
+      setCreateError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSavingApprovalMode(false);
+    }
   };
 
   return (
@@ -125,6 +165,43 @@ export function NewChatPanel({
           );
         })}
       </ScrollView>
+
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Permissions</Text>
+        {savingApprovalMode ? (
+          <ActivityIndicator color={colors.textMuted} size="small" />
+        ) : (
+          <Text style={styles.counterText}>{approvalLabel(approvalMode)}</Text>
+        )}
+      </View>
+      <View style={styles.approvalRow}>
+        {(["always_allow", "ask"] as const).map((mode) => {
+          const selected = approvalMode === mode;
+          return (
+            <Pressable
+              accessibilityLabel={`Set tool approvals to ${approvalLabel(mode)}`}
+              accessibilityRole="button"
+              disabled={savingApprovalMode}
+              key={mode}
+              onPress={() => {
+                void saveApprovalMode(mode);
+              }}
+              style={[
+                styles.approvalChip,
+                selected && [styles.agentChipActive, { borderColor: accentColor }],
+                savingApprovalMode && { opacity: 0.72 },
+              ]}
+            >
+              <Text style={[styles.approvalTitle, selected && { color: accentColor }]}>
+                {approvalLabel(mode)}
+              </Text>
+              <Text style={styles.agentChipDetail}>
+                {mode === "ask" ? "Review risky tools" : "Run trusted tools"}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
 
       <Text style={styles.sectionTitle}>Workspace</Text>
       <View style={styles.composer}>
@@ -237,6 +314,25 @@ const makeStyles = () =>
     agentChipDetail: {
       color: colors.textMuted,
       fontSize: typography.tiny,
+    },
+    approvalRow: {
+      flexDirection: "row",
+      gap: spacing.sm,
+    },
+    approvalChip: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      flex: 1,
+      gap: 3,
+      minHeight: 58,
+      padding: spacing.md,
+    },
+    approvalTitle: {
+      color: colors.text,
+      fontSize: typography.label,
+      fontWeight: "900",
     },
     composer: {
       alignItems: "flex-end",

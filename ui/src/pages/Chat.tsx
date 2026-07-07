@@ -246,6 +246,16 @@ function contextUsageTooltip(usage?: SessionContextUsage | null) {
   };
 }
 
+type ToolApprovalMode = "always_allow" | "ask";
+
+function normalizeToolApprovalMode(value: unknown): ToolApprovalMode {
+  return value === "ask" ? "ask" : "always_allow";
+}
+
+function toolApprovalModeLabel(mode: ToolApprovalMode): string {
+  return mode === "ask" ? "Ask Me" : "Always Allow";
+}
+
 function ContextUsageRing({ usage }: { usage?: SessionContextUsage | null }) {
   const [open, setOpen] = useState(false);
   const percent = usage ? Math.min(100, Math.max(0, usage.usedPercent)) : 0;
@@ -255,7 +265,7 @@ function ContextUsageRing({ usage }: { usage?: SessionContextUsage | null }) {
   return (
     <div
       aria-label={label}
-      className="relative h-6 w-6 shrink-0 rounded-full outline-none"
+      className="relative h-5 w-5 shrink-0 rounded-full outline-none"
       onBlur={() => setOpen(false)}
       onClick={() => setOpen((value) => !value)}
       onFocus={() => setOpen(true)}
@@ -264,7 +274,7 @@ function ContextUsageRing({ usage }: { usage?: SessionContextUsage | null }) {
       tabIndex={0}
     >
       <div
-        className="absolute inset-[4px] rounded-full p-[1.5px]"
+        className="absolute inset-[3px] rounded-full p-[1.5px]"
         style={{
           background: `conic-gradient(${color} ${percent * 3.6}deg, rgba(255,255,255,0.18) 0deg)`,
         }}
@@ -286,6 +296,45 @@ function ContextUsageRing({ usage }: { usage?: SessionContextUsage | null }) {
   );
 }
 
+function ChatApprovalControls({
+  mode,
+  onChange,
+  updating,
+}: {
+  mode: ToolApprovalMode;
+  onChange: (mode: ToolApprovalMode) => void;
+  updating?: boolean;
+}) {
+  return (
+    <div className="relative min-w-0">
+      {updating ? (
+        <Loader2 className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-amber-300" />
+      ) : (
+        <ShieldAlert className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-amber-300" />
+      )}
+      <label className="sr-only" htmlFor="chat-tool-approval-mode">
+        Tool approval mode
+      </label>
+      <select
+        id="chat-tool-approval-mode"
+        value={mode}
+        disabled={updating}
+        onChange={(event) => onChange(normalizeToolApprovalMode(event.target.value))}
+        title={`Tool approvals: ${toolApprovalModeLabel(mode)}`}
+        className="h-7 max-w-[140px] appearance-none truncate rounded-full border border-transparent bg-transparent py-1 pl-7 pr-6 text-[11px] font-semibold text-amber-300 outline-none transition-colors [color-scheme:dark] hover:bg-amber-500/10 hover:text-amber-200 focus:border-amber-300/20 focus:bg-amber-500/10 disabled:opacity-60"
+      >
+        <option value="always_allow" className="bg-[#11131c] text-white">
+          Always Allow
+        </option>
+        <option value="ask" className="bg-[#11131c] text-white">
+          Ask Me
+        </option>
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-amber-300/70" />
+    </div>
+  );
+}
+
 function ChatAgentControls({
   agents,
   selectedAgentId,
@@ -302,7 +351,7 @@ function ChatAgentControls({
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
   const routeLabel = selectedAgent?.model || selectedAgent?.name || "Gateway default";
   return (
-    <div className="flex min-w-0 items-center gap-1">
+    <div className="flex min-w-0 items-center gap-0.5">
       <ContextUsageRing usage={contextUsage} />
       <label className="sr-only" htmlFor="chat-agent-selector">
         Chat agent
@@ -314,7 +363,7 @@ function ChatAgentControls({
           disabled={updating}
           onChange={(event) => onSelectAgent(event.target.value || undefined)}
           title={routeLabel}
-          className="h-7 min-w-[116px] max-w-[220px] appearance-none truncate rounded-full border border-transparent bg-transparent py-1 pl-2.5 pr-6 text-[12px] font-medium text-gray-300 outline-none transition-colors [color-scheme:dark] hover:bg-white/[0.06] hover:text-white focus:border-white/15 focus:bg-white/[0.06] disabled:opacity-60"
+          className="h-7 min-w-[104px] max-w-[196px] appearance-none truncate rounded-full border border-transparent bg-transparent py-1 pl-2 pr-6 text-[11px] font-medium text-gray-300 outline-none transition-colors [color-scheme:dark] hover:bg-white/[0.06] hover:text-white focus:border-white/15 focus:bg-white/[0.06] disabled:opacity-60"
         >
           <option value="" className="bg-[#11131c] text-white">
             Gateway default
@@ -2151,6 +2200,8 @@ export function Chat() {
   const [dictationTranscribing, setDictationTranscribing] = useState(false);
   const [dictationStatus, setDictationStatus] = useState<string | null>(null);
   const [dictationError, setDictationError] = useState<string | null>(null);
+  const [toolApprovalMode, setToolApprovalMode] = useState<ToolApprovalMode>("always_allow");
+  const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
   const [composerHeight, setComposerHeight] = useState(88);
   const [messageProcessMap, setMessageProcessMap] = useState<Record<string, LiveActivityItem[]>>(
     () => readPersistedMessageProcessMap()
@@ -2287,6 +2338,40 @@ export function Chat() {
     ]
   );
 
+  const updateToolApprovalMode = useCallback(
+    async (nextMode: ToolApprovalMode) => {
+      if (nextMode === toolApprovalMode || savingToolApprovalMode) return;
+      const previousMode = toolApprovalMode;
+      setToolApprovalMode(nextMode);
+      setSavingToolApprovalMode(true);
+      try {
+        const result = await settingsApi.updateConfig({ tool_approval_mode: nextMode });
+        if (!result.success || !result.data?.success) {
+          throw new Error(result.error || "Config update failed");
+        }
+        useUIStore
+          .getState()
+          .addToast(
+            "success",
+            nextMode === "ask"
+              ? "Tool approvals set to Ask Me"
+              : "Tool approvals set to Always Allow"
+          );
+      } catch (error) {
+        setToolApprovalMode(previousMode);
+        useUIStore
+          .getState()
+          .addToast(
+            "error",
+            error instanceof Error ? error.message : "Failed to update tool approval mode"
+          );
+      } finally {
+        setSavingToolApprovalMode(false);
+      }
+    },
+    [savingToolApprovalMode, toolApprovalMode]
+  );
+
   useEffect(() => {
     if (typeof window === "undefined") {
       setDictationCapabilities({
@@ -2319,6 +2404,7 @@ export function Chat() {
           speech.stt && typeof speech.stt === "object"
             ? (speech.stt as Record<string, unknown>)
             : {};
+        setToolApprovalMode(normalizeToolApprovalMode(result.data?.tool_approval_mode));
         setDictationMode(normalizeDictationMode(stt.provider));
         setDictationLanguage(
           typeof stt.language === "string" && stt.language.trim() ? stt.language.trim() : "en-US"
@@ -4492,6 +4578,11 @@ export function Chat() {
                     className="w-full min-h-[38px] max-h-[220px] overflow-y-auto resize-none bg-transparent px-0 py-1 text-[13px] leading-5 text-white placeholder-gray-500 !outline-none"
                   />
                   <div className="mt-0.5 flex min-h-8 items-center gap-1.5">
+                    <ChatApprovalControls
+                      mode={toolApprovalMode}
+                      onChange={(mode) => void updateToolApprovalMode(mode)}
+                      updating={savingToolApprovalMode}
+                    />
                     <div className="min-w-0 flex-1" />
                     <ChatAgentControls
                       agents={agents}
@@ -4557,10 +4648,10 @@ export function Chat() {
                     <button
                       onClick={handleSend}
                       disabled={!input.trim() || (isLoading && !sendQueuesFollowUp)}
-                      className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full accent-button disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full accent-button disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                       title={sendQueuesFollowUp ? "Queue follow-up" : "Send message"}
                     >
-                      <Send className="w-4 h-4" />
+                      <Send className="w-3.5 h-3.5" />
                     </button>
                   </div>
                 </div>

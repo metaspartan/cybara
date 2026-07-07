@@ -1827,6 +1827,7 @@ function DetailContent({
         api={api}
         agents={summary?.agents ?? []}
         closeDetail={closeDetail}
+        config={summary?.config}
         refreshSummary={refreshSummary}
         sessionSummary={summary?.sessions.find((session) => session.id === route.id) ?? null}
         sessionId={route.id}
@@ -1839,10 +1840,12 @@ function DetailContent({
         accentColor={accentColor}
         api={api}
         agents={summary?.agents ?? []}
+        onConfigChanged={refreshSummary}
         onCreated={(sessionId) => {
           refreshSummary();
           openSession(sessionId);
         }}
+        toolApprovalMode={readMobileToolApprovalMode(summary?.config)}
       />
     );
   }
@@ -1927,6 +1930,7 @@ function SessionDetailPanel({
   api,
   agents,
   closeDetail,
+  config,
   refreshSummary,
   sessionSummary,
   sessionId,
@@ -1936,6 +1940,7 @@ function SessionDetailPanel({
   api: CybaraMobileApi;
   agents: AgentSummary[];
   closeDetail: () => void;
+  config?: Record<string, unknown>;
   refreshSummary: () => void;
   sessionSummary?: SessionSummary | null;
   sessionId: string;
@@ -1980,6 +1985,8 @@ function SessionDetailPanel({
   const [pinning, setPinning] = useState(false);
   const [agentUpdating, setAgentUpdating] = useState(false);
   const [pendingSessionAgentId, setPendingSessionAgentId] = useState<string | null>(null);
+  const [toolApprovalUpdating, setToolApprovalUpdating] = useState(false);
+  const [pendingToolApprovalMode, setPendingToolApprovalMode] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const headerActionRef = useRef<() => void>(() => {});
   const sessionRefreshInFlight = useRef(false);
@@ -2621,6 +2628,65 @@ function SessionDetailPanel({
     [agents]
   );
   const contextUsage = detail?.contextUsage;
+  const toolApprovalMode = pendingToolApprovalMode || readMobileToolApprovalMode(config);
+  const toolApprovalLabel = toolApprovalMode === "ask" ? "Ask Me" : "Always Allow";
+
+  const changeToolApprovalMode = async (nextMode: string) => {
+    const normalized = nextMode === "ask" ? "ask" : "always_allow";
+    if (toolApprovalUpdating || normalized === toolApprovalMode) return;
+    setToolApprovalUpdating(true);
+    setPendingToolApprovalMode(normalized);
+    haptics.select();
+    try {
+      const result = await api.updateConfig({ tool_approval_mode: normalized });
+      if (!result.success) {
+        throw new Error("Gateway rejected the approval setting.");
+      }
+      setPendingToolApprovalMode(null);
+      refreshSummary();
+    } catch (error) {
+      setPendingToolApprovalMode(null);
+      setLoadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setToolApprovalUpdating(false);
+    }
+  };
+
+  const openToolApprovalSelector = () => {
+    if (toolApprovalUpdating) return;
+    haptics.select();
+    const options = [
+      { label: "Always Allow", value: "always_allow" },
+      { label: "Ask Me", value: "ask" },
+    ];
+    if (Platform.OS === "ios") {
+      const labels = options.map((option) =>
+        option.value === toolApprovalMode ? `${option.label} ✓` : option.label
+      );
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: "Tool approvals",
+          message: "Choose how Cybara handles tool calls for local chats.",
+          options: [...labels, "Cancel"],
+          cancelButtonIndex: labels.length,
+        },
+        (index) => {
+          const option = options[index];
+          if (option) void changeToolApprovalMode(option.value);
+        }
+      );
+      return;
+    }
+    Alert.alert("Tool approvals", "Choose how Cybara handles tool calls for local chats.", [
+      ...options.map((option) => ({
+        text: option.value === toolApprovalMode ? `${option.label} ✓` : option.label,
+        onPress: () => {
+          void changeToolApprovalMode(option.value);
+        },
+      })),
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
 
   const changeSessionAgent = async (agentId: string) => {
     if (!agentId || agentId === currentAgentId || agentUpdating) return;
@@ -2742,8 +2808,13 @@ function SessionDetailPanel({
           workspaceDir,
         }),
         `Context: ${mobileContextUsageDetail(contextUsage)}`,
+        `Tool approvals: ${toolApprovalLabel}`,
       ].join("\n"),
       [
+        {
+          text: "Tool approvals",
+          onPress: openToolApprovalSelector,
+        },
         ...(agents.length
           ? [
               {
@@ -2773,10 +2844,10 @@ function SessionDetailPanel({
 
   useEffect(() => {
     setHeaderAction?.({
-      busy: pinning || agentUpdating,
+      busy: pinning || agentUpdating || toolApprovalUpdating,
       onPress: () => headerActionRef.current(),
     });
-  }, [agentUpdating, pinning, sessionId, setHeaderAction]);
+  }, [agentUpdating, pinning, sessionId, setHeaderAction, toolApprovalUpdating]);
 
   const renderMessages = useMemo(() => {
     const messages = detail?.messages ?? [];
