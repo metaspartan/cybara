@@ -6,6 +6,7 @@ import {
   type ChannelCommandContext,
   type ChannelSubagentSpawnResult,
 } from "../../src/core/channels/commands";
+import { getSessionGoal, resetSessionGoalsForTests } from "../../src/core/session-goals";
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -34,6 +35,7 @@ function baseContext(overrides: Partial<ChannelCommandContext> = {}): ChannelCom
 
 afterEach(() => {
   clearChannelSubagentSpawnHandler();
+  resetSessionGoalsForTests();
 });
 
 describe("command parsing", () => {
@@ -131,6 +133,42 @@ describe("context-dependent session commands", () => {
     });
     const out = await handleChannelManagementCommand("/switch new", ctx);
     expect(out).toBe("Started a new session: zzzzzzzz...");
+  });
+
+  test("/goal is session-scoped and works from channel commands", async () => {
+    const out = await handleChannelManagementCommand(
+      "/goal start review mobile parity",
+      baseContext({ sessionId: "channel-goal-session" })
+    );
+    expect(out).toBe("Goal started: review mobile parity");
+    expect(getSessionGoal("channel-goal-session")?.objective).toBe("review mobile parity");
+
+    const status = await handleChannelManagementCommand(
+      "/goal status",
+      baseContext({ sessionId: "channel-goal-session" })
+    );
+    expect(status).toContain("Goal: review mobile parity");
+  });
+
+  test("/loop creates a session when the channel supports session rotation", async () => {
+    let stored: string | undefined;
+    const out = await handleChannelManagementCommand(
+      "/loop ship Android screenshots",
+      baseContext({
+        createSessionId: () => "loop-session-created",
+        setSessionId: (id) => {
+          stored = id;
+        },
+      })
+    );
+    expect(stored).toBe("loop-session-created");
+    expect(out).toBe("Goal started: ship Android screenshots");
+    expect(getSessionGoal("loop-session-created")?.status).toBe("active");
+  });
+
+  test("/goal without an active or creatable session returns a channel-safe message", async () => {
+    const out = await handleChannelManagementCommand("/goal status", baseContext());
+    expect(out).toBe("Goal mode needs an active session in this channel context. Use /new first.");
   });
 });
 

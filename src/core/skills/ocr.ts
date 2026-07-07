@@ -22,7 +22,7 @@ export async function handleOcr(args: Record<string, unknown>): Promise<unknown>
             const text = result.stdout.toString().trim();
             return {
                 text,
-                confidence: null, // tesseract stdout doesn't include confidence
+                confidence: null,
                 method: "tesseract",
                 language,
             };
@@ -32,13 +32,14 @@ export async function handleOcr(args: Record<string, unknown>): Promise<unknown>
     }
 
     try {
-        const script = `
+        const script = `on run argv
+      set imgPath to item 1 of argv
       tell application "Shortcuts Events"
-        run shortcut "Extract Text from Image" with input (POSIX file "${path}" as alias)
+        run shortcut "Extract Text from Image" with input (POSIX file imgPath as alias)
       end tell
-    `;
+    end run`;
 
-        const result = Bun.spawnSync(["osascript", "-e", script], {
+        const result = Bun.spawnSync(["osascript", "-e", script, path], {
             stdout: "pipe",
             stderr: "pipe",
         });
@@ -58,6 +59,7 @@ export async function handleOcr(args: Record<string, unknown>): Promise<unknown>
 
     try {
         const pythonScript = `
+import sys
 import Vision
 import Quartz
 from Foundation import NSURL
@@ -84,10 +86,10 @@ def extract_text(image_path):
     
     return "\\n".join(results)
 
-print(extract_text("${path}"))
+print(extract_text(sys.argv[1]))
 `;
 
-        const result = Bun.spawnSync(["python3", "-c", pythonScript], {
+        const result = Bun.spawnSync(["python3", "-c", pythonScript, path], {
             stdout: "pipe",
             stderr: "pipe",
         });

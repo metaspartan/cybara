@@ -1,6 +1,3 @@
-// Web Terminal - Shell WebSocket endpoint
-// Requires --enable-terminal flag to activate
-// Uses Python's pty module via Bun.spawn for real PTY allocation
 import { homedir } from "os";
 
 interface TerminalSession {
@@ -17,10 +14,9 @@ interface TerminalInputSink {
 
 const sessions = new Map<string, TerminalSession>();
 
-// Cleanup stale sessions every 5 minutes
 setInterval(
   () => {
-    const staleThreshold = Date.now() - 10 * 60 * 1000; // 10 min idle
+    const staleThreshold = Date.now() - 10 * 60 * 1000;
     for (const [id, session] of sessions) {
       if (session.lastActivity < staleThreshold) {
         killSession(id);
@@ -42,8 +38,6 @@ function killSession(id: string) {
   sessions.delete(id);
 }
 
-// Python script that creates a real PTY and copies I/O
-// This gives us full terminal features: echo, prompt, colors, line editing
 const PTY_SCRIPT = `
 import pty, os, sys, select, signal, struct, fcntl, termios
 
@@ -116,10 +110,6 @@ else:
             pass
 `;
 
-// Secrets in the gateway's environment (provider API keys, CYBARA_API_KEY,
-// wallet material, OAuth tokens) must not be inherited by the interactive
-// terminal, where `env`/`printenv` would expose them. Strip them but keep the
-// operational vars a shell needs (PATH, HOME, LANG, etc.).
 const TERMINAL_ENV_SENSITIVE =
   /(key|token|secret|password|passwd|credential|mnemonic|seed|private|apikey|auth)/i;
 
@@ -163,7 +153,6 @@ export function createTerminalSession(sessionId: string): TerminalSession {
   return session;
 }
 
-/** Write data to the terminal's stdin (Bun FileSink) */
 export function writeToTerminal(session: TerminalSession, data: string): void {
   if (session.proc?.stdin) {
     try {
@@ -171,12 +160,11 @@ export function writeToTerminal(session: TerminalSession, data: string): void {
       stdin.write(data);
       stdin.flush?.();
     } catch {
-      // stdin closed
+      /* stdin closed */
     }
   }
 }
 
-/** Start reading output and forward to a callback */
 export function startOutputReader(
   session: TerminalSession,
   onData: (data: string) => void,
@@ -184,7 +172,6 @@ export function startOutputReader(
 ): void {
   const decoder = new TextDecoder();
 
-  // Read stdout (PTY output comes through here)
   if (session.proc?.stdout) {
     const stdout = session.proc.stdout as ReadableStream<Uint8Array>;
     const reader = stdout.getReader();
@@ -204,7 +191,6 @@ export function startOutputReader(
     onExit();
   }
 
-  // Handle process exit
   if (session.proc?.exited) {
     session.proc.exited.then(() => onExit()).catch(() => onExit());
   }

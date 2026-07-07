@@ -66,6 +66,8 @@ describe("mobile theming", () => {
     expect(screen).toContain('title="Appearance"');
     expect(screen).toContain("setAppearanceMode");
     expect(screen).toContain('{ label: "System", value: "system" }');
+    expect(screen).toContain('label="Theme"');
+    expect(screen).toContain('variant="segmented"');
   });
 
   test("colors is a live binding the scheme swaps at runtime", () => {

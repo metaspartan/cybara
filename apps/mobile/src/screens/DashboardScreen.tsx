@@ -229,6 +229,16 @@ import {
   type EndpointState,
   type MobileSpeechSettings,
 } from "./dashboardHelpers";
+
+type MobileSettingsTab = "gateway" | "appearance" | "assistant" | "safety" | "more";
+
+const mobileSettingsTabOptions: Array<{ label: string; value: MobileSettingsTab }> = [
+  { label: "Gateway", value: "gateway" },
+  { label: "Look", value: "appearance" },
+  { label: "AI", value: "assistant" },
+  { label: "Safety", value: "safety" },
+  { label: "More", value: "more" },
+];
 import { ChatMessageRow } from "./dashboardChat";
 import {
   clearCachedMobileLiveAssistant,
@@ -3699,6 +3709,7 @@ function SettingsPanel({
 }) {
   const counts = summarizeFeatureCounts(summary);
   const { mode: appearanceMode, setMode: setAppearanceMode } = useThemeControls();
+  const [selectedSettingsTab, setSelectedSettingsTab] = useState<MobileSettingsTab>("gateway");
   const [savingAccent, setSavingAccent] = useState<AccentKey | null>(null);
   const [savingConfigKey, setSavingConfigKey] = useState<string | null>(null);
   const [savingAgentAccess, setSavingAgentAccess] = useState(false);
@@ -3735,6 +3746,11 @@ function SettingsPanel({
   const walletStatus = objectRecord(summary?.walletStatus);
   const walletStatusAvailable = Boolean(walletStatus);
   const agentAccessEnabled = booleanSetting(walletStatus, "agentAccessEnabled");
+  const showGatewaySettings = selectedSettingsTab === "gateway";
+  const showAppearanceSettings = selectedSettingsTab === "appearance";
+  const showAssistantSettings = selectedSettingsTab === "assistant";
+  const showSafetySettings = selectedSettingsTab === "safety";
+  const showMoreSettings = selectedSettingsTab === "more";
 
   const saveConfigPatch = async (
     key: string,
@@ -3797,7 +3813,27 @@ function SettingsPanel({
   return (
     <StableDetailPanel edgeToEdge={MOBILE_SETTINGS_ROOT_CHROME.settingsEdgeToEdgeContent}>
       <View style={styles.settingsNativePage}>
-        {MOBILE_SETTINGS_ROOT_CHROME.gatewayConnectionDetails ? (
+        <SettingsSection title="Settings">
+          <SettingSelector
+            label="Section"
+            onSelect={(value) => {
+              if (
+                value === "gateway" ||
+                value === "appearance" ||
+                value === "assistant" ||
+                value === "safety" ||
+                value === "more"
+              ) {
+                setSelectedSettingsTab(value);
+              }
+            }}
+            options={mobileSettingsTabOptions}
+            selected={selectedSettingsTab}
+            tone={accentColor}
+            variant="segmented"
+          />
+        </SettingsSection>
+        {showGatewaySettings && MOBILE_SETTINGS_ROOT_CHROME.gatewayConnectionDetails ? (
           <View style={styles.settingsSection}>
             <View style={styles.settingsGatewayCard}>
               <View style={styles.connectionRow}>
@@ -3831,378 +3867,394 @@ function SettingsPanel({
             </View>
           </View>
         ) : null}
-        <SettingsSection title="Appearance">
-          <SettingSelector
-            label="Theme"
-            onSelect={(value) => {
-              if (value === "system" || value === "light" || value === "dark") {
-                setAppearanceMode(value);
-              }
-            }}
-            options={[
-              { label: "System", value: "system" },
-              { label: "Light", value: "light" },
-              { label: "Dark", value: "dark" },
-            ]}
-            selected={appearanceMode}
-            tone={accentColor}
-            variant="segmented"
-          />
-        </SettingsSection>
-        <SettingsSection
-          accessory={savingAccent ? <ActivityIndicator color={accentColor} size="small" /> : null}
-          title="Highlight color"
-        >
-          <View style={styles.accentGrid}>
-            {MOBILE_ACCENT_KEYS.map((key) => {
-              const themeKey = key as AccentKey;
-              const tone = accentPalette[themeKey];
-              const selected = accentKey === themeKey;
-              return (
-                <Pressable
-                  key={key}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected, disabled: Boolean(savingAccent) }}
-                  disabled={Boolean(savingAccent)}
-                  onPress={() => {
-                    void updateThemeAccent(themeKey);
-                  }}
-                  style={[
-                    styles.accentSwatch,
-                    selected && {
-                      borderColor: tone,
-                      backgroundColor: `${tone}16`,
-                    },
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.accentSwatchDot,
-                      {
-                        backgroundColor: tone,
-                        shadowColor: tone,
-                      },
-                      selected && styles.accentSwatchDotActive,
-                    ]}
-                  />
-                  <Text
-                    numberOfLines={1}
-                    style={[styles.accentSwatchLabel, selected && { color: colors.text }]}
-                  >
-                    {key}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </SettingsSection>
-        <SettingsSection title="Platform controls">
-          {configAvailable ? (
-            <>
-              {MOBILE_SETTINGS_ROOT_CHROME.terminalToggle ? (
-                <SettingToggle
-                  busy={savingConfigKey === "terminal_enabled"}
-                  detail="Enable browser-based terminal access on the gateway."
-                  disabled={savingConfigKey !== null}
-                  label="Web terminal"
-                  onPress={() => {
-                    void saveConfigPatch(
-                      "terminal_enabled",
-                      { terminal_enabled: !terminalEnabled },
-                      "Terminal setting failed"
-                    );
-                  }}
-                  tone={accentColor}
-                  value={terminalEnabled}
-                />
-              ) : null}
-              <SettingToggle
-                busy={savingConfigKey === "self_improving_skills_enabled"}
-                detail="Let agents save reusable skills after complex tasks. When off, skill_save is withheld."
-                disabled={savingConfigKey !== null}
-                label="Self-improving skills"
-                onPress={() => {
-                  void saveConfigPatch(
-                    "self_improving_skills_enabled",
-                    { self_improving_skills_enabled: !selfImprovingSkillsEnabled },
-                    "Self-improving skills setting failed"
-                  );
+        {showAppearanceSettings ? (
+          <>
+            <SettingsSection title="Appearance">
+              <SettingSelector
+                label="Theme"
+                onSelect={(value) => {
+                  if (value === "system" || value === "light" || value === "dark") {
+                    setAppearanceMode(value);
+                  }
                 }}
+                options={[
+                  { label: "System", value: "system" },
+                  { label: "Light", value: "light" },
+                  { label: "Dark", value: "dark" },
+                ]}
+                selected={appearanceMode}
                 tone={accentColor}
-                value={selfImprovingSkillsEnabled}
+                variant="segmented"
               />
-              {MOBILE_SETTINGS_ROOT_CHROME.toolApprovalModeSelector ? (
-                <SettingSelector
-                  disabled={savingConfigKey !== null}
-                  label="Tool approvals"
-                  onSelect={(value) => {
-                    void saveConfigPatch(
-                      "tool_approval_mode",
-                      { tool_approval_mode: value === "ask" ? "ask" : "always_allow" },
-                      "Tool approval setting failed"
-                    );
-                  }}
-                  options={[
-                    { label: "Always Allow", value: "always_allow" },
-                    { label: "Ask Me", value: "ask" },
-                  ]}
-                  selected={toolApprovalMode}
-                  tone={accentColor}
-                  variant="menu"
-                />
-              ) : null}
-              {MOBILE_SETTINGS_ROOT_CHROME.reasoningEffortSelector ? (
-                <SettingSelector
-                  disabled={savingConfigKey !== null}
-                  label="Reasoning effort"
-                  onSelect={(value) => {
-                    void saveConfigPatch(
-                      "reasoning_effort",
-                      { reasoning_effort: value },
-                      "Reasoning effort setting failed"
-                    );
-                  }}
-                  options={MOBILE_REASONING_EFFORT_OPTIONS.map((option) => ({
-                    label: option.label,
-                    value: option.value,
-                  }))}
-                  selected={reasoningEffort}
-                  tone={accentColor}
-                  variant="menu"
-                />
-              ) : null}
-              {MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle ? (
-                <>
+            </SettingsSection>
+            <SettingsSection
+              accessory={
+                savingAccent ? <ActivityIndicator color={accentColor} size="small" /> : null
+              }
+              title="Highlight color"
+            >
+              <View style={styles.accentGrid}>
+                {MOBILE_ACCENT_KEYS.map((key) => {
+                  const themeKey = key as AccentKey;
+                  const tone = accentPalette[themeKey];
+                  const selected = accentKey === themeKey;
+                  return (
+                    <Pressable
+                      key={key}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected, disabled: Boolean(savingAccent) }}
+                      disabled={Boolean(savingAccent)}
+                      onPress={() => {
+                        void updateThemeAccent(themeKey);
+                      }}
+                      style={[
+                        styles.accentSwatch,
+                        selected && {
+                          borderColor: tone,
+                          backgroundColor: `${tone}16`,
+                        },
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.accentSwatchDot,
+                          {
+                            backgroundColor: tone,
+                            shadowColor: tone,
+                          },
+                          selected && styles.accentSwatchDotActive,
+                        ]}
+                      />
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.accentSwatchLabel, selected && { color: colors.text }]}
+                      >
+                        {key}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </SettingsSection>
+          </>
+        ) : null}
+        {showSafetySettings ? (
+          <SettingsSection title="Safety controls">
+            {configAvailable ? (
+              <>
+                {MOBILE_SETTINGS_ROOT_CHROME.terminalToggle ? (
                   <SettingToggle
-                    busy={savingConfigKey === "dangerous_tool_policy"}
-                    detail="Guardrails for shell, wallet, and other high-impact tools."
+                    busy={savingConfigKey === "terminal_enabled"}
+                    detail="Enable browser-based terminal access on the gateway."
                     disabled={savingConfigKey !== null}
-                    label="Dangerous tool policy"
+                    label="Web terminal"
                     onPress={() => {
                       void saveConfigPatch(
-                        "dangerous_tool_policy",
-                        {
-                          dangerous_tool_policy: {
-                            enabled: !dangerousPolicy.enabled,
-                            mode: dangerousPolicy.mode,
-                          },
-                        },
-                        "Dangerous tool policy failed"
+                        "terminal_enabled",
+                        { terminal_enabled: !terminalEnabled },
+                        "Terminal setting failed"
                       );
                     }}
                     tone={accentColor}
-                    value={dangerousPolicy.enabled}
+                    value={terminalEnabled}
                   />
-                  {dangerousPolicy.enabled ? (
-                    <SettingSelector
+                ) : null}
+                <SettingToggle
+                  busy={savingConfigKey === "self_improving_skills_enabled"}
+                  detail="Let agents save reusable skills after complex tasks. When off, skill_save is withheld."
+                  disabled={savingConfigKey !== null}
+                  label="Self-improving skills"
+                  onPress={() => {
+                    void saveConfigPatch(
+                      "self_improving_skills_enabled",
+                      { self_improving_skills_enabled: !selfImprovingSkillsEnabled },
+                      "Self-improving skills setting failed"
+                    );
+                  }}
+                  tone={accentColor}
+                  value={selfImprovingSkillsEnabled}
+                />
+                {MOBILE_SETTINGS_ROOT_CHROME.toolApprovalModeSelector ? (
+                  <SettingSelector
+                    disabled={savingConfigKey !== null}
+                    label="Tool approvals"
+                    onSelect={(value) => {
+                      void saveConfigPatch(
+                        "tool_approval_mode",
+                        { tool_approval_mode: value === "ask" ? "ask" : "always_allow" },
+                        "Tool approval setting failed"
+                      );
+                    }}
+                    options={[
+                      { label: "Always Allow", value: "always_allow" },
+                      { label: "Ask Me", value: "ask" },
+                    ]}
+                    selected={toolApprovalMode}
+                    tone={accentColor}
+                    variant="menu"
+                  />
+                ) : null}
+                {MOBILE_SETTINGS_ROOT_CHROME.reasoningEffortSelector ? (
+                  <SettingSelector
+                    disabled={savingConfigKey !== null}
+                    label="Reasoning effort"
+                    onSelect={(value) => {
+                      void saveConfigPatch(
+                        "reasoning_effort",
+                        { reasoning_effort: value },
+                        "Reasoning effort setting failed"
+                      );
+                    }}
+                    options={MOBILE_REASONING_EFFORT_OPTIONS.map((option) => ({
+                      label: option.label,
+                      value: option.value,
+                    }))}
+                    selected={reasoningEffort}
+                    tone={accentColor}
+                    variant="menu"
+                  />
+                ) : null}
+                {MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle ? (
+                  <>
+                    <SettingToggle
+                      busy={savingConfigKey === "dangerous_tool_policy"}
+                      detail="Guardrails for shell, wallet, and other high-impact tools."
                       disabled={savingConfigKey !== null}
-                      label="Dangerous policy mode"
-                      onSelect={(value) => {
+                      label="Dangerous tool policy"
+                      onPress={() => {
                         void saveConfigPatch(
                           "dangerous_tool_policy",
                           {
                             dangerous_tool_policy: {
-                              enabled: true,
-                              mode: value === "block" ? "block" : "audit",
+                              enabled: !dangerousPolicy.enabled,
+                              mode: dangerousPolicy.mode,
                             },
                           },
                           "Dangerous tool policy failed"
                         );
                       }}
-                      options={[
-                        { label: "Audit", value: "audit" },
-                        { label: "Block", value: "block" },
-                      ]}
-                      selected={dangerousPolicy.mode}
                       tone={accentColor}
-                      variant="segmented"
+                      value={dangerousPolicy.enabled}
                     />
-                  ) : null}
-                </>
-              ) : null}
-              {MOBILE_SETTINGS_ROOT_CHROME.sandboxRuntimeControls ? (
-                <>
-                  <SettingToggle
-                    busy={savingConfigKey === "sandbox_runtime"}
-                    detail="Run supported command tools in an isolated runtime."
-                    disabled={savingConfigKey !== null}
-                    label="Command sandbox"
-                    onPress={() => {
-                      void saveConfigPatch(
-                        "sandbox_runtime",
-                        {
-                          sandbox_runtime: {
-                            ...sandboxRuntime,
-                            enabled: !sandboxRuntime.enabled,
+                    {dangerousPolicy.enabled ? (
+                      <SettingSelector
+                        disabled={savingConfigKey !== null}
+                        label="Dangerous policy mode"
+                        onSelect={(value) => {
+                          void saveConfigPatch(
+                            "dangerous_tool_policy",
+                            {
+                              dangerous_tool_policy: {
+                                enabled: true,
+                                mode: value === "block" ? "block" : "audit",
+                              },
+                            },
+                            "Dangerous tool policy failed"
+                          );
+                        }}
+                        options={[
+                          { label: "Audit", value: "audit" },
+                          { label: "Block", value: "block" },
+                        ]}
+                        selected={dangerousPolicy.mode}
+                        tone={accentColor}
+                        variant="segmented"
+                      />
+                    ) : null}
+                  </>
+                ) : null}
+                {MOBILE_SETTINGS_ROOT_CHROME.sandboxRuntimeControls ? (
+                  <>
+                    <SettingToggle
+                      busy={savingConfigKey === "sandbox_runtime"}
+                      detail="Run supported command tools in an isolated runtime."
+                      disabled={savingConfigKey !== null}
+                      label="Command sandbox"
+                      onPress={() => {
+                        void saveConfigPatch(
+                          "sandbox_runtime",
+                          {
+                            sandbox_runtime: {
+                              ...sandboxRuntime,
+                              enabled: !sandboxRuntime.enabled,
+                            },
                           },
-                        },
-                        "Sandbox setting failed"
-                      );
+                          "Sandbox setting failed"
+                        );
+                      }}
+                      tone={accentColor}
+                      value={sandboxRuntime.enabled}
+                    />
+                    {sandboxRuntime.enabled ? (
+                      <>
+                        <SettingSelector
+                          disabled={savingConfigKey !== null}
+                          label="Sandbox provider"
+                          onSelect={(value) => {
+                            const provider =
+                              value === "apple_sandbox" || value === "podman" || value === "docker"
+                                ? value
+                                : "auto";
+                            void saveConfigPatch(
+                              "sandbox_runtime",
+                              {
+                                sandbox_runtime: {
+                                  ...sandboxRuntime,
+                                  provider,
+                                },
+                              },
+                              "Sandbox setting failed"
+                            );
+                          }}
+                          options={[
+                            { label: "Auto", value: "auto" },
+                            { label: "Apple", value: "apple_sandbox" },
+                            { label: "Podman", value: "podman" },
+                            { label: "Docker", value: "docker" },
+                          ]}
+                          selected={sandboxRuntime.provider}
+                          tone={accentColor}
+                          variant="segmented"
+                        />
+                        <SettingSelector
+                          disabled={savingConfigKey !== null}
+                          label="Sandbox network"
+                          onSelect={(value) => {
+                            void saveConfigPatch(
+                              "sandbox_runtime",
+                              {
+                                sandbox_runtime: {
+                                  ...sandboxRuntime,
+                                  network: value === "allow" ? "allow" : "deny",
+                                },
+                              },
+                              "Sandbox setting failed"
+                            );
+                          }}
+                          options={[
+                            { label: "Deny", value: "deny" },
+                            { label: "Allow", value: "allow" },
+                          ]}
+                          selected={sandboxRuntime.network}
+                          tone={accentColor}
+                          variant="segmented"
+                        />
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
+                {MOBILE_SETTINGS_ROOT_CHROME.walletAccessShortcut ? (
+                  <SettingToggle
+                    busy={savingAgentAccess}
+                    detail="Master switch for agent-initiated wallet actions."
+                    disabled={!walletStatusAvailable || savingAgentAccess}
+                    label="Agent wallet access"
+                    onPress={() => {
+                      void toggleAgentAccess();
                     }}
                     tone={accentColor}
-                    value={sandboxRuntime.enabled}
+                    value={agentAccessEnabled}
                   />
-                  {sandboxRuntime.enabled ? (
-                    <>
-                      <SettingSelector
-                        disabled={savingConfigKey !== null}
-                        label="Sandbox provider"
-                        onSelect={(value) => {
-                          const provider =
-                            value === "apple_sandbox" || value === "podman" || value === "docker"
-                              ? value
-                              : "auto";
-                          void saveConfigPatch(
-                            "sandbox_runtime",
-                            {
-                              sandbox_runtime: {
-                                ...sandboxRuntime,
-                                provider,
-                              },
-                            },
-                            "Sandbox setting failed"
-                          );
-                        }}
-                        options={[
-                          { label: "Auto", value: "auto" },
-                          { label: "Apple", value: "apple_sandbox" },
-                          { label: "Podman", value: "podman" },
-                          { label: "Docker", value: "docker" },
-                        ]}
-                        selected={sandboxRuntime.provider}
-                        tone={accentColor}
-                        variant="segmented"
-                      />
-                      <SettingSelector
-                        disabled={savingConfigKey !== null}
-                        label="Sandbox network"
-                        onSelect={(value) => {
-                          void saveConfigPatch(
-                            "sandbox_runtime",
-                            {
-                              sandbox_runtime: {
-                                ...sandboxRuntime,
-                                network: value === "allow" ? "allow" : "deny",
-                              },
-                            },
-                            "Sandbox setting failed"
-                          );
-                        }}
-                        options={[
-                          { label: "Deny", value: "deny" },
-                          { label: "Allow", value: "allow" },
-                        ]}
-                        selected={sandboxRuntime.network}
-                        tone={accentColor}
-                        variant="segmented"
-                      />
-                    </>
-                  ) : null}
-                </>
-              ) : null}
-              {MOBILE_SETTINGS_ROOT_CHROME.walletAccessShortcut ? (
-                <SettingToggle
-                  busy={savingAgentAccess}
-                  detail="Master switch for agent-initiated wallet actions."
-                  disabled={!walletStatusAvailable || savingAgentAccess}
-                  label="Agent wallet access"
-                  onPress={() => {
-                    void toggleAgentAccess();
-                  }}
-                  tone={accentColor}
-                  value={agentAccessEnabled}
-                />
-              ) : null}
-            </>
-          ) : !summary ? (
-            <LoadingState label="Loading settings" detail="Fetching config from the gateway." />
-          ) : (
-            <EmptyState
-              label="Config unavailable"
-              detail={endpointErrorDetail(
-                summary?.availability.config,
-                "The gateway did not return editable settings."
-              )}
-            />
-          )}
-        </SettingsSection>
-        <SettingsSection title="Assistant">
-          <Pressable
-            accessibilityRole="button"
-            style={styles.settingsNavigationRow}
-            onPress={openSystemPrompt}
-          >
-            <View style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}>
-              <Sparkles color={accentColor} size={20} strokeWidth={2.1} />
-            </View>
-            <View style={styles.listText}>
-              <Text style={styles.listTitle}>System Prompt</Text>
-              <Text style={styles.listDetail} numberOfLines={1}>
-                {systemPromptAvailable
-                  ? summary?.systemPrompt?.identity?.name
-                    ? `Identity: ${summary.systemPrompt.identity.name}`
-                    : "Identity, instructions, and behavior"
-                  : endpointStatusLabel(summary?.availability.systemPrompt)}
-              </Text>
-            </View>
-            <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            style={styles.settingsNavigationRow}
-            onPress={openMemory}
-          >
-            <View style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}>
-              <Brain color={accentColor} size={20} strokeWidth={2.1} />
-            </View>
-            <View style={styles.listText}>
-              <Text style={styles.listTitle}>Memory</Text>
-              <Text style={styles.listDetail} numberOfLines={1}>
-                {configAvailable
-                  ? "Memory provider, learning loop, and indexing"
-                  : endpointStatusLabel(summary?.availability.config)}
-              </Text>
-            </View>
-            <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            style={styles.settingsNavigationRow}
-            onPress={openJourney}
-          >
-            <View style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}>
-              <Sparkles color={accentColor} size={20} strokeWidth={2.1} />
-            </View>
-            <View style={styles.listText}>
-              <Text style={styles.listTitle}>Journey</Text>
-              <Text style={styles.listDetail} numberOfLines={1}>
-                Skills and memories your agent has learned over time
-              </Text>
-            </View>
-            <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
-          </Pressable>
-          {MOBILE_SETTINGS_ROOT_CHROME.modelRouterControls ? (
+                ) : null}
+              </>
+            ) : !summary ? (
+              <LoadingState label="Loading settings" detail="Fetching config from the gateway." />
+            ) : (
+              <EmptyState
+                label="Config unavailable"
+                detail={endpointErrorDetail(
+                  summary?.availability.config,
+                  "The gateway did not return editable settings."
+                )}
+              />
+            )}
+          </SettingsSection>
+        ) : null}
+        {showAssistantSettings ? (
+          <SettingsSection title="Assistant">
             <Pressable
               accessibilityRole="button"
               style={styles.settingsNavigationRow}
-              onPress={openModelRouter}
+              onPress={openSystemPrompt}
             >
               <View
                 style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}
               >
-                <Network color={accentColor} size={20} strokeWidth={2.1} />
+                <Sparkles color={accentColor} size={20} strokeWidth={2.1} />
               </View>
               <View style={styles.listText}>
-                <Text style={styles.listTitle}>Model Router</Text>
+                <Text style={styles.listTitle}>System Prompt</Text>
                 <Text style={styles.listDetail} numberOfLines={1}>
-                  Provider routing, fallback, and spend caps
+                  {systemPromptAvailable
+                    ? summary?.systemPrompt?.identity?.name
+                      ? `Identity: ${summary.systemPrompt.identity.name}`
+                      : "Identity, instructions, and behavior"
+                    : endpointStatusLabel(summary?.availability.systemPrompt)}
                 </Text>
               </View>
               <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
             </Pressable>
-          ) : null}
-        </SettingsSection>
-        {MOBILE_SETTINGS_ROOT_CHROME.speechControls ? (
+            <Pressable
+              accessibilityRole="button"
+              style={styles.settingsNavigationRow}
+              onPress={openMemory}
+            >
+              <View
+                style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}
+              >
+                <Brain color={accentColor} size={20} strokeWidth={2.1} />
+              </View>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>Memory</Text>
+                <Text style={styles.listDetail} numberOfLines={1}>
+                  {configAvailable
+                    ? "Memory provider, learning loop, and indexing"
+                    : endpointStatusLabel(summary?.availability.config)}
+                </Text>
+              </View>
+              <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              style={styles.settingsNavigationRow}
+              onPress={openJourney}
+            >
+              <View
+                style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}
+              >
+                <Sparkles color={accentColor} size={20} strokeWidth={2.1} />
+              </View>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>Journey</Text>
+                <Text style={styles.listDetail} numberOfLines={1}>
+                  Skills and memories your agent has learned over time
+                </Text>
+              </View>
+              <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+            </Pressable>
+            {MOBILE_SETTINGS_ROOT_CHROME.modelRouterControls ? (
+              <Pressable
+                accessibilityRole="button"
+                style={styles.settingsNavigationRow}
+                onPress={openModelRouter}
+              >
+                <View
+                  style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}
+                >
+                  <Network color={accentColor} size={20} strokeWidth={2.1} />
+                </View>
+                <View style={styles.listText}>
+                  <Text style={styles.listTitle}>Model Router</Text>
+                  <Text style={styles.listDetail} numberOfLines={1}>
+                    Provider routing, fallback, and spend caps
+                  </Text>
+                </View>
+                <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+              </Pressable>
+            ) : null}
+          </SettingsSection>
+        ) : null}
+        {showAssistantSettings && MOBILE_SETTINGS_ROOT_CHROME.speechControls ? (
           <SettingsSection title="Voice & Speech">
             <Pressable
               accessibilityRole="button"
@@ -4226,76 +4278,84 @@ function SettingsPanel({
             </Pressable>
           </SettingsSection>
         ) : null}
-        <SettingsSection title="Gateway APIs">
-          <SettingsRow
-            Icon={Database}
-            label="Config API"
-            value={endpointStatusLabel(summary?.availability.config)}
+        {showGatewaySettings ? (
+          <SettingsSection title="Gateway APIs">
+            <SettingsRow
+              Icon={Database}
+              label="Config API"
+              value={endpointStatusLabel(summary?.availability.config)}
+            />
+          </SettingsSection>
+        ) : null}
+        {showGatewaySettings ? (
+          <GatewayManagementPanel
+            api={api}
+            openLogs={() => openSurface("logs")}
+            profile={profile}
+            refreshSummary={refreshSummary}
+            summary={summary}
+            onProfileUpdated={onProfileUpdated}
           />
-        </SettingsSection>
-        <GatewayManagementPanel
-          api={api}
-          openLogs={() => openSurface("logs")}
-          profile={profile}
-          refreshSummary={refreshSummary}
-          summary={summary}
-          onProfileUpdated={onProfileUpdated}
-        />
-        <SettingsSection title="Gateway management">
-          {MOBILE_SETTINGS_SURFACES.map((surface) => {
-            const meta = surfaceMeta[surface];
-            const Icon = meta.Icon;
-            const rows = surfaceRows(surface, summary);
-            return (
-              <Pressable
-                key={surface}
-                style={styles.settingsNavigationRow}
-                onPress={() => openSurface(surface)}
-              >
-                <View
-                  style={[styles.settingsNavigationIcon, { backgroundColor: `${meta.tone}18` }]}
+        ) : null}
+        {showMoreSettings ? (
+          <SettingsSection title="Gateway management">
+            {MOBILE_SETTINGS_SURFACES.map((surface) => {
+              const meta = surfaceMeta[surface];
+              const Icon = meta.Icon;
+              const rows = surfaceRows(surface, summary);
+              return (
+                <Pressable
+                  key={surface}
+                  style={styles.settingsNavigationRow}
+                  onPress={() => openSurface(surface)}
                 >
-                  <Icon color={meta.tone} size={20} strokeWidth={2.1} />
-                </View>
-                <View style={styles.listText}>
-                  <Text style={styles.listTitle}>{meta.title}</Text>
-                  <Text style={styles.listDetail} numberOfLines={1}>
-                    {surfaceMenuDetail(surface, summary, counts, rows.length)}
-                  </Text>
-                </View>
-                <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
-              </Pressable>
-            );
-          })}
-        </SettingsSection>
-        <View style={styles.settingsSection}>
-          <Pressable
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.disconnectButton,
-              pressed && styles.disconnectButtonPressed,
-            ]}
-            onPress={() => {
-              haptics.warning();
-              Alert.alert(
-                "Disconnect gateway?",
-                "This removes the pairing profile from this device. You'll need to pair again to reconnect.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  { text: "Disconnect", style: "destructive", onPress: onDisconnect },
-                ]
+                  <View
+                    style={[styles.settingsNavigationIcon, { backgroundColor: `${meta.tone}18` }]}
+                  >
+                    <Icon color={meta.tone} size={20} strokeWidth={2.1} />
+                  </View>
+                  <View style={styles.listText}>
+                    <Text style={styles.listTitle}>{meta.title}</Text>
+                    <Text style={styles.listDetail} numberOfLines={1}>
+                      {surfaceMenuDetail(surface, summary, counts, rows.length)}
+                    </Text>
+                  </View>
+                  <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+                </Pressable>
               );
-            }}
-          >
-            <View style={styles.disconnectIcon}>
-              <Trash2 color={colors.red} size={18} strokeWidth={2.4} />
-            </View>
-            <View style={styles.disconnectTextWrap}>
-              <Text style={styles.disconnectTitle}>Disconnect Gateway</Text>
-              <Text style={styles.disconnectDetail}>Remove this mobile pairing profile</Text>
-            </View>
-          </Pressable>
-        </View>
+            })}
+          </SettingsSection>
+        ) : null}
+        {showMoreSettings ? (
+          <View style={styles.settingsSection}>
+            <Pressable
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.disconnectButton,
+                pressed && styles.disconnectButtonPressed,
+              ]}
+              onPress={() => {
+                haptics.warning();
+                Alert.alert(
+                  "Disconnect gateway?",
+                  "This removes the pairing profile from this device. You'll need to pair again to reconnect.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Disconnect", style: "destructive", onPress: onDisconnect },
+                  ]
+                );
+              }}
+            >
+              <View style={styles.disconnectIcon}>
+                <Trash2 color={colors.red} size={18} strokeWidth={2.4} />
+              </View>
+              <View style={styles.disconnectTextWrap}>
+                <Text style={styles.disconnectTitle}>Disconnect Gateway</Text>
+                <Text style={styles.disconnectDetail}>Remove this mobile pairing profile</Text>
+              </View>
+            </Pressable>
+          </View>
+        ) : null}
       </View>
     </StableDetailPanel>
   );

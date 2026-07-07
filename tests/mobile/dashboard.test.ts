@@ -508,6 +508,27 @@ describe("mobile dashboard model", () => {
     expect(readMobileRouterStrategy("unknown")).toBe("weighted");
   });
 
+  test("organizes mobile settings into native segmented sections", () => {
+    expect(dashboardScreenSource).toContain('type MobileSettingsTab = "gateway"');
+    expect(dashboardScreenSource).toContain("const [selectedSettingsTab, setSelectedSettingsTab]");
+    expect(dashboardScreenSource).toContain("mobileSettingsTabOptions");
+    for (const label of ["Gateway", "Look", "AI", "Safety", "More"]) {
+      expect(dashboardScreenSource).toContain(`label: "${label}"`);
+    }
+    expect(dashboardScreenSource).toContain('label="Section"');
+    expect(dashboardScreenSource).toContain('variant="segmented"');
+    expect(dashboardScreenSource).toContain('title="Safety controls"');
+    for (const guard of [
+      "showGatewaySettings",
+      "showAppearanceSettings",
+      "showAssistantSettings",
+      "showSafetySettings",
+      "showMoreSettings",
+    ]) {
+      expect(dashboardScreenSource).toContain(guard);
+    }
+  });
+
   test("keeps recent activity chat rows tappable and honest about state", () => {
     expect(MOBILE_RECENT_ACTIVITY_CHROME.chatsOpenSession).toBe(true);
     expect(MOBILE_RECENT_ACTIVITY_CHROME.truncateTitles).toBe(true);

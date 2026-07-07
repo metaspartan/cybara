@@ -894,8 +894,6 @@ export function applyReplacements(
   replacement: string,
   options?: { caseSensitive?: boolean; wholeWord?: boolean; useRegex?: boolean }
 ): { content: string; replacements: number } {
-  // In regex mode the user's query IS the pattern (with capture-group support
-  // via $1/$2 in the replacement); otherwise escape it as a literal.
   const patternSource = options?.useRegex ? query : escapeRegExp(query);
   const pattern =
     options?.wholeWord && !options?.useRegex ? `\\b${patternSource}\\b` : patternSource;
@@ -908,9 +906,6 @@ export function applyReplacements(
   const matches = content.match(regex);
   const replacements = matches ? matches.length : 0;
   if (replacements === 0) return { content, replacements: 0 };
-  // Regex mode: pass the replacement as a STRING so String.replace expands
-  // $1/$2/$& capture-group references. Literal mode: use a function that
-  // returns the replacement verbatim, so a literal "$1" is not expanded.
   const nextContent = options?.useRegex
     ? content.replace(regex, replacement)
     : content.replace(regex, () => replacement);
@@ -1602,10 +1597,6 @@ export async function openInSystemTerminal(inputPath: string): Promise<RevealRes
     }
 
     if (process.platform === "win32") {
-      // Set the new terminal's directory via the spawn cwd (inherited by the
-      // launched window) rather than interpolating workingDir into a `cmd /k`
-      // string — that string is shell-parsed and a path containing a quote or
-      // `&`/`|` would be command injection.
       const result = Bun.spawnSync(["cmd", "/c", "start", "cmd"], {
         cwd: workingDir,
         stdout: "pipe",

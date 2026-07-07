@@ -4,6 +4,7 @@ import { type AgentImage, hasImages, sanitizeAgentImages } from "../core/llm/ima
 import { providerManager } from "../core/providers";
 import { config } from "../core/config";
 import { expandPromptCommand } from "../core/prompt-commands";
+import { getActiveGoalContextLine, handleSessionGoalCommand } from "../core/session-goals";
 import {
   getToolSchemasForLLM,
   checkCircuit,
@@ -1242,6 +1243,20 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
     throw new Error("Message is required");
   }
 
+  const effectiveSessionId = request.sessionId || crypto.randomUUID();
+
+  const goalCommand = handleSessionGoalCommand(effectiveSessionId, request.message);
+  if (goalCommand.handled) {
+    return {
+      sessionId: effectiveSessionId,
+      message: {
+        role: "assistant",
+        content: goalCommand.response || "",
+        timestamp: new Date().toISOString(),
+      },
+    };
+  }
+
   // Expand slash commands (e.g. /learn <url|prompt>) into a standards-guided
   // prompt handed to the agent as a normal turn. Done here so every client
   // (web, mobile, macOS, channels) gets the same commands with no extra wiring.
@@ -1254,7 +1269,6 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   // a new session gets a fresh id that is used as both the lock key and the
   // session id so the whole turn (create → push user → execute → push assistant
   // → persist) runs without interleaving.
-  const effectiveSessionId = request.sessionId || crypto.randomUUID();
   const sessionLocked = chatTurnMutex.isLocked(effectiveSessionId);
   const sessionHasPendingMessages = hasPendingChatMessages(effectiveSessionId);
   const sessionStatusActive =
@@ -1803,6 +1817,18 @@ async function handleChatTurn(
         content: sessionMessage.content,
         ...(sessionMessage.images ? { images: sessionMessage.images } : {}),
       }));
+      const activeGoalLine = getActiveGoalContextLine(session.id);
+      if (activeGoalLine) {
+        const goalInstruction: AgentMessage = {
+          role: "system",
+          content: activeGoalLine,
+        };
+        if (executionMessages[0]?.role === "system") {
+          executionMessages.splice(1, 0, goalInstruction);
+        } else {
+          executionMessages.unshift(goalInstruction);
+        }
+      }
       if (isMaterializedSteeringTurn) {
         const steeringInstruction: AgentMessage = {
           role: "system",

@@ -80,9 +80,6 @@ function getOrCreateApiKey(): string | null {
   try {
     writeFileSync(API_KEY_FILE, newKey, { mode: 0o600 }); // Read/write only by owner
     log.info("Generated new API key", { path: API_KEY_FILE });
-    // Never print key material to stdout — it leaks into terminal history,
-    // container logs, and log-aggregation systems. Point the operator at the
-    // 0600 file instead.
     console.log(`
 ╔══════════════════════════════════════════════════════════════════╗
 ║  🔐 API KEY GENERATED                                            ║

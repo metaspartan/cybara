@@ -5,6 +5,7 @@ import { homedir } from "os";
 import { resolve } from "path";
 import { existsSync, statSync } from "fs";
 import { listChannelRuntimeSessions } from "./chat-runtime";
+import { handleSessionGoalCommand } from "../session-goals";
 
 type AgentRow = {
   id: string;
@@ -244,6 +245,7 @@ function formatCommandHelp(): string {
     "/session [target] — Show current session or switch to target",
     "/workspace [path] — Show or set session workspace (~/path supported)",
     "/workspace clear — Reset workspace to default",
+    "/goal <objective> — Keep working toward a session goal (/loop alias)",
     "/permissions [ask|allow] — Dangerous tool approval mode",
     "",
     "🤖 *Agents & Models:*",
@@ -384,6 +386,15 @@ export async function handleChannelManagementCommand(
 
   if (command === "start" || command === "help") {
     return formatCommandHelp();
+  }
+
+  if (command === "goal" || command === "loop") {
+    const sessionId = context.sessionId || rotateSession(context);
+    if (!sessionId) {
+      return "Goal mode needs an active session in this channel context. Use /new first.";
+    }
+    const commandText = `/${command}${joinedArgs ? ` ${joinedArgs}` : ""}`;
+    return handleSessionGoalCommand(sessionId, commandText).response || "Goal command handled.";
   }
 
   if (command === "new") {

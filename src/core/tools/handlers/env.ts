@@ -8,14 +8,9 @@ function redactEnvValue(key: string, value: string | undefined): string | null {
   return value.slice(0, 100) + (value.length > 100 ? "..." : "");
 }
 
-// Env vars an agent must never set/unset: secrets (so it can't plant a
-// credential a later tool call picks up) and operational vars that would
-// weaken auth, enable IP spoofing, redirect binaries, or inject code into
-// every subprocess.
 const PROTECTED_ENV_KEY =
   /^(CYBARA_(API_KEY|REQUIRE_AUTH|TRUST_PROXY|BASE_PATH|HOME|DATA_DIR)|PATH|NODE_OPTIONS|NODE_ENV|LD_PRELOAD|LD_LIBRARY_PATH|DYLD_.*|HTTP_PROXY|HTTPS_PROXY|npm_config_.*)$/i;
 
-/** True when an agent must not modify this env var via the tool. */
 export function isProtectedEnvKey(key: string): boolean {
   return PROTECTED_ENV_KEY.test(key) || SENSITIVE_ENV_KEY.test(key);
 }

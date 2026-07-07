@@ -23,7 +23,6 @@ export interface JourneyResponse {
 function fileCreatedMs(location: string): number {
   try {
     const stat = statSync(location);
-    // birthtime is 0 on some filesystems; fall back to mtime.
     const birth = stat.birthtimeMs > 0 ? stat.birthtimeMs : stat.mtimeMs;
     return Math.floor(birth || stat.mtimeMs);
   } catch {
@@ -39,12 +38,6 @@ function parseMemoryMs(date: string, timestamp: string): number {
   return 0;
 }
 
-/**
- * Chronological "learning journey": every skill and memory the agent has
- * accumulated, merged and sorted newest-first. Mirrors Hermes' /journey — a
- * timeline of what the agent has learned over time. Read-only aggregation over
- * the existing skills (SKILL.md files) and memory store.
- */
 export async function buildJourney(): Promise<JourneyResponse> {
   const events: JourneyEvent[] = [];
 

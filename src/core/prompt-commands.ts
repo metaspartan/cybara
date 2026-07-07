@@ -1,11 +1,3 @@
-/**
- * Server-side slash-command expansion. A command like `/learn <args>` is not a
- * special tool — following Hermes, it is expanded into a standards-guided prompt
- * and handed to the agent as a normal turn. Because expansion happens in the
- * shared chat path, every client (web, mobile, macOS, channels) gets the same
- * commands with no per-client wiring.
- */
-
 const LEARN_TEMPLATE = (subject: string) =>
   [
     "You are being asked to LEARN a new reusable skill and save it for future sessions.",
@@ -33,7 +25,6 @@ const LEARN_TEMPLATE = (subject: string) =>
 
 interface PromptCommand {
   name: string;
-  /** Build the expanded prompt from the text after the command word. */
   expand: (args: string) => string;
 }
 
@@ -47,12 +38,6 @@ const COMMANDS: Record<string, PromptCommand> = {
   },
 };
 
-/**
- * If `message` begins with a supported slash command (e.g. `/learn ...`),
- * return the expanded prompt. Otherwise return null and the message is used
- * verbatim. Only matches a leading command token so normal messages that merely
- * contain a slash are untouched.
- */
 export function expandPromptCommand(message: string): string | null {
   const trimmed = message.trimStart();
   const match = trimmed.match(/^\/([a-z][a-z0-9_-]*)\b[ \t]*([\s\S]*)$/i);

@@ -176,15 +176,7 @@ export function getCombinedLogs(
   return sorted.slice(offset, offset + Math.max(0, options.limit));
 }
 
-// SQLite cannot parameterize a table name, so an allowlist is the only safe way
-// to interpolate one. Every caller passes a hardcoded literal today; this guard
-// ensures a future (or user-influenced) caller can never inject SQL.
-const COUNTABLE_TABLES = new Set([
-  "system_logs",
-  "agent_logs",
-  "channel_logs",
-  "session_messages",
-]);
+const COUNTABLE_TABLES = new Set(["system_logs", "agent_logs", "channel_logs", "session_messages"]);
 
 export function assertCountableTable(table: string): string {
   if (!COUNTABLE_TABLES.has(table)) {

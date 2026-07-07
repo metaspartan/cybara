@@ -509,9 +509,6 @@ Bun.serve<WsData>({
       return new Response(readUiIndex(), { headers: htmlHeaders });
     }
 
-    // Canonicalize and confine to uiPath: resolving handles ..%2f / encoded and
-    // stacked traversal that a naive `.replace(/\.\./g, "")` misses, and the
-    // prefix check rejects anything that escapes the UI root.
     const uiRoot = resolve(uiPath);
     const filePath = resolve(uiRoot, pathname.replace(/^\/+/, ""));
     const withinUiRoot = filePath === uiRoot || filePath.startsWith(uiRoot + sep);

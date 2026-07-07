@@ -1,6 +1,7 @@
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { assertRecipientAllowed, assertAmountWithinCap } from "./wallet-policy";
+import { assertPublicHttpUrl } from "./wallet-url-guard";
 import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 import {
@@ -1550,7 +1551,10 @@ class WalletManager {
       return txs.slice(0, limit);
     }
 
-    const connection = new Connection(query.rpcUrl?.trim() || this.getSolRpc(), "confirmed");
+    const connection = new Connection(
+      this.resolveRpcUrl(query.rpcUrl, this.getSolRpc()),
+      "confirmed"
+    );
     const publicKey = new PublicKey(account.address);
     const signatures = await connection.getSignaturesForAddress(publicKey, { limit });
     const tokenTxs: WalletTokenTransaction[] = [];
@@ -1671,7 +1675,10 @@ class WalletManager {
     }
 
     if (chain === "sol") {
-      const connection = new Connection(query.rpcUrl?.trim() || this.getSolRpc(), "confirmed");
+      const connection = new Connection(
+        this.resolveRpcUrl(query.rpcUrl, this.getSolRpc()),
+        "confirmed"
+      );
       const publicKey = new PublicKey(account.address);
       const signatures = await connection.getSignaturesForAddress(publicKey, { limit });
 
@@ -1889,7 +1896,7 @@ class WalletManager {
         : 900;
 
     const unlocked = this.requireUnlocked();
-    const provider = new JsonRpcProvider(input.rpcUrl?.trim() || this.getEthRpc());
+    const provider = new JsonRpcProvider(this.resolveRpcUrl(input.rpcUrl, this.getEthRpc()));
     const account = this.deriveEthWallet(unlocked.mnemonic, index);
     const signer = account.wallet.connect(provider);
     const from = account.address;
@@ -2011,7 +2018,7 @@ class WalletManager {
         throw new Error("Validation error: Chainlink source currently supports USD quote only");
       }
 
-      const provider = new JsonRpcProvider(input.rpcUrl?.trim() || this.getEthRpc());
+      const provider = new JsonRpcProvider(this.resolveRpcUrl(input.rpcUrl, this.getEthRpc()));
       const configuredFeed = typeof input.feedAddress === "string" ? input.feedAddress.trim() : "";
       const feedAddress =
         configuredFeed ||
@@ -2244,7 +2251,7 @@ class WalletManager {
         : 900;
 
     const unlocked = this.requireUnlocked();
-    const provider = new JsonRpcProvider(input.rpcUrl?.trim() || this.getEthRpc());
+    const provider = new JsonRpcProvider(this.resolveRpcUrl(input.rpcUrl, this.getEthRpc()));
     const account = this.deriveEthWallet(unlocked.mnemonic, index);
     const signer = account.wallet.connect(provider);
     const from = account.address;
@@ -2377,7 +2384,10 @@ class WalletManager {
         : 100;
 
     const unlocked = this.requireUnlocked();
-    const connection = new Connection(input.rpcUrl?.trim() || this.getSolRpc(), "confirmed");
+    const connection = new Connection(
+      this.resolveRpcUrl(input.rpcUrl, this.getSolRpc()),
+      "confirmed"
+    );
     const signer = this.deriveSolKeypair(unlocked.mnemonic, index);
     const from = signer.publicKey.toBase58();
 
@@ -2558,7 +2568,7 @@ class WalletManager {
       throw new Error("Validation error: Contract method is required");
     }
 
-    const provider = new JsonRpcProvider(input.rpcUrl?.trim() || this.getEthRpc());
+    const provider = new JsonRpcProvider(this.resolveRpcUrl(input.rpcUrl, this.getEthRpc()));
     const abi = this.parseEthContractAbi(input.abi, methodSignature);
     const overrides = this.buildEthContractOverrides(input);
     const invokeArgs = overrides ? [...args, overrides] : args;
@@ -2618,7 +2628,10 @@ class WalletManager {
     }
 
     const unlocked = this.requireUnlocked();
-    const connection = new Connection(input.rpcUrl?.trim() || this.getSolRpc(), "confirmed");
+    const connection = new Connection(
+      this.resolveRpcUrl(input.rpcUrl, this.getSolRpc()),
+      "confirmed"
+    );
     const signer = this.deriveSolKeypair(unlocked.mnemonic, index);
     const transaction = new Transaction();
 
@@ -2703,8 +2716,8 @@ class WalletManager {
     const params = Array.isArray(input.params) ? input.params : [];
     const rpcUrl =
       chain === "sol"
-        ? input.rpcUrl?.trim() || this.getSolRpc()
-        : input.rpcUrl?.trim() || this.getEthRpc();
+        ? this.resolveRpcUrl(input.rpcUrl, this.getSolRpc())
+        : this.resolveRpcUrl(input.rpcUrl, this.getEthRpc());
     const id = input.id ?? 1;
 
     const response = await fetch(rpcUrl, {
@@ -2749,6 +2762,7 @@ class WalletManager {
       throw new Error("Validation error: x402 url is required");
     }
     this.validateHttpUrl(urlInput, "x402 URL");
+    assertPublicHttpUrl(urlInput, "x402 URL");
     const url = new URL(urlInput);
     const method = normalizeHttpMethod(input.method);
     const timeoutMs =
@@ -2994,7 +3008,7 @@ class WalletManager {
       throw new Error("Validation error: Invalid ETH destination address");
     }
 
-    const provider = new JsonRpcProvider(input.rpcUrl?.trim() || this.getEthRpc());
+    const provider = new JsonRpcProvider(this.resolveRpcUrl(input.rpcUrl, this.getEthRpc()));
     const account = this.deriveEthWallet(input.mnemonic, input.index);
     const signer = account.wallet.connect(provider);
 
@@ -3029,7 +3043,7 @@ class WalletManager {
       throw new Error("Validation error: Invalid ERC-20 token address");
     }
 
-    const provider = new JsonRpcProvider(input.rpcUrl?.trim() || this.getEthRpc());
+    const provider = new JsonRpcProvider(this.resolveRpcUrl(input.rpcUrl, this.getEthRpc()));
     const account = this.deriveEthWallet(input.mnemonic, input.index);
     const signer = account.wallet.connect(provider);
 
@@ -3077,7 +3091,10 @@ class WalletManager {
       throw new Error("Validation error: SOL transfer amount is too large");
     }
 
-    const connection = new Connection(input.rpcUrl?.trim() || this.getSolRpc(), "confirmed");
+    const connection = new Connection(
+      this.resolveRpcUrl(input.rpcUrl, this.getSolRpc()),
+      "confirmed"
+    );
     const signer = this.deriveSolKeypair(input.mnemonic, input.index);
 
     const transaction = new Transaction().add(
@@ -3121,7 +3138,10 @@ class WalletManager {
   }): Promise<WalletSendResult & { tokenAddress: string }> {
     const mint = new PublicKey(input.tokenAddress);
     const destinationOwner = new PublicKey(input.to);
-    const connection = new Connection(input.rpcUrl?.trim() || this.getSolRpc(), "confirmed");
+    const connection = new Connection(
+      this.resolveRpcUrl(input.rpcUrl, this.getSolRpc()),
+      "confirmed"
+    );
     const signer = this.deriveSolKeypair(input.mnemonic, input.index);
 
     const mintDecimals = await getMintDecimals(connection, mint, "confirmed");
@@ -3862,6 +3882,12 @@ class WalletManager {
       : DEFAULT_SOL_RPC;
   }
 
+  private resolveRpcUrl(userUrl: string | undefined, fallback: string): string {
+    const trimmed = typeof userUrl === "string" ? userUrl.trim() : "";
+    if (!trimmed) return fallback;
+    return assertPublicHttpUrl(trimmed, "RPC URL");
+  }
+
   private getBtcApiBase(): string {
     const configured = config.get<string>(BTC_API_CONFIG_KEY);
     if (typeof configured === "string" && configured.trim()) {
@@ -4030,6 +4056,7 @@ class WalletManager {
     context: "dapp" | "x402"
   ): void {
     this.validateHttpUrl(urlInput, "URL");
+    assertPublicHttpUrl(urlInput, "URL");
     if (policy.allowedDappHosts.length === 0) {
       return;
     }
