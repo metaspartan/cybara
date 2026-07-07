@@ -2033,39 +2033,76 @@ function PendingApprovalsBanner() {
   if (approvals.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-1 px-3 py-2 border-b border-amber-500/30 bg-amber-500/10">
+    <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10">
       {approvals.map((req) => (
-        <div key={req.id} className="flex items-center gap-2 text-sm">
-          <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
-          <span className="text-amber-200">
-            <span className="font-medium">{req.toolName}</span>
-            <span className="text-amber-200/60 ml-2 truncate">{req.argsSummary}</span>
-          </span>
-          <div className="ml-auto flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => resolve(req.id, "approve_once")}
-              className="rounded px-2 py-0.5 text-xs bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors"
-            >
-              Allow once
-            </button>
-            <button
-              type="button"
-              onClick={() => resolve(req.id, "approve_session")}
-              className="rounded px-2 py-0.5 text-xs bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors"
-            >
-              Allow session
-            </button>
-            <button
-              type="button"
-              onClick={() => resolve(req.id, "deny")}
-              className="rounded px-2 py-0.5 text-xs bg-red-500/20 text-red-300 hover:bg-red-500/30 transition-colors"
-            >
-              Deny
-            </button>
-          </div>
-        </div>
+        <PendingApprovalRow key={req.id} req={req} onResolve={resolve} />
       ))}
+    </div>
+  );
+}
+
+function PendingApprovalRow({
+  req,
+  onResolve,
+}: {
+  req: { id: string; toolName: string; argsSummary: string };
+  onResolve: (requestId: string, decision: string) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const hasDetail = req.argsSummary.trim().length > 0;
+
+  return (
+    <div className="px-3 py-1.5">
+      <div className="flex items-center gap-2 text-sm min-w-0">
+        <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+        <button
+          type="button"
+          onClick={() => hasDetail && setExpanded((v) => !v)}
+          className="flex items-center gap-1.5 min-w-0 flex-1 text-left"
+          title={hasDetail ? "Show details" : undefined}
+        >
+          <span className="font-medium text-amber-200 shrink-0">{req.toolName}</span>
+          {hasDetail && (
+            <>
+              <span className="font-mono text-xs text-amber-200/60 truncate">{req.argsSummary}</span>
+              <ChevronDown
+                className={cn(
+                  "w-3.5 h-3.5 text-amber-300/70 shrink-0 transition-transform",
+                  expanded ? "rotate-180" : ""
+                )}
+              />
+            </>
+          )}
+        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => onResolve(req.id, "approve_once")}
+            className="rounded px-2 py-0.5 text-xs font-medium bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors whitespace-nowrap"
+          >
+            Allow once
+          </button>
+          <button
+            type="button"
+            onClick={() => onResolve(req.id, "approve_session")}
+            className="rounded px-2 py-0.5 text-xs font-medium bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors whitespace-nowrap"
+          >
+            Allow session
+          </button>
+          <button
+            type="button"
+            onClick={() => onResolve(req.id, "deny")}
+            className="rounded px-2 py-0.5 text-xs font-medium bg-red-500/20 text-red-300 hover:bg-red-500/30 transition-colors whitespace-nowrap"
+          >
+            Deny
+          </button>
+        </div>
+      </div>
+      {expanded && hasDetail && (
+        <pre className="mt-1.5 ml-6 max-h-48 overflow-auto rounded bg-black/30 p-2 text-xs font-mono text-amber-100/80 whitespace-pre-wrap break-all">
+          {req.argsSummary}
+        </pre>
+      )}
     </div>
   );
 }
@@ -4218,7 +4255,6 @@ export function Chat() {
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
-      <PendingApprovalsBanner />
       <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl flex-shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
@@ -4319,6 +4355,7 @@ export function Chat() {
         )}
 
         <div className="relative flex-1 flex flex-col min-w-0">
+          <PendingApprovalsBanner />
           {artifactViewerTarget ? (
             <ArtifactViewerPanel
               artifact={artifactViewerTarget}
