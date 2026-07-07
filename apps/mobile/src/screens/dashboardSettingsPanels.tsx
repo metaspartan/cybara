@@ -442,6 +442,11 @@ export function ProviderSettingsPanel({
   const [providerPlan, setProviderPlan] = useState<
     ProviderPlanStatusResponse["providers"][number] | null
   >(null);
+  const [planMonitoringConfig, setPlanMonitoringConfig] =
+    useState<ProviderPlanMonitoringConfig | null>(null);
+  const [planName, setPlanName] = useState("");
+  const [planMonthlyTokens, setPlanMonthlyTokens] = useState("");
+  const [planMonthlySpend, setPlanMonthlySpend] = useState("");
   const authMode = mobileProviderAuthMode(provider);
   const usesApiKey = authMode === "api_key";
   const usesOAuth = authMode === "oauth";
@@ -1714,7 +1719,10 @@ export function SystemMonitorDetailPanel({
           ) : null}
         </View>
       ) : !summary ? (
-        <LoadingState label="Loading telemetry" detail="Fetching host telemetry from the gateway." />
+        <LoadingState
+          label="Loading telemetry"
+          detail="Fetching host telemetry from the gateway."
+        />
       ) : (
         <EmptyState
           label="System telemetry unavailable"

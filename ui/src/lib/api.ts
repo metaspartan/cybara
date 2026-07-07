@@ -174,7 +174,9 @@ export const providerPlansApi = {
       data: normalizeProviderPlanStatusResponse(response.data),
     };
   },
-  updateConfig: async (payload: ProviderPlanMonitoringConfig) => {
+  updateConfig: async (
+    payload: ProviderPlanMonitoringConfig
+  ): Promise<ApiResponse<ProviderPlanMonitoringConfig>> => {
     const response = await fetchApi<unknown>("/provider-plans/config", {
       method: "PUT",
       body: JSON.stringify(payload),

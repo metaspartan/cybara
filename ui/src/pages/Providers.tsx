@@ -37,9 +37,16 @@ import { apiFetch } from "@/lib/auth";
 import type {
   Provider,
   AvailableProvider,
+  ProviderPlanMonitoringConfig,
+  ProviderPlanProviderConfig,
   ProviderPlanSnapshot,
   ProviderPlanStatusResponse,
 } from "@/types";
+
+function parsePlanLimitInput(value: FormDataEntryValue | null): number | undefined {
+  const parsed = Number(String(value ?? "").replace(/[,\s]/g, ""));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
 
 function providerPlanStatusClass(status: ProviderPlanSnapshot["status"]): string {
   if (status === "ok") return "text-emerald-300";
@@ -69,6 +76,9 @@ export function Providers() {
   const [editingProvider, setEditingProvider] = useState<Provider | null>(null);
   const [deletingProvider, setDeletingProvider] = useState<Provider | null>(null);
   const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
+    null
+  );
+  const [providerPlanConfig, setProviderPlanConfig] = useState<ProviderPlanMonitoringConfig | null>(
     null
   );
 
@@ -107,10 +117,64 @@ export function Providers() {
       .catch(() => {
         if (mounted) setProviderPlanStatus(null);
       });
+    providerPlansApi
+      .config()
+      .then((response) => {
+        if (mounted && response.success) setProviderPlanConfig(response.data ?? null);
+      })
+      .catch(() => {
+        if (mounted) setProviderPlanConfig(null);
+      });
     return () => {
       mounted = false;
     };
   }, [providers?.length]);
+
+  const planConfigForProvider = (provider: Provider): ProviderPlanProviderConfig | undefined =>
+    providerPlanConfig?.providers[provider.id] ?? providerPlanConfig?.providers[provider.provider];
+
+  const savePlanLimits = async (provider: Provider, formData: FormData) => {
+    if (!providerPlanConfig) return;
+    const planName = String(formData.get("plan_name") ?? "").trim();
+    const tokenLimit = parsePlanLimitInput(formData.get("plan_monthly_tokens"));
+    const spendLimit = parsePlanLimitInput(formData.get("plan_monthly_spend"));
+    const existing = planConfigForProvider(provider);
+    const hasInput = Boolean(planName) || tokenLimit !== undefined || spendLimit !== undefined;
+    if (!hasInput && !existing) return;
+
+    const key = providerPlanConfig.providers[provider.id]
+      ? provider.id
+      : providerPlanConfig.providers[provider.provider]
+        ? provider.provider
+        : provider.id;
+    const nextProviders = { ...providerPlanConfig.providers };
+    if (!hasInput) {
+      delete nextProviders[key];
+    } else {
+      nextProviders[key] = {
+        ...(existing || {}),
+        enabled: true,
+        planName: planName || undefined,
+        monthly:
+          tokenLimit !== undefined || spendLimit !== undefined
+            ? {
+                ...(existing?.monthly || {}),
+                enabled: true,
+                tokenLimit,
+                spendLimit,
+              }
+            : existing?.monthly,
+      };
+    }
+    const payload = { ...providerPlanConfig, enabled: true, providers: nextProviders };
+    const response = await providerPlansApi.updateConfig(payload);
+    if (!response.success) {
+      throw new Error(response.error || "Failed to save plan limits");
+    }
+    setProviderPlanConfig("data" in response && response.data ? response.data : payload);
+    const status = await providerPlansApi.status();
+    if (status.success) setProviderPlanStatus(status.data ?? null);
+  };
 
   const handleCreate = async (formData: FormData) => {
     try {
@@ -140,6 +204,7 @@ export function Providers() {
           is_default: formData.get("is_default") === "on",
         },
       });
+      await savePlanLimits(editingProvider, formData);
       addToast("success", "Provider updated successfully");
       setEditingProvider(null);
     } catch (error) {
@@ -346,6 +411,8 @@ export function Providers() {
           availableProviders={availableProviders || []}
           isLoading={updateProvider.isPending}
           isEdit
+          planConfig={editingProvider ? planConfigForProvider(editingProvider) : undefined}
+          planConfigReady={providerPlanConfig !== null}
         />
 
         <ConfirmDialog
@@ -409,6 +476,8 @@ interface ProviderModalProps {
   availableProviders: AvailableProvider[];
   isLoading: boolean;
   isEdit?: boolean;
+  planConfig?: ProviderPlanProviderConfig;
+  planConfigReady?: boolean;
 }
 
 function ProviderModal({
@@ -420,6 +489,8 @@ function ProviderModal({
   availableProviders,
   isLoading,
   isEdit,
+  planConfig,
+  planConfigReady,
 }: ProviderModalProps) {
   const [selectedProvider, setSelectedProvider] = useState(provider?.provider || "");
   const [oauthState, setOauthState] = useState<
@@ -892,6 +963,44 @@ function ProviderModal({
           />
           <span className="text-sm text-gray-300">Set as default provider</span>
         </label>
+
+        {isEdit && planConfigReady && (
+          <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <div>
+              <p className="text-sm font-medium text-white">Plan limits</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Track monthly usage against your provider plan. Leave all fields empty to keep the
+                plan unconfigured. Advanced windows and presets live in Model Router settings.
+              </p>
+            </div>
+            <Input
+              name="plan_name"
+              label="Plan name"
+              placeholder="e.g. Pro, Team, Pay-as-you-go"
+              defaultValue={planConfig?.planName ?? ""}
+            />
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                name="plan_monthly_tokens"
+                label="Monthly token limit"
+                placeholder="e.g. 10000000"
+                inputMode="numeric"
+                defaultValue={
+                  planConfig?.monthly?.tokenLimit ? String(planConfig.monthly.tokenLimit) : ""
+                }
+              />
+              <Input
+                name="plan_monthly_spend"
+                label="Monthly spend limit"
+                placeholder="e.g. 100"
+                inputMode="decimal"
+                defaultValue={
+                  planConfig?.monthly?.spendLimit ? String(planConfig.monthly.spendLimit) : ""
+                }
+              />
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-end gap-3 pt-4">
           <Button type="button" variant="ghost" onClick={onClose}>

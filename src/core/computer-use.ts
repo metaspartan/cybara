@@ -731,10 +731,13 @@ async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
     if (wantsWindowsCapture) {
       const ps = resolvePowerShell();
       if (ps) {
-        const proc = Bun.spawnSync([ps, "-NoProfile", "-NonInteractive", "-Command", WINDOWS_CAPTURE_PS], {
-          stdout: "pipe",
-          stderr: "pipe",
-        });
+        const proc = Bun.spawnSync(
+          [ps, "-NoProfile", "-NonInteractive", "-Command", WINDOWS_CAPTURE_PS],
+          {
+            stdout: "pipe",
+            stderr: "pipe",
+          }
+        );
         const base64 = proc.stdout?.toString().trim().replace(/\s+/g, "");
         if (proc.success && base64 && base64.length > 32) {
           writeFileSync(filePath, Buffer.from(base64, "base64"));

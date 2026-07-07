@@ -3175,7 +3175,10 @@ function SurfaceDetailPanel({
           </Text>
         ) : null}
         {!summary ? (
-          <LoadingState label={`Loading ${meta.title.toLowerCase()}`} detail="Refreshing from the gateway." />
+          <LoadingState
+            label={`Loading ${meta.title.toLowerCase()}`}
+            detail="Refreshing from the gateway."
+          />
         ) : endpoint?.ok === false ? (
           <EmptyState
             label={`${meta.title} unavailable`}

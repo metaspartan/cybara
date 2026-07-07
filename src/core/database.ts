@@ -759,9 +759,7 @@ const stmts = {
     getKeyTotalsWithLatestMetadata: prepare(
       "SELECT key, total, metadata, updated_at as created_at FROM metrics_totals WHERE type = ?"
     ),
-    getKeyAggregates: prepare(
-      "SELECT key, total, count FROM metrics_totals WHERE type = ?"
-    ),
+    getKeyAggregates: prepare("SELECT key, total, count FROM metrics_totals WHERE type = ?"),
     getKeyTotalsSince: prepare(
       "SELECT key, SUM(value) as total FROM metrics WHERE type = ? AND created_at >= ? GROUP BY key"
     ),
