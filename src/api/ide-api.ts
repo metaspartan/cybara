@@ -16,6 +16,22 @@ function resolveCanonicalPath(path: string): string {
   }
 }
 
+function canonicalizeForCheck(inputPath: string): string {
+  const resolved = resolve(inputPath);
+  if (existsSync(resolved)) return resolveCanonicalPath(resolved);
+
+  const trailing: string[] = [];
+  let cursor = resolved;
+  while (!existsSync(cursor)) {
+    const parent = dirname(cursor);
+    if (parent === cursor) break;
+    trailing.unshift(basename(cursor));
+    cursor = parent;
+  }
+  const realBase = resolveCanonicalPath(cursor);
+  return trailing.length ? join(realBase, ...trailing) : realBase;
+}
+
 const HOME_ROOTS = Array.from(new Set([resolve(HOME_DIR), resolveCanonicalPath(HOME_DIR)]));
 
 function isWithinRoot(rootPath: string, resolvedPath: string): boolean {
@@ -36,8 +52,8 @@ function isWithinHome(resolvedPath: string): boolean {
   return HOME_ROOTS.some((rootPath) => isWithinRoot(rootPath, resolvedPath));
 }
 
-function isPathAllowed(targetPath: string): boolean {
-  return isWithinHome(resolve(targetPath));
+export function isPathAllowed(targetPath: string): boolean {
+  return isWithinHome(canonicalizeForCheck(targetPath));
 }
 
 function normalizePath(inputPath: string): string {

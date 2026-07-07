@@ -5,6 +5,8 @@ import type {
   WebhookPayload,
   WebhookResult,
 } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { constantTimeEqual } from "../constant-time";
@@ -36,6 +38,7 @@ export class HomeAssistantAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     this.configs.set(channelId, {
       haUrl:
         typeof config.ha_url === "string" && config.ha_url.trim()
@@ -118,6 +121,9 @@ export class HomeAssistantAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("homeassistant", "incoming", text, { channelId, senderId: sender });
+
+    const access = evaluateChannelAccess(channelId, String(sender), "homeassistant");
+    if (!access.permitted) return access.reply ?? null;
 
     let response: string;
     try {

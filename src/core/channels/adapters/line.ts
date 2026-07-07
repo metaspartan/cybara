@@ -5,6 +5,8 @@ import type {
   WebhookPayload,
   WebhookResult,
 } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { verifyLineSignature, parseLineEvents } from "../line-events";
@@ -36,6 +38,7 @@ export class LineAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const channelAccessToken =
       typeof config.channel_access_token === "string" ? config.channel_access_token.trim() : "";
     const channelSecret =
@@ -123,6 +126,12 @@ export class LineAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("line", "incoming", text, { channelId, senderId: sourceId });
+
+    const access = evaluateChannelAccess(channelId, String(sourceId), "line");
+    if (!access.permitted) {
+      if (access.reply) await this.sendMessage(channelId, sourceId, access.reply);
+      return;
+    }
 
     let response: string;
     try {

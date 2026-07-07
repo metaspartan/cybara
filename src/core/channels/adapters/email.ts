@@ -7,6 +7,7 @@
  * via fetchInbox().
  */
 import { Socket } from "net";
+import { connect as tlsConnect, TLSSocket } from "tls";
 import type { ChannelAdapter, ToolCallInfo } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 
@@ -18,6 +19,7 @@ interface EmailConfig {
   username?: string;
   password?: string;
   from_address?: string;
+  smtp_allow_insecure?: boolean;
 }
 
 export class EmailAdapter implements ChannelAdapter {
@@ -36,6 +38,7 @@ export class EmailAdapter implements ChannelAdapter {
       username: typeof config.username === "string" ? config.username : undefined,
       password: typeof config.password === "string" ? config.password : undefined,
       from_address: typeof config.from_address === "string" ? config.from_address : undefined,
+      smtp_allow_insecure: config.smtp_allow_insecure === true,
     });
     this.running.add(channelId);
     console.log(`[Email] SMTP/IMAP adapter ready for channel ${channelId}`);
@@ -71,6 +74,7 @@ export class EmailAdapter implements ChannelAdapter {
       to,
       subject,
       body: text,
+      allowInsecure: cfg.smtp_allow_insecure === true,
     });
   }
 
@@ -86,8 +90,7 @@ export class EmailAdapter implements ChannelAdapter {
   }
 }
 
-/** Minimal SMTP submission over a raw socket with AUTH LOGIN. */
-function sendSmtp(params: {
+export function sendSmtp(params: {
   host: string;
   port: number;
   username: string;
@@ -96,70 +99,151 @@ function sendSmtp(params: {
   to: string;
   subject: string;
   body: string;
+  allowInsecure?: boolean;
 }): Promise<boolean> {
   return new Promise((resolve) => {
-    const socket = new Socket();
-    let step = 0;
+    const implicitTls = params.port === 465;
+    let socket: Socket | TLSSocket;
+    let settled = false;
     let buffer = "";
+    let pendingLines: string[] = [];
+    const responses: string[] = [];
+    let waiter: ((line: string) => void) | null = null;
+
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try {
+        socket.write("QUIT\r\n");
+      } catch {
+        void 0;
+      }
+      try {
+        socket.destroy();
+      } catch {
+        void 0;
+      }
+      resolve(ok);
+    };
+
+    const timeout = setTimeout(() => finish(false), 20_000);
+
+    const deliver = (line: string) => {
+      if (waiter) {
+        const w = waiter;
+        waiter = null;
+        w(line);
+      } else {
+        responses.push(line);
+      }
+    };
+
+    const onData = (chunk: string) => {
+      buffer += chunk;
+      let idx: number;
+      while ((idx = buffer.indexOf("\r\n")) >= 0) {
+        const line = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        pendingLines.push(line);
+        if (/^\d{3} /.test(line)) {
+          const full = pendingLines.join("\n");
+          pendingLines = [];
+          deliver(full);
+        }
+      }
+    };
+
+    const attach = (s: Socket | TLSSocket) => {
+      s.setEncoding("utf8");
+      s.on("data", onData);
+      s.on("error", () => finish(false));
+    };
+
+    const expect = () =>
+      new Promise<string>((res) => {
+        const ready = responses.shift();
+        if (ready !== undefined) res(ready);
+        else waiter = res;
+      });
+
+    const codeOf = (line: string) => parseInt(line.slice(0, 3), 10);
     const b64 = (s: string) => Buffer.from(s).toString("base64");
-    const lines = [
-      `EHLO cybara`,
-      `AUTH LOGIN`,
-      b64(params.username),
-      b64(params.password),
-      `MAIL FROM:<${params.from}>`,
-      `RCPT TO:<${params.to}>`,
-      `DATA`,
-      [
+
+    const send = (text: string) => socket.write(`${text}\r\n`);
+    const command = async (text: string, ok: number) => {
+      send(text);
+      const line = await expect();
+      if (codeOf(line) !== ok) throw new Error(`SMTP ${text.split(" ")[0]}: ${line}`);
+      return line;
+    };
+
+    const run = async () => {
+      const greeting = await expect();
+      if (codeOf(greeting) !== 220) throw new Error(`SMTP greeting: ${greeting}`);
+
+      let ehlo = await command("EHLO cybara", 250);
+
+      if (!implicitTls) {
+        const supportsStartTls = /(^|\n)\d{3}[ -]STARTTLS/i.test(ehlo);
+        if (!supportsStartTls) {
+          if (!params.allowInsecure) {
+            throw new Error("SMTP server does not offer STARTTLS and insecure send is disabled");
+          }
+        } else {
+          await command("STARTTLS", 220);
+          const plain = socket;
+          plain.removeListener("data", onData);
+          buffer = "";
+          pendingLines = [];
+          socket = tlsConnect({ socket: plain as Socket, servername: params.host });
+          attach(socket);
+          await new Promise<void>((res, rej) => {
+            (socket as TLSSocket).once("secureConnect", () => res());
+            (socket as TLSSocket).once("error", rej);
+          });
+          ehlo = await command("EHLO cybara", 250);
+        }
+      }
+
+      await command("AUTH LOGIN", 334);
+      await command(b64(params.username), 334);
+      await command(b64(params.password), 235);
+      await command(`MAIL FROM:<${params.from}>`, 250);
+      await command(`RCPT TO:<${params.to}>`, 250);
+      await command("DATA", 354);
+      const message = [
         `From: ${params.from}`,
         `To: ${params.to}`,
         `Subject: ${params.subject}`,
         `Content-Type: text/plain; charset=utf-8`,
         ``,
         params.body,
-      ].join("\r\n"),
-    ];
-    const timeout = setTimeout(() => {
-      socket.destroy();
-      resolve(false);
-    }, 20_000);
+      ].join("\r\n");
+      socket.write(`${message}\r\n.\r\n`);
+      const finalLine = await expect();
+      if (codeOf(finalLine) !== 250) throw new Error(`SMTP DATA end: ${finalLine}`);
+      finish(true);
+    };
 
-    socket.connect(params.port, params.host);
-    socket.setEncoding("utf8");
-    socket.on("data", (chunk: string) => {
-      buffer += chunk;
-      let idx: number;
-      while ((idx = buffer.indexOf("\r\n")) >= 0) {
-        const line = buffer.slice(0, idx);
-        buffer = buffer.slice(idx + 2);
-        const code = parseInt(line.slice(0, 3), 10);
-        if (code >= 400 && step > 0) {
-          clearTimeout(timeout);
-          socket.destroy();
-          console.warn(`[Email] SMTP error at step ${step}: ${line}`);
-          resolve(false);
-          return;
-        }
-        if (step < lines.length) {
-          const out = lines[step];
-          if (step === lines.length - 1) {
-            socket.write(`${out}\r\n.\r\n`);
-          } else {
-            socket.write(`${out}\r\n`);
-          }
-          step += 1;
-        } else if (code === 250) {
-          socket.write("QUIT\r\n");
-          clearTimeout(timeout);
-          socket.destroy();
-          resolve(true);
-        }
-      }
-    });
-    socket.on("error", () => {
-      clearTimeout(timeout);
-      resolve(false);
-    });
+    if (implicitTls) {
+      socket = tlsConnect({ host: params.host, port: params.port, servername: params.host });
+    } else {
+      socket = new Socket();
+    }
+    attach(socket);
+    const startFlow = () => {
+      run().catch((err) => {
+        console.warn(`[Email] SMTP send failed: ${err instanceof Error ? err.message : err}`);
+        finish(false);
+      });
+    };
+    if (implicitTls) {
+      (socket as TLSSocket).once("secureConnect", startFlow);
+    } else {
+      (socket as Socket).once("connect", startFlow);
+      (socket as Socket).connect(params.port, params.host);
+    }
   });
 }
 

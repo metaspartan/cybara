@@ -133,6 +133,7 @@ describe("mobile theming", () => {
       expect(src).toContain("GlassView");
       expect(src).toContain('from "expo-blur"');
       expect(src).toContain("BlurView");
+      expect(src).not.toContain("dimezisBlurViewSdk31Plus");
     }
   });
 

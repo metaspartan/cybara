@@ -292,46 +292,29 @@ export async function getChannelLogs(channelType: string, channelId: string) {
 }
 
 export async function searchAllLogs(query: string, limit = 100) {
-  const [system, sessionMessages, agentList, channelList] = await Promise.all([
-    tables.systemLogs.search(query, limit),
-    tables.sessionMessages.search(query, limit),
-    tables.agentLogs.list(),
-    tables.channelLogs.list(),
+  const capped = Math.max(1, Math.min(1000, Math.floor(limit) || 100));
+  const [system, sessionMessages, agent, channel] = await Promise.all([
+    tables.systemLogs.search(query, capped),
+    tables.sessionMessages.search(query, capped),
+    tables.agentLogs.search(query, capped),
+    tables.channelLogs.search(query, capped),
   ]);
 
-  const agent = (agentList as Array<{ action?: string; details?: string }>).filter(
-    (l) =>
-      l.action?.toLowerCase().includes(query.toLowerCase()) ||
-      l.details?.toLowerCase().includes(query.toLowerCase())
-  );
-  const channel = (channelList as Array<{ content?: string }>).filter((l) =>
-    l.content?.toLowerCase().includes(query.toLowerCase())
-  );
-
-  return {
-    system,
-    sessionMessages,
-    agent,
-    channel,
-  };
+  return { system, sessionMessages, agent, channel };
 }
 
 export async function getRecentActivity(minutes = 60) {
-  const since = new Date(Date.now() - minutes * 60 * 1000).toISOString();
+  const cappedMinutes = Math.max(1, Math.min(10080, Math.floor(minutes) || 60));
+  const since = new Date(Date.now() - cappedMinutes * 60 * 1000).toISOString();
 
-  const allSystemLogs = await tables.systemLogs.list();
-  const allSessionMessages = await tables.sessionMessages.list();
-  const allAgentLogs = await tables.agentLogs.list();
-  const allChannelLogs = await tables.channelLogs.list();
+  const [system, messages, agent, channel] = await Promise.all([
+    tables.systemLogs.listSince(since),
+    tables.sessionMessages.listSince(since),
+    tables.agentLogs.listSince(since),
+    tables.channelLogs.listSince(since),
+  ]);
 
-  return {
-    system: (allSystemLogs as Array<{ created_at: string }>).filter((l) => l.created_at > since),
-    messages: (allSessionMessages as Array<{ created_at: string }>).filter(
-      (m) => m.created_at > since
-    ),
-    agent: (allAgentLogs as Array<{ created_at: string }>).filter((l) => l.created_at > since),
-    channel: (allChannelLogs as Array<{ created_at: string }>).filter((l) => l.created_at > since),
-  };
+  return { system, messages, agent, channel };
 }
 
 export default systemLogger;

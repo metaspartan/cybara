@@ -5,6 +5,8 @@ import type {
   WebhookPayload,
   WebhookResult,
 } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import {
@@ -38,6 +40,7 @@ export class NextcloudAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const baseUrl = (typeof config.base_url === "string" ? config.base_url : "")
       .trim()
       .replace(/\/+$/, "");
@@ -116,6 +119,12 @@ export class NextcloudAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("nextcloud", "incoming", text, { channelId, senderId: actorId });
+
+    const access = evaluateChannelAccess(channelId, String(actorId), "nextcloud");
+    if (!access.permitted) {
+      if (access.reply) await this.sendMessage(channelId, roomToken, access.reply);
+      return;
+    }
 
     let response: string;
     try {

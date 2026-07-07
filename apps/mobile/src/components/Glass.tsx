@@ -47,7 +47,6 @@ export function GlassPanel({
 
   return (
     <BlurView
-      blurMethod="dimezisBlurViewSdk31Plus"
       intensity={elevated ? 46 : 32}
       tint={scheme === "light" ? "light" : "dark"}
       style={[styles.panel, elevated && styles.elevated, elevated && shadows.glass, style]}

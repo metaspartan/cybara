@@ -686,6 +686,9 @@ const stmts = {
       "INSERT INTO session_messages (id, session_id, agent_id, channel_type, channel_id, role, content, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))"
     ),
     list: prepare("SELECT * FROM session_messages ORDER BY created_at DESC LIMIT 1000"),
+    listSince: prepare(
+      "SELECT * FROM session_messages WHERE datetime(created_at) > datetime(?) ORDER BY created_at DESC LIMIT 1000"
+    ),
     recentByRole: prepare(
       "SELECT role, substr(content, 1, 4000) as content FROM session_messages WHERE role = ? AND content != '' ORDER BY created_at DESC LIMIT ?"
     ),
@@ -704,6 +707,9 @@ const stmts = {
       "SELECT * FROM system_logs WHERE source = ? ORDER BY created_at DESC LIMIT 1000"
     ),
     list: prepare("SELECT * FROM system_logs ORDER BY created_at DESC LIMIT 1000"),
+    listSince: prepare(
+      "SELECT * FROM system_logs WHERE datetime(created_at) > datetime(?) ORDER BY created_at DESC LIMIT 1000"
+    ),
     search: prepare(
       "SELECT * FROM system_logs WHERE message LIKE ? ORDER BY created_at DESC LIMIT ?"
     ),
@@ -716,6 +722,12 @@ const stmts = {
       "SELECT * FROM agent_logs WHERE agent_id = ? ORDER BY created_at DESC LIMIT 1000"
     ),
     list: prepare("SELECT * FROM agent_logs ORDER BY created_at DESC LIMIT 1000"),
+    listSince: prepare(
+      "SELECT * FROM agent_logs WHERE datetime(created_at) > datetime(?) ORDER BY created_at DESC LIMIT 1000"
+    ),
+    search: prepare(
+      "SELECT * FROM agent_logs WHERE action LIKE ? OR details LIKE ? ORDER BY created_at DESC LIMIT ?"
+    ),
   },
   channelLogs: {
     add: prepare(
@@ -725,6 +737,12 @@ const stmts = {
       "SELECT * FROM channel_logs WHERE channel_type = ? AND channel_id = ? ORDER BY created_at DESC LIMIT 1000"
     ),
     list: prepare("SELECT * FROM channel_logs ORDER BY created_at DESC LIMIT 1000"),
+    listSince: prepare(
+      "SELECT * FROM channel_logs WHERE datetime(created_at) > datetime(?) ORDER BY created_at DESC LIMIT 1000"
+    ),
+    search: prepare(
+      "SELECT * FROM channel_logs WHERE content LIKE ? ORDER BY created_at DESC LIMIT ?"
+    ),
   },
   metrics: {
     add: prepare("INSERT INTO metrics (id, type, key, value, metadata) VALUES (?, ?, ?, ?, ?)"),
@@ -1123,6 +1141,7 @@ export const tables = {
         msg.created_at || null
       ),
     list: () => stmts.sessionMessages?.list.all() || [],
+    listSince: (since: string) => stmts.sessionMessages?.listSince.all(since) || [],
     recentByRole: (role: string, limit = 600): Array<{ role: string; content: string }> =>
       (stmts.sessionMessages?.recentByRole.all(role, limit) || []) as Array<{
         role: string;
@@ -1137,6 +1156,7 @@ export const tables = {
     getByLevel: (level: string) => stmts.systemLogs?.getByLevel.all(level) || [],
     getBySource: (source: string) => stmts.systemLogs?.getBySource.all(source) || [],
     list: () => stmts.systemLogs?.list.all() || [],
+    listSince: (since: string) => stmts.systemLogs?.listSince.all(since) || [],
     search: (query: string, limit = 100) => stmts.systemLogs?.search.all(`%${query}%`, limit) || [],
   },
   agentLogs: {
@@ -1156,6 +1176,9 @@ export const tables = {
       ),
     getByAgent: (agentId: string) => stmts.agentLogs?.getByAgent.all(agentId) || [],
     list: () => stmts.agentLogs?.list.all() || [],
+    listSince: (since: string) => stmts.agentLogs?.listSince.all(since) || [],
+    search: (query: string, limit = 100) =>
+      stmts.agentLogs?.search.all(`%${query}%`, `%${query}%`, limit) || [],
   },
   channelLogs: {
     add: (log: {
@@ -1179,6 +1202,9 @@ export const tables = {
     getByChannel: (channelType: string, channelId: string) =>
       stmts.channelLogs?.getByChannel.all(channelType, channelId) || [],
     list: () => stmts.channelLogs?.list.all() || [],
+    listSince: (since: string) => stmts.channelLogs?.listSince.all(since) || [],
+    search: (query: string, limit = 100) =>
+      stmts.channelLogs?.search.all(`%${query}%`, limit) || [],
   },
   metrics: {
     add: (m: { id: string; type: string; key: string; value: number; metadata?: string }) => {

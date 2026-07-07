@@ -141,6 +141,45 @@ export interface ChatResponse {
   tool_calls?: ToolCallInfo[];
 }
 
+export function buildChatExecutionMessagesForAgent(
+  sessionMessages: ChatMessage[],
+  options?: { sessionId?: string; materializedSteeringTurn?: boolean }
+): AgentMessage[] {
+  const executionMessages: AgentMessage[] = sessionMessages.map((sessionMessage) => ({
+    role: sessionMessage.role,
+    content: sessionMessage.content,
+    ...(sessionMessage.images ? { images: sessionMessage.images } : {}),
+  }));
+
+  const activeGoalLine = options?.sessionId ? getActiveGoalContextLine(options.sessionId) : null;
+  if (activeGoalLine) {
+    const goalInstruction: AgentMessage = {
+      role: "system",
+      content: activeGoalLine,
+    };
+    if (executionMessages[0]?.role === "system") {
+      executionMessages.splice(1, 0, goalInstruction);
+    } else {
+      executionMessages.unshift(goalInstruction);
+    }
+  }
+
+  if (options?.materializedSteeringTurn) {
+    const steeringInstruction: AgentMessage = {
+      role: "system",
+      content:
+        "The previous assistant turn was interrupted by user steering. Treat the latest user message as the active instruction. Do not continue abandoned earlier work unless the latest user message explicitly asks for it.",
+    };
+    if (executionMessages[0]?.role === "system") {
+      executionMessages.splice(1, 0, steeringInstruction);
+    } else {
+      executionMessages.unshift(steeringInstruction);
+    }
+  }
+
+  return executionMessages;
+}
+
 interface InMemoryChatSession {
   id: string;
   agentId: string;
@@ -1812,35 +1851,10 @@ async function handleChatTurn(
         throw new Error(`LLM circuit breaker open for provider ${provider.id}`);
       }
 
-      const executionMessages: AgentMessage[] = session.messages.map((sessionMessage) => ({
-        role: sessionMessage.role,
-        content: sessionMessage.content,
-        ...(sessionMessage.images ? { images: sessionMessage.images } : {}),
-      }));
-      const activeGoalLine = getActiveGoalContextLine(session.id);
-      if (activeGoalLine) {
-        const goalInstruction: AgentMessage = {
-          role: "system",
-          content: activeGoalLine,
-        };
-        if (executionMessages[0]?.role === "system") {
-          executionMessages.splice(1, 0, goalInstruction);
-        } else {
-          executionMessages.unshift(goalInstruction);
-        }
-      }
-      if (isMaterializedSteeringTurn) {
-        const steeringInstruction: AgentMessage = {
-          role: "system",
-          content:
-            "The previous assistant turn was interrupted by user steering. Treat the latest user message as the active instruction. Do not continue abandoned earlier work unless the latest user message explicitly asks for it.",
-        };
-        if (executionMessages[0]?.role === "system") {
-          executionMessages.splice(1, 0, steeringInstruction);
-        } else {
-          executionMessages.unshift(steeringInstruction);
-        }
-      }
+      const executionMessages = buildChatExecutionMessagesForAgent(session.messages, {
+        sessionId: session.id,
+        materializedSteeringTurn: isMaterializedSteeringTurn,
+      });
       const shouldPreferArtifacts = tools && shouldPreferArtifactsForMessage(message);
       let result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,

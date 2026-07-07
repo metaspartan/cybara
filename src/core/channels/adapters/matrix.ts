@@ -1,4 +1,6 @@
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import {
@@ -41,6 +43,7 @@ export class MatrixAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const homeserver = normalizeHomeserverUrl(
       typeof config.homeserver === "string" ? config.homeserver : ""
     );
@@ -177,6 +180,12 @@ export class MatrixAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("matrix", "incoming", body, { channelId, senderId: sender });
+
+    const access = evaluateChannelAccess(channelId, String(sender), "matrix");
+    if (!access.permitted) {
+      if (access.reply) await this.sendMessage(channelId, roomId, access.reply);
+      return;
+    }
 
     let response: string;
     try {

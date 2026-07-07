@@ -58,11 +58,23 @@ export function jsonRpcError(
   };
 }
 
+export interface AcpAuthMethod {
+  id: string;
+  name: string;
+  description?: string;
+}
+
+export const ACP_AUTH_METHODS: AcpAuthMethod[] = [];
+
+export function isSupportedAuthMethod(methodId: string): boolean {
+  return ACP_AUTH_METHODS.some((m) => m.id === methodId);
+}
+
 export function initializeResult() {
   return {
     protocolVersion: ACP_PROTOCOL_VERSION,
     agentCapabilities: AGENT_CAPABILITIES,
-    authMethods: [] as unknown[],
+    authMethods: ACP_AUTH_METHODS,
   };
 }
 

@@ -5,6 +5,8 @@ import type {
   WebhookPayload,
   WebhookResult,
 } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { constantTimeEqual } from "../constant-time";
@@ -34,6 +36,7 @@ export class GoogleChatAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const webhookUrl = typeof config.webhook_url === "string" ? config.webhook_url.trim() : "";
     if (!webhookUrl) throw new Error("Google Chat: webhook_url is required");
     this.configs.set(channelId, {
@@ -105,6 +108,9 @@ export class GoogleChatAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("googlechat", "incoming", text, { channelId, senderId: sender });
+
+    const access = evaluateChannelAccess(channelId, String(sender), "googlechat");
+    if (!access.permitted) return access.reply ?? null;
 
     let response: string;
     try {

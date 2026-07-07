@@ -1,4 +1,6 @@
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { parseMattermostEvent, websocketUrl } from "../mattermost-events";
@@ -34,6 +36,7 @@ export class MattermostAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const baseUrl = (typeof config.base_url === "string" ? config.base_url : "")
       .trim()
       .replace(/\/+$/, "");
@@ -145,6 +148,12 @@ export class MattermostAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("mattermost", "incoming", message, { channelId, senderId: userId });
+
+    const access = evaluateChannelAccess(channelId, String(userId), "mattermost");
+    if (!access.permitted) {
+      if (access.reply) await this.sendMessage(channelId, mmChannelId, access.reply);
+      return;
+    }
 
     let response: string;
     try {

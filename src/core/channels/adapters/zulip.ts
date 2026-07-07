@@ -5,6 +5,8 @@ import type {
   WebhookPayload,
   WebhookResult,
 } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { constantTimeEqual } from "../constant-time";
@@ -36,6 +38,7 @@ export class ZulipAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const token = typeof config.token === "string" ? config.token.trim() : "";
     if (!token) throw new Error("Zulip: token is required");
     this.configs.set(channelId, {
@@ -120,6 +123,9 @@ export class ZulipAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("zulip", "incoming", text, { channelId, senderId: sender });
+
+    const access = evaluateChannelAccess(channelId, String(sender), "zulip");
+    if (!access.permitted) return access.reply ?? null;
 
     let response: string;
     try {

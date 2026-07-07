@@ -5,6 +5,8 @@ import type {
   WebhookPayload,
   WebhookResult,
 } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { parseMsTeamsActivity, verifyMsTeamsSignature } from "../msteams-events";
@@ -33,6 +35,7 @@ export class MsTeamsAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const securityToken =
       typeof config.security_token === "string" ? config.security_token.trim() : "";
     if (!securityToken) throw new Error("Microsoft Teams: security_token is required");
@@ -109,6 +112,9 @@ export class MsTeamsAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("msteams", "incoming", text, { channelId, senderId: sender });
+
+    const access = evaluateChannelAccess(channelId, String(sender), "msteams");
+    if (!access.permitted) return access.reply ?? null;
 
     let response: string;
     try {

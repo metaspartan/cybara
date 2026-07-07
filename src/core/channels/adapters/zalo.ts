@@ -5,6 +5,8 @@ import type {
   WebhookPayload,
   WebhookResult,
 } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { parseZaloEvent, verifyZaloMac } from "../zalo-events";
@@ -36,6 +38,7 @@ export class ZaloAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const accessToken = typeof config.access_token === "string" ? config.access_token.trim() : "";
     if (!accessToken) throw new Error("Zalo: access_token is required");
     this.configs.set(channelId, {
@@ -104,6 +107,12 @@ export class ZaloAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("zalo", "incoming", text, { channelId, senderId });
+
+    const access = evaluateChannelAccess(channelId, String(senderId), "zalo");
+    if (!access.permitted) {
+      if (access.reply) await this.sendMessage(channelId, senderId, access.reply);
+      return;
+    }
 
     let response: string;
     try {

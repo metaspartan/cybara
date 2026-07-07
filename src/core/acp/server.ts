@@ -9,6 +9,7 @@ import {
   agentMessageChunk,
   promptResult,
   extractPromptText,
+  isSupportedAuthMethod,
   type JsonRpcRequest,
   type JsonRpcResponse,
 } from "./protocol";
@@ -35,9 +36,18 @@ export function createAcpDispatcher(deps: AcpDeps): (line: string) => Promise<vo
           deps.write(jsonRpcResult(req.id, initializeResult()));
           return;
 
-        case "authenticate":
+        case "authenticate": {
+          const authParams = req.params as { methodId?: string } | undefined;
+          const methodId = authParams?.methodId;
+          if (methodId && !isSupportedAuthMethod(methodId)) {
+            deps.write(
+              jsonRpcError(req.id, -32602, `Unsupported authentication method: ${methodId}`)
+            );
+            return;
+          }
           deps.write(jsonRpcResult(req.id, {}));
           return;
+        }
 
         case "session/new": {
           const agentId = deps.resolveAgentId();

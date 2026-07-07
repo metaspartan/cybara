@@ -60,7 +60,6 @@ export function LiquidGlass({
 
   return (
     <BlurView
-      blurMethod="dimezisBlurViewSdk31Plus"
       intensity={intensity}
       tint={scheme === "light" ? "light" : "dark"}
       style={[styles.base, styles.fallbackBorder, style]}

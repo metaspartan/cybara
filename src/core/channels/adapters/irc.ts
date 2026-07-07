@@ -1,4 +1,6 @@
 import { connect as tlsConnect, type TLSSocket } from "tls";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { createConnection, type Socket } from "net";
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
@@ -40,6 +42,7 @@ export class IrcAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const server = typeof config.server === "string" ? config.server.trim() : "";
     const nick = typeof config.nick === "string" ? config.nick.trim() : "";
     if (!server || !nick) throw new Error("IRC: server and nick are required");
@@ -175,6 +178,12 @@ export class IrcAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("irc", "incoming", text, { channelId, senderId: senderNick });
+
+    const access = evaluateChannelAccess(channelId, String(senderNick), "irc");
+    if (!access.permitted) {
+      if (access.reply) await this.sendMessage(channelId, replyTarget, access.reply);
+      return;
+    }
 
     let response: string;
     try {

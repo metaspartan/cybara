@@ -5,6 +5,8 @@ import type {
   WebhookPayload,
   WebhookResult,
 } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { parseDingTalkMessage, verifyDingTalkSignature } from "../dingtalk-events";
@@ -33,6 +35,7 @@ export class DingTalkAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const appSecret = typeof config.app_secret === "string" ? config.app_secret.trim() : "";
     if (!appSecret) throw new Error("DingTalk: app_secret is required");
     this.configs.set(channelId, { appSecret });
@@ -102,6 +105,12 @@ export class DingTalkAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("dingtalk", "incoming", text, { channelId, senderId: sender });
+
+    const access = evaluateChannelAccess(channelId, String(sender), "dingtalk");
+    if (!access.permitted) {
+      if (access.reply) await this.sendMessage(channelId, conversationId, access.reply);
+      return;
+    }
 
     let response: string;
     try {

@@ -102,6 +102,22 @@ describe("ACP dispatcher", () => {
     expect((out[0] as JsonRpcResponse).error?.code).toBe(-32603);
   });
 
+  test("authenticate with no methodId succeeds (no auth required over stdio)", async () => {
+    const { out, dispatch } = harness();
+    await dispatch('{"jsonrpc":"2.0","id":5,"method":"authenticate"}');
+    const res = out[0] as JsonRpcResponse;
+    expect(res.error).toBeUndefined();
+    expect(res.result).toEqual({});
+  });
+
+  test("authenticate with an unsupported methodId is rejected", async () => {
+    const { out, dispatch } = harness();
+    await dispatch(
+      '{"jsonrpc":"2.0","id":6,"method":"authenticate","params":{"methodId":"oauth"}}'
+    );
+    expect((out[0] as JsonRpcResponse).error?.code).toBe(-32602);
+  });
+
   test("unknown method returns method-not-found; notifications are ignored", async () => {
     const { out, dispatch } = harness();
     await dispatch('{"jsonrpc":"2.0","id":7,"method":"bogus"}');

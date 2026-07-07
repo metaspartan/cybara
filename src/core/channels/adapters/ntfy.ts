@@ -1,4 +1,6 @@
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 
@@ -53,6 +55,7 @@ export class NtfyAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const topic = typeof config.topic === "string" ? config.topic.trim() : "";
     if (!topic) throw new Error("ntfy: topic is required");
     const server = (typeof config.server === "string" && config.server.trim()) || "https://ntfy.sh";
@@ -162,6 +165,12 @@ export class NtfyAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("ntfy", "incoming", event.message, { channelId });
+
+    const access = evaluateChannelAccess(channelId, String(topic), "ntfy");
+    if (!access.permitted) {
+      if (access.reply) await this.sendMessage(channelId, topic, access.reply);
+      return;
+    }
 
     let response: string;
     try {

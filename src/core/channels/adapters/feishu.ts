@@ -5,6 +5,8 @@ import type {
   WebhookPayload,
   WebhookResult,
 } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { constantTimeEqual } from "../constant-time";
@@ -48,6 +50,7 @@ export class FeishuAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const appId = typeof config.app_id === "string" ? config.app_id.trim() : "";
     const appSecret = typeof config.app_secret === "string" ? config.app_secret.trim() : "";
     if (!appId || !appSecret) throw new Error("Feishu: app_id and app_secret are required");
@@ -184,6 +187,12 @@ export class FeishuAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("feishu", "incoming", text, { channelId, senderId: sender });
+
+    const access = evaluateChannelAccess(channelId, String(sender), "feishu");
+    if (!access.permitted) {
+      if (access.reply) await this.sendMessage(channelId, chatId, access.reply);
+      return;
+    }
 
     let response: string;
     try {

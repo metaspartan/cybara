@@ -5,6 +5,8 @@ import type {
   WebhookPayload,
   WebhookResult,
 } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import {
@@ -47,6 +49,7 @@ export class WeComAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const token = typeof config.token === "string" ? config.token.trim() : "";
     const encodingAesKey =
       typeof config.encoding_aes_key === "string" ? config.encoding_aes_key.trim() : "";
@@ -166,6 +169,12 @@ export class WeComAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("wecom", "incoming", text, { channelId, senderId: userId });
+
+    const access = evaluateChannelAccess(channelId, String(userId), "wecom");
+    if (!access.permitted) {
+      if (access.reply) await this.sendMessage(channelId, userId, access.reply);
+      return;
+    }
 
     let response: string;
     try {

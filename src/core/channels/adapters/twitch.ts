@@ -1,4 +1,6 @@
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { parseIrcLine, parsePrivmsg, isPing } from "../irc-protocol";
@@ -35,6 +37,7 @@ export class TwitchAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const username = (typeof config.username === "string" ? config.username : "")
       .trim()
       .toLowerCase();
@@ -153,6 +156,12 @@ export class TwitchAdapter implements ChannelAdapter {
     }
 
     await logChannelMessage("twitch", "incoming", text, { channelId, senderId: senderNick });
+
+    const access = evaluateChannelAccess(channelId, String(senderNick), "twitch");
+    if (!access.permitted) {
+      if (access.reply) await this.sendMessage(channelId, target, access.reply);
+      return;
+    }
 
     let response: string;
     try {

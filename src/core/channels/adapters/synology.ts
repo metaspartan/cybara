@@ -5,6 +5,8 @@ import type {
   WebhookPayload,
   WebhookResult,
 } from "../types";
+import { evaluateChannelAccess } from "../access-gate";
+import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { constantTimeEqual } from "../constant-time";
@@ -34,6 +36,7 @@ export class SynologyAdapter implements ChannelAdapter {
   }
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
+    securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const incomingUrl = typeof config.incoming_url === "string" ? config.incoming_url.trim() : "";
     const token = typeof config.token === "string" ? config.token.trim() : "";
     if (!incomingUrl || !token)
@@ -104,6 +107,9 @@ export class SynologyAdapter implements ChannelAdapter {
       channelId,
       senderId: username || userId,
     });
+
+    const access = evaluateChannelAccess(channelId, String(userId), "synology", username);
+    if (!access.permitted) return access.reply ?? null;
 
     let response: string;
     try {
