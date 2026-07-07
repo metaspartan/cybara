@@ -35,6 +35,12 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain("./gradlew bundleRelease assembleRelease");
     expect(workflow).toContain("./gradlew assembleDebug");
     expect(workflow).toContain("packageName: com.ck.cybara");
+    expect(workflow).toContain(
+      "GOOGLE_PLAY_PUBLISH_CONFIGURED: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}"
+    );
+    expect(workflow).toContain(
+      "if: steps.build.outputs.aab != '' && env.GOOGLE_PLAY_PUBLISH_CONFIGURED == 'true'"
+    );
 
     expect(workflow).toContain("build-ios:");
     expect(workflow).toContain("name: iOS build");
@@ -104,23 +110,34 @@ describe("app release surface wiring", () => {
         name?: string;
         slug?: string;
         scheme?: string;
+        version?: string;
         newArchEnabled?: boolean;
         ios?: { bundleIdentifier?: string };
-        android?: { package?: string };
+        android?: { package?: string; versionCode?: number };
         extra?: { gatewayContract?: string };
       };
     };
+    const rootPkg = JSON.parse(read("package.json")) as { version?: string };
     const mobilePkg = JSON.parse(read("apps/mobile/package.json")) as {
       scripts?: Record<string, string>;
       dependencies?: Record<string, string>;
     };
+    const versionParts = (rootPkg.version || "")
+      .split(".")
+      .map((part) => Number(part))
+      .filter((part) => Number.isFinite(part));
+    expect(versionParts).toHaveLength(3);
+    const expectedVersionCode =
+      versionParts[0] * 1_000_000 + versionParts[1] * 10_000 + versionParts[2];
 
     expect(appJson.expo?.name).toBe("Cybara");
     expect(appJson.expo?.slug).toBe("cybara-mobile");
+    expect(appJson.expo?.version).toBe(rootPkg.version);
     expect(appJson.expo?.scheme).toBe("cybara");
     expect(appJson.expo?.newArchEnabled).toBe(true);
     expect(appJson.expo?.ios?.bundleIdentifier).toBe("com.ck.cybara");
     expect(appJson.expo?.android?.package).toBe("com.ck.cybara");
+    expect(appJson.expo?.android?.versionCode).toBe(expectedVersionCode);
     expect(appJson.expo?.extra?.gatewayContract).toBe("cybara-mobile-connect-v1");
 
     expect(mobilePkg.scripts?.ios).toBe("bunx expo start --ios");

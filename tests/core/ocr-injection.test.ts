@@ -37,8 +37,8 @@ describe("OCR AppleScript/python injection", () => {
   );
 
   test("missing file is rejected before any spawn", async () => {
-    await expect(
-      handleOcr({ path: "/nonexistent/definitely/not/here.png" })
-    ).rejects.toThrow(/not found/i);
+    await expect(handleOcr({ path: "/nonexistent/definitely/not/here.png" })).rejects.toThrow(
+      /not found/i
+    );
   });
 });

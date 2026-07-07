@@ -197,7 +197,6 @@ import { setOAuthCallback, deleteOAuthCallback, consumeOAuthCallback } from "./o
 
 const log = createLogger("API");
 
-
 function validateProviderCredentialShape(
   providerType: string,
   credentials: { apiKey?: string; accessToken?: string }

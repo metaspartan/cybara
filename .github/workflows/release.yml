@@ -451,6 +451,7 @@ jobs:
     env:
       CYBARA_RELEASE_VERSION: ${{ github.ref_name }}
       EXPO_NO_TELEMETRY: "1"
+      GOOGLE_PLAY_PUBLISH_CONFIGURED: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -528,9 +529,7 @@ jobs:
       # Publishes the signed AAB to the Play Console internal track when a
       # service-account key is configured. No-op otherwise.
       - name: Publish to Google Play
-        if: steps.build.outputs.aab != '' && env.PLAY_SA != ''
-        env:
-          PLAY_SA: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+        if: steps.build.outputs.aab != '' && env.GOOGLE_PLAY_PUBLISH_CONFIGURED == 'true'
         uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}

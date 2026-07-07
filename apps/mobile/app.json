@@ -2,7 +2,7 @@
   "expo": {
     "name": "Cybara",
     "slug": "cybara-mobile",
-    "version": "1.0.330",
+    "version": "1.0.858",
     "orientation": "portrait",
     "scheme": "cybara",
     "icon": "./assets/cybara.png",
@@ -22,7 +22,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/cybara.png",
         "backgroundColor": "#071016"
-      }
+      },
+      "versionCode": 1000858
     },
     "plugins": [
       [
