@@ -37,14 +37,13 @@ public enum SidecarCore {
         return normalized.contains("\"status\":\"healthy\"")
     }
 
-    /// Environment for the spawned sidecar: inherits the parent env and pins the
-    /// loopback host + native-app markers.
+    /// Environment for the spawned sidecar: inherits the parent env and lets the
+    /// gateway config choose the secure loopback host by default.
     public static func launchEnvironment(
         base: [String: String], port: Int, resourceDirectory: String? = nil
     ) -> [String: String] {
         var environment = base
         environment["PORT"] = String(port)
-        environment["CYBARA_HOST"] = "127.0.0.1"
         environment["CYBARA_NATIVE_APP"] = "1"
         environment["CYBARA_NATIVE_PORT"] = String(port)
         if let resourceDirectory, !resourceDirectory.isEmpty {

@@ -142,7 +142,6 @@ fn main() {
                 sidecar = sidecar.env("CYBARA_RESOURCE_DIR", resource_dir.to_string_lossy().to_string());
             }
             let (mut rx, child) = sidecar
-                .env("CYBARA_HOST", "127.0.0.1")
                 .args(["start"])
                 .spawn()
                 .expect("Failed to spawn Cybara sidecar");

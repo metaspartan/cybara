@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/Badge";
 import { PageLayout } from "@/components/layout";
 import { GatewayPathSettingsSection } from "@/components/settings/GatewayPathSettingsSection";
+import { SettingsNavigation } from "@/components/settings/SettingsNavigation";
 import {
   useHealth,
   useInfo,
@@ -72,6 +73,7 @@ import {
   type ThemeAccent,
   type ThemeMode,
 } from "@/stores/uiStore";
+import { resolveSettingsSectionId, type SettingsSectionId } from "@/lib/settingsNavigation";
 import {
   Activity,
   AlertTriangle,
@@ -544,32 +546,6 @@ function DesktopUpdateSettings({
 }
 
 type SandboxProviderOption = "auto" | "apple_sandbox" | "podman" | "docker";
-type SettingsSectionId =
-  | "general"
-  | "ai-memory"
-  | "voice"
-  | "wallet"
-  | "auth"
-  | "migration"
-  | "safety"
-  | "desktop"
-  | "system";
-
-const settingsSections: Array<{ id: SettingsSectionId; label: string }> = [
-  { id: "general", label: "General" },
-  { id: "ai-memory", label: "AI & Memory" },
-  { id: "voice", label: "Voice" },
-  { id: "wallet", label: "Wallet" },
-  { id: "auth", label: "Auth" },
-  { id: "migration", label: "Migration" },
-  { id: "safety", label: "Safety" },
-  { id: "desktop", label: "Desktop" },
-  { id: "system", label: "System" },
-];
-
-function isSettingsSectionId(value: string | null): value is SettingsSectionId {
-  return settingsSections.some((section) => section.id === value);
-}
 
 interface SandboxStatusView {
   enabled: boolean;
@@ -4153,14 +4129,14 @@ function GatewayAuthSettingsSection() {
               label="Listen on local network"
               description="Allow phones and trusted devices on this Wi-Fi to reach the gateway. Remote devices still need a valid token."
               checked={lanHostEnabled}
-              disabled={controlsDisabled || Boolean(settings?.hostForced) || applyingHost}
+              disabled={controlsDisabled || applyingHost}
               onChange={(checked) => void handleToggleLanAccess(checked)}
             />
             <p className="mt-3 text-xs text-gray-500">
               Current listener: <span className="font-mono">{settings?.host || "unknown"}</span>.
               {applyingHost ? " Applying network change…" : ""}
               {settings?.hostForced
-                ? " Forced by CYBARA_HOST or the --expose launch flag."
+                ? " Launch default came from CYBARA_HOST or --expose; this toggle can still rebind the running gateway."
                 : " Keep this off on public or untrusted networks."}
             </p>
           </div>
@@ -4354,14 +4330,21 @@ export function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const sectionParam = searchParams.get("section");
   const [activeSection, setActiveSection] = useState<SettingsSectionId>(
-    isSettingsSectionId(sectionParam) ? sectionParam : "general"
+    resolveSettingsSectionId(sectionParam) ?? "general"
   );
 
   useEffect(() => {
-    if (isSettingsSectionId(sectionParam) && sectionParam !== activeSection) {
-      setActiveSection(sectionParam);
+    const resolvedSection = resolveSettingsSectionId(sectionParam);
+    if (!resolvedSection) return;
+    if (resolvedSection !== activeSection) {
+      setActiveSection(resolvedSection);
     }
-  }, [activeSection, sectionParam]);
+    if (sectionParam !== resolvedSection) {
+      setSearchParams(resolvedSection === "general" ? {} : { section: resolvedSection }, {
+        replace: true,
+      });
+    }
+  }, [activeSection, sectionParam, setSearchParams]);
 
   const selectSection = (section: SettingsSectionId) => {
     setActiveSection(section);
@@ -4412,233 +4395,227 @@ export function Settings() {
 
   return (
     <PageLayout title="Settings" subtitle="Platform configuration and system information">
-      <div className="space-y-6">
-        <div className="flex flex-wrap gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-1">
-          {settingsSections.map((section) => (
-            <button
-              key={section.id}
-              type="button"
-              onClick={() => selectSection(section.id)}
-              className={cn(
-                "rounded-lg px-3 py-2 text-sm transition-colors",
-                activeSection === section.id
-                  ? "bg-white/10 text-white"
-                  : "text-gray-400 hover:bg-white/5 hover:text-gray-200"
-              )}
-            >
-              {section.label}
-            </button>
-          ))}
-        </div>
+      <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
+        <SettingsNavigation activeSection={activeSection} onSelect={selectSection} />
 
-        {activeSection === "general" && <ThemeSettings />}
+        <div className="min-w-0 space-y-6">
+          {activeSection === "general" && <ThemeSettings />}
 
-        {activeSection === "ai-memory" && (
-          <>
-            <MemoryBehaviorSettings />
-            <LlmTimeoutSettingsSection />
-            <SystemPromptSection />
-          </>
-        )}
+          {activeSection === "gateway" && (
+            <>
+              <GatewayPathSettingsSection infoData={infoData} />
+              <GatewayAuthSettingsSection />
+              <GatewayControlSection />
+            </>
+          )}
 
-        {activeSection === "voice" && <SpeechSettingsSection />}
+          {activeSection === "ai" && (
+            <>
+              <SystemPromptSection />
+              <LlmTimeoutSettingsSection />
+            </>
+          )}
 
-        {activeSection === "wallet" && <WalletSettings />}
+          {activeSection === "memory" && <MemoryBehaviorSettings />}
 
-        {activeSection === "auth" && <GatewayAuthSettingsSection />}
+          {activeSection === "voice" && <SpeechSettingsSection />}
 
-        {activeSection === "migration" && <MigrationSettingsSection />}
+          {activeSection === "safety" && (
+            <>
+              <FeatureSettings />
+              <SandboxBrowserSettings />
+              <ComputerUseSettings />
+            </>
+          )}
 
-        {activeSection === "safety" && (
-          <>
-            <FeatureSettings />
-            <SandboxBrowserSettings />
-          </>
-        )}
+          {activeSection === "wallet" && <WalletSettings />}
 
-        {activeSection === "desktop" && <ComputerUseSettings />}
+          {activeSection === "migration" && <MigrationSettingsSection />}
 
-        {activeSection === "system" && (
-          <>
-            <GatewayPathSettingsSection infoData={infoData} />
-            <GatewayControlSection />
-            <DesktopUpdateSettings
-              currentVersion={String(infoData.version || "unknown")}
-              releaseRepositoryUrl={infoData.releaseRepositoryUrl}
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-              {stats.map((stat) => (
-                <Card key={stat.label} variant="liquid">
-                  <CardContent>
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={cn(
-                          "w-12 h-12 rounded-xl flex items-center justify-center bg-white/5",
-                          stat.color
-                        )}
-                      >
-                        <stat.icon className="w-6 h-6" />
+          {activeSection === "system" && (
+            <>
+              <DesktopUpdateSettings
+                currentVersion={String(infoData.version || "unknown")}
+                releaseRepositoryUrl={infoData.releaseRepositoryUrl}
+              />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                {stats.map((stat) => (
+                  <Card key={stat.label} variant="liquid">
+                    <CardContent>
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={cn(
+                            "w-12 h-12 rounded-xl flex items-center justify-center bg-white/5",
+                            stat.color
+                          )}
+                        >
+                          <stat.icon className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-sm text-gray-400">{stat.label}</p>
+                          <p className="text-xl font-semibold text-white capitalize">
+                            {stat.value}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm text-gray-400">{stat.label}</p>
-                        <p className="text-xl font-semibold text-white capitalize">{stat.value}</p>
-                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              <Card variant="liquid">
+                <CardHeader>
+                  <CardTitle>System Monitor</CardTitle>
+                  <CardDescription>
+                    Live host resource usage from the Cybara gateway
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="rounded-xl bg-white/5 p-4">
+                    <p className="text-sm text-gray-400">CPU</p>
+                    <p className="mt-1 text-2xl font-semibold text-white">
+                      {formatPct(systemMonitor?.cpu.usagePct)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {systemMonitor?.cpu.cores || 0} cores -{" "}
+                      {systemMonitor?.cpu.model || "Loading CPU"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white/5 p-4">
+                    <p className="text-sm text-gray-400">Memory</p>
+                    <p className="mt-1 text-2xl font-semibold text-white">
+                      {formatPct(systemMonitor?.memory.usedPct)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {formatBytes(systemMonitor?.memory.usedBytes)} /{" "}
+                      {formatBytes(systemMonitor?.memory.totalBytes)} used
+                    </p>
+                  </div>
+                  {systemMonitor?.memory.swap ? (
+                    <div className="rounded-xl bg-white/5 p-4">
+                      <p className="text-sm text-gray-400">Swap</p>
+                      <p className="mt-1 text-2xl font-semibold text-white">
+                        {formatPct(systemMonitor.memory.swap.usedPct)}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {formatBytes(systemMonitor.memory.swap.usedBytes)} /{" "}
+                        {formatBytes(systemMonitor.memory.swap.totalBytes)} used
+                      </p>
+                    </div>
+                  ) : null}
+                  <div className="rounded-xl bg-white/5 p-4">
+                    <p className="text-sm text-gray-400">Cybara process</p>
+                    <p className="mt-1 text-2xl font-semibold text-white">
+                      {formatPct(systemMonitor?.process.cpuUsagePct)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {formatBytes(systemMonitor?.process.memory.rssBytes)} RSS - PID{" "}
+                      {systemMonitor?.process.pid || "n/a"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-white/5 p-4">
+                    <p className="text-sm text-gray-400">Disk</p>
+                    <p className="mt-1 text-2xl font-semibold text-white">
+                      {formatPct(systemMonitor?.disk?.usedPct)}
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500">
+                      {systemMonitor?.disk
+                        ? `${formatStorageBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}`
+                        : "Disk telemetry unavailable"}
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card variant="liquid">
+                  <CardHeader>
+                    <CardTitle>System Information</CardTitle>
+                    <CardDescription>Platform details and version info</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex justify-between py-2 border-b border-white/10">
+                      <span className="text-gray-400">Platform Name</span>
+                      <span className="text-white">{infoData?.name || "Cybara"}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-white/10">
+                      <span className="text-gray-400">Version</span>
+                      <span className="text-white">{infoData?.version || "unknown"}</span>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-white/10">
+                      <span className="text-gray-400">Setup Complete</span>
+                      <Badge variant={infoData?.setupComplete ? "success" : "warning"}>
+                        {infoData?.setupComplete ? "Yes" : "No"}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-between py-2 border-b border-white/10">
+                      <span className="text-gray-400">Server Time</span>
+                      <span className="text-white">
+                        {healthData?.timestamp
+                          ? new Date(healthData.timestamp).toLocaleString()
+                          : "N/A"}
+                      </span>
                     </div>
                   </CardContent>
                 </Card>
-              ))}
-            </div>
 
-            <Card variant="liquid">
-              <CardHeader>
-                <CardTitle>System Monitor</CardTitle>
-                <CardDescription>Live host resource usage from the Cybara gateway</CardDescription>
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="rounded-xl bg-white/5 p-4">
-                  <p className="text-sm text-gray-400">CPU</p>
-                  <p className="mt-1 text-2xl font-semibold text-white">
-                    {formatPct(systemMonitor?.cpu.usagePct)}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {systemMonitor?.cpu.cores || 0} cores -{" "}
-                    {systemMonitor?.cpu.model || "Loading CPU"}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-white/5 p-4">
-                  <p className="text-sm text-gray-400">Memory</p>
-                  <p className="mt-1 text-2xl font-semibold text-white">
-                    {formatPct(systemMonitor?.memory.usedPct)}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {formatBytes(systemMonitor?.memory.usedBytes)} /{" "}
-                    {formatBytes(systemMonitor?.memory.totalBytes)} used
-                  </p>
-                </div>
-                {systemMonitor?.memory.swap ? (
-                  <div className="rounded-xl bg-white/5 p-4">
-                    <p className="text-sm text-gray-400">Swap</p>
-                    <p className="mt-1 text-2xl font-semibold text-white">
-                      {formatPct(systemMonitor.memory.swap.usedPct)}
-                    </p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {formatBytes(systemMonitor.memory.swap.usedBytes)} /{" "}
-                      {formatBytes(systemMonitor.memory.swap.totalBytes)} used
-                    </p>
-                  </div>
-                ) : null}
-                <div className="rounded-xl bg-white/5 p-4">
-                  <p className="text-sm text-gray-400">Cybara process</p>
-                  <p className="mt-1 text-2xl font-semibold text-white">
-                    {formatPct(systemMonitor?.process.cpuUsagePct)}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {formatBytes(systemMonitor?.process.memory.rssBytes)} RSS - PID{" "}
-                    {systemMonitor?.process.pid || "n/a"}
-                  </p>
-                </div>
-                <div className="rounded-xl bg-white/5 p-4">
-                  <p className="text-sm text-gray-400">Disk</p>
-                  <p className="mt-1 text-2xl font-semibold text-white">
-                    {formatPct(systemMonitor?.disk?.usedPct)}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {systemMonitor?.disk
-                      ? `${formatStorageBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}`
-                      : "Disk telemetry unavailable"}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+                <Card variant="liquid">
+                  <CardHeader>
+                    <CardTitle>Health Checks</CardTitle>
+                    <CardDescription>Component status overview</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {checks.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <Activity className="w-8 h-8 mx-auto mb-2" />
+                        <p>No health checks available</p>
+                      </div>
+                    ) : (
+                      checks.map(([key, value]) => {
+                        const check = getCheckStatus(value);
+                        const icons: Record<string, React.ReactNode> = {
+                          database: <Database className="w-5 h-5" />,
+                          agents: <Bot className="w-5 h-5" />,
+                          providers: <Cloud className="w-5 h-5" />,
+                          memory: <HardDrive className="w-5 h-5" />,
+                        };
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card variant="liquid">
-                <CardHeader>
-                  <CardTitle>System Information</CardTitle>
-                  <CardDescription>Platform details and version info</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex justify-between py-2 border-b border-white/10">
-                    <span className="text-gray-400">Platform Name</span>
-                    <span className="text-white">{infoData?.name || "Cybara"}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b border-white/10">
-                    <span className="text-gray-400">Version</span>
-                    <span className="text-white">{infoData?.version || "unknown"}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b border-white/10">
-                    <span className="text-gray-400">Setup Complete</span>
-                    <Badge variant={infoData?.setupComplete ? "success" : "warning"}>
-                      {infoData?.setupComplete ? "Yes" : "No"}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between py-2 border-b border-white/10">
-                    <span className="text-gray-400">Server Time</span>
-                    <span className="text-white">
-                      {healthData?.timestamp
-                        ? new Date(healthData.timestamp).toLocaleString()
-                        : "N/A"}
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card variant="liquid">
-                <CardHeader>
-                  <CardTitle>Health Checks</CardTitle>
-                  <CardDescription>Component status overview</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {checks.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">
-                      <Activity className="w-8 h-8 mx-auto mb-2" />
-                      <p>No health checks available</p>
-                    </div>
-                  ) : (
-                    checks.map(([key, value]) => {
-                      const check = getCheckStatus(value);
-                      const icons: Record<string, React.ReactNode> = {
-                        database: <Database className="w-5 h-5" />,
-                        agents: <Bot className="w-5 h-5" />,
-                        providers: <Cloud className="w-5 h-5" />,
-                        memory: <HardDrive className="w-5 h-5" />,
-                      };
-
-                      return (
-                        <div
-                          key={key}
-                          className="flex items-center justify-between p-3 rounded-xl bg-white/5"
-                        >
-                          <div className="flex items-center gap-3">
-                            <div
-                              className={cn(
-                                "w-10 h-10 rounded-lg flex items-center justify-center",
-                                check.status === "healthy"
-                                  ? "bg-emerald-500/20 text-emerald-400"
-                                  : "bg-red-500/20 text-red-400"
-                              )}
-                            >
-                              {icons[key] || <Server className="w-5 h-5" />}
+                        return (
+                          <div
+                            key={key}
+                            className="flex items-center justify-between p-3 rounded-xl bg-white/5"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div
+                                className={cn(
+                                  "w-10 h-10 rounded-lg flex items-center justify-center",
+                                  check.status === "healthy"
+                                    ? "bg-emerald-500/20 text-emerald-400"
+                                    : "bg-red-500/20 text-red-400"
+                                )}
+                              >
+                                {icons[key] || <Server className="w-5 h-5" />}
+                              </div>
+                              <div>
+                                <span className="text-white capitalize">{key}</span>
+                                {check.details && (
+                                  <p className="text-xs text-gray-500">{check.details}</p>
+                                )}
+                              </div>
                             </div>
-                            <div>
-                              <span className="text-white capitalize">{key}</span>
-                              {check.details && (
-                                <p className="text-xs text-gray-500">{check.details}</p>
-                              )}
-                            </div>
+                            <Badge variant={check.status === "healthy" ? "success" : "error"}>
+                              {check.status}
+                            </Badge>
                           </div>
-                          <Badge variant={check.status === "healthy" ? "success" : "error"}>
-                            {check.status}
-                          </Badge>
-                        </div>
-                      );
-                    })
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </>
-        )}
+                        );
+                      })
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
+        </div>
       </div>
     </PageLayout>
   );

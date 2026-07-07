@@ -3,11 +3,18 @@ import {
   normalizeGatewayBindHost,
   requestGatewayHostApply,
   setGatewayHostApplyHandler,
+  updateGatewayHostSetting,
 } from "../../src/api/gateway-network";
+import { config } from "../../src/core/config";
+
+const originalCybaraHost = process.env.CYBARA_HOST;
 
 describe("gateway network settings", () => {
   afterEach(() => {
     setGatewayHostApplyHandler(null);
+    config.set("host", "127.0.0.1");
+    if (originalCybaraHost === undefined) delete process.env.CYBARA_HOST;
+    else process.env.CYBARA_HOST = originalCybaraHost;
   });
 
   test("normalizes safe bind hosts and rejects URLs", () => {
@@ -30,5 +37,17 @@ describe("gateway network settings", () => {
 
   test("reports unavailable runtime apply handler", () => {
     expect(requestGatewayHostApply("0.0.0.0")).toMatchObject({ scheduled: false });
+  });
+
+  test("allows Settings to rebind the running gateway even when launched with CYBARA_HOST", () => {
+    const requested: string[] = [];
+    process.env.CYBARA_HOST = "127.0.0.1";
+    setGatewayHostApplyHandler((host) => {
+      requested.push(host);
+    });
+
+    expect(updateGatewayHostSetting("0.0.0.0", true)).toEqual({ hostApplyScheduled: true });
+    expect(config.get("host")).toBe("0.0.0.0");
+    expect(requested).toEqual(["0.0.0.0"]);
   });
 });

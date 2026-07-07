@@ -156,6 +156,7 @@ import {
   MOBILE_SETTINGS_DETAIL_CHROME,
   MOBILE_SETTINGS_ROOT_CHROME,
   MOBILE_SETTINGS_SURFACES,
+  MOBILE_SETTINGS_TABS,
   MOBILE_SYSTEM_PROMPT_FEATURE_KEYS,
   MOBILE_TABS,
   boundedMobileComposerHeight,
@@ -183,6 +184,7 @@ import {
   readMobileToolApprovalMode,
   summarizeFeatureCounts,
   type FeatureCounts,
+  type MobileSettingsTab,
   type MobileSurfaceKey,
   type MobileTabKey,
 } from "../lib/dashboard";
@@ -230,15 +232,6 @@ import {
   type MobileSpeechSettings,
 } from "./dashboardHelpers";
 
-type MobileSettingsTab = "gateway" | "appearance" | "assistant" | "safety" | "more";
-
-const mobileSettingsTabOptions: Array<{ label: string; value: MobileSettingsTab }> = [
-  { label: "Gateway", value: "gateway" },
-  { label: "Look", value: "appearance" },
-  { label: "AI", value: "assistant" },
-  { label: "Safety", value: "safety" },
-  { label: "More", value: "more" },
-];
 import { ChatMessageRow } from "./dashboardChat";
 import {
   clearCachedMobileLiveAssistant,
@@ -3709,10 +3702,12 @@ function SettingsPanel({
 }) {
   const counts = summarizeFeatureCounts(summary);
   const { mode: appearanceMode, setMode: setAppearanceMode } = useThemeControls();
-  const [selectedSettingsTab, setSelectedSettingsTab] = useState<MobileSettingsTab>("gateway");
+  const [selectedSettingsTab, setSelectedSettingsTab] = useState<MobileSettingsTab>("general");
   const [savingAccent, setSavingAccent] = useState<AccentKey | null>(null);
   const [savingConfigKey, setSavingConfigKey] = useState<string | null>(null);
   const [savingAgentAccess, setSavingAgentAccess] = useState(false);
+  const walletMeta = surfaceMeta.wallet;
+  const WalletIcon = walletMeta.Icon;
   const configAvailable = summary?.availability.config.ok === true;
   const systemPromptAvailable =
     summary?.availability.systemPrompt.ok === true && Boolean(summary.systemPrompt);
@@ -3746,11 +3741,14 @@ function SettingsPanel({
   const walletStatus = objectRecord(summary?.walletStatus);
   const walletStatusAvailable = Boolean(walletStatus);
   const agentAccessEnabled = booleanSetting(walletStatus, "agentAccessEnabled");
+  const showGeneralSettings = selectedSettingsTab === "general";
   const showGatewaySettings = selectedSettingsTab === "gateway";
-  const showAppearanceSettings = selectedSettingsTab === "appearance";
-  const showAssistantSettings = selectedSettingsTab === "assistant";
+  const showAiSettings = selectedSettingsTab === "ai";
+  const showMemorySettings = selectedSettingsTab === "memory";
+  const showVoiceSettings = selectedSettingsTab === "voice";
   const showSafetySettings = selectedSettingsTab === "safety";
-  const showMoreSettings = selectedSettingsTab === "more";
+  const showWalletSettings = selectedSettingsTab === "wallet";
+  const showSystemSettings = selectedSettingsTab === "system";
 
   const saveConfigPatch = async (
     key: string,
@@ -3815,22 +3813,16 @@ function SettingsPanel({
       <View style={styles.settingsNativePage}>
         <SettingsSection title="Settings">
           <SettingSelector
-            label="Section"
+            label="Category"
             onSelect={(value) => {
-              if (
-                value === "gateway" ||
-                value === "appearance" ||
-                value === "assistant" ||
-                value === "safety" ||
-                value === "more"
-              ) {
-                setSelectedSettingsTab(value);
+              if (MOBILE_SETTINGS_TABS.some((option) => option.value === value)) {
+                setSelectedSettingsTab(value as MobileSettingsTab);
               }
             }}
-            options={mobileSettingsTabOptions}
+            options={MOBILE_SETTINGS_TABS}
             selected={selectedSettingsTab}
             tone={accentColor}
-            variant="segmented"
+            variant="menu"
           />
         </SettingsSection>
         {showGatewaySettings && MOBILE_SETTINGS_ROOT_CHROME.gatewayConnectionDetails ? (
@@ -3867,7 +3859,7 @@ function SettingsPanel({
             </View>
           </View>
         ) : null}
-        {showAppearanceSettings ? (
+        {showGeneralSettings ? (
           <>
             <SettingsSection title="Appearance">
               <SettingSelector
@@ -3990,26 +3982,6 @@ function SettingsPanel({
                       { label: "Ask Me", value: "ask" },
                     ]}
                     selected={toolApprovalMode}
-                    tone={accentColor}
-                    variant="menu"
-                  />
-                ) : null}
-                {MOBILE_SETTINGS_ROOT_CHROME.reasoningEffortSelector ? (
-                  <SettingSelector
-                    disabled={savingConfigKey !== null}
-                    label="Reasoning effort"
-                    onSelect={(value) => {
-                      void saveConfigPatch(
-                        "reasoning_effort",
-                        { reasoning_effort: value },
-                        "Reasoning effort setting failed"
-                      );
-                    }}
-                    options={MOBILE_REASONING_EFFORT_OPTIONS.map((option) => ({
-                      label: option.label,
-                      value: option.value,
-                    }))}
-                    selected={reasoningEffort}
                     tone={accentColor}
                     variant="menu"
                   />
@@ -4143,19 +4115,6 @@ function SettingsPanel({
                     ) : null}
                   </>
                 ) : null}
-                {MOBILE_SETTINGS_ROOT_CHROME.walletAccessShortcut ? (
-                  <SettingToggle
-                    busy={savingAgentAccess}
-                    detail="Master switch for agent-initiated wallet actions."
-                    disabled={!walletStatusAvailable || savingAgentAccess}
-                    label="Agent wallet access"
-                    onPress={() => {
-                      void toggleAgentAccess();
-                    }}
-                    tone={accentColor}
-                    value={agentAccessEnabled}
-                  />
-                ) : null}
               </>
             ) : !summary ? (
               <LoadingState label="Loading settings" detail="Fetching config from the gateway." />
@@ -4170,8 +4129,28 @@ function SettingsPanel({
             )}
           </SettingsSection>
         ) : null}
-        {showAssistantSettings ? (
-          <SettingsSection title="Assistant">
+        {showAiSettings ? (
+          <SettingsSection title="AI">
+            {configAvailable && MOBILE_SETTINGS_ROOT_CHROME.reasoningEffortSelector ? (
+              <SettingSelector
+                disabled={savingConfigKey !== null}
+                label="Reasoning effort"
+                onSelect={(value) => {
+                  void saveConfigPatch(
+                    "reasoning_effort",
+                    { reasoning_effort: value },
+                    "Reasoning effort setting failed"
+                  );
+                }}
+                options={MOBILE_REASONING_EFFORT_OPTIONS.map((option) => ({
+                  label: option.label,
+                  value: option.value,
+                }))}
+                selected={reasoningEffort}
+                tone={accentColor}
+                variant="menu"
+              />
+            ) : null}
             <Pressable
               accessibilityRole="button"
               style={styles.settingsNavigationRow}
@@ -4194,6 +4173,30 @@ function SettingsPanel({
               </View>
               <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
             </Pressable>
+            {MOBILE_SETTINGS_ROOT_CHROME.modelRouterControls ? (
+              <Pressable
+                accessibilityRole="button"
+                style={styles.settingsNavigationRow}
+                onPress={openModelRouter}
+              >
+                <View
+                  style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}
+                >
+                  <Network color={accentColor} size={20} strokeWidth={2.1} />
+                </View>
+                <View style={styles.listText}>
+                  <Text style={styles.listTitle}>Model Router</Text>
+                  <Text style={styles.listDetail} numberOfLines={1}>
+                    Provider routing, fallback, and spend caps
+                  </Text>
+                </View>
+                <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+              </Pressable>
+            ) : null}
+          </SettingsSection>
+        ) : null}
+        {showMemorySettings ? (
+          <SettingsSection title="Memory">
             <Pressable
               accessibilityRole="button"
               style={styles.settingsNavigationRow}
@@ -4232,30 +4235,10 @@ function SettingsPanel({
               </View>
               <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
             </Pressable>
-            {MOBILE_SETTINGS_ROOT_CHROME.modelRouterControls ? (
-              <Pressable
-                accessibilityRole="button"
-                style={styles.settingsNavigationRow}
-                onPress={openModelRouter}
-              >
-                <View
-                  style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}
-                >
-                  <Network color={accentColor} size={20} strokeWidth={2.1} />
-                </View>
-                <View style={styles.listText}>
-                  <Text style={styles.listTitle}>Model Router</Text>
-                  <Text style={styles.listDetail} numberOfLines={1}>
-                    Provider routing, fallback, and spend caps
-                  </Text>
-                </View>
-                <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
-              </Pressable>
-            ) : null}
           </SettingsSection>
         ) : null}
-        {showAssistantSettings && MOBILE_SETTINGS_ROOT_CHROME.speechControls ? (
-          <SettingsSection title="Voice & Speech">
+        {showVoiceSettings && MOBILE_SETTINGS_ROOT_CHROME.speechControls ? (
+          <SettingsSection title="Voice">
             <Pressable
               accessibilityRole="button"
               style={styles.settingsNavigationRow}
@@ -4297,9 +4280,49 @@ function SettingsPanel({
             onProfileUpdated={onProfileUpdated}
           />
         ) : null}
-        {showMoreSettings ? (
-          <SettingsSection title="Gateway management">
-            {MOBILE_SETTINGS_SURFACES.map((surface) => {
+        {showWalletSettings ? (
+          <SettingsSection title="Wallet">
+            {MOBILE_SETTINGS_ROOT_CHROME.walletAccessShortcut ? (
+              <SettingToggle
+                busy={savingAgentAccess}
+                detail="Master switch for agent-initiated wallet actions."
+                disabled={!walletStatusAvailable || savingAgentAccess}
+                label="Agent wallet access"
+                onPress={() => {
+                  void toggleAgentAccess();
+                }}
+                tone={accentColor}
+                value={agentAccessEnabled}
+              />
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              style={styles.settingsNavigationRow}
+              onPress={() => openSurface("wallet")}
+            >
+              <View
+                style={[styles.settingsNavigationIcon, { backgroundColor: `${walletMeta.tone}18` }]}
+              >
+                <WalletIcon color={walletMeta.tone} size={20} strokeWidth={2.1} />
+              </View>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>{walletMeta.title}</Text>
+                <Text style={styles.listDetail} numberOfLines={1}>
+                  {surfaceMenuDetail(
+                    "wallet",
+                    summary,
+                    counts,
+                    surfaceRows("wallet", summary).length
+                  )}
+                </Text>
+              </View>
+              <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+            </Pressable>
+          </SettingsSection>
+        ) : null}
+        {showSystemSettings ? (
+          <SettingsSection title="System">
+            {MOBILE_SETTINGS_SURFACES.filter((surface) => surface !== "wallet").map((surface) => {
               const meta = surfaceMeta[surface];
               const Icon = meta.Icon;
               const rows = surfaceRows(surface, summary);
@@ -4326,7 +4349,7 @@ function SettingsPanel({
             })}
           </SettingsSection>
         ) : null}
-        {showMoreSettings ? (
+        {showSystemSettings ? (
           <View style={styles.settingsSection}>
             <Pressable
               accessibilityRole="button"

@@ -8,6 +8,8 @@ import type {
 import type { GatewayProfile } from "./connection";
 
 export type MobileTabKey = "overview" | "sessions" | "metrics" | "tasks" | "settings";
+export type MobileSettingsTab =
+  "general" | "gateway" | "ai" | "memory" | "voice" | "safety" | "wallet" | "system";
 export type MobileSurfaceKey =
   | "agents"
   | "providers"
@@ -43,15 +45,23 @@ export interface MobileHeaderCopy {
   detail: string;
 }
 
-// Settings is intentionally not a bottom tab; it is reached from the header
-// gear (top-right). The bottom bar carries the four most frequent
-// destinations, matching the primary nav in the web/desktop UI.
 export const MOBILE_TABS: MobileTabDefinition[] = [
   { key: "overview", label: "Home", showsGatewayPanel: false },
   { key: "sessions", label: "Chats", showsGatewayPanel: false },
   { key: "metrics", label: "Metrics", showsGatewayPanel: false },
   { key: "tasks", label: "Tasks", showsGatewayPanel: false },
   { key: "settings", label: "Settings", showsGatewayPanel: false },
+];
+
+export const MOBILE_SETTINGS_TABS: Array<{ label: string; value: MobileSettingsTab }> = [
+  { label: "General", value: "general" },
+  { label: "Gateway", value: "gateway" },
+  { label: "AI", value: "ai" },
+  { label: "Memory", value: "memory" },
+  { label: "Voice", value: "voice" },
+  { label: "Safety", value: "safety" },
+  { label: "Wallet", value: "wallet" },
+  { label: "System", value: "system" },
 ];
 
 export const MOBILE_HOME_CHROME = {

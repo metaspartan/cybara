@@ -70,6 +70,7 @@ describe("UI page API wiring", () => {
     expect(source).toContain("Listen on local network");
     expect(source).toContain('enabled ? "0.0.0.0" : "127.0.0.1"');
     expect(source).toContain("authApi.updateSettings({ host, applyHostNow: true })");
+    expect(source).not.toContain("Boolean(settings?.hostForced) || applyingHost");
     expect(source).toContain("settingsApi.updateConfig({ speech })");
     expect(source).toContain("settingsApi.updateConfig({");
     expect(source).toContain("computer_use: { driverCommand: trimmed }");

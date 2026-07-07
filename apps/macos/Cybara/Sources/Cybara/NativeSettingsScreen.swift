@@ -132,13 +132,13 @@ struct NativeSettingsScreen: View {
             TabView(selection: $selectedTab) {
                 generalTab.tabItem { Label("General", systemImage: "switch.2") }.tag(SettingsTab.general)
                 gatewayTab.tabItem { Label("Gateway", systemImage: "server.rack") }.tag(SettingsTab.gateway)
-                appearanceTab.tabItem { Label("Appearance", systemImage: "paintpalette") }.tag(SettingsTab.appearance)
-                modelTab.tabItem { Label("Model", systemImage: "brain") }.tag(SettingsTab.model)
-                speechTab.tabItem { Label("Speech", systemImage: "waveform") }.tag(SettingsTab.speech)
+                modelTab.tabItem { Label("AI", systemImage: "brain") }.tag(SettingsTab.model)
                 memoryTab.tabItem { Label("Memory", systemImage: "memorychip") }.tag(SettingsTab.memory)
+                speechTab.tabItem { Label("Voice", systemImage: "waveform") }.tag(SettingsTab.speech)
+                featuresTab.tabItem { Label("Safety", systemImage: "slider.horizontal.3") }.tag(SettingsTab.features)
+                WalletScreen(client: client).tabItem { Label("Wallet", systemImage: "creditcard") }.tag(SettingsTab.wallet)
                 migrationTab.tabItem { Label("Migration", systemImage: "folder.badge.gearshape") }.tag(SettingsTab.migration)
-                featuresTab.tabItem { Label("Features", systemImage: "slider.horizontal.3") }.tag(SettingsTab.features)
-                advancedTab.tabItem { Label("Advanced", systemImage: "square.grid.3x3") }.tag(SettingsTab.advanced)
+                advancedTab.tabItem { Label("System", systemImage: "square.grid.3x3") }.tag(SettingsTab.advanced)
             }
 
             if let error {
@@ -205,6 +205,8 @@ struct NativeSettingsScreen: View {
                         }
                     }
                 }
+
+                appearanceSettingsCard
             }
             .nativeSettingsContentLayout()
         }
@@ -646,24 +648,21 @@ struct NativeSettingsScreen: View {
         .buttonStyle(.bordered)
     }
 
-    private var appearanceTab: some View {
-        ScrollView {
-            GlassCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Accent")
-                            .font(.system(size: 15, weight: .bold, design: .rounded))
-                        Spacer()
-                        progressLabel(for: "themeAccent", fallback: CybaraAccent.label(for: selectedAccent))
-                    }
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 48, maximum: 58), spacing: 12)], spacing: 12) {
-                        ForEach(CybaraAccent.orderedKeys, id: \.self) { key in
-                            accentSwatch(key)
-                        }
+    private var appearanceSettingsCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Appearance")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                    Spacer()
+                    progressLabel(for: "themeAccent", fallback: CybaraAccent.label(for: selectedAccent))
+                }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 48, maximum: 58), spacing: 12)], spacing: 12) {
+                    ForEach(CybaraAccent.orderedKeys, id: \.self) { key in
+                        accentSwatch(key)
                     }
                 }
             }
-            .nativeSettingsContentLayout()
         }
     }
 
@@ -1273,7 +1272,7 @@ struct NativeSettingsScreen: View {
             VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Platform Features")
+                        Text("Safety Controls")
                             .font(.system(size: 15, weight: .bold, design: .rounded))
                         toggleRow("Web Terminal", detail: "Enable browser-based terminal access.", isOn: $terminalEnabled) {
                             saveConfigPatch(["terminal_enabled": terminalEnabled], key: "terminal_enabled")
@@ -1397,8 +1396,6 @@ struct NativeSettingsScreen: View {
             MemoryScreen(client: client)
         case .channels:
             ChannelsScreen(client: client)
-        case .wallet:
-            WalletScreen(client: client)
         case .skills:
             SkillsScreen(client: client)
         case .logs:
@@ -2047,10 +2044,10 @@ struct NativeSettingsScreen: View {
     private enum SettingsTab {
         case general
         case gateway
-        case appearance
         case model
         case speech
         case memory
+        case wallet
         case migration
         case features
         case advanced
@@ -2061,7 +2058,6 @@ struct NativeSettingsScreen: View {
         case systemPrompt
         case memory
         case channels
-        case wallet
         case skills
         case logs
 
@@ -2073,7 +2069,6 @@ struct NativeSettingsScreen: View {
             case .systemPrompt: return "System Prompt"
             case .memory: return "Memory"
             case .channels: return "Channels"
-            case .wallet: return "Wallet"
             case .skills: return "Skills"
             case .logs: return "Logs"
             }
@@ -2085,7 +2080,6 @@ struct NativeSettingsScreen: View {
             case .systemPrompt: return "sparkles"
             case .memory: return "brain"
             case .channels: return "link"
-            case .wallet: return "creditcard"
             case .skills: return "wand.and.stars"
             case .logs: return "list.bullet.rectangle"
             }

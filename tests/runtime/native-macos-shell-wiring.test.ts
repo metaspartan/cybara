@@ -16,7 +16,7 @@ describe("native macOS shell wiring", () => {
     expect(sidecarCore).toContain("public static let defaultPort = 4269");
     expect(sidecarManager).toContain("Attached to existing Cybara gateway");
     expect(sidecarCore).toContain('environment["PORT"] = String(port)');
-    expect(sidecarCore).toContain('environment["CYBARA_HOST"] = "127.0.0.1"');
+    expect(sidecarCore).not.toContain('environment["CYBARA_HOST"] = "127.0.0.1"');
     expect(sidecarManager).toContain('arguments = ["start"]');
     expect(sidecarManager).not.toContain('arguments = ["start", "--enable-terminal"]');
     expect(sidecarCore).toContain("ancestorDirectories(from: currentDirectory)");
@@ -81,6 +81,30 @@ describe("native macOS shell wiring", () => {
     // Connection test goes through the gateway test route.
     expect(gatewayClient).toContain('request("api/memory/providers/test", method: "POST"');
     expect(settings).toContain("client.testMemoryProvider(body)");
+  });
+
+  test("native settings follows the shared grouped settings navigation", () => {
+    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+
+    for (const label of [
+      'Label("General", systemImage: "switch.2")',
+      'Label("Gateway", systemImage: "server.rack")',
+      'Label("AI", systemImage: "brain")',
+      'Label("Memory", systemImage: "memorychip")',
+      'Label("Voice", systemImage: "waveform")',
+      'Label("Safety", systemImage: "slider.horizontal.3")',
+      'Label("Wallet", systemImage: "creditcard")',
+      'Label("Migration", systemImage: "folder.badge.gearshape")',
+      'Label("System", systemImage: "square.grid.3x3")',
+    ]) {
+      expect(settings).toContain(label);
+    }
+
+    expect(settings).toContain("WalletScreen(client: client).tabItem");
+    expect(settings).toContain("appearanceSettingsCard");
+    expect(settings).not.toContain("appearanceTab.tabItem");
+    expect(settings).not.toContain('Label("Advanced"');
+    expect(settings).not.toContain('case .wallet: return "Wallet"');
   });
 
   test("native logs use bounded paged gateway reads instead of full log downloads", () => {

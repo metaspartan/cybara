@@ -83,9 +83,6 @@ export function updateGatewayHostSetting(
   value: unknown,
   applyNow: unknown
 ): { hostApplyScheduled?: boolean; hostApplyError?: string } {
-  if (isGatewayHostForced()) {
-    throw new Error("Host is forced by CYBARA_HOST/--expose and cannot be changed here");
-  }
   const nextHost = normalizeGatewayBindHost(value);
   config.set("host", nextHost);
   if (applyNow !== true) return {};

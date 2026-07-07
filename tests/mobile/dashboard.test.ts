@@ -21,6 +21,7 @@ import {
   MOBILE_SETTINGS_DETAIL_CHROME,
   MOBILE_SETTINGS_ROOT_CHROME,
   MOBILE_SETTINGS_SURFACES,
+  MOBILE_SETTINGS_TABS,
   MOBILE_PLATFORM_SETTING_KEYS,
   MOBILE_SYSTEM_PROMPT_FEATURE_KEYS,
   MOBILE_SURFACES,
@@ -508,25 +509,36 @@ describe("mobile dashboard model", () => {
     expect(readMobileRouterStrategy("unknown")).toBe("weighted");
   });
 
-  test("organizes mobile settings into native segmented sections", () => {
-    expect(dashboardScreenSource).toContain('type MobileSettingsTab = "gateway"');
+  test("organizes mobile settings into shared native categories", () => {
+    expect(MOBILE_SETTINGS_TABS.map((tab) => tab.label)).toEqual([
+      "General",
+      "Gateway",
+      "AI",
+      "Memory",
+      "Voice",
+      "Safety",
+      "Wallet",
+      "System",
+    ]);
     expect(dashboardScreenSource).toContain("const [selectedSettingsTab, setSelectedSettingsTab]");
-    expect(dashboardScreenSource).toContain("mobileSettingsTabOptions");
-    for (const label of ["Gateway", "Look", "AI", "Safety", "More"]) {
-      expect(dashboardScreenSource).toContain(`label: "${label}"`);
-    }
-    expect(dashboardScreenSource).toContain('label="Section"');
-    expect(dashboardScreenSource).toContain('variant="segmented"');
+    expect(dashboardScreenSource).toContain("MOBILE_SETTINGS_TABS.some");
+    expect(dashboardScreenSource).toContain('label="Category"');
+    expect(dashboardScreenSource).toContain('variant="menu"');
     expect(dashboardScreenSource).toContain('title="Safety controls"');
     for (const guard of [
+      "showGeneralSettings",
       "showGatewaySettings",
-      "showAppearanceSettings",
-      "showAssistantSettings",
+      "showAiSettings",
+      "showMemorySettings",
+      "showVoiceSettings",
       "showSafetySettings",
-      "showMoreSettings",
+      "showWalletSettings",
+      "showSystemSettings",
     ]) {
       expect(dashboardScreenSource).toContain(guard);
     }
+    expect(dashboardScreenSource).toContain('title="Wallet"');
+    expect(dashboardScreenSource).toContain('title="System"');
   });
 
   test("keeps recent activity chat rows tappable and honest about state", () => {

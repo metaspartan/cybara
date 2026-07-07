@@ -81,7 +81,7 @@ final class SidecarCoreTests: XCTestCase {
     func testLaunchEnvironmentPinsExpectedKeys() {
         let env = SidecarCore.launchEnvironment(base: [:], port: 4269)
         XCTAssertEqual(env["PORT"], "4269")
-        XCTAssertEqual(env["CYBARA_HOST"], "127.0.0.1")
+        XCTAssertNil(env["CYBARA_HOST"])
         XCTAssertEqual(env["CYBARA_NATIVE_APP"], "1")
         XCTAssertEqual(env["CYBARA_NATIVE_PORT"], "4269")
     }
