@@ -62,6 +62,7 @@ import {
 import { logSandboxRuntimeStatus } from "./core/sandbox";
 import { onSubagentLifecycle } from "./core/subagent-registry";
 import { resolveUiPath } from "./core/runtime/ui-path";
+import { resolveMediaFile } from "./core/runtime/media-files";
 import { readUiIndexContent } from "./core/runtime/ui-index";
 import {
   getGatewayAuthSettings,
@@ -448,6 +449,40 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
             "Cache-Control": "no-cache, no-transform",
             Connection: "keep-alive",
             "X-Accel-Buffering": "no",
+            ...commonSecurityHeaders,
+            ...security.headers,
+          },
+        });
+      }
+
+      if (pathname === "/api/media") {
+        const mediaHeaders = withOptionalQueryToken(requestHeaders, url);
+        const security = securityCheck(req.method, pathname, mediaHeaders, clientIp);
+        if (!security.passed) {
+          return new Response(JSON.stringify({ error: security.error }), {
+            status: security.statusCode || 403,
+            headers: {
+              "Content-Type": "application/json",
+              ...commonSecurityHeaders,
+              ...security.headers,
+            },
+          });
+        }
+        const result = resolveMediaFile(url.searchParams.get("path") || "");
+        if (result.status !== 200 || !result.bytes || !result.contentType) {
+          return new Response(JSON.stringify({ error: result.error || "error" }), {
+            status: result.status,
+            headers: {
+              "Content-Type": "application/json",
+              ...commonSecurityHeaders,
+              ...security.headers,
+            },
+          });
+        }
+        return new Response(result.bytes, {
+          headers: {
+            "Content-Type": result.contentType,
+            "Cache-Control": "private, max-age=3600",
             ...commonSecurityHeaders,
             ...security.headers,
           },
