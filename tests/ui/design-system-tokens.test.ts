@@ -69,3 +69,24 @@ describe("Sidebar keyboard focus is not suppressed", () => {
     expect(src).not.toContain("focus-visible:!outline-none");
   });
 });
+
+describe("modal action buttons keep shared padding and radius", () => {
+  const glassButton = read("../../ui/src/components/ui/GlassButton.tsx");
+  const chatSidebar = read("../../ui/src/pages/chat/SessionSidebar.tsx");
+  const chatPage = read("../../ui/src/pages/Chat.tsx");
+
+  test("GlassButton applies sizing, radius, and focus treatment to every variant", () => {
+    expect(glassButton).toContain("sizes[size]");
+    expect(glassButton).not.toContain('variant !== "primary"');
+    expect(glassButton).toContain("rounded-xl");
+    expect(glassButton).toContain("font-medium");
+    expect(glassButton).toContain("focus:ring-2");
+  });
+
+  test("confirmation and form modals use the shared Button primitive for footer actions", () => {
+    expect(chatSidebar).not.toContain("<GlassButton");
+    expect(chatSidebar).toMatch(/<Button\s+variant="danger"/);
+    expect(chatPage).not.toContain("<GlassButton");
+    expect(chatPage).toMatch(/<Button\s+variant="primary"/);
+  });
+});

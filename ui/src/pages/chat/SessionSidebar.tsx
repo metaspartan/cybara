@@ -31,7 +31,7 @@ import {
   useRenameSession,
   useSessions,
 } from "@/hooks/useChat";
-import { GlassButton, Modal } from "@/components/ui";
+import { Button, Modal } from "@/components/ui";
 import { apiFetch } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { connectStatusStream } from "@/lib/status-stream";
@@ -680,12 +680,11 @@ export function SessionsPanel({
             Are you sure you want to delete this chat? This cannot be undone.
           </p>
           <div className="flex justify-end gap-3">
-            <GlassButton variant="ghost" onClick={() => setShowDeleteModal(null)}>
+            <Button variant="ghost" onClick={() => setShowDeleteModal(null)}>
               Cancel
-            </GlassButton>
-            <GlassButton
-              variant="primary"
-              className="bg-red-500/20 hover:bg-red-500/30 text-red-400 border-red-500/30"
+            </Button>
+            <Button
+              variant="danger"
               onClick={async () => {
                 if (showDeleteModal) {
                   await deleteSession.mutateAsync(showDeleteModal);
@@ -695,12 +694,12 @@ export function SessionsPanel({
               disabled={deleteSession.isPending}
             >
               {deleteSession.isPending ? (
-                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <Trash2 className="w-4 h-4 mr-2" />
+                <Trash2 className="w-4 h-4" />
               )}
               Delete
-            </GlassButton>
+            </Button>
           </div>
         </div>
       </Modal>

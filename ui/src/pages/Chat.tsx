@@ -56,7 +56,7 @@ import {
 import { chatApi, settingsApi } from "@/lib/api";
 import type { Agent, SessionContextUsage } from "@/types";
 import { PageLayout } from "@/components/layout";
-import { GlassCard, GlassButton, Input, Badge, Modal, Button } from "@/components/ui";
+import { GlassCard, Input, Badge, Modal, Button } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
 import { appendApiTokenParam, apiFetch } from "@/lib/auth";
@@ -1422,10 +1422,10 @@ function SubagentPanel({
             </p>
           </div>
           <div className="flex justify-end gap-3">
-            <GlassButton variant="ghost" onClick={() => setShowSpawnModal(false)}>
+            <Button variant="ghost" onClick={() => setShowSpawnModal(false)}>
               Cancel
-            </GlassButton>
-            <GlassButton
+            </Button>
+            <Button
               variant="primary"
               onClick={handleSpawn}
               disabled={!newTask.trim() || spawnSubagent.isPending}
@@ -1436,7 +1436,7 @@ function SubagentPanel({
                 <Zap className="w-4 h-4 mr-2" />
               )}
               Spawn Subagent
-            </GlassButton>
+            </Button>
           </div>
         </div>
       </Modal>

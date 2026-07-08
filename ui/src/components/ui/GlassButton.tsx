@@ -11,9 +11,8 @@ export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
     const variants = {
       default: "glass-button",
       primary: "glass-button-primary",
-      ghost: "hover:glass text-gray-300 hover:text-white transition-all",
-      danger:
-        "bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30 px-4 py-2 rounded-lg font-medium transition-all",
+      ghost: "text-gray-300 hover:text-white hover:bg-white/10",
+      danger: "bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30",
     };
 
     const sizes = {
@@ -27,8 +26,9 @@ export const GlassButton = forwardRef<HTMLButtonElement, GlassButtonProps>(
         ref={ref}
         className={cn(
           variants[variant],
-          variant !== "primary" && variant !== "danger" && sizes[size],
-          "inline-flex items-center justify-center whitespace-nowrap",
+          sizes[size],
+          "inline-flex items-center justify-center gap-2 rounded-xl font-medium whitespace-nowrap transition-all duration-200",
+          "focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-[#0a0a0f]",
           "cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100",
           className
         )}
