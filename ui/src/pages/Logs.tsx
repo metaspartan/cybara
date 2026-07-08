@@ -1,31 +1,29 @@
-import { useState, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
-  Terminal,
-  Search,
-  Filter,
-  AlertCircle,
-  Info,
   AlertTriangle,
-  XCircle,
-  RefreshCw,
-  Calendar,
-  Download,
+  Bot,
   ChevronDown,
   ChevronRight,
-  MessageSquare,
-  Logs as LogsIcon,
-  Bot,
+  Circle,
+  Download,
+  Info,
+  Pause,
+  Play,
   Radio,
+  RefreshCw,
+  Search,
+  Terminal,
   Wrench,
+  XCircle,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Badge } from "@/components/ui/Badge";
 import { PageLayout } from "@/components/layout";
 import { logsApi } from "@/lib/api";
 import { connectStatusStream } from "@/lib/status-stream";
+import { cn } from "@/lib/utils";
 
 interface LogEntry {
   id: string;
@@ -34,6 +32,7 @@ interface LogEntry {
   message: string;
   metadata?: string;
   created_at: string;
+  logType?: string;
 }
 
 interface LogCategoryCounts {
@@ -49,8 +48,6 @@ interface LogStats {
   totals: LogCategoryCounts & { combined: number };
   hours: number;
 }
-
-const LOGS_PAGE_SIZE = 200;
 
 interface SessionMessageLog {
   id: string;
@@ -73,58 +70,131 @@ interface ChannelMessageLog {
   created_at: string;
 }
 
-const levelIcons = {
-  debug: <Terminal className="w-4 h-4 text-gray-400" />,
-  info: <Info className="w-4 h-4 text-blue-400" />,
-  warn: <AlertTriangle className="w-4 h-4 text-amber-400" />,
-  error: <XCircle className="w-4 h-4 text-red-400" />,
+const LOGS_PAGE_SIZE = 200;
+const LEVEL_ORDER = ["error", "warn", "info", "debug"];
+
+const levelIcons: Record<string, ReactNode> = {
+  debug: <Terminal className="h-4 w-4 text-gray-400" />,
+  info: <Info className="h-4 w-4 text-blue-300" />,
+  warn: <AlertTriangle className="h-4 w-4 text-amber-300" />,
+  error: <XCircle className="h-4 w-4 text-red-300" />,
 };
 
-const levelColors = {
-  debug: "bg-gray-500/20 text-gray-400",
-  info: "bg-blue-500/20 text-blue-400",
-  warn: "bg-amber-500/20 text-amber-400",
-  error: "bg-red-500/20 text-red-400",
+const levelPillClasses: Record<string, string> = {
+  debug: "border-gray-500/30 bg-gray-500/10 text-gray-300",
+  info: "border-blue-500/30 bg-blue-500/10 text-blue-200",
+  warn: "border-amber-500/30 bg-amber-500/10 text-amber-200",
+  error: "border-red-500/30 bg-red-500/10 text-red-200",
 };
 
-const sourceIcons: Record<string, React.ReactNode> = {
-  agent: <Bot className="w-4 h-4" />,
-  channel: <Radio className="w-4 h-4" />,
-  tool: <Wrench className="w-4 h-4" />,
-  system: <Terminal className="w-4 h-4" />,
-  skill: <MessageSquare className="w-4 h-4" />,
-  subagent: <Bot className="w-4 h-4" />,
-  cli: <Terminal className="w-4 h-4" />,
+const sourceIcons: Record<string, ReactNode> = {
+  agent: <Bot className="h-4 w-4" />,
+  channel: <Radio className="h-4 w-4" />,
+  cli: <Terminal className="h-4 w-4" />,
+  session: <Bot className="h-4 w-4" />,
+  skill: <Bot className="h-4 w-4" />,
+  subagent: <Bot className="h-4 w-4" />,
+  system: <Terminal className="h-4 w-4" />,
+  tool: <Wrench className="h-4 w-4" />,
 };
 
-function LogStatCard({
-  icon,
+function normalizeLevel(level: string | undefined): string {
+  const value = String(level || "info").toLowerCase();
+  return value === "warning" ? "warn" : value;
+}
+
+function formatTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(date);
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "medium",
+  }).format(date);
+}
+
+function metadataText(metadata: string | undefined): string | null {
+  if (!metadata) return null;
+  try {
+    return JSON.stringify(JSON.parse(metadata), null, 2);
+  } catch {
+    return metadata;
+  }
+}
+
+function sourceLabel(source: string): string {
+  if (source === "cli") return "gateway/app";
+  return source.replace(/_/g, " ");
+}
+
+function LogMetric({
   label,
-  total,
-  inWindow,
-  hours,
+  value,
+  detail,
+  tone,
 }: {
-  icon: React.ReactNode;
+  detail: string;
   label: string;
-  total: number;
-  inWindow: number;
-  hours: number;
+  tone: string;
+  value: string;
 }) {
   return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3">
-          {icon}
-          <div className="min-w-0">
-            <p className="text-sm text-gray-400 truncate">{label}</p>
-            <p className="text-2xl font-bold text-white">{total.toLocaleString()}</p>
-            <p className="text-[11px] text-gray-500">
-              +{inWindow.toLocaleString()} in {hours}h
-            </p>
+    <div className="rounded-xl border border-white/10 bg-white/[0.035] px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase text-gray-500">{label}</p>
+      <p className={cn("mt-1 text-2xl font-semibold", tone)}>{value}</p>
+      <p className="mt-0.5 truncate text-xs text-gray-500">{detail}</p>
+    </div>
+  );
+}
+
+function FilterChip({
+  active,
+  children,
+  onClick,
+}: {
+  active: boolean;
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+        active
+          ? "border-amber-400/40 bg-amber-400/15 text-amber-100"
+          : "border-white/10 bg-white/[0.03] text-gray-400 hover:border-white/20 hover:text-gray-200"
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+function LogsSkeleton() {
+  return (
+    <div className="space-y-0 divide-y divide-white/10" aria-label="Loading logs">
+      {Array.from({ length: 9 }).map((_, index) => (
+        <div key={index} className="animate-pulse px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="h-4 w-14 rounded bg-white/10" />
+            <div className="h-4 w-20 rounded bg-white/10" />
+            <div className="h-4 flex-1 rounded bg-white/10" />
+            <div className="h-4 w-16 rounded bg-white/10" />
           </div>
         </div>
-      </CardContent>
-    </Card>
+      ))}
+    </div>
   );
 }
 
@@ -140,10 +210,12 @@ export function Logs() {
   const [filterLevel, setFilterLevel] = useState<string | null>(null);
   const [filterSource, setFilterSource] = useState<string | null>(null);
   const [expandedLog, setExpandedLog] = useState<string | null>(null);
+  const [liveEnabled, setLiveEnabled] = useState(true);
+  const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
   const parentRef = useRef<HTMLDivElement>(null);
   const refreshTimerRef = useRef<number | null>(null);
 
-  const fetchLogs = async (options?: { silent?: boolean }) => {
+  const fetchLogs = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) {
       setIsLoading(true);
     }
@@ -158,6 +230,7 @@ export function Logs() {
         setTotalLogs(logsResponse.data.total ?? null);
         setHasMore(Boolean(logsResponse.data.hasMore));
         setIsSearchResults(false);
+        setLastUpdatedAt(new Date());
       }
       if (statsResponse.success) {
         setStats(statsResponse.data);
@@ -169,9 +242,9 @@ export function Logs() {
         setIsLoading(false);
       }
     }
-  };
+  }, []);
 
-  const loadMore = async () => {
+  const loadMore = useCallback(async () => {
     if (isLoadingMore) return;
     setIsLoadingMore(true);
     try {
@@ -184,19 +257,24 @@ export function Logs() {
         });
         setTotalLogs(response.data.total ?? null);
         setHasMore(Boolean(response.data.hasMore));
+        setLastUpdatedAt(new Date());
       }
     } catch (error) {
       console.error("Failed to load more logs:", error);
     } finally {
       setIsLoadingMore(false);
     }
-  };
+  }, [isLoadingMore, logs.length]);
 
   useEffect(() => {
     void fetchLogs();
+  }, [fetchLogs]);
+
+  useEffect(() => {
+    if (!liveEnabled || isSearchResults || searchQuery.trim()) return;
     const pollTimer = window.setInterval(() => {
       if (!document.hidden) void fetchLogs({ silent: true });
-    }, 20_000);
+    }, 15_000);
     const disconnect = connectStatusStream({
       onEvent: (event) => {
         if (!event || typeof event !== "object") return;
@@ -213,7 +291,7 @@ export function Logs() {
         refreshTimerRef.current = window.setTimeout(() => {
           void fetchLogs({ silent: true });
           refreshTimerRef.current = null;
-        }, 800);
+        }, 700);
       },
     });
     return () => {
@@ -224,9 +302,9 @@ export function Logs() {
         refreshTimerRef.current = null;
       }
     };
-  }, []);
+  }, [fetchLogs, isSearchResults, liveEnabled, searchQuery]);
 
-  const handleSearch = async () => {
+  const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) {
       void fetchLogs();
       return;
@@ -245,271 +323,332 @@ export function Logs() {
             }
           | undefined;
         const allLogs: LogEntry[] = [
-          ...(searchData?.system || []).map((l: LogEntry) => ({ ...l })),
-          ...(searchData?.sessionMessages || []).map((l: SessionMessageLog) => ({
-            id: l.id,
-            level: "info" as const,
+          ...(searchData?.system || []).map((entry: LogEntry) => ({ ...entry })),
+          ...(searchData?.sessionMessages || []).map((entry: SessionMessageLog) => ({
+            id: entry.id,
+            level: "info",
             source: "session",
-            message: `${l.role}: ${l.content.substring(0, 100)}${l.content.length > 100 ? "..." : ""}`,
-            created_at: l.created_at,
+            message: `${entry.role}: ${entry.content.substring(0, 120)}${entry.content.length > 120 ? "..." : ""}`,
+            created_at: entry.created_at,
+            logType: "session",
           })),
-          ...(searchData?.agent || []).map((l: AgentActionLog) => ({
-            id: l.id,
-            level: "info" as const,
+          ...(searchData?.agent || []).map((entry: AgentActionLog) => ({
+            id: entry.id,
+            level: "info",
             source: "agent",
-            message: `Action: ${l.action}${l.details ? ` - ${l.details}` : ""}`,
-            created_at: l.created_at,
+            message: `Action: ${entry.action}${entry.details ? ` - ${entry.details}` : ""}`,
+            created_at: entry.created_at,
+            logType: "agent",
           })),
-          ...(searchData?.channel || []).map((l: ChannelMessageLog) => ({
-            id: l.id,
-            level: "info" as const,
+          ...(searchData?.channel || []).map((entry: ChannelMessageLog) => ({
+            id: entry.id,
+            level: "info",
             source: "channel",
-            message: `${l.direction || "message"}: ${l.content.substring(0, 100)}${l.content.length > 100 ? "..." : ""}`,
-            created_at: l.created_at,
+            message: `${entry.direction || "message"}: ${entry.content.substring(0, 120)}${entry.content.length > 120 ? "..." : ""}`,
+            created_at: entry.created_at,
+            logType: "channel",
           })),
         ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
         setLogs(allLogs);
         setTotalLogs(allLogs.length);
         setHasMore(false);
         setIsSearchResults(true);
+        setLastUpdatedAt(new Date());
       }
     } catch (error) {
       console.error("Search failed:", error);
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [fetchLogs, searchQuery]);
 
-  const filteredLogs = logs.filter((log) => {
-    if (filterLevel && log.level !== filterLevel) return false;
-    if (filterSource && log.source !== filterSource) return false;
-    return true;
-  });
+  const sourceOptions = useMemo(() => {
+    const values = new Set(logs.map((log) => log.source).filter(Boolean));
+    return Array.from(values).sort((a, b) => sourceLabel(a).localeCompare(sourceLabel(b)));
+  }, [logs]);
+
+  const filteredLogs = useMemo(
+    () =>
+      logs.filter((log) => {
+        if (filterLevel && normalizeLevel(log.level) !== filterLevel) return false;
+        if (filterSource && log.source !== filterSource) return false;
+        return true;
+      }),
+    [filterLevel, filterSource, logs]
+  );
+
+  const visibleLevelCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const log of logs) {
+      const level = normalizeLevel(log.level);
+      counts[level] = (counts[level] || 0) + 1;
+    }
+    return counts;
+  }, [logs]);
 
   const exportLogs = () => {
     const data = JSON.stringify(filteredLogs, null, 2);
     const blob = new Blob([data], { type: "application/json" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `logs-${new Date().toISOString()}.json`;
-    a.click();
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `logs-${new Date().toISOString()}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   const virtualizer = useVirtualizer({
     count: filteredLogs.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 72,
-    overscan: 10,
+    estimateSize: () => 74,
+    overscan: 12,
   });
+
+  const totalCombined = stats?.totals?.combined ?? totalLogs ?? logs.length;
+  const windowTotal =
+    (stats?.counts.system || 0) +
+    (stats?.counts.agent || 0) +
+    (stats?.counts.channel || 0) +
+    (stats?.counts.cli || 0);
+  const totalMessages = stats?.totals?.messages ?? 0;
+  const lastUpdatedLabel = lastUpdatedAt ? formatTime(lastUpdatedAt.toISOString()) : "not loaded";
 
   return (
     <PageLayout
       title="Logs"
-      subtitle="View and search system logs"
+      subtitle="Live gateway, agent, channel, tool, and app log stream"
       actions={
         <div className="flex items-center gap-2">
+          <Button
+            variant={liveEnabled ? "primary" : "secondary"}
+            size="sm"
+            onClick={() => setLiveEnabled((current) => !current)}
+            leftIcon={liveEnabled ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          >
+            {liveEnabled ? "Pause" : "Live"}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => void fetchLogs()}
+            leftIcon={<RefreshCw className="h-4 w-4" />}
+          >
+            Refresh
+          </Button>
           <Button
             variant="secondary"
             size="sm"
             onClick={exportLogs}
-            leftIcon={<Download className="w-4 h-4" />}
+            leftIcon={<Download className="h-4 w-4" />}
           >
             Export
           </Button>
         </div>
       }
     >
-      <div className="space-y-6">
-        {stats && (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            <LogStatCard
-              icon={<LogsIcon className="w-8 h-8 text-blue-400" />}
-              label="System Logs"
-              total={stats.totals?.system ?? stats.counts.system}
-              inWindow={stats.counts.system}
-              hours={stats.hours}
-            />
-            <LogStatCard
-              icon={<MessageSquare className="w-8 h-8 text-emerald-400" />}
-              label="Messages"
-              total={stats.totals?.messages ?? stats.counts.messages}
-              inWindow={stats.counts.messages}
-              hours={stats.hours}
-            />
-            <LogStatCard
-              icon={<Bot className="w-8 h-8 text-violet-400" />}
-              label="Agent Logs"
-              total={stats.totals?.agent ?? stats.counts.agent}
-              inWindow={stats.counts.agent}
-              hours={stats.hours}
-            />
-            <LogStatCard
-              icon={<Radio className="w-8 h-8 text-amber-400" />}
-              label="Channel Logs"
-              total={stats.totals?.channel ?? stats.counts.channel}
-              inWindow={stats.counts.channel}
-              hours={stats.hours}
-            />
-            <LogStatCard
-              icon={<Terminal className="w-8 h-8 text-cyan-400" />}
-              label="CLI Logs"
-              total={stats.totals?.cli ?? stats.counts.cli ?? 0}
-              inWindow={stats.counts.cli ?? 0}
-              hours={stats.hours}
-            />
-          </div>
-        )}
+      <div className="space-y-5">
+        <div className="grid gap-3 md:grid-cols-4">
+          <LogMetric
+            label="Combined stream"
+            value={totalCombined.toLocaleString()}
+            detail={`${windowTotal.toLocaleString()} in ${stats?.hours ?? 24}h`}
+            tone="text-white"
+          />
+          <LogMetric
+            label="Errors"
+            value={(visibleLevelCounts.error || 0).toLocaleString()}
+            detail="visible page"
+            tone="text-red-200"
+          />
+          <LogMetric
+            label="Warnings"
+            value={(visibleLevelCounts.warn || 0).toLocaleString()}
+            detail="visible page"
+            tone="text-amber-200"
+          />
+          <LogMetric
+            label="Session messages"
+            value={totalMessages.toLocaleString()}
+            detail="searchable activity"
+            tone="text-cyan-200"
+          />
+        </div>
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500" />
-                <Input
-                  placeholder="Search logs..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                  className="pl-10"
-                />
+        <section className="overflow-hidden rounded-2xl border border-white/10 bg-black/25 shadow-2xl shadow-black/20">
+          <div className="border-b border-white/10 bg-white/[0.035] px-4 py-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-3">
+                <span
+                  className={cn(
+                    "flex h-8 w-8 items-center justify-center rounded-full border",
+                    liveEnabled
+                      ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300"
+                      : "border-white/10 bg-white/5 text-gray-400"
+                  )}
+                >
+                  <Circle className={cn("h-3 w-3", liveEnabled && "fill-current")} />
+                </span>
+                <div className="min-w-0">
+                  <h2 className="text-sm font-semibold text-white">Unified log stream</h2>
+                  <p className="truncate text-xs text-gray-500">
+                    {liveEnabled ? "Live updates enabled" : "Paused"} - last refresh{" "}
+                    {lastUpdatedLabel}
+                  </p>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <select
-                  value={filterLevel || ""}
-                  onChange={(e) => setFilterLevel(e.target.value || null)}
-                  className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
-                >
-                  <option value="">All Levels</option>
-                  <option value="debug">Debug</option>
-                  <option value="info">Info</option>
-                  <option value="warn">Warn</option>
-                  <option value="error">Error</option>
-                </select>
-                <select
-                  value={filterSource || ""}
-                  onChange={(e) => setFilterSource(e.target.value || null)}
-                  className="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white text-sm"
-                >
-                  <option value="">All Sources</option>
-                  <option value="agent">Agent</option>
-                  <option value="channel">Channel</option>
-                  <option value="cli">CLI</option>
-                  <option value="tool">Tool</option>
-                  <option value="system">System</option>
-                  <option value="skill">Skill</option>
-                </select>
-                <Button onClick={handleSearch}>Search</Button>
+              <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                <div className="relative min-w-[260px] flex-1 md:w-[360px]">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+                  <Input
+                    placeholder="Search logs, metadata, sessions..."
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") void handleSearch();
+                      if (event.key === "Escape") {
+                        setSearchQuery("");
+                        void fetchLogs();
+                      }
+                    }}
+                    className="pl-9"
+                  />
+                </div>
+                <Button onClick={() => void handleSearch()} size="sm">
+                  Search
+                </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Log Entries</span>
-              <span title="Combined system, agent, channel, and CLI logs. Session messages are tracked separately.">
-                <Badge variant="default">
-                  {filterLevel || filterSource || isSearchResults || totalLogs === null
-                    ? `${filteredLogs.length} entries`
-                    : `${logs.length.toLocaleString()} of ${totalLogs.toLocaleString()} entries`}
-                </Badge>
-              </span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-            {isLoading ? (
-              <div className="p-8 text-center">
-                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-4 text-gray-500" />
-                <p className="text-gray-400">Loading logs...</p>
-              </div>
-            ) : filteredLogs.length === 0 ? (
-              <div className="p-8 text-center">
-                <Terminal className="w-12 h-12 mx-auto mb-4 text-gray-600" />
-                <p className="text-gray-400">No logs found</p>
-              </div>
-            ) : (
-              <div ref={parentRef} className="h-[600px] overflow-auto">
-                <div
-                  style={{
-                    height: `${virtualizer.getTotalSize()}px`,
-                    width: "100%",
-                    position: "relative",
-                  }}
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <FilterChip active={!filterLevel} onClick={() => setFilterLevel(null)}>
+                All levels
+              </FilterChip>
+              {LEVEL_ORDER.map((level) => (
+                <FilterChip
+                  key={level}
+                  active={filterLevel === level}
+                  onClick={() => setFilterLevel(filterLevel === level ? null : level)}
                 >
-                  {virtualizer.getVirtualItems().map((virtualItem) => {
-                    const log = filteredLogs[virtualItem.index];
-                    return (
-                      <div
-                        key={virtualItem.key}
-                        data-index={virtualItem.index}
-                        ref={virtualizer.measureElement}
-                        className="absolute top-0 left-0 w-full p-3 sm:p-4 hover:bg-white/5 cursor-pointer transition-colors border-b border-white/10"
-                        style={{
-                          transform: `translateY(${virtualItem.start}px)`,
-                        }}
-                        onClick={() => setExpandedLog(expandedLog === log.id ? null : log.id)}
-                      >
-                        <div className="flex items-start gap-3">
-                          {levelIcons[log.level]}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Badge className={levelColors[log.level]} size="sm">
-                                {log.level}
-                              </Badge>
-                              <Badge
-                                variant="default"
-                                size="sm"
-                                className="flex items-center gap-1"
-                              >
-                                {sourceIcons[log.source] || <Terminal className="w-3 h-3" />}
-                                {log.source}
-                              </Badge>
-                              <span className="text-xs text-gray-500">
-                                {new Date(log.created_at).toLocaleString()}
-                              </span>
-                            </div>
-                            <p className="text-sm text-white truncate">{log.message}</p>
+                  {level} {visibleLevelCounts[level] ? visibleLevelCounts[level] : ""}
+                </FilterChip>
+              ))}
+              <span className="mx-1 h-5 w-px bg-white/10" />
+              <FilterChip active={!filterSource} onClick={() => setFilterSource(null)}>
+                All sources
+              </FilterChip>
+              {sourceOptions.map((source) => (
+                <FilterChip
+                  key={source}
+                  active={filterSource === source}
+                  onClick={() => setFilterSource(filterSource === source ? null : source)}
+                >
+                  {sourceLabel(source)}
+                </FilterChip>
+              ))}
+            </div>
+          </div>
 
-                            {expandedLog === log.id && log.metadata && (
-                              <div className="mt-2 p-2 rounded-lg bg-black/30">
-                                <p className="text-xs text-gray-400 mb-1">Metadata:</p>
-                                <pre className="text-xs text-gray-300 overflow-auto max-h-40">
-                                  {JSON.stringify(JSON.parse(log.metadata), null, 2)}
-                                </pre>
-                              </div>
-                            )}
-                          </div>
-                          {expandedLog === log.id ? (
-                            <ChevronDown className="w-4 h-4 text-gray-500" />
-                          ) : (
-                            <ChevronRight className="w-4 h-4 text-gray-500" />
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                {hasMore && !isSearchResults && (
-                  <div className="p-3 text-center border-t border-white/10">
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => void loadMore()}
-                      disabled={isLoadingMore}
-                      leftIcon={
-                        isLoadingMore ? <RefreshCw className="w-4 h-4 animate-spin" /> : undefined
-                      }
+          <div className="flex items-center justify-between border-b border-white/10 px-4 py-2 text-xs text-gray-500">
+            <span>
+              {filterLevel || filterSource || isSearchResults || totalLogs === null
+                ? `${filteredLogs.length.toLocaleString()} entries`
+                : `${logs.length.toLocaleString()} of ${totalLogs.toLocaleString()} entries`}
+            </span>
+            <span>Newest first</span>
+          </div>
+
+          {isLoading ? (
+            <LogsSkeleton />
+          ) : filteredLogs.length === 0 ? (
+            <div className="flex min-h-[320px] flex-col items-center justify-center px-4 py-12 text-center">
+              <Terminal className="mb-3 h-10 w-10 text-gray-600" />
+              <p className="text-sm font-medium text-gray-300">No logs match this view</p>
+              <p className="mt-1 text-xs text-gray-500">Clear filters or resume live mode.</p>
+            </div>
+          ) : (
+            <div ref={parentRef} className="h-[640px] overflow-auto">
+              <div
+                style={{
+                  height: `${virtualizer.getTotalSize()}px`,
+                  position: "relative",
+                  width: "100%",
+                }}
+              >
+                {virtualizer.getVirtualItems().map((virtualItem) => {
+                  const log = filteredLogs[virtualItem.index];
+                  const level = normalizeLevel(log.level);
+                  const expanded = expandedLog === log.id;
+                  const details = metadataText(log.metadata);
+                  return (
+                    <button
+                      type="button"
+                      key={virtualItem.key}
+                      data-index={virtualItem.index}
+                      ref={virtualizer.measureElement}
+                      className="absolute left-0 top-0 w-full border-b border-white/10 px-4 py-3 text-left transition-colors hover:bg-white/[0.04]"
+                      style={{ transform: `translateY(${virtualItem.start}px)` }}
+                      onClick={() => setExpandedLog(expanded ? null : log.id)}
                     >
-                      {isLoadingMore ? "Loading..." : "Load more"}
-                    </Button>
-                  </div>
-                )}
+                      <div className="grid gap-3 md:grid-cols-[86px_130px_minmax(0,1fr)_32px] md:items-start">
+                        <div className="flex items-center gap-2 font-mono text-xs text-gray-500">
+                          {levelIcons[level] || levelIcons.info}
+                          <span>{formatTime(log.created_at)}</span>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            className={cn(
+                              "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase",
+                              levelPillClasses[level] || levelPillClasses.info
+                            )}
+                          >
+                            {level}
+                          </span>
+                          <span className="flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.035] px-2 py-0.5 text-[11px] font-medium text-gray-300">
+                            {sourceIcons[log.source] || <Terminal className="h-3 w-3" />}
+                            {sourceLabel(log.source)}
+                          </span>
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-sm text-gray-100">{log.message}</p>
+                          <p className="mt-1 text-xs text-gray-600">
+                            {formatDateTime(log.created_at)}
+                            {log.logType ? ` - ${log.logType}` : ""}
+                          </p>
+                          {expanded && details ? (
+                            <pre className="mt-3 max-h-56 overflow-auto rounded-xl border border-white/10 bg-black/40 p-3 text-xs leading-5 text-gray-300">
+                              {details}
+                            </pre>
+                          ) : null}
+                        </div>
+                        <span className="hidden justify-self-end text-gray-500 md:block">
+                          {expanded ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-            )}
-          </CardContent>
-        </Card>
+              {hasMore && !isSearchResults ? (
+                <div className="sticky bottom-0 border-t border-white/10 bg-black/80 p-3 text-center backdrop-blur">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void loadMore()}
+                    disabled={isLoadingMore}
+                    leftIcon={
+                      isLoadingMore ? <RefreshCw className="h-4 w-4 animate-spin" /> : undefined
+                    }
+                  >
+                    {isLoadingMore ? "Loading" : "Load older logs"}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </section>
       </div>
     </PageLayout>
   );

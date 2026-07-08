@@ -4,6 +4,7 @@ import { Hero } from "./components/Hero.tsx";
 import { Features } from "./components/Features.tsx";
 import { Channels } from "./components/Channels.tsx";
 import { Platforms } from "./components/Platforms.tsx";
+import { HowItWorks } from "./components/HowItWorks.tsx";
 import { Downloads } from "./components/Downloads.tsx";
 import { Migrate } from "./components/Migrate.tsx";
 import { Control } from "./components/Control.tsx";
@@ -20,6 +21,7 @@ export function App(): React.ReactElement {
         <Features />
         <Channels />
         <Platforms />
+        <HowItWorks />
         <Downloads />
         <Migrate />
         <Control />

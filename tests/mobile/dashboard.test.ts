@@ -349,6 +349,14 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain('activeTab !== "metrics" && !hasLoadedMetrics');
   });
 
+  test("shows a native metrics skeleton while the metrics snapshot loads", () => {
+    expect(dashboardScreenSource).toContain("function MetricsPanelSkeleton");
+    expect(dashboardScreenSource).toContain("!metrics && !metricsError");
+    expect(dashboardScreenSource).toContain('accessibilityLabel="Loading metrics"');
+    expect(dashboardScreenSource).toContain("metricSkeletonBlock");
+    expect(dashboardScreenSource).toContain("Live signals are still available from Logs.");
+  });
+
   test("keeps logs paged while still showing the total count", () => {
     expect(MOBILE_LOGS_CHROME.showsTotalCount).toBe(true);
     expect(MOBILE_LOGS_CHROME.lazyLoadsOnScroll).toBe(true);

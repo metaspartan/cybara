@@ -271,6 +271,11 @@ describe("UI page API wiring", () => {
     expect(logsSource).toContain("logsApi.getPage(LOGS_PAGE_SIZE, logs.length)");
     expect(logsSource).toContain("logsApi.getStats(24)");
     expect(logsSource).toContain("logsApi.search(searchQuery)");
+    expect(logsSource).toContain("Unified log stream");
+    expect(logsSource).toContain("liveEnabled");
+    expect(logsSource).toContain("Pause");
+    expect(logsSource).toContain("gateway/app");
+    expect(logsSource).toContain("LogsSkeleton");
     expect(logsSource).not.toContain("apiFetch(");
 
     expect(sessionsSource).toMatch(/import\s*\{\s*sessionsApi\s*\}\s*from\s*["']@\/lib\/api["'];/);

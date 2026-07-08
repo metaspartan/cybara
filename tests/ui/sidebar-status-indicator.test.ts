@@ -15,6 +15,22 @@ function readSidebarSource(): string {
 }
 
 describe("Sidebar status indicator behavior", () => {
+  test("keeps Sessions under Developer and leaves Chat as its own quick entry", () => {
+    const source = readSidebarSource();
+    const developerStart = source.indexOf('id: "developer"');
+    const chatStart = source.indexOf('id: "chat"');
+    const sessionsItem = source.indexOf(
+      '{ path: "/sessions", icon: MessagesSquare, label: "Sessions" }'
+    );
+    const chatItem = source.indexOf('{ path: "/chat", icon: MessageSquare, label: "Chat" }');
+
+    expect(developerStart).toBeGreaterThan(-1);
+    expect(chatStart).toBeGreaterThan(developerStart);
+    expect(sessionsItem).toBeGreaterThan(developerStart);
+    expect(sessionsItem).toBeLessThan(chatStart);
+    expect(chatItem).toBeGreaterThan(chatStart);
+  });
+
   test("treats every in-turn status event as activity so the indicator never flickers", () => {
     const source = readSidebarSource();
 

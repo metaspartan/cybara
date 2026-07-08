@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Icon, type IconName } from "./Icon.tsx";
 import { SectionHeading } from "./SectionHeading.tsx";
-import { DOWNLOADS, type DownloadClient } from "../data/content.ts";
+import { DOWNLOAD_GROUPS, type DownloadClient } from "../data/content.ts";
 import { useLatestRelease, resolveAssetUrl, type LatestRelease } from "../hooks/useLatestRelease.ts";
 
 interface DownloadCardProps {
@@ -66,15 +66,29 @@ export function Downloads(): React.ReactElement {
           Latest release <strong>{release.version}</strong>
         </div>
       ) : null}
-      <div className="download-grid">
-        {DOWNLOADS.map((client) => (
-          <DownloadCard
-            client={client}
-            release={release}
-            key={`${client.name}-${client.platform}`}
-          />
+
+      <div className="download-groups">
+        {DOWNLOAD_GROUPS.map((group) => (
+          <div className="download-group" key={group.label}>
+            <div className="download-group-head">
+              <span className="download-group-icon">
+                <Icon name={group.icon as IconName} className="download-group-icon-svg" />
+              </span>
+              <h3 className="download-group-label">{group.label}</h3>
+            </div>
+            <div className="download-grid">
+              {group.clients.map((client) => (
+                <DownloadCard
+                  client={client}
+                  release={release}
+                  key={`${client.name}-${client.platform}`}
+                />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
+
       <div className="glass update-note">
         <span className="update-note-icon">
           <Icon name="refresh" className="update-note-svg" />

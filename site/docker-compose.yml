@@ -1,0 +1,21 @@
+services:
+  site:
+    build: .
+    image: cybara-site
+    ports:
+      - "3399:3399"
+    environment:
+      - PORT=3399
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "fetch('http://localhost:3399/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

@@ -202,9 +202,7 @@ const navCategories = [
   {
     id: "chat",
     label: null,
-    items: [
-      { path: "/chat", icon: MessageSquare, label: "Chat" },
-    ],
+    items: [{ path: "/chat", icon: MessageSquare, label: "Chat" }],
   },
   {
     id: "system",

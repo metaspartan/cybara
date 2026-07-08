@@ -635,10 +635,101 @@ img {
   animation: pulse 2.4s ease-in-out infinite;
 }
 
+.download-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.download-group-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.download-group-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(139, 92, 246, 0.28);
+  color: #c4b5fd;
+}
+
+.download-group-icon-svg {
+  width: 20px;
+  height: 20px;
+}
+
+.download-group-label {
+  font-size: 1.16rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
 .download-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 20px;
+}
+
+.steps {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  counter-reset: step;
+}
+
+.step {
+  position: relative;
+  padding: 32px 30px 30px;
+  overflow: hidden;
+}
+
+.step-index {
+  position: absolute;
+  top: 18px;
+  right: 24px;
+  font-family: var(--font-mono);
+  font-size: 2.4rem;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  color: transparent;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), transparent);
+  -webkit-background-clip: text;
+  background-clip: text;
+}
+
+.step-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 15px;
+  background: var(--accent-gradient);
+  color: #fff;
+  box-shadow: 0 12px 28px rgba(124, 58, 237, 0.4);
+}
+
+.step-icon-svg {
+  width: 26px;
+  height: 26px;
+}
+
+.step-title {
+  margin-top: 20px;
+  font-size: 1.24rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.step-desc {
+  margin-top: 9px;
+  color: var(--text-dim);
+  font-size: 0.98rem;
 }
 
 .download-card {
@@ -1195,7 +1286,8 @@ img {
     height: 140px;
   }
   .feature-grid,
-  .download-grid {
+  .download-grid,
+  .steps {
     grid-template-columns: repeat(2, 1fr);
   }
   .control-layout,
@@ -1210,7 +1302,8 @@ img {
   }
   .feature-grid,
   .platform-grid,
-  .download-grid {
+  .download-grid,
+  .steps {
     grid-template-columns: 1fr;
   }
   .download-card {

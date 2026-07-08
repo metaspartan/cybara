@@ -1480,6 +1480,17 @@ function MetricsPanel({
   summary: FeatureSummary | null;
   openSurface: (surface: MobileSurfaceKey) => void;
 }) {
+  if (!metrics && !metricsError) {
+    return (
+      <MetricsPanelSkeleton
+        accentColor={accentColor}
+        counts={counts}
+        openSurface={openSurface}
+        summary={summary}
+      />
+    );
+  }
+
   const health = summary?.health;
   const healthy = health?.status === "healthy";
   const checks = Object.entries(health?.checks || {});
@@ -1796,6 +1807,91 @@ function MetricsPanel({
       <MetricSection title="Metric feeds" detail={`${availableMetrics}/11 endpoints online`}>
         <MetricEndpointGrid availability={metrics?.availability} />
       </MetricSection>
+    </StableDetailPanel>
+  );
+}
+
+function MetricsPanelSkeleton({
+  accentColor,
+  counts,
+  openSurface,
+  summary,
+}: {
+  accentColor: string;
+  counts: FeatureCounts;
+  openSurface: (surface: MobileSurfaceKey) => void;
+  summary: FeatureSummary | null;
+}) {
+  const health = summary?.health;
+  const healthy = health?.status === "healthy";
+  return (
+    <StableDetailPanel>
+      <View style={styles.summaryGrid}>
+        <SummaryTile
+          Icon={HeartPulse}
+          label="Health"
+          value={healthy ? "Healthy" : health ? "Check" : "Loading"}
+          detail={endpointStatusLabel(summary?.availability.health)}
+          tone={healthy ? colors.green : colors.amber}
+        />
+        <SummaryTile
+          Icon={Cpu}
+          label="Tokens"
+          value="Loading"
+          detail="Metrics snapshot"
+          tone={accentColor}
+        />
+        <SummaryTile
+          Icon={Zap}
+          label="API"
+          value="Loading"
+          detail={`${counts.logs} events`}
+          tone={colors.blueText}
+        />
+        <SummaryTile
+          Icon={Database}
+          label="Storage"
+          value="Loading"
+          detail="Gateway files"
+          tone={colors.green}
+        />
+      </View>
+
+      <View style={styles.metricSkeletonHero} accessibilityLabel="Loading metrics">
+        <ActivityIndicator color={accentColor} size="small" />
+        <View style={styles.metricSkeletonText}>
+          <Text style={styles.subsectionTitle}>Loading metrics</Text>
+          <Text style={styles.emptyDetail}>
+            Token, model, provider, tool, and storage feeds are loading.
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.metricSkeletonGrid}>
+        {["Token flow", "Activity trend", "Token velocity", "Provider plans"].map((label) => (
+          <View key={label} style={styles.metricSkeletonBlock}>
+            <View style={styles.metricSkeletonHeader}>
+              <View style={styles.metricSkeletonTitle} />
+              <Text style={styles.counterText}>{label}</Text>
+            </View>
+            <View style={styles.metricSkeletonTrack} />
+            <View style={styles.metricSkeletonTrackShort} />
+            <View style={styles.metricSkeletonPills}>
+              <View style={styles.metricSkeletonPill} />
+              <View style={styles.metricSkeletonPill} />
+              <View style={styles.metricSkeletonPillNarrow} />
+            </View>
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.subsectionHeader}>
+        <Text style={styles.subsectionTitle}>Recent signals</Text>
+        <Pressable style={styles.smallButton} onPress={() => openSurface("logs")}>
+          <Text style={styles.smallButtonText}>Logs</Text>
+        </Pressable>
+      </View>
+      <LoadingState label="Loading metrics" detail="Live signals are still available from Logs." />
     </StableDetailPanel>
   );
 }
