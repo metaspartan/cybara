@@ -1,6 +1,6 @@
-import { Icon, type IconName } from "./Icon.tsx";
-import { SectionHeading } from "./SectionHeading.tsx";
-import { STEPS } from "../data/content.ts";
+import { Icon, type IconName } from "./Icon";
+import { SectionHeading } from "./SectionHeading";
+import { STEPS } from "../data/content";
 
 export function HowItWorks(): React.ReactElement {
   return (

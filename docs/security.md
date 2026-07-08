@@ -28,6 +28,8 @@ pairing without changing the gateway bind host. This is intended for:
 
 - **Private mesh networks**: Tailscale, ZeroTier, or NetBird. Keep Cybara bound to localhost or the
   mesh/LAN interface, connect the phone to the same mesh, and use the mesh URL/IP as the client URL.
+  Plain HTTP is accepted only for private LAN/mesh IP ranges or local-only names; DNS hostnames
+  should use HTTPS.
 - **Public HTTPS tunnels**: Cloudflare Tunnel, Tailscale Funnel, or a custom reverse proxy. These
   must use HTTPS, and Cybara requires the gateway password to be enabled before the URL is considered
   ready for mobile QR pairing.

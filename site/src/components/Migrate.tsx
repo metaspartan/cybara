@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Icon } from "./Icon.tsx";
-import { SectionHeading } from "./SectionHeading.tsx";
-import { MIGRATION_SOURCES, MIGRATION_POINTS, MIGRATION_COMMANDS } from "../data/content.ts";
+import { Icon } from "./Icon";
+import { SectionHeading } from "./SectionHeading";
+import { MIGRATION_SOURCES, MIGRATION_POINTS, MIGRATION_COMMANDS } from "../data/content";
 
 export function Migrate(): React.ReactElement {
   const [copiedIndex, setCopiedIndex] = useState<number>(-1);

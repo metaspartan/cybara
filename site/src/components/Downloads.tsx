@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { Icon, type IconName } from "./Icon.tsx";
-import { SectionHeading } from "./SectionHeading.tsx";
-import { DOWNLOAD_GROUPS, type DownloadClient } from "../data/content.ts";
-import { useLatestRelease, resolveAssetUrl, type LatestRelease } from "../hooks/useLatestRelease.ts";
+import { Icon, type IconName } from "./Icon";
+import { SectionHeading } from "./SectionHeading";
+import { DOWNLOAD_GROUPS, type DownloadClient } from "../data/content";
+import { useLatestRelease, resolveAssetUrl, type LatestRelease } from "../hooks/useLatestRelease";
 
 interface DownloadCardProps {
   client: DownloadClient;

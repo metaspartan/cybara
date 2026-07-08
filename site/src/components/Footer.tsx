@@ -1,5 +1,5 @@
-import { Icon } from "./Icon.tsx";
-import { GITHUB_URL, NAV_LINKS } from "../data/content.ts";
+import { Icon } from "./Icon";
+import { GITHUB_URL, NAV_LINKS } from "../data/content";
 
 export function Footer(): React.ReactElement {
   return (

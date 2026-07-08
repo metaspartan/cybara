@@ -1,16 +1,16 @@
-import { Background } from "./components/Background.tsx";
-import { Nav } from "./components/Nav.tsx";
-import { Hero } from "./components/Hero.tsx";
-import { Features } from "./components/Features.tsx";
-import { Channels } from "./components/Channels.tsx";
-import { Platforms } from "./components/Platforms.tsx";
-import { HowItWorks } from "./components/HowItWorks.tsx";
-import { Downloads } from "./components/Downloads.tsx";
-import { Migrate } from "./components/Migrate.tsx";
-import { Control } from "./components/Control.tsx";
-import { Faq } from "./components/Faq.tsx";
-import { CallToAction } from "./components/CallToAction.tsx";
-import { Footer } from "./components/Footer.tsx";
+import { Background } from "./components/Background";
+import { Nav } from "./components/Nav";
+import { Hero } from "./components/Hero";
+import { Features } from "./components/Features";
+import { Channels } from "./components/Channels";
+import { Platforms } from "./components/Platforms";
+import { HowItWorks } from "./components/HowItWorks";
+import { Downloads } from "./components/Downloads";
+import { Migrate } from "./components/Migrate";
+import { Control } from "./components/Control";
+import { Faq } from "./components/Faq";
+import { CallToAction } from "./components/CallToAction";
+import { Footer } from "./components/Footer";
 
 export function App(): React.ReactElement {
   return (

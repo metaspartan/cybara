@@ -562,6 +562,24 @@ function normalizeRemoteAccessBaseUrl(value: unknown): string {
   return normalized;
 }
 
+function isPrivateOverlayHttpHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (isIP(host) === 4) {
+    const [a, b] = host.split(".").map((part) => Number(part));
+    return (
+      a === 10 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254)
+    );
+  }
+  if (isIP(host) === 6) {
+    return host.startsWith("fc") || host.startsWith("fd") || host.startsWith("fe80");
+  }
+  return host.endsWith(".local") || host.endsWith(".lan") || host.endsWith(".internal");
+}
+
 function remoteAccessStatus(input: {
   enabled: boolean;
   mode: GatewayRemoteAccessMode;
@@ -600,6 +618,17 @@ function remoteAccessStatus(input: {
       ready: false,
       status: "needs_https",
       message: "Public tunnel and custom-domain access must use HTTPS.",
+    };
+  }
+  if (
+    input.mode === "private_overlay" &&
+    parsed.protocol === "http:" &&
+    !isPrivateOverlayHttpHost(parsed.hostname)
+  ) {
+    return {
+      ready: false,
+      status: "needs_https",
+      message: "Private mesh HTTP URLs must use a private LAN or mesh IP. Use HTTPS for DNS names.",
     };
   }
   if (input.mode === "public_tunnel" && !input.gatewayPasswordEnabled) {

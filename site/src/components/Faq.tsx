@@ -1,5 +1,5 @@
-import { SectionHeading } from "./SectionHeading.tsx";
-import { FAQS } from "../data/content.ts";
+import { SectionHeading } from "./SectionHeading";
+import { FAQS } from "../data/content";
 
 export function Faq(): React.ReactElement {
   return (

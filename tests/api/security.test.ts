@@ -185,6 +185,27 @@ describe("API security module", () => {
     expect(settings.requiresGatewayPassword).toBe(false);
   });
 
+  test("private mesh remote access rejects public HTTP hostnames", () => {
+    const publicHttp = security.setGatewayRemoteAccessSettings({
+      enabled: true,
+      mode: "private_overlay",
+      provider: "custom",
+      baseUrl: "http://cybara.example.com",
+    });
+    expect(publicHttp.ready).toBe(false);
+    expect(publicHttp.status).toBe("needs_https");
+    expect(publicHttp.message).toContain("private LAN or mesh IP");
+
+    const httpsName = security.setGatewayRemoteAccessSettings({
+      enabled: true,
+      mode: "private_overlay",
+      provider: "tailscale",
+      baseUrl: "https://cybara.tailnet.ts.net",
+    });
+    expect(httpsName.ready).toBe(true);
+    expect(httpsName.requiresGatewayPassword).toBe(false);
+  });
+
   test("securityCheck rejects remote root requests missing the gateway password", () => {
     security.setGatewayPassword("correct horse battery staple");
 

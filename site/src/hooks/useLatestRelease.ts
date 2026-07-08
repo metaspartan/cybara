@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { RELEASES_URL } from "../data/content.ts";
+import { RELEASES_URL } from "../data/content";
 
 const LATEST_RELEASE_API = "https://api.github.com/repos/metaspartan/cybara/releases/latest";
 

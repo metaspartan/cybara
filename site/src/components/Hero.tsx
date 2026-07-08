@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Icon } from "./Icon.tsx";
-import { STATS, GITHUB_URL, INSTALL_COMMAND } from "../data/content.ts";
+import { Icon } from "./Icon";
+import { STATS, GITHUB_URL, INSTALL_COMMAND } from "../data/content";
 
 export function Hero(): React.ReactElement {
   const [copied, setCopied] = useState<boolean>(false);
