@@ -212,7 +212,9 @@ function MessageActionsRow({
   );
 }
 
-function resolveUserImageUri(image: NonNullable<SessionMessageSummary["images"]>[number]): string | null {
+function resolveUserImageUri(
+  image: NonNullable<SessionMessageSummary["images"]>[number]
+): string | null {
   if (image.url && image.url.trim()) return image.url.trim();
   if (image.data && image.data.trim()) {
     return `data:${image.mimeType || "image/png"};base64,${image.data.trim()}`;

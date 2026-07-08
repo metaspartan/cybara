@@ -872,7 +872,9 @@ export function ProviderSettingsPanel({
         const response = await api.startProviderDeviceCodeOAuth(provider.provider);
         setOauthDeviceCode(response.user_code);
         setOauthStatus("Enter the code in the browser window, then keep this screen open.");
-        await openGatewayOrLocalUrl(response.verification_uri_complete || response.verification_uri);
+        await openGatewayOrLocalUrl(
+          response.verification_uri_complete || response.verification_uri
+        );
         await pollOAuthDeviceCode(response.device_code, response.interval, response.expires_in);
       } else {
         const response = await api.startProviderOAuth(provider.provider);

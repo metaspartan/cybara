@@ -31,7 +31,11 @@ describe("chat attachments persistence", () => {
     const refs = persistImageAttachments(sessionId, [
       { url: "https://example.com/a.png", mimeType: "image/png" },
     ]);
-    expect(refs[0]).toEqual({ kind: "image", url: "https://example.com/a.png", mimeType: "image/png" });
+    expect(refs[0]).toEqual({
+      kind: "image",
+      url: "https://example.com/a.png",
+      mimeType: "image/png",
+    });
   });
 
   test("rejects unsafe session ids (traversal) — writes nothing", () => {

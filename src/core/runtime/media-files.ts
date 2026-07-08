@@ -37,7 +37,8 @@ export function resolveMediaFile(relPath: string): MediaFileResult {
   const contentType = MEDIA_MIME[extname(target).toLowerCase()];
   if (!contentType) return { status: 415, error: "unsupported media type" };
 
-  if (!existsSync(target) || statSync(target).isDirectory()) return { status: 404, error: "not found" };
+  if (!existsSync(target) || statSync(target).isDirectory())
+    return { status: 404, error: "not found" };
 
   try {
     return { status: 200, contentType, bytes: readFileSync(target) };

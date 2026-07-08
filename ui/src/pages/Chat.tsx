@@ -4649,7 +4649,9 @@ export function Chat() {
                     <button
                       onClick={handleSend}
                       disabled={
-                        (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0) ||
+                        (!input.trim() &&
+                          pendingImages.length === 0 &&
+                          pendingFiles.length === 0) ||
                         (isLoading && !sendQueuesFollowUp)
                       }
                       className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full accent-button disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"

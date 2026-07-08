@@ -149,7 +149,10 @@ export class WeComAdapter implements ChannelAdapter {
       return { status: 401, body: { error: "invalid signature" } };
     }
 
-    const fresh = wecomReplayGuard.check(`${nonce}:${msg_signature}`, parseTimestampSeconds(timestamp));
+    const fresh = wecomReplayGuard.check(
+      `${nonce}:${msg_signature}`,
+      parseTimestampSeconds(timestamp)
+    );
     if (!fresh.ok) {
       return { status: 401, body: { error: `request rejected: ${fresh.reason}` } };
     }

@@ -335,9 +335,7 @@ describe("parseGrokWebBillingResponse", () => {
   test("maps Grok Build gRPC-web billing payloads into monthly usage", () => {
     const hex =
       "0a3f0d7f6a9c3f12001a002206088097f3d0062a060880b191d2063a07080215a9389b3f3a07080115d6ea183c421208011206088097f3d0061a060880b191d206";
-    const bytes = Uint8Array.from(
-      hex.match(/../g)?.map((part) => Number.parseInt(part, 16)) ?? []
-    );
+    const bytes = Uint8Array.from(hex.match(/../g)?.map((part) => Number.parseInt(part, 16)) ?? []);
     const result = parseGrokWebBillingResponse(bytes, 1_780_000_000_000);
 
     expect(result?.planLabel).toBe("Grok Build");
@@ -347,9 +345,7 @@ describe("parseGrokWebBillingResponse", () => {
   });
 
   test("unwraps gRPC-web data frames before scanning protobuf payloads", () => {
-    const payload = Uint8Array.from([
-      0x0a, 0x07, 0x0d, 0x00, 0x00, 0x20, 0x41, 0x2a, 0x00,
-    ]);
+    const payload = Uint8Array.from([0x0a, 0x07, 0x0d, 0x00, 0x00, 0x20, 0x41, 0x2a, 0x00]);
     const frame = new Uint8Array(5 + payload.length);
     frame[4] = payload.length;
     frame.set(payload, 5);

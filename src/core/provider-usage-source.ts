@@ -1061,9 +1061,7 @@ export function parseGrokWebBillingResponse(
       .filter((entry) => entry.path.join(".") === "1.5.1")
       .map((entry) => entry.date.getTime())
       .sort((a, b) => a - b)[0] ??
-    future
-      .map((entry) => entry.date.getTime())
-      .sort((a, b) => a - b)[0];
+    future.map((entry) => entry.date.getTime()).sort((a, b) => a - b)[0];
   const hasUsagePeriod = scan.varintFields.some(
     (field) =>
       pathStartsWith(field.path, [1, 6]) ||

@@ -1440,10 +1440,10 @@ async function rawProviderAdd(
       }
 
       let interval = Math.max(5, dcData.interval || 5) * 1000;
-      const expiresAt = Date.now() + (dcData.expires_in || 900) * 1000;
+      const pollDeadline = Date.now() + (dcData.expires_in || 900) * 1000;
       process.stdout.write("  Waiting for authorization");
 
-      while (Date.now() < expiresAt) {
+      while (Date.now() < pollDeadline) {
         await new Promise((r) => setTimeout(r, interval));
         process.stdout.write(".");
 
