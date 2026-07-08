@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -26,17 +26,15 @@ describe("native macOS shell wiring", () => {
     expect(sidecarManager).toContain("gatewayMode = .attached");
   });
 
-  test("webview injects the cybara native runtime bridge and notification support", () => {
-    const webView = readFileSync(join(MACOS_APP_DIR, "CybaraWebView.swift"), "utf8");
+  test("native shell does not embed the web UI as a detail pane", () => {
+    const contentView = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
 
-    expect(webView).toContain("__CYBARA_NATIVE__");
-    expect(webView).toContain('runtime: "cybara-native"');
-    expect(webView).toContain("requestNotificationPermission");
-    expect(webView).toContain("notificationPermission");
-    expect(webView).toContain("openDirectoryDialog");
-    expect(webView).toContain("NSOpenPanel");
-    expect(webView).toContain("UNUserNotificationCenter");
-    expect(webView).toContain('document.documentElement.dataset.runtime = "cybara-native"');
+    expect(existsSync(join(MACOS_APP_DIR, "CybaraWebView.swift"))).toBe(false);
+    expect(contentView).not.toContain("CybaraWebView");
+    expect(contentView).not.toContain("webBackedDetail");
+    expect(contentView).not.toContain("webRoute");
+    expect(contentView).not.toContain("webUI");
+    expect(contentView).not.toContain("Web UI");
   });
 
   test("native logo loading does not call SwiftPM Bundle.module at app startup", () => {
@@ -48,9 +46,13 @@ describe("native macOS shell wiring", () => {
     expect(brand).toContain("logoURLCandidates");
   });
 
-  test("native shell exposes the same major web and Tauri destinations", () => {
+  test("native shell exposes major web and Tauri destinations as SwiftUI screens", () => {
     const contentView = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
     const app = readFileSync(join(ROOT_DIR, "ui", "src", "App.tsx"), "utf8");
+    const nativePlatformScreens = readFileSync(
+      join(MACOS_APP_DIR, "NativePlatformScreens.swift"),
+      "utf8"
+    );
 
     for (const route of [
       "/agents",
@@ -80,29 +82,35 @@ describe("native macOS shell wiring", () => {
     for (const nativeScreen of [
       "RouterScreen(client: client)",
       "ChannelsScreen(client: client)",
+      "MCPScreen(client: client)",
+      "LSPScreen(client: client)",
+      "IDEScreen(client: client)",
+      "SessionsManagementScreen(client: client)",
+      "ToolsScreen(client: client)",
+      "TerminalScreen(client: client)",
       "MemoryScreen(client: client)",
       "WalletScreen(client: client)",
+      "ArtifactsScreen(client: client)",
       "SkillsScreen(client: client)",
       "LogsScreen(client: client)",
     ]) {
       expect(contentView).toContain(nativeScreen);
     }
 
-    for (const webRoute of [
-      'case .mcp: return "mcp"',
-      'case .lsp: return "lsp"',
-      'case .ide: return "ide"',
-      'case .sessions: return "sessions"',
-      'case .tools: return "tools"',
-      'case .terminal: return "terminal"',
-      'case .artifacts: return "artifacts"',
+    for (const gatewayRoute of [
+      '"api/mcp"',
+      '"api/lsp/status"',
+      '"api/ide/index/status"',
+      '"api/sessions/\\(',
+      '"api/tools"',
+      '"api/terminal/sessions"',
+      '"api/artifacts"',
     ]) {
-      expect(contentView).toContain(webRoute);
+      expect(nativePlatformScreens).toContain(gatewayRoute);
     }
 
     expect(contentView).toContain('Section("Developer")');
     expect(contentView).toContain('Section("System")');
-    expect(contentView).toContain('webBackedDetail(path: destination.webRoute ?? "")');
   });
 
   test("native settings centers its content column and keeps cards left-aligned", () => {

@@ -22,7 +22,6 @@ struct NativeSettingsScreen: View {
     var onAccentChanged: (String) -> Void = { _ in }
 
     @EnvironmentObject private var sidecar: SidecarManager
-    @Environment(\.openURL) private var openURL
 
     @State private var selectedTab: SettingsTab = .general
     @State private var advancedSelection: SettingsAdvancedSection = .router
@@ -680,13 +679,6 @@ struct NativeSettingsScreen: View {
         }
         .buttonStyle(.borderedProminent)
         .disabled(gatewayRestarting)
-
-        Button {
-            openURL(sidecar.serverURL)
-        } label: {
-            Label("Open Web UI", systemImage: "globe")
-        }
-        .buttonStyle(.bordered)
 
         Button {
             copyServerURL()

@@ -77,7 +77,6 @@ enum NativeDestination: String, CaseIterable, Identifiable {
     case metrics
     case logs
     case settings
-    case webUI
 
     var id: String { rawValue }
 
@@ -105,7 +104,6 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .metrics: return "Metrics"
         case .logs: return "Logs"
         case .settings: return "Settings"
-        case .webUI: return "Web UI"
         }
     }
 
@@ -133,21 +131,6 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .metrics: return "chart.bar"
         case .logs: return "list.bullet.rectangle"
         case .settings: return "gearshape"
-        case .webUI: return "globe"
-        }
-    }
-
-    var webRoute: String? {
-        switch self {
-        case .mcp: return "mcp"
-        case .lsp: return "lsp"
-        case .ide: return "ide"
-        case .sessions: return "sessions"
-        case .tools: return "tools"
-        case .terminal: return "terminal"
-        case .artifacts: return "artifacts"
-        case .webUI: return nil
-        default: return nil
         }
     }
 }
@@ -248,7 +231,7 @@ struct ContentView: View {
                     }
                 }
                 Section("System") {
-                    ForEach([NativeDestination.memory, .journey, .wallet, .artifacts, .metrics, .tasks, .logs, .settings, .webUI]) { item in
+                    ForEach([NativeDestination.memory, .journey, .wallet, .artifacts, .metrics, .tasks, .logs, .settings]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -283,8 +266,23 @@ struct ContentView: View {
                 RouterScreen(client: client)
             case .channels:
                 ChannelsScreen(client: client)
-            case .mcp, .lsp, .ide, .sessions, .tools, .terminal, .artifacts:
-                webBackedDetail(path: destination.webRoute ?? "")
+            case .mcp:
+                MCPScreen(client: client)
+            case .lsp:
+                LSPScreen(client: client)
+            case .ide:
+                IDEScreen(client: client)
+            case .sessions:
+                SessionsManagementScreen(client: client) { session in
+                    selectedChatSessionID = session.id
+                    destination = .chat
+                }
+            case .tools:
+                ToolsScreen(client: client)
+            case .terminal:
+                TerminalScreen(client: client)
+            case .artifacts:
+                ArtifactsScreen(client: client)
             case .tasks:
                 TasksScreen(client: client) { sessionID in
                     selectedChatSessionID = sessionID
@@ -306,8 +304,6 @@ struct ContentView: View {
                 NativeSettingsScreen(client: client) { key in
                     accent = CybaraAccent.color(for: key)
                 }
-            case .webUI:
-                webUIDetail
             }
         }
     }
@@ -327,31 +323,6 @@ struct ContentView: View {
         .padding(32)
         .cybaraGlass(cornerRadius: 24)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var webUIDetail: some View {
-        webBackedDetail(path: nil)
-    }
-
-    private func webBackedDetail(path: String?) -> some View {
-        ZStack {
-            if sidecar.isReady {
-                CybaraWebView(
-                    url: webURL(path),
-                    gatewayPort: sidecar.port,
-                    managesGateway: sidecar.managesGateway
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .padding(14)
-            } else {
-                startingView
-            }
-        }
-    }
-
-    private func webURL(_ path: String?) -> URL {
-        guard let path, !path.isEmpty else { return sidecar.serverURL }
-        return sidecar.serverURL.appendingPathComponent(path)
     }
 }
 

@@ -1,4 +1,3 @@
-import { Platform } from "react-native";
 import type { CybaraMobileApi } from "./api";
 
 type PermissionStatus = "granted" | "denied" | "undetermined" | string;
@@ -57,8 +56,13 @@ async function isExpoGoRuntime(constants?: ConstantsLike | null): Promise<boolea
   return resolved?.executionEnvironment === "storeClient" || resolved?.appOwnership === "expo";
 }
 
-function nativePlatform(): string {
-  return Platform.OS || "unknown";
+async function loadNativePlatform(): Promise<string> {
+  try {
+    const mod = await import("react-native");
+    return (mod as { Platform?: { OS?: string } }).Platform?.OS || "unknown";
+  } catch {
+    return "unknown";
+  }
 }
 
 function expoProjectId(constants: ConstantsLike | null | undefined): string | undefined {
@@ -111,7 +115,7 @@ export async function registerMobilePushNotifications(
     };
   }
 
-  const platform = nativePushPlatform(options.platform ?? nativePlatform());
+  const platform = nativePushPlatform(options.platform ?? (await loadNativePlatform()));
   if (!platform)
     return { status: "unavailable", message: "Push notifications require iOS or Android." };
 
