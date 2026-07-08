@@ -40,6 +40,12 @@
           "cameraPermission": "Scan a Cybara gateway QR code to connect this device."
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Attach photos to your Cybara chat messages."
+        }
+      ],
       "expo-notifications",
       "expo-secure-store"
     ],

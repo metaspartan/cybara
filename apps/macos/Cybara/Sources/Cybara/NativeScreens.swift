@@ -167,6 +167,28 @@ func nativeImageMimeType(for url: URL) -> String {
     }
 }
 
+struct NativeAttachedFile: Identifiable, Hashable, Sendable {
+    let id: UUID
+    let name: String
+    let content: String
+
+    init(id: UUID = UUID(), name: String, content: String) {
+        self.id = id
+        self.name = name
+        self.content = content
+    }
+}
+
+let nativeImageFileExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp"]
+
+func nativeComposedMessage(text: String, files: [NativeAttachedFile]) -> String {
+    var composed = text
+    for file in files {
+        composed += "\n\nAttached file `\(file.name)`:\n```\n\(file.content)\n```\n"
+    }
+    return composed
+}
+
 // ─── Dashboard ───────────────────────────────────────────────────────────────
 
 struct DashboardScreen: View {
@@ -416,6 +438,7 @@ struct ChatScreen: View {
     @State private var sending = false
     @State private var error: String?
     @State private var pendingAttachments: [NativeAttachedImage] = []
+    @State private var pendingFiles: [NativeAttachedFile] = []
     @State private var attachmentsByContent: [String: [NativeAttachedImage]] = [:]
     @State private var renameTarget: GatewaySession?
     @State private var renameDraft = ""
@@ -1473,11 +1496,14 @@ struct ChatScreen: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             VStack(spacing: 6) {
-                if !pendingAttachments.isEmpty {
+                if !pendingAttachments.isEmpty || !pendingFiles.isEmpty {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(pendingAttachments) { attachment in
                                 composerAttachmentChip(attachment)
+                            }
+                            ForEach(pendingFiles) { file in
+                                composerFileChip(file)
                             }
                         }
                         .padding(.horizontal, 4)
@@ -1496,14 +1522,14 @@ struct ChatScreen: View {
                     Spacer(minLength: 6)
                     composerControls
                     Button {
-                        attachImages()
+                        attachFiles()
                     } label: {
                         Image(systemName: "paperclip")
                             .font(.system(size: 15, weight: .semibold))
                     }
                     .buttonStyle(.borderless)
-                    .help("Attach images")
-                    .disabled(pendingAttachments.count >= 8)
+                    .help("Attach images or text files")
+                    .disabled(pendingAttachments.count >= 8 && pendingFiles.count >= 8)
                     Button {
                         Task { await send() }
                     } label: {
@@ -1511,7 +1537,11 @@ struct ChatScreen: View {
                             .font(.system(size: 24))
                     }
                     .buttonStyle(.borderless)
-                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingAttachments.isEmpty)
+                    .disabled(
+                        draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                            && pendingAttachments.isEmpty
+                            && pendingFiles.isEmpty
+                    )
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -1525,6 +1555,13 @@ struct ChatScreen: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .stroke(Color.white.opacity(0.1), lineWidth: 1)
             )
+            .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+                handleDroppedProviders(providers)
+                return true
+            }
+            .onPasteCommand(of: [.png, .tiff, .fileURL]) { _ in
+                handlePaste()
+            }
         }
         .padding(14)
         .cybaraGlass(cornerRadius: 0)
@@ -1834,24 +1871,69 @@ struct ChatScreen: View {
     }
 
     @MainActor
-    private func attachImages() {
+    private func attachFiles() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [.png, .jpeg, .gif, .webP, .image]
+        panel.allowedContentTypes = [.png, .jpeg, .gif, .webP, .image, .text, .plainText, .sourceCode, .json, .xml, .yaml, .commaSeparatedText, .html, .data]
         panel.prompt = "Attach"
-        panel.title = "Attach Images"
-        panel.message = "Attach up to 8 images to send with your message."
+        panel.title = "Attach Images or Files"
+        panel.message = "Attach images or text files to send with your message."
         guard panel.runModal() == .OK else { return }
         for url in panel.urls {
-            guard pendingAttachments.count < 8 else { break }
-            guard let data = try? Data(contentsOf: url) else { continue }
+            ingestAttachment(url: url)
+        }
+    }
+
+    @MainActor
+    private func ingestAttachment(url: URL) {
+        guard let data = try? Data(contentsOf: url) else { return }
+        if nativeImageFileExtensions.contains(url.pathExtension.lowercased()) {
+            guard pendingAttachments.count < 8 else { return }
             pendingAttachments.append(
                 NativeAttachedImage(
                     base64: data.base64EncodedString(),
                     mimeType: nativeImageMimeType(for: url)
                 )
+            )
+            return
+        }
+        guard pendingFiles.count < 8, data.count <= 256 * 1024 else { return }
+        guard let content = String(data: data, encoding: .utf8) else { return }
+        pendingFiles.append(NativeAttachedFile(name: url.lastPathComponent, content: content))
+    }
+
+    @MainActor
+    private func handleDroppedProviders(_ providers: [NSItemProvider]) {
+        for provider in providers {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                guard let url else { return }
+                Task { @MainActor in self.ingestAttachment(url: url) }
+            }
+        }
+    }
+
+    @MainActor
+    private func handlePaste() {
+        let pasteboard = NSPasteboard.general
+        if let urls = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL], !urls.isEmpty {
+            for url in urls { ingestAttachment(url: url) }
+            return
+        }
+        guard let images = pasteboard.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage] else {
+            return
+        }
+        for image in images {
+            guard pendingAttachments.count < 8 else { break }
+            guard let tiff = image.tiffRepresentation,
+                  let rep = NSBitmapImageRep(data: tiff),
+                  let png = rep.representation(using: .png, properties: [:]) else { continue }
+            pendingAttachments.append(
+                NativeAttachedImage(base64: png.base64EncodedString(), mimeType: "image/png")
             )
         }
     }
@@ -1886,6 +1968,37 @@ struct ChatScreen: View {
             .buttonStyle(.plain)
             .padding(2)
         }
+    }
+
+    private func composerFileChip(_ file: NativeAttachedFile) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "doc.text")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(file.name)
+                .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 140)
+            Button {
+                pendingFiles.removeAll { $0.id == file.id }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 56)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+        )
     }
 
     @MainActor
@@ -1944,16 +2057,19 @@ struct ChatScreen: View {
     private func send() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachments = pendingAttachments
+        let files = pendingFiles
         let queuedSend = sending || showWorkingTimeline || !pendingMessages.isEmpty
-        guard !text.isEmpty || !attachments.isEmpty else { return }
+        guard !text.isEmpty || !attachments.isEmpty || !files.isEmpty else { return }
+        let outgoing = nativeComposedMessage(text: text, files: files)
         if !queuedSend {
             sending = true
         }
         error = nil
         draft = ""
         pendingAttachments = []
+        pendingFiles = []
         if !attachments.isEmpty {
-            attachmentsByContent[text] = attachments
+            attachmentsByContent[outgoing] = attachments
         }
         if !queuedSend {
             liveStatus = "thinking"
@@ -1966,14 +2082,14 @@ struct ChatScreen: View {
         messages.append(
             GatewaySessionMessage(
                 role: "user",
-                content: text,
+                content: outgoing,
                 timestamp: optimisticTimestamp,
                 attachedImages: attachments
             )
         )
         do {
             let result = try await client.sendChat(
-                message: text,
+                message: outgoing,
                 sessionId: selectedSessionID,
                 agentId: selectedChatAgentID.isEmpty ? nil : selectedChatAgentID,
                 workspaceDir: activeWorkspaceDir,
@@ -1983,7 +2099,7 @@ struct ChatScreen: View {
             if result.queued == true {
                 pendingMessages = result.pendingMessages
                 messages.removeAll {
-                    $0.content == text && $0.role == "user" && $0.timestamp == optimisticTimestamp
+                    $0.content == outgoing && $0.role == "user" && $0.timestamp == optimisticTimestamp
                 }
                 return
             }

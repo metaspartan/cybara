@@ -1,3 +1,5 @@
+import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
+import { createInterface } from "readline";
 import { createLogger } from "./logger";
 
 const log = createLogger("ProviderUsage");
@@ -766,6 +768,345 @@ export function parseGrokUsageResponse(body: unknown, now: number): LiveProvider
   };
 }
 
+interface GrokRpcClient {
+  request(method: string, params: Record<string, unknown>, timeoutMs: number): Promise<unknown>;
+  close(): void;
+}
+
+function resolveGrokExecutable(): string | null {
+  const explicit = process.env.GROK_CLI_PATH?.trim();
+  if (explicit) return explicit;
+  try {
+    return Bun.which("grok") ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function createGrokRpcClient(): GrokRpcClient | null {
+  const executable = resolveGrokExecutable();
+  if (!executable) return null;
+
+  const child = spawn(executable, ["agent", "stdio"], {
+    stdio: ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+    env: process.env,
+  }) as ChildProcessWithoutNullStreams;
+  const lines = createInterface({ input: child.stdout });
+  let nextId = 1;
+  let stderr = "";
+  const pending = new Map<
+    number,
+    {
+      resolve: (value: unknown) => void;
+      reject: (error: Error) => void;
+      timer: ReturnType<typeof setTimeout>;
+    }
+  >();
+
+  child.stderr.on("data", (chunk: Buffer) => {
+    stderr = `${stderr}${chunk.toString("utf8")}`.slice(-1200);
+  });
+  child.once("error", (error) => {
+    for (const item of pending.values()) {
+      clearTimeout(item.timer);
+      item.reject(error);
+    }
+    pending.clear();
+  });
+  child.once("close", () => {
+    const error = new Error(stderr.trim() || "grok agent stdio exited");
+    for (const item of pending.values()) {
+      clearTimeout(item.timer);
+      item.reject(error);
+    }
+    pending.clear();
+  });
+  lines.on("line", (line) => {
+    let message: Record<string, unknown>;
+    try {
+      message = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      return;
+    }
+    const rawId = message.id;
+    const id = typeof rawId === "number" ? rawId : Number(rawId);
+    if (!Number.isInteger(id)) return;
+    const item = pending.get(id);
+    if (!item) return;
+    pending.delete(id);
+    clearTimeout(item.timer);
+    const error = asRecord(message.error);
+    if (error) {
+      const messageText = typeof error.message === "string" ? error.message : "grok RPC failed";
+      item.reject(new Error(messageText));
+      return;
+    }
+    item.resolve(message.result ?? null);
+  });
+
+  return {
+    request(method, params, timeoutMs) {
+      const id = nextId++;
+      const payload = JSON.stringify({
+        jsonrpc: "2.0",
+        id,
+        method,
+        params,
+      });
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          pending.delete(id);
+          if (!child.killed) child.kill();
+          reject(new Error(`grok RPC timed out on ${method}`));
+        }, timeoutMs);
+        pending.set(id, { resolve, reject, timer });
+        child.stdin.write(`${payload}\n`, "utf8", (error) => {
+          if (!error) return;
+          pending.delete(id);
+          clearTimeout(timer);
+          reject(error);
+        });
+      });
+    },
+    close() {
+      lines.close();
+      child.stdin.destroy();
+      if (!child.killed) child.kill();
+    },
+  };
+}
+
+async function fetchGrokCliUsage(): Promise<LiveProviderUsage | null> {
+  const rpc = createGrokRpcClient();
+  if (!rpc) return null;
+  try {
+    await rpc.request(
+      "initialize",
+      {
+        protocolVersion: "1",
+        clientCapabilities: {
+          fs: { readTextFile: false, writeTextFile: false },
+          terminal: false,
+        },
+      },
+      8000
+    );
+    const result = await rpc.request("x.ai/billing", {}, 12000);
+    return parseGrokUsageResponse(result, Date.now());
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      message.includes("Method not found") ||
+      message.includes("Authentication required") ||
+      message.includes("grok RPC timed out")
+    ) {
+      return null;
+    }
+    log.debug(`grok CLI usage failed: ${message}`);
+    return null;
+  } finally {
+    rpc.close();
+  }
+}
+
+function grpcWebDataFrames(data: Uint8Array): Uint8Array[] {
+  const frames: Uint8Array[] = [];
+  let index = 0;
+  while (index < data.length) {
+    if (index + 5 > data.length) return [];
+    const flags = data[index] ?? 0;
+    const length =
+      ((data[index + 1] ?? 0) << 24) |
+      ((data[index + 2] ?? 0) << 16) |
+      ((data[index + 3] ?? 0) << 8) |
+      (data[index + 4] ?? 0);
+    const start = index + 5;
+    const end = start + length;
+    if (length < 0 || end > data.length) return [];
+    if ((flags & 0x80) === 0) frames.push(data.slice(start, end));
+    index = end;
+  }
+  return frames;
+}
+
+function looksLikeProtobufPayload(data: Uint8Array): boolean {
+  const first = data[0];
+  if (first === undefined) return false;
+  const fieldNumber = first >> 3;
+  const wireType = first & 0x07;
+  return fieldNumber > 0 && [0, 1, 2, 5].includes(wireType);
+}
+
+function readVarint(data: Uint8Array, start: number): { value: number; next: number } | null {
+  let result = 0;
+  let shift = 0;
+  for (let index = start; index < data.length && shift <= 63; index++) {
+    const byte = data[index] ?? 0;
+    result += (byte & 0x7f) * 2 ** shift;
+    if ((byte & 0x80) === 0) return { value: result, next: index + 1 };
+    shift += 7;
+  }
+  return null;
+}
+
+interface GrokProtobufField {
+  path: number[];
+  value: number;
+  order: number;
+}
+
+interface GrokProtobufScan {
+  fixed32Fields: GrokProtobufField[];
+  varintFields: GrokProtobufField[];
+  order: number;
+}
+
+function scanGrokProtobuf(
+  data: Uint8Array,
+  depth = 0,
+  path: number[] = [],
+  scan: GrokProtobufScan = { fixed32Fields: [], varintFields: [], order: 0 }
+): GrokProtobufScan {
+  if (depth > 8) return scan;
+  let index = 0;
+  while (index < data.length) {
+    const tag = readVarint(data, index);
+    if (!tag) break;
+    index = tag.next;
+    const fieldNumber = Math.floor(tag.value / 8);
+    const wireType = tag.value & 0x07;
+    if (fieldNumber <= 0) break;
+    const nextPath = [...path, fieldNumber];
+
+    if (wireType === 0) {
+      const value = readVarint(data, index);
+      if (!value) break;
+      index = value.next;
+      scan.varintFields.push({ path: nextPath, value: value.value, order: scan.order++ });
+      continue;
+    }
+
+    if (wireType === 1) {
+      if (index + 8 > data.length) break;
+      index += 8;
+      continue;
+    }
+
+    if (wireType === 2) {
+      const length = readVarint(data, index);
+      if (!length) break;
+      index = length.next;
+      const end = index + length.value;
+      if (length.value < 0 || end > data.length) break;
+      const chunk = data.slice(index, end);
+      if (chunk.length > 0 && looksLikeProtobufPayload(chunk)) {
+        scanGrokProtobuf(chunk, depth + 1, nextPath, scan);
+      }
+      index = end;
+      continue;
+    }
+
+    if (wireType === 5) {
+      if (index + 4 > data.length) break;
+      const view = new DataView(data.buffer, data.byteOffset + index, 4);
+      scan.fixed32Fields.push({
+        path: nextPath,
+        value: view.getFloat32(0, true),
+        order: scan.order++,
+      });
+      index += 4;
+      continue;
+    }
+
+    break;
+  }
+  return scan;
+}
+
+function pathStartsWith(path: number[], prefix: number[]): boolean {
+  return prefix.every((value, index) => path[index] === value);
+}
+
+export function parseGrokWebBillingResponse(
+  raw: ArrayBuffer | Uint8Array,
+  now: number
+): LiveProviderUsage | null {
+  const data = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
+  let payloads = grpcWebDataFrames(data);
+  if (payloads.length === 0 && looksLikeProtobufPayload(data)) payloads = [data];
+  if (payloads.length === 0) return null;
+
+  const scan: GrokProtobufScan = { fixed32Fields: [], varintFields: [], order: 0 };
+  for (const payload of payloads) scanGrokProtobuf(payload, 0, [], scan);
+
+  const percent = scan.fixed32Fields
+    .filter(
+      (field) =>
+        field.path[field.path.length - 1] === 1 &&
+        Number.isFinite(field.value) &&
+        field.value >= 0 &&
+        field.value <= 100
+    )
+    .sort((a, b) =>
+      a.path.length === b.path.length ? a.order - b.order : a.path.length - b.path.length
+    )[0]?.value;
+
+  const resetCandidates = scan.varintFields
+    .filter((field) => field.value >= 1_700_000_000 && field.value <= 2_100_000_000)
+    .map((field) => ({ path: field.path, date: new Date(field.value * 1000) }));
+  const future = resetCandidates.filter((entry) => entry.date.getTime() > now);
+  const preferredReset =
+    future
+      .filter((entry) => entry.path.join(".") === "1.5.1")
+      .map((entry) => entry.date.getTime())
+      .sort((a, b) => a - b)[0] ??
+    future
+      .map((entry) => entry.date.getTime())
+      .sort((a, b) => a - b)[0];
+  const hasUsagePeriod = scan.varintFields.some(
+    (field) =>
+      pathStartsWith(field.path, [1, 6]) ||
+      (field.path.join(".") === "1.8.1" && (field.value === 1 || field.value === 2))
+  );
+  const usedPercent =
+    percent ??
+    (preferredReset !== undefined && hasUsagePeriod && scan.fixed32Fields.length === 0
+      ? 0
+      : undefined);
+  if (usedPercent === undefined) return null;
+
+  return {
+    planLabel: "Grok Build",
+    monthly: {
+      usedPercent: Math.max(0, Math.min(100, usedPercent)),
+      resetsAt: preferredReset ? new Date(preferredReset).toISOString() : undefined,
+    },
+    source: "oauth_api",
+    fetchedAt: now,
+  };
+}
+
+async function fetchGrokWebBillingUsage(token: string): Promise<LiveProviderUsage | null> {
+  const res = await fetch("https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Origin: "https://grok.com",
+      Referer: "https://grok.com/?_s=usage",
+      Accept: "*/*",
+      "Content-Type": "application/grpc-web+proto",
+      "x-grpc-web": "1",
+      "x-user-agent": "connect-es/2.1.1",
+      "User-Agent": "Cybara",
+    },
+    body: new Uint8Array([0, 0, 0, 0, 0]),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) return null;
+  return parseGrokWebBillingResponse(await res.arrayBuffer(), Date.now());
+}
+
 function parsePercentWindow(
   raw: unknown,
   now: number,
@@ -925,6 +1266,12 @@ export async function fetchLiveProviderUsage(
       value = await fetchZaiUsage(credential, provider.baseUrl);
     } else if (provider.providerType === "kimi-code") {
       value = await fetchKimiUsage(credential, provider.baseUrl);
+    } else if (provider.providerType === "xai-oauth") {
+      value = looksLikeOAuthToken(provider.accessToken)
+        ? ((await fetchGrokWebBillingUsage(provider.accessToken)) ?? (await fetchGrokCliUsage()))
+        : await fetchGrokCliUsage();
+    } else if (provider.providerType === "xai") {
+      value = await fetchGrokCliUsage();
     }
   } catch (error) {
     log.debug(`live usage fetch failed for ${provider.providerType}: ${error}`);

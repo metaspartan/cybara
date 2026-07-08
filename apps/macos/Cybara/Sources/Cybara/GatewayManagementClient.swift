@@ -76,6 +76,8 @@ extension GatewayClient {
         baseURL: String?,
         apiKey: String?,
         accessToken: String?,
+        refreshToken: String?,
+        expiresAt: Double?,
         isDefault: Bool
     ) async throws -> Data {
         var payload: [String: Any] = [
@@ -86,6 +88,8 @@ extension GatewayClient {
         if let baseURL, !baseURL.isEmpty { payload["base_url"] = baseURL }
         if let apiKey, !apiKey.isEmpty { payload["api_key"] = apiKey }
         if let accessToken, !accessToken.isEmpty { payload["access_token"] = accessToken }
+        if let refreshToken, !refreshToken.isEmpty { payload["refresh_token"] = refreshToken }
+        if let expiresAt { payload["expires_at"] = expiresAt }
         let body = try JSONSerialization.data(withJSONObject: payload)
         return try await request("api/providers", method: "POST", body: body)
     }
@@ -97,6 +101,8 @@ extension GatewayClient {
         baseURL: String?,
         apiKey: String?,
         accessToken: String?,
+        refreshToken: String?,
+        expiresAt: Double?,
         isDefault: Bool
     ) async throws -> Data {
         var payload: [String: Any] = [
@@ -106,6 +112,8 @@ extension GatewayClient {
         if let baseURL, !baseURL.isEmpty { payload["base_url"] = baseURL }
         if let apiKey, !apiKey.isEmpty { payload["api_key"] = apiKey }
         if let accessToken, !accessToken.isEmpty { payload["access_token"] = accessToken }
+        if let refreshToken, !refreshToken.isEmpty { payload["refresh_token"] = refreshToken }
+        if let expiresAt { payload["expires_at"] = expiresAt }
         let body = try JSONSerialization.data(withJSONObject: payload)
         return try await request("api/providers/\(id)", method: "PUT", body: body)
     }

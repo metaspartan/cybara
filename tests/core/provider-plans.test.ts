@@ -342,6 +342,20 @@ describe("provider plan monitoring", () => {
     expect(opencode.externalSourceMode).toBe("browser_cookie");
   });
 
+  test("marks xAI OAuth Grok Build as automatic and read-only", () => {
+    const providerId = createProvider("xai-oauth", "xai-oauth-test-token", "https://api.x.ai/v1");
+    setProviderPlanMonitoringConfig({ enabled: true, providers: {} });
+
+    const snapshot = getProviderPlanSnapshot(providerId);
+
+    expect(snapshot.providerType).toBe("xai-oauth");
+    expect(snapshot.managedAutomatically).toBe(true);
+    expect(snapshot.manualPlanEditable).toBe(false);
+    expect(snapshot.automaticTrackingLabel).toBe("Grok Build usage");
+    expect(snapshot.externalSourceMode).toBe("oauth_api");
+    expect(snapshot.presetSuggestions.map((preset) => preset.id)).toContain("grok-build");
+  });
+
   test("enriches MiniMax token-plan quota from provider API", async () => {
     const providerId = createProvider("minimax", "sk-cp-test-token");
     const seenUrls: string[] = [];

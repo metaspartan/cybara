@@ -120,6 +120,7 @@ sent.
 | `alibaba` | Alibaba DashScope | API key |
 | `alibaba-coding-plan` | Alibaba Coding Plan | API key |
 | `xai` | xAI (Grok) | API key |
+| `xai-oauth` | xAI Grok OAuth | OAuth device code |
 | `nvidia` | NVIDIA | API key |
 | `qianfan` | Baidu Qianfan | API key |
 | `cerebras` | Cerebras | API key |

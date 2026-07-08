@@ -1,6 +1,7 @@
 import { agentManager, type AgentMessage } from "../core/agent";
 import { KeyedMutex } from "../core/keyed-mutex";
 import { type AgentImage, hasImages, sanitizeAgentImages } from "../core/llm/image-blocks";
+import { persistImageAttachments, hydrateImageDataFromPath } from "../core/chat/attachments";
 import { providerManager } from "../core/providers";
 import { config } from "../core/config";
 import type { Agent } from "../core/database";
@@ -155,7 +156,9 @@ export function buildChatExecutionMessagesForAgent(
   const executionMessages: AgentMessage[] = sessionMessages.map((sessionMessage) => ({
     role: sessionMessage.role,
     content: sessionMessage.content,
-    ...(sessionMessage.images ? { images: sessionMessage.images } : {}),
+    ...(sessionMessage.images
+      ? { images: sessionMessage.images.map(hydrateImageDataFromPath) }
+      : {}),
   }));
 
   const activeGoalLine = options?.sessionId ? getActiveGoalContextLine(options.sessionId) : null;
@@ -1688,9 +1691,15 @@ async function handleChatTurn(
   });
 
   if (shouldLogUserMessage) {
+    const persistedAttachments = hasImages(sanitizedImages)
+      ? persistImageAttachments(session.id, sanitizedImages)
+      : [];
     await logSessionMessage(session.id, "user", message, {
       agentId: agent?.id,
-      metadata: { source: "chat_api" },
+      metadata: {
+        source: "chat_api",
+        ...(persistedAttachments.length ? { attachments: persistedAttachments } : {}),
+      },
       createdAt: userMessage.timestamp,
     });
   }

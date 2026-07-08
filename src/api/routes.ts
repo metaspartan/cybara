@@ -244,6 +244,90 @@ function validateProviderBaseUrlShape(baseUrl: string): void {
   }
 }
 
+interface DeviceOAuthConfig {
+  clientId?: string;
+  clientSecret?: string;
+  scope?: string;
+  deviceCodeUrl?: string;
+  tokenUrl?: string;
+  discoveryUrl?: string;
+  deviceCodeDiscoveryUrl?: string;
+}
+
+interface DeviceOAuthEndpoints {
+  deviceCodeUrl: string;
+  tokenUrl: string;
+}
+
+function isTrustedXaiOAuthEndpoint(endpoint: string): boolean {
+  try {
+    const parsed = new URL(endpoint);
+    return parsed.protocol === "https:" && (parsed.hostname === "x.ai" || parsed.hostname.endsWith(".x.ai"));
+  } catch {
+    return false;
+  }
+}
+
+function validateOAuthEndpoint(providerType: string, endpoint: string, label: string): string {
+  if (providerType === "xai-oauth" && !isTrustedXaiOAuthEndpoint(endpoint)) {
+    throw new Error(`xAI OAuth discovery returned an untrusted ${label}`);
+  }
+  return endpoint;
+}
+
+async function discoverDeviceOAuthEndpoints(
+  providerType: string,
+  oauthConfig: DeviceOAuthConfig
+): Promise<DeviceOAuthEndpoints> {
+  const discoveryUrl = oauthConfig.deviceCodeDiscoveryUrl || oauthConfig.discoveryUrl;
+  if (discoveryUrl) {
+    validateOAuthEndpoint(providerType, discoveryUrl, "discovery URL");
+    const res = await fetch(discoveryUrl, {
+      headers: { Accept: "application/json", "User-Agent": "Cybara" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      throw new Error(`OAuth discovery failed: HTTP ${res.status}`);
+    }
+    const json = (await res.json()) as {
+      device_authorization_endpoint?: unknown;
+      token_endpoint?: unknown;
+    };
+    if (
+      typeof json.device_authorization_endpoint !== "string" ||
+      typeof json.token_endpoint !== "string"
+    ) {
+      throw new Error("OAuth discovery response is missing device-code endpoints");
+    }
+    return {
+      deviceCodeUrl: validateOAuthEndpoint(
+        providerType,
+        json.device_authorization_endpoint,
+        "device authorization endpoint"
+      ),
+      tokenUrl: validateOAuthEndpoint(providerType, json.token_endpoint, "token endpoint"),
+    };
+  }
+
+  if (!oauthConfig.deviceCodeUrl || !oauthConfig.tokenUrl) {
+    throw new Error(`Provider ${providerType} does not support device code OAuth flow`);
+  }
+  return {
+    deviceCodeUrl: validateOAuthEndpoint(
+      providerType,
+      oauthConfig.deviceCodeUrl,
+      "device authorization endpoint"
+    ),
+    tokenUrl: validateOAuthEndpoint(providerType, oauthConfig.tokenUrl, "token endpoint"),
+  };
+}
+
+function oauthJsonRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 function resolveWorkspacePath(filePath?: string): string {
   if (!filePath || typeof filePath !== "string") {
     return process.cwd();
@@ -1354,12 +1438,15 @@ const routes: Record<string, RouteHandler> = {
       name: string;
       api_key?: string;
       access_token?: string;
+      refresh_token?: string;
+      expires_at?: number;
       base_url?: string;
       is_default?: boolean;
     };
 
     const apiKey = normalizeSecretString(data.api_key);
     const accessToken = normalizeSecretString(data.access_token);
+    const refreshToken = normalizeSecretString(data.refresh_token);
     const normalizedBaseUrl = normalizeOptionalString(data.base_url);
     if (normalizedBaseUrl) {
       validateProviderBaseUrlShape(normalizedBaseUrl);
@@ -1375,6 +1462,8 @@ const routes: Record<string, RouteHandler> = {
       name: normalizeOptionalString(data.name) || data.name,
       api_key: apiKey,
       access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_at: typeof data.expires_at === "number" ? data.expires_at : undefined,
       base_url: normalizedBaseUrl,
       is_default: data.is_default,
     });
@@ -1419,6 +1508,17 @@ const routes: Record<string, RouteHandler> = {
       if (normalizedAccessToken) {
         updates.access_token = normalizedAccessToken;
       }
+    }
+
+    if ("refresh_token" in data) {
+      const normalizedRefreshToken = normalizeSecretString(data.refresh_token);
+      if (normalizedRefreshToken) {
+        updates.refresh_token = normalizedRefreshToken;
+      }
+    }
+
+    if ("expires_at" in data && typeof data.expires_at === "number") {
+      updates.expires_at = data.expires_at;
     }
 
     validateProviderCredentialShape(existing.provider, {
@@ -1487,21 +1587,22 @@ const routes: Record<string, RouteHandler> = {
   "POST /api/providers/oauth/device-code": async (body) => {
     const { providerType } = body as { providerType: string };
     const resolvedProviderType = resolveProviderType(providerType);
+    if (!resolvedProviderType) throw new Error(`Validation error: unknown provider '${providerType}'`);
     const config = providers[resolvedProviderType as ProviderType] as Record<string, unknown>;
     if (!config) throw new Error(`Validation error: unknown provider '${providerType}'`);
 
-    const oauthConfig = config.oauthConfig as
-      | { clientId?: string; deviceCodeUrl?: string; scope?: string }
-      | undefined;
-    if (!oauthConfig?.deviceCodeUrl || !oauthConfig?.clientId) {
+    const oauthConfig = config.oauthConfig as DeviceOAuthConfig | undefined;
+    if (!oauthConfig?.clientId) {
       throw new Error(`Provider ${providerType} does not support device code OAuth flow`);
     }
+    const endpoints = await discoverDeviceOAuthEndpoints(resolvedProviderType, oauthConfig);
 
-    const res = await fetch(oauthConfig.deviceCodeUrl, {
+    const res = await fetch(endpoints.deviceCodeUrl, {
       method: "POST",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Cybara",
       },
       body: new URLSearchParams({
         client_id: oauthConfig.clientId,
@@ -1517,14 +1618,29 @@ const routes: Record<string, RouteHandler> = {
       device_code: string;
       user_code: string;
       verification_uri: string;
+      verification_uri_complete?: string;
       expires_in: number;
       interval: number;
     };
+    const verificationUri = validateOAuthEndpoint(
+      resolvedProviderType,
+      json.verification_uri,
+      "device verification URI"
+    );
+    const verificationUriComplete =
+      typeof json.verification_uri_complete === "string" && json.verification_uri_complete.trim()
+        ? validateOAuthEndpoint(
+            resolvedProviderType,
+            json.verification_uri_complete,
+            "complete device verification URI"
+          )
+        : undefined;
 
     return {
       device_code: json.device_code,
       user_code: json.user_code,
-      verification_uri: json.verification_uri,
+      verification_uri: verificationUri,
+      verification_uri_complete: verificationUriComplete,
       expires_in: json.expires_in,
       interval: json.interval,
     };
@@ -1533,19 +1649,22 @@ const routes: Record<string, RouteHandler> = {
   "POST /api/providers/oauth/poll": async (body) => {
     const { providerType, deviceCode } = body as { providerType: string; deviceCode: string };
     const resolvedProviderType = resolveProviderType(providerType);
+    if (!resolvedProviderType) throw new Error(`Validation error: unknown provider '${providerType}'`);
     const config = providers[resolvedProviderType as ProviderType] as Record<string, unknown>;
     if (!config) throw new Error(`Validation error: unknown provider '${providerType}'`);
 
-    const oauthConfig = config.oauthConfig as { clientId?: string; tokenUrl?: string } | undefined;
-    if (!oauthConfig?.tokenUrl || !oauthConfig?.clientId) {
+    const oauthConfig = config.oauthConfig as DeviceOAuthConfig | undefined;
+    if (!oauthConfig?.clientId) {
       throw new Error(`Provider ${providerType} does not support device code OAuth flow`);
     }
+    const endpoints = await discoverDeviceOAuthEndpoints(resolvedProviderType, oauthConfig);
 
-    const res = await fetch(oauthConfig.tokenUrl, {
+    const res = await fetch(endpoints.tokenUrl, {
       method: "POST",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "Cybara",
       },
       body: new URLSearchParams({
         client_id: oauthConfig.clientId,
@@ -1554,17 +1673,40 @@ const routes: Record<string, RouteHandler> = {
       }),
     });
 
-    if (!res.ok) {
-      throw new Error(`Token poll failed: HTTP ${res.status}`);
+    let json: Record<string, unknown> = {};
+    try {
+      json = oauthJsonRecord(await res.json());
+    } catch {
+      json = {};
     }
 
-    const json = (await res.json()) as Record<string, string>;
-
-    if ("access_token" in json && typeof json.access_token === "string") {
-      return { status: "success", access_token: json.access_token };
+    if (res.ok && typeof json.access_token === "string") {
+      const refreshToken = typeof json.refresh_token === "string" ? json.refresh_token : undefined;
+      if (resolvedProviderType === "xai-oauth" && !refreshToken) {
+        return {
+          status: "error",
+          error:
+            "xAI OAuth did not return a refresh token. Re-run login; if it keeps happening, xAI rejected offline_access for this OAuth client.",
+        };
+      }
+      const expiresIn =
+        typeof json.expires_in === "number" && Number.isFinite(json.expires_in)
+          ? json.expires_in
+          : undefined;
+      return {
+        status: "success",
+        access_token: json.access_token,
+        refresh_token: refreshToken,
+        expires_in: expiresIn,
+        expires_at: expiresIn ? Date.now() + expiresIn * 1000 : undefined,
+      };
     }
 
-    const error = json.error || "unknown";
+    if (!res.ok && !json.error) {
+      return { status: "error", error: `Token poll failed: HTTP ${res.status}` };
+    }
+
+    const error = typeof json.error === "string" ? json.error : "unknown";
     if (error === "authorization_pending") {
       return { status: "pending" };
     }
@@ -1574,7 +1716,7 @@ const routes: Record<string, RouteHandler> = {
     if (error === "expired_token") {
       return { status: "expired" };
     }
-    if (error === "access_denied") {
+    if (error === "access_denied" || error === "authorization_denied") {
       return { status: "denied" };
     }
 

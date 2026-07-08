@@ -1051,6 +1051,38 @@ const makeStyles = () =>
       fontSize: typography.label,
       fontWeight: "800",
     },
+    composerColumn: {
+      gap: spacing.xs,
+    },
+    composerAttachments: {
+      flexDirection: "row",
+      gap: spacing.sm,
+      paddingHorizontal: spacing.sm,
+      paddingTop: spacing.xs,
+    },
+    composerThumb: {
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      height: 56,
+      overflow: "hidden",
+      width: 56,
+    },
+    composerThumbImage: {
+      height: "100%",
+      width: "100%",
+    },
+    composerThumbRemove: {
+      alignItems: "center",
+      backgroundColor: colors.scrim,
+      borderRadius: 999,
+      height: 20,
+      justifyContent: "center",
+      position: "absolute",
+      right: 2,
+      top: 2,
+      width: 20,
+    },
     composer: {
       alignItems: "flex-end",
       flexDirection: "row",

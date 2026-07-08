@@ -16,6 +16,8 @@ export interface AgentImage {
   data?: string;
   /** Remote URL (used when data is absent). */
   url?: string;
+  /** Persisted attachment path relative to the cybara home (display/rehydration). */
+  path?: string;
   /** MIME type, e.g. "image/png". Defaults to image/png when omitted. */
   mimeType?: string;
 }

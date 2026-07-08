@@ -54,6 +54,8 @@ struct ProvidersScreen: View {
                     baseURL: draft.baseURL,
                     apiKey: draft.apiKey,
                     accessToken: draft.accessToken,
+                    refreshToken: draft.refreshToken,
+                    expiresAt: draft.expiresAt,
                     isDefault: draft.isDefault
                 )
                 showingCreate = false
@@ -68,6 +70,8 @@ struct ProvidersScreen: View {
                     baseURL: draft.baseURL,
                     apiKey: draft.apiKey,
                     accessToken: draft.accessToken,
+                    refreshToken: draft.refreshToken,
+                    expiresAt: draft.expiresAt,
                     isDefault: draft.isDefault
                 )
                 editingProvider = nil
@@ -436,6 +440,8 @@ struct ProviderEditorDraft {
     let baseURL: String?
     let apiKey: String?
     let accessToken: String?
+    let refreshToken: String?
+    let expiresAt: Double?
     let isDefault: Bool
 }
 
@@ -457,6 +463,8 @@ private struct ProviderEditorSheet: View {
     @State private var oauthState: ProviderOAuthState = .idle
     @State private var oauthDeviceCode: GatewayOAuthDeviceCodeResponse?
     @State private var oauthToken = ""
+    @State private var oauthRefreshToken = ""
+    @State private var oauthExpiresAt: Double?
     @State private var oauthError: String?
     @State private var planConfig: [String: Any]?
     @State private var planPresets: [ProviderPlanPresetSuggestion] = []
@@ -793,6 +801,8 @@ private struct ProviderEditorSheet: View {
         oauthState = .idle
         oauthDeviceCode = nil
         oauthToken = ""
+        oauthRefreshToken = ""
+        oauthExpiresAt = nil
         oauthError = nil
     }
 
@@ -828,6 +838,8 @@ private struct ProviderEditorSheet: View {
             if status.status == "success", let token = status.accessToken {
                 oauthToken = token
                 accessToken = token
+                oauthRefreshToken = status.refreshToken ?? ""
+                oauthExpiresAt = status.expiresAt
                 oauthState = .success
                 return
             }
@@ -847,12 +859,12 @@ private struct ProviderEditorSheet: View {
     private func startDeviceCodeOAuth() async throws {
         let response = try await client.startProviderDeviceCodeOAuth(providerType: providerType)
         oauthDeviceCode = response
-        if let url = URL(string: response.verificationUri) {
+        if let url = URL(string: response.verificationUriComplete ?? response.verificationUri) {
             NSWorkspace.shared.open(url)
         }
         oauthState = .polling
 
-        let interval = max(5, response.interval)
+        var interval = max(5, response.interval)
         let deadline = Date().addingTimeInterval(TimeInterval(max(60, response.expiresIn)))
         while Date() < deadline, oauthState == .polling {
             try await Task.sleep(nanoseconds: UInt64(interval) * 1_000_000_000)
@@ -863,6 +875,8 @@ private struct ProviderEditorSheet: View {
             if status.status == "success", let token = status.accessToken {
                 oauthToken = token
                 accessToken = token
+                oauthRefreshToken = status.refreshToken ?? ""
+                oauthExpiresAt = status.expiresAt
                 oauthState = .success
                 return
             }
@@ -872,6 +886,9 @@ private struct ProviderEditorSheet: View {
                     : "Authorization expired. Please try again.")
                 oauthState = .error
                 return
+            }
+            if status.status == "slow_down" {
+                interval += 5
             }
         }
         if oauthState == .polling {
@@ -885,12 +902,15 @@ private struct ProviderEditorSheet: View {
         defer { saving = false }
         do {
             let resolvedAccessToken = firstNonEmptyGatewayString(oauthToken, accessToken)
+            let resolvedRefreshToken = firstNonEmptyGatewayString(oauthRefreshToken)
             try await onSave(ProviderEditorDraft(
                 providerType: providerType,
                 name: name,
                 baseURL: firstNonEmptyGatewayString(baseURL),
                 apiKey: firstNonEmptyGatewayString(apiKey),
                 accessToken: resolvedAccessToken,
+                refreshToken: resolvedRefreshToken,
+                expiresAt: oauthExpiresAt,
                 isDefault: isDefault
             ))
             try await savePlanLimits()

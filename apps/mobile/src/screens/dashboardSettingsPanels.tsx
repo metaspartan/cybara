@@ -567,6 +567,8 @@ export function ProviderSettingsPanel({
   const [baseUrl, setBaseUrl] = useState(provider.base_url || "");
   const [apiKey, setApiKey] = useState("");
   const [accessToken, setAccessToken] = useState("");
+  const [refreshToken, setRefreshToken] = useState("");
+  const [expiresAt, setExpiresAt] = useState<number | undefined>(undefined);
   const [isDefault, setIsDefault] = useState(Boolean(provider.is_default));
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -600,6 +602,8 @@ export function ProviderSettingsPanel({
     setBaseUrl(provider.base_url || "");
     setApiKey("");
     setAccessToken("");
+    setRefreshToken("");
+    setExpiresAt(undefined);
     setIsDefault(Boolean(provider.is_default));
     setOauthBusy(false);
     setOauthStatus("");
@@ -776,6 +780,8 @@ export function ProviderSettingsPanel({
         base_url: baseUrl.trim() || undefined,
         api_key: usesApiKey ? apiKey.trim() || undefined : undefined,
         access_token: usesOAuth || usesAccessToken ? accessToken.trim() || undefined : undefined,
+        refresh_token: usesOAuth ? refreshToken.trim() || undefined : undefined,
+        expires_at: usesOAuth ? expiresAt : undefined,
         is_default: isDefault,
       });
       if (result.success === false) throw new Error("The gateway did not save this provider.");
@@ -807,6 +813,8 @@ export function ProviderSettingsPanel({
       const status = await api.providerOAuthCallbackStatus(state);
       if (status.status === "success" && status.access_token) {
         setAccessToken(status.access_token);
+        setRefreshToken(status.refresh_token || "");
+        setExpiresAt(status.expires_at);
         setOauthStatus("Connected. Save this provider to store the token.");
         return;
       }
@@ -822,13 +830,15 @@ export function ProviderSettingsPanel({
     intervalSeconds: number,
     expiresIn: number
   ) => {
-    const intervalMs = Math.max(5, intervalSeconds || 5) * 1000;
+    let intervalMs = Math.max(5, intervalSeconds || 5) * 1000;
     const expiresAt = Date.now() + Math.max(60, expiresIn || 900) * 1000;
     while (Date.now() < expiresAt) {
       await new Promise((resolve) => setTimeout(resolve, intervalMs));
       const status = await api.pollProviderDeviceCodeOAuth(provider.provider, deviceCode);
       if (status.status === "success" && status.access_token) {
         setAccessToken(status.access_token);
+        setRefreshToken(status.refresh_token || "");
+        setExpiresAt(status.expires_at);
         setOauthStatus("Connected. Save this provider to store the token.");
         return;
       }
@@ -839,6 +849,9 @@ export function ProviderSettingsPanel({
               ? "Authorization was denied."
               : "Authorization expired. Please try again.")
         );
+      }
+      if (status.status === "slow_down") {
+        intervalMs += 5000;
       }
     }
     throw new Error("Authorization timed out. Please try again.");
@@ -859,7 +872,7 @@ export function ProviderSettingsPanel({
         const response = await api.startProviderDeviceCodeOAuth(provider.provider);
         setOauthDeviceCode(response.user_code);
         setOauthStatus("Enter the code in the browser window, then keep this screen open.");
-        await openGatewayOrLocalUrl(response.verification_uri);
+        await openGatewayOrLocalUrl(response.verification_uri_complete || response.verification_uri);
         await pollOAuthDeviceCode(response.device_code, response.interval, response.expires_in);
       } else {
         const response = await api.startProviderOAuth(provider.provider);

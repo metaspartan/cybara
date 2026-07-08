@@ -125,6 +125,8 @@ export interface ProviderUpdatePayload {
   base_url?: string;
   api_key?: string;
   access_token?: string;
+  refresh_token?: string;
+  expires_at?: number;
   is_default?: boolean;
 }
 
@@ -138,6 +140,7 @@ export interface ProviderOAuthDeviceCodeResponse {
   device_code: string;
   user_code: string;
   verification_uri: string;
+  verification_uri_complete?: string;
   expires_in: number;
   interval: number;
 }
@@ -145,6 +148,8 @@ export interface ProviderOAuthDeviceCodeResponse {
 export interface ProviderOAuthPollResponse {
   status?: string;
   access_token?: string;
+  refresh_token?: string;
+  expires_at?: number;
   error?: string;
 }
 

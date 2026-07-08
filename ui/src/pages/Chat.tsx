@@ -65,9 +65,15 @@ import type {
 import {
   MAX_CHAT_IMAGES,
   MAX_CHAT_IMAGE_BYTES,
+  MAX_TEXT_FILE_BYTES,
+  MAX_TEXT_FILES,
   chatImageSrc,
   fileToChatImage,
+  fileToTextAttachment,
+  formatAttachedFiles,
   isSupportedImageType,
+  isTextLikeFile,
+  type ChatFileAttachment,
 } from "@/lib/chatImages";
 import { PageLayout } from "@/components/layout";
 import { GlassCard, Input, Badge, Modal, Button } from "@/components/ui";
@@ -1840,6 +1846,7 @@ export function Chat() {
   const refreshSessionMessagesRef = useRef<(sid: string) => Promise<void>>(() => Promise.resolve());
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<ChatImageAttachment[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<ChatFileAttachment[]>([]);
   const [imageDragActive, setImageDragActive] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
@@ -3196,36 +3203,48 @@ export function Chat() {
     );
   }, [activeSessionIds, isLoading, liveActivities.length, liveStatus, loadingSessionId, sessionId]);
 
-  const addImageFiles = async (files: Iterable<File>) => {
-    const candidates = Array.from(files).filter((file) => isSupportedImageType(file.type));
-    if (candidates.length === 0) return;
-    const accepted: ChatImageAttachment[] = [];
-    for (const file of candidates) {
-      if (file.size > MAX_CHAT_IMAGE_BYTES) continue;
-      accepted.push(await fileToChatImage(file));
+  const addAttachmentFiles = async (files: Iterable<File>) => {
+    const list = Array.from(files);
+    const images: ChatImageAttachment[] = [];
+    const texts: ChatFileAttachment[] = [];
+    for (const file of list) {
+      if (isSupportedImageType(file.type)) {
+        if (file.size <= MAX_CHAT_IMAGE_BYTES) images.push(await fileToChatImage(file));
+      } else if (isTextLikeFile(file)) {
+        if (file.size <= MAX_TEXT_FILE_BYTES) texts.push(await fileToTextAttachment(file));
+      }
     }
-    if (accepted.length === 0) return;
-    setPendingImages((previous) => [...previous, ...accepted].slice(0, MAX_CHAT_IMAGES));
+    if (images.length) {
+      setPendingImages((previous) => [...previous, ...images].slice(0, MAX_CHAT_IMAGES));
+    }
+    if (texts.length) {
+      setPendingFiles((previous) => [...previous, ...texts].slice(0, MAX_TEXT_FILES));
+    }
   };
+
+  const hasAttachableFiles = (files: Iterable<File>) =>
+    Array.from(files).some((file) => isSupportedImageType(file.type) || isTextLikeFile(file));
 
   const removePendingImage = (index: number) => {
     setPendingImages((previous) => previous.filter((_, i) => i !== index));
   };
 
+  const removePendingFile = (index: number) => {
+    setPendingFiles((previous) => previous.filter((_, i) => i !== index));
+  };
+
   const handleComposerPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const files = Array.from(event.clipboardData?.files || []).filter((file) =>
-      isSupportedImageType(file.type)
-    );
-    if (files.length === 0) return;
+    const files = Array.from(event.clipboardData?.files || []);
+    if (files.length === 0 || !hasAttachableFiles(files)) return;
     event.preventDefault();
-    void addImageFiles(files);
+    void addAttachmentFiles(files);
   };
 
   const handleComposerDrop = (event: React.DragEvent<HTMLDivElement>) => {
     const files = Array.from(event.dataTransfer?.files || []);
-    if (files.some((file) => isSupportedImageType(file.type))) {
+    if (files.length > 0 && hasAttachableFiles(files)) {
       event.preventDefault();
-      void addImageFiles(files);
+      void addAttachmentFiles(files);
     }
     setImageDragActive(false);
   };
@@ -3238,11 +3257,13 @@ export function Chat() {
       ? sessionId || activeSessionRef.current
       : sessionId || activeSessionRef.current || crypto.randomUUID();
     const queueMode = requestedQueueMode && requestSessionId ? "queue" : undefined;
-    if ((!input.trim() && pendingImages.length === 0) || (isLoading && !queueMode)) return;
-    const message = input;
+    const hasAttachments = pendingImages.length > 0 || pendingFiles.length > 0;
+    if ((!input.trim() && !hasAttachments) || (isLoading && !queueMode)) return;
+    const message = formatAttachedFiles(input, pendingFiles);
     const images = pendingImages;
     setInput("");
     setPendingImages([]);
+    setPendingFiles([]);
     let optimisticPendingMessageId: string | null = null;
     if (queueMode && requestSessionId) {
       const now = Date.now();
@@ -4504,14 +4525,35 @@ export function Chat() {
                       ))}
                     </div>
                   )}
+                  {pendingFiles.length > 0 && (
+                    <div className="mb-1.5 flex flex-wrap gap-2">
+                      {pendingFiles.map((file, index) => (
+                        <div
+                          key={`pending-file-${index}`}
+                          className="flex items-center gap-1.5 rounded-lg border border-white/12 bg-white/[0.04] px-2 py-1 text-xs text-gray-200"
+                        >
+                          <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                          <span className="max-w-[160px] truncate">{file.name}</span>
+                          <button
+                            type="button"
+                            onClick={() => removePendingFile(index)}
+                            className="inline-flex h-4 w-4 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
+                            aria-label="Remove file"
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <input
                     ref={imageInputRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/gif,image/webp"
+                    accept="image/png,image/jpeg,image/gif,image/webp,text/*,.md,.markdown,.json,.jsonc,.csv,.tsv,.xml,.yaml,.yml,.toml,.ini,.log,.html,.css,.scss,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.h,.cpp,.hpp,.cc,.cs,.php,.sh,.bash,.zsh,.sql,.env,.vue,.svelte"
                     multiple
                     className="hidden"
                     onChange={(e) => {
-                      if (e.target.files) void addImageFiles(e.target.files);
+                      if (e.target.files) void addAttachmentFiles(e.target.files);
                       e.target.value = "";
                     }}
                   />
@@ -4544,14 +4586,9 @@ export function Chat() {
                     <button
                       type="button"
                       onClick={() => imageInputRef.current?.click()}
-                      disabled={pendingImages.length >= MAX_CHAT_IMAGES}
                       className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-gray-400 transition-colors cursor-pointer hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                      title={
-                        pendingImages.length >= MAX_CHAT_IMAGES
-                          ? `Up to ${MAX_CHAT_IMAGES} images`
-                          : "Attach image"
-                      }
-                      aria-label="Attach image"
+                      title="Attach image or file"
+                      aria-label="Attach image or file"
                     >
                       <Paperclip className="w-4 h-4" />
                     </button>
@@ -4612,7 +4649,7 @@ export function Chat() {
                     <button
                       onClick={handleSend}
                       disabled={
-                        (!input.trim() && pendingImages.length === 0) ||
+                        (!input.trim() && pendingImages.length === 0 && pendingFiles.length === 0) ||
                         (isLoading && !sendQueuesFollowUp)
                       }
                       className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full accent-button disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"

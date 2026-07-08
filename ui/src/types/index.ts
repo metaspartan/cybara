@@ -46,6 +46,10 @@ export interface Provider {
   api_key?: string;
   accessToken?: string;
   access_token?: string;
+  refreshToken?: string;
+  refresh_token?: string;
+  expiresAt?: number;
+  expires_at?: number;
   models: string[];
   isDefault?: boolean | number;
   is_default?: boolean | number;
@@ -267,6 +271,7 @@ export interface ToolCallInfo {
 export interface ChatImageAttachment {
   data?: string;
   url?: string;
+  path?: string;
   mimeType?: string;
 }
 

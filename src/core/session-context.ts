@@ -2,6 +2,7 @@ import db, { tables } from "./database";
 import { agentManager } from "./agent";
 import { providerManager, providers } from "./providers";
 import type { ChatMessage } from "../api/chat";
+import { attachmentsToImages } from "./chat/attachments";
 import { deriveSessionTitleFromMessages, normalizeSessionTitle } from "./session-title";
 import { existsSync, statSync } from "fs";
 import { homedir } from "os";
@@ -674,12 +675,17 @@ export async function loadPersistedSession(sessionId: string): Promise<{
       return null;
     }
 
-    const messages: ChatMessage[] = sessionMessages.map((m) => ({
-      role: m.role as ChatMessage["role"],
-      content: m.content,
-      timestamp: m.created_at,
-      ...parseSessionMessageMetadata(m.metadata),
-    }));
+    const messages: ChatMessage[] = sessionMessages.map((m) => {
+      const parsed = parseSessionMessageMetadata(m.metadata);
+      const images = attachmentsToImages((parsed as Record<string, unknown>).attachments);
+      return {
+        role: m.role as ChatMessage["role"],
+        content: m.content,
+        timestamp: m.created_at,
+        ...parsed,
+        ...(images.length ? { images } : {}),
+      };
+    });
 
     const session = db
       .prepare("SELECT agent_id, workspace_dir, title FROM chat_sessions WHERE id = ?")

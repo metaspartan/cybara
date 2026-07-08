@@ -1385,6 +1385,8 @@ async function rawProviderAdd(
   }
 
   const displayName = name || type.charAt(0).toUpperCase() + type.slice(1);
+  let refreshToken: string | undefined;
+  let expiresAt: number | undefined;
 
   if (useOAuth) {
     try {
@@ -1437,8 +1439,7 @@ async function rawProviderAdd(
         /* ignore */
       }
 
-      // Poll for token
-      const interval = Math.max(5, dcData.interval || 5) * 1000;
+      let interval = Math.max(5, dcData.interval || 5) * 1000;
       const expiresAt = Date.now() + (dcData.expires_in || 900) * 1000;
       process.stdout.write("  Waiting for authorization");
 
@@ -1454,18 +1455,25 @@ async function rawProviderAdd(
         const pollData = (await pollRes.json()) as {
           status: string;
           access_token?: string;
+          refresh_token?: string;
+          expires_at?: number;
           error?: string;
         };
 
         if (pollData.status === "success" && pollData.access_token) {
           console.log(" ✓");
           accessToken = pollData.access_token;
+          refreshToken = pollData.refresh_token;
+          expiresAt = pollData.expires_at;
           break;
         }
         if (pollData.status === "denied" || pollData.status === "expired") {
           console.log("");
           console.error(`✗ Authorization ${pollData.status}`);
           process.exit(1);
+        }
+        if (pollData.status === "slow_down") {
+          interval += 5000;
         }
         if (pollData.status === "error") {
           console.log("");
@@ -1497,6 +1505,8 @@ async function rawProviderAdd(
   };
   if (apiKey) body.api_key = apiKey;
   if (accessToken) body.access_token = accessToken;
+  if (refreshToken) body.refresh_token = refreshToken;
+  if (expiresAt) body.expires_at = expiresAt;
   if (isDefault) body.is_default = true;
 
   try {

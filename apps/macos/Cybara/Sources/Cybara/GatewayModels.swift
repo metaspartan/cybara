@@ -1138,11 +1138,13 @@ struct GatewayOAuthDeviceCodeResponse: Decodable, Hashable {
     let deviceCode: String
     let userCode: String
     let verificationUri: String
+    let verificationUriComplete: String?
     let expiresIn: Int
     let interval: Int
 
     private enum CodingKeys: String, CodingKey {
         case device_code, deviceCode, user_code, userCode, verification_uri, verificationUri
+        case verification_uri_complete, verificationUriComplete
         case expires_in, expiresIn, interval
     }
 
@@ -1151,6 +1153,9 @@ struct GatewayOAuthDeviceCodeResponse: Decodable, Hashable {
         deviceCode = try container.decodeFlexibleString(forKeys: [.device_code, .deviceCode]) ?? ""
         userCode = try container.decodeFlexibleString(forKeys: [.user_code, .userCode]) ?? ""
         verificationUri = try container.decodeFlexibleString(forKeys: [.verification_uri, .verificationUri]) ?? ""
+        verificationUriComplete = try container.decodeFlexibleString(
+            forKeys: [.verification_uri_complete, .verificationUriComplete]
+        )
         expiresIn = try container.decodeFlexibleInt(forKeys: [.expires_in, .expiresIn]) ?? 900
         interval = try container.decodeFlexibleInt(forKeys: [.interval]) ?? 5
     }
@@ -1159,16 +1164,20 @@ struct GatewayOAuthDeviceCodeResponse: Decodable, Hashable {
 struct GatewayOAuthPollResponse: Decodable, Hashable {
     let status: String?
     let accessToken: String?
+    let refreshToken: String?
+    let expiresAt: Double?
     let error: String?
 
     private enum CodingKeys: String, CodingKey {
-        case status, access_token, accessToken, error
+        case status, access_token, accessToken, refresh_token, refreshToken, expires_at, expiresAt, error
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         status = try container.decodeFlexibleString(forKeys: [.status])
         accessToken = try container.decodeFlexibleString(forKeys: [.access_token, .accessToken])
+        refreshToken = try container.decodeFlexibleString(forKeys: [.refresh_token, .refreshToken])
+        expiresAt = try container.decodeFlexibleDouble(forKeys: [.expires_at, .expiresAt])
         error = try container.decodeFlexibleString(forKeys: [.error])
     }
 }

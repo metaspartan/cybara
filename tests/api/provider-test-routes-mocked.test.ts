@@ -57,6 +57,30 @@ mock.module("../../src/core/providers", () => ({
         },
       ],
     },
+    "xai-oauth": {
+      name: "xAI Grok OAuth",
+      baseUrl: "https://api.x.ai/v1",
+      api: "openai-responses",
+      authType: "oauth",
+      oauthFlow: "device_code",
+      oauthConfig: {
+        clientId: "b1a00492-073a-47ea-816f-4c329264a828",
+        discoveryUrl: "https://auth.x.ai/.well-known/openid-configuration",
+        deviceCodeDiscoveryUrl: "https://auth.x.ai/.well-known/openid-configuration",
+        tokenUrl: "https://auth.x.ai/oauth2/token",
+        scope: "openid profile email offline_access grok-cli:access api:access",
+      },
+      models: [
+        {
+          id: "grok-build-0.1",
+          name: "Grok Build 0.1",
+          context: 256000,
+          maxTokens: 64000,
+          reasoning: true,
+          input: ["text", "image"],
+        },
+      ],
+    },
   },
   resolveProviderType: (value: string) => value,
   getProviderBaseUrl: (providerType: string) =>
@@ -260,5 +284,90 @@ describe("Provider test route contracts (mocked providers)", () => {
 
     const headers = new Headers(fetchCalls[0]?.headers);
     expect(headers.get("xi-api-key")).toBe("eleven-test-key");
+  });
+
+  test("POST /api/providers/oauth/device-code discovers xAI endpoints and returns complete verification URI", async () => {
+    const seenUrls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      seenUrls.push(String(input));
+      if (String(input) === "https://auth.x.ai/.well-known/openid-configuration") {
+        return Response.json({
+          device_authorization_endpoint: "https://auth.x.ai/oauth2/device/code",
+          token_endpoint: "https://auth.x.ai/oauth2/token",
+        });
+      }
+      expect(String(input)).toBe("https://auth.x.ai/oauth2/device/code");
+      const body = init?.body as URLSearchParams;
+      expect(body.get("client_id")).toBe("b1a00492-073a-47ea-816f-4c329264a828");
+      expect(body.get("scope")).toContain("grok-cli:access");
+      return Response.json({
+        device_code: "device-123",
+        user_code: "ABCD-1234",
+        verification_uri: "https://x.ai/device",
+        verification_uri_complete: "https://x.ai/device?user_code=ABCD-1234",
+        expires_in: 900,
+        interval: 5,
+      });
+    }) as typeof fetch;
+
+    const res = await api("POST", "/api/providers/oauth/device-code", {
+      providerType: "xai-oauth",
+    });
+
+    expect(res.status).toBe(200);
+    expect(seenUrls).toEqual([
+      "https://auth.x.ai/.well-known/openid-configuration",
+      "https://auth.x.ai/oauth2/device/code",
+    ]);
+    expect((res.body as { verification_uri_complete?: string }).verification_uri_complete).toBe(
+      "https://x.ai/device?user_code=ABCD-1234"
+    );
+  });
+
+  test("POST /api/providers/oauth/poll maps pending and success statuses for xAI", async () => {
+    const responses = [
+      Response.json({
+        device_authorization_endpoint: "https://auth.x.ai/oauth2/device/code",
+        token_endpoint: "https://auth.x.ai/oauth2/token",
+      }),
+      Response.json({ error: "authorization_pending" }, { status: 400 }),
+      Response.json({
+        device_authorization_endpoint: "https://auth.x.ai/oauth2/device/code",
+        token_endpoint: "https://auth.x.ai/oauth2/token",
+      }),
+      Response.json({
+        access_token: "xai-access-token",
+        refresh_token: "xai-refresh-token",
+        expires_in: 3600,
+      }),
+    ];
+    const seenTokenBodies: URLSearchParams[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "https://auth.x.ai/oauth2/token") {
+        seenTokenBodies.push(init?.body as URLSearchParams);
+      }
+      const next = responses.shift();
+      if (!next) throw new Error(`unexpected fetch ${String(input)}`);
+      return next;
+    }) as typeof fetch;
+
+    const pending = await api("POST", "/api/providers/oauth/poll", {
+      providerType: "xai-oauth",
+      deviceCode: "device-123",
+    });
+    const success = await api("POST", "/api/providers/oauth/poll", {
+      providerType: "xai-oauth",
+      deviceCode: "device-456",
+    });
+
+    expect(pending.body).toEqual({ status: "pending" });
+    expect((success.body as { status?: string }).status).toBe("success");
+    expect((success.body as { access_token?: string }).access_token).toBe("xai-access-token");
+    expect((success.body as { refresh_token?: string }).refresh_token).toBe("xai-refresh-token");
+    expect(typeof (success.body as { expires_at?: unknown }).expires_at).toBe("number");
+    expect(seenTokenBodies[0]?.get("grant_type")).toBe(
+      "urn:ietf:params:oauth:grant-type:device_code"
+    );
+    expect(seenTokenBodies[1]?.get("device_code")).toBe("device-456");
   });
 });

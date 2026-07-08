@@ -154,6 +154,7 @@ const CODING_PLAN_PROVIDER_TYPES = new Set<string>([
   "opencode-go",
   "kilocode",
   "xai",
+  "xai-oauth",
 ]);
 
 const AUTOMATIC_PLAN_PROVIDER_TYPES = new Set<string>([
@@ -166,6 +167,7 @@ const AUTOMATIC_PLAN_PROVIDER_TYPES = new Set<string>([
   "z.ai",
   "z.ai-coding",
   "kimi-code",
+  "xai-oauth",
 ]);
 
 const DEFAULT_CONFIG: ProviderPlanMonitoringConfig = {
@@ -273,7 +275,12 @@ const EXTERNAL_PLAN_SOURCE_CATALOG: Record<string, ExternalPlanSourceInfo> = {
   xai: {
     mode: "cli",
     label: "Grok Build usage",
-    hint: "Grok plan usage is available from the Grok CLI billing surface when explicit CLI/session credentials are connected.",
+    hint: "xAI API-key usage is metered separately; Grok Build plan usage comes from the local Grok CLI session when available.",
+  },
+  "xai-oauth": {
+    mode: "oauth_api",
+    label: "Grok Build usage",
+    hint: "Uses the connected xAI OAuth account for Grok Build billing data, with local Grok CLI billing as a fallback.",
   },
   kilocode: {
     mode: "provider_api",
@@ -419,15 +426,15 @@ const PROVIDER_PLAN_PRESETS: ProviderPlanPresetSuggestion[] = [
   },
   {
     id: "grok-build",
-    providerTypes: ["xai"],
+    providerTypes: ["xai", "xai-oauth"],
     label: "Grok Build",
     planName: "Grok Build",
-    description: "Grok coding-plan usage from the official Grok CLI billing surface.",
+    description: "Grok coding-plan access through xAI OAuth, with API-key metering kept separate.",
     confidence: "dynamic",
-    sourceMode: "cli",
-    sourceUrl: "https://github.com/steipete/CodexBar/blob/main/docs/grok.md",
+    sourceMode: "oauth_api",
+    sourceUrl: "https://docs.x.ai/build/overview",
     limitDescription:
-      "Requires a signed-in Grok CLI session; xAI API keys are metered separately and do not expose consumer-plan usage.",
+      "Use xAI Grok OAuth for SuperGrok or X Premium plan access; xAI API keys are metered separately.",
     externalSourceEnabled: true,
   },
   {

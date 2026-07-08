@@ -261,6 +261,8 @@ export function Providers() {
         name: formData.get("name") as string,
         api_key: (formData.get("api_key") as string) || undefined,
         access_token: (formData.get("access_token") as string) || undefined,
+        refresh_token: (formData.get("refresh_token") as string) || undefined,
+        expires_at: Number(formData.get("expires_at")) || undefined,
         is_default: formData.get("is_default") === "on",
       });
       addToast("success", "Provider added successfully");
@@ -279,6 +281,8 @@ export function Providers() {
           name: formData.get("name") as string,
           api_key: (formData.get("api_key") as string) || undefined,
           access_token: (formData.get("access_token") as string) || undefined,
+          refresh_token: (formData.get("refresh_token") as string) || undefined,
+          expires_at: Number(formData.get("expires_at")) || undefined,
           is_default: formData.get("is_default") === "on",
         },
       });
@@ -601,6 +605,8 @@ function ProviderModal({
     device_code: string;
   } | null>(null);
   const [oauthToken, setOauthToken] = useState<string>("");
+  const [oauthRefreshToken, setOauthRefreshToken] = useState<string>("");
+  const [oauthExpiresAt, setOauthExpiresAt] = useState<number | undefined>(undefined);
   const [oauthError, setOauthError] = useState<string>("");
   const abortRef = useRef(false);
   const { addToast } = useUIStore();
@@ -619,6 +625,8 @@ function ProviderModal({
       setOauthState("idle");
       setDeviceCode(null);
       setOauthToken("");
+      setOauthRefreshToken("");
+      setOauthExpiresAt(undefined);
       setOauthError("");
       abortRef.current = false;
     } else {
@@ -671,6 +679,12 @@ function ProviderModal({
     if (oauthToken) {
       formData.set("access_token", oauthToken);
     }
+    if (oauthRefreshToken) {
+      formData.set("refresh_token", oauthRefreshToken);
+    }
+    if (oauthExpiresAt) {
+      formData.set("expires_at", String(oauthExpiresAt));
+    }
     onSubmit(formData);
   };
 
@@ -692,12 +706,12 @@ function ProviderModal({
 
       setDeviceCode({
         user_code: data.user_code,
-        verification_uri: data.verification_uri,
+        verification_uri: data.verification_uri_complete || data.verification_uri,
         device_code: data.device_code,
       });
       setOauthState("polling");
 
-      openExternal(data.verification_uri);
+      openExternal(data.verification_uri_complete || data.verification_uri);
 
       const interval = Math.max(5000, (data.interval || 5) * 1000);
       const expiresAt = Date.now() + (data.expires_in || 900) * 1000;
@@ -708,7 +722,8 @@ function ProviderModal({
     }
   };
 
-  const pollForToken = async (code: string, intervalMs: number, expiresAt: number) => {
+  const pollForToken = async (code: string, initialIntervalMs: number, expiresAt: number) => {
+    let intervalMs = initialIntervalMs;
     while (Date.now() < expiresAt && !abortRef.current) {
       await new Promise((r) => setTimeout(r, intervalMs));
       if (abortRef.current) return;
@@ -722,6 +737,8 @@ function ProviderModal({
 
         if (data.status === "success" && data.access_token) {
           setOauthToken(data.access_token);
+          setOauthRefreshToken(typeof data.refresh_token === "string" ? data.refresh_token : "");
+          setOauthExpiresAt(typeof data.expires_at === "number" ? data.expires_at : undefined);
           setOauthState("success");
           addToast(
             "success",
@@ -735,6 +752,9 @@ function ProviderModal({
           );
           setOauthState("error");
           return;
+        }
+        if (data.status === "slow_down") {
+          intervalMs += 5000;
         }
         if (data.status === "error") {
           setOauthError(data.error || "Unknown error");
@@ -807,6 +827,12 @@ function ProviderModal({
 
           if (pollData.status === "success" && pollData.access_token) {
             setOauthToken(pollData.access_token);
+            setOauthRefreshToken(
+              typeof pollData.refresh_token === "string" ? pollData.refresh_token : ""
+            );
+            setOauthExpiresAt(
+              typeof pollData.expires_at === "number" ? pollData.expires_at : undefined
+            );
             setOauthState("success");
             addToast("success", `${selectedProviderInfo?.name || "Provider"} connected!`);
             return;

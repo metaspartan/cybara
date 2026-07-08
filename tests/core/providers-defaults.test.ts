@@ -30,6 +30,10 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("github-copilot")).toBe("gpt-5.5");
     expect(getDefaultModel("kimi-coding")).toBe("kimi-for-coding");
     expect(getDefaultModel("qianfan")).toBe("deepseek-v3.2");
+    expect(getDefaultModel("xai")).toBe("grok-4.3");
+    expect(getDefaultModel("xai-oauth")).toBe("grok-build-0.1");
+    expect(getDefaultModel("grok-oauth")).toBe("grok-build-0.1");
+    expect(getDefaultModel("grok-build")).toBe("grok-build-0.1");
     expect(getDefaultModel("deepseek")).toBe("deepseek-v4-flash");
     expect(getDefaultModel("alibaba")).toBe("qwen3.6-plus");
     expect(getDefaultModel("xiaomi")).toBe("mimo-v2.5-pro");
@@ -44,6 +48,8 @@ describe("Provider model defaults and API-family parity", () => {
     expect(resolveProviderType("opencode")).toBe("opencode_zen");
     expect(resolveProviderType("zai")).toBe("z.ai");
     expect(resolveProviderType("kimi-coding")).toBe("kimi-code");
+    expect(resolveProviderType("grok-oauth")).toBe("xai-oauth");
+    expect(resolveProviderType("grok-build")).toBe("xai-oauth");
     expect(getProviderBaseUrl("opencode")).toBe("https://opencode.ai/zen/v1");
   });
 
@@ -55,6 +61,8 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers.together.api).toBe("openai-completions");
     expect(providers.huggingface.api).toBe("openai-completions");
     expect(providers["cloudflare-ai-gateway"].api).toBe("anthropic-messages");
+    expect(providers.xai.api).toBe("openai-responses");
+    expect(providers["xai-oauth"].api).toBe("openai-responses");
   });
 
   test("includes GPT-5.3 Codex in the OpenAI Codex model catalog", () => {
@@ -123,6 +131,33 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers["openai-codex"].oauthConfig?.clientId).toBe("app_EMoamEEZ73f0CkXaXp7hrann");
     expect(providers["openai-codex"].oauthConfig?.callbackPort).toBe(1455);
     expect(providers["openai-codex"].oauthConfig?.callbackPath).toBe("/auth/callback");
+  });
+
+  test("configures xAI Grok OAuth for device-code login", () => {
+    const provider = providers["xai-oauth"];
+    expect(provider.name).toBe("xAI Grok OAuth");
+    expect(provider.authType).toBe("oauth");
+    expect(provider.oauthFlow).toBe("device_code");
+    expect(provider.oauthConfig?.clientId).toBe("b1a00492-073a-47ea-816f-4c329264a828");
+    expect(provider.oauthConfig?.discoveryUrl).toBe(
+      "https://auth.x.ai/.well-known/openid-configuration"
+    );
+    expect(provider.oauthConfig?.deviceCodeDiscoveryUrl).toBe(
+      "https://auth.x.ai/.well-known/openid-configuration"
+    );
+    expect(provider.oauthConfig?.tokenUrl).toBe("https://auth.x.ai/oauth2/token");
+    expect(provider.oauthConfig?.scope).toContain("grok-cli:access");
+    expect(provider.oauthConfig?.scope).toContain("api:access");
+    const modelIds = provider.models.map((model) => model.id);
+    expect(modelIds).toEqual(
+      expect.arrayContaining([
+        "grok-build-0.1",
+        "grok-4.3",
+        "grok-4-fast-non-reasoning",
+        "grok-4-1-fast-non-reasoning",
+        "grok-3-mini-fast",
+      ])
+    );
   });
 
   test("uses current MiniMax IDs and output/context caps", () => {

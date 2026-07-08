@@ -58,6 +58,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
 import * as ImagePicker from "expo-image-picker";
+import * as Clipboard from "expo-clipboard";
 import { haptics } from "../lib/haptics";
 import { useThemeControls } from "../theme/ThemeContext";
 import {
@@ -72,6 +73,7 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
+  ClipboardPaste,
   Clock,
   Cpu,
   Database,
@@ -2516,6 +2518,19 @@ function SessionDetailPanel({
     setPendingImages((current) => current.filter((_, itemIndex) => itemIndex !== index));
   };
 
+  const appendPendingImages = (candidates: MobileMessageImage[]) => {
+    setPendingImages((current) => {
+      const next = [...current];
+      for (const candidate of candidates) {
+        if (next.length >= MOBILE_CHAT_MAX_ATTACHMENTS) break;
+        const data = candidate.data;
+        if (!data || data.length > MOBILE_CHAT_MAX_IMAGE_BASE64_LENGTH) continue;
+        next.push(candidate);
+      }
+      return next;
+    });
+  };
+
   const pickImages = async () => {
     if (pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS) return;
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -2531,16 +2546,22 @@ function SessionDetailPanel({
       selectionLimit: MOBILE_CHAT_MAX_ATTACHMENTS,
     });
     if (result.canceled) return;
-    setPendingImages((current) => {
-      const next = [...current];
-      for (const asset of result.assets) {
-        if (next.length >= MOBILE_CHAT_MAX_ATTACHMENTS) break;
-        const data = asset.base64;
-        if (!data || data.length > MOBILE_CHAT_MAX_IMAGE_BASE64_LENGTH) continue;
-        next.push({ data, mimeType: asset.mimeType ?? "image/jpeg" });
-      }
-      return next;
-    });
+    appendPendingImages(
+      result.assets.map((asset) => ({
+        data: asset.base64 ?? undefined,
+        mimeType: asset.mimeType ?? "image/jpeg",
+      }))
+    );
+  };
+
+  const pasteImage = async () => {
+    if (pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS) return;
+    const hasImage = await Clipboard.hasImageAsync();
+    if (!hasImage) return;
+    const img = await Clipboard.getImageAsync({ format: "png" });
+    if (!img) return;
+    const rawBase64 = img.data.replace(/^data:[^;]+;base64,/, "");
+    appendPendingImages([{ data: rawBase64, mimeType: "image/png" }]);
   };
 
   const replacePendingMessagesFromGateway = (messages: MobilePendingChatMessage[]) => {
@@ -3341,48 +3362,111 @@ function SessionDetailPanel({
         style={[styles.chatComposerBar, { bottom: composerBottom }]}
       >
         <View
-          style={styles.composer}
+          style={styles.composerColumn}
           onLayout={(event) =>
             setComposerBarHeight(event.nativeEvent.layout.height + spacing.xs * 2)
           }
         >
-          <TextInput
-            blurOnSubmit={false}
-            editable
-            multiline
-            onContentSizeChange={(event) => {
-              setComposerHeight(
-                mobileComposerHeightForDraft(
-                  draftRef.current,
-                  boundedMobileComposerHeight(event.nativeEvent.contentSize.height)
-                )
-              );
-            }}
-            value={draft}
-            onChangeText={setComposerDraft}
-            placeholder="Message this chat"
-            placeholderTextColor={colors.textDim}
-            returnKeyType="default"
-            scrollEnabled={composerHeight >= MOBILE_CHAT_COMPOSER.maxHeight}
-            style={[styles.composerInput, { height: composerHeight }]}
-            submitBehavior="newline"
-            textAlignVertical="top"
-          />
-          <Pressable
-            accessibilityLabel="Send message"
-            accessibilityRole="button"
-            disabled={!draft.trim()}
-            onPress={sendMessage}
-            style={[
-              styles.sendButton,
-              {
-                backgroundColor: draft.trim() ? accentColor : colors.inset,
-                opacity: draft.trim() || sending ? 1 : 0.55,
-              },
-            ]}
-          >
-            <Send color={colors.text} size={19} strokeWidth={2.4} />
-          </Pressable>
+          {pendingImages.length > 0 ? (
+            <ScrollView
+              horizontal
+              keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.composerAttachments}
+            >
+              {pendingImages.map((image, index) => (
+                <View key={`${image.mimeType ?? "image"}-${index}`} style={styles.composerThumb}>
+                  <Image
+                    resizeMode="cover"
+                    source={{ uri: pendingImageUri(image) }}
+                    style={styles.composerThumbImage}
+                  />
+                  <Pressable
+                    accessibilityLabel="Remove image"
+                    accessibilityRole="button"
+                    onPress={() => removePendingImage(index)}
+                    style={styles.composerThumbRemove}
+                  >
+                    <X color={colors.text} size={12} strokeWidth={2.6} />
+                  </Pressable>
+                </View>
+              ))}
+            </ScrollView>
+          ) : null}
+          <View style={styles.composer}>
+            <TextInput
+              blurOnSubmit={false}
+              editable
+              multiline
+              onContentSizeChange={(event) => {
+                setComposerHeight(
+                  mobileComposerHeightForDraft(
+                    draftRef.current,
+                    boundedMobileComposerHeight(event.nativeEvent.contentSize.height)
+                  )
+                );
+              }}
+              value={draft}
+              onChangeText={setComposerDraft}
+              placeholder="Message this chat"
+              placeholderTextColor={colors.textDim}
+              returnKeyType="default"
+              scrollEnabled={composerHeight >= MOBILE_CHAT_COMPOSER.maxHeight}
+              style={[styles.composerInput, { height: composerHeight }]}
+              submitBehavior="newline"
+              textAlignVertical="top"
+            />
+            <Pressable
+              accessibilityLabel="Attach images"
+              accessibilityRole="button"
+              disabled={pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS}
+              onPress={() => {
+                void pickImages();
+              }}
+              style={[
+                styles.sendButton,
+                {
+                  backgroundColor: colors.inset,
+                  opacity: pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS ? 0.55 : 1,
+                },
+              ]}
+            >
+              <ImagePlus color={colors.text} size={19} strokeWidth={2.4} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Paste image from clipboard"
+              accessibilityRole="button"
+              disabled={pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS}
+              onPress={() => {
+                void pasteImage();
+              }}
+              style={[
+                styles.sendButton,
+                {
+                  backgroundColor: colors.inset,
+                  opacity: pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS ? 0.55 : 1,
+                },
+              ]}
+            >
+              <ClipboardPaste color={colors.text} size={19} strokeWidth={2.4} />
+            </Pressable>
+            <Pressable
+              accessibilityLabel="Send message"
+              accessibilityRole="button"
+              disabled={!draft.trim() && pendingImages.length === 0}
+              onPress={sendMessage}
+              style={[
+                styles.sendButton,
+                {
+                  backgroundColor:
+                    draft.trim() || pendingImages.length > 0 ? accentColor : colors.inset,
+                  opacity: draft.trim() || pendingImages.length > 0 || sending ? 1 : 0.55,
+                },
+              ]}
+            >
+              <Send color={colors.text} size={19} strokeWidth={2.4} />
+            </Pressable>
+          </View>
         </View>
       </LiquidGlass>
       <Modal

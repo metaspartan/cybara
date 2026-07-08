@@ -192,6 +192,8 @@ export function useCreateProvider() {
       name: string;
       api_key?: string;
       access_token?: string;
+      refresh_token?: string;
+      expires_at?: number;
       is_default?: boolean;
     }) =>
       fetchApi<Provider>("/providers", {
