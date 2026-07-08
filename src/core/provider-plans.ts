@@ -143,6 +143,7 @@ const CODING_PLAN_PROVIDER_TYPES = new Set<string>([
   "minimax",
   "github_copilot",
   "google-gemini-cli",
+  "antigravity",
   "minimax-portal",
   "qwen-portal",
   "copilot-proxy",
@@ -152,11 +153,14 @@ const CODING_PLAN_PROVIDER_TYPES = new Set<string>([
   "opencode_zen",
   "opencode-go",
   "kilocode",
+  "xai",
 ]);
 
 const AUTOMATIC_PLAN_PROVIDER_TYPES = new Set<string>([
   "anthropic",
   "openai-codex",
+  "antigravity",
+  "google-gemini-cli",
   "minimax",
   "minimax-portal",
   "z.ai",
@@ -212,9 +216,14 @@ const EXTERNAL_PLAN_SOURCE_CATALOG: Record<string, ExternalPlanSourceInfo> = {
     hint: "Use GitHub device-flow credentials and Copilot usage endpoints instead of scraping the browser by default.",
   },
   "google-gemini-cli": {
-    mode: "cli",
-    label: "Gemini CLI OAuth quota",
-    hint: "Reuse Gemini CLI OAuth credentials and quota APIs when available.",
+    mode: "oauth_api",
+    label: "Google coding quota",
+    hint: "Shows Google coding-plan usage from OAuth quota endpoints when the provider is connected.",
+  },
+  antigravity: {
+    mode: "oauth_api",
+    label: "Antigravity quota",
+    hint: "Shows Antigravity five-hour and weekly model quota from Google OAuth quota endpoints.",
   },
   "minimax-portal": {
     mode: "provider_api",
@@ -252,14 +261,19 @@ const EXTERNAL_PLAN_SOURCE_CATALOG: Record<string, ExternalPlanSourceInfo> = {
     hint: "Use Kimi coding tokens or usage APIs; cookies should remain opt-in.",
   },
   opencode_zen: {
-    mode: "provider_api",
+    mode: "browser_cookie",
     label: "OpenCode plan source",
-    hint: "Use OpenCode account APIs or local credentials before browser storage access.",
+    hint: "OpenCode Zen is metered; plan usage requires an explicitly connected OpenCode account session.",
   },
   "opencode-go": {
-    mode: "provider_api",
+    mode: "browser_cookie",
     label: "OpenCode Go plan source",
-    hint: "Use OpenCode account APIs or local credentials before browser storage access.",
+    hint: "OpenCode Go subscription usage requires an explicitly connected OpenCode account session.",
+  },
+  xai: {
+    mode: "cli",
+    label: "Grok Build usage",
+    hint: "Grok plan usage is available from the Grok CLI billing surface when explicit CLI/session credentials are connected.",
   },
   kilocode: {
     mode: "provider_api",
@@ -363,12 +377,12 @@ const PROVIDER_PLAN_PRESETS: ProviderPlanPresetSuggestion[] = [
   },
   {
     id: "gemini-code-assist-standard",
-    providerTypes: ["google-gemini-cli"],
+    providerTypes: ["google-gemini-cli", "antigravity"],
     label: "Gemini Code Assist Standard",
     planName: "Gemini Code Assist Standard",
     description: "Standard business Gemini CLI and agent-mode quota.",
     confidence: "exact",
-    sourceMode: "cli",
+    sourceMode: "oauth_api",
     sourceUrl: "https://developers.google.com/gemini-code-assist/resources/quotas",
     limitDescription:
       "1,500 model requests per user per day; Cybara applies a 10,500/week request guardrail.",
@@ -377,12 +391,12 @@ const PROVIDER_PLAN_PRESETS: ProviderPlanPresetSuggestion[] = [
   },
   {
     id: "gemini-code-assist-enterprise",
-    providerTypes: ["google-gemini-cli"],
+    providerTypes: ["google-gemini-cli", "antigravity"],
     label: "Gemini Code Assist Enterprise",
     planName: "Gemini Code Assist Enterprise",
     description: "Enterprise business Gemini CLI and agent-mode quota.",
     confidence: "exact",
-    sourceMode: "cli",
+    sourceMode: "oauth_api",
     sourceUrl: "https://developers.google.com/gemini-code-assist/resources/quotas",
     limitDescription:
       "2,000 model requests per user per day; Cybara applies a 14,000/week request guardrail.",
@@ -401,6 +415,19 @@ const PROVIDER_PLAN_PRESETS: ProviderPlanPresetSuggestion[] = [
       "https://developers.google.com/gemini-code-assist/docs/deprecations/code-assist-individuals",
     limitDescription:
       "Google deprecated Gemini Code Assist consumer account access for Gemini CLI on June 18, 2026.",
+    externalSourceEnabled: true,
+  },
+  {
+    id: "grok-build",
+    providerTypes: ["xai"],
+    label: "Grok Build",
+    planName: "Grok Build",
+    description: "Grok coding-plan usage from the official Grok CLI billing surface.",
+    confidence: "dynamic",
+    sourceMode: "cli",
+    sourceUrl: "https://github.com/steipete/CodexBar/blob/main/docs/grok.md",
+    limitDescription:
+      "Requires a signed-in Grok CLI session; xAI API keys are metered separately and do not expose consumer-plan usage.",
     externalSourceEnabled: true,
   },
   {

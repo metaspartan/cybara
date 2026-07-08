@@ -163,7 +163,7 @@ describe("provider plan monitoring", () => {
     );
 
     expect(snapshot?.providerType).toBe("google-gemini-cli");
-    expect(snapshot?.externalSourceLabel).toBe("Gemini CLI OAuth quota");
+    expect(snapshot?.externalSourceLabel).toBe("Google coding quota");
     expect(
       snapshot?.presetSuggestions.find((preset) => preset.id === "gemini-code-assist-standard")
     ).toMatchObject({
@@ -301,6 +301,47 @@ describe("provider plan monitoring", () => {
     expect(snapshot.presetSuggestions.map((preset) => preset.id)).toContain("minimax-token-plan");
   });
 
+  test("marks Google OAuth coding plans as automatic and read-only", () => {
+    const geminiProviderId = createProvider("google-gemini-cli", "g".repeat(64));
+    const antigravityProviderId = createProvider("antigravity", "a".repeat(64));
+    setProviderPlanMonitoringConfig({ enabled: true, providers: {} });
+
+    const gemini = getProviderPlanSnapshot(geminiProviderId);
+    const antigravity = getProviderPlanSnapshot(antigravityProviderId);
+
+    expect(gemini.managedAutomatically).toBe(true);
+    expect(gemini.manualPlanEditable).toBe(false);
+    expect(gemini.automaticTrackingLabel).toBe("Google coding quota");
+    expect(gemini.externalSourceMode).toBe("oauth_api");
+    expect(antigravity.managedAutomatically).toBe(true);
+    expect(antigravity.manualPlanEditable).toBe(false);
+    expect(antigravity.automaticTrackingLabel).toBe("Antigravity quota");
+    expect(antigravity.presetSuggestions.map((preset) => preset.id)).toContain(
+      "gemini-code-assist-standard"
+    );
+  });
+
+  test("keeps Grok and OpenCode as explicit sources until CLI or account sessions are connected", () => {
+    const grokProviderId = createProvider("xai", "xai-test-key", "https://api.x.ai/v1");
+    const openCodeProviderId = createProvider(
+      "opencode-go",
+      "oc-test-key",
+      "https://opencode.ai/zen/go/v1"
+    );
+    setProviderPlanMonitoringConfig({ enabled: true, providers: {} });
+
+    const grok = getProviderPlanSnapshot(grokProviderId);
+    const opencode = getProviderPlanSnapshot(openCodeProviderId);
+
+    expect(grok.managedAutomatically).toBe(false);
+    expect(grok.manualPlanEditable).toBe(true);
+    expect(grok.externalSourceLabel).toBe("Grok Build usage");
+    expect(grok.externalSourceMode).toBe("cli");
+    expect(grok.presetSuggestions.map((preset) => preset.id)).toContain("grok-build");
+    expect(opencode.managedAutomatically).toBe(false);
+    expect(opencode.externalSourceMode).toBe("browser_cookie");
+  });
+
   test("enriches MiniMax token-plan quota from provider API", async () => {
     const providerId = createProvider("minimax", "sk-cp-test-token");
     const seenUrls: string[] = [];
@@ -337,6 +378,66 @@ describe("provider plan monitoring", () => {
       ["weekly", 0, true],
       ["local_30d", undefined],
     ]);
+  });
+
+  test("enriches Antigravity OAuth quota from Google quota endpoints", async () => {
+    const providerId = createProvider("antigravity", "a".repeat(64));
+    const seenUrls: string[] = [];
+    globalThis.fetch = (async (url, init) => {
+      seenUrls.push(String(url));
+      expect((init?.headers as Record<string, string>)?.Authorization).toBe(
+        `Bearer ${"a".repeat(64)}`
+      );
+      if (String(url).endsWith("v1internal:loadCodeAssist")) {
+        return Response.json({
+          currentTier: { id: "standard-tier", name: "standard" },
+          cloudaicompanionProject: "managed-project-123",
+        });
+      }
+      if (String(url).endsWith("v1internal:retrieveUserQuotaSummary")) {
+        expect(JSON.parse(String(init?.body))).toEqual({ project: "managed-project-123" });
+        return Response.json({
+          response: {
+            groups: [
+              {
+                displayName: "Gemini Models",
+                buckets: [
+                  { bucketId: "gemini-5h", remaining: { remainingFraction: 0.91 } },
+                  { bucketId: "gemini-weekly", remaining: { remainingFraction: 0.82 } },
+                ],
+              },
+              {
+                displayName: "Claude and GPT models",
+                buckets: [
+                  { bucketId: "3p-5h", remaining: { remainingFraction: 0.73 } },
+                  { bucketId: "3p-weekly", remaining: { remainingFraction: 0.64 } },
+                ],
+              },
+            ],
+          },
+        });
+      }
+      return new Response(null, { status: 404 });
+    }) as typeof fetch;
+    setProviderPlanMonitoringConfig({ enabled: true, providers: {} });
+
+    const status = await enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus());
+    const snapshot = status.providers.find(
+      (provider) => provider.configuredProviderId === providerId
+    );
+
+    expect(seenUrls).toEqual([
+      "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+      "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary",
+    ]);
+    expect(snapshot?.sourceMode).toBe("oauth_api");
+    expect(snapshot?.sourceLabel).toBe("Antigravity quota");
+    expect(snapshot?.planName).toBe("Antigravity standard");
+    expect(snapshot?.manualPlanEditable).toBe(false);
+    expect(snapshot?.windows.map((window) => window.id)).toEqual(["5h", "weekly", "local_30d"]);
+    expect(snapshot?.windows[0]?.usedPercent).toBeCloseTo(27, 5);
+    expect(snapshot?.windows[1]?.usedPercent).toBeCloseTo(36, 5);
+    expect(snapshot?.windows[2]?.usedPercent).toBeUndefined();
   });
 
   test("enriches Z.ai coding plan quota from provider monitor endpoint", async () => {

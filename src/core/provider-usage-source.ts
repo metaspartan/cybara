@@ -14,7 +14,7 @@ export interface LiveProviderUsage {
   fiveHour?: LiveUsageWindow;
   weekly?: LiveUsageWindow;
   monthly?: LiveUsageWindow;
-  source: "oauth_api" | "provider_api";
+  source: "oauth_api" | "provider_api" | "browser_cookie" | "cli";
   fetchedAt: number;
 }
 
@@ -217,6 +217,249 @@ function remainingWindow(params: {
     usedPercent: Math.max(0, Math.min(100, ((total - remaining) / total) * 100)),
     resetsAt: resetToIso(params.resetsAt),
   };
+}
+
+function remainingFractionWindow(
+  remainingFraction: unknown,
+  resetsAt?: unknown
+): LiveUsageWindow | undefined {
+  const fraction = toNumber(remainingFraction);
+  if (fraction === undefined) return undefined;
+  const remainingPercent = fraction <= 1 ? fraction * 100 : fraction;
+  return {
+    usedPercent: Math.max(0, Math.min(100, 100 - Math.max(0, Math.min(100, remainingPercent)))),
+    resetsAt: resetToIso(resetsAt),
+  };
+}
+
+function remainingFractionValue(raw: unknown): unknown {
+  const record = asRecord(raw);
+  if (!record) return undefined;
+  const direct = record.remainingFraction ?? record.remaining_fraction;
+  if (direct !== undefined) return direct;
+  const remaining = asRecord(record.remaining);
+  if (!remaining) return undefined;
+  if (remaining.remainingFraction !== undefined) return remaining.remainingFraction;
+  if (remaining.remaining_fraction !== undefined) return remaining.remaining_fraction;
+  if (remaining.case === "remainingFraction" || remaining.oneofCase === "remainingFraction") {
+    return remaining.value;
+  }
+  return undefined;
+}
+
+function chooseMoreUsed(
+  current: LiveUsageWindow | undefined,
+  candidate: LiveUsageWindow | undefined
+): LiveUsageWindow | undefined {
+  if (!candidate) return current;
+  if (!current || candidate.usedPercent > current.usedPercent) return candidate;
+  return current;
+}
+
+function antigravityBucketKind(raw: Record<string, unknown>): "fiveHour" | "weekly" | undefined {
+  const label = String(
+    raw.bucketId ?? raw.bucket_id ?? raw.displayName ?? raw.display_name ?? raw.description ?? ""
+  ).toLowerCase();
+  if (label.includes("weekly") || label.includes("week")) return "weekly";
+  if (
+    label.includes("5h") ||
+    label.includes("5-hour") ||
+    label.includes("5 hour") ||
+    label.includes("session")
+  ) {
+    return "fiveHour";
+  }
+  return undefined;
+}
+
+function antigravityQuotaGroups(body: Record<string, unknown>): unknown[] {
+  const response = asRecord(body.response);
+  const summary = asRecord(body.summary);
+  const payload = response ?? summary ?? body;
+  return Array.isArray(payload.groups) ? payload.groups : [];
+}
+
+function parseAntigravityQuotaSummary(
+  body: Record<string, unknown>,
+  now: number
+): LiveProviderUsage | null {
+  let fiveHour: LiveUsageWindow | undefined;
+  let weekly: LiveUsageWindow | undefined;
+
+  for (const group of antigravityQuotaGroups(body)) {
+    const record = asRecord(group);
+    const buckets = Array.isArray(record?.buckets) ? record.buckets : [];
+    for (const bucket of buckets) {
+      const bucketRecord = asRecord(bucket);
+      if (!bucketRecord || bucketRecord.disabled === true) continue;
+      const window = remainingFractionWindow(
+        remainingFractionValue(bucketRecord),
+        bucketRecord.resetTime ?? bucketRecord.reset_time
+      );
+      const kind = antigravityBucketKind(bucketRecord);
+      if (kind === "fiveHour") fiveHour = chooseMoreUsed(fiveHour, window);
+      if (kind === "weekly") weekly = chooseMoreUsed(weekly, window);
+    }
+  }
+
+  if (!fiveHour && !weekly) return null;
+  return {
+    planLabel: "Antigravity",
+    fiveHour,
+    weekly,
+    source: "oauth_api",
+    fetchedAt: now,
+  };
+}
+
+function antigravityModelWindow(
+  body: Record<string, unknown>,
+  now: number
+): LiveProviderUsage | null {
+  let fiveHour: LiveUsageWindow | undefined;
+  const models = asRecord(body.models);
+  if (models) {
+    for (const [modelId, model] of Object.entries(models)) {
+      const record = asRecord(model);
+      const quota = asRecord(record?.quotaInfo ?? record?.quota_info);
+      const source = quota ?? record;
+      const name = String(record?.displayName ?? record?.label ?? modelId).toLowerCase();
+      if (!name.includes("gemini") && !name.includes("claude") && !name.includes("gpt")) continue;
+      fiveHour = chooseMoreUsed(
+        fiveHour,
+        remainingFractionWindow(
+          remainingFractionValue(source),
+          source?.resetTime ?? source?.reset_time
+        )
+      );
+    }
+  }
+
+  const buckets = Array.isArray(body.buckets) ? body.buckets : [];
+  for (const bucket of buckets) {
+    const record = asRecord(bucket);
+    if (!record) continue;
+    const modelId = String(record.modelId ?? record.model_id ?? "").toLowerCase();
+    if (!modelId.includes("gemini") && !modelId.includes("claude") && !modelId.includes("gpt")) {
+      continue;
+    }
+    fiveHour = chooseMoreUsed(
+      fiveHour,
+      remainingFractionWindow(remainingFractionValue(record), record.resetTime ?? record.reset_time)
+    );
+  }
+
+  if (!fiveHour) return null;
+  return {
+    planLabel: "Antigravity",
+    fiveHour,
+    source: "oauth_api",
+    fetchedAt: now,
+  };
+}
+
+function antigravityPlanLabel(body: unknown): string | undefined {
+  const record = asRecord(body);
+  const planInfo = asRecord(record?.planInfo ?? record?.plan_info);
+  const tier = asRecord(record?.currentTier ?? record?.current_tier);
+  const raw =
+    (typeof planInfo?.planType === "string" && planInfo.planType) ||
+    (typeof planInfo?.plan_type === "string" && planInfo.plan_type) ||
+    (typeof tier?.name === "string" && tier.name) ||
+    (typeof tier?.id === "string" && tier.id) ||
+    undefined;
+  return raw ? `Antigravity ${raw}` : undefined;
+}
+
+function antigravityProjectId(body: unknown): string | undefined {
+  const record = asRecord(body);
+  const project =
+    record?.cloudaicompanionProject ??
+    record?.cloudAiCompanionProject ??
+    record?.project ??
+    record?.projectId ??
+    record?.project_id;
+  if (typeof project === "string" && project.trim()) return project.trim();
+  const projectRecord = asRecord(project);
+  const value = projectRecord?.id ?? projectRecord?.projectId ?? projectRecord?.project_id;
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+export function parseAntigravityUsageResponse(
+  body: unknown,
+  now: number
+): LiveProviderUsage | null {
+  const root = asRecord(body);
+  if (!root) return null;
+  return parseAntigravityQuotaSummary(root, now) ?? antigravityModelWindow(root, now);
+}
+
+async function postAntigravity<T = unknown>(
+  path: string,
+  token: string,
+  body: Record<string, unknown>
+): Promise<T | null> {
+  const res = await fetch(`https://cloudcode-pa.googleapis.com/${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "antigravity",
+    },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) return null;
+  return (await res.json()) as T;
+}
+
+function antigravityQuotaBody(projectId?: string): Record<string, unknown> {
+  return projectId
+    ? { project: projectId }
+    : {
+        metadata: {
+          ideName: "antigravity",
+          extensionName: "antigravity",
+          locale: "en",
+          ideVersion: "unknown",
+        },
+      };
+}
+
+async function fetchAntigravityUsage(token: string): Promise<LiveProviderUsage | null> {
+  const codeAssist = await postAntigravity("v1internal:loadCodeAssist", token, {
+    metadata: {
+      ideType: "ANTIGRAVITY",
+      platform: "PLATFORM_UNSPECIFIED",
+      pluginType: "GEMINI",
+    },
+  });
+  const planLabel = antigravityPlanLabel(codeAssist);
+  const projectId = antigravityProjectId(codeAssist);
+  const bodies = [antigravityQuotaBody(projectId)];
+
+  for (const body of bodies) {
+    const summary = await postAntigravity("v1internal:retrieveUserQuotaSummary", token, body);
+    const parsed = parseAntigravityUsageResponse(summary, Date.now());
+    if (parsed) return { ...parsed, planLabel: planLabel ?? parsed.planLabel };
+  }
+
+  const quota = await postAntigravity(
+    "v1internal:retrieveUserQuota",
+    token,
+    antigravityQuotaBody(projectId)
+  );
+  const parsedQuota = parseAntigravityUsageResponse(quota, Date.now());
+  if (parsedQuota) return { ...parsedQuota, planLabel: planLabel ?? parsedQuota.planLabel };
+
+  const models = await postAntigravity(
+    "v1internal:fetchAvailableModels",
+    token,
+    projectId ? { project: projectId } : {}
+  );
+  const parsedModels = parseAntigravityUsageResponse(models, Date.now());
+  return parsedModels ? { ...parsedModels, planLabel: planLabel ?? parsedModels.planLabel } : null;
 }
 
 export function parseMiniMaxUsageResponse(body: unknown, now: number): LiveProviderUsage | null {
@@ -490,6 +733,142 @@ export function parseKimiUsageResponse(body: unknown, now: number): LiveProvider
   };
 }
 
+function moneyValue(raw: unknown): number | undefined {
+  const record = asRecord(raw);
+  return record ? toNumber(record.val ?? record.value ?? record.amount) : toNumber(raw);
+}
+
+export function parseGrokUsageResponse(body: unknown, now: number): LiveProviderUsage | null {
+  const root = asRecord(body);
+  const result = asRecord(root?.result) ?? root;
+  if (!result) return null;
+  const usage = asRecord(result.usage);
+  const used =
+    moneyValue(usage?.totalUsed ?? usage?.total_used) ??
+    moneyValue(usage?.includedUsed ?? usage?.included_used);
+  const limit = moneyValue(result.monthlyLimit ?? result.monthly_limit);
+  if (used === undefined || !limit || limit <= 0) return null;
+  const usedPercent = Math.max(0, Math.min(100, (used / limit) * 100));
+  const billingCycle = asRecord(result.billingCycle ?? result.billing_cycle);
+  return {
+    planLabel: "Grok Build",
+    monthly: {
+      usedPercent,
+      resetsAt: resetToIso(
+        billingCycle?.billingPeriodEnd,
+        billingCycle?.billing_period_end,
+        result.resetsAt,
+        result.resets_at
+      ),
+    },
+    source: "cli",
+    fetchedAt: now,
+  };
+}
+
+function parsePercentWindow(
+  raw: unknown,
+  now: number,
+  fallbackReset?: unknown
+): LiveUsageWindow | undefined {
+  const record = asRecord(raw);
+  if (!record) return undefined;
+  const percent = clampPercent(
+    record.usagePercent ??
+      record.usedPercent ??
+      record.percentUsed ??
+      record.percent ??
+      record.usage_percent ??
+      record.used_percent ??
+      record.utilization ??
+      record.utilizationPercent ??
+      record.utilization_percent
+  );
+  if (percent !== undefined) {
+    return {
+      usedPercent: percent,
+      resetsAt:
+        resetToIso(record.resetAt, record.resetsAt, record.reset_at, record.resets_at) ??
+        relativeResetToIso(
+          record.resetInSec ??
+            record.resetInSeconds ??
+            record.reset_sec ??
+            record.reset_in_sec ??
+            record.resetsInSeconds ??
+            record.resetIn,
+          now
+        ) ??
+        resetToIso(record.nextReset, record.next_reset, fallbackReset),
+    };
+  }
+  const used = toNumber(record.used ?? record.usage ?? record.consumed ?? record.usedTokens);
+  const limit = toNumber(record.limit ?? record.total ?? record.quota ?? record.max ?? record.cap);
+  if (used === undefined || !limit || limit <= 0) return undefined;
+  return {
+    usedPercent: Math.max(0, Math.min(100, (used / limit) * 100)),
+    resetsAt: resetToIso(record.resetAt, record.resetsAt, record.reset_at, fallbackReset),
+  };
+}
+
+function firstNestedWindow(
+  body: Record<string, unknown>,
+  keys: string[],
+  now: number,
+  fallbackReset?: unknown
+): LiveUsageWindow | undefined {
+  for (const key of keys) {
+    const direct = parsePercentWindow(body[key], now, fallbackReset);
+    if (direct) return direct;
+  }
+  for (const value of Object.values(body)) {
+    const nested = asRecord(value);
+    if (!nested) continue;
+    const window = firstNestedWindow(nested, keys, now, fallbackReset);
+    if (window) return window;
+  }
+  return undefined;
+}
+
+export function parseOpenCodeUsageResponse(body: unknown, now: number): LiveProviderUsage | null {
+  const root = asRecord(body);
+  if (!root) return null;
+  const payload =
+    asRecord(root.data) ??
+    asRecord(root.result) ??
+    asRecord(root.usage) ??
+    asRecord(root.billing) ??
+    root;
+  const fallbackReset =
+    payload.renewAt ?? payload.renew_at ?? payload.renewsAt ?? payload.renews_at;
+  const fiveHour = firstNestedWindow(
+    payload,
+    ["rollingUsage", "rolling", "rolling_usage", "rollingWindow", "rolling_window"],
+    now,
+    fallbackReset
+  );
+  const weekly = firstNestedWindow(
+    payload,
+    ["weeklyUsage", "weekly", "weekly_usage", "weeklyWindow", "weekly_window"],
+    now,
+    fallbackReset
+  );
+  const monthly = firstNestedWindow(
+    payload,
+    ["monthlyUsage", "monthly", "monthly_usage", "monthlyWindow", "monthly_window"],
+    now,
+    fallbackReset
+  );
+  if (!fiveHour && !weekly && !monthly) return null;
+  return {
+    planLabel: "OpenCode Go",
+    fiveHour,
+    weekly,
+    monthly,
+    source: "browser_cookie",
+    fetchedAt: now,
+  };
+}
+
 async function fetchKimiUsage(token: string, baseUrl?: string): Promise<LiveProviderUsage | null> {
   const base = kimiBaseUrl(baseUrl);
   for (const suffix of ["usages", "usage"]) {
@@ -532,6 +911,13 @@ export async function fetchLiveProviderUsage(
     } else if (provider.providerType === "anthropic") {
       value = looksLikeOAuthToken(provider.accessToken)
         ? await fetchAnthropicUsage(provider.accessToken)
+        : null;
+    } else if (
+      provider.providerType === "antigravity" ||
+      provider.providerType === "google-gemini-cli"
+    ) {
+      value = looksLikeOAuthToken(provider.accessToken)
+        ? await fetchAntigravityUsage(provider.accessToken)
         : null;
     } else if (provider.providerType === "minimax" || provider.providerType === "minimax-portal") {
       value = await fetchMiniMaxUsage(credential, provider.baseUrl);

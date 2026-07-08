@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  parseAntigravityUsageResponse,
   parseAnthropicUsageResponse,
   parseCodexUsageResponse,
+  parseGrokUsageResponse,
   parseKimiUsageResponse,
   parseMiniMaxUsageResponse,
+  parseOpenCodeUsageResponse,
   parseZaiUsageResponse,
 } from "../../src/core/provider-usage-source";
 
@@ -148,6 +151,84 @@ describe("parseMiniMaxUsageResponse", () => {
   });
 });
 
+describe("parseAntigravityUsageResponse", () => {
+  test("maps grouped quota summaries into five-hour and weekly windows", () => {
+    const result = parseAntigravityUsageResponse(
+      {
+        response: {
+          groups: [
+            {
+              displayName: "Gemini Models",
+              buckets: [
+                {
+                  bucketId: "gemini-5h",
+                  displayName: "5-hour limit",
+                  remaining: { remainingFraction: 0.91 },
+                  resetTime: "2026-06-15T11:39:34Z",
+                },
+                {
+                  bucketId: "gemini-weekly",
+                  displayName: "Weekly limit",
+                  remainingFraction: 0.82,
+                  resetTime: "2026-06-19T08:45:39Z",
+                },
+              ],
+            },
+            {
+              displayName: "Claude and GPT models",
+              buckets: [
+                {
+                  bucketId: "3p-5h",
+                  displayName: "5-hour limit",
+                  remaining: { case: "remainingFraction", value: 0.73 },
+                },
+                {
+                  bucketId: "3p-weekly",
+                  displayName: "Weekly limit",
+                  remaining: { remainingFraction: 0.64 },
+                },
+              ],
+            },
+          ],
+        },
+      },
+      750
+    );
+
+    expect(result?.planLabel).toBe("Antigravity");
+    expect(result?.source).toBe("oauth_api");
+    expect(result?.fiveHour?.usedPercent).toBeCloseTo(27, 0);
+    expect(result?.fiveHour?.resetsAt).toBeUndefined();
+    expect(result?.weekly?.usedPercent).toBe(36);
+    expect(result?.weekly?.resetsAt).toBeUndefined();
+    expect(result?.fetchedAt).toBe(750);
+  });
+
+  test("falls back to legacy model quota buckets", () => {
+    const result = parseAntigravityUsageResponse(
+      {
+        models: {
+          "gemini-3-pro": {
+            displayName: "Gemini 3 Pro",
+            quotaInfo: {
+              remainingFraction: 0.8,
+              resetTime: "2026-06-15T11:39:34Z",
+            },
+          },
+          "claude-sonnet-4": {
+            displayName: "Claude Sonnet 4",
+            quotaInfo: { remainingFraction: 0.5 },
+          },
+        },
+      },
+      751
+    );
+
+    expect(result?.fiveHour?.usedPercent).toBe(50);
+    expect(result?.weekly).toBeUndefined();
+  });
+});
+
 describe("parseZaiUsageResponse", () => {
   test("maps quota-limit token and time percentages into five-hour and weekly windows", () => {
     const result = parseZaiUsageResponse(
@@ -222,5 +303,55 @@ describe("parseKimiUsageResponse", () => {
     expect(result?.weekly?.usedPercent).toBe(45);
     expect(result?.fiveHour?.usedPercent).toBe(20);
     expect(parseKimiUsageResponse({ data: [{ name: "unknown" }] }, 1)).toBeNull();
+  });
+});
+
+describe("parseGrokUsageResponse", () => {
+  test("maps Grok billing JSON-RPC results into a monthly usage window", () => {
+    const result = parseGrokUsageResponse(
+      {
+        result: {
+          billingCycle: {
+            billingPeriodEnd: "2026-08-01T00:00:00Z",
+          },
+          monthlyLimit: { val: 99900 },
+          usage: {
+            totalUsed: { val: 24975 },
+          },
+        },
+      },
+      902
+    );
+
+    expect(result?.planLabel).toBe("Grok Build");
+    expect(result?.source).toBe("cli");
+    expect(result?.monthly?.usedPercent).toBe(25);
+    expect(result?.monthly?.resetsAt).toBe("2026-08-01T00:00:00Z");
+  });
+});
+
+describe("parseOpenCodeUsageResponse", () => {
+  test("maps OpenCode Go usage windows from dashboard payloads", () => {
+    const result = parseOpenCodeUsageResponse(
+      {
+        data: {
+          renewAt: "2026-08-01T00:00:00Z",
+          usage: {
+            rollingUsage: { usagePercent: 12.5, resetInSec: 3600 },
+            weeklyUsage: { used: 44, limit: 100, resetAt: "2026-07-14T00:00:00Z" },
+            monthlyUsage: { usage_percent: 65 },
+          },
+        },
+      },
+      903
+    );
+
+    expect(result?.planLabel).toBe("OpenCode Go");
+    expect(result?.source).toBe("browser_cookie");
+    expect(result?.fiveHour?.usedPercent).toBe(12.5);
+    expect(result?.fiveHour?.resetsAt).toBe(new Date(903 + 3600_000).toISOString());
+    expect(result?.weekly?.usedPercent).toBe(44);
+    expect(result?.weekly?.resetsAt).toBe("2026-07-14T00:00:00Z");
+    expect(result?.monthly?.usedPercent).toBe(65);
   });
 });
