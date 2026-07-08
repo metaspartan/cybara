@@ -24,9 +24,12 @@ describe("router, provider, and metrics UI wiring", () => {
     expect(source).toContain("Monthly budget");
     expect(source).toContain("globalSpendLimitDaily: monthly ? monthly / 30 : undefined");
     expect(source).toContain("Plan-aware routing");
-    expect(source).toContain("Coding plan preset");
+    expect(source).toContain("Optional manual plan fallback");
     expect(source).toContain("manualPlanEditable");
-    expect(source).toContain("Plan tracked automatically");
+    expect(source).toContain("Plan usage is automatic");
+    expect(source).toContain("No manual plan limits are needed for routing decisions");
+    expect(source).toContain("providerPlanWindowDisplay");
+    expect(source).toContain("providerPlanUsageClasses");
     expect(source).toContain("presetLimitSummary(preset)");
     expect(source).toContain("Array.isArray(p.info?.models)");
     expect(source).toContain("displayName={plan?.providerName || providerName(routeType)}");
@@ -79,10 +82,10 @@ describe("router, provider, and metrics UI wiring", () => {
     expect(displaySource).toContain('fillClass: "bg-yellow-300"');
     expect(displaySource).toContain('fillClass: "bg-orange-300"');
     expect(displaySource).toContain('fillClass: "bg-red-300"');
-    expect(source).toContain("Plan tracked automatically");
+    expect(source).toContain("Plan usage is automatic");
     expect(source).toContain("manualPlanEditable");
     expect(source).toContain(
-      "Manual plan caps are hidden because this provider reports plan usage"
+      "Live provider usage is used for routing. No manual plan limits are needed."
     );
   });
 

@@ -308,7 +308,7 @@ describe("native macOS shell wiring", () => {
     const configScreens = readFileSync(join(MACOS_APP_DIR, "NativeConfigScreens.swift"), "utf8");
 
     expect(providersScreen).toContain("planManualEditable");
-    expect(providersScreen).toContain("Plan tracked automatically");
+    expect(providersScreen).toContain("Plan usage is automatic");
     expect(providersScreen).toContain("ProviderPlanUsageCapsule");
     expect(providersScreen).toContain('providerPlanWindowValue(plan, kind: "rolling_5h")');
     expect(providersScreen).toContain('ProviderPlanUsageValue(text: "∞"');
@@ -325,7 +325,7 @@ describe("native macOS shell wiring", () => {
     expect(providersScreen).toContain("if !planManualEditable");
     expect(configScreens).toContain("let manualPlanEditable = plan?.manualPlanEditable ?? true");
     expect(configScreens).toContain(
-      "Manual plan caps are hidden because this provider reports plan usage automatically."
+      "Live provider usage is used for routing. No manual plan limits are needed."
     );
     expect(configScreens).toContain(
       "if manualPlanEditable, let plan, !plan.presetSuggestions.isEmpty"

@@ -1112,10 +1112,9 @@ function ProviderModal({
             <div className="flex items-start gap-3">
               <Shield className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-300" />
               <div>
-                <p className="text-sm font-medium text-cyan-100">Plan tracked automatically</p>
+                <p className="text-sm font-medium text-cyan-100">Plan usage is automatic</p>
                 <p className="mt-0.5 text-xs leading-5 text-gray-400">
-                  Manual plan caps are hidden because this provider reports plan usage
-                  automatically.
+                  Live provider usage is used for routing. No manual plan limits are needed.
                 </p>
               </div>
             </div>

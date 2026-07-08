@@ -13,8 +13,20 @@ import {
   Circle,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import {
+  providerPlanUsageClasses,
+  providerPlanWindowDisplay,
+  providerPlanWindowSummary,
+} from "@/lib/providerPlanDisplay";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/auth";
+import type {
+  ProviderPlanMonitoringConfig,
+  ProviderPlanProviderConfig,
+  ProviderPlanSnapshot,
+  ProviderPlanStatusResponse,
+  ProviderPlanPresetSuggestion,
+} from "@/types";
 
 interface RouteStatus {
   providerId: string;
@@ -63,98 +75,6 @@ interface ProviderPlanRouteConstraint {
   status: "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
   reason?: string;
   primaryRemainingPercent?: number;
-}
-
-interface ProviderPlanWindow {
-  id: string;
-  title: string;
-  kind: "rolling_5h" | "rolling_week" | "billing_month";
-  usedTokens: number;
-  tokenLimit?: number;
-  usedSpend: number;
-  spendLimit?: number;
-  usedPercent?: number;
-  remainingPercent?: number;
-  resetsAt?: string;
-  resetDescription: string;
-  usageKnown: boolean;
-  unlimited?: boolean;
-}
-
-interface ProviderPlanPresetSuggestion {
-  id: string;
-  label: string;
-  planName: string;
-  description: string;
-  confidence: "exact" | "published" | "dynamic" | "estimated";
-  sourceMode: "local" | "provider_api" | "oauth_api" | "browser_cookie" | "cli" | "manual";
-  sourceUrl?: string;
-  limitDescription: string;
-  monthlyTokenLimit?: number;
-  monthlySpendLimit?: number;
-  weeklyTokenLimit?: number;
-  fiveHourTokenLimit?: number;
-  routeLimit5h?: number;
-  routeLimitWeekly?: number;
-  externalSourceEnabled?: boolean;
-}
-
-interface ProviderPlanSnapshot {
-  providerId: string;
-  configuredProviderId?: string;
-  providerType: string;
-  providerName: string;
-  monitored: boolean;
-  managedAutomatically?: boolean;
-  manualPlanEditable?: boolean;
-  automaticTrackingLabel?: string;
-  appliedPresetId?: string;
-  planName?: string;
-  status: "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
-  reason?: string;
-  localTokens30d: number;
-  localSpend30d: number;
-  windows: ProviderPlanWindow[];
-  presetSuggestions?: ProviderPlanPresetSuggestion[];
-}
-
-interface ProviderPlanStatus {
-  enabled: boolean;
-  routerEnforcement: boolean;
-  warningThresholdPct: number;
-  providers: ProviderPlanSnapshot[];
-  summary: {
-    total: number;
-    monitored: number;
-    configured: number;
-    warnings: number;
-    exhausted: number;
-  };
-}
-
-interface ProviderPlanWindowConfig {
-  enabled?: boolean;
-  tokenLimit?: number;
-  spendLimit?: number;
-}
-
-interface ProviderPlanProviderConfig {
-  enabled?: boolean;
-  presetId?: string;
-  planName?: string;
-  sourceMode?: ProviderPlanPresetSuggestion["sourceMode"];
-  externalSourceEnabled?: boolean;
-  monthly?: ProviderPlanWindowConfig;
-  weekly?: ProviderPlanWindowConfig;
-  fiveHour?: ProviderPlanWindowConfig;
-}
-
-interface ProviderPlanConfig {
-  enabled: boolean;
-  routerEnforcement: boolean;
-  warningThresholdPct: number;
-  staleAfterMinutes: number;
-  providers: Record<string, ProviderPlanProviderConfig>;
 }
 
 const STRATEGY_HELP: Record<RouterConfig["strategy"], string> = {
@@ -234,8 +154,8 @@ function normalizedPositiveNumber(value: string): number | undefined {
 export function RouterSettings() {
   const [status, setStatus] = useState<RouterStatus | null>(null);
   const [config, setConfig] = useState<RouterConfig | null>(null);
-  const [planStatus, setPlanStatus] = useState<ProviderPlanStatus | null>(null);
-  const [planConfig, setPlanConfig] = useState<ProviderPlanConfig | null>(null);
+  const [planStatus, setPlanStatus] = useState<ProviderPlanStatusResponse | null>(null);
+  const [planConfig, setPlanConfig] = useState<ProviderPlanMonitoringConfig | null>(null);
   const [providers, setProviders] = useState<ProviderMeta[]>([]);
   const [agents, setAgents] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
@@ -366,7 +286,7 @@ export function RouterSettings() {
     }
   };
 
-  const savePlanConfig = async (cfg: ProviderPlanConfig) => {
+  const savePlanConfig = async (cfg: ProviderPlanMonitoringConfig) => {
     try {
       const res = await apiFetch("/api/provider-plans/config", {
         method: "PUT",
@@ -420,14 +340,14 @@ export function RouterSettings() {
       if (key && !planByRoute.has(key)) planByRoute.set(key, plan);
     }
   }
-  const basePlanConfig: ProviderPlanConfig = planConfig || {
+  const basePlanConfig: ProviderPlanMonitoringConfig = planConfig || {
     enabled: true,
     routerEnforcement: true,
     warningThresholdPct: 80,
     staleAfterMinutes: 120,
     providers: {},
   };
-  const savePlanConfigPatch = (patch: Partial<ProviderPlanConfig>) => {
+  const savePlanConfigPatch = (patch: Partial<ProviderPlanMonitoringConfig>) => {
     if (!planConfig) return Promise.resolve();
     return savePlanConfig({
       ...basePlanConfig,
@@ -876,6 +796,7 @@ function RouteRow({
   onPlanConfigChange: (next: ProviderPlanProviderConfig) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [manualPlanOpen, setManualPlanOpen] = useState(false);
   const routeCfg = (config.routes[route.providerId] ?? {}) as Record<string, number | boolean>;
 
   const update = (key: string, value: number | boolean) => {
@@ -954,6 +875,15 @@ function RouteRow({
 
   const suggestions = plan?.presetSuggestions || [];
   const manualPlanEditable = plan?.manualPlanEditable !== false;
+  const hasManualPlanConfig = Boolean(
+    planConfig?.presetId ||
+      planConfig?.planName ||
+      planConfig?.fiveHour?.tokenLimit ||
+      planConfig?.weekly?.tokenLimit ||
+      planConfig?.monthly?.tokenLimit ||
+      planConfig?.monthly?.spendLimit
+  );
+  const showManualPlanControls = manualPlanOpen || hasManualPlanConfig;
 
   return (
     <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
@@ -1033,144 +963,185 @@ function RouteRow({
           onClick={() => setOpen((v) => !v)}
           className="ml-auto text-indigo-400 hover:text-indigo-300"
         >
-          {open ? "Hide controls" : manualPlanEditable ? "Limits & pricing" : "Routing & pricing"}
+          {open ? "Hide routing" : "Routing controls"}
         </button>
       </div>
 
       {open && (
-        <div className="pt-1 space-y-2">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <RouteField
-              label="Weight"
-              value={Number(routeCfg.weight ?? 50)}
-              onChange={(v) => update("weight", v)}
-            />
-            <RouteField
-              label="5h Limit"
-              value={Number(routeCfg.limit5h ?? 0)}
-              onChange={(v) => update("limit5h", v)}
-            />
-            <RouteField
-              label="Weekly Limit"
-              value={Number(routeCfg.limitWeekly ?? 0)}
-              onChange={(v) => update("limitWeekly", v)}
-            />
-            <RouteField
-              label="$ Daily"
-              value={Number(routeCfg.spendLimitDaily ?? 0)}
-              onChange={(v) => update("spendLimitDaily", v)}
-              step={0.5}
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <RouteField
-              label="$/M Input"
-              value={Number(routeCfg.priceInputPerM ?? 0)}
-              onChange={(v) => update("priceInputPerM", v)}
-              step={0.5}
-            />
-            <RouteField
-              label="$/M Output"
-              value={Number(routeCfg.priceOutputPerM ?? 0)}
-              onChange={(v) => update("priceOutputPerM", v)}
-              step={0.5}
-            />
-          </div>
-          {manualPlanEditable ? (
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] p-3">
-              <div className="sm:col-span-3">
-                <div className="mb-2 flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold text-amber-100">Coding plan preset</p>
-                    <p className="text-[10px] text-amber-100/60">
-                      Pick the subscription you actually use. Presets fill known guardrails; dynamic
-                      plans still need provider usage data or manual hard stops.
-                    </p>
-                  </div>
-                  {plan?.appliedPresetId && (
-                    <span className="rounded-full bg-amber-300/15 px-2 py-0.5 text-[10px] text-amber-100">
-                      preset applied
-                    </span>
-                  )}
-                </div>
-                {suggestions.length > 0 ? (
-                  <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
-                    {suggestions.map((preset) => {
-                      const selected =
-                        (planConfig?.presetId || plan?.appliedPresetId) === preset.id;
-                      return (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => applyPreset(preset)}
-                          className={cn(
-                            "rounded-lg border px-3 py-2 text-left transition-colors",
-                            selected
-                              ? "border-amber-300/60 bg-amber-300/15"
-                              : "border-white/10 bg-black/20 hover:bg-white/[0.05]"
-                          )}
-                        >
-                          <span className="flex items-start justify-between gap-2">
-                            <span className="min-w-0">
-                              <span className="block truncate text-[11px] font-semibold text-white">
-                                {preset.label}
-                              </span>
-                              <span className="mt-0.5 block text-[10px] text-gray-400">
-                                {presetLimitSummary(preset)}
-                              </span>
-                            </span>
-                            <span className="rounded-full bg-black/25 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-amber-100/80">
-                              {confidenceLabel(preset.confidence)}
-                            </span>
-                          </span>
-                          <span className="mt-1 block line-clamp-2 text-[10px] text-gray-500">
-                            {preset.limitDescription}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-gray-400">
-                    No published coding-plan preset for this provider yet. Use manual caps below.
-                  </p>
-                )}
+        <div className="pt-1 space-y-3">
+          <div className="rounded-lg border border-white/10 bg-white/[0.025] p-3">
+            <div className="mb-2 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-white">Routing and cost controls</p>
+                <p className="text-[10px] text-gray-500">
+                  These tune provider selection. Automatic plan usage is read from the provider when
+                  supported.
+                </p>
               </div>
-              <label className="flex flex-col gap-0.5">
-                <span className="text-[10px] text-amber-200/70">Manual plan name</span>
-                <input
-                  key={`plan-name-${planConfig?.planName || plan?.planName || ""}`}
-                  defaultValue={planConfig?.planName || plan?.planName || ""}
-                  placeholder="$20 coding plan"
-                  onBlur={(e) => updatePlan("planName", e.target.value)}
-                  className="w-full rounded bg-black/25 border border-white/10 px-2 py-1 text-xs text-white placeholder:text-gray-600"
-                />
-              </label>
-              <RoutePlanField
-                label="Monthly tokens"
-                value={planConfig?.monthly?.tokenLimit}
-                placeholder="20000000"
-                onChange={(value) => updatePlan("monthlyTokenLimit", value)}
+              {plan?.managedAutomatically && (
+                <span className="rounded-full bg-cyan-300/10 px-2 py-0.5 text-[10px] text-cyan-100">
+                  automatic usage
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <RouteField
+                label="Weight"
+                value={Number(routeCfg.weight ?? 50)}
+                onChange={(v) => update("weight", v)}
               />
-              <RoutePlanField
-                label="Monthly spend"
-                value={planConfig?.monthly?.spendLimit}
-                placeholder="20"
+              <RouteField
+                label="$ Daily"
+                value={Number(routeCfg.spendLimitDaily ?? 0)}
+                onChange={(v) => update("spendLimitDaily", v)}
                 step={0.5}
-                onChange={(value) => updatePlan("monthlySpendLimit", value)}
+              />
+              <RouteField
+                label="$/M Input"
+                value={Number(routeCfg.priceInputPerM ?? 0)}
+                onChange={(v) => update("priceInputPerM", v)}
+                step={0.5}
+              />
+              <RouteField
+                label="$/M Output"
+                value={Number(routeCfg.priceOutputPerM ?? 0)}
+                onChange={(v) => update("priceOutputPerM", v)}
+                step={0.5}
               />
             </div>
-          ) : (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <RouteField
+                label="Optional 5h request cap"
+                value={Number(routeCfg.limit5h ?? 0)}
+                onChange={(v) => update("limit5h", v)}
+              />
+              <RouteField
+                label="Optional weekly request cap"
+                value={Number(routeCfg.limitWeekly ?? 0)}
+                onChange={(v) => update("limitWeekly", v)}
+              />
+            </div>
+          </div>
+          {!manualPlanEditable ? (
             <div className="rounded-lg border border-cyan-400/15 bg-cyan-400/[0.05] p-3 text-[11px] text-cyan-100/80">
-              <p className="font-semibold text-cyan-100">Plan tracked automatically</p>
+              <p className="font-semibold text-cyan-100">Plan usage is automatic</p>
               <p className="mt-1 text-cyan-100/65">
-                Manual plan caps are hidden because this provider reports plan usage automatically.
+                {plan?.automaticTrackingLabel || plan?.externalSourceLabel || "Provider usage"} is
+                read automatically. No manual plan limits are needed for routing decisions.
               </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-white/10 bg-black/20 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-white">Optional manual plan fallback</p>
+                  <p className="mt-0.5 text-[10px] text-gray-500">
+                    Use this only when the provider does not expose automatic plan usage yet.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setManualPlanOpen((value) => !value)}
+                  className="rounded-md border border-white/10 px-2 py-1 text-[10px] text-gray-300 hover:bg-white/[0.06]"
+                >
+                  {showManualPlanControls ? "Hide manual limits" : "Configure manual limits"}
+                </button>
+              </div>
+              {plan?.externalSourceLabel && !plan.managedAutomatically && (
+                <p className="mt-2 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1.5 text-[10px] text-gray-400">
+                  {plan.externalSourceLabel} is not connected for automatic routing yet.
+                </p>
+              )}
+              {showManualPlanControls && (
+                <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] p-3 sm:grid-cols-3">
+                  <div className="sm:col-span-3">
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold text-amber-100">Manual coding plan</p>
+                        <p className="text-[10px] text-amber-100/60">
+                          Presets fill known guardrails. Leave fields empty to keep router
+                          enforcement based only on live provider availability and route caps.
+                        </p>
+                      </div>
+                      {plan?.appliedPresetId && (
+                        <span className="rounded-full bg-amber-300/15 px-2 py-0.5 text-[10px] text-amber-100">
+                          preset applied
+                        </span>
+                      )}
+                    </div>
+                    {suggestions.length > 0 ? (
+                      <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
+                        {suggestions.map((preset) => {
+                          const selected =
+                            (planConfig?.presetId || plan?.appliedPresetId) === preset.id;
+                          return (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => applyPreset(preset)}
+                              className={cn(
+                                "rounded-lg border px-3 py-2 text-left transition-colors",
+                                selected
+                                  ? "border-amber-300/60 bg-amber-300/15"
+                                  : "border-white/10 bg-black/20 hover:bg-white/[0.05]"
+                              )}
+                            >
+                              <span className="flex items-start justify-between gap-2">
+                                <span className="min-w-0">
+                                  <span className="block truncate text-[11px] font-semibold text-white">
+                                    {preset.label}
+                                  </span>
+                                  <span className="mt-0.5 block text-[10px] text-gray-400">
+                                    {presetLimitSummary(preset)}
+                                  </span>
+                                </span>
+                                <span className="rounded-full bg-black/25 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-amber-100/80">
+                                  {confidenceLabel(preset.confidence)}
+                                </span>
+                              </span>
+                              <span className="mt-1 block line-clamp-2 text-[10px] text-gray-500">
+                                {preset.limitDescription}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-gray-400">
+                        No published coding-plan preset for this provider yet.
+                      </p>
+                    )}
+                  </div>
+                  <label className="flex flex-col gap-0.5">
+                    <span className="text-[10px] text-amber-200/70">Manual plan name</span>
+                    <input
+                      key={`plan-name-${planConfig?.planName || plan?.planName || ""}`}
+                      defaultValue={planConfig?.planName || plan?.planName || ""}
+                      placeholder="$20 coding plan"
+                      onBlur={(e) => updatePlan("planName", e.target.value)}
+                      className="w-full rounded bg-black/25 border border-white/10 px-2 py-1 text-xs text-white placeholder:text-gray-600"
+                    />
+                  </label>
+                  <RoutePlanField
+                    label="Monthly tokens"
+                    value={planConfig?.monthly?.tokenLimit}
+                    placeholder="20000000"
+                    onChange={(value) => updatePlan("monthlyTokenLimit", value)}
+                  />
+                  <RoutePlanField
+                    label="Monthly spend"
+                    value={planConfig?.monthly?.spendLimit}
+                    placeholder="20"
+                    step={0.5}
+                    onChange={(value) => updatePlan("monthlySpendLimit", value)}
+                  />
+                </div>
+              )}
             </div>
           )}
           <p className="text-[10px] text-gray-600">
-            Route limits of 0 mean unlimited. Plan limits feed usage monitoring and can block an
-            exhausted provider before the router chooses it.
+            Route request caps are optional. Provider plan limits come from automatic usage data
+            when available, otherwise from the optional manual fallback above.
           </p>
         </div>
       )}
@@ -1179,7 +1150,11 @@ function RouteRow({
 }
 
 function PlanStatusPanel({ plan }: { plan: ProviderPlanSnapshot }) {
-  const automaticUsageSummary = planAutomaticUsageSummary(plan);
+  const automaticUsageSummary = providerPlanWindowSummary(plan);
+  const sourceLabel =
+    plan.managedAutomatically && (plan.automaticTrackingLabel || plan.externalSourceLabel)
+      ? plan.automaticTrackingLabel || plan.externalSourceLabel
+      : plan.sourceLabel;
   const statusClass =
     plan.status === "exhausted"
       ? "border-red-400/25 bg-red-500/10 text-red-200"
@@ -1211,85 +1186,90 @@ function PlanStatusPanel({ plan }: { plan: ProviderPlanSnapshot }) {
           </span>
         )}
       </div>
-      {!plan.managedAutomatically && plan.windows.length > 0 && (
-        <div className="mt-3 grid gap-2">
-          {plan.windows.map((window) => {
-            const percentValue = Math.min(100, Math.max(0, window.usedPercent ?? 0));
-            return (
-              <div key={window.id}>
-                <div className="mb-1 flex items-center justify-between gap-2 text-[10px] opacity-80">
-                  <span>
-                    {window.title} · {window.resetDescription}
-                  </span>
-                  <span>
-                    {window.usedPercent === undefined
-                      ? `${formatCompactNumber(window.usedTokens)} tokens`
-                      : `${window.usedPercent.toFixed(1)}%`}
-                  </span>
-                </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-black/30">
-                  <div
-                    className={cn("h-full rounded-full", routerPlanUsageFillClass(percentValue))}
-                    style={{ width: `${Math.max(2, percentValue)}%` }}
-                  />
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <p className="mt-2 text-[10px] opacity-70">{sourceLabel}</p>
+      <PlanUsageMeters plan={plan} />
     </div>
   );
 }
 
-function routerPlanUsageFillClass(percent: number): string {
-  if (percent < 40) return "bg-emerald-300/80";
-  if (percent < 65) return "bg-sky-300";
-  if (percent < 80) return "bg-yellow-300";
-  if (percent < 95) return "bg-orange-300";
-  return "bg-red-300";
-}
-
-function planAutomaticUsageSummary(plan: ProviderPlanSnapshot): string | null {
-  if (!plan.managedAutomatically) return null;
-  const windows = plan.windows.filter(
-    (window) =>
-      (window.kind === "rolling_5h" || window.kind === "rolling_week") &&
-      window.usageKnown &&
-      (window.unlimited || typeof window.usedPercent === "number")
-  );
-  if (windows.length === 0) return null;
-  return windows
-    .slice(0, 2)
-    .map(
-      (window) =>
-        `${window.kind === "rolling_5h" ? "5h" : "Weekly"} ${
-          window.unlimited
-            ? "∞"
-            : typeof window.usedPercent === "number"
-              ? `${Math.ceil(window.usedPercent)}%`
-              : "--"
-        }${formatRouterPlanReset(window.resetsAt)}`
-    )
-    .join(" · ");
-}
-
-function formatRouterPlanReset(resetsAt?: string): string {
-  if (!resetsAt) return "";
-  const resetMs = Date.parse(resetsAt);
-  if (!Number.isFinite(resetMs)) return "";
-  const diffMs = resetMs - Date.now();
-  if (diffMs <= 0) return " (reset ready)";
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  if (diffMs < hour) return ` (resets in ${Math.max(1, Math.ceil(diffMs / minute))}m)`;
-  if (diffMs < day) {
-    const hours = Math.floor(diffMs / hour);
-    const minutes = Math.ceil((diffMs % hour) / minute);
-    return minutes > 0 ? ` (resets in ${hours}h ${minutes}m)` : ` (resets in ${hours}h)`;
+function PlanUsageMeters({ plan }: { plan: ProviderPlanSnapshot }) {
+  if (plan.managedAutomatically) {
+    return (
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <ProviderPlanUsageMeter label="5h" plan={plan} kind="rolling_5h" />
+        <ProviderPlanUsageMeter label="Weekly" plan={plan} kind="rolling_week" />
+      </div>
+    );
   }
-  return ` (resets in ${Math.ceil(diffMs / day)}d)`;
+
+  if (plan.windows.length === 0) return null;
+
+  return (
+    <div className="mt-3 grid gap-2">
+      {plan.windows.map((window) => {
+        const percentValue = Math.min(100, Math.max(0, window.usedPercent ?? 0));
+        const display = {
+          percent: typeof window.usedPercent === "number" ? percentValue : null,
+          value:
+            window.usedPercent === undefined
+              ? `${formatCompactNumber(window.usedTokens)} tokens`
+              : `${window.usedPercent.toFixed(1)}%`,
+          unlimited: Boolean(window.unlimited),
+          resetLabel: window.resetsAt || null,
+        };
+        const tone = providerPlanUsageClasses(display);
+        return (
+          <div key={window.id}>
+            <div className="mb-1 flex items-center justify-between gap-2 text-[10px] opacity-80">
+              <span>
+                {window.title} · {window.resetDescription}
+              </span>
+              <span>
+                {window.usedPercent === undefined
+                  ? `${formatCompactNumber(window.usedTokens)} tokens`
+                  : `${window.usedPercent.toFixed(1)}%`}
+              </span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-black/30">
+              <div
+                className={cn("h-full rounded-full", tone.fillClass)}
+                style={{ width: `${Math.max(2, percentValue)}%` }}
+              />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ProviderPlanUsageMeter({
+  label,
+  plan,
+  kind,
+}: {
+  label: string;
+  plan: ProviderPlanSnapshot;
+  kind: "rolling_5h" | "rolling_week" | "billing_month";
+}) {
+  const usage = providerPlanWindowDisplay(plan, kind);
+  const tone = providerPlanUsageClasses(usage);
+  const width = usage.unlimited ? 100 : (usage.percent ?? 0);
+  return (
+    <div className={cn("rounded-lg border px-3 py-2 text-[11px]", tone.borderClass, tone.bgClass)}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-gray-400">{label}</span>
+        <span className={cn("font-semibold tabular-nums", tone.textClass)}>{usage.value}</span>
+      </div>
+      <div className="mt-1.5 h-1.5 overflow-hidden rounded-md bg-black/30">
+        <div
+          className={cn("h-full rounded-md", tone.fillClass)}
+          style={{ width: `${Math.max(usage.unlimited ? 100 : 0, width)}%` }}
+        />
+      </div>
+      {usage.resetLabel && <p className="mt-1 text-[10px] text-gray-500">{usage.resetLabel}</p>}
+    </div>
+  );
 }
 
 function RouteField({

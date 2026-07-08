@@ -264,7 +264,7 @@ struct RouterScreen: View {
                     .help("Save provider plan limits")
                 }
             } else {
-                Text("Manual plan caps are hidden because this provider reports plan usage automatically.")
+                Text("Live provider usage is used for routing. No manual plan limits are needed.")
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.secondary)
             }

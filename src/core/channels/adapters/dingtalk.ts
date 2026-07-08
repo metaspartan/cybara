@@ -10,8 +10,22 @@ import { buildChannelSecurityConfig, securityManager } from "../security";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { parseDingTalkMessage, verifyDingTalkSignature } from "../dingtalk-events";
+import { ReplayGuard, parseTimestampSeconds } from "../replay-guard";
 
 export const dingtalkSessions = new Map<string, string>();
+
+const dingtalkReplayGuard = new ReplayGuard();
+
+function isTrustedDingTalkWebhook(raw: string): boolean {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:") return false;
+    const host = url.hostname.toLowerCase();
+    return host === "oapi.dingtalk.com" || host.endsWith(".dingtalk.com");
+  } catch {
+    return false;
+  }
+}
 
 interface DingTalkConfig {
   appSecret: string;
@@ -80,10 +94,15 @@ export class DingTalkAdapter implements ChannelAdapter {
       return { status: 401, body: { error: "invalid signature" } };
     }
 
+    const fresh = dingtalkReplayGuard.check(sign, parseTimestampSeconds(timestamp));
+    if (!fresh.ok) {
+      return { status: 401, body: { error: `request rejected: ${fresh.reason}` } };
+    }
+
     const message = parseDingTalkMessage(payload.body);
     if (!message) return { status: 200, body: {} };
 
-    if (message.sessionWebhook) {
+    if (message.sessionWebhook && isTrustedDingTalkWebhook(message.sessionWebhook)) {
       this.webhooks.set(`${channelId}:${message.conversationId}`, message.sessionWebhook);
     }
 

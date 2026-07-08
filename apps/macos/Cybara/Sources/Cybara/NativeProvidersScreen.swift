@@ -533,9 +533,9 @@ private struct ProviderEditorSheet: View {
                 Toggle("Use as default provider", isOn: $isDefault)
                 if provider != nil, planConfig != nil, !planManualEditable {
                     Section("Provider plan") {
-                        Text("Plan tracked automatically")
+                        Text("Plan usage is automatic")
                             .font(.system(size: 12, weight: .semibold, design: .rounded))
-                        Text("Manual plan caps are hidden because this provider reports plan usage automatically.")
+                        Text("Live provider usage is used for routing. No manual plan limits are needed.")
                             .font(.system(size: 11, design: .rounded))
                             .foregroundStyle(.secondary)
                     }

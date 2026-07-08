@@ -239,6 +239,34 @@ function providerPlanUsageSummary(
   )}`;
 }
 
+function ProviderPlanUsageGrid({ rows }: { rows: MobileProviderPlanUsageRow[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <View style={styles.providerPlanUsageGrid}>
+      {rows.map((row) => (
+        <View key={row.label} style={styles.providerPlanUsageCard}>
+          <View style={styles.providerPlanUsageHeader}>
+            <Text style={styles.settingsInfoText}>{row.label}</Text>
+            <Text style={[styles.routerSummaryValue, { color: row.tone }]}>{row.value}</Text>
+          </View>
+          <View style={styles.providerPlanUsageTrack}>
+            <View
+              style={[
+                styles.providerPlanUsageFill,
+                {
+                  backgroundColor: row.tone,
+                  width: `${Math.max(4, row.progress)}%`,
+                },
+              ]}
+            />
+          </View>
+          {row.reset ? <Text style={styles.settingsFieldHelp}>{row.reset}</Text> : null}
+        </View>
+      ))}
+    </View>
+  );
+}
+
 function mobilePlanResetLabel(resetsAt?: string): string | null {
   if (!resetsAt) return null;
   const resetMs = Date.parse(resetsAt);
@@ -922,28 +950,7 @@ export function ProviderSettingsPanel({
             </View>
             <Text style={[styles.routerSummaryValue, { color: colors.blueText }]}>Auto</Text>
           </View>
-          <View style={styles.providerPlanUsageGrid}>
-            {planUsageRows.map((row) => (
-              <View key={row.label} style={styles.providerPlanUsageCard}>
-                <View style={styles.providerPlanUsageHeader}>
-                  <Text style={styles.settingsInfoText}>{row.label}</Text>
-                  <Text style={[styles.routerSummaryValue, { color: row.tone }]}>{row.value}</Text>
-                </View>
-                <View style={styles.providerPlanUsageTrack}>
-                  <View
-                    style={[
-                      styles.providerPlanUsageFill,
-                      {
-                        backgroundColor: row.tone,
-                        width: `${Math.max(4, row.progress)}%`,
-                      },
-                    ]}
-                  />
-                </View>
-                {row.reset ? <Text style={styles.settingsFieldHelp}>{row.reset}</Text> : null}
-              </View>
-            ))}
-          </View>
+          <ProviderPlanUsageGrid rows={planUsageRows} />
         </View>
       ) : null}
 
@@ -965,10 +972,12 @@ export function ProviderSettingsPanel({
         {planMonitoringConfig && !manualPlanEditable ? (
           <>
             <View style={styles.settingsInfoBox}>
-              <Text style={styles.settingsInfoTitle}>Plan tracked automatically</Text>
+              <Text style={styles.settingsInfoTitle}>Plan usage is automatic</Text>
               <Text style={styles.settingsInfoText}>
-                Manual plan caps are hidden because this provider reports plan usage automatically.
+                {planUsageSummary ||
+                  "Live provider usage is used for routing. No manual plan limits are needed."}
               </Text>
+              <ProviderPlanUsageGrid rows={planUsageRows} />
             </View>
             {routerPricingConfig ? (
               <>
@@ -2544,6 +2553,8 @@ export function ModelRouterPanel({
                 (monthly.spendLimit ? String(monthly.spendLimit) : "");
               const firstWindow = plan?.windows[0];
               const manualPlanEditable = plan?.manualPlanEditable !== false;
+              const routePlanUsageRows = providerPlanUsageRows(plan ?? null);
+              const routePlanUsageSummary = providerPlanUsageSummary(plan ?? null);
               return (
                 <View key={route.providerId} style={styles.settingsSegmentField}>
                   <Text style={styles.settingsFieldLabel}>
@@ -2556,11 +2567,12 @@ export function ModelRouterPanel({
                   </Text>
                   {!manualPlanEditable ? (
                     <View style={styles.settingsInfoBox}>
-                      <Text style={styles.settingsInfoTitle}>Plan tracked automatically</Text>
+                      <Text style={styles.settingsInfoTitle}>Plan usage is automatic</Text>
                       <Text style={styles.settingsInfoText}>
-                        Manual plan caps are hidden because this provider reports plan usage
-                        automatically.
+                        {routePlanUsageSummary ||
+                          "Live provider usage is used for routing. No manual plan limits are needed."}
                       </Text>
+                      <ProviderPlanUsageGrid rows={routePlanUsageRows} />
                     </View>
                   ) : presetSuggestions.length > 0 ? (
                     <>

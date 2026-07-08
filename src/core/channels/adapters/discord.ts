@@ -1,4 +1,6 @@
 import { existsSync } from "fs";
+import { resolve, sep } from "path";
+import { homedir } from "os";
 import {
   Client,
   GatewayIntentBits,
@@ -753,16 +755,26 @@ export class DiscordAdapter implements ChannelAdapter {
   } {
     const files: AttachmentBuilder[] = [];
     const seen = new Set<string>();
-    // Match optional markdown image wrapper around a file:// path.
+    const screenshotsBase = resolve(
+      process.env.HOME || process.env.USERPROFILE || homedir(),
+      ".cybara",
+      "screenshots"
+    );
     const pattern = /(?:!\[[^\]]*\]\()?file:\/\/(\/[^\s)]+)\)?/g;
     const text = response
       .replace(pattern, (_match, rawPath: string) => {
-        const path = decodeURI(rawPath);
-        if (!seen.has(path) && existsSync(path) && /\.(png|jpe?g|gif|webp)$/i.test(path)) {
+        const path = resolve(decodeURI(rawPath));
+        const contained = path === screenshotsBase || path.startsWith(screenshotsBase + sep);
+        if (
+          contained &&
+          !seen.has(path) &&
+          existsSync(path) &&
+          /\.(png|jpe?g|gif|webp)$/i.test(path)
+        ) {
           seen.add(path);
           files.push(new AttachmentBuilder(path));
         }
-        return ""; // strip the marker from the visible text
+        return "";
       })
       .replace(/\n{3,}/g, "\n\n")
       .trim();

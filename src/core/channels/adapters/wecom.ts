@@ -15,8 +15,11 @@ import {
   decryptWecom,
   extractXmlField,
 } from "../wecom-crypto";
+import { ReplayGuard, parseTimestampSeconds } from "../replay-guard";
 
 export const wecomSessions = new Map<string, string>();
+
+const wecomReplayGuard = new ReplayGuard();
 
 interface WecomConfig {
   token: string;
@@ -144,6 +147,11 @@ export class WeComAdapter implements ChannelAdapter {
     if (!encrypt) return { status: 400, body: { error: "missing Encrypt" } };
     if (!verifyWecomSignature(cfg.token, timestamp, nonce, encrypt, msg_signature)) {
       return { status: 401, body: { error: "invalid signature" } };
+    }
+
+    const fresh = wecomReplayGuard.check(`${nonce}:${msg_signature}`, parseTimestampSeconds(timestamp));
+    if (!fresh.ok) {
+      return { status: 401, body: { error: `request rejected: ${fresh.reason}` } };
     }
 
     let innerXml: string;
