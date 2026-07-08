@@ -10,10 +10,8 @@ import {
 } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Send,
   User,
   Trash2,
-  Wrench,
   Sparkles,
   ChevronDown,
   ChevronUp,
@@ -83,12 +81,6 @@ import {
 import { PageLayout } from "@/components/layout";
 import { GlassCard, Input, Badge, Modal, Button } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
-import {
-  providerPlanUsageClasses,
-  providerPlanWindowDisplay,
-  providerPlanWindowSummary,
-  type ProviderPlanWindowDisplay,
-} from "@/lib/providerPlanDisplay";
 import { useUIStore } from "@/stores/uiStore";
 import { appendApiTokenParam, apiFetch } from "@/lib/auth";
 import {
@@ -176,7 +168,10 @@ import {
 } from "./chat/chatModel";
 import { LiveActivityTimeline, ProcessActivityList } from "./chat/ActivityTimeline";
 import { DiffCodeBlock, MessageContent } from "./chat/MessageContent";
+import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
 import { ChatEnvironmentOverview } from "./chat/ChatEnvironmentOverview";
+import { ContextUsageRing } from "./chat/ContextUsageRing";
+import { FileChangesCard } from "./chat/FileChangesCard";
 import { GitBranchSelector, type GitBranchOption } from "./chat/GitBranchSelector";
 import { PlanSummaryCard } from "./chat/PlanSummaryCard";
 import { SessionsPanel } from "./chat/SessionSidebar";
@@ -185,55 +180,7 @@ import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopH
 
 type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
 
-function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.02] overflow-hidden">
-      <button
-        onClick={() => setExpanded((value) => !value)}
-        className="w-full px-3 py-2 flex items-center gap-2 text-[12px] cursor-pointer hover:bg-white/5 transition-colors"
-      >
-        <Wrench className="w-3 h-3 text-indigo-300" />
-        <span className="text-gray-200 font-medium">
-          {summary.files.length} files changed
-          <span className="ml-2 text-green-300">+{summary.totalAdded}</span>
-          <span className="ml-1 text-red-300">-{summary.totalRemoved}</span>
-        </span>
-        <span className="flex-1" />
-        {expanded ? (
-          <ChevronUp className="w-3.5 h-3.5 text-gray-500" />
-        ) : (
-          <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
-        )}
-      </button>
-      {expanded && (
-        <div className="border-t border-white/5 px-3 py-2 space-y-3">
-          {summary.files.map((file) => (
-            <div
-              key={`${file.path}-${file.type}`}
-              className="rounded-md border border-white/10 bg-black/25"
-            >
-              <div className="flex items-center justify-between gap-3 px-2.5 py-2 text-[12px]">
-                <div className="min-w-0">
-                  <p className="truncate text-gray-200">{file.path}</p>
-                  <p className="text-[10px] text-gray-500 uppercase tracking-[0.08em]">
-                    {file.type}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-green-300">+{file.added}</span>
-                  <span className="text-red-300">-{file.removed}</span>
-                </div>
-              </div>
-              {file.diff && <DiffCodeBlock code={file.diff} />}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
+const STOPPED_SESSION_STATUS_SUPPRESSION_MS = 12_000;
 
 function formatWorkedDuration(durationMs: number): string {
   const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
@@ -241,66 +188,6 @@ function formatWorkedDuration(durationMs: number): string {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
-}
-
-function formatTokenCount(value: number): string {
-  if (!Number.isFinite(value)) return "0";
-  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(value) >= 1_000) return `${Math.round(value / 1_000)}k`;
-  return String(Math.max(0, Math.round(value)));
-}
-
-function contextUsageLabel(usage?: SessionContextUsage | null): string {
-  if (!usage) return "Context usage unavailable until this session is loaded.";
-  return `${formatTokenCount(usage.usedTokens)} of ${formatTokenCount(
-    usage.limitTokens
-  )} tokens used (${usage.usedPercent}%). ${formatTokenCount(
-    usage.remainingTokens
-  )} tokens remaining.`;
-}
-
-function providerPlanTooltipDetail(plan?: ProviderPlanSnapshot | null): string | null {
-  const windowSummary = providerPlanWindowSummary(plan);
-  return windowSummary ? `Plan usage: ${windowSummary}` : null;
-}
-
-function providerPlanTooltipRows(
-  plan?: ProviderPlanSnapshot | null
-): Array<{ label: string; usage: ProviderPlanWindowDisplay }> {
-  if (!plan?.managedAutomatically) return [];
-  return [
-    { label: "5h", usage: providerPlanWindowDisplay(plan, "rolling_5h") },
-    { label: "Weekly", usage: providerPlanWindowDisplay(plan, "rolling_week") },
-  ].filter(({ usage }) => usage.unlimited || usage.percent !== null);
-}
-
-function contextUsageTooltip(
-  usage?: SessionContextUsage | null,
-  providerPlan?: ProviderPlanSnapshot | null
-) {
-  const planDetail = providerPlanTooltipDetail(providerPlan);
-  const planRows = providerPlanTooltipRows(providerPlan);
-  if (!usage) {
-    return {
-      percent: "?",
-      title: "Context window:",
-      body: "Not loaded yet",
-      detail: "Open a session or send a message to estimate usage.",
-      planDetail,
-      planRows,
-    };
-  }
-  const percent = Math.min(100, Math.max(0, usage.usedPercent));
-  return {
-    percent: `${Math.round(percent)}%`,
-    title: "Context window:",
-    body: `${Math.round(percent)}% full`,
-    detail: `${formatTokenCount(usage.usedTokens)} / ${formatTokenCount(
-      usage.limitTokens
-    )} tokens used`,
-    planDetail,
-    planRows,
-  };
 }
 
 type ToolApprovalMode = "always_allow" | "ask";
@@ -311,94 +198,6 @@ function normalizeToolApprovalMode(value: unknown): ToolApprovalMode {
 
 function toolApprovalModeLabel(mode: ToolApprovalMode): string {
   return mode === "ask" ? "Ask Me" : "Always Allow";
-}
-
-function ContextUsageRing({
-  usage,
-  providerPlan,
-}: {
-  usage?: SessionContextUsage | null;
-  providerPlan?: ProviderPlanSnapshot | null;
-}) {
-  const [open, setOpen] = useState(false);
-  const percent = usage ? Math.min(100, Math.max(0, usage.usedPercent)) : 0;
-  const color =
-    percent >= 90
-      ? "var(--context-ring-danger)"
-      : percent >= 70
-        ? "var(--context-ring-warn)"
-        : "var(--context-ring-ok)";
-  const tooltip = contextUsageTooltip(usage, providerPlan);
-  const label = contextUsageLabel(usage);
-  return (
-    <div
-      aria-label={label}
-      className="relative h-5 w-5 shrink-0 rounded-full outline-none"
-      onBlur={() => setOpen(false)}
-      onClick={() => setOpen((value) => !value)}
-      onFocus={() => setOpen(true)}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      tabIndex={0}
-    >
-      <div
-        className="absolute inset-[3px] rounded-full p-[1.5px]"
-        style={{
-          background: `conic-gradient(${color} ${percent * 3.6}deg, var(--context-ring-track) 0deg)`,
-        }}
-      >
-        <div className="context-usage-ring-fill h-full w-full rounded-full" />
-      </div>
-      <div
-        role="tooltip"
-        className={cn(
-          "context-usage-tooltip pointer-events-none absolute bottom-full left-1/2 z-50 mb-3 w-max max-w-[280px] -translate-x-1/2 rounded-lg border px-3 py-2 text-center text-[12px] leading-5",
-          open ? "block" : "hidden"
-        )}
-      >
-        <div className="context-usage-tooltip-title">{tooltip.title}</div>
-        <div className="context-usage-tooltip-body font-medium">{tooltip.body}</div>
-        <div className="context-usage-tooltip-detail">{tooltip.detail}</div>
-        {tooltip.planRows.length > 0 && (
-          <div className="context-usage-tooltip-plan mt-2 space-y-1.5 border-t pt-2 text-left">
-            <div className="text-[11px] font-medium">Plan usage</div>
-            {tooltip.planRows.map(({ label, usage }) => (
-              <ProviderPlanTooltipBar key={label} label={label} usage={usage} />
-            ))}
-            {tooltip.planDetail && <div className="sr-only">{tooltip.planDetail}</div>}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ProviderPlanTooltipBar({
-  label,
-  usage,
-}: {
-  label: string;
-  usage: ProviderPlanWindowDisplay;
-}) {
-  const classes = providerPlanUsageClasses(usage);
-  const width = usage.unlimited ? 100 : (usage.percent ?? 0);
-  return (
-    <div className="context-usage-tooltip-plan-bar">
-      <div className="flex items-center justify-between gap-3 text-[11px]">
-        <span className="text-gray-500">{label}</span>
-        <span className={`font-semibold tabular-nums ${classes.textClass}`}>{usage.value}</span>
-      </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
-        <div
-          className={`h-full rounded-full ${classes.fillClass}`}
-          style={{ width: `${Math.max(usage.unlimited ? 100 : 2, width)}%` }}
-        />
-      </div>
-      {usage.resetLabel && (
-        <div className="mt-0.5 truncate text-[10px] text-gray-500">{usage.resetLabel}</div>
-      )}
-    </div>
-  );
 }
 
 function ChatApprovalControls({
@@ -1920,6 +1719,7 @@ export function Chat() {
   const [showSessionsPanel, setShowSessionsPanel] = useState(true);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [showEnvironmentOverview, setShowEnvironmentOverview] = useState(false);
+  const [seenEnvironmentOverviewKey, setSeenEnvironmentOverviewKey] = useState<string | null>(null);
   const [hiddenComposerPlanKey, setHiddenComposerPlanKey] = useState<string | null>(null);
   const [diffPanelWidth, setDiffPanelWidth] = useState<number>(() => readPersistedDiffPanelWidth());
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
@@ -1988,6 +1788,7 @@ export function Chat() {
   const runActivityBufferRef = useRef<LiveActivityItem[]>([]);
   const liveActivitiesRef = useRef<LiveActivityItem[]>([]);
   const latestStatusTimestampBySessionRef = useRef<Record<string, number>>({});
+  const stoppedSessionUntilRef = useRef<Record<string, number>>({});
   const configuredWorkspaceDir =
     typeof info?.defaultWorkspaceDir === "string" && info.defaultWorkspaceDir.trim().length > 0
       ? info.defaultWorkspaceDir.trim()
@@ -2001,6 +1802,27 @@ export function Chat() {
       ? lastWorkspaceDir || configuredWorkspaceDir || homeWorkspaceDir
       : null;
   const effectiveWorkspaceDir = workspaceDir || fallbackWorkspaceDir || null;
+  const markSessionStopped = useCallback((targetSessionId?: string | null) => {
+    const key =
+      typeof targetSessionId === "string" && targetSessionId.trim().length > 0
+        ? targetSessionId.trim()
+        : null;
+    if (!key) return;
+    stoppedSessionUntilRef.current[key] = Date.now() + STOPPED_SESSION_STATUS_SUPPRESSION_MS;
+  }, []);
+  const isSessionStopSuppressed = useCallback((targetSessionId?: string | null) => {
+    const key =
+      typeof targetSessionId === "string" && targetSessionId.trim().length > 0
+        ? targetSessionId.trim()
+        : null;
+    if (!key) return false;
+    const until = stoppedSessionUntilRef.current[key] || 0;
+    if (until <= Date.now()) {
+      delete stoppedSessionUntilRef.current[key];
+      return false;
+    }
+    return true;
+  }, []);
   const sessionFileChanges = useMemo(
     () => summarizeSessionFileChanges(typedMessages),
     [typedMessages]
@@ -2069,6 +1891,36 @@ export function Chat() {
     );
   }, [activeAgentForPlan, providerPlanStatus, useModelRouter]);
   const environmentGit = useEnvironmentGitBranches(effectiveWorkspaceDir);
+  const environmentOverviewSignalKey = useMemo(
+    () =>
+      [
+        sessionId || "new-chat",
+        currentSessionPlanKey || "no-plan",
+        sessionFileChanges?.files.length || 0,
+        sessionFileChanges?.totalAdded || 0,
+        sessionFileChanges?.totalRemoved || 0,
+        environmentGit.currentBranch || "no-branch",
+        environmentSubagents.map((subagent) => `${subagent.id}:${subagent.status}`).join("|"),
+        environmentToolNames.join("|"),
+      ].join("\u0000"),
+    [
+      currentSessionPlanKey,
+      environmentGit.currentBranch,
+      environmentSubagents,
+      environmentToolNames,
+      sessionFileChanges,
+      sessionId,
+    ]
+  );
+  const hasEnvironmentOverviewSignal =
+    !!currentSessionPlan ||
+    (sessionFileChanges && sessionFileChanges.files.length > 0) ||
+    environmentSubagents.length > 0 ||
+    environmentToolNames.length > 0;
+  const showEnvironmentOverviewDot =
+    !!hasEnvironmentOverviewSignal &&
+    !showEnvironmentOverview &&
+    seenEnvironmentOverviewKey !== environmentOverviewSignalKey;
   const syncSessionAgentSelection = useCallback(
     (agentId?: string | null) => {
       const normalized = typeof agentId === "string" && agentId.trim() ? agentId.trim() : null;
@@ -2630,6 +2482,14 @@ export function Chat() {
           ? snapshot.sessionId.trim()
           : null;
       if (!snapshotSessionId) return;
+      const snapshotStatus = typeof snapshot.status === "string" ? snapshot.status : "";
+      if (
+        isSessionStopSuppressed(snapshotSessionId) &&
+        snapshotStatus !== "idle" &&
+        snapshotStatus !== "error"
+      ) {
+        return;
+      }
       const cached = readCachedLiveSessionState(snapshotSessionId);
       const localActivities = cached?.activities || [];
       const next = resolveSnapshotLiveState(snapshot, localActivities);
@@ -2647,126 +2507,136 @@ export function Chat() {
         streamingContent: cached?.streamingContent ?? null,
       });
     },
-    [resolveSnapshotLiveState, snapshotLatestTimestamp]
+    [isSessionStopSuppressed, resolveSnapshotLiveState, snapshotLatestTimestamp]
   );
 
-  const cacheAssistantToken = useCallback((payload: StatusStreamTokenEvent) => {
-    const tokenSessionId =
-      typeof payload.sessionId === "string" && payload.sessionId.trim()
-        ? payload.sessionId.trim()
-        : null;
-    const delta = typeof payload.delta === "string" ? payload.delta : "";
-    if (!tokenSessionId || !delta) return;
-    const cached = readCachedLiveSessionState(tokenSessionId);
-    writeCachedLiveSessionState(tokenSessionId, {
-      status: "generating",
-      activities: cached?.activities || [],
-      currentStep: cached?.currentStep || "Generating response...",
-      streamingContent: `${cached?.streamingContent || ""}${delta}`,
-    });
-  }, []);
+  const cacheAssistantToken = useCallback(
+    (payload: StatusStreamTokenEvent) => {
+      const tokenSessionId =
+        typeof payload.sessionId === "string" && payload.sessionId.trim()
+          ? payload.sessionId.trim()
+          : null;
+      const delta = typeof payload.delta === "string" ? payload.delta : "";
+      if (!tokenSessionId || !delta) return;
+      if (isSessionStopSuppressed(tokenSessionId)) return;
+      const cached = readCachedLiveSessionState(tokenSessionId);
+      writeCachedLiveSessionState(tokenSessionId, {
+        status: "generating",
+        activities: cached?.activities || [],
+        currentStep: cached?.currentStep || "Generating response...",
+        streamingContent: `${cached?.streamingContent || ""}${delta}`,
+      });
+    },
+    [isSessionStopSuppressed]
+  );
 
-  const cacheLiveStatusEvent = useCallback((payload: StatusStreamStatusEvent) => {
-    const payloadSessionId =
-      typeof payload.sessionId === "string" && payload.sessionId.trim()
-        ? payload.sessionId.trim()
-        : null;
-    if (!payloadSessionId) return;
-    const status = typeof payload.status === "string" ? payload.status : "";
-    if (!status) return;
-    const statusDetail = typeof payload.detail === "string" ? payload.detail.trim() : "";
-    const isSteeringHandoff =
-      status === "idle" && statusDetail.toLowerCase() === "steering to follow-up...";
-    if ((status === "idle" && !isSteeringHandoff) || status === "error") {
-      clearCachedLiveSessionState(payloadSessionId);
-      return;
-    }
-
-    const cached = readCachedLiveSessionState(payloadSessionId);
-    const eventTimestamp =
-      typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
-        ? payload.timestamp
-        : undefined;
-    let activities = cached?.activities || [];
-    let currentStep = cached?.currentStep || null;
-    const normalizedStatus = normalizeSessionStatus(status);
-
-    if (status === "thinking" || status === "generating" || status === "compacting") {
-      const activeToolStep = getLatestInFlightStep(activities);
-      if (!payload.toolName) {
-        const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
-        if (status === "compacting" || isMeaningfulThoughtDetail(detail)) {
-          const text =
-            status === "compacting" && !isMeaningfulThoughtDetail(detail)
-              ? "Context automatically compacted"
-              : detail;
-          activities = applyLiveActivityEvent(activities, {
-            phase: "result",
-            text,
-            timestamp: eventTimestamp,
-            toolName: "__thought",
-          });
-          currentStep = activeToolStep || text;
-        } else {
-          currentStep =
-            activeToolStep ||
-            (status === "generating"
-              ? "Generating response..."
-              : status === "thinking"
-                ? "Thinking..."
-                : null);
-        }
+  const cacheLiveStatusEvent = useCallback(
+    (payload: StatusStreamStatusEvent) => {
+      const payloadSessionId =
+        typeof payload.sessionId === "string" && payload.sessionId.trim()
+          ? payload.sessionId.trim()
+          : null;
+      if (!payloadSessionId) return;
+      const status = typeof payload.status === "string" ? payload.status : "";
+      if (!status) return;
+      if (isSessionStopSuppressed(payloadSessionId) && status !== "idle" && status !== "error") {
+        return;
       }
-      writeCachedLiveSessionState(payloadSessionId, {
-        status: normalizedStatus,
-        activities,
-        currentStep,
-        streamingContent: cached?.streamingContent ?? null,
-      });
-      return;
-    }
+      const statusDetail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+      const isSteeringHandoff =
+        status === "idle" && statusDetail.toLowerCase() === "steering to follow-up...";
+      if ((status === "idle" && !isSteeringHandoff) || status === "error") {
+        clearCachedLiveSessionState(payloadSessionId);
+        return;
+      }
 
-    if (isSteeringHandoff) {
-      activities = applyLiveActivityEvent(activities, {
-        phase: "result",
-        text: statusDetail,
-        timestamp: eventTimestamp,
-        toolName: "__thought",
-      });
-      writeCachedLiveSessionState(payloadSessionId, {
-        status: "thinking",
-        activities,
-        currentStep: statusDetail,
-        streamingContent: cached?.streamingContent ?? null,
-      });
-      return;
-    }
+      const cached = readCachedLiveSessionState(payloadSessionId);
+      const eventTimestamp =
+        typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
+          ? payload.timestamp
+          : undefined;
+      let activities = cached?.activities || [];
+      let currentStep = cached?.currentStep || null;
+      const normalizedStatus = normalizeSessionStatus(status);
 
-    if (status === "tool_executing" || status === "tool_completed") {
-      const phase: "start" | "result" = status === "tool_executing" ? "start" : "result";
-      const toolName = payload.toolName || "tool";
-      const text = formatToolIntent(toolName, {}, phase, payload.detail);
-      activities = applyLiveActivityEvent(activities, {
-        phase,
-        text,
-        timestamp: eventTimestamp,
-        toolName: payload.toolName,
-        toolCallId: payload.toolCallId,
-        sandboxProvider: payload.sandboxProvider,
-      });
-      writeCachedLiveSessionState(payloadSessionId, {
-        status: phase === "start" ? "thinking" : normalizedStatus,
-        activities,
-        currentStep:
-          phase === "start"
-            ? isGenericStatusLabel(text)
-              ? "Thinking..."
-              : text
-            : getLatestInFlightStep(activities),
-        streamingContent: cached?.streamingContent ?? null,
-      });
-    }
-  }, []);
+      if (status === "thinking" || status === "generating" || status === "compacting") {
+        const activeToolStep = getLatestInFlightStep(activities);
+        if (!payload.toolName) {
+          const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
+          if (status === "compacting" || isMeaningfulThoughtDetail(detail)) {
+            const text =
+              status === "compacting" && !isMeaningfulThoughtDetail(detail)
+                ? "Context automatically compacted"
+                : detail;
+            activities = applyLiveActivityEvent(activities, {
+              phase: "result",
+              text,
+              timestamp: eventTimestamp,
+              toolName: "__thought",
+            });
+            currentStep = activeToolStep || text;
+          } else {
+            currentStep =
+              activeToolStep ||
+              (status === "generating"
+                ? "Generating response..."
+                : status === "thinking"
+                  ? "Thinking..."
+                  : null);
+          }
+        }
+        writeCachedLiveSessionState(payloadSessionId, {
+          status: normalizedStatus,
+          activities,
+          currentStep,
+          streamingContent: cached?.streamingContent ?? null,
+        });
+        return;
+      }
+
+      if (isSteeringHandoff) {
+        activities = applyLiveActivityEvent(activities, {
+          phase: "result",
+          text: statusDetail,
+          timestamp: eventTimestamp,
+          toolName: "__thought",
+        });
+        writeCachedLiveSessionState(payloadSessionId, {
+          status: "thinking",
+          activities,
+          currentStep: statusDetail,
+          streamingContent: cached?.streamingContent ?? null,
+        });
+        return;
+      }
+
+      if (status === "tool_executing" || status === "tool_completed") {
+        const phase: "start" | "result" = status === "tool_executing" ? "start" : "result";
+        const toolName = payload.toolName || "tool";
+        const text = formatToolIntent(toolName, {}, phase, payload.detail);
+        activities = applyLiveActivityEvent(activities, {
+          phase,
+          text,
+          timestamp: eventTimestamp,
+          toolName: payload.toolName,
+          toolCallId: payload.toolCallId,
+          sandboxProvider: payload.sandboxProvider,
+        });
+        writeCachedLiveSessionState(payloadSessionId, {
+          status: phase === "start" ? "thinking" : normalizedStatus,
+          activities,
+          currentStep:
+            phase === "start"
+              ? isGenericStatusLabel(text)
+                ? "Thinking..."
+                : text
+              : getLatestInFlightStep(activities),
+          streamingContent: cached?.streamingContent ?? null,
+        });
+      }
+    },
+    [isSessionStopSuppressed]
+  );
 
   const hydrateSessionStatus = useCallback(
     async (targetSessionId?: string | null) => {
@@ -2782,9 +2652,13 @@ export function Chat() {
         const rawActiveIds = Array.isArray(payload.activeSessionIds)
           ? payload.activeSessionIds
           : [];
+        const visibleActiveIds = rawActiveIds.filter(
+          (candidateId) => !isSessionStopSuppressed(candidateId)
+        );
 
         if (!resolvedSessionId) return;
         const snapshot = payload.session;
+        const stopSuppressed = isSessionStopSuppressed(resolvedSessionId);
         const snapshotAgeMs =
           snapshot && typeof snapshot.timestamp === "number"
             ? Date.now() - snapshot.timestamp
@@ -2792,9 +2666,20 @@ export function Chat() {
         const snapshotFresh = snapshotAgeMs <= SESSION_ACTIVITY_STALE_MS;
         const nextActiveIds =
           snapshot && !snapshotFresh
-            ? rawActiveIds.filter((candidateId) => candidateId !== resolvedSessionId)
-            : rawActiveIds;
+            ? visibleActiveIds.filter((candidateId) => candidateId !== resolvedSessionId)
+            : visibleActiveIds;
         setActiveSessionIds(nextActiveIds);
+        if (stopSuppressed) {
+          if (activeSessionRef.current === resolvedSessionId) {
+            setLiveStatus("idle");
+            setLiveActivities([]);
+            liveActivitiesRef.current = [];
+            setLiveCurrentStep(null);
+            runActivityBufferRef.current = [];
+          }
+          clearCachedLiveSessionState(resolvedSessionId);
+          return;
+        }
         const isActive =
           !!snapshot &&
           snapshotFresh &&
@@ -2865,7 +2750,12 @@ export function Chat() {
         console.error("Failed to hydrate session status:", error);
       }
     },
-    [cacheLiveStatusSnapshot, resolveSnapshotLiveState, snapshotLatestTimestamp]
+    [
+      cacheLiveStatusSnapshot,
+      isSessionStopSuppressed,
+      resolveSnapshotLiveState,
+      snapshotLatestTimestamp,
+    ]
   );
 
   const refreshPendingMessages = useCallback(async (targetSessionId?: string | null) => {
@@ -2919,6 +2809,12 @@ export function Chat() {
   useEffect(() => {
     setShowEnvironmentOverview(false);
   }, [sessionId]);
+
+  useEffect(() => {
+    if (showEnvironmentOverview && hasEnvironmentOverviewSignal) {
+      setSeenEnvironmentOverviewKey(environmentOverviewSignalKey);
+    }
+  }, [environmentOverviewSignalKey, hasEnvironmentOverviewSignal, showEnvironmentOverview]);
 
   useEffect(() => {
     const cached = readCachedLiveSessionState(sessionId);
@@ -3044,7 +2940,9 @@ export function Chat() {
           const snapshotIds = Array.isArray(payload.activeSessionIds)
             ? payload.activeSessionIds.filter(
                 (candidate): candidate is string =>
-                  typeof candidate === "string" && candidate.trim().length > 0
+                  typeof candidate === "string" &&
+                  candidate.trim().length > 0 &&
+                  !isSessionStopSuppressed(candidate)
               )
             : [];
           for (const snapshot of payload.activeSessions || []) {
@@ -3062,8 +2960,9 @@ export function Chat() {
           if (payload.type === "assistant_token") {
             const delta = typeof payload.delta === "string" ? payload.delta : "";
             if (delta) {
-              cacheAssistantToken(payload);
               const sessionId = typeof payload.sessionId === "string" ? payload.sessionId : "";
+              if (isSessionStopSuppressed(sessionId)) return;
+              cacheAssistantToken(payload);
               const activeSession = activeSessionRef.current;
               if (activeSession && sessionId === activeSession) {
                 setStreamingContent((prev) => (prev === null ? delta : prev + delta));
@@ -3077,11 +2976,29 @@ export function Chat() {
         const statusDetail = typeof payload.detail === "string" ? payload.detail.trim() : "";
         const isSteeringHandoff =
           status === "idle" && statusDetail.toLowerCase() === "steering to follow-up...";
-        cacheLiveStatusEvent(payload);
         const payloadSessionId =
           typeof payload.sessionId === "string" && payload.sessionId.trim()
             ? payload.sessionId
             : null;
+        const statusIsActive =
+          status === "thinking" ||
+          status === "generating" ||
+          status === "compacting" ||
+          status === "tool_executing" ||
+          status === "tool_completed";
+        if (payloadSessionId && isSessionStopSuppressed(payloadSessionId) && statusIsActive) {
+          setActiveSessionIds((previous) => previous.filter((id) => id !== payloadSessionId));
+          if (payloadSessionId === activeSessionRef.current) {
+            setLiveStatus("idle");
+            setLiveCurrentStep(null);
+            setLiveActivities([]);
+            liveActivitiesRef.current = [];
+            runActivityBufferRef.current = [];
+          }
+          clearCachedLiveSessionState(payloadSessionId);
+          return;
+        }
+        cacheLiveStatusEvent(payload);
         const payloadTimestamp =
           typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
             ? payload.timestamp
@@ -3095,13 +3012,7 @@ export function Chat() {
         }
 
         if (payloadSessionId) {
-          if (
-            status === "thinking" ||
-            status === "generating" ||
-            status === "compacting" ||
-            status === "tool_executing" ||
-            status === "tool_completed"
-          ) {
+          if (statusIsActive) {
             setActiveSessionIds((previous) =>
               previous.includes(payloadSessionId) ? previous : [...previous, payloadSessionId]
             );
@@ -3257,6 +3168,7 @@ export function Chat() {
     cacheLiveStatusEvent,
     cacheLiveStatusSnapshot,
     hydrateSessionStatus,
+    isSessionStopSuppressed,
   ]);
 
   useEffect(() => {
@@ -3629,7 +3541,16 @@ export function Chat() {
 
   const handleStopActive = useCallback(async () => {
     const activeAgentId = selectedAgentId || sessionAgentId;
+    const activeChatSessionId = sessionId || activeSessionRef.current;
+    markSessionStopped(activeChatSessionId);
     stopGenerating();
+    if (activeChatSessionId) {
+      try {
+        await chatApi.stopSession(activeChatSessionId);
+      } catch (error) {
+        console.error("Failed to stop active chat session:", error);
+      }
+    }
     if (activeAgentId) {
       try {
         await stopAgent.mutateAsync(activeAgentId);
@@ -3647,7 +3568,7 @@ export function Chat() {
     setLoadingSessionId(null);
     runActivityBufferRef.current = [];
     pendingProcessCaptureRef.current = null;
-  }, [selectedAgentId, sessionAgentId, stopGenerating, stopAgent, sessionId]);
+  }, [markSessionStopped, selectedAgentId, sessionAgentId, stopGenerating, stopAgent, sessionId]);
 
   const handleToggleDictation = useCallback(async () => {
     if (typeof window === "undefined") return;
@@ -4207,6 +4128,9 @@ export function Chat() {
     currentSessionIsActive ||
     pendingCaptureForCurrentSession ||
     liveActivities.length > 0;
+  const composerHasDraft =
+    input.trim().length > 0 || pendingImages.length > 0 || pendingFiles.length > 0;
+  const showStopComposerButton = showWorkingTimeline && !composerHasDraft;
   const sendQueuesFollowUp = showWorkingTimeline || pendingMessages.length > 0;
   const timelineActivities =
     liveActivities.length > 0
@@ -4294,9 +4218,7 @@ export function Chat() {
             title="Environment overview"
           >
             <SlidersHorizontal className="w-4 h-4" />
-            {(currentSessionPlan ||
-              (sessionFileChanges && sessionFileChanges.files.length > 0) ||
-              environmentSubagents.length > 0) && (
+            {showEnvironmentOverviewDot && (
               <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-gray-300" />
             )}
           </button>
@@ -4841,34 +4763,14 @@ export function Chat() {
                         <Mic className="w-4 h-4" />
                       )}
                     </button>
-                    {showWorkingTimeline && (
-                      <button
-                        type="button"
-                        onClick={() => void handleStopActive()}
-                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-red-500/35 bg-red-500/15 text-red-300 transition-colors hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-                        disabled={stopAgent.isPending}
-                        title="Stop active run"
-                      >
-                        {stopAgent.isPending ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Square className="w-4 h-4" />
-                        )}
-                      </button>
-                    )}
-                    <button
-                      onClick={handleSend}
-                      disabled={
-                        (!input.trim() &&
-                          pendingImages.length === 0 &&
-                          pendingFiles.length === 0) ||
-                        (isLoading && !sendQueuesFollowUp)
-                      }
-                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full accent-button disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
-                      title={sendQueuesFollowUp ? "Queue follow-up" : "Send message"}
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                    </button>
+                    <ChatComposerActionButton
+                      disabled={!composerHasDraft || (isLoading && !sendQueuesFollowUp)}
+                      isStopping={stopAgent.isPending}
+                      onSend={handleSend}
+                      onStop={() => void handleStopActive()}
+                      queueing={sendQueuesFollowUp}
+                      showStop={showStopComposerButton}
+                    />
                   </div>
                 </div>
                 {/* <div className="mt-1 px-1 text-[10px] text-gray-500">

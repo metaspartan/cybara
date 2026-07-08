@@ -103,6 +103,7 @@ import {
   deletePendingChatMessage,
   reorderPendingChatMessages,
   steerPendingChatMessage,
+  stopActiveChatTurn,
   updatePendingChatMessage,
   type ChatMessage,
 } from "../api/chat";
@@ -1834,6 +1835,7 @@ const routes: Record<string, RouteHandler> = {
       processActivities: data.processActivities,
     });
   },
+  "POST /api/chat/sessions/:id/stop": (_body, params) => stopActiveChatTurn(params!.id),
   "DELETE /api/chat/sessions/:id": async (_body, params) => ({
     success: await deleteSession(params!.id),
   }),

@@ -12,6 +12,9 @@ const sessionSidebarPath = fileURLToPath(
 const activityTimelinePath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ActivityTimeline.tsx", import.meta.url)
 );
+const fileChangesCardPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/FileChangesCard.tsx", import.meta.url)
+);
 const desktopHostPath = fileURLToPath(new URL("../../ui/src/lib/desktopHost.ts", import.meta.url));
 
 function readChatSource(): string {
@@ -19,7 +22,8 @@ function readChatSource(): string {
     readFileSync(chatPagePath, "utf8") +
     readFileSync(chatModelPath, "utf8") +
     readFileSync(sessionSidebarPath, "utf8") +
-    readFileSync(activityTimelinePath, "utf8")
+    readFileSync(activityTimelinePath, "utf8") +
+    readFileSync(fileChangesCardPath, "utf8")
   );
 }
 

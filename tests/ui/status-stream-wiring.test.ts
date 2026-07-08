@@ -3,6 +3,12 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const chatPath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
+const composerActionPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ChatComposerActionButton.tsx", import.meta.url)
+);
+const contextUsageRingPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ContextUsageRing.tsx", import.meta.url)
+);
 const sidebarPath = fileURLToPath(
   new URL("../../ui/src/components/layout/Sidebar.tsx", import.meta.url)
 );
@@ -20,7 +26,11 @@ function readSource(path: string): string {
 
 describe("status stream websocket wiring", () => {
   test("chat page uses shared status websocket stream helper", () => {
-    const source = readSource(chatPath);
+    const source = [
+      readSource(chatPath),
+      readSource(composerActionPath),
+      readSource(contextUsageRingPath),
+    ].join("\n");
     const displaySource = readSource(providerPlanDisplayPath);
     expect(source).toContain("connectStatusStream");
     expect(source).toContain("PendingChatQueue");
@@ -29,6 +39,7 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("chatApi.updatePendingMessage");
     expect(source).toContain("chatApi.deletePendingMessage");
     expect(source).toContain("chatApi.getPendingMessages");
+    expect(source).toContain("chatApi.stopSession(activeChatSessionId)");
     expect(source).toContain("ChatAgentControls");
     expect(source).toContain("MODEL_ROUTER_SELECTOR_VALUE");
     expect(source).toContain("Model Router");
@@ -39,7 +50,7 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("providerPlansApi.status()");
     expect(source).toContain("providerPlanStatus");
     expect(source).toContain("activeProviderPlan");
-    expect(source).toContain("providerPlanTooltipDetail");
+    expect(source).toContain("providerPlanWindowSummary");
     expect(source).toContain("providerPlanTooltipRows");
     expect(source).toContain("ProviderPlanTooltipBar");
     expect(source).toContain("Plan usage:");
@@ -77,6 +88,12 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("cacheLiveStatusSnapshot(snapshot)");
     expect(source).toContain("cacheLiveStatusEvent(payload)");
     expect(source).toContain("cacheAssistantToken(payload)");
+    expect(source).toContain("STOPPED_SESSION_STATUS_SUPPRESSION_MS");
+    expect(source).toContain("stoppedSessionUntilRef");
+    expect(source).toContain("markSessionStopped(activeChatSessionId)");
+    expect(source).toContain("isSessionStopSuppressed(payloadSessionId)");
+    expect(source).toContain("isSessionStopSuppressed(tokenSessionId)");
+    expect(source).toContain("!isSessionStopSuppressed(candidate)");
     expect(source).toContain("activeSessionRef.current = sessionId");
     expect(source).toContain("const refreshed = await loadSessionMutation.mutateAsync(sessionId)");
     expect(source).not.toContain("appendSessionMessages(sessionId, [preSteerMessage");
@@ -129,6 +146,10 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("optimisticPendingMessageId = `optimistic-${now}-");
     expect(source).toContain('message.id.startsWith("optimistic-")');
     expect(source).toContain('"Queueing..."');
+    expect(source).toContain("const composerHasDraft =");
+    expect(source).toContain(
+      "const showStopComposerButton = showWorkingTimeline && !composerHasDraft"
+    );
     expect(source).toContain(
       "const sendQueuesFollowUp = showWorkingTimeline || pendingMessages.length > 0"
     );

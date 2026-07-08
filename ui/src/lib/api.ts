@@ -1102,6 +1102,7 @@ export const chatApi = {
       plan?: SessionPlanSnapshot | null;
       queued?: boolean;
       interrupted?: boolean;
+      stopped?: boolean;
       pendingMessage?: PendingChatMessage;
       pendingMessages?: PendingChatMessage[];
     }>("/chat", {
@@ -1134,6 +1135,11 @@ export const chatApi = {
       method: "POST",
       body: JSON.stringify({ processActivities: options?.processActivities || [] }),
     }),
+  stopSession: (sessionId: string) =>
+    fetchApi<{ success: boolean; stopped: boolean; sessionId: string; error?: string }>(
+      `/chat/sessions/${sessionId}/stop`,
+      { method: "POST" }
+    ),
   getPendingMessages: (sessionId: string) =>
     fetchApi<{ sessionId: string; pendingMessages: PendingChatMessage[] }>(
       `/chat/sessions/${sessionId}/pending`

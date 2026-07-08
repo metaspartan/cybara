@@ -2197,7 +2197,7 @@ describe("Session API", () => {
       );
       expect(userIndexes.length).toBeGreaterThanOrEqual(2);
       const revertIndex = userIndexes[1] ?? userIndexes[0] ?? 0;
-      const expectedKeptCount = revertIndex;
+      const expectedKeptCount = revertIndex + 1;
       const expectedRemovedCount = before.data.messagesList.length - expectedKeptCount;
       const revertMessage = before.data.messagesList[revertIndex];
       const shiftedIndex =
@@ -2214,17 +2214,23 @@ describe("Session API", () => {
       expect(reverted.data.sessionId).toBe(sessionId);
       expect(reverted.data.keptCount).toBe(expectedKeptCount);
       expect(reverted.data.removedCount).toBe(expectedRemovedCount);
-      expect(reverted.data.removedFromIndex).toBe(revertIndex);
+      expect(reverted.data.removedFromIndex).toBe(revertIndex + 1);
       expect(reverted.data.messagesList).toHaveLength(expectedKeptCount);
       if (expectedKeptCount > 0) {
-        expect(reverted.data.messagesList[expectedKeptCount - 1].role).not.toBeUndefined();
+        expect(reverted.data.messagesList[expectedKeptCount - 1]).toMatchObject({
+          role: "user",
+          content: revertMessage.content,
+        });
       }
 
       const after = await api("GET", `/api/sessions/${sessionId}`);
       expect(after.status).toBe(200);
       expect(after.data.messagesList).toHaveLength(expectedKeptCount);
       if (expectedKeptCount > 0) {
-        expect(after.data.messagesList[expectedKeptCount - 1].role).not.toBeUndefined();
+        expect(after.data.messagesList[expectedKeptCount - 1]).toMatchObject({
+          role: "user",
+          content: revertMessage.content,
+        });
       }
     } finally {
       if (typeof first.data?.sessionId === "string") {
@@ -2232,6 +2238,14 @@ describe("Session API", () => {
       }
       deleteRawAgent(agentId);
     }
+  });
+
+  test("POST /api/chat/sessions/:id/stop is session-scoped and idempotent", async () => {
+    const response = await api("POST", `/api/chat/sessions/no-active-${Date.now()}/stop`);
+    expect(response.status).toBe(200);
+    expect(response.data.success).toBe(true);
+    expect(response.data.stopped).toBe(false);
+    expect(response.data.error).toBe("No active chat turn for session");
   });
 
   test("session artifact routes and artifacts tool manage session-scoped .md.resolved files", async () => {

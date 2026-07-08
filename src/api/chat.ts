@@ -142,6 +142,7 @@ export interface ChatResponse {
   contextUsage?: SessionContextUsage;
   queued?: boolean;
   interrupted?: boolean;
+  stopped?: boolean;
   pendingMessage?: PendingChatMessageSnapshot;
   pendingMessages?: PendingChatMessageSnapshot[];
   plan?: SessionPlanSnapshot | null;
@@ -267,6 +268,7 @@ const pendingChatQueues = new Map<string, PendingChatItem[]>();
 const pendingChatDrainScheduled = new Set<string>();
 const activeChatTurnAbortControllers = new Map<string, AbortController>();
 const interruptedChatTurnSteeringIds = new WeakMap<AbortController, string>();
+const stoppedChatTurnControllers = new WeakSet<AbortController>();
 let pendingChatSequence = 0;
 
 function isChatTurnInterrupted(error: unknown, signal?: AbortSignal): boolean {
@@ -288,10 +290,66 @@ function interruptActiveChatTurnForSteering(sessionId: string, pendingSteeringId
   return true;
 }
 
+export function stopActiveChatTurn(sessionId: string): {
+  success: boolean;
+  stopped: boolean;
+  sessionId: string;
+  error?: string;
+} {
+  const key = sessionId.trim();
+  const controller = activeChatTurnAbortControllers.get(key);
+  if (!key || !controller || controller.signal.aborted) {
+    return {
+      success: true,
+      stopped: false,
+      sessionId: key,
+      error: "No active chat turn for session",
+    };
+  }
+  stoppedChatTurnControllers.add(controller);
+  controller.abort(new DOMException("Chat turn stopped by user", "AbortError"));
+  return { success: true, stopped: true, sessionId: key };
+}
+
 function clearActiveChatTurnAbortController(sessionId: string, controller: AbortController): void {
   if (activeChatTurnAbortControllers.get(sessionId) === controller) {
     activeChatTurnAbortControllers.delete(sessionId);
   }
+}
+
+function isStoppedChatTurn(controller: AbortController): boolean {
+  return stoppedChatTurnControllers.has(controller);
+}
+
+async function finishStoppedChatTurn(
+  session: InMemoryChatSession,
+  agent: { id: string; name: string },
+  controller: AbortController
+): Promise<ChatResponse> {
+  clearActiveChatTurnAbortController(session.id, controller);
+  broadcastStatus({
+    status: "idle",
+    timestamp: Date.now(),
+    detail: "Stopped",
+    sessionId: session.id,
+    agentId: agent.id,
+  });
+  return {
+    sessionId: session.id,
+    workspaceDir: session.workspaceDir ?? null,
+    interrupted: true,
+    stopped: true,
+    plan: extractLatestSessionPlan(session.id, session.messages),
+    message: {
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+    },
+    agent: {
+      id: agent.id,
+      name: agent.name,
+    },
+  };
 }
 
 async function finishInterruptedChatTurn(
@@ -1743,6 +1801,9 @@ async function handleChatTurn(
   }
 
   if (agent && turnAbortController.signal.aborted) {
+    if (isStoppedChatTurn(turnAbortController)) {
+      return finishStoppedChatTurn(session, agent, turnAbortController);
+    }
     return finishInterruptedChatTurn(session, agent, turnAbortController);
   }
 
@@ -2105,6 +2166,9 @@ async function handleChatTurn(
       });
     } catch (error) {
       if (isChatTurnInterrupted(error, turnAbortController.signal)) {
+        if (isStoppedChatTurn(turnAbortController)) {
+          return await finishStoppedChatTurn(session, agent, turnAbortController);
+        }
         return await finishInterruptedChatTurn(session, agent, turnAbortController);
       }
       recordCircuitFailure(`llm:${provider.id}`);
@@ -2694,7 +2758,7 @@ export async function revertSessionToMessage(
     throw new Error("Can only revert to a user message");
   }
 
-  const keptMessages = session.messages.slice(0, targetIndex);
+  const keptMessages = session.messages.slice(0, targetIndex + 1);
   const removedCount = session.messages.length - keptMessages.length;
 
   const inMemorySession = chatSessions.get(sessionId);
@@ -2757,7 +2821,7 @@ export async function revertSessionToMessage(
     messages: keptMessages,
     keptCount: keptMessages.length,
     removedCount,
-    removedFromIndex: targetIndex,
+    removedFromIndex: targetIndex + 1,
   };
 }
 

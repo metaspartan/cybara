@@ -349,9 +349,10 @@ describe("UI API client wiring", () => {
       messageContent: "hi",
       messageTimestamp: "2026-02-21T00:00:00.000Z",
     });
+    await chatApi.stopSession("session-1");
     await chatApi.deleteSession("session-1");
 
-    expect(calls).toHaveLength(7);
+    expect(calls).toHaveLength(8);
     expect(calls[0].url).toBe("/api/chat");
     expect(calls[0].init?.method).toBe("POST");
     expect(JSON.parse(String(calls[0].init?.body))).toEqual({
@@ -387,8 +388,11 @@ describe("UI API client wiring", () => {
       messageTimestamp: "2026-02-21T00:00:00.000Z",
     });
 
-    expect(calls[6].url).toBe("/api/sessions/session-1");
-    expect(calls[6].init?.method).toBe("DELETE");
+    expect(calls[6].url).toBe("/api/chat/sessions/session-1/stop");
+    expect(calls[6].init?.method).toBe("POST");
+
+    expect(calls[7].url).toBe("/api/sessions/session-1");
+    expect(calls[7].init?.method).toBe("DELETE");
   });
 
   test("chatApi sends explicit model router flag without fake agent endpoints", async () => {
