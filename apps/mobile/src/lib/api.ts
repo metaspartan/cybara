@@ -286,6 +286,8 @@ export type WalletAgentPolicyUpdate = Partial<{
   allowedDappHosts: string[];
   allowedX402Networks: string[];
   x402MaxAmountAtomic: string;
+  allowedSendRecipients: string[];
+  maxSendAmount: string;
 }>;
 
 export type WalletChain = "eth" | "btc" | "sol";

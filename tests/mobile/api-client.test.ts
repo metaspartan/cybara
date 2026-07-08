@@ -1125,7 +1125,9 @@ describe("mobile API client", () => {
         {
           method: "PUT",
           path: "/api/wallet/agent-policy",
-          body: { allowNativeSend: true },
+          body: {
+            allowNativeSend: true,
+          },
         },
         {
           method: "POST",

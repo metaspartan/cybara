@@ -72,4 +72,15 @@ describe("tool governance invariants", () => {
 
     expect(invalid).toEqual([]);
   });
+
+  test("wallet schema separates read-only portfolio actions from fund-moving actions", () => {
+    const wallet = toolSchemas.wallet;
+    expect(wallet.description).toContain("Read-only actions include status");
+    expect(wallet.description).toContain("dry-run swap quotes");
+    expect(wallet.description).toContain("Fund-moving or signing actions include sends");
+    expect(wallet.description).toContain("explicit user intent");
+    expect(String(wallet.input_schema.properties?.action?.description)).toContain(
+      "Prefer read-only actions"
+    );
+  });
 });

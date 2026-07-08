@@ -580,6 +580,8 @@ export interface WalletAgentPolicy {
   allowedDappHosts: string[];
   allowedX402Networks: string[];
   x402MaxAmountAtomic: string;
+  allowedSendRecipients: string[];
+  maxSendAmount: string;
 }
 
 export interface WalletSwapEthUniswapResult {

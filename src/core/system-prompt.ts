@@ -31,7 +31,7 @@ export const CORE_TOOL_SUMMARIES: Record<string, string> = {
   cron: "Manage cron jobs and wake events (use for reminders; write systemEvent text that reads like a reminder when it fires)",
   message: "Send messages and channel actions",
   wallet:
-    "Read balances/history, send native/token transfers, run contract/program calls, query prices (Chainlink/Pyth/Jupiter), and execute guarded swap flows (Uniswap/Jupiter)",
+    "Read wallet status/balances/history and query prices/quotes; guarded sends, signing, contract/program calls, x402 requests, and swap execution require explicit user intent and policy approval",
   gateway: "Restart, apply config, or run updates on the running process",
   agents_list: "List agent ids allowed for sessions_spawn",
   sessions_list: "List other sessions (incl. sub-agents) with filters",
@@ -482,11 +482,14 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
     if (availableTools.has("wallet")) {
       lines.push(
         "### Wallet Tool (funds and contracts)",
-        "- Always begin with read-only steps: wallet status/balances/quotes before any write action.",
-        "- For market context, use `price` or `price_quote` (auto/chainlink/pyth/jupiter) before deciding on swaps or transfers.",
+        "- Use read-only wallet actions (`status`, `address`, `accounts`, `balances`, `token_balances`, `transactions`, `token_transactions`, `receive`, `price`, `price_quote`, `endpoints`, `dapp_capabilities`) when they help answer wallet, portfolio, pricing, or setup questions.",
+        "- If a user asks for autonomous trading or speculative fund growth, do not promise profit; use read-only status/balances/prices/quotes first, then use dry-run quotes and execute only when wallet agent access, tool approval, and wallet policy allow the exact action.",
+        "- If wallet policy blocks an autonomous wallet action, explain the blocked policy field instead of refusing that wallet tooling exists.",
+        "- Before any fund-moving or signing action, gather read-only wallet status/balances/quotes and require explicit user intent for the exact action, asset, amount, recipient/venue, and risk parameters.",
+        "- For market context, use `price` or `price_quote` (auto/chainlink/pyth/jupiter) before discussing swaps or transfers.",
         "- Use `endpoints` when you need canonical router/oracle/program IDs before interacting with protocols.",
-        "- For swaps, prefer wallet action `swap_eth_uniswap` with `dryRun: true` first, then execute with explicit amount/percent and slippage.",
-        "- For dynamic routing, prefer `swap`/`swap_quote` with dry-run first, then execute (`swap_execute` or `swap` with `execute: true`) using explicit venue (uniswap_v2/uniswap_v3/jupiter).",
+        "- For swaps, prefer wallet action `swap_eth_uniswap` with `dryRun: true` first; only execute after the user explicitly confirms the exact quote, amount/percent, venue, and slippage.",
+        "- For dynamic routing, prefer `swap`/`swap_quote` with dry-run first; only execute (`swap_execute` or `swap` with `execute: true`) after explicit user confirmation and an explicit venue (uniswap_v2/uniswap_v3/jupiter).",
         "- For broader protocol coverage, use `dapp_capabilities` then `dapp_call` with explicit adapter (`rpc_call`, `eth_contract_call`, `sol_program_instruction`, `swap`, `price`, `x402_http`).",
         "- Prefer `rpc_call` for on-chain read discovery (method/params) before relying on off-chain APIs.",
         "- For ETH contract calls, prefer explicit `methodSignature` for overloaded methods and run `readOnly: true` first before write execution.",

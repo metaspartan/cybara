@@ -3994,13 +3994,6 @@ export function Chat() {
           >
             <Zap className="w-4 h-4" />
           </button>
-          <button
-            onClick={() => resetChatSession()}
-            className="p-1.5 sm:p-2 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
-            title="Clear Chat"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
         </div>
       </div>
 

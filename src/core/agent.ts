@@ -159,6 +159,7 @@ import {
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
 import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
 import { resolveAgentToolSelection } from "./agent-tool-selection";
+import { normalizeExplicitAgentTools } from "./agent-tool-normalization";
 import { coerceToolArguments } from "./tool-argument-coercion";
 import { isToolPolicyBlockedMessage, sanitizeToolErrorMessage } from "./tool-result-classification";
 import {
@@ -1111,7 +1112,7 @@ class AgentManager {
     }
     if (selection.kind === "explicit") {
       // An explicit list (including an empty one) is authoritative.
-      return filterEnabledTools(selection.tools as ToolDefinition[]);
+      return filterEnabledTools(normalizeExplicitAgentTools(selection.tools));
     }
     return filterEnabledTools(getBuiltinTools());
   }

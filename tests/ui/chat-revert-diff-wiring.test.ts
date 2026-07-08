@@ -85,6 +85,7 @@ describe("Chat revert and diff wiring", () => {
     // Workspace chips are clickable-to-change (header + empty state), with no separate clear button.
     expect(source).toContain("void handleSelectWorkspace()");
     expect(source).not.toContain('title="Clear session workspace"');
+    expect(source).not.toContain('title="Clear Chat"');
     expect(source).toContain("cybara:lastWorkspaceDir");
     expect(source).toContain(
       "Unable to open native folder picker. Enter workspace folder path manually:"

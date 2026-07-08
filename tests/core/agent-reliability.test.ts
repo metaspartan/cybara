@@ -25,6 +25,22 @@ describe("system prompt reliability guidance", () => {
   test("includes parallel tool-call guidance", () => {
     expect(prompt).toContain("Parallel tool calls");
   });
+
+  test("guides wallet agents to use read-only context before guarded writes", () => {
+    const walletPrompt = buildSystemPrompt({
+      modelDisplay: "test-model",
+      tools: ["wallet"],
+      workspaceDir: "/tmp",
+    });
+
+    expect(walletPrompt).toContain("Use read-only wallet actions");
+    expect(walletPrompt).toContain("autonomous trading");
+    expect(walletPrompt).toContain("do not promise profit");
+    expect(walletPrompt).toContain("execute only when wallet agent access");
+    expect(walletPrompt).toContain("wallet policy allow the exact action");
+    expect(walletPrompt).toContain("dry-run quotes");
+    expect(walletPrompt).toContain("explicit user confirmation");
+  });
 });
 
 describe("required-argument validation in executeTool", () => {

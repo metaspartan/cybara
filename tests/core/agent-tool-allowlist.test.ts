@@ -18,6 +18,72 @@ afterEach(() => {
 });
 
 describe("Agent tool allowlist guardrails", () => {
+  test("explicit builtin tool allowlists use current schemas instead of stale embedded copies", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Schema Refresh Provider",
+      api_key: "test-key",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Schema Refresh Agent",
+      type: "main",
+      provider_id: provider.id,
+      tools: [
+        {
+          name: "read",
+          description: "stale read description",
+          input_schema: {
+            type: "object",
+            properties: { file: { type: "string" } },
+            required: ["file"],
+          },
+        },
+      ],
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    const requestBodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      requestBodies.push(body as Record<string, unknown>);
+      return new Response(
+        JSON.stringify({
+          id: "schema-refresh",
+          object: "chat.completion",
+          model: "gpt-test",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: "ok" },
+            },
+          ],
+          usage: { prompt_tokens: 7, completion_tokens: 1, total_tokens: 8 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "read something" }],
+      { useTools: true, sessionId: "schema-refresh-session" }
+    );
+
+    expect(result.content).toBe("ok");
+    const advertisedTools = requestBodies[0].tools as Array<{
+      function?: { name?: string; description?: string; parameters?: { required?: string[] } };
+    }>;
+    expect(advertisedTools).toHaveLength(1);
+    expect(advertisedTools[0].function?.name).toBe("read");
+    expect(advertisedTools[0].function?.description).toBe("Read file contents from the filesystem");
+    expect(advertisedTools[0].function?.parameters?.required).toEqual(["path"]);
+  });
+
   test("blocks model-invoked tools that were not offered to the agent", async () => {
     const provider = providerManager.create({
       provider: "openai",

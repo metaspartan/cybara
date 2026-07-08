@@ -624,6 +624,8 @@ describe("UI API client wiring", () => {
       allowedDappHosts: ["merchant.example"],
       allowedX402Networks: ["eip155:1"],
       x402MaxAmountAtomic: "250000",
+      allowedSendRecipients: ["0x0000000000000000000000000000000000000002"],
+      maxSendAmount: "0.25",
     });
     await walletApi.setAgentAccess(true);
     await walletApi.deleteWallet("secretpass");
@@ -763,6 +765,8 @@ describe("UI API client wiring", () => {
       allowedDappHosts: ["merchant.example"],
       allowedX402Networks: ["eip155:1"],
       x402MaxAmountAtomic: "250000",
+      allowedSendRecipients: ["0x0000000000000000000000000000000000000002"],
+      maxSendAmount: "0.25",
     });
     expect(calls[25].url).toBe("/api/wallet/agent-access");
     expect(calls[25].init?.method).toBe("PUT");

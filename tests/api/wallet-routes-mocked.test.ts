@@ -231,6 +231,8 @@ mock.module("../../src/core/wallet", () => ({
       allowedDappHosts?: string[];
       allowedX402Networks?: string[];
       x402MaxAmountAtomic?: string;
+      allowedSendRecipients?: string[];
+      maxSendAmount?: string;
     }) => {
       walletMockState.setAgentPolicyCalls.push(input);
       return {
@@ -248,6 +250,8 @@ mock.module("../../src/core/wallet", () => ({
           allowedDappHosts: input.allowedDappHosts || [],
           allowedX402Networks: input.allowedX402Networks || [],
           x402MaxAmountAtomic: input.x402MaxAmountAtomic || "1000000",
+          allowedSendRecipients: input.allowedSendRecipients || [],
+          maxSendAmount: input.maxSendAmount || "",
         },
       };
     },
@@ -1116,6 +1120,8 @@ describe("Wallet route contracts (mocked manager)", () => {
       allowedDappHosts: ["merchant.example"],
       allowedX402Networks: ["eip155:1"],
       x402MaxAmountAtomic: "250000",
+      allowedSendRecipients: ["0x0000000000000000000000000000000000000002"],
+      maxSendAmount: "0.25",
     });
     expect(policyRes.status).toBe(200);
     expect(walletMockState.setAgentPolicyCalls).toEqual([
@@ -1132,6 +1138,8 @@ describe("Wallet route contracts (mocked manager)", () => {
         allowedDappHosts: ["merchant.example"],
         allowedX402Networks: ["eip155:1"],
         x402MaxAmountAtomic: "250000",
+        allowedSendRecipients: ["0x0000000000000000000000000000000000000002"],
+        maxSendAmount: "0.25",
       },
     ]);
   });

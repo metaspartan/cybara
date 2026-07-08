@@ -1878,7 +1878,6 @@ function FeatureSettings() {
         }
         return null;
       } catch {
-        // Ignore status refresh errors.
         return null;
       } finally {
         setLoadingSandboxStatus(false);
@@ -2566,7 +2565,7 @@ function SpeechSettingsSection() {
         if (!mounted || !result.success) return;
         setSpeech(readSpeechSettings(result.data?.speech));
       } catch {
-        // Settings page remains usable with defaults until the gateway is reachable.
+        void 0;
       } finally {
         if (mounted) setLoading(false);
       }
@@ -2990,7 +2989,6 @@ function parseWalletAllowlistInput(value: string): string[] {
     .map((item) => item.trim())
     .filter(Boolean);
 }
-
 function WalletSettings() {
   const { addToast } = useUIStore();
   const [status, setStatus] = useState<WalletStatus | null>(null);
@@ -3001,11 +2999,27 @@ function WalletSettings() {
   const [rpcBtc, setRpcBtc] = useState("");
   const [ethAllowlistInput, setEthAllowlistInput] = useState("");
   const [solAllowlistInput, setSolAllowlistInput] = useState("");
+  const [sendRecipientAllowlistInput, setSendRecipientAllowlistInput] = useState("");
+  const [dappHostAllowlistInput, setDappHostAllowlistInput] = useState("");
+  const [x402NetworkAllowlistInput, setX402NetworkAllowlistInput] = useState("");
+  const [maxSendAmountInput, setMaxSendAmountInput] = useState("");
+  const [x402MaxAmountInput, setX402MaxAmountInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+
+  const syncWalletPolicyInputs = useCallback((policy: WalletAgentPolicy) => {
+    setAgentPolicy(policy);
+    setEthAllowlistInput(policy.allowedEthContracts.join("\n"));
+    setSolAllowlistInput(policy.allowedSolPrograms.join("\n"));
+    setSendRecipientAllowlistInput(policy.allowedSendRecipients.join("\n"));
+    setDappHostAllowlistInput(policy.allowedDappHosts.join("\n"));
+    setX402NetworkAllowlistInput(policy.allowedX402Networks.join("\n"));
+    setMaxSendAmountInput(policy.maxSendAmount);
+    setX402MaxAmountInput(policy.x402MaxAmountAtomic);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -3024,16 +3038,14 @@ function WalletSettings() {
       }
       setRpcStatus(rpcStatusRes.success && rpcStatusRes.data ? rpcStatusRes.data : null);
       if (policyRes.success && policyRes.data) {
-        setAgentPolicy(policyRes.data);
-        setEthAllowlistInput(policyRes.data.allowedEthContracts.join("\n"));
-        setSolAllowlistInput(policyRes.data.allowedSolPrograms.join("\n"));
+        syncWalletPolicyInputs(policyRes.data);
       }
     } catch {
       addToast("error", "Failed to load wallet settings");
     } finally {
       setLoading(false);
     }
-  }, [addToast]);
+  }, [addToast, syncWalletPolicyInputs]);
 
   useEffect(() => {
     void load();
@@ -3092,15 +3104,20 @@ function WalletSettings() {
         allowEthContractWrite: agentPolicy.allowEthContractWrite,
         allowSolProgramInstruction: agentPolicy.allowSolProgramInstruction,
         allowEthSwaps: agentPolicy.allowEthSwaps,
+        allowDappInteraction: agentPolicy.allowDappInteraction,
+        allowX402Payments: agentPolicy.allowX402Payments,
         allowedEthContracts: parseWalletAllowlistInput(ethAllowlistInput),
         allowedSolPrograms: parseWalletAllowlistInput(solAllowlistInput),
+        allowedSendRecipients: parseWalletAllowlistInput(sendRecipientAllowlistInput),
+        allowedDappHosts: parseWalletAllowlistInput(dappHostAllowlistInput),
+        allowedX402Networks: parseWalletAllowlistInput(x402NetworkAllowlistInput),
+        maxSendAmount: maxSendAmountInput.trim(),
+        x402MaxAmountAtomic: x402MaxAmountInput.trim(),
       });
       if (!response.success || !response.data) {
         throw new Error(response.error || "Failed to save agent policy");
       }
-      setAgentPolicy(response.data.policy);
-      setEthAllowlistInput(response.data.policy.allowedEthContracts.join("\n"));
-      setSolAllowlistInput(response.data.policy.allowedSolPrograms.join("\n"));
+      syncWalletPolicyInputs(response.data.policy);
       addToast("success", "Agent wallet policy updated");
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to save agent policy");
@@ -3142,14 +3159,20 @@ function WalletSettings() {
       {
         key: "allowEthContractWrite",
         label: "ETH contract writes",
-        description: "Arbitrary contract calls",
+        description: "Contract writes",
       },
       {
         key: "allowSolProgramInstruction",
         label: "Solana program instructions",
-        description: "Arbitrary program calls",
+        description: "Program calls",
       },
       { key: "allowEthSwaps", label: "Swaps", description: "Uniswap and Jupiter swaps" },
+      {
+        key: "allowDappInteraction",
+        label: "Dapp interaction",
+        description: "Dapp adapters",
+      },
+      { key: "allowX402Payments", label: "x402 payments", description: "Paid HTTP requests" },
     ];
 
   return (
@@ -3161,8 +3184,7 @@ function WalletSettings() {
             Agent Access
           </CardTitle>
           <CardDescription>
-            Whether agents can use wallet tools at all. Off by default; write actions are further
-            gated by the policy below.
+            Agent access is off by default; write actions are gated by policy.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
@@ -3210,6 +3232,40 @@ function WalletSettings() {
                   value={solAllowlistInput}
                   onChange={(e) => setSolAllowlistInput(e.target.value)}
                 />
+                <Textarea
+                  label="Allowlisted send recipients (one per line)"
+                  placeholder="Wallet address"
+                  rows={3}
+                  value={sendRecipientAllowlistInput}
+                  onChange={(e) => setSendRecipientAllowlistInput(e.target.value)}
+                />
+                <Textarea
+                  label="Allowlisted dapp hosts (one per line)"
+                  placeholder="merchant.example"
+                  rows={3}
+                  value={dappHostAllowlistInput}
+                  onChange={(e) => setDappHostAllowlistInput(e.target.value)}
+                />
+                <Textarea
+                  label="Allowlisted x402 networks (one per line)"
+                  placeholder="eip155:1"
+                  rows={3}
+                  value={x402NetworkAllowlistInput}
+                  onChange={(e) => setX402NetworkAllowlistInput(e.target.value)}
+                />
+                <div className="grid grid-cols-1 gap-3">
+                  <Input
+                    label="Max send amount"
+                    placeholder="No cap"
+                    value={maxSendAmountInput}
+                    onChange={(e) => setMaxSendAmountInput(e.target.value)}
+                  />
+                  <Input
+                    label="x402 max amount (atomic units)"
+                    value={x402MaxAmountInput}
+                    onChange={(e) => setX402MaxAmountInput(e.target.value)}
+                  />
+                </div>
               </div>
               <div className="flex justify-end">
                 <Button onClick={() => void handleSavePolicy()} disabled={loading || busy}>
@@ -3228,8 +3284,8 @@ function WalletSettings() {
             Network Endpoints
           </CardTitle>
           <CardDescription>
-            RPC endpoints used for balances, history, and sending. Price data additionally uses Pyth
-            Hermes, Chainlink, and Jupiter.
+            RPC endpoints for balances, history, and sending. Prices also use Pyth, Hermes,
+            Chainlink, and Jupiter.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

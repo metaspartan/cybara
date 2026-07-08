@@ -695,7 +695,7 @@ export function Wallet() {
                 </h2>
                 <p className="mt-2 text-sm text-gray-300 max-w-2xl">
                   {status?.unlocked && portfolio.hasAnyPrice
-                    ? "Estimated portfolio value from live Pyth, Chainlink, and Jupiter price feeds."
+                    ? "Estimated portfolio value."
                     : "Wallet secrets stay encrypted on this device. Agent access is opt-in and disabled by default."}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">

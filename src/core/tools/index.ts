@@ -914,7 +914,7 @@ Use for tasks that may take longer or require separate context.`,
   wallet: {
     name: "wallet",
     description:
-      "Use the local encrypted multi-chain wallet (ETH, BTC, SOL): native/token balances/history, sends, message signing, ERC-20/SPL transfers, ETH contract calls, Solana program instructions, direct RPC reads, price quotes (Chainlink/Pyth/Jupiter), dynamic swap quote/execute flows (Uniswap v2/v3, Jupiter), generic dapp adapter dispatch, and x402 paid HTTP requests. Requires wallet agent access enabled and an unlocked wallet.",
+      "Use the local encrypted multi-chain wallet (ETH, BTC, SOL). Read-only actions include status, addresses, accounts, native/token balances, transaction history, receive addresses, direct RPC reads, price quotes (Chainlink/Pyth/Jupiter), endpoint discovery, dapp capabilities, and dry-run swap quotes. Fund-moving or signing actions include sends, message signing, ERC-20/SPL transfers, ETH contract writes, Solana program instructions, swap execution (Uniswap v2/v3, Jupiter), dapp adapter writes, and x402 paid HTTP requests; those require explicit user intent, wallet agent access, policy approval, and an unlocked wallet.",
     category: "core",
     input_schema: {
       type: "object",
@@ -948,7 +948,8 @@ Use for tasks that may take longer or require separate context.`,
             "swap_quote",
             "swap_execute",
           ],
-          description: "Wallet action",
+          description:
+            "Wallet action. Prefer read-only actions for status, balances, portfolio, history, pricing, and quote requests; use fund-moving/signing actions only with explicit user confirmation and policy allowance.",
         },
         chain: {
           type: "string",

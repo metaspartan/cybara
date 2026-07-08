@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolveAgentToolSelection } from "../../src/core/agent";
+import { normalizeExplicitAgentTools } from "../../src/core/agent-tool-normalization";
+import { getToolSchemasForLLM } from "../../src/core/tools/index";
 
 // The core security property: a present-but-empty or corrupt `tools` restriction
 // must NOT silently widen the agent to the full builtin tool set.
@@ -42,5 +44,44 @@ describe("resolveAgentToolSelection", () => {
     expect(resolveAgentToolSelection('{"tools":"read"}').kind).toBe("malformed");
     expect(resolveAgentToolSelection("null").kind).toBe("malformed");
     expect(resolveAgentToolSelection(42).kind).toBe("malformed");
+  });
+});
+
+describe("normalizeExplicitAgentTools", () => {
+  test("refreshes broad legacy builtin snapshots to current enabled builtin tools", () => {
+    const legacy = [
+      "read",
+      "write",
+      "edit",
+      "grep",
+      "exec",
+      "browser",
+      "web_search",
+      "web_fetch",
+      "memory_search",
+      "memory_get",
+      "sessions_spawn",
+      "sessions_send",
+      "sessions_history",
+      "sessions_list",
+      "message",
+      "canvas",
+      "image",
+      "tts",
+      "cron",
+      "gateway",
+    ];
+
+    const names = normalizeExplicitAgentTools(legacy).map((tool) => tool.name);
+    const currentEnabledNames = getToolSchemasForLLM().map((tool) => tool.name);
+
+    expect(names).toEqual(currentEnabledNames);
+    expect(names).toContain("calc");
+  });
+
+  test("keeps narrow intentional allowlists narrow", () => {
+    expect(normalizeExplicitAgentTools([{ name: "read" }]).map((tool) => tool.name)).toEqual([
+      "read",
+    ]);
   });
 });

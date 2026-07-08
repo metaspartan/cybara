@@ -100,6 +100,10 @@ export const walletRoutes: Record<string, RouteHandler> = {
           : undefined,
         x402MaxAmountAtomic:
           typeof data.x402MaxAmountAtomic === "string" ? data.x402MaxAmountAtomic : undefined,
+        allowedSendRecipients: Array.isArray(data.allowedSendRecipients)
+          ? data.allowedSendRecipients
+          : undefined,
+        maxSendAmount: typeof data.maxSendAmount === "string" ? data.maxSendAmount : undefined,
       })
     );
   },
