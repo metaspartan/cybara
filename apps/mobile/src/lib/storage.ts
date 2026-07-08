@@ -59,7 +59,12 @@ const secureStorage: KeyValueStorage = {
         /* fall through */
       }
     }
-    const legacy = await AsyncStorage.getItem(key);
+    let legacy: string | null = null;
+    try {
+      legacy = await AsyncStorage.getItem(key);
+    } catch {
+      return null;
+    }
     if (legacy !== null && store) {
       try {
         await store.setItemAsync(key, legacy);
@@ -80,7 +85,11 @@ const secureStorage: KeyValueStorage = {
         /* fall through */
       }
     }
-    await AsyncStorage.setItem(key, value);
+    try {
+      await AsyncStorage.setItem(key, value);
+    } catch {
+      throw new Error("Could not save the gateway profile on this device.");
+    }
   },
   async removeItem(key) {
     const store = await loadSecureStore();
@@ -91,7 +100,11 @@ const secureStorage: KeyValueStorage = {
         /* ignore */
       }
     }
-    await AsyncStorage.removeItem(key);
+    try {
+      await AsyncStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
   },
 };
 
@@ -100,7 +113,12 @@ const defaultStorage: KeyValueStorage = secureStorage;
 export async function loadProfiles(
   storage: KeyValueStorage = defaultStorage
 ): Promise<GatewayProfile[]> {
-  const raw = await storage.getItem(PROFILE_KEY);
+  let raw: string | null = null;
+  try {
+    raw = await storage.getItem(PROFILE_KEY);
+  } catch {
+    return [];
+  }
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
@@ -128,10 +146,13 @@ export async function saveProfile(
 export async function getActiveProfile(
   storage: KeyValueStorage = defaultStorage
 ): Promise<GatewayProfile | null> {
-  const [profiles, activeId] = await Promise.all([
-    loadProfiles(storage),
-    storage.getItem(ACTIVE_KEY),
-  ]);
+  const profiles = await loadProfiles(storage);
+  let activeId: string | null = null;
+  try {
+    activeId = await storage.getItem(ACTIVE_KEY);
+  } catch {
+    activeId = null;
+  }
   return profiles.find((profile) => profile.id === activeId) || profiles[0] || null;
 }
 

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { CameraView, useCameraPermissions, type BarcodeScanningResult } from "expo-camera";
+import { useEffect, useRef, useState } from "react";
+import type { BarcodeScanningResult } from "expo-camera";
 import { Alert, Image, StyleSheet, Text, TextInput, View } from "react-native";
 import { GlassButton, GlassPanel } from "../components/Glass";
 import {
@@ -11,6 +11,20 @@ import {
 } from "../lib/connection";
 import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
 import cybaraLogo from "../../assets/cybara.png";
+
+type CameraModule = typeof import("expo-camera");
+type CameraViewComponent = CameraModule["CameraView"];
+
+function scannedPayloadText(result: BarcodeScanningResult): string {
+  if (!result || typeof result.data !== "string") {
+    throw new Error("Scanned QR code did not contain a readable Cybara payload.");
+  }
+  const trimmed = result.data.trim();
+  if (!trimmed) {
+    throw new Error("Scanned QR code was empty.");
+  }
+  return trimmed;
+}
 
 export function ConnectScreen({
   onConnect,
@@ -26,21 +40,44 @@ export function ConnectScreen({
   const [connectBusy, setConnectBusy] = useState(false);
   const [connectStatus, setConnectStatus] = useState("");
   const [connectError, setConnectError] = useState("");
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const [CameraViewComponent, setCameraViewComponent] = useState<CameraViewComponent | null>(null);
+  const cameraModuleRef = useRef<CameraModule | null>(null);
+  const mountedRef = useRef(true);
+  const scanLockRef = useRef(false);
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    []
+  );
+
+  const setStatusIfMounted = (status: string) => {
+    if (mountedRef.current) setConnectStatus(status);
+  };
 
   const showConnectError = (error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
+    if (!mountedRef.current) return;
     setConnectError(message);
-    setConnectStatus("");
+    setStatusIfMounted("");
     Alert.alert("Could not connect", message);
   };
 
   const finishConnect = async (profile: GatewayProfile) => {
-    setConnectStatus("Checking gateway...");
+    setStatusIfMounted("Checking gateway...");
     await verifyGatewayProfile(profile);
-    setConnectStatus("Saving connection...");
+    setStatusIfMounted("Saving connection...");
     await onConnect(profile);
-    setConnectStatus("Connected");
+    setStatusIfMounted("Connected");
+  };
+
+  const loadCameraModule = async () => {
+    if (cameraModuleRef.current) return cameraModuleRef.current;
+    const mod = await import("expo-camera");
+    cameraModuleRef.current = mod;
+    if (mountedRef.current) setCameraViewComponent(() => mod.CameraView);
+    return mod;
   };
 
   const connectManual = async () => {
@@ -52,7 +89,7 @@ export function ConnectScreen({
     } catch (error) {
       showConnectError(error);
     } finally {
-      setConnectBusy(false);
+      if (mountedRef.current) setConnectBusy(false);
     }
   };
 
@@ -66,13 +103,24 @@ export function ConnectScreen({
     } catch (error) {
       showConnectError(error);
     } finally {
-      setConnectBusy(false);
+      if (mountedRef.current) setConnectBusy(false);
     }
   };
 
   const openScanner = async () => {
-    if (!cameraPermission?.granted) {
-      const nextPermission = await requestCameraPermission();
+    let camera: CameraModule;
+    try {
+      camera = await loadCameraModule();
+    } catch {
+      Alert.alert("Camera unavailable", "This build cannot load the camera scanner.");
+      return;
+    }
+
+    try {
+      const currentPermission = await camera.Camera.getCameraPermissionsAsync();
+      const nextPermission = currentPermission.granted
+        ? currentPermission
+        : await camera.Camera.requestCameraPermissionsAsync();
       if (!nextPermission.granted) {
         Alert.alert(
           "Camera permission is required",
@@ -80,26 +128,42 @@ export function ConnectScreen({
         );
         return;
       }
+    } catch (error) {
+      showConnectError(error);
+      return;
     }
+    scanLockRef.current = false;
     setScanLocked(false);
     setScannerOpen(true);
   };
 
   const connectScannedPayload = async (result: BarcodeScanningResult) => {
-    if (scanLocked || connectBusy) return;
+    if (scanLockRef.current || connectBusy) return;
+    scanLockRef.current = true;
+    let nextPayload: string;
+    try {
+      nextPayload = scannedPayloadText(result);
+    } catch (error) {
+      showConnectError(error);
+      scanLockRef.current = false;
+      return;
+    }
     setScanLocked(true);
     setConnectBusy(true);
     setConnectError("");
-    setPayload(result.data);
+    setScannerOpen(false);
+    setPayload(nextPayload);
     try {
-      setConnectStatus("Connecting to gateway...");
-      await finishConnect(await resolveGatewayProfile(result.data));
-      setScannerOpen(false);
+      setStatusIfMounted("Connecting to gateway...");
+      await finishConnect(await resolveGatewayProfile(nextPayload));
     } catch (error) {
       showConnectError(error);
     } finally {
-      setScanLocked(false);
-      setConnectBusy(false);
+      scanLockRef.current = false;
+      if (mountedRef.current) {
+        setScanLocked(false);
+        setConnectBusy(false);
+      }
     }
   };
 
@@ -124,12 +188,12 @@ export function ConnectScreen({
           selected={scannerOpen}
           disabled={connectBusy}
         />
-        {scannerOpen ? (
+        {scannerOpen && CameraViewComponent ? (
           <View style={styles.cameraWrap}>
-            <CameraView
+            <CameraViewComponent
               barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
               facing="back"
-              onBarcodeScanned={connectScannedPayload}
+              onBarcodeScanned={scanLocked || connectBusy ? undefined : connectScannedPayload}
               style={styles.camera}
             />
             <View style={styles.cameraOverlay}>
@@ -155,7 +219,11 @@ export function ConnectScreen({
         {scannerOpen ? (
           <GlassButton
             label="Cancel scan"
-            onPress={() => setScannerOpen(false)}
+            onPress={() => {
+              scanLockRef.current = false;
+              setScanLocked(false);
+              setScannerOpen(false);
+            }}
             disabled={connectBusy}
           />
         ) : null}

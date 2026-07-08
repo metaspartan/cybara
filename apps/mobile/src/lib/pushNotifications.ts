@@ -92,16 +92,19 @@ export async function configureMobileNotificationPresentation(
   const notifications =
     options.notifications === undefined ? await loadNotifications() : options.notifications;
   if (!notifications?.setNotificationHandler) return false;
-  notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-      shouldPlaySound: false,
-      shouldSetBadge: false,
-    }),
-  });
-  return true;
+  try {
+    notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+      }),
+    });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function registerMobilePushNotifications(

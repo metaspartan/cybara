@@ -5,6 +5,7 @@ import {
   buildMobileConnectPayload,
   encodeMobileConnectPayload,
   isLoopbackGatewayUrl,
+  normalizeConnectionPayloadInput,
   normalizeGatewayUrl,
   parseMobileConnectPayload,
   profileFromPayload,
@@ -53,6 +54,10 @@ describe("mobile gateway connection payloads", () => {
   test("rejects unsupported protocols and empty secrets", () => {
     expect(() => parseMobileConnectPayload('{"protocol":"other"}')).toThrow(
       "Unsupported Cybara mobile connection protocol"
+    );
+    expect(() => normalizeConnectionPayloadInput({})).toThrow("Connection payload must be text");
+    expect(() => parseMobileConnectPayload("not a cybara payload")).toThrow(
+      "Unsupported connection payload"
     );
     expect(() =>
       buildMobileConnectPayload({ baseUrl: "http://localhost:4269", apiKey: " " })
@@ -157,6 +162,53 @@ describe("pairing-code redemption", () => {
     expect(profile.deviceId).toBe("mobile_abc");
   });
 
+  test("resolveGatewayProfile accepts the TestFlight LAN pairing payload shape", async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    const fetchImpl: typeof fetch = (async (url: string, init?: RequestInit) => {
+      calls.push({
+        url,
+        body: JSON.parse(String(init?.body ?? "{}")),
+      });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          apiKey: "cybara_mobile_redeemed",
+          device: { id: "mobile_real_device" },
+          payload: { name: "Cybara Gateway" },
+        }),
+      };
+    }) as unknown as typeof fetch;
+    const raw = JSON.stringify({
+      protocol: MOBILE_PAIRING_PROTOCOL,
+      name: "Cybara Gateway",
+      baseUrl: "http://192.168.1.155:4269",
+      code: "BGJ2-L5SE",
+      role: "standard",
+      expiresAt: 1783507769105,
+    });
+
+    const profile = await resolveGatewayProfile(
+      raw,
+      new Date("2026-07-08T00:00:00.000Z"),
+      fetchImpl
+    );
+
+    expect(profile).toMatchObject({
+      name: "Cybara Gateway",
+      baseUrl: "http://192.168.1.155:4269",
+      apiKey: "cybara_mobile_redeemed",
+      deviceId: "mobile_real_device",
+    });
+    expect(calls).toEqual([
+      {
+        url: "http://192.168.1.155:4269/api/mobile/pair/redeem",
+        body: { code: "BGJ2-L5SE" },
+      },
+    ]);
+  });
+
   test("resolveGatewayProfile times out when pairing redemption never returns", async () => {
     const hangingFetch: typeof fetch = (() => new Promise<Response>(() => {})) as typeof fetch;
     const raw = JSON.stringify({
@@ -192,6 +244,18 @@ describe("pairing-code redemption", () => {
     expect(calls).toEqual([]);
   });
 
+  test("resolveGatewayProfile accepts string pairing expirations from older QR payloads", async () => {
+    const raw = JSON.stringify({
+      protocol: MOBILE_PAIRING_PROTOCOL,
+      name: "Studio",
+      baseUrl: "http://192.168.1.20:4269",
+      code: "STR-2345",
+      expiresAt: String(Date.parse("2026-07-07T22:00:00.000Z")),
+    });
+    const profile = await resolveGatewayProfile(raw, new Date("2026-07-07T21:00:00.000Z"), okFetch);
+    expect(profile.apiKey).toBe("cybara_mobile_for_STR-2345");
+  });
+
   test("resolveGatewayProfile redeems a deep-linked pairing-code payload", async () => {
     const raw = JSON.stringify({
       protocol: MOBILE_PAIRING_PROTOCOL,
@@ -206,6 +270,21 @@ describe("pairing-code redemption", () => {
     );
     expect(profile.apiKey).toBe("cybara_mobile_for_LINK-2345");
     expect(profile.baseUrl).toBe("http://192.168.1.20:4269");
+  });
+
+  test("resolveGatewayProfile accepts JSON-wrapped deep link payloads", async () => {
+    const raw = JSON.stringify({
+      protocol: MOBILE_PAIRING_PROTOCOL,
+      name: "Studio",
+      baseUrl: "http://192.168.1.20:4269",
+      code: "WRAP-2345",
+    });
+    const profile = await resolveGatewayProfile(
+      JSON.stringify({ payload: raw }),
+      new Date(),
+      okFetch
+    );
+    expect(profile.apiKey).toBe("cybara_mobile_for_WRAP-2345");
   });
 
   test("resolveGatewayProfile still handles a legacy direct-token QR", async () => {

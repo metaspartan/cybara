@@ -58,4 +58,17 @@ describe("mobile profile storage", () => {
     expect(await loadProfiles(storage)).toEqual([]);
     expect(await getActiveProfile(storage)).toBeNull();
   });
+
+  test("startup treats unreadable profile storage as no saved gateway", async () => {
+    const storage: KeyValueStorage = {
+      async getItem() {
+        throw new Error("native storage unavailable");
+      },
+      async setItem() {},
+      async removeItem() {},
+    };
+
+    await expect(loadProfiles(storage)).resolves.toEqual([]);
+    await expect(getActiveProfile(storage)).resolves.toBeNull();
+  });
 });

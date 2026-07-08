@@ -96,6 +96,8 @@ describe("mobile theming", () => {
   test("shared glass probe prefers native expo-glass-effect", () => {
     const src = read("components/glassSupport.ts");
     expect(src).toContain('import("expo-glass-effect")');
+    expect(src).toContain("canUseNativeGlassRuntime");
+    expect(src).toContain("isGlassEffectAPIAvailable");
     expect(src).toContain("isLiquidGlassAvailable");
     expect(src).toContain("GlassView");
     expect(src).toContain("useNativeGlassView");
@@ -154,12 +156,32 @@ describe("mobile theming", () => {
     expect(src).not.toContain('useState("http://127.0.0.1:4269")');
   });
 
+  test("mobile connect screen does not load camera native modules until scanning", () => {
+    const src = read("screens/ConnectScreen.tsx");
+    expect(src).toContain('import type { BarcodeScanningResult } from "expo-camera"');
+    expect(src).not.toContain("useCameraPermissions");
+    expect(src).not.toContain("import { CameraView");
+    expect(src).toContain('await import("expo-camera")');
+    expect(src).toContain(
+      "onBarcodeScanned={scanLocked || connectBusy ? undefined : connectScannedPayload}"
+    );
+  });
+
   test("mobile pairing verifies the gateway and surfaces connect failures", () => {
     const src = read("screens/ConnectScreen.tsx");
     expect(src).toContain("await verifyGatewayProfile(profile)");
     expect(src).toContain("await onConnect(profile)");
     expect(src).toContain('Alert.alert("Could not connect", message)');
     expect(src).toContain("disabled={connectBusy}");
+  });
+
+  test("app startup waits for a profile before touching push-notification native modules", () => {
+    const app = readApp("App.tsx");
+    expect(app).toContain(".catch(() => {");
+    expect(app).toContain("if (!profile) return;");
+    expect(app.indexOf("void configureMobileNotificationPresentation();")).toBeGreaterThan(
+      app.indexOf("if (!profile) return;")
+    );
   });
 
   test("tab bar and chat composer use the LiquidGlass surface (no opaque fill)", () => {

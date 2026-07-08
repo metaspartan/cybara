@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Platform } from "react-native";
 
 type GlassModule = typeof import("expo-glass-effect");
 type GlassComponent = GlassModule["GlassView"];
@@ -18,12 +19,24 @@ type ResolvedGlass = {
 let glassProbe: Promise<ResolvedGlass> | null = null;
 let glassResolved: ResolvedGlass | null = null;
 
+export function canUseNativeGlassRuntime(
+  platform: string = Platform.OS,
+  version: string | number = Platform.Version
+): boolean {
+  if (platform !== "ios") return false;
+  const major = Number.parseInt(String(version), 10);
+  return Number.isFinite(major) && major >= 26;
+}
+
 export function loadNativeGlass(): Promise<ResolvedGlass> {
   if (!glassProbe) {
     glassProbe = (async () => {
       try {
+        if (!canUseNativeGlassRuntime()) {
+          return { GlassView: null, GlassContainer: null };
+        }
         const mod = await import("expo-glass-effect");
-        if (!mod.isLiquidGlassAvailable()) {
+        if (!mod.isGlassEffectAPIAvailable() || !mod.isLiquidGlassAvailable()) {
           return { GlassView: null, GlassContainer: null };
         }
         return { GlassView: mod.GlassView, GlassContainer: mod.GlassContainer };

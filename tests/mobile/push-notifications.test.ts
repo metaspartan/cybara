@@ -98,4 +98,19 @@ describe("mobile push notification helpers", () => {
     expect(handler).toBeTruthy();
     expect(calls).toEqual([{ method: "clear" }]);
   });
+
+  test("notification presentation setup is non-fatal when the native module rejects", async () => {
+    const configured = await configureMobileNotificationPresentation({
+      notifications: {
+        getPermissionsAsync: async () => ({ status: "granted" }),
+        requestPermissionsAsync: async () => ({ status: "granted" }),
+        getExpoPushTokenAsync: async () => ({ data: "ExpoPushToken[abcdefghijklmnopqrstuvwxyz]" }),
+        setNotificationHandler: () => {
+          throw new Error("native notification handler unavailable");
+        },
+      },
+    });
+
+    expect(configured).toBe(false);
+  });
 });

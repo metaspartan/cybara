@@ -22,6 +22,17 @@ export interface MobileConnectPayload {
 
 const DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS = 8000;
 
+export function normalizeConnectionPayloadInput(raw: unknown): string {
+  if (typeof raw !== "string") {
+    throw new Error("Connection payload must be text");
+  }
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error("Connection payload is empty");
+  }
+  return trimmed;
+}
+
 function urlHost(input: string): string {
   try {
     return new URL(normalizeGatewayUrl(input)).hostname.toLowerCase();
@@ -181,17 +192,18 @@ export function encodeMobileConnectPayload(payload: MobileConnectPayload): strin
   return JSON.stringify(payload);
 }
 
-export function parseMobileConnectPayload(raw: string): MobileConnectPayload {
-  const trimmed = raw.trim();
-  if (!trimmed) {
-    throw new Error("Connection payload is empty");
-  }
-
+export function parseMobileConnectPayload(raw: unknown): MobileConnectPayload {
+  const trimmed = normalizeConnectionPayloadInput(raw);
   let parsed: unknown;
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    const url = new URL(trimmed);
+    let url: URL;
+    try {
+      url = new URL(trimmed);
+    } catch {
+      throw new Error("Unsupported connection payload");
+    }
     if (url.protocol !== "cybara:") {
       throw new Error("Unsupported connection payload");
     }
@@ -249,7 +261,16 @@ export interface MobilePairingCodePayload {
   baseUrl: string;
   code: string;
   role?: string;
-  expiresAt?: number;
+  expiresAt?: number | string;
+}
+
+function pairingExpiryMillis(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
 }
 
 /**
@@ -307,13 +328,12 @@ export async function redeemPairingCode(
  * token payload (JSON or `cybara:` deep link).
  */
 export async function resolveGatewayProfile(
-  raw: string,
+  raw: unknown,
   now = new Date(),
   fetchImpl: typeof fetch = fetch,
   timeoutMs = DEFAULT_GATEWAY_CONNECT_TIMEOUT_MS
 ): Promise<GatewayProfile> {
-  const trimmed = raw.trim();
-  if (!trimmed) throw new Error("Connection payload is empty");
+  const trimmed = normalizeConnectionPayloadInput(raw);
 
   try {
     const url = new URL(trimmed);
@@ -332,13 +352,26 @@ export async function resolveGatewayProfile(
   if (
     parsed &&
     typeof parsed === "object" &&
+    typeof (parsed as { payload?: unknown }).payload === "string"
+  ) {
+    return resolveGatewayProfile(
+      (parsed as { payload: string }).payload,
+      now,
+      fetchImpl,
+      timeoutMs
+    );
+  }
+  if (
+    parsed &&
+    typeof parsed === "object" &&
     (parsed as { protocol?: unknown }).protocol === MOBILE_PAIRING_PROTOCOL
   ) {
     const data = parsed as Partial<MobilePairingCodePayload>;
     if (typeof data.baseUrl !== "string" || typeof data.code !== "string") {
       throw new Error("Pairing code payload is missing baseUrl or code");
     }
-    if (typeof data.expiresAt === "number" && data.expiresAt <= now.getTime()) {
+    const expiresAt = pairingExpiryMillis(data.expiresAt);
+    if (expiresAt !== undefined && expiresAt <= now.getTime()) {
       throw new Error("Pairing code has expired. Create a fresh QR code and scan it again.");
     }
     const payload = await redeemPairingCode(

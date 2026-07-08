@@ -21,18 +21,26 @@ function AppShell() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   useEffect(() => {
+    let mounted = true;
     getActiveProfile()
-      .then(setProfile)
-      .finally(() => setReady(true));
-  }, []);
-
-  useEffect(() => {
-    void configureMobileNotificationPresentation();
+      .then((nextProfile) => {
+        if (mounted) setProfile(nextProfile);
+      })
+      .catch(() => {
+        if (mounted) setProfile(null);
+      })
+      .finally(() => {
+        if (mounted) setReady(true);
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   useEffect(() => {
     if (!profile) return;
     const api = new CybaraMobileApi(profile);
+    void configureMobileNotificationPresentation();
     void registerMobilePushNotifications(api, { requestPermission: false });
   }, [profile]);
 
