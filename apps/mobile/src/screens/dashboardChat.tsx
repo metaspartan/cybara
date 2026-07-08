@@ -13,7 +13,10 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Copy,
+  ListChecks,
   Loader2,
   RotateCcw,
   User,
@@ -28,14 +31,12 @@ import {
   hasUnicodeTextFallback,
   parseMarkdownBlocks,
   parseInlineMarkdown,
-  shouldUseSelectableNativeText,
   splitMessageContent,
   type MarkdownInline,
 } from "../lib/chat-format";
-import type { SessionDetailSummary, SessionMessageSummary } from "../lib/api";
+import type { SessionDetailSummary, SessionMessageSummary, SessionPlanSnapshot } from "../lib/api";
 import { Clipboard } from "../lib/expoNativeModules";
 
-/** Render inline markdown spans (bold/italic/code/strike/link) inside a Text. */
 function InlineMarkdown({ tokens }: { tokens: MarkdownInline[] }) {
   return (
     <>
@@ -85,7 +86,6 @@ function InlineMarkdown({ tokens }: { tokens: MarkdownInline[] }) {
   );
 }
 
-/** Render a text segment as structured markdown, matching the web/Tauri UI. */
 function MarkdownText({ content }: { content: string }) {
   const blocks = parseMarkdownBlocks(content);
   return (
@@ -96,6 +96,7 @@ function MarkdownText({ content }: { content: string }) {
             return (
               <Text
                 key={index}
+                selectable
                 style={
                   block.level === 1 ? styles.mdH1 : block.level === 2 ? styles.mdH2 : styles.mdH3
                 }
@@ -106,8 +107,10 @@ function MarkdownText({ content }: { content: string }) {
           case "listItem":
             return (
               <View key={index} style={styles.mdListRow}>
-                <Text style={styles.mdListMarker}>{block.marker}</Text>
-                <Text style={styles.mdListText}>
+                <Text selectable style={styles.mdListMarker}>
+                  {block.marker}
+                </Text>
+                <Text selectable style={styles.mdListText}>
                   <InlineMarkdown tokens={block.inline} />
                 </Text>
               </View>
@@ -115,7 +118,7 @@ function MarkdownText({ content }: { content: string }) {
           case "quote":
             return (
               <View key={index} style={styles.mdQuote}>
-                <Text style={styles.mdQuoteText}>
+                <Text selectable style={styles.mdQuoteText}>
                   <InlineMarkdown tokens={block.inline} />
                 </Text>
               </View>
@@ -129,7 +132,7 @@ function MarkdownText({ content }: { content: string }) {
                   <View style={styles.mdTableHeaderRow}>
                     {block.header.map((cell, cellIndex) => (
                       <View key={cellIndex} style={styles.mdTableCell}>
-                        <Text style={styles.mdTableHeaderText}>
+                        <Text selectable style={styles.mdTableHeaderText}>
                           <InlineMarkdown tokens={cell} />
                         </Text>
                       </View>
@@ -139,7 +142,7 @@ function MarkdownText({ content }: { content: string }) {
                     <View key={rowIndex} style={styles.mdTableRow}>
                       {row.map((cell, cellIndex) => (
                         <View key={cellIndex} style={styles.mdTableCell}>
-                          <Text style={styles.mdTableCellText}>
+                          <Text selectable style={styles.mdTableCellText}>
                             <InlineMarkdown tokens={cell} />
                           </Text>
                         </View>
@@ -161,7 +164,6 @@ function MarkdownText({ content }: { content: string }) {
   );
 }
 
-/** Icon actions under a message: copy always, revert (with confirm upstream). */
 function MessageActionsRow({
   alignEnd,
   content,
@@ -257,6 +259,98 @@ function ChatImageAttachments({ uris }: { uris: string[] }) {
       {uris.map((uri, index) => (
         <ChatImage key={`${uri}-${index}`} uri={uri} />
       ))}
+    </View>
+  );
+}
+
+function mobilePlanProgressLabel(plan: SessionPlanSnapshot): string {
+  if (plan.summary.total === 0) return "No tasks";
+  return `${plan.summary.completed}/${plan.summary.total} complete`;
+}
+
+function mobileCurrentPlanItem(plan: SessionPlanSnapshot): string {
+  return (
+    plan.items.find((item) => item.status === "in_progress")?.content ||
+    plan.items.find((item) => item.status === "pending")?.content ||
+    plan.items[plan.items.length - 1]?.content ||
+    "No active task"
+  );
+}
+
+function MobilePlanStatusIcon({
+  status,
+}: {
+  status: SessionPlanSnapshot["items"][number]["status"];
+}) {
+  if (status === "completed") {
+    return <CheckCircle2 color={colors.textMuted} size={13} strokeWidth={2.2} />;
+  }
+  if (status === "in_progress") {
+    return <Loader2 color={colors.textMuted} size={13} strokeWidth={2.2} />;
+  }
+  return <View style={styles.mobilePlanPendingDot} />;
+}
+
+export function MobilePlanSummaryCard({ plan }: { plan: SessionPlanSnapshot }) {
+  const [expanded, setExpanded] = useState(false);
+  const progressPercent =
+    plan.summary.total > 0 ? Math.round((plan.summary.completed / plan.summary.total) * 100) : 0;
+  return (
+    <View style={styles.mobilePlanCard}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={expanded ? "Collapse session plan" : "Expand session plan"}
+        onPress={() => setExpanded((value) => !value)}
+        style={styles.mobilePlanHeader}
+      >
+        <View style={styles.mobilePlanIcon}>
+          <ListChecks color={colors.textMuted} size={15} strokeWidth={2.2} />
+        </View>
+        <View style={styles.mobilePlanHeaderText}>
+          <View style={styles.mobilePlanTitleRow}>
+            <Text selectable style={styles.mobilePlanTitle}>
+              Plan
+            </Text>
+            <Text selectable style={styles.mobilePlanProgressText}>
+              {mobilePlanProgressLabel(plan)}
+            </Text>
+          </View>
+          <Text numberOfLines={1} selectable style={styles.mobilePlanCurrentTask}>
+            {mobileCurrentPlanItem(plan)}
+          </Text>
+        </View>
+        {expanded ? (
+          <ChevronUp color={colors.textMuted} size={15} strokeWidth={2.2} />
+        ) : (
+          <ChevronDown color={colors.textMuted} size={15} strokeWidth={2.2} />
+        )}
+      </Pressable>
+      <View style={styles.mobilePlanProgressTrack}>
+        <View style={[styles.mobilePlanProgressFill, { width: `${progressPercent}%` }]} />
+      </View>
+      {expanded ? (
+        <View style={styles.mobilePlanItems}>
+          {plan.items.map((item, index) => (
+            <View key={`${item.status}-${index}-${item.content}`} style={styles.mobilePlanItem}>
+              <View style={styles.mobilePlanItemIcon}>
+                <MobilePlanStatusIcon status={item.status} />
+              </View>
+              <Text
+                selectable
+                style={[
+                  styles.mobilePlanItemText,
+                  item.status === "completed" && styles.mobilePlanItemTextDone,
+                ]}
+              >
+                {item.content}
+              </Text>
+              <Text selectable style={styles.mobilePlanPriority}>
+                {item.priority}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -364,6 +458,7 @@ function MobileActivityRow({ activity }: { activity: MobileWorkActivity }) {
       </View>
       <Text
         numberOfLines={activity.toolName === "__thought" ? 3 : 2}
+        selectable
         style={[
           styles.messageActivityText,
           activity.toolName === "__thought" && styles.messageThoughtText,
@@ -390,7 +485,9 @@ export function WorkTimeline({
 
   return (
     <View style={styles.workTimeline}>
-      <Text style={styles.workedForText}>Worked for {timeline.workedDuration}</Text>
+      <Text selectable style={styles.workedForText}>
+        Worked for {timeline.workedDuration}
+      </Text>
       <View style={styles.messageActivityList}>
         {entries.map((entry) => {
           if (entry.type === "single") {
@@ -434,11 +531,12 @@ export function MessageContent({ content }: { content: string }) {
       {splitMessageContent(content).map((part, index) =>
         part.type === "code" ? (
           <View key={`code-${index}`} style={styles.codeBlock}>
-            <Text style={styles.codeHeader}>{part.language}</Text>
+            <Text selectable style={styles.codeHeader}>
+              {part.language}
+            </Text>
             <ScrollView horizontal showsHorizontalScrollIndicator>
               <UnicodeText
                 content={part.content}
-                selectable={shouldUseSelectableNativeText(part.content)}
                 style={[
                   styles.codeText,
                   !hasUnicodeTextFallback(part.content) && styles.codeTextMonospace,
@@ -457,7 +555,7 @@ export function MessageContent({ content }: { content: string }) {
 export function UnicodeText({
   content,
   numberOfLines,
-  selectable,
+  selectable = true,
   style,
 }: {
   content: string;

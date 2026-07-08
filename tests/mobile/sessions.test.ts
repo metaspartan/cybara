@@ -82,6 +82,34 @@ describe("mobile: chat management", () => {
     expect(screen.indexOf("if (!queuedSend)", optimisticUserAppend - 700)).toBeGreaterThan(0);
   });
 
+  test("mobile chat renders session plans above messages and keeps chat text selectable", () => {
+    const api = read("lib/api.ts");
+    const chat = read("screens/dashboardChat.tsx");
+    const styles = read("screens/dashboardStyles.ts");
+    const planCard = screen.indexOf("<MobilePlanSummaryCard plan={detail.plan} />");
+    const messageLoop = screen.indexOf("{visibleMessages.map((message, index) => (");
+
+    expect(api).toContain("interface SessionPlanSnapshot");
+    expect(api).toContain("plan?: SessionPlanSnapshot | null");
+    expect(api).toContain("plan: normalizeSessionPlan(record?.plan)");
+    expect(api).toContain("content: content.slice(0, 500)");
+    expect(api).toContain(".slice(0, 50)");
+    expect(chat).toContain("export function MobilePlanSummaryCard");
+    expect(chat).toContain("mobilePlanProgressLabel(plan)");
+    expect(chat).toContain("mobileCurrentPlanItem(plan)");
+    expect(planCard).toBeGreaterThan(0);
+    expect(messageLoop).toBeGreaterThan(planCard);
+    expect(chat).toContain("<Text selectable style={styles.mdListMarker}>");
+    expect(chat).toContain("<Text selectable style={styles.mdListText}>");
+    expect(chat).toContain("<Text selectable style={styles.mdQuoteText}>");
+    expect(chat).toContain("<Text selectable style={styles.mdTableHeaderText}>");
+    expect(chat).toContain("<Text selectable style={styles.mdTableCellText}>");
+    expect(chat).toContain("<Text selectable style={styles.workedForText}>");
+    expect(chat).toContain("selectable = true");
+    expect(styles).toContain("mobilePlanCard:");
+    expect(styles).toContain("mobilePlanProgressFill:");
+  });
+
   test("chat composer exposes agent switching and context usage", () => {
     const api = read("lib/api.ts");
     const newChat = read("components/NewChatPanel.tsx");

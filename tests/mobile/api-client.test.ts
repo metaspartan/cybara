@@ -221,6 +221,50 @@ describe("mobile API client", () => {
     }
   });
 
+  test("normalizes session plan snapshots for mobile chat detail", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const headers = new Headers(init?.headers);
+      expect(parsedUrl.pathname).toBe("/api/sessions/s-plan");
+      expect(headers.get("authorization")).toBe("Bearer cybara_mobile_test");
+      return Response.json({
+        id: "s-plan",
+        title: "Plan test",
+        plan: {
+          sessionId: "s-plan",
+          source: "todo_tool",
+          items: [
+            { content: "Read repository layout", status: "completed", priority: "high" },
+            { content: "Review security gates", status: "active", priority: "medium" },
+            { content: "Write focused tests", status: "pending", priority: "low" },
+            { content: "", status: "completed", priority: "high" },
+            null,
+          ],
+          summary: { total: 3, completed: 1, in_progress: 1, pending: 1 },
+          updatedAt: "2026-07-08T14:00:00.000Z",
+        },
+        messages: [{ id: "m1", role: "assistant", content: "Done" }],
+      });
+    }) as typeof fetch;
+
+    try {
+      const detail = await new CybaraMobileApi(profile).session("s-plan");
+      expect(detail.plan).toMatchObject({
+        sessionId: "s-plan",
+        source: "todo_tool",
+        summary: { total: 3, completed: 1, inProgress: 1, pending: 1 },
+      });
+      expect(detail.plan?.items).toEqual([
+        { content: "Read repository layout", status: "completed", priority: "high" },
+        { content: "Review security gates", status: "in_progress", priority: "medium" },
+        { content: "Write focused tests", status: "pending", priority: "low" },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("manages gateway auth and restart routes through the mobile API client", async () => {
     const calls: Array<{
       method: string;

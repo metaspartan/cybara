@@ -625,6 +625,30 @@ export interface SessionContextUsage {
   messageCount: number;
 }
 
+export type SessionPlanItemStatus = "pending" | "in_progress" | "completed";
+export type SessionPlanItemPriority = "high" | "medium" | "low";
+
+export interface SessionPlanItemSummary {
+  content: string;
+  status: SessionPlanItemStatus;
+  priority: SessionPlanItemPriority;
+}
+
+export interface SessionPlanSummary {
+  total: number;
+  pending: number;
+  inProgress: number;
+  completed: number;
+}
+
+export interface SessionPlanSnapshot {
+  sessionId: string;
+  items: SessionPlanItemSummary[];
+  summary: SessionPlanSummary;
+  updatedAt?: string;
+  source?: string;
+}
+
 export interface SessionDetailSummary {
   id: string;
   title: string | null;
@@ -638,6 +662,7 @@ export interface SessionDetailSummary {
   updatedAt?: string;
   pinned?: boolean;
   contextUsage?: SessionContextUsage;
+  plan?: SessionPlanSnapshot | null;
   messages: SessionMessageSummary[];
 }
 
@@ -1296,7 +1321,57 @@ function normalizeSessionDetail(value: unknown, fallbackId: string): SessionDeta
     updatedAt: readString(record, ["updated_at", "updatedAt", "created_at", "createdAt"]),
     pinned: record?.pinned === true,
     contextUsage: normalizeSessionContextUsage(record?.contextUsage ?? record?.context_usage),
+    plan: normalizeSessionPlan(record?.plan),
     messages,
+  };
+}
+
+function normalizeSessionPlan(value: unknown): SessionPlanSnapshot | null {
+  const record = asRecord(value);
+  if (!record) return null;
+  const items = normalizeArrayResponse(record?.items, ["items"])
+    .map((item) => {
+      const itemRecord = asRecord(item);
+      const content = readString(itemRecord, ["content", "text", "title"])?.trim();
+      if (!content) return null;
+      const rawStatus = readString(itemRecord, ["status"]);
+      const status: SessionPlanItemStatus =
+        rawStatus === "completed"
+          ? "completed"
+          : rawStatus === "in_progress" || rawStatus === "active"
+            ? "in_progress"
+            : "pending";
+      const rawPriority = readString(itemRecord, ["priority"]);
+      const priority: SessionPlanItemPriority =
+        rawPriority === "high" || rawPriority === "low" ? rawPriority : "medium";
+      return {
+        content: content.slice(0, 500),
+        status,
+        priority,
+      };
+    })
+    .filter((item): item is SessionPlanItemSummary => item !== null)
+    .slice(0, 50);
+  if (items.length === 0) return null;
+  const summaryRecord = asRecord(record?.summary);
+  const computedSummary = {
+    total: items.length,
+    pending: items.filter((item) => item.status === "pending").length,
+    inProgress: items.filter((item) => item.status === "in_progress").length,
+    completed: items.filter((item) => item.status === "completed").length,
+  };
+  return {
+    sessionId: readString(record, ["sessionId", "session_id"]) || "",
+    items,
+    summary: {
+      total: readNumber(summaryRecord, ["total"]) ?? computedSummary.total,
+      pending: readNumber(summaryRecord, ["pending"]) ?? computedSummary.pending,
+      inProgress:
+        readNumber(summaryRecord, ["inProgress", "in_progress"]) ?? computedSummary.inProgress,
+      completed: readNumber(summaryRecord, ["completed"]) ?? computedSummary.completed,
+    },
+    updatedAt: readString(record, ["updatedAt", "updated_at"]),
+    source: readString(record, ["source"]),
   };
 }
 
