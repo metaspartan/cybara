@@ -46,14 +46,17 @@ interface GitStatusOptions {
 
 const GIT_ROOT_CACHE_TTL_MS = 5000;
 const GIT_STATUS_CACHE_TTL_MS = 2000;
+const GIT_BRANCH_CACHE_TTL_MS = 1500;
 
 const gitRootCache = new Map<string, { value: string | null; expiresAt: number }>();
 const gitStatusCache = new Map<string, { value: GitStatus; expiresAt: number }>();
 const gitStatusInFlight = new Map<string, Promise<GitStatus>>();
+const gitBranchListCache = new Map<string, { value: GitBranchList; expiresAt: number }>();
 
 function clearGitCaches(): void {
   gitStatusCache.clear();
   gitStatusInFlight.clear();
+  gitBranchListCache.clear();
 }
 
 async function runGit(
@@ -288,33 +291,48 @@ export async function getGitBranches(path: string): Promise<GitBranchList> {
     return { success: false, current: null, branches: [], error: "Not a git repository" };
   }
 
-  const [current, branchesResult] = await Promise.all([
-    getGitBranch(gitRoot),
-    runGit(gitRoot, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]),
+  const cached = gitBranchListCache.get(gitRoot);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.value;
+  }
+
+  const branchesResult = await runGit(gitRoot, [
+    "for-each-ref",
+    "--format=%(HEAD)%09%(refname:short)",
+    "refs/heads",
   ]);
 
   if (!branchesResult.success) {
     return {
       success: false,
       root: gitRoot,
-      current,
+      current: await getGitBranch(gitRoot),
       branches: [],
       error: branchesResult.stderr || "Failed to list git branches",
     };
   }
 
-  const names = branchesResult.stdout
+  const parsed = branchesResult.stdout
     .split("\n")
-    .map((branch) => branch.trim())
-    .filter(Boolean);
-  const branches = names
-    .map((name) => ({ name, current: name === current }))
-    .sort((a, b) => {
-      if (a.current !== b.current) return a.current ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
+    .map((line) => {
+      const [marker = "", name = ""] = line.split("\t");
+      const trimmed = name.trim();
+      if (!trimmed) return null;
+      return { name: trimmed, current: marker.trim() === "*" };
+    })
+    .filter((branch): branch is GitBranchSummary => branch !== null);
+  const current = parsed.find((branch) => branch.current)?.name || null;
+  const branches = parsed.sort((a, b) => {
+    if (a.current !== b.current) return a.current ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
 
-  return { success: true, root: gitRoot, current, branches };
+  const response = { success: true, root: gitRoot, current, branches };
+  gitBranchListCache.set(gitRoot, {
+    value: response,
+    expiresAt: Date.now() + GIT_BRANCH_CACHE_TTL_MS,
+  });
+  return response;
 }
 
 export async function checkoutGitBranch(

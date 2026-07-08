@@ -37,7 +37,7 @@ export function GitBranchSelector({
     if (!needle) return branches;
     return branches.filter((branch) => branch.name.toLowerCase().includes(needle));
   }, [branches, query]);
-  const selectedBranch = currentBranch || "No branch";
+  const selectedBranch = currentBranch || (loading ? "Loading..." : "No branch");
   const canCreate =
     newBranch.trim().length > 0 && !branches.some((b) => b.name === newBranch.trim());
 
@@ -59,14 +59,14 @@ export function GitBranchSelector({
     <div className="relative ml-auto flex min-w-0 justify-end">
       <button
         type="button"
-        disabled={disabled || loading}
+        disabled={disabled}
         onClick={() => {
           setOpen((value) => !value);
           if (!open) void onRefresh();
         }}
         className={cn(
           "inline-flex max-w-[180px] items-center gap-1.5 rounded-lg border border-[#2b303b] bg-[#12151d] px-2 py-1 text-[11px] text-gray-300 transition-colors hover:border-[#3d4350] hover:bg-[#171b24]",
-          (disabled || loading) && "cursor-not-allowed opacity-60"
+          disabled && "cursor-not-allowed opacity-60"
         )}
         title="Change git branch"
       >
