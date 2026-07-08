@@ -144,6 +144,7 @@ export const MOBILE_SETTINGS_ROOT_CHROME = {
   sandboxRuntimeControls: true,
   systemPromptFeatureToggles: true,
   migrationControls: true,
+  nativeCategoryRail: true,
   speechControls: true,
   terminalToggle: true,
   toolApprovalModeSelector: true,
@@ -238,7 +239,7 @@ export function isMobileSettingsDetailFieldVisible(label: string): boolean {
 export const MOBILE_CHAT_COMPOSER = {
   growsWithContent: true,
   lineHeight: 20,
-  maxHeight: 132,
+  maxHeight: 184,
   minHeight: 42,
   newlineExpandsInput: true,
   preserveDraftOnFailure: true,

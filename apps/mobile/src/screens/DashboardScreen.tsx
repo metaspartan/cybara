@@ -2,6 +2,7 @@ import {
   DetailActionButton,
   DetailInfoSection,
   SettingSelector,
+  SettingsTabRail,
   SettingToggle,
   SettingsSection,
   SettingsTextField,
@@ -4298,20 +4299,16 @@ function SettingsPanel({
   return (
     <StableDetailPanel edgeToEdge={MOBILE_SETTINGS_ROOT_CHROME.settingsEdgeToEdgeContent}>
       <View style={styles.settingsNativePage}>
-        <SettingsSection title="Settings">
-          <SettingSelector
-            label="Category"
-            onSelect={(value) => {
-              if (MOBILE_SETTINGS_TABS.some((option) => option.value === value)) {
-                setSelectedSettingsTab(value as MobileSettingsTab);
-              }
-            }}
-            options={MOBILE_SETTINGS_TABS}
-            selected={selectedSettingsTab}
-            tone={accentColor}
-            variant="menu"
-          />
-        </SettingsSection>
+        <SettingsTabRail
+          onSelect={(value) => {
+            if (MOBILE_SETTINGS_TABS.some((option) => option.value === value)) {
+              setSelectedSettingsTab(value as MobileSettingsTab);
+            }
+          }}
+          options={MOBILE_SETTINGS_TABS}
+          selected={selectedSettingsTab}
+          tone={accentColor}
+        />
         {showGatewaySettings && MOBILE_SETTINGS_ROOT_CHROME.gatewayConnectionDetails ? (
           <View style={styles.settingsSection}>
             <View style={styles.settingsGatewayCard}>

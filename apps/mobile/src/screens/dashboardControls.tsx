@@ -5,6 +5,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   Switch,
   Text,
   TextInput,
@@ -199,11 +200,12 @@ export function SettingSelector({
       0,
       options.findIndex((option) => option.value === selected)
     );
+    const segmentedAppearance = colors.background === "#000000" ? "dark" : "light";
     return (
       <View style={[styles.settingsField, styles.settingsSegmentField]}>
         <Text style={styles.settingsFieldLabel}>{label}</Text>
         <SegmentedControl
-          appearance="dark"
+          appearance={segmentedAppearance}
           enabled={!disabled}
           values={options.map((option) => option.label)}
           selectedIndex={selectedIndex}
@@ -263,9 +265,62 @@ export function SettingSelector({
   );
 }
 
-// iOS-style grouped info section: an uppercase header over an inset card of
-// key-value rows (label left, value right, hairline dividers) — the standard
-// Settings layout, replacing flat stacked "label above value" dumps.
+export function SettingsTabRail({
+  options,
+  selected,
+  tone = colors.cyan,
+  onSelect,
+}: {
+  options: Array<{ label: string; value: string }>;
+  selected: string;
+  tone?: string;
+  onSelect: (value: string) => void;
+}) {
+  return (
+    <View style={styles.settingsCategoryRailWrap}>
+      <ScrollView
+        horizontal
+        keyboardShouldPersistTaps="handled"
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.settingsCategoryRail}
+      >
+        {options.map((option) => {
+          const isSelected = option.value === selected;
+          return (
+            <Pressable
+              accessibilityRole="tab"
+              accessibilityLabel={option.label}
+              accessibilityState={{ selected: isSelected }}
+              key={option.value}
+              onPress={() => {
+                haptics.select();
+                onSelect(option.value);
+              }}
+              style={[
+                styles.settingsCategoryChip,
+                isSelected && [
+                  styles.settingsCategoryChipActive,
+                  { backgroundColor: `${tone}18`, borderColor: `${tone}88` },
+                ],
+              ]}
+            >
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.settingsCategoryText,
+                  isSelected && styles.settingsCategoryTextActive,
+                ]}
+              >
+                {option.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}
+
 export function DetailInfoSection({
   title,
   fields,

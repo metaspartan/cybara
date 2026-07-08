@@ -368,6 +368,38 @@ const makeStyles = () =>
     settingsNativePage: {
       gap: spacing.lg,
     },
+    settingsCategoryRailWrap: {
+      paddingHorizontal: spacing.lg,
+    },
+    settingsCategoryRail: {
+      gap: spacing.xs,
+      paddingBottom: spacing.xs,
+      paddingRight: spacing.lg,
+    },
+    settingsCategoryChip: {
+      alignItems: "center",
+      backgroundColor: colors.surfaceLift,
+      borderColor: colors.border,
+      borderRadius: 999,
+      borderWidth: StyleSheet.hairlineWidth,
+      justifyContent: "center",
+      minHeight: 38,
+      minWidth: 82,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 9,
+    },
+    settingsCategoryChipActive: {
+      backgroundColor: `${colors.cyan}18`,
+      borderColor: `${colors.cyan}88`,
+    },
+    settingsCategoryText: {
+      color: colors.textMuted,
+      fontSize: typography.label,
+      fontWeight: "800",
+    },
+    settingsCategoryTextActive: {
+      color: colors.text,
+    },
     settingsSection: {
       gap: spacing.xs,
       paddingHorizontal: spacing.lg,
@@ -731,7 +763,6 @@ const makeStyles = () =>
     codeTextMonospace: {
       fontFamily: Platform.select({ ios: "Menlo", android: "monospace", default: "monospace" }),
     },
-    // ── Markdown rendering ──
     mdBlocks: {
       gap: spacing.sm,
     },
@@ -1132,12 +1163,12 @@ const makeStyles = () =>
       flex: 1,
       fontSize: typography.body,
       includeFontPadding: false,
-      lineHeight: 20,
+      lineHeight: MOBILE_CHAT_COMPOSER.lineHeight,
       maxHeight: MOBILE_CHAT_COMPOSER.maxHeight,
       minHeight: MOBILE_CHAT_COMPOSER.minHeight,
       paddingHorizontal: spacing.sm,
-      paddingTop: Platform.OS === "ios" ? 10 : 8,
-      paddingBottom: Platform.OS === "ios" ? 8 : 7,
+      paddingTop: Platform.OS === "ios" ? 11 : 9,
+      paddingBottom: Platform.OS === "ios" ? 10 : 8,
     },
     sendButton: {
       alignItems: "center",

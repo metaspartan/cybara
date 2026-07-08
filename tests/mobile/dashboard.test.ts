@@ -53,8 +53,6 @@ import {
   summarizeFeatureCounts,
 } from "../../apps/mobile/src/lib/dashboard";
 
-// The settings/detail panels were split into their own module; the screen
-// "source" for these structural assertions is the union of both.
 const dashboardScreenSource =
   readFileSync(
     new URL("../../apps/mobile/src/screens/DashboardScreen.tsx", import.meta.url),
@@ -64,7 +62,6 @@ const dashboardScreenSource =
     new URL("../../apps/mobile/src/screens/dashboardSettingsPanels.tsx", import.meta.url),
     "utf8"
   );
-// Pure display/derivation helpers were extracted out of the screen.
 const dashboardHelpersSource = readFileSync(
   new URL("../../apps/mobile/src/screens/dashboardHelpers.ts", import.meta.url),
   "utf8"
@@ -211,7 +208,6 @@ describe("mobile dashboard model", () => {
       "settings",
     ]);
     expect(MOBILE_TABS.find((tab) => tab.key === "sessions")?.label).toBe("Chats");
-    // Settings is now the last bottom tab (no header gear).
     expect(MOBILE_TABS.at(-1)?.key).toBe("settings");
     expect(MOBILE_TABS.filter((tab) => tab.showsGatewayPanel).map((tab) => tab.key)).toEqual([]);
     expect(MOBILE_HOME_CHROME.firstSection).toBe("recent_activity");
@@ -222,6 +218,7 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_SETTINGS_ROOT_CHROME.gatewayConnectionDetails).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.gatewayRefreshButton).toBe(false);
     expect(MOBILE_SETTINGS_ROOT_CHROME.destructiveDisconnectButton).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.nativeCategoryRail).toBe(true);
     expect(MOBILE_GATEWAY_PANEL_CHROME.showUptime).toBe(true);
     expect(MOBILE_GATEWAY_PANEL_CHROME.showApiStatusTile).toBe(false);
     expect(MOBILE_GATEWAY_PANEL_CHROME.showGatewayUrlRow).toBe(false);
@@ -264,6 +261,9 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_CHAT_COMPOSER.preserveDraftOnFailure).toBe(true);
     expect(MOBILE_CHAT_COMPOSER.newlineExpandsInput).toBe(true);
     expect(MOBILE_CHAT_COMPOSER.minHeight).toBeLessThan(MOBILE_CHAT_COMPOSER.maxHeight);
+    expect(MOBILE_CHAT_COMPOSER.maxHeight).toBeGreaterThanOrEqual(
+      MOBILE_CHAT_COMPOSER.minHeight + MOBILE_CHAT_COMPOSER.lineHeight * 6
+    );
     expect(boundedMobileComposerHeight(20)).toBe(MOBILE_CHAT_COMPOSER.minHeight);
     expect(boundedMobileComposerHeight(84.2)).toBe(85);
     expect(boundedMobileComposerHeight(300)).toBe(MOBILE_CHAT_COMPOSER.maxHeight);
@@ -272,6 +272,9 @@ describe("mobile dashboard model", () => {
     );
     expect(mobileComposerHeightForDraft("one\ntwo\nthree", 300)).toBe(
       MOBILE_CHAT_COMPOSER.maxHeight
+    );
+    expect(mobileComposerHeightForDraft("1\n2\n3\n4\n5\n6\n7")).toBeGreaterThanOrEqual(
+      MOBILE_CHAT_COMPOSER.minHeight + MOBILE_CHAT_COMPOSER.lineHeight * 6
     );
     expect(dashboardScreenSource).toContain('accessibilityLabel="Attach files or images"');
     expect(dashboardScreenSource).toContain("const openAttachmentMenu");
@@ -583,8 +586,9 @@ describe("mobile dashboard model", () => {
     ]);
     expect(dashboardScreenSource).toContain("const [selectedSettingsTab, setSelectedSettingsTab]");
     expect(dashboardScreenSource).toContain("MOBILE_SETTINGS_TABS.some");
-    expect(dashboardScreenSource).toContain('label="Category"');
-    expect(dashboardScreenSource).toContain('variant="menu"');
+    expect(dashboardScreenSource).toContain("<SettingsTabRail");
+    expect(dashboardStylesSource).toContain("settingsCategoryRail");
+    expect(dashboardStylesSource).toContain("settingsCategoryChip");
     expect(dashboardScreenSource).toContain('title="Safety controls"');
     for (const guard of [
       "showGeneralSettings",

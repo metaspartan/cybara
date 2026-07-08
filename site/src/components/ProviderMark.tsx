@@ -120,19 +120,18 @@ export function ProviderMark({ mark }: ProviderMarkProps): React.ReactElement {
       return (
         <svg {...common}>
           <path
-            d="M4 19V6l4 6 4-6 4 6 4-6v13"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+            d="M11.43 3.92a.86.86 0 1 0-1.718 0v14.236a1.999 1.999 0 0 1-3.997 0V9.022a.86.86 0 1 0-1.718 0v3.87a1.999 1.999 0 0 1-3.997 0V11.49a.57.57 0 0 1 1.139 0v1.404a.86.86 0 0 0 1.719 0V9.022a1.999 1.999 0 0 1 3.997 0v9.134a.86.86 0 0 0 1.719 0V3.92a1.998 1.998 0 1 1 3.996 0v11.788a.57.57 0 1 1-1.139 0zm10.572 3.105a2 2 0 0 0-1.999 1.997v7.63a.86.86 0 0 1-1.718 0V3.923a1.999 1.999 0 0 0-3.997 0v16.16a.86.86 0 0 1-1.719 0V18.08a.57.57 0 1 0-1.138 0v2a1.998 1.998 0 0 0 3.996 0V3.92a.86.86 0 0 1 1.719 0v12.73a1.999 1.999 0 0 0 3.996 0V9.023a.86.86 0 1 1 1.72 0v6.686a.57.57 0 0 0 1.138 0V9.022a2 2 0 0 0-1.998-1.997"
+            fill="currentColor"
           />
         </svg>
       );
     case "zhipu":
       return (
-        <svg {...common}>
-          <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3Z" stroke="currentColor" strokeWidth="1.4" />
-          <path d="M9 9h6l-6 6h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        <svg {...common} fillRule="evenodd">
+          <path
+            d="M12.105 2L9.927 4.953H.653L2.83 2h9.276zM23.254 19.048L21.078 22h-9.242l2.174-2.952h9.244zM24 2L9.264 22H0L14.736 2H24z"
+            fill="currentColor"
+          />
         </svg>
       );
     case "bedrock":
@@ -144,13 +143,18 @@ export function ProviderMark({ mark }: ProviderMarkProps): React.ReactElement {
       );
     case "azure":
       return (
-        <svg {...common}>
+        <svg {...common} viewBox="0 0 96 96">
           <path
-            d="M8.6 3.6h6.3l-6.6 19.2H3.2l4.1-11.4 6.6 5.6-7 .9 7.6 2.7"
-            stroke="currentColor"
-            strokeWidth="1.3"
-            strokeLinejoin="round"
-            fill="none"
+            d="M33.34 6.54h26.04l-27.03 80.1a4.15 4.15 0 0 1-3.94 2.81H8.15a4.14 4.14 0 0 1-3.93-5.47L29.4 9.38a4.15 4.15 0 0 1 3.94-2.83z"
+            fill="currentColor"
+          />
+          <path
+            d="M71.17 60.26H29.88a1.91 1.91 0 0 0-1.3 3.31l26.53 24.76a4.17 4.17 0 0 0 2.85 1.13h23.38z"
+            fill="currentColor"
+          />
+          <path
+            d="M66.6 9.36a4.14 4.14 0 0 0-3.93-2.82H33.65a4.15 4.15 0 0 1 3.93 2.82l25.18 74.62a4.15 4.15 0 0 1-3.93 5.48h29.02a4.15 4.15 0 0 0 3.93-5.48z"
+            fill="currentColor"
           />
         </svg>
       );

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, rmSync } from "fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import path from "path";
 import { GatewayIntentBits } from "discord.js";
 import {
@@ -204,6 +204,29 @@ async function handleDiscordReaction(
   ).handleReactionEvent(channelId, reaction, user, action);
 }
 
+async function sendLongDiscordMessage(
+  adapter: DiscordAdapter,
+  response: string,
+  replies: unknown[],
+  followUps: unknown[]
+): Promise<void> {
+  const message = {
+    reply: async (messageResponse: unknown) => {
+      replies.push(messageResponse);
+    },
+    channel: {
+      send: async (messageResponse: unknown) => {
+        followUps.push(messageResponse);
+      },
+    },
+  };
+  await (
+    adapter as unknown as {
+      sendLongMessage: (msg: typeof message, text: string) => Promise<void>;
+    }
+  ).sendLongMessage(message, response);
+}
+
 describe("Discord adapter mocked message flows", () => {
   test("ignores guild messages when bot is not mentioned", async () => {
     const adapter = new DiscordAdapter();
@@ -383,6 +406,60 @@ describe("Discord adapter mocked message flows", () => {
       if (captured?.filePath && existsSync(captured.filePath)) {
         rmSync(captured.filePath, { force: true });
       }
+    }
+  });
+
+  test("attaches trusted generated image file references to outbound replies", async () => {
+    const adapter = new DiscordAdapter();
+    const replies: unknown[] = [];
+    const followUps: unknown[] = [];
+    const mediaDir = path.join(cybaraDir, "media", "discord-outbound-test");
+    const imagePath = path.join(mediaDir, "render.png");
+
+    try {
+      mkdirSync(mediaDir, { recursive: true });
+      writeFileSync(imagePath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+      await sendLongDiscordMessage(
+        adapter,
+        `Here is the render.\n\n![render](file://${imagePath})`,
+        replies,
+        followUps
+      );
+
+      expect(replies).toHaveLength(1);
+      expect(followUps).toHaveLength(0);
+      const reply = replies[0] as { content?: string; files?: unknown[] };
+      expect(reply.content).toBe("Here is the render.");
+      expect(Array.isArray(reply.files)).toBe(true);
+      expect(reply.files).toHaveLength(1);
+    } finally {
+      rmSync(mediaDir, { recursive: true, force: true });
+    }
+  });
+
+  test("does not attach arbitrary local file references to outbound replies", async () => {
+    const adapter = new DiscordAdapter();
+    const replies: unknown[] = [];
+    const followUps: unknown[] = [];
+    const imagePath = path.join(process.cwd(), "discord-untrusted.png");
+
+    try {
+      writeFileSync(imagePath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+
+      await sendLongDiscordMessage(
+        adapter,
+        `Here is an image.\n\n![render](file://${imagePath})`,
+        replies,
+        followUps
+      );
+
+      expect(replies).toHaveLength(1);
+      const reply = replies[0] as string;
+      expect(reply).toBe("Here is an image.");
+      expect(followUps).toHaveLength(0);
+    } finally {
+      rmSync(imagePath, { force: true });
     }
   });
 

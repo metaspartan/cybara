@@ -1,4 +1,5 @@
 import { SectionHeading } from "./SectionHeading";
+import { ChannelMark } from "./ChannelMark";
 import { CHANNELS } from "../content";
 
 export function Channels(): React.ReactElement {
@@ -13,6 +14,9 @@ export function Channels(): React.ReactElement {
         <div className="channel-cloud">
           {CHANNELS.map((channel) => (
             <span className="channel-chip" key={channel}>
+              <span className="channel-mark">
+                <ChannelMark channel={channel} />
+              </span>
               {channel}
             </span>
           ))}

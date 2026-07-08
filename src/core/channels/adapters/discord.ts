@@ -24,6 +24,7 @@ import { buildChannelSecurityConfig, securityManager } from "../security";
 import { handleChannelManagementCommand } from "../commands";
 import { sendChannelRuntimeMessage } from "../chat-runtime";
 import { saveInboundMediaFromUrl } from "../media";
+import { cybaraDir } from "../../paths";
 
 export const discordSessions = new Map<string, string>();
 
@@ -149,6 +150,24 @@ function shouldNotifyDiscordReactions(
   if (scope === "dm") return isDM;
   if (scope === "guild") return !isDM;
   return false;
+}
+
+function isInsidePath(base: string, path: string): boolean {
+  const normalizedBase = resolve(base);
+  return path === normalizedBase || path.startsWith(normalizedBase + sep);
+}
+
+function isTrustedOutboundImagePath(path: string): boolean {
+  const imageFile = /\.(png|jpe?g|gif|webp)$/i.test(path);
+  if (!imageFile || !existsSync(path)) return false;
+
+  const globalRoots = ["screenshots", "attachments", "media"].map((name) =>
+    resolve(cybaraDir, name)
+  );
+  if (globalRoots.some((root) => isInsidePath(root, path))) return true;
+
+  const home = resolve(process.env.HOME || process.env.USERPROFILE || homedir());
+  return isInsidePath(home, path) && path.includes(`${sep}.cybara${sep}media${sep}`);
 }
 
 export class DiscordAdapter implements ChannelAdapter {
@@ -744,33 +763,17 @@ export class DiscordAdapter implements ChannelAdapter {
     });
   }
 
-  /**
-   * Extract local image files referenced via file:// (e.g. screenshots produced
-   * by computer_use/browser tools), returning the attachments plus the response
-   * text with those markers stripped so Discord shows the image, not a raw path.
-   */
   private extractFileAttachments(response: string): {
     text: string;
     files: AttachmentBuilder[];
   } {
     const files: AttachmentBuilder[] = [];
     const seen = new Set<string>();
-    const screenshotsBase = resolve(
-      process.env.HOME || process.env.USERPROFILE || homedir(),
-      ".cybara",
-      "screenshots"
-    );
     const pattern = /(?:!\[[^\]]*\]\()?file:\/\/(\/[^\s)]+)\)?/g;
     const text = response
       .replace(pattern, (_match, rawPath: string) => {
         const path = resolve(decodeURI(rawPath));
-        const contained = path === screenshotsBase || path.startsWith(screenshotsBase + sep);
-        if (
-          contained &&
-          !seen.has(path) &&
-          existsSync(path) &&
-          /\.(png|jpe?g|gif|webp)$/i.test(path)
-        ) {
+        if (!seen.has(path) && isTrustedOutboundImagePath(path)) {
           seen.add(path);
           files.push(new AttachmentBuilder(path));
         }
@@ -786,7 +789,6 @@ export class DiscordAdapter implements ChannelAdapter {
     const chunks = this.splitLongResponse(text);
 
     if (chunks.length === 0) {
-      // No text left, but we may still have an image to deliver.
       if (files.length > 0) {
         await message.reply({ content: "📸 Screenshot:", files });
       } else {
@@ -795,7 +797,6 @@ export class DiscordAdapter implements ChannelAdapter {
       return;
     }
 
-    // Attach files to the first message so the image shows inline with the reply.
     await message.reply(files.length > 0 ? { content: chunks[0], files } : chunks[0]);
 
     for (let i = 1; i < chunks.length; i++) {

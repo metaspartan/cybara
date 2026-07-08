@@ -538,7 +538,10 @@ img {
 }
 
 .channel-chip {
-  padding: 10px 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 17px 9px 12px;
   border-radius: 999px;
   background: var(--glass-surface);
   border: 1px solid var(--glass-border);
@@ -548,11 +551,29 @@ img {
   transition: transform 0.2s ease, color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 
+.channel-mark {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  color: #c4b5fd;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
 .channel-chip:hover {
   transform: translateY(-3px);
   color: var(--text);
   border-color: rgba(139, 92, 246, 0.45);
   background: var(--accent-soft);
+}
+
+.channel-chip:hover .channel-mark {
+  color: #ddd6fe;
+  background: rgba(139, 92, 246, 0.22);
 }
 
 .platform-grid {
