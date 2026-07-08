@@ -1,0 +1,46 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "src/index.ts",
+    "src/main.ts",
+    "src/cli.tsx",
+    "src/cli-*.ts",
+    "scripts/*.ts",
+    "tests/**/*.test.ts",
+    "ui/src/main.tsx",
+    "apps/mobile/App.tsx",
+    "apps/mobile/src/**/*.tsx",
+    "apps/mobile/src/**/*.ts"
+  ],
+  "project": [
+    "src/**/*.ts",
+    "scripts/**/*.ts",
+    "tests/**/*.ts",
+    "ui/src/**/*.{ts,tsx}",
+    "apps/mobile/**/*.{ts,tsx}"
+  ],
+  "ignore": [
+    "dist/**",
+    "ui/dist/**",
+    "src-tauri/**",
+    "site/**",
+    "release/**",
+    "app-store-assets/**",
+    "output/**",
+    "artifacts/**",
+    "templates/**",
+    "skills/**",
+    ".research/**",
+    ".tmp/**",
+    "tmp/**"
+  ],
+  "ignoreDependencies": [
+    "@types/bun",
+    "@types/react",
+    "typescript-language-server"
+  ],
+  "ignoreBinaries": [
+    "tauri",
+    "swift"
+  ]
+}

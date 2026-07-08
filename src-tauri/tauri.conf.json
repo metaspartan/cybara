@@ -46,7 +46,8 @@
       "msi",
       "nsis",
       "deb",
-      "rpm"
+      "rpm",
+      "appimage"
     ],
     "externalBin": [
       "bin/cybara"
