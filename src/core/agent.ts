@@ -254,7 +254,6 @@ export const AGENT_TYPES = {
 export interface AgentMessage {
   role: "user" | "assistant" | "system" | "tool";
   content: string;
-  /** Optional image inputs (vision). Only honored on user messages. */
   images?: AgentImage[];
   tool_calls?: Array<{
     id: string;
@@ -290,13 +289,6 @@ interface RunningAgentState {
 class AgentManager {
   private runningAgents: Map<string, RunningAgentState> = new Map();
 
-  /**
-   * Pull the human-readable detail out of a raw LLM failure. Provider errors
-   * arrive as `API error: <status> - <body>` where body is often OpenAI-style
-   * JSON (`{"error":{"message":"..."}}`) or plain text. Returns a trimmed
-   * single-line detail so the fallback can show the real cause instead of a
-   * blank apology.
-   */
   private extractLlmErrorDetail(message: string): string | undefined {
     const afterDash = message.replace(/^API error:\s*\d+\s*-\s*/i, "");
     const candidate = afterDash !== message ? afterDash : message;
@@ -317,9 +309,7 @@ class AgentManager {
           (typeof parsed.detail === "string" && parsed.detail) ||
           "";
         if (detail) return detail.replace(/\s+/g, " ").slice(0, 300);
-      } catch {
-        // Not JSON; fall through to the raw text.
-      }
+      } catch {}
     }
     return trimmed.replace(/\s+/g, " ").slice(0, 300);
   }
