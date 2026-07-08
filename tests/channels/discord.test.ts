@@ -463,6 +463,24 @@ describe("Discord adapter mocked message flows", () => {
     }
   });
 
+  test("ignores malformed outbound file URI references without failing the reply", async () => {
+    const adapter = new DiscordAdapter();
+    const replies: unknown[] = [];
+    const followUps: unknown[] = [];
+
+    await sendLongDiscordMessage(
+      adapter,
+      "Here is an image.\n\n![render](file:///Users/carsen/%E0%A4%A.png)",
+      replies,
+      followUps
+    );
+
+    expect(replies).toHaveLength(1);
+    const reply = replies[0] as string;
+    expect(reply).toBe("Here is an image.");
+    expect(followUps).toHaveLength(0);
+  });
+
   test("keeps typing indicator alive while long handler work is running", async () => {
     const adapter = new DiscordAdapter();
     const channelId = makeChannelId("discord-typing-loop");

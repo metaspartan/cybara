@@ -170,6 +170,14 @@ function isTrustedOutboundImagePath(path: string): boolean {
   return isInsidePath(home, path) && path.includes(`${sep}.cybara${sep}media${sep}`);
 }
 
+function decodeOutboundFilePath(rawPath: string): string | null {
+  try {
+    return resolve(decodeURI(rawPath));
+  } catch {
+    return null;
+  }
+}
+
 export class DiscordAdapter implements ChannelAdapter {
   type = "discord" as const;
   name = "Discord";
@@ -772,7 +780,8 @@ export class DiscordAdapter implements ChannelAdapter {
     const pattern = /(?:!\[[^\]]*\]\()?file:\/\/(\/[^\s)]+)\)?/g;
     const text = response
       .replace(pattern, (_match, rawPath: string) => {
-        const path = resolve(decodeURI(rawPath));
+        const path = decodeOutboundFilePath(rawPath);
+        if (!path) return "";
         if (!seen.has(path) && isTrustedOutboundImagePath(path)) {
           seen.add(path);
           files.push(new AttachmentBuilder(path));
