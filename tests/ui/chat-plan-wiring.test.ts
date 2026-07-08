@@ -14,6 +14,9 @@ const chatModelPath = fileURLToPath(
 const planCardPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/PlanSummaryCard.tsx", import.meta.url)
 );
+const environmentOverviewPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ChatEnvironmentOverview.tsx", import.meta.url)
+);
 const apiPath = fileURLToPath(new URL("../../ui/src/lib/api.ts", import.meta.url));
 const artifactsPath = fileURLToPath(new URL("../../ui/src/pages/Artifacts.tsx", import.meta.url));
 
@@ -22,6 +25,7 @@ function readUiSource(): string {
     readFileSync(chatPagePath, "utf8"),
     readFileSync(chatModelPath, "utf8"),
     readFileSync(planCardPath, "utf8"),
+    readFileSync(environmentOverviewPath, "utf8"),
     readFileSync(apiPath, "utf8"),
     readFileSync(artifactsPath, "utf8"),
   ].join("\n");
@@ -34,6 +38,8 @@ describe("chat plan and artifact UI wiring", () => {
     expect(source).toContain("collectPlanFromToolCalls");
     expect(source).toContain("collectPlanTimelineFromMessages(typedMessages, sessionId)");
     expect(source).toContain("ChatEnvironmentOverview");
+    expect(source).toContain("Chat overview and current plan state");
+    expect(source).toContain("Latest plan update");
     expect(source).toContain("extractLatestPlanFromMessages(typedMessages, sessionId)");
     expect(source).toContain(
       "{currentSessionPlan && <PlanSummaryCard plan={currentSessionPlan} compact />}"

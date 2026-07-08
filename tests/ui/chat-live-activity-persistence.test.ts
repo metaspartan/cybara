@@ -358,7 +358,11 @@ describe("Chat live activity persistence", () => {
 
   test("does not cap inferred thinking timeline lines", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
-    expect(source).not.toContain(".slice(0, 24)");
+    const functionBody = source.match(
+      /function inferThoughtActivitiesFromThinking\([\s\S]*?\n}\n\nfunction resolveWorkedDurationMs/
+    )?.[0];
+    expect(functionBody).toBeTruthy();
+    expect(functionBody).not.toContain(".slice(0, 24)");
   });
 
   test("supports multiline compose and dictation controls", () => {
