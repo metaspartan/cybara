@@ -664,26 +664,23 @@ struct ChatScreen: View {
 
     private var sessionList: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text("Chats")
-                    .font(.system(size: 15, weight: .bold, design: .rounded))
-                Spacer()
-                Button {
-                    startNewChat()
-                } label: {
-                    Image(systemName: "square.and.pencil")
-                }
-                .buttonStyle(.borderless)
-                .help("New chat")
-            }
-            .padding(14)
+            TextField("Search chats", text: $searchText)
+                .textFieldStyle(.roundedBorder)
+                .padding(.horizontal, 14)
+                .padding(.top, 14)
+                .padding(.bottom, 10)
 
-            if !sessions.isEmpty {
-                TextField("Search chats", text: $searchText)
-                    .textFieldStyle(.roundedBorder)
-                    .padding(.horizontal, 14)
-                    .padding(.bottom, 10)
+            Button {
+                startNewChat()
+            } label: {
+                Label("New Chat", systemImage: "plus")
+                    .frame(maxWidth: .infinity)
             }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 10)
+            .help("New chat")
 
             List(selection: $selectedSessionID) {
                 if filteredSessions.isEmpty {

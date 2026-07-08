@@ -61,6 +61,9 @@ interface SessionsPanelProps {
 }
 
 const PINNED_WORKSPACE_GROUPS_STORAGE_KEY = "cybara.chat.pinnedWorkspaceGroupIds";
+const CHAT_SIDEBAR_WIDTH_STORAGE_KEY = "cybara.chat.sidebarWidth";
+const CHAT_SIDEBAR_MIN_WIDTH = 248;
+const CHAT_SIDEBAR_MAX_WIDTH = 420;
 
 interface SessionTooltipState {
   anchor: DOMRect;
@@ -85,6 +88,20 @@ function readPinnedWorkspaceGroupIds(): Set<string> {
 
 function persistPinnedWorkspaceGroupIds(ids: Set<string>) {
   window.localStorage.setItem(PINNED_WORKSPACE_GROUPS_STORAGE_KEY, JSON.stringify([...ids]));
+}
+
+function clampSidebarWidth(width: number): number {
+  return Math.max(CHAT_SIDEBAR_MIN_WIDTH, Math.min(CHAT_SIDEBAR_MAX_WIDTH, Math.round(width)));
+}
+
+function readSidebarWidth(): number {
+  if (typeof window === "undefined") return 288;
+  const stored = Number(window.localStorage.getItem(CHAT_SIDEBAR_WIDTH_STORAGE_KEY));
+  return Number.isFinite(stored) ? clampSidebarWidth(stored) : 288;
+}
+
+function persistSidebarWidth(width: number) {
+  window.localStorage.setItem(CHAT_SIDEBAR_WIDTH_STORAGE_KEY, String(clampSidebarWidth(width)));
 }
 
 function compactSidebarRelativeTime(value?: string | null): string {
@@ -161,7 +178,6 @@ function SessionHoverCard({ tooltip }: { tooltip: SessionTooltipState | null }) 
 
 export function SessionsPanel({
   isOpen,
-  onClose,
   currentSessionId,
   activeSessionIds,
   currentSessionLoading,
@@ -182,6 +198,7 @@ export function SessionsPanel({
     null
   );
   const [openGroupMenuId, setOpenGroupMenuId] = useState<string | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [pinnedWorkspaceGroupIds, setPinnedWorkspaceGroupIds] = useState<Set<string>>(
     readPinnedWorkspaceGroupIds
   );
@@ -238,6 +255,32 @@ export function SessionsPanel({
       }
     };
   }, [refetch]);
+
+  const beginResizeSidebar = (event: MouseEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+
+    const handleMouseMove = (moveEvent: globalThis.MouseEvent) => {
+      const nextWidth = clampSidebarWidth(startWidth + moveEvent.clientX - startX);
+      setSidebarWidth(nextWidth);
+    };
+
+    const handleMouseUp = (upEvent: globalThis.MouseEvent) => {
+      const nextWidth = clampSidebarWidth(startWidth + upEvent.clientX - startX);
+      setSidebarWidth(nextWidth);
+      persistSidebarWidth(nextWidth);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
 
   const handleLoadSession = async (sessionId: string) => {
     try {
@@ -338,66 +381,40 @@ export function SessionsPanel({
 
   return (
     <>
-      <div className="w-72 glass-strong border-r border-white/5 flex flex-col">
-        <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
-          <div className="flex items-center gap-2">
-            <MessageSquare className="w-3.5 h-3.5 accent-text" />
-            <h3 className="text-sm font-medium text-white">Chats</h3>
-            {sessions && sessions.length > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-gray-400">
-                {sessions.length}
-              </span>
+      <div
+        className="relative glass-strong border-r border-white/5 flex shrink-0 flex-col"
+        style={{ width: sidebarWidth }}
+        data-testid="chat-session-sidebar"
+      >
+        <div className="px-3 pt-3 pb-2 border-b border-white/5">
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+            <input
+              type="search"
+              aria-label="Search sessions"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && searchQuery) {
+                  event.preventDefault();
+                  setSearchQuery("");
+                }
+              }}
+              placeholder="Search chats..."
+              className="w-full rounded-lg border border-white/10 bg-black/30 pl-8 pr-7 py-1.5 text-[12px] text-white placeholder:text-gray-600 !outline-none focus:border-indigo-400/50"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white cursor-pointer"
+                title="Clear search"
+                aria-label="Clear session search"
+              >
+                <X className="w-3 h-3" />
+              </button>
             )}
           </div>
-          <div className="flex items-center">
-            <button
-              onClick={onNewSession}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
-              aria-label="New chat"
-            >
-              <Plus className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
-              aria-label="Close chats"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
         </div>
-
-        {sessions && sessions.length > 0 && (
-          <div className="px-3 py-2 border-b border-white/5">
-            <div className="relative">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
-              <input
-                type="search"
-                aria-label="Search sessions"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape" && searchQuery) {
-                    event.preventDefault();
-                    setSearchQuery("");
-                  }
-                }}
-                placeholder="Search chats..."
-                className="w-full rounded-lg border border-white/10 bg-black/30 pl-8 pr-7 py-1.5 text-[12px] text-white placeholder:text-gray-600 !outline-none focus:border-indigo-400/50"
-              />
-              {searchQuery && (
-                <button
-                  onClick={() => setSearchQuery("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white cursor-pointer"
-                  title="Clear search"
-                  aria-label="Clear session search"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
-          </div>
-        )}
 
         <div className="flex-1 overflow-y-auto p-2 space-y-3">
           <button
@@ -666,6 +683,13 @@ export function SessionsPanel({
             ))
           )}
         </div>
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize chat sidebar"
+          onMouseDown={beginResizeSidebar}
+          className="absolute right-[-3px] top-0 z-40 h-full w-1.5 cursor-col-resize touch-none bg-transparent transition-colors hover:bg-[rgba(var(--accent-primary),0.45)]"
+        />
       </div>
       <SessionHoverCard tooltip={hoveredSessionTooltip} />
 
