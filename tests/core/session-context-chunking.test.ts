@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
   computeAdaptiveChunkRatio,
   estimateMessageTokens,
+  estimateMessageTranscriptTokens,
   estimateMessagesTokens,
+  estimateSessionContextUsage,
   splitMessagesByTokenShare,
   isOversizedForSummary,
 } from "../../src/core/session-context";
@@ -23,6 +25,57 @@ describe("session-context chunking helpers", () => {
     const msgs = [msg("user", "one"), msg("assistant", "two two")];
     const total = estimateMessagesTokens(msgs);
     expect(total).toBeGreaterThan(estimateMessageTokens(msgs[0]));
+  });
+
+  test("active context estimate excludes stored tool timeline metadata", () => {
+    const message = {
+      ...msg("assistant", "Done."),
+      thinking: "hidden thought ".repeat(100),
+      tool_calls: [
+        {
+          id: "tool-1",
+          name: "read",
+          args: { path: "/tmp/example.ts" },
+          status: "completed",
+          result: { content: "x".repeat(40_000) },
+        },
+      ],
+      process_activities: [
+        {
+          id: "activity-1",
+          phase: "result",
+          text: "Read a large file",
+          timestamp: Date.now(),
+          toolName: "read",
+        },
+      ],
+    } as Parameters<typeof estimateMessageTokens>[0];
+    expect(estimateMessageTokens(message)).toBeLessThan(100);
+    expect(estimateMessageTranscriptTokens(message)).toBeGreaterThan(10_000);
+  });
+
+  test("session context usage reports active tokens separately from transcript metadata", () => {
+    const messages = [
+      msg("user", "review this repository"),
+      {
+        ...msg("assistant", "I reviewed the repository."),
+        tool_calls: [
+          {
+            id: "tool-1",
+            name: "read",
+            args: {},
+            status: "completed",
+            result: "x".repeat(80_000),
+          },
+        ],
+      },
+    ] as Parameters<typeof estimateSessionContextUsage>[0];
+    const usage = estimateSessionContextUsage(messages, "grok-build");
+    expect(usage.usedTokens).toBeLessThan(usage.transcriptTokens);
+    expect(usage.metadataTokens).toBe(usage.transcriptTokens - usage.usedTokens);
+    expect(usage.usedPercent).toBeLessThan(100);
+    expect(usage.compacted).toBe(false);
+    expect(usage.source).toBe("estimated");
   });
 
   test("splitMessagesByTokenShare splits into N roughly-equal chunks", () => {

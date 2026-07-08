@@ -16,11 +16,44 @@ function formatTokenCount(value: number): string {
 
 function contextUsageLabel(usage?: SessionContextUsage | null): string {
   if (!usage) return "Context usage unavailable until this session is loaded.";
-  return `${formatTokenCount(usage.usedTokens)} of ${formatTokenCount(
+  const details = [
+    `Active context: ${formatTokenCount(usage.usedTokens)} of ${formatTokenCount(
+      usage.limitTokens
+    )} tokens used (${usage.usedPercent}%). ${formatTokenCount(
+      usage.remainingTokens
+    )} tokens remaining.`,
+  ];
+  if (usage.compacted && (usage.compactionCount || 0) > 0) {
+    details.push(`Compacted ${usage.compactionCount} time${usage.compactionCount === 1 ? "" : "s"}.`);
+  }
+  if ((usage.metadataTokens || 0) > 0) {
+    details.push(`${formatTokenCount(usage.metadataTokens || 0)} transcript metadata tokens are not replayed to the model.`);
+  }
+  return details.join(" ");
+}
+
+function contextUsageDetailRows(usage?: SessionContextUsage | null): Array<string> {
+  if (!usage) return [];
+  const rows: string[] = [];
+  if (usage.compacted && (usage.compactionCount || 0) > 0) {
+    rows.push(`Compacted ${usage.compactionCount} time${usage.compactionCount === 1 ? "" : "s"}`);
+  }
+  if ((usage.compactedTokens || 0) > 0) {
+    rows.push(`${formatTokenCount(usage.compactedTokens || 0)} tokens summarized out of the active window`);
+  }
+  if ((usage.metadataTokens || 0) > 0 && (usage.transcriptTokens || 0) > usage.usedTokens) {
+    rows.push(`${formatTokenCount(usage.metadataTokens || 0)} tool/timeline metadata tokens not replayed`);
+  }
+  if (usage.source === "estimated") {
+    rows.push("Estimated from the active provider prompt");
+  }
+  return rows;
+}
+
+function contextUsagePrimaryDetail(usage: SessionContextUsage): string {
+  return `${formatTokenCount(usage.usedTokens)} / ${formatTokenCount(
     usage.limitTokens
-  )} tokens used (${usage.usedPercent}%). ${formatTokenCount(
-    usage.remainingTokens
-  )} tokens remaining.`;
+  )} active tokens`;
 }
 
 function providerPlanTooltipRows(
@@ -45,18 +78,19 @@ function contextUsageTooltip(
       title: "Context window:",
       body: "Not loaded yet",
       detail: "Open a session or send a message to estimate usage.",
+      detailRows: [],
       planDetail,
       planRows,
     };
   }
   const percent = Math.min(100, Math.max(0, usage.usedPercent));
+  const detailRows = contextUsageDetailRows(usage);
   return {
     percent: `${Math.round(percent)}%`,
     title: "Context window:",
     body: `${Math.round(percent)}% full`,
-    detail: `${formatTokenCount(usage.usedTokens)} / ${formatTokenCount(
-      usage.limitTokens
-    )} tokens used`,
+    detail: contextUsagePrimaryDetail(usage),
+    detailRows,
     planDetail,
     planRows,
   };
@@ -134,6 +168,15 @@ export function ContextUsageRing({
         <div className="context-usage-tooltip-title">{tooltip.title}</div>
         <div className="context-usage-tooltip-body font-medium">{tooltip.body}</div>
         <div className="context-usage-tooltip-detail">{tooltip.detail}</div>
+        {tooltip.detailRows.length > 0 && (
+          <div className="mt-1 space-y-0.5 text-left text-[11px] leading-4">
+            {tooltip.detailRows.map((row) => (
+              <div key={row} className="context-usage-tooltip-detail">
+                {row}
+              </div>
+            ))}
+          </div>
+        )}
         {tooltip.planRows.length > 0 && (
           <div className="context-usage-tooltip-plan mt-2 space-y-1.5 border-t pt-2 text-left">
             <div className="text-[11px] font-medium">Plan usage</div>

@@ -3730,11 +3730,20 @@ function mobileFormatTokenCount(value: number): string {
 
 function mobileContextUsageDetail(usage?: SessionContextUsage): string {
   if (!usage) return "Context usage is available after the session loads from the gateway.";
-  return `${mobileFormatTokenCount(usage.usedTokens)} of ${mobileFormatTokenCount(
-    usage.limitTokens
-  )} tokens used (${usage.usedPercent}%). ${mobileFormatTokenCount(
-    usage.remainingTokens
-  )} tokens remaining.`;
+  const details = [
+    `Active context: ${mobileFormatTokenCount(usage.usedTokens)} of ${mobileFormatTokenCount(
+      usage.limitTokens
+    )} tokens used (${usage.usedPercent}%). ${mobileFormatTokenCount(
+      usage.remainingTokens
+    )} tokens remaining.`,
+  ];
+  if (usage.compacted && (usage.compactionCount || 0) > 0) {
+    details.push(`Compacted ${usage.compactionCount} time${usage.compactionCount === 1 ? "" : "s"}.`);
+  }
+  if ((usage.metadataTokens || 0) > 0) {
+    details.push(`${mobileFormatTokenCount(usage.metadataTokens || 0)} tool timeline tokens are not replayed.`);
+  }
+  return details.join(" ");
 }
 
 function mobileProviderPlanFor(

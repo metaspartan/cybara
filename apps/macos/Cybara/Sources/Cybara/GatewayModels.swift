@@ -565,10 +565,18 @@ struct GatewaySessionContextUsage: Decodable, Hashable {
     let remainingTokens: Int
     let usedPercent: Double
     let messageCount: Int
+    let transcriptTokens: Int?
+    let metadataTokens: Int?
+    let compacted: Bool?
+    let compactionCount: Int?
+    let compactedTokens: Int?
+    let source: String?
 
     private enum CodingKeys: String, CodingKey {
         case usedTokens, used_tokens, limitTokens, limit_tokens, remainingTokens, remaining_tokens
         case usedPercent, used_percent, messageCount, message_count
+        case transcriptTokens, transcript_tokens, metadataTokens, metadata_tokens
+        case compacted, compactionCount, compaction_count, compactedTokens, compacted_tokens, source
     }
 
     init(from decoder: Decoder) throws {
@@ -578,6 +586,12 @@ struct GatewaySessionContextUsage: Decodable, Hashable {
         remainingTokens = max(0, try container.decodeFlexibleInt(forKeys: [.remainingTokens, .remaining_tokens]) ?? limitTokens - usedTokens)
         usedPercent = try container.decodeFlexibleDouble(forKeys: [.usedPercent, .used_percent]) ?? min(100, (Double(usedTokens) / Double(limitTokens)) * 100)
         messageCount = max(0, try container.decodeFlexibleInt(forKeys: [.messageCount, .message_count]) ?? 0)
+        transcriptTokens = try container.decodeFlexibleInt(forKeys: [.transcriptTokens, .transcript_tokens])
+        metadataTokens = try container.decodeFlexibleInt(forKeys: [.metadataTokens, .metadata_tokens])
+        compacted = try container.decodeIfPresent(Bool.self, forKey: .compacted)
+        compactionCount = try container.decodeFlexibleInt(forKeys: [.compactionCount, .compaction_count])
+        compactedTokens = try container.decodeFlexibleInt(forKeys: [.compactedTokens, .compacted_tokens])
+        source = try container.decodeIfPresent(String.self, forKey: .source)
     }
 }
 

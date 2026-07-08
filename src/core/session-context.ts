@@ -224,6 +224,15 @@ export function estimateTokens(text: string): number {
 
 export function estimateMessageTokens(message: ChatMessage): number {
   const contentTokens = estimateTokens(message.content);
+  const imageTokens = Array.isArray(message.images) ? message.images.length * 768 : 0;
+  return contentTokens + imageTokens + 50;
+}
+
+export function estimateMessagesTokens(messages: ChatMessage[]): number {
+  return messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0);
+}
+
+export function estimateMessageTranscriptTokens(message: ChatMessage): number {
   const thinkingTokens = message.thinking ? estimateTokens(message.thinking) : 0;
   const toolTokens = message.tool_calls
     ? message.tool_calls.reduce((sum, tc) => sum + estimateTokens(JSON.stringify(tc)), 0)
@@ -234,11 +243,11 @@ export function estimateMessageTokens(message: ChatMessage): number {
         0
       )
     : 0;
-  return contentTokens + thinkingTokens + toolTokens + processActivityTokens + 50; // +50 for message overhead
+  return estimateMessageTokens(message) + thinkingTokens + toolTokens + processActivityTokens;
 }
 
-export function estimateMessagesTokens(messages: ChatMessage[]): number {
-  return messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0);
+export function estimateMessagesTranscriptTokens(messages: ChatMessage[]): number {
+  return messages.reduce((sum, msg) => sum + estimateMessageTranscriptTokens(msg), 0);
 }
 
 export interface SessionContextUsage {
@@ -247,22 +256,53 @@ export interface SessionContextUsage {
   remainingTokens: number;
   usedPercent: number;
   messageCount: number;
+  transcriptTokens: number;
+  metadataTokens: number;
+  compacted: boolean;
+  compactionCount: number;
+  compactedTokens: number;
+  source: "estimated";
 }
 
 export function estimateSessionContextUsage(
   messages: ChatMessage[],
-  model?: string
+  model?: string,
+  options?: {
+    sessionId?: string;
+    compactionCount?: number;
+  }
 ): SessionContextUsage {
   const usedTokens = Math.max(0, estimateMessagesTokens(messages));
+  const transcriptTokens = Math.max(usedTokens, estimateMessagesTranscriptTokens(messages));
   const limitTokens = Math.max(1, getContextWindow(model));
   const remainingTokens = Math.max(0, limitTokens - usedTokens);
   const usedPercent = Math.min(100, Math.round((usedTokens / limitTokens) * 1000) / 10);
+  const persistedCompactedTokens =
+    typeof options?.sessionId === "string" && options.sessionId.trim()
+      ? Math.max(0, tables.metrics.getTotal("context_compaction", options.sessionId.trim()))
+      : 0;
+  const compactionCount = Math.max(
+    0,
+    Number.isFinite(options?.compactionCount) ? Math.floor(options?.compactionCount ?? 0) : 0,
+    messages.filter(
+      (message) =>
+        typeof message.content === "string" &&
+        /^\[Context Summary:|^Previous conversation summary:/i.test(message.content.trim())
+    ).length
+  );
+  const compactedTokens = Math.max(0, Math.round(persistedCompactedTokens));
   return {
     usedTokens,
     limitTokens,
     remainingTokens,
     usedPercent,
     messageCount: messages.length,
+    transcriptTokens,
+    metadataTokens: Math.max(0, transcriptTokens - usedTokens),
+    compacted: compactionCount > 0 || compactedTokens > 0,
+    compactionCount,
+    compactedTokens,
+    source: "estimated",
   };
 }
 

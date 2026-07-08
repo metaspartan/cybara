@@ -1148,8 +1148,14 @@ struct ChatScreen: View {
             return "Context usage is available after the session loads."
         }
         var parts = [
-            "\(formatNativeTokenCount(usage.usedTokens)) of \(formatNativeTokenCount(usage.limitTokens)) tokens used (\(formatNativePercent(usage.usedPercent))). \(formatNativeTokenCount(usage.remainingTokens)) tokens remaining."
+            "Active context: \(formatNativeTokenCount(usage.usedTokens)) of \(formatNativeTokenCount(usage.limitTokens)) tokens used (\(formatNativePercent(usage.usedPercent))). \(formatNativeTokenCount(usage.remainingTokens)) tokens remaining."
         ]
+        if usage.compacted == true, let count = usage.compactionCount, count > 0 {
+            parts.append("Compacted \(count) time\(count == 1 ? "" : "s").")
+        }
+        if let metadataTokens = usage.metadataTokens, metadataTokens > 0 {
+            parts.append("\(formatNativeTokenCount(metadataTokens)) tool timeline tokens are not replayed.")
+        }
         if let detail = providerPlanText {
             parts.append(detail)
         }
@@ -1831,7 +1837,19 @@ struct ChatScreen: View {
             if let usage = activeContextUsage {
                 Text("\(formatNativePercent(usage.usedPercent)) full")
                     .fontWeight(.medium)
-                Text("\(formatNativeTokenCount(usage.usedTokens)) / \(formatNativeTokenCount(usage.limitTokens)) tokens used")
+                Text("\(formatNativeTokenCount(usage.usedTokens)) / \(formatNativeTokenCount(usage.limitTokens)) active tokens")
+                if usage.compacted == true, let count = usage.compactionCount, count > 0 {
+                    Text("Compacted \(count) time\(count == 1 ? "" : "s")")
+                        .foregroundStyle(.secondary)
+                }
+                if let compactedTokens = usage.compactedTokens, compactedTokens > 0 {
+                    Text("\(formatNativeTokenCount(compactedTokens)) tokens summarized out")
+                        .foregroundStyle(.secondary)
+                }
+                if let metadataTokens = usage.metadataTokens, metadataTokens > 0 {
+                    Text("\(formatNativeTokenCount(metadataTokens)) timeline metadata not replayed")
+                        .foregroundStyle(.secondary)
+                }
             } else {
                 Text("Not loaded yet")
                     .fontWeight(.medium)

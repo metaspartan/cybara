@@ -2246,7 +2246,13 @@ const routes: Record<string, RouteHandler> = {
         "workspaceDir" in session && typeof session.workspaceDir === "string"
           ? session.workspaceDir
           : null,
-      contextUsage: estimateSessionContextUsage(messages, detailModelMetadata.model),
+      contextUsage: estimateSessionContextUsage(messages, detailModelMetadata.model, {
+        sessionId: session.id,
+        compactionCount:
+          "compactionCount" in session && typeof session.compactionCount === "number"
+            ? session.compactionCount
+            : 0,
+      }),
       plan: extractLatestSessionPlan(session.id, messages),
       messagesList: sanitizedMessages,
     };

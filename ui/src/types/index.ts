@@ -319,6 +319,12 @@ export interface SessionContextUsage {
   remainingTokens: number;
   usedPercent: number;
   messageCount: number;
+  transcriptTokens?: number;
+  metadataTokens?: number;
+  compacted?: boolean;
+  compactionCount?: number;
+  compactedTokens?: number;
+  source?: "estimated";
 }
 
 export interface ChatSession {

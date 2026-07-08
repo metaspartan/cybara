@@ -2344,7 +2344,11 @@ async function handleChatTurn(
     workspaceDir: session.workspaceDir ?? null,
     contextUsage: estimateSessionContextUsage(
       session.messages,
-      requestedModelOverride || agent?.model
+      requestedModelOverride || agent?.model,
+      {
+        sessionId: session.id,
+        compactionCount: session.compactionCount || 0,
+      }
     ),
     plan: extractLatestSessionPlan(session.id, session.messages),
     message: assistantMessage,
@@ -2493,7 +2497,10 @@ export async function updateSessionAgent(
     providerId: modelMetadata?.provider_id,
     providerName: modelMetadata?.provider_name,
     model: modelMetadata?.model,
-    contextUsage: estimateSessionContextUsage(session.messages, agent.model),
+    contextUsage: estimateSessionContextUsage(session.messages, agent.model, {
+      sessionId: session.id,
+      compactionCount: session.compactionCount || 0,
+    }),
   };
 }
 

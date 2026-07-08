@@ -1,6 +1,12 @@
 import type { GatewayProfile } from "./connection";
 import { emptyMetricsAvailability, type MetricsEndpointKey, type MetricsSnapshot } from "./metrics";
-import { asRecord, normalizeArrayResponse, readNumber, readString } from "./apiNormalizeUtils";
+import {
+  asRecord,
+  normalizeArrayResponse,
+  readBoolean,
+  readNumber,
+  readString,
+} from "./apiNormalizeUtils";
 import {
   normalizeProviderPlanMonitoringConfig,
   normalizeProviderPlanRouteConstraint,
@@ -641,6 +647,12 @@ export interface SessionContextUsage {
   remainingTokens: number;
   usedPercent: number;
   messageCount: number;
+  transcriptTokens?: number;
+  metadataTokens?: number;
+  compacted?: boolean;
+  compactionCount?: number;
+  compactedTokens?: number;
+  source?: "estimated";
 }
 
 export type SessionPlanItemStatus = "pending" | "in_progress" | "completed";
@@ -1412,6 +1424,12 @@ function normalizeSessionContextUsage(value: unknown): SessionContextUsage | und
     remainingTokens,
     usedPercent,
     messageCount: Math.max(0, readNumber(record, ["messageCount", "message_count"]) ?? 0),
+    transcriptTokens: readNumber(record, ["transcriptTokens", "transcript_tokens"]),
+    metadataTokens: readNumber(record, ["metadataTokens", "metadata_tokens"]),
+    compacted: readBoolean(record, ["compacted"]),
+    compactionCount: readNumber(record, ["compactionCount", "compaction_count"]),
+    compactedTokens: readNumber(record, ["compactedTokens", "compacted_tokens"]),
+    source: readString(record, ["source"]) === "estimated" ? "estimated" : undefined,
   };
 }
 

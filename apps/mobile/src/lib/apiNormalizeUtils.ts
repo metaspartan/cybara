@@ -29,6 +29,22 @@ export function readNumber(
   return undefined;
 }
 
+export function readBoolean(
+  record: Record<string, unknown> | null,
+  keys: string[]
+): boolean | undefined {
+  if (!record) return undefined;
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      if (value === "true") return true;
+      if (value === "false") return false;
+    }
+  }
+  return undefined;
+}
+
 export function normalizeArrayResponse(value: unknown, keys: string[]): unknown[] {
   if (Array.isArray(value)) return value;
   const record = asRecord(value);
