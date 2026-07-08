@@ -625,6 +625,146 @@ describe("mobile API client", () => {
     }
   });
 
+  test("previews and runs source migrations through gateway routes", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+
+      if (parsedUrl.pathname === "/api/migrations/sources" && method === "GET") {
+        return Response.json({
+          sources: [
+            {
+              kind: "hermes",
+              path: "/Users/carsen/.hermes",
+              exists: true,
+              label: "Hermes",
+              confidence: "high",
+              detected: {
+                persona: true,
+                memoryFiles: 2,
+                skillCount: 4,
+                configFiles: 1,
+                envFiles: 1,
+              },
+            },
+          ],
+        });
+      }
+      if (
+        (parsedUrl.pathname === "/api/migrations/preview" ||
+          parsedUrl.pathname === "/api/migrations/run") &&
+        method === "POST"
+      ) {
+        return Response.json({
+          success: true,
+          dryRun: parsedUrl.pathname.endsWith("/preview"),
+          sourceKind: "hermes",
+          sourceRoot: "/Users/carsen/.hermes",
+          targetRoot: "/Users/carsen/.cybara",
+          preset: "full",
+          migrateSecrets: true,
+          overwrite: false,
+          skillConflict: "rename",
+          createdAt: "2026-07-08T00:00:00.000Z",
+          summary: {
+            total: 1,
+            planned: 1,
+            migrated: 0,
+            archived: 0,
+            skipped: 0,
+            conflict: 0,
+            error: 0,
+          },
+          warnings: [],
+          items: [
+            {
+              id: "memory-1",
+              category: "memory",
+              name: "MEMORY.md",
+              status: "planned",
+            },
+          ],
+          nextSteps: ["Run migration"],
+        });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.migrationSources()).resolves.toEqual({
+        sources: [
+          {
+            kind: "hermes",
+            path: "/Users/carsen/.hermes",
+            exists: true,
+            label: "Hermes",
+            confidence: "high",
+            detected: {
+              persona: true,
+              memoryFiles: 2,
+              skillCount: 4,
+              configFiles: 1,
+              envFiles: 1,
+            },
+          },
+        ],
+      });
+      await expect(
+        api.previewMigration({
+          sourceKind: "hermes",
+          sourcePath: "/Users/carsen/.hermes",
+          preset: "full",
+          migrateSecrets: true,
+          skillConflict: "rename",
+        })
+      ).resolves.toMatchObject({ dryRun: true, sourceKind: "hermes" });
+      await expect(
+        api.runMigration({
+          sourceKind: "hermes",
+          sourcePath: "/Users/carsen/.hermes",
+          preset: "full",
+          migrateSecrets: true,
+          skillConflict: "rename",
+        })
+      ).resolves.toMatchObject({ dryRun: false, sourceKind: "hermes" });
+
+      expect(calls).toEqual([
+        { method: "GET", path: "/api/migrations/sources", body: undefined },
+        {
+          method: "POST",
+          path: "/api/migrations/preview",
+          body: {
+            sourceKind: "hermes",
+            sourcePath: "/Users/carsen/.hermes",
+            preset: "full",
+            migrateSecrets: true,
+            skillConflict: "rename",
+            dryRun: true,
+          },
+        },
+        {
+          method: "POST",
+          path: "/api/migrations/run",
+          body: {
+            sourceKind: "hermes",
+            sourcePath: "/Users/carsen/.hermes",
+            preset: "full",
+            migrateSecrets: true,
+            skillConflict: "rename",
+            dryRun: false,
+          },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("persists mobile theme config through the gateway config endpoint", async () => {
     const calls: Array<{ method: string; path: string; body?: unknown }> = [];
     const originalFetch = globalThis.fetch;

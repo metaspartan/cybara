@@ -247,6 +247,71 @@ export interface GatewayRestartResponse {
   message: string;
 }
 
+export type MigrationSourceKind = "openclaw" | "hermes";
+export type MigrationPreset = "user-data" | "full";
+export type MigrationSkillConflictMode = "skip" | "overwrite" | "rename";
+export type MigrationItemStatus =
+  | "planned"
+  | "migrated"
+  | "archived"
+  | "skipped"
+  | "conflict"
+  | "error";
+
+export interface MigrationSourceCandidate {
+  kind: MigrationSourceKind;
+  path: string;
+  exists: boolean;
+  label: string;
+  confidence: "high" | "medium" | "manual";
+  detected: {
+    persona: boolean;
+    memoryFiles: number;
+    skillCount: number;
+    configFiles: number;
+    envFiles: number;
+  };
+}
+
+export interface SourceMigrationRequest {
+  sourceKind?: MigrationSourceKind;
+  sourcePath?: string;
+  preset?: MigrationPreset;
+  dryRun?: boolean;
+  overwrite?: boolean;
+  migrateSecrets?: boolean;
+  skillConflict?: MigrationSkillConflictMode;
+  workspaceTarget?: string;
+}
+
+export interface MigrationItem {
+  id: string;
+  category: string;
+  name: string;
+  source?: string;
+  target?: string;
+  status: MigrationItemStatus;
+  detail?: string;
+}
+
+export interface SourceMigrationReport {
+  success: boolean;
+  dryRun: boolean;
+  sourceKind: MigrationSourceKind;
+  sourceRoot: string;
+  targetRoot: string;
+  preset: MigrationPreset;
+  migrateSecrets: boolean;
+  overwrite: boolean;
+  skillConflict: MigrationSkillConflictMode;
+  reportPath?: string;
+  createdAt: string;
+  summary: Record<MigrationItemStatus | "total", number>;
+  warnings: string[];
+  items: MigrationItem[];
+  nextSteps: string[];
+}
+
 export interface MobilePushDeviceSummary {
   configured: boolean;
   enabled: boolean;
@@ -2625,6 +2690,24 @@ export class CybaraMobileApi {
   restartGateway(): Promise<GatewayRestartResponse> {
     return this.request<GatewayRestartResponse>("/api/system/restart", {
       method: "POST",
+    });
+  }
+
+  migrationSources(): Promise<{ sources: MigrationSourceCandidate[] }> {
+    return this.request<{ sources: MigrationSourceCandidate[] }>("/api/migrations/sources");
+  }
+
+  previewMigration(payload: SourceMigrationRequest): Promise<SourceMigrationReport> {
+    return this.request<SourceMigrationReport>("/api/migrations/preview", {
+      method: "POST",
+      body: JSON.stringify({ ...payload, dryRun: true }),
+    });
+  }
+
+  runMigration(payload: SourceMigrationRequest): Promise<SourceMigrationReport> {
+    return this.request<SourceMigrationReport>("/api/migrations/run", {
+      method: "POST",
+      body: JSON.stringify({ ...payload, dryRun: false }),
     });
   }
 

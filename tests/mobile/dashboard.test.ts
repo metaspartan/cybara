@@ -502,6 +502,7 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_SETTINGS_ROOT_CHROME.modelRouterControls).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.sandboxRuntimeControls).toBe(true);
+    expect(MOBILE_SETTINGS_ROOT_CHROME.migrationControls).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.speechControls).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.systemPromptFeatureToggles).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.settingsEdgeToEdgeContent).toBe(true);
@@ -565,6 +566,7 @@ describe("mobile dashboard model", () => {
       "Voice",
       "Safety",
       "Wallet",
+      "Migration",
       "System",
     ]);
     expect(dashboardScreenSource).toContain("const [selectedSettingsTab, setSelectedSettingsTab]");
@@ -580,11 +582,20 @@ describe("mobile dashboard model", () => {
       "showVoiceSettings",
       "showSafetySettings",
       "showWalletSettings",
+      "showMigrationSettings",
       "showSystemSettings",
     ]) {
       expect(dashboardScreenSource).toContain(guard);
     }
     expect(dashboardScreenSource).toContain('title="Wallet"');
+    expect(dashboardScreenSource).toContain('title="Migration"');
+    expect(dashboardScreenSource).toContain("MigrationSettingsPanel");
+    expect(dashboardScreenSource).toContain("openMigration");
+    expect(dashboardScreenSource).toContain("api.migrationSources()");
+    expect(dashboardScreenSource).toContain("api.previewMigration(payload())");
+    expect(dashboardScreenSource).toContain("api.runMigration(payload())");
+    expect(dashboardScreenSource).toContain('label="Skill conflicts"');
+    expect(dashboardScreenSource).toContain('label="Import provider keys"');
     expect(dashboardScreenSource).toContain('title="System"');
   });
 

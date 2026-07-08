@@ -14,6 +14,7 @@ import {
   GatewayManagementPanel,
   JourneyPanel,
   MemorySettingsPanel,
+  MigrationSettingsPanel,
   ModelRouterPanel,
   ProviderSettingsPanel,
   SpeechSettingsPanel,
@@ -73,6 +74,7 @@ import {
   Clock,
   Cpu,
   Database,
+  Folder,
   HeartPulse,
   House,
   Link2,
@@ -281,6 +283,7 @@ type DetailRoute =
   | { kind: "modelRouter" }
   | { kind: "speech" }
   | { kind: "memory" }
+  | { kind: "migration" }
   | { kind: "journey" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey; item: RemoteItemSummary | ActivitySummary };
@@ -601,6 +604,9 @@ function routeHeader(
   if (route.kind === "memory") {
     return { title: "Memory", detail: "Memory provider, learning, and indexing" };
   }
+  if (route.kind === "migration") {
+    return { title: "Migration", detail: "Import OpenClaw or Hermes data" };
+  }
   if (route.kind === "journey") {
     return { title: "Journey", detail: "Skills and memories learned over time" };
   }
@@ -839,6 +845,11 @@ export function DashboardScreen({
     setChatHeaderAction(null);
     setActiveTab("settings");
     setDetailRoute({ kind: "memory" });
+  };
+  const openMigration = () => {
+    setChatHeaderAction(null);
+    setActiveTab("settings");
+    setDetailRoute({ kind: "migration" });
   };
   const openJourney = () => {
     setChatHeaderAction(null);
@@ -1104,6 +1115,7 @@ export function DashboardScreen({
               openModelRouter={openModelRouter}
               openSpeech={openSpeech}
               openMemory={openMemory}
+              openMigration={openMigration}
               openJourney={openJourney}
             />
           ) : null}
@@ -2020,6 +2032,9 @@ function DetailContent({
         refreshSummary={refreshSummary}
       />
     );
+  }
+  if (route.kind === "migration") {
+    return <MigrationSettingsPanel accentColor={accentColor} api={api} />;
   }
   if (route.kind === "journey") {
     return <JourneyPanel accentColor={accentColor} api={api} />;
@@ -3910,6 +3925,7 @@ function SettingsPanel({
   openModelRouter,
   openSpeech,
   openMemory,
+  openMigration,
   openJourney,
 }: {
   accentColor: string;
@@ -3927,6 +3943,7 @@ function SettingsPanel({
   openModelRouter: () => void;
   openSpeech: () => void;
   openMemory: () => void;
+  openMigration: () => void;
   openJourney: () => void;
 }) {
   const counts = summarizeFeatureCounts(summary);
@@ -3977,6 +3994,7 @@ function SettingsPanel({
   const showVoiceSettings = selectedSettingsTab === "voice";
   const showSafetySettings = selectedSettingsTab === "safety";
   const showWalletSettings = selectedSettingsTab === "wallet";
+  const showMigrationSettings = selectedSettingsTab === "migration";
   const showSystemSettings = selectedSettingsTab === "system";
 
   const saveConfigPatch = async (
@@ -4543,6 +4561,28 @@ function SettingsPanel({
                     counts,
                     surfaceRows("wallet", summary).length
                   )}
+                </Text>
+              </View>
+              <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+            </Pressable>
+          </SettingsSection>
+        ) : null}
+        {showMigrationSettings && MOBILE_SETTINGS_ROOT_CHROME.migrationControls ? (
+          <SettingsSection title="Migration">
+            <Pressable
+              accessibilityRole="button"
+              style={styles.settingsNavigationRow}
+              onPress={openMigration}
+            >
+              <View
+                style={[styles.settingsNavigationIcon, { backgroundColor: `${accentColor}18` }]}
+              >
+                <Folder color={accentColor} size={20} strokeWidth={2.1} />
+              </View>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>OpenClaw or Hermes import</Text>
+                <Text style={styles.listDetail} numberOfLines={1}>
+                  Preview settings, memories, skills, and optional provider keys
                 </Text>
               </View>
               <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />

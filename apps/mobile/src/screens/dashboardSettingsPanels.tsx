@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Linking, Platform, Text, TextInput, View } from "react-native";
+import { Alert, Linking, Platform, Pressable, Text, TextInput, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import {
   Bot,
@@ -89,12 +89,18 @@ import {
   type JourneyResponse,
   type GatewayAuthSettings,
   type GatewayRemoteAccessSettings,
+  type MigrationPreset,
+  type MigrationSkillConflictMode,
+  type MigrationSourceCandidate,
+  type MigrationSourceKind,
   type ProviderPlanMonitoringConfig,
   type ProviderPlanStatusResponse,
   type ProviderSummary,
   type RemoteItemSummary,
   type RouterConfig,
   type RouterStatus,
+  type SourceMigrationReport,
+  type SourceMigrationRequest,
   type SystemPromptFeatureKey,
   type MobilePushDeviceSummary,
   type ToolApprovalDecision,
@@ -3482,6 +3488,328 @@ export function GatewayManagementPanel({
           ))
         )}
       </SettingsSection>
+    </>
+  );
+}
+
+const migrationSummaryKeys = [
+  "total",
+  "planned",
+  "migrated",
+  "conflict",
+  "skipped",
+  "error",
+] as const;
+
+function migrationStatusColor(status: string): string {
+  if (status === "migrated") return colors.green;
+  if (status === "planned") return colors.cyan;
+  if (status === "conflict") return colors.amber;
+  if (status === "error") return colors.red;
+  return colors.textMuted;
+}
+
+function migrationSourceDetail(source: MigrationSourceCandidate): string {
+  return `${source.detected.memoryFiles} memories - ${source.detected.skillCount} skills - ${source.detected.configFiles} configs`;
+}
+
+export function MigrationSettingsPanel({
+  accentColor,
+  api,
+}: {
+  accentColor: string;
+  api: CybaraMobileApi;
+}) {
+  const [sources, setSources] = useState<MigrationSourceCandidate[]>([]);
+  const [sourceKind, setSourceKind] = useState<MigrationSourceKind>("openclaw");
+  const [sourcePath, setSourcePath] = useState("");
+  const [preset, setPreset] = useState<MigrationPreset>("user-data");
+  const [skillConflict, setSkillConflict] = useState<MigrationSkillConflictMode>("skip");
+  const [workspaceTarget, setWorkspaceTarget] = useState("");
+  const [migrateSecrets, setMigrateSecrets] = useState(false);
+  const [overwrite, setOverwrite] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [runningAction, setRunningAction] = useState<"preview" | "run" | null>(null);
+  const [report, setReport] = useState<SourceMigrationReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadSources = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await api.migrationSources();
+      setSources(response.sources);
+      const detected = response.sources.find((source) => source.exists);
+      if (detected) {
+        setSourcePath((current) => {
+          if (current.trim()) return current;
+          setSourceKind(detected.kind);
+          return detected.path;
+        });
+      }
+    } catch (loadError) {
+      setError(gatewayActionError(loadError, "Could not detect OpenClaw or Hermes sources."));
+    } finally {
+      setLoading(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    void loadSources();
+  }, [loadSources]);
+
+  const payload = (): SourceMigrationRequest => ({
+    sourceKind,
+    sourcePath: sourcePath.trim() || undefined,
+    preset,
+    migrateSecrets,
+    overwrite,
+    skillConflict,
+    workspaceTarget: workspaceTarget.trim() || undefined,
+  });
+
+  const previewMigration = async () => {
+    if (runningAction) return;
+    setRunningAction("preview");
+    setError(null);
+    try {
+      setReport(await api.previewMigration(payload()));
+    } catch (previewError) {
+      setError(gatewayActionError(previewError, "Migration preview failed."));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+
+  const runMigration = async () => {
+    if (runningAction) return;
+    setRunningAction("run");
+    setError(null);
+    try {
+      setReport(await api.runMigration(payload()));
+    } catch (runError) {
+      setError(gatewayActionError(runError, "Migration failed."));
+    } finally {
+      setRunningAction(null);
+    }
+  };
+
+  const confirmMigration = () => {
+    Alert.alert(
+      "Run migration?",
+      "Preview first if you want to see exactly what will be imported before writing files.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Run",
+          onPress: () => {
+            void runMigration();
+          },
+        },
+      ]
+    );
+  };
+
+  const detectedSources = sources.filter((source) => source.exists);
+
+  return (
+    <>
+      <SettingsSection title="Migration">
+        <View style={styles.settingsGroupHeader}>
+          <Folder color={accentColor} size={18} strokeWidth={2.1} />
+          <Text style={styles.settingsInfoTitle}>Import from OpenClaw or Hermes</Text>
+        </View>
+        <Text style={styles.settingsInfoText}>
+          Preview settings, memories, skills, workspace instructions, and optional provider keys
+          before anything is written on the gateway.
+        </Text>
+        {loading ? (
+          <LoadingState label="Detecting sources" detail="Checking common gateway host paths." />
+        ) : detectedSources.length > 0 ? (
+          detectedSources.map((source) => {
+            const selected = sourcePath === source.path;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                key={`${source.kind}-${source.path}`}
+                onPress={() => {
+                  setSourceKind(source.kind);
+                  setSourcePath(source.path);
+                }}
+                style={[
+                  styles.settingsInfoBox,
+                  selected && { borderColor: accentColor, backgroundColor: `${accentColor}12` },
+                ]}
+              >
+                <View style={styles.settingsInfoHeader}>
+                  <Folder color={selected ? accentColor : colors.textMuted} size={18} />
+                  <Text style={styles.settingsInfoTitle}>{source.label}</Text>
+                </View>
+                <Text numberOfLines={1} style={styles.settingsFieldHelp}>
+                  {source.path}
+                </Text>
+                <Text style={styles.settingsInfoText}>{migrationSourceDetail(source)}</Text>
+              </Pressable>
+            );
+          })
+        ) : (
+          <EmptyState
+            label="No local sources found"
+            detail="Paste the OpenClaw or Hermes directory from the gateway host below."
+          />
+        )}
+        <SettingSelector
+          disabled={runningAction !== null}
+          label="Source"
+          onSelect={(value) => setSourceKind(value as MigrationSourceKind)}
+          options={[
+            { label: "OpenClaw", value: "openclaw" },
+            { label: "Hermes", value: "hermes" },
+          ]}
+          selected={sourceKind}
+          tone={accentColor}
+          variant="segmented"
+        />
+        <SettingsTextField
+          label="Source directory"
+          onChangeText={setSourcePath}
+          placeholder="~/.openclaw or ~/.hermes"
+          value={sourcePath}
+        />
+        <SettingSelector
+          disabled={runningAction !== null}
+          label="Preset"
+          onSelect={(value) => setPreset(value as MigrationPreset)}
+          options={[
+            { label: "User Data", value: "user-data" },
+            { label: "Full", value: "full" },
+          ]}
+          selected={preset}
+          tone={accentColor}
+          variant="segmented"
+        />
+        <SettingSelector
+          disabled={runningAction !== null}
+          label="Skill conflicts"
+          onSelect={(value) => setSkillConflict(value as MigrationSkillConflictMode)}
+          options={[
+            { label: "Skip", value: "skip" },
+            { label: "Rename", value: "rename" },
+            { label: "Overwrite", value: "overwrite" },
+          ]}
+          selected={skillConflict}
+          tone={accentColor}
+          variant="menu"
+        />
+        <SettingsTextField
+          label="Workspace target"
+          onChangeText={setWorkspaceTarget}
+          placeholder="Optional project folder for AGENTS.md"
+          value={workspaceTarget}
+        />
+        <SettingToggle
+          busy={runningAction !== null}
+          detail="Off by default. Reports never expose key values."
+          disabled={runningAction !== null}
+          label="Import provider keys"
+          onPress={() => setMigrateSecrets((value) => !value)}
+          tone={colors.amber}
+          value={migrateSecrets}
+        />
+        <SettingToggle
+          busy={runningAction !== null}
+          detail="Allows existing prompts, providers, and workspace files to be replaced."
+          disabled={runningAction !== null}
+          label="Allow overwrite"
+          onPress={() => setOverwrite((value) => !value)}
+          tone={colors.amber}
+          value={overwrite}
+        />
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        <View style={styles.settingsActionRow}>
+          <DetailActionButton
+            Icon={RefreshCw}
+            busy={loading}
+            disabled={runningAction !== null}
+            label="Refresh"
+            onPress={() => {
+              void loadSources();
+            }}
+            tone={accentColor}
+          />
+          <DetailActionButton
+            Icon={Eye}
+            busy={runningAction === "preview"}
+            disabled={runningAction !== null}
+            label="Preview"
+            onPress={() => {
+              void previewMigration();
+            }}
+            tone={colors.cyan}
+          />
+          <DetailActionButton
+            Icon={Play}
+            busy={runningAction === "run"}
+            disabled={runningAction !== null}
+            label="Run"
+            onPress={confirmMigration}
+            tone={colors.green}
+          />
+        </View>
+      </SettingsSection>
+      {report ? (
+        <SettingsSection title={report.dryRun ? "Preview Report" : "Migration Report"}>
+          <DetailInfoSection
+            fields={migrationSummaryKeys.map((key) => ({
+              label: key,
+              value: String(report.summary[key] ?? 0),
+            }))}
+          />
+          {report.warnings.length > 0 ? (
+            <View style={styles.settingsInfoBox}>
+              <View style={styles.settingsInfoHeader}>
+                <ShieldAlert color={colors.amber} size={18} strokeWidth={2.1} />
+                <Text style={styles.settingsInfoTitle}>Warnings</Text>
+              </View>
+              <Text style={styles.settingsInfoText}>{report.warnings.join(" ")}</Text>
+            </View>
+          ) : null}
+          <View style={styles.settingsInfoBox}>
+            <Text style={styles.settingsFieldHelp}>
+              {report.sourceKind} to {report.targetRoot}
+            </Text>
+            {report.items.slice(0, 20).map((entry) => (
+              <View key={entry.id} style={styles.infoRow}>
+                <Text
+                  numberOfLines={1}
+                  style={[styles.infoLabel, { color: migrationStatusColor(entry.status) }]}
+                >
+                  {entry.status}
+                </Text>
+                <View style={styles.listText}>
+                  <Text numberOfLines={1} style={styles.listTitle}>
+                    {entry.name}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.listDetail}>
+                    {[entry.category, entry.detail].filter(Boolean).join(" - ")}
+                  </Text>
+                </View>
+              </View>
+            ))}
+            {report.items.length > 20 ? (
+              <Text style={styles.settingsFieldHelp}>
+                Showing 20 of {report.items.length} migration items.
+              </Text>
+            ) : null}
+            {report.reportPath ? (
+              <Text selectable style={styles.settingsFieldHelp}>
+                Report saved to {report.reportPath}
+              </Text>
+            ) : null}
+          </View>
+        </SettingsSection>
+      ) : null}
     </>
   );
 }

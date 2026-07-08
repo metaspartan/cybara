@@ -16,6 +16,7 @@ export type MobileSettingsTab =
   | "voice"
   | "safety"
   | "wallet"
+  | "migration"
   | "system";
 export type MobileSurfaceKey =
   | "agents"
@@ -68,6 +69,7 @@ export const MOBILE_SETTINGS_TABS: Array<{ label: string; value: MobileSettingsT
   { label: "Voice", value: "voice" },
   { label: "Safety", value: "safety" },
   { label: "Wallet", value: "wallet" },
+  { label: "Migration", value: "migration" },
   { label: "System", value: "system" },
 ];
 
@@ -139,6 +141,7 @@ export const MOBILE_SETTINGS_ROOT_CHROME = {
   settingsEdgeToEdgeContent: true,
   sandboxRuntimeControls: true,
   systemPromptFeatureToggles: true,
+  migrationControls: true,
   speechControls: true,
   terminalToggle: true,
   toolApprovalModeSelector: true,
@@ -190,6 +193,7 @@ export type MobileDetailBackInput =
   | { kind: "modelRouter" }
   | { kind: "speech" }
   | { kind: "memory" }
+  | { kind: "migration" }
   | { kind: "journey" }
   | { kind: "surface"; surface: MobileSurfaceKey }
   | { kind: "item"; surface: MobileSurfaceKey };
