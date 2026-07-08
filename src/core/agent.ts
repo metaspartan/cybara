@@ -165,6 +165,12 @@ import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from ".
 import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
 import { resolveAgentToolSelection } from "./agent-tool-selection";
 import { normalizeExplicitAgentTools } from "./agent-tool-normalization";
+import { formatLlmFailure } from "./agent-error-format";
+import {
+  resolveModelContextWindowTokens,
+  resolveModelMaxOutputTokens,
+  shouldPreferMaxCompletionTokens,
+} from "./agent-model-limits";
 import { coerceToolArguments } from "./tool-argument-coercion";
 import { isToolPolicyBlockedMessage, sanitizeToolErrorMessage } from "./tool-result-classification";
 import {
@@ -200,11 +206,6 @@ export interface AgentDefinition {
   tools?: ToolDefinition[];
   memory_enabled?: boolean;
   config?: Record<string, unknown>;
-}
-
-function shouldPreferMaxCompletionTokens(providerConfig?: string): boolean {
-  const provider = (providerConfig || "").trim().toLowerCase();
-  return provider === "z.ai" || provider === "zai" || provider === "z.ai-coding";
 }
 
 export function getBuiltinTools(): ToolDefinition[] {
@@ -290,89 +291,6 @@ interface RunningAgentState {
 
 class AgentManager {
   private runningAgents: Map<string, RunningAgentState> = new Map();
-
-  private extractLlmErrorDetail(message: string): string | undefined {
-    const afterDash = message.replace(/^API error:\s*\d+\s*-\s*/i, "");
-    const candidate = afterDash !== message ? afterDash : message;
-    const trimmed = candidate.trim();
-    if (!trimmed) return undefined;
-    if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-      try {
-        const parsed = JSON.parse(trimmed) as {
-          error?: { message?: unknown; code?: unknown } | string;
-          message?: unknown;
-          detail?: unknown;
-        };
-        const errObj = typeof parsed.error === "object" ? parsed.error : undefined;
-        const detail =
-          (errObj && typeof errObj.message === "string" && errObj.message) ||
-          (typeof parsed.error === "string" && parsed.error) ||
-          (typeof parsed.message === "string" && parsed.message) ||
-          (typeof parsed.detail === "string" && parsed.detail) ||
-          "";
-        if (detail) return detail.replace(/\s+/g, " ").slice(0, 300);
-      } catch {}
-    }
-    return trimmed.replace(/\s+/g, " ").slice(0, 300);
-  }
-
-  private formatLlmFailure(error: unknown): string {
-    const message =
-      typeof error === "object" && error && "message" in error
-        ? String((error as { message?: unknown }).message || "")
-        : String(error || "");
-    const lower = message.toLowerCase();
-
-    if (lower.includes("invalid_api_key") || lower.includes("incorrect api key")) {
-      return "OpenAI API key was rejected. Update your OpenAI provider key in Providers.";
-    }
-    if (lower.includes("openai codex oauth provider")) {
-      return "This model requires OpenAI Codex OAuth. Configure an OpenAI Codex provider and try again.";
-    }
-    if (lower.includes("model_not_found") || lower.includes("does not exist")) {
-      return "Configured model is not available for this provider. Select another model and try again.";
-    }
-    if (lower.includes("insufficient_quota") || lower.includes("quota")) {
-      return "Provider quota/billing limit reached. Update billing or use a different provider.";
-    }
-    if (
-      lower.includes("402") ||
-      lower.includes("membership") ||
-      lower.includes("payment required")
-    ) {
-      return "Provider billing/membership inactive (402). Check your provider account's subscription or credits.";
-    }
-    if (lower.includes("401")) {
-      return "Provider authentication failed (401). Verify your provider API key/token.";
-    }
-    if (lower.includes("403")) {
-      return "Provider rejected access (403). Verify account permissions and model access.";
-    }
-    if (lower.includes("429") || lower.includes("rate limit")) {
-      return "Provider rate limit hit (429). Retry shortly or switch providers.";
-    }
-
-    const detail = this.extractLlmErrorDetail(message);
-    if (lower.includes("400") || lower.includes("unsupported") || lower.includes("invalid")) {
-      return detail
-        ? `Provider rejected the request (400): ${detail}`
-        : "Provider rejected the request (400). The model may not support a sent parameter.";
-    }
-    if (lower.includes("404")) {
-      return detail
-        ? `Provider endpoint/model not found (404): ${detail}`
-        : "Provider endpoint or model not found (404). Verify the model id and base URL.";
-    }
-    if (lower.includes("5") && /\b5\d\d\b/.test(message)) {
-      return detail
-        ? `Provider server error: ${detail}`
-        : "Provider had a server error (5xx). Retry shortly or switch providers.";
-    }
-    if (detail) {
-      return `The provider request failed: ${detail}`;
-    }
-    return "I apologize, but I encountered an issue processing your request. Please try again or rephrase your message.";
-  }
 
   private shouldUseOpenAICodexProvider(
     provider: ReturnType<typeof providerManager.getWithCredentials> | undefined,
@@ -767,7 +685,7 @@ class AgentManager {
       const activeModel = resolved.model;
       const providerConfig = String((activeProvider as { provider?: unknown }).provider || "");
       const providerId = (activeProvider as { id?: string }).id;
-      const contextWindowTokens = this.resolveModelContextWindowTokens(
+      const contextWindowTokens = resolveModelContextWindowTokens(
         providerConfig,
         providerId,
         activeModel || ""
@@ -906,12 +824,12 @@ class AgentManager {
             return { response: fallbackResult.content, thinking: fallbackResult.thinking };
           } catch (fallbackError) {
             console.error("[Agent] Fallback LLM call also failed:", fallbackError);
-            return { response: this.formatLlmFailure(fallbackError) };
+            return { response: formatLlmFailure(fallbackError) };
           }
         }
       }
 
-      return { response: this.formatLlmFailure(error) };
+      return { response: formatLlmFailure(error) };
     }
   }
 
@@ -1092,12 +1010,12 @@ class AgentManager {
           } catch (fallbackError) {
             if (options?.abortSignal?.aborted) throw fallbackError;
             console.error("[Agent] Fallback LLM call also failed:", fallbackError);
-            return { content: this.formatLlmFailure(fallbackError) };
+            return { content: formatLlmFailure(fallbackError) };
           }
         }
       }
 
-      return { content: this.formatLlmFailure(error) };
+      return { content: formatLlmFailure(error) };
     }
   }
 
@@ -1895,12 +1813,12 @@ class AgentManager {
     const customHeaders = (providerInfo as { headers?: Record<string, string> }).headers || {};
     const mergedHeaders = { ...providerHeaders, ...customHeaders };
     const modelParams = this.resolveModelParams(toolContext);
-    const modelMaxOutputTokens = this.resolveModelMaxOutputTokens(
+    const modelMaxOutputTokens = resolveModelMaxOutputTokens(
       providerConfig,
       providerInfo.id,
       modelId
     );
-    const modelContextWindowTokens = this.resolveModelContextWindowTokens(
+    const modelContextWindowTokens = resolveModelContextWindowTokens(
       providerConfig,
       providerInfo.id,
       modelId
@@ -2004,100 +1922,6 @@ class AgentManager {
         contextWindowTokens: modelContextWindowTokens,
       }
     );
-  }
-
-  private resolveModelMaxOutputTokens(
-    providerConfig: string,
-    providerId: string | undefined,
-    modelId: string
-  ): number {
-    const normalizePositiveInt = (value: unknown): number | undefined => {
-      if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;
-      return Math.max(1, Math.floor(value));
-    };
-    const clampToContextWindow = (
-      maxTokens: number | undefined,
-      contextWindow: number | undefined
-    ) =>
-      contextWindow
-        ? Math.min(maxTokens ?? DEFAULT_MODEL_MAX_OUTPUT_TOKENS, contextWindow)
-        : maxTokens;
-
-    const normalizedModelId = modelId.trim().toLowerCase();
-    if (providerId) {
-      const providerModels = providerManager.getModels(providerId) as Array<{
-        model_id?: string | null;
-        model_name?: string | null;
-        context_window?: number | null;
-        max_tokens?: number | null;
-      }>;
-      const providerMatch = providerModels.find((entry) => {
-        const candidateIds = [entry.model_id, entry.model_name].filter(
-          (value): value is string => typeof value === "string" && value.trim().length > 0
-        );
-        return candidateIds.some((value) => value.trim().toLowerCase() === normalizedModelId);
-      });
-      if (providerMatch) {
-        const outputLimit = normalizePositiveInt(providerMatch.max_tokens);
-        const contextLimit = normalizePositiveInt(providerMatch.context_window);
-        const resolved = clampToContextWindow(outputLimit, contextLimit);
-        if (resolved) return resolved;
-      }
-    }
-
-    const staticProvider = providerCatalog[providerConfig as ProviderType];
-    const staticModel = staticProvider?.models?.find(
-      (entry: { id?: string }) =>
-        typeof entry.id === "string" && entry.id.trim().toLowerCase() === normalizedModelId
-    ) as { maxTokens?: number; context?: number } | undefined;
-    if (staticModel) {
-      const outputLimit = normalizePositiveInt(staticModel.maxTokens);
-      const contextLimit = normalizePositiveInt(staticModel.context);
-      const resolved = clampToContextWindow(outputLimit, contextLimit);
-      if (resolved) return resolved;
-    }
-
-    return DEFAULT_MODEL_MAX_OUTPUT_TOKENS;
-  }
-
-  private resolveModelContextWindowTokens(
-    providerConfig: string,
-    providerId: string | undefined,
-    modelId: string
-  ): number {
-    const normalizePositiveInt = (value: unknown): number | undefined => {
-      if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined;
-      return Math.max(1, Math.floor(value));
-    };
-
-    const normalizedModelId = modelId.trim().toLowerCase();
-    if (providerId) {
-      const providerModels = providerManager.getModels(providerId) as Array<{
-        model_id?: string | null;
-        model_name?: string | null;
-        context_window?: number | null;
-      }>;
-      const providerMatch = providerModels.find((entry) => {
-        const candidateIds = [entry.model_id, entry.model_name].filter(
-          (value): value is string => typeof value === "string" && value.trim().length > 0
-        );
-        return candidateIds.some((value) => value.trim().toLowerCase() === normalizedModelId);
-      });
-      const contextLimit = normalizePositiveInt(providerMatch?.context_window);
-      if (contextLimit) return contextLimit;
-    }
-
-    const staticProvider = providerCatalog[providerConfig as ProviderType];
-    const staticModel = staticProvider?.models?.find(
-      (entry: { id?: string }) =>
-        typeof entry.id === "string" && entry.id.trim().toLowerCase() === normalizedModelId
-    ) as { context?: number } | undefined;
-    const staticContextLimit = normalizePositiveInt(staticModel?.context);
-    if (staticContextLimit) {
-      return staticContextLimit;
-    }
-
-    return DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS;
   }
 
   private resolveContextGuardBudgets(contextWindowTokens: number): {
@@ -4341,7 +4165,7 @@ class AgentManager {
     }
 
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
-    const contextWindowTokens = this.resolveModelContextWindowTokens(
+    const contextWindowTokens = resolveModelContextWindowTokens(
       providerConfig,
       providerId,
       modelId
@@ -4689,8 +4513,8 @@ class AgentManager {
     tools: ToolDefinition[],
     toolContext?: ToolContext
   ): Promise<{ content: string; tool_calls?: AgentToolCallResult[] }> {
-    const maxOutputTokens = this.resolveModelMaxOutputTokens("openai", undefined, modelId);
-    const contextWindowTokens = this.resolveModelContextWindowTokens("openai", undefined, modelId);
+    const maxOutputTokens = resolveModelMaxOutputTokens("openai", undefined, modelId);
+    const contextWindowTokens = resolveModelContextWindowTokens("openai", undefined, modelId);
     const contextGuard = this.resolveContextGuardBudgets(contextWindowTokens);
     const systemMessage = messages.find((m) => m.role === "system");
     const chatMessages = messages

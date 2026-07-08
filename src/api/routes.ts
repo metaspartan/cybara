@@ -20,13 +20,43 @@ import {
   pickDictationProvider,
   transcribeWithOpenAICompatibleProvider,
   type LspDiagnosticLike,
-  type LspLocationLike,
-  type LspSymbolLike,
   type NormalizedLspSymbol,
+  type RouteContext,
+  type RouteHandler,
   type SessionMessageView,
 } from "./routes/_shared";
 import { walletRoutes } from "./routes/wallet";
 import { metricsRoutes } from "./routes/metrics";
+import {
+  validateProviderBaseUrlShape,
+  validateProviderCredentialShape,
+} from "./routes/provider-validation";
+import {
+  buildCorsHeaders,
+  logRequest,
+  parseBoundedQueryNumber,
+  recordApiMetrics,
+  redactSecretConfig,
+  requestLogs,
+  securityHeaders,
+} from "./routes/request-runtime";
+import {
+  getOrInitLspManager,
+  normalizeDefinitionLocation,
+  normalizeLspSymbol,
+  resolveWorkspacePath,
+  sanitizeInlineCompletion,
+  trackIdeOperation,
+  trackLspOperation,
+  truncateInlineContext,
+} from "./routes/lsp-ide";
+import {
+  latestSessionModelMetadata,
+  sessionModelMetadata,
+  sessionModelMetadataSnapshot,
+  type SessionModelMetadata,
+} from "./routes/session-model-metadata";
+import { formatSkillInstallSpec } from "./routes/skill-formatting";
 import { tables } from "../core/database";
 import { agentManager, getBuiltinTools, type AgentMessage } from "../core/agent";
 import {
@@ -46,7 +76,6 @@ import {
 import { taskScheduler } from "../core/scheduler";
 import { mcpManager } from "../core/mcp";
 import { mcpRegistry } from "../core/mcp-registry";
-import { getLSPManager, initLSPManager } from "../core/lsp";
 import * as subagentRegistry from "../core/subagent-registry";
 import {
   getSkills,
@@ -59,7 +88,6 @@ import {
   registryManager,
   clearSkillsCache,
   createLocalSkill,
-  type SkillInstallSpec,
 } from "../core/skills/index";
 import {
   installLocalPluginFromPath,
@@ -187,7 +215,7 @@ import { buildJourney } from "./journey";
 import { escapeHtml } from "./html-escape";
 import { createLogger } from "../core/logger";
 import { openUrlInBrowser } from "../core/runtime/open-url";
-import { trackApiCall, trackFileOperation, trackMetric } from "../core/metrics";
+import { trackFileOperation } from "../core/metrics";
 import {
   startAgentLoop,
   listAgentLoopRuns,
@@ -202,431 +230,6 @@ import { normalizeTimestamp, getCombinedLogs, getCombinedLogsPage, getLogStats }
 import { setOAuthCallback, deleteOAuthCallback, consumeOAuthCallback } from "./oauth-callbacks";
 
 const log = createLogger("API");
-
-function validateProviderCredentialShape(
-  providerType: string,
-  credentials: { apiKey?: string; accessToken?: string }
-): void {
-  if (providerType === "openai" && credentials.apiKey && !credentials.apiKey.startsWith("sk-")) {
-    throw new Error("Validation error: OpenAI API key must start with 'sk-'");
-  }
-
-  if (providerType === "google" && credentials.apiKey) {
-    const trimmed = credentials.apiKey.trim();
-    if (/^https?:\/\//i.test(trimmed)) {
-      throw new Error(
-        "Validation error: Google API key looks like a URL. Paste an AI Studio key (starts with 'AIza')."
-      );
-    }
-    const looksLikeOAuthJson = trimmed.startsWith("{") && trimmed.endsWith("}");
-    const looksLikeApiKey = isLikelyGoogleApiKey(trimmed);
-    if (!looksLikeOAuthJson && !looksLikeApiKey) {
-      throw new Error(
-        "Validation error: Google API key format is invalid. Expected AI Studio key starting with 'AIza'."
-      );
-    }
-  }
-}
-
-function validateProviderBaseUrlShape(baseUrl: string): void {
-  let parsed: URL;
-  try {
-    parsed = new URL(baseUrl);
-  } catch {
-    throw new Error("Validation error: Provider base URL must be a valid URL.");
-  }
-
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Validation error: Provider base URL must use http or https.");
-  }
-
-  if (parsed.username || parsed.password) {
-    throw new Error("Validation error: Provider base URL cannot include embedded credentials.");
-  }
-}
-
-function resolveWorkspacePath(filePath?: string): string {
-  if (!filePath || typeof filePath !== "string") {
-    return process.cwd();
-  }
-
-  const trimmed = filePath.trim();
-  if (!trimmed) return process.cwd();
-
-  const absolute = isAbsolute(trimmed) ? trimmed : resolve(process.cwd(), trimmed);
-  return dirname(absolute);
-}
-
-function getOrInitLspManager(workspacePath?: string) {
-  const resolvedWorkspace = workspacePath ? resolve(workspacePath) : resolve(process.cwd());
-  try {
-    const existing = getLSPManager();
-    if (resolve(existing.getWorkspacePath()) !== resolvedWorkspace) {
-      return initLSPManager(resolvedWorkspace);
-    }
-    return existing;
-  } catch {
-    return initLSPManager(resolvedWorkspace);
-  }
-}
-
-function trackLspOperation(operation: string, metadata?: Record<string, unknown>, value = 1): void {
-  trackMetric("lsp_operation", operation, value, metadata);
-}
-
-function trackIdeOperation(
-  operation:
-    | "browse"
-    | "read"
-    | "write"
-    | "create"
-    | "rename"
-    | "search"
-    | "blame"
-    | "reveal"
-    | "open_terminal"
-    | "permalink"
-    | "history_url"
-    | "replace"
-    | "replace_preview"
-    | "list_files"
-    | "index_status"
-    | "index_workspace"
-    | "index_reindex"
-    | "index_stop"
-    | "index_search"
-    | "index_settings"
-    | "index_embeddings"
-    | "index_embedding_runtime"
-    | "index_embedding_load"
-    | "index_embedding_stop"
-    | "inline_completion",
-  path: string | undefined,
-  success: boolean,
-  metadata?: Record<string, unknown>
-): void {
-  trackMetric("ide_operation", operation, 1, { path, success, ...metadata });
-}
-
-function stripInlineCompletionFormatting(value: string): string {
-  const withoutThinking = value
-    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
-    .replace(/<think>[\s\S]*?<\/think>/gi, "");
-  const withoutCodeFences = withoutThinking
-    .replace(/^```[a-zA-Z0-9_-]*\s*/g, "")
-    .replace(/```$/g, "");
-  return withoutCodeFences.trim();
-}
-
-function sanitizeInlineCompletion(value: string, prefix: string, maxChars = 320): string {
-  let next = stripInlineCompletionFormatting(value);
-  if (!next) return "";
-
-  if (prefix && next.toLowerCase().startsWith(prefix.toLowerCase())) {
-    next = next.slice(prefix.length);
-  }
-
-  const maxLength = Math.max(24, Math.min(2000, Math.floor(maxChars)));
-  if (next.length > maxLength) {
-    next = next.slice(0, maxLength);
-  }
-
-  next = next.replace(/^(here(?:'s| is)\s+)?(?:the\s+)?(?:completion|suggestion)\s*[:-]\s*/i, "");
-  return next;
-}
-
-function truncateInlineContext(value: string, maxChars: number): string {
-  const text = typeof value === "string" ? value : "";
-  if (text.length <= maxChars) return text;
-  return text.slice(text.length - maxChars);
-}
-
-function normalizeFileUriToPath(uri: string): string {
-  if (!uri) return "";
-
-  try {
-    const url = new URL(uri);
-    if (url.protocol === "file:") {
-      let pathname = decodeURIComponent(url.pathname);
-      if (process.platform === "win32" && pathname.startsWith("/")) {
-        pathname = pathname.slice(1);
-      }
-      return pathname;
-    }
-  } catch {}
-
-  if (uri.startsWith("file://")) {
-    return decodeURIComponent(uri.slice("file://".length));
-  }
-  return uri;
-}
-
-function normalizeDefinitionLocation(
-  raw: unknown
-): { uri: string; path: string; line: number; character: number } | null {
-  if (!raw || typeof raw !== "object") return null;
-  const location = raw as LspLocationLike;
-
-  const uri =
-    typeof location.uri === "string"
-      ? location.uri
-      : typeof location.targetUri === "string"
-        ? location.targetUri
-        : "";
-  if (!uri) return null;
-
-  const start =
-    location.range?.start || location.targetSelectionRange?.start || location.targetRange?.start;
-  const line = typeof start?.line === "number" ? start.line : 0;
-  const character = typeof start?.character === "number" ? start.character : 0;
-
-  return {
-    uri,
-    path: normalizeFileUriToPath(uri),
-    line,
-    character,
-  };
-}
-
-function normalizeSymbolRange(raw: unknown): {
-  line: number;
-  character: number;
-  endLine: number;
-  endCharacter: number;
-} | null {
-  if (!raw || typeof raw !== "object") return null;
-  const range = raw as {
-    start?: { line?: number; character?: number };
-    end?: { line?: number; character?: number };
-  };
-  const line = typeof range.start?.line === "number" ? range.start.line : 0;
-  const character = typeof range.start?.character === "number" ? range.start.character : 0;
-  const endLine = typeof range.end?.line === "number" ? range.end.line : line;
-  const endCharacter = typeof range.end?.character === "number" ? range.end.character : character;
-  return { line, character, endLine, endCharacter };
-}
-
-function normalizeLspSymbol(raw: unknown): NormalizedLspSymbol | null {
-  if (!raw || typeof raw !== "object") return null;
-  const symbol = raw as LspSymbolLike;
-  const range =
-    normalizeSymbolRange(symbol.range) ||
-    normalizeSymbolRange(symbol.selectionRange) ||
-    normalizeSymbolRange(symbol.location?.range);
-  if (!range) return null;
-
-  const children = (Array.isArray(symbol.children) ? symbol.children : [])
-    .map((child) => normalizeLspSymbol(child))
-    .filter((child): child is NormalizedLspSymbol => !!child);
-
-  return {
-    name: typeof symbol.name === "string" && symbol.name.trim() ? symbol.name : "(symbol)",
-    kind: typeof symbol.kind === "number" && Number.isFinite(symbol.kind) ? symbol.kind : 13,
-    detail: typeof symbol.detail === "string" && symbol.detail.trim() ? symbol.detail : undefined,
-    line: range.line + 1,
-    character: range.character + 1,
-    endLine: range.endLine + 1,
-    endCharacter: range.endCharacter + 1,
-    children: children.length > 0 ? children : undefined,
-  };
-}
-
-interface RequestLog {
-  timestamp: string;
-  method: string;
-  path: string;
-  status: number;
-  durationMs: number;
-  error?: string;
-}
-
-const requestLogs: RequestLog[] = [];
-const MAX_LOGS = 1000;
-
-function logRequest(log: RequestLog): void {
-  requestLogs.unshift(log);
-  if (requestLogs.length > MAX_LOGS) {
-    requestLogs.pop();
-  }
-
-  const logLevel = log.status >= 500 ? "error" : log.status >= 400 ? "warn" : "info";
-  console[logLevel](
-    `[API] ${log.method} ${log.path} ${log.status} ${log.durationMs}ms${log.error ? ` - ${log.error}` : ""}`
-  );
-}
-
-function recordApiMetrics(method: string, path: string, status: number, durationMs: number): void {
-  trackApiCall(path, method, status, durationMs);
-  trackMetric("api_status", String(status), 1, { method, path, durationMs });
-}
-
-const isProduction = process.env.NODE_ENV === "production";
-
-const corsBaseHeaders: Record<string, string> = {
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
-  "Access-Control-Max-Age": "86400",
-};
-
-const SECRET_CONFIG_KEY =
-  /(secret|token|password|passwd|api[_-]?key|private[_-]?key|mnemonic|credential|seed)/i;
-function redactSecretConfig(cfg: Record<string, unknown>): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(cfg)) {
-    out[key] =
-      SECRET_CONFIG_KEY.test(key) && value != null && value !== "" ? "***redacted***" : value;
-  }
-  return out;
-}
-
-function parseBoundedQueryNumber(
-  raw: string | undefined,
-  min: number,
-  max: number
-): number | undefined {
-  if (typeof raw !== "string" || raw.trim().length === 0) return undefined;
-  const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed)) return undefined;
-  return Math.min(max, Math.max(min, parsed));
-}
-
-function buildCorsHeaders(origin?: string): Record<string, string> {
-  const headers: Record<string, string> = { ...corsBaseHeaders };
-  // Never emit a wildcard for an API that exposes file/wallet/tool operations.
-  // In dev, reflect the specific requesting origin (so the local web UI works)
-  // rather than "*"; requests still require the API key / same-origin browser
-  // signal to authenticate (see security.ts). In prod, omit CORS entirely.
-  if (!isProduction && origin) {
-    headers["Access-Control-Allow-Origin"] = origin;
-    headers["Vary"] = "Origin";
-  }
-  return headers;
-}
-
-const securityHeaders: Record<string, string> = {
-  "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
-  "X-XSS-Protection": "1; mode=block",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
-};
-interface RouteContext {
-  headers: Record<string, string>;
-  rawBody?: string;
-  url?: string;
-  auth?: AuthResult;
-}
-type RouteHandler = (
-  body?: unknown,
-  params?: Record<string, string>,
-  ctx?: RouteContext
-) => Promise<unknown> | unknown;
-
-interface SessionModelMetadata {
-  provider?: string;
-  provider_id?: string;
-  provider_name?: string;
-  model?: string;
-  agent_id?: string;
-  agent_name?: string;
-  agent_type?: string;
-}
-
-function metadataFromRecord(record?: Record<string, unknown> | null): SessionModelMetadata | null {
-  if (!record) return null;
-  const metadata: SessionModelMetadata = {
-    provider:
-      normalizeOptionalString(record.provider) || normalizeOptionalString(record.providerType),
-    provider_id:
-      normalizeOptionalString(record.provider_id) || normalizeOptionalString(record.providerId),
-    provider_name:
-      normalizeOptionalString(record.provider_name) || normalizeOptionalString(record.providerName),
-    model: normalizeOptionalString(record.model) || normalizeOptionalString(record.model_id),
-    agent_id: normalizeOptionalString(record.agent_id) || normalizeOptionalString(record.agentId),
-    agent_name:
-      normalizeOptionalString(record.agent_name) || normalizeOptionalString(record.agentName),
-    agent_type:
-      normalizeOptionalString(record.agent_type) || normalizeOptionalString(record.agentType),
-  };
-  const compact = Object.fromEntries(
-    Object.entries(metadata).filter(([, value]) => typeof value === "string" && value.trim())
-  ) as SessionModelMetadata;
-  return Object.keys(compact).length > 0 ? compact : null;
-}
-
-function mergeSessionModelMetadata(
-  primary?: SessionModelMetadata | null,
-  fallback?: SessionModelMetadata | null
-): SessionModelMetadata {
-  const merged: SessionModelMetadata = { ...(fallback ?? {}) };
-  for (const [key, value] of Object.entries(primary ?? {}) as Array<
-    [keyof SessionModelMetadata, string | undefined]
-  >) {
-    const normalized = normalizeOptionalString(value);
-    if (normalized) merged[key] = normalized;
-  }
-  return merged;
-}
-
-function latestSessionModelMetadata(messages: SessionMessageView[]): SessionModelMetadata | null {
-  for (const message of [...messages].reverse()) {
-    const metadata = metadataFromRecord(message as unknown as Record<string, unknown>);
-    if (metadata?.model || metadata?.provider || metadata?.provider_id) return metadata;
-  }
-  return null;
-}
-
-function sessionModelMetadata(
-  agentId?: string | null,
-  fallback?: SessionModelMetadata | null
-): SessionModelMetadata {
-  if (!agentId) return fallback ?? {};
-  const agent = agentManager.get(agentId);
-  if (!agent) return fallback ?? {};
-  const providerId = agent.provider_id || agent.provider;
-  const provider = providerId ? providerManager.get(providerId) : undefined;
-  return mergeSessionModelMetadata(
-    {
-      agent_id: agent.id,
-      agent_name: agent.name,
-      agent_type: agent.type,
-      provider: provider?.provider || providerId,
-      provider_id: providerId,
-      provider_name: provider?.name,
-      model: agent.model,
-    },
-    fallback
-  );
-}
-
-function sessionModelMetadataSnapshot(value: unknown): SessionModelMetadata | null {
-  return metadataFromRecord(parseJsonObject(value));
-}
-
-function skillInstallCommand(spec: SkillInstallSpec): string {
-  const raw = spec as SkillInstallSpec & { tap?: string };
-  if (spec.kind === "brew" && spec.formula) {
-    return raw.tap ? `brew install ${raw.tap}/${spec.formula}` : `brew install ${spec.formula}`;
-  }
-  if (spec.kind === "apt" && spec.package) return `sudo apt-get install -y ${spec.package}`;
-  if (spec.kind === "go" && spec.module) return `go install ${spec.module}`;
-  if (spec.kind === "uv" && spec.package) return `uv tool install ${spec.package}`;
-  if (spec.kind === "node" && spec.package) return `bun add -g ${spec.package}`;
-  if (spec.kind === "node" && spec.module) return `bun add -g ${spec.module}`;
-  if (spec.kind === "download" && spec.url) return `curl -L ${spec.url}`;
-  return spec.label || spec.kind;
-}
-
-function formatSkillInstallSpec(spec: SkillInstallSpec): SkillInstallSpec & {
-  type: string;
-  command: string;
-} {
-  return {
-    ...spec,
-    type: spec.kind,
-    command: skillInstallCommand(spec),
-  };
-}
 
 const routes: Record<string, RouteHandler> = {
   ...walletRoutes,

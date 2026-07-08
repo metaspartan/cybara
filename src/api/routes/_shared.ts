@@ -17,6 +17,7 @@ import {
   resolveProviderType,
   type ProviderType,
 } from "../../core/providers";
+import type { AuthResult } from "../security";
 
 export interface LspDiagnosticLike {
   severity?: number;
@@ -132,6 +133,8 @@ export const WALLET_TOKEN_CHAIN_SET = new Set<WalletTokenChain>(["eth", "sol"]);
 export interface RouteContext {
   headers: Record<string, string>;
   rawBody?: string;
+  url?: string;
+  auth?: AuthResult;
 }
 export type RouteHandler = (
   body?: unknown,
