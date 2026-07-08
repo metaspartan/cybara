@@ -85,6 +85,31 @@ export function toBedrockImageBlock(image: AgentImage): Record<string, unknown> 
   return { image: { format, source: { bytes: Buffer.from(data, "base64") } } };
 }
 
+export function openAIResponsesUserContent(
+  text: string,
+  images?: AgentImage[]
+): Array<Record<string, unknown>> {
+  const content: Array<Record<string, unknown>> = [{ type: "input_text", text }];
+  if (hasImages(images)) {
+    for (const image of images) content.push(toOpenAIResponsesImageBlock(image));
+  }
+  return content;
+}
+
+export function bedrockUserContent(
+  text: string,
+  images?: AgentImage[]
+): Array<Record<string, unknown>> {
+  const content: Array<Record<string, unknown>> = [{ text }];
+  if (hasImages(images)) {
+    for (const image of images) {
+      const block = toBedrockImageBlock(image);
+      if (block) content.push(block);
+    }
+  }
+  return content;
+}
+
 /** Returns null when the image has only a remote URL (Google needs inline bytes). */
 export function toGoogleImagePart(image: AgentImage): Record<string, unknown> | null {
   const { data, mimeType } = resolveImage(image);
