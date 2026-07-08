@@ -24,10 +24,14 @@ function contextUsageLabel(usage?: SessionContextUsage | null): string {
     )} tokens remaining.`,
   ];
   if (usage.compacted && (usage.compactionCount || 0) > 0) {
-    details.push(`Compacted ${usage.compactionCount} time${usage.compactionCount === 1 ? "" : "s"}.`);
+    details.push(
+      `Compacted ${usage.compactionCount} time${usage.compactionCount === 1 ? "" : "s"}.`
+    );
   }
   if ((usage.metadataTokens || 0) > 0) {
-    details.push(`${formatTokenCount(usage.metadataTokens || 0)} transcript metadata tokens are not replayed to the model.`);
+    details.push(
+      `${formatTokenCount(usage.metadataTokens || 0)} transcript metadata tokens are not replayed to the model.`
+    );
   }
   return details.join(" ");
 }
@@ -39,10 +43,14 @@ function contextUsageDetailRows(usage?: SessionContextUsage | null): Array<strin
     rows.push(`Compacted ${usage.compactionCount} time${usage.compactionCount === 1 ? "" : "s"}`);
   }
   if ((usage.compactedTokens || 0) > 0) {
-    rows.push(`${formatTokenCount(usage.compactedTokens || 0)} tokens summarized out of the active window`);
+    rows.push(
+      `${formatTokenCount(usage.compactedTokens || 0)} tokens summarized out of the active window`
+    );
   }
   if ((usage.metadataTokens || 0) > 0 && (usage.transcriptTokens || 0) > usage.usedTokens) {
-    rows.push(`${formatTokenCount(usage.metadataTokens || 0)} tool/timeline metadata tokens not replayed`);
+    rows.push(
+      `${formatTokenCount(usage.metadataTokens || 0)} tool/timeline metadata tokens not replayed`
+    );
   }
   if (usage.source === "estimated") {
     rows.push("Estimated from the active provider prompt");

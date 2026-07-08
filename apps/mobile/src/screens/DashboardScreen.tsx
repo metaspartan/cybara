@@ -3738,10 +3738,14 @@ function mobileContextUsageDetail(usage?: SessionContextUsage): string {
     )} tokens remaining.`,
   ];
   if (usage.compacted && (usage.compactionCount || 0) > 0) {
-    details.push(`Compacted ${usage.compactionCount} time${usage.compactionCount === 1 ? "" : "s"}.`);
+    details.push(
+      `Compacted ${usage.compactionCount} time${usage.compactionCount === 1 ? "" : "s"}.`
+    );
   }
   if ((usage.metadataTokens || 0) > 0) {
-    details.push(`${mobileFormatTokenCount(usage.metadataTokens || 0)} tool timeline tokens are not replayed.`);
+    details.push(
+      `${mobileFormatTokenCount(usage.metadataTokens || 0)} tool timeline tokens are not replayed.`
+    );
   }
   return details.join(" ");
 }
