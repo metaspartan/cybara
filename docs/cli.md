@@ -15,9 +15,11 @@ cybara <command> [options]
 ```bash
 cybara                    # Start the server on port 4269 (foreground)
 cybara start              # Start the server (foreground)
-cybara start -d           # Start the server in background (daemon)
-cybara stop               # Stop the background server
-cybara daemon-logs        # Show daemon process logs
+cybara gateway start      # Start the local gateway (alias for start)
+cybara gateway status     # Show gateway health
+cybara gateway health     # Alias for gateway status
+cybara gateway logs       # Show gateway logs
+cybara gateway restart    # Restart the running gateway
 ```
 
 ### Interactive Modes
@@ -27,6 +29,9 @@ cybara chat               # Interactive terminal chat with sessions, tools, queu
 cybara chat --agent <id>  # Start chat with a specific agent
 cybara chat --workspace <path>  # Bind new turns to a workspace
 cybara wizard             # Setup wizard (first-time configuration)
+cybara setup              # Setup wizard
+cybara configure          # Setup wizard alias
+cybara onboard            # Setup wizard alias
 cybara tui                # Main menu (interactive terminal dashboard)
 cybara tui status         # Gateway health panel
 cybara tui metrics        # Token/tool/API metrics panel
@@ -49,6 +54,7 @@ state, or channel configuration.
 
 ```bash
 cybara status             # Show status and health
+cybara health             # Alias for status
 cybara doctor             # Run API + stream + sandbox diagnostics
 cybara metrics            # Show token usage and metrics
 cybara metrics analysis   # Advanced token analysis
@@ -57,6 +63,10 @@ cybara update --check    # Only report whether a newer release exists (non-zero 
 cybara update --force    # Reinstall even when already current
 cybara version           # Show the current version
 cybara logs [count]       # Show recent logs (default: 20)
+cybara logs --tail 100    # Show a bounded log tail
+cybara logs --follow      # Follow logs until interrupted
+cybara completion zsh     # Print zsh completion script
+cybara completion bash    # Print bash completion script
 ```
 
 `cybara update` verifies the downloaded binary against its published SHA256 sidecar before
@@ -87,6 +97,10 @@ cybara provider update <id>  # Update provider (same flags)
 cybara provider delete <id>  # Delete provider
 cybara provider models <id>  # List provider's models
 cybara provider discover     # Discover Ollama models
+cybara models                # List configured providers
+cybara models available      # Show available provider types
+cybara models <provider-id>  # List provider models
+cybara model provider <id>   # Explicit model-provider form
 ```
 
 **Example:**
@@ -201,6 +215,7 @@ cybara pair               # List pending pairings
 cybara pair <CODE>        # Approve a pairing code
 cybara pair reject <CODE> # Reject a pairing code
 cybara pair policy <chan> <policy>  # Set DM policy
+cybara pairing            # Alias for pair
 ```
 
 Policies: `pairing`, `allowlist`, `open`, `disabled`
@@ -215,6 +230,7 @@ cybara mobile connect --json
 cybara mobile list
 cybara mobile revoke <device-id>
 cybara mobile remove <device-id>
+cybara devices            # Alias for mobile list
 ```
 
 `mobile connect --code` emits the preferred QR-compatible `cybara-mobile-pair-v1` one-time code for
@@ -222,6 +238,14 @@ the React Native iOS/Android app. Plain `mobile connect` still emits the legacy
 `cybara-mobile-connect-v1` direct-token payload for compatibility. Both flows create revocable
 per-device access, not the root gateway API key. Use a LAN-reachable URL or a trusted tunnel when
 pairing from a phone; `localhost` only works on the same machine.
+
+### OpenClaw/Hermes-Friendly Aliases
+
+Cybara accepts the common command names used by OpenClaw and Hermes where they map cleanly to the
+same gateway contract: `gateway`, `health`, `models`/`model`, `pairing`, `devices`, `configure`,
+`onboard`, `completion`, and `logs --follow`. Features that need separate data contracts, such as
+backup archives, profiles, and provider-auth pools, should use Cybara's existing settings and
+migration flows until those commands are explicitly added.
 
 ### MCP Servers
 

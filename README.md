@@ -349,8 +349,11 @@ cybara chat steer <session-id> <pending-id>
 cybara tui providers
 cybara tui router
 cybara status
+cybara gateway logs --tail 100
+cybara models <provider-id>
 cybara doctor
 cybara provider available
+cybara completion zsh
 cybara channels
 cybara wallet status
 cybara wallet swap --venue uniswap_v3 --token LINK --amount-eth 0.2
