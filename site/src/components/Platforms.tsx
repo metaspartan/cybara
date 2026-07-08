@@ -1,6 +1,6 @@
 import { Icon, type IconName } from "./Icon";
 import { SectionHeading } from "./SectionHeading";
-import { PLATFORMS } from "../data/content";
+import { PLATFORMS } from "../content";
 
 export function Platforms(): React.ReactElement {
   return (

@@ -1,6 +1,6 @@
 import { Icon, type IconName } from "./Icon";
 import { SectionHeading } from "./SectionHeading";
-import { FEATURES } from "../data/content";
+import { FEATURES } from "../content";
 
 export function Features(): React.ReactElement {
   return (

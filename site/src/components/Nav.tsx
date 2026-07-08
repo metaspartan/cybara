@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
-import { NAV_LINKS, GITHUB_URL } from "../data/content";
+import { NAV_LINKS, GITHUB_URL } from "../content";
 
 export function Nav(): React.ReactElement {
   const [scrolled, setScrolled] = useState<boolean>(false);

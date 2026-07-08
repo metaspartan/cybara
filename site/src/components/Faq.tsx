@@ -1,5 +1,5 @@
 import { SectionHeading } from "./SectionHeading";
-import { FAQS } from "../data/content";
+import { FAQS } from "../content";
 
 export function Faq(): React.ReactElement {
   return (

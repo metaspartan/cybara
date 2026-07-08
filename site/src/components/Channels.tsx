@@ -1,5 +1,5 @@
 import { SectionHeading } from "./SectionHeading";
-import { CHANNELS } from "../data/content";
+import { CHANNELS } from "../content";
 
 export function Channels(): React.ReactElement {
   return (

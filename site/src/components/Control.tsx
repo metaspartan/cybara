@@ -1,6 +1,6 @@
 import { Icon } from "./Icon";
 import { SectionHeading } from "./SectionHeading";
-import { CONTROL_POINTS } from "../data/content";
+import { CONTROL_POINTS } from "../content";
 
 export function Control(): React.ReactElement {
   return (

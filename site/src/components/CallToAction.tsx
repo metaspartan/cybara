@@ -1,5 +1,5 @@
 import { Icon } from "./Icon";
-import { GITHUB_URL } from "../data/content";
+import { GITHUB_URL } from "../content";
 
 export function CallToAction(): React.ReactElement {
   return (

@@ -3,3 +3,4 @@ dist
 .git
 .DS_Store
 *.log
+tsconfig.tsbuildinfo

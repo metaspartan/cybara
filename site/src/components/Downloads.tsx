@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Icon, type IconName } from "./Icon";
 import { SectionHeading } from "./SectionHeading";
-import { DOWNLOAD_GROUPS, type DownloadClient } from "../data/content";
+import { DOWNLOAD_GROUPS, type DownloadClient } from "../content";
 import { useLatestRelease, resolveAssetUrl, type LatestRelease } from "../hooks/useLatestRelease";
 
 interface DownloadCardProps {

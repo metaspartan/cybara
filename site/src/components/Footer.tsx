@@ -1,5 +1,5 @@
 import { Icon } from "./Icon";
-import { GITHUB_URL, NAV_LINKS } from "../data/content";
+import { GITHUB_URL, NAV_LINKS } from "../content";
 
 export function Footer(): React.ReactElement {
   return (
