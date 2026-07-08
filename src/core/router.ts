@@ -42,6 +42,12 @@ type PricingEntry = [
 
 const PROVIDER_PRICING: readonly PricingEntry[] = [
   // OpenAI (est. mid-2026)
+  ["openai", "gpt-5.6-sol", 5.0, 30.0, 0.5, 6.25],
+  ["openai", "gpt-5.6-terra", 2.5, 15.0, 0.25, 3.125],
+  ["openai", "gpt-5.6-luna", 1.0, 6.0, 0.1, 1.25],
+  ["openai-codex", "gpt-5.6-sol", 5.0, 30.0, 0.5, 6.25],
+  ["openai-codex", "gpt-5.6-terra", 2.5, 15.0, 0.25, 3.125],
+  ["openai-codex", "gpt-5.6-luna", 1.0, 6.0, 0.1, 1.25],
   ["openai", "gpt-5.5", 5.0, 20.0, 1.25],
   ["openai", "gpt-5.5-pro", 8.0, 32.0, 2.0],
   ["openai", "gpt-5.4", 2.5, 10.0, 1.25],
@@ -67,7 +73,13 @@ const PROVIDER_PRICING: readonly PricingEntry[] = [
   ["google", "gemini-2.5-flash-lite", 0.075, 0.3],
 
   // xAI (est.)
-  ["xai", "grok-4.3", 5.0, 15.0],
+  ["xai", "grok-4.3", 1.25, 2.5, 0.125],
+  ["xai", "grok-4.20-0309-reasoning", 1.25, 2.5, 0.125],
+  ["xai", "grok-4.20-0309-non-reasoning", 1.25, 2.5, 0.125],
+  ["xai", "grok-4.20-multi-agent-0309", 1.25, 2.5, 0.125],
+  ["xai-oauth", "grok-4.20-0309-reasoning", 1.25, 2.5, 0.125],
+  ["xai-oauth", "grok-4.20-0309-non-reasoning", 1.25, 2.5, 0.125],
+  ["xai-oauth", "grok-4.20-multi-agent-0309", 1.25, 2.5, 0.125],
   ["xai", "grok-4", 3.0, 15.0],
   ["xai", "grok-4-fast", 0.2, 1.5],
 

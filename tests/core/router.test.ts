@@ -92,6 +92,32 @@ describe("built-in pricing DB", () => {
     expect(p!.outputPerM).toBe(1.6);
   });
 
+  test("getPricing covers current OpenAI and xAI preview models", () => {
+    const sol = getPricing("openai", "gpt-5.6-sol");
+    expect(sol).toEqual({
+      inputPerM: 5,
+      outputPerM: 30,
+      cacheReadPerM: 0.5,
+      cacheWritePerM: 6.25,
+    });
+
+    const codexLuna = getPricing("openai-codex", "gpt-5.6-luna");
+    expect(codexLuna).toEqual({
+      inputPerM: 1,
+      outputPerM: 6,
+      cacheReadPerM: 0.1,
+      cacheWritePerM: 1.25,
+    });
+
+    const grok = getPricing("xai", "grok-4.20-multi-agent-0309");
+    expect(grok).toEqual({
+      inputPerM: 1.25,
+      outputPerM: 2.5,
+      cacheReadPerM: 0.125,
+      cacheWritePerM: undefined,
+    });
+  });
+
   test("getPricing returns null for unknown provider", () => {
     expect(getPricing("unknown-provider")).toBeNull();
   });

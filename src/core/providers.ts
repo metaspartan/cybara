@@ -15,6 +15,30 @@ const XAI_GROK_MODELS = [
     code: true,
   },
   {
+    id: "grok-4.20-0309-reasoning",
+    name: "Grok 4.20 0309 (Reasoning)",
+    context: 1000000,
+    maxTokens: 30000,
+    reasoning: true,
+    input: ["text", "image"],
+  },
+  {
+    id: "grok-4.20-0309-non-reasoning",
+    name: "Grok 4.20 0309 (Non-Reasoning)",
+    context: 1000000,
+    maxTokens: 30000,
+    reasoning: false,
+    input: ["text", "image"],
+  },
+  {
+    id: "grok-4.20-multi-agent-0309",
+    name: "Grok 4.20 Multi-Agent 0309",
+    context: 1000000,
+    maxTokens: 30000,
+    reasoning: true,
+    input: ["text", "image"],
+  },
+  {
     id: "grok-3",
     name: "Grok 3",
     context: 131072,
@@ -57,7 +81,7 @@ const XAI_GROK_MODELS = [
   {
     id: "grok-4.20-beta-latest-reasoning",
     name: "Grok 4.20 Beta Latest (Reasoning)",
-    context: 2000000,
+    context: 1000000,
     maxTokens: 30000,
     reasoning: true,
     input: ["text", "image"],
@@ -65,7 +89,7 @@ const XAI_GROK_MODELS = [
   {
     id: "grok-4.20-beta-latest-non-reasoning",
     name: "Grok 4.20 Beta Latest (Non-Reasoning)",
-    context: 2000000,
+    context: 1000000,
     maxTokens: 30000,
     reasoning: false,
     input: ["text", "image"],
@@ -137,6 +161,20 @@ const XAI_GROK_MODELS = [
   },
 ] as const;
 
+const XAI_GROK_OAUTH_MODELS = [
+  XAI_GROK_MODELS[0],
+  {
+    id: "grok-composer-2.5-fast",
+    name: "Grok Composer 2.5 Fast",
+    context: 200000,
+    maxTokens: 64000,
+    reasoning: true,
+    input: ["text", "image"],
+    code: true,
+  },
+  ...XAI_GROK_MODELS.slice(1),
+] as const;
+
 export const providers = {
   openai: {
     name: "OpenAI",
@@ -144,6 +182,33 @@ export const providers = {
     api: "openai-responses",
     authType: "api_key",
     models: [
+      {
+        id: "gpt-5.6-sol",
+        name: "GPT-5.6 Sol",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+        code: true,
+      },
+      {
+        id: "gpt-5.6-terra",
+        name: "GPT-5.6 Terra",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+        code: true,
+      },
+      {
+        id: "gpt-5.6-luna",
+        name: "GPT-5.6 Luna",
+        context: 1000000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+        code: true,
+      },
       {
         id: "gpt-5.5",
         name: "GPT-5.5",
@@ -2133,6 +2198,33 @@ export const providers = {
     oauthLoginUrl: "https://chatgpt.com/",
     models: [
       {
+        id: "gpt-5.6-sol",
+        name: "GPT-5.6 Sol",
+        context: 272000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+        code: true,
+      },
+      {
+        id: "gpt-5.6-terra",
+        name: "GPT-5.6 Terra",
+        context: 272000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+        code: true,
+      },
+      {
+        id: "gpt-5.6-luna",
+        name: "GPT-5.6 Luna",
+        context: 272000,
+        maxTokens: 128000,
+        reasoning: true,
+        input: ["text", "image"],
+        code: true,
+      },
+      {
         id: "gpt-5.5",
         name: "GPT-5.5",
         context: 272000,
@@ -2367,7 +2459,7 @@ export const providers = {
       tokenUrl: "https://auth.x.ai/oauth2/token",
       scope: XAI_OAUTH_SCOPE,
     },
-    models: XAI_GROK_MODELS,
+    models: XAI_GROK_OAUTH_MODELS,
   },
   qianfan: {
     name: "Baidu Qianfan",

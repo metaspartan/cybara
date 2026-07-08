@@ -67,27 +67,27 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
     try {
       const response =
         agentId && !hookOptions?.useModelRouter
-        ? await agentsApi.chat(
-            agentId,
-            content,
-            requestSessionId || undefined,
-            requestedWorkspaceDir || undefined,
-            controller.signal,
-            queueMode,
-            options?.clientPendingId,
-            options?.images
-          )
-        : await chatApi.send(
-            content,
-            agentId,
-            requestSessionId || undefined,
-            requestedWorkspaceDir || undefined,
-            controller.signal,
-            queueMode,
-            options?.clientPendingId,
-            options?.images,
-            hookOptions?.useModelRouter === true
-          );
+          ? await agentsApi.chat(
+              agentId,
+              content,
+              requestSessionId || undefined,
+              requestedWorkspaceDir || undefined,
+              controller.signal,
+              queueMode,
+              options?.clientPendingId,
+              options?.images
+            )
+          : await chatApi.send(
+              content,
+              agentId,
+              requestSessionId || undefined,
+              requestedWorkspaceDir || undefined,
+              controller.signal,
+              queueMode,
+              options?.clientPendingId,
+              options?.images,
+              hookOptions?.useModelRouter === true
+            );
 
       if (response.success && response.data) {
         if (!queuedSend && activeRequestAbortRef.current !== controller) {

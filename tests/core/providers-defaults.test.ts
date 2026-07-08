@@ -65,8 +65,13 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers["xai-oauth"].api).toBe("openai-responses");
   });
 
-  test("includes GPT-5.3 Codex in the OpenAI Codex model catalog", () => {
+  test("includes current OpenAI preview models in API and Codex catalogs", () => {
+    const openAiModelIds = providers.openai.models.map((model) => model.id);
     const codexModelIds = providers["openai-codex"].models.map((model) => model.id);
+    for (const modelId of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"]) {
+      expect(openAiModelIds).toContain(modelId);
+      expect(codexModelIds).toContain(modelId);
+    }
     expect(codexModelIds).toContain("gpt-5.3-codex");
     expect(codexModelIds).toContain("gpt-5.2-codex");
     expect(codexModelIds).toContain("gpt-5.3-codex-spark");
@@ -152,7 +157,11 @@ describe("Provider model defaults and API-family parity", () => {
     expect(modelIds).toEqual(
       expect.arrayContaining([
         "grok-build-0.1",
+        "grok-composer-2.5-fast",
         "grok-4.3",
+        "grok-4.20-0309-reasoning",
+        "grok-4.20-0309-non-reasoning",
+        "grok-4.20-multi-agent-0309",
         "grok-4-fast-non-reasoning",
         "grok-4-1-fast-non-reasoning",
         "grok-3-mini-fast",

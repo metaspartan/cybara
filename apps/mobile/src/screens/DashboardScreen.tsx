@@ -3074,7 +3074,7 @@ function SessionDetailPanel({
         {
           title: "Chat settings",
           message: [
-            `Agent: ${useModelRouter ? "Model Router" : selectedAgent?.name ?? "Gateway default"}`,
+            `Agent: ${useModelRouter ? "Model Router" : (selectedAgent?.name ?? "Gateway default")}`,
             mobileContextUsageDetail(contextUsage),
             mobileProviderPlanDetail(activeProviderPlan),
           ]
@@ -3099,28 +3099,26 @@ function SessionDetailPanel({
       text: string;
       onPress?: () => void;
       style?: "default" | "cancel" | "destructive";
-    }> = agentOptions
-      .slice(0, 8)
-      .map((option) => ({
-        text:
-          (useModelRouter && option.value === MOBILE_MODEL_ROUTER_SELECTOR_VALUE) ||
-          (!useModelRouter && option.value === currentAgentId)
-            ? `${option.label} ✓`
-            : option.label,
-        onPress: () => {
-          if (
-            option.value === MOBILE_MODEL_ROUTER_SELECTOR_VALUE ||
-            option.value !== currentAgentId
-          ) {
-            void changeSessionAgent(option.value);
-          }
-        },
-      }));
+    }> = agentOptions.slice(0, 8).map((option) => ({
+      text:
+        (useModelRouter && option.value === MOBILE_MODEL_ROUTER_SELECTOR_VALUE) ||
+        (!useModelRouter && option.value === currentAgentId)
+          ? `${option.label} ✓`
+          : option.label,
+      onPress: () => {
+        if (
+          option.value === MOBILE_MODEL_ROUTER_SELECTOR_VALUE ||
+          option.value !== currentAgentId
+        ) {
+          void changeSessionAgent(option.value);
+        }
+      },
+    }));
     buttons.push({ text: "Cancel", style: "cancel" });
     Alert.alert(
       "Chat settings",
       [
-        `Agent: ${useModelRouter ? "Model Router" : selectedAgent?.name ?? "Gateway default"}`,
+        `Agent: ${useModelRouter ? "Model Router" : (selectedAgent?.name ?? "Gateway default")}`,
         mobileContextUsageDetail(contextUsage),
         mobileProviderPlanDetail(activeProviderPlan),
       ]

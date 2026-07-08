@@ -984,6 +984,8 @@ const routes: Record<string, RouteHandler> = {
       clientPendingId?: string;
       workspaceDir?: string;
       queueMode?: "queue" | "steer";
+      useModelRouter?: boolean;
+      images?: Array<{ data?: string; url?: string; mimeType?: string }>;
     };
     return await handleChat({
       message: data.message,
@@ -992,6 +994,8 @@ const routes: Record<string, RouteHandler> = {
       clientPendingId: data.clientPendingId,
       workspaceDir: data.workspaceDir,
       queueMode: data.queueMode,
+      useModelRouter: data.useModelRouter,
+      images: data.images,
     });
   },
 
@@ -3515,6 +3519,7 @@ const routes: Record<string, RouteHandler> = {
       tools?: boolean;
       images?: Array<{ data?: string; url?: string; mimeType?: string }>;
       queueMode?: "queue" | "steer";
+      useModelRouter?: boolean;
     };
     return await handleChat(data);
   },
