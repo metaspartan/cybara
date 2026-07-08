@@ -22,6 +22,7 @@ import { runMcpStdioServer } from "./core/mcp-host-server";
 import { resolveCybaraHome } from "./core/cybara-home";
 import { runMobileCommand } from "./cli-mobile";
 import { rawHelp } from "./cli-help";
+import { printCompletion } from "./cli-completion";
 import { rawComputerUse } from "./cli-computer-use";
 import { configureChatCli, rawAgent, rawChatCommand } from "./cli-chat";
 import { getFlagValue, hasFlag } from "./cli-args";
@@ -1871,13 +1872,7 @@ interface LogEntry {
 
 async function rawLogs(count = 20): Promise<void> {
   const boundedCount = Math.max(1, Math.min(1000, Math.floor(count)));
-  const data = await fetchAPI<LogEntry[]>(`/api/logs/system?limit=${boundedCount}`);
-  if (!data) {
-    console.error("ERROR: Failed to fetch logs from", API_BASE);
-    process.exit(1);
-  }
-
-  const logs = (Array.isArray(data) ? data : []).slice(0, boundedCount);
+  const logs = await fetchSystemLogs(boundedCount);
 
   console.log("CYBARA LOGS");
   console.log("===========");
@@ -1898,6 +1893,60 @@ async function rawLogs(count = 20): Promise<void> {
       ? new Date(parsedTime).toLocaleTimeString()
       : "--:--:--";
     console.log(`[${time}] ${level} ${module} ${(log.message || "").slice(0, 60)}`);
+  }
+}
+
+async function fetchSystemLogs(count: number): Promise<LogEntry[]> {
+  const boundedCount = Math.max(1, Math.min(1000, Math.floor(count)));
+  const data = await fetchAPI<LogEntry[]>(`/api/logs/system?limit=${boundedCount}`);
+  if (!data) {
+    console.error("ERROR: Failed to fetch logs from", API_BASE);
+    process.exit(1);
+  }
+  return (Array.isArray(data) ? data : []).slice(0, boundedCount);
+}
+
+function parseLogCount(args: string[], fallback = 20): number {
+  const flagValue = getFlagValue(args, "--tail") || getFlagValue(args, "-n");
+  const raw = flagValue || args.find((arg) => /^\d+$/.test(arg));
+  const parsed = Number.parseInt(raw || "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function rawLogsCommand(args: string[]): Promise<void> {
+  const count = parseLogCount(args);
+  if (!hasFlag(args, "--follow") && !hasFlag(args, "-f")) {
+    await rawLogs(count);
+    return;
+  }
+
+  const seen = new Set<string>();
+  console.log("CYBARA LOGS");
+  console.log("===========");
+  console.log("following: Ctrl-C to stop");
+  console.log("");
+
+  for (;;) {
+    const logs = await fetchSystemLogs(count);
+    for (const log of logs.reverse()) {
+      const key = [
+        log.timestamp || log.created_at || "",
+        log.level || "",
+        log.module || log.source || log.logType || "",
+        log.message || "",
+      ].join("\u0000");
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const level = (log.level || "info").toUpperCase().padEnd(5);
+      const module = (log.module || log.source || log.logType || "log").slice(0, 12).padEnd(12);
+      const timestamp = log.timestamp || log.created_at || "";
+      const parsedTime = Date.parse(timestamp);
+      const time = Number.isFinite(parsedTime)
+        ? new Date(parsedTime).toLocaleTimeString()
+        : "--:--:--";
+      console.log(`[${time}] ${level} ${module} ${(log.message || "").slice(0, 60)}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000));
   }
 }
 
@@ -3901,7 +3950,10 @@ function shouldExitAfterMain(): boolean {
   if (!command) return false;
   if (command === "mcp" && args[1] === "serve") return false;
   if (command === "chat") return false;
-  return !["start", "dev", "wizard", "setup", "install", "tui"].includes(command);
+  if (command === "gateway" && ["start", "run"].includes(args[1] || "")) return false;
+  return !["start", "dev", "wizard", "setup", "install", "configure", "onboard", "tui"].includes(
+    command
+  );
 }
 
 interface GitHubReleaseAsset {
@@ -3919,6 +3971,97 @@ interface GitHubReleaseResponse {
 
 function getVersion(): string {
   return getAppVersion();
+}
+
+async function rawGatewayRestart(): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/system/restart`, {
+    method: "POST",
+    headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
+  });
+  const result = (await response.json().catch(() => ({}))) as {
+    success?: boolean;
+    supervised?: boolean;
+    message?: string;
+    error?: string;
+  };
+  if (!response.ok || result.success === false) {
+    console.error(`ERROR: ${result.error || `Gateway restart failed (${response.status})`}`);
+    process.exit(1);
+  }
+  console.log(result.message || "Gateway restart requested.");
+  if (typeof result.supervised === "boolean") {
+    console.log(`supervised: ${result.supervised ? "yes" : "no"}`);
+  }
+}
+
+async function rawGateway(args: string[]): Promise<void> {
+  switch (args[0] || "status") {
+    case "status":
+    case "health":
+      await rawStatus();
+      break;
+    case "logs":
+      await rawLogsCommand(args.slice(1));
+      break;
+    case "restart":
+      await rawGatewayRestart();
+      break;
+    case "start":
+    case "run":
+      spawn("bun", ["run", "dev"], { stdio: "inherit" });
+      break;
+    default:
+      console.log("Gateway Commands:");
+      console.log("  cybara gateway status          - Show gateway health");
+      console.log("  cybara gateway health          - Alias for status");
+      console.log("  cybara gateway logs [--tail N] - Show gateway logs");
+      console.log("  cybara gateway logs --follow   - Follow gateway logs");
+      console.log("  cybara gateway restart         - Restart the gateway");
+      console.log("  cybara gateway start           - Start the local gateway");
+      break;
+  }
+}
+
+async function rawModels(args: string[]): Promise<void> {
+  const subcommand = args[0];
+  if (!subcommand || subcommand === "list" || subcommand === "providers") {
+    await rawProviders();
+    return;
+  }
+  if (subcommand === "available") {
+    await rawProviderAvailable();
+    return;
+  }
+  if (subcommand === "provider") {
+    await rawProviderModels(args[1]);
+    return;
+  }
+  await rawProviderModels(subcommand);
+}
+
+async function rawPairCommand(args: string[]): Promise<void> {
+  const pairSubCmd = args[0];
+  if (!pairSubCmd || pairSubCmd === "list") {
+    await rawPairList();
+  } else if (pairSubCmd === "reject") {
+    const rejectCode = args[1];
+    if (!rejectCode) {
+      console.error("Usage: cybara pair reject <CODE>");
+      process.exit(1);
+    }
+    await rawPairReject(rejectCode);
+  } else if (pairSubCmd === "policy") {
+    const channelName = args[1];
+    const policy = args[2];
+    if (!channelName || !policy) {
+      console.error("Usage: cybara pair policy <channel> <policy>");
+      console.log("Policies: pairing, allowlist, open, disabled");
+      process.exit(1);
+    }
+    await rawPairPolicy(channelName, policy);
+  } else {
+    await rawPairApprove(pairSubCmd);
+  }
 }
 
 async function fetchGitHubRelease(
@@ -4107,6 +4250,12 @@ async function main() {
     case "status":
       await rawStatus();
       break;
+    case "health":
+      await rawStatus();
+      break;
+    case "gateway":
+      await rawGateway(args.slice(1));
+      break;
     case "doctor":
       await rawDoctor();
       break;
@@ -4234,6 +4383,10 @@ async function main() {
       }
       break;
     }
+    case "model":
+    case "models":
+      await rawModels(args.slice(1));
+      break;
     case "chat":
       await rawChatCommand(args.slice(1));
       break;
@@ -4265,12 +4418,20 @@ async function main() {
         hasFlag,
       });
       break;
+    case "devices":
+      await runMobileCommand(args[1] ? args.slice(1) : ["list"], {
+        apiBase: API_BASE,
+        apiKey: CLI_API_KEY,
+        fetchAPI,
+        getFlagValue,
+        hasFlag,
+      });
+      break;
     case "memory":
       await rawMemory(args[1]);
       break;
     case "logs": {
-      const n = parseInt(args[1] ?? "", 10);
-      await rawLogs(Number.isFinite(n) && n > 0 ? n : 20);
+      await rawLogsCommand(args.slice(1));
       break;
     }
     case "subagent":
@@ -4518,6 +4679,9 @@ async function main() {
     case "-h":
       rawHelp(getVersion(), API_BASE);
       break;
+    case "completion":
+      printCompletion(args[1]);
+      break;
 
     case "version":
     case "--version":
@@ -4525,29 +4689,9 @@ async function main() {
       console.log(`cybara v${getVersion()}`);
       break;
 
-    case "pair": {
-      const pairSubCmd = args[1];
-      if (!pairSubCmd || pairSubCmd === "list") {
-        await rawPairList();
-      } else if (pairSubCmd === "reject") {
-        const rejectCode = args[2];
-        if (!rejectCode) {
-          console.error("Usage: cybara pair reject <CODE>");
-          process.exit(1);
-        }
-        await rawPairReject(rejectCode);
-      } else if (pairSubCmd === "policy") {
-        const channelName = args[2];
-        const policy = args[3];
-        if (!channelName || !policy) {
-          console.error("Usage: cybara pair policy <channel> <policy>");
-          console.log("Policies: pairing, allowlist, open, disabled");
-          process.exit(1);
-        }
-        await rawPairPolicy(channelName, policy);
-      } else {
-        await rawPairApprove(pairSubCmd);
-      }
+    case "pair":
+    case "pairing": {
+      await rawPairCommand(args.slice(1));
       break;
     }
 
@@ -4624,6 +4768,8 @@ async function main() {
     case "wizard":
     case "setup":
     case "install":
+    case "configure":
+    case "onboard":
       render(<TUIApp command={command} />);
       break;
     case "tui":

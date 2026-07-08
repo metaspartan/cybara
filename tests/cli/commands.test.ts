@@ -591,6 +591,14 @@ function route(method: string, url: URL, body: string): Response {
     ]);
   }
 
+  if (method === "POST" && pathname === "/api/system/restart") {
+    return json({
+      success: true,
+      supervised: false,
+      message: "Gateway restart requested.",
+    });
+  }
+
   if (method === "GET" && pathname === "/api/config") {
     return json(configState);
   }
@@ -1464,6 +1472,9 @@ describe("CLI Commands", () => {
     expect(exitCode).toBe(0);
     expect(stdout).toContain("CYBARA CLI");
     expect(stdout).toContain("provider");
+    expect(stdout).toContain("gateway");
+    expect(stdout).toContain("models");
+    expect(stdout).toContain("completion");
     expect(stdout).toContain("channels");
     expect(stdout).toContain("plugin");
   });
@@ -1478,6 +1489,45 @@ describe("CLI Commands", () => {
     expect(stdout).toContain("memory: 55.5% used");
     expect(stdout).toContain("swap: 25.0% used");
     expect(stdout).toContain("HEALTH CHECKS");
+  });
+
+  test("OpenClaw/Hermes-compatible CLI aliases are wired", async () => {
+    const health = await runCli(["health"]);
+    expect(health.exitCode).toBe(0);
+    expect(health.stdout).toContain("CYBARA STATUS");
+
+    const gatewayStatus = await runCli(["gateway", "status"]);
+    expect(gatewayStatus.exitCode).toBe(0);
+    expect(gatewayStatus.stdout).toContain("status: healthy");
+
+    const gatewayLogs = await runCli(["gateway", "logs", "--tail", "1"]);
+    expect(gatewayLogs.exitCode).toBe(0);
+    expect(gatewayLogs.stdout).toContain("CYBARA LOGS");
+    expect(lastLogsLimit).toBe("1");
+
+    const gatewayRestart = await runCli(["gateway", "restart"]);
+    expect(gatewayRestart.exitCode).toBe(0);
+    expect(gatewayRestart.stdout).toContain("Gateway restart requested");
+
+    const models = await runCli(["models"]);
+    expect(models.exitCode).toBe(0);
+    expect(models.stdout).toContain("CYBARA PROVIDERS");
+
+    const providerModels = await runCli(["model", "provider", "prov-1"]);
+    expect(providerModels.exitCode).toBe(0);
+    expect(providerModels.stdout).toContain("claude-sonnet");
+
+    const pairing = await runCli(["pairing", "list"]);
+    expect(pairing.exitCode).toBe(0);
+    expect(pairing.stdout).toContain("PAIR42");
+
+    const devices = await runCli(["devices"]);
+    expect(devices.exitCode).toBe(0);
+    expect(devices.stdout).toContain("CYBARA MOBILE DEVICES");
+
+    const completion = await runCli(["completion", "bash"]);
+    expect(completion.exitCode).toBe(0);
+    expect(completion.stdout).toContain("complete -F _cybara_completion cybara");
   });
 
   test("metrics command renders usage summary", async () => {

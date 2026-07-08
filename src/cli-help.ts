@@ -10,6 +10,13 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("  (none)      Interactive TUI menu");
   console.log("  chat        Interactive chat with AI");
   console.log("  status      Show system status");
+  console.log("  health      Alias for status");
+  console.log("  gateway     Gateway lifecycle commands");
+  console.log("    gateway status          Show gateway health");
+  console.log("    gateway logs [--tail N] Show recent gateway logs");
+  console.log("    gateway logs --follow   Follow gateway logs");
+  console.log("    gateway restart         Restart the gateway");
+  console.log("    gateway start           Start the local gateway");
   console.log("  metrics     Show token usage and metrics");
   console.log("  doctor      Run environment diagnostics");
   console.log("  update      Download and install the latest CLI release (verifies SHA256)");
@@ -42,6 +49,10 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    provider delete <id>  Delete provider");
   console.log("    provider models <id>  List provider models");
   console.log("    provider discover     Discover Ollama models");
+  console.log("  models      Provider model discovery aliases");
+  console.log("    models                 List configured providers");
+  console.log("    models available       Show available provider types");
+  console.log("    models <provider-id>   List models for a configured provider");
   console.log("  acp         Run an ACP (Agent Client Protocol) server over stdio for editors");
   console.log("    acp [--agent <id>]    Serve the default (or given) agent to an ACP client");
   console.log("  tasks       List scheduled tasks");
@@ -56,6 +67,8 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    memory         List recent memories");
   console.log("    memory <query> Search memories");
   console.log("  logs        Show recent logs");
+  console.log("    logs --tail N          Show N recent logs");
+  console.log("    logs --follow          Follow logs until interrupted");
   console.log("  subagent    Subagent commands");
   console.log("    subagent list       List subagents");
   console.log("    subagent spawn <t>  Spawn with task");
@@ -72,6 +85,7 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("  channels    List configured channels");
   console.log("  mobile      Mobile companion commands");
   printMobileHelp("    ");
+  console.log("  devices     Alias for mobile device management");
   console.log("  wallet      Wallet management commands");
   console.log("    wallet status                     Show wallet status and RPC settings");
   console.log("    wallet create --password <p>      Create 24-word wallet");
@@ -111,6 +125,7 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    pair <CODE>    Approve a pairing code");
   console.log("    pair reject    Reject a pairing code");
   console.log("    pair policy    Set DM policy for a channel");
+  console.log("  pairing     Alias for pair");
   console.log("  mcp         MCP server commands");
   console.log("    mcp list     List installed MCP servers");
   console.log("    mcp search   Search MCP registry");
@@ -122,6 +137,9 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    lsp uninstall  Uninstall language server");
   console.log("  start       Start the server");
   console.log("  wizard      Run setup wizard (first-time configuration)");
+  console.log("  configure   Alias for setup wizard");
+  console.log("  onboard     Alias for setup wizard");
+  console.log("  completion  Print shell completion script (zsh or bash)");
   console.log("  help        Show this help");
   console.log("");
   console.log(`Version: ${version}`);
