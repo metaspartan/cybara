@@ -50,6 +50,8 @@ import {
 import { consumeOpenAIChatStream } from "./llm/streaming-completions";
 import { compactCodexInputItemsForContext, sanitizeCodexInputItems } from "./llm/codex-context";
 import {
+  compactOpenAIChatTranscriptInPlace,
+  compactOpenAIRequestMessagesForContext as compactOpenAIRequestMessages,
   compactToolTranscriptInPlace,
   isContextOverflowError,
   TOOL_RESULT_COMPACTION_NOTICE,
@@ -2162,44 +2164,6 @@ class AgentManager {
     );
   }
 
-  private estimateOpenAIMessageChars(message: Record<string, unknown>): number {
-    let total = 0;
-
-    const content = message.content;
-    if (typeof content === "string") {
-      total += content.length;
-    } else if (Array.isArray(content)) {
-      try {
-        const serialized = JSON.stringify(content);
-        total += typeof serialized === "string" ? serialized.length : 0;
-      } catch {
-        total += 256;
-      }
-    }
-
-    if (Array.isArray(message.tool_calls)) {
-      try {
-        const serialized = JSON.stringify(message.tool_calls);
-        total += typeof serialized === "string" ? serialized.length : 0;
-      } catch {
-        total += 256;
-      }
-    }
-
-    if (typeof message.tool_call_id === "string") {
-      total += message.tool_call_id.length;
-    }
-
-    return total;
-  }
-
-  private estimateOpenAIContextChars(messages: Record<string, unknown>[]): number {
-    return messages.reduce(
-      (sum, message) => sum + this.estimateOpenAIMessageChars(message) + 64,
-      0
-    );
-  }
-
   private truncateTextToContextBudget(text: string, maxChars: number): string {
     if (text.length <= maxChars) return text;
 
@@ -2216,21 +2180,13 @@ class AgentManager {
     return text.slice(0, cutPoint) + suffix;
   }
 
-  /**
-   * Truncate text keeping the HEAD and the TAIL with a truncation marker in the
-   * middle. Preserves the beginning (setup/context) and the end (most-recent
-   * output/errors) of long tool results (read/grep/exec), which a flat head-only
-   * slice would discard. Falls back to head-only for very small budgets.
-   */
   private truncateTextWithHeadAndTail(text: string, maxChars: number): string {
     if (text.length <= maxChars) return text;
-    // Include the canonical truncation notice so callers/tests that detect it still match.
     const marker = `\n${CONTEXT_LIMIT_TRUNCATION_NOTICE}\n[...${Math.max(1, text.length - maxChars)} chars truncated...]\n`;
     const budget = Math.max(0, maxChars - marker.length);
     if (budget <= 16) {
       return this.truncateTextToContextBudget(text, maxChars);
     }
-    // Keep ~70% of the budget for the head (setup/context) and ~30% for the tail (recent output).
     const headBudget = Math.floor(budget * 0.7);
     const tailBudget = budget - headBudget;
     const head = text.slice(0, headBudget);
@@ -2245,8 +2201,6 @@ class AgentManager {
     } catch {
       serialized = String(resultPayload);
     }
-    // Tool results often have important context at both ends (file headers vs.
-    // final output/errors), so preserve head + tail with a truncation marker.
     return this.truncateTextWithHeadAndTail(serialized, maxChars);
   }
 
@@ -2272,9 +2226,6 @@ class AgentManager {
         continue;
       }
 
-      // Anthropic nests tool_result blocks in a user message's content array,
-      // so we elide at the block level — same notice + elide-in-place as the
-      // flat formats, adapted to the nested shape.
       let changed = false;
       const nextContent = message.content.map((block) => {
         if (!block || typeof block !== "object") return block;
@@ -2302,28 +2253,27 @@ class AgentManager {
     return compacted;
   }
 
-  // Chat Completions wire format: tool results are `role:"tool"` messages.
-  // Elides their content in place via the shared, provider-agnostic compactor
-  // (same layer the OpenAI-Responses/"codex" and other paths use).
   private compactOpenAILoopMessagesForContext(
     messages: Record<string, unknown>[],
     contextBudgetChars: number,
     aggressive = false
   ): boolean {
-    const elided = compactToolTranscriptInPlace(
-      messages,
-      contextBudgetChars,
-      {
-        isToolResult: (message) => message.role === "tool" && typeof message.content === "string",
-        estimateChars: (message) => this.estimateOpenAIMessageChars(message) + 64,
-        isElided: (message) => message.content === TOOL_RESULT_COMPACTION_NOTICE,
-        elide: (message) => {
-          message.content = TOOL_RESULT_COMPACTION_NOTICE;
-        },
-      },
-      { aggressive }
-    );
+    const elided = compactOpenAIChatTranscriptInPlace(messages, contextBudgetChars, { aggressive });
     return elided > 0;
+  }
+
+  private compactOpenAIRequestMessagesForContext(
+    requestBody: Record<string, unknown>,
+    contextWindowTokens: number | undefined,
+    aggressive = false
+  ): boolean {
+    return compactOpenAIRequestMessages(requestBody, {
+      contextWindowTokens,
+      defaultContextWindowTokens: DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
+      charsPerToken: CONTEXT_CHARS_PER_TOKEN_ESTIMATE,
+      estimateRequestInputTokens: (body) => this.estimateOpenAIRequestInputTokens(body),
+      aggressive,
+    });
   }
 
   private shouldRetryWithMaxCompletionTokens(status: number, errorText: string): boolean {
@@ -2497,6 +2447,12 @@ class AgentManager {
     if (!currentLimit) return undefined;
 
     const normalizedError = errorText.toLowerCase();
+    if (
+      normalizedError.includes("maximum prompt length") &&
+      normalizedError.includes("request contains")
+    ) {
+      return undefined;
+    }
     let nextLimit = Math.max(1, Math.floor(currentLimit * 0.8));
 
     const explicitLimitMatch = normalizedError.match(/limit:\s*(\d+)\s*\(requested:\s*(\d+)\)/i);
@@ -2702,12 +2658,6 @@ class AgentManager {
         return { role: m.role, content: m.content };
       }),
     };
-    const initialTokenLimit = this.resolveOpenAIRequestTokenLimit(
-      requestBody,
-      maxOutputTokens,
-      contextWindowTokens
-    );
-    this.applyOpenAITokenLimit(requestBody, preferMaxCompletionTokens, initialTokenLimit);
 
     const openaiEffort = normalizeReasoningEffort(
       this.resolveModelParams(toolContext).reasoning_effort
@@ -2746,6 +2696,14 @@ class AgentManager {
       }
     }
 
+    this.compactOpenAIRequestMessagesForContext(requestBody, contextWindowTokens);
+    const initialTokenLimit = this.resolveOpenAIRequestTokenLimit(
+      requestBody,
+      maxOutputTokens,
+      contextWindowTokens
+    );
+    this.applyOpenAITokenLimit(requestBody, preferMaxCompletionTokens, initialTokenLimit);
+
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...customHeaders, // Merge custom headers (e.g., User-Agent for Kimi Code)
@@ -2763,13 +2721,41 @@ class AgentManager {
 
     const startTime = performance.now();
 
-    const data = await this.postOpenAIChatCompletions(
-      baseUrl,
-      headers,
-      requestBody,
-      "API error",
-      toolContext?.abortSignal
-    );
+    let data: OpenAIResponse;
+    try {
+      data = await this.postOpenAIChatCompletions(
+        baseUrl,
+        headers,
+        requestBody,
+        "API error",
+        toolContext?.abortSignal
+      );
+    } catch (error) {
+      if (!isContextOverflowError(this.normalizeErrorMessage(error))) {
+        throw error;
+      }
+      const compacted = this.compactOpenAIRequestMessagesForContext(
+        requestBody,
+        contextWindowTokens,
+        true
+      );
+      if (!compacted) {
+        throw error;
+      }
+      const retryLimit = this.resolveOpenAIRequestTokenLimit(
+        requestBody,
+        maxOutputTokens,
+        contextWindowTokens
+      );
+      this.applyOpenAITokenLimit(requestBody, preferMaxCompletionTokens, retryLimit);
+      data = await this.postOpenAIChatCompletions(
+        baseUrl,
+        headers,
+        requestBody,
+        "API error",
+        toolContext?.abortSignal
+      );
+    }
 
     const durationMs = Math.round(performance.now() - startTime);
 
@@ -2930,12 +2916,6 @@ class AgentManager {
         model: modelId,
         messages: currentMessages,
       };
-      const loopTokenLimit = this.resolveOpenAIRequestTokenLimit(
-        loopRequestBody,
-        maxOutputTokens,
-        contextWindowTokens
-      );
-      this.applyOpenAITokenLimit(loopRequestBody, preferMaxCompletionTokens, loopTokenLimit);
       if (shouldUseMiniMaxReasoningSplit(providerConfig, modelId)) {
         loopRequestBody.reasoning_split = true;
       }
@@ -2951,6 +2931,14 @@ class AgentManager {
         }));
         loopRequestBody.tool_choice = "auto";
       }
+
+      this.compactOpenAIRequestMessagesForContext(loopRequestBody, contextWindowTokens);
+      const loopTokenLimit = this.resolveOpenAIRequestTokenLimit(
+        loopRequestBody,
+        maxOutputTokens,
+        contextWindowTokens
+      );
+      this.applyOpenAITokenLimit(loopRequestBody, preferMaxCompletionTokens, loopTokenLimit);
 
       let loopData: OpenAIResponse;
       try {
@@ -2974,13 +2962,24 @@ class AgentManager {
         if (!compacted) {
           throw error;
         }
+        const retryLoopRequestBody: Record<string, unknown> = {
+          ...loopRequestBody,
+          messages: currentMessages,
+        };
+        const retryLoopTokenLimit = this.resolveOpenAIRequestTokenLimit(
+          retryLoopRequestBody,
+          maxOutputTokens,
+          contextWindowTokens
+        );
+        this.applyOpenAITokenLimit(
+          retryLoopRequestBody,
+          preferMaxCompletionTokens,
+          retryLoopTokenLimit
+        );
         loopData = await this.postOpenAIChatCompletions(
           baseUrl,
           headers,
-          {
-            ...loopRequestBody,
-            messages: currentMessages,
-          },
+          retryLoopRequestBody,
           "API error in agentic loop",
           toolContext?.abortSignal
         );
@@ -3010,6 +3009,7 @@ class AgentManager {
             "Reply to the user now with your findings from the tool results above. Do not call any more tools.",
         });
         const nudgeBody: Record<string, unknown> = { model: modelId, messages: currentMessages };
+        this.compactOpenAIRequestMessagesForContext(nudgeBody, contextWindowTokens);
         const limit = this.resolveOpenAIRequestTokenLimit(
           nudgeBody,
           maxOutputTokens,

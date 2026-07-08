@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { agentManager } from "../../src/core/agent";
 import { providerManager } from "../../src/core/providers";
 import type { ToolDefinition } from "../../src/core/database";
+import { TOOL_RESULT_COMPACTION_NOTICE } from "../../src/core/llm/tool-transcript";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -697,6 +698,121 @@ describe("Agent tool allowlist guardrails", () => {
     expect(failedLimit).toBeGreaterThan(0);
     expect(retriedLimit).toBeGreaterThan(0);
     expect(retriedLimit).toBeLessThan(failedLimit);
+  });
+
+  test("compacts and retries xAI prompt-length overflow in OpenAI-compatible loops", async () => {
+    const provider = providerManager.create({
+      provider: "xai",
+      name: "xAI Prompt Overflow Provider",
+      api_key: "xai-test-key",
+      base_url: "https://api.x.ai/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const calcTool: ToolDefinition = {
+      name: "calc",
+      description: "Evaluate math expressions",
+      input_schema: {
+        type: "object",
+        properties: { expression: { type: "string" } },
+        required: ["expression"],
+      },
+    };
+
+    const agent = agentManager.create({
+      name: "xAI Prompt Overflow Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "grok-build-0.1",
+      tools: [calcTool],
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let completionCalls = 0;
+    let retriedLoopBody: Record<string, unknown> | undefined;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      completionCalls += 1;
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+
+      if (completionCalls === 1) {
+        return new Response(
+          JSON.stringify({
+            id: "resp-xai-context-1",
+            object: "chat.completion",
+            model: "grok-build-0.1",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "call-xai-context-1",
+                      type: "function",
+                      function: {
+                        name: "calc",
+                        arguments: JSON.stringify({ expression: "2+2" }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      if (completionCalls === 2) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              message:
+                "invalid argument: the model's maximum prompt length is 256000 but the request contains 286101 tokens",
+            },
+          }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      retriedLoopBody = body;
+      return new Response(
+        JSON.stringify({
+          id: "resp-xai-context-2",
+          object: "chat.completion",
+          model: "grok-build-0.1",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "xai-context-retry-ok",
+              },
+            },
+          ],
+          usage: { prompt_tokens: 8, completion_tokens: 1, total_tokens: 9 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "calculate 2+2" }],
+      { useTools: true, sessionId: "xai-context-retry-session" }
+    );
+
+    expect(result.content).toBe("xai-context-retry-ok");
+    expect(completionCalls).toBe(3);
+    const retriedMessages = (retriedLoopBody?.messages as Array<Record<string, unknown>>) || [];
+    expect(
+      retriedMessages.some((message) => message.content === TOOL_RESULT_COMPACTION_NOTICE)
+    ).toBe(true);
   });
 
   test("synthesizes stable tool_call_id values when OpenAI-compatible responses omit them", async () => {

@@ -2,6 +2,7 @@ import { useState, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { chatApi, agentsApi, extractApiError } from "@/lib/api";
 import type { ChatMessage, ChatImageAttachment } from "@/types";
+import { enrichReloadedMessages, readCachedSessionMessages } from "@/pages/chat/messageCache";
 
 interface ChatState {
   messages: ChatMessage[];
@@ -181,11 +182,17 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
 
   const loadSession = useCallback(
     (sessionId: string, messages: ChatMessage[], workspaceDir?: string | null) => {
-      setState({
-        messages,
-        sessionId,
-        workspaceDir: workspaceDir ?? null,
-        isLoading: false,
+      setState((prev) => {
+        const reference =
+          prev.sessionId === sessionId && prev.messages.length > 0
+            ? prev.messages
+            : readCachedSessionMessages(sessionId) || [];
+        return {
+          messages: enrichReloadedMessages(reference, messages),
+          sessionId,
+          workspaceDir: workspaceDir ?? null,
+          isLoading: false,
+        };
       });
     },
     []
