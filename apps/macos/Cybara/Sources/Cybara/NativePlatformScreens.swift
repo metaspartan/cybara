@@ -99,6 +99,127 @@ struct NativeIDEFileList: Decodable, Hashable {
     let error: String?
 }
 
+struct NativeIDEEntry: Decodable, Identifiable, Hashable {
+    let name: String
+    let path: String
+    let type: String
+    let size: Int?
+    let `extension`: String?
+    let modifiedAt: String?
+    let gitModified: Bool?
+    let gitStaged: Bool?
+    let gitUntracked: Bool?
+    let gitIgnored: Bool?
+
+    var id: String { path }
+    var isDirectory: Bool { type == "directory" }
+    var systemImage: String { isDirectory ? "folder" : "doc.text" }
+    var statusMark: String? {
+        if gitStaged == true { return "S" }
+        if gitModified == true { return "M" }
+        if gitUntracked == true { return "U" }
+        if gitIgnored == true { return "I" }
+        return nil
+    }
+}
+
+struct NativeIDEBrowseResult: Decodable, Hashable {
+    let success: Bool?
+    let path: String
+    let parent: String?
+    let entries: [NativeIDEEntry]
+    let error: String?
+}
+
+struct NativeIDEReadResult: Decodable, Hashable {
+    let success: Bool?
+    let path: String
+    let content: String?
+    let size: Int?
+    let `extension`: String?
+    let isBinary: Bool?
+    let error: String?
+}
+
+struct NativeIDEPathResult: Decodable, Hashable {
+    let success: Bool?
+    let path: String?
+    let oldPath: String?
+    let type: String?
+    let url: String?
+    let error: String?
+}
+
+struct NativeIDESearchMatch: Decodable, Identifiable, Hashable {
+    let line: Int
+    let column: Int
+    let text: String
+
+    var id: String { "\(line):\(column):\(text)" }
+}
+
+struct NativeIDESearchFile: Decodable, Identifiable, Hashable {
+    let file: String
+    let matches: [NativeIDESearchMatch]
+    let count: Int
+
+    var id: String { file }
+}
+
+struct NativeIDESearchResult: Decodable, Hashable {
+    let success: Bool?
+    let path: String?
+    let query: String?
+    let totalMatches: Int?
+    let truncated: Bool?
+    let files: [NativeIDESearchFile]
+    let error: String?
+}
+
+struct NativeIDEReplacePreviewLine: Decodable, Identifiable, Hashable {
+    let line: Int
+    let before: String
+    let after: String
+
+    var id: String { "\(line):\(before):\(after)" }
+}
+
+struct NativeIDEReplacePreviewFile: Decodable, Identifiable, Hashable {
+    let file: String
+    let replacements: Int
+    let preview: [NativeIDEReplacePreviewLine]
+
+    var id: String { file }
+}
+
+struct NativeIDEReplacePreviewResult: Decodable, Hashable {
+    let success: Bool?
+    let path: String?
+    let query: String?
+    let replacement: String?
+    let totalReplacements: Int?
+    let files: [NativeIDEReplacePreviewFile]
+    let truncated: Bool?
+    let error: String?
+}
+
+struct NativeIDEReplaceResult: Decodable, Hashable {
+    let success: Bool?
+    let path: String?
+    let query: String?
+    let replacement: String?
+    let changedFiles: [NativeIDEChangedFile]
+    let totalReplacements: Int?
+    let error: String?
+}
+
+struct NativeIDEChangedFile: Decodable, Identifiable, Hashable {
+    let file: String
+    let replacements: Int
+
+    var id: String { file }
+}
+
 struct NativeTerminalSession: Decodable, Identifiable, Hashable {
     let id: String
     let createdAt: String
@@ -219,6 +340,108 @@ extension GatewayClient {
                 URLQueryItem(name: "path", value: path),
                 URLQueryItem(name: "query", value: query),
                 URLQueryItem(name: "limit", value: "\(limit)"),
+            ]
+        )
+    }
+
+    func browseIDE(path: String) async throws -> NativeIDEBrowseResult {
+        try await nativeGet(
+            "api/ide/browse",
+            as: NativeIDEBrowseResult.self,
+            queryItems: [URLQueryItem(name: "path", value: path)]
+        )
+    }
+
+    func readIDEFile(path: String) async throws -> NativeIDEReadResult {
+        try await nativeGet(
+            "api/ide/read",
+            as: NativeIDEReadResult.self,
+            queryItems: [URLQueryItem(name: "path", value: path)]
+        )
+    }
+
+    func writeIDEFile(path: String, content: String) async throws -> NativeIDEPathResult {
+        try await nativePostJSON("api/ide/write", payload: ["path": path, "content": content])
+    }
+
+    func createIDEItem(parentPath: String, name: String, type: String) async throws -> NativeIDEPathResult {
+        try await nativePostJSON(
+            "api/ide/create",
+            payload: ["parentPath": parentPath, "name": name, "type": type]
+        )
+    }
+
+    func renameIDEItem(path: String, newName: String) async throws -> NativeIDEPathResult {
+        try await nativePostJSON("api/ide/rename", payload: ["path": path, "newName": newName])
+    }
+
+    func revealIDEPath(_ path: String) async throws -> NativeIDEPathResult {
+        try await nativePostJSON("api/ide/reveal", payload: ["path": path])
+    }
+
+    func openIDETerminal(path: String) async throws -> NativeIDEPathResult {
+        try await nativePostJSON("api/ide/open-terminal", payload: ["path": path])
+    }
+
+    func idePermalink(path: String, line: Int = 1) async throws -> NativeIDEPathResult {
+        try await nativeGet(
+            "api/ide/permalink",
+            as: NativeIDEPathResult.self,
+            queryItems: [
+                URLQueryItem(name: "path", value: path),
+                URLQueryItem(name: "line", value: "\(max(1, line))"),
+            ]
+        )
+    }
+
+    func searchIDE(path: String, query: String, caseSensitive: Bool, wholeWord: Bool) async throws -> NativeIDESearchResult {
+        try await nativeGet(
+            "api/ide/search",
+            as: NativeIDESearchResult.self,
+            queryItems: [
+                URLQueryItem(name: "path", value: path),
+                URLQueryItem(name: "query", value: query),
+                URLQueryItem(name: "caseSensitive", value: caseSensitive ? "true" : "false"),
+                URLQueryItem(name: "wholeWord", value: wholeWord ? "true" : "false"),
+            ]
+        )
+    }
+
+    func previewIDEReplace(
+        path: String,
+        query: String,
+        replacement: String,
+        caseSensitive: Bool,
+        wholeWord: Bool
+    ) async throws -> NativeIDEReplacePreviewResult {
+        try await nativePostJSON(
+            "api/ide/replace/preview",
+            payload: [
+                "path": path,
+                "query": query,
+                "replacement": replacement,
+                "caseSensitive": caseSensitive,
+                "wholeWord": wholeWord,
+                "maxFiles": 120,
+            ]
+        )
+    }
+
+    func applyIDEReplace(
+        path: String,
+        query: String,
+        replacement: String,
+        caseSensitive: Bool,
+        wholeWord: Bool
+    ) async throws -> NativeIDEReplaceResult {
+        try await nativePostJSON(
+            "api/ide/replace",
+            payload: [
+                "path": path,
+                "query": query,
+                "replacement": replacement,
+                "caseSensitive": caseSensitive,
+                "wholeWord": wholeWord,
             ]
         )
     }

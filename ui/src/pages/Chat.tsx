@@ -109,6 +109,7 @@ import {
   readCachedLiveSessionState,
   writeCachedLiveSessionState,
 } from "./chat/liveSessionState";
+import { writeCachedSessionMessages } from "./chat/messageCache";
 import {
   clearCachedOptimisticPendingMessages,
   readCachedOptimisticPendingMessages,
@@ -2940,6 +2941,11 @@ export function Chat() {
     if (!sessionId) return;
     writeCachedOptimisticPendingMessages(sessionId, pendingMessages);
   }, [pendingMessages, sessionId]);
+
+  useEffect(() => {
+    if (!sessionId || typedMessages.length === 0) return;
+    writeCachedSessionMessages(sessionId, typedMessages);
+  }, [sessionId, typedMessages]);
 
   useEffect(() => {
     if (!sessionId) return;
