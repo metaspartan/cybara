@@ -182,15 +182,41 @@ describe("mobile device lifecycle e2e", () => {
       push: { configured: true, provider: "expo", platform: "ios" },
     });
 
+    const rootPreferenceAttempt = await api("PUT", "/api/mobile/push-preferences", {
+      body: { chatCompletions: false },
+    });
+    expect(rootPreferenceAttempt.status).toBe(403);
+    expect(String(rootPreferenceAttempt.data.error)).toContain(
+      "Paired mobile device token required"
+    );
+
+    const preferences = await api("PUT", "/api/mobile/push-preferences", {
+      body: { chatCompletions: false, taskCompletions: true },
+      token: standardToken,
+    });
+    expect(preferences.status).toBe(200);
+    expect(preferences.data.device).toMatchObject({
+      id: standardDeviceId,
+      push: {
+        configured: true,
+        preferences: { chatCompletions: false, taskCompletions: true },
+      },
+    });
+
     const list = await api("GET", "/api/mobile/devices");
     expect(JSON.stringify(list.data)).not.toContain(expoToken);
     const devices = list.data.devices as Array<{
       id: string;
-      push?: { configured: boolean; provider?: string };
+      push?: {
+        configured: boolean;
+        provider?: string;
+        preferences?: { chatCompletions: boolean; taskCompletions: boolean };
+      };
     }>;
     expect(devices.find((device) => device.id === standardDeviceId)?.push).toMatchObject({
       configured: true,
       provider: "expo",
+      preferences: { chatCompletions: false, taskCompletions: true },
     });
   }, 15000);
 

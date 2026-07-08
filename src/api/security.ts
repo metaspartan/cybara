@@ -1153,7 +1153,10 @@ export function securityCheck(
     }
   }
 
-  if (path.startsWith("/api/mobile/push") && !auth.mobileDevice) {
+  if (
+    (path === "/api/mobile/device" || path.startsWith("/api/mobile/push")) &&
+    !auth.mobileDevice
+  ) {
     return {
       passed: false,
       error: "Paired mobile device token required",

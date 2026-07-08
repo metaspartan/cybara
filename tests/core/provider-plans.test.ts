@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { tables } from "../../src/core/database";
 import { config } from "../../src/core/config";
 import {
+  enrichProviderPlanStatusWithLiveUsage,
   getProviderPlanRouteConstraint,
   getProviderPlanSnapshot,
   getProviderPlanStatus,
@@ -15,8 +16,9 @@ import {
 } from "../../src/core/router";
 
 const createdProviders: string[] = [];
+const originalFetch = globalThis.fetch;
 
-function createProvider(provider = "openai-codex"): string {
+function createProvider(provider = "openai-codex", accessToken = "token"): string {
   const id = `plan-test-${crypto.randomUUID()}`;
   tables.providers.create({
     id,
@@ -24,7 +26,7 @@ function createProvider(provider = "openai-codex"): string {
     name: `Plan Test ${id}`,
     base_url: "https://example.test",
     api_key: undefined,
-    access_token: "token",
+    access_token: accessToken,
     refresh_token: "refresh",
     expires_at: Date.now() + 3600_000,
     is_default: false,
@@ -53,6 +55,7 @@ afterEach(() => {
   }
   config.set("provider_plan_monitoring", null);
   config.set("router", null);
+  globalThis.fetch = originalFetch;
   resetRouterForTests();
 });
 
@@ -231,5 +234,46 @@ describe("provider plan monitoring", () => {
       monthlySpendLimit: 70,
       sourceMode: "oauth_api",
     });
+  });
+
+  test("enriches OAuth provider plan status from live usage without manual limits", async () => {
+    const providerId = createProvider("openai-codex", "x".repeat(64));
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          plan_type: "pro",
+          rate_limit: {
+            primary_window: {
+              used_percent: 48,
+              limit_window_seconds: 18000,
+              reset_at: 1783405927,
+            },
+            secondary_window: {
+              used_percent: 82,
+              limit_window_seconds: 604800,
+              reset_at: 1783665881,
+            },
+          },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )) as typeof fetch;
+    setProviderPlanMonitoringConfig({ enabled: true, providers: {} });
+
+    const status = await enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus());
+    const snapshot = status.providers.find(
+      (provider) => provider.configuredProviderId === providerId
+    );
+
+    expect(snapshot?.planName).toBe("Codex Pro");
+    expect(snapshot?.sourceMode).toBe("oauth_api");
+    expect(snapshot?.sourceLabel).toBe("OpenAI OAuth usage");
+    expect(snapshot?.dataConfidence).toBe("exact");
+    expect(snapshot?.status).toBe("warning");
+    expect(snapshot?.windows.map((window) => [window.id, window.usedPercent])).toEqual([
+      ["5h", 48],
+      ["weekly", 82],
+    ]);
+    expect(status.summary.configured).toBeGreaterThanOrEqual(1);
+    expect(status.summary.warnings).toBeGreaterThanOrEqual(1);
   });
 });

@@ -280,6 +280,10 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain(".frame(width: 176)");
     expect(nativeScreens).toContain("private var contextUsageText: String");
     expect(nativeScreens).toContain("private var contextUsagePopover: some View");
+    expect(nativeScreens).toContain("providerPlanStatus: ProviderPlanStatusResponse?");
+    expect(nativeScreens).toContain("private var activeProviderPlan: ProviderPlanSnapshot?");
+    expect(nativeScreens).toContain("private var providerPlanText: String?");
+    expect(nativeScreens).toContain("client.providerPlanStatus()");
     expect(nativeScreens).toContain("pendingAgentSessionID = selectedSessionID");
     expect(nativeScreens).toContain("private func changeChatAgent(_ agentID: String) async");
     expect(nativeScreens).toContain(

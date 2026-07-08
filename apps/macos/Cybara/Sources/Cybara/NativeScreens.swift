@@ -371,6 +371,7 @@ struct ChatScreen: View {
     @State private var sessions: [GatewaySession] = []
     @State private var agents: [GatewayAgent] = []
     @State private var providers: [GatewayProvider] = []
+    @State private var providerPlanStatus: ProviderPlanStatusResponse?
     @State private var messages: [GatewaySessionMessage] = []
     @State private var searchText = ""
     @State private var draft = ""
@@ -1003,7 +1004,46 @@ struct ChatScreen: View {
         guard let usage = activeContextUsage else {
             return "Context usage is available after the session loads."
         }
-        return "\(formatNativeTokenCount(usage.usedTokens)) of \(formatNativeTokenCount(usage.limitTokens)) tokens used (\(formatNativePercent(usage.usedPercent))). \(formatNativeTokenCount(usage.remainingTokens)) tokens remaining."
+        var parts = [
+            "\(formatNativeTokenCount(usage.usedTokens)) of \(formatNativeTokenCount(usage.limitTokens)) tokens used (\(formatNativePercent(usage.usedPercent))). \(formatNativeTokenCount(usage.remainingTokens)) tokens remaining."
+        ]
+        if let detail = providerPlanText {
+            parts.append(detail)
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private var activeProviderPlan: ProviderPlanSnapshot? {
+        guard let providerPlanStatus else { return nil }
+        let keys = Set([
+            selectedChatAgent?.provider_id,
+            selectedChatAgent?.provider,
+            activeSession?.provider_id,
+            activeSession?.provider,
+        ].compactMap { firstNonEmptyGatewayString($0) })
+        guard !keys.isEmpty else { return nil }
+        return providerPlanStatus.providers.first { plan in
+            [plan.configuredProviderId, plan.providerId, plan.providerType].contains { key in
+                guard let key else { return false }
+                return keys.contains(key)
+            }
+        }
+    }
+
+    private var providerPlanText: String? {
+        guard let plan = activeProviderPlan else { return nil }
+        let windows = plan.windows.filter { $0.usedPercent != nil }
+        let label = firstNonEmptyGatewayString(plan.planName, plan.providerName) ?? "Provider plan"
+        if !windows.isEmpty {
+            let summary = windows.prefix(2).map { window in
+                "\(window.title.replacingOccurrences(of: " window", with: "")): \(formatNativePercent(window.usedPercent ?? 0))"
+            }.joined(separator: " · ")
+            return "\(label): \(summary)"
+        }
+        if plan.externalSourceAvailable {
+            return "\(label): \(firstNonEmptyGatewayString(plan.externalSourceLabel) ?? "provider usage") available"
+        }
+        return nil
     }
 
     private var workspaceHelpText: String {
@@ -1460,6 +1500,12 @@ struct ChatScreen: View {
                 Text("Open a session or send a message to estimate usage.")
                     .multilineTextAlignment(.center)
             }
+            if let providerPlanText {
+                Divider().padding(.vertical, 4)
+                Text(providerPlanText)
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+            }
         }
         .font(.system(size: 12, design: .rounded))
         .padding(14)
@@ -1490,13 +1536,19 @@ struct ChatScreen: View {
             async let loadedSessions = client.sessions(limit: 150)
             async let loadedAgents = client.agents()
             async let loadedProviders = client.providers()
+            async let loadedProviderPlans = loadProviderPlanStatus()
             sessions = try await loadedSessions
             agents = try await loadedAgents
             providers = try await loadedProviders
+            providerPlanStatus = await loadedProviderPlans
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    private func loadProviderPlanStatus() async -> ProviderPlanStatusResponse? {
+        try? await client.providerPlanStatus()
     }
 
     private func loadChatConfig() async {

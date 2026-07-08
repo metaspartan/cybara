@@ -2526,6 +2526,17 @@ describe("Metrics API", () => {
     expect(accountedPlusOther).toBeLessThanOrEqual(storage.data.totalBytes + 1);
   });
 
+  test("GET /api/metrics/snapshot returns a mobile-friendly aggregate", async () => {
+    const snapshot = await api("GET", "/api/metrics/snapshot");
+    expect(snapshot.status).toBe(200);
+    expect(typeof snapshot.data.overview?.tokenUsage?.total).toBe("number");
+    expect(typeof snapshot.data.storage?.totalBytes).toBe("number");
+    expect(typeof snapshot.data.providerPlans?.enabled).toBe("boolean");
+    expect(snapshot.data.availability.overview.ok).toBe(true);
+    expect(snapshot.data.availability.storage.ok).toBe(true);
+    expect(snapshot.data.availability.providerPlans.ok).toBe(true);
+  });
+
   test("metrics detail endpoints tolerate malformed metadata rows", async () => {
     const suffix = Date.now().toString();
     const malformedProvider = `prov_bad_${suffix}`;

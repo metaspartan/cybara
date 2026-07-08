@@ -252,9 +252,21 @@ export interface MobilePushDeviceSummary {
   enabled: boolean;
   provider?: "expo";
   platform?: "ios" | "android" | "unknown";
+  preferences?: {
+    chatCompletions: boolean;
+    taskCompletions: boolean;
+  };
   updatedAt?: string;
   lastSentAt?: string;
   lastError?: string;
+}
+
+export interface CurrentMobileDeviceResponse {
+  device?: {
+    id: string;
+    name: string;
+    push?: MobilePushDeviceSummary;
+  };
 }
 
 export interface MobilePushRegistrationResponse {
@@ -1993,6 +2005,10 @@ export class CybaraMobileApi {
     provider?: "expo";
     platform?: string;
     enabled?: boolean;
+    preferences?: {
+      chatCompletions?: boolean;
+      taskCompletions?: boolean;
+    };
   }): Promise<MobilePushRegistrationResponse> {
     return this.request<MobilePushRegistrationResponse>("/api/mobile/push-token", {
       method: "POST",
@@ -2001,7 +2017,22 @@ export class CybaraMobileApi {
         provider: input.provider ?? "expo",
         platform: input.platform,
         enabled: input.enabled ?? true,
+        preferences: input.preferences,
       }),
+    });
+  }
+
+  currentMobileDevice(): Promise<CurrentMobileDeviceResponse> {
+    return this.request<CurrentMobileDeviceResponse>("/api/mobile/device");
+  }
+
+  updatePushPreferences(input: {
+    chatCompletions?: boolean;
+    taskCompletions?: boolean;
+  }): Promise<MobilePushRegistrationResponse> {
+    return this.request<MobilePushRegistrationResponse>("/api/mobile/push-preferences", {
+      method: "PUT",
+      body: JSON.stringify(input),
     });
   }
 
@@ -2817,6 +2848,17 @@ export class CybaraMobileApi {
   }
 
   async metricsSnapshot(): Promise<MetricsSnapshot> {
+    try {
+      const snapshot = await this.request<MetricsSnapshot>("/api/metrics/snapshot");
+      return {
+        ...snapshot,
+        availability: {
+          ...emptyMetricsAvailability(),
+          ...(snapshot.availability ?? {}),
+        },
+      };
+    } catch {}
+
     const availability = emptyMetricsAvailability();
     const safe = async <T>(
       key: MetricsEndpointKey,

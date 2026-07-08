@@ -124,6 +124,7 @@ import {
   type FeatureSummary,
   type MobilePendingChatMessage,
   type ProviderSummary,
+  type ProviderPlanStatusResponse,
   type PendingToolApproval,
   type RemoteItemSummary,
   type RouterConfig,
@@ -624,6 +625,9 @@ export function DashboardScreen({
   const insets = useSafeAreaInsets();
   const [summary, setSummary] = useState<FeatureSummary | null>(null);
   const [metrics, setMetrics] = useState<MetricsSnapshot | null>(null);
+  const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
+    null
+  );
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState<MobileTabKey>("overview");
   const [detailRoute, setDetailRoute] = useState<DetailRoute | null>(null);
@@ -662,7 +666,12 @@ export function DashboardScreen({
     if (showRefreshing) setRefreshing(true);
     setError(null);
     try {
-      setSummary(await api.featureSummary());
+      const [nextSummary, nextProviderPlans] = await Promise.all([
+        api.featureSummary(),
+        api.providerPlanStatus().catch(() => null),
+      ]);
+      setSummary(nextSummary);
+      setProviderPlanStatus(nextProviderPlans);
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : String(refreshError));
     } finally {
@@ -987,6 +996,7 @@ export function DashboardScreen({
           api={api}
           agents={summary?.agents ?? []}
           closeDetail={closeDetailRoute}
+          providerPlanStatus={providerPlanStatus}
           refreshSummary={() => refresh(false)}
           sessionSummary={
             summary?.sessions.find((session) => session.id === detailRoute.id) ?? null
@@ -1022,6 +1032,7 @@ export function DashboardScreen({
             <DetailContent
               api={api}
               profile={profile}
+              providerPlanStatus={providerPlanStatus}
               route={detailRoute}
               summary={detailSummary}
               openItem={openItem}
@@ -1909,6 +1920,7 @@ function DetailContent({
   loadMoreLogs,
   loadingMoreLogs,
   logPageError,
+  providerPlanStatus,
 }: {
   api: CybaraMobileApi;
   accentColor: string;
@@ -1922,6 +1934,7 @@ function DetailContent({
   loadMoreLogs: () => void;
   loadingMoreLogs: boolean;
   logPageError: string | null;
+  providerPlanStatus?: ProviderPlanStatusResponse | null;
 }) {
   if (route.kind === "session") {
     return (
@@ -1931,6 +1944,7 @@ function DetailContent({
         agents={summary?.agents ?? []}
         closeDetail={closeDetail}
         config={summary?.config}
+        providerPlanStatus={providerPlanStatus}
         refreshSummary={refreshSummary}
         sessionSummary={summary?.sessions.find((session) => session.id === route.id) ?? null}
         sessionId={route.id}
@@ -2120,6 +2134,7 @@ function SessionDetailPanel({
   agents,
   closeDetail,
   config,
+  providerPlanStatus,
   refreshSummary,
   sessionSummary,
   sessionId,
@@ -2130,6 +2145,7 @@ function SessionDetailPanel({
   agents: AgentSummary[];
   closeDetail: () => void;
   config?: Record<string, unknown>;
+  providerPlanStatus?: ProviderPlanStatusResponse | null;
   refreshSummary: () => void;
   sessionSummary?: SessionSummary | null;
   sessionId: string;
@@ -2806,6 +2822,11 @@ function SessionDetailPanel({
     mobileFirstNonEmptyString(detail?.agentId, sessionSummary?.agent_id) ||
     "";
   const selectedAgent = agents.find((agent) => agent.id === currentAgentId);
+  const activeProviderPlan = mobileProviderPlanFor(providerPlanStatus, {
+    agent: selectedAgent,
+    detail,
+    sessionSummary,
+  });
   const agentOptions = useMemo(
     () => [
       { label: "Gateway default", value: "" },
@@ -2920,9 +2941,13 @@ function SessionDetailPanel({
       ActionSheetIOS.showActionSheetWithOptions(
         {
           title: "Chat settings",
-          message: `Agent: ${selectedAgent?.name ?? "Gateway default"}\n${mobileContextUsageDetail(
-            contextUsage
-          )}`,
+          message: [
+            `Agent: ${selectedAgent?.name ?? "Gateway default"}`,
+            mobileContextUsageDetail(contextUsage),
+            mobileProviderPlanDetail(activeProviderPlan),
+          ]
+            .filter(Boolean)
+            .join("\n"),
           options: [...labels, "Cancel"],
           cancelButtonIndex: labels.length,
         },
@@ -2951,9 +2976,13 @@ function SessionDetailPanel({
     buttons.push({ text: "Cancel", style: "cancel" });
     Alert.alert(
       "Chat settings",
-      `Agent: ${selectedAgent?.name ?? "Gateway default"}\n${mobileContextUsageDetail(
-        contextUsage
-      )}`,
+      [
+        `Agent: ${selectedAgent?.name ?? "Gateway default"}`,
+        mobileContextUsageDetail(contextUsage),
+        mobileProviderPlanDetail(activeProviderPlan),
+      ]
+        .filter(Boolean)
+        .join("\n"),
       buttons
     );
   };
@@ -2997,8 +3026,11 @@ function SessionDetailPanel({
           workspaceDir,
         }),
         `Context: ${mobileContextUsageDetail(contextUsage)}`,
+        mobileProviderPlanDetail(activeProviderPlan),
         `Tool approvals: ${toolApprovalLabel}`,
-      ].join("\n"),
+      ]
+        .filter(Boolean)
+        .join("\n"),
       [
         {
           text: "Tool approvals",
@@ -3355,6 +3387,57 @@ function mobileContextUsageDetail(usage?: SessionContextUsage): string {
   )} tokens used (${usage.usedPercent}%). ${mobileFormatTokenCount(
     usage.remainingTokens
   )} tokens remaining.`;
+}
+
+function mobileProviderPlanFor(
+  status: ProviderPlanStatusResponse | null | undefined,
+  source: {
+    agent?: AgentSummary | null;
+    detail?: SessionDetailSummary | null;
+    sessionSummary?: SessionSummary | null;
+  }
+): ProviderPlanStatusResponse["providers"][number] | null {
+  if (!status) return null;
+  const keys = new Set(
+    [
+      source.agent?.provider_id,
+      source.agent?.provider,
+      source.detail?.providerId,
+      source.detail?.provider,
+      source.sessionSummary?.provider_id,
+      source.sessionSummary?.provider,
+    ].filter((value): value is string => typeof value === "string" && value.length > 0)
+  );
+  if (keys.size === 0) return null;
+  return (
+    status.providers.find((plan) =>
+      [plan.configuredProviderId, plan.providerId, plan.providerType].some(
+        (key) => typeof key === "string" && keys.has(key)
+      )
+    ) ?? null
+  );
+}
+
+function mobileProviderPlanDetail(
+  plan?: ProviderPlanStatusResponse["providers"][number] | null
+): string | null {
+  if (!plan) return null;
+  const windows = plan.windows.filter((window) => typeof window.usedPercent === "number");
+  const label = plan.planName || plan.providerName;
+  if (windows.length > 0) {
+    const summary = windows
+      .slice(0, 2)
+      .map(
+        (window) =>
+          `${window.title.replace(" window", "")}: ${Math.round(window.usedPercent ?? 0)}%`
+      )
+      .join(" · ");
+    return `Plan: ${label} - ${summary}`;
+  }
+  if (plan.externalSourceAvailable) {
+    return `Plan: ${label} - ${plan.externalSourceLabel || "provider usage"} available`;
+  }
+  return null;
 }
 
 function TasksPanel({

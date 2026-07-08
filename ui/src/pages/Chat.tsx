@@ -53,8 +53,13 @@ import {
   useStopAgent,
   type Subagent,
 } from "@/hooks/useApi";
-import { chatApi, settingsApi } from "@/lib/api";
-import type { Agent, SessionContextUsage } from "@/types";
+import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
+import type {
+  Agent,
+  ProviderPlanSnapshot,
+  ProviderPlanStatusResponse,
+  SessionContextUsage,
+} from "@/types";
 import { PageLayout } from "@/components/layout";
 import { GlassCard, Input, Badge, Modal, Button } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
@@ -222,13 +227,42 @@ function contextUsageLabel(usage?: SessionContextUsage | null): string {
   )} tokens remaining.`;
 }
 
-function contextUsageTooltip(usage?: SessionContextUsage | null) {
+function providerPlanWindowSummary(plan?: ProviderPlanSnapshot | null): string | null {
+  const windows = plan?.windows.filter((window) => typeof window.usedPercent === "number") ?? [];
+  if (windows.length === 0) return null;
+  return windows
+    .slice(0, 2)
+    .map(
+      (window) => `${window.title.replace(" window", "")}: ${Math.round(window.usedPercent ?? 0)}%`
+    )
+    .join(" · ");
+}
+
+function providerPlanTooltipDetail(plan?: ProviderPlanSnapshot | null): string | null {
+  if (!plan) return null;
+  const windowSummary = providerPlanWindowSummary(plan);
+  const label = plan.planName || plan.providerName;
+  if (windowSummary) {
+    return `${label}: ${windowSummary} (${plan.sourceLabel || "live usage"})`;
+  }
+  if (plan.externalSourceAvailable) {
+    return `${label}: ${plan.externalSourceLabel || "Provider usage"} available when OAuth usage can be read.`;
+  }
+  return null;
+}
+
+function contextUsageTooltip(
+  usage?: SessionContextUsage | null,
+  providerPlan?: ProviderPlanSnapshot | null
+) {
+  const planDetail = providerPlanTooltipDetail(providerPlan);
   if (!usage) {
     return {
       percent: "?",
       title: "Context window:",
       body: "Not loaded yet",
       detail: "Open a session or send a message to estimate usage.",
+      planDetail,
     };
   }
   const percent = Math.min(100, Math.max(0, usage.usedPercent));
@@ -239,6 +273,7 @@ function contextUsageTooltip(usage?: SessionContextUsage | null) {
     detail: `${formatTokenCount(usage.usedTokens)} / ${formatTokenCount(
       usage.limitTokens
     )} tokens used`,
+    planDetail,
   };
 }
 
@@ -252,7 +287,13 @@ function toolApprovalModeLabel(mode: ToolApprovalMode): string {
   return mode === "ask" ? "Ask Me" : "Always Allow";
 }
 
-function ContextUsageRing({ usage }: { usage?: SessionContextUsage | null }) {
+function ContextUsageRing({
+  usage,
+  providerPlan,
+}: {
+  usage?: SessionContextUsage | null;
+  providerPlan?: ProviderPlanSnapshot | null;
+}) {
   const [open, setOpen] = useState(false);
   const percent = usage ? Math.min(100, Math.max(0, usage.usedPercent)) : 0;
   const color =
@@ -261,7 +302,7 @@ function ContextUsageRing({ usage }: { usage?: SessionContextUsage | null }) {
       : percent >= 70
         ? "var(--context-ring-warn)"
         : "var(--context-ring-ok)";
-  const tooltip = contextUsageTooltip(usage);
+  const tooltip = contextUsageTooltip(usage, providerPlan);
   const label = contextUsageLabel(usage);
   return (
     <div
@@ -285,13 +326,16 @@ function ContextUsageRing({ usage }: { usage?: SessionContextUsage | null }) {
       <div
         role="tooltip"
         className={cn(
-          "context-usage-tooltip pointer-events-none absolute bottom-full left-1/2 z-50 mb-3 w-max max-w-[240px] -translate-x-1/2 rounded-lg border px-3 py-2 text-center text-[12px] leading-5",
+          "context-usage-tooltip pointer-events-none absolute bottom-full left-1/2 z-50 mb-3 w-max max-w-[280px] -translate-x-1/2 rounded-lg border px-3 py-2 text-center text-[12px] leading-5",
           open ? "block" : "hidden"
         )}
       >
         <div className="context-usage-tooltip-title">{tooltip.title}</div>
         <div className="context-usage-tooltip-body font-medium">{tooltip.body}</div>
         <div className="context-usage-tooltip-detail">{tooltip.detail}</div>
+        {tooltip.planDetail && (
+          <div className="context-usage-tooltip-plan mt-2 border-t pt-2">{tooltip.planDetail}</div>
+        )}
       </div>
     </div>
   );
@@ -353,12 +397,14 @@ function ChatAgentControls({
   agents,
   selectedAgentId,
   contextUsage,
+  providerPlan,
   onSelectAgent,
   updating,
 }: {
   agents: Agent[];
   selectedAgentId?: string;
   contextUsage?: SessionContextUsage | null;
+  providerPlan?: ProviderPlanSnapshot | null;
   onSelectAgent: (agentId?: string) => void;
   updating?: boolean;
 }) {
@@ -366,7 +412,7 @@ function ChatAgentControls({
   const routeLabel = selectedAgent?.model || selectedAgent?.name || "Gateway default";
   return (
     <div className="flex min-w-0 items-center gap-0.5">
-      <ContextUsageRing usage={contextUsage} />
+      <ContextUsageRing usage={contextUsage} providerPlan={providerPlan} />
       <label className="sr-only" htmlFor="chat-agent-selector">
         Chat agent
       </label>
@@ -1827,6 +1873,9 @@ export function Chat() {
   const [dictationError, setDictationError] = useState<string | null>(null);
   const [toolApprovalMode, setToolApprovalMode] = useState<ToolApprovalMode>("always_allow");
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
+  const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
+    null
+  );
   const [composerHeight, setComposerHeight] = useState(88);
   const [messageProcessMap, setMessageProcessMap] = useState<Record<string, LiveActivityItem[]>>(
     () => readPersistedMessageProcessMap()
@@ -1883,6 +1932,27 @@ export function Chat() {
     () => resolveDictationRuntime(dictationMode, dictationCapabilities),
     [dictationCapabilities, dictationMode]
   );
+  const activeAgentForPlan = useMemo(
+    () => agents.find((agent) => agent.id === (selectedAgentId || sessionAgentId || "")) ?? null,
+    [agents, selectedAgentId, sessionAgentId]
+  );
+  const activeProviderPlan = useMemo(() => {
+    if (!providerPlanStatus || !activeAgentForPlan) return null;
+    const keys = new Set(
+      [
+        activeAgentForPlan.provider_id,
+        activeAgentForPlan.provider,
+        activeAgentForPlan.fallback_provider_id,
+      ].filter((value): value is string => typeof value === "string" && value.length > 0)
+    );
+    return (
+      providerPlanStatus.providers.find((plan) =>
+        [plan.configuredProviderId, plan.providerId, plan.providerType].some(
+          (key) => typeof key === "string" && keys.has(key)
+        )
+      ) ?? null
+    );
+  }, [activeAgentForPlan, providerPlanStatus]);
   const syncSessionAgentSelection = useCallback(
     (agentId?: string | null) => {
       const normalized = typeof agentId === "string" && agentId.trim() ? agentId.trim() : null;
@@ -1907,6 +1977,21 @@ export function Chat() {
       persistSessionId(sessionId);
     }
   }, [sessionId]);
+
+  useEffect(() => {
+    let active = true;
+    const loadProviderPlans = async () => {
+      const response = await providerPlansApi.status();
+      if (!active) return;
+      setProviderPlanStatus(response.success ? (response.data ?? null) : null);
+    };
+    void loadProviderPlans();
+    const interval = window.setInterval(loadProviderPlans, 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   useEffect(() => {
     setShowSessionsPanel(true);
@@ -4290,6 +4375,7 @@ export function Chat() {
                       agents={agents}
                       selectedAgentId={selectedAgentId}
                       contextUsage={sessionContextUsage}
+                      providerPlan={activeProviderPlan}
                       onSelectAgent={(agentId) => void handleSelectAgent(agentId)}
                       updating={updateSessionAgent.isPending}
                     />

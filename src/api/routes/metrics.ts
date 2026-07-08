@@ -1,4 +1,8 @@
 import { tables } from "../../core/database";
+import {
+  enrichProviderPlanStatusWithLiveUsage,
+  getProviderPlanStatus,
+} from "../../core/provider-plans";
 import { redactSecrets } from "../../core/redaction";
 import {
   buildAssistantOutputCloud,
@@ -16,6 +20,53 @@ import {
 import { getDailyLogCounts, getModelMetrics, type MetricsEntry } from "../queries";
 
 const sqlUtc = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
+type MetricsEndpointKey =
+  | "overview"
+  | "tokens"
+  | "files"
+  | "tools"
+  | "providers"
+  | "timeSeries"
+  | "models"
+  | "insights"
+  | "tokenAnalysis"
+  | "storage"
+  | "providerPlans";
+
+function emptyMetricsAvailability(): Record<MetricsEndpointKey, { ok: boolean; error?: string }> {
+  return {
+    overview: { ok: false },
+    tokens: { ok: false },
+    files: { ok: false },
+    tools: { ok: false },
+    providers: { ok: false },
+    timeSeries: { ok: false },
+    models: { ok: false },
+    insights: { ok: false },
+    tokenAnalysis: { ok: false },
+    storage: { ok: false },
+    providerPlans: { ok: false },
+  };
+}
+
+async function metricsSnapshotValue<T>(
+  availability: Record<MetricsEndpointKey, { ok: boolean; error?: string }>,
+  key: MetricsEndpointKey,
+  fallback: T,
+  task: () => Promise<T> | T
+): Promise<T> {
+  try {
+    const result = await task();
+    availability[key] = { ok: true };
+    return result;
+  } catch (error) {
+    availability[key] = {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+    return fallback;
+  }
+}
 
 function buildMetricsOverview() {
   const metrics = tables.metrics;
@@ -779,7 +830,54 @@ function buildMetricsTokenAnalysis() {
   };
 }
 
+async function buildMetricsSnapshot() {
+  const availability = emptyMetricsAvailability();
+  const [
+    overview,
+    tokens,
+    files,
+    tools,
+    providers,
+    timeSeries,
+    models,
+    insights,
+    tokenAnalysis,
+    storage,
+    providerPlans,
+  ] = await Promise.all([
+    metricsSnapshotValue(availability, "overview", null, buildMetricsOverview),
+    metricsSnapshotValue(availability, "tokens", null, buildMetricsTokens),
+    metricsSnapshotValue(availability, "files", null, buildMetricsFiles),
+    metricsSnapshotValue(availability, "tools", null, buildMetricsTools),
+    metricsSnapshotValue(availability, "providers", null, buildMetricsProviders),
+    metricsSnapshotValue(availability, "timeSeries", null, buildMetricsTimeSeries),
+    metricsSnapshotValue(availability, "models", null, () => ({ models: getModelMetrics() })),
+    metricsSnapshotValue(availability, "insights", null, buildMetricsInsights),
+    metricsSnapshotValue(availability, "tokenAnalysis", null, buildMetricsTokenAnalysis),
+    metricsSnapshotValue(availability, "storage", null, buildStorageMetrics),
+    metricsSnapshotValue(availability, "providerPlans", null, () =>
+      enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus())
+    ),
+  ]);
+
+  return {
+    overview,
+    tokens,
+    files,
+    tools,
+    providers,
+    timeSeries,
+    models,
+    insights,
+    tokenAnalysis,
+    storage,
+    providerPlans,
+    availability,
+  };
+}
+
 export const metricsRoutes: Record<string, RouteHandler> = {
+  "GET /api/metrics/snapshot": () => buildMetricsSnapshot(),
   "GET /api/metrics/overview": () => buildMetricsOverview(),
   "GET /api/metrics/storage": () => buildStorageMetrics(),
   "GET /api/metrics/tokens": () => buildMetricsTokens(),

@@ -43,14 +43,29 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function clampPercent(value: unknown): number | undefined {
+  const parsed = toNumber(value);
+  if (parsed === undefined) return undefined;
+  return Math.max(0, Math.min(100, parsed));
+}
+
+function resetToIso(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const epoch = epochToIso(value);
+    if (epoch) return epoch;
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
 function parseCodexWindow(raw: unknown): LiveUsageWindow | undefined {
   const record = asRecord(raw);
   if (!record) return undefined;
-  const usedPercent = toNumber(record.used_percent);
+  const usedPercent = clampPercent(record.used_percent);
   if (usedPercent === undefined) return undefined;
   return {
-    usedPercent: Math.max(0, Math.min(100, usedPercent)),
-    resetsAt: epochToIso(record.reset_at),
+    usedPercent,
+    resetsAt: resetToIso(record.reset_at),
     windowSeconds: toNumber(record.limit_window_seconds),
   };
 }
@@ -74,7 +89,11 @@ export function parseCodexUsageResponse(body: unknown, now: number): LiveProvide
 
 async function fetchCodexUsage(token: string): Promise<LiveProviderUsage | null> {
   const res = await fetch("https://chatgpt.com/backend-api/wham/usage", {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+      "User-Agent": "Cybara",
+    },
     signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) return null;
@@ -84,14 +103,47 @@ async function fetchCodexUsage(token: string): Promise<LiveProviderUsage | null>
 function parseAnthropicWindow(raw: unknown): LiveUsageWindow | undefined {
   const record = asRecord(raw);
   if (!record) return undefined;
-  const usedPercent = toNumber(record.used_percent ?? record.utilization);
+  const usedPercent = clampPercent(record.used_percent ?? record.usedPercent ?? record.utilization);
   if (usedPercent === undefined) return undefined;
   return {
-    usedPercent: Math.max(0, Math.min(100, usedPercent)),
-    resetsAt:
-      epochToIso(record.resets_at ?? record.reset_at) ??
-      (typeof record.resets_at === "string" ? record.resets_at : undefined),
+    usedPercent,
+    resetsAt: resetToIso(record.resets_at, record.resetsAt, record.reset_at),
   };
+}
+
+function parseAnthropicLimitWindow(raw: unknown): LiveUsageWindow | undefined {
+  const record = asRecord(raw);
+  if (!record) return undefined;
+  if (record.is_active === false || record.isActive === false) return undefined;
+  const group = String(record.group ?? "").toLowerCase();
+  const kind = String(record.kind ?? "").toLowerCase();
+  if (!group.includes("week") && !kind.includes("week")) return undefined;
+  const usedPercent = clampPercent(record.percent ?? record.used_percent ?? record.utilization);
+  if (usedPercent === undefined) return undefined;
+  return {
+    usedPercent,
+    resetsAt: resetToIso(record.resets_at, record.resetsAt, record.reset_at),
+  };
+}
+
+function firstAnthropicWindow(
+  json: Record<string, unknown>,
+  keys: string[]
+): LiveUsageWindow | undefined {
+  for (const key of keys) {
+    const window = parseAnthropicWindow(json[key]);
+    if (window) return window;
+  }
+  return undefined;
+}
+
+function firstAnthropicLimitWindow(json: Record<string, unknown>): LiveUsageWindow | undefined {
+  const limits = Array.isArray(json.limits) ? json.limits : [];
+  for (const limit of limits) {
+    const window = parseAnthropicLimitWindow(limit);
+    if (window) return window;
+  }
+  return undefined;
 }
 
 export function parseAnthropicUsageResponse(body: unknown, now: number): LiveProviderUsage | null {
@@ -99,11 +151,18 @@ export function parseAnthropicUsageResponse(body: unknown, now: number): LivePro
   if (!json) return null;
   const tier =
     (typeof json.subscriptionType === "string" && json.subscriptionType) ||
+    (typeof json.subscription_type === "string" && json.subscription_type) ||
     (typeof json.rate_limit_tier === "string" && json.rate_limit_tier) ||
     undefined;
-  const fiveHour = parseAnthropicWindow(json.five_hour);
-  const weekly = parseAnthropicWindow(json.seven_day);
-  if (!fiveHour && !weekly && !tier) return null;
+  const fiveHour = firstAnthropicWindow(json, ["five_hour"]);
+  const weekly =
+    firstAnthropicWindow(json, [
+      "seven_day",
+      "seven_day_oauth_apps",
+      "seven_day_sonnet",
+      "seven_day_opus",
+    ]) ?? firstAnthropicLimitWindow(json);
+  if (!fiveHour && !weekly) return null;
   return {
     planLabel: tier ? `Claude ${tier}` : undefined,
     fiveHour,
@@ -119,6 +178,8 @@ async function fetchAnthropicUsage(token: string): Promise<LiveProviderUsage | n
       Authorization: `Bearer ${token}`,
       "anthropic-beta": "oauth-2025-04-20",
       Accept: "application/json",
+      "Content-Type": "application/json",
+      "User-Agent": "claude-code/2.1.0",
     },
     signal: AbortSignal.timeout(10_000),
   });

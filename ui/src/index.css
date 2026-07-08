@@ -688,6 +688,11 @@ textarea[data-chat-composer-input="true"]:focus-visible {
   color: var(--context-tooltip-detail);
 }
 
+.context-usage-tooltip-plan {
+  border-color: var(--context-tooltip-border);
+  color: var(--context-tooltip-body);
+}
+
 /* Print Styles */
 @media print {
   body {

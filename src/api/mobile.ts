@@ -9,6 +9,7 @@ import {
   listMobileDevices,
   removeMobileDevice,
   revokeMobileDevice,
+  updateMobileDevicePushPreferences,
   updateMobileDevicePushToken,
   validateMobilePairingBaseUrl,
   type MobileDeviceView,
@@ -37,6 +38,14 @@ export const mobileRoutes: Record<string, MobileRouteHandler> = {
   "GET /api/mobile/devices": () => ({
     devices: listMobileDevices(),
   }),
+
+  "GET /api/mobile/device": (_body, _params, ctx) => {
+    const mobileDevice = ctx?.auth?.mobileDevice;
+    if (!mobileDevice) {
+      throw new Error("Validation error: paired mobile device token is required");
+    }
+    return { device: mobileDevice };
+  },
 
   "GET /api/mobile/connect-info": (_body, _params, ctx) => {
     const platformConfig = config.getAll();
@@ -121,6 +130,23 @@ export const mobileRoutes: Record<string, MobileRouteHandler> = {
       provider: data.provider,
       platform: data.platform,
       enabled: data.enabled,
+      preferences: data.preferences,
+    });
+    if (!device) {
+      throw new Error("Mobile device not found");
+    }
+    return { success: true, device };
+  },
+
+  "PUT /api/mobile/push-preferences": (body, _params, ctx) => {
+    const mobileDevice = ctx?.auth?.mobileDevice;
+    if (!mobileDevice) {
+      throw new Error("Validation error: paired mobile device token is required");
+    }
+    const data = readBodyObject(body);
+    const device = updateMobileDevicePushPreferences(mobileDevice.id, {
+      chatCompletions: data.chatCompletions,
+      taskCompletions: data.taskCompletions,
     });
     if (!device) {
       throw new Error("Mobile device not found");

@@ -52,11 +52,13 @@ function ticketError(ticket: unknown): string {
 
 export async function sendMobilePushNotification(
   message: MobilePushMessage,
-  options: { device?: MobileDeviceView; endpoint?: string } = {}
+  options: { device?: MobileDeviceView; endpoint?: string; kind?: "chat" | "task" } = {}
 ): Promise<MobilePushSendSummary> {
   const targets = options.device
-    ? listMobilePushTargets().filter((target) => target.id === options.device?.id)
-    : listMobilePushTargets();
+    ? listMobilePushTargets({ kind: options.kind }).filter(
+        (target) => target.id === options.device?.id
+      )
+    : listMobilePushTargets({ kind: options.kind });
   if (targets.length === 0) {
     return { attempted: 0, sent: 0, skipped: true, errors: [] };
   }
@@ -124,24 +126,30 @@ export function notifyMobilePushForStatus(status: StatusPayload): void {
   const previous = recentCompletionPushes.get(status.sessionId) ?? 0;
   if (now - previous < COMPLETION_DEDUPE_MS) return;
   recentCompletionPushes.set(status.sessionId, now);
-  void sendMobilePushNotification({
-    title: "Cybara finished",
-    body: compactPushBody(status.detail, "Chat response is ready."),
-    data: { type: "chat_completed", sessionId: status.sessionId, agentId: status.agentId },
-  });
+  void sendMobilePushNotification(
+    {
+      title: "Cybara finished",
+      body: compactPushBody(status.detail, "Chat response is ready."),
+      data: { type: "chat_completed", sessionId: status.sessionId, agentId: status.agentId },
+    },
+    { kind: "chat" }
+  );
 }
 
 export function notifyMobilePushForTask(event: TaskEventPayload): void {
-  void sendMobilePushNotification({
-    title: event.status === "completed" ? "Cybara task completed" : "Cybara task failed",
-    body: compactPushBody(event.resultPreview || event.error || event.taskName, event.taskName),
-    data: {
-      type: event.status === "completed" ? "task_completed" : "task_failed",
-      taskId: event.taskId,
-      sessionId: event.sessionId,
-      status: event.status,
+  void sendMobilePushNotification(
+    {
+      title: event.status === "completed" ? "Cybara task completed" : "Cybara task failed",
+      body: compactPushBody(event.resultPreview || event.error || event.taskName, event.taskName),
+      data: {
+        type: event.status === "completed" ? "task_completed" : "task_failed",
+        taskId: event.taskId,
+        sessionId: event.sessionId,
+        status: event.status,
+      },
     },
-  });
+    { kind: "task" }
+  );
 }
 
 export function resetMobilePushNotificationStateForTests(): void {

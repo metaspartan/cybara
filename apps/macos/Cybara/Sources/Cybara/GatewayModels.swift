@@ -1064,8 +1064,15 @@ struct GatewayMobileDevice: Decodable, Identifiable, Hashable {
     }
     var pushSummary: String {
         guard let push, push.configured else { return "Push: off" }
-        return "Push: \(push.provider ?? "expo") · \(push.platform ?? "unknown")"
+        let chat = push.preferences?.chatCompletions == false ? "chat off" : "chat on"
+        let tasks = push.preferences?.taskCompletions == false ? "tasks off" : "tasks on"
+        return "Push: \(push.provider ?? "expo") · \(push.platform ?? "unknown") · \(chat) · \(tasks)"
     }
+}
+
+struct GatewayMobilePushPreferences: Decodable, Hashable {
+    let chatCompletions: Bool
+    let taskCompletions: Bool
 }
 
 struct GatewayMobilePushSummary: Decodable, Hashable {
@@ -1073,6 +1080,7 @@ struct GatewayMobilePushSummary: Decodable, Hashable {
     let enabled: Bool
     let provider: String?
     let platform: String?
+    let preferences: GatewayMobilePushPreferences?
     let updatedAt: String?
     let lastSentAt: String?
     let lastError: String?

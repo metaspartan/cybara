@@ -96,6 +96,7 @@ import {
   type RouterConfig,
   type RouterStatus,
   type SystemPromptFeatureKey,
+  type MobilePushDeviceSummary,
   type ToolApprovalDecision,
   type WalletAgentPolicyUpdate,
   type WalletChain,
@@ -2572,8 +2573,29 @@ export function GatewayManagementPanel({
   const [restartBusy, setRestartBusy] = useState(false);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [dataDirBusy, setDataDirBusy] = useState(false);
+  const [mobilePush, setMobilePush] = useState<MobilePushDeviceSummary | null>(null);
+  const [pushStatusLoading, setPushStatusLoading] = useState(false);
   const pushBusy =
-    busyAction === "push-enable" || busyAction === "push-test" || busyAction === "push-clear";
+    pushStatusLoading ||
+    busyAction === "push-enable" ||
+    busyAction === "push-test" ||
+    busyAction === "push-clear" ||
+    busyAction === "push-chat" ||
+    busyAction === "push-task";
+  const pushConfigured = mobilePush?.configured === true;
+  const pushPreferences = mobilePush?.preferences ?? {
+    chatCompletions: true,
+    taskCompletions: true,
+  };
+  const pushStatusLabel = pushConfigured
+    ? [
+        mobilePush?.provider || "expo",
+        mobilePush?.platform || "unknown",
+        mobilePush?.lastSentAt ? `last sent ${absoluteTimestampLabel(mobilePush.lastSentAt)}` : "",
+      ]
+        .filter(Boolean)
+        .join(" - ")
+    : "Off on this device";
   const configuredDefaultWorkspaceDir =
     typeof summary?.config.default_workspace_dir === "string"
       ? summary.config.default_workspace_dir
@@ -2623,6 +2645,22 @@ export function GatewayManagementPanel({
   useEffect(() => {
     void loadAuthSettings();
   }, [loadAuthSettings, profile.id]);
+
+  const loadMobilePushStatus = useCallback(async () => {
+    setPushStatusLoading(true);
+    try {
+      const result = await api.currentMobileDevice();
+      setMobilePush(result.device?.push ?? null);
+    } catch {
+      setMobilePush(null);
+    } finally {
+      setPushStatusLoading(false);
+    }
+  }, [api]);
+
+  useEffect(() => {
+    void loadMobilePushStatus();
+  }, [loadMobilePushStatus, profile.id]);
 
   useEffect(() => {
     const remote = authSettings?.remoteAccess;
@@ -2838,6 +2876,7 @@ export function GatewayManagementPanel({
       if (result.status !== "registered") {
         throw new Error(result.message || `Notification setup returned ${result.status}.`);
       }
+      await loadMobilePushStatus();
       Alert.alert("Notifications enabled", "Cybara can notify this device when chats finish.");
     } catch (error) {
       Alert.alert("Notifications failed", gatewayActionError(error, "Notification setup failed."));
@@ -2854,6 +2893,7 @@ export function GatewayManagementPanel({
         const errors = result.result?.errors?.join(", ");
         throw new Error(errors || "Gateway could not send a test notification.");
       }
+      await loadMobilePushStatus();
       Alert.alert("Test sent", "A Cybara notification was sent to this device.");
     } catch (error) {
       Alert.alert("Test failed", gatewayActionError(error, "Test notification failed."));
@@ -2866,9 +2906,29 @@ export function GatewayManagementPanel({
     setBusyAction("push-clear");
     try {
       await clearMobilePushNotifications(api);
+      await loadMobilePushStatus();
       Alert.alert("Notifications disabled", "This device will no longer receive gateway pushes.");
     } catch (error) {
       Alert.alert("Disable failed", gatewayActionError(error, "Notification disable failed."));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const updatePushPreference = async (
+    key: "chatCompletions" | "taskCompletions",
+    value: boolean
+  ) => {
+    setBusyAction(key === "chatCompletions" ? "push-chat" : "push-task");
+    try {
+      const result = await api.updatePushPreferences({ [key]: value });
+      setMobilePush(result.device?.push ?? null);
+    } catch (error) {
+      Alert.alert(
+        "Notification setting failed",
+        gatewayActionError(error, "Notification setting update failed.")
+      );
+      await loadMobilePushStatus();
     } finally {
       setBusyAction(null);
     }
@@ -2964,6 +3024,7 @@ export function GatewayManagementPanel({
           <Text style={styles.settingsInfoText}>
             Get notified on this device when a chat response or gateway task completes.
           </Text>
+          <Text style={styles.settingsFieldHelp}>Status: {pushStatusLabel}</Text>
           <View style={styles.settingsActionRow}>
             <DetailActionButton
               Icon={Bell}
@@ -2995,6 +3056,28 @@ export function GatewayManagementPanel({
               tone={colors.red}
             />
           </View>
+          <SettingToggle
+            busy={busyAction === "push-chat"}
+            detail="Notify when an agent finishes responding."
+            disabled={!pushConfigured || pushBusy}
+            label="Chat completions"
+            onPress={() => {
+              void updatePushPreference("chatCompletions", !pushPreferences.chatCompletions);
+            }}
+            tone={colors.cyan}
+            value={pushPreferences.chatCompletions}
+          />
+          <SettingToggle
+            busy={busyAction === "push-task"}
+            detail="Notify when a scheduled or background task completes or fails."
+            disabled={!pushConfigured || pushBusy}
+            label="Task completions"
+            onPress={() => {
+              void updatePushPreference("taskCompletions", !pushPreferences.taskCompletions);
+            }}
+            tone={colors.cyan}
+            value={pushPreferences.taskCompletions}
+          />
         </View>
         <View style={styles.settingsInfoBox}>
           <View style={styles.settingsInfoHeader}>

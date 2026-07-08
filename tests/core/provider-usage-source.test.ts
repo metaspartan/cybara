@@ -55,19 +55,44 @@ describe("parseAnthropicUsageResponse", () => {
     const result = parseAnthropicUsageResponse(
       {
         subscriptionType: "Max",
-        five_hour: { used_percent: 30, resets_at: 1783405927 },
+        five_hour: { utilization: 30, resets_at: "2026-07-07T10:00:00Z" },
         seven_day: { utilization: 55 },
       },
       500
     );
     expect(result?.planLabel).toBe("Claude Max");
     expect(result?.fiveHour?.usedPercent).toBe(30);
+    expect(result?.fiveHour?.resetsAt).toBe("2026-07-07T10:00:00Z");
     expect(result?.weekly?.usedPercent).toBe(55);
     expect(result?.fetchedAt).toBe(500);
   });
 
+  test("maps scoped weekly limits when seven_day is absent", () => {
+    const result = parseAnthropicUsageResponse(
+      {
+        subscription_type: "Pro",
+        five_hour: { utilization: 12 },
+        limits: [
+          { kind: "daily", group: "daily", percent: 90 },
+          {
+            kind: "weekly_scoped",
+            group: "weekly",
+            percent: 71,
+            resets_at: "2026-07-14T10:00:00Z",
+            is_active: true,
+          },
+        ],
+      },
+      600
+    );
+    expect(result?.planLabel).toBe("Claude Pro");
+    expect(result?.weekly?.usedPercent).toBe(71);
+    expect(result?.weekly?.resetsAt).toBe("2026-07-14T10:00:00Z");
+  });
+
   test("returns null on an empty/unknown body", () => {
     expect(parseAnthropicUsageResponse({}, 1)).toBeNull();
+    expect(parseAnthropicUsageResponse({ subscriptionType: "Max" }, 1)).toBeNull();
     expect(parseAnthropicUsageResponse(null, 1)).toBeNull();
   });
 });

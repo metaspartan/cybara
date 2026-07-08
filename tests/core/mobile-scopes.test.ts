@@ -148,7 +148,9 @@ describe("route scope requirements", () => {
   test("ordinary routes need no special scope", () => {
     expect(routeRequiredScope("POST", "/api/chat")).toBeNull();
     expect(routeRequiredScope("GET", "/api/agents")).toBeNull();
+    expect(routeRequiredScope("GET", "/api/mobile/device")).toBeNull();
     expect(routeRequiredScope("POST", "/api/mobile/push-token")).toBeNull();
+    expect(routeRequiredScope("PUT", "/api/mobile/push-preferences")).toBeNull();
   });
 
   test("mutating management surfaces require the manage scope", () => {

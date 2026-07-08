@@ -387,6 +387,10 @@ export interface MobileDevice {
     enabled: boolean;
     provider?: "expo";
     platform?: "ios" | "android" | "unknown";
+    preferences?: {
+      chatCompletions: boolean;
+      taskCompletions: boolean;
+    };
     updatedAt?: string;
     lastSentAt?: string;
     lastError?: string;

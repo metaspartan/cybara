@@ -556,9 +556,13 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain("registerMobilePushNotifications(api");
     expect(dashboardScreenSource).toContain("clearMobilePushNotifications(api)");
     expect(dashboardScreenSource).toContain("api.sendTestPush()");
+    expect(dashboardScreenSource).toContain("api.currentMobileDevice()");
+    expect(dashboardScreenSource).toContain("api.updatePushPreferences");
     expect(dashboardScreenSource).toContain('label="Enable"');
     expect(dashboardScreenSource).toContain('label="Test"');
     expect(dashboardScreenSource).toContain('label="Disable"');
+    expect(dashboardScreenSource).toContain('label="Chat completions"');
+    expect(dashboardScreenSource).toContain('label="Task completions"');
   });
 
   test("keeps recent activity chat rows tappable and honest about state", () => {

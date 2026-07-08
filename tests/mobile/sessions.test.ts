@@ -95,6 +95,8 @@ describe("mobile: chat management", () => {
     expect(screen).toContain("Tool approvals: ${toolApprovalLabel}");
     expect(screen).toContain("mobileContextUsageDetail(");
     expect(screen).toContain("Context: ${mobileContextUsageDetail(contextUsage)}");
+    expect(screen).toContain("mobileProviderPlanFor(providerPlanStatus");
+    expect(screen).toContain("mobileProviderPlanDetail(activeProviderPlan)");
     expect(screen).toContain('text: "Change agent"');
     expect(screen).toContain('text: "Tool approvals"');
     expect(screen).toContain("setPendingSessionAgentId(agentId)");

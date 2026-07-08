@@ -1189,7 +1189,8 @@ function applyLiveUsageToSnapshot(
         : `Live usage reached ${Math.round(worst)}%`,
     source: "provider_oauth_api",
     sourceMode: live.source,
-    sourceLabel: "Live provider usage",
+    sourceLabel: snapshot.externalSourceLabel ?? "Live provider usage",
+    sourceDescription: sourceDescriptionFor(live.source),
     dataConfidence: "exact",
     monitored: true,
     updatedAt: new Date(live.fetchedAt).toISOString(),
@@ -1226,6 +1227,8 @@ export async function enrichProviderPlanStatusWithLiveUsage(
     providers: enriched,
     summary: {
       ...status.summary,
+      monitored: enriched.filter((snapshot) => snapshot.monitored).length,
+      configured: enriched.filter((snapshot) => snapshot.windows.length > 0).length,
       warnings: enriched.filter((snapshot) => snapshot.status === "warning").length,
       exhausted: enriched.filter((snapshot) => snapshot.status === "exhausted").length,
     },

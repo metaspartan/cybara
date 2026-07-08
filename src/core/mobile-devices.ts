@@ -114,9 +114,16 @@ interface MobileDeviceRecord {
   pushProvider?: "expo";
   pushPlatform?: "ios" | "android" | "unknown";
   pushEnabled?: boolean;
+  pushChatCompletions?: boolean;
+  pushTaskCompletions?: boolean;
   pushUpdatedAt?: string;
   pushLastSentAt?: string;
   pushLastError?: string;
+}
+
+export interface MobilePushPreferences {
+  chatCompletions: boolean;
+  taskCompletions: boolean;
 }
 
 export interface MobilePushSummary {
@@ -124,6 +131,7 @@ export interface MobilePushSummary {
   enabled: boolean;
   provider?: "expo";
   platform?: "ios" | "android" | "unknown";
+  preferences: MobilePushPreferences;
   updatedAt?: string;
   lastSentAt?: string;
   lastError?: string;
@@ -532,9 +540,48 @@ function mobilePushSummary(device: MobileDeviceRecord): MobilePushSummary {
     enabled: configured,
     provider: device.pushProvider,
     platform: device.pushPlatform,
+    preferences: mobilePushPreferences(device),
     updatedAt: device.pushUpdatedAt,
     lastSentAt: device.pushLastSentAt,
     lastError: device.pushLastError,
+  };
+}
+
+function mobilePushPreferences(device: MobileDeviceRecord): MobilePushPreferences {
+  return {
+    chatCompletions: device.pushChatCompletions !== false,
+    taskCompletions: device.pushTaskCompletions !== false,
+  };
+}
+
+function readPushPreference(value: unknown, current: boolean, label: string): boolean {
+  if (value === undefined) return current;
+  if (typeof value !== "boolean") {
+    throw new Error(`Validation error: ${label} must be a boolean`);
+  }
+  return value;
+}
+
+function readPushPreferences(
+  value: unknown,
+  current: MobilePushPreferences
+): MobilePushPreferences {
+  if (value === undefined) return current;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Validation error: push preferences must be an object");
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    chatCompletions: readPushPreference(
+      record.chatCompletions,
+      current.chatCompletions,
+      "chatCompletions"
+    ),
+    taskCompletions: readPushPreference(
+      record.taskCompletions,
+      current.taskCompletions,
+      "taskCompletions"
+    ),
   };
 }
 
@@ -771,6 +818,7 @@ export function updateMobileDevicePushToken(
     provider?: unknown;
     platform?: unknown;
     enabled?: unknown;
+    preferences?: unknown;
   }
 ): MobileDeviceView | null {
   const store = readStore();
@@ -791,6 +839,9 @@ export function updateMobileDevicePushToken(
   device.pushToken = normalizeMobilePushToken(input.token);
   device.pushProvider = normalizeMobilePushProvider(input.provider);
   device.pushPlatform = normalizeMobilePushPlatform(input.platform);
+  const preferences = readPushPreferences(input.preferences, mobilePushPreferences(device));
+  device.pushChatCompletions = preferences.chatCompletions;
+  device.pushTaskCompletions = preferences.taskCompletions;
   device.pushEnabled = true;
   device.pushUpdatedAt = new Date().toISOString();
   delete device.pushLastError;
@@ -798,7 +849,22 @@ export function updateMobileDevicePushToken(
   return toView(device);
 }
 
-export function listMobilePushTargets(): Array<{
+export function updateMobileDevicePushPreferences(
+  id: string,
+  input: { chatCompletions?: unknown; taskCompletions?: unknown }
+): MobileDeviceView | null {
+  const store = readStore();
+  const device = store.devices.find((item) => item.id === id && !item.revokedAt);
+  if (!device) return null;
+  const preferences = readPushPreferences(input, mobilePushPreferences(device));
+  device.pushChatCompletions = preferences.chatCompletions;
+  device.pushTaskCompletions = preferences.taskCompletions;
+  device.pushUpdatedAt = new Date().toISOString();
+  saveStore(store);
+  return toView(device);
+}
+
+export function listMobilePushTargets(options: { kind?: "chat" | "task" } = {}): Array<{
   id: string;
   name: string;
   token: string;
@@ -807,6 +873,8 @@ export function listMobilePushTargets(): Array<{
 }> {
   return readStore().devices.flatMap((device) => {
     if (device.revokedAt || !device.pushToken || device.pushEnabled === false) return [];
+    if (options.kind === "chat" && device.pushChatCompletions === false) return [];
+    if (options.kind === "task" && device.pushTaskCompletions === false) return [];
     return [
       {
         id: device.id,

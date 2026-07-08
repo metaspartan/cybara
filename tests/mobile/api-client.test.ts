@@ -489,6 +489,39 @@ describe("mobile API client", () => {
               configured: body?.enabled !== false,
               provider: "expo",
               platform: body?.platform,
+              preferences: body?.preferences ?? {
+                chatCompletions: true,
+                taskCompletions: true,
+              },
+            },
+          },
+        });
+      }
+      if (parsedUrl.pathname === "/api/mobile/device" && method === "GET") {
+        return Response.json({
+          device: {
+            id: "mobile-1",
+            name: "iPhone",
+            push: {
+              configured: true,
+              provider: "expo",
+              platform: "ios",
+              preferences: { chatCompletions: true, taskCompletions: true },
+            },
+          },
+        });
+      }
+      if (parsedUrl.pathname === "/api/mobile/push-preferences" && method === "PUT") {
+        return Response.json({
+          success: true,
+          device: {
+            id: "mobile-1",
+            name: "iPhone",
+            push: {
+              configured: true,
+              provider: "expo",
+              platform: "ios",
+              preferences: body,
             },
           },
         });
@@ -508,10 +541,37 @@ describe("mobile API client", () => {
         api.registerPushToken({
           token: "ExpoPushToken[abcdefghijklmnopqrstuvwxyz]",
           platform: "ios",
+          preferences: { chatCompletions: true, taskCompletions: false },
         })
       ).resolves.toMatchObject({
         success: true,
-        device: { push: { configured: true, provider: "expo", platform: "ios" } },
+        device: {
+          push: {
+            configured: true,
+            provider: "expo",
+            platform: "ios",
+            preferences: { chatCompletions: true, taskCompletions: false },
+          },
+        },
+      });
+      await expect(api.currentMobileDevice()).resolves.toMatchObject({
+        device: {
+          push: {
+            configured: true,
+            preferences: { chatCompletions: true, taskCompletions: true },
+          },
+        },
+      });
+      await expect(
+        api.updatePushPreferences({ chatCompletions: false, taskCompletions: true })
+      ).resolves.toMatchObject({
+        success: true,
+        device: {
+          push: {
+            configured: true,
+            preferences: { chatCompletions: false, taskCompletions: true },
+          },
+        },
       });
       await expect(api.sendTestPush()).resolves.toMatchObject({
         success: true,
@@ -531,8 +591,21 @@ describe("mobile API client", () => {
             token: "ExpoPushToken[abcdefghijklmnopqrstuvwxyz]",
             provider: "expo",
             platform: "ios",
+            preferences: { chatCompletions: true, taskCompletions: false },
             enabled: true,
           },
+        },
+        {
+          method: "GET",
+          path: "/api/mobile/device",
+          auth: "Bearer cybara_mobile_test",
+          body: undefined,
+        },
+        {
+          method: "PUT",
+          path: "/api/mobile/push-preferences",
+          auth: "Bearer cybara_mobile_test",
+          body: { chatCompletions: false, taskCompletions: true },
         },
         {
           method: "POST",
@@ -2418,7 +2491,57 @@ describe("mobile API client", () => {
     }
   });
 
-  test("loads every web metrics feed into a mobile metrics snapshot", async () => {
+  test("uses the gateway metrics snapshot endpoint when available", async () => {
+    const paths: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+      const path = new URL(String(url)).pathname;
+      paths.push(path);
+      if (path === "/api/metrics/snapshot") {
+        return Response.json({
+          overview: {
+            tokenUsage: { total: 10, input: 4, output: 6, cache: 0 },
+            fileOperations: { filesRead: 1, filesWritten: 2, filesEdited: 3 },
+            toolCalls: { totalCalls: 5 },
+            apiCalls: { totalCalls: 5, successfulCalls: 4, failedCalls: 1 },
+            agentActivity: { totalExecutions: 2, totalMessages: 3 },
+          },
+          storage: {
+            totalBytes: 2048,
+            directories: { cybaraDir: "/tmp" },
+            components: {},
+          },
+          providerPlans: {
+            enabled: true,
+            routerEnforcement: true,
+            warningThresholdPct: 80,
+            providers: [],
+            summary: { total: 0, monitored: 0, configured: 0, warnings: 0, exhausted: 0 },
+          },
+          availability: {
+            overview: { ok: true },
+            storage: { ok: true },
+            providerPlans: { ok: true },
+          },
+        });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const snapshot = await new CybaraMobileApi(profile).metricsSnapshot();
+      expect(snapshot.overview?.tokenUsage.total).toBe(10);
+      expect(snapshot.storage?.totalBytes).toBe(2048);
+      expect(snapshot.providerPlans?.enabled).toBe(true);
+      expect(snapshot.availability.overview.ok).toBe(true);
+      expect(snapshot.availability.tokens.ok).toBe(false);
+      expect(paths).toEqual(["/api/metrics/snapshot"]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("falls back to every web metrics feed on older gateways", async () => {
     const paths: string[] = [];
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (url) => {
@@ -2500,6 +2623,7 @@ describe("mobile API client", () => {
       expect(Object.values(snapshot.availability).every((endpoint) => endpoint.ok)).toBe(true);
       expect(paths.sort()).toEqual(
         [
+          "/api/metrics/snapshot",
           "/api/metrics/files",
           "/api/metrics/insights",
           "/api/metrics/models",

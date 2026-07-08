@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import {
   createMobileDevice,
   resetMobileDeviceStoreForTests,
+  updateMobileDevicePushPreferences,
   updateMobileDevicePushToken,
 } from "../../src/core/mobile-devices";
 import {
@@ -107,6 +108,41 @@ describe("mobile push notifications", () => {
       expect(
         mock.calls.map((call) => (call.body as { data?: { type?: string } }).data?.type)
       ).toContain("task_failed");
+    } finally {
+      mock.restore();
+    }
+  });
+
+  test("honors per-device chat and task push preferences", async () => {
+    const { device } = createMobileDevice({ baseUrl: "http://127.0.0.1:4269" });
+    updateMobileDevicePushToken(device.id, { token: expoToken, platform: "ios" });
+    updateMobileDevicePushPreferences(device.id, {
+      chatCompletions: false,
+      taskCompletions: true,
+    });
+    const mock = installFetchMock();
+
+    try {
+      broadcastStatus({
+        status: "idle",
+        timestamp: Date.now(),
+        sessionId: "session-push-filtered",
+        detail: "Final answer is ready",
+      });
+      broadcastTaskEvent({
+        type: "task_completed",
+        taskId: "task-filtered",
+        taskName: "Nightly review",
+        status: "completed",
+        resultPreview: "Review finished",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      expect(mock.calls).toHaveLength(1);
+      expect(mock.calls[0]?.body).toMatchObject({
+        title: "Cybara task completed",
+        data: { type: "task_completed", taskId: "task-filtered" },
+      });
     } finally {
       mock.restore();
     }

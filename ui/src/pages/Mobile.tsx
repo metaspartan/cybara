@@ -37,6 +37,15 @@ function formatDate(value?: string): string {
   return new Date(value).toLocaleString();
 }
 
+function formatPushSummary(push?: MobileDevice["push"]): string {
+  if (!push?.configured) return "Off";
+  const provider = push.provider || "expo";
+  const platform = push.platform || "unknown";
+  const chat = push.preferences?.chatCompletions === false ? "chat off" : "chat on";
+  const tasks = push.preferences?.taskCompletions === false ? "tasks off" : "tasks on";
+  return `${provider} · ${platform} · ${chat} · ${tasks}`;
+}
+
 export function Mobile() {
   const { addToast } = useUIStore();
   const { data: connectInfoData } = useMobileConnectInfo();
@@ -312,12 +321,7 @@ export function Mobile() {
                         <span>Created: {formatDate(device.createdAt)}</span>
                         <span>Last seen: {formatDate(device.lastSeenAt)}</span>
                         <span>Revoked: {formatDate(device.revokedAt)}</span>
-                        <span>
-                          Notifications:{" "}
-                          {device.push?.configured
-                            ? `${device.push.provider || "expo"} · ${device.push.platform || "unknown"}`
-                            : "Off"}
-                        </span>
+                        <span>Notifications: {formatPushSummary(device.push)}</span>
                         <span>Last push: {formatDate(device.push?.lastSentAt)}</span>
                       </div>
                     </div>

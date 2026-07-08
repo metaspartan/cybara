@@ -27,6 +27,11 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("chatApi.getPendingMessages");
     expect(source).toContain("ChatAgentControls");
     expect(source).toContain("useUpdateSessionAgent");
+    expect(source).toContain("providerPlansApi.status()");
+    expect(source).toContain("providerPlanStatus");
+    expect(source).toContain("activeProviderPlan");
+    expect(source).toContain("providerPlanTooltipDetail");
+    expect(source).toContain("context-usage-tooltip-plan");
     expect(source).toContain("contextUsageLabel");
     expect(source).toContain("contextUsageTooltip");
     expect(source).toContain("var(--context-ring-track)");
