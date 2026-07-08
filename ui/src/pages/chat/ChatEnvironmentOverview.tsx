@@ -1,19 +1,9 @@
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { FolderOpen, GitCompare, X } from "lucide-react";
+import { FolderOpen, GitBranch, GitCompare, X } from "lucide-react";
 import type { Subagent } from "@/hooks/useApi";
-import { formatRelativeTime } from "@/lib/utils";
-import {
-  formatWorkspaceLabel,
-  type FileChangeSummary,
-  type SessionPlanTimelineEntry,
-  type SessionPlanView,
-} from "./chatModel";
-import {
-  PlanSummaryCard,
-  sessionPlanCurrentTask,
-  sessionPlanProgressLabel,
-} from "./PlanSummaryCard";
+import { formatWorkspaceLabel, type FileChangeSummary, type SessionPlanView } from "./chatModel";
+import { PlanSummaryCard } from "./PlanSummaryCard";
 
 function EnvironmentSection({ children, title }: { children: ReactNode; title: string }) {
   return (
@@ -45,9 +35,9 @@ function EnvironmentRow({
 export function ChatEnvironmentOverview({
   currentPlan,
   fileChanges,
+  gitBranch,
   isOpen,
   onClose,
-  planTimeline,
   sessionId,
   subagents,
   toolNames,
@@ -55,16 +45,15 @@ export function ChatEnvironmentOverview({
 }: {
   currentPlan: SessionPlanView | null;
   fileChanges: FileChangeSummary | null;
+  gitBranch: string | null;
   isOpen: boolean;
   onClose: () => void;
-  planTimeline: SessionPlanTimelineEntry[];
   sessionId: string | null;
   subagents: Subagent[];
   toolNames: string[];
   workspaceDir: string | null;
 }) {
   if (!isOpen) return null;
-  const previousPlans = [...planTimeline].reverse().slice(1, 6);
 
   const panel = (
     <div
@@ -114,6 +103,11 @@ export function ChatEnvironmentOverview({
               {workspaceDir ? formatWorkspaceLabel(workspaceDir, 34) : "No workspace"}
             </span>
           </EnvironmentRow>
+          {gitBranch && (
+            <EnvironmentRow icon={<GitBranch className="h-3.5 w-3.5" />} label="Branch">
+              <span className="truncate font-mono text-[11px] text-gray-300">{gitBranch}</span>
+            </EnvironmentRow>
+          )}
         </div>
 
         <EnvironmentSection title="Plans">
@@ -122,32 +116,6 @@ export function ChatEnvironmentOverview({
           ) : (
             <div className="rounded-lg border border-[#343843] bg-[#171a22] p-2 text-[12px] text-gray-500">
               No plan has been recorded for this chat.
-            </div>
-          )}
-          {previousPlans.length > 0 && (
-            <div className="space-y-1">
-              <div className="text-[11px] text-gray-600">Earlier updates in this chat</div>
-              {previousPlans.map((plan) => (
-                <div
-                  key={`${plan.messageIndex}-${plan.toolIndex}`}
-                  className="rounded-lg border border-[#2b303b] bg-[#11141b] px-2 py-1.5"
-                >
-                  <div className="flex items-center justify-between gap-2 text-[11px]">
-                    <span className="text-gray-500">
-                      Update {plan.messageIndex + 1}.{plan.toolIndex + 1}
-                    </span>
-                    <span className="text-gray-400">{sessionPlanProgressLabel(plan)}</span>
-                  </div>
-                  <p className="mt-1 truncate text-[12px] text-gray-300">
-                    {sessionPlanCurrentTask(plan)}
-                  </p>
-                  {plan.updatedAt && (
-                    <p className="mt-0.5 text-[10px] text-gray-600">
-                      {formatRelativeTime(plan.updatedAt)}
-                    </p>
-                  )}
-                </div>
-              ))}
             </div>
           )}
         </EnvironmentSection>

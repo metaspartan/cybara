@@ -221,6 +221,30 @@ describe("mobile API client", () => {
     }
   });
 
+  test("loads git branch details for the active mobile chat workspace", async () => {
+    const calls: Array<{ url: string; auth: string | null }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const headers = new Headers(init?.headers);
+      calls.push({ url: String(url), auth: headers.get("authorization") });
+      return Response.json({ branch: "main" });
+    }) as typeof fetch;
+
+    try {
+      await expect(
+        new CybaraMobileApi(profile).gitBranch("/Users/carsen/Documents/GitHub/cybara repo")
+      ).resolves.toBe("main");
+      expect(calls).toEqual([
+        {
+          url: "http://127.0.0.1:4269/api/git/branch?path=%2FUsers%2Fcarsen%2FDocuments%2FGitHub%2Fcybara%20repo",
+          auth: "Bearer cybara_mobile_test",
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("normalizes session plan snapshots for mobile chat detail", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (url, init) => {

@@ -153,7 +153,6 @@ import {
   resolveDictationRuntime,
   resolvePathForIde,
   resolveToolCallSandboxProvider,
-  collectPlanTimelineFromMessages,
   extractLatestPlanFromMessages,
   summarizeMessageFileChanges,
   summarizeSessionFileChanges,
@@ -1919,6 +1918,7 @@ export function Chat() {
   const [showSessionsPanel, setShowSessionsPanel] = useState(true);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [showEnvironmentOverview, setShowEnvironmentOverview] = useState(false);
+  const [environmentGitBranch, setEnvironmentGitBranch] = useState<string | null>(null);
   const [hiddenComposerPlanKey, setHiddenComposerPlanKey] = useState<string | null>(null);
   const [diffPanelWidth, setDiffPanelWidth] = useState<number>(() => readPersistedDiffPanelWidth());
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
@@ -2021,10 +2021,6 @@ export function Chat() {
     ].join(":");
   }, [currentSessionPlan, sessionId]);
   const showComposerPlan = !!currentSessionPlan && currentSessionPlanKey !== hiddenComposerPlanKey;
-  const sessionPlanTimeline = useMemo(
-    () => collectPlanTimelineFromMessages(typedMessages, sessionId),
-    [typedMessages, sessionId]
-  );
   const environmentToolNames = useMemo(() => {
     const names = new Set<string>();
     for (const message of typedMessages) {
@@ -2079,6 +2075,34 @@ export function Chat() {
     },
     [resolveSelectableSessionAgentId]
   );
+
+  useEffect(() => {
+    const workspace = effectiveWorkspaceDir?.trim();
+    if (!workspace) {
+      setEnvironmentGitBranch(null);
+      return;
+    }
+    let cancelled = false;
+    setEnvironmentGitBranch(null);
+    const loadBranch = async () => {
+      try {
+        const response = await apiFetch(`/api/git/branch?path=${encodeURIComponent(workspace)}`);
+        if (!response.ok) {
+          if (!cancelled) setEnvironmentGitBranch(null);
+          return;
+        }
+        const data = (await response.json()) as { branch?: unknown };
+        const branch = typeof data.branch === "string" ? data.branch.trim() : "";
+        if (!cancelled) setEnvironmentGitBranch(branch || null);
+      } catch {
+        if (!cancelled) setEnvironmentGitBranch(null);
+      }
+    };
+    void loadBranch();
+    return () => {
+      cancelled = true;
+    };
+  }, [effectiveWorkspaceDir]);
 
   useEffect(() => {
     setLastWorkspaceDir(readPersistedWorkspaceDir());
@@ -4319,9 +4343,9 @@ export function Chat() {
             key={sessionId || "new-chat-environment"}
             currentPlan={currentSessionPlan}
             fileChanges={sessionFileChanges}
+            gitBranch={environmentGitBranch}
             isOpen={showEnvironmentOverview}
             onClose={() => setShowEnvironmentOverview(false)}
-            planTimeline={sessionPlanTimeline}
             sessionId={sessionId}
             subagents={environmentSubagents}
             toolNames={environmentToolNames}

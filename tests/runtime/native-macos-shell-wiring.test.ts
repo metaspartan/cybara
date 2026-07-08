@@ -551,6 +551,10 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain(
       "compactRelativeTimestamp(session.updated_at ?? session.created_at)"
     );
+    expect(nativeScreens).toContain("loadActiveGitBranch()");
+    expect(nativeScreens).toContain("activeGitBranchLabel");
+    expect(nativeScreens).toContain('parts.append("Branch \\(branch)")');
+    expect(nativeScreens).toContain(".task(id: activeWorkspaceDir)");
     expect(nativeScreens).toContain("activeSessionIDs: Set<String>");
     expect(nativeScreens).toContain("updateActiveSessionIDs(from: event)");
     expect(nativeScreens).toContain("activeSessionIDs.contains(session.id)");
@@ -563,6 +567,17 @@ describe("native macOS shell wiring", () => {
       "NSWorkspace.shared.selectFile(nil, inFileViewerRootedAtPath: workspaceDir)"
     );
     expect(nativeScreens).not.toContain("Text(sessionListDetail(for: session");
+  });
+
+  test("native chat environment reads git branch through the gateway client", () => {
+    const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+
+    expect(gatewayClient).toContain("func gitBranch(path: String) async throws -> String?");
+    expect(gatewayClient).toContain('"api/git/branch"');
+    expect(gatewayClient).toContain('URLQueryItem(name: "path", value: workspace)');
+    expect(gatewayModels).toContain("struct GatewayGitBranchResponse");
+    expect(gatewayModels).toContain("let branch: String?");
   });
 
   test("gateway model labels trim blank titles before falling back", () => {

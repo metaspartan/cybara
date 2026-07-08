@@ -2226,6 +2226,7 @@ function SessionDetailPanel({
     };
   }, []);
   const [detail, setDetail] = useState<SessionDetailSummary | null>(null);
+  const [gitBranch, setGitBranch] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -3020,8 +3021,33 @@ function SessionDetailPanel({
     [agents, routerEnabled]
   );
   const contextUsage = detail?.contextUsage;
+  const chatWorkspaceDir = mobileFirstNonEmptyString(
+    detail?.workspaceDir,
+    sessionSummary?.workspace_dir
+  );
   const toolApprovalMode = pendingToolApprovalMode || readMobileToolApprovalMode(config);
   const toolApprovalLabel = toolApprovalMode === "ask" ? "Ask Me" : "Always Allow";
+
+  useEffect(() => {
+    const workspace = chatWorkspaceDir?.trim();
+    if (!workspace) {
+      setGitBranch(null);
+      return;
+    }
+    let active = true;
+    setGitBranch(null);
+    api
+      .gitBranch(workspace)
+      .then((branch) => {
+        if (active) setGitBranch(branch);
+      })
+      .catch(() => {
+        if (active) setGitBranch(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, chatWorkspaceDir]);
 
   const changeToolApprovalMode = async (nextMode: string) => {
     const normalized = nextMode === "ask" ? "ask" : "always_allow";
@@ -3208,10 +3234,7 @@ function SessionDetailPanel({
       detail?.providerName,
       sessionSummary?.provider_name
     );
-    const workspaceDir = mobileFirstNonEmptyString(
-      detail?.workspaceDir,
-      sessionSummary?.workspace_dir
-    );
+    const workspaceDir = chatWorkspaceDir;
     Alert.alert(
       "Chat settings",
       [
@@ -3224,6 +3247,7 @@ function SessionDetailPanel({
           sessionId,
           title,
           updatedLabel: absoluteTimestampLabel(updatedAt),
+          gitBranch,
           workspaceDir,
         }),
         `Context: ${mobileContextUsageDetail(contextUsage)}`,

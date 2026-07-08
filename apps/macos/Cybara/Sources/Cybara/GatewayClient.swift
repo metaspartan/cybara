@@ -220,6 +220,16 @@ struct GatewayClient: Sendable {
         return try await get("api/status/sessions", as: GatewayStatusEvent.self, queryItems: queryItems)
     }
 
+    func gitBranch(path: String) async throws -> String? {
+        guard let workspace = firstNonEmptyGatewayString(path) else { return nil }
+        let response = try await get(
+            "api/git/branch",
+            as: GatewayGitBranchResponse.self,
+            queryItems: [URLQueryItem(name: "path", value: workspace)]
+        )
+        return firstNonEmptyGatewayString(response.branch)
+    }
+
     func tasks() async throws -> [GatewayTask] {
         try await getList("api/tasks", keys: ["tasks", "items"])
     }

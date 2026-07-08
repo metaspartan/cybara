@@ -311,6 +311,7 @@ describe("mobile dashboard model", () => {
         sessionId: "session-abc123",
         title: "Mobile chat polish",
         updatedLabel: "6/30/2026, 12:30:00 PM",
+        gitBranch: "main",
         workspaceDir: "/Users/carsen/Documents/GitHub/cybara",
       })
     ).toEqual([
@@ -319,6 +320,7 @@ describe("mobile dashboard model", () => {
       "Updated: 6/30/2026, 12:30:00 PM",
       "Model: minimax - MiniMax-M1",
       "Workspace directory: /Users/carsen/Documents/GitHub/cybara",
+      "Git branch: main",
     ]);
     expect(
       sessionProviderModelLabel({

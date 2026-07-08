@@ -433,9 +433,11 @@ export function buildMobileChatSettingsLines({
   sessionId,
   title,
   updatedLabel,
+  gitBranch,
   workspaceDir,
 }: {
   agentId?: string | null;
+  gitBranch?: string | null;
   model?: string | null;
   provider?: string | null;
   providerName?: string | null;
@@ -456,6 +458,9 @@ export function buildMobileChatSettingsLines({
   }
   if (MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesWorkspaceDirectory) {
     lines.push(`Workspace directory: ${workspaceDir || "No workspace"}`);
+  }
+  if (gitBranch) {
+    lines.push(`Git branch: ${gitBranch}`);
   }
   if (MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesSessionId) {
     lines.push(`Session ID: ${sessionId}`);

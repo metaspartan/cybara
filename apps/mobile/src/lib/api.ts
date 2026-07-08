@@ -1986,6 +1986,15 @@ export class CybaraMobileApi {
     );
   }
 
+  async gitBranch(path: string): Promise<string | null> {
+    const trimmed = path.trim();
+    if (!trimmed) return null;
+    const response = await this.request<unknown>(
+      `/api/git/branch?path=${encodeURIComponent(trimmed)}`
+    );
+    return readString(asRecord(response), ["branch"]) || null;
+  }
+
   async pendingChatMessages(sessionId: string): Promise<{
     sessionId: string;
     pendingMessages: MobilePendingChatMessage[];

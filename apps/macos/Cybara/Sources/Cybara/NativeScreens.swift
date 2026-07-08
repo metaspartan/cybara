@@ -482,6 +482,7 @@ struct ChatScreen: View {
     @State private var useModelRouter = false
     @State private var pendingWorkspaceDir = ""
     @State private var workspaceSaving = false
+    @State private var activeGitBranch: String?
     @State private var agentSaving = false
     @State private var approvalSaving = false
     @State private var toolApprovalMode = "always_allow"
@@ -540,6 +541,9 @@ struct ChatScreen: View {
             }
             await loadMessages(selectedSessionID)
             await hydrateStatus(selectedSessionID)
+        }
+        .task(id: activeWorkspaceDir) {
+            await loadActiveGitBranch()
         }
         .onReceive(statusStream.$latest.compactMap { $0 }) { event in
             handleStatusEvent(event)
@@ -1015,7 +1019,11 @@ struct ChatScreen: View {
     private var sessionDetailLine: String {
         guard let activeSession else {
             if let workspaceLabel = activeWorkspaceLabel {
-                return "New chat · Workspace \(workspaceLabel)"
+                var parts = ["New chat", "Workspace \(workspaceLabel)"]
+                if let branch = activeGitBranchLabel {
+                    parts.append("Branch \(branch)")
+                }
+                return parts.joined(separator: " · ")
             }
             return "New chat · Local gateway routing decides the provider and model"
         }
@@ -1025,6 +1033,9 @@ struct ChatScreen: View {
         var parts = [route]
         if let workspaceLabel = activeWorkspaceLabel {
             parts.append("Workspace \(workspaceLabel)")
+        }
+        if let branch = activeGitBranchLabel {
+            parts.append("Branch \(branch)")
         }
         parts.append("\(count) messages")
         if !timestamp.isEmpty { parts.append(timestamp) }
@@ -1068,6 +1079,10 @@ struct ChatScreen: View {
 
     private var activeWorkspaceLabel: String? {
         gatewayWorkspaceLabel(activeWorkspaceDir, maxLength: 42)
+    }
+
+    private var activeGitBranchLabel: String? {
+        firstNonEmptyGatewayString(activeGitBranch)
     }
 
     private var selectedConcreteChatAgentID: String {
@@ -2131,6 +2146,24 @@ struct ChatScreen: View {
             error = nil
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    private func loadActiveGitBranch() async {
+        guard let workspace = firstNonEmptyGatewayString(activeWorkspaceDir) else {
+            activeGitBranch = nil
+            return
+        }
+        activeGitBranch = nil
+        do {
+            let branch = try await client.gitBranch(path: workspace)
+            if firstNonEmptyGatewayString(activeWorkspaceDir) == workspace {
+                activeGitBranch = branch
+            }
+        } catch {
+            if firstNonEmptyGatewayString(activeWorkspaceDir) == workspace {
+                activeGitBranch = nil
+            }
         }
     }
 

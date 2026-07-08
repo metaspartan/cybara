@@ -894,6 +894,10 @@ struct GatewaySuccessResponse: Decodable, Hashable {
     }
 }
 
+struct GatewayGitBranchResponse: Decodable, Hashable {
+    let branch: String?
+}
+
 struct GatewayMemoryEntry: Decodable, Identifiable, Hashable {
     let id: String
     let timestamp: String?
