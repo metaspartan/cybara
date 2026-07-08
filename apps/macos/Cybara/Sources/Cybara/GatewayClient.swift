@@ -265,7 +265,8 @@ struct GatewayClient: Sendable {
         sessionId: String?,
         agentId: String?,
         workspaceDir: String? = nil,
-        queueMode: String? = nil
+        queueMode: String? = nil,
+        images: [[String: String]] = []
     ) async throws -> ChatSendResponse {
         var payload: [String: Any] = ["message": message]
         if let sessionId { payload["sessionId"] = sessionId }
@@ -275,6 +276,9 @@ struct GatewayClient: Sendable {
         }
         if let queueMode = firstNonEmptyGatewayString(queueMode) {
             payload["queueMode"] = queueMode
+        }
+        if !images.isEmpty {
+            payload["images"] = Array(images.prefix(8))
         }
         let body = try JSONSerialization.data(withJSONObject: payload)
         let data = try await request("api/chat", method: "POST", body: body)

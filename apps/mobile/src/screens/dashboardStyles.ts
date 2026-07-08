@@ -692,6 +692,20 @@ const makeStyles = () =>
     messageContent: {
       gap: spacing.sm,
     },
+    chatImageList: {
+      gap: spacing.sm,
+    },
+    chatImageWrapper: {
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      overflow: "hidden",
+      width: "100%",
+    },
+    chatImage: {
+      backgroundColor: colors.scrim,
+      width: "100%",
+    },
     codeBlock: {
       backgroundColor: colors.scrim,
       borderColor: colors.border,

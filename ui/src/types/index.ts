@@ -264,12 +264,19 @@ export interface ToolCallInfo {
   duration?: number;
 }
 
+export interface ChatImageAttachment {
+  data?: string;
+  url?: string;
+  mimeType?: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant" | "system" | "tool";
   content: string;
   timestamp?: string;
   thinking?: string;
   tool_calls?: ToolCallInfo[];
+  images?: ChatImageAttachment[];
   _truncated?: string;
   _tool_calls_hidden_count?: number;
   _tool_calls_total_count?: number;

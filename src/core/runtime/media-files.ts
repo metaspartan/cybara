@@ -45,8 +45,3 @@ export function resolveMediaFile(relPath: string): MediaFileResult {
     return { status: 500, error: "read error" };
   }
 }
-
-export function screenshotMediaPath(fileNameOrPath: string): string {
-  const base = fileNameOrPath.split(/[\\/]/).pop() ?? "";
-  return `screenshots/${base}`;
-}

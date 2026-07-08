@@ -1,7 +1,7 @@
 import { describe, expect, test, beforeAll, afterAll } from "bun:test";
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "fs";
 import { join } from "path";
-import { resolveMediaFile, screenshotMediaPath } from "../../src/core/runtime/media-files";
+import { resolveMediaFile } from "../../src/core/runtime/media-files";
 import { cybaraDir } from "../../src/core/paths";
 
 const screenshotsDir = join(cybaraDir, "screenshots");
@@ -47,12 +47,5 @@ describe("resolveMediaFile", () => {
   test("rejects empty and null-byte paths", () => {
     expect(resolveMediaFile("").status).toBe(400);
     expect(resolveMediaFile("screenshots/a\0.png").status).toBe(400);
-  });
-
-  test("screenshotMediaPath keeps only the basename", () => {
-    expect(screenshotMediaPath("/Users/x/.cybara/screenshots/shot.png")).toBe(
-      "screenshots/shot.png"
-    );
-    expect(screenshotMediaPath("shot.png")).toBe("screenshots/shot.png");
   });
 });

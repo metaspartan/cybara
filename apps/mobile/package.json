@@ -21,6 +21,7 @@
     "expo-constants": "56.0.20",
     "expo-glass-effect": "56.0.4",
     "expo-haptics": "56.0.3",
+    "expo-image-picker": "56.0.20",
     "expo-notifications": "56.0.20",
     "expo-secure-store": "56.0.4",
     "expo-system-ui": "56.0.5",

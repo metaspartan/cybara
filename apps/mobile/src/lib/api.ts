@@ -663,6 +663,14 @@ export interface SessionToolCallSummary {
   duration?: string;
   durationMs?: number;
   startedAt?: number;
+  filePath?: string;
+  contentType?: string;
+}
+
+export interface MobileMessageImage {
+  url?: string;
+  data?: string;
+  mimeType?: string;
 }
 
 export interface SessionProcessActivitySummary {
@@ -697,6 +705,7 @@ export interface SessionMessageSummary {
   thinking?: string;
   toolCalls?: SessionToolCallSummary[];
   processActivities?: SessionProcessActivitySummary[];
+  images?: MobileMessageImage[];
 }
 
 export interface SessionContextUsage {
@@ -963,6 +972,45 @@ function resolveToolCommand(record: Record<string, unknown> | null): string | un
 function resolveToolExitCode(record: Record<string, unknown> | null): string | undefined {
   const result = readRecord(record, ["result"]);
   return readString(result, ["exitCode", "exit_code", "code", "statusCode", "status_code"]);
+}
+
+const MOBILE_IMAGE_EXTENSION_PATTERN = /\.(png|jpe?g|gif|webp)$/i;
+
+function resolveToolMediaFile(record: Record<string, unknown> | null): {
+  filePath?: string;
+  contentType?: string;
+} {
+  const result = readRecord(record, ["result", "output"]);
+  const filePath =
+    readString(result, ["filePath", "file_path", "path"]) ||
+    readString(record, ["filePath", "file_path"]);
+  const contentType =
+    readString(result, ["contentType", "content_type", "mimeType", "mime_type"]) ||
+    readString(record, ["contentType", "content_type"]);
+  if (!filePath) return {};
+  const isImage = contentType
+    ? contentType.startsWith("image/")
+    : MOBILE_IMAGE_EXTENSION_PATTERN.test(filePath);
+  if (!isImage) return {};
+  return { filePath, contentType: contentType || undefined };
+}
+
+function normalizeMessageImages(value: unknown): MobileMessageImage[] | undefined {
+  const items = normalizeArrayResponse(value, ["images", "items"]);
+  if (items.length === 0) return undefined;
+  const images = items
+    .slice(0, 8)
+    .map((item) => {
+      const record = asRecord(item);
+      return {
+        url: readString(record, ["url"]) || undefined,
+        data: readString(record, ["data", "base64"]) || undefined,
+        mimeType:
+          readString(record, ["mimeType", "mime_type", "contentType", "content_type"]) || undefined,
+      };
+    })
+    .filter((image) => Boolean(image.url || image.data));
+  return images.length > 0 ? images : undefined;
 }
 
 function parseDurationMs(value: unknown): number | undefined {
@@ -1358,6 +1406,7 @@ function normalizeSessionDetail(value: unknown, fallbackId: string): SessionDeta
       processActivities: normalizeProcessActivities(
         messageRecord?.process_activities ?? messageRecord?.processActivities
       ),
+      images: normalizeMessageImages(messageRecord?.images),
     };
   });
 
@@ -1415,6 +1464,7 @@ function normalizeMessageToolCalls(value: unknown): SessionToolCallSummary[] | u
     const duration = readString(record, ["duration", "durationMs", "duration_ms", "elapsed"]);
     const durationMs =
       readNumber(record, ["durationMs", "duration_ms"]) ?? parseDurationMs(record?.duration);
+    const media = resolveToolMediaFile(record);
     return {
       id: readString(record, ["id", "toolCallId"]) || `${name}-${index + 1}`,
       name,
@@ -1427,6 +1477,8 @@ function normalizeMessageToolCalls(value: unknown): SessionToolCallSummary[] | u
       duration,
       durationMs,
       startedAt: readNumber(record, ["started_at", "startedAt", "timestamp"]),
+      filePath: media.filePath,
+      contentType: media.contentType,
     };
   });
 }
@@ -1590,6 +1642,18 @@ export function normalizeMobileSessionStatusResponse(value: unknown): MobileSess
     active: record?.active === true ? true : record?.active === false ? false : undefined,
     sessionId: readString(record, ["sessionId", "session_id"]),
   };
+}
+
+export function buildMobileMediaUrl(profile: GatewayProfile, filePath: string): string {
+  const basename = filePath.split(/[\\/]/).pop() || filePath;
+  const url = new URL(profile.baseUrl);
+  const rootPath = url.pathname.replace(/\/+$/, "");
+  url.pathname = `${rootPath}/api/media`;
+  url.search = "";
+  url.searchParams.set("path", `screenshots/${basename}`);
+  url.searchParams.set("token", profile.apiKey);
+  url.hash = "";
+  return url.toString();
 }
 
 export function buildMobileStatusStreamUrl(profile: GatewayProfile): string {
@@ -2021,6 +2085,10 @@ export class CybaraMobileApi {
     return buildMobileStatusStreamUrl(this.profile);
   }
 
+  mediaUrl(filePath: string): string {
+    return buildMobileMediaUrl(this.profile, filePath);
+  }
+
   connectStatusStream(
     handlers: MobileStatusStreamHandlers,
     options?: MobileStatusStreamOptions
@@ -2196,6 +2264,7 @@ export class CybaraMobileApi {
     workspaceDir?: string | null;
     queueMode?: "queue" | "steer";
     clientPendingId?: string;
+    images?: MobileMessageImage[];
   }): Promise<{
     sessionId: string;
     message: SessionMessageSummary;
@@ -2215,6 +2284,7 @@ export class CybaraMobileApi {
         workspaceDir: input.workspaceDir,
         queueMode: input.queueMode,
         clientPendingId: input.clientPendingId,
+        images: input.images,
       }),
     });
     const record = asRecord(response);
@@ -2240,6 +2310,7 @@ export class CybaraMobileApi {
         processActivities: normalizeProcessActivities(
           messageRecord?.process_activities ?? messageRecord?.processActivities
         ),
+        images: normalizeMessageImages(messageRecord?.images),
       },
     };
   }

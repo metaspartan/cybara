@@ -6,6 +6,7 @@ import type {
   Task,
   Skill,
   ChatMessage,
+  ChatImageAttachment,
   ChatSession,
   SessionContextUsage,
   ApiResponse,
@@ -130,7 +131,8 @@ export const agentsApi = {
     workspaceDir?: string | null,
     signal?: AbortSignal,
     queueMode?: "queue" | "steer",
-    clientPendingId?: string
+    clientPendingId?: string,
+    images?: ChatImageAttachment[]
   ) =>
     fetchApi<{
       message: ChatMessage;
@@ -143,7 +145,14 @@ export const agentsApi = {
       pendingMessages?: PendingChatMessage[];
     }>(`/agents/${id}/chat`, {
       method: "POST",
-      body: JSON.stringify({ message, sessionId, workspaceDir, queueMode, clientPendingId }),
+      body: JSON.stringify({
+        message,
+        sessionId,
+        workspaceDir,
+        queueMode,
+        clientPendingId,
+        ...(images && images.length ? { images } : {}),
+      }),
       signal,
     }),
 };
@@ -1077,7 +1086,8 @@ export const chatApi = {
     workspaceDir?: string | null,
     signal?: AbortSignal,
     queueMode?: "queue" | "steer",
-    clientPendingId?: string
+    clientPendingId?: string,
+    images?: ChatImageAttachment[]
   ) =>
     fetchApi<{
       message: ChatMessage;
@@ -1097,6 +1107,7 @@ export const chatApi = {
         workspaceDir,
         queueMode,
         clientPendingId,
+        ...(images && images.length ? { images } : {}),
       }),
       signal,
     }),

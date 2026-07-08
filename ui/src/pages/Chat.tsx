@@ -39,6 +39,7 @@ import {
   CircleHelp,
   ShieldAlert,
   GripVertical,
+  Paperclip,
 } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
@@ -56,10 +57,18 @@ import {
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
 import type {
   Agent,
+  ChatImageAttachment,
   ProviderPlanSnapshot,
   ProviderPlanStatusResponse,
   SessionContextUsage,
 } from "@/types";
+import {
+  MAX_CHAT_IMAGES,
+  MAX_CHAT_IMAGE_BYTES,
+  chatImageSrc,
+  fileToChatImage,
+  isSupportedImageType,
+} from "@/lib/chatImages";
 import { PageLayout } from "@/components/layout";
 import { GlassCard, Input, Badge, Modal, Button } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
@@ -1830,6 +1839,9 @@ export function Chat() {
   // persisted messages without re-subscribing on every render.
   const refreshSessionMessagesRef = useRef<(sid: string) => Promise<void>>(() => Promise.resolve());
   const [input, setInput] = useState("");
+  const [pendingImages, setPendingImages] = useState<ChatImageAttachment[]>([]);
+  const [imageDragActive, setImageDragActive] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
@@ -3184,6 +3196,40 @@ export function Chat() {
     );
   }, [activeSessionIds, isLoading, liveActivities.length, liveStatus, loadingSessionId, sessionId]);
 
+  const addImageFiles = async (files: Iterable<File>) => {
+    const candidates = Array.from(files).filter((file) => isSupportedImageType(file.type));
+    if (candidates.length === 0) return;
+    const accepted: ChatImageAttachment[] = [];
+    for (const file of candidates) {
+      if (file.size > MAX_CHAT_IMAGE_BYTES) continue;
+      accepted.push(await fileToChatImage(file));
+    }
+    if (accepted.length === 0) return;
+    setPendingImages((previous) => [...previous, ...accepted].slice(0, MAX_CHAT_IMAGES));
+  };
+
+  const removePendingImage = (index: number) => {
+    setPendingImages((previous) => previous.filter((_, i) => i !== index));
+  };
+
+  const handleComposerPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(event.clipboardData?.files || []).filter((file) =>
+      isSupportedImageType(file.type)
+    );
+    if (files.length === 0) return;
+    event.preventDefault();
+    void addImageFiles(files);
+  };
+
+  const handleComposerDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    const files = Array.from(event.dataTransfer?.files || []);
+    if (files.some((file) => isSupportedImageType(file.type))) {
+      event.preventDefault();
+      void addImageFiles(files);
+    }
+    setImageDragActive(false);
+  };
+
   const handleSend = async () => {
     suppressAutoRestoreRef.current = false;
     const requestedQueueMode =
@@ -3192,9 +3238,11 @@ export function Chat() {
       ? sessionId || activeSessionRef.current
       : sessionId || activeSessionRef.current || crypto.randomUUID();
     const queueMode = requestedQueueMode && requestSessionId ? "queue" : undefined;
-    if (!input.trim() || (isLoading && !queueMode)) return;
+    if ((!input.trim() && pendingImages.length === 0) || (isLoading && !queueMode)) return;
     const message = input;
+    const images = pendingImages;
     setInput("");
+    setPendingImages([]);
     let optimisticPendingMessageId: string | null = null;
     if (queueMode && requestSessionId) {
       const now = Date.now();
@@ -3230,6 +3278,7 @@ export function Chat() {
         queueMode,
         sessionId: requestSessionId || undefined,
         clientPendingId: optimisticPendingMessageId || undefined,
+        images: images.length ? images : undefined,
       });
       if (response?.queued) {
         setPendingMessages(normalizePendingChatMessages(response.pendingMessages));
@@ -4262,6 +4311,36 @@ export function Chat() {
                             {hasAssistantToolCalls && (
                               <div className="my-2 border-t border-white/12" />
                             )}
+                            {message.images && message.images.length > 0 && (
+                              <div
+                                className={cn(
+                                  "flex flex-wrap gap-2",
+                                  message.content ? "mb-2" : "",
+                                  message.role === "user" ? "justify-end" : ""
+                                )}
+                              >
+                                {message.images.map((image, imageIndex) => {
+                                  const src = chatImageSrc(image);
+                                  if (!src) return null;
+                                  return (
+                                    <a
+                                      key={`msg-image-${originalIndex}-${imageIndex}`}
+                                      href={src}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="block max-w-[220px] overflow-hidden rounded-lg border border-white/12"
+                                    >
+                                      <img
+                                        src={src}
+                                        alt="Attachment"
+                                        loading="lazy"
+                                        className="h-auto max-h-64 w-full object-contain"
+                                      />
+                                    </a>
+                                  );
+                                })}
+                              </div>
+                            )}
                             <MessageContent content={message.content} />
                             {message.role !== "user" && (
                               <AssistantMetaInline
@@ -4387,13 +4466,62 @@ export function Chat() {
                     </span>
                   </div>
                 )}
-                <div className="rounded-[22px] border border-white/10 bg-white/[0.035] px-3 py-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.35)]">
+                <div
+                  className={cn(
+                    "rounded-[22px] border bg-white/[0.035] px-3 py-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors",
+                    imageDragActive ? "border-[rgba(var(--accent-primary),0.6)]" : "border-white/10"
+                  )}
+                  onDragOver={(e) => {
+                    if (Array.from(e.dataTransfer?.items || []).some((i) => i.kind === "file")) {
+                      e.preventDefault();
+                      setImageDragActive(true);
+                    }
+                  }}
+                  onDragLeave={() => setImageDragActive(false)}
+                  onDrop={handleComposerDrop}
+                >
+                  {pendingImages.length > 0 && (
+                    <div className="mb-1.5 flex flex-wrap gap-2">
+                      {pendingImages.map((image, index) => (
+                        <div
+                          key={`pending-image-${index}`}
+                          className="relative h-16 w-16 overflow-hidden rounded-lg border border-white/12"
+                        >
+                          <img
+                            src={chatImageSrc(image)}
+                            alt="Attachment preview"
+                            className="h-full w-full object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removePendingImage(index)}
+                            className="absolute right-0.5 top-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
+                            aria-label="Remove attachment"
+                          >
+                            <X className="h-2.5 w-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      if (e.target.files) void addImageFiles(e.target.files);
+                      e.target.value = "";
+                    }}
+                  />
                   <textarea
                     ref={inputRef}
                     data-chat-composer-input="true"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
+                    onPaste={handleComposerPaste}
                     placeholder="Type a message..."
                     rows={1}
                     className="w-full min-h-[38px] max-h-[220px] overflow-y-auto resize-none bg-transparent px-0 py-1 text-[13px] leading-5 text-white placeholder-gray-500 !outline-none"
@@ -4413,6 +4541,20 @@ export function Chat() {
                       onSelectAgent={(agentId) => void handleSelectAgent(agentId)}
                       updating={updateSessionAgent.isPending}
                     />
+                    <button
+                      type="button"
+                      onClick={() => imageInputRef.current?.click()}
+                      disabled={pendingImages.length >= MAX_CHAT_IMAGES}
+                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-gray-400 transition-colors cursor-pointer hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      title={
+                        pendingImages.length >= MAX_CHAT_IMAGES
+                          ? `Up to ${MAX_CHAT_IMAGES} images`
+                          : "Attach image"
+                      }
+                      aria-label="Attach image"
+                    >
+                      <Paperclip className="w-4 h-4" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => void handleToggleDictation()}
@@ -4469,7 +4611,10 @@ export function Chat() {
                     )}
                     <button
                       onClick={handleSend}
-                      disabled={!input.trim() || (isLoading && !sendQueuesFollowUp)}
+                      disabled={
+                        (!input.trim() && pendingImages.length === 0) ||
+                        (isLoading && !sendQueuesFollowUp)
+                      }
                       className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full accent-button disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer"
                       title={sendQueuesFollowUp ? "Queue follow-up" : "Send message"}
                     >

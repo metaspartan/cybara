@@ -332,6 +332,18 @@ struct GatewayProcessActivityPayload: Encodable, Hashable {
     let sandboxProvider: String?
 }
 
+struct NativeAttachedImage: Identifiable, Hashable, Sendable {
+    let id: UUID
+    let base64: String
+    let mimeType: String
+
+    init(id: UUID = UUID(), base64: String, mimeType: String) {
+        self.id = id
+        self.base64 = base64
+        self.mimeType = mimeType
+    }
+}
+
 struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
     let role: String
     let content: String
@@ -341,6 +353,7 @@ struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
     let process_activities: [GatewayProcessActivity]?
     let _tool_calls_total_count: Int?
     let _tool_calls_hidden_count: Int?
+    var attachedImages: [NativeAttachedImage] = []
     var id = UUID()
 
     private enum CodingKeys: String, CodingKey {
@@ -356,7 +369,8 @@ struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
         tool_calls: [GatewayToolCall]? = nil,
         process_activities: [GatewayProcessActivity]? = nil,
         _tool_calls_total_count: Int? = nil,
-        _tool_calls_hidden_count: Int? = nil
+        _tool_calls_hidden_count: Int? = nil,
+        attachedImages: [NativeAttachedImage] = []
     ) {
         let normalized = Self.normalizedContentAndThinking(role: role, content: content, thinking: thinking)
         self.role = role
@@ -367,6 +381,13 @@ struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
         self.process_activities = process_activities
         self._tool_calls_total_count = _tool_calls_total_count
         self._tool_calls_hidden_count = _tool_calls_hidden_count
+        self.attachedImages = attachedImages
+    }
+
+    func withAttachedImages(_ images: [NativeAttachedImage]) -> GatewaySessionMessage {
+        var copy = self
+        copy.attachedImages = images
+        return copy
     }
 
     init(from decoder: Decoder) throws {

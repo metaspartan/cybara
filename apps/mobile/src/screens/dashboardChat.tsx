@@ -1,4 +1,5 @@
 import {
+  Image,
   Linking,
   Pressable,
   ScrollView,
@@ -7,7 +8,7 @@ import {
   type StyleProp,
   type TextStyle,
 } from "react-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import * as Clipboard from "expo-clipboard";
 import {
   AlertTriangle,
@@ -32,7 +33,7 @@ import {
   splitMessageContent,
   type MarkdownInline,
 } from "../lib/chat-format";
-import type { SessionDetailSummary } from "../lib/api";
+import type { SessionDetailSummary, SessionMessageSummary } from "../lib/api";
 
 /** Render inline markdown spans (bold/italic/code/strike/link) inside a Text. */
 function InlineMarkdown({ tokens }: { tokens: MarkdownInline[] }) {
@@ -211,17 +212,74 @@ function MessageActionsRow({
   );
 }
 
+function resolveUserImageUri(image: NonNullable<SessionMessageSummary["images"]>[number]): string | null {
+  if (image.url && image.url.trim()) return image.url.trim();
+  if (image.data && image.data.trim()) {
+    return `data:${image.mimeType || "image/png"};base64,${image.data.trim()}`;
+  }
+  return null;
+}
+
+function ChatImage({ uri }: { uri: string }) {
+  const [aspectRatio, setAspectRatio] = useState(4 / 3);
+  useEffect(() => {
+    let active = true;
+    Image.getSize(
+      uri,
+      (width, height) => {
+        if (active && width > 0 && height > 0) setAspectRatio(width / height);
+      },
+      () => {}
+    );
+    return () => {
+      active = false;
+    };
+  }, [uri]);
+  return (
+    <Pressable
+      accessibilityRole="imagebutton"
+      onPress={() => {
+        void Linking.openURL(uri).catch(() => {});
+      }}
+      style={styles.chatImageWrapper}
+    >
+      <Image resizeMode="cover" source={{ uri }} style={[styles.chatImage, { aspectRatio }]} />
+    </Pressable>
+  );
+}
+
+function ChatImageAttachments({ uris }: { uris: string[] }) {
+  if (uris.length === 0) return null;
+  return (
+    <View style={styles.chatImageList}>
+      {uris.map((uri, index) => (
+        <ChatImage key={`${uri}-${index}`} uri={uri} />
+      ))}
+    </View>
+  );
+}
+
 export function ChatMessageRow({
   accentColor,
   message,
   nowMs,
   onRevert,
+  mediaUrl,
 }: {
   accentColor: string;
   message: SessionDetailSummary["messages"][number];
   nowMs?: number;
   onRevert?: (message: SessionDetailSummary["messages"][number]) => void;
+  mediaUrl?: (filePath: string) => string;
 }) {
+  const toolImageUris = mediaUrl
+    ? (message.toolCalls || [])
+        .filter((toolCall) => Boolean(toolCall.filePath))
+        .map((toolCall) => mediaUrl(toolCall.filePath as string))
+    : [];
+  const userImageUris = (message.images || [])
+    .map(resolveUserImageUri)
+    .filter((uri): uri is string => uri !== null);
   const isUser = message.role === "user";
   if (!isUser) {
     const hasWorkTimeline = Boolean(
@@ -233,6 +291,7 @@ export function ChatMessageRow({
       return (
         <View style={styles.agentMessageRow}>
           <WorkTimeline message={message} nowMs={nowMs} />
+          <ChatImageAttachments uris={toolImageUris} />
         </View>
       );
     }
@@ -241,6 +300,7 @@ export function ChatMessageRow({
     return (
       <View style={styles.agentMessageRow}>
         {hasWorkTimeline ? <WorkTimeline message={message} nowMs={nowMs} /> : null}
+        <ChatImageAttachments uris={toolImageUris} />
         {hasContent || !hasWorkTimeline ? (
           <MessageContent content={hasContent ? content : "(empty message)"} />
         ) : null}
@@ -265,6 +325,7 @@ export function ChatMessageRow({
           ]}
         >
           <MessageContent content={message.content || "(empty message)"} />
+          <ChatImageAttachments uris={userImageUris} />
         </View>
         <MessageActionsRow
           alignEnd

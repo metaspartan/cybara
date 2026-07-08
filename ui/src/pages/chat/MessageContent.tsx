@@ -312,6 +312,20 @@ export function MessageContent({ content }: { content: string }) {
               {children}
             </a>
           ),
+          img: ({ src, alt }) => {
+            const source = typeof src === "string" ? src : "";
+            if (!/^(https?:|data:image\/)/i.test(source)) return <span>{alt || ""}</span>;
+            return (
+              <a href={source} target="_blank" rel="noopener noreferrer" className="block my-2">
+                <img
+                  src={source}
+                  alt={alt || "image"}
+                  loading="lazy"
+                  className="max-h-80 max-w-full rounded-lg border border-white/12 object-contain"
+                />
+              </a>
+            );
+          },
           blockquote: ({ children }) => (
             <blockquote className="border-l-2 border-indigo-500 pl-3 my-2 text-gray-400">
               {children}

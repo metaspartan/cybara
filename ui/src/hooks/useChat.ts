@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { chatApi, agentsApi, extractApiError } from "@/lib/api";
-import type { ChatMessage } from "@/types";
+import type { ChatMessage, ChatImageAttachment } from "@/types";
 
 interface ChatState {
   messages: ChatMessage[];
@@ -35,6 +35,7 @@ export function useChat(agentId?: string) {
       queueMode?: "queue" | "steer";
       sessionId?: string;
       clientPendingId?: string;
+      images?: ChatImageAttachment[];
     }
   ) => {
     const queueMode = options?.queueMode;
@@ -48,7 +49,12 @@ export function useChat(agentId?: string) {
     if (!queuedSend) {
       activeRequestAbortRef.current = controller;
     }
-    const userMessage: ChatMessage = { role: "user", content, timestamp: new Date().toISOString() };
+    const userMessage: ChatMessage = {
+      role: "user",
+      content,
+      timestamp: new Date().toISOString(),
+      ...(options?.images && options.images.length ? { images: options.images } : {}),
+    };
     const requestedWorkspaceDir =
       options?.workspaceDir !== undefined ? options.workspaceDir : state.workspaceDir;
     setState((prev) => ({
@@ -67,7 +73,8 @@ export function useChat(agentId?: string) {
             requestedWorkspaceDir || undefined,
             controller.signal,
             queueMode,
-            options?.clientPendingId
+            options?.clientPendingId,
+            options?.images
           )
         : await chatApi.send(
             content,
@@ -76,7 +83,8 @@ export function useChat(agentId?: string) {
             requestedWorkspaceDir || undefined,
             controller.signal,
             queueMode,
-            options?.clientPendingId
+            options?.clientPendingId,
+            options?.images
           );
 
       if (response.success && response.data) {

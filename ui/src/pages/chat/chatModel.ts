@@ -5,6 +5,7 @@ import {
   type LiveActivityItem,
 } from "@/lib/chatActivities";
 import type { PendingChatMessage } from "@/lib/status-stream";
+import type { ChatImageAttachment } from "@/types";
 export interface ToolCall {
   id: string;
   name: string;
@@ -40,6 +41,7 @@ export interface ChatMessage {
     sandboxProvider?: string;
   }>;
   thinking?: string;
+  images?: ChatImageAttachment[];
   _truncated?: string;
   _tool_calls_hidden_count?: number;
   _tool_calls_total_count?: number;

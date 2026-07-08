@@ -57,6 +57,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
+import * as ImagePicker from "expo-image-picker";
 import { haptics } from "../lib/haptics";
 import { useThemeControls } from "../theme/ThemeContext";
 import {
@@ -77,6 +78,7 @@ import {
   Folder,
   HeartPulse,
   House,
+  ImagePlus,
   Link2,
   ListTodo,
   Loader2,
@@ -100,6 +102,7 @@ import {
   Volume2,
   Wifi,
   Wrench,
+  X,
   Zap,
 } from "lucide-react-native";
 import { GlassPanel } from "../components/Glass";
@@ -124,6 +127,7 @@ import {
   type AgentSummary,
   type FeatureEndpointKey,
   type FeatureSummary,
+  type MobileMessageImage,
   type MobilePendingChatMessage,
   type ProviderSummary,
   type ProviderPlanStatusResponse,
@@ -2152,6 +2156,13 @@ function ChatApprovalBanner({ api }: { api: CybaraMobileApi }) {
   );
 }
 
+const MOBILE_CHAT_MAX_ATTACHMENTS = 8;
+const MOBILE_CHAT_MAX_IMAGE_BASE64_LENGTH = 7_000_000;
+
+function pendingImageUri(image: MobileMessageImage): string {
+  return `data:${image.mimeType || "image/jpeg"};base64,${image.data ?? ""}`;
+}
+
 function SessionDetailPanel({
   accentColor,
   api,
@@ -2203,6 +2214,7 @@ function SessionDetailPanel({
   );
   const draftRef = useRef("");
   const [sending, setSending] = useState(false);
+  const [pendingImages, setPendingImages] = useState<MobileMessageImage[]>([]);
   const [pendingMessages, setPendingMessages] = useState<MobilePendingChatMessage[]>([]);
   const [steeringPendingId, setSteeringPendingId] = useState<string | null>(null);
   const [reorderingPendingId, setReorderingPendingId] = useState<string | null>(null);
@@ -2500,6 +2512,37 @@ function SessionDetailPanel({
     setComposerHeight(MOBILE_CHAT_COMPOSER.minHeight);
   };
 
+  const removePendingImage = (index: number) => {
+    setPendingImages((current) => current.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const pickImages = async () => {
+    if (pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS) return;
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      setLoadError("Photo library access is required to attach images.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      base64: true,
+      quality: 0.8,
+      allowsMultipleSelection: true,
+      selectionLimit: MOBILE_CHAT_MAX_ATTACHMENTS,
+    });
+    if (result.canceled) return;
+    setPendingImages((current) => {
+      const next = [...current];
+      for (const asset of result.assets) {
+        if (next.length >= MOBILE_CHAT_MAX_ATTACHMENTS) break;
+        const data = asset.base64;
+        if (!data || data.length > MOBILE_CHAT_MAX_IMAGE_BASE64_LENGTH) continue;
+        next.push({ data, mimeType: asset.mimeType ?? "image/jpeg" });
+      }
+      return next;
+    });
+  };
+
   const replacePendingMessagesFromGateway = (messages: MobilePendingChatMessage[]) => {
     const nextMessages = mergeMobilePendingMessages(messages, [], { preserveOptimistic: false });
     setPendingMessages(nextMessages);
@@ -2510,9 +2553,11 @@ function SessionDetailPanel({
 
   const sendMessage = async () => {
     const message = draft.trim();
+    const attachments = pendingImages;
     const queuedSend = sending || !!liveAssistant || pendingMessages.length > 0;
-    if (!message) return;
+    if (!message && attachments.length === 0) return;
     resetComposerDraft();
+    setPendingImages([]);
     const liveStartedAt = Date.now();
     let optimisticPendingMessageId: string | null = null;
     let optimisticMessageId: string | null = null;
@@ -2547,6 +2592,7 @@ function SessionDetailPanel({
       role: "user",
       content: message,
       timestamp: new Date().toISOString(),
+      images: attachments.length > 0 ? attachments : undefined,
     };
     if (!queuedSend) {
       optimisticMessageId = optimistic.id;
@@ -2567,6 +2613,7 @@ function SessionDetailPanel({
         workspaceDir: detail?.workspaceDir,
         queueMode: queuedSend ? "queue" : undefined,
         clientPendingId: optimisticPendingMessageId || undefined,
+        images: attachments.length > 0 ? attachments : undefined,
       });
       if (result.queued) {
         replacePendingMessagesFromGateway(pendingMessagesFromResponse(result));
@@ -2616,6 +2663,7 @@ function SessionDetailPanel({
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
       setComposerDraft(message);
+      if (attachments.length > 0) setPendingImages(attachments);
       setLoadError(messageText);
       if (optimisticPendingMessageId) {
         setPendingMessages((current) =>
@@ -3140,6 +3188,7 @@ function SessionDetailPanel({
                 key={`${message.id}-${index}`}
                 accentColor={accentColor}
                 message={message}
+                mediaUrl={(filePath) => api.mediaUrl(filePath)}
                 nowMs={message.id === liveAssistant?.id ? liveNowMs : undefined}
                 onRevert={message.role === "user" ? confirmRevertToMessage : undefined}
               />

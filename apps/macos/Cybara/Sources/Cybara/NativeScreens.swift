@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 // ─── Shared bits ─────────────────────────────────────────────────────────────
 
@@ -126,6 +127,43 @@ struct NativeMessageActions: View {
                 .help("Revert session to this message")
             }
         }
+    }
+}
+
+/// Horizontal strip of the images a user attached to a chat message.
+struct NativeAttachedImagesStrip: View {
+    let images: [NativeAttachedImage]
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(images) { image in
+                    if let data = Data(base64Encoded: image.base64),
+                       let nsImage = NSImage(data: data) {
+                        Image(nsImage: nsImage)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 120, height: 120)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                    }
+                }
+            }
+        }
+    }
+}
+
+func nativeImageMimeType(for url: URL) -> String {
+    switch url.pathExtension.lowercased() {
+    case "png": return "image/png"
+    case "jpg", "jpeg": return "image/jpeg"
+    case "gif": return "image/gif"
+    case "webp": return "image/webp"
+    default:
+        return UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "image/png"
     }
 }
 
@@ -377,6 +415,8 @@ struct ChatScreen: View {
     @State private var draft = ""
     @State private var sending = false
     @State private var error: String?
+    @State private var pendingAttachments: [NativeAttachedImage] = []
+    @State private var attachmentsByContent: [String: [NativeAttachedImage]] = [:]
     @State private var renameTarget: GatewaySession?
     @State private var renameDraft = ""
     @State private var deleteTarget: GatewaySession?
@@ -1240,7 +1280,14 @@ struct ChatScreen: View {
             VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
                 VStack(alignment: .leading, spacing: 7) {
                     if !isUser {
-                        NativeToolTimelineView(message: message)
+                        NativeToolTimelineView(
+                            message: message,
+                            mediaBaseURL: client.baseURL,
+                            mediaToken: GatewayClient.loadAPIKey()
+                        )
+                    }
+                    if isUser, !message.attachedImages.isEmpty {
+                        NativeAttachedImagesStrip(images: message.attachedImages)
                     }
                     if !visibleContent.isEmpty {
                         NativeMarkdownView(content: visibleContent, isUser: isUser)
@@ -1426,6 +1473,17 @@ struct ChatScreen: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             VStack(spacing: 6) {
+                if !pendingAttachments.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(pendingAttachments) { attachment in
+                                composerAttachmentChip(attachment)
+                            }
+                        }
+                        .padding(.horizontal, 4)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 TextField("Message Cybara…", text: $draft, axis: .vertical)
                     .textFieldStyle(.plain)
                     .lineLimit(1 ... 6)
@@ -1438,13 +1496,22 @@ struct ChatScreen: View {
                     Spacer(minLength: 6)
                     composerControls
                     Button {
+                        attachImages()
+                    } label: {
+                        Image(systemName: "paperclip")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Attach images")
+                    .disabled(pendingAttachments.count >= 8)
+                    Button {
                         Task { await send() }
                     } label: {
                         Image(systemName: "arrow.up.circle.fill")
                             .font(.system(size: 24))
                     }
                     .buttonStyle(.borderless)
-                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingAttachments.isEmpty)
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -1767,6 +1834,61 @@ struct ChatScreen: View {
     }
 
     @MainActor
+    private func attachImages() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.png, .jpeg, .gif, .webP, .image]
+        panel.prompt = "Attach"
+        panel.title = "Attach Images"
+        panel.message = "Attach up to 8 images to send with your message."
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls {
+            guard pendingAttachments.count < 8 else { break }
+            guard let data = try? Data(contentsOf: url) else { continue }
+            pendingAttachments.append(
+                NativeAttachedImage(
+                    base64: data.base64EncodedString(),
+                    mimeType: nativeImageMimeType(for: url)
+                )
+            )
+        }
+    }
+
+    private func composerAttachmentChip(_ attachment: NativeAttachedImage) -> some View {
+        ZStack(alignment: .topTrailing) {
+            Group {
+                if let data = Data(base64Encoded: attachment.base64),
+                   let image = NSImage(data: data) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    Image(systemName: "photo")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(width: 56, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
+
+            Button {
+                pendingAttachments.removeAll { $0.id == attachment.id }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white, .black.opacity(0.55))
+            }
+            .buttonStyle(.plain)
+            .padding(2)
+        }
+    }
+
+    @MainActor
     private func presentWorkspacePanel(defaultPath: String?) -> String? {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -1786,7 +1908,14 @@ struct ChatScreen: View {
         do {
             let detail = try await client.sessionDetail(id)
             updateSessionList(with: detail)
-            messages = detail.messagesList ?? []
+            messages = (detail.messagesList ?? []).map { message in
+                guard message.role == "user",
+                      let cached = attachmentsByContent[message.content.trimmingCharacters(in: .whitespacesAndNewlines)],
+                      !cached.isEmpty else {
+                    return message
+                }
+                return message.withAttachedImages(cached)
+            }
             liveActivities = nativePrunePersistedLiveActivities(
                 liveActivities,
                 persistedMessages: messages
@@ -1814,13 +1943,18 @@ struct ChatScreen: View {
 
     private func send() async {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        let attachments = pendingAttachments
         let queuedSend = sending || showWorkingTimeline || !pendingMessages.isEmpty
-        guard !text.isEmpty else { return }
+        guard !text.isEmpty || !attachments.isEmpty else { return }
         if !queuedSend {
             sending = true
         }
         error = nil
         draft = ""
+        pendingAttachments = []
+        if !attachments.isEmpty {
+            attachmentsByContent[text] = attachments
+        }
         if !queuedSend {
             liveStatus = "thinking"
             liveCurrentStep = "Thinking..."
@@ -1829,14 +1963,22 @@ struct ChatScreen: View {
             streamingContent = nil
         }
         let optimisticTimestamp = gatewayTimestampNow()
-        messages.append(GatewaySessionMessage(role: "user", content: text, timestamp: optimisticTimestamp))
+        messages.append(
+            GatewaySessionMessage(
+                role: "user",
+                content: text,
+                timestamp: optimisticTimestamp,
+                attachedImages: attachments
+            )
+        )
         do {
             let result = try await client.sendChat(
                 message: text,
                 sessionId: selectedSessionID,
                 agentId: selectedChatAgentID.isEmpty ? nil : selectedChatAgentID,
                 workspaceDir: activeWorkspaceDir,
-                queueMode: queuedSend ? "queue" : nil
+                queueMode: queuedSend ? "queue" : nil,
+                images: attachments.map { ["data": $0.base64, "mimeType": $0.mimeType] }
             )
             if result.queued == true {
                 pendingMessages = result.pendingMessages

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -19,6 +20,8 @@ struct NativeToolActivity: Identifiable, Hashable {
 
 struct NativeToolTimelineView: View {
     let message: GatewaySessionMessage
+    let mediaBaseURL: URL
+    let mediaToken: String?
 
     private var orderedToolCalls: [GatewayToolCall] {
         nativeOrderedToolCalls(message.tool_calls)
@@ -57,7 +60,11 @@ struct NativeToolTimelineView: View {
                     DisclosureGroup {
                         VStack(alignment: .leading, spacing: 7) {
                             ForEach(orderedToolCalls) { toolCall in
-                                NativeToolCallDetailRow(toolCall: toolCall)
+                                NativeToolCallDetailRow(
+                                    toolCall: toolCall,
+                                    mediaBaseURL: mediaBaseURL,
+                                    mediaToken: mediaToken
+                                )
                             }
                         }
                         .padding(.top, 6)
@@ -223,11 +230,28 @@ private func nativeActivityMarkdownText(_ text: String) -> Text {
 
 private struct NativeToolCallDetailRow: View {
     let toolCall: GatewayToolCall
+    let mediaBaseURL: URL
+    let mediaToken: String?
     @State private var expanded = false
+
+    private var resultImages: [NativeToolResultImage] {
+        nativeToolResultImages(toolCall.result)
+    }
 
     var body: some View {
         DisclosureGroup(isExpanded: $expanded) {
             VStack(alignment: .leading, spacing: 7) {
+                if !resultImages.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(resultImages) { image in
+                            NativeToolResultImageView(
+                                image: image,
+                                baseURL: mediaBaseURL,
+                                token: mediaToken
+                            )
+                        }
+                    }
+                }
                 if let command = nativeFirstNonEmpty(toolCall.command, toolCall.detail) {
                     NativeToolPayloadBlock(title: "Detail", content: command)
                 }
@@ -313,6 +337,138 @@ private struct NativeToolPayloadBlock: View {
             .background(Color.black.opacity(0.22), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
         }
     }
+}
+
+struct NativeToolResultImage: Identifiable, Hashable {
+    let id: String
+    let basename: String
+    let contentType: String?
+}
+
+private struct NativeToolResultImageView: View {
+    let image: NativeToolResultImage
+    let baseURL: URL
+    let token: String?
+
+    private var url: URL? {
+        nativeToolMediaURL(baseURL: baseURL, basename: image.basename, token: token)
+    }
+
+    var body: some View {
+        if let url {
+            Button {
+                NSWorkspace.shared.open(url)
+            } label: {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let loaded):
+                        loaded
+                            .resizable()
+                            .scaledToFit()
+                    case .failure:
+                        NativeImagePlaceholder(icon: "photo.badge.exclamationmark", text: "Image unavailable")
+                    case .empty:
+                        NativeImagePlaceholder(icon: "photo", text: "Loading image…")
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+                .frame(maxWidth: 400, alignment: .leading)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                )
+            }
+            .buttonStyle(.plain)
+            .help("Open full image")
+        }
+    }
+}
+
+private struct NativeImagePlaceholder: View {
+    let icon: String
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 12, weight: .semibold))
+            Text(text)
+                .font(.system(size: 10.5, design: .rounded))
+        }
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: 400, minHeight: 64)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+private let nativeImageExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp"]
+
+func nativeToolResultImages(_ value: JSONValue?) -> [NativeToolResultImage] {
+    var results: [NativeToolResultImage] = []
+    var seen = Set<String>()
+
+    func walk(_ node: JSONValue?) {
+        guard let node else { return }
+        switch node {
+        case .object(let object):
+            let filePath = nativeStringField(object, ["filePath", "file_path", "path"])
+            let contentType = nativeStringField(object, ["contentType", "content_type", "mimeType", "mime_type"])
+            if let filePath, nativeIsImagePath(filePath, contentType: contentType) {
+                let basename = filePath
+                    .split(whereSeparator: { $0 == "/" || $0 == "\\" })
+                    .last
+                    .map(String.init) ?? filePath
+                if !basename.isEmpty, !seen.contains(basename) {
+                    seen.insert(basename)
+                    results.append(
+                        NativeToolResultImage(id: basename, basename: basename, contentType: contentType)
+                    )
+                }
+            }
+            for (_, child) in object { walk(child) }
+        case .array(let array):
+            for child in array { walk(child) }
+        default:
+            break
+        }
+    }
+
+    walk(value)
+    return results
+}
+
+func nativeToolMediaURL(baseURL: URL, basename: String, token: String?) -> URL? {
+    guard var components = URLComponents(
+        url: baseURL.appendingPathComponent("api/media"),
+        resolvingAgainstBaseURL: false
+    ) else { return nil }
+    var items = [URLQueryItem(name: "path", value: "screenshots/\(basename)")]
+    if let token, !token.isEmpty {
+        items.append(URLQueryItem(name: "token", value: token))
+    }
+    components.queryItems = items
+    return components.url
+}
+
+private func nativeStringField(_ object: [String: JSONValue], _ keys: [String]) -> String? {
+    for key in keys {
+        if case .string(let value)? = object[key],
+           let trimmed = nativeFirstNonEmpty(value) {
+            return trimmed
+        }
+    }
+    return nil
+}
+
+private func nativeIsImagePath(_ path: String, contentType: String?) -> Bool {
+    if let contentType = contentType?.lowercased(), contentType.hasPrefix("image/") {
+        return true
+    }
+    let ext = (path.split(separator: ".").last.map(String.init) ?? "").lowercased()
+    return nativeImageExtensions.contains(ext)
 }
 
 private struct NativeToolSandboxBadge: View {
