@@ -68,6 +68,14 @@ describe("Sidebar keyboard focus is not suppressed", () => {
     expect(src).not.toContain("!outline-none");
     expect(src).not.toContain("focus-visible:!outline-none");
   });
+
+  test("sidebar navigation uses compact text and icon sizing", () => {
+    expect(src).toContain("text-[13px]");
+    expect(src).toContain("gap-2.5");
+    expect(src).toContain("w-4 h-4 flex-shrink-0");
+    expect(src).not.toContain("gap-3 rounded-xl text-sm font-medium");
+    expect(src).not.toContain("w-5 h-5 flex-shrink-0");
+  });
 });
 
 describe("modal action buttons keep shared padding and radius", () => {

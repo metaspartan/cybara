@@ -1179,11 +1179,20 @@ struct ChannelsScreen: View {
     @State private var channels: [GatewayChannel] = []
     @State private var loaded = false
     @State private var error: String?
+    @State private var busyID: String?
+    @State private var actionError: String?
+    @State private var pendingDelete: GatewayChannel?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 ScreenHeader(title: "Channels", subtitle: "Messaging surfaces connected to the gateway")
+
+                if let actionError {
+                    Text(actionError)
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.red)
+                }
 
                 if !loaded {
                     ProgressView().frame(maxWidth: .infinity)
@@ -1209,17 +1218,28 @@ struct ChannelsScreen: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text(channel.isEnabled ? "Enabled" : "Disabled")
-                                .font(.system(size: 11, weight: .semibold, design: .rounded))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(
-                                    Capsule().fill(
-                                        channel.isEnabled
-                                            ? Color.green.opacity(0.18)
-                                            : Color.secondary.opacity(0.15)
-                                    )
+                            if busyID == channel.id {
+                                ProgressView().controlSize(.small)
+                            }
+                            Toggle(
+                                "",
+                                isOn: Binding(
+                                    get: { channel.isEnabled },
+                                    set: { newValue in Task { await setEnabled(channel, newValue) } }
                                 )
+                            )
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .disabled(busyID != nil)
+                            .help(channel.isEnabled ? "Disable channel" : "Enable channel")
+                            Button(role: .destructive) {
+                                pendingDelete = channel
+                            } label: {
+                                Image(systemName: "trash")
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(busyID != nil)
+                            .help("Delete channel")
                         }
                         .padding(16)
                         .cybaraGlass(cornerRadius: 16)
@@ -1229,6 +1249,21 @@ struct ChannelsScreen: View {
             .padding(24)
         }
         .task { await load() }
+        .confirmationDialog(
+            "Delete this channel?",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            presenting: pendingDelete
+        ) { channel in
+            Button("Delete \(channel.displayName)", role: .destructive) {
+                Task { await deleteChannel(channel) }
+            }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        } message: { channel in
+            Text("Removes \(channel.displayName) from the gateway. This cannot be undone.")
+        }
     }
 
     private func load() async {
@@ -1239,6 +1274,32 @@ struct ChannelsScreen: View {
             self.error = error.localizedDescription
         }
         loaded = true
+    }
+
+    private func setEnabled(_ channel: GatewayChannel, _ enabled: Bool) async {
+        guard busyID == nil else { return }
+        busyID = channel.id
+        actionError = nil
+        do {
+            try await client.setChannelEnabled(channel.id, enabled: enabled)
+            await load()
+        } catch {
+            actionError = error.localizedDescription
+        }
+        busyID = nil
+    }
+
+    private func deleteChannel(_ channel: GatewayChannel) async {
+        pendingDelete = nil
+        busyID = channel.id
+        actionError = nil
+        do {
+            try await client.deleteChannel(channel.id)
+            await load()
+        } catch {
+            actionError = error.localizedDescription
+        }
+        busyID = nil
     }
 }
 
@@ -1252,8 +1313,11 @@ struct LogsScreen: View {
     @State private var hasMore = false
     @State private var loaded = false
     @State private var error: String?
+    @State private var levelFilter = "all"
+    @State private var searchText = ""
 
     private let logLimit = 200
+    private let levelOptions = ["all", "info", "warn", "error"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -1270,6 +1334,46 @@ struct LogsScreen: View {
             .padding(.horizontal, 24)
             .padding(.top, 24)
             .padding(.bottom, 12)
+
+            if loaded && error == nil && !logs.isEmpty {
+                HStack(spacing: 10) {
+                    Picker("Level", selection: $levelFilter) {
+                        ForEach(levelOptions, id: \.self) { level in
+                            Text(level == "all" ? "All" : level.capitalized).tag(level)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 260)
+
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        TextField("Search logs", text: $searchText)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 12, design: .rounded))
+                        if !searchText.isEmpty {
+                            Button {
+                                searchText = ""
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.borderless)
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(Color.primary.opacity(0.05))
+                    )
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 12)
+            }
 
             if !loaded {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1290,8 +1394,15 @@ struct LogsScreen: View {
                             }
                         }
 
+                        if filteredLogs.isEmpty {
+                            Text("No entries match the current filter.")
+                                .font(.system(size: 12, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .padding(.vertical, 8)
+                        }
+
                         LazyVStack(alignment: .leading, spacing: 6) {
-                            ForEach(logs) { entry in
+                            ForEach(filteredLogs) { entry in
                                 HStack(alignment: .top, spacing: 10) {
                                     Text(entry.level?.uppercased() ?? "INFO")
                                         .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -1326,8 +1437,27 @@ struct LogsScreen: View {
         .task { await load() }
     }
 
+    private var filteredLogs: [GatewayLogEntry] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return logs.filter { entry in
+            if levelFilter != "all" {
+                let level = (entry.level ?? "info").lowercased()
+                let matches =
+                    levelFilter == "warn" ? (level == "warn" || level == "warning") : level == levelFilter
+                if !matches { return false }
+            }
+            if query.isEmpty { return true }
+            let haystack = [entry.message ?? "", entry.source ?? "", entry.logType ?? ""]
+                .joined(separator: " ")
+                .lowercased()
+            return haystack.contains(query)
+        }
+    }
+
     private var logSummary: String {
-        let visible = logs.count
+        let visible = filteredLogs.count
+        let loadedCount = logs.count
+        if visible != loadedCount { return "\(visible) of \(loadedCount) shown" }
         guard let totalLogs else { return "\(visible) recent entries" }
         return visible == totalLogs ? "\(visible) entries" : "\(visible) of \(totalLogs) entries"
     }
@@ -1690,6 +1820,10 @@ struct SkillsScreen: View {
     @State private var search = ""
     @State private var loaded = false
     @State private var error: String?
+    @State private var busyName: String?
+    @State private var updatingAll = false
+    @State private var actionError: String?
+    @State private var pendingDelete: GatewaySkill?
 
     private var filtered: [GatewaySkill] {
         let query = search.trimmingCharacters(in: .whitespaces).lowercased()
@@ -1707,10 +1841,30 @@ struct SkillsScreen: View {
                 TextField("Search skills…", text: $search)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 220)
+                Button {
+                    Task { await updateAll() }
+                } label: {
+                    if updatingAll {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("Update all", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .disabled(updatingAll || busyName != nil)
+                .help("Pull the latest bundled and installed skills")
             }
             .padding(.horizontal, 24)
             .padding(.top, 24)
             .padding(.bottom, 12)
+
+            if let actionError {
+                Text(actionError)
+                    .font(.system(size: 12, design: .rounded))
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 8)
+            }
 
             if !loaded {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1745,6 +1899,17 @@ struct SkillsScreen: View {
                                         .lineLimit(2)
                                 }
                                 Spacer()
+                                if busyName == skill.name {
+                                    ProgressView().controlSize(.small)
+                                }
+                                Button(role: .destructive) {
+                                    pendingDelete = skill
+                                } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .buttonStyle(.borderless)
+                                .disabled(busyName != nil || updatingAll)
+                                .help("Delete skill")
                             }
                             .padding(14)
                             .cybaraGlass(cornerRadius: 14)
@@ -1756,6 +1921,21 @@ struct SkillsScreen: View {
             }
         }
         .task { await load() }
+        .confirmationDialog(
+            "Delete this skill?",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }
+            ),
+            presenting: pendingDelete
+        ) { skill in
+            Button("Delete \(skill.name)", role: .destructive) {
+                Task { await delete(skill) }
+            }
+            Button("Cancel", role: .cancel) { pendingDelete = nil }
+        } message: { skill in
+            Text("Removes the \(skill.name) skill from this gateway. This cannot be undone.")
+        }
     }
 
     private func load() async {
@@ -1766,5 +1946,31 @@ struct SkillsScreen: View {
             self.error = error.localizedDescription
         }
         loaded = true
+    }
+
+    private func delete(_ skill: GatewaySkill) async {
+        pendingDelete = nil
+        busyName = skill.name
+        actionError = nil
+        do {
+            try await client.deleteSkill(skill.name)
+            await load()
+        } catch {
+            actionError = error.localizedDescription
+        }
+        busyName = nil
+    }
+
+    private func updateAll() async {
+        guard !updatingAll else { return }
+        updatingAll = true
+        actionError = nil
+        do {
+            try await client.updateSkills()
+            await load()
+        } catch {
+            actionError = error.localizedDescription
+        }
+        updatingAll = false
     }
 }

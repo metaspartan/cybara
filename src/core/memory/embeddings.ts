@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, statSync } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";
 import { pathToFileURL } from "url";
@@ -77,6 +77,15 @@ export interface TransformersRuntimeModelStatus {
     loadedAt: string | null;
     lastUsedAt: string | null;
     lastError: string | null;
+    device: string;
+    dtype: string;
+    cacheDir: string;
+    loadProgress: number | null;
+    loadStatus: string | null;
+    estimatedModelBytes: number | null;
+    residentMemoryBytes: number | null;
+    vramBytes: number | null;
+    memoryNote: string | null;
 }
 
 export interface TransformersRuntimeStatus {
@@ -135,12 +144,23 @@ const TRANSFORMERS_RECOMMENDED_MODELS = [
 ];
 
 const TRANSFORMERS_CACHE_DIR = join(process.env.HOME || process.env.USERPROFILE || homedir(), ".cybara", "memory", "transformers");
+const TRANSFORMERS_DEFAULT_DTYPE = "q8";
+const TRANSFORMERS_CACHE_SCAN_LIMIT = 4000;
+const TRANSFORMERS_CACHE_SCAN_TTL_MS = 15000;
 
 const transformersExtractorCache = new Map<string, Promise<unknown>>();
 const transformersRuntimeState = new Map<
     string,
-    { state: LocalRuntimeState; loadedAt?: number; lastUsedAt?: number; lastError?: string | null }
+    {
+        state: LocalRuntimeState;
+        loadedAt?: number;
+        lastUsedAt?: number;
+        lastError?: string | null;
+        loadProgress?: number | null;
+        loadStatus?: string | null;
+    }
 >();
+const transformersCacheSizeMemo = new Map<string, { computedAt: number; bytes: number | null }>();
 let transformersAvailabilityError: string | null = null;
 
 function normalizeProvider(provider: unknown): EmbeddingProviderPreference {
@@ -224,6 +244,8 @@ function getRuntimeEntry(model: string): {
     loadedAt?: number;
     lastUsedAt?: number;
     lastError?: string | null;
+    loadProgress?: number | null;
+    loadStatus?: string | null;
 } {
     return (
         transformersRuntimeState.get(model) || {
@@ -239,6 +261,8 @@ function updateRuntimeEntry(
         loadedAt: number;
         lastUsedAt: number;
         lastError: string | null;
+        loadProgress: number | null;
+        loadStatus: string | null;
     }>
 ): void {
     const previous = getRuntimeEntry(model);
@@ -247,6 +271,8 @@ function updateRuntimeEntry(
         loadedAt?: number;
         lastUsedAt?: number;
         lastError?: string | null;
+        loadProgress?: number | null;
+        loadStatus?: string | null;
     } = {
         ...previous,
         ...updates,
@@ -256,6 +282,161 @@ function updateRuntimeEntry(
 
 function touchTransformersModel(model: string): void {
     updateRuntimeEntry(model, { lastUsedAt: Date.now() });
+}
+
+function normalizeTransformersRuntimeOption(value: unknown): string {
+    return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function getTransformersDevice(): string {
+    const value = normalizeTransformersRuntimeOption(process.env.CYBARA_TRANSFORMERS_DEVICE);
+    return value || "auto";
+}
+
+function getTransformersDtype(): string {
+    const value = normalizeTransformersRuntimeOption(process.env.CYBARA_TRANSFORMERS_DTYPE);
+    return value || TRANSFORMERS_DEFAULT_DTYPE;
+}
+
+function clampProgress(value: number): number {
+    if (!Number.isFinite(value)) return 0;
+    return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+function updateTransformersProgress(model: string, event: unknown): void {
+    if (!event || typeof event !== "object") return;
+    const record = event as Record<string, unknown>;
+    const rawProgress = typeof record.progress === "number" ? record.progress : null;
+    const status =
+        typeof record.status === "string"
+            ? record.status
+            : typeof record.file === "string"
+              ? record.file
+              : null;
+    updateRuntimeEntry(model, {
+        state: "loading",
+        lastUsedAt: Date.now(),
+        loadProgress: rawProgress === null ? null : clampProgress(rawProgress),
+        loadStatus: status,
+    });
+}
+
+function createTransformersPipelineOptions(model: string): Record<string, unknown> {
+    const device = getTransformersDevice();
+    const options: Record<string, unknown> = {
+        dtype: getTransformersDtype(),
+        quantized: true,
+        progress_callback: (event: unknown) => updateTransformersProgress(model, event),
+    };
+    if (device !== "auto") {
+        options.device = device;
+    }
+    return options;
+}
+
+async function disposeTransformersPipeline(pipeline: unknown): Promise<void> {
+    const dispose =
+        pipeline && typeof pipeline === "object"
+            ? (pipeline as { dispose?: () => Promise<void> | void }).dispose
+            : null;
+    if (typeof dispose === "function") {
+        await dispose.call(pipeline);
+    }
+}
+
+async function disposeTransformersExtractor(model: string): Promise<void> {
+    const pending = transformersExtractorCache.get(model);
+    transformersExtractorCache.delete(model);
+    clearProviderCache("transformers_js", model);
+    if (!pending) {
+        transformersRuntimeState.delete(model);
+        return;
+    }
+    updateRuntimeEntry(model, { state: "loading", loadStatus: "unloading" });
+    try {
+        const extractor = await pending;
+        await disposeTransformersPipeline(extractor);
+        transformersRuntimeState.delete(model);
+    } catch (error) {
+        updateRuntimeEntry(model, {
+            state: "error",
+            lastError: error instanceof Error ? error.message : String(error),
+            lastUsedAt: Date.now(),
+            loadProgress: null,
+            loadStatus: "unload failed",
+        });
+        throw error;
+    }
+}
+
+function modelCacheKeys(model: string): string[] {
+    const lower = model.toLowerCase();
+    const withoutOrg = lower.split("/").pop() || lower;
+    return [...new Set([lower, lower.replace("/", "--"), withoutOrg].filter(Boolean))];
+}
+
+function estimateCachedModelBytes(model: string): number | null {
+    const memo = transformersCacheSizeMemo.get(model);
+    const now = Date.now();
+    if (memo && now - memo.computedAt < TRANSFORMERS_CACHE_SCAN_TTL_MS) {
+        return memo.bytes;
+    }
+    if (!existsSync(TRANSFORMERS_CACHE_DIR)) {
+        transformersCacheSizeMemo.set(model, { computedAt: now, bytes: null });
+        return null;
+    }
+
+    const keys = modelCacheKeys(model);
+    let visited = 0;
+    let bytes = 0;
+    const walk = (path: string) => {
+        if (visited >= TRANSFORMERS_CACHE_SCAN_LIMIT) return;
+        let stat;
+        let symbolicLink = false;
+        try {
+            const linkStat = lstatSync(path);
+            symbolicLink = linkStat.isSymbolicLink();
+            stat = linkStat.isSymbolicLink() ? statSync(path) : linkStat;
+        } catch {
+            return;
+        }
+        visited += 1;
+        if (symbolicLink && !stat.isFile()) return;
+        if (stat.isDirectory()) {
+            for (const entry of readdirSync(path)) {
+                walk(join(path, entry));
+                if (visited >= TRANSFORMERS_CACHE_SCAN_LIMIT) break;
+            }
+            return;
+        }
+        if (!stat.isFile()) return;
+        const normalizedPath = path.toLowerCase();
+        if (keys.some((key) => normalizedPath.includes(key))) {
+            bytes += stat.size;
+        }
+    };
+
+    walk(TRANSFORMERS_CACHE_DIR);
+    const estimate = bytes > 0 ? bytes : null;
+    transformersCacheSizeMemo.set(model, { computedAt: now, bytes: estimate });
+    return estimate;
+}
+
+function getResidentMemoryBytes(): number | null {
+    if (typeof process.memoryUsage !== "function") return null;
+    try {
+        const usage = process.memoryUsage();
+        return Number.isFinite(usage.rss) ? usage.rss : null;
+    } catch {
+        return null;
+    }
+}
+
+function getTransformersMemoryNote(device: string): string | null {
+    if (device === "webgpu") {
+        return "WebGPU runtimes do not expose per-model VRAM in JavaScript; shown memory is process RSS plus cached model size.";
+    }
+    return "Transformers.js runs inside the gateway process; shown memory is process RSS plus cached model size.";
 }
 
 function sanitizeText(input: string, maxLength = 8000): string {
@@ -922,6 +1103,8 @@ async function getTransformersExtractor(modelInput?: string): Promise<unknown> {
         state: "loading",
         lastError: null,
         lastUsedAt: Date.now(),
+        loadProgress: null,
+        loadStatus: "initializing",
     });
 
     const pending = (async () => {
@@ -947,7 +1130,11 @@ async function getTransformersExtractor(modelInput?: string): Promise<unknown> {
                 void 0;
             }
         }
-        return await transformersModule.pipeline("feature-extraction", model, { quantized: true });
+        return await transformersModule.pipeline(
+            "feature-extraction",
+            model,
+            createTransformersPipelineOptions(model)
+        );
     })();
 
     transformersExtractorCache.set(model, pending);
@@ -958,6 +1145,8 @@ async function getTransformersExtractor(modelInput?: string): Promise<unknown> {
             loadedAt: getRuntimeEntry(model).loadedAt || Date.now(),
             lastUsedAt: Date.now(),
             lastError: null,
+            loadProgress: 100,
+            loadStatus: "ready",
         });
         return extractor;
     } catch (error) {
@@ -966,6 +1155,8 @@ async function getTransformersExtractor(modelInput?: string): Promise<unknown> {
             state: "error",
             lastUsedAt: Date.now(),
             lastError: error instanceof Error ? error.message : String(error),
+            loadProgress: null,
+            loadStatus: "error",
         });
         throw error;
     }
@@ -1414,12 +1605,31 @@ export function getTransformersRuntimeStatus(selectedModelInput?: string): Trans
             const state = getRuntimeEntry(model);
             const normalizedState: LocalRuntimeState =
                 transformersExtractorCache.has(model) && state.state === "idle" ? "loading" : state.state;
+            const device = getTransformersDevice();
             return {
                 model,
                 state: normalizedState,
                 loadedAt: toIsoTime(state.loadedAt),
                 lastUsedAt: toIsoTime(state.lastUsedAt),
                 lastError: state.lastError || null,
+                device,
+                dtype: getTransformersDtype(),
+                cacheDir: TRANSFORMERS_CACHE_DIR,
+                loadProgress: typeof state.loadProgress === "number" ? state.loadProgress : null,
+                loadStatus: state.loadStatus || null,
+                estimatedModelBytes:
+                    normalizedState === "ready" || normalizedState === "loading"
+                        ? estimateCachedModelBytes(model)
+                        : null,
+                residentMemoryBytes:
+                    normalizedState === "ready" || normalizedState === "loading"
+                        ? getResidentMemoryBytes()
+                        : null,
+                vramBytes: null,
+                memoryNote:
+                    normalizedState === "ready" || normalizedState === "loading"
+                        ? getTransformersMemoryNote(device)
+                        : null,
             } satisfies TransformersRuntimeModelStatus;
         })
         .sort((left, right) => {
@@ -1538,13 +1748,25 @@ export async function stopEmbeddingRuntime(selection?: EmbeddingSelection): Prom
     if (provider === "transformers_js") {
         const selectedModel = model || "";
         if (!selectedModel) {
-            for (const loadedModel of transformersExtractorCache.keys()) {
-                transformersExtractorCache.delete(loadedModel);
-                clearProviderCache("transformers_js", loadedModel);
-                transformersRuntimeState.delete(loadedModel);
+            const failures: string[] = [];
+            const models = [...new Set([...transformersExtractorCache.keys(), ...transformersRuntimeState.keys()])];
+            for (const loadedModel of models) {
+                try {
+                    await disposeTransformersExtractor(loadedModel);
+                } catch (error) {
+                    failures.push(`${loadedModel}: ${error instanceof Error ? error.message : String(error)}`);
+                }
             }
-            for (const knownModel of transformersRuntimeState.keys()) {
+            for (const knownModel of Array.from(transformersRuntimeState.keys())) {
                 transformersRuntimeState.delete(knownModel);
+            }
+            if (failures.length > 0) {
+                return {
+                    success: false,
+                    provider: "transformers_js",
+                    model: "all",
+                    message: `Failed to unload some Transformers.js models: ${failures.join("; ")}`,
+                };
             }
             return {
                 success: true,
@@ -1553,15 +1775,22 @@ export async function stopEmbeddingRuntime(selection?: EmbeddingSelection): Prom
                 message: "Unloaded all local Transformers.js models",
             };
         }
-        transformersExtractorCache.delete(selectedModel);
-        clearProviderCache("transformers_js", selectedModel);
-        transformersRuntimeState.delete(selectedModel);
-        return {
-            success: true,
-            provider: "transformers_js",
-            model: selectedModel,
-            message: `Unloaded local Transformers.js model: ${selectedModel}`,
-        };
+        try {
+            await disposeTransformersExtractor(selectedModel);
+            return {
+                success: true,
+                provider: "transformers_js",
+                model: selectedModel,
+                message: `Unloaded local Transformers.js model: ${selectedModel}`,
+            };
+        } catch (error) {
+            return {
+                success: false,
+                provider: "transformers_js",
+                model: selectedModel,
+                message: `Failed to unload Transformers.js model: ${error instanceof Error ? error.message : String(error)}`,
+            };
+        }
     }
 
     if (provider === "ollama") {

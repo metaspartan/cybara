@@ -52,4 +52,18 @@ describe("compiled sidecar startup: native/heavy externals must load lazily", ()
   test("the orphaned transformers-runtime wrapper is gone", () => {
     expect(existsSync(`${srcDir}/core/memory/transformers-runtime.ts`)).toBe(false);
   });
+
+  test("Transformers.js local runtime exposes lifecycle telemetry and disposes pipelines", () => {
+    const source = read("core/memory/embeddings.ts");
+    expect(source).toContain("createTransformersPipelineOptions");
+    expect(source).toContain("progress_callback");
+    expect(source).toContain("estimatedModelBytes");
+    expect(source).toContain("residentMemoryBytes");
+    expect(source).toContain("vramBytes");
+    expect(source).toContain("disposeTransformersExtractor");
+    expect(source).toContain("await disposeTransformersPipeline(extractor)");
+    expect(source).not.toContain(
+      'transformersModule.pipeline("feature-extraction", model, { quantized: true })'
+    );
+  });
 });

@@ -620,6 +620,16 @@ struct GatewayClient: Sendable {
         try await getList("api/channels", keys: ["channels", "items"])
     }
 
+    func setChannelEnabled(_ id: String, enabled: Bool) async throws {
+        let body = try JSONSerialization.data(withJSONObject: ["enabled": enabled])
+        _ = try await request("api/channels/\(id)/toggle", method: "POST", body: body)
+    }
+
+    @discardableResult
+    func deleteChannel(_ id: String) async throws -> Data {
+        try await request("api/channels/\(id)", method: "DELETE")
+    }
+
     func systemLogsPage(limit: Int = 200, offset: Int = 0) async throws -> GatewayLogPage {
         let boundedLimit = min(max(1, limit), 1000)
         let boundedOffset = max(0, offset)
@@ -707,6 +717,17 @@ struct GatewayClient: Sendable {
 
     func skills() async throws -> [GatewaySkill] {
         try await getList("api/skills", keys: ["skills", "items"])
+    }
+
+    @discardableResult
+    func deleteSkill(_ name: String) async throws -> Data {
+        let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))
+        let encoded = name.addingPercentEncoding(withAllowedCharacters: allowed) ?? name
+        return try await request("api/skills/\(encoded)", method: "DELETE")
+    }
+
+    func updateSkills() async throws {
+        _ = try await request("api/skills/update", method: "POST")
     }
 
     // ─── Session mutations ───────────────────────────────────────────────────

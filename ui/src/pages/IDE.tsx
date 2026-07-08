@@ -2212,6 +2212,14 @@ export function IDE() {
     );
     return selectedEntry?.lastError || null;
   }, [embeddingRuntime?.transformers]);
+  const selectedTransformersRuntimeEntry = useMemo(() => {
+    if (!embeddingRuntime?.transformers) return null;
+    const selectedModel = embeddingRuntime.transformers.selectedModel;
+    return (
+      embeddingRuntime.transformers.loadedModels.find((entry) => entry.model === selectedModel) ||
+      null
+    );
+  }, [embeddingRuntime?.transformers]);
   const effectiveRuntimeNote = useMemo(() => {
     if (runtimeTargetProvider === "transformers_js" && selectedTransformersRuntimeError) {
       return selectedTransformersRuntimeError;
@@ -3722,6 +3730,43 @@ export function IDE() {
                           </div>
                         </div>
                       </div>
+
+                      {runtimeTargetProvider === "transformers_js" &&
+                        selectedTransformersRuntimeEntry && (
+                          <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/5 bg-black/20 p-2 text-[11px] text-gray-300 md:grid-cols-4">
+                            <div>
+                              <div className="text-gray-500">Device</div>
+                              <div className="truncate">
+                                {selectedTransformersRuntimeEntry.device || "auto"} ·{" "}
+                                {selectedTransformersRuntimeEntry.dtype || "q8"}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-gray-500">Model cache</div>
+                              <div className="truncate">
+                                {selectedTransformersRuntimeEntry.estimatedModelBytes
+                                  ? formatSize(selectedTransformersRuntimeEntry.estimatedModelBytes)
+                                  : "Not cached"}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-gray-500">Gateway RSS</div>
+                              <div className="truncate">
+                                {selectedTransformersRuntimeEntry.residentMemoryBytes
+                                  ? formatSize(selectedTransformersRuntimeEntry.residentMemoryBytes)
+                                  : "Unavailable"}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-gray-500">Load</div>
+                              <div className="truncate">
+                                {typeof selectedTransformersRuntimeEntry.loadProgress === "number"
+                                  ? `${selectedTransformersRuntimeEntry.loadProgress}%`
+                                  : selectedTransformersRuntimeEntry.loadStatus || "Idle"}
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                       {effectiveRuntimeNote && (
                         <div

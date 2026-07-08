@@ -247,6 +247,15 @@ class WorkspaceIndexer {
         loadedAt: string | null;
         lastUsedAt: string | null;
         lastError: string | null;
+        device: string;
+        dtype: string;
+        cacheDir: string;
+        loadProgress: number | null;
+        loadStatus: string | null;
+        estimatedModelBytes: number | null;
+        residentMemoryBytes: number | null;
+        vramBytes: number | null;
+        memoryNote: string | null;
       }>;
     };
   } {
