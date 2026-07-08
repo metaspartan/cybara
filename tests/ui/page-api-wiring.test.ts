@@ -49,7 +49,8 @@ describe("UI page API wiring", () => {
     expect(source).toContain("Detected URLs");
     expect(source).toContain("canCreatePairing");
     expect(source).toContain("connectInfo?.lanAccessEnabled");
-    expect(source).toContain("Listen on local network is required");
+    expect(source).toContain("connectInfo?.remoteAccess?.ready");
+    expect(source).toContain("Network access is required");
     expect(source).toContain("disabled={!canCreatePairing}");
     expect(source).not.toContain("Physical Phone Check");
     expect(source).toContain("device.push?.configured");
@@ -61,7 +62,9 @@ describe("UI page API wiring", () => {
 
   test("Settings feature toggle uses settingsApi and restores state on update failure", () => {
     const source =
-      readPage("Settings.tsx") + readUiSource("components/settings/GatewayPathSettingsSection.tsx");
+      readPage("Settings.tsx") +
+      readUiSource("components/settings/GatewayPathSettingsSection.tsx") +
+      readUiSource("components/settings/GatewayRemoteAccessSection.tsx");
 
     expect(source).toMatch(/import\s*\{[^}]*\bsettingsApi\b[^}]*\}\s*from\s*['"]@\/lib\/api['"]/);
     expect(source).toContain("settingsApi.getConfig()");
@@ -80,6 +83,8 @@ describe("UI page API wiring", () => {
     expect(source).toContain("res.data.gatewayFirewall");
     expect(source).toContain("settings?.gatewayFirewall?.required");
     expect(source).toContain("LAN access enabled and Windows Firewall allows the gateway");
+    expect(source).toContain("GatewayRemoteAccessSection");
+    expect(source).toContain("remoteAccess");
     expect(source).not.toContain("Boolean(settings?.hostForced) || applyingHost");
     expect(source).toContain("settingsApi.updateConfig({ speech })");
     expect(source).toContain("settingsApi.updateConfig({");

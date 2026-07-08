@@ -158,6 +158,7 @@ import {
   securityCheck,
   setGatewayBasePath,
   setGatewayPassword,
+  setGatewayRemoteAccessSettings,
   setRequireAuthForLocalhost,
   validateUrl,
   type AuthResult,
@@ -773,6 +774,7 @@ const routes: Record<string, RouteHandler> = {
       port?: unknown;
       gatewayPassword?: unknown;
       clearGatewayPassword?: unknown;
+      remoteAccess?: unknown;
     };
     const settings = getGatewayAuthSettings();
 
@@ -823,6 +825,8 @@ const routes: Record<string, RouteHandler> = {
     if (data.gatewayPassword !== undefined) {
       setGatewayPassword(data.gatewayPassword);
     }
+
+    if (data.remoteAccess !== undefined) setGatewayRemoteAccessSettings(data.remoteAccess);
 
     if (data.clearGatewayPassword !== undefined) {
       if (data.clearGatewayPassword !== true) {

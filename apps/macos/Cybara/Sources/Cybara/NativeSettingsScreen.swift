@@ -84,6 +84,12 @@ struct NativeSettingsScreen: View {
     @State private var authGatewayPasswordEnabled = false
     @State private var gatewayPasswordDraft = ""
     @State private var gatewayPasswordConfirm = ""
+    @State private var remoteAccessEnabled = false
+    @State private var remoteAccessMode = "private_overlay"
+    @State private var remoteAccessProvider = "tailscale"
+    @State private var remoteAccessBaseURL = ""
+    @State private var remoteAccessMessage = ""
+    @State private var remoteAccessReady = false
     @State private var authAvailable = false
     @State private var authRevealedKey: String?
     @State private var authCopied = false
@@ -407,6 +413,55 @@ struct NativeSettingsScreen: View {
                                     HStack(spacing: 10) { gatewayPasswordButtons }
                                     VStack(alignment: .leading, spacing: 10) { gatewayPasswordButtons }
                                 }
+                            }
+
+                            Divider().opacity(0.45)
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                HStack {
+                                    Text("Remote Access")
+                                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                    Spacer()
+                                    Text(remoteAccessReady ? "Ready" : (remoteAccessEnabled ? "Setup needed" : "Off"))
+                                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(remoteAccessReady ? Color.green : (remoteAccessEnabled ? Color.orange : .secondary))
+                                }
+                                Text("Use a private mesh such as Tailscale, ZeroTier, or NetBird, or a password-protected HTTPS tunnel for a public domain.")
+                                    .font(.system(size: 11, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                Toggle("Enable remote URL", isOn: $remoteAccessEnabled)
+                                    .toggleStyle(.switch)
+                                    .disabled(authBusy)
+                                Picker("Access", selection: $remoteAccessMode) {
+                                    Text("Private Mesh").tag("private_overlay")
+                                    Text("Public HTTPS").tag("public_tunnel")
+                                }
+                                .pickerStyle(.segmented)
+                                .disabled(authBusy)
+                                Picker("Provider", selection: $remoteAccessProvider) {
+                                    Text("Tailscale").tag("tailscale")
+                                    Text("ZeroTier").tag("zerotier")
+                                    Text("NetBird").tag("netbird")
+                                    Text("Cloudflare").tag("cloudflare")
+                                    Text("Custom").tag("custom")
+                                }
+                                .pickerStyle(.menu)
+                                .disabled(authBusy)
+                                TextField("https://name.tailnet.ts.net", text: $remoteAccessBaseURL)
+                                    .textFieldStyle(.roundedBorder)
+                                    .disabled(authBusy)
+                                if !remoteAccessMessage.isEmpty {
+                                    Text(remoteAccessMessage)
+                                        .font(.system(size: 11, design: .rounded))
+                                        .foregroundStyle(remoteAccessReady ? Color.green : Color.orange)
+                                }
+                                Button {
+                                    Task { await saveRemoteAccess() }
+                                } label: {
+                                    Label("Save Remote Access", systemImage: "network")
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(authBusy)
                             }
 
                             Divider().opacity(0.45)
@@ -1850,6 +1905,14 @@ struct NativeSettingsScreen: View {
         authRequireLocalhost = auth["requireAuthForLocalhost"] as? Bool ?? false
         authRequireForced = auth["requireAuthForLocalhostForced"] as? Bool ?? false
         authGatewayPasswordEnabled = auth["gatewayPasswordEnabled"] as? Bool ?? false
+        if let remote = auth["remoteAccess"] as? [String: Any] {
+            remoteAccessEnabled = remote["enabled"] as? Bool ?? false
+            remoteAccessMode = remote["mode"] as? String ?? "private_overlay"
+            remoteAccessProvider = remote["provider"] as? String ?? "tailscale"
+            remoteAccessBaseURL = remote["baseUrl"] as? String ?? ""
+            remoteAccessMessage = remote["message"] as? String ?? ""
+            remoteAccessReady = remote["ready"] as? Bool ?? false
+        }
     }
 
     private func toggleRevealAuthKey() async {
@@ -1904,6 +1967,27 @@ struct NativeSettingsScreen: View {
         do {
             let auth = try await client.updateAuthSettings(
                 requireAuthForLocalhost: authRequireLocalhost
+            )
+            readAuthSettings(auth)
+        } catch {
+            self.error = error.localizedDescription
+            if let auth = try? await client.authSettings() {
+                readAuthSettings(auth)
+            }
+        }
+    }
+
+    private func saveRemoteAccess() async {
+        authBusy = true
+        defer { authBusy = false }
+        do {
+            let auth = try await client.updateAuthSettings(
+                remoteAccess: [
+                    "enabled": remoteAccessEnabled,
+                    "mode": remoteAccessMode,
+                    "provider": remoteAccessProvider,
+                    "baseUrl": remoteAccessBaseURL.trimmingCharacters(in: .whitespacesAndNewlines),
+                ]
             )
             readAuthSettings(auth)
         } catch {

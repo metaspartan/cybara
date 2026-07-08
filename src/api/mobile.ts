@@ -5,17 +5,17 @@ import {
   buildMobileConnectInfo,
   createMobileDevice,
   createPairingCode,
-  isLoopbackMobileGatewayUrl,
   redeemPairingCode,
   listMobileDevices,
   removeMobileDevice,
   revokeMobileDevice,
   updateMobileDevicePushToken,
+  validateMobilePairingBaseUrl,
   type MobileDeviceView,
   type MobileConnectPayload,
 } from "../core/mobile-devices";
 import { sendMobilePushNotification } from "../core/mobile-push";
-import { getGatewayBasePath } from "./security";
+import { getGatewayBasePath, getGatewayRemoteAccessSettings } from "./security";
 
 type MobileRouteHandler = (
   body?: unknown,
@@ -46,6 +46,7 @@ export const mobileRoutes: Record<string, MobileRouteHandler> = {
       port: Number(process.env.PORT) || platformConfig.port,
       basePath: getGatewayBasePath(),
       mobileBaseUrl: process.env.CYBARA_MOBILE_BASE_URL,
+      remoteAccess: getGatewayRemoteAccessSettings(),
     });
   },
 
@@ -64,15 +65,10 @@ export const mobileRoutes: Record<string, MobileRouteHandler> = {
       port: Number(process.env.PORT) || platformConfig.port,
       basePath: getGatewayBasePath(),
       mobileBaseUrl: process.env.CYBARA_MOBILE_BASE_URL,
+      remoteAccess: getGatewayRemoteAccessSettings(),
     });
-    if (!connectInfo.lanAccessEnabled) {
-      throw new Error(
-        "Validation error: enable Listen on local network before pairing mobile devices"
-      );
-    }
-    if (isLoopbackMobileGatewayUrl(baseUrl)) {
-      throw new Error("Validation error: use a LAN gateway URL before pairing mobile devices");
-    }
+    const validation = validateMobilePairingBaseUrl(baseUrl, connectInfo);
+    if (!validation.ok) throw new Error(validation.reason || "Validation error: invalid baseUrl");
     const result = createPairingCode({
       baseUrl,
       gatewayName: readOptionalString(data.gatewayName) || readOptionalString(data.name),

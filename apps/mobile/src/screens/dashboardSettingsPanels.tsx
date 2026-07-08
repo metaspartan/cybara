@@ -88,6 +88,7 @@ import {
   type JourneyEvent,
   type JourneyResponse,
   type GatewayAuthSettings,
+  type GatewayRemoteAccessSettings,
   type ProviderPlanMonitoringConfig,
   type ProviderPlanStatusResponse,
   type ProviderSummary,
@@ -108,6 +109,25 @@ import {
 import { saveProfile } from "../lib/storage";
 
 const agentTypeOptions = ["main", "research", "coder", "planner", "ops", "worker"] as const;
+
+const remoteAccessModeOptions: Array<{
+  label: string;
+  value: GatewayRemoteAccessSettings["mode"];
+}> = [
+  { label: "Private mesh", value: "private_overlay" },
+  { label: "Public HTTPS tunnel", value: "public_tunnel" },
+];
+
+const remoteAccessProviderOptions: Array<{
+  label: string;
+  value: GatewayRemoteAccessSettings["provider"];
+}> = [
+  { label: "Tailscale", value: "tailscale" },
+  { label: "ZeroTier", value: "zerotier" },
+  { label: "NetBird", value: "netbird" },
+  { label: "Cloudflare Tunnel", value: "cloudflare" },
+  { label: "Custom proxy", value: "custom" },
+];
 
 const systemPromptFeatureCopy: Record<SystemPromptFeatureKey, { label: string; detail: string }> = {
   memoryEnabled: {
@@ -2542,6 +2562,12 @@ export function GatewayManagementPanel({
   const [copied, setCopied] = useState(false);
   const [gatewayPassword, setGatewayPassword] = useState("");
   const [gatewayPasswordConfirm, setGatewayPasswordConfirm] = useState("");
+  const [remoteAccessEnabled, setRemoteAccessEnabled] = useState(false);
+  const [remoteAccessMode, setRemoteAccessMode] =
+    useState<GatewayRemoteAccessSettings["mode"]>("private_overlay");
+  const [remoteAccessProvider, setRemoteAccessProvider] =
+    useState<GatewayRemoteAccessSettings["provider"]>("tailscale");
+  const [remoteAccessBaseUrl, setRemoteAccessBaseUrl] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [restartBusy, setRestartBusy] = useState(false);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
@@ -2597,6 +2623,19 @@ export function GatewayManagementPanel({
   useEffect(() => {
     void loadAuthSettings();
   }, [loadAuthSettings, profile.id]);
+
+  useEffect(() => {
+    const remote = authSettings?.remoteAccess;
+    setRemoteAccessEnabled(remote?.enabled === true);
+    setRemoteAccessMode(remote?.mode || "private_overlay");
+    setRemoteAccessProvider(remote?.provider || "tailscale");
+    setRemoteAccessBaseUrl(remote?.baseUrl || "");
+  }, [
+    authSettings?.remoteAccess?.baseUrl,
+    authSettings?.remoteAccess?.enabled,
+    authSettings?.remoteAccess?.mode,
+    authSettings?.remoteAccess?.provider,
+  ]);
 
   const revealKey = async () => {
     if (revealedKey) {
@@ -2747,6 +2786,30 @@ export function GatewayManagementPanel({
       Alert.alert("Gateway password cleared", "Remote root access no longer requires it.");
     } catch (error) {
       Alert.alert("Clear failed", gatewayActionError(error, "Gateway password clear failed."));
+      await loadAuthSettings();
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const saveRemoteAccess = async () => {
+    setBusyAction("remote-access");
+    try {
+      const settings = await api.updateGatewayAuthSettings({
+        remoteAccess: {
+          enabled: remoteAccessEnabled,
+          mode: remoteAccessMode,
+          provider: remoteAccessProvider,
+          baseUrl: remoteAccessBaseUrl.trim(),
+        },
+      });
+      setAuthSettings(settings);
+      Alert.alert("Remote access saved", settings.remoteAccess?.message || "Settings updated.");
+    } catch (error) {
+      Alert.alert(
+        "Remote access failed",
+        gatewayActionError(error, "Remote access update failed.")
+      );
       await loadAuthSettings();
     } finally {
       setBusyAction(null);
@@ -3114,6 +3177,69 @@ export function GatewayManagementPanel({
                 void clearGatewayPassword();
               }}
               tone={colors.red}
+            />
+          </View>
+        </View>
+        <View style={styles.settingsInfoBox}>
+          <View style={styles.settingsInfoHeader}>
+            <Network color={colors.cyan} size={18} strokeWidth={2.2} />
+            <Text style={styles.settingsInfoTitle}>Remote Access</Text>
+          </View>
+          <Text style={styles.settingsInfoText}>
+            Use a private mesh for remote mobile access, or a password-protected HTTPS tunnel for a
+            public domain.
+          </Text>
+          <SettingToggle
+            disabled={busyAction !== null}
+            label="Enable remote URL"
+            onPress={() => setRemoteAccessEnabled((value) => !value)}
+            tone={colors.cyan}
+            value={remoteAccessEnabled}
+          />
+          <SettingSelector
+            disabled={busyAction !== null}
+            label="Access method"
+            options={remoteAccessModeOptions}
+            selected={remoteAccessMode}
+            variant="menu"
+            onSelect={(value) => setRemoteAccessMode(value as GatewayRemoteAccessSettings["mode"])}
+          />
+          <SettingSelector
+            disabled={busyAction !== null}
+            label="Provider"
+            options={remoteAccessProviderOptions}
+            selected={remoteAccessProvider}
+            variant="menu"
+            onSelect={(value) =>
+              setRemoteAccessProvider(value as GatewayRemoteAccessSettings["provider"])
+            }
+          />
+          <SettingsTextField
+            help={authSettings?.remoteAccess?.message}
+            keyboardType="url"
+            label="Client URL"
+            value={remoteAccessBaseUrl}
+            onChangeText={setRemoteAccessBaseUrl}
+            placeholder={
+              remoteAccessMode === "public_tunnel"
+                ? "https://cybara.example.com"
+                : "https://name.tailnet.ts.net"
+            }
+            returnKeyType="done"
+            onSubmitEditing={() => {
+              void saveRemoteAccess();
+            }}
+          />
+          <View style={styles.settingsActionRow}>
+            <DetailActionButton
+              Icon={Save}
+              busy={busyAction === "remote-access"}
+              disabled={busyAction !== null}
+              label="Save Remote Access"
+              onPress={() => {
+                void saveRemoteAccess();
+              }}
+              tone={colors.cyan}
             />
           </View>
         </View>

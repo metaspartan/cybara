@@ -205,10 +205,22 @@ export interface GatewayAuthSettings {
   gatewayFirewall?: GatewayFirewallResult;
   basePath?: string;
   basePathForced?: boolean;
+  remoteAccess?: GatewayRemoteAccessSettings;
   port?: number;
   configuredPort?: number;
   portForced?: boolean;
   rateLimits?: Record<string, { windowMs: number; maxRequests: number }>;
+}
+
+export interface GatewayRemoteAccessSettings {
+  enabled: boolean;
+  mode: "private_overlay" | "public_tunnel";
+  provider: "tailscale" | "cloudflare" | "zerotier" | "netbird" | "custom";
+  baseUrl: string;
+  ready: boolean;
+  requiresGatewayPassword: boolean;
+  status: "off" | "ready" | "needs_url" | "needs_https" | "needs_password" | "invalid_url";
+  message: string;
 }
 
 export interface GatewayFirewallResult {
@@ -2524,6 +2536,7 @@ export class CybaraMobileApi {
     port?: number;
     gatewayPassword?: string;
     clearGatewayPassword?: true;
+    remoteAccess?: Partial<GatewayRemoteAccessSettings>;
   }): Promise<GatewayAuthSettings> {
     return this.request<GatewayAuthSettings>("/api/auth/settings", {
       method: "PUT",

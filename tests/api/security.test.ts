@@ -149,6 +149,42 @@ describe("API security module", () => {
     expect(result.scopes).toContain("chat");
   });
 
+  test("public remote access requires HTTPS and the gateway password", () => {
+    let settings = security.setGatewayRemoteAccessSettings({
+      enabled: true,
+      mode: "public_tunnel",
+      provider: "cloudflare",
+      baseUrl: "http://cybara.example.com",
+    });
+    expect(settings.ready).toBe(false);
+    expect(settings.status).toBe("needs_https");
+
+    settings = security.setGatewayRemoteAccessSettings({
+      enabled: true,
+      mode: "public_tunnel",
+      provider: "cloudflare",
+      baseUrl: "https://cybara.example.com",
+    });
+    expect(settings.ready).toBe(false);
+    expect(settings.status).toBe("needs_password");
+
+    security.setGatewayPassword("correct horse battery staple");
+    settings = security.getGatewayRemoteAccessSettings();
+    expect(settings.ready).toBe(true);
+    expect(settings.status).toBe("ready");
+  });
+
+  test("private mesh remote access allows non-loopback overlay URLs", () => {
+    const settings = security.setGatewayRemoteAccessSettings({
+      enabled: true,
+      mode: "private_overlay",
+      provider: "netbird",
+      baseUrl: "http://100.94.2.10:4269",
+    });
+    expect(settings.ready).toBe(true);
+    expect(settings.requiresGatewayPassword).toBe(false);
+  });
+
   test("securityCheck rejects remote root requests missing the gateway password", () => {
     security.setGatewayPassword("correct horse battery staple");
 

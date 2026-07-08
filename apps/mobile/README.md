@@ -44,12 +44,16 @@ cybara mobile remove <device-id>
 ```
 
 For LAN devices, make sure the gateway is reachable from the phone. Localhost only works from the
-same machine; the pairing payload should use the host LAN IP or a trusted tunnel for remote access.
-Start the gateway with LAN access enabled, for example `cybara start --expose` or
-`CYBARA_HOST=0.0.0.0 cybara start`, and confirm Safari/Chrome on the phone can open
-`http://<gateway-lan-ip>:4269/api/health` before scanning. On iOS, allow Cybara's Local Network
-permission when prompted; if it was denied, re-enable it in iOS Settings. The mobile app normalizes
-pasted/QR gateway URLs and stores only the revocable device token.
+same machine; the pairing payload should use the host LAN IP. Start the gateway with LAN access
+enabled, for example `cybara start --expose` or `CYBARA_HOST=0.0.0.0 cybara start`, and confirm
+Safari/Chrome on the phone can open `http://<gateway-lan-ip>:4269/api/health` before scanning. On
+iOS, allow Cybara's Local Network permission when prompted; if it was denied, re-enable it in iOS
+Settings.
+
+For remote devices, configure Settings → Gateway → Remote Access with a private mesh URL
+(Tailscale, ZeroTier, NetBird) or a public HTTPS tunnel/custom domain. Public remote URLs require
+the Cybara gateway password before QR pairing is enabled. The mobile app normalizes pasted/QR
+gateway URLs and stores only the revocable device token.
 
 ## Runtime Coverage
 

@@ -32,11 +32,7 @@ interface PersistedSecuritySettings {
 
 export type GatewayRemoteAccessMode = "private_overlay" | "public_tunnel";
 export type GatewayRemoteAccessProvider =
-  | "tailscale"
-  | "cloudflare"
-  | "zerotier"
-  | "netbird"
-  | "custom";
+  "tailscale" | "cloudflare" | "zerotier" | "netbird" | "custom";
 
 interface PersistedGatewayRemoteAccessSettings {
   enabled?: boolean;
@@ -120,9 +116,7 @@ function readPersistedRemoteAccessSettings(
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
   const mode =
-    record.mode === "public_tunnel" || record.mode === "private_overlay"
-      ? record.mode
-      : undefined;
+    record.mode === "public_tunnel" || record.mode === "private_overlay" ? record.mode : undefined;
   const provider =
     record.provider === "tailscale" ||
     record.provider === "cloudflare" ||
@@ -131,10 +125,15 @@ function readPersistedRemoteAccessSettings(
     record.provider === "custom"
       ? record.provider
       : undefined;
-  const baseUrl =
-    typeof record.baseUrl === "string" && record.baseUrl.trim()
-      ? normalizeRemoteAccessBaseUrl(record.baseUrl)
-      : undefined;
+  let baseUrl: string | undefined;
+  try {
+    baseUrl =
+      typeof record.baseUrl === "string" && record.baseUrl.trim()
+        ? normalizeRemoteAccessBaseUrl(record.baseUrl)
+        : undefined;
+  } catch {
+    baseUrl = undefined;
+  }
   return {
     enabled: typeof record.enabled === "boolean" ? record.enabled : undefined,
     mode,
@@ -535,6 +534,155 @@ export function setGatewayBasePath(value: unknown): string {
   return normalized;
 }
 
+function normalizeRemoteAccessMode(value: unknown): GatewayRemoteAccessMode {
+  return value === "public_tunnel" ? "public_tunnel" : "private_overlay";
+}
+
+function normalizeRemoteAccessProvider(value: unknown): GatewayRemoteAccessProvider {
+  if (
+    value === "tailscale" ||
+    value === "cloudflare" ||
+    value === "zerotier" ||
+    value === "netbird" ||
+    value === "custom"
+  ) {
+    return value;
+  }
+  return "tailscale";
+}
+
+function normalizeRemoteAccessBaseUrl(value: unknown): string {
+  if (typeof value !== "string") return "";
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const normalized = normalizeMobileGatewayUrl(trimmed);
+  if (normalized.length > 2048) {
+    throw new Error("Remote access URL must be 2048 characters or less");
+  }
+  return normalized;
+}
+
+function remoteAccessStatus(input: {
+  enabled: boolean;
+  mode: GatewayRemoteAccessMode;
+  baseUrl: string;
+  gatewayPasswordEnabled: boolean;
+}): Pick<GatewayRemoteAccessSettings, "ready" | "status" | "message"> {
+  if (!input.enabled) {
+    return {
+      ready: false,
+      status: "off",
+      message: "Remote access is off. The gateway remains reachable only locally or on LAN.",
+    };
+  }
+  if (!input.baseUrl) {
+    return {
+      ready: false,
+      status: "needs_url",
+      message: "Enter the HTTPS or private-mesh URL clients should use.",
+    };
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(input.baseUrl);
+  } catch {
+    return { ready: false, status: "invalid_url", message: "Remote access URL is invalid." };
+  }
+  if (isLoopbackMobileGatewayUrl(input.baseUrl)) {
+    return {
+      ready: false,
+      status: "invalid_url",
+      message: "Remote access cannot use localhost or 127.0.0.1 as the client URL.",
+    };
+  }
+  if (input.mode === "public_tunnel" && parsed.protocol !== "https:") {
+    return {
+      ready: false,
+      status: "needs_https",
+      message: "Public tunnel and custom-domain access must use HTTPS.",
+    };
+  }
+  if (input.mode === "public_tunnel" && !input.gatewayPasswordEnabled) {
+    return {
+      ready: false,
+      status: "needs_password",
+      message: "Enable the gateway password before using a public tunnel or custom domain.",
+    };
+  }
+  return {
+    ready: true,
+    status: "ready",
+    message:
+      input.mode === "public_tunnel"
+        ? "Public remote URL is ready. Keep the tunnel behind HTTPS and gateway password protection."
+        : "Private mesh URL is ready. Devices must still authenticate with a scoped token.",
+  };
+}
+
+export function getGatewayRemoteAccessSettings(): GatewayRemoteAccessSettings {
+  const persisted = readPersistedSecuritySettings().remoteAccess ?? {};
+  const envBaseUrl = process.env.CYBARA_MOBILE_BASE_URL?.trim() || "";
+  const enabled = Boolean(envBaseUrl) || persisted.enabled === true;
+  const mode = normalizeRemoteAccessMode(persisted.mode);
+  const provider = normalizeRemoteAccessProvider(persisted.provider);
+  let baseUrl = "";
+  let invalidUrl = false;
+  try {
+    baseUrl = normalizeRemoteAccessBaseUrl(envBaseUrl || persisted.baseUrl || "");
+  } catch {
+    invalidUrl = true;
+  }
+  const gatewayPasswordEnabled = Boolean(readPersistedSecuritySettings().gatewayPassword);
+  const status = invalidUrl
+    ? ({
+        ready: false,
+        status: "invalid_url",
+        message: "Remote access URL is invalid.",
+      } as const)
+    : remoteAccessStatus({
+        enabled,
+        mode,
+        baseUrl,
+        gatewayPasswordEnabled,
+      });
+  return {
+    enabled,
+    mode,
+    provider,
+    baseUrl,
+    requiresGatewayPassword: mode === "public_tunnel",
+    ...status,
+  };
+}
+
+export function setGatewayRemoteAccessSettings(value: unknown): GatewayRemoteAccessSettings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("remoteAccess must be an object");
+  }
+  const record = value as Record<string, unknown>;
+  const enabled = record.enabled === true;
+  const mode = normalizeRemoteAccessMode(record.mode);
+  const provider = normalizeRemoteAccessProvider(record.provider);
+  const baseUrl = normalizeRemoteAccessBaseUrl(record.baseUrl);
+  const current = readPersistedSecuritySettings();
+  writePersistedSecuritySettings({
+    ...current,
+    remoteAccess: {
+      enabled,
+      mode,
+      provider,
+      baseUrl: baseUrl || undefined,
+    },
+  });
+  log.info("Gateway remote access settings updated", {
+    enabled,
+    mode,
+    provider,
+    hasBaseUrl: Boolean(baseUrl),
+  });
+  return getGatewayRemoteAccessSettings();
+}
+
 export interface GatewayAuthSettings {
   apiKeyConfigured: boolean;
   apiKeyPreview: string | null;
@@ -546,6 +694,7 @@ export interface GatewayAuthSettings {
   localhostBypassActive: boolean;
   basePath: string;
   basePathForced: boolean;
+  remoteAccess: GatewayRemoteAccessSettings;
   rateLimits: typeof config.rateLimits;
 }
 
@@ -565,6 +714,7 @@ export function getGatewayAuthSettings(): GatewayAuthSettings {
     localhostBypassActive: isLocalhostBypassAllowed(),
     basePath: getGatewayBasePath(),
     basePathForced: Boolean(normalizeGatewayBasePath(process.env.CYBARA_BASE_PATH)),
+    remoteAccess: getGatewayRemoteAccessSettings(),
     rateLimits: config.rateLimits,
   };
 }

@@ -21,12 +21,24 @@ export interface MobileConnectInfo {
   candidates: string[];
   lanAddresses: string[];
   lanAccessEnabled: boolean;
+  remoteAccess: MobileRemoteAccessInfo;
   isCurrentLoopback: boolean;
   warnings: string[];
   troubleshooting: string[];
   exposeCommand: string;
   firewallCommand?: string;
   platform: NodeJS.Platform;
+}
+
+export interface MobileRemoteAccessInfo {
+  enabled: boolean;
+  mode: "private_overlay" | "public_tunnel";
+  provider: "tailscale" | "cloudflare" | "zerotier" | "netbird" | "custom";
+  baseUrl: string;
+  ready: boolean;
+  requiresGatewayPassword: boolean;
+  status: string;
+  message: string;
 }
 
 /**
@@ -207,6 +219,14 @@ export function isLoopbackMobileGatewayUrl(input: string): boolean {
   }
 }
 
+function sameMobileGatewayOrigin(a: string, b: string): boolean {
+  try {
+    return normalizeMobileGatewayUrl(a) === normalizeMobileGatewayUrl(b);
+  } catch {
+    return false;
+  }
+}
+
 function readLanIPv4Addresses(
   interfaces: NodeJS.Dict<NetworkInterfaceInfo[]> = networkInterfaces()
 ): string[] {
@@ -292,6 +312,7 @@ export function buildMobileConnectInfo(input: {
   port?: number;
   basePath?: string;
   mobileBaseUrl?: string;
+  remoteAccess?: Partial<MobileRemoteAccessInfo>;
   interfaces?: NodeJS.Dict<NetworkInterfaceInfo[]>;
   platform?: NodeJS.Platform;
 }): MobileConnectInfo {
@@ -305,11 +326,29 @@ export function buildMobileConnectInfo(input: {
   const currentPlatform = input.platform || osPlatform();
   const candidates: string[] = [];
   const mobileBaseUrl = input.mobileBaseUrl?.trim();
+  const remoteAccess: MobileRemoteAccessInfo = {
+    enabled: input.remoteAccess?.enabled === true,
+    mode: input.remoteAccess?.mode === "public_tunnel" ? "public_tunnel" : "private_overlay",
+    provider:
+      input.remoteAccess?.provider === "cloudflare" ||
+      input.remoteAccess?.provider === "zerotier" ||
+      input.remoteAccess?.provider === "netbird" ||
+      input.remoteAccess?.provider === "custom"
+        ? input.remoteAccess.provider
+        : "tailscale",
+    baseUrl:
+      typeof input.remoteAccess?.baseUrl === "string" ? input.remoteAccess.baseUrl.trim() : "",
+    ready: input.remoteAccess?.ready === true,
+    requiresGatewayPassword: input.remoteAccess?.requiresGatewayPassword === true,
+    status: typeof input.remoteAccess?.status === "string" ? input.remoteAccess.status : "off",
+    message: typeof input.remoteAccess?.message === "string" ? input.remoteAccess.message : "",
+  };
   const isCurrentLoopback = isLoopbackMobileGatewayUrl(currentBaseUrl);
   const lanAccessEnabled = hostEnablesLan(input.configuredHost || parsed.hostname);
   const warnings: string[] = [];
 
   if (mobileBaseUrl) addUniqueUrl(candidates, mobileBaseUrl);
+  if (remoteAccess.enabled && remoteAccess.baseUrl) addUniqueUrl(candidates, remoteAccess.baseUrl);
   if (lanAccessEnabled) {
     if (!isCurrentLoopback) {
       addUniqueUrl(candidates, currentBaseUrl);
@@ -330,6 +369,9 @@ export function buildMobileConnectInfo(input: {
   }
   if (!lanAccessEnabled) {
     warnings.push("Restart the gateway bound to a LAN address before pairing a physical phone.");
+  }
+  if (remoteAccess.enabled && !remoteAccess.ready) {
+    warnings.push(remoteAccess.message || "Remote access is configured but not ready.");
   }
   if (!mobileBaseUrl && lanAddresses.length === 0) {
     warnings.push("No non-loopback IPv4 LAN address was detected on this machine.");
@@ -359,12 +401,54 @@ export function buildMobileConnectInfo(input: {
     candidates,
     lanAddresses,
     lanAccessEnabled,
+    remoteAccess,
     isCurrentLoopback,
     warnings,
     exposeCommand: buildLanEnableCommand(lanAddresses),
     troubleshooting,
     firewallCommand,
     platform: currentPlatform,
+  };
+}
+
+export function validateMobilePairingBaseUrl(
+  baseUrl: string,
+  connectInfo: MobileConnectInfo
+): { ok: boolean; reason?: string } {
+  const normalized = normalizeMobileGatewayUrl(baseUrl);
+  if (isLoopbackMobileGatewayUrl(normalized)) {
+    return { ok: false, reason: "Validation error: use a non-loopback gateway URL before pairing" };
+  }
+  if (connectInfo.lanAccessEnabled) {
+    return { ok: true };
+  }
+  if (!connectInfo.remoteAccess.ready) {
+    return {
+      ok: false,
+      reason:
+        "Validation error: enable Listen on local network or configure ready remote access before pairing mobile devices",
+    };
+  }
+  const isCandidate = connectInfo.candidates.some((candidate) =>
+    sameMobileGatewayOrigin(candidate, normalized)
+  );
+  if (!isCandidate) {
+    return {
+      ok: false,
+      reason: "Validation error: pairing URL must match a gateway-detected or configured URL",
+    };
+  }
+  const remoteUrlAllowed =
+    connectInfo.remoteAccess.ready &&
+    connectInfo.remoteAccess.baseUrl &&
+    sameMobileGatewayOrigin(connectInfo.remoteAccess.baseUrl, normalized);
+  if (remoteUrlAllowed) {
+    return { ok: true };
+  }
+  return {
+    ok: false,
+    reason:
+      "Validation error: enable Listen on local network or configure ready remote access before pairing mobile devices",
   };
 }
 

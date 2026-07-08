@@ -408,6 +408,16 @@ export interface MobileConnectInfo {
   candidates: string[];
   lanAddresses: string[];
   lanAccessEnabled: boolean;
+  remoteAccess: {
+    enabled: boolean;
+    mode: "private_overlay" | "public_tunnel";
+    provider: "tailscale" | "cloudflare" | "zerotier" | "netbird" | "custom";
+    baseUrl: string;
+    ready: boolean;
+    requiresGatewayPassword: boolean;
+    status: string;
+    message: string;
+  };
   isCurrentLoopback: boolean;
   warnings: string[];
   troubleshooting: string[];

@@ -166,7 +166,8 @@ extension GatewayClient {
     func updateAuthSettings(
         requireAuthForLocalhost: Bool? = nil,
         gatewayPassword: String? = nil,
-        clearGatewayPassword: Bool? = nil
+        clearGatewayPassword: Bool? = nil,
+        remoteAccess: [String: Any]? = nil
     ) async throws -> [String: Any] {
         var payload: [String: Any] = [:]
         if let requireAuthForLocalhost {
@@ -177,6 +178,9 @@ extension GatewayClient {
         }
         if clearGatewayPassword == true {
             payload["clearGatewayPassword"] = true
+        }
+        if let remoteAccess {
+            payload["remoteAccess"] = remoteAccess
         }
         let body = try JSONSerialization.data(withJSONObject: payload)
         let data = try await request("api/auth/settings", method: "PUT", body: body)

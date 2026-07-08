@@ -56,7 +56,9 @@ export function Mobile() {
   const connectInfo = connectInfoData;
   const devices = useMemo(() => data?.devices || [], [data?.devices]);
   const activeCount = devices.filter((device) => device.status === "active").length;
-  const canCreatePairing = Boolean(connectInfo?.lanAccessEnabled);
+  const canCreatePairing = Boolean(
+    connectInfo?.lanAccessEnabled || connectInfo?.remoteAccess?.ready
+  );
 
   useEffect(() => {
     if (!baseUrlTouched && connectInfo?.baseUrl) {
@@ -66,7 +68,7 @@ export function Mobile() {
 
   const createPairing = async () => {
     if (!canCreatePairing) {
-      addToast("error", "Enable Listen on local network before pairing a mobile device");
+      addToast("error", "Enable LAN access or configure a ready remote access URL first");
       return;
     }
     try {
@@ -151,8 +153,8 @@ export function Mobile() {
                 placeholder="http://192.168.1.20:4269"
                 helperText={
                   canCreatePairing
-                    ? "This LAN URL is embedded in the pairing QR."
-                    : "Enable Listen on local network in Settings before pairing a phone."
+                    ? "This URL is embedded in the pairing QR."
+                    : "Enable Listen on local network or remote access in Settings before pairing a phone."
                 }
               />
               <Select
@@ -170,10 +172,11 @@ export function Mobile() {
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm text-gray-300">
                   <div className="flex items-center gap-2 font-medium text-white">
                     <ShieldCheck className="h-4 w-4 text-cyan-400" />
-                    Listen on local network is required
+                    Network access is required
                   </div>
                   <p className="mt-1 text-xs text-gray-500">
-                    Turn it on in Settings before creating a pairing QR for iOS or Android.
+                    Turn on Listen on local network or configure a ready remote access URL in
+                    Settings before creating a QR for iOS or Android.
                   </p>
                 </div>
               ) : null}

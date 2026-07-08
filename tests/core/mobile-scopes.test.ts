@@ -11,6 +11,7 @@ import {
   listMobilePushTargets,
   normalizeMobilePushToken,
   scopesForRole,
+  validateMobilePairingBaseUrl,
   DEFAULT_MOBILE_SCOPES,
   normalizeMobileScopes,
   recordMobilePushSendResult,
@@ -293,6 +294,45 @@ describe("mobile connect URL suggestions", () => {
     expect(info.candidates[0]).toBe("https://cybara.example.com/tunnel");
     expect(isLoopbackMobileGatewayUrl("http://127.0.0.1:4269")).toBe(true);
     expect(isLoopbackMobileGatewayUrl("http://192.168.1.20:4269")).toBe(false);
+  });
+
+  test("remote access candidate works without LAN only when ready", () => {
+    const pending = buildMobileConnectInfo({
+      requestUrl: "http://127.0.0.1:4269/api/mobile/connect-info",
+      configuredHost: "127.0.0.1",
+      remoteAccess: {
+        enabled: true,
+        mode: "public_tunnel",
+        provider: "cloudflare",
+        baseUrl: "https://cybara.example.com",
+        ready: false,
+        requiresGatewayPassword: true,
+        status: "needs_password",
+        message: "Enable password first.",
+      },
+      interfaces: {},
+    });
+    expect(pending.baseUrl).toBe("https://cybara.example.com");
+    expect(pending.remoteAccess.ready).toBe(false);
+    expect(validateMobilePairingBaseUrl("https://cybara.example.com", pending).ok).toBe(false);
+
+    const ready = buildMobileConnectInfo({
+      requestUrl: "http://127.0.0.1:4269/api/mobile/connect-info",
+      configuredHost: "127.0.0.1",
+      remoteAccess: {
+        enabled: true,
+        mode: "public_tunnel",
+        provider: "cloudflare",
+        baseUrl: "https://cybara.example.com",
+        ready: true,
+        requiresGatewayPassword: true,
+        status: "ready",
+        message: "Ready.",
+      },
+      interfaces: {},
+    });
+    expect(validateMobilePairingBaseUrl("https://cybara.example.com", ready).ok).toBe(true);
+    expect(validateMobilePairingBaseUrl("https://other.example.com", ready).ok).toBe(false);
   });
 });
 

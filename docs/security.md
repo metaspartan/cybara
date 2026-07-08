@@ -21,6 +21,29 @@ The Mobile page only defaults to a LAN QR URL after the running gateway is actua
 
 > **⚠️ Warning**: Only use `--expose` on trusted networks. See "Best Practices" below.
 
+### Remote Mobile Access
+
+Settings → Gateway → **Remote access domain** lets you add one explicit non-local URL for mobile
+pairing without changing the gateway bind host. This is intended for:
+
+- **Private mesh networks**: Tailscale, ZeroTier, or NetBird. Keep Cybara bound to localhost or the
+  mesh/LAN interface, connect the phone to the same mesh, and use the mesh URL/IP as the client URL.
+- **Public HTTPS tunnels**: Cloudflare Tunnel, Tailscale Funnel, or a custom reverse proxy. These
+  must use HTTPS, and Cybara requires the gateway password to be enabled before the URL is considered
+  ready for mobile QR pairing.
+
+Recommended setup:
+
+1. Prefer a private mesh when only your own devices need access.
+2. For a public hostname, put identity/password protection at the tunnel layer when available
+   (Cloudflare Access, Tailscale ACLs/Funnel controls) and enable Cybara's gateway password.
+3. Do not bind Cybara directly to the public internet. If a reverse proxy is required, proxy to
+   `http://127.0.0.1:4269`, terminate TLS at the proxy, and keep the Cybara API key and gateway
+   password private.
+
+Mobile QR pairings carry a short-lived one-time code, not a root API key. Redeemed devices receive
+scoped mobile tokens that can be revoked without rotating the root key.
+
 ## API Key Authentication
 
 Cybara auto-generates an API key on first run and saves it to `~/.cybara/api_key` with `600` permissions (owner-only read/write).
@@ -123,12 +146,15 @@ Production guidance:
 
 ## Best Practices for Self-Hosting
 
-1. **Keep it local** — Don't expose to the internet. Use a VPN if remote access is needed.
-2. **Use a strong API key** — Set `CYBARA_API_KEY` to a custom key if exposing to LAN.
-3. **Run behind a reverse proxy** — For HTTPS, use nginx/caddy with TLS.
-4. **Update regularly** — Pull latest for security patches.
-5. **Review agent permissions** — Limit tool access for agents that interact with external channels.
-6. **Treat plugin installs as privileged** — Review manifests and contributed content before installing.
+1. **Keep it local by default** — Use a private mesh such as Tailscale, ZeroTier, or NetBird for
+   remote devices before considering a public domain.
+2. **Use a strong API key** — Set `CYBARA_API_KEY` to a custom key if exposing beyond localhost.
+3. **Enable the gateway password** — Required by the UI for public remote-access URLs.
+4. **Use HTTPS and an access layer** — Cloudflare Access, Tailscale controls, or an authenticated
+   reverse proxy should sit in front of public domains.
+5. **Update regularly** — Pull latest for security patches.
+6. **Review agent permissions** — Limit tool access for agents that interact with external channels.
+7. **Treat plugin installs as privileged** — Review manifests and contributed content before installing.
 
 ## Files & Permissions
 

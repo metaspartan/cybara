@@ -105,15 +105,11 @@ describe("mobile gateway connection verification", () => {
       throw new Error("Network request failed");
     }) as typeof fetch;
 
-    await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow(
-      "Listen on local network"
-    );
+    await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow("same Wi-Fi");
     await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow(
       "Windows Firewall"
     );
-    await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow(
-      "all firewall profiles"
-    );
+    await expect(verifyGatewayProfile(profile, failingFetch, 0)).rejects.toThrow("Remote Access");
   });
 
   test("reports loopback QR payloads as unusable on a phone", async () => {

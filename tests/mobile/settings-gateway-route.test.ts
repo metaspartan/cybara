@@ -49,6 +49,11 @@ describe("mobile settings: Gateway runtime controls", () => {
     expect(api).toContain('"X-Cybara-Gateway-Password"');
     expect(api).toContain("interface GatewayAuthSettings");
     expect(screen).toContain("Gateway Password");
+    expect(screen).toContain("Remote Access");
+    expect(screen).toContain("remoteAccessModeOptions");
+    expect(screen).toContain("api.updateGatewayAuthSettings({");
+    expect(screen).toContain("remoteAccess: {");
     expect(api).toContain("interface GatewayRestartResponse");
+    expect(api).toContain("interface GatewayRemoteAccessSettings");
   });
 });

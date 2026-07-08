@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/Badge";
 import { PageLayout } from "@/components/layout";
 import { GatewayPathSettingsSection } from "@/components/settings/GatewayPathSettingsSection";
+import { GatewayRemoteAccessSection } from "@/components/settings/GatewayRemoteAccessSection";
 import { SettingsNavigation } from "@/components/settings/SettingsNavigation";
 import {
   useHealth,
@@ -4189,6 +4190,12 @@ function GatewayAuthSettingsSection() {
               </div>
             )}
           </div>
+
+          <GatewayRemoteAccessSection
+            disabled={controlsDisabled}
+            settings={settings}
+            onUpdated={setSettings}
+          />
 
           <div className="space-y-2">
             <div className="flex flex-wrap items-end gap-2">

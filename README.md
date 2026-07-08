@@ -147,7 +147,7 @@ bun run mobile:expo-check
 cybara mobile connect --url http://192.168.1.20:4269 --device "Carsen iPhone"
 ```
 
-The CLI and Web UI/Tauri `Mobile` page create QR pairings with revocable per-device tokens, so a phone can be revoked without rotating the root gateway API key. The mobile surface covers gateway health, sessions, agents, providers, provider plan limits, metrics, speech settings, tool approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, gateway controls, and settings summaries. See [apps/mobile/README.md](apps/mobile/README.md).
+The CLI and Web UI/Tauri `Mobile` page create QR pairings with revocable per-device tokens, so a phone can be revoked without rotating the root gateway API key. Pairing can use LAN access or a configured remote access URL from Settings → Gateway, including private mesh networks such as Tailscale/ZeroTier/NetBird or password-protected HTTPS tunnels. The mobile surface covers gateway health, sessions, agents, providers, provider plan limits, metrics, speech settings, tool approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, gateway controls, and settings summaries. See [apps/mobile/README.md](apps/mobile/README.md).
 
 Release CI exports Expo bundles for iOS and Android and can also build signed Android AAB/APK and iOS IPA/TestFlight artifacts when the relevant store signing secrets are configured.
 

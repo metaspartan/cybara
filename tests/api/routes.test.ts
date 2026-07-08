@@ -491,6 +491,51 @@ describe("Mobile API", () => {
     expect(String(blocked.data.error)).toContain("Listen on local network");
   });
 
+  test("allows mobile pairing through a ready password-protected remote URL", async () => {
+    const pending = await api("PUT", "/api/auth/settings", {
+      remoteAccess: {
+        enabled: true,
+        mode: "public_tunnel",
+        provider: "cloudflare",
+        baseUrl: "https://cybara.example.com",
+      },
+    });
+    expect(pending.status).toBe(200);
+    expect(pending.data.remoteAccess.ready).toBe(false);
+    expect(pending.data.remoteAccess.status).toBe("needs_password");
+
+    const blocked = await api("POST", "/api/mobile/devices/pair-code", {
+      baseUrl: "https://cybara.example.com",
+      role: "standard",
+      deviceName: "Routes Phone",
+    });
+    expect(blocked.status).toBe(400);
+    expect(String(blocked.data.error)).toContain("ready remote access");
+
+    const password = await api("PUT", "/api/auth/settings", {
+      gatewayPassword: "correct horse battery staple",
+    });
+    expect(password.status).toBe(200);
+    expect(password.data.remoteAccess.ready).toBe(true);
+
+    const created = await api("POST", "/api/mobile/devices/pair-code", {
+      baseUrl: "https://cybara.example.com",
+      role: "standard",
+      deviceName: "Routes Phone",
+    });
+    expect(created.status).toBe(200);
+    expect(created.data.payload.baseUrl).toBe("https://cybara.example.com");
+
+    await api("PUT", "/api/auth/settings", {
+      remoteAccess: {
+        enabled: false,
+        mode: "private_overlay",
+        provider: "tailscale",
+        baseUrl: "",
+      },
+    });
+  });
+
   test("auth settings persist a restart-bound gateway host", async () => {
     const before = await api("GET", "/api/auth/settings");
     expect(before.status).toBe(200);

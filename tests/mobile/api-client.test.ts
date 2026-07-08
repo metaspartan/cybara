@@ -260,6 +260,16 @@ describe("mobile API client", () => {
           host: "127.0.0.1",
           configuredHost: "127.0.0.1",
           hostForced: false,
+          remoteAccess: {
+            enabled: false,
+            mode: "private_overlay",
+            provider: "tailscale",
+            baseUrl: "",
+            ready: false,
+            requiresGatewayPassword: false,
+            status: "off",
+            message: "Remote access is off.",
+          },
           rateLimits: {},
         });
       }
@@ -275,6 +285,25 @@ describe("mobile API client", () => {
           host: "127.0.0.1",
           configuredHost: body?.host || "127.0.0.1",
           hostForced: false,
+          remoteAccess:
+            body?.remoteAccess && typeof body.remoteAccess === "object"
+              ? {
+                  ...(body.remoteAccess as Record<string, unknown>),
+                  ready: true,
+                  requiresGatewayPassword: false,
+                  status: "ready",
+                  message: "Ready.",
+                }
+              : {
+                  enabled: false,
+                  mode: "private_overlay",
+                  provider: "tailscale",
+                  baseUrl: "",
+                  ready: false,
+                  requiresGatewayPassword: false,
+                  status: "off",
+                  message: "Remote access is off.",
+                },
           gatewayPasswordEnabled:
             typeof body?.gatewayPassword === "string"
               ? true
@@ -329,6 +358,23 @@ describe("mobile API client", () => {
         success: true,
         gatewayPasswordEnabled: false,
       });
+      await expect(
+        api.updateGatewayAuthSettings({
+          remoteAccess: {
+            enabled: true,
+            mode: "private_overlay",
+            provider: "netbird",
+            baseUrl: "http://100.94.2.10:4269",
+          },
+        })
+      ).resolves.toMatchObject({
+        success: true,
+        remoteAccess: {
+          enabled: true,
+          provider: "netbird",
+          baseUrl: "http://100.94.2.10:4269",
+        },
+      });
       api.setGatewayPassword(undefined);
       await expect(api.revealGatewayApiKey()).resolves.toEqual({
         success: true,
@@ -379,6 +425,20 @@ describe("mobile API client", () => {
           auth: "Bearer cybara_mobile_test",
           gatewayPassword: "correct horse battery staple",
           body: { clearGatewayPassword: true },
+        },
+        {
+          method: "PUT",
+          path: "/api/auth/settings",
+          auth: "Bearer cybara_mobile_test",
+          gatewayPassword: "correct horse battery staple",
+          body: {
+            remoteAccess: {
+              enabled: true,
+              mode: "private_overlay",
+              provider: "netbird",
+              baseUrl: "http://100.94.2.10:4269",
+            },
+          },
         },
         {
           method: "GET",
