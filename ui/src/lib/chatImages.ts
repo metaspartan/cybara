@@ -18,7 +18,7 @@ export async function fileToChatImage(file: File): Promise<ChatImageAttachment> 
   for (let i = 0; i < buffer.length; i += chunk) {
     binary += String.fromCharCode(...buffer.subarray(i, i + chunk));
   }
-  return { data: btoa(binary), mimeType: file.type || "image/png" };
+  return { data: btoa(binary), mimeType: file.type || "image/png", name: file.name, size: file.size };
 }
 
 export function chatImageSrc(image: ChatImageAttachment): string {
@@ -42,6 +42,39 @@ const TEXT_LIKE_EXTENSION =
 export interface ChatFileAttachment {
   name: string;
   content: string;
+  size?: number;
+}
+
+export function formatBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0 || !Number.isFinite(bytes)) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
+export function imageAttachmentBytes(image: ChatImageAttachment): number {
+  if (typeof image.size === "number") return image.size;
+  if (image.data) return Math.floor((image.data.length * 3) / 4);
+  return 0;
+}
+
+export function mediaSummaryLabel(
+  images: ChatImageAttachment[],
+  files: ChatFileAttachment[]
+): string {
+  const parts: string[] = [];
+  if (images.length) parts.push(`${images.length} image${images.length === 1 ? "" : "s"}`);
+  if (files.length) parts.push(`${files.length} file${files.length === 1 ? "" : "s"}`);
+  const totalBytes =
+    images.reduce((sum, image) => sum + imageAttachmentBytes(image), 0) +
+    files.reduce((sum, file) => sum + (file.size || 0), 0);
+  const size = formatBytes(totalBytes);
+  return size ? `${parts.join(" · ")} · ${size}` : parts.join(" · ");
 }
 
 export function isTextLikeFile(file: File): boolean {
@@ -51,7 +84,7 @@ export function isTextLikeFile(file: File): boolean {
 }
 
 export async function fileToTextAttachment(file: File): Promise<ChatFileAttachment> {
-  return { name: file.name, content: await file.text() };
+  return { name: file.name, content: await file.text(), size: file.size };
 }
 
 export function formatAttachedFiles(text: string, files: ChatFileAttachment[]): string {

@@ -273,6 +273,8 @@ export interface ChatImageAttachment {
   url?: string;
   path?: string;
   mimeType?: string;
+  name?: string;
+  size?: number;
 }
 
 export interface ChatMessage {

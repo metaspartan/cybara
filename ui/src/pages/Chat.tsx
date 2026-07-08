@@ -71,9 +71,12 @@ import {
   fileToChatImage,
   fileToTextAttachment,
   formatAttachedFiles,
+  formatBytes,
+  imageAttachmentBytes,
   imageToolResultSrc,
   isSupportedImageType,
   isTextLikeFile,
+  mediaSummaryLabel,
   type ChatFileAttachment,
 } from "@/lib/chatImages";
 import { PageLayout } from "@/components/layout";
@@ -4576,49 +4579,71 @@ export function Chat() {
                   onDragLeave={() => setImageDragActive(false)}
                   onDrop={handleComposerDrop}
                 >
-                  {pendingImages.length > 0 && (
-                    <div className="mb-1.5 flex flex-wrap gap-2">
-                      {pendingImages.map((image, index) => (
-                        <div
-                          key={`pending-image-${index}`}
-                          className="relative h-16 w-16 overflow-hidden rounded-lg border border-white/12"
-                        >
-                          <img
-                            src={chatImageSrc(image)}
-                            alt="Attachment preview"
-                            className="h-full w-full object-cover"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => removePendingImage(index)}
-                            className="absolute right-0.5 top-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/80"
-                            aria-label="Remove attachment"
+                  {(pendingImages.length > 0 || pendingFiles.length > 0) && (
+                    <div className="mb-2">
+                      <div className="mb-1 flex items-center gap-1.5 text-[11px] text-gray-400">
+                        <Paperclip className="h-3 w-3 shrink-0" />
+                        <span>{mediaSummaryLabel(pendingImages, pendingFiles)}</span>
+                        {pendingImages.length >= MAX_CHAT_IMAGES && (
+                          <span className="text-amber-300/80">· max {MAX_CHAT_IMAGES} images</span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {pendingImages.map((image, index) => (
+                          <div
+                            key={`pending-image-${index}`}
+                            className="group relative h-16 w-16 overflow-hidden rounded-lg border border-white/12"
+                            title={`${image.name || "image"}${
+                              imageAttachmentBytes(image)
+                                ? ` · ${formatBytes(imageAttachmentBytes(image))}`
+                                : ""
+                            }`}
                           >
-                            <X className="h-2.5 w-2.5" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {pendingFiles.length > 0 && (
-                    <div className="mb-1.5 flex flex-wrap gap-2">
-                      {pendingFiles.map((file, index) => (
-                        <div
-                          key={`pending-file-${index}`}
-                          className="flex items-center gap-1.5 rounded-lg border border-white/12 bg-white/[0.04] px-2 py-1 text-xs text-gray-200"
-                        >
-                          <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                          <span className="max-w-[160px] truncate">{file.name}</span>
-                          <button
-                            type="button"
-                            onClick={() => removePendingFile(index)}
-                            className="inline-flex h-4 w-4 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
-                            aria-label="Remove file"
+                            <img
+                              src={chatImageSrc(image)}
+                              alt={image.name || "Attachment preview"}
+                              className="h-full w-full object-cover"
+                            />
+                            {imageAttachmentBytes(image) > 0 && (
+                              <span className="absolute bottom-0 left-0 right-0 bg-black/55 px-1 py-px text-[9px] leading-tight text-white/90">
+                                {formatBytes(imageAttachmentBytes(image))}
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => removePendingImage(index)}
+                              className="absolute right-0.5 top-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
+                              aria-label="Remove image"
+                            >
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          </div>
+                        ))}
+                        {pendingFiles.map((file, index) => (
+                          <div
+                            key={`pending-file-${index}`}
+                            className="flex items-center gap-1.5 rounded-lg border border-white/12 bg-white/[0.04] px-2 py-1 text-xs text-gray-200"
                           >
-                            <X className="h-2.5 w-2.5" />
-                          </button>
-                        </div>
-                      ))}
+                            <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                            <span className="flex min-w-0 flex-col leading-tight">
+                              <span className="max-w-[160px] truncate">{file.name}</span>
+                              {formatBytes(file.size) && (
+                                <span className="text-[10px] text-gray-500">
+                                  {formatBytes(file.size)}
+                                </span>
+                              )}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => removePendingFile(index)}
+                              className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
+                              aria-label="Remove file"
+                            >
+                              <X className="h-2.5 w-2.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                   <input
