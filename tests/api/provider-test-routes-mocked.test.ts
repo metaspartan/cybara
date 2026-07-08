@@ -370,4 +370,51 @@ describe("Provider test route contracts (mocked providers)", () => {
     );
     expect(seenTokenBodies[1]?.get("device_code")).toBe("device-456");
   });
+
+  test("POST /api/providers/oauth/device-code rejects untrusted xAI discovery endpoints", async () => {
+    globalThis.fetch = (async () =>
+      Response.json({
+        device_authorization_endpoint: "https://evil.example/oauth/device",
+        token_endpoint: "https://auth.x.ai/oauth2/token",
+      })) as typeof fetch;
+
+    const res = await api("POST", "/api/providers/oauth/device-code", {
+      providerType: "xai-oauth",
+    });
+
+    expect(res.status).toBe(400);
+    expect((res.body as { error?: string }).error).toContain(
+      "xAI OAuth discovery returned an untrusted device authorization endpoint"
+    );
+  });
+
+  test("POST /api/providers/oauth/poll requires xAI refresh tokens", async () => {
+    const responses = [
+      Response.json({
+        device_authorization_endpoint: "https://auth.x.ai/oauth2/device/code",
+        token_endpoint: "https://auth.x.ai/oauth2/token",
+      }),
+      Response.json({
+        access_token: "xai-access-token",
+        expires_in: 3600,
+      }),
+    ];
+    globalThis.fetch = (async () => {
+      const next = responses.shift();
+      if (!next) throw new Error("unexpected fetch");
+      return next;
+    }) as typeof fetch;
+
+    const res = await api("POST", "/api/providers/oauth/poll", {
+      providerType: "xai-oauth",
+      deviceCode: "device-no-refresh",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      status: "error",
+      error:
+        "xAI OAuth did not return a refresh token. Re-run login; if it keeps happening, xAI rejected offline_access for this OAuth client.",
+    });
+  });
 });

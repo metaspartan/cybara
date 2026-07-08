@@ -71,6 +71,20 @@ export function toOpenAIImageBlock(image: AgentImage): Record<string, unknown> {
   return { type: "image_url", image_url: { url: finalUrl } };
 }
 
+export function toOpenAIResponsesImageBlock(image: AgentImage): Record<string, unknown> {
+  const { data, url, mimeType } = resolveImage(image);
+  const finalUrl = data ? `data:${mimeType};base64,${data}` : url;
+  return { type: "input_image", image_url: finalUrl };
+}
+
+export function toBedrockImageBlock(image: AgentImage): Record<string, unknown> | null {
+  const { data, mimeType } = resolveImage(image);
+  if (!data) return null;
+  const format =
+    mimeType.replace(/^image\//, "") === "jpg" ? "jpeg" : mimeType.replace(/^image\//, "");
+  return { image: { format, source: { bytes: Buffer.from(data, "base64") } } };
+}
+
 /** Returns null when the image has only a remote URL (Google needs inline bytes). */
 export function toGoogleImagePart(image: AgentImage): Record<string, unknown> | null {
   const { data, mimeType } = resolveImage(image);

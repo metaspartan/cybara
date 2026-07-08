@@ -168,7 +168,9 @@ describe("UI page API wiring", () => {
     expect(source).toMatch(/apiFetch\(["']\/api\/providers\/oauth\/start["']/);
     expect(source).toMatch(/apiFetch\(["']\/api\/providers\/oauth\/callback-status["']/);
     expect(source).toContain("apiFetch(`/api/providers/${provider.id}/test`");
-    expect(source).toContain("openExternal(data.verification_uri)");
+    expect(source).toContain(
+      "openExternal(data.verification_uri_complete || data.verification_uri)"
+    );
     expect(source).toContain("openExternal(data.auth_url)");
     expect(source).toMatch(
       /const authType = selectedProviderInfo\?\.authType \|\| ["']api_key["'];/

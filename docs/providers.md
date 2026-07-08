@@ -1,6 +1,6 @@
 # Cybara AI Providers
 
-Cybara ships with 61 provider definitions in `src/core/providers.ts`. The registry covers hosted
+Cybara ships with 62 provider definitions in `src/core/providers.ts`. The registry covers hosted
 AI APIs, OAuth-backed coding providers, local OpenAI-compatible runtimes, proxy/gateway providers,
 and AWS Bedrock. Model names change frequently, so use the UI, `GET /api/providers/available`, or
 `cybara provider models <provider-id>` for the current model catalog exposed by a configured

@@ -254,7 +254,7 @@ DM policy modes:
 
 ### Provider Layer
 
-Cybara ships 61 provider definitions in `src/core/providers.ts`, spanning hosted frontier APIs, OAuth-backed coding providers, local runtimes, gateway/proxy providers, and AWS Bedrock. Model lists are discovered dynamically from each provider when supported.
+Cybara ships 62 provider definitions in `src/core/providers.ts`, spanning hosted frontier APIs, OAuth-backed coding providers, local runtimes, gateway/proxy providers, and AWS Bedrock. Model lists are discovered dynamically from each provider when supported.
 
 Provider definitions: OpenAI, ElevenLabs, Anthropic, Google, Antigravity, MiniMax (API + OAuth portal), Moonshot (Kimi), Qwen Portal, Z.AI + Z.AI Coding, DeepSeek, Alibaba DashScope + Coding Plan, xAI, NVIDIA, Qianfan, Together, Hugging Face, Synthetic, Venice, Xiaomi, Perplexity, Arcee, Nous, Cerebras, Cohere, Mistral, DeepInfra, Fireworks, Novita, StepFun, Tencent, Volcengine, BytePlus, GMI, Kilo Code, OpenCode Go, Ollama Cloud, Ollama, vLLM, LiteLLM, LM Studio, SGLang, llama.cpp, Cloudflare AI Gateway, GitHub Copilot, AWS Bedrock, Groq, OpenRouter, OpenCode Zen, Copilot Proxy, OpenAI Codex (ChatGPT OAuth), Chutes, Vercel AI Gateway, and Google Gemini CLI.
 

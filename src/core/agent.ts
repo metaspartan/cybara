@@ -30,6 +30,8 @@ import {
   hasImages,
   toAnthropicImageBlock,
   toOpenAIImageBlock,
+  toOpenAIResponsesImageBlock,
+  toBedrockImageBlock,
   toGoogleImagePart,
 } from "./llm/image-blocks";
 import {
@@ -3127,10 +3129,15 @@ class AgentManager {
       if (message.role === "system") continue;
 
       if (message.role === "user") {
-        input.push({
-          role: "user",
-          content: [{ type: "input_text", text: message.content }],
-        });
+        const content: Array<Record<string, unknown>> = [
+          { type: "input_text", text: message.content },
+        ];
+        if (hasImages(message.images)) {
+          for (const image of message.images) {
+            content.push(toOpenAIResponsesImageBlock(image));
+          }
+        }
+        input.push({ role: "user", content });
         continue;
       }
 
@@ -3978,10 +3985,19 @@ class AgentManager {
     const systemMessage = messages.find((message) => message.role === "system");
     const conversation: BedrockMessage[] = messages
       .filter((message) => message.role !== "system")
-      .map((message) => ({
-        role: message.role === "assistant" ? "assistant" : "user",
-        content: [{ text: message.content }],
-      }));
+      .map((message) => {
+        const content: Array<Record<string, unknown>> = [{ text: message.content }];
+        if (message.role === "user" && hasImages(message.images)) {
+          for (const image of message.images) {
+            const block = toBedrockImageBlock(image);
+            if (block) content.push(block);
+          }
+        }
+        return {
+          role: message.role === "assistant" ? "assistant" : "user",
+          content,
+        } as unknown as BedrockMessage;
+      });
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
     const loopStartedAt = Date.now();
     let iterations = 0;

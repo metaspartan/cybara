@@ -451,7 +451,8 @@ describe("native macOS shell wiring", () => {
     expect(gatewayModels).toContain("let process_activities: [GatewayProcessActivity]?");
     expect(toolTimeline).toContain("func nativeOrderedToolCalls");
     expect(toolTimeline).toContain("func nativeToolActivities");
-    expect(nativeScreens).toContain("NativeToolTimelineView(message: message)");
+    expect(nativeScreens).toContain("NativeToolTimelineView(");
+    expect(nativeScreens).toContain("message: message,");
   });
 
   test("native chat activity rows render markdown thoughts with neutral icons", () => {

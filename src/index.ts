@@ -63,6 +63,11 @@ import { logSandboxRuntimeStatus } from "./core/sandbox";
 import { onSubagentLifecycle } from "./core/subagent-registry";
 import { resolveUiPath } from "./core/runtime/ui-path";
 import { resolveMediaFile } from "./core/runtime/media-files";
+import {
+  buildChannelImages,
+  inlineChannelTextFile,
+  channelFileIsImage,
+} from "./core/channels/inbound-media";
 import { readUiIndexContent } from "./core/runtime/ui-index";
 import {
   getGatewayAuthSettings,
@@ -849,6 +854,7 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
     );
 
     const fullMessage = buildMessageWithFileContext(message, fileInfo);
+    const images = buildChannelImages(fileInfo);
 
     const response = await handleChat({
       message: fullMessage || message,
@@ -856,6 +862,7 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
       channel: "telegram",
       userId: String(userId),
       source: "channel:telegram",
+      ...(images.length ? { images } : {}),
     });
     return response.message.content;
   } catch (error) {
@@ -880,12 +887,17 @@ function buildMessageWithFileContext(
       parts.push(placeholder);
     }
 
-    if (fileInfo.fileType?.trim()) {
-      parts.push(`[File type: ${fileInfo.fileType.trim()}]`);
-    }
-
-    if (fileInfo.filePath?.trim()) {
-      parts.push(`[File attached: ${fileInfo.filePath.trim()}]`);
+    const inlinedText = inlineChannelTextFile(fileInfo);
+    if (inlinedText) {
+      parts.push(inlinedText);
+    } else if (!channelFileIsImage(fileInfo)) {
+      if (fileInfo.fileType?.trim()) {
+        parts.push(`[File type: ${fileInfo.fileType.trim()}]`);
+      }
+      const fileName = (fileInfo.filePath || "").trim().split(/[\\/]/).pop();
+      if (fileName) {
+        parts.push(`[File attached: ${fileName}]`);
+      }
     }
   }
 
@@ -901,12 +913,14 @@ const createChannelChatHandler =
     fileInfo: MessageHandlerFileInfo
   ): Promise<string> => {
     const fullMessage = buildMessageWithFileContext(message, fileInfo);
+    const images = buildChannelImages(fileInfo);
     const response = await handleChat({
       message: fullMessage || message,
       sessionId,
       channel: channelName,
       userId: String(chatId),
       source: `channel:${channelName}`,
+      ...(images.length ? { images } : {}),
     });
     return response.message.content;
   };

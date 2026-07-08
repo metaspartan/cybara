@@ -2,12 +2,45 @@ import { describe, expect, test } from "bun:test";
 import {
   toAnthropicImageBlock,
   toOpenAIImageBlock,
+  toOpenAIResponsesImageBlock,
+  toBedrockImageBlock,
   toGoogleImagePart,
   parseDataUri,
   normalizeMimeType,
   hasImages,
   sanitizeAgentImages,
 } from "../../src/core/llm/image-blocks";
+
+describe("responses + bedrock image builders", () => {
+  test("openai responses input_image from base64", () => {
+    expect(toOpenAIResponsesImageBlock({ data: "abc", mimeType: "image/png" })).toEqual({
+      type: "input_image",
+      image_url: "data:image/png;base64,abc",
+    });
+  });
+
+  test("openai responses input_image from url", () => {
+    expect(toOpenAIResponsesImageBlock({ url: "https://x/y.jpg" })).toEqual({
+      type: "input_image",
+      image_url: "https://x/y.jpg",
+    });
+  });
+
+  test("bedrock image block returns bytes buffer", () => {
+    const block = toBedrockImageBlock({
+      data: Buffer.from("hi").toString("base64"),
+      mimeType: "image/jpeg",
+    }) as {
+      image: { format: string; source: { bytes: Buffer } };
+    };
+    expect(block.image.format).toBe("jpeg");
+    expect(block.image.source.bytes.toString("utf8")).toBe("hi");
+  });
+
+  test("bedrock returns null for url-only image", () => {
+    expect(toBedrockImageBlock({ url: "https://x/y.png" })).toBeNull();
+  });
+});
 
 describe("image block builders", () => {
   test("anthropic base64 block", () => {
