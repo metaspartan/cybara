@@ -15,7 +15,12 @@ try {
 }
 
 const args = process.argv.slice(2);
-const command = args[0]?.toLowerCase();
+
+function resolveCommand(value?: string): string | undefined {
+  return value && !value.startsWith("-") ? value.toLowerCase() : undefined;
+}
+
+const command = resolveCommand(args[0]);
 
 const CLI_COMMANDS = [
   "status",

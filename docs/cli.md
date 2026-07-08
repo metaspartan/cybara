@@ -23,7 +23,9 @@ cybara daemon-logs        # Show daemon process logs
 ### Interactive Modes
 
 ```bash
-cybara chat               # Interactive TUI chat (sessions, subagents, tools)
+cybara chat               # Interactive terminal chat with sessions, tools, queueing, and steering
+cybara chat --agent <id>  # Start chat with a specific agent
+cybara chat --workspace <path>  # Bind new turns to a workspace
 cybara wizard             # Setup wizard (first-time configuration)
 cybara tui                # Main menu (interactive terminal dashboard)
 cybara tui status         # Gateway health panel
@@ -35,9 +37,13 @@ cybara tui logs           # Recent gateway/app logs
 cybara tui mobile         # Paired mobile devices
 ```
 
-The TUI is optimized for normal terminals and remains read-only for dashboard panels. Use the
-raw CLI commands when you need to mutate providers, router settings, mobile pairings, wallet state,
-or channel configuration.
+`cybara chat` is the terminal chat surface. It supports session history, queued follow-ups while a
+run is active, steering a queued follow-up into the active run, pending-message edit/delete/reorder,
+agent switching, workspace switching, markdown emphasis, and grouped tool/activity output.
+
+The dashboard TUI is optimized for normal terminals and remains read-only for dashboard panels. Use
+the raw CLI commands when you need to mutate providers, router settings, mobile pairings, wallet
+state, or channel configuration.
 
 ### System Status
 
@@ -320,6 +326,16 @@ cybara start -d --expose
 
 # Interactive chat
 cybara chat
+
+# Interactive chat with explicit context
+cybara chat --agent agent-codex --workspace ~/Documents/GitHub/cybara
+
+# Headless pending-message controls
+cybara chat queue <session-id> "follow up after the active turn"
+cybara chat pending <session-id>
+cybara chat steer <session-id> <pending-id>
+cybara chat edit <session-id> <pending-id> "updated follow-up"
+cybara chat reorder <session-id> <pending-id> <pending-id>
 
 # Check platform health
 cybara status

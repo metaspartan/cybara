@@ -202,12 +202,12 @@ describe("CLI auth header forwarding", () => {
   });
 
   test("chat request path uses auth header helper for /api/chat", () => {
-    const cliPath = join(ROOT_DIR, "src", "cli.tsx");
+    const cliPath = join(ROOT_DIR, "src", "cli-chat.ts");
     const cliSource = readFileSync(cliPath, "utf8");
 
-    expect(cliSource).toContain("const resp = await fetch(`${API_BASE}/api/chat`, {");
+    expect(cliSource).toContain("const resp = await fetch(`${current.apiBase}/api/chat`, {");
     expect(cliSource).toContain(
-      'headers: withCliAuthHeaders({ "Content-Type": "application/json" }),'
+      'headers: current.withAuthHeaders({ "Content-Type": "application/json" }),'
     );
   });
 });

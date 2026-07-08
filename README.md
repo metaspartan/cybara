@@ -344,6 +344,8 @@ Full reference: [docs/api.md](docs/api.md)
 
 ```bash
 cybara chat
+cybara chat --agent agent-codex --workspace ~/Documents/GitHub/cybara
+cybara chat steer <session-id> <pending-id>
 cybara tui providers
 cybara tui router
 cybara status
@@ -360,6 +362,10 @@ cybara mcp install <package>
 cybara migrate sources
 cybara migrate --from openclaw --apply --preset user-data
 ```
+
+The terminal chat supports the same session-oriented workflow as the app clients: history reload,
+queued follow-ups while a run is active, steering, pending-message edit/delete/reorder, agent
+switching, workspace switching, markdown emphasis, and grouped tool/activity output.
 
 Full CLI reference: [docs/cli.md](docs/cli.md)
 

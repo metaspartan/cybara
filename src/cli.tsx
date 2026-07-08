@@ -7,7 +7,6 @@ import { spawn } from "child_process";
 import { createHash } from "crypto";
 import { chmodSync, copyFileSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "fs";
 import { dirname, join } from "path";
-import { createInterface } from "readline";
 import { tmpdir } from "os";
 import { getAppVersion, getReleaseRepository } from "./core/build-info";
 import {
@@ -24,6 +23,7 @@ import { resolveCybaraHome } from "./core/cybara-home";
 import { runMobileCommand } from "./cli-mobile";
 import { rawHelp } from "./cli-help";
 import { rawComputerUse } from "./cli-computer-use";
+import { configureChatCli, rawAgent, rawChatCommand } from "./cli-chat";
 import { getFlagValue, hasFlag } from "./cli-args";
 import {
   configureWalletCli,
@@ -257,25 +257,6 @@ interface AgentItem {
   model?: string;
 }
 
-interface CliPendingMessage {
-  id: string;
-  sessionId?: string;
-  content: string;
-  mode?: string;
-  sequence?: number;
-  createdAt?: number;
-}
-
-interface CliPendingResponse {
-  success?: boolean;
-  sessionId?: string;
-  queued?: boolean;
-  error?: string;
-  pendingMessage?: CliPendingMessage;
-  pendingMessages?: CliPendingMessage[];
-  interruptedMessage?: { role?: string; content?: string; process_activities?: unknown[] };
-}
-
 async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T | null> {
   try {
     const headers = withCliAuthHeaders(options?.headers, true);
@@ -298,6 +279,12 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T |
     return null;
   }
 }
+
+configureChatCli({
+  apiBase: API_BASE,
+  fetchAPI,
+  withAuthHeaders: withCliAuthHeaders,
+});
 
 async function rawMigrate(args: string[]): Promise<void> {
   const { detectMigrationSources, runSourceMigration } = await import("./core/source-migration");
@@ -2295,346 +2282,6 @@ async function rawChannels(): Promise<void> {
   }
 }
 
-async function readStdin(): Promise<string> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-  return Buffer.concat(chunks).toString("utf-8").trim();
-}
-
-/**
- * Headless one-shot agent turn: `cybara agent "<prompt>" [--json] [--session id] [--agent id]`.
- * Posts a single message to /api/chat and prints the reply (or JSON). Reads the
- * prompt from stdin if none is given on the command line (pipe support), so it
- * is scriptable/composable — the non-interactive counterpart to `chat`.
- */
-async function rawAgent(rawArgs: string[]): Promise<void> {
-  const json = rawArgs.includes("--json");
-  let sessionId: string | undefined;
-  let agentId: string | undefined;
-  const words: string[] = [];
-  for (let i = 0; i < rawArgs.length; i++) {
-    const a = rawArgs[i];
-    if (a === "--json") continue;
-    if (a === "--session" || a === "-s") {
-      sessionId = rawArgs[++i];
-      continue;
-    }
-    if (a === "--agent" || a === "-a") {
-      agentId = rawArgs[++i];
-      continue;
-    }
-    words.push(a);
-  }
-  let prompt = words.join(" ").trim();
-  if (!prompt && !process.stdin.isTTY) {
-    prompt = await readStdin();
-  }
-  if (!prompt) {
-    console.error('Usage: cybara agent "<prompt>" [--json] [--session <id>] [--agent <id>]');
-    console.error("       echo '<prompt>' | cybara agent --json");
-    process.exit(1);
-  }
-
-  const res = await fetchAPI<{ sessionId: string; message: { content: string } }>("/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: prompt, sessionId, agentId, tools: true }),
-  });
-
-  if (!res) {
-    process.exit(1);
-  }
-
-  const content = res.message?.content ?? "";
-  if (json) {
-    console.log(JSON.stringify({ sessionId: res.sessionId, content }));
-  } else {
-    console.log(content);
-  }
-}
-
-function chatPendingUsage(): void {
-  console.log("Chat Pending Commands:");
-  console.log('  cybara chat queue <session> "<message>"');
-  console.log("  cybara chat pending <session>");
-  console.log("  cybara chat steer <session> <pending-id> [--activity-json JSON]");
-  console.log('  cybara chat edit <session> <pending-id> "<message>"');
-  console.log("  cybara chat delete <session> <pending-id>");
-  console.log("  cybara chat reorder <session> <pending-id>...");
-}
-
-function printPendingMessages(messages: CliPendingMessage[] = []): void {
-  if (messages.length === 0) {
-    console.log("No pending messages");
-    return;
-  }
-  for (const message of messages) {
-    const mode = message.mode || "queued";
-    const sequence = message.sequence ? `#${message.sequence}` : "queued";
-    console.log(`${message.id} ${sequence} ${mode}: ${message.content}`);
-  }
-}
-
-function parseActivityJson(rawArgs: string[]): unknown[] | undefined {
-  const raw = getFlagValue(rawArgs, "--activity-json");
-  if (!raw) return undefined;
-  try {
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) return parsed;
-  } catch {}
-  console.error("ERROR: --activity-json must be a JSON array");
-  process.exit(1);
-}
-
-async function rawChatPendingCommand(rawArgs: string[]): Promise<boolean> {
-  const subcommand = rawArgs[0];
-  if (!["queue", "pending", "steer", "edit", "delete", "reorder"].includes(subcommand || "")) {
-    return false;
-  }
-
-  const sessionId = rawArgs[1];
-  if (!sessionId) {
-    chatPendingUsage();
-    process.exit(1);
-  }
-
-  if (subcommand === "queue") {
-    const message = rawArgs.slice(2).join(" ").trim();
-    if (!message) {
-      chatPendingUsage();
-      process.exit(1);
-    }
-    const data = await fetchAPI<CliPendingResponse>("/api/chat", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId, message, queueMode: "queue" }),
-    });
-    if (!data) process.exit(1);
-    console.log(data.queued ? "Queued pending message" : "Sent message");
-    printPendingMessages(
-      data.pendingMessages || (data.pendingMessage ? [data.pendingMessage] : [])
-    );
-    return true;
-  }
-
-  if (subcommand === "pending") {
-    const data = await fetchAPI<CliPendingResponse>(
-      `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending`
-    );
-    if (!data) process.exit(1);
-    printPendingMessages(data.pendingMessages || []);
-    return true;
-  }
-
-  const pendingId = rawArgs[2];
-  if (!pendingId) {
-    chatPendingUsage();
-    process.exit(1);
-  }
-
-  if (subcommand === "steer") {
-    const processActivities = parseActivityJson(rawArgs);
-    const data = await fetchAPI<CliPendingResponse>(
-      `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending/${encodeURIComponent(
-        pendingId
-      )}/steer`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: processActivities ? JSON.stringify({ processActivities }) : undefined,
-      }
-    );
-    if (!data) process.exit(1);
-    if (data.success === false) {
-      console.error(`ERROR: ${data.error || "Failed to steer pending message"}`);
-      process.exit(1);
-    }
-    console.log("Steered pending message");
-    if (data.interruptedMessage?.process_activities?.length) {
-      console.log(
-        `Persisted ${data.interruptedMessage.process_activities.length} pre-steer activities`
-      );
-    }
-    printPendingMessages(data.pendingMessages || []);
-    return true;
-  }
-
-  if (subcommand === "edit") {
-    const content = rawArgs.slice(3).join(" ").trim();
-    if (!content) {
-      chatPendingUsage();
-      process.exit(1);
-    }
-    const data = await fetchAPI<CliPendingResponse>(
-      `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending/${encodeURIComponent(
-        pendingId
-      )}`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
-      }
-    );
-    if (!data) process.exit(1);
-    console.log("Updated pending message");
-    printPendingMessages(
-      data.pendingMessages || (data.pendingMessage ? [data.pendingMessage] : [])
-    );
-    return true;
-  }
-
-  if (subcommand === "delete") {
-    const data = await fetchAPI<CliPendingResponse>(
-      `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending/${encodeURIComponent(
-        pendingId
-      )}`,
-      { method: "DELETE" }
-    );
-    if (!data) process.exit(1);
-    console.log("Deleted pending message");
-    printPendingMessages(data.pendingMessages || []);
-    return true;
-  }
-
-  const pendingMessageIds = rawArgs.slice(2);
-  if (pendingMessageIds.length === 0) {
-    chatPendingUsage();
-    process.exit(1);
-  }
-  const data = await fetchAPI<CliPendingResponse>(
-    `/api/chat/sessions/${encodeURIComponent(sessionId)}/pending/reorder`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pendingMessageIds }),
-    }
-  );
-  if (!data) process.exit(1);
-  console.log("Reordered pending messages");
-  printPendingMessages(data.pendingMessages || []);
-  return true;
-}
-
-async function rawChatCommand(rawArgs: string[]): Promise<void> {
-  if (await rawChatPendingCommand(rawArgs)) return;
-  await rawChat(rawArgs[0]);
-}
-
-async function rawChat(sessionArg?: string): Promise<void> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
-
-  // Pick or create session
-  let sessionId = sessionArg;
-  if (!sessionId) {
-    const sessions =
-      await fetchAPI<{ id: string; agentId: string; messageCount: number; createdAt: string }[]>(
-        "/api/sessions"
-      );
-    if (sessions && sessions.length > 0) {
-      console.log("\n  SESSIONS");
-      console.log("  ========");
-      sessions.slice(0, 10).forEach((s, i) => {
-        console.log(`  [${i + 1}] ${s.id.slice(0, 8)}... (${s.messageCount} msgs)`);
-      });
-      console.log(`  [n] New session\n`);
-
-      const answer = await new Promise<string>((r) => rl.question("  Select session: ", r));
-      const idx = parseInt(answer) - 1;
-      if (idx >= 0 && idx < sessions.length) {
-        sessionId = sessions[idx].id;
-        // Load session messages
-        const msgs = await fetchAPI<{ role: string; content: string }[]>(
-          `/api/sessions/${sessionId}/messages`
-        );
-        if (msgs && msgs.length > 0) {
-          console.log("\n  --- Session History ---");
-          for (const m of msgs.slice(-6)) {
-            if (m.role === "system") continue;
-            const prefix = m.role === "user" ? "  You: " : "  AI:  ";
-            console.log(
-              `${prefix}${m.content.slice(0, 200)}${m.content.length > 200 ? "..." : ""}`
-            );
-          }
-          console.log("  ----------------------\n");
-        }
-      }
-    }
-  }
-
-  console.log("  Cybara Chat (Ctrl+C to exit)\n");
-
-  const prompt = () => {
-    rl.question("  You: ", async (input: string) => {
-      if (!input.trim()) {
-        prompt();
-        return;
-      }
-      if (input.trim() === "/quit" || input.trim() === "/exit") {
-        rl.close();
-        process.exit(0);
-      }
-      if (input.trim() === "/sessions") {
-        await rawSessions();
-        prompt();
-        return;
-      }
-      if (input.trim().startsWith("/new")) {
-        sessionId = undefined;
-        console.log("  (New session)\n");
-        prompt();
-        return;
-      }
-
-      try {
-        const body: Record<string, unknown> = { message: input.trim() };
-        if (sessionId) body.sessionId = sessionId;
-
-        const resp = await fetch(`${API_BASE}/api/chat`, {
-          method: "POST",
-          headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify(body),
-        });
-
-        if (!resp.ok) {
-          console.error(`  Error: ${resp.status} ${resp.statusText}`);
-          prompt();
-          return;
-        }
-
-        const data = (await resp.json()) as {
-          sessionId: string;
-          message: { content: string; tool_calls?: { name: string; status: string }[] };
-          thinking?: string;
-          tool_calls?: { name: string; status: string; result?: unknown }[];
-        };
-
-        sessionId = data.sessionId;
-
-        // Show tool calls
-        if (data.tool_calls && data.tool_calls.length > 0) {
-          for (const tc of data.tool_calls) {
-            console.log(`  🔧 ${tc.name} [${tc.status}]`);
-          }
-        }
-
-        // Show thinking
-        if (data.thinking) {
-          console.log(`  💭 ${data.thinking.slice(0, 100)}...`);
-        }
-
-        // Show response
-        console.log(`\n  AI:  ${data.message.content}\n`);
-      } catch (err) {
-        console.error(`  Error: ${(err as Error).message}`);
-      }
-
-      prompt();
-    });
-  };
-
-  prompt();
-}
-
 async function rawConfig(subCmd?: string, key?: string, value?: string): Promise<void> {
   if (subCmd === "get" && key) {
     const data = await fetchAPI<Record<string, unknown>>("/api/config");
@@ -4286,15 +3933,25 @@ async function fetchGitHubRelease(
   }
 
   const release = (await releaseResponse.json()) as GitHubReleaseResponse;
-  const asset = (release.assets || []).find((candidate) => candidate.name === assetName);
+  // Release CLI binaries are published as `cybara-v<version>-<target>-cli`
+  // (with `.exe` on Windows). Derive that stable suffix from the legacy asset
+  // name and match by it, so a version bump never breaks the self-update.
+  const hasExe = assetName.endsWith(".exe");
+  const legacyBase = hasExe ? assetName.slice(0, -4) : assetName;
+  const suffix = `${legacyBase.replace(/^cybara/, "")}-cli`;
+  const asset = (release.assets || []).find((candidate) => {
+    if (candidate.name.endsWith(".sha256")) return false;
+    const base = candidate.name.endsWith(".exe") ? candidate.name.slice(0, -4) : candidate.name;
+    return base.endsWith(suffix);
+  });
   const downloadUrl = asset?.browser_download_url;
 
-  if (!downloadUrl) {
-    console.error(`Release ${release.tag_name || "latest"} does not contain ${assetName}.`);
+  if (!asset || !downloadUrl) {
+    console.error(`Release ${release.tag_name || "latest"} does not contain a CLI asset (*${suffix}).`);
     process.exit(1);
   }
 
-  return { release, assetName, downloadUrl };
+  return { release, assetName: asset.name, downloadUrl };
 }
 
 /** Compute the SHA256 hex digest of a file on disk. */
