@@ -37,7 +37,9 @@ export function Footer(): React.ReactElement {
           <Icon name="github" className="footer-github-svg" />
         </a>
       </div>
-      <p className="footer-note">Self-hosted AI agent platform · MIT licensed · Built on Bun</p>
+      <p className="footer-note">
+        Self-hosted AI agent platform · MIT licensed · Built on Bun · Created by Carsen Klock
+      </p>
     </footer>
   );
 }

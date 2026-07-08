@@ -18,6 +18,13 @@ const DOC_FILES = [
   "apps/mobile/README.md",
 ];
 
+const PROVIDER_CATALOG_EXPORTS = [
+  ["src/core/providers/catalog-foundation.ts", "foundationProviderCatalog"],
+  ["src/core/providers/catalog-integrations.ts", "integrationProviderCatalog"],
+  ["src/core/providers/catalog-coding.ts", "codingProviderCatalog"],
+  ["src/core/providers/catalog-cloud.ts", "cloudProviderCatalog"],
+] as const;
+
 function read(relativePath: string): string {
   return readFileSync(join(ROOT_DIR, relativePath), "utf8");
 }
@@ -62,7 +69,10 @@ function countExportedObjectProperties(relativePath: string, exportName: string)
 describe("documentation consistency", () => {
   test("published metadata and docs reflect current tool/provider catalog counts", () => {
     const toolCount = countExportedObjectProperties("src/core/tools/index.ts", "toolSchemas");
-    const providerCount = countExportedObjectProperties("src/core/providers.ts", "providers");
+    const providerCount = PROVIDER_CATALOG_EXPORTS.reduce(
+      (sum, [file, exportName]) => sum + countExportedObjectProperties(file, exportName),
+      0
+    );
     const packageJson = JSON.parse(read("package.json")) as { description?: string };
 
     expect(toolCount).toBe(76);

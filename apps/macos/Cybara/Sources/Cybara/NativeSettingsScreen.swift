@@ -495,76 +495,23 @@ struct NativeSettingsScreen: View {
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Text("Gateway Logs")
+                            Text("Gateway Activity")
                                 .font(.system(size: 15, weight: .bold, design: .rounded))
                             Spacer()
-                            Text("\(gatewayLogs.count) entries")
+                            Text("\(gatewayActivityEntries.count) entries")
                                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.secondary)
                         }
 
-                        if gatewayLogs.isEmpty {
-                            Label("No gateway log entries loaded.", systemImage: "text.page")
-                                .font(.system(size: 12, design: .rounded))
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 8)
-                        } else {
-                            LazyVStack(alignment: .leading, spacing: 8) {
-                                ForEach(gatewayLogs.suffix(80)) { entry in
-                                    HStack(alignment: .top, spacing: 8) {
-                                        Text(entry.created_at ?? "")
-                                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                            .foregroundStyle(.tertiary)
-                                            .frame(width: 132, alignment: .leading)
-                                        Text((entry.level ?? "info").uppercased())
-                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                            .foregroundStyle(logColor(entry.level))
-                                            .frame(width: 44, alignment: .leading)
-                                        Text("[\(entry.source ?? "gateway")]")
-                                            .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                            .foregroundStyle(.secondary)
-                                            .frame(width: 84, alignment: .leading)
-                                        Text(entry.message ?? "")
-                                            .font(.system(size: 11, weight: .regular, design: .monospaced))
-                                            .foregroundStyle(.secondary)
-                                            .textSelection(.enabled)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                        Text("Live gateway and native sidecar events in one stream.")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
 
-                GlassCard {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Sidecar Logs")
-                                .font(.system(size: 15, weight: .bold, design: .rounded))
-                            Spacer()
-                            Text("\(sidecar.logs.count) entries")
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
-                                .foregroundStyle(.secondary)
-                        }
-
-                        if sidecar.logs.isEmpty {
-                            Label("No sidecar log entries yet.", systemImage: "text.page")
-                                .font(.system(size: 12, design: .rounded))
-                                .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 8)
-                        } else {
-                            LazyVStack(alignment: .leading, spacing: 8) {
-                                ForEach(Array(sidecar.logs.suffix(80).enumerated()), id: \.offset) { _, line in
-                                    Text(line)
-                                        .font(.system(size: 11, weight: .regular, design: .monospaced))
-                                        .foregroundStyle(.secondary)
-                                        .textSelection(.enabled)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            }
-                        }
+                        NativeLogTimeline(
+                            entries: Array(gatewayActivityEntries.prefix(100)),
+                            emptyMessage: "No gateway or sidecar log entries loaded.",
+                            compact: true
+                        )
                     }
                 }
             }
@@ -1466,6 +1413,10 @@ struct NativeSettingsScreen: View {
         }
     }
 
+    private var gatewayActivityEntries: [NativeLogEntryDisplay] {
+        nativeLogEntries(gatewayLogs: gatewayLogs, sidecarLogs: sidecar.logs, sidecarLimit: 40)
+    }
+
     private func settingRow(_ label: String, _ value: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label).font(.system(size: 12, design: .rounded)).foregroundStyle(.secondary)
@@ -1734,17 +1685,6 @@ struct NativeSettingsScreen: View {
         }
         if let page = try? await client.systemLogsPage(limit: 80) {
             gatewayLogs = page.logs
-        }
-    }
-
-    private func logColor(_ level: String?) -> Color {
-        switch level?.lowercased() {
-        case "error":
-            return .red
-        case "warn", "warning":
-            return .orange
-        default:
-            return .secondary
         }
     }
 

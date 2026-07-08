@@ -235,7 +235,9 @@ struct RouterScreen: View {
                     .foregroundStyle(planStatusColor(plan?.status ?? route.plan?.status ?? "unconfigured"))
             }
 
-            if let percent = primaryWindow?.usedPercent {
+            if let plan, plan.managedAutomatically {
+                RouterAutomaticPlanUsage(plan: plan)
+            } else if let percent = primaryWindow?.usedPercent {
                 ProgressView(value: min(max(percent, 0), 100), total: 100)
                     .tint(planStatusColor(plan?.status ?? "ok"))
             }
@@ -264,7 +266,7 @@ struct RouterScreen: View {
                     .help("Save provider plan limits")
                 }
             } else {
-                Text("Live provider usage is used for routing. No manual plan limits are needed.")
+                Text("Automatic usage tracking is active. Routing uses live provider limits.")
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.secondary)
             }
@@ -361,6 +363,12 @@ struct RouterScreen: View {
         plan: ProviderPlanSnapshot?,
         route: RouterAvailabilityStatus
     ) -> String {
+        if let plan, plan.managedAutomatically {
+            return [plan.planName, plan.automaticTrackingLabel, plan.sourceLabel, plan.externalSourceLabel]
+                .compactMap { firstNonEmptyGatewayString($0) }
+                .prefix(2)
+                .joined(separator: " · ")
+        }
         if let window = plan?.windows.first,
            let percent = window.usedPercent {
             return "\(window.title): \(String(format: "%.1f", percent))% used · \(window.resetDescription)"
@@ -1307,13 +1315,17 @@ struct ChannelsScreen: View {
 
 struct LogsScreen: View {
     let client: GatewayClient
+    @EnvironmentObject private var sidecar: SidecarManager
 
     @State private var logs: [GatewayLogEntry] = []
     @State private var totalLogs: Int?
     @State private var hasMore = false
     @State private var loaded = false
+    @State private var loading = false
+    @State private var live = true
     @State private var error: String?
     @State private var levelFilter = "all"
+    @State private var sourceFilter = "all"
     @State private var searchText = ""
 
     private let logLimit = 200
@@ -1321,111 +1333,97 @@ struct LogsScreen: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                ScreenHeader(title: "Logs", subtitle: "Recent gateway events")
-                Button {
-                    Task { await load() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
+            HStack(alignment: .top, spacing: 12) {
+                ScreenHeader(title: "Logs", subtitle: "Gateway, native sidecar, and app events")
+                Spacer()
+                HStack(spacing: 8) {
+                    if loading {
+                        ProgressView().controlSize(.small)
+                    }
+                    Button {
+                        live.toggle()
+                    } label: {
+                        Label(live ? "Pause" : "Live", systemImage: live ? "pause.fill" : "play.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    Button {
+                        Task { await load() }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Refresh")
                 }
-                .buttonStyle(.bordered)
-                .help("Refresh")
             }
             .padding(.horizontal, 24)
             .padding(.top, 24)
             .padding(.bottom, 12)
 
-            if loaded && error == nil && !logs.isEmpty {
-                HStack(spacing: 10) {
-                    Picker("Level", selection: $levelFilter) {
-                        ForEach(levelOptions, id: \.self) { level in
-                            Text(level == "all" ? "All" : level.capitalized).tag(level)
-                        }
+            if loaded && error == nil && !allLogEntries.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) { logStats }
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 108), spacing: 8)], spacing: 8) { logStats }
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .frame(maxWidth: 260)
 
-                    HStack(spacing: 6) {
-                        Image(systemName: "magnifyingglass")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                        TextField("Search logs", text: $searchText)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 12, design: .rounded))
-                        if !searchText.isEmpty {
-                            Button {
-                                searchText = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .font(.system(size: 11))
-                                    .foregroundStyle(.secondary)
+                    HStack(spacing: 10) {
+                        Picker("Level", selection: $levelFilter) {
+                            ForEach(levelOptions, id: \.self) { level in
+                                Text(level == "all" ? "All Levels" : level.capitalized).tag(level)
                             }
-                            .buttonStyle(.borderless)
                         }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(maxWidth: 330)
+
+                        Picker("Source", selection: $sourceFilter) {
+                            ForEach(sourceOptions, id: \.self) { source in
+                                Text(source == "all" ? "All Sources" : source.capitalized).tag(source)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 190)
+
+                        searchField
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color.primary.opacity(0.05))
-                    )
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 12)
             }
 
             if !loaded {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let error {
+                VStack(spacing: 12) {
+                    ProgressView().controlSize(.large)
+                    Text("Loading logs…")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let error, allLogEntries.isEmpty {
                 LoadFailedView(message: error) { Task { await load() } }
             } else {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Label(logSummary, systemImage: "doc.text.magnifyingglass")
+                            Label(logSummary, systemImage: live ? "dot.radiowaves.left.and.right" : "pause.circle")
                                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            if hasMore {
-                                Text("Newest first")
-                                    .font(.system(size: 11, weight: .medium, design: .rounded))
-                                    .foregroundStyle(.tertiary)
-                            }
+                            Text(hasMore ? "Newest \(logLimit) gateway entries" : "Newest first")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(.tertiary)
                         }
 
-                        if filteredLogs.isEmpty {
-                            Text("No entries match the current filter.")
+                        if let error {
+                            Label(error, systemImage: "exclamationmark.triangle")
                                 .font(.system(size: 12, design: .rounded))
-                                .foregroundStyle(.secondary)
-                                .padding(.vertical, 8)
+                                .foregroundStyle(.orange)
                         }
 
-                        LazyVStack(alignment: .leading, spacing: 6) {
-                            ForEach(filteredLogs) { entry in
-                                HStack(alignment: .top, spacing: 10) {
-                                    Text(entry.level?.uppercased() ?? "INFO")
-                                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                        .foregroundStyle(levelColor(entry.level))
-                                        .frame(width: 44, alignment: .leading)
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(entry.message ?? "")
-                                            .font(.system(size: 11, design: .monospaced))
-                                            .textSelection(.enabled)
-                                        Text(logDetail(for: entry))
-                                            .font(.system(size: 10, design: .rounded))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    Spacer(minLength: 0)
-                                }
-                                .padding(.vertical, 5)
-                                .padding(.horizontal, 12)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .fill(Color.primary.opacity(0.035))
-                                )
-                            }
-                        }
+                        NativeLogTimeline(
+                            entries: filteredLogs,
+                            emptyMessage: "No entries match the current filter."
+                        )
                     }
                     .padding(16)
                 }
@@ -1434,59 +1432,106 @@ struct LogsScreen: View {
                 .padding(.bottom, 24)
             }
         }
-        .task { await load() }
+        .task {
+            if !loaded {
+                await load()
+            }
+        }
+        .task(id: live) {
+            guard live else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                await load(silent: true)
+            }
+        }
     }
 
-    private var filteredLogs: [GatewayLogEntry] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        return logs.filter { entry in
-            if levelFilter != "all" {
-                let level = (entry.level ?? "info").lowercased()
-                let matches =
-                    levelFilter == "warn" ? (level == "warn" || level == "warning") : level == levelFilter
-                if !matches { return false }
+    @ViewBuilder
+    private var logStats: some View {
+        NativeLogStatPill(label: "Info", value: logCount("info"), tint: .gray)
+        NativeLogStatPill(label: "Warnings", value: logCount("warn"), tint: .orange)
+        NativeLogStatPill(label: "Errors", value: logCount("error"), tint: .red)
+        NativeLogStatPill(label: "Sidecar", value: allLogEntries.filter { $0.sourceKey == "sidecar" }.count, tint: .blue)
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            TextField("Search logs", text: $searchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 12, design: .rounded))
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
             }
-            if query.isEmpty { return true }
-            let haystack = [entry.message ?? "", entry.source ?? "", entry.logType ?? ""]
-                .joined(separator: " ")
-                .lowercased()
-            return haystack.contains(query)
         }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color.primary.opacity(0.055))
+        )
+    }
+
+    private var allLogEntries: [NativeLogEntryDisplay] {
+        nativeLogEntries(gatewayLogs: logs, sidecarLogs: sidecar.logs)
+    }
+
+    private var sourceOptions: [String] {
+        let sources = Set(allLogEntries.map(\.sourceKey)).sorted()
+        let preferred = ["gateway", "sidecar"].filter { sources.contains($0) }
+        return ["all"] + preferred + sources.filter { !preferred.contains($0) }
+    }
+
+    private var filteredLogs: [NativeLogEntryDisplay] {
+        filterNativeLogs(
+            allLogEntries,
+            levelFilter: levelFilter,
+            sourceFilter: sourceFilter,
+            query: searchText
+        )
     }
 
     private var logSummary: String {
         let visible = filteredLogs.count
-        let loadedCount = logs.count
+        let loadedCount = allLogEntries.count
         if visible != loadedCount { return "\(visible) of \(loadedCount) shown" }
-        guard let totalLogs else { return "\(visible) recent entries" }
-        return visible == totalLogs ? "\(visible) entries" : "\(visible) of \(totalLogs) entries"
+        guard let totalLogs else { return "\(visible) recent events" }
+        let total = totalLogs + sidecar.logs.count
+        return visible == total ? "\(visible) events" : "\(visible) of \(total) events"
     }
 
-    private func levelColor(_ level: String?) -> Color {
-        switch level?.lowercased() {
-        case "error": return .red
-        case "warn", "warning": return .orange
-        default: return .secondary
+    private func logCount(_ level: String) -> Int {
+        allLogEntries.filter { $0.levelKey == level }.count
+    }
+
+    private func load(silent: Bool = false) async {
+        if loading { return }
+        if !silent {
+            loading = true
         }
-    }
-
-    private func logDetail(for entry: GatewayLogEntry) -> String {
-        let source = entry.source ?? entry.logType ?? "gateway"
-        let timestamp = relativeTimestamp(entry.created_at)
-        return timestamp.isEmpty ? source : "\(source) · \(timestamp)"
-    }
-
-    private func load() async {
         do {
             let page = try await client.systemLogsPage(limit: logLimit)
             logs = page.logs
             totalLogs = page.total
             hasMore = page.hasMore ?? false
+            if !sourceOptions.contains(sourceFilter) {
+                sourceFilter = "all"
+            }
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
         loaded = true
+        loading = false
     }
 }
 

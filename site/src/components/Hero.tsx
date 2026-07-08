@@ -24,14 +24,15 @@ export function Hero(): React.ReactElement {
         </span>
 
         <h1 className="hero-title">
-          The agent platform for
-          <span className="hero-title-accent"> real work.</span>
+          Your agents. Your tools. Your runtime.
+          <span className="hero-title-accent"> Harness the power of AI.</span>
         </h1>
 
         <p className="hero-sub">
           Cybara pairs a Bun agent runtime with a web UI, desktop and mobile shells, a broad tool
           layer, secure messaging channels, and encrypted wallet controls — so agents can plan,
-          execute, verify, and report while you keep control in the loop.
+          execute, verify, and report while you keep control in the loop. Self-hosted, open source,
+          and yours to run.
         </p>
 
         <div className="hero-actions">

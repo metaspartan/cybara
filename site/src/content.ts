@@ -377,7 +377,7 @@ export const FAQS: readonly Faq[] = [
   {
     question: "Is Cybara free and open source?",
     answer:
-      "Yes. Cybara is open source under the MIT license and runs entirely on infrastructure you control. There is no required account or cloud service.",
+      "Yes. Cybara is free and open source under the MIT license, created by Carsen Klock, and runs entirely on infrastructure you control. Use it commercially, fork it, and self-host it with no required account, telemetry, or cloud service.",
   },
   {
     question: "Which platforms does Cybara run on?",
