@@ -1431,6 +1431,88 @@ final class GatewayClientModelTests: XCTestCase {
         )
     }
 
+    func testSkillsStatusDecodesEligibilityAndRequirements() throws {
+        let response = try JSONDecoder().decode(
+            GatewaySkillsStatusResponse.self,
+            from: Data(
+                #"""
+                {
+                  "skills": [
+                    {
+                      "name": "mactop",
+                      "description": "Inspect macOS resource usage",
+                      "location": "/Users/carsen/.cybara/skills/mactop/SKILL.md",
+                      "source": "local",
+                      "eligible": false,
+                      "disabled": false,
+                      "blockedByAllowlist": false,
+                      "requirements": { "bins": ["mactop"], "anyBins": [], "env": [], "anyEnv": [], "config": [], "os": ["darwin"] },
+                      "missing": { "bins": ["mactop"], "anyBins": [], "env": ["FAL_KEY"], "anyEnv": [], "config": [], "os": [] },
+                      "install": [{ "type": "shell", "command": "brew install mactop" }],
+                      "metadata": { "owner": "local" }
+                    }
+                  ],
+                  "summary": { "total": 1, "eligible": 0, "disabled": 0, "blocked": 1 }
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(response.summary?.total, 1)
+        XCTAssertEqual(response.skills.first?.name, "mactop")
+        XCTAssertEqual(response.skills.first?.source, "local")
+        XCTAssertEqual(response.skills.first?.requirements.os, ["darwin"])
+        XCTAssertEqual(response.skills.first?.missing.bins, ["mactop"])
+        XCTAssertEqual(response.skills.first?.missing.env, ["FAL_KEY"])
+        XCTAssertEqual(response.skills.first?.install.first?.command, "brew install mactop")
+    }
+
+    func testSkillsRegistryAndInstallResponsesDecodeFlexibleFields() throws {
+        let registry = try JSONDecoder().decode(
+            GatewaySkillsRegistryResponse.self,
+            from: Data(
+                #"""
+                {
+                  "skills": [
+                    {
+                      "slug": "code-review",
+                      "name": "Code Review",
+                      "description": "Review code changes",
+                      "author": "clawhub",
+                      "downloads": "1204",
+                      "installsCurrent": 44,
+                      "installsAllTime": "88",
+                      "stars": 12,
+                      "version": "1.2.3",
+                      "tags": ["review", "security"],
+                      "updatedAt": "2026-07-08T10:00:00.000Z",
+                      "registry": "clawhub"
+                    }
+                  ],
+                  "registries": ["clawhub"],
+                  "counts": { "clawhub": 1 }
+                }
+                """#.utf8
+            )
+        )
+        let install = try JSONDecoder().decode(
+            GatewaySkillInstallResult.self,
+            from: Data(
+                #"{"success":false,"blockedReason":"suspicious","requiresConfirmation":"true","error":"needs approval","slug":"code-review"}"#.utf8
+            )
+        )
+
+        XCTAssertEqual(registry.skills.first?.slug, "code-review")
+        XCTAssertEqual(registry.skills.first?.downloads, 1204)
+        XCTAssertEqual(registry.skills.first?.installsAllTime, 88)
+        XCTAssertEqual(registry.skills.first?.tags, ["review", "security"])
+        XCTAssertEqual(registry.registries, ["clawhub"])
+        XCTAssertEqual(registry.counts["clawhub"], 1)
+        XCTAssertFalse(install.success)
+        XCTAssertEqual(install.blockedReason, "suspicious")
+        XCTAssertEqual(install.requiresConfirmation, true)
+    }
+
     private func decodeSession(_ json: String) throws -> GatewaySession {
         try JSONDecoder().decode(GatewaySession.self, from: Data(json.utf8))
     }

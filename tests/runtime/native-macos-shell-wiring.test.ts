@@ -91,7 +91,7 @@ describe("native macOS shell wiring", () => {
       "MemoryScreen(client: client)",
       "WalletScreen(client: client)",
       "ArtifactsScreen(client: client)",
-      "SkillsScreen(client: client)",
+      "NativeSkillsScreen(client: client)",
       "LogsScreen(client: client)",
     ]) {
       expect(contentView).toContain(nativeScreen);
@@ -116,8 +116,15 @@ describe("native macOS shell wiring", () => {
       '"api/tools"',
       '"api/terminal/sessions"',
       '"api/artifacts"',
+      '"api/skills/status"',
+      '"api/skills/registry/browse"',
+      '"api/skills/registry/search"',
+      '"api/skills/install"',
     ]) {
-      expect(nativePlatformScreens).toContain(gatewayRoute);
+      const source = gatewayRoute.includes("skills")
+        ? readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8")
+        : nativePlatformScreens;
+      expect(source).toContain(gatewayRoute);
     }
 
     expect(contentView).toContain('Section("Developer")');
@@ -492,6 +499,42 @@ describe("native macOS shell wiring", () => {
     expect(journeyScreen).toContain("Rectangle()");
     expect(journeyScreen).toContain("Color.primary.opacity(0.10)");
     expect(journeyScreen).toContain("private struct JourneyEmptyState");
+  });
+
+  test("native skills screen supports status, local creation, registry browse, and install parity", () => {
+    const contentView = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
+    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const skillsScreen = readFileSync(join(MACOS_APP_DIR, "NativeSkillsScreen.swift"), "utf8");
+
+    expect(contentView).toContain("NativeSkillsScreen(client: client)");
+    expect(gatewayModels).toContain("struct GatewaySkillStatus");
+    expect(gatewayModels).toContain("struct GatewaySkillsStatusResponse");
+    expect(gatewayModels).toContain("struct GatewayRegistrySkill");
+    expect(gatewayModels).toContain("struct GatewaySkillInstallResult");
+    expect(gatewayClient).toContain("func skillsStatus()");
+    expect(gatewayClient).toContain('get("api/skills/status"');
+    expect(gatewayClient).toContain("func createSkill(");
+    expect(gatewayClient).toContain('request("api/skills", method: "POST"');
+    expect(gatewayClient).toContain("func skillsRegistryBrowse(");
+    expect(gatewayClient).toContain('"api/skills/registry/browse"');
+    expect(gatewayClient).toContain("func skillsRegistrySearch(");
+    expect(gatewayClient).toContain('"api/skills/registry/search"');
+    expect(gatewayClient).toContain("func installSkill(");
+    expect(gatewayClient).toContain('"api/skills/install"');
+    expect(skillsScreen).toContain('Label("Installed", systemImage: "wand.and.stars")');
+    expect(skillsScreen).toContain('Label("Registry", systemImage: "shippingbox")');
+    expect(skillsScreen).toContain("NativeAddSkillSheet");
+    expect(skillsScreen).toContain("NativeSkillDetailSheet");
+    expect(skillsScreen).toContain("NativeRegistrySkillRow");
+    expect(skillsScreen).toContain("Install Anyway");
+    expect(skillsScreen).toContain("Missing Requirements");
+    expect(skillsScreen).toContain("client.skillsStatus()");
+    expect(skillsScreen).toContain("client.skillsRegistryBrowse(");
+    expect(skillsScreen).toContain("client.skillsRegistrySearch(");
+    expect(skillsScreen).toContain("client.installSkill(");
+    expect(skillsScreen).toContain("client.createSkill(");
+    expect(skillsScreen).not.toContain("CybaraWebView");
   });
 
   test("native chat sidebar groups sessions compactly by workspace", () => {

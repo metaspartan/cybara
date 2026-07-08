@@ -1444,7 +1444,7 @@ struct NativeSettingsScreen: View {
         case .channels:
             ChannelsScreen(client: client)
         case .skills:
-            SkillsScreen(client: client)
+            NativeSkillsScreen(client: client)
         case .logs:
             LogsScreen(client: client)
         }

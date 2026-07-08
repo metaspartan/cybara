@@ -297,7 +297,7 @@ struct ContentView: View {
             case .wallet:
                 WalletScreen(client: client)
             case .skills:
-                SkillsScreen(client: client)
+                NativeSkillsScreen(client: client)
             case .logs:
                 LogsScreen(client: client)
             case .settings:
