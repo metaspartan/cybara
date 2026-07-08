@@ -729,6 +729,107 @@ struct GatewayClient: Sendable {
         try await getList("api/skills", keys: ["skills", "items"])
     }
 
+    func skillsStatus() async throws -> GatewaySkillsStatusResponse {
+        try await get("api/skills/status", as: GatewaySkillsStatusResponse.self)
+    }
+
+    func createSkill(name: String, category: String, description: String, content: String) async throws -> GatewaySkill {
+        let body = try JSONSerialization.data(
+            withJSONObject: [
+                "name": name.trimmingCharacters(in: .whitespacesAndNewlines),
+                "category": category.trimmingCharacters(in: .whitespacesAndNewlines),
+                "description": description.trimmingCharacters(in: .whitespacesAndNewlines),
+                "content": content,
+            ]
+        )
+        let data = try await request("api/skills", method: "POST", body: body)
+        do {
+            return try JSONDecoder().decode(GatewaySkill.self, from: data)
+        } catch {
+            throw GatewayClientError.decodingFailed("api/skills", String(describing: error))
+        }
+    }
+
+    func skillsRegistryBrowse(
+        registry: String?,
+        sort: String = "downloads",
+        maxPages: Int = 1,
+        limit: Int = 100
+    ) async throws -> GatewaySkillsRegistryResponse {
+        try await get(
+            "api/skills/registry/browse",
+            as: GatewaySkillsRegistryResponse.self,
+            queryItems: skillsRegistryQueryItems(
+                registry: registry,
+                sort: sort,
+                maxPages: maxPages,
+                limit: limit
+            )
+        )
+    }
+
+    func skillsRegistrySearch(
+        query: String,
+        registry: String?,
+        sort: String = "downloads",
+        maxPages: Int = 1,
+        limit: Int = 100
+    ) async throws -> GatewaySkillsRegistryResponse {
+        try await get(
+            "api/skills/registry/search",
+            as: GatewaySkillsRegistryResponse.self,
+            queryItems: skillsRegistryQueryItems(
+                query: query,
+                registry: registry,
+                sort: sort,
+                maxPages: maxPages,
+                limit: limit
+            )
+        )
+    }
+
+    func installSkill(
+        slug: String,
+        registry: String?,
+        allowSuspicious: Bool = false
+    ) async throws -> GatewaySkillInstallResult {
+        var payload: [String: Any] = [
+            "slug": slug,
+            "allowSuspicious": allowSuspicious,
+        ]
+        if let registry = firstNonEmptyGatewayString(registry) {
+            payload["registry"] = registry
+        }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let data = try await request("api/skills/install", method: "POST", body: body)
+        do {
+            return try JSONDecoder().decode(GatewaySkillInstallResult.self, from: data)
+        } catch {
+            throw GatewayClientError.decodingFailed("api/skills/install", String(describing: error))
+        }
+    }
+
+    private func skillsRegistryQueryItems(
+        query: String? = nil,
+        registry: String?,
+        sort: String,
+        maxPages: Int,
+        limit: Int
+    ) -> [URLQueryItem] {
+        var items = [
+            URLQueryItem(name: "sort", value: sort),
+            URLQueryItem(name: "limit", value: String(limit)),
+            URLQueryItem(name: "maxPages", value: String(maxPages)),
+        ]
+        if let query = firstNonEmptyGatewayString(query) {
+            items.append(URLQueryItem(name: "q", value: query))
+        }
+        if let registry = firstNonEmptyGatewayString(registry) {
+            items.append(URLQueryItem(name: "registry", value: registry))
+        }
+        return items
+    }
+
     @discardableResult
     func deleteSkill(_ name: String) async throws -> Data {
         let allowed = CharacterSet.urlPathAllowed.subtracting(CharacterSet(charactersIn: "/"))

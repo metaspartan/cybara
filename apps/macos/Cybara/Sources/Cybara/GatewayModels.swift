@@ -1391,6 +1391,135 @@ struct GatewaySkill: Decodable, Identifiable, Hashable {
     var id: String { name }
 }
 
+struct GatewaySkillRequirementSet: Decodable, Hashable {
+    let bins: [String]
+    let anyBins: [String]
+    let env: [String]
+    let anyEnv: [String]
+    let config: [String]
+    let os: [String]
+
+    private enum CodingKeys: String, CodingKey {
+        case bins, anyBins, any_bins, env, anyEnv, any_env, config, os
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        bins = try container.decodeFlexibleStringArray(forKey: .bins) ?? []
+        anyBins = try container.decodeFlexibleStringArray(forKey: .anyBins)
+            ?? container.decodeFlexibleStringArray(forKey: .any_bins)
+            ?? []
+        env = try container.decodeFlexibleStringArray(forKey: .env) ?? []
+        anyEnv = try container.decodeFlexibleStringArray(forKey: .anyEnv)
+            ?? container.decodeFlexibleStringArray(forKey: .any_env)
+            ?? []
+        config = try container.decodeFlexibleStringArray(forKey: .config) ?? []
+        os = try container.decodeFlexibleStringArray(forKey: .os) ?? []
+    }
+}
+
+struct GatewaySkillInstallSpec: Decodable, Identifiable, Hashable {
+    let type: String?
+    let command: String
+
+    var id: String { "\(type ?? "install"):\(command)" }
+}
+
+struct GatewaySkillStatus: Decodable, Identifiable, Hashable {
+    let name: String
+    let description: String
+    let location: String
+    let source: String
+    let eligible: Bool
+    let disabled: Bool
+    let blockedByAllowlist: Bool
+    let requirements: GatewaySkillRequirementSet
+    let missing: GatewaySkillRequirementSet
+    let install: [GatewaySkillInstallSpec]
+    let metadata: [String: JSONValue]?
+
+    var id: String { "\(source):\(name):\(location)" }
+}
+
+struct GatewaySkillsStatusSummary: Decodable, Hashable {
+    let total: Int
+    let eligible: Int
+    let disabled: Int
+    let blocked: Int
+}
+
+struct GatewaySkillsStatusResponse: Decodable, Hashable {
+    let skills: [GatewaySkillStatus]
+    let summary: GatewaySkillsStatusSummary?
+}
+
+struct GatewayRegistrySkill: Decodable, Identifiable, Hashable {
+    let slug: String
+    let name: String
+    let description: String
+    let author: String?
+    let downloads: Int?
+    let installsCurrent: Int?
+    let installsAllTime: Int?
+    let stars: Int?
+    let version: String?
+    let tags: [String]
+    let updatedAt: Double?
+    let registry: String
+
+    private enum CodingKeys: String, CodingKey {
+        case slug, name, description, author, downloads, installsCurrent, installs_current
+        case installsAllTime, installs_all_time, stars, version, tags, updatedAt, updated_at, registry
+    }
+
+    var id: String { "\(registry):\(slug)" }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        slug = try container.decodeFlexibleString(forKeys: [.slug]) ?? ""
+        name = try container.decodeFlexibleString(forKeys: [.name]) ?? slug
+        description = try container.decodeFlexibleString(forKeys: [.description]) ?? ""
+        author = try container.decodeFlexibleString(forKeys: [.author])
+        downloads = try container.decodeFlexibleInt(forKeys: [.downloads])
+        installsCurrent = try container.decodeFlexibleInt(forKeys: [.installsCurrent, .installs_current])
+        installsAllTime = try container.decodeFlexibleInt(forKeys: [.installsAllTime, .installs_all_time])
+        stars = try container.decodeFlexibleInt(forKeys: [.stars])
+        version = try container.decodeFlexibleString(forKeys: [.version])
+        tags = try container.decodeFlexibleStringArray(forKey: .tags) ?? []
+        updatedAt = try container.decodeFlexibleDouble(forKeys: [.updatedAt, .updated_at])
+        registry = try container.decodeFlexibleString(forKeys: [.registry]) ?? "registry"
+    }
+}
+
+struct GatewaySkillsRegistryResponse: Decodable, Hashable {
+    let skills: [GatewayRegistrySkill]
+    let registries: [String]
+    let counts: [String: Int]
+}
+
+struct GatewaySkillInstallResult: Decodable, Hashable {
+    let success: Bool
+    let error: String?
+    let blockedReason: String?
+    let requiresConfirmation: Bool?
+    let slug: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case success, error, blockedReason, blocked_reason, requiresConfirmation, requires_confirmation, slug
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = try container.decodeFlexibleBool(forKeys: [.success]) ?? false
+        error = try container.decodeFlexibleString(forKeys: [.error])
+        blockedReason = try container.decodeFlexibleString(forKeys: [.blockedReason, .blocked_reason])
+        requiresConfirmation = try container.decodeFlexibleBool(
+            forKeys: [.requiresConfirmation, .requires_confirmation]
+        )
+        slug = try container.decodeFlexibleString(forKeys: [.slug])
+    }
+}
+
 struct GatewaySessionStatusSnapshot: Decodable, Hashable {
     let sessionId: String
     let status: String?
