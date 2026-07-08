@@ -65,7 +65,15 @@ export function Hero(): React.ReactElement {
         <div className="hero-orb">
           <div className="hero-orb-ring hero-orb-ring--outer" />
           <div className="hero-orb-ring hero-orb-ring--inner" />
-          <img src="/cybara.png" alt="" className="hero-logo" />
+          <img
+            src="/cybara-256.webp"
+            alt=""
+            className="hero-logo"
+            width={256}
+            height={256}
+            fetchPriority="high"
+            decoding="async"
+          />
         </div>
       </div>
     </section>

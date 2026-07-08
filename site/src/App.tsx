@@ -2,8 +2,10 @@ import { Background } from "./components/Background";
 import { Nav } from "./components/Nav";
 import { Hero } from "./components/Hero";
 import { Features } from "./components/Features";
+import { Providers } from "./components/Providers";
 import { Channels } from "./components/Channels";
 import { Platforms } from "./components/Platforms";
+import { UseCases } from "./components/UseCases";
 import { HowItWorks } from "./components/HowItWorks";
 import { Downloads } from "./components/Downloads";
 import { Migrate } from "./components/Migrate";
@@ -20,8 +22,10 @@ export function App(): React.ReactElement {
       <main>
         <Hero />
         <Features />
+        <Providers />
         <Channels />
         <Platforms />
+        <UseCases />
         <HowItWorks />
         <Downloads />
         <Migrate />

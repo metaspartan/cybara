@@ -6,7 +6,15 @@ export function Footer(): React.ReactElement {
     <footer className="footer">
       <div className="footer-inner">
         <div className="footer-brand">
-          <img src="/cybara.png" alt="" className="footer-logo" width={28} height={28} />
+          <img
+            src="/cybara-128.webp"
+            alt="Cybara"
+            className="footer-logo"
+            width={28}
+            height={28}
+            loading="lazy"
+            decoding="async"
+          />
           <span className="footer-wordmark">Cybara</span>
         </div>
         <nav className="footer-links" aria-label="Footer">

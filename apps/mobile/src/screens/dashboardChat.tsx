@@ -9,7 +9,6 @@ import {
   type TextStyle,
 } from "react-native";
 import { useEffect, useState } from "react";
-import * as Clipboard from "expo-clipboard";
 import {
   AlertTriangle,
   Check,
@@ -34,6 +33,7 @@ import {
   type MarkdownInline,
 } from "../lib/chat-format";
 import type { SessionDetailSummary, SessionMessageSummary } from "../lib/api";
+import { Clipboard } from "../lib/expoNativeModules";
 
 /** Render inline markdown spans (bold/italic/code/strike/link) inside a Text. */
 function InlineMarkdown({ tokens }: { tokens: MarkdownInline[] }) {

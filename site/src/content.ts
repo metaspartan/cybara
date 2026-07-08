@@ -15,6 +15,17 @@ export interface Stat {
   label: string;
 }
 
+export interface Provider {
+  name: string;
+  mark: string;
+}
+
+export interface UseCase {
+  title: string;
+  description: string;
+  icon: string;
+}
+
 export interface NavLink {
   label: string;
   href: string;
@@ -22,9 +33,9 @@ export interface NavLink {
 
 export const NAV_LINKS: readonly NavLink[] = [
   { label: "Features", href: "#features" },
+  { label: "Providers", href: "#providers" },
   { label: "Channels", href: "#channels" },
   { label: "Download", href: "#download" },
-  { label: "Migrate", href: "#migrate" },
   { label: "Control", href: "#control" },
 ];
 
@@ -34,9 +45,59 @@ export const INSTALL_COMMAND =
   "curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash";
 
 export const STATS: readonly Stat[] = [
+  { value: "20+", label: "model providers" },
   { value: "30+", label: "messaging channels" },
-  { value: "3", label: "chains: ETH · BTC · SOL" },
-  { value: "1", label: "self-hosted runtime" },
+  { value: "76", label: "built-in tools" },
+  { value: "100%", label: "self-hosted" },
+];
+
+export const PROVIDERS: readonly Provider[] = [
+  { name: "OpenAI", mark: "openai" },
+  { name: "Anthropic", mark: "anthropic" },
+  { name: "Google Gemini", mark: "google" },
+  { name: "xAI Grok", mark: "xai" },
+  { name: "Meta Llama", mark: "meta" },
+  { name: "Mistral", mark: "mistral" },
+  { name: "DeepSeek", mark: "deepseek" },
+  { name: "Moonshot Kimi", mark: "moonshot" },
+  { name: "MiniMax", mark: "minimax" },
+  { name: "Zhipu GLM", mark: "zhipu" },
+  { name: "Groq", mark: "groq" },
+  { name: "Ollama", mark: "ollama" },
+  { name: "OpenRouter", mark: "openrouter" },
+  { name: "AWS Bedrock", mark: "bedrock" },
+  { name: "Azure OpenAI", mark: "azure" },
+  { name: "MCP", mark: "mcp" },
+];
+
+export const PROVIDER_NOTE =
+  "Bring your own keys or coding plans. Cybara discovers models dynamically, pools multiple credentials per provider, rotates on rate limits, and enforces spend caps and circuit breakers — swap providers without touching a line of agent logic.";
+
+export const USE_CASES: readonly UseCase[] = [
+  {
+    title: "Ship code, hands-off",
+    description:
+      "Point an agent at a repo to plan, edit across files, run the sandbox, and open reviewable diffs — with checkpoints and rollback if a step goes sideways.",
+    icon: "tools",
+  },
+  {
+    title: "Run an ops copilot in chat",
+    description:
+      "Drop the agent into Discord, Slack, or Telegram so your team triggers automations, queries systems, and gets reports where they already work.",
+    icon: "orchestration",
+  },
+  {
+    title: "Automate the browser & APIs",
+    description:
+      "Drive real websites, scrape and fill forms, call APIs, and generate media — each action gated by interactive approval and per-tool allowlists.",
+    icon: "refresh",
+  },
+  {
+    title: "Operate on-chain, safely",
+    description:
+      "Execute across Ethereum, Bitcoin, and Solana from an encrypted local wallet with amount caps, recipient allowlists, and private-address protection.",
+    icon: "wallet",
+  },
 ];
 
 export const FEATURES: readonly Feature[] = [

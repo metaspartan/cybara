@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Linking, Platform, Pressable, Text, TextInput, View } from "react-native";
-import * as Clipboard from "expo-clipboard";
 import {
   Bot,
   CalendarCheck,
@@ -28,6 +27,7 @@ import {
   BellOff,
 } from "lucide-react-native";
 import { haptics } from "../lib/haptics";
+import { Clipboard } from "../lib/expoNativeModules";
 import { accentPalette, colors } from "../theme/liquidGlass";
 import { styles } from "./dashboardStyles";
 import { EmptyState, LoadingState } from "./dashboardPrimitives";

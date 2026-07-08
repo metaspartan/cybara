@@ -217,6 +217,7 @@ import {
 } from "../lib/metrics";
 import { accentPalette, colors, spacing, type AccentKey } from "../theme/liquidGlass";
 import { styles } from "./dashboardStyles";
+import { Clipboard, ImagePicker } from "../lib/expoNativeModules";
 import {
   absoluteTimestampLabel,
   agentIsRunning,
@@ -273,9 +274,6 @@ import {
   type IconGlyph,
 } from "./dashboardPrimitives";
 import cybaraLogo from "../../assets/cybara.png";
-
-type ImagePickerModule = typeof import("expo-image-picker");
-type ClipboardModule = typeof import("expo-clipboard");
 
 interface ModuleCard {
   key: string;
@@ -2185,22 +2183,6 @@ function pendingImageUri(image: MobileMessageImage): string {
   return `data:${image.mimeType || "image/jpeg"};base64,${image.data ?? ""}`;
 }
 
-let imagePickerModulePromise: Promise<ImagePickerModule | null> | null = null;
-function loadImagePickerModule(): Promise<ImagePickerModule | null> {
-  if (!imagePickerModulePromise) {
-    imagePickerModulePromise = import("expo-image-picker").catch(() => null);
-  }
-  return imagePickerModulePromise;
-}
-
-let clipboardModulePromise: Promise<ClipboardModule | null> | null = null;
-function loadClipboardModule(): Promise<ClipboardModule | null> {
-  if (!clipboardModulePromise) {
-    clipboardModulePromise = import("expo-clipboard").catch(() => null);
-  }
-  return clipboardModulePromise;
-}
-
 function SessionDetailPanel({
   accentColor,
   api,
@@ -2591,11 +2573,6 @@ function SessionDetailPanel({
 
   const pickImages = async () => {
     if (pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS) return;
-    const ImagePicker = await loadImagePickerModule();
-    if (!ImagePicker) {
-      Alert.alert("Photo library unavailable", "This build cannot open the photo library.");
-      return;
-    }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       setLoadError("Photo library access is required to attach images.");
@@ -2619,11 +2596,6 @@ function SessionDetailPanel({
 
   const pasteImage = async () => {
     if (pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS) return;
-    const Clipboard = await loadClipboardModule();
-    if (!Clipboard?.hasImageAsync || !Clipboard?.getImageAsync) {
-      Alert.alert("Clipboard unavailable", "This build cannot read image data from the clipboard.");
-      return;
-    }
     const hasImage = await Clipboard.hasImageAsync();
     if (!hasImage) {
       Alert.alert("No image found", "Copy an image first, then attach it from the composer.");

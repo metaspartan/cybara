@@ -29,6 +29,9 @@
       content="One stack for AI chat, multi-agent orchestration, tool execution, 30+ secure channels, and encrypted wallet operations — self-hosted and open source."
     />
     <meta property="og:image" content="https://cybara.ai/cybara.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="689" />
+    <meta property="og:image:height" content="689" />
     <meta property="og:image:alt" content="Cybara logo" />
 
     <meta name="twitter:card" content="summary_large_image" />
@@ -39,12 +42,21 @@
     />
     <meta name="twitter:image" content="https://cybara.ai/cybara.png" />
 
+    <link rel="preload" as="image" href="/cybara-256.webp" fetchpriority="high" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"
-      rel="stylesheet"
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'"
     />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
 
     <script type="application/ld+json">
       {
@@ -62,7 +74,17 @@
             "license": "https://opensource.org/licenses/MIT",
             "isAccessibleForFree": true,
             "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-            "author": { "@type": "Organization", "name": "Cybara" }
+            "author": { "@type": "Organization", "name": "Cybara" },
+            "featureList": [
+              "Multi-agent orchestration with Mixture of Agents and weighted routing",
+              "Built-in tool library for code, files, browser and API automation",
+              "Self-improving skills and persistent agent memory",
+              "Encrypted local wallet control across Ethereum, Bitcoin, and Solana",
+              "30+ messaging-channel adapters with pairing and per-channel policy",
+              "Model Context Protocol (MCP) server support",
+              "Broad provider catalog with credential pooling and spend caps",
+              "Operator controls: tool allowlists, checkpoints, and rollback"
+            ]
           },
           {
             "@type": "WebSite",
@@ -76,6 +98,29 @@
             "url": "https://cybara.ai/",
             "logo": "https://cybara.ai/cybara.png",
             "sameAs": ["https://github.com/metaspartan/cybara"]
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": "https://cybara.ai/"
+              },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Features",
+                "item": "https://cybara.ai/#features"
+              },
+              {
+                "@type": "ListItem",
+                "position": 3,
+                "name": "Download",
+                "item": "https://cybara.ai/#download"
+              }
+            ]
           },
           {
             "@type": "FAQPage",

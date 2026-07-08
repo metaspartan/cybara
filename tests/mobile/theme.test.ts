@@ -95,7 +95,9 @@ describe("mobile theming", () => {
 
   test("shared glass probe prefers native expo-glass-effect", () => {
     const src = read("components/glassSupport.ts");
-    expect(src).toContain('import("expo-glass-effect")');
+    const nativeModules = read("lib/expoNativeModules.native.ts");
+    expect(src).toContain('from "../lib/expoNativeModules"');
+    expect(nativeModules).toContain('from "expo-glass-effect"');
     expect(src).toContain("canUseNativeGlassRuntime");
     expect(src).toContain("isGlassEffectAPIAvailable");
     expect(src).toContain("isLiquidGlassAvailable");
@@ -156,13 +158,15 @@ describe("mobile theming", () => {
     expect(src).not.toContain('useState("http://127.0.0.1:4269")');
   });
 
-  test("mobile connect screen does not load camera native modules until scanning", () => {
+  test("mobile connect screen does not request camera access until scanning", () => {
     const src = read("screens/ConnectScreen.tsx");
-    const lazyCameraImport = ["await", 'import("expo-camera")'].join(" ");
-    expect(src).toContain('import type { BarcodeScanningResult } from "expo-camera"');
+    const nativeModules = read("lib/expoNativeModules.native.ts");
+    expect(src).toContain('from "../lib/expoNativeModules"');
+    expect(nativeModules).toContain('from "expo-camera"');
+    expect(src).toContain("Camera.getCameraPermissionsAsync()");
+    expect(src).toContain("Camera.requestCameraPermissionsAsync()");
     expect(src).not.toContain("useCameraPermissions");
-    expect(src).not.toContain("import { CameraView");
-    expect(src).toContain(lazyCameraImport);
+    expect(src).not.toContain('import("expo-camera")');
     expect(src).toContain(
       "onBarcodeScanned={scanLocked || connectBusy ? undefined : connectScannedPayload}"
     );

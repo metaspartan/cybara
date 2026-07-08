@@ -1,4 +1,5 @@
 import type { CybaraMobileApi } from "./api";
+import { Constants, Notifications, Platform } from "./expoNativeModules";
 
 type PermissionStatus = "granted" | "denied" | "undetermined" | string;
 
@@ -33,36 +34,17 @@ export interface MobilePushRegistrationOptions {
   constants?: ConstantsLike | null;
 }
 
-async function loadNotifications(): Promise<NotificationsLike | null> {
-  try {
-    const mod = await import("expo-notifications");
-    return mod as unknown as NotificationsLike;
-  } catch {
-    return null;
-  }
+function defaultNotifications(): NotificationsLike {
+  return Notifications as unknown as NotificationsLike;
 }
 
-async function loadConstants(): Promise<ConstantsLike | null> {
-  try {
-    const mod = await import("expo-constants");
-    return ((mod as { default?: ConstantsLike }).default ?? mod) as ConstantsLike;
-  } catch {
-    return null;
-  }
+function defaultConstants(): ConstantsLike {
+  return Constants as ConstantsLike;
 }
 
-async function isExpoGoRuntime(constants?: ConstantsLike | null): Promise<boolean> {
-  const resolved = constants === undefined ? await loadConstants() : constants;
+function isExpoGoRuntime(constants?: ConstantsLike | null): boolean {
+  const resolved = constants === undefined ? defaultConstants() : constants;
   return resolved?.executionEnvironment === "storeClient" || resolved?.appOwnership === "expo";
-}
-
-async function loadNativePlatform(): Promise<string> {
-  try {
-    const mod = await import("react-native");
-    return (mod as { Platform?: { OS?: string } }).Platform?.OS || "unknown";
-  } catch {
-    return "unknown";
-  }
 }
 
 function expoProjectId(constants: ConstantsLike | null | undefined): string | undefined {
@@ -86,11 +68,11 @@ function nativePushPlatform(platform: string): "ios" | "android" | null {
 export async function configureMobileNotificationPresentation(
   options: MobilePushRegistrationOptions = {}
 ): Promise<boolean> {
-  if (options.notifications === undefined && (await isExpoGoRuntime(options.constants))) {
+  if (options.notifications === undefined && isExpoGoRuntime(options.constants)) {
     return false;
   }
   const notifications =
-    options.notifications === undefined ? await loadNotifications() : options.notifications;
+    options.notifications === undefined ? defaultNotifications() : options.notifications;
   if (!notifications?.setNotificationHandler) return false;
   try {
     notifications.setNotificationHandler({
@@ -111,19 +93,19 @@ export async function registerMobilePushNotifications(
   api: CybaraMobileApi,
   options: MobilePushRegistrationOptions = {}
 ): Promise<MobilePushRegistrationResult> {
-  if (options.notifications === undefined && (await isExpoGoRuntime(options.constants))) {
+  if (options.notifications === undefined && isExpoGoRuntime(options.constants)) {
     return {
       status: "unavailable",
       message: "Push notifications require a development build (not Expo Go).",
     };
   }
 
-  const platform = nativePushPlatform(options.platform ?? (await loadNativePlatform()));
+  const platform = nativePushPlatform(options.platform ?? Platform.OS);
   if (!platform)
     return { status: "unavailable", message: "Push notifications require iOS or Android." };
 
   const notifications =
-    options.notifications === undefined ? await loadNotifications() : options.notifications;
+    options.notifications === undefined ? defaultNotifications() : options.notifications;
   if (!notifications) {
     return { status: "unavailable", message: "Expo notifications are unavailable." };
   }
@@ -142,7 +124,7 @@ export async function registerMobilePushNotifications(
   }
 
   try {
-    const constants = options.constants === undefined ? await loadConstants() : options.constants;
+    const constants = options.constants === undefined ? defaultConstants() : options.constants;
     const projectId = expoProjectId(constants);
     const token = (await notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined))
       .data;

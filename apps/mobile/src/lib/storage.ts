@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { GatewayProfile } from "./connection";
+import { SecureStore } from "./expoNativeModules";
 
 const PROFILE_KEY = "cybara.mobile.gatewayProfiles";
 const ACTIVE_KEY = "cybara.mobile.activeGatewayId";
@@ -10,44 +11,35 @@ export interface KeyValueStorage {
   removeItem(key: string): Promise<void>;
 }
 
-// expo-secure-store is a native module (iOS Keychain / Android Keystore). Load
-// it lazily and defensively: resolve to a usable module ONLY if every method we
-// need is actually a function, otherwise null so we fall back to AsyncStorage.
-// This keeps the app crash-free on a dev client that hasn't been rebuilt with
-// the native module yet, while giving encrypted-at-rest storage once it has.
 type SecureStoreLike = {
   getItemAsync(key: string): Promise<string | null>;
   setItemAsync(key: string, value: string): Promise<void>;
   deleteItemAsync(key: string): Promise<void>;
 };
-let secureStorePromise: Promise<SecureStoreLike | null> | null = null;
+
+let secureStoreProbe: Promise<SecureStoreLike | null> | null = null;
 function loadSecureStore(): Promise<SecureStoreLike | null> {
-  if (!secureStorePromise) {
-    secureStorePromise = (async () => {
-      try {
-        const mod = (await import("expo-secure-store")) as Partial<SecureStoreLike>;
-        if (
-          typeof mod?.getItemAsync === "function" &&
-          typeof mod?.setItemAsync === "function" &&
-          typeof mod?.deleteItemAsync === "function"
-        ) {
-          // Probe once so a native-module-missing error surfaces here (and is
-          // swallowed) rather than on the first real read.
-          await mod.getItemAsync("cybara.securestore.probe");
-          return mod as SecureStoreLike;
-        }
+  if (!secureStoreProbe) {
+    secureStoreProbe = (async () => {
+      const store = SecureStore as Partial<SecureStoreLike>;
+      if (
+        typeof store.getItemAsync !== "function" ||
+        typeof store.setItemAsync !== "function" ||
+        typeof store.deleteItemAsync !== "function"
+      ) {
         return null;
+      }
+      try {
+        await store.getItemAsync("cybara.securestore.probe");
+        return store as SecureStoreLike;
       } catch {
         return null;
       }
     })();
   }
-  return secureStorePromise;
+  return secureStoreProbe;
 }
 
-// The gateway profile carries the API bearer token, so persist it in the OS
-// secure enclave when available, with AsyncStorage fallback + one-time
-// migration of any pre-existing plaintext value.
 const secureStorage: KeyValueStorage = {
   async getItem(key) {
     const store = await loadSecureStore();

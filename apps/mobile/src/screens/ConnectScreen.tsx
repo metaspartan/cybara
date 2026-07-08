@@ -9,11 +9,9 @@ import {
   verifyGatewayProfile,
   type GatewayProfile,
 } from "../lib/connection";
+import { Camera, CameraView } from "../lib/expoNativeModules";
 import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
 import cybaraLogo from "../../assets/cybara.png";
-
-type CameraModule = typeof import("expo-camera");
-type CameraViewComponent = CameraModule["CameraView"];
 
 function scannedPayloadText(result: BarcodeScanningResult): string {
   if (!result || typeof result.data !== "string") {
@@ -40,8 +38,6 @@ export function ConnectScreen({
   const [connectBusy, setConnectBusy] = useState(false);
   const [connectStatus, setConnectStatus] = useState("");
   const [connectError, setConnectError] = useState("");
-  const [CameraViewComponent, setCameraViewComponent] = useState<CameraViewComponent | null>(null);
-  const cameraModuleRef = useRef<CameraModule | null>(null);
   const mountedRef = useRef(true);
   const scanLockRef = useRef(false);
 
@@ -72,14 +68,6 @@ export function ConnectScreen({
     setStatusIfMounted("Connected");
   };
 
-  const loadCameraModule = async () => {
-    if (cameraModuleRef.current) return cameraModuleRef.current;
-    const mod = await import("expo-camera");
-    cameraModuleRef.current = mod;
-    if (mountedRef.current) setCameraViewComponent(() => mod.CameraView);
-    return mod;
-  };
-
   const connectManual = async () => {
     if (connectBusy) return;
     setConnectBusy(true);
@@ -108,19 +96,11 @@ export function ConnectScreen({
   };
 
   const openScanner = async () => {
-    let camera: CameraModule;
     try {
-      camera = await loadCameraModule();
-    } catch {
-      Alert.alert("Camera unavailable", "This build cannot load the camera scanner.");
-      return;
-    }
-
-    try {
-      const currentPermission = await camera.Camera.getCameraPermissionsAsync();
+      const currentPermission = await Camera.getCameraPermissionsAsync();
       const nextPermission = currentPermission.granted
         ? currentPermission
-        : await camera.Camera.requestCameraPermissionsAsync();
+        : await Camera.requestCameraPermissionsAsync();
       if (!nextPermission.granted) {
         Alert.alert(
           "Camera permission is required",
@@ -188,9 +168,9 @@ export function ConnectScreen({
           selected={scannerOpen}
           disabled={connectBusy}
         />
-        {scannerOpen && CameraViewComponent ? (
+        {scannerOpen ? (
           <View style={styles.cameraWrap}>
-            <CameraViewComponent
+            <CameraView
               barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
               facing="back"
               onBarcodeScanned={scanLocked || connectBusy ? undefined : connectScannedPayload}

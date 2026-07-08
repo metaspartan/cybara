@@ -16,7 +16,14 @@ export function Nav(): React.ReactElement {
     <header className={scrolled ? "nav nav--scrolled" : "nav"}>
       <div className="nav-inner">
         <a className="nav-brand" href="#top" aria-label="Cybara home">
-          <img src="/cybara.png" alt="" className="nav-logo" width={32} height={32} />
+          <img
+            src="/cybara-128.webp"
+            alt=""
+            className="nav-logo"
+            width={32}
+            height={32}
+            decoding="async"
+          />
           <span className="nav-wordmark">Cybara</span>
         </a>
         <nav className="nav-links" aria-label="Primary">

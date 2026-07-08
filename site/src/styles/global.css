@@ -561,6 +561,90 @@ img {
   gap: 20px;
 }
 
+.provider-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+}
+
+.provider-tile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  background: var(--glass-surface);
+  border: 1px solid var(--glass-border);
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.provider-tile:hover {
+  transform: translateY(-4px);
+  border-color: rgba(139, 92, 246, 0.4);
+  background: var(--glass-surface-strong);
+}
+
+.provider-mark {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(139, 92, 246, 0.24);
+  color: #c4b5fd;
+}
+
+.provider-name {
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+.usecase-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.usecase-card {
+  display: flex;
+  gap: 18px;
+  padding: 28px;
+  transition: transform 0.25s ease, border-color 0.25s ease;
+}
+
+.usecase-card:hover {
+  transform: translateY(-6px);
+  border-color: var(--glass-border-strong);
+}
+
+.usecase-icon {
+  display: grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 14px;
+  background: var(--accent-soft);
+  border: 1px solid rgba(139, 92, 246, 0.28);
+  color: #c4b5fd;
+}
+
+.usecase-title {
+  font-size: 1.14rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.usecase-desc {
+  margin-top: 8px;
+  color: var(--text-dim);
+  font-size: 0.96rem;
+}
+
 .platform-card {
   display: flex;
   gap: 20px;
@@ -1366,6 +1450,9 @@ img {
   .steps {
     grid-template-columns: repeat(2, 1fr);
   }
+  .provider-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
   .control-layout,
   .migrate-layout {
     grid-template-columns: 1fr;
@@ -1379,8 +1466,12 @@ img {
   .feature-grid,
   .platform-grid,
   .download-grid,
+  .usecase-grid,
   .steps {
     grid-template-columns: 1fr;
+  }
+  .provider-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
   .download-card {
     flex-wrap: wrap;
