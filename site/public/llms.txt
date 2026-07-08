@@ -1,6 +1,6 @@
 # Cybara
 
-> Cybara is a self-hosted, open-source (MIT) AI agent platform. It pairs a Bun-based agent runtime with a web UI, desktop and mobile apps, a CLI, a broad tool layer, 30+ messaging-channel adapters, MCP support, and encrypted wallet controls. Agents can code, automate browsers, run messaging workflows, and execute on-chain operations while the operator stays in control.
+> Cybara is a self-hosted, open-source (MIT) AI agent platform. It pairs a Bun-based agent runtime with a web UI, desktop and mobile apps, a CLI, a broad tool layer, 26 messaging-channel adapters, MCP support, and encrypted wallet controls. Agents can code, automate browsers, run messaging workflows, and execute on-chain operations while the operator stays in control.
 
 ## What Cybara does
 

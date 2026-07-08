@@ -45,9 +45,9 @@ export const INSTALL_COMMAND =
   "curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash";
 
 export const STATS: readonly Stat[] = [
-  { value: "20+", label: "model providers" },
-  { value: "30+", label: "messaging channels" },
-  { value: "76", label: "built-in tools" },
+  { value: "64", label: "model providers" },
+  { value: "94", label: "built-in tools" },
+  { value: "26", label: "messaging channels" },
   { value: "100%", label: "self-hosted" },
 ];
 
