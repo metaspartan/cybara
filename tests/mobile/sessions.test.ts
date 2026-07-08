@@ -89,7 +89,8 @@ describe("mobile: chat management", () => {
     expect(api).toContain("interface SessionContextUsage");
     expect(api).toContain("updateSessionAgent(");
     expect(api).toContain("useModelRouter?: boolean");
-    expect(api).toContain("useModelRouter: input.useModelRouter === true");
+    expect(api).toContain("if (input.useModelRouter === true)");
+    expect(api).toContain("body.useModelRouter = true");
     expect(api).toContain("/api/sessions/${encodeURIComponent(id)}/agent");
     expect(newChat).toContain("Model Router");
     expect(newChat).toContain(".routerConfig()");

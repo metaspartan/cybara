@@ -2281,18 +2281,22 @@ export class CybaraMobileApi {
     pendingMessage?: MobilePendingChatMessage;
     pendingMessages?: MobilePendingChatMessage[];
   }> {
+    const body: Record<string, unknown> = {
+      message: input.message,
+      sessionId: input.sessionId,
+      agentId: input.agentId,
+      workspaceDir: input.workspaceDir,
+      queueMode: input.queueMode,
+      clientPendingId: input.clientPendingId,
+      images: input.images,
+    };
+    if (input.useModelRouter === true) {
+      body.useModelRouter = true;
+    }
+
     const response = await this.request<unknown>("/api/chat", {
       method: "POST",
-      body: JSON.stringify({
-        message: input.message,
-        sessionId: input.sessionId,
-        agentId: input.agentId,
-        workspaceDir: input.workspaceDir,
-        queueMode: input.queueMode,
-        clientPendingId: input.clientPendingId,
-        images: input.images,
-        useModelRouter: input.useModelRouter === true,
-      }),
+      body: JSON.stringify(body),
     });
     const record = asRecord(response);
     const messageRecord = asRecord(record?.message);

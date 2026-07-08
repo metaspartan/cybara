@@ -209,6 +209,7 @@ Policies: `pairing`, `allowlist`, `open`, `disabled`
 
 ```bash
 cybara mobile connect
+cybara mobile connect --code --url http://192.168.1.20:4269 --name "Studio Gateway" --device "Carsen iPhone"
 cybara mobile connect --url http://192.168.1.20:4269 --name "Studio Gateway" --device "Carsen iPhone"
 cybara mobile connect --json
 cybara mobile list
@@ -216,10 +217,11 @@ cybara mobile revoke <device-id>
 cybara mobile remove <device-id>
 ```
 
-`mobile connect` creates a managed device record and emits a QR-compatible
-`cybara-mobile-connect-v1` payload for the React Native iOS/Android app. The payload contains a
-revocable per-device token, not the root gateway API key. Use a LAN-reachable URL or a trusted
-tunnel when pairing from a phone; `localhost` only works on the same machine.
+`mobile connect --code` emits the preferred QR-compatible `cybara-mobile-pair-v1` one-time code for
+the React Native iOS/Android app. Plain `mobile connect` still emits the legacy
+`cybara-mobile-connect-v1` direct-token payload for compatibility. Both flows create revocable
+per-device access, not the root gateway API key. Use a LAN-reachable URL or a trusted tunnel when
+pairing from a phone; `localhost` only works on the same machine.
 
 ### MCP Servers
 

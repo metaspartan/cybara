@@ -232,6 +232,10 @@ struct GatewayClient: Sendable {
         try await get("api/mobile/devices", as: GatewayMobileDevicesResponse.self).devices
     }
 
+    func mobileConnectInfo() async throws -> GatewayMobileConnectInfo {
+        try await get("api/mobile/connect-info", as: GatewayMobileConnectInfo.self)
+    }
+
     func createMobilePairingCode(
         baseUrl: String,
         gatewayName: String,

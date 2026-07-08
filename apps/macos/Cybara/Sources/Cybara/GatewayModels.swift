@@ -1111,6 +1111,23 @@ struct GatewayMobileDevicesResponse: Decodable {
     let devices: [GatewayMobileDevice]
 }
 
+struct GatewayMobileRemoteAccessInfo: Decodable, Hashable {
+    let enabled: Bool
+    let ready: Bool
+    let mode: String?
+    let provider: String?
+    let baseUrl: String?
+    let message: String?
+}
+
+struct GatewayMobileConnectInfo: Decodable, Hashable {
+    let baseUrl: String?
+    let lanAccessEnabled: Bool
+    let candidates: [String]
+    let warnings: [String]
+    let remoteAccess: GatewayMobileRemoteAccessInfo?
+}
+
 struct GatewayMobilePairingPayload: Decodable, Hashable {
     let `protocol`: String
     let name: String

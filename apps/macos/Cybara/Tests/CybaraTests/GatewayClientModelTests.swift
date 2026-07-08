@@ -1070,6 +1070,36 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(pairing.expiresAtDate?.timeIntervalSince1970, 1783015200)
     }
 
+    func testMobileConnectInfoDecodesGatewayReachability() throws {
+        let info = try JSONDecoder().decode(
+            GatewayMobileConnectInfo.self,
+            from: Data(
+                #"""
+                {
+                  "baseUrl": "http://192.168.1.20:4269",
+                  "lanAccessEnabled": true,
+                  "candidates": ["http://192.168.1.20:4269", "http://10.0.0.4:4269"],
+                  "warnings": ["Remote access requires a gateway password."],
+                  "remoteAccess": {
+                    "enabled": true,
+                    "ready": false,
+                    "mode": "cloudflared",
+                    "provider": "Cloudflare Tunnel",
+                    "baseUrl": null,
+                    "message": "Tunnel not ready"
+                  }
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(info.baseUrl, "http://192.168.1.20:4269")
+        XCTAssertTrue(info.lanAccessEnabled)
+        XCTAssertEqual(info.candidates.count, 2)
+        XCTAssertEqual(info.remoteAccess?.provider, "Cloudflare Tunnel")
+        XCTAssertEqual(info.remoteAccess?.ready, false)
+    }
+
     func testMetricsOverviewDecodesFullGatewayPayload() throws {
         let overview = try JSONDecoder().decode(
             MetricsOverview.self,

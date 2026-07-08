@@ -18,7 +18,7 @@ This is the native SwiftUI macOS app for Cybara. It launches the same local serv
 - keeps the Bun sidecar as the shared runtime instead of forking app-specific logic
 - injects a `window.__CYBARA_NATIVE__` bridge so the web UI can recognize the native macOS host
 - supports native external-link handling, notification permission / delivery, and workspace folder picking via the bridge
-- provides native SwiftUI screens for dashboard summaries, chats/sessions, agents, providers, router and provider plan limits, metrics, tasks, memory providers, wallet, mobile pairing, speech settings, source migration, gateway logs, and gateway restart
+- provides native SwiftUI screens for dashboard summaries, chats/sessions, agents, providers, router and provider plan limits, metrics, tasks, memory providers, wallet, LAN/remote-gated mobile pairing, speech settings, source migration, gateway logs, and gateway restart
 - can rotate the gateway API key without restarting the sidecar and can restart the gateway when a full sidecar reload is needed
 
 ## Build

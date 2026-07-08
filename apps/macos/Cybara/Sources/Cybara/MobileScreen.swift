@@ -34,9 +34,11 @@ struct MobileScreen: View {
     @Environment(\.cybaraAccent) private var accent
 
     @State private var devices: [GatewayMobileDevice] = []
+    @State private var connectInfo: GatewayMobileConnectInfo?
     @State private var deviceName: String
     @State private var gatewayName = "Cybara Gateway"
     @State private var baseUrl: String
+    @State private var baseUrlTouched = false
     @State private var role: MobilePairingRole = .standard
     @State private var pairing: GatewayMobilePairingCode?
     @State private var loading = true
@@ -73,7 +75,32 @@ struct MobileScreen: View {
             }
             .padding(24)
         }
-        .task { await loadDevices() }
+        .task { await loadMobileScreen() }
+    }
+
+    private var trimmedBaseUrl: String {
+        baseUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canCreatePairing: Bool {
+        connectInfo?.lanAccessEnabled == true || connectInfo?.remoteAccess?.ready == true
+    }
+
+    private var detectedPairingUrls: [String] {
+        var seen = Set<String>()
+        return ([connectInfo?.baseUrl].compactMap { $0 } + (connectInfo?.candidates ?? [])).filter {
+            seen.insert($0).inserted
+        }
+    }
+
+    private var networkAccessDetail: String {
+        if canCreatePairing {
+            return "Pairing is available through local network access or a ready remote access URL."
+        }
+        if connectInfo?.remoteAccess?.enabled == true {
+            return "Remote Access is enabled but not ready. Finish Gateway settings or turn on local network access."
+        }
+        return "Turn on Listen on local network or configure Remote Access in Gateway settings before pairing a phone."
     }
 
     private var pairingCard: some View {
@@ -98,12 +125,19 @@ struct MobileScreen: View {
 
                 VStack(alignment: .leading, spacing: 5) {
                     LabeledContent("URL") {
-                        TextField("http://192.168.1.20:4269", text: $baseUrl)
+                        TextField(
+                            "http://192.168.1.20:4269",
+                            text: Binding(
+                                get: { baseUrl },
+                                set: { value in
+                                    baseUrlTouched = true
+                                    baseUrl = value
+                                }
+                            )
+                        )
                             .textFieldStyle(.roundedBorder)
                     }
-                    Text("Use a LAN-reachable URL when pairing a real phone. 127.0.0.1 only works from this Mac.")
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(.secondary)
+                    connectionStatusSection
                 }
 
                 Picker("Access", selection: $role) {
@@ -127,7 +161,7 @@ struct MobileScreen: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(generating || baseUrl.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(generating || trimmedBaseUrl.isEmpty || !canCreatePairing)
 
                 if let pairing {
                     Divider().opacity(0.35)
@@ -135,6 +169,70 @@ struct MobileScreen: View {
                 }
             }
         }
+    }
+
+    private var connectionStatusSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label(
+                    canCreatePairing ? "Ready for mobile pairing" : "Network access required",
+                    systemImage: canCreatePairing ? "network" : "lock.shield"
+                )
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(canCreatePairing ? accent : Color.orange)
+
+                Spacer()
+
+                Button {
+                    Task { await loadConnectInfo() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .controlSize(.small)
+                .help("Refresh connection status")
+            }
+
+            Text(networkAccessDetail)
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(.secondary)
+
+            if !detectedPairingUrls.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Detected URLs")
+                        .font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    ForEach(detectedPairingUrls, id: \.self) { url in
+                        Button {
+                            baseUrlTouched = true
+                            baseUrl = url
+                        } label: {
+                            HStack(spacing: 6) {
+                                Image(systemName: baseUrl == url ? "checkmark.circle.fill" : "link")
+                                    .font(.system(size: 10, weight: .semibold))
+                                Text(url)
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(baseUrl == url ? accent : Color.secondary)
+                    }
+                }
+            }
+
+            ForEach(connectInfo?.warnings ?? [], id: \.self) { warning in
+                Text(warning)
+                    .font(.system(size: 10, design: .rounded))
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
     }
 
     private var pairedDevicesCard: some View {
@@ -294,9 +392,15 @@ struct MobileScreen: View {
     private func createPairing() async {
         generating = true
         error = nil
+        await loadConnectInfo()
+        guard canCreatePairing else {
+            error = "Enable Listen on local network or Remote Access before creating a mobile pairing QR."
+            generating = false
+            return
+        }
         do {
             pairing = try await client.createMobilePairingCode(
-                baseUrl: baseUrl,
+                baseUrl: trimmedBaseUrl,
                 gatewayName: gatewayName,
                 deviceName: deviceName,
                 role: role.rawValue
@@ -305,6 +409,23 @@ struct MobileScreen: View {
             self.error = error.localizedDescription
         }
         generating = false
+    }
+
+    private func loadMobileScreen() async {
+        await loadConnectInfo()
+        await loadDevices()
+    }
+
+    private func loadConnectInfo() async {
+        do {
+            let info = try await client.mobileConnectInfo()
+            connectInfo = info
+            if !baseUrlTouched, let url = info.baseUrl {
+                baseUrl = url
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     private func loadDevices() async {

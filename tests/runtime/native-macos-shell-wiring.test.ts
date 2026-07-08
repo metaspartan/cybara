@@ -549,4 +549,37 @@ describe("native macOS shell wiring", () => {
     expect(configScreens).toContain("client.sendWallet(body)");
     expect(configScreens).toContain("client.sendWalletToken(body)");
   });
+
+  test("native mobile pairing uses gateway connect-info before QR creation", () => {
+    const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
+    const mobileScreen = readFileSync(join(MACOS_APP_DIR, "MobileScreen.swift"), "utf8");
+    const modelTests = readFileSync(
+      join(
+        ROOT_DIR,
+        "apps",
+        "macos",
+        "Cybara",
+        "Tests",
+        "CybaraTests",
+        "GatewayClientModelTests.swift"
+      ),
+      "utf8"
+    );
+
+    expect(gatewayClient).toContain(
+      "func mobileConnectInfo() async throws -> GatewayMobileConnectInfo"
+    );
+    expect(gatewayClient).toContain('get("api/mobile/connect-info"');
+    expect(gatewayModels).toContain("struct GatewayMobileConnectInfo");
+    expect(gatewayModels).toContain("let lanAccessEnabled: Bool");
+    expect(gatewayModels).toContain("struct GatewayMobileRemoteAccessInfo");
+    expect(mobileScreen).toContain("@State private var connectInfo: GatewayMobileConnectInfo?");
+    expect(mobileScreen).toContain("private var canCreatePairing: Bool");
+    expect(mobileScreen).toContain("client.mobileConnectInfo()");
+    expect(mobileScreen).toContain("Network access required");
+    expect(mobileScreen).toContain("!canCreatePairing");
+    expect(mobileScreen).toContain("Detected URLs");
+    expect(modelTests).toContain("testMobileConnectInfoDecodesGatewayReachability");
+  });
 });
