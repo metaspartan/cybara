@@ -19,7 +19,9 @@ import { basename, dirname, join } from "path";
 import { buildSidecar } from "./build-sidecar";
 
 const ROOT = join(import.meta.dirname, "..");
-const APP_NAME = "Cybara";
+const SWIFT_PRODUCT_NAME = "Cybara";
+const APP_NAME = "CybaraNative";
+const APP_DISPLAY_NAME = "Cybara Native";
 const APP_BUNDLE_NAME = `${APP_NAME}.app`;
 const APP_PACKAGE_PATH = join(ROOT, "apps", "macos", "Cybara");
 const RELEASE_ROOT = join(ROOT, "release", "native-macos");
@@ -39,7 +41,7 @@ export function resolveNativeMacOSArch(archName: string): NativeMacOSArch {
 }
 
 export function getNativeMacOSArtifactBaseName(version: string, arch: NativeMacOSArch): string {
-  return `Cybara-v${version}-Swift-Native-Desktop-${arch}`;
+  return `CybaraNative-v${version}-${arch}`;
 }
 
 export function createNativeMacOSInfoPlist(version: string): string {
@@ -50,9 +52,9 @@ export function createNativeMacOSInfoPlist(version: string): string {
   <key>CFBundleDevelopmentRegion</key>
   <string>en</string>
   <key>CFBundleDisplayName</key>
-  <string>Cybara</string>
+  <string>${APP_DISPLAY_NAME}</string>
   <key>CFBundleExecutable</key>
-  <string>Cybara</string>
+  <string>${APP_NAME}</string>
   <key>CFBundleIconFile</key>
   <string>AppIcon.icns</string>
   <key>CFBundleIdentifier</key>
@@ -60,7 +62,7 @@ export function createNativeMacOSInfoPlist(version: string): string {
   <key>CFBundleInfoDictionaryVersion</key>
   <string>6.0</string>
   <key>CFBundleName</key>
-  <string>Cybara</string>
+  <string>${APP_DISPLAY_NAME}</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
@@ -500,7 +502,7 @@ export async function packageNativeMacOSApp(): Promise<NativeMacOSPackageResult>
   console.log("🧱 Building SwiftUI shell...");
   await $`cd ${ROOT} && swift build --package-path ${APP_PACKAGE_PATH} -c release`.quiet();
   const swiftBinDir = await readSwiftReleaseBinPath();
-  const swiftExecutablePath = join(swiftBinDir, APP_NAME);
+  const swiftExecutablePath = join(swiftBinDir, SWIFT_PRODUCT_NAME);
 
   if (!existsSync(swiftExecutablePath)) {
     throw new Error(`Swift executable not found at ${swiftExecutablePath}`);

@@ -169,11 +169,11 @@ export const DOWNLOAD_GROUPS: readonly DownloadGroup[] = [
       },
       {
         name: "macOS Native",
-        platform: "Apple Silicon .app",
-        format: ".app bundle · arm64",
+        platform: "SwiftUI · Apple Silicon",
+        format: "CybaraNative.app · arm64",
         icon: "apple",
         href: RELEASES_URL,
-        assetPattern: /(swift-native-desktop-arm64\.zip|aarch64\.app\.tar\.gz)$/i,
+        assetPattern: /CybaraNative-v[\d.]+-arm64\.zip$/i,
       },
       {
         name: "Windows",

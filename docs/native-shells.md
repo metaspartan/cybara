@@ -17,7 +17,7 @@ Design:
 - injects `window.__CYBARA_NATIVE__` so the React app can distinguish the native macOS host from plain web
 - supports native notification permission / delivery, external-link handling, and workspace folder picking through that bridge
 - exposes native SwiftUI management screens for dashboard summaries, chats/sessions, agents, providers, router and coding-plan limits, metrics, tasks, memory, wallet, mobile pairing, source migration, speech settings, gateway logs, and gateway restart
-- can be bundled as a release-ready `Cybara.app` under `release/native-macos/<arch>/`, including the compiled sidecar, web UI, `secp256k1.wasm`, sidecar `node_modules`, and local Transformers.js/ONNX runtime assets
+- can be bundled as a release-ready `CybaraNative.app` under `release/native-macos/<arch>/` (named distinctly from the Tauri `Cybara.app` so both can coexist), including the compiled sidecar, web UI, `secp256k1.wasm`, sidecar `node_modules`, and local Transformers.js/ONNX runtime assets
 - can be optionally codesigned and notarized during packaging when Apple signing credentials are configured
 - auto-restarts the managed sidecar on an unexpected crash (capped exponential backoff, then surfaces a failure)
 - handles `cybara://` deep links — `cybara://` / `cybara://open` (focus), `cybara://restart` (restart gateway), `cybara://browser` (open web UI)

@@ -42,8 +42,9 @@ after moving the app into `Applications`:
 xattr -dr com.apple.quarantine /Applications/Cybara.app
 ```
 
-For the native SwiftUI bundle, unzip it first, move `Cybara.app` to
-`/Applications`, then run the same command. This is only needed until the maintainer
+For the native SwiftUI bundle, unzip it first, move `CybaraNative.app` to
+`/Applications` (named distinctly so it never collides with the Tauri `Cybara.app`),
+then run the same command. This is only needed until the maintainer
 publishes notarized builds (see [Signing & Notarization (maintainers)](#signing--notarization-maintainers)).
 
 ## Desktop Auto Updates
