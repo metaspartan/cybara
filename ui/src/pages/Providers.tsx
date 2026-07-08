@@ -513,7 +513,7 @@ function ProviderPlanSummary({ plan }: { plan?: ProviderPlanSnapshot }) {
   if (!plan.managedAutomatically) return null;
 
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
+    <div className="mt-2 flex flex-wrap gap-2">
       <ProviderPlanUsagePill label="5h" usage={fiveHour} />
       <ProviderPlanUsagePill label="Weekly" usage={weekly} />
     </div>
@@ -532,15 +532,15 @@ function ProviderPlanUsagePill({
   const width = usage.unlimited ? 100 : (percent ?? 0);
   return (
     <span
-      className={`inline-flex min-w-[92px] flex-col gap-1 rounded-full border px-2.5 py-1.5 text-xs ${tone.borderClass} ${tone.bgClass} ${tone.textClass}`}
+      className={`inline-flex min-w-[112px] flex-col gap-1.5 rounded-lg border px-3 py-2 text-xs ${tone.borderClass} ${tone.bgClass} ${tone.textClass}`}
     >
       <span className="flex w-full items-center justify-between gap-2">
         <span className="text-gray-400">{label}</span>
         <span className="font-semibold tabular-nums">{usage.value}</span>
       </span>
-      <span className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+      <span className="h-1.5 w-full overflow-hidden rounded-md bg-white/10">
         <span
-          className={`block h-full rounded-full ${tone.fillClass}`}
+          className={`block h-full rounded-md ${tone.fillClass}`}
           style={{ width: `${Math.max(usage.unlimited ? 100 : 0, width)}%` }}
         />
       </span>

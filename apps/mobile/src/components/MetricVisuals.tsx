@@ -185,7 +185,14 @@ export function MetricShareRows({
   rows,
   tone,
 }: {
-  rows: Array<{ label: string; value: string; detail?: string; amount: number; progress?: number; tone?: string }>;
+  rows: Array<{
+    label: string;
+    value: string;
+    detail?: string;
+    amount: number;
+    progress?: number;
+    tone?: string;
+  }>;
   tone: string;
 }) {
   const max = Math.max(1, ...rows.map((row) => row.amount));

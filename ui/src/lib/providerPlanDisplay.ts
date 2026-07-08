@@ -7,13 +7,7 @@ export interface ProviderPlanWindowDisplay {
   resetLabel: string | null;
 }
 
-export type ProviderPlanUsageLevel =
-  | "unknown"
-  | "green"
-  | "blue"
-  | "yellow"
-  | "orange"
-  | "red";
+export type ProviderPlanUsageLevel = "unknown" | "green" | "blue" | "yellow" | "orange" | "red";
 
 export interface ProviderPlanUsageClasses {
   level: ProviderPlanUsageLevel;

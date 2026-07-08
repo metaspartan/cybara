@@ -1539,7 +1539,9 @@ function MetricsPanel({
             return {
               label: `${plan.providerName} · ${label}`,
               value: usage.value,
-              detail: usage.reset ? `${plan.planName || plan.status} · ${usage.reset}` : plan.planName || plan.status,
+              detail: usage.reset
+                ? `${plan.planName || plan.status} · ${usage.reset}`
+                : plan.planName || plan.status,
               amount: usage.progress,
               progress: usage.progress,
               tone: usage.tone,

@@ -28,7 +28,7 @@ import {
   BellOff,
 } from "lucide-react-native";
 import { haptics } from "../lib/haptics";
-import { colors } from "../theme/liquidGlass";
+import { accentPalette, colors } from "../theme/liquidGlass";
 import { styles } from "./dashboardStyles";
 import { EmptyState, LoadingState } from "./dashboardPrimitives";
 import {
@@ -164,23 +164,63 @@ function gatewayActionError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-function providerPlanWindowValue(
+type MobileProviderPlanUsageRow = {
+  label: string;
+  value: string;
+  progress: number;
+  reset: string | null;
+  tone: string;
+};
+
+function providerPlanWindowUsage(
   plan: ProviderPlanStatusResponse["providers"][number] | null,
-  kind: "rolling_5h" | "rolling_week"
-): string {
-  if (!plan?.managedAutomatically) return "--";
+  kind: "rolling_5h" | "rolling_week",
+  label: string
+): MobileProviderPlanUsageRow | null {
+  if (!plan?.managedAutomatically) return null;
   const window = plan.windows.find(
     (entry) =>
       entry.kind === kind &&
       entry.usageKnown &&
       (entry.unlimited || typeof entry.usedPercent === "number")
   );
-  if (!window || (!window.unlimited && typeof window.usedPercent !== "number")) return "--";
-  const value = window.unlimited
-    ? "∞"
-    : `${Math.min(100, Math.max(0, Math.ceil(window.usedPercent ?? 0)))}%`;
-  const reset = mobilePlanResetLabel(window.resetsAt);
-  return reset ? `${value} (${reset})` : value;
+  if (!window || (!window.unlimited && typeof window.usedPercent !== "number")) return null;
+  const progress = window.unlimited
+    ? 100
+    : Math.min(100, Math.max(0, Math.ceil(window.usedPercent ?? 0)));
+  return {
+    label,
+    value: window.unlimited ? "∞" : `${progress}%`,
+    progress,
+    reset: mobilePlanResetLabel(window.resetsAt),
+    tone: providerPlanUsageTone(progress, window.unlimited),
+  };
+}
+
+function providerPlanWindowValue(
+  plan: ProviderPlanStatusResponse["providers"][number] | null,
+  kind: "rolling_5h" | "rolling_week"
+): string {
+  const usage = providerPlanWindowUsage(plan, kind, kind === "rolling_5h" ? "5h" : "Weekly");
+  if (!usage) return "--";
+  return usage.reset ? `${usage.value} (${usage.reset})` : usage.value;
+}
+
+function providerPlanUsageRows(
+  plan: ProviderPlanStatusResponse["providers"][number] | null
+): MobileProviderPlanUsageRow[] {
+  return [
+    providerPlanWindowUsage(plan, "rolling_5h", "5h"),
+    providerPlanWindowUsage(plan, "rolling_week", "Weekly"),
+  ].filter((row): row is MobileProviderPlanUsageRow => row !== null);
+}
+
+function providerPlanUsageTone(progress: number, unlimited = false): string {
+  if (unlimited || progress < 40) return colors.green;
+  if (progress < 65) return colors.blueText;
+  if (progress < 80) return colors.amber;
+  if (progress < 95) return accentPalette.orange;
+  return colors.red;
 }
 
 function providerPlanUsageSummary(
@@ -596,6 +636,7 @@ export function ProviderSettingsPanel({
   const selectedPlanPreset = planPresets.find((preset) => preset.id === planPresetId);
   const manualPlanEditable = providerPlan?.manualPlanEditable !== false;
   const planUsageSummary = providerPlanUsageSummary(providerPlan);
+  const planUsageRows = providerPlanUsageRows(providerPlan);
 
   const applyPlanPreset = (presetId: string) => {
     setPlanPresetId(presetId);
@@ -864,14 +905,38 @@ export function ProviderSettingsPanel({
         </View>
       </View>
 
-      {planUsageSummary ? (
+      {planUsageRows.length > 0 ? (
         <View style={styles.settingsInfoBox}>
           <View style={styles.routerSummaryRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.settingsInfoTitle}>Plan usage</Text>
-              <Text style={styles.settingsInfoText}>{planUsageSummary}</Text>
+              {planUsageSummary ? (
+                <Text style={styles.settingsInfoText}>{planUsageSummary}</Text>
+              ) : null}
             </View>
             <Text style={[styles.routerSummaryValue, { color: colors.blueText }]}>Auto</Text>
+          </View>
+          <View style={styles.providerPlanUsageGrid}>
+            {planUsageRows.map((row) => (
+              <View key={row.label} style={styles.providerPlanUsageCard}>
+                <View style={styles.providerPlanUsageHeader}>
+                  <Text style={styles.settingsInfoText}>{row.label}</Text>
+                  <Text style={[styles.routerSummaryValue, { color: row.tone }]}>{row.value}</Text>
+                </View>
+                <View style={styles.providerPlanUsageTrack}>
+                  <View
+                    style={[
+                      styles.providerPlanUsageFill,
+                      {
+                        backgroundColor: row.tone,
+                        width: `${Math.max(4, row.progress)}%`,
+                      },
+                    ]}
+                  />
+                </View>
+                {row.reset ? <Text style={styles.settingsFieldHelp}>{row.reset}</Text> : null}
+              </View>
+            ))}
           </View>
         </View>
       ) : null}

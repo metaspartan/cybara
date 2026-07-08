@@ -169,11 +169,11 @@ export const DOWNLOAD_GROUPS: readonly DownloadGroup[] = [
       },
       {
         name: "macOS Native",
-        platform: "SwiftUI shell",
-        format: ".app · arm64",
+        platform: "Apple Silicon .app",
+        format: ".app bundle · arm64",
         icon: "apple",
         href: RELEASES_URL,
-        assetPattern: /Native-Desktop-arm64\.zip$/i,
+        assetPattern: /(swift-native-desktop-arm64\.zip|aarch64\.app\.tar\.gz)$/i,
       },
       {
         name: "Windows",

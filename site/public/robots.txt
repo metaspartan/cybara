@@ -25,4 +25,4 @@ Allow: /
 User-agent: Applebot-Extended
 Allow: /
 
-Sitemap: https://cybara.dev/sitemap.xml
+Sitemap: https://cybara.ai/sitemap.xml

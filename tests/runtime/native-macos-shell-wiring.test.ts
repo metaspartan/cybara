@@ -285,6 +285,13 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("providerPlanStatus: ProviderPlanStatusResponse?");
     expect(nativeScreens).toContain("private var activeProviderPlan: ProviderPlanSnapshot?");
     expect(nativeScreens).toContain("private var providerPlanText: String?");
+    expect(nativeScreens).toContain("private var providerPlanUsageRows");
+    expect(nativeScreens).toContain("NativeContextProviderPlanUsageBar");
+    expect(nativeScreens).toContain("nativeContextProviderPlanUsageTint");
+    expect(nativeScreens).toContain("if percent < 40 { return .green }");
+    expect(nativeScreens).toContain("if percent < 65 { return .blue }");
+    expect(nativeScreens).toContain("if percent < 80 { return .yellow }");
+    expect(nativeScreens).toContain("if percent < 95 { return .orange }");
     expect(nativeScreens).toContain("client.providerPlanStatus()");
     expect(nativeScreens).toContain("pendingAgentSessionID = selectedSessionID");
     expect(nativeScreens).toContain("private func changeChatAgent(_ agentID: String) async");
@@ -307,6 +314,14 @@ describe("native macOS shell wiring", () => {
     expect(providersScreen).toContain('ProviderPlanUsageValue(text: "∞"');
     expect(providersScreen).toContain("providerPlanResetText(window.resetsAt)");
     expect(providersScreen).toContain("ceil(window.usedPercent");
+    expect(providersScreen).toContain("RoundedRectangle(cornerRadius: 8, style: .continuous)");
+    expect(providersScreen).toContain(".padding(.horizontal, 10)");
+    expect(providersScreen).toContain(".padding(.vertical, 7)");
+    expect(providersScreen).toContain(".frame(height: 5)");
+    expect(providersScreen).toContain("if percent < 40 { return .green }");
+    expect(providersScreen).toContain("if percent < 65 { return .blue }");
+    expect(providersScreen).toContain("if percent < 80 { return .yellow }");
+    expect(providersScreen).toContain("if percent < 95 { return .orange }");
     expect(providersScreen).toContain("if !planManualEditable");
     expect(configScreens).toContain("let manualPlanEditable = plan?.manualPlanEditable ?? true");
     expect(configScreens).toContain(
@@ -315,6 +330,23 @@ describe("native macOS shell wiring", () => {
     expect(configScreens).toContain(
       "if manualPlanEditable, let plan, !plan.presetSuggestions.isEmpty"
     );
+  });
+
+  test("native metrics renders automatic provider plan windows as colored progress rows", () => {
+    const metricsScreen = readFileSync(join(MACOS_APP_DIR, "NativeMetricsScreen.swift"), "utf8");
+
+    expect(metricsScreen).toContain("nativeProviderPlanWindowMetric(plan: plan, kind: kind)");
+    expect(metricsScreen).toContain('("5h", "rolling_5h")');
+    expect(metricsScreen).toContain('("Weekly", "rolling_week")');
+    expect(metricsScreen).toContain("nativeProviderPlanUsageTint(progress:");
+    expect(metricsScreen).toContain("let tint: Color?");
+    expect(metricsScreen).toContain("let progress: Double?");
+    expect(metricsScreen).toContain("row.tint ?? tint");
+    expect(metricsScreen).toContain("row.progress ?? row.value");
+    expect(metricsScreen).toContain("if unlimited || progress < 40 { return .green }");
+    expect(metricsScreen).toContain("if progress < 65 { return .blue }");
+    expect(metricsScreen).toContain("if progress < 80 { return .yellow }");
+    expect(metricsScreen).toContain("if progress < 95 { return .orange }");
   });
 
   test("native chat sidebar groups sessions compactly by workspace", () => {

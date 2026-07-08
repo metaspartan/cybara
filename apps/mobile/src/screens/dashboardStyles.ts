@@ -1250,6 +1250,34 @@ const makeStyles = () =>
       fontWeight: "900",
       letterSpacing: 2,
     },
+    providerPlanUsageGrid: {
+      gap: spacing.sm,
+    },
+    providerPlanUsageCard: {
+      backgroundColor: colors.wash,
+      borderColor: colors.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      gap: spacing.xs,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    providerPlanUsageHeader: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      gap: spacing.md,
+    },
+    providerPlanUsageTrack: {
+      backgroundColor: colors.insetStrong,
+      borderRadius: 4,
+      height: 6,
+      overflow: "hidden",
+    },
+    providerPlanUsageFill: {
+      borderRadius: 4,
+      height: "100%",
+    },
     routerSummaryBox: {
       gap: spacing.xs,
       paddingHorizontal: spacing.md,

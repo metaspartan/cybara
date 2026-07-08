@@ -315,7 +315,7 @@ private struct ProviderPlanInlineView: View {
     var body: some View {
         Group {
             if plan.managedAutomatically {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     ProviderPlanUsageCapsule(label: "5h", usage: fiveHourUsage)
                     ProviderPlanUsageCapsule(label: "Weekly", usage: weeklyUsage)
                 }
@@ -347,15 +347,15 @@ private struct ProviderPlanUsageCapsule: View {
             }
             GeometryReader { proxy in
                 let width = proxy.size.width * providerPlanProgress(usage)
-                Capsule()
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
                     .fill(.white.opacity(0.1))
                     .overlay(alignment: .leading) {
-                        Capsule()
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
                             .fill(providerPlanUsageTint(usage))
                             .frame(width: width)
                     }
             }
-            .frame(height: 3)
+            .frame(height: 5)
             if let resetText = usage.resetText {
                 Text(resetText)
                     .font(.system(size: 9, design: .rounded))
@@ -364,10 +364,16 @@ private struct ProviderPlanUsageCapsule: View {
             }
         }
         .font(.system(size: 11, design: .rounded))
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Capsule().fill(providerPlanUsageTint(usage).opacity(0.12)))
-        .overlay(Capsule().stroke(providerPlanUsageTint(usage).opacity(0.2), lineWidth: 1))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(providerPlanUsageTint(usage).opacity(0.12))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(providerPlanUsageTint(usage).opacity(0.2), lineWidth: 1)
+        )
     }
 }
 

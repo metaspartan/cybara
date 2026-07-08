@@ -693,9 +693,7 @@ export function Metrics() {
                         />
                       </div>
                       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
-                        <span className={providerPlanStatusTone(row.status)}>
-                          {row.status}
-                        </span>
+                        <span className={providerPlanStatusTone(row.status)}>{row.status}</span>
                         {row.usage.resetLabel && <span>{row.usage.resetLabel}</span>}
                       </div>
                     </div>

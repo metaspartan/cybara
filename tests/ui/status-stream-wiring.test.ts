@@ -35,12 +35,16 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("providerPlanStatus");
     expect(source).toContain("activeProviderPlan");
     expect(source).toContain("providerPlanTooltipDetail");
+    expect(source).toContain("providerPlanTooltipRows");
+    expect(source).toContain("ProviderPlanTooltipBar");
     expect(source).toContain("Plan usage:");
     expect(source).toContain("providerPlanWindowSummary");
+    expect(source).toContain("providerPlanUsageClasses(usage)");
     expect(displaySource).toContain("formatProviderPlanReset");
     expect(displaySource).toContain('value: "∞"');
     expect(displaySource).toContain("Math.ceil(window.usedPercent)");
     expect(source).toContain("context-usage-tooltip-plan");
+    expect(source).toContain("context-usage-tooltip-plan-bar");
     expect(source).toContain("contextUsageLabel");
     expect(source).toContain("contextUsageTooltip");
     expect(source).toContain("var(--context-ring-track)");

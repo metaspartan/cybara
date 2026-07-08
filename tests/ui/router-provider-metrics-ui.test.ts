@@ -59,12 +59,26 @@ describe("router, provider, and metrics UI wiring", () => {
     expect(source).toContain("defaultChecked={isProviderDefault(provider)}");
     expect(source).toContain("ProviderPlanUsagePill");
     expect(source).toContain("providerPlanWindowDisplay");
+    expect(source).toContain("providerPlanUsageClasses");
+    expect(source).toContain("min-w-[112px]");
+    expect(source).toContain("rounded-lg border px-3 py-2");
+    expect(source).toContain("h-1.5 w-full");
+    expect(source).toContain("rounded-md bg-white/10");
     expect(source).toContain('label="5h"');
     expect(source).toContain('label="Weekly"');
     expect(source).toContain("usage.resetLabel");
     expect(displaySource).toContain('value: "∞"');
     expect(displaySource).toContain("formatProviderPlanReset");
     expect(displaySource).toContain("Math.ceil(window.usedPercent)");
+    expect(displaySource).toContain("export function providerPlanUsageLevel");
+    expect(displaySource).toContain('if (usage.percent < 40) return "green"');
+    expect(displaySource).toContain('if (usage.percent < 65) return "blue"');
+    expect(displaySource).toContain('if (usage.percent < 80) return "yellow"');
+    expect(displaySource).toContain('if (usage.percent < 95) return "orange"');
+    expect(displaySource).toContain('fillClass: "bg-sky-300"');
+    expect(displaySource).toContain('fillClass: "bg-yellow-300"');
+    expect(displaySource).toContain('fillClass: "bg-orange-300"');
+    expect(displaySource).toContain('fillClass: "bg-red-300"');
     expect(source).toContain("Plan tracked automatically");
     expect(source).toContain("manualPlanEditable");
     expect(source).toContain(
@@ -81,5 +95,10 @@ describe("router, provider, and metrics UI wiring", () => {
     expect(source).toContain("<MetricAreaChart");
     expect(source).toContain("Provider Token Share");
     expect(source).toContain("Model Token Share");
+    expect(source).toContain("providerPlanUsageClasses(row.usage)");
+    expect(source).toContain('label: "5h"');
+    expect(source).toContain('label: "Weekly"');
+    expect(source).toContain('providerPlanWindowDisplay(plan, "rolling_5h")');
+    expect(source).toContain('providerPlanWindowDisplay(plan, "rolling_week")');
   });
 });

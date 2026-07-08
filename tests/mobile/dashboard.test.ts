@@ -337,6 +337,15 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_METRICS_CHROME.liveRefreshMs).toBeLessThan(
       MOBILE_METRICS_CHROME.backgroundRefreshMs
     );
+    expect(dashboardScreenSource).toContain("mobileProviderPlanWindowDisplay(plan, kind)");
+    expect(dashboardScreenSource).toContain("mobilePlanUsageTone(progress, window.unlimited)");
+    expect(dashboardScreenSource).toContain("progress: usage.progress");
+    expect(dashboardScreenSource).toContain("tone: usage.tone");
+    expect(dashboardScreenSource).toContain("providerPlanUsageRows(providerPlan)");
+    expect(dashboardScreenSource).toContain("styles.providerPlanUsageGrid");
+    expect(dashboardScreenSource).toContain("styles.providerPlanUsageTrack");
+    expect(dashboardScreenSource).toContain('label: "5h"');
+    expect(dashboardScreenSource).toContain('label: "Weekly"');
   });
 
   test("does not fetch all metrics on initial dashboard load before metrics opens", () => {
