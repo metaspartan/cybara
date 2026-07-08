@@ -6,8 +6,7 @@ const status = walletManager.getStatus();
 const agentEnabled = walletManager.isAgentAccessEnabled();
 const policy = walletManager.getAgentPolicy();
 
-const redacted = (addr?: string) =>
-  addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : undefined;
+const redacted = (addr?: string) => (addr ? `${addr.slice(0, 6)}…${addr.slice(-4)}` : undefined);
 
 const summary = {
   available: status.exists,
@@ -18,9 +17,7 @@ const summary = {
   primaryAddressSol: redacted(status.primaryAddresses?.sol),
   unlockExpiresAt: status.unlockExpiresAt,
   wordCount: status.wordCount,
-  kdf: status.kdf
-    ? { name: status.kdf.name, iterations: status.kdf.iterations }
-    : undefined,
+  kdf: status.kdf ? { name: status.kdf.name, iterations: status.kdf.iterations } : undefined,
   createdAt: status.createdAt,
   updatedAt: status.updatedAt,
   policy: {

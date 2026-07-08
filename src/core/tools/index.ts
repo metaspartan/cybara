@@ -949,7 +949,7 @@ Use for tasks that may take longer or require separate context.`,
             "swap_execute",
           ],
           description:
-            "Wallet action. Prefer read-only actions for status, balances, portfolio, history, pricing, and quote requests; use fund-moving/signing actions only with explicit user confirmation and policy allowance.",
+            "Wallet action. Prefer read-only actions for status, balances, portfolio, history, pricing, and quote requests; use fund-moving/signing actions only with explicit user intent, wallet agent access, and policy allowance.",
         },
         chain: {
           type: "string",

@@ -39,6 +39,67 @@ afterEach(async () => {
 });
 
 describe("handleChat per-session serialization", () => {
+  test("chat execution refreshes stale generated agent prompts before calling the model", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Prompt Refresh Provider",
+      api_key: "sk-prompt-refresh",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Prompt Refresh Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-prompt-refresh",
+      system_prompt: "## Tooling\n- exec: stale shell-only snapshot\n",
+      tools: [{ name: "read" }],
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let sentSystemPrompt = "";
+    globalThis.fetch = (async (_url, init) => {
+      const request = JSON.parse(String(init?.body || "{}")) as {
+        messages?: Array<{ role: string; content: string }>;
+      };
+      sentSystemPrompt =
+        request.messages?.find((message) => message.role === "system")?.content || "";
+      return new Response(
+        JSON.stringify({
+          id: "prompt-refresh",
+          object: "chat.completion",
+          model: "gpt-prompt-refresh",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: "fresh prompt used" },
+            },
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const sessionId = `prompt-refresh-${Date.now()}`;
+    createdSessionIds.push(sessionId);
+
+    const response = await handleChat({
+      message: "check prompt",
+      agentId: agent.id,
+      sessionId,
+      tools: true,
+    });
+
+    expect(response.message.content).toBe("fresh prompt used");
+    expect(sentSystemPrompt).toContain("## Tooling");
+    expect(sentSystemPrompt).toContain("- read:");
+    expect(sentSystemPrompt).not.toContain("stale shell-only snapshot");
+  });
+
   test("existing sessions can switch active agents and retain context usage", async () => {
     const provider = providerManager.create({
       provider: "openai",

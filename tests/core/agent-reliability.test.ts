@@ -34,12 +34,14 @@ describe("system prompt reliability guidance", () => {
     });
 
     expect(walletPrompt).toContain("Use read-only wallet actions");
+    expect(walletPrompt).toContain("Redact full wallet addresses");
     expect(walletPrompt).toContain("autonomous trading");
     expect(walletPrompt).toContain("do not promise profit");
     expect(walletPrompt).toContain("execute only when wallet agent access");
     expect(walletPrompt).toContain("wallet policy allow the exact action");
     expect(walletPrompt).toContain("dry-run quotes");
-    expect(walletPrompt).toContain("explicit user confirmation");
+    expect(walletPrompt).toContain("explicit user intent");
+    expect(walletPrompt).toContain("wallet policy/approvals allow execution");
   });
 });
 
