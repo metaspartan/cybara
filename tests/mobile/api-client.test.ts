@@ -227,16 +227,51 @@ describe("mobile API client", () => {
     globalThis.fetch = (async (url, init) => {
       const headers = new Headers(init?.headers);
       calls.push({ url: String(url), auth: headers.get("authorization") });
+      const parsed = new URL(String(url));
+      if (parsed.pathname === "/api/git/branches") {
+        return Response.json({
+          success: true,
+          current: "main",
+          branches: [
+            { name: "main", current: true },
+            { name: "feature/mobile", current: false },
+          ],
+        });
+      }
+      if (parsed.pathname === "/api/git/branch" && init?.method === "POST") {
+        return Response.json({ success: true, branch: "feature/mobile" });
+      }
       return Response.json({ branch: "main" });
     }) as typeof fetch;
 
     try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.gitBranch("/Users/carsen/Documents/GitHub/cybara repo")).resolves.toBe(
+        "main"
+      );
+      await expect(api.gitBranches("/Users/carsen/Documents/GitHub/cybara repo")).resolves.toEqual({
+        success: true,
+        current: "main",
+        branches: [
+          { name: "main", current: true },
+          { name: "feature/mobile", current: false },
+        ],
+        error: undefined,
+      });
       await expect(
-        new CybaraMobileApi(profile).gitBranch("/Users/carsen/Documents/GitHub/cybara repo")
-      ).resolves.toBe("main");
+        api.checkoutGitBranch("/Users/carsen/Documents/GitHub/cybara repo", "feature/mobile")
+      ).resolves.toEqual({ success: true, branch: "feature/mobile" });
       expect(calls).toEqual([
         {
           url: "http://127.0.0.1:4269/api/git/branch?path=%2FUsers%2Fcarsen%2FDocuments%2FGitHub%2Fcybara%20repo",
+          auth: "Bearer cybara_mobile_test",
+        },
+        {
+          url: "http://127.0.0.1:4269/api/git/branches?path=%2FUsers%2Fcarsen%2FDocuments%2FGitHub%2Fcybara%20repo",
+          auth: "Bearer cybara_mobile_test",
+        },
+        {
+          url: "http://127.0.0.1:4269/api/git/branch",
           auth: "Bearer cybara_mobile_test",
         },
       ]);

@@ -2,7 +2,13 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { getGitBranch, getGitDiff, getGitStatus } from "../../src/api/git-api";
+import {
+  checkoutGitBranch,
+  getGitBranch,
+  getGitBranches,
+  getGitDiff,
+  getGitStatus,
+} from "../../src/api/git-api";
 
 let baseDir = "";
 let repoDir = "";
@@ -99,5 +105,41 @@ describe("getGitBranch", () => {
 
   test("returns null outside a repo", async () => {
     expect(await getGitBranch(plainDir)).toBeNull();
+  });
+});
+
+describe("git branch list and checkout", () => {
+  test("lists local branches with the current branch first", async () => {
+    git(["branch", "feature/test-branch"], repoDir);
+    const branches = await getGitBranches(repoDir);
+    expect(branches.success).toBe(true);
+    expect(branches.current).toBe("main");
+    expect(branches.branches[0]).toEqual({ name: "main", current: true });
+    expect(branches.branches.map((branch) => branch.name)).toContain("feature/test-branch");
+  });
+
+  test("switches existing branches and creates a new branch without force", async () => {
+    const tempRepo = join(baseDir, "checkout-repo");
+    mkdirSync(tempRepo, { recursive: true });
+    git(["init", "-q", "-b", "main"], tempRepo);
+    git(["config", "user.email", "test@example.com"], tempRepo);
+    git(["config", "user.name", "Test"], tempRepo);
+    writeFileSync(join(tempRepo, "file.txt"), "content\n");
+    git(["add", "-A"], tempRepo);
+    git(["commit", "-q", "-m", "initial"], tempRepo);
+    git(["branch", "existing"], tempRepo);
+
+    expect(await checkoutGitBranch(tempRepo, "existing")).toMatchObject({
+      success: true,
+      branch: "existing",
+    });
+    expect(await checkoutGitBranch(tempRepo, "new/local", { create: true })).toMatchObject({
+      success: true,
+      branch: "new/local",
+    });
+    expect(await checkoutGitBranch(tempRepo, "bad branch name")).toMatchObject({
+      success: false,
+      error: "Invalid branch name",
+    });
   });
 });

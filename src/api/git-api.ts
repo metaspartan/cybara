@@ -20,6 +20,26 @@ export interface GitDiff {
   error?: string;
 }
 
+export interface GitBranchSummary {
+  name: string;
+  current: boolean;
+}
+
+export interface GitBranchList {
+  success: boolean;
+  root?: string;
+  current: string | null;
+  branches: GitBranchSummary[];
+  error?: string;
+}
+
+export interface GitBranchCheckoutResult {
+  success: boolean;
+  root?: string;
+  branch?: string | null;
+  error?: string;
+}
+
 interface GitStatusOptions {
   lightweight?: boolean;
 }
@@ -30,6 +50,11 @@ const GIT_STATUS_CACHE_TTL_MS = 2000;
 const gitRootCache = new Map<string, { value: string | null; expiresAt: number }>();
 const gitStatusCache = new Map<string, { value: GitStatus; expiresAt: number }>();
 const gitStatusInFlight = new Map<string, Promise<GitStatus>>();
+
+function clearGitCaches(): void {
+  gitStatusCache.clear();
+  gitStatusInFlight.clear();
+}
 
 async function runGit(
   cwd: string,
@@ -228,4 +253,97 @@ export async function getGitBranch(path: string): Promise<string | null> {
 
   const result = await runGit(gitRoot, ["branch", "--show-current"]);
   return result.success ? result.stdout : null;
+}
+
+function normalizeBranchName(branch: string): string {
+  return branch.trim();
+}
+
+async function validateBranchName(gitRoot: string, branch: string): Promise<string | null> {
+  const normalized = normalizeBranchName(branch);
+  if (
+    !normalized ||
+    normalized.length > 200 ||
+    normalized.startsWith("-") ||
+    normalized === "HEAD" ||
+    normalized.includes("\\") ||
+    normalized.includes("//") ||
+    normalized.includes("..") ||
+    normalized.includes("@{") ||
+    normalized.endsWith("/") ||
+    normalized.endsWith(".") ||
+    normalized.endsWith(".lock") ||
+    /[\u0000-\u001f\u007f~^:?*[ \t]/.test(normalized)
+  ) {
+    return null;
+  }
+
+  const result = await runGit(gitRoot, ["check-ref-format", "--branch", normalized]);
+  return result.success ? normalized : null;
+}
+
+export async function getGitBranches(path: string): Promise<GitBranchList> {
+  const gitRoot = await findGitRoot(path);
+  if (!gitRoot) {
+    return { success: false, current: null, branches: [], error: "Not a git repository" };
+  }
+
+  const [current, branchesResult] = await Promise.all([
+    getGitBranch(gitRoot),
+    runGit(gitRoot, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]),
+  ]);
+
+  if (!branchesResult.success) {
+    return {
+      success: false,
+      root: gitRoot,
+      current,
+      branches: [],
+      error: branchesResult.stderr || "Failed to list git branches",
+    };
+  }
+
+  const names = branchesResult.stdout
+    .split("\n")
+    .map((branch) => branch.trim())
+    .filter(Boolean);
+  const branches = names
+    .map((name) => ({ name, current: name === current }))
+    .sort((a, b) => {
+      if (a.current !== b.current) return a.current ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+  return { success: true, root: gitRoot, current, branches };
+}
+
+export async function checkoutGitBranch(
+  path: string,
+  branch: string,
+  options?: { create?: boolean }
+): Promise<GitBranchCheckoutResult> {
+  const gitRoot = await findGitRoot(path);
+  if (!gitRoot) {
+    return { success: false, error: "Not a git repository" };
+  }
+
+  const safeBranch = await validateBranchName(gitRoot, branch);
+  if (!safeBranch) {
+    return { success: false, root: gitRoot, error: "Invalid branch name" };
+  }
+
+  const result = await runGit(
+    gitRoot,
+    options?.create === true ? ["switch", "-c", safeBranch] : ["switch", safeBranch]
+  );
+  if (!result.success) {
+    return {
+      success: false,
+      root: gitRoot,
+      error: result.stderr || `Failed to switch to ${safeBranch}`,
+    };
+  }
+
+  clearGitCaches();
+  return { success: true, root: gitRoot, branch: await getGitBranch(gitRoot) };
 }

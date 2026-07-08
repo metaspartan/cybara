@@ -17,6 +17,12 @@ const planCardPath = fileURLToPath(
 const environmentOverviewPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatEnvironmentOverview.tsx", import.meta.url)
 );
+const gitBranchSelectorPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/GitBranchSelector.tsx", import.meta.url)
+);
+const environmentGitHookPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/useEnvironmentGitBranches.ts", import.meta.url)
+);
 const apiPath = fileURLToPath(new URL("../../ui/src/lib/api.ts", import.meta.url));
 const artifactsPath = fileURLToPath(new URL("../../ui/src/pages/Artifacts.tsx", import.meta.url));
 
@@ -26,6 +32,8 @@ function readUiSource(): string {
     readFileSync(chatModelPath, "utf8"),
     readFileSync(planCardPath, "utf8"),
     readFileSync(environmentOverviewPath, "utf8"),
+    readFileSync(gitBranchSelectorPath, "utf8"),
+    readFileSync(environmentGitHookPath, "utf8"),
     readFileSync(apiPath, "utf8"),
     readFileSync(artifactsPath, "utf8"),
   ].join("\n");
@@ -54,9 +62,13 @@ describe("chat plan and artifact UI wiring", () => {
     expect(source).toContain("Current chat only");
     expect(source).toContain("Latest plan update");
     expect(source).toContain("extractLatestPlanFromMessages(typedMessages, sessionId)");
-    expect(chatPage).toContain("/api/git/branch?path=");
-    expect(chatPage).toContain("setEnvironmentGitBranch");
-    expect(chatPage).toContain("gitBranch={environmentGitBranch}");
+    expect(chatPage).toContain("useEnvironmentGitBranches(effectiveWorkspaceDir)");
+    expect(chatPage).toContain("gitBranch={environmentGit.currentBranch}");
+    expect(source).toContain("/api/git/branches?path=");
+    expect(source).toContain('apiFetch("/api/git/branch"');
+    expect(source).toContain("function GitBranchSelector");
+    expect(source).toContain("Search branches");
+    expect(source).toContain("New branch name");
     expect(chatPage).toContain('key={sessionId || "new-chat-environment"}');
     expect(chatPage).toContain("setShowEnvironmentOverview(false);");
     expect(chatPage).toContain("sessionId={sessionId}");
@@ -73,6 +85,9 @@ describe("chat plan and artifact UI wiring", () => {
     expect(environmentOverview).toContain("<PlanSummaryCard plan={currentPlan} expandable");
     expect(environmentOverview).toContain("chat-environment-panel");
     expect(environmentOverview).toContain("gitBranch: string | null");
+    expect(environmentOverview).toContain("gitBranches: GitBranchOption[]");
+    expect(environmentOverview).toContain("onSwitchGitBranch");
+    expect(environmentOverview).toContain("onCreateGitBranch");
     expect(environmentOverview).toContain('label="Branch"');
     expect(environmentOverview).toContain("createPortal(panel, document.body)");
     expect(environmentOverview).toContain('data-session-id={sessionId || "new-chat"}');

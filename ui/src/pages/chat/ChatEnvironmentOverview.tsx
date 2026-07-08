@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { FolderOpen, GitBranch, GitCompare, X } from "lucide-react";
 import type { Subagent } from "@/hooks/useApi";
 import { formatWorkspaceLabel, type FileChangeSummary, type SessionPlanView } from "./chatModel";
+import { GitBranchSelector, type GitBranchOption } from "./GitBranchSelector";
 import { PlanSummaryCard } from "./PlanSummaryCard";
 
 function EnvironmentSection({ children, title }: { children: ReactNode; title: string }) {
@@ -36,8 +37,15 @@ export function ChatEnvironmentOverview({
   currentPlan,
   fileChanges,
   gitBranch,
+  gitBranchChanging,
+  gitBranchError,
+  gitBranchLoading,
+  gitBranches,
   isOpen,
   onClose,
+  onCreateGitBranch,
+  onRefreshGitBranches,
+  onSwitchGitBranch,
   sessionId,
   subagents,
   toolNames,
@@ -46,8 +54,15 @@ export function ChatEnvironmentOverview({
   currentPlan: SessionPlanView | null;
   fileChanges: FileChangeSummary | null;
   gitBranch: string | null;
+  gitBranchChanging: string | null;
+  gitBranchError: string | null;
+  gitBranchLoading: boolean;
+  gitBranches: GitBranchOption[];
   isOpen: boolean;
   onClose: () => void;
+  onCreateGitBranch: (branch: string) => Promise<void> | void;
+  onRefreshGitBranches: () => Promise<void> | void;
+  onSwitchGitBranch: (branch: string) => Promise<void> | void;
   sessionId: string | null;
   subagents: Subagent[];
   toolNames: string[];
@@ -103,9 +118,19 @@ export function ChatEnvironmentOverview({
               {workspaceDir ? formatWorkspaceLabel(workspaceDir, 34) : "No workspace"}
             </span>
           </EnvironmentRow>
-          {gitBranch && (
+          {(gitBranch || workspaceDir) && (
             <EnvironmentRow icon={<GitBranch className="h-3.5 w-3.5" />} label="Branch">
-              <span className="truncate font-mono text-[11px] text-gray-300">{gitBranch}</span>
+              <GitBranchSelector
+                branches={gitBranches}
+                changingBranch={gitBranchChanging}
+                currentBranch={gitBranch}
+                disabled={!workspaceDir}
+                error={gitBranchError}
+                loading={gitBranchLoading}
+                onCheckout={onSwitchGitBranch}
+                onCreate={onCreateGitBranch}
+                onRefresh={onRefreshGitBranches}
+              />
             </EnvironmentRow>
           )}
         </div>

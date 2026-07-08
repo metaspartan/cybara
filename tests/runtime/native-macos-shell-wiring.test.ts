@@ -553,6 +553,10 @@ describe("native macOS shell wiring", () => {
     );
     expect(nativeScreens).toContain("loadActiveGitBranch()");
     expect(nativeScreens).toContain("activeGitBranchLabel");
+    expect(nativeScreens).toContain("gitBranchPicker");
+    expect(nativeScreens).toContain("Search branches");
+    expect(nativeScreens).toContain("New branch name");
+    expect(nativeScreens).toContain("changeGitBranch(");
     expect(nativeScreens).toContain('parts.append("Branch \\(branch)")');
     expect(nativeScreens).toContain(".task(id: activeWorkspaceDir)");
     expect(nativeScreens).toContain("activeSessionIDs: Set<String>");
@@ -574,9 +578,14 @@ describe("native macOS shell wiring", () => {
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
 
     expect(gatewayClient).toContain("func gitBranch(path: String) async throws -> String?");
+    expect(gatewayClient).toContain("func gitBranches(path: String) async throws");
+    expect(gatewayClient).toContain("func checkoutGitBranch(");
+    expect(gatewayClient).toContain('"api/git/branches"');
     expect(gatewayClient).toContain('"api/git/branch"');
     expect(gatewayClient).toContain('URLQueryItem(name: "path", value: workspace)');
     expect(gatewayModels).toContain("struct GatewayGitBranchResponse");
+    expect(gatewayModels).toContain("struct GatewayGitBranchesResponse");
+    expect(gatewayModels).toContain("struct GatewayGitBranchCheckoutResponse");
     expect(gatewayModels).toContain("let branch: String?");
   });
 

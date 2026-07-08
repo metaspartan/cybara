@@ -230,6 +230,25 @@ struct GatewayClient: Sendable {
         return firstNonEmptyGatewayString(response.branch)
     }
 
+    func gitBranches(path: String) async throws -> GatewayGitBranchesResponse {
+        guard let workspace = firstNonEmptyGatewayString(path) else {
+            return GatewayGitBranchesResponse(success: false, current: nil, branches: [], error: "Missing path")
+        }
+        return try await get(
+            "api/git/branches",
+            as: GatewayGitBranchesResponse.self,
+            queryItems: [URLQueryItem(name: "path", value: workspace)]
+        )
+    }
+
+    func checkoutGitBranch(path: String, branch: String, create: Bool = false) async throws -> GatewayGitBranchCheckoutResponse {
+        let body = try JSONSerialization.data(
+            withJSONObject: ["path": path, "branch": branch, "create": create]
+        )
+        let data = try await request("api/git/branch", method: "POST", body: body)
+        return try JSONDecoder().decode(GatewayGitBranchCheckoutResponse.self, from: data)
+    }
+
     func tasks() async throws -> [GatewayTask] {
         try await getList("api/tasks", keys: ["tasks", "items"])
     }

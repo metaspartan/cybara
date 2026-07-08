@@ -2,7 +2,13 @@ import { isAbsolute, resolve } from "path";
 import { agentManager, type AgentMessage } from "../../core/agent";
 import { trackFileOperation } from "../../core/metrics";
 import { workspaceIndexer } from "../../core/workspace-indexer";
-import { getGitBranch, getGitDiff, getGitStatus } from "../git-api";
+import {
+  checkoutGitBranch,
+  getGitBranch,
+  getGitBranches,
+  getGitDiff,
+  getGitStatus,
+} from "../git-api";
 import {
   browseDirectory,
   createItem,
@@ -1433,6 +1439,26 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
     const path = (params?.path as string | undefined) || "~";
     const branch = await getGitBranch(path);
     return { branch };
+  },
+
+  "GET /api/git/branches": async (_body, params) => {
+    const path = (params?.path as string | undefined) || "~";
+    return await getGitBranches(path);
+  },
+
+  "POST /api/git/branch": async (body) => {
+    const { path, branch, create } = (body || {}) as {
+      path?: string;
+      branch?: string;
+      create?: boolean;
+    };
+    if (!path || typeof path !== "string") {
+      return { success: false, error: "Missing 'path' parameter" };
+    }
+    if (!branch || typeof branch !== "string") {
+      return { success: false, error: "Missing 'branch' parameter" };
+    }
+    return await checkoutGitBranch(path, branch, { create: create === true });
   },
 
   "GET /api/git/diff": async (_body, params) => {

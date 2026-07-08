@@ -108,6 +108,24 @@ export interface SessionListPage {
   hasMore: boolean;
 }
 
+export interface GitBranchSummary {
+  name: string;
+  current: boolean;
+}
+
+export interface GitBranchListResponse {
+  success: boolean;
+  current: string | null;
+  branches: GitBranchSummary[];
+  error?: string;
+}
+
+export interface GitBranchCheckoutResponse {
+  success: boolean;
+  branch?: string | null;
+  error?: string;
+}
+
 export interface AgentSummary {
   id: string;
   name: string;
@@ -1993,6 +2011,42 @@ export class CybaraMobileApi {
       `/api/git/branch?path=${encodeURIComponent(trimmed)}`
     );
     return readString(asRecord(response), ["branch"]) || null;
+  }
+
+  async gitBranches(path: string): Promise<GitBranchListResponse> {
+    const trimmed = path.trim();
+    if (!trimmed) return { success: false, current: null, branches: [], error: "Missing path" };
+    const response = asRecord(
+      await this.request<unknown>(`/api/git/branches?path=${encodeURIComponent(trimmed)}`)
+    );
+    const branches = normalizeArrayResponse(response?.branches, ["branches"])
+      .map((item) => {
+        const record = asRecord(item);
+        const name = readString(record, ["name"]);
+        if (!name) return null;
+        return { name, current: record?.current === true };
+      })
+      .filter((item): item is GitBranchSummary => item !== null);
+    return {
+      success: response?.success !== false,
+      current:
+        readString(response, ["current"]) ||
+        branches.find((branch) => branch.current)?.name ||
+        null,
+      branches,
+      error: readString(response, ["error"]),
+    };
+  }
+
+  async checkoutGitBranch(
+    path: string,
+    branch: string,
+    create = false
+  ): Promise<GitBranchCheckoutResponse> {
+    return this.request<GitBranchCheckoutResponse>("/api/git/branch", {
+      method: "POST",
+      body: JSON.stringify({ path, branch, create }),
+    });
   }
 
   async pendingChatMessages(sessionId: string): Promise<{

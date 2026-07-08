@@ -91,6 +91,13 @@ async function apiWithBearer(method: string, path: string, token: string, body?:
   };
 }
 
+function git(args: string[], cwd: string): void {
+  const result = Bun.spawnSync(["git", ...args], { cwd });
+  if (result.exitCode !== 0) {
+    throw new Error(`git ${args.join(" ")} failed: ${result.stderr.toString()}`);
+  }
+}
+
 function insertRawMetric(type: string, key: string, value: number, metadata?: string): void {
   const dbPath = join(testHome, ".cybara", "data", "platform.db");
   const db = new Database(dbPath);
@@ -3386,6 +3393,48 @@ describe("IDE & Git API", () => {
     expect(missingDiffPathRes.status).toBe(200);
     expect(missingDiffPathRes.data.success).toBe(false);
     expect(typeof missingDiffPathRes.data.error).toBe("string");
+  });
+
+  test("Git branch routes list, checkout, and create branches in a workspace repo", async () => {
+    const repoDir = mkdtempSync(join(testHome, "git-branch-route-"));
+    git(["init", "-q", "-b", "main"], repoDir);
+    git(["config", "user.email", "test@example.com"], repoDir);
+    git(["config", "user.name", "Test"], repoDir);
+    writeFileSync(join(repoDir, "file.txt"), "initial\n", "utf8");
+    git(["add", "-A"], repoDir);
+    git(["commit", "-q", "-m", "initial"], repoDir);
+    git(["branch", "feature/ui"], repoDir);
+
+    const listRes = await api("GET", `/api/git/branches?path=${encodeURIComponent(repoDir)}`);
+    expect(listRes.status).toBe(200);
+    expect(listRes.data.success).toBe(true);
+    expect(listRes.data.current).toBe("main");
+    expect(listRes.data.branches.map((branch: { name: string }) => branch.name)).toContain(
+      "feature/ui"
+    );
+
+    const checkoutRes = await api("POST", "/api/git/branch", {
+      path: repoDir,
+      branch: "feature/ui",
+    });
+    expect(checkoutRes.status).toBe(200);
+    expect(checkoutRes.data).toMatchObject({ success: true, branch: "feature/ui" });
+
+    const createRes = await api("POST", "/api/git/branch", {
+      path: repoDir,
+      branch: "feature/new-local",
+      create: true,
+    });
+    expect(createRes.status).toBe(200);
+    expect(createRes.data).toMatchObject({ success: true, branch: "feature/new-local" });
+
+    const invalidRes = await api("POST", "/api/git/branch", {
+      path: repoDir,
+      branch: "bad branch",
+    });
+    expect(invalidRes.status).toBe(200);
+    expect(invalidRes.data.success).toBe(false);
+    expect(String(invalidRes.data.error)).toContain("Invalid branch name");
   });
 });
 

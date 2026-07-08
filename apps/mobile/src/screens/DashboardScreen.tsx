@@ -120,6 +120,7 @@ import {
 } from "../components/MetricVisuals";
 import { NewChatPanel } from "../components/NewChatPanel";
 import { NewTaskPanel } from "../components/NewTaskPanel";
+import { MobileBranchPicker } from "../components/MobileBranchPicker";
 import {
   CybaraMobileApi,
   sortSessionSummaries,
@@ -127,6 +128,7 @@ import {
   type AgentSummary,
   type FeatureEndpointKey,
   type FeatureSummary,
+  type GitBranchSummary,
   type MobileMessageImage,
   type MobilePendingChatMessage,
   type ProviderSummary,
@@ -2227,6 +2229,10 @@ function SessionDetailPanel({
   }, []);
   const [detail, setDetail] = useState<SessionDetailSummary | null>(null);
   const [gitBranch, setGitBranch] = useState<string | null>(null);
+  const [gitBranches, setGitBranches] = useState<GitBranchSummary[]>([]);
+  const [gitBranchLoading, setGitBranchLoading] = useState(false);
+  const [gitBranchError, setGitBranchError] = useState<string | null>(null);
+  const [branchPickerVisible, setBranchPickerVisible] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -3028,26 +3034,57 @@ function SessionDetailPanel({
   const toolApprovalMode = pendingToolApprovalMode || readMobileToolApprovalMode(config);
   const toolApprovalLabel = toolApprovalMode === "ask" ? "Ask Me" : "Always Allow";
 
-  useEffect(() => {
+  const refreshMobileGitBranches = useCallback(async () => {
     const workspace = chatWorkspaceDir?.trim();
     if (!workspace) {
       setGitBranch(null);
+      setGitBranches([]);
+      setGitBranchError(null);
       return;
     }
+    setGitBranchLoading(true);
+    try {
+      const result = await api.gitBranches(workspace);
+      setGitBranches(result.branches);
+      setGitBranch(result.current);
+      setGitBranchError(result.success ? null : result.error || "Unable to load branches.");
+    } catch (error) {
+      setGitBranch(null);
+      setGitBranches([]);
+      setGitBranchError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setGitBranchLoading(false);
+    }
+  }, [api, chatWorkspaceDir]);
+
+  useEffect(() => {
     let active = true;
-    setGitBranch(null);
-    api
-      .gitBranch(workspace)
-      .then((branch) => {
-        if (active) setGitBranch(branch);
-      })
-      .catch(() => {
-        if (active) setGitBranch(null);
-      });
+    void refreshMobileGitBranches().finally(() => {
+      if (!active) return;
+    });
     return () => {
       active = false;
     };
-  }, [api, chatWorkspaceDir]);
+  }, [refreshMobileGitBranches]);
+
+  const changeMobileGitBranch = async (branch: string, create = false) => {
+    const workspace = chatWorkspaceDir?.trim();
+    if (!workspace) return;
+    setGitBranchLoading(true);
+    setGitBranchError(null);
+    haptics.select();
+    try {
+      const result = await api.checkoutGitBranch(workspace, branch, create);
+      if (!result.success) throw new Error(result.error || "Unable to switch branches.");
+      setGitBranch(result.branch || branch);
+      setBranchPickerVisible(false);
+      await refreshMobileGitBranches();
+    } catch (error) {
+      setGitBranchError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setGitBranchLoading(false);
+    }
+  };
 
   const changeToolApprovalMode = async (nextMode: string) => {
     const normalized = nextMode === "ask" ? "ask" : "always_allow";
@@ -3269,6 +3306,17 @@ function SessionDetailPanel({
               },
             ]
           : []),
+        ...(workspaceDir
+          ? [
+              {
+                text: "Change branch",
+                onPress: () => {
+                  setBranchPickerVisible(true);
+                  void refreshMobileGitBranches();
+                },
+              },
+            ]
+          : []),
         {
           text: pinned ? "Unpin chat" : "Pin chat",
           onPress: () => {
@@ -3290,10 +3338,10 @@ function SessionDetailPanel({
 
   useEffect(() => {
     setHeaderAction?.({
-      busy: pinning || agentUpdating || toolApprovalUpdating,
+      busy: pinning || agentUpdating || toolApprovalUpdating || gitBranchLoading,
       onPress: () => headerActionRef.current(),
     });
-  }, [agentUpdating, pinning, sessionId, setHeaderAction, toolApprovalUpdating]);
+  }, [agentUpdating, gitBranchLoading, pinning, sessionId, setHeaderAction, toolApprovalUpdating]);
 
   const renderMessages = useMemo(() => {
     const messages = detail?.messages ?? [];
@@ -3313,6 +3361,16 @@ function SessionDetailPanel({
 
   return (
     <View style={styles.chatShell}>
+      <MobileBranchPicker
+        branches={gitBranches}
+        currentBranch={gitBranch}
+        error={gitBranchError}
+        loading={gitBranchLoading}
+        onCheckout={(branch) => void changeMobileGitBranch(branch)}
+        onClose={() => setBranchPickerVisible(false)}
+        onCreate={(branch) => void changeMobileGitBranch(branch, true)}
+        visible={branchPickerVisible}
+      />
       <ChatApprovalBanner api={api} />
       <ScrollView
         ref={scrollRef}

@@ -483,6 +483,12 @@ struct ChatScreen: View {
     @State private var pendingWorkspaceDir = ""
     @State private var workspaceSaving = false
     @State private var activeGitBranch: String?
+    @State private var activeGitBranches: [GatewayGitBranchSummary] = []
+    @State private var gitBranchSearch = ""
+    @State private var newGitBranchName = ""
+    @State private var gitBranchLoading = false
+    @State private var gitBranchError: String?
+    @State private var showGitBranchPicker = false
     @State private var agentSaving = false
     @State private var approvalSaving = false
     @State private var toolApprovalMode = "always_allow"
@@ -991,6 +997,25 @@ struct ChatScreen: View {
             .disabled(workspaceSaving)
             .help(workspaceHelpText)
 
+            if activeWorkspaceDir != nil {
+                Button {
+                    showGitBranchPicker = true
+                    Task { await loadActiveGitBranch() }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.triangle.branch")
+                        Text(activeGitBranchLabel ?? "Branch")
+                            .lineLimit(1)
+                    }
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                }
+                .buttonStyle(.borderless)
+                .popover(isPresented: $showGitBranchPicker, arrowEdge: .bottom) {
+                    gitBranchPicker
+                }
+                .help("Change git branch")
+            }
+
             Button {
                 Task {
                     await loadSessions()
@@ -1224,6 +1249,87 @@ struct ChatScreen: View {
             return "Switch workspace: \(activeWorkspaceDir)"
         }
         return "Select workspace folder for this chat"
+    }
+
+    private var filteredGitBranches: [GatewayGitBranchSummary] {
+        let query = gitBranchSearch.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if query.isEmpty { return activeGitBranches }
+        return activeGitBranches.filter { $0.name.lowercased().contains(query) }
+    }
+
+    private var gitBranchPicker: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Branches", systemImage: "arrow.triangle.branch")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                Spacer()
+                if gitBranchLoading {
+                    ProgressView().controlSize(.small)
+                }
+            }
+            TextField("Search branches", text: $gitBranchSearch)
+                .textFieldStyle(.roundedBorder)
+
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 4) {
+                    ForEach(filteredGitBranches) { branch in
+                        Button {
+                            Task { await changeGitBranch(branch.name) }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "arrow.triangle.branch")
+                                    .foregroundStyle(.secondary)
+                                Text(branch.name)
+                                    .font(.system(size: 12, design: .monospaced))
+                                    .lineLimit(1)
+                                Spacer()
+                                if branch.current || branch.name == activeGitBranchLabel {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7)
+                                .fill(branch.name == activeGitBranchLabel ? Color.secondary.opacity(0.12) : .clear)
+                        )
+                    }
+                    if filteredGitBranches.isEmpty {
+                        Text("No matching branches")
+                            .font(.system(size: 12, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 8)
+                    }
+                }
+            }
+            .frame(maxHeight: 210)
+
+            Divider()
+            HStack(spacing: 8) {
+                TextField("New branch name", text: $newGitBranchName)
+                    .textFieldStyle(.roundedBorder)
+                Button {
+                    Task {
+                        await changeGitBranch(newGitBranchName, create: true)
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .disabled(firstNonEmptyGatewayString(newGitBranchName) == nil || gitBranchLoading)
+                .buttonStyle(.bordered)
+            }
+            if let gitBranchError {
+                Text(gitBranchError)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.red)
+            }
+        }
+        .padding(14)
+        .frame(width: 320)
     }
 
     private var showWorkingTimeline: Bool {
@@ -2152,19 +2258,48 @@ struct ChatScreen: View {
     private func loadActiveGitBranch() async {
         guard let workspace = firstNonEmptyGatewayString(activeWorkspaceDir) else {
             activeGitBranch = nil
+            activeGitBranches = []
+            gitBranchError = nil
             return
         }
-        activeGitBranch = nil
+        gitBranchLoading = true
         do {
-            let branch = try await client.gitBranch(path: workspace)
+            let response = try await client.gitBranches(path: workspace)
             if firstNonEmptyGatewayString(activeWorkspaceDir) == workspace {
-                activeGitBranch = branch
+                activeGitBranch = firstNonEmptyGatewayString(response.current)
+                    ?? response.branches.first(where: { $0.current })?.name
+                activeGitBranches = response.branches
+                gitBranchError = response.success ? nil : response.error
             }
         } catch {
             if firstNonEmptyGatewayString(activeWorkspaceDir) == workspace {
                 activeGitBranch = nil
+                activeGitBranches = []
+                gitBranchError = error.localizedDescription
             }
         }
+        gitBranchLoading = false
+    }
+
+    private func changeGitBranch(_ branch: String, create: Bool = false) async {
+        guard let workspace = firstNonEmptyGatewayString(activeWorkspaceDir),
+              let nextBranch = firstNonEmptyGatewayString(branch) else { return }
+        gitBranchLoading = true
+        gitBranchError = nil
+        do {
+            let response = try await client.checkoutGitBranch(path: workspace, branch: nextBranch, create: create)
+            if response.success {
+                activeGitBranch = firstNonEmptyGatewayString(response.branch) ?? nextBranch
+                newGitBranchName = ""
+                showGitBranchPicker = false
+                await loadActiveGitBranch()
+            } else {
+                gitBranchError = response.error ?? "Unable to switch branches."
+            }
+        } catch {
+            gitBranchError = error.localizedDescription
+        }
+        gitBranchLoading = false
     }
 
     private func hydrateStatus(_ id: String) async {

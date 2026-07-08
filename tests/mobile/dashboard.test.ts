@@ -302,6 +302,10 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesSessionId).toBe(false);
     expect(MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesProviderModel).toBe(true);
     expect(MOBILE_CHAT_DETAIL_CHROME.detailsMenuIncludesWorkspaceDirectory).toBe(true);
+    expect(dashboardScreenSource).toContain("MobileBranchPicker");
+    expect(dashboardScreenSource).toContain('text: "Change branch"');
+    expect(dashboardScreenSource).toContain("api.checkoutGitBranch");
+    expect(dashboardScreenSource).toContain("api.gitBranches");
     expect(
       buildMobileChatSettingsLines({
         agentId: "minimax-m3-mini",

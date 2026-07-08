@@ -898,6 +898,66 @@ struct GatewayGitBranchResponse: Decodable, Hashable {
     let branch: String?
 }
 
+struct GatewayGitBranchSummary: Decodable, Identifiable, Hashable {
+    let name: String
+    let current: Bool
+
+    var id: String { name }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, current
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decodeFlexibleString(forKeys: [.name]) ?? ""
+        current = try container.decodeFlexibleBool(forKeys: [.current]) ?? false
+    }
+}
+
+struct GatewayGitBranchesResponse: Decodable, Hashable {
+    let success: Bool
+    let current: String?
+    let branches: [GatewayGitBranchSummary]
+    let error: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case success, current, branches, error
+    }
+
+    init(success: Bool, current: String?, branches: [GatewayGitBranchSummary], error: String?) {
+        self.success = success
+        self.current = current
+        self.branches = branches
+        self.error = error
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = try container.decodeFlexibleBool(forKeys: [.success]) ?? true
+        current = try container.decodeFlexibleString(forKeys: [.current])
+        branches = (try? container.decodeIfPresent([GatewayGitBranchSummary].self, forKey: .branches)) ?? []
+        error = try container.decodeFlexibleString(forKeys: [.error])
+    }
+}
+
+struct GatewayGitBranchCheckoutResponse: Decodable, Hashable {
+    let success: Bool
+    let branch: String?
+    let error: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case success, branch, error
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = try container.decodeFlexibleBool(forKeys: [.success]) ?? false
+        branch = try container.decodeFlexibleString(forKeys: [.branch])
+        error = try container.decodeFlexibleString(forKeys: [.error])
+    }
+}
+
 struct GatewayMemoryEntry: Decodable, Identifiable, Hashable {
     let id: String
     let timestamp: String?
