@@ -3,25 +3,144 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/cybara.png" />
+    <link rel="apple-touch-icon" href="/cybara.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Cybara — Self-hosted AI agent platform</title>
     <meta
       name="description"
-      content="Cybara is a self-hosted AI agent platform for real work: code, messaging channels, browser automation, and on-chain execution with operator control."
+      content="Cybara is a self-hosted, open-source AI agent platform. Run agents that code, automate browsers, drive 30+ messaging channels, and execute on-chain operations — with full operator control. Desktop, mobile, and CLI, built on Bun."
     />
+    <meta
+      name="keywords"
+      content="AI agent platform, self-hosted AI, open source AI agents, multi-agent orchestration, MCP, browser automation, messaging channel bots, crypto wallet agent, Bun, TypeScript, Cybara"
+    />
+    <meta name="author" content="Cybara" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+    <meta name="theme-color" content="#050508" />
+    <link rel="canonical" href="https://cybara.dev/" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Cybara" />
+    <meta property="og:url" content="https://cybara.dev/" />
     <meta property="og:title" content="Cybara — Self-hosted AI agent platform" />
     <meta
       property="og:description"
-      content="One stack for AI chat, multi-agent orchestration, tool execution, secure channels, and encrypted wallet operations."
+      content="One stack for AI chat, multi-agent orchestration, tool execution, 30+ secure channels, and encrypted wallet operations — self-hosted and open source."
     />
-    <meta property="og:image" content="/cybara.png" />
-    <meta name="theme-color" content="#050508" />
-    <title>Cybara — Self-hosted AI agent platform</title>
+    <meta property="og:image" content="https://cybara.dev/cybara.png" />
+    <meta property="og:image:alt" content="Cybara logo" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Cybara — Self-hosted AI agent platform" />
+    <meta
+      name="twitter:description"
+      content="Run AI agents that code, automate, message across 30+ channels, and execute on-chain — self-hosted, open source, operator-controlled."
+    />
+    <meta name="twitter:image" content="https://cybara.dev/cybara.png" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap"
       rel="stylesheet"
     />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "name": "Cybara",
+            "applicationCategory": "DeveloperApplication",
+            "operatingSystem": "macOS, Windows, Linux, iOS, Android",
+            "description": "Self-hosted, open-source AI agent platform pairing a Bun agent runtime with a web UI, desktop and mobile apps, a CLI, a broad tool layer, 30+ messaging-channel adapters, MCP support, and encrypted wallet controls.",
+            "url": "https://cybara.dev/",
+            "downloadUrl": "https://github.com/metaspartan/cybara/releases/latest",
+            "softwareVersion": "latest",
+            "license": "https://opensource.org/licenses/MIT",
+            "isAccessibleForFree": true,
+            "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+            "author": { "@type": "Organization", "name": "Cybara" }
+          },
+          {
+            "@type": "WebSite",
+            "name": "Cybara",
+            "url": "https://cybara.dev/",
+            "description": "Self-hosted AI agent platform for real work."
+          },
+          {
+            "@type": "Organization",
+            "name": "Cybara",
+            "url": "https://cybara.dev/",
+            "logo": "https://cybara.dev/cybara.png",
+            "sameAs": ["https://github.com/metaspartan/cybara"]
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is Cybara?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Cybara is a self-hosted AI agent platform. It pairs a Bun-based agent runtime with a web UI, desktop and mobile apps, a CLI, a broad tool layer, messaging-channel adapters, MCP support, and encrypted wallet controls, so agents can code, automate browsers, run messaging workflows, and execute on-chain operations under operator control."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Cybara free and open source?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Cybara is open source under the MIT license and runs entirely on infrastructure you control. There is no required account or cloud service."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Which platforms does Cybara run on?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Cybara ships desktop apps for macOS, Windows, and Linux, a native SwiftUI macOS app, mobile apps for iOS and Android, and a command-line binary for macOS and Linux — all built from the same Bun runtime and published on GitHub Releases."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Which messaging channels are supported?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Cybara includes adapters for Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, SMS, Email, Web, and Webhook, each gated by pairing, allowlists, and per-channel access policy."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How do I migrate from another agent to Cybara?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Run 'cybara migrate --from openclaw' or 'cybara migrate --from hermes'. Cybara detects local installs, previews the import as a dry run, brings over skills and memory, resolves conflicts by skip, overwrite, or rename, and imports API keys only if you opt in."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Do the apps update automatically?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Desktop apps use a signed updater channel backed by GitHub Releases and install updates in place, and the CLI verifies a published SHA256 checksum on every 'cybara update'."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How does Cybara keep operators in control?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Sensitive tool calls can require interactive approval with per-session or persistent allowlists, the filesystem supports checkpoint and rollback, wallet operations enforce policy caps and allowlists, and the gateway uses a localhost auth policy with rotatable API keys."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

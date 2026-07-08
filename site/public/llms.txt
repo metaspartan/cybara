@@ -1,0 +1,34 @@
+# Cybara
+
+> Cybara is a self-hosted, open-source (MIT) AI agent platform. It pairs a Bun-based agent runtime with a web UI, desktop and mobile apps, a CLI, a broad tool layer, 30+ messaging-channel adapters, MCP support, and encrypted wallet controls. Agents can code, automate browsers, run messaging workflows, and execute on-chain operations while the operator stays in control.
+
+## What Cybara does
+
+- Multi-agent orchestration: fan a turn out to several proposer agents and synthesize one answer (Mixture of Agents), or route by weighted, round-robin, lowest-cost, and priority strategies.
+- Real tool execution: a large built-in tool library for code, files, browser and API automation, media generation, and a tool-calling code sandbox, all with interactive approval.
+- Self-improving skills: agents codify a verified multi-step procedure once and reuse it in future sessions; memory and skills compound over time.
+- Encrypted wallet control: on-chain execution across ETH, BTC, and SOL behind an encrypted local wallet with policy caps, allowlists, and private-address SSRF protection.
+- Broad provider catalog: dynamic model discovery across major providers with multi-key credential pools, rate-limit rotation, spend caps, and circuit breakers.
+- Operator in the loop: per-session and persistent tool allowlists, filesystem checkpoint and rollback, transform hooks, and a localhost auth policy with rotatable API keys.
+
+## Platforms
+
+- Desktop apps for macOS (Apple Silicon and Intel), Windows, and Linux (.deb / .rpm)
+- Native SwiftUI macOS app (.app bundle)
+- Mobile apps for iOS (.ipa) and Android (.apk)
+- Command-line binary for macOS and Linux (SHA256-verified installer)
+- All builds are published on GitHub Releases; desktop apps self-update via a signed updater channel.
+
+## Messaging channels
+
+Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, SMS, Email, Web, and Webhook — each gated by pairing, allowlists, and per-channel access policy.
+
+## Migration
+
+Cybara imports data from other agents. Run `cybara migrate --from openclaw` or `cybara migrate --from hermes` for a dry-run preview, then `cybara migrate --apply --preset full`. It brings over skills and memory, resolves conflicts (skip / overwrite / rename), and imports secrets only when explicitly opted in.
+
+## Links
+
+- Source and releases: https://github.com/metaspartan/cybara
+- Install (macOS/Linux CLI): curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash
+- License: MIT

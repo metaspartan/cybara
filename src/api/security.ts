@@ -6,7 +6,12 @@ import { lookup } from "dns/promises";
 import type { LookupAddress } from "dns";
 import { isIP } from "net";
 import { cybaraDir } from "../core/paths";
-import { authenticateMobileDeviceToken, type MobileDeviceView } from "../core/mobile-devices";
+import {
+  authenticateMobileDeviceToken,
+  isLoopbackMobileGatewayUrl,
+  normalizeMobileGatewayUrl,
+  type MobileDeviceView,
+} from "../core/mobile-devices";
 
 const log = createLogger("Security");
 
@@ -22,6 +27,33 @@ interface PersistedSecuritySettings {
     salt: string;
     hash: string;
   };
+  remoteAccess?: PersistedGatewayRemoteAccessSettings;
+}
+
+export type GatewayRemoteAccessMode = "private_overlay" | "public_tunnel";
+export type GatewayRemoteAccessProvider =
+  | "tailscale"
+  | "cloudflare"
+  | "zerotier"
+  | "netbird"
+  | "custom";
+
+interface PersistedGatewayRemoteAccessSettings {
+  enabled?: boolean;
+  mode?: GatewayRemoteAccessMode;
+  provider?: GatewayRemoteAccessProvider;
+  baseUrl?: string;
+}
+
+export interface GatewayRemoteAccessSettings {
+  enabled: boolean;
+  mode: GatewayRemoteAccessMode;
+  provider: GatewayRemoteAccessProvider;
+  baseUrl: string;
+  ready: boolean;
+  requiresGatewayPassword: boolean;
+  status: "off" | "ready" | "needs_url" | "needs_https" | "needs_password" | "invalid_url";
+  message: string;
 }
 
 let cachedSecuritySettings: PersistedSecuritySettings | undefined;
@@ -44,6 +76,7 @@ function readPersistedSecuritySettings(): PersistedSecuritySettings {
               ? normalizeGatewayBasePath(record.basePath)
               : undefined,
           gatewayPassword: readPersistedGatewayPassword(record.gatewayPassword),
+          remoteAccess: readPersistedRemoteAccessSettings(record.remoteAccess),
         };
         return cachedSecuritySettings;
       }
@@ -79,6 +112,35 @@ function readPersistedGatewayPassword(
     /^[a-f0-9]{64}$/i.test(record.hash)
     ? { algorithm: "scrypt", salt: record.salt.toLowerCase(), hash: record.hash.toLowerCase() }
     : undefined;
+}
+
+function readPersistedRemoteAccessSettings(
+  value: unknown
+): PersistedSecuritySettings["remoteAccess"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const mode =
+    record.mode === "public_tunnel" || record.mode === "private_overlay"
+      ? record.mode
+      : undefined;
+  const provider =
+    record.provider === "tailscale" ||
+    record.provider === "cloudflare" ||
+    record.provider === "zerotier" ||
+    record.provider === "netbird" ||
+    record.provider === "custom"
+      ? record.provider
+      : undefined;
+  const baseUrl =
+    typeof record.baseUrl === "string" && record.baseUrl.trim()
+      ? normalizeRemoteAccessBaseUrl(record.baseUrl)
+      : undefined;
+  return {
+    enabled: typeof record.enabled === "boolean" ? record.enabled : undefined,
+    mode,
+    provider,
+    baseUrl,
+  };
 }
 
 function getOrCreateApiKey(): string | null {

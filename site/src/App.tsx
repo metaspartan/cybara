@@ -8,6 +8,7 @@ import { HowItWorks } from "./components/HowItWorks.tsx";
 import { Downloads } from "./components/Downloads.tsx";
 import { Migrate } from "./components/Migrate.tsx";
 import { Control } from "./components/Control.tsx";
+import { Faq } from "./components/Faq.tsx";
 import { CallToAction } from "./components/CallToAction.tsx";
 import { Footer } from "./components/Footer.tsx";
 
@@ -25,6 +26,7 @@ export function App(): React.ReactElement {
         <Downloads />
         <Migrate />
         <Control />
+        <Faq />
         <CallToAction />
       </main>
       <Footer />
