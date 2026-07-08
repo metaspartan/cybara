@@ -331,7 +331,10 @@ export interface WalletSendResult {
 }
 
 export type SystemPromptFeatureKey =
-  "memoryEnabled" | "skillsEnabled" | "messagingEnabled" | "replyTagsEnabled";
+  | "memoryEnabled"
+  | "skillsEnabled"
+  | "messagingEnabled"
+  | "replyTagsEnabled";
 
 export interface SystemPromptConfig {
   template: string;
@@ -356,7 +359,11 @@ export interface PendingToolApproval {
 }
 
 export type RouterStrategy =
-  "weighted" | "round_robin" | "lowest_cost" | "priority" | "mixture_of_agents";
+  | "weighted"
+  | "round_robin"
+  | "lowest_cost"
+  | "priority"
+  | "mixture_of_agents";
 
 export interface RouterRouteConfig {
   weight: number;
@@ -409,7 +416,12 @@ export interface RouterStatus {
 
 export type ProviderPlanStatusState = "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
 export type ProviderPlanSourceMode =
-  "local" | "provider_api" | "oauth_api" | "browser_cookie" | "cli" | "manual";
+  | "local"
+  | "provider_api"
+  | "oauth_api"
+  | "browser_cookie"
+  | "cli"
+  | "manual";
 export type ProviderPlanPresetConfidence = "exact" | "published" | "dynamic" | "estimated";
 
 export interface ProviderPlanPresetSuggestion {
@@ -647,7 +659,13 @@ export interface SessionDetailSummary {
 }
 
 export type MobileAgentStatus =
-  "idle" | "thinking" | "tool_executing" | "tool_completed" | "generating" | "compacting" | "error";
+  | "idle"
+  | "thinking"
+  | "tool_executing"
+  | "tool_completed"
+  | "generating"
+  | "compacting"
+  | "error";
 
 export interface MobileStatusSessionSnapshot {
   sessionId: string;
@@ -1209,7 +1227,8 @@ function normalizeSessions(value: unknown): SessionSummary[] {
         workspace_dir: readString(record, ["workspace_dir", "workspaceDir"]) || null,
         pinned: record?.pinned === true,
         last_message: asRecord(record?.last_message || record?.lastMessage) as
-          SessionSummary["last_message"] | null,
+          | SessionSummary["last_message"]
+          | null,
       };
     })
   );
@@ -1477,7 +1496,10 @@ export function normalizeMobileStatusStreamEvent(value: unknown): MobileStatusSt
     toolName: readString(record, ["toolName", "tool_name"]),
     toolCallId: readString(record, ["toolCallId", "tool_call_id"]),
     toolPhase: readString(record, ["toolPhase", "tool_phase"]) as
-      "start" | "result" | "error" | undefined,
+      | "start"
+      | "result"
+      | "error"
+      | undefined,
     durationMs: readNumber(record, ["durationMs", "duration_ms"]),
   };
 }
@@ -1545,13 +1567,13 @@ function normalizeProviders(value: unknown): ProviderSummary[] {
     const id = readString(record, ["id", "provider", "name"]) || `provider-${index + 1}`;
     const hasCredentials = Boolean(
       record?.hasCredentials ||
-      record?.has_credentials ||
-      record?.api_key ||
-      record?.apiKey ||
-      record?.access_token ||
-      record?.accessToken ||
-      record?.refresh_token ||
-      record?.refreshToken
+        record?.has_credentials ||
+        record?.api_key ||
+        record?.apiKey ||
+        record?.access_token ||
+        record?.accessToken ||
+        record?.refresh_token ||
+        record?.refreshToken
     );
     const rawModels = (
       Array.isArray(record?.models) ? record.models : Array.isArray(info?.models) ? info.models : []

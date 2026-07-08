@@ -15,10 +15,7 @@ export function formatRecallBlock(results: Array<{ content: string }>): string {
   ].join("\n");
 }
 
-export async function recallRelevantMemory(
-  query: string,
-  maxResults: number = 5
-): Promise<string> {
+export async function recallRelevantMemory(query: string, maxResults: number = 5): Promise<string> {
   const trimmed = (query || "").trim();
   if (!trimmed) return "";
   const [local, external] = await Promise.all([

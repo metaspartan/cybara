@@ -4,7 +4,13 @@ import { stripReasoningTagTokens } from "./agent-internals";
 import { notifyMobilePushForStatus, notifyMobilePushForTask } from "./mobile-push";
 
 export type AgentStatus =
-  "idle" | "thinking" | "tool_executing" | "tool_completed" | "generating" | "compacting" | "error";
+  | "idle"
+  | "thinking"
+  | "tool_executing"
+  | "tool_completed"
+  | "generating"
+  | "compacting"
+  | "error";
 
 export type ToolStatusPhase = "start" | "result" | "error" | "blocked";
 

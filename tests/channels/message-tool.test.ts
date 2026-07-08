@@ -98,7 +98,8 @@ describe("message tool routing", () => {
 
     const originalSendReaction = adapter.sendReaction;
     let calledWith:
-      { channelId: string; target: string; messageId: string; emoji: string } | undefined;
+      | { channelId: string; target: string; messageId: string; emoji: string }
+      | undefined;
     adapter.sendReaction = async (channelId, chatId, messageId, emoji) => {
       calledWith = {
         channelId,
@@ -151,7 +152,8 @@ describe("message tool routing", () => {
 
     const originalSendReaction = adapter.sendReaction;
     let calledWith:
-      { channelId: string; target: string; messageId: string; emoji: string } | undefined;
+      | { channelId: string; target: string; messageId: string; emoji: string }
+      | undefined;
     adapter.sendReaction = async (channelId, chatId, messageId, emoji) => {
       calledWith = {
         channelId,
@@ -204,7 +206,8 @@ describe("message tool routing", () => {
 
     const originalSendReaction = adapter.sendReaction;
     let calledWith:
-      { channelId: string; target: string; messageId: string; emoji: string } | undefined;
+      | { channelId: string; target: string; messageId: string; emoji: string }
+      | undefined;
     adapter.sendReaction = async (channelId, chatId, messageId, emoji) => {
       calledWith = {
         channelId,

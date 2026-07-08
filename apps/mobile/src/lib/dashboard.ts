@@ -9,7 +9,14 @@ import type { GatewayProfile } from "./connection";
 
 export type MobileTabKey = "overview" | "sessions" | "metrics" | "tasks" | "settings";
 export type MobileSettingsTab =
-  "general" | "gateway" | "ai" | "memory" | "voice" | "safety" | "wallet" | "system";
+  | "general"
+  | "gateway"
+  | "ai"
+  | "memory"
+  | "voice"
+  | "safety"
+  | "wallet"
+  | "system";
 export type MobileSurfaceKey =
   | "agents"
   | "providers"

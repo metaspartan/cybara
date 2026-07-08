@@ -1,7 +1,8 @@
 import { apiFetch } from "@/lib/auth";
 
 export type TerminalAccessState =
-  { enabled: true; error?: undefined } | { enabled: false; error: string };
+  | { enabled: true; error?: undefined }
+  | { enabled: false; error: string };
 
 function errorTextFromPayload(value: unknown): string | null {
   if (!value || typeof value !== "object") return null;

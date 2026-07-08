@@ -602,9 +602,7 @@ export const MEMORY_PROVIDER_ADAPTERS: Record<ExternalMemoryProviderId, MemoryPr
   hindsight: hindsightAdapter,
 };
 
-export function getMemoryProviderAdapter(
-  id: MemoryProviderId
-): MemoryProviderAdapter | undefined {
+export function getMemoryProviderAdapter(id: MemoryProviderId): MemoryProviderAdapter | undefined {
   if (id === "local") return undefined;
   return MEMORY_PROVIDER_ADAPTERS[id];
 }

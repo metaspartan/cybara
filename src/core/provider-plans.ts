@@ -7,7 +7,12 @@ export type ProviderPlanStatus = "ok" | "warning" | "exhausted" | "unconfigured"
 export type ProviderPlanConfidence = "exact" | "estimated" | "local";
 export type ProviderPlanWindowKind = "rolling_5h" | "rolling_week" | "billing_month";
 export type ProviderPlanSourceMode =
-  "local" | "provider_api" | "oauth_api" | "browser_cookie" | "cli" | "manual";
+  | "local"
+  | "provider_api"
+  | "oauth_api"
+  | "browser_cookie"
+  | "cli"
+  | "manual";
 
 export interface ProviderPlanWindowConfig {
   enabled?: boolean;
@@ -682,18 +687,18 @@ function planConfigFor(
 function hasWindowLimit(windowConfig?: ProviderPlanWindowConfig): boolean {
   return Boolean(
     windowConfig &&
-    windowConfig.enabled !== false &&
-    (windowConfig.tokenLimit !== undefined || windowConfig.spendLimit !== undefined)
+      windowConfig.enabled !== false &&
+      (windowConfig.tokenLimit !== undefined || windowConfig.spendLimit !== undefined)
   );
 }
 
 function hasProviderPlanLimits(providerConfig?: ProviderPlanProviderConfig): boolean {
   return Boolean(
     providerConfig &&
-    providerConfig.enabled !== false &&
-    (hasWindowLimit(providerConfig.fiveHour) ||
-      hasWindowLimit(providerConfig.weekly) ||
-      hasWindowLimit(providerConfig.monthly))
+      providerConfig.enabled !== false &&
+      (hasWindowLimit(providerConfig.fiveHour) ||
+        hasWindowLimit(providerConfig.weekly) ||
+        hasWindowLimit(providerConfig.monthly))
   );
 }
 

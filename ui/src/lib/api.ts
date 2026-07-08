@@ -1398,7 +1398,12 @@ export type MigrationSourceKind = "openclaw" | "hermes";
 export type MigrationPreset = "user-data" | "full";
 export type MigrationSkillConflictMode = "skip" | "overwrite" | "rename";
 export type MigrationItemStatus =
-  "planned" | "migrated" | "archived" | "skipped" | "conflict" | "error";
+  | "planned"
+  | "migrated"
+  | "archived"
+  | "skipped"
+  | "conflict"
+  | "error";
 
 export interface MigrationSourceCandidate {
   kind: MigrationSourceKind;

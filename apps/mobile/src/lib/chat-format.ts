@@ -1,7 +1,8 @@
 import type { SessionMessageSummary } from "./api";
 
 export type MessageContentPart =
-  { type: "text"; content: string } | { type: "code"; language: string; content: string };
+  | { type: "text"; content: string }
+  | { type: "code"; language: string; content: string };
 
 export type UnicodeTextRun = {
   type: "text" | "emoji" | "unicode";

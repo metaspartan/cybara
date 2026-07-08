@@ -12,6 +12,10 @@ describe("desktop host runtime wiring", () => {
       join(ROOT_DIR, "ui", "src", "lib", "desktopUpdater.ts"),
       "utf8"
     );
+    const openExternal = readFileSync(
+      join(ROOT_DIR, "ui", "src", "utils", "openExternal.ts"),
+      "utf8"
+    );
     const mainTsx = readFileSync(join(ROOT_DIR, "ui", "src", "main.tsx"), "utf8");
     const settingsTsx = readFileSync(join(ROOT_DIR, "ui", "src", "pages", "Settings.tsx"), "utf8");
     const notifications = readFileSync(
@@ -30,6 +34,9 @@ describe("desktop host runtime wiring", () => {
     expect(desktopUpdater).toContain('from "@tauri-apps/plugin-process"');
     expect(desktopUpdater).not.toContain('import("@tauri-apps/plugin-updater")');
     expect(desktopUpdater).not.toContain('import("@tauri-apps/plugin-process")');
+    expect(openExternal).toContain('from "@tauri-apps/plugin-shell"');
+    expect(openExternal).toContain("isTauriDesktopRuntime()");
+    expect(openExternal).toContain("openTauriExternal(url)");
 
     expect(mainTsx).toContain("getDesktopHostRuntime()");
     expect(mainTsx).toMatch(/rootElement\.dataset\.runtime = desktopRuntime \|\| ["']web["']/);

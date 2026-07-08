@@ -1,5 +1,13 @@
 export type SettingsSectionId =
-  "general" | "gateway" | "ai" | "memory" | "voice" | "safety" | "wallet" | "migration" | "system";
+  | "general"
+  | "gateway"
+  | "ai"
+  | "memory"
+  | "voice"
+  | "safety"
+  | "wallet"
+  | "migration"
+  | "system";
 
 export interface SettingsSectionDefinition {
   id: SettingsSectionId;

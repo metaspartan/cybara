@@ -1,7 +1,12 @@
 import { platform as osPlatform, arch as osArch } from "os";
 
 export type PlatformTarget =
-  "darwin_arm64" | "darwin_x64" | "linux_x64" | "linux_arm64" | "win32_x64" | "win32_arm64";
+  | "darwin_arm64"
+  | "darwin_x64"
+  | "linux_x64"
+  | "linux_arm64"
+  | "win32_x64"
+  | "win32_arm64";
 
 export function getPlatformTarget(): PlatformTarget | "unsupported" {
   const platform = osPlatform();

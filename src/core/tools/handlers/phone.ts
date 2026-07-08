@@ -7,7 +7,12 @@ const log = createLogger("PhoneCallTool");
 type VoiceCallProvider = "macos_facetime" | "mock";
 type VoiceCallStatus = "dialing" | "active" | "ended" | "error";
 type VoiceCallAction =
-  "check_support" | "initiate_call" | "continue_call" | "speak_to_user" | "end_call" | "get_status";
+  | "check_support"
+  | "initiate_call"
+  | "continue_call"
+  | "speak_to_user"
+  | "end_call"
+  | "get_status";
 
 interface VoiceCallEvent {
   action: string;

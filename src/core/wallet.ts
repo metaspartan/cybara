@@ -4119,7 +4119,8 @@ class WalletManager {
       try {
         const decoded = Buffer.from(encoded.trim(), "base64").toString("utf8");
         const parsed = JSON.parse(decoded) as
-          WalletX402PaymentRequiredV2 | WalletX402PaymentRequiredV1;
+          | WalletX402PaymentRequiredV2
+          | WalletX402PaymentRequiredV1;
         if (
           parsed &&
           Array.isArray(parsed.accepts) &&
@@ -4136,7 +4137,8 @@ class WalletManager {
     if (bodyText.trim()) {
       try {
         const parsed = JSON.parse(bodyText) as
-          WalletX402PaymentRequiredV2 | WalletX402PaymentRequiredV1;
+          | WalletX402PaymentRequiredV2
+          | WalletX402PaymentRequiredV1;
         if (
           parsed &&
           Array.isArray(parsed.accepts) &&

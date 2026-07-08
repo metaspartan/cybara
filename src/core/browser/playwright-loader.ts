@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-type ChromiumApi = (typeof import("playwright"))["chromium"];
+type ChromiumApi = typeof import("playwright")["chromium"];
 
 let cached: ChromiumApi | null = null;
 
@@ -58,7 +58,8 @@ function resolveChromium(mod: Record<string, unknown>): ChromiumApi | undefined 
   const direct = mod.chromium as ChromiumApi | undefined;
   if (direct) return direct;
   const fromDefault = (mod.default as Record<string, unknown> | undefined)?.chromium as
-    ChromiumApi | undefined;
+    | ChromiumApi
+    | undefined;
   return fromDefault;
 }
 

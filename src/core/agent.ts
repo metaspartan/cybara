@@ -1876,7 +1876,8 @@ class AgentManager {
     const baseUrl = providerInfo.base_url || this.getProviderBaseUrl(providerConfig);
     const auth = providerInfo.api_key || providerInfo.access_token;
     const providerDefinition = providerCatalog[providerConfig as ProviderType] as
-      { api?: string; headers?: Record<string, string>; authType?: string } | undefined;
+      | { api?: string; headers?: Record<string, string>; authType?: string }
+      | undefined;
     const providerAuthType = providerDefinition?.authType || "api_key";
     const requiresTokenAuth = providerAuthType !== "none" && providerAuthType !== "aws-sdk";
 

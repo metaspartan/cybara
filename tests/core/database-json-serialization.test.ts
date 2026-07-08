@@ -25,7 +25,8 @@ describe("database JSON serialization", () => {
     });
 
     const before = db.query("SELECT tools, config FROM agents WHERE id = ?").get(id) as
-      { tools: string; config: string } | undefined;
+      | { tools: string; config: string }
+      | undefined;
     expect(before).toBeDefined();
     expect(before?.tools.startsWith("[")).toBe(true);
     expect(before?.config.startsWith("{")).toBe(true);
@@ -34,7 +35,14 @@ describe("database JSON serialization", () => {
     tables.agents.update(id, {
       name: stored.name as string,
       type: stored.type as
-        "main" | "subagent" | "worker" | "research" | "coder" | "planner" | "ops" | undefined,
+        | "main"
+        | "subagent"
+        | "worker"
+        | "research"
+        | "coder"
+        | "planner"
+        | "ops"
+        | undefined,
       model: stored.model as string | undefined,
       provider_id: stored.provider_id as string | undefined,
       system_prompt: stored.system_prompt as string | undefined,
@@ -46,7 +54,8 @@ describe("database JSON serialization", () => {
     } as Parameters<typeof tables.agents.update>[1]);
 
     const after = db.query("SELECT tools, config FROM agents WHERE id = ?").get(id) as
-      { tools: string; config: string } | undefined;
+      | { tools: string; config: string }
+      | undefined;
     expect(after).toBeDefined();
     expect(after?.tools).toBe(before?.tools);
     expect(after?.config).toBe(before?.config);

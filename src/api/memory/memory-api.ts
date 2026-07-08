@@ -14,7 +14,7 @@ export interface MemoryEntry {
 function getMemoryFiles(): string[] {
   if (!existsSync(memoryDir)) return [];
   return readdirSync(memoryDir)
-    .filter(f => f.endsWith(".md"))
+    .filter((f) => f.endsWith(".md"))
     .sort()
     .reverse();
 }
@@ -42,7 +42,7 @@ function parseMemoryFile(content: string, filename: string): MemoryEntry[] {
         timestamp: timestampMatch[1],
         date: fileDate,
         type: timestampMatch[2],
-        tags: timestampMatch[3].split(", ").map(t => t.trim()),
+        tags: timestampMatch[3].split(", ").map((t) => t.trim()),
         content: "",
         index: entryIndex,
       };
@@ -57,7 +57,10 @@ function parseMemoryFile(content: string, filename: string): MemoryEntry[] {
   return entries;
 }
 
-export async function handleMemoryList(): Promise<{ files: string[]; memories: Array<{ file: string; entries: MemoryEntry[] }> }> {
+export async function handleMemoryList(): Promise<{
+  files: string[];
+  memories: Array<{ file: string; entries: MemoryEntry[] }>;
+}> {
   const files = getMemoryFiles();
   const memories: Array<{ file: string; entries: MemoryEntry[] }> = [];
 
@@ -96,7 +99,10 @@ function formatManualMemoryEntry(content: string): string {
   return `## ${timestamp} - note [manual]\n\n${content.trim()}\n`;
 }
 
-export async function handleMemoryDelete(file: string, index?: number): Promise<{ success: boolean }> {
+export async function handleMemoryDelete(
+  file: string,
+  index?: number
+): Promise<{ success: boolean }> {
   const decodedFile = decodeMemoryFileParam(file);
   const path = safeMemoryPath(file);
   if (!existsSync(path)) {
@@ -108,8 +114,11 @@ export async function handleMemoryDelete(file: string, index?: number): Promise<
 
   if (index !== undefined && index >= 0 && index < entries.length) {
     entries.splice(index, 1);
-    const newContent = `# ${decodedFile.replace(".md", "")}\n\n` +
-      entries.map((e) => `## ${e.timestamp} - ${e.type} [${e.tags.join(", ")}]\n\n${e.content.trim()}`).join("\n\n");
+    const newContent =
+      `# ${decodedFile.replace(".md", "")}\n\n` +
+      entries
+        .map((e) => `## ${e.timestamp} - ${e.type} [${e.tags.join(", ")}]\n\n${e.content.trim()}`)
+        .join("\n\n");
     writeFileSync(path, newContent);
   } else {
     unlinkSync(path);
@@ -118,7 +127,9 @@ export async function handleMemoryDelete(file: string, index?: number): Promise<
   return { success: true };
 }
 
-export async function handleMemorySearch(query: string): Promise<{ results: Array<{ file: string; entry: MemoryEntry }> }> {
+export async function handleMemorySearch(
+  query: string
+): Promise<{ results: Array<{ file: string; entry: MemoryEntry }> }> {
   const files = getMemoryFiles();
   const results: Array<{ file: string; entry: MemoryEntry }> = [];
   const lowerQuery = query.toLowerCase();
@@ -129,8 +140,10 @@ export async function handleMemorySearch(query: string): Promise<{ results: Arra
       const content = readFileSync(path, "utf-8");
       const entries = parseMemoryFile(content, file);
       for (const entry of entries) {
-        if (entry.content.toLowerCase().includes(lowerQuery) ||
-          entry.tags.some(t => t.toLowerCase().includes(lowerQuery))) {
+        if (
+          entry.content.toLowerCase().includes(lowerQuery) ||
+          entry.tags.some((t) => t.toLowerCase().includes(lowerQuery))
+        ) {
           results.push({ file, entry });
         }
       }
@@ -140,7 +153,11 @@ export async function handleMemorySearch(query: string): Promise<{ results: Arra
   return { results };
 }
 
-export async function handleMemoryEdit(file: string, index: number, newContent: string): Promise<{ success: boolean }> {
+export async function handleMemoryEdit(
+  file: string,
+  index: number,
+  newContent: string
+): Promise<{ success: boolean }> {
   const decodedFile = decodeMemoryFileParam(file);
   const path = safeMemoryPath(file);
   if (!existsSync(path)) {
@@ -152,8 +169,11 @@ export async function handleMemoryEdit(file: string, index: number, newContent: 
 
   if (index >= 0 && index < entries.length) {
     entries[index].content = newContent;
-    const newFileContent = `# ${decodedFile.replace(".md", "")}\n\n` +
-      entries.map((e) => `## ${e.timestamp} - ${e.type} [${e.tags.join(", ")}]\n\n${e.content.trim()}`).join("\n\n");
+    const newFileContent =
+      `# ${decodedFile.replace(".md", "")}\n\n` +
+      entries
+        .map((e) => `## ${e.timestamp} - ${e.type} [${e.tags.join(", ")}]\n\n${e.content.trim()}`)
+        .join("\n\n");
     writeFileSync(path, newFileContent);
   } else {
     throw new Error("Entry index not found");

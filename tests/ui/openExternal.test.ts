@@ -62,6 +62,41 @@ describe("openExternal utility", () => {
     expect(openCalls).toHaveLength(0);
   });
 
+  test("uses the native macOS bridge before gateway or browser fallbacks", async () => {
+    const opened: string[] = [];
+    const fetchCalls: string[] = [];
+    (globalThis as unknown as { window: Window }).window = {
+      ...((globalThis as { window?: Window }).window as Window),
+      __CYBARA_NATIVE__: {
+        runtime: "cybara-native",
+        platform: "macos",
+        bridgeVersion: 1,
+        gatewayPort: 4269,
+        managedGateway: true,
+        supportsDesktopUpdater: false,
+        openExternal: (url: string) => opened.push(url),
+      },
+      open: ((url?: string | URL, target?: string, features?: string) => {
+        openCalls.push({
+          url: typeof url === "string" ? url : url?.toString() || "",
+          target,
+          features,
+        });
+        return null;
+      }) as typeof window.open,
+    };
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      fetchCalls.push(typeof input === "string" ? input : input.toString());
+      return new Response("", { status: 200 });
+    }) as typeof fetch;
+
+    await openExternal("https://example.com/native");
+
+    expect(opened).toEqual(["https://example.com/native"]);
+    expect(fetchCalls).toEqual([]);
+    expect(openCalls).toEqual([]);
+  });
+
   test("falls back to window.open when backend returns non-OK", async () => {
     globalThis.fetch = (async () => new Response("nope", { status: 500 })) as typeof fetch;
 

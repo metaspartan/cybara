@@ -123,7 +123,13 @@ export interface WorkspaceIndexerSettings {
   semanticMaxFiles: number;
   semanticMinScore: number;
   embeddingProvider:
-    "auto" | "openai" | "voyage" | "gemini" | "ollama" | "transformers_js" | "local";
+    | "auto"
+    | "openai"
+    | "voyage"
+    | "gemini"
+    | "ollama"
+    | "transformers_js"
+    | "local";
   embeddingModel: string;
   ignoreDirs: string[];
   includeExtensions: string[];

@@ -3,7 +3,16 @@ import { persist } from "zustand/middleware";
 import type { Toast } from "../types";
 
 export type ThemeAccent =
-  "indigo" | "emerald" | "amber" | "rose" | "cyan" | "purple" | "blue" | "teal" | "orange" | "pink";
+  | "indigo"
+  | "emerald"
+  | "amber"
+  | "rose"
+  | "cyan"
+  | "purple"
+  | "blue"
+  | "teal"
+  | "orange"
+  | "pink";
 
 export const themeAccents: Record<ThemeAccent, { primary: string; name: string }> = {
   indigo: { primary: "99, 102, 241", name: "Indigo" },

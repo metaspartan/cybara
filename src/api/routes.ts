@@ -1,6 +1,7 @@
 import { config } from "../core/config";
 import { cybaraDir, homeDir as runtimeHomeDir } from "../core/paths";
 import { resolveCybaraHome, setCybaraHomeOverride } from "../core/cybara-home";
+import { getCybaraDataDirConfigInfo, getCybaraDataDirInfo } from "./data-dir-info";
 import { cacheMetricsRoutes, prewarmMetricsRoutes } from "./route-cache";
 import { mobileRoutes } from "./mobile";
 import {
@@ -475,32 +476,6 @@ function redactSecretConfig(cfg: Record<string, unknown>): Record<string, unknow
       SECRET_CONFIG_KEY.test(key) && value != null && value !== "" ? "***redacted***" : value;
   }
   return out;
-}
-
-function getCybaraDataDirInfo(): Record<string, unknown> {
-  const configured = resolveCybaraHome();
-  return {
-    cybaraDataDir: cybaraDir,
-    configuredCybaraDataDir: configured.dir,
-    cybaraDataDirSource: configured.source,
-    cybaraDataDirForced: configured.forced,
-    cybaraDataDirRestartRequired: configured.dir !== cybaraDir,
-    cybaraDataDirOverrideFile: configured.overrideFile,
-    defaultCybaraDataDir: configured.defaultDir,
-  };
-}
-
-function getCybaraDataDirConfigInfo(): Record<string, unknown> {
-  const info = getCybaraDataDirInfo();
-  return {
-    cybara_data_dir: info.cybaraDataDir,
-    configured_cybara_data_dir: info.configuredCybaraDataDir,
-    cybara_data_dir_source: info.cybaraDataDirSource,
-    cybara_data_dir_forced: info.cybaraDataDirForced,
-    cybara_data_dir_restart_required: info.cybaraDataDirRestartRequired,
-    cybara_data_dir_override_file: info.cybaraDataDirOverrideFile,
-    default_cybara_data_dir: info.defaultCybaraDataDir,
-  };
 }
 
 function parseBoundedQueryNumber(
@@ -1516,7 +1491,8 @@ const routes: Record<string, RouteHandler> = {
     if (!config) throw new Error(`Validation error: unknown provider '${providerType}'`);
 
     const oauthConfig = config.oauthConfig as
-      { clientId?: string; deviceCodeUrl?: string; scope?: string } | undefined;
+      | { clientId?: string; deviceCodeUrl?: string; scope?: string }
+      | undefined;
     if (!oauthConfig?.deviceCodeUrl || !oauthConfig?.clientId) {
       throw new Error(`Provider ${providerType} does not support device code OAuth flow`);
     }
@@ -1653,8 +1629,9 @@ const routes: Record<string, RouteHandler> = {
           oauthConfig.clientSecret = clientConfig.clientSecret;
         }
       } else {
-        const antigravityConfig = (providers.antigravity as Record<string, unknown>)
-          ?.oauthConfig as { clientId?: string; clientSecret?: string } | undefined;
+        const antigravityConfig = (providers.antigravity as Record<string, unknown>)?.oauthConfig as
+          | { clientId?: string; clientSecret?: string }
+          | undefined;
         if (antigravityConfig?.clientId) {
           oauthConfig.clientId = antigravityConfig.clientId;
           if (antigravityConfig.clientSecret && !oauthConfig.clientSecret) {

@@ -76,6 +76,14 @@ import {
 } from "@/stores/uiStore";
 import { resolveSettingsSectionId, type SettingsSectionId } from "@/lib/settingsNavigation";
 import {
+  cn,
+  formatByteCount,
+  formatBytes,
+  formatPct,
+  formatStorageBytes,
+  formatUptime,
+} from "@/lib/settingsFormat";
+import {
   Activity,
   AlertTriangle,
   Server,
@@ -128,26 +136,6 @@ function getCheckStatus(value: unknown): {
     }
   }
   return { status: "healthy" };
-}
-
-function formatBytes(bytes?: number): string {
-  const value = Number(bytes || 0);
-  if (value >= 1024 * 1024 * 1024) return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${Math.round(value)} B`;
-}
-
-function formatStorageBytes(bytes?: number): string {
-  const value = Number(bytes || 0);
-  if (value >= 1000 * 1000 * 1000) return `${(value / (1000 * 1000 * 1000)).toFixed(2)} GB`;
-  if (value >= 1000 * 1000) return `${(value / (1000 * 1000)).toFixed(1)} MB`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)} KB`;
-  return `${Math.round(value)} B`;
-}
-
-function formatPct(value?: number | null): string {
-  return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "n/a";
 }
 
 function ThemeSettings() {
@@ -922,7 +910,13 @@ type MemoryBehaviorSettingsState = {
 };
 
 type MemoryRecallProvider =
-  "auto" | "local" | "transformers_js" | "openai" | "voyage" | "gemini" | "ollama";
+  | "auto"
+  | "local"
+  | "transformers_js"
+  | "openai"
+  | "voyage"
+  | "gemini"
+  | "ollama";
 
 type MemoryRecallSettingsState = {
   enabled: boolean;
@@ -1174,7 +1168,12 @@ function memoryRecallConfigPayload(recall: MemoryRecallSettingsState): Record<st
 }
 
 type MemoryProviderChoice =
-  "local" | "supermemory" | "mem0" | "honcho" | "openviking" | "hindsight";
+  | "local"
+  | "supermemory"
+  | "mem0"
+  | "honcho"
+  | "openviking"
+  | "hindsight";
 
 type MemoryProviderFieldValues = Record<string, string>;
 
@@ -1908,10 +1907,12 @@ function FeatureSettings() {
         setTerminalEnabled(data?.terminal_enabled === true);
         setSelfImprovingSkills(data?.self_improving_skills_enabled !== false);
         const policy = data?.dangerous_tool_policy as
-          { enabled?: boolean; mode?: string } | undefined;
+          | { enabled?: boolean; mode?: string }
+          | undefined;
         const modeRaw = typeof data?.tool_approval_mode === "string" ? data.tool_approval_mode : "";
         const sandboxRaw = data?.sandbox_runtime as
-          { enabled?: boolean; provider?: string; network?: string } | undefined;
+          | { enabled?: boolean; provider?: string; network?: string }
+          | undefined;
         setDangerousToolPolicyEnabled(policy?.enabled === true);
         setDangerousToolPolicyMode(policy?.mode === "block" ? "block" : "audit");
         setToolApprovalMode(modeRaw === "ask" ? "ask" : "always_allow");
@@ -4731,32 +4732,6 @@ export function Settings() {
       </div>
     </PageLayout>
   );
-}
-
-function formatUptime(seconds: number): string {
-  const days = Math.floor(seconds / 86400);
-  const hours = Math.floor((seconds % 86400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-
-  if (days > 0) return `${days}d ${hours}h ${minutes}m`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
-}
-
-function formatByteCount(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let unitIndex = 0;
-  let amount = value;
-  while (amount >= 1024 && unitIndex < units.length - 1) {
-    amount /= 1024;
-    unitIndex += 1;
-  }
-  return `${amount >= 10 || unitIndex === 0 ? amount.toFixed(0) : amount.toFixed(1)} ${units[unitIndex]}`;
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(" ");
 }
 
 function SystemPromptSection() {

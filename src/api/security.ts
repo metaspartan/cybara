@@ -32,7 +32,11 @@ interface PersistedSecuritySettings {
 
 export type GatewayRemoteAccessMode = "private_overlay" | "public_tunnel";
 export type GatewayRemoteAccessProvider =
-  "tailscale" | "cloudflare" | "zerotier" | "netbird" | "custom";
+  | "tailscale"
+  | "cloudflare"
+  | "zerotier"
+  | "netbird"
+  | "custom";
 
 interface PersistedGatewayRemoteAccessSettings {
   enabled?: boolean;

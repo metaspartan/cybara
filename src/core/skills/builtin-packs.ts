@@ -37,8 +37,7 @@ Report findings most-severe first with a concrete failing scenario (inputs → w
   },
   {
     name: "debugging",
-    description:
-      "Systematically isolate the root cause of a bug instead of guessing at fixes.",
+    description: "Systematically isolate the root cause of a bug instead of guessing at fixes.",
     instructions: `# Debugging
 
 1. Reproduce it reliably. Capture the exact inputs, environment, and the full error/stack.
@@ -51,8 +50,7 @@ Report findings most-severe first with a concrete failing scenario (inputs → w
   },
   {
     name: "data-analysis",
-    description:
-      "Explore a dataset (CSV/JSON/table) and answer questions about it defensibly.",
+    description: "Explore a dataset (CSV/JSON/table) and answer questions about it defensibly.",
     instructions: `# Data analysis
 
 1. Profile first: row count, columns, types, null rates, obvious duplicates, and value ranges.
@@ -105,8 +103,7 @@ For each finding: state the concrete attack (input → impact), rate severity, a
   },
   {
     name: "release-management",
-    description:
-      "Cut a clean release: version bump, changelog, tag, and verification.",
+    description: "Cut a clean release: version bump, changelog, tag, and verification.",
     instructions: `# Release management
 
 1. Decide the version bump from the changes (semver: breaking → major, feature → minor, fix → patch).
@@ -144,8 +141,7 @@ For each finding: state the concrete attack (input → impact), rate severity, a
   },
   {
     name: "incident-response",
-    description:
-      "Triage a production incident: stabilize first, diagnose second, prevent third.",
+    description: "Triage a production incident: stabilize first, diagnose second, prevent third.",
     instructions: `# Incident response
 
 1. Assess impact and blast radius; decide severity. Communicate status early and often.
@@ -170,8 +166,7 @@ For each finding: state the concrete attack (input → impact), rate severity, a
   },
   {
     name: "devops",
-    description:
-      "Containerize, build in CI, and deploy a service reliably and reproducibly.",
+    description: "Containerize, build in CI, and deploy a service reliably and reproducibly.",
     instructions: `# DevOps
 
 - Make builds reproducible: pin base images and dependency versions; build once, promote the same artifact across environments.
@@ -196,8 +191,7 @@ For each finding: state the concrete attack (input → impact), rate severity, a
   },
   {
     name: "accessibility",
-    description:
-      "Make a web UI usable by keyboard and screen readers, meeting WCAG basics.",
+    description: "Make a web UI usable by keyboard and screen readers, meeting WCAG basics.",
     instructions: `# Accessibility
 
 - Every interactive element must be reachable and operable by keyboard, with a visible focus state.
@@ -235,8 +229,7 @@ For each finding: state the concrete attack (input → impact), rate severity, a
   },
   {
     name: "note-taking",
-    description:
-      "Capture and organize knowledge so it's findable and reusable later.",
+    description: "Capture and organize knowledge so it's findable and reusable later.",
     instructions: `# Note-taking
 
 - Write the note for your future self who has forgotten the context — include the why, not just the what.
@@ -261,8 +254,7 @@ For each finding: state the concrete attack (input → impact), rate severity, a
   },
   {
     name: "sql",
-    description:
-      "Write correct, efficient SQL and reason about query performance.",
+    description: "Write correct, efficient SQL and reason about query performance.",
     instructions: `# SQL
 
 - Start from the exact question; write the SELECT list and grouping that answers it, then add filters.

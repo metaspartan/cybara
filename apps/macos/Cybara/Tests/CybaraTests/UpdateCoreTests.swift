@@ -109,4 +109,58 @@ final class UpdateCoreTests: XCTestCase {
         XCTAssertNil(UpdateCore.parseLatestRelease(json: "{}"))
         XCTAssertNil(UpdateCore.parseLatestRelease(json: ""))
     }
+
+    // MARK: - assets + native asset selection
+
+    func testParseLatestReleaseDecodesAssets() {
+        let json = """
+            {
+              "tag_name": "v1.0.916",
+              "html_url": "https://example.com/r",
+              "prerelease": false,
+              "assets": [
+                {"name": "Cybara_1.0.916_aarch64.dmg", "browser_download_url": "https://x/dmg"},
+                {"name": "CybaraNative-v1.0.916-arm64.zip", "browser_download_url": "https://x/native"}
+              ]
+            }
+            """
+        let release = UpdateCore.parseLatestRelease(json: json)
+        XCTAssertEqual(release?.assets.count, 2)
+        XCTAssertEqual(release?.assets.last?.name, "CybaraNative-v1.0.916-arm64.zip")
+        XCTAssertEqual(release?.assets.last?.downloadURL, "https://x/native")
+    }
+
+    func testSelectNativeAssetPicksArchZip() {
+        let assets = [
+            ReleaseAsset(name: "Cybara_1.0.916_aarch64.dmg", downloadURL: "https://x/dmg"),
+            ReleaseAsset(name: "Cybara_aarch64.app.tar.gz", downloadURL: "https://x/tauri"),
+            ReleaseAsset(name: "CybaraNative-v1.0.916-arm64.zip", downloadURL: "https://x/arm"),
+            ReleaseAsset(name: "CybaraNative-v1.0.916-x86_64.zip", downloadURL: "https://x/intel"),
+        ]
+        XCTAssertEqual(UpdateCore.selectNativeAsset(assets, arch: "arm64")?.downloadURL, "https://x/arm")
+        XCTAssertEqual(
+            UpdateCore.selectNativeAsset(assets, arch: "x86_64")?.downloadURL, "https://x/intel")
+    }
+
+    func testSelectNativeAssetIgnoresTauriAndDmg() {
+        let assets = [
+            ReleaseAsset(name: "Cybara_1.0.916_aarch64.dmg", downloadURL: "https://x/dmg"),
+            ReleaseAsset(name: "Cybara_aarch64.app.tar.gz", downloadURL: "https://x/tauri"),
+        ]
+        XCTAssertNil(UpdateCore.selectNativeAsset(assets, arch: "arm64"))
+    }
+
+    func testCurrentArchSlugIsKnown() {
+        XCTAssertTrue(["arm64", "x86_64"].contains(UpdateCore.currentArchSlug()))
+    }
+
+    func testSelfUpdateScriptHasSafeSwapAndRelaunch() {
+        let script = UpdateCore.selfUpdateScript
+        // rolls the old bundle aside, copies the new one, and relaunches.
+        XCTAssertTrue(script.contains("mv \"$DEST_APP\" \"$BACKUP\""))
+        XCTAssertTrue(script.contains("ditto \"$NEW_APP\" \"$DEST_APP\""))
+        XCTAssertTrue(script.contains("mv \"$BACKUP\" \"$DEST_APP\""))
+        XCTAssertTrue(script.contains("open \"$DEST_APP\""))
+        XCTAssertTrue(script.contains("kill -0 \"$APP_PID\""))
+    }
 }

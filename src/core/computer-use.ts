@@ -587,7 +587,8 @@ export function setComputerUseAutoApprove(enabled: boolean): void {
 
 /** Optional consent callback; if unset, destructive actions require sessionAutoApprove. */
 let approvalCallback:
-  ((action: ComputerUseAction, args: ComputerUseArgs, summary: string) => boolean) | null = null;
+  | ((action: ComputerUseAction, args: ComputerUseArgs, summary: string) => boolean)
+  | null = null;
 export function setComputerUseApprovalCallback(
   cb: (action: ComputerUseAction, args: ComputerUseArgs, summary: string) => boolean
 ): void {
@@ -884,9 +885,11 @@ async function callDriverTool(
   };
 
   const textBlock = result?.content?.find((c) => c.type === "text") as
-    { text?: string } | undefined;
+    | { text?: string }
+    | undefined;
   const imageBlock = result?.content?.find((c) => c.type === "image" || c.type === "image_url") as
-    { data?: string; mimeType?: string; image_url?: { url?: string } } | undefined;
+    | { data?: string; mimeType?: string; image_url?: { url?: string } }
+    | undefined;
 
   let screenshot: string | undefined;
   let screenshotMime: string | undefined;

@@ -1,4 +1,3 @@
-
 import { config, DEFAULT_MEMORY_BEHAVIOR_SETTINGS } from "../config";
 import { getContextWindow, estimateTokens, estimateMessagesTokens } from "../session-context";
 

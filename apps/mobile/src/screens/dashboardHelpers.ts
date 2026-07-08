@@ -151,7 +151,12 @@ export type MobileMemoryBehaviorSettings = {
 };
 
 export type MobileMemoryProviderChoice =
-  "local" | "supermemory" | "mem0" | "honcho" | "openviking" | "hindsight";
+  | "local"
+  | "supermemory"
+  | "mem0"
+  | "honcho"
+  | "openviking"
+  | "hindsight";
 
 export const MOBILE_MEMORY_PROVIDER_CHOICES: MobileMemoryProviderChoice[] = [
   "local",
@@ -179,7 +184,13 @@ export type MobileIndexingSettings = {
   includeHidden: boolean;
   autoReindexOnWorkspaceSet: boolean;
   embeddingProvider:
-    "auto" | "local" | "transformers_js" | "openai" | "voyage" | "gemini" | "ollama";
+    | "auto"
+    | "local"
+    | "transformers_js"
+    | "openai"
+    | "voyage"
+    | "gemini"
+    | "ollama";
   embeddingModel: string;
 };
 

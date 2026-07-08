@@ -7,11 +7,7 @@ import { handlePdf } from "./pdf";
 import { handleOcr, handleImageDescribe } from "./ocr";
 import { parseSkillFile } from "./loader";
 import { cybaraDir } from "../paths";
-import {
-  hasMactopBinary,
-  normalizeMactopSampleCount,
-  runMactopJsonSamples,
-} from "../tools/mactop";
+import { hasMactopBinary, normalizeMactopSampleCount, runMactopJsonSamples } from "../tools/mactop";
 
 export type {
   SkillInstallSpec,
@@ -91,8 +87,7 @@ export interface SkillDefinition {
   category: string;
 }
 
-const defaultSkills: SkillDefinition[] = [
-];
+const defaultSkills: SkillDefinition[] = [];
 
 let skillsCache: Skill[] | null = null;
 
@@ -206,12 +201,24 @@ export function getSkills(): Skill[] {
 
 export function getSkill(name: string): Skill | undefined {
   const skills = getSkills();
-  const normalizedName = name.toLowerCase().trim().replace(/[\s_]+/g, "-");
+  const normalizedName = name
+    .toLowerCase()
+    .trim()
+    .replace(/[\s_]+/g, "-");
   return skills.find(
     (s) =>
-      s.name.toLowerCase().trim().replace(/[\s_]+/g, "-") === normalizedName ||
-      basename(dirname(s.location)).toLowerCase().trim().replace(/[\s_]+/g, "-") === normalizedName ||
-      basename(s.location, extname(s.location)).toLowerCase().trim().replace(/[\s_]+/g, "-") === normalizedName
+      s.name
+        .toLowerCase()
+        .trim()
+        .replace(/[\s_]+/g, "-") === normalizedName ||
+      basename(dirname(s.location))
+        .toLowerCase()
+        .trim()
+        .replace(/[\s_]+/g, "-") === normalizedName ||
+      basename(s.location, extname(s.location))
+        .toLowerCase()
+        .trim()
+        .replace(/[\s_]+/g, "-") === normalizedName
   );
 }
 
@@ -236,16 +243,18 @@ function slugifySkillName(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-function normalizeSkillContent(name: string, description: string | undefined, content: string): string {
+function normalizeSkillContent(
+  name: string,
+  description: string | undefined,
+  content: string
+): string {
   const trimmed = content.trim();
 
   if (trimmed.startsWith("---") || trimmed.startsWith("#")) {
     return `${trimmed}\n`;
   }
 
-  const header = description?.trim()
-    ? `# ${name}\n\n${description.trim()}\n\n`
-    : `# ${name}\n\n`;
+  const header = description?.trim() ? `# ${name}\n\n${description.trim()}\n\n` : `# ${name}\n\n`;
   return `${header}${trimmed}\n`;
 }
 
@@ -307,7 +316,8 @@ builtinExecutors.weather = async (args: Record<string, unknown>) => {
 
   try {
     const urlPath = location ? encodeURIComponent(location) : "";
-    const formatParam = format === "detailed" ? "?format=j1" : format === "forecast" ? "?format=j1" : "?format=3";
+    const formatParam =
+      format === "detailed" ? "?format=j1" : format === "forecast" ? "?format=j1" : "?format=3";
 
     const response = await fetch(`https://wttr.in/${urlPath}${formatParam}`);
 
@@ -316,7 +326,7 @@ builtinExecutors.weather = async (args: Record<string, unknown>) => {
     }
 
     if (format === "detailed" || format === "forecast") {
-      const data = await response.json() as {
+      const data = (await response.json()) as {
         nearest_area?: Array<{ areaName?: Array<{ value?: string }> }>;
         current_condition?: unknown[];
         weather?: unknown[];
@@ -349,15 +359,14 @@ builtinExecutors.summarization = async (args: Record<string, unknown>) => {
   if (style === "bullet") {
     const keyPoints = sentences.slice(0, Math.min(5, sentences.length));
     return {
-      summary: keyPoints.map(s => `• ${s.trim()}`).join("\n"),
+      summary: keyPoints.map((s) => `• ${s.trim()}`).join("\n"),
       style: "bullet",
       originalLength: text.length,
     };
   }
 
-  const targetSentences = style === "detailed"
-    ? Math.ceil(sentences.length * 0.4)
-    : Math.ceil(maxLength / 80);
+  const targetSentences =
+    style === "detailed" ? Math.ceil(sentences.length * 0.4) : Math.ceil(maxLength / 80);
 
   const summary = sentences.slice(0, targetSentences).join(" ").slice(0, maxLength);
 
@@ -422,8 +431,8 @@ builtinExecutors.video_frames = async (args: Record<string, unknown>) => {
       ]);
 
       const frames = readdirSync(output)
-        .filter(f => f.startsWith("frame_"))
-        .map(f => join(output, f));
+        .filter((f) => f.startsWith("frame_"))
+        .map((f) => join(output, f));
 
       return {
         video,

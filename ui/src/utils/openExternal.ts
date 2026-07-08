@@ -1,6 +1,20 @@
+import { open as openTauriExternal } from "@tauri-apps/plugin-shell";
+import { isCybaraNativeRuntime, isTauriDesktopRuntime } from "@/lib/desktopHost";
 import { apiFetch } from "@/lib/auth";
 
 export async function openExternal(url: string): Promise<void> {
+  if (isCybaraNativeRuntime() && window.__CYBARA_NATIVE__?.openExternal) {
+    window.__CYBARA_NATIVE__.openExternal(url);
+    return;
+  }
+
+  if (isTauriDesktopRuntime()) {
+    try {
+      await openTauriExternal(url);
+      return;
+    } catch {}
+  }
+
   try {
     const res = await apiFetch("/api/open-url", {
       method: "POST",
@@ -8,10 +22,9 @@ export async function openExternal(url: string): Promise<void> {
       body: JSON.stringify({ url }),
     });
     if (res.ok) {
-      console.log("[openExternal] Opened via backend:", url.substring(0, 80));
       return;
     }
   } catch {}
-  console.log("[openExternal] Falling back to window.open()");
+
   window.open(url, "_blank", "noopener,noreferrer");
 }

@@ -1,24 +1,58 @@
 import Foundation
 
+/// A downloadable asset attached to a GitHub release.
+public struct ReleaseAsset: Codable, Equatable, Sendable {
+    public let name: String
+    public let downloadURL: String
+
+    enum CodingKeys: String, CodingKey {
+        case name
+        case downloadURL = "browser_download_url"
+    }
+
+    public init(name: String, downloadURL: String) {
+        self.name = name
+        self.downloadURL = downloadURL
+    }
+}
+
 /// Metadata for a published GitHub release, parsed from the REST API.
-public struct ReleaseInfo: Codable, Equatable {
+public struct ReleaseInfo: Codable, Equatable, Sendable {
     public let tagName: String
     public let htmlURL: String
     public let name: String?
     public let prerelease: Bool
+    public let assets: [ReleaseAsset]
 
     enum CodingKeys: String, CodingKey {
         case tagName = "tag_name"
         case htmlURL = "html_url"
         case name
         case prerelease
+        case assets
     }
 
-    public init(tagName: String, htmlURL: String, name: String?, prerelease: Bool) {
+    public init(
+        tagName: String,
+        htmlURL: String,
+        name: String?,
+        prerelease: Bool,
+        assets: [ReleaseAsset] = []
+    ) {
         self.tagName = tagName
         self.htmlURL = htmlURL
         self.name = name
         self.prerelease = prerelease
+        self.assets = assets
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        tagName = try container.decode(String.self, forKey: .tagName)
+        htmlURL = (try container.decodeIfPresent(String.self, forKey: .htmlURL)) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        prerelease = (try container.decodeIfPresent(Bool.self, forKey: .prerelease)) ?? false
+        assets = (try container.decodeIfPresent([ReleaseAsset].self, forKey: .assets)) ?? []
     }
 }
 
@@ -79,4 +113,51 @@ public enum UpdateCore {
         guard let data = json.data(using: .utf8) else { return nil }
         return try? JSONDecoder().decode(ReleaseInfo.self, from: data)
     }
+
+    /// Architecture slug used in native macOS release asset names.
+    public static func currentArchSlug() -> String {
+        #if arch(arm64)
+        return "arm64"
+        #else
+        return "x86_64"
+        #endif
+    }
+
+    /// Pick the native SwiftUI app archive (`CybaraNative-v<version>-<arch>.zip`)
+    /// for the given architecture, if one was published in this release.
+    public static func selectNativeAsset(_ assets: [ReleaseAsset], arch: String) -> ReleaseAsset? {
+        let suffix = "-\(arch).zip".lowercased()
+        return assets.first { asset in
+            let name = asset.name.lowercased()
+            return name.hasPrefix("cybaranative-") && name.hasSuffix(suffix)
+        }
+    }
+
+    /// Shell script that swaps the running app bundle with a freshly downloaded
+    /// one and relaunches it. Invoked as `bash <script> <pid> <newApp> <destApp>`;
+    /// waits for the current process to exit, moves the old bundle aside, copies
+    /// the new one into place (rolling back on failure), then reopens the app.
+    public static let selfUpdateScript = """
+        #!/bin/bash
+        set -u
+        APP_PID="$1"
+        NEW_APP="$2"
+        DEST_APP="$3"
+        for _ in $(seq 1 300); do
+          /bin/kill -0 "$APP_PID" 2>/dev/null || break
+          /bin/sleep 0.2
+        done
+        BACKUP="${DEST_APP}.old"
+        /bin/rm -rf "$BACKUP"
+        if /bin/mv "$DEST_APP" "$BACKUP"; then
+          if /usr/bin/ditto "$NEW_APP" "$DEST_APP"; then
+            /usr/bin/xattr -dr com.apple.quarantine "$DEST_APP" 2>/dev/null || true
+            /bin/rm -rf "$BACKUP"
+          else
+            /bin/rm -rf "$DEST_APP"
+            /bin/mv "$BACKUP" "$DEST_APP"
+          fi
+        fi
+        /usr/bin/open "$DEST_APP"
+        """
 }

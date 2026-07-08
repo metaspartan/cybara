@@ -57,7 +57,12 @@ export interface Provider {
 
 export type ProviderPlanStatusState = "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
 export type ProviderPlanSourceMode =
-  "local" | "provider_api" | "oauth_api" | "browser_cookie" | "cli" | "manual";
+  | "local"
+  | "provider_api"
+  | "oauth_api"
+  | "browser_cookie"
+  | "cli"
+  | "manual";
 
 export type ProviderPlanPresetConfidence = "exact" | "published" | "dynamic" | "estimated";
 

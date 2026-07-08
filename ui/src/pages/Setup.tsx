@@ -24,7 +24,13 @@ import { setupApi, settingsApi } from "@/lib/api";
 import type { AvailableProvider } from "@/types";
 
 type WizardStep =
-  "welcome" | "provider" | "apikey" | "oauth" | "permissions" | "agent" | "complete";
+  | "welcome"
+  | "provider"
+  | "apikey"
+  | "oauth"
+  | "permissions"
+  | "agent"
+  | "complete";
 type SetupAuthFlow = "api_key" | "oauth" | "external" | "none";
 
 function getAuthFlow(provider: AvailableProvider): SetupAuthFlow {

@@ -15,6 +15,7 @@ describe("package.json script wiring", () => {
       name?: string;
       bin?: Record<string, string>;
       scripts?: Record<string, string>;
+      devDependencies?: Record<string, string>;
     };
 
     expect(pkg.name).toBe("cybara");
@@ -42,6 +43,16 @@ describe("package.json script wiring", () => {
     expect(pkg.scripts?.["test:smoke"]).toContain("bun test tests/mobile");
     expect(pkg.scripts?.["check:ci"]).toContain("bun run mobile:expo-check");
     expect(pkg.scripts?.["check:ci"]).toContain("bun run mobile:typecheck");
+    expect(pkg.scripts?.["format"]).toBe("biome format --write");
+    expect(pkg.scripts?.["format:check"]).toBe("biome format");
+    expect(pkg.scripts?.["deadcode"]).toBe("knip --no-progress");
+    expect(pkg.scripts?.["check:ci"]).toContain("bun run format:check");
+    expect(pkg.scripts?.["check:ci"]).toContain("bun run deadcode");
+    expect(pkg.devDependencies?.["@biomejs/biome"]).toMatch(/^\d+\.\d+\.\d+/);
+    expect(pkg.devDependencies?.["knip"]).toMatch(/^\d+\.\d+\.\d+/);
+    expect(pkg.devDependencies?.["prettier"]).toBeUndefined();
+    expect(pkg.devDependencies?.["eslint-plugin-prettier"]).toBeUndefined();
+    expect(pkg.devDependencies?.["eslint-config-prettier"]).toBeUndefined();
 
     expect(pkg.scripts?.["build:all"]).toContain("bun run ui:build");
     expect(pkg.scripts?.["build:all"]).toContain("bun run build:cli");

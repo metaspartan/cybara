@@ -41,11 +41,6 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! command -v python3 >/dev/null 2>&1; then
-  echo "python3 is required to parse GitHub release metadata." >&2
-  exit 1
-fi
-
 OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
 ARCH="$(uname -m)"
 
@@ -67,7 +62,10 @@ case "$ARCH" in
     ;;
 esac
 
-ASSET="cybara-${PLATFORM}-${RELEASE_ARCH}"
+# Release CLI binaries are published as `cybara-v<version>-<platform>-<arch>-cli`
+# (with a `.exe` suffix on Windows). Match by that stable suffix rather than a
+# fixed name so a version bump never breaks the installer.
+ASSET_SUFFIX="-${PLATFORM}-${RELEASE_ARCH}-cli"
 if [ "$VERSION" = "latest" ]; then
   API_URL="https://api.github.com/repos/${REPO}/releases/latest"
 else
@@ -75,38 +73,35 @@ else
   API_URL="https://api.github.com/repos/${REPO}/releases/tags/v${VERSION}"
 fi
 
-# Parse the release JSON once: resolve the binary download URL, the release tag,
-# and the published SHA256 sidecar URL (if present).
-RELEASE_INFO="$(
-  curl -fsSL "$API_URL" | python3 - "$ASSET" <<'PY'
-import json
-import sys
-
-asset_name = sys.argv[1]
-data = json.load(sys.stdin)
-tag = (data.get("tag_name") or "").lstrip("v")
-download_url = None
-checksum_url = None
-for asset in data.get("assets", []):
-    name = asset.get("name")
-    if name == asset_name:
-        download_url = asset.get("browser_download_url")
-    elif name == asset_name + ".sha256":
-        checksum_url = asset.get("browser_download_url")
-if not download_url:
-    raise SystemExit(1)
-print(download_url)
-print(checksum_url or "")
-print(tag or "")
-PY
-)" || {
-  echo "Could not find release asset ${ASSET} in ${REPO} for ${VERSION}." >&2
+# Download the release metadata, then parse it with only curl + grep + sed (no
+# python/jq). Every asset's `browser_download_url` ends with its filename, so we
+# list those URLs and pick the one whose basename ends with our CLI suffix.
+REL_JSON="$(mktemp "${TMPDIR:-/tmp}/cybara-release.XXXXXX")"
+trap 'rm -f "$REL_JSON"' EXIT
+if ! curl -fsSL "$API_URL" -o "$REL_JSON"; then
+  echo "Could not fetch release metadata from ${API_URL}." >&2
   exit 1
-}
+fi
 
-DOWNLOAD_URL="$(printf '%s\n' "$RELEASE_INFO" | sed -n '1p')"
-CHECKSUM_URL="$(printf '%s\n' "$RELEASE_INFO" | sed -n '2p')"
-RELEASE_TAG="$(printf '%s\n' "$RELEASE_INFO" | sed -n '3p')"
+ASSET_URLS="$(
+  grep -oE '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]+"' "$REL_JSON" \
+    | sed -E 's/.*"(https[^"]+)".*/\1/'
+)"
+# `-e` marks the pattern explicitly so the leading dash isn't read as an option.
+DOWNLOAD_URL="$(printf '%s\n' "$ASSET_URLS" | grep -E -e "${ASSET_SUFFIX}\$" | head -n 1)"
+CHECKSUM_URL="$(printf '%s\n' "$ASSET_URLS" | grep -E -e "${ASSET_SUFFIX}\.sha256\$" | head -n 1)"
+RELEASE_TAG="$(
+  grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]+"' "$REL_JSON" \
+    | head -n 1 \
+    | sed -E 's/.*:[[:space:]]*"v?([^"]+)".*/\1/'
+)"
+rm -f "$REL_JSON"
+
+if [ -z "$DOWNLOAD_URL" ]; then
+  echo "Could not find a CLI release asset (*${ASSET_SUFFIX}) in ${REPO} for ${VERSION}." >&2
+  exit 1
+fi
+
 if [ -n "$RELEASE_TAG" ] && [ "$VERSION" = "latest" ]; then
   VERSION="$RELEASE_TAG"
 fi
@@ -115,7 +110,7 @@ mkdir -p "$INSTALL_DIR"
 TMP_FILE="$(mktemp "${TMPDIR:-/tmp}/cybara-install.XXXXXX")"
 trap 'rm -f "$TMP_FILE"' EXIT
 
-echo "Downloading ${ASSET} from ${REPO} (${VERSION})..."
+echo "Downloading cybara${ASSET_SUFFIX} from ${REPO} (${VERSION})..."
 curl -fsSL "$DOWNLOAD_URL" -o "$TMP_FILE"
 
 # Verify the SHA256 of the downloaded binary against the published sidecar.
@@ -139,15 +134,12 @@ if [ -n "$CHECKSUM_URL" ]; then
     echo "Checksum verified."
   fi
 else
-  echo "Warning: no SHA256 sidecar found for ${ASSET}; installing unverified." >&2
+  echo "Warning: no SHA256 sidecar found for cybara${ASSET_SUFFIX}; installing unverified." >&2
 fi
 
 chmod +x "$TMP_FILE"
 mv "$TMP_FILE" "$INSTALL_DIR/cybara"
 trap - EXIT
 
-echo "Cybara installed to $INSTALL_DIR/cybara"
-if [ -x "$INSTALL_DIR/cybara" ]; then
-  "$INSTALL_DIR/cybara" version || true
-fi
-echo "Make sure $INSTALL_DIR is on your PATH."
+echo "Cybara ${VERSION} installed to $INSTALL_DIR/cybara"
+echo "Make sure $INSTALL_DIR is on your PATH, then run: cybara --help"

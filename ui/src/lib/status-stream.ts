@@ -1,7 +1,13 @@
 import { appendApiTokenParam } from "@/lib/auth";
 
 export type StreamAgentStatus =
-  "idle" | "thinking" | "tool_executing" | "tool_completed" | "generating" | "compacting" | "error";
+  | "idle"
+  | "thinking"
+  | "tool_executing"
+  | "tool_completed"
+  | "generating"
+  | "compacting"
+  | "error";
 
 export interface StatusActivity {
   id: string;

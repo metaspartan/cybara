@@ -171,7 +171,11 @@ export interface ProviderRouteConfig {
 }
 
 export type RouterStrategy =
-  "weighted" | "round_robin" | "lowest_cost" | "priority" | "mixture_of_agents";
+  | "weighted"
+  | "round_robin"
+  | "lowest_cost"
+  | "priority"
+  | "mixture_of_agents";
 
 export interface RouterConfig {
   enabled: boolean;

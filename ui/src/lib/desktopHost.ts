@@ -77,8 +77,9 @@ export async function getDesktopNotificationPermission(): Promise<DesktopNotific
 
 export async function requestDesktopNotificationPermission(): Promise<DesktopNotificationPermission> {
   if (isTauriDesktopRuntime()) {
-    const { isPermissionGranted, requestPermission } =
-      await import("@tauri-apps/plugin-notification");
+    const { isPermissionGranted, requestPermission } = await import(
+      "@tauri-apps/plugin-notification"
+    );
     let granted = await isPermissionGranted();
     if (!granted) {
       const permission = await requestPermission();

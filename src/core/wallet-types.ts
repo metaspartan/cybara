@@ -164,7 +164,12 @@ export interface WalletAgentPolicy {
 }
 
 export type WalletDappAdapter =
-  "rpc_call" | "eth_contract_call" | "sol_program_instruction" | "swap" | "price" | "x402_http";
+  | "rpc_call"
+  | "eth_contract_call"
+  | "sol_program_instruction"
+  | "swap"
+  | "price"
+  | "x402_http";
 
 export interface WalletRpcCallInput {
   chain: "eth" | "sol";

@@ -510,18 +510,19 @@ describe("getModelMetrics aggregation", () => {
   });
 
   test("aggregates TPS/latency/tokens per model with rounding and defaults", () => {
-    const metrics = r<
-      Array<{
-        model: string;
-        provider: string;
-        avgTps: number;
-        maxTps: number;
-        minTps: number;
-        avgLatencyMs: number;
-        totalTokens: number;
-        callCount: number;
-      }>
-    >("metrics");
+    const metrics =
+      r<
+        Array<{
+          model: string;
+          provider: string;
+          avgTps: number;
+          maxTps: number;
+          minTps: number;
+          avgLatencyMs: number;
+          totalTokens: number;
+          callCount: number;
+        }>
+      >("metrics");
     const gpt = metrics.find((m) => m.model === "gpt")!;
     expect(gpt.provider).toBe("openai");
     expect(gpt.avgTps).toBe(20);

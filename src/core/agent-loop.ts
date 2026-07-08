@@ -1,7 +1,12 @@
 import { agentManager, type AgentMessage } from "./agent";
 
 export type AgentLoopStatus =
-  "pending" | "running" | "completed" | "failed" | "cancelled" | "timeout";
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "timeout";
 
 export type AgentLoopStopReason = "done" | "max_iterations" | "cancelled" | "timeout" | "error";
 
