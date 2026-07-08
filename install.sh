@@ -2,8 +2,19 @@
 set -euo pipefail
 
 REPO="${CYBARA_RELEASE_REPOSITORY:-metaspartan/cybara}"
-INSTALL_DIR="${CYBARA_INSTALL_DIR:-$HOME/.local/bin}"
 VERSION="${CYBARA_VERSION:-latest}"
+
+# Install to a directory that's already on PATH when possible so `cybara` is
+# callable directly. Prefer /usr/local/bin (writable without sudo on most
+# macOS/Homebrew + Linux dev setups); otherwise fall back to ~/.local/bin.
+# `/usr/bin` is intentionally avoided — it's SIP-protected on macOS.
+if [ -n "${CYBARA_INSTALL_DIR:-}" ]; then
+  INSTALL_DIR="$CYBARA_INSTALL_DIR"
+elif [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
+  INSTALL_DIR="/usr/local/bin"
+else
+  INSTALL_DIR="$HOME/.local/bin"
+fi
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -142,4 +153,26 @@ mv "$TMP_FILE" "$INSTALL_DIR/cybara"
 trap - EXIT
 
 echo "Cybara ${VERSION} installed to $INSTALL_DIR/cybara"
-echo "Make sure $INSTALL_DIR is on your PATH, then run: cybara --help"
+
+# Make `cybara` callable without a full path. If the install dir isn't already
+# on PATH, add it to the current shell's rc file (idempotently) and tell the
+# user how to activate it now.
+case ":$PATH:" in
+  *":$INSTALL_DIR:"*)
+    echo "Run: cybara --help"
+    ;;
+  *)
+    case "$(basename "${SHELL:-sh}")" in
+      zsh) SHELL_RC="$HOME/.zshrc" ;;
+      bash) SHELL_RC="$HOME/.bashrc" ;;
+      *) SHELL_RC="$HOME/.profile" ;;
+    esac
+    PATH_LINE="export PATH=\"$INSTALL_DIR:\$PATH\""
+    if ! grep -qsF "$INSTALL_DIR" "$SHELL_RC" 2>/dev/null; then
+      printf '\n# Added by the Cybara installer\n%s\n' "$PATH_LINE" >>"$SHELL_RC"
+      echo "Added $INSTALL_DIR to your PATH in $SHELL_RC"
+    fi
+    echo "Activate it now with:  $PATH_LINE"
+    echo "Then run: cybara --help"
+    ;;
+esac

@@ -1720,9 +1720,32 @@ function parseProviderFlags(args: string[]): {
 interface SessionInfo {
   id: string;
   agent_id?: string;
-  message_count: number;
-  created_at: string;
-  updated_at: string;
+  agentId?: string;
+  title?: string;
+  message_count?: number;
+  messageCount?: number;
+  created_at?: string;
+  createdAt?: string;
+  updated_at?: string;
+  updatedAt?: string;
+  workspaceDir?: string | null;
+  modelMetadata?: {
+    agent_name?: string;
+    model?: string;
+    provider?: string;
+  } | null;
+}
+
+function sessionMessageCount(session: SessionInfo): number {
+  return session.message_count ?? session.messageCount ?? 0;
+}
+
+function sessionUpdatedAt(session: SessionInfo): string | undefined {
+  return session.updated_at ?? session.updatedAt ?? session.created_at ?? session.createdAt;
+}
+
+function sessionAgentLabel(session: SessionInfo): string {
+  return session.modelMetadata?.agent_name || session.agent_id || session.agentId || "-";
 }
 
 async function rawSessions(): Promise<void> {
@@ -1745,9 +1768,10 @@ async function rawSessions(): Promise<void> {
   }
 
   for (const session of sessions.slice(0, 20)) {
-    console.log(`- ${session.id.slice(0, 8)}...`);
-    console.log(`  messages: ${session.message_count}`);
-    console.log(`  updated: ${session.updated_at}`);
+    console.log(`- ${(session.title || session.id).slice(0, 80)}`);
+    console.log(`  id: ${session.id.slice(0, 8)}...`);
+    console.log(`  messages: ${sessionMessageCount(session)}`);
+    console.log(`  updated: ${sessionUpdatedAt(session) || "-"}`);
   }
 
   if (sessions.length > 20) {
@@ -3222,7 +3246,479 @@ const TUITasksCommand = () => {
   );
 };
 
-/** Non-blocking banner that surfaces when a newer Cybara release is available. */
+interface TUIRouterRoute {
+  providerId: string;
+  weight: number;
+  enabled: boolean;
+  available: boolean;
+  reason?: string;
+  requestsIn5hWindow?: number;
+  requestsInWeekWindow?: number;
+  spendToday?: number;
+  spendThisWeek?: number;
+  priceInputPerM?: number;
+  priceOutputPerM?: number;
+}
+
+interface TUIRouterStatus {
+  enabled: boolean;
+  strategy: string;
+  globalSpendToday?: number;
+  globalSpendLimitDaily?: number;
+  totalRequests?: number;
+  routes: TUIRouterRoute[];
+}
+
+interface TUIProviderPlanWindow {
+  id: string;
+  kind: string;
+  title: string;
+  usedPercent?: number;
+  usageKnown?: boolean;
+  unlimited?: boolean;
+  resetsAt?: string;
+}
+
+interface TUIProviderPlanSnapshot {
+  providerId: string;
+  configuredProviderId?: string;
+  providerType: string;
+  providerName: string;
+  managedAutomatically?: boolean;
+  status: string;
+  sourceLabel?: string;
+  windows?: TUIProviderPlanWindow[];
+}
+
+interface TUIProviderPlanStatus {
+  providers: TUIProviderPlanSnapshot[];
+}
+
+interface TUIMobileDevice {
+  id: string;
+  name: string;
+  baseUrl: string;
+  status: string;
+  createdAt: string;
+  lastSeenAt?: string;
+  revokedAt?: string;
+}
+
+function truncateText(value: unknown, max = 28): string {
+  const text = String(value ?? "");
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 1))}…`;
+}
+
+function formatRelativeTime(value?: string): string {
+  if (!value) return "-";
+  const time = Date.parse(value);
+  if (!Number.isFinite(time)) return "-";
+  const diff = Math.max(0, Date.now() - time);
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  const month = 30 * day;
+  if (diff < minute) return "now";
+  if (diff < hour) return `${Math.floor(diff / minute)}m`;
+  if (diff < day) return `${Math.floor(diff / hour)}h`;
+  if (diff < month) return `${Math.floor(diff / day)}d`;
+  return `${Math.floor(diff / month)}mo`;
+}
+
+function usageTone(percent: number | null, unlimited = false): string {
+  if (unlimited) return "green";
+  if (percent === null) return "gray";
+  if (percent < 40) return "green";
+  if (percent < 65) return "blue";
+  if (percent < 80) return "yellow";
+  if (percent < 95) return "magenta";
+  return "red";
+}
+
+function formatPlanReset(resetsAt?: string): string {
+  if (!resetsAt) return "";
+  const resetMs = Date.parse(resetsAt);
+  if (!Number.isFinite(resetMs)) return "";
+  const diff = resetMs - Date.now();
+  if (diff <= 0) return " reset ready";
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diff < hour) return ` resets ${Math.max(1, Math.ceil(diff / minute))}m`;
+  if (diff < day) return ` resets ${Math.ceil(diff / hour)}h`;
+  return ` resets ${Math.ceil(diff / day)}d`;
+}
+
+const UsageBar = ({
+  percent,
+  unlimited = false,
+  width = 14,
+}: {
+  percent: number | null;
+  unlimited?: boolean;
+  width?: number;
+}) => {
+  if (unlimited) return <Text color="green">∞ unlimited</Text>;
+  if (percent === null) return <Text color="gray">--</Text>;
+  const bounded = Math.max(0, Math.min(100, Math.round(percent)));
+  const filled = Math.max(0, Math.min(width, Math.round((bounded / 100) * width)));
+  return (
+    <Text color={usageTone(bounded)}>
+      {"["}
+      {"#".repeat(filled)}
+      {"-".repeat(width - filled)}
+      {"] "}
+      {bounded}%
+    </Text>
+  );
+};
+
+function planWindow(
+  plan: TUIProviderPlanSnapshot | undefined,
+  kind: "rolling_5h" | "rolling_week"
+): { percent: number | null; unlimited: boolean; reset: string } {
+  const window = plan?.windows?.find(
+    (entry) =>
+      entry.kind === kind &&
+      entry.usageKnown !== false &&
+      (entry.unlimited || typeof entry.usedPercent === "number")
+  );
+  if (!window) return { percent: null, unlimited: false, reset: "" };
+  return {
+    percent: typeof window.usedPercent === "number" ? window.usedPercent : null,
+    unlimited: window.unlimited === true,
+    reset: formatPlanReset(window.resetsAt),
+  };
+}
+
+const TUIProvidersCommand = () => {
+  const { exit } = useApp();
+  const [providers, setProviders] = React.useState<ProviderInfo[]>([]);
+  const [plans, setPlans] = React.useState<TUIProviderPlanStatus | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  useInput((input) => {
+    if (input === "q") exit();
+  });
+
+  React.useEffect(() => {
+    Promise.all([fetchAPI<ProviderInfo[]>("/api/providers"), fetchAPI<TUIProviderPlanStatus>("/api/provider-plans/status")])
+      .then(([providerData, planData]) => {
+        if (providerData) setProviders(Array.isArray(providerData) ? providerData : []);
+        else setError("Failed to fetch providers");
+        if (planData) setPlans(planData);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingState message="Fetching providers..." />;
+  if (error) return <ErrorState message={error} />;
+
+  const planByKey = new Map<string, TUIProviderPlanSnapshot>();
+  for (const plan of plans?.providers || []) {
+    for (const key of [plan.providerId, plan.configuredProviderId, plan.providerType]) {
+      if (key && !planByKey.has(key)) planByKey.set(key, plan);
+    }
+  }
+
+  return (
+    <Box flexDirection="column">
+      <Logo compact />
+      <Box marginY={1} flexDirection="column">
+        <Text bold color="cyan">
+          Providers ({providers.length})
+        </Text>
+        <Text color="gray">Default, auth type, and live coding-plan limits where available.</Text>
+      </Box>
+      {providers.length === 0 ? (
+        <Text color="gray">No providers configured</Text>
+      ) : (
+        <Box flexDirection="column">
+          {providers.slice(0, 12).map((provider) => {
+            const plan = planByKey.get(provider.id) || planByKey.get(provider.provider);
+            const fiveHour = planWindow(plan, "rolling_5h");
+            const weekly = planWindow(plan, "rolling_week");
+            return (
+              <Box key={provider.id} flexDirection="column" marginBottom={1}>
+                <Box>
+                  <Box width={28}>
+                    <Text bold>{truncateText(provider.name, 26)}</Text>
+                  </Box>
+                  <Box width={18}>
+                    <Text color="gray">{truncateText(provider.provider, 16)}</Text>
+                  </Box>
+                  <Box width={10}>
+                    <Text color={provider.is_default ? "green" : "gray"}>
+                      {provider.is_default ? "default" : ""}
+                    </Text>
+                  </Box>
+                  <StatusBadge status={plan?.status || "unknown"} />
+                </Box>
+                {plan?.managedAutomatically && (
+                  <Box marginLeft={2}>
+                    <Box width={26}>
+                      <Text color="gray">5h </Text>
+                      <UsageBar percent={fiveHour.percent} unlimited={fiveHour.unlimited} />
+                    </Box>
+                    <Box width={30}>
+                      <Text color="gray">Weekly </Text>
+                      <UsageBar percent={weekly.percent} unlimited={weekly.unlimited} />
+                    </Box>
+                    <Text color="gray">{fiveHour.reset || weekly.reset}</Text>
+                  </Box>
+                )}
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+      <Box marginTop={1}>
+        <Text color="gray">Press q to exit</Text>
+      </Box>
+    </Box>
+  );
+};
+
+const TUIRouterCommand = () => {
+  const { exit } = useApp();
+  const [data, setData] = React.useState<TUIRouterStatus | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  useInput((input) => {
+    if (input === "q") exit();
+  });
+
+  React.useEffect(() => {
+    fetchAPI<TUIRouterStatus>("/api/router/status")
+      .then((status) => {
+        if (status) setData(status);
+        else setError("Failed to fetch router status");
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingState message="Fetching router..." />;
+  if (error) return <ErrorState message={error} />;
+  if (!data) return <ErrorState message="No data" />;
+
+  return (
+    <Box flexDirection="column">
+      <Logo compact />
+      <Box
+        flexDirection="column"
+        marginY={1}
+        borderStyle="round"
+        borderColor={data.enabled ? "cyan" : "yellow"}
+        paddingX={2}
+        paddingY={1}
+      >
+        <Text bold>Model Router</Text>
+        <Box marginTop={1}>
+          <Text color="gray">State: </Text>
+          <StatusBadge status={data.enabled ? "active" : "stopped"} />
+          <Text color="gray">  Strategy: </Text>
+          <Text>{data.strategy || "weighted"}</Text>
+        </Box>
+        <Box>
+          <Text color="gray">Spend today: </Text>
+          <Text>${Number(data.globalSpendToday || 0).toFixed(4)}</Text>
+          {typeof data.globalSpendLimitDaily === "number" && (
+            <Text color="gray"> / ${data.globalSpendLimitDaily.toFixed(2)}</Text>
+          )}
+        </Box>
+      </Box>
+      {data.routes.length === 0 ? (
+        <Text color="gray">No router routes configured</Text>
+      ) : (
+        <Table
+          headers={["Provider", "State", "Weight", "5h", "Week"]}
+          rows={data.routes.slice(0, 12).map((route) => [
+            truncateText(route.providerId, 18),
+            <StatusBadge
+              key={`${route.providerId}-state`}
+              status={!route.enabled ? "stopped" : route.available ? "active" : "blocked"}
+            />,
+            String(route.weight),
+            String(route.requestsIn5hWindow ?? 0),
+            String(route.requestsInWeekWindow ?? 0),
+          ])}
+        />
+      )}
+      <Box marginTop={1}>
+        <Text color="gray">Press q to exit</Text>
+      </Box>
+    </Box>
+  );
+};
+
+const TUISessionsCommand = () => {
+  const { exit } = useApp();
+  const [data, setData] = React.useState<SessionInfo[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  useInput((input) => {
+    if (input === "q") exit();
+  });
+
+  React.useEffect(() => {
+    fetchAPI<SessionInfo[]>("/api/sessions")
+      .then((sessions) => {
+        if (sessions) setData(Array.isArray(sessions) ? sessions : []);
+        else setError("Failed to fetch sessions");
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingState message="Fetching sessions..." />;
+  if (error) return <ErrorState message={error} />;
+
+  return (
+    <Box flexDirection="column">
+      <Logo compact />
+      <Box marginY={1}>
+        <Text bold color="cyan">
+          Sessions ({data.length})
+        </Text>
+      </Box>
+      {data.length === 0 ? (
+        <Text color="gray">No sessions found</Text>
+      ) : (
+        <Table
+          headers={["Session", "Agent", "Messages", "Updated"]}
+          rows={data.slice(0, 14).map((session) => [
+            truncateText(session.title || session.id, 18),
+            truncateText(sessionAgentLabel(session), 14),
+            String(sessionMessageCount(session)),
+            formatRelativeTime(sessionUpdatedAt(session)),
+          ])}
+        />
+      )}
+      <Box marginTop={1}>
+        <Text color="gray">Press q to exit</Text>
+      </Box>
+    </Box>
+  );
+};
+
+const TUILogsCommand = () => {
+  const { exit } = useApp();
+  const [data, setData] = React.useState<LogEntry[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  useInput((input) => {
+    if (input === "q") exit();
+  });
+
+  React.useEffect(() => {
+    fetchAPI<LogEntry[]>("/api/logs/system?limit=12")
+      .then((logs) => {
+        if (logs) setData(Array.isArray(logs) ? logs : []);
+        else setError("Failed to fetch logs");
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingState message="Fetching logs..." />;
+  if (error) return <ErrorState message={error} />;
+
+  return (
+    <Box flexDirection="column">
+      <Logo compact />
+      <Box marginY={1}>
+        <Text bold color="cyan">
+          Logs
+        </Text>
+      </Box>
+      {data.length === 0 ? (
+        <Text color="gray">No logs available</Text>
+      ) : (
+        <Box flexDirection="column">
+          {data.map((log, index) => {
+            const level = (log.level || "info").toUpperCase();
+            const source = truncateText(log.module || log.source || log.logType || "gateway", 12);
+            const timestamp = log.timestamp || log.created_at;
+            return (
+              <Box key={`log-${index}`}>
+                <Box width={7}>
+                  <Text color={level === "ERROR" ? "red" : level === "WARN" ? "yellow" : "gray"}>
+                    {level}
+                  </Text>
+                </Box>
+                <Box width={14}>
+                  <Text color="gray">{source}</Text>
+                </Box>
+                <Box width={8}>
+                  <Text color="gray">{formatRelativeTime(timestamp)}</Text>
+                </Box>
+                <Text>{truncateText(log.message || "", 60)}</Text>
+              </Box>
+            );
+          })}
+        </Box>
+      )}
+      <Box marginTop={1}>
+        <Text color="gray">Press q to exit</Text>
+      </Box>
+    </Box>
+  );
+};
+
+const TUIMobileCommand = () => {
+  const { exit } = useApp();
+  const [data, setData] = React.useState<TUIMobileDevice[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
+
+  useInput((input) => {
+    if (input === "q") exit();
+  });
+
+  React.useEffect(() => {
+    fetchAPI<{ devices: TUIMobileDevice[] }>("/api/mobile/devices")
+      .then((result) => {
+        if (result) setData(result.devices || []);
+        else setError("Failed to fetch mobile devices");
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <LoadingState message="Fetching mobile devices..." />;
+  if (error) return <ErrorState message={error} />;
+
+  return (
+    <Box flexDirection="column">
+      <Logo compact />
+      <Box marginY={1} flexDirection="column">
+        <Text bold color="cyan">
+          Mobile Devices ({data.length})
+        </Text>
+        <Text color="gray">Pair with: cybara mobile connect --code</Text>
+      </Box>
+      {data.length === 0 ? (
+        <Text color="gray">No mobile devices paired</Text>
+      ) : (
+        <Table
+          headers={["Device", "Status", "Last Seen", "Gateway"]}
+          rows={data.slice(0, 12).map((device) => [
+            truncateText(device.name || device.id, 18),
+            <StatusBadge key={device.id} status={device.status} />,
+            formatRelativeTime(device.lastSeenAt || device.createdAt),
+            truncateText(device.baseUrl, 28),
+          ])}
+        />
+      )}
+      <Box marginTop={1}>
+        <Text color="gray">Press q to exit</Text>
+      </Box>
+    </Box>
+  );
+};
+
 const UpdateBanner = () => {
   const [message, setMessage] = React.useState<string | null>(null);
 
@@ -3259,13 +3755,18 @@ const MainMenu = () => {
   } | null>(null);
 
   const menuItems = [
-    { label: "Start Server", action: "start" },
-    { label: "View Status", action: "status" },
-    { label: "View Metrics", action: "metrics" },
-    { label: "View Skills", action: "skills" },
-    { label: "View Agents", action: "agents" },
-    { label: "View Tasks", action: "tasks" },
+    { label: "Status", action: "status" },
+    { label: "Metrics", action: "metrics" },
+    { label: "Agents", action: "agents" },
+    { label: "Providers", action: "providers" },
+    { label: "Model Router", action: "router" },
+    { label: "Sessions", action: "sessions" },
+    { label: "Logs", action: "logs" },
+    { label: "Mobile Pairing", action: "mobile" },
+    { label: "Tasks", action: "tasks" },
+    { label: "Skills", action: "skills" },
     { label: "Open Web UI", action: "ui" },
+    { label: "Start Server", action: "start" },
     { label: "Exit", action: "exit" },
   ];
 
@@ -3292,6 +3793,11 @@ const MainMenu = () => {
       case "skills":
       case "agents":
       case "tasks":
+      case "providers":
+      case "router":
+      case "sessions":
+      case "logs":
+      case "mobile":
         render(<TUIApp command={action} />);
         break;
       case "ui":
@@ -3308,6 +3814,10 @@ const MainMenu = () => {
     <Box flexDirection="column">
       <Logo />
       <UpdateBanner />
+      <Box marginBottom={1} flexDirection="column">
+        <Text color="gray">Gateway: {API_BASE}</Text>
+        <Text color="gray">Direct panels: cybara tui status|metrics|providers|router|sessions|logs</Text>
+      </Box>
       <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
         <Text bold>Main Menu</Text>
         {menuItems.map((item, i) => (
@@ -3711,6 +4221,17 @@ const TUIApp = ({ command }: { command?: string }) => {
       return <TUISkillsCommand />;
     case "agents":
       return <TUIAgentsCommand />;
+    case "providers":
+    case "provider":
+      return <TUIProvidersCommand />;
+    case "router":
+      return <TUIRouterCommand />;
+    case "sessions":
+      return <TUISessionsCommand />;
+    case "logs":
+      return <TUILogsCommand />;
+    case "mobile":
+      return <TUIMobileCommand />;
     default:
       return <MainMenu />;
   }
@@ -4438,8 +4959,10 @@ async function main() {
     case "wizard":
     case "setup":
     case "install":
+      render(<TUIApp command={command} />);
+      break;
     case "tui":
-      render(<TUIApp command={command === "tui" ? undefined : command} />);
+      render(<TUIApp command={args[1]} />);
       break;
 
     default:

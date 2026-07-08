@@ -176,7 +176,22 @@ const commonSecurityHeaders = {
 };
 
 const platformConfig = config.getAll();
-const PORT = Number(process.env.PORT) || platformConfig.port || 4269;
+
+function parsePortFlag(argv: string[]): number | undefined {
+  let raw: string | undefined;
+  const index = argv.findIndex((arg) => arg === "--port" || arg === "-p");
+  if (index >= 0 && argv[index + 1]) {
+    raw = argv[index + 1];
+  } else {
+    const inline = argv.find((arg) => arg.startsWith("--port="));
+    if (inline) raw = inline.slice("--port=".length);
+  }
+  if (raw === undefined) return undefined;
+  const value = Number(raw);
+  return Number.isInteger(value) && value > 0 && value < 65536 ? value : undefined;
+}
+
+const PORT = parsePortFlag(process.argv) || Number(process.env.PORT) || platformConfig.port || 4269;
 
 const contentSecurityPolicy = [
   "default-src 'self'",

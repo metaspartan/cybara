@@ -25,8 +25,19 @@ cybara daemon-logs        # Show daemon process logs
 ```bash
 cybara chat               # Interactive TUI chat (sessions, subagents, tools)
 cybara wizard             # Setup wizard (first-time configuration)
-cybara tui                # Main menu (interactive TUI)
+cybara tui                # Main menu (interactive terminal dashboard)
+cybara tui status         # Gateway health panel
+cybara tui metrics        # Token/tool/API metrics panel
+cybara tui providers      # Provider and coding-plan usage panel
+cybara tui router         # Model router state and route windows
+cybara tui sessions       # Recent chat/session list
+cybara tui logs           # Recent gateway/app logs
+cybara tui mobile         # Paired mobile devices
 ```
+
+The TUI is optimized for normal terminals and remains read-only for dashboard panels. Use the
+raw CLI commands when you need to mutate providers, router settings, mobile pairings, wallet state,
+or channel configuration.
 
 ### System Status
 
@@ -276,6 +287,7 @@ cybara config set <key> <val> # Set config value
 
 ```
 -d, --daemon, -bg    Run server in background
+--port, -p <n>       Gateway port (default 4269; overrides PORT env and config)
 --expose             Bind to 0.0.0.0 (allow LAN access)
 --enable-terminal    Enable web terminal access
 --version, -v        Show version

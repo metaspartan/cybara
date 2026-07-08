@@ -129,6 +129,7 @@ bun test tests/core/tool-schema-import.test.ts tests/core/agent-tool-allowlist.t
 - Channel security and pairing flows
 - Channel manager lifecycle (start/stop/update/delete/masking)
 - CLI command wiring: providers, channels, pairing, MCP, tasks, skills, sessions, memory, logs, subagents
+- CLI/TUI source wiring: direct status, metrics, providers, router, sessions, logs, mobile, tasks, and skills panels stay listed in source and docs
 - UI/Tauri utility seam: `openExternal` backend-first with browser fallback
 - React Native mobile companion: gateway payload parsing, API auth/fallback behavior, profile persistence, and mobile app script wiring/typecheck
 - React Native mobile companion: provider plan settings/status, speech settings, memory providers, gateway restart/logs, metrics snapshots, and LAN pairing URL normalization

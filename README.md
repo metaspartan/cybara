@@ -344,6 +344,8 @@ Full reference: [docs/api.md](docs/api.md)
 
 ```bash
 cybara chat
+cybara tui providers
+cybara tui router
 cybara status
 cybara doctor
 cybara provider available
