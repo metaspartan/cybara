@@ -98,6 +98,23 @@ interface MobileDeviceRecord {
   lastSeenAt?: string;
   revokedAt?: string;
   userAgent?: string;
+  pushToken?: string;
+  pushProvider?: "expo";
+  pushPlatform?: "ios" | "android" | "unknown";
+  pushEnabled?: boolean;
+  pushUpdatedAt?: string;
+  pushLastSentAt?: string;
+  pushLastError?: string;
+}
+
+export interface MobilePushSummary {
+  configured: boolean;
+  enabled: boolean;
+  provider?: "expo";
+  platform?: "ios" | "android" | "unknown";
+  updatedAt?: string;
+  lastSentAt?: string;
+  lastError?: string;
 }
 
 export interface MobileDeviceView {
@@ -110,6 +127,7 @@ export interface MobileDeviceView {
   lastSeenAt?: string;
   revokedAt?: string;
   userAgent?: string;
+  push: MobilePushSummary;
 }
 
 interface MobileDeviceStore {
@@ -419,7 +437,42 @@ function toView(device: MobileDeviceRecord): MobileDeviceView {
     lastSeenAt: device.lastSeenAt,
     revokedAt: device.revokedAt,
     userAgent: device.userAgent,
+    push: mobilePushSummary(device),
   };
+}
+
+function mobilePushSummary(device: MobileDeviceRecord): MobilePushSummary {
+  const configured = Boolean(device.pushToken && device.pushEnabled !== false);
+  return {
+    configured,
+    enabled: configured,
+    provider: device.pushProvider,
+    platform: device.pushPlatform,
+    updatedAt: device.pushUpdatedAt,
+    lastSentAt: device.pushLastSentAt,
+    lastError: device.pushLastError,
+  };
+}
+
+function normalizeMobilePushProvider(value: unknown): "expo" {
+  if (value === undefined || value === null || value === "" || value === "expo") return "expo";
+  throw new Error("Validation error: push provider must be expo");
+}
+
+function normalizeMobilePushPlatform(value: unknown): "ios" | "android" | "unknown" {
+  return value === "ios" || value === "android" ? value : "unknown";
+}
+
+export function normalizeMobilePushToken(value: unknown): string {
+  if (typeof value !== "string") throw new Error("Validation error: push token is required");
+  const token = value.trim();
+  if (token.length < 20 || token.length > 256) {
+    throw new Error("Validation error: push token length is invalid");
+  }
+  if (!/^(Expo|Exponent)PushToken\[[A-Za-z0-9_-]+\]$/.test(token)) {
+    throw new Error("Validation error: unsupported push token format");
+  }
+  return token;
 }
 
 export function listMobileDevices(): MobileDeviceView[] {
@@ -625,6 +678,77 @@ export function removeMobileDevice(id: string): boolean {
   if (nextDevices.length === store.devices.length) return false;
   saveStore({ ...store, devices: nextDevices });
   return true;
+}
+
+export function updateMobileDevicePushToken(
+  id: string,
+  input: {
+    token?: unknown;
+    provider?: unknown;
+    platform?: unknown;
+    enabled?: unknown;
+  }
+): MobileDeviceView | null {
+  const store = readStore();
+  const device = store.devices.find((item) => item.id === id && !item.revokedAt);
+  if (!device) return null;
+
+  if (input.enabled === false || input.token === null || input.token === "") {
+    delete device.pushToken;
+    delete device.pushProvider;
+    delete device.pushPlatform;
+    device.pushEnabled = false;
+    device.pushUpdatedAt = new Date().toISOString();
+    delete device.pushLastError;
+    saveStore(store);
+    return toView(device);
+  }
+
+  device.pushToken = normalizeMobilePushToken(input.token);
+  device.pushProvider = normalizeMobilePushProvider(input.provider);
+  device.pushPlatform = normalizeMobilePushPlatform(input.platform);
+  device.pushEnabled = true;
+  device.pushUpdatedAt = new Date().toISOString();
+  delete device.pushLastError;
+  saveStore(store);
+  return toView(device);
+}
+
+export function listMobilePushTargets(): Array<{
+  id: string;
+  name: string;
+  token: string;
+  provider: "expo";
+  platform: "ios" | "android" | "unknown";
+}> {
+  return readStore().devices.flatMap((device) => {
+    if (device.revokedAt || !device.pushToken || device.pushEnabled === false) return [];
+    return [
+      {
+        id: device.id,
+        name: device.name,
+        token: device.pushToken,
+        provider: device.pushProvider || "expo",
+        platform: device.pushPlatform || "unknown",
+      },
+    ];
+  });
+}
+
+export function recordMobilePushSendResult(
+  id: string,
+  result: { success: boolean; error?: string }
+): void {
+  const store = readStore();
+  const device = store.devices.find((item) => item.id === id);
+  if (!device) return;
+  if (result.success) {
+    device.pushLastSentAt = new Date().toISOString();
+    delete device.pushLastError;
+  } else {
+    device.pushLastError = result.error?.slice(0, 180) || "Push delivery failed";
+  }
+  saveStore(store);
 }
 
 export function authenticateMobileDeviceToken(

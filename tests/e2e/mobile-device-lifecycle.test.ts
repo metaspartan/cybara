@@ -9,6 +9,7 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 let homeDir = "";
 let baseUrl = "";
+let pairingBaseUrl = "";
 let apiKey = "";
 let proc: ReturnType<typeof Bun.spawn> | null = null;
 
@@ -47,6 +48,7 @@ function startServer(port: number): ReturnType<typeof Bun.spawn> {
       HOME: homeDir,
       USERPROFILE: homeDir,
       PORT: String(port),
+      CYBARA_HOST: "0.0.0.0",
       NODE_ENV: "production",
       CYBARA_API_KEY: apiKey,
     },
@@ -97,7 +99,7 @@ async function api(
 
 async function mintCode(role: string, deviceName: string): Promise<string> {
   const minted = await api("POST", "/api/mobile/devices/pair-code", {
-    body: { baseUrl, role, deviceName },
+    body: { baseUrl: pairingBaseUrl, role, deviceName },
   });
   expect(minted.status).toBe(200);
   expect(minted.data.success).toBe(true);
@@ -112,6 +114,7 @@ describe("mobile device lifecycle e2e", () => {
     apiKey = `cybara_e2e_mobile_key_${Date.now()}`;
     const port = await getFreePort();
     baseUrl = `http://127.0.0.1:${port}`;
+    pairingBaseUrl = `http://192.168.1.20:${port}`;
     proc = startServer(port);
     await waitForServerReady(baseUrl);
   }, 45000);
@@ -149,12 +152,46 @@ describe("mobile device lifecycle e2e", () => {
       status: string;
       scopes: string[];
       name: string;
+      push?: { configured: boolean; provider?: string; platform?: string };
     }>;
     const device = devices.find((d) => d.id === standardDeviceId);
     expect(device).toBeDefined();
     expect(device!.status).toBe("active");
     expect(device!.name).toBe("lifecycle phone");
     expect(device!.scopes.sort()).toEqual(["chat", "manage", "read"]);
+    expect(device!.push?.configured).toBe(false);
+  }, 15000);
+
+  test("paired mobile tokens register push status without exposing push tokens", async () => {
+    const expoToken = "ExpoPushToken[abcdefghijklmnopqrstuvwxyz]";
+    const rootAttempt = await api("POST", "/api/mobile/push-token", {
+      body: { token: expoToken, platform: "ios" },
+    });
+    expect(rootAttempt.status).toBe(403);
+    expect(String(rootAttempt.data.error)).toContain("Paired mobile device token required");
+
+    const registered = await api("POST", "/api/mobile/push-token", {
+      body: { token: expoToken, provider: "expo", platform: "ios" },
+      token: standardToken,
+    });
+    expect(registered.status).toBe(200);
+    expect(registered.data.success).toBe(true);
+    expect(JSON.stringify(registered.data)).not.toContain(expoToken);
+    expect(registered.data.device).toMatchObject({
+      id: standardDeviceId,
+      push: { configured: true, provider: "expo", platform: "ios" },
+    });
+
+    const list = await api("GET", "/api/mobile/devices");
+    expect(JSON.stringify(list.data)).not.toContain(expoToken);
+    const devices = list.data.devices as Array<{
+      id: string;
+      push?: { configured: boolean; provider?: string };
+    }>;
+    expect(devices.find((device) => device.id === standardDeviceId)?.push).toMatchObject({
+      configured: true,
+      provider: "expo",
+    });
   }, 15000);
 
   test("device-management routes reject scoped tokens (403) and anonymous callers (401)", async () => {
@@ -163,7 +200,7 @@ describe("mobile device lifecycle e2e", () => {
     expect(String(scopedList.data.error)).toContain("Root API key required");
 
     const scopedMint = await api("POST", "/api/mobile/devices/pair-code", {
-      body: { baseUrl },
+      body: { baseUrl: pairingBaseUrl },
       token: standardToken,
     });
     expect(scopedMint.status).toBe(403);

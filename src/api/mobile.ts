@@ -5,19 +5,22 @@ import {
   buildMobileConnectInfo,
   createMobileDevice,
   createPairingCode,
+  isLoopbackMobileGatewayUrl,
   redeemPairingCode,
   listMobileDevices,
   removeMobileDevice,
   revokeMobileDevice,
+  updateMobileDevicePushToken,
   type MobileDeviceView,
   type MobileConnectPayload,
 } from "../core/mobile-devices";
+import { sendMobilePushNotification } from "../core/mobile-push";
 import { getGatewayBasePath } from "./security";
 
 type MobileRouteHandler = (
   body?: unknown,
   params?: Record<string, string>,
-  ctx?: { url?: string }
+  ctx?: { url?: string; auth?: { mobileDevice?: MobileDeviceView } }
 ) => Promise<unknown> | unknown;
 
 function readBodyObject(body: unknown): Record<string, unknown> {
@@ -48,11 +51,27 @@ export const mobileRoutes: Record<string, MobileRouteHandler> = {
 
   // Create a short-lived, single-use pairing code (root-gated via the
   // /api/mobile/devices path prefix). The QR carries only this code.
-  "POST /api/mobile/devices/pair-code": async (body) => {
+  "POST /api/mobile/devices/pair-code": async (body, _params, ctx) => {
     const data = readBodyObject(body);
     const baseUrl = readOptionalString(data.baseUrl);
     if (!baseUrl) {
       throw new Error("Validation error: baseUrl is required");
+    }
+    const platformConfig = config.getAll();
+    const connectInfo = buildMobileConnectInfo({
+      requestUrl: ctx?.url,
+      configuredHost: readRuntimeGatewayHost() || process.env.CYBARA_HOST || platformConfig.host,
+      port: Number(process.env.PORT) || platformConfig.port,
+      basePath: getGatewayBasePath(),
+      mobileBaseUrl: process.env.CYBARA_MOBILE_BASE_URL,
+    });
+    if (!connectInfo.lanAccessEnabled) {
+      throw new Error(
+        "Validation error: enable Listen on local network before pairing mobile devices"
+      );
+    }
+    if (isLoopbackMobileGatewayUrl(baseUrl)) {
+      throw new Error("Validation error: use a LAN gateway URL before pairing mobile devices");
     }
     const result = createPairingCode({
       baseUrl,
@@ -93,6 +112,40 @@ export const mobileRoutes: Record<string, MobileRouteHandler> = {
       device: result.device,
       payload: result.payload,
     };
+  },
+
+  "POST /api/mobile/push-token": (body, _params, ctx) => {
+    const mobileDevice = ctx?.auth?.mobileDevice;
+    if (!mobileDevice) {
+      throw new Error("Validation error: paired mobile device token is required");
+    }
+    const data = readBodyObject(body);
+    const device = updateMobileDevicePushToken(mobileDevice.id, {
+      token: data.token,
+      provider: data.provider,
+      platform: data.platform,
+      enabled: data.enabled,
+    });
+    if (!device) {
+      throw new Error("Mobile device not found");
+    }
+    return { success: true, device };
+  },
+
+  "POST /api/mobile/push/test": async (_body, _params, ctx) => {
+    const mobileDevice = ctx?.auth?.mobileDevice;
+    if (!mobileDevice) {
+      throw new Error("Validation error: paired mobile device token is required");
+    }
+    const result = await sendMobilePushNotification(
+      {
+        title: "Cybara notifications enabled",
+        body: "This phone can receive gateway updates.",
+        data: { type: "test_notification", deviceId: mobileDevice.id },
+      },
+      { device: mobileDevice }
+    );
+    return { success: result.sent > 0, result };
   },
 
   "POST /api/mobile/devices": async (body) => {

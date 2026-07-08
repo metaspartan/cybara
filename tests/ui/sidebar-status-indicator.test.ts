@@ -28,6 +28,8 @@ describe("Sidebar status indicator behavior", () => {
       /setStatus\(globalActive \|\| hasActiveSessions \? ["']active["'] : ["']idle["']\)/
     );
     expect(source).toContain("ACTIVE_WINDOW_MS = 60_000");
+    expect(source).toContain("activeSessions.length === 0");
+    expect(source).toContain("globalLastSeenRef.current = 0");
   });
 
   test("renders active thinking sprite instead of a halo ring", () => {

@@ -4,6 +4,11 @@ import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { ConnectScreen } from "./src/screens/ConnectScreen";
 import { DashboardScreen } from "./src/screens/DashboardScreen";
 import type { GatewayProfile } from "./src/lib/connection";
+import { CybaraMobileApi } from "./src/lib/api";
+import {
+  configureMobileNotificationPresentation,
+  registerMobilePushNotifications,
+} from "./src/lib/pushNotifications";
 import { clearActiveProfile, getActiveProfile, saveProfile } from "./src/lib/storage";
 import { spacing, type Palette } from "./src/theme/liquidGlass";
 import { ThemeProvider, useTheme, useThemeControls } from "./src/theme/ThemeContext";
@@ -20,6 +25,16 @@ function AppShell() {
       .then(setProfile)
       .finally(() => setReady(true));
   }, []);
+
+  useEffect(() => {
+    void configureMobileNotificationPresentation();
+  }, []);
+
+  useEffect(() => {
+    if (!profile) return;
+    const api = new CybaraMobileApi(profile);
+    void registerMobilePushNotifications(api, { requestPermission: false });
+  }, [profile]);
 
   const connect = async (nextProfile: GatewayProfile) => {
     const saved = { ...nextProfile, lastConnectedAt: new Date().toISOString() };

@@ -256,6 +256,9 @@ struct MobileScreen: View {
                 Text("\(device.scopeSummary) · created \(relativeTimestamp(device.createdAt))")
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.secondary)
+                Text(device.pushSummary)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(device.push?.configured == true ? accent : .secondary)
             }
 
             Spacer(minLength: 12)

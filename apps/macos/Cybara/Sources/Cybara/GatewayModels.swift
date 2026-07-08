@@ -1056,11 +1056,26 @@ struct GatewayMobileDevice: Decodable, Identifiable, Hashable {
     let lastSeenAt: String?
     let revokedAt: String?
     let userAgent: String?
+    let push: GatewayMobilePushSummary?
 
     var isActive: Bool { status.lowercased() == "active" }
     var scopeSummary: String {
         scopes.isEmpty ? "No scopes" : scopes.joined(separator: ", ")
     }
+    var pushSummary: String {
+        guard let push, push.configured else { return "Push: off" }
+        return "Push: \(push.provider ?? "expo") · \(push.platform ?? "unknown")"
+    }
+}
+
+struct GatewayMobilePushSummary: Decodable, Hashable {
+    let configured: Bool
+    let enabled: Bool
+    let provider: String?
+    let platform: String?
+    let updatedAt: String?
+    let lastSentAt: String?
+    let lastError: String?
 }
 
 struct GatewayMobileDevicesResponse: Decodable {

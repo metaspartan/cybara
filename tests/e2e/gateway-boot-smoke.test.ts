@@ -9,6 +9,7 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 let homeDir = "";
 let baseUrl = "";
+let pairingBaseUrl = "";
 let apiKey = "";
 let proc: ReturnType<typeof Bun.spawn> | null = null;
 
@@ -44,6 +45,7 @@ function startServer(port: number): ReturnType<typeof Bun.spawn> {
       HOME: homeDir,
       USERPROFILE: homeDir,
       PORT: String(port),
+      CYBARA_HOST: "0.0.0.0",
       NODE_ENV: "production",
       CYBARA_API_KEY: apiKey,
     },
@@ -98,6 +100,7 @@ describe("gateway boot smoke e2e", () => {
     apiKey = `cybara_e2e_boot_key_${Date.now()}`;
     const port = await getFreePort();
     baseUrl = `http://127.0.0.1:${port}`;
+    pairingBaseUrl = `http://192.168.1.20:${port}`;
     proc = startServer(port);
     await waitForServerReady(baseUrl);
   }, 45000);
@@ -115,7 +118,7 @@ describe("gateway boot smoke e2e", () => {
 
   test("pairing code lifecycle: mint, redeem for scoped token, scope-gated 403, one-time", async () => {
     const minted = await api("POST", "/api/mobile/devices/pair-code", {
-      body: { baseUrl, role: "standard", deviceName: "e2e phone" },
+      body: { baseUrl: pairingBaseUrl, role: "standard", deviceName: "e2e phone" },
     });
     expect(minted.status).toBe(200);
     expect(minted.data.success).toBe(true);
@@ -123,7 +126,7 @@ describe("gateway boot smoke e2e", () => {
     expect(code).toMatch(/^[A-Z2-9]{4}-[A-Z2-9]{4}$/);
 
     const unauthorizedMint = await api("POST", "/api/mobile/devices/pair-code", {
-      body: { baseUrl },
+      body: { baseUrl: pairingBaseUrl },
       token: null,
     });
     expect(unauthorizedMint.status).toBe(401);

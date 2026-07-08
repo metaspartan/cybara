@@ -382,6 +382,15 @@ export interface MobileDevice {
   lastSeenAt?: string;
   revokedAt?: string;
   userAgent?: string;
+  push?: {
+    configured: boolean;
+    enabled: boolean;
+    provider?: "expo";
+    platform?: "ios" | "android" | "unknown";
+    updatedAt?: string;
+    lastSentAt?: string;
+    lastError?: string;
+  };
 }
 
 export interface MobileConnectPayload {

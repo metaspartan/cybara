@@ -1,6 +1,7 @@
 import { createLogger } from "./logger";
 import { redactSecrets, redactSecretText } from "./redaction";
 import { stripReasoningTagTokens } from "./agent-internals";
+import { notifyMobilePushForStatus, notifyMobilePushForTask } from "./mobile-push";
 
 export type AgentStatus =
   "idle" | "thinking" | "tool_executing" | "tool_completed" | "generating" | "compacting" | "error";
@@ -474,6 +475,7 @@ export function broadcastStatusSnapshot(): void {
 export function broadcastStatus(status: StatusPayload): void {
   const sanitizedStatus = redactSecrets(status) as StatusPayload;
   upsertSessionStatusSnapshot(sanitizedStatus);
+  notifyMobilePushForStatus(sanitizedStatus);
 
   for (const callback of statusCallbacks) {
     try {
@@ -495,6 +497,7 @@ export function broadcastStatus(status: StatusPayload): void {
 
 export function broadcastTaskEvent(event: TaskEventPayload): void {
   const payload = redactSecrets({ ...event, timestamp: Date.now() }) as TaskEventPayload;
+  notifyMobilePushForTask(payload);
   emitStatusStreamEvent(payload);
 
   log.debug("Broadcast task event", {

@@ -47,10 +47,13 @@ describe("UI page API wiring", () => {
     expect(source).toContain("setRevokeTarget(device)");
     expect(source).toContain("setDeleteTarget(device)");
     expect(source).toContain("Detected URLs");
-    expect(source).toContain("connectInfo.warnings");
-    expect(source).toContain("connectInfo.troubleshooting");
-    expect(source).toContain("connectInfo.firewallCommand");
-    expect(source).toContain("connectInfo.exposeCommand");
+    expect(source).toContain("canCreatePairing");
+    expect(source).toContain("connectInfo?.lanAccessEnabled");
+    expect(source).toContain("Listen on local network is required");
+    expect(source).toContain("disabled={!canCreatePairing}");
+    expect(source).not.toContain("Physical Phone Check");
+    expect(source).toContain("device.push?.configured");
+    expect(source).toContain("Notifications:");
     expect(source).not.toContain("apiFetch(");
     expect(source).not.toContain("window.fetch(");
     expect(source).not.toContain("globalThis.fetch(");

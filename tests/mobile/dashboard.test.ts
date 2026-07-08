@@ -542,6 +542,17 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain('title="System"');
   });
 
+  test("places mobile push controls under gateway settings", () => {
+    expect(dashboardScreenSource).toContain('title="Gateway runtime"');
+    expect(dashboardScreenSource).toContain("Mobile Notifications");
+    expect(dashboardScreenSource).toContain("registerMobilePushNotifications(api");
+    expect(dashboardScreenSource).toContain("clearMobilePushNotifications(api)");
+    expect(dashboardScreenSource).toContain("api.sendTestPush()");
+    expect(dashboardScreenSource).toContain('label="Enable"');
+    expect(dashboardScreenSource).toContain('label="Test"');
+    expect(dashboardScreenSource).toContain('label="Disable"');
+  });
+
   test("keeps recent activity chat rows tappable and honest about state", () => {
     expect(MOBILE_RECENT_ACTIVITY_CHROME.chatsOpenSession).toBe(true);
     expect(MOBILE_RECENT_ACTIVITY_CHROME.truncateTitles).toBe(true);

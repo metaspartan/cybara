@@ -18,6 +18,7 @@
       "bundleIdentifier": "com.ck.cybara",
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Connect to your Cybara gateway on your local network.",
+        "NSUserNotificationsUsageDescription": "Receive notifications when Cybara finishes a chat or task.",
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
@@ -39,6 +40,7 @@
           "cameraPermission": "Scan a Cybara gateway QR code to connect this device."
         }
       ],
+      "expo-notifications",
       "expo-secure-store"
     ],
     "extra": {

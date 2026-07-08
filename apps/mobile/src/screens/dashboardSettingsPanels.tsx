@@ -24,6 +24,8 @@ import {
   Trash2,
   Volume2,
   Zap,
+  Bell,
+  BellOff,
 } from "lucide-react-native";
 import { haptics } from "../lib/haptics";
 import { colors } from "../theme/liquidGlass";
@@ -99,6 +101,10 @@ import {
   type WalletTokenChain,
 } from "../lib/api";
 import type { GatewayProfile } from "../lib/connection";
+import {
+  clearMobilePushNotifications,
+  registerMobilePushNotifications,
+} from "../lib/pushNotifications";
 import { saveProfile } from "../lib/storage";
 
 const agentTypeOptions = ["main", "research", "coder", "planner", "ops", "worker"] as const;
@@ -2540,6 +2546,8 @@ export function GatewayManagementPanel({
   const [restartBusy, setRestartBusy] = useState(false);
   const [workspaceBusy, setWorkspaceBusy] = useState(false);
   const [dataDirBusy, setDataDirBusy] = useState(false);
+  const pushBusy =
+    busyAction === "push-enable" || busyAction === "push-test" || busyAction === "push-clear";
   const configuredDefaultWorkspaceDir =
     typeof summary?.config.default_workspace_dir === "string"
       ? summary.config.default_workspace_dir
@@ -2760,6 +2768,49 @@ export function GatewayManagementPanel({
     }
   };
 
+  const enablePushNotifications = async () => {
+    setBusyAction("push-enable");
+    try {
+      const result = await registerMobilePushNotifications(api, { requestPermission: true });
+      if (result.status !== "registered") {
+        throw new Error(result.message || `Notification setup returned ${result.status}.`);
+      }
+      Alert.alert("Notifications enabled", "Cybara can notify this device when chats finish.");
+    } catch (error) {
+      Alert.alert("Notifications failed", gatewayActionError(error, "Notification setup failed."));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const sendTestNotification = async () => {
+    setBusyAction("push-test");
+    try {
+      const result = await api.sendTestPush();
+      if (result.success === false) {
+        const errors = result.result?.errors?.join(", ");
+        throw new Error(errors || "Gateway could not send a test notification.");
+      }
+      Alert.alert("Test sent", "A Cybara notification was sent to this device.");
+    } catch (error) {
+      Alert.alert("Test failed", gatewayActionError(error, "Test notification failed."));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const disablePushNotifications = async () => {
+    setBusyAction("push-clear");
+    try {
+      await clearMobilePushNotifications(api);
+      Alert.alert("Notifications disabled", "This device will no longer receive gateway pushes.");
+    } catch (error) {
+      Alert.alert("Disable failed", gatewayActionError(error, "Notification disable failed."));
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
   const saveDefaultWorkspace = async () => {
     if (summary?.availability.config.ok !== true) {
       Alert.alert("Config unavailable", "The gateway config route is not available.");
@@ -2840,6 +2891,46 @@ export function GatewayManagementPanel({
               tone={colors.green}
             />
             <DetailActionButton Icon={Database} label="Open Logs" onPress={openLogs} />
+          </View>
+        </View>
+        <View style={styles.settingsInfoBox}>
+          <View style={styles.settingsInfoHeader}>
+            <Bell color={colors.cyan} size={18} strokeWidth={2.2} />
+            <Text style={styles.settingsInfoTitle}>Mobile Notifications</Text>
+          </View>
+          <Text style={styles.settingsInfoText}>
+            Get notified on this device when a chat response or gateway task completes.
+          </Text>
+          <View style={styles.settingsActionRow}>
+            <DetailActionButton
+              Icon={Bell}
+              busy={busyAction === "push-enable"}
+              disabled={pushBusy}
+              label="Enable"
+              onPress={() => {
+                void enablePushNotifications();
+              }}
+              tone={colors.cyan}
+            />
+            <DetailActionButton
+              Icon={Send}
+              busy={busyAction === "push-test"}
+              disabled={pushBusy}
+              label="Test"
+              onPress={() => {
+                void sendTestNotification();
+              }}
+            />
+            <DetailActionButton
+              Icon={BellOff}
+              busy={busyAction === "push-clear"}
+              disabled={pushBusy}
+              label="Disable"
+              onPress={() => {
+                void disablePushNotifications();
+              }}
+              tone={colors.red}
+            />
           </View>
         </View>
         <View style={styles.settingsInfoBox}>

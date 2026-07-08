@@ -235,6 +235,32 @@ export interface GatewayRestartResponse {
   message: string;
 }
 
+export interface MobilePushDeviceSummary {
+  configured: boolean;
+  enabled: boolean;
+  provider?: "expo";
+  platform?: "ios" | "android" | "unknown";
+  updatedAt?: string;
+  lastSentAt?: string;
+  lastError?: string;
+}
+
+export interface MobilePushRegistrationResponse {
+  success: boolean;
+  device?: {
+    id: string;
+    name: string;
+    push?: MobilePushDeviceSummary;
+  };
+  result?: {
+    attempted: number;
+    sent: number;
+    skipped: boolean;
+    errors: string[];
+  };
+  error?: string;
+}
+
 export type WalletAgentPolicyUpdate = Partial<{
   allowNativeSend: boolean;
   allowTokenSend: boolean;
@@ -1946,6 +1972,36 @@ export class CybaraMobileApi {
 
   health(): Promise<HealthResponse> {
     return this.request<HealthResponse>("/api/health");
+  }
+
+  registerPushToken(input: {
+    token: string;
+    provider?: "expo";
+    platform?: string;
+    enabled?: boolean;
+  }): Promise<MobilePushRegistrationResponse> {
+    return this.request<MobilePushRegistrationResponse>("/api/mobile/push-token", {
+      method: "POST",
+      body: JSON.stringify({
+        token: input.token,
+        provider: input.provider ?? "expo",
+        platform: input.platform,
+        enabled: input.enabled ?? true,
+      }),
+    });
+  }
+
+  clearPushToken(): Promise<MobilePushRegistrationResponse> {
+    return this.request<MobilePushRegistrationResponse>("/api/mobile/push-token", {
+      method: "POST",
+      body: JSON.stringify({ enabled: false }),
+    });
+  }
+
+  sendTestPush(): Promise<MobilePushRegistrationResponse> {
+    return this.request<MobilePushRegistrationResponse>("/api/mobile/push/test", {
+      method: "POST",
+    });
   }
 
   async sessionList(): Promise<SessionListPage> {

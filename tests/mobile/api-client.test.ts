@@ -407,6 +407,91 @@ describe("mobile API client", () => {
     }
   });
 
+  test("manages mobile push notification routes with paired-device auth", async () => {
+    const calls: Array<{ method: string; path: string; auth: string | null; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body =
+        typeof init?.body === "string"
+          ? (JSON.parse(init.body) as Record<string, unknown>)
+          : undefined;
+      const headers = new Headers(init?.headers);
+      calls.push({ method, path: parsedUrl.pathname, auth: headers.get("authorization"), body });
+      if (parsedUrl.pathname === "/api/mobile/push-token" && method === "POST") {
+        return Response.json({
+          success: true,
+          device: {
+            id: "mobile-1",
+            name: "iPhone",
+            push: {
+              configured: body?.enabled !== false,
+              provider: "expo",
+              platform: body?.platform,
+            },
+          },
+        });
+      }
+      if (parsedUrl.pathname === "/api/mobile/push/test" && method === "POST") {
+        return Response.json({
+          success: true,
+          result: { attempted: 1, sent: 1, skipped: false, errors: [] },
+        });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(
+        api.registerPushToken({
+          token: "ExpoPushToken[abcdefghijklmnopqrstuvwxyz]",
+          platform: "ios",
+        })
+      ).resolves.toMatchObject({
+        success: true,
+        device: { push: { configured: true, provider: "expo", platform: "ios" } },
+      });
+      await expect(api.sendTestPush()).resolves.toMatchObject({
+        success: true,
+        result: { sent: 1 },
+      });
+      await expect(api.clearPushToken()).resolves.toMatchObject({
+        success: true,
+        device: { push: { configured: false } },
+      });
+
+      expect(calls).toEqual([
+        {
+          method: "POST",
+          path: "/api/mobile/push-token",
+          auth: "Bearer cybara_mobile_test",
+          body: {
+            token: "ExpoPushToken[abcdefghijklmnopqrstuvwxyz]",
+            provider: "expo",
+            platform: "ios",
+            enabled: true,
+          },
+        },
+        {
+          method: "POST",
+          path: "/api/mobile/push/test",
+          auth: "Bearer cybara_mobile_test",
+          body: undefined,
+        },
+        {
+          method: "POST",
+          path: "/api/mobile/push-token",
+          auth: "Bearer cybara_mobile_test",
+          body: { enabled: false },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("persists mobile theme config through the gateway config endpoint", async () => {
     const calls: Array<{ method: string; path: string; body?: unknown }> = [];
     const originalFetch = globalThis.fetch;

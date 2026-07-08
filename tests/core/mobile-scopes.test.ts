@@ -7,10 +7,15 @@ import {
   authenticateMobileDeviceToken,
   getMobileDeviceStorePath,
   isLoopbackMobileGatewayUrl,
+  listMobileDevices,
+  listMobilePushTargets,
+  normalizeMobilePushToken,
   scopesForRole,
   DEFAULT_MOBILE_SCOPES,
   normalizeMobileScopes,
+  recordMobilePushSendResult,
   resetMobileDeviceStoreForTests,
+  updateMobileDevicePushToken,
 } from "../../src/core/mobile-devices";
 import { secureDir } from "../../src/core/paths";
 import { routeRequiredScope } from "../../src/api/security";
@@ -50,6 +55,55 @@ describe("mobile device scopes", () => {
     expect(normalizeMobileScopes(["chat", "bogus", "wallet"])).toEqual(["chat", "wallet"]);
     expect(normalizeMobileScopes("nope")).toEqual([...DEFAULT_MOBILE_SCOPES]);
     expect(normalizeMobileScopes([])).toEqual([...DEFAULT_MOBILE_SCOPES]);
+  });
+
+  test("stores push tokens server-side and only exposes a status summary", () => {
+    const expoToken = "ExpoPushToken[abcdefghijklmnopqrstuvwxyz]";
+    const { device } = createMobileDevice({ baseUrl: "http://127.0.0.1:4269" });
+
+    const updated = updateMobileDevicePushToken(device.id, {
+      token: expoToken,
+      provider: "expo",
+      platform: "ios",
+    });
+
+    expect(updated?.push).toMatchObject({
+      configured: true,
+      enabled: true,
+      provider: "expo",
+      platform: "ios",
+    });
+    expect(JSON.stringify(updated)).not.toContain(expoToken);
+    expect(listMobilePushTargets()).toEqual([
+      {
+        id: device.id,
+        name: "Mobile Device",
+        token: expoToken,
+        provider: "expo",
+        platform: "ios",
+      },
+    ]);
+
+    recordMobilePushSendResult(device.id, { success: true });
+    expect(listMobileDevices()[0]?.push.lastSentAt).toBeDefined();
+
+    const cleared = updateMobileDevicePushToken(device.id, { enabled: false });
+    expect(cleared?.push.configured).toBe(false);
+    expect(listMobilePushTargets()).toEqual([]);
+  });
+
+  test("rejects unsupported mobile push token formats", () => {
+    expect(normalizeMobilePushToken("ExponentPushToken[abcdefghijklmnopqrstuvwxyz]")).toContain(
+      "ExponentPushToken"
+    );
+    expect(() =>
+      normalizeMobilePushToken("unsupported_push_token_abcdefghijklmnopqrstuvwxyz")
+    ).toThrow("unsupported push token");
+    expect(() =>
+      updateMobileDevicePushToken("missing", {
+        token: "ExpoPushToken[abcdefghijklmnopqrstuvwxyz]",
+      })
+    ).not.toThrow();
   });
 });
 
@@ -93,6 +147,7 @@ describe("route scope requirements", () => {
   test("ordinary routes need no special scope", () => {
     expect(routeRequiredScope("POST", "/api/chat")).toBeNull();
     expect(routeRequiredScope("GET", "/api/agents")).toBeNull();
+    expect(routeRequiredScope("POST", "/api/mobile/push-token")).toBeNull();
   });
 
   test("mutating management surfaces require the manage scope", () => {

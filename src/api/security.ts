@@ -6,7 +6,7 @@ import { lookup } from "dns/promises";
 import type { LookupAddress } from "dns";
 import { isIP } from "net";
 import { cybaraDir } from "../core/paths";
-import { authenticateMobileDeviceToken } from "../core/mobile-devices";
+import { authenticateMobileDeviceToken, type MobileDeviceView } from "../core/mobile-devices";
 
 const log = createLogger("Security");
 
@@ -256,6 +256,7 @@ export interface AuthResult {
    * means full access (root API key / trusted localhost) — no scope gating.
    */
   scopes?: string[];
+  mobileDevice?: MobileDeviceView;
 }
 
 function isLocalhostIP(ip: string): boolean {
@@ -411,7 +412,7 @@ export function authenticateRequest(headers: Record<string, string>, ip: string)
       userAgent: headers["user-agent"] || headers["User-Agent"],
     });
     if (mobileDevice) {
-      return { authenticated: true, scopes: mobileDevice.scopes };
+      return { authenticated: true, scopes: mobileDevice.scopes, mobileDevice };
     }
 
     log.warn("Invalid API key attempt", { ip });
@@ -794,6 +795,7 @@ export interface SecurityCheckResult {
   error?: string;
   statusCode?: number;
   headers?: Record<string, string>;
+  auth?: AuthResult;
 }
 
 function getRateLimitType(method: string, path: string): keyof typeof config.rateLimits {
@@ -910,6 +912,14 @@ export function securityCheck(
     }
   }
 
+  if (path.startsWith("/api/mobile/push") && !auth.mobileDevice) {
+    return {
+      passed: false,
+      error: "Paired mobile device token required",
+      statusCode: 403,
+    };
+  }
+
   // Scope enforcement: a scoped principal (paired device) may only reach a
   // gated capability if it holds the required scope. Full-access principals
   // (root key / trusted localhost) have `auth.scopes` undefined and skip this.
@@ -926,6 +936,7 @@ export function securityCheck(
 
   return {
     passed: true,
+    auth,
     headers: {
       "X-RateLimit-Remaining": String(rateLimit.remaining),
       "X-RateLimit-Reset": String(rateLimit.resetAt),

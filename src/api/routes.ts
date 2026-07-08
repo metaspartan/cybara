@@ -160,6 +160,7 @@ import {
   setGatewayPassword,
   setRequireAuthForLocalhost,
   validateUrl,
+  type AuthResult,
 } from "./security";
 import { gatewayAuthSettingsResponse, updateGatewayHostSetting } from "./gateway-network";
 import {
@@ -536,6 +537,7 @@ interface RouteContext {
   headers: Record<string, string>;
   rawBody?: string;
   url?: string;
+  auth?: AuthResult;
 }
 type RouteHandler = (
   body?: unknown,
@@ -4803,6 +4805,7 @@ export async function handleRequest(req: {
       headers: req.headers,
       rawBody: req.rawBody,
       url: req.url,
+      auth: security.auth,
     });
     const duration = Date.now() - startTime;
 

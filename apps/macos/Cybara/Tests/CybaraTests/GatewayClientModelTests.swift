@@ -999,7 +999,14 @@ final class GatewayClientModelTests: XCTestCase {
                   "baseUrl": "http://192.168.1.20:4269",
                   "status": "active",
                   "scopes": ["chat", "manage", "read"],
-                  "createdAt": "2026-07-02T18:00:00.000Z"
+                  "createdAt": "2026-07-02T18:00:00.000Z",
+                  "push": {
+                    "configured": true,
+                    "enabled": true,
+                    "provider": "expo",
+                    "platform": "ios",
+                    "updatedAt": "2026-07-02T18:01:00.000Z"
+                  }
                 }
                 """#.utf8
             )
@@ -1007,6 +1014,7 @@ final class GatewayClientModelTests: XCTestCase {
 
         XCTAssertTrue(device.isActive)
         XCTAssertEqual(device.scopeSummary, "chat, manage, read")
+        XCTAssertEqual(device.pushSummary, "Push: expo · ios")
     }
 
     func testMobilePairingCodeDecodesExpiryAndPayload() throws {

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle,
   Clock,
   Copy,
   Plus,
@@ -57,6 +56,7 @@ export function Mobile() {
   const connectInfo = connectInfoData;
   const devices = useMemo(() => data?.devices || [], [data?.devices]);
   const activeCount = devices.filter((device) => device.status === "active").length;
+  const canCreatePairing = Boolean(connectInfo?.lanAccessEnabled);
 
   useEffect(() => {
     if (!baseUrlTouched && connectInfo?.baseUrl) {
@@ -65,6 +65,10 @@ export function Mobile() {
   }, [baseUrlTouched, connectInfo?.baseUrl]);
 
   const createPairing = async () => {
+    if (!canCreatePairing) {
+      addToast("error", "Enable Listen on local network before pairing a mobile device");
+      return;
+    }
     try {
       const result = await createMobilePairingCode.mutateAsync({
         deviceName,
@@ -145,7 +149,11 @@ export function Mobile() {
                   setBaseUrl(event.target.value);
                 }}
                 placeholder="http://192.168.1.20:4269"
-                helperText="A physical iPhone needs a LAN-reachable URL, not 127.0.0.1."
+                helperText={
+                  canCreatePairing
+                    ? "This LAN URL is embedded in the pairing QR."
+                    : "Enable Listen on local network in Settings before pairing a phone."
+                }
               />
               <Select
                 label="Mobile access"
@@ -158,37 +166,18 @@ export function Mobile() {
                 ]}
                 helperText="Start with Standard unless the phone needs high-risk capabilities."
               />
-              {connectInfo?.warnings.length || connectInfo?.troubleshooting?.length ? (
-                <div className="rounded-xl border border-amber-400/25 bg-amber-400/10 p-3 text-sm text-amber-100">
-                  <div className="mb-2 flex items-center gap-2 font-medium">
-                    <AlertTriangle className="h-4 w-4" />
-                    Physical Phone Check
+              {!canCreatePairing ? (
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm text-gray-300">
+                  <div className="flex items-center gap-2 font-medium text-white">
+                    <ShieldCheck className="h-4 w-4 text-cyan-400" />
+                    Listen on local network is required
                   </div>
-                  <div className="space-y-1 text-xs text-amber-100/85">
-                    {(connectInfo.warnings || []).map((warning) => (
-                      <p key={warning}>{warning}</p>
-                    ))}
-                    {(connectInfo.troubleshooting || []).map((step) => (
-                      <p key={step}>{step}</p>
-                    ))}
-                    {connectInfo.exposeCommand ? (
-                      <p>
-                        Suggested start:{" "}
-                        <span className="font-mono text-amber-50">{connectInfo.exposeCommand}</span>
-                      </p>
-                    ) : null}
-                    {connectInfo.firewallCommand ? (
-                      <p>
-                        Windows firewall:{" "}
-                        <span className="font-mono text-amber-50">
-                          {connectInfo.firewallCommand}
-                        </span>
-                      </p>
-                    ) : null}
-                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Turn it on in Settings before creating a pairing QR for iOS or Android.
+                  </p>
                 </div>
               ) : null}
-              {connectInfo?.candidates?.length ? (
+              {canCreatePairing && connectInfo?.candidates?.length ? (
                 <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
                   <p className="mb-2 text-xs font-medium uppercase text-gray-500">Detected URLs</p>
                   <div className="space-y-2">
@@ -212,6 +201,7 @@ export function Mobile() {
                 className="w-full"
                 leftIcon={<Plus className="w-4 h-4" />}
                 isLoading={createMobilePairingCode.isPending}
+                disabled={!canCreatePairing}
                 onClick={createPairing}
               >
                 Create QR Pairing
@@ -309,6 +299,9 @@ export function Mobile() {
                         <Badge variant={device.status === "active" ? "success" : "warning"}>
                           {device.status}
                         </Badge>
+                        <Badge variant={device.push?.configured ? "success" : "default"}>
+                          {device.push?.configured ? "push on" : "push off"}
+                        </Badge>
                       </div>
                       <p className="break-all font-mono text-xs text-gray-500">{device.id}</p>
                       <div className="grid gap-1 text-xs text-gray-400 sm:grid-cols-2">
@@ -316,6 +309,13 @@ export function Mobile() {
                         <span>Created: {formatDate(device.createdAt)}</span>
                         <span>Last seen: {formatDate(device.lastSeenAt)}</span>
                         <span>Revoked: {formatDate(device.revokedAt)}</span>
+                        <span>
+                          Notifications:{" "}
+                          {device.push?.configured
+                            ? `${device.push.provider || "expo"} · ${device.push.platform || "unknown"}`
+                            : "Off"}
+                        </span>
+                        <span>Last push: {formatDate(device.push?.lastSentAt)}</span>
                       </div>
                     </div>
                     <div className="flex gap-2 md:justify-end">

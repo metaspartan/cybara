@@ -101,7 +101,11 @@ function useAgentStatus() {
 
         if (data.type === "snapshot") {
           activeSessionLastSeenRef.current.clear();
-          for (const snapshot of Array.isArray(data.activeSessions) ? data.activeSessions : []) {
+          const activeSessions = Array.isArray(data.activeSessions) ? data.activeSessions : [];
+          if (activeSessions.length === 0) {
+            globalLastSeenRef.current = 0;
+          }
+          for (const snapshot of activeSessions) {
             const sessionId =
               typeof snapshot?.sessionId === "string" ? snapshot.sessionId.trim() : "";
             const snapshotStatus = typeof snapshot?.status === "string" ? snapshot.status : "";
@@ -189,6 +193,7 @@ const navCategories = [
       { path: "/mcp", icon: Terminal, label: "MCP Servers" },
       { path: "/lsp", icon: Code, label: "LSP" },
       { path: "/ide", icon: FolderOpen, label: "IDE" },
+      { path: "/sessions", icon: MessagesSquare, label: "Sessions" },
       { path: "/skills", icon: LibraryBig, label: "Skills" },
       { path: "/tools", icon: Wrench, label: "Tools" },
       { path: "/terminal", icon: SquareTerminal, label: "Terminal" },
@@ -199,7 +204,6 @@ const navCategories = [
     label: null,
     items: [
       { path: "/chat", icon: MessageSquare, label: "Chat" },
-      { path: "/sessions", icon: MessagesSquare, label: "Sessions" },
     ],
   },
   {

@@ -480,6 +480,17 @@ describe("Mobile API", () => {
     expect(String(info.data.exposeCommand)).toContain("cybara start");
   });
 
+  test("blocks mobile pairing codes until the gateway listens on the local network", async () => {
+    const blocked = await api("POST", "/api/mobile/devices/pair-code", {
+      baseUrl: "http://192.168.1.20:4269",
+      role: "standard",
+      deviceName: "Routes Phone",
+    });
+
+    expect(blocked.status).toBe(400);
+    expect(String(blocked.data.error)).toContain("Listen on local network");
+  });
+
   test("auth settings persist a restart-bound gateway host", async () => {
     const before = await api("GET", "/api/auth/settings");
     expect(before.status).toBe(200);
