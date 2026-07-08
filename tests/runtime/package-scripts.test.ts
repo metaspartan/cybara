@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SIDECAR_SCRIPT = join(ROOT_DIR, "scripts", "build-sidecar.ts");
 const CI_INSTALL_SCRIPT = join(ROOT_DIR, "scripts", "ci-install.sh");
+const PACKAGE_SCRIPT = join(ROOT_DIR, "scripts", "package.ts");
 
 describe("package.json script wiring", () => {
   test("exposes cybara CLI bin and expected build/dev scripts", () => {
@@ -48,7 +49,14 @@ describe("package.json script wiring", () => {
     expect(pkg.scripts?.["build"]).not.toContain("--external @noble/hashes");
     expect(pkg.scripts?.["build:cli"]).not.toContain("--external @scure/bip39");
     expect(pkg.scripts?.["build:main"]).not.toContain("--external @scure/base");
+    expect(pkg.scripts?.["build"]).toContain("--external tiny-secp256k1");
+    expect(pkg.scripts?.["build:cli"]).toContain("--external tiny-secp256k1");
+    expect(pkg.scripts?.["build:main"]).toContain("--external tiny-secp256k1");
+    expect((pkg as Record<string, unknown>)["build"]).toBeUndefined();
+    expect((pkg as Record<string, unknown>)["build:cli"]).toBeUndefined();
+    expect((pkg as Record<string, unknown>)["build:main"]).toBeUndefined();
     expect(readFileSync(SIDECAR_SCRIPT, "utf8")).toContain("--external @aws-sdk/client-s3");
+    expect(readFileSync(PACKAGE_SCRIPT, "utf8")).toContain("--external tiny-secp256k1");
 
     expect(pkg.scripts?.["tauri:dev"]).toContain("bun run tauri:sidecar");
     expect(pkg.scripts?.["tauri:dev"]).toContain("bunx tauri dev");
