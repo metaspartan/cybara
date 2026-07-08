@@ -13,6 +13,38 @@ import { saveInboundMediaFromBase64 } from "../media";
 
 export const whatsappSessions = new Map<string, string>();
 
+export function isRecoverableWhatsAppProfileProcess(
+  pid: number,
+  command: string,
+  currentPid = process.pid,
+  currentPpid = process.ppid
+): boolean {
+  if (!Number.isFinite(pid) || pid <= 0 || pid === currentPid || pid === currentPpid) {
+    return false;
+  }
+  const normalized = command.toLowerCase();
+  if (!normalized.trim()) return false;
+  if (
+    normalized.includes("cybara") ||
+    normalized.includes("/bun") ||
+    normalized.includes(" bun ") ||
+    normalized.includes("bunx") ||
+    normalized.includes("node ") ||
+    normalized.includes(" sh ") ||
+    normalized.includes("sh -lc") ||
+    normalized.includes("pgrep") ||
+    normalized.includes("lsof")
+  ) {
+    return false;
+  }
+  return (
+    normalized.includes("google chrome") ||
+    normalized.includes("chromium") ||
+    normalized.includes("chrome helper") ||
+    normalized.includes("puppeteer")
+  );
+}
+
 type QRCallback = (qr: string, channelId: string) => void;
 let qrCallback: QRCallback | null = null;
 
@@ -547,6 +579,18 @@ export class WhatsAppAdapter implements ChannelAdapter {
     }
   }
 
+  private getProcessCommand(pid: number): string {
+    const output = Bun.spawnSync(["ps", "-p", String(pid), "-o", "command="], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    return new TextDecoder().decode(output.stdout).trim();
+  }
+
+  private isRecoverableProfileLockProcess(pid: number): boolean {
+    return isRecoverableWhatsAppProfileProcess(pid, this.getProcessCommand(pid));
+  }
+
   private async killProcessesUsingPath(path: string): Promise<number> {
     const quotedPath = this.shellQuote(path);
     const pidQuery = `(lsof -t +D ${quotedPath} 2>/dev/null; pgrep -f ${quotedPath} 2>/dev/null) | sort -u`;
@@ -559,7 +603,9 @@ export class WhatsAppAdapter implements ChannelAdapter {
     const pids = pidText
       .split(/\s+/)
       .map((value) => Number.parseInt(value, 10))
-      .filter((pid) => Number.isFinite(pid) && pid > 0 && pid !== process.pid);
+      .filter(
+        (pid) => Number.isFinite(pid) && pid > 0 && this.isRecoverableProfileLockProcess(pid)
+      );
     if (pids.length === 0) {
       return 0;
     }

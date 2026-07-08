@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  isRecoverableWhatsAppProfileProcess,
   resolveWhatsAppChromeExecutable,
   WhatsAppAdapter,
   whatsappSessions,
@@ -133,6 +134,45 @@ afterEach(() => {
 });
 
 describe("WhatsApp adapter mocked flows", () => {
+  test("profile-lock recovery only targets browser profile holders", () => {
+    expect(
+      isRecoverableWhatsAppProfileProcess(
+        400,
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=/tmp/wa",
+        100,
+        99
+      )
+    ).toBe(true);
+    expect(
+      isRecoverableWhatsAppProfileProcess(
+        401,
+        "/Applications/Google Chrome.app/Contents/Frameworks/Google Chrome Helper.app/Contents/MacOS/Google Chrome Helper",
+        100,
+        99
+      )
+    ).toBe(true);
+    expect(
+      isRecoverableWhatsAppProfileProcess(100, "Google Chrome --user-data-dir=/tmp/wa", 100, 99)
+    ).toBe(false);
+    expect(
+      isRecoverableWhatsAppProfileProcess(99, "Google Chrome --user-data-dir=/tmp/wa", 100, 99)
+    ).toBe(false);
+    expect(
+      isRecoverableWhatsAppProfileProcess(
+        402,
+        "/Users/carsen/Documents/GitHub/cybara/src-tauri/bin/cybara-aarch64-apple-darwin start",
+        100,
+        99
+      )
+    ).toBe(false);
+    expect(
+      isRecoverableWhatsAppProfileProcess(403, "sh -lc pgrep -f /Users/carsen/.cybara", 100, 99)
+    ).toBe(false);
+    expect(
+      isRecoverableWhatsAppProfileProcess(404, "/Users/carsen/.bun/bin/bun dist/index.js", 100, 99)
+    ).toBe(false);
+  });
+
   test("resolves explicit Chrome executable for Puppeteer launch", () => {
     const tempDir = mkdtempSync(join(tmpdir(), "cybara-whatsapp-chrome-"));
     const chromePath = join(tempDir, "chrome");
