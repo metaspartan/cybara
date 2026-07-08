@@ -5,7 +5,7 @@
 
 import { mkdir, writeFile, readFile, rm, readdir } from "fs/promises";
 import { existsSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, resolve, sep } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
 
@@ -893,9 +893,15 @@ export class SkillRegistryManager {
       // Create directory
       await mkdir(targetDir, { recursive: true });
 
-      // Write files
+      const resolvedTarget = resolve(targetDir);
       for (const file of download.files) {
-        const filePath = join(targetDir, file.path);
+        const filePath = resolve(targetDir, file.path);
+        if (filePath !== resolvedTarget && !filePath.startsWith(resolvedTarget + sep)) {
+          return {
+            success: false,
+            error: `Refusing to write skill file outside the skill directory: ${file.path}`,
+          };
+        }
         await mkdir(join(filePath, ".."), { recursive: true });
         await writeFile(filePath, file.content, "utf-8");
       }

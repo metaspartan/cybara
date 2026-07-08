@@ -1,32 +1,221 @@
-// Calc tool - safely evaluate mathematical expressions
+const MATH_CONSTANTS: Record<string, number> = {
+  pi: Math.PI,
+  e: Math.E,
+  tau: Math.PI * 2,
+};
+
+const MATH_FUNCTIONS: Record<string, (...args: number[]) => number> = {
+  sqrt: Math.sqrt,
+  cbrt: Math.cbrt,
+  abs: Math.abs,
+  exp: Math.exp,
+  ln: Math.log,
+  log: Math.log,
+  log2: Math.log2,
+  log10: Math.log10,
+  sin: Math.sin,
+  cos: Math.cos,
+  tan: Math.tan,
+  asin: Math.asin,
+  acos: Math.acos,
+  atan: Math.atan,
+  sinh: Math.sinh,
+  cosh: Math.cosh,
+  tanh: Math.tanh,
+  round: Math.round,
+  floor: Math.floor,
+  ceil: Math.ceil,
+  sign: Math.sign,
+  trunc: Math.trunc,
+  pow: (a, b) => a ** b,
+  atan2: (a, b) => Math.atan2(a, b),
+  min: (...values) => Math.min(...values),
+  max: (...values) => Math.max(...values),
+};
+
+type Token =
+  | { kind: "number"; value: number }
+  | { kind: "ident"; value: string }
+  | { kind: "op"; value: string }
+  | { kind: "paren"; value: "(" | ")" }
+  | { kind: "comma" };
+
+function tokenizeExpression(input: string): Token[] {
+  const tokens: Token[] = [];
+  let i = 0;
+  while (i < input.length) {
+    const ch = input[i];
+    if (ch === " " || ch === "\t" || ch === "\n" || ch === "\r") {
+      i += 1;
+      continue;
+    }
+    if ((ch >= "0" && ch <= "9") || ch === ".") {
+      let j = i + 1;
+      while (j < input.length && /[0-9.eE+\-]/.test(input[j])) {
+        const c = input[j];
+        if ((c === "+" || c === "-") && !(input[j - 1] === "e" || input[j - 1] === "E")) break;
+        j += 1;
+      }
+      const raw = input.slice(i, j);
+      const value = Number(raw);
+      if (!Number.isFinite(value)) throw new Error(`Invalid number: ${raw}`);
+      tokens.push({ kind: "number", value });
+      i = j;
+      continue;
+    }
+    if (/[a-zA-Z_]/.test(ch)) {
+      let j = i + 1;
+      while (j < input.length && /[a-zA-Z0-9_]/.test(input[j])) j += 1;
+      tokens.push({ kind: "ident", value: input.slice(i, j).toLowerCase() });
+      i = j;
+      continue;
+    }
+    if (ch === "(" || ch === ")") {
+      tokens.push({ kind: "paren", value: ch });
+      i += 1;
+      continue;
+    }
+    if (ch === ",") {
+      tokens.push({ kind: "comma" });
+      i += 1;
+      continue;
+    }
+    if ("+-*/%^".includes(ch)) {
+      if (ch === "*" && input[i + 1] === "*") {
+        tokens.push({ kind: "op", value: "^" });
+        i += 2;
+        continue;
+      }
+      tokens.push({ kind: "op", value: ch });
+      i += 1;
+      continue;
+    }
+    throw new Error(`Unexpected character: ${ch}`);
+  }
+  return tokens;
+}
+
+function evaluateExpression(input: string): number {
+  const tokens = tokenizeExpression(input);
+  let pos = 0;
+
+  const peek = (): Token | undefined => tokens[pos];
+  const next = (): Token | undefined => tokens[pos++];
+
+  const parsePrimary = (): number => {
+    const token = next();
+    if (!token) throw new Error("Unexpected end of expression");
+    if (token.kind === "number") return token.value;
+    if (token.kind === "op" && (token.value === "+" || token.value === "-")) {
+      const operand = parseUnary();
+      return token.value === "-" ? -operand : operand;
+    }
+    if (token.kind === "paren" && token.value === "(") {
+      const value = parseAdditive();
+      const close = next();
+      if (!close || close.kind !== "paren" || close.value !== ")") {
+        throw new Error("Expected closing parenthesis");
+      }
+      return value;
+    }
+    if (token.kind === "ident") {
+      if (token.value in MATH_CONSTANTS && peek()?.kind !== "paren") {
+        return MATH_CONSTANTS[token.value];
+      }
+      const fn = MATH_FUNCTIONS[token.value];
+      if (!fn) throw new Error(`Unknown identifier: ${token.value}`);
+      const open = next();
+      if (!open || open.kind !== "paren" || open.value !== "(") {
+        throw new Error(`Expected '(' after ${token.value}`);
+      }
+      const callArgs: number[] = [];
+      if (peek()?.kind !== "paren" || (peek() as { value?: string }).value !== ")") {
+        callArgs.push(parseAdditive());
+        while (peek()?.kind === "comma") {
+          next();
+          callArgs.push(parseAdditive());
+        }
+      }
+      const close = next();
+      if (!close || close.kind !== "paren" || close.value !== ")") {
+        throw new Error(`Expected ')' after ${token.value} arguments`);
+      }
+      return fn(...callArgs);
+    }
+    throw new Error("Unexpected token in expression");
+  };
+
+  const parsePower = (): number => {
+    const base = parsePrimary();
+    if (peek()?.kind === "op" && (peek() as { value: string }).value === "^") {
+      next();
+      return base ** parseUnary();
+    }
+    return base;
+  };
+
+  function parseUnary(): number {
+    const token = peek();
+    if (token?.kind === "op" && (token.value === "+" || token.value === "-")) {
+      next();
+      const operand = parseUnary();
+      return token.value === "-" ? -operand : operand;
+    }
+    return parsePower();
+  }
+
+  const parseMultiplicative = (): number => {
+    let value = parseUnary();
+    for (;;) {
+      const token = peek();
+      if (token?.kind === "op" && (token.value === "*" || token.value === "/" || token.value === "%")) {
+        next();
+        const rhs = parseUnary();
+        if (token.value === "*") value *= rhs;
+        else if (token.value === "/") value /= rhs;
+        else value %= rhs;
+      } else {
+        break;
+      }
+    }
+    return value;
+  };
+
+  function parseAdditive(): number {
+    let value = parseMultiplicative();
+    for (;;) {
+      const token = peek();
+      if (token?.kind === "op" && (token.value === "+" || token.value === "-")) {
+        next();
+        const rhs = parseMultiplicative();
+        value = token.value === "+" ? value + rhs : value - rhs;
+      } else {
+        break;
+      }
+    }
+    return value;
+  }
+
+  const result = parseAdditive();
+  if (pos !== tokens.length) throw new Error("Unexpected trailing tokens");
+  return result;
+}
+
 export async function handleCalc(args: Record<string, unknown>): Promise<unknown> {
   const expression = args.expression as string;
 
-  if (!expression) {
+  if (!expression || typeof expression !== "string") {
     throw new Error("Expression is required");
   }
-
-  // Safe math evaluation - only allow numbers, operators, and math functions
-  const safeExpression = expression
-    .replace(/[^0-9+\-*/.()%^sqrtpowlogsinconsitantancoshqrtlog10expabsminmaxpi e]/gi, "")
-    .replace(/\^/g, "**")
-    .replace(/sqrt\(/g, "Math.sqrt(")
-    .replace(/pow\(/g, "Math.pow(")
-    .replace(/log\(/g, "Math.log(")
-    .replace(/sin\(/g, "Math.sin(")
-    .replace(/cos\(/g, "Math.cos(")
-    .replace(/tan\(/g, "Math.tan(")
-    .replace(/pi/gi, "Math.PI")
-    .replace(/\be\b/gi, "Math.E");
+  if (expression.length > 1000) {
+    throw new Error("Expression is too long");
+  }
 
   try {
-    // Use Function constructor for safe evaluation in a sandboxed way
-    const result = new Function(`return ${safeExpression}`)();
-
-    if (typeof result !== "number" || !isFinite(result)) {
+    const result = evaluateExpression(expression);
+    if (typeof result !== "number" || !Number.isFinite(result)) {
       throw new Error("Invalid result - expression must produce a finite number");
     }
-
     return { result, expression };
   } catch (e) {
     throw new Error(`Failed to evaluate expression: ${(e as Error).message}`);

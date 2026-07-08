@@ -38,9 +38,30 @@ function getConfigDir(): string {
   return path.join(configDir, "browser");
 }
 
+function assertSafeProfileName(profileName: string): void {
+  if (
+    typeof profileName !== "string" ||
+    profileName.length === 0 ||
+    profileName.length > 64 ||
+    profileName === "." ||
+    profileName === ".." ||
+    !/^[A-Za-z0-9._-]+$/.test(profileName)
+  ) {
+    throw new Error(
+      `Invalid browser profile name: profile names may only contain letters, numbers, '.', '_', and '-'`
+    );
+  }
+}
+
 export function resolveUserDataDir(profileName: string): string {
+  assertSafeProfileName(profileName);
   const configDir = getConfigDir();
-  return path.join(configDir, profileName, "user-data");
+  const resolved = path.resolve(configDir, profileName, "user-data");
+  const base = path.resolve(configDir);
+  if (!resolved.startsWith(base + path.sep)) {
+    throw new Error(`Invalid browser profile name: resolves outside the profile directory`);
+  }
+  return resolved;
 }
 
 function findAvailablePort(): number {

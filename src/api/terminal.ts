@@ -110,15 +110,28 @@ else:
             pass
 `;
 
-const TERMINAL_ENV_SENSITIVE =
-  /(key|token|secret|password|passwd|credential|mnemonic|seed|private|apikey|auth)/i;
+const TERMINAL_ENV_ALLOWED = new Set([
+  "PATH",
+  "USER",
+  "LOGNAME",
+  "LANG",
+  "TZ",
+  "TMPDIR",
+  "TERM_PROGRAM",
+  "TERM_PROGRAM_VERSION",
+  "XPC_SERVICE_NAME",
+  "SSH_TTY",
+]);
+
+const TERMINAL_ENV_ALLOWED_PREFIX = /^(LC_)/;
 
 function buildTerminalEnv(shell: string, home: string): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
-    if (TERMINAL_ENV_SENSITIVE.test(key)) continue;
-    env[key] = value;
+    if (TERMINAL_ENV_ALLOWED.has(key) || TERMINAL_ENV_ALLOWED_PREFIX.test(key)) {
+      env[key] = value;
+    }
   }
   return {
     ...env,

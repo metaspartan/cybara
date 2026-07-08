@@ -11,10 +11,16 @@ export interface OpenUrlOptions {
   spawnFn?: SpawnLike;
 }
 
+const CONTROL_CHARS = /[\u0000-\u001f\u007f]/;
+
 export function getOpenCommandForPlatform(
   platform: NodeJS.Platform,
   url: string
 ): { command: string; args: string[]; options: SpawnOptions } {
+  if (CONTROL_CHARS.test(url)) {
+    throw new Error("Refusing to open URL containing control characters");
+  }
+
   if (platform === "darwin") {
     return {
       command: "open",
@@ -25,8 +31,8 @@ export function getOpenCommandForPlatform(
 
   if (platform === "win32") {
     return {
-      command: "cmd",
-      args: ["/c", "start", "", url],
+      command: "explorer.exe",
+      args: [url],
       options: { detached: true, stdio: "ignore", windowsHide: true },
     };
   }

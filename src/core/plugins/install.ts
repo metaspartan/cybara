@@ -114,8 +114,25 @@ export async function installPluginFromNpmSpec(spec: string): Promise<InstalledC
     const arrayBuffer = await tarballRes.arrayBuffer();
     await Bun.write(tarballPath, arrayBuffer);
 
-    // 4. Extract tarball using native system tar command
-    const extractResult = Bun.spawnSync(["tar", "-xzf", tarballPath, "-C", tmpDir]);
+    const listResult = Bun.spawnSync(["tar", "-tzf", tarballPath]);
+    if (listResult.exitCode !== 0) {
+      throw new Error(`Failed to read plugin tarball: ${listResult.stderr.toString()}`);
+    }
+    for (const entry of listResult.stdout.toString().split("\n")) {
+      const name = entry.trim();
+      if (!name) continue;
+      if (name.startsWith("/") || name.startsWith("~") || /(^|\/)\.\.(\/|$)/.test(name)) {
+        throw new Error(`Refusing to extract unsafe path from plugin tarball: ${name}`);
+      }
+    }
+    const extractResult = Bun.spawnSync([
+      "tar",
+      "-xzf",
+      tarballPath,
+      "-C",
+      tmpDir,
+      "--no-same-owner",
+    ]);
     if (extractResult.exitCode !== 0) {
       throw new Error(`Failed to extract plugin tarball: ${extractResult.stderr.toString()}`);
     }

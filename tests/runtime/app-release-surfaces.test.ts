@@ -50,6 +50,16 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain(
       "cd apps/mobile && bunx expo prebuild --platform android --no-install"
     );
+    expect(workflow).toContain("name: Tune Android Gradle memory");
+    expect(workflow).toContain("MaxMetaspaceSize=1536m");
+    expect(workflow).toContain("kotlin.daemon.jvmargs");
+    expect(workflow).toContain("org.gradle.workers.max");
+    expect(workflow.indexOf("name: Prebuild Android project")).toBeLessThan(
+      workflow.indexOf("name: Tune Android Gradle memory")
+    );
+    expect(workflow.indexOf("name: Tune Android Gradle memory")).toBeLessThan(
+      workflow.indexOf("name: Build Android artifacts")
+    );
     expect(workflow).toContain("./gradlew bundleRelease assembleRelease");
     expect(workflow).toContain("./gradlew assembleDebug");
     expect(workflow).toContain("packageName: com.ck.cybara");

@@ -1047,6 +1047,9 @@ class WalletManager {
         ) {
           throw new Error("Validation error: Contract address is not allowlisted for agent writes");
         }
+        if (!readOnly && typeof payload.value === "string" && payload.value.trim()) {
+          this.assertAgentAmountWithinCap(payload.value, policy);
+        }
         return await this.callEthContract({
           contractAddress: String(payload.contractAddress || ""),
           abi: typeof payload.abi === "string" ? payload.abi : undefined,
@@ -1106,6 +1109,20 @@ class WalletManager {
         const dryRun = payload.dryRun === true;
         if (!dryRun && !policy.allowEthSwaps) {
           throw new Error("Validation error: Agent swaps are disabled by wallet policy");
+        }
+        if (!dryRun) {
+          this.assertAgentRecipientAllowed(
+            typeof payload.recipient === "string" ? payload.recipient : undefined,
+            policy
+          );
+          this.assertAgentAmountWithinCap(
+            typeof payload.amountEth === "string"
+              ? payload.amountEth
+              : typeof payload.amount === "string"
+                ? payload.amount
+                : undefined,
+            policy
+          );
         }
         return await this.swap({
           venue: String(payload.venue || "uniswap_v3"),

@@ -15,9 +15,21 @@ describe("open-url runtime helper", () => {
 
   test("getOpenCommandForPlatform maps win32 correctly", () => {
     const cmd = getOpenCommandForPlatform("win32", "https://example.com");
-    expect(cmd.command).toBe("cmd");
-    expect(cmd.args).toEqual(["/c", "start", "", "https://example.com"]);
+    expect(cmd.command).toBe("explorer.exe");
+    expect(cmd.args).toEqual(["https://example.com"]);
     expect(cmd.options.windowsHide).toBe(true);
+  });
+
+  test("getOpenCommandForPlatform does not route through a shell interpreter", () => {
+    const cmd = getOpenCommandForPlatform("win32", "https://example.com/?a=1&b=2");
+    expect(cmd.command).not.toBe("cmd");
+    expect(cmd.args).toEqual(["https://example.com/?a=1&b=2"]);
+  });
+
+  test("getOpenCommandForPlatform rejects control characters in the URL", () => {
+    expect(() => getOpenCommandForPlatform("win32", "https://x\r\nDEL /Q")).toThrow(
+      /control characters/
+    );
   });
 
   test("getOpenCommandForPlatform maps linux/other to xdg-open", () => {

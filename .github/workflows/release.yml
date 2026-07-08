@@ -483,6 +483,25 @@ jobs:
         run: bun run version:sync
       - name: Prebuild Android project
         run: cd apps/mobile && bunx expo prebuild --platform android --no-install
+      - name: Tune Android Gradle memory
+        run: |
+          set -euo pipefail
+          cd apps/mobile/android
+          PROPS="gradle.properties"
+          set_prop() {
+            local key="$1"
+            local value="$2"
+            if grep -q "^${key}=" "$PROPS"; then
+              sed -i.bak "s|^${key}=.*|${key}=${value}|" "$PROPS"
+              rm -f "${PROPS}.bak"
+            else
+              printf '\n%s=%s\n' "$key" "$value" >> "$PROPS"
+            fi
+          }
+          set_prop "org.gradle.jvmargs" "-Xmx4g -XX:MaxMetaspaceSize=1536m -XX:+HeapDumpOnOutOfMemoryError -Dfile.encoding=UTF-8"
+          set_prop "kotlin.daemon.jvmargs" "-Xmx2g -XX:MaxMetaspaceSize=1536m -Dfile.encoding=UTF-8"
+          set_prop "org.gradle.workers.max" "2"
+          grep -E '^(org.gradle.jvmargs|kotlin.daemon.jvmargs|org.gradle.workers.max)=' "$PROPS"
       # Signed release AAB (for Google Play) + APK when a keystore is configured;
       # otherwise a debug-signed APK that is installable for sideloading.
       - name: Build Android artifacts

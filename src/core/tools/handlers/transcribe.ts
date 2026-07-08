@@ -118,15 +118,29 @@ async function loadAudio(args: Record<string, unknown>): Promise<{ blob: Blob; f
   }
 
   if (url) {
-    const verdict = await validateUrl(url); // SSRF guard (private/loopback/metadata)
-    if (!verdict.valid) {
-      throw new Error(`Refusing to fetch audio URL: ${verdict.error || "blocked by URL policy"}`);
+    let current = url;
+    let res: Response | undefined;
+    for (let hop = 0; hop < 5; hop++) {
+      const verdict = await validateUrl(current);
+      if (!verdict.valid) {
+        throw new Error(`Refusing to fetch audio URL: ${verdict.error || "blocked by URL policy"}`);
+      }
+      res = await fetch(current, { redirect: "manual" });
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get("location");
+        if (!location) break;
+        current = new URL(location, current).toString();
+        continue;
+      }
+      break;
     }
-    const res = await fetch(url);
+    if (!res || (res.status >= 300 && res.status < 400)) {
+      throw new Error("Failed to fetch audio: too many redirects");
+    }
     if (!res.ok) throw new Error(`Failed to fetch audio: ${res.status} ${res.statusText}`);
     const buf = await res.arrayBuffer();
     if (buf.byteLength > MAX_AUDIO_BYTES) throw new Error("Fetched audio exceeds 25MB limit.");
-    return { blob: new Blob([buf]), filename: basename(new URL(url).pathname) || "audio" };
+    return { blob: new Blob([buf]), filename: basename(new URL(current).pathname) || "audio" };
   }
 
   throw new Error("Provide either audioPath (local file) or url.");
