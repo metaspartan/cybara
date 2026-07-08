@@ -26,6 +26,7 @@ import { printCompletion } from "./cli-completion";
 import { rawComputerUse } from "./cli-computer-use";
 import { configureChatCli, rawAgent, rawChatCommand } from "./cli-chat";
 import { getFlagValue, hasFlag } from "./cli-args";
+import { commandExists } from "./core/platform";
 import { parseSubagentSpawnArgs, type SubagentSpawnPayload } from "./cli-subagent-args";
 import {
   configureWalletCli,
@@ -505,14 +506,9 @@ async function checkStatusWebSocket(): Promise<{ ok: boolean; details: string }>
 }
 
 function checkSandboxRuntime(): { ok: boolean; details: string } {
-  const hasCommand = (command: string): boolean => {
-    const exists = Bun.spawnSync(["sh", "-lc", `command -v ${command} >/dev/null 2>&1`]);
-    return exists.exitCode === 0;
-  };
-
   if (process.platform === "darwin" && process.arch === "arm64") {
-    const hasAppleSandbox = hasCommand("sandbox-exec");
-    const hasDocker = hasCommand("docker");
+    const hasAppleSandbox = commandExists("sandbox-exec");
+    const hasDocker = commandExists("docker");
     if (hasAppleSandbox || hasDocker) {
       return {
         ok: true,
@@ -528,8 +524,8 @@ function checkSandboxRuntime(): { ok: boolean; details: string } {
   }
 
   if (process.platform === "linux") {
-    const hasPodman = hasCommand("podman");
-    const hasDocker = hasCommand("docker");
+    const hasPodman = commandExists("podman");
+    const hasDocker = commandExists("docker");
     if (hasPodman || hasDocker) {
       return {
         ok: true,
@@ -544,7 +540,7 @@ function checkSandboxRuntime(): { ok: boolean; details: string } {
     };
   }
 
-  if (hasCommand("docker")) {
+  if (commandExists("docker")) {
     return { ok: true, details: "docker detected (container sandbox available)" };
   }
   return {

@@ -164,7 +164,8 @@ import {
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
 import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
 import { resolveAgentToolSelection } from "./agent-tool-selection";
-import { normalizeExplicitAgentTools } from "./agent-tool-normalization";
+import { isLegacyBuiltinSnapshot, normalizeExplicitAgentTools } from "./agent-tool-normalization";
+import { selectBuiltinToolsForIntent } from "./agent-tool-intent";
 import { formatLlmFailure } from "./agent-error-format";
 import {
   resolveModelContextWindowTokens,
@@ -798,7 +799,7 @@ class AgentManager {
 
     let tools: ToolDefinition[] = [];
     if (supportsTools) {
-      tools = this.getAgentTools(agent);
+      tools = this.getAgentTools(agent, fullMessages);
     }
 
     const resolvedExecution = this.resolveProviderModelForExecution(provider, agent.model);
@@ -954,12 +955,12 @@ class AgentManager {
     let tools: ToolDefinition[] = [];
     if (needTools) {
       if (supportsTools) {
-        tools = this.getAgentTools(agent);
+        tools = this.getAgentTools(agent, workspaceAwareMessages);
       } else if (agent.fallback_provider_id) {
         const fallbackProvider = providerManager.getWithCredentials(agent.fallback_provider_id);
         if (fallbackProvider) {
           provider = fallbackProvider;
-          tools = this.getAgentTools(agent);
+          tools = this.getAgentTools(agent, workspaceAwareMessages);
         }
       }
     }
@@ -1019,7 +1020,7 @@ class AgentManager {
     }
   }
 
-  private getAgentTools(agent: Agent): ToolDefinition[] {
+  private getAgentTools(agent: Agent, messages?: AgentMessage[]): ToolDefinition[] {
     const filterEnabledTools = (tools: ToolDefinition[]): ToolDefinition[] =>
       tools.filter((tool) => isToolEnabledForAgent(tool.name));
 
@@ -1032,10 +1033,12 @@ class AgentManager {
       return [];
     }
     if (selection.kind === "explicit") {
-      // An explicit list (including an empty one) is authoritative.
+      if (isLegacyBuiltinSnapshot(selection.tools)) {
+        return selectBuiltinToolsForIntent(filterEnabledTools(getBuiltinTools()), messages);
+      }
       return filterEnabledTools(normalizeExplicitAgentTools(selection.tools));
     }
-    return filterEnabledTools(getBuiltinTools());
+    return selectBuiltinToolsForIntent(filterEnabledTools(getBuiltinTools()), messages);
   }
 
   private getAgentToolPermissions(agent: Agent): {

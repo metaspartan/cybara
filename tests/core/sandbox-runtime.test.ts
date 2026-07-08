@@ -5,6 +5,7 @@ import {
   getSandboxRuntimeStatus,
   resolveSandboxRuntime,
 } from "../../src/core/sandbox";
+import { isWindows } from "../../src/core/platform";
 
 describe("sandbox runtime planning", () => {
   test("returns direct shell plan when sandbox is disabled", () => {
@@ -20,7 +21,11 @@ describe("sandbox runtime planning", () => {
       expect(resolution.enabled).toBe(false);
       expect(plan.enabled).toBe(false);
       expect(plan.provider).toBeNull();
-      expect(plan.command[0]).toBe("sh");
+      if (isWindows()) {
+        expect(plan.command[0].toLowerCase()).not.toBe("sh");
+      } else {
+        expect(plan.command[0]).toBe("sh");
+      }
     } finally {
       config.setSandboxRuntime(previous);
     }

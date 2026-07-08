@@ -7,6 +7,7 @@ import {
   estimateSessionContextUsage,
   splitMessagesByTokenShare,
   isOversizedForSummary,
+  shouldCompactContext,
 } from "../../src/core/session-context";
 import type { ChatMessage } from "../../src/core/agent";
 
@@ -76,6 +77,13 @@ describe("session-context chunking helpers", () => {
     expect(usage.usedPercent).toBeLessThan(100);
     expect(usage.compacted).toBe(false);
     expect(usage.source).toBe("estimated");
+  });
+
+  test("compaction checks do not need newContent after the turn is appended", () => {
+    const content = "x".repeat(88_000);
+    const messages = [msg("user", content)];
+    expect(shouldCompactContext(messages, "mixtral").needed).toBe(false);
+    expect(shouldCompactContext(messages, "mixtral", content).needed).toBe(true);
   });
 
   test("splitMessagesByTokenShare splits into N roughly-equal chunks", () => {

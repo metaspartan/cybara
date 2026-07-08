@@ -2,6 +2,7 @@ import { existsSync } from "fs";
 import { homeDir } from "../../paths";
 import { buildSandboxedShellPlan } from "../../sandbox";
 import { createLogger } from "../../logger";
+import { getPathSeparator, isWindows } from "../../platform";
 import type { ToolContext } from "../index";
 
 const log = createLogger("ProcessTool");
@@ -47,8 +48,8 @@ export async function handleExec(
 
   try {
     const fullEnv = { ...process.env, ...env };
-    if (!fullEnv.PATH?.includes("/usr/sbin")) {
-      fullEnv.PATH = "/usr/sbin:" + fullEnv.PATH;
+    if (!isWindows() && !fullEnv.PATH?.split(getPathSeparator()).includes("/usr/sbin")) {
+      fullEnv.PATH = ["/usr/sbin", fullEnv.PATH].filter(Boolean).join(getPathSeparator());
     }
     const timeoutSeconds =
       typeof timeout === "number" && Number.isFinite(timeout)

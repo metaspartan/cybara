@@ -9,7 +9,51 @@ import { getSystemMonitorSnapshot } from "../../core/system-monitor";
 import { validateBrowserNavigationUrl } from "../../core/tools/handlers/browser";
 import * as pwManager from "../../core/browser/pw-manager";
 import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../../core/status";
+import { commandExists, isWindows } from "../../core/platform";
 import { isSessionStatusActive, type RouteHandler } from "./_shared";
+
+function quotePosix(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function quotePowerShell(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function quoteCmd(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
+function buildRestartCommand(argv: string[], cwd: string): string[] {
+  if (isWindows()) {
+    const powerShell = commandExists("pwsh")
+      ? "pwsh"
+      : commandExists("powershell")
+        ? "powershell"
+        : null;
+    if (powerShell) {
+      const args = argv.slice(1).map(quotePowerShell).join(",");
+      const command = [
+        "Start-Sleep -Seconds 2",
+        `Start-Process -FilePath ${quotePowerShell(argv[0])} -ArgumentList @(${args}) -WorkingDirectory ${quotePowerShell(cwd)}`,
+      ].join("; ");
+      return [
+        powerShell,
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        command,
+      ];
+    }
+    const command = `ping -n 3 127.0.0.1 > nul & start "" /d ${quoteCmd(cwd)} ${argv.map(quoteCmd).join(" ")}`;
+    return ["cmd.exe", "/d", "/s", "/c", command];
+  }
+  const quoted = argv.map(quotePosix).join(" ");
+  return ["sh", "-c", `nohup sh -c 'sleep 2; exec ${quoted.replaceAll("'", "'\\''")}' &`];
+}
 
 export const runtimeRoutes: Record<string, RouteHandler> = {
   "GET /api/browser/status": async () => {
@@ -145,17 +189,13 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     setTimeout(() => {
       if (!supervised) {
         const argv = [process.execPath, ...process.argv.slice(1)];
-        const quoted = argv.map((part) => `'${part.replaceAll("'", "'\\''")}'`).join(" ");
-        const child = Bun.spawn(
-          ["sh", "-c", `nohup sh -c 'sleep 2; exec ${quoted.replaceAll("'", "'\\''")}' &`],
-          {
-            cwd: process.cwd(),
-            env: process.env,
-            stdin: "ignore",
-            stdout: "inherit",
-            stderr: "inherit",
-          }
-        );
+        const child = Bun.spawn(buildRestartCommand(argv, process.cwd()), {
+          cwd: process.cwd(),
+          env: process.env,
+          stdin: "ignore",
+          stdout: "inherit",
+          stderr: "inherit",
+        });
         child.unref();
       }
       setTimeout(() => process.exit(0), 700);

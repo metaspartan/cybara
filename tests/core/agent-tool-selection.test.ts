@@ -1,10 +1,19 @@
-import { describe, expect, test } from "bun:test";
-import { resolveAgentToolSelection } from "../../src/core/agent";
+import { afterEach, describe, expect, test } from "bun:test";
+import { agentManager, resolveAgentToolSelection } from "../../src/core/agent";
 import { normalizeExplicitAgentTools } from "../../src/core/agent-tool-normalization";
+import { providerManager } from "../../src/core/providers";
 import { getToolSchemasForLLM } from "../../src/core/tools/index";
 
-// The core security property: a present-but-empty or corrupt `tools` restriction
-// must NOT silently widen the agent to the full builtin tool set.
+const createdAgentIds: string[] = [];
+const createdProviderIds: string[] = [];
+
+type CallLLMShape = typeof agentManager.callLLM;
+
+afterEach(() => {
+  for (const agentId of createdAgentIds.splice(0)) agentManager.delete(agentId);
+  for (const providerId of createdProviderIds.splice(0)) providerManager.delete(providerId);
+});
+
 describe("resolveAgentToolSelection", () => {
   test("unset tools → use builtins", () => {
     expect(resolveAgentToolSelection(undefined)).toEqual({ kind: "builtins" });
@@ -83,5 +92,52 @@ describe("normalizeExplicitAgentTools", () => {
     expect(normalizeExplicitAgentTools([{ name: "read" }]).map((tool) => tool.name)).toEqual([
       "read",
     ]);
+  });
+});
+
+describe("legacy broad builtin snapshots", () => {
+  test("are narrowed by intent at execution time", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Intent Provider",
+      api_key: "sk-intent",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const broadSnapshot = JSON.stringify(
+      getToolSchemasForLLM().map((tool) => ({ name: tool.name }))
+    );
+    const agent = agentManager.create({
+      name: "Intent Agent",
+      provider_id: provider.id,
+      model: "gpt-intent",
+      tools: broadSnapshot,
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    const captured: string[][] = [];
+    const originalCallLLM = agentManager.callLLM.bind(agentManager) as CallLLMShape;
+    (agentManager as unknown as { callLLM: CallLLMShape }).callLLM = async (
+      _provider,
+      _model,
+      _messages,
+      tools
+    ) => {
+      captured.push(tools.map((tool) => tool.name));
+      return { content: "ok" };
+    };
+
+    try {
+      await agentManager.execute(agent.id, [{ role: "user", content: "hello" }]);
+      await agentManager.execute(agent.id, [{ role: "user", content: "review this repo" }]);
+    } finally {
+      (agentManager as unknown as { callLLM: CallLLMShape }).callLLM = originalCallLLM;
+    }
+
+    expect(captured[0]).toEqual([]);
+    expect(captured[1]).toEqual(expect.arrayContaining(["read", "grep", "exec", "git"]));
+    expect(captured[1].length).toBeLessThan(getToolSchemasForLLM().length / 2);
   });
 });

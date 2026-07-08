@@ -36,7 +36,7 @@ function currentToolDefinition(tool: {
   };
 }
 
-function isLegacyBuiltinSnapshot(tools: unknown[]): boolean {
+export function isLegacyBuiltinSnapshot(tools: unknown[]): boolean {
   if (tools.length < 20) return false;
   const names = new Set(tools.map(toolName).filter(Boolean));
   return legacyBuiltinSnapshotMarkers.every((name) => names.has(name));

@@ -8,6 +8,7 @@ import {
   getPathSeparator,
   getPlatformTarget,
   getShell,
+  getWindowsShellCommand,
   getTempDir,
   isLinux,
   isMacOS,
@@ -80,6 +81,33 @@ describe("platform shell + path helpers", () => {
     const shell = getShell();
     expect(shell).toHaveLength(2);
     expect(shell).toEqual(isWindows() ? ["cmd", "/c"] : ["sh", "-c"]);
+  });
+
+  test("Windows shell command prefers PowerShell Core when available", () => {
+    const shell = getWindowsShellCommand("Write-Output cybara", (cmd) => cmd === "pwsh");
+    expect(shell).toEqual([
+      "pwsh",
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      "Write-Output cybara",
+    ]);
+  });
+
+  test("Windows shell command falls back to Windows PowerShell then cmd", () => {
+    expect(getWindowsShellCommand("Write-Output cybara", (cmd) => cmd === "powershell")[0]).toBe(
+      "powershell"
+    );
+    expect(getWindowsShellCommand("echo cybara", () => false)).toEqual([
+      "cmd.exe",
+      "/d",
+      "/s",
+      "/c",
+      "echo cybara",
+    ]);
   });
 
   test("getPathSeparator matches convention", () => {

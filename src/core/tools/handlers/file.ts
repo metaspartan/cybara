@@ -10,6 +10,7 @@ import { join, dirname, isAbsolute, sep } from "path";
 import { glob } from "tinyglobby";
 import { homeDir } from "../../paths";
 import { trackMetric } from "../../metrics";
+import { commandExists } from "../../platform";
 import type { ToolContext } from "../index";
 import { assertWritablePath, assertReadablePath } from "../path-policy";
 
@@ -521,16 +522,7 @@ export async function handleGrep(args: Record<string, unknown>): Promise<{
 }
 
 async function checkRipgrepAvailable(): Promise<boolean> {
-  try {
-    if (process.platform === "win32") {
-      const result = Bun.spawnSync(["where", "rg"], { timeout: 5000 });
-      return result.exitCode === 0;
-    }
-    const result = Bun.spawnSync(["sh", "-c", "which rg || command -v rg"], { timeout: 5000 });
-    return result.exitCode === 0;
-  } catch {
-    return false;
-  }
+  return commandExists("rg");
 }
 
 async function searchWithRipgrep(

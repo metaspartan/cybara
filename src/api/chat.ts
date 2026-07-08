@@ -48,6 +48,7 @@ import {
   stripSessionTitleAgentPrefix,
 } from "../core/session-title";
 import { handleMemorySave } from "../core/tools/handlers/memory";
+import { selectBuiltinToolsForIntent } from "../core/agent-tool-intent";
 import {
   trackSessionTokens,
   trackSessionEvent,
@@ -1673,7 +1674,9 @@ async function handleChatTurn(
       messages: [
         {
           role: "system",
-          content: await activeAgentSystemPrompt(agent, requestedWorkspaceDir),
+          content: await activeAgentSystemPrompt(agent, requestedWorkspaceDir, [
+            { role: "user", content: message },
+          ]),
           timestamp: nowIso,
         },
       ],
@@ -1706,13 +1709,19 @@ async function handleChatTurn(
         },
       };
     }
-    await applyActiveAgentToSession(session, requestedAgent);
+    await applyActiveAgentToSession(session, requestedAgent, [
+      ...session.messages,
+      { role: "user", content: message },
+    ]);
     await setPersistedSessionAgent(session.id, requestedAgent.id);
   }
 
   const agent = agentManager.get(session.agentId);
   if (agent) {
-    await refreshSessionAgentSystemPromptIfNeeded(session, agent);
+    await refreshSessionAgentSystemPromptIfNeeded(session, agent, [
+      ...session.messages,
+      { role: "user", content: message },
+    ]);
   }
   const hookContext = {
     agentId: agent?.id,
@@ -1878,7 +1887,7 @@ async function handleChatTurn(
       }
     }
 
-    const contextCheck = shouldCompactContext(session.messages, effectiveModel, message);
+    const contextCheck = shouldCompactContext(session.messages, effectiveModel);
 
     if (contextCheck.needed) {
       log.info("Context compaction needed", {
@@ -2062,7 +2071,9 @@ async function handleChatTurn(
             : undefined;
 
           if (providerForSummary) {
-            const toolSchemaList = tools ? getToolSchemasForLLM() : [];
+            const toolSchemaList = tools
+              ? selectBuiltinToolsForIntent(getToolSchemasForLLM(), summaryMessages)
+              : [];
 
             const summaryResult = await agentManager.callLLM(
               providerForSummary,

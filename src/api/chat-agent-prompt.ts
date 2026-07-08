@@ -1,5 +1,9 @@
 import type { Agent } from "../core/database";
-import { normalizeExplicitAgentTools } from "../core/agent-tool-normalization";
+import {
+  isLegacyBuiltinSnapshot,
+  normalizeExplicitAgentTools,
+} from "../core/agent-tool-normalization";
+import { selectBuiltinToolNamesForIntent } from "../core/agent-tool-intent";
 import { resolveAgentToolSelection } from "../core/agent-tool-selection";
 import { config } from "../core/config";
 import { getSandboxPromptInfo } from "../core/sandbox";
@@ -31,24 +35,40 @@ function isGeneratedAgentPrompt(prompt: string): boolean {
   return (
     trimmed.includes("## Tooling") ||
     trimmed.includes("Tool availability (filtered by policy):") ||
-    trimmed.includes("### Wallet Tool")
+    trimmed.includes("### Wallet Tool") ||
+    trimmed.includes("TOOLS - USE THEM!")
   );
 }
 
-function chatAgentToolNames(agent: Pick<Agent, "tools">): string[] {
+function chatAgentToolNames(
+  agent: Pick<Agent, "tools">,
+  messages: ChatAgentPromptMessage[] = []
+): string[] {
   const selection = resolveAgentToolSelection(agent.tools);
   if (selection.kind === "malformed") return [];
   if (selection.kind === "explicit") {
+    if (isLegacyBuiltinSnapshot(selection.tools)) {
+      const selected = selectBuiltinToolNamesForIntent(messages);
+      if (selected.size === 0) return [];
+      return getToolSchemasForLLM()
+        .map((tool) => tool.name)
+        .filter((name) => selected.has(name));
+    }
     return normalizeExplicitAgentTools(selection.tools)
       .filter((tool) => isToolEnabledForAgent(tool.name))
       .map((tool) => tool.name);
   }
-  return getToolSchemasForLLM().map((tool) => tool.name);
+  const selected = selectBuiltinToolNamesForIntent(messages);
+  if (selected.size === 0) return [];
+  return getToolSchemasForLLM()
+    .map((tool) => tool.name)
+    .filter((name) => selected.has(name));
 }
 
 export async function activeAgentSystemPrompt(
   agent: AgentPromptData,
-  workspaceDir?: string | null
+  workspaceDir?: string | null,
+  messages: ChatAgentPromptMessage[] = []
 ): Promise<string> {
   const homeDir = workspaceDir || config.getDefaultWorkspaceDir();
   let skills: Awaited<ReturnType<typeof filterEligibleSkills>> = [];
@@ -69,7 +89,7 @@ export async function activeAgentSystemPrompt(
     agentData: { name: agent.name, config: agent.config as string | undefined },
     config: {},
     modelDisplay: agent.model || "MiniMax-M2.5",
-    tools: chatAgentToolNames(agent),
+    tools: chatAgentToolNames(agent, messages),
     skills,
     sandboxInfo: getSandboxPromptInfo(homeDir),
     extraSystemPrompt:
@@ -79,10 +99,15 @@ export async function activeAgentSystemPrompt(
 
 export async function applyActiveAgentToSession(
   session: ChatAgentPromptSession,
-  agent: AgentPromptData
+  agent: AgentPromptData,
+  messages?: ChatAgentPromptMessage[]
 ): Promise<void> {
   session.agentId = agent.id;
-  const prompt = await activeAgentSystemPrompt(agent, session.workspaceDir);
+  const prompt = await activeAgentSystemPrompt(
+    agent,
+    session.workspaceDir,
+    messages || session.messages
+  );
   const firstMessage = session.messages[0];
   if (firstMessage?.role === "system") {
     firstMessage.content = prompt;
@@ -99,17 +124,23 @@ export async function applyActiveAgentToSession(
 
 export async function refreshSessionAgentSystemPromptIfNeeded(
   session: ChatAgentPromptSession,
-  agent: AgentPromptData
+  agent: AgentPromptData,
+  messages?: ChatAgentPromptMessage[]
 ): Promise<void> {
   const firstMessage = session.messages[0];
   if (firstMessage?.role !== "system") {
-    await applyActiveAgentToSession(session, agent);
+    await applyActiveAgentToSession(session, agent, messages);
     return;
   }
-  const toolNames = chatAgentToolNames(agent);
+  const toolNames = chatAgentToolNames(agent, messages || session.messages);
   const expectsWallet = toolNames.includes("wallet");
   const hasWalletPrompt = firstMessage.content.includes("### Wallet Tool");
-  if (!firstMessage.content.includes("## Tooling") || expectsWallet !== hasWalletPrompt) {
-    await applyActiveAgentToSession(session, agent);
+  const isBuiltinSelection = resolveAgentToolSelection(agent.tools).kind === "builtins";
+  if (
+    isBuiltinSelection ||
+    !firstMessage.content.includes("## Tooling") ||
+    expectsWallet !== hasWalletPrompt
+  ) {
+    await applyActiveAgentToSession(session, agent, messages);
   }
 }

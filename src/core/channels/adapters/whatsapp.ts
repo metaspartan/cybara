@@ -592,6 +592,9 @@ export class WhatsAppAdapter implements ChannelAdapter {
   }
 
   private async killProcessesUsingPath(path: string): Promise<number> {
+    if (process.platform === "win32") {
+      return 0;
+    }
     const quotedPath = this.shellQuote(path);
     const pidQuery = `(lsof -t +D ${quotedPath} 2>/dev/null; pgrep -f ${quotedPath} 2>/dev/null) | sort -u`;
     const output = Bun.spawnSync(["sh", "-lc", pidQuery], { stdout: "pipe", stderr: "pipe" });

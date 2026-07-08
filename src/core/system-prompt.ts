@@ -164,6 +164,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
     "full";
 
   const isMinimal = promptMode === "minimal" || promptMode === "none";
+  const hasTools = params.tools.length > 0;
 
   // For "none" mode, return just the basic identity line
   if (promptMode === "none") {
@@ -187,18 +188,18 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   lines.push(...buildToolingSection(params.tools, isMinimal));
 
   // Tool Call Style section
-  if (!isMinimal) {
+  if (!isMinimal && hasTools) {
     lines.push(...buildToolCallStyleSection());
   }
 
   // Agentic behavior section (proactive, autonomous agent instructions)
-  if (!isMinimal) {
+  if (!isMinimal && hasTools) {
     lines.push(...buildAgenticBehaviorSection());
     lines.push(...buildGroundingSection());
   }
 
   // CLI Quick Reference section (Cybara style)
-  if (!isMinimal) {
+  if (!isMinimal && hasTools) {
     lines.push(...buildCLIReferenceSection());
   }
 
@@ -238,12 +239,12 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   lines.push(...buildTimeSection(params.userTimezone, params.tools.includes("session_status")));
 
   // Reply tags section
-  if (features?.replyTagsEnabled !== false && !isMinimal) {
+  if (features?.replyTagsEnabled !== false && !isMinimal && hasTools) {
     lines.push(...buildReplyTagsSection());
   }
 
   // Messaging section (enhanced with Cybara parity)
-  if (features?.messagingEnabled !== false && !isMinimal) {
+  if (features?.messagingEnabled !== false && !isMinimal && hasTools) {
     lines.push(
       ...buildMessagingSection({
         isMinimal,
@@ -299,12 +300,12 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   }
 
   // Silent replies section (Cybara)
-  if (!isMinimal) {
+  if (!isMinimal && hasTools) {
     lines.push(...buildSilentRepliesSection());
   }
 
   // Heartbeats section (Cybara)
-  if (!isMinimal && params.heartbeatPrompt) {
+  if (!isMinimal && hasTools && params.heartbeatPrompt) {
     lines.push(...buildHeartbeatsSection(params.heartbeatPrompt));
   }
 
@@ -312,7 +313,7 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   lines.push(...buildRuntimeSection(params.modelDisplay, params.runtimeInfo));
 
   // Safety section
-  if (!isMinimal) {
+  if (!isMinimal && hasTools) {
     lines.push(...buildSafetySection());
   }
 
@@ -431,6 +432,14 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
     const summary = CORE_TOOL_SUMMARIES[tool.toLowerCase()];
     return summary ? `- ${tool}: ${summary}` : `- ${tool}`;
   });
+
+  if (toolLines.length === 0) {
+    return [
+      "## Tooling",
+      "No platform tools are enabled for this turn. Answer directly unless the user asks for work that requires tools.",
+      "",
+    ];
+  }
 
   const lines = [
     "## Tooling",

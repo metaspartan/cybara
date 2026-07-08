@@ -7,6 +7,7 @@ import {
   type SandboxRuntimeConfig,
 } from "./config";
 import { createLogger } from "./logger";
+import { commandExists, getHostShellCommand } from "./platform";
 
 const log = createLogger("Sandbox");
 let lastSandboxEvent: SandboxLastEvent | null = null;
@@ -57,17 +58,6 @@ export interface SandboxedShellPlan {
   provider: ResolvedSandboxProvider | null;
   enabled: boolean;
   reason?: string;
-}
-
-function commandExists(command: string): boolean {
-  try {
-    const result = Bun.spawnSync(["sh", "-lc", `command -v ${command} >/dev/null 2>&1`], {
-      timeout: 2000,
-    });
-    return result.exitCode === 0;
-  } catch {
-    return false;
-  }
 }
 
 function summarizeCommand(command: string): string {
@@ -370,7 +360,7 @@ export function buildSandboxedShellPlan(params: {
       network: resolution.runtime.network,
     });
     return {
-      command: ["sh", "-c", params.command],
+      command: getHostShellCommand(params.command),
       cwd: workdir,
       env,
       provider: null,

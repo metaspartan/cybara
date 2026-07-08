@@ -47,6 +47,41 @@ export function commandExists(cmd: string): boolean {
   }
 }
 
+export function getWindowsShellCommand(
+  command: string,
+  commandAvailable: (cmd: string) => boolean = commandExists
+): string[] {
+  if (commandAvailable("pwsh")) {
+    return [
+      "pwsh",
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      command,
+    ];
+  }
+  if (commandAvailable("powershell")) {
+    return [
+      "powershell",
+      "-NoLogo",
+      "-NoProfile",
+      "-NonInteractive",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      command,
+    ];
+  }
+  return ["cmd.exe", "/d", "/s", "/c", command];
+}
+
+export function getHostShellCommand(command: string): string[] {
+  return isWindows() ? getWindowsShellCommand(command) : ["sh", "-c", command];
+}
+
 export function getShell(): [string, string] {
   return isWindows() ? ["cmd", "/c"] : ["sh", "-c"];
 }
