@@ -18,6 +18,8 @@ struct NativeMCPServer: Decodable, Identifiable, Hashable {
 struct NativeToolSummary: Decodable, Identifiable, Hashable {
     let name: String
     let description: String?
+    let category: String?
+    let permissions: [String]?
     let input_schema: [String: JSONValue]?
     let inputSchema: [String: JSONValue]?
 
@@ -25,9 +27,48 @@ struct NativeToolSummary: Decodable, Identifiable, Hashable {
     var schema: [String: JSONValue] { input_schema ?? inputSchema ?? [:] }
 }
 
+struct NativeDangerousToolPolicy: Decodable, Hashable {
+    let enabled: Bool?
+    let mode: String?
+
+    init(from decoder: Decoder) throws {
+        if let string = try? decoder.singleValueContainer().decode(String.self) {
+            enabled = nil
+            mode = string
+            return
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled)
+        mode = try container.decodeIfPresent(String.self, forKey: .mode)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case enabled, mode
+    }
+
+    var displayLabel: String {
+        let modeText = firstNonEmptyGatewayString(mode)?.replacingOccurrences(of: "_", with: " ") ?? "ask"
+        guard let enabled else { return modeText }
+        return enabled ? modeText : "disabled"
+    }
+}
+
 struct NativeDangerousTools: Decodable, Hashable {
-    let policy: String?
+    let policy: NativeDangerousToolPolicy?
     let tools: [String]
+}
+
+struct NativeSubagentSummary: Decodable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let status: String
+    let createdAt: String?
+    let task: String?
+    let sessionKey: String?
+    let model: String?
+    let workspaceDir: String?
+    let runTimeoutSeconds: Int?
+    let cleanup: String?
 }
 
 struct NativeLSPLanguage: Decodable, Identifiable, Hashable {
@@ -302,6 +343,10 @@ extension GatewayClient {
 
     func dangerousTools() async throws -> NativeDangerousTools {
         try await nativeGet("api/tools/dangerous", as: NativeDangerousTools.self)
+    }
+
+    func nativeSubagents() async throws -> [NativeSubagentSummary] {
+        try await nativeList("api/subagents", keys: ["subagents", "items"])
     }
 
     func lspStatus() async throws -> NativeLSPStatus {
@@ -1916,7 +1961,7 @@ struct ToolsScreen: View {
                 } else {
                     GlassCard {
                         NativeMetricGrid(rows: [
-                            ("Dangerous policy", dangerous?.policy ?? "ask"),
+                            ("Dangerous policy", dangerous?.policy?.displayLabel ?? "ask"),
                             ("Dangerous tools", "\(dangerous?.tools.count ?? 0)"),
                             ("Pending approvals", "\(approvals.count)"),
                         ])
@@ -1947,15 +1992,28 @@ struct ToolsScreen: View {
                     LazyVStack(spacing: 10) {
                         ForEach(filteredTools) { tool in
                             GlassCard {
-                                HStack(alignment: .top) {
-                                    NativeInfoRow(
-                                        title: tool.name,
-                                        detail: firstNonEmptyGatewayString(tool.description) ?? "Tool schema"
-                                    )
-                                    Spacer()
-                                    Text("\(tool.schema.count) fields")
-                                        .font(.system(size: 11, design: .rounded))
-                                        .foregroundStyle(.secondary)
+                                VStack(alignment: .leading, spacing: 10) {
+                                    HStack(alignment: .top) {
+                                        NativeInfoRow(
+                                            title: tool.name,
+                                            detail: firstNonEmptyGatewayString(tool.description) ?? "Tool schema"
+                                        )
+                                        Spacer()
+                                        Text("\(tool.schema.count) fields")
+                                            .font(.system(size: 11, design: .rounded))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    HStack(spacing: 6) {
+                                        if let category = firstNonEmptyGatewayString(tool.category) {
+                                            NativeToolChip(category, systemImage: "tag", tint: .cyan)
+                                        }
+                                        if dangerous?.tools.contains(tool.name) == true {
+                                            NativeToolChip("dangerous", systemImage: "exclamationmark.shield", tint: .orange)
+                                        }
+                                        ForEach((tool.permissions ?? []).prefix(3), id: \.self) { permission in
+                                            NativeToolChip(permission, systemImage: "checkmark.seal", tint: .secondary)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1989,6 +2047,27 @@ struct ToolsScreen: View {
         } catch {
             self.error = error.localizedDescription
         }
+    }
+}
+
+private struct NativeToolChip: View {
+    let label: String
+    let systemImage: String
+    let tint: Color
+
+    init(_ label: String, systemImage: String, tint: Color) {
+        self.label = label
+        self.systemImage = systemImage
+        self.tint = tint
+    }
+
+    var body: some View {
+        Label(label, systemImage: systemImage)
+            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(tint.opacity(0.12)))
     }
 }
 

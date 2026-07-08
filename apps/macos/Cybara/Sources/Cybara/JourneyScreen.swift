@@ -14,6 +14,33 @@ struct GatewayJourneyEvent: Decodable, Identifiable, Hashable {
     let category: String
     let createdAt: String
     let createdAtMs: Double
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, title, detail, category, createdAt, created_at, createdAtMs, created_at_ms
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? UUID().uuidString
+        kind = try container.decodeIfPresent(String.self, forKey: .kind) ?? "event"
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? kind
+        detail = try container.decodeIfPresent(String.self, forKey: .detail) ?? ""
+        category = try container.decodeIfPresent(String.self, forKey: .category) ?? "journey"
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt)
+            ?? container.decodeIfPresent(String.self, forKey: .created_at)
+            ?? ""
+        createdAtMs = try container.decodeIfPresent(Double.self, forKey: .createdAtMs)
+            ?? container.decodeIfPresent(Double.self, forKey: .created_at_ms)
+            ?? GatewayJourneyEvent.timestampMillis(createdAt)
+    }
+
+    private static func timestampMillis(_ value: String) -> Double {
+        guard !value.isEmpty else { return 0 }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+        return date.map { $0.timeIntervalSince1970 * 1000 } ?? 0
+    }
 }
 
 struct GatewayJourneyCounts: Decodable, Hashable {

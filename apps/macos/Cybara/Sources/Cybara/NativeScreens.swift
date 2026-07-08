@@ -495,6 +495,11 @@ struct ChatScreen: View {
     @State private var pendingApprovals: [GatewayPendingApproval] = []
     @State private var expandedApprovalID: String?
     @State private var showContextPopover = false
+    @State private var showEnvironmentPopover = false
+    @State private var showSubagentsPopover = false
+    @State private var showFileDiffsPopover = false
+    @State private var subagents: [NativeSubagentSummary] = []
+    @State private var subagentsLoading = false
     @State private var liveStatus = "idle"
     @State private var revertCandidate: GatewaySessionMessage?
     @State private var showRevertConfirm = false
@@ -525,6 +530,7 @@ struct ChatScreen: View {
             statusStream.start(baseURL: client.baseURL)
             await loadSessions()
             await loadChatConfig()
+            await loadSubagents()
         }
         .task {
             // Poll pending tool approvals so the inline banner stays live.
@@ -1014,6 +1020,49 @@ struct ChatScreen: View {
             }
 
             Button {
+                showFileDiffsPopover.toggle()
+            } label: {
+                Image(systemName: "doc.text.magnifyingglass")
+            }
+            .buttonStyle(.borderless)
+            .popover(isPresented: $showFileDiffsPopover, arrowEdge: .bottom) {
+                fileDiffsPopover
+            }
+            .help("File changes")
+
+            Button {
+                showEnvironmentPopover.toggle()
+                Task { await loadSubagents() }
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "list.bullet.rectangle")
+                    if hasEnvironmentSignal {
+                        Circle()
+                            .fill(accentTint)
+                            .frame(width: 6, height: 6)
+                            .offset(x: 3, y: -3)
+                    }
+                }
+            }
+            .buttonStyle(.borderless)
+            .popover(isPresented: $showEnvironmentPopover, arrowEdge: .bottom) {
+                environmentPopover
+            }
+            .help("Environment overview")
+
+            Button {
+                showSubagentsPopover.toggle()
+                Task { await loadSubagents() }
+            } label: {
+                Image(systemName: "person.2.wave.2")
+            }
+            .buttonStyle(.borderless)
+            .popover(isPresented: $showSubagentsPopover, arrowEdge: .bottom) {
+                subagentsPopover
+            }
+            .help("Subagents")
+
+            Button {
                 Task {
                     await loadSessions()
                     if let selectedSessionID {
@@ -1225,6 +1274,38 @@ struct ChatScreen: View {
                 resetText: nativeProviderPlanResetText(window.resetsAt)
             )
         }
+    }
+
+    private var activeFileChanges: NativeChatFileChangeSummary {
+        summarizeNativeChatFileChanges(messages)
+    }
+
+    private var environmentToolNames: [String] {
+        let names = messages
+            .flatMap { $0.tool_calls ?? [] }
+            .map(\.name)
+            .compactMap { firstNonEmptyGatewayString($0) }
+        return Array(Set(names)).sorted()
+    }
+
+    private var currentSessionPlan: NativeSessionPlanSnapshot? {
+        extractNativeSessionPlan(from: messages, sessionID: selectedSessionID)
+    }
+
+    private var environmentSubagents: [NativeSubagentSummary] {
+        guard let workspace = firstNonEmptyGatewayString(activeWorkspaceDir) else { return subagents }
+        let scoped = subagents.filter { firstNonEmptyGatewayString($0.workspaceDir) == workspace }
+        return scoped.isEmpty ? subagents : scoped
+    }
+
+    private var hasEnvironmentSignal: Bool {
+        activeFileChanges.files.isEmpty == false ||
+            activeWorkspaceDir != nil ||
+            activeGitBranchLabel != nil ||
+            currentSessionPlan != nil ||
+            providerPlanUsageRows.isEmpty == false ||
+            environmentSubagents.isEmpty == false ||
+            environmentToolNames.isEmpty == false
     }
 
     private func nativeProviderPlanResetText(_ resetsAt: String?) -> String? {
@@ -1870,6 +1951,189 @@ struct ChatScreen: View {
         .frame(width: 260, alignment: .center)
     }
 
+    private var fileDiffsPopover: some View {
+        let summary = activeFileChanges
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("File changes", systemImage: "doc.text.magnifyingglass")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                Spacer()
+                Text("\(summary.files.count)")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            if summary.files.isEmpty {
+                NativeEmptyPopoverState(
+                    icon: "doc.text",
+                    title: "No file diffs",
+                    detail: "Tool calls in this chat have not recorded edits yet."
+                )
+            } else {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 10) {
+                        Text("\(summary.files.count) files")
+                        Text("+\(summary.totalAdded)")
+                            .foregroundStyle(.green)
+                        Text("-\(summary.totalRemoved)")
+                            .foregroundStyle(.red)
+                    }
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    ForEach(summary.files.prefix(10)) { file in
+                        HStack(spacing: 8) {
+                            Image(systemName: file.systemImage)
+                                .foregroundStyle(.secondary)
+                            Text(file.path)
+                                .font(.system(size: 11, design: .monospaced))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Text(file.kind)
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .frame(width: 340, alignment: .leading)
+    }
+
+    private var environmentPopover: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Environment")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    Text("Current chat only")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if subagentsLoading {
+                    ProgressView().controlSize(.small)
+                }
+            }
+
+            NativeEnvironmentSection(title: "Session") {
+                NativeEnvironmentRow(icon: "doc.text.magnifyingglass", label: "Changes") {
+                    if activeFileChanges.files.isEmpty {
+                        Text("No file diffs").foregroundStyle(.secondary)
+                    } else {
+                        HStack(spacing: 5) {
+                            Text("\(activeFileChanges.files.count) files")
+                            Text("+\(activeFileChanges.totalAdded)").foregroundStyle(.green)
+                            Text("-\(activeFileChanges.totalRemoved)").foregroundStyle(.red)
+                        }
+                    }
+                }
+                NativeEnvironmentRow(icon: "folder", label: "Local") {
+                    Text(activeWorkspaceLabel ?? "No workspace")
+                        .font(.system(size: 11, design: .monospaced))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                NativeEnvironmentRow(icon: "arrow.triangle.branch", label: "Branch") {
+                    Text(activeGitBranchLabel ?? "No branch")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(activeGitBranchLabel == nil ? .secondary : .primary)
+                        .lineLimit(1)
+                }
+            }
+
+            NativeEnvironmentSection(title: "Plan") {
+                if let plan = currentSessionPlan {
+                    NativeSessionPlanCard(plan: plan)
+                } else {
+                    NativeEmptyPopoverState(
+                        icon: "checklist",
+                        title: "No plan recorded",
+                        detail: "Plans appear when the agent uses the todo tool."
+                    )
+                }
+            }
+
+            NativeEnvironmentSection(title: "Provider plan") {
+                let rows = providerPlanUsageRows
+                if rows.isEmpty {
+                    Text("No automatic plan data for this provider.")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(spacing: 8) {
+                        ForEach(rows) { row in
+                            NativeContextProviderPlanUsageBar(row: row)
+                        }
+                    }
+                }
+            }
+
+            NativeEnvironmentSection(title: "Subagents") {
+                if environmentSubagents.isEmpty {
+                    Text("No active subagents")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                } else {
+                    VStack(spacing: 6) {
+                        ForEach(environmentSubagents.prefix(6)) { subagent in
+                            NativeSubagentCompactRow(subagent: subagent)
+                        }
+                    }
+                }
+            }
+
+            NativeEnvironmentSection(title: "Sources") {
+                if environmentToolNames.isEmpty {
+                    Text("No tool sources yet")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                } else {
+                    NativeToolNameCloud(names: environmentToolNames)
+                }
+            }
+        }
+        .font(.system(size: 12, design: .rounded))
+        .padding(14)
+        .frame(width: 370, alignment: .leading)
+    }
+
+    private var subagentsPopover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Subagents", systemImage: "person.2.wave.2")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                Spacer()
+                Button {
+                    Task { await loadSubagents() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.borderless)
+                .disabled(subagentsLoading)
+            }
+            if subagentsLoading && subagents.isEmpty {
+                ProgressView().frame(maxWidth: .infinity)
+            } else if subagents.isEmpty {
+                NativeEmptyPopoverState(
+                    icon: "person.2",
+                    title: "No subagents",
+                    detail: "Spawned subagent runs appear here."
+                )
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(subagents) { subagent in
+                            NativeSubagentDetailRow(subagent: subagent)
+                        }
+                    }
+                }
+                .frame(maxHeight: 320)
+            }
+        }
+        .padding(14)
+        .frame(width: 360, alignment: .leading)
+    }
+
     private var contextColor: Color {
         let percent = activeContextUsage?.usedPercent ?? 0
         if percent >= 90 { return .red }
@@ -1907,6 +2171,19 @@ struct ChatScreen: View {
 
     private func loadProviderPlanStatus() async -> ProviderPlanStatusResponse? {
         try? await client.providerPlanStatus()
+    }
+
+    private func loadSubagents() async {
+        guard !subagentsLoading else { return }
+        subagentsLoading = true
+        defer { subagentsLoading = false }
+        do {
+            subagents = try await client.nativeSubagents()
+        } catch {
+            if subagents.isEmpty {
+                subagents = []
+            }
+        }
     }
 
     private func loadChatConfig() async {
@@ -2541,6 +2818,392 @@ struct ChatScreen: View {
         if clearStartedAt {
             liveStartedAt = nil
         }
+    }
+}
+
+private struct NativeChatFileChangeItem: Identifiable, Hashable {
+    let path: String
+    let kind: String
+    let added: Int
+    let removed: Int
+
+    var id: String { path }
+    var systemImage: String {
+        switch kind {
+        case "created": return "doc.badge.plus"
+        case "deleted": return "doc.badge.minus"
+        default: return "doc.text"
+        }
+    }
+}
+
+private struct NativeChatFileChangeSummary: Hashable {
+    let files: [NativeChatFileChangeItem]
+    let totalAdded: Int
+    let totalRemoved: Int
+}
+
+private struct NativeSessionPlanItem: Identifiable, Hashable {
+    let id = UUID()
+    let content: String
+    let status: String
+    let priority: String
+}
+
+private struct NativeSessionPlanSnapshot: Hashable {
+    let items: [NativeSessionPlanItem]
+    let completed: Int
+    let total: Int
+    let updatedAt: String?
+
+    var progress: Double {
+        guard total > 0 else { return 0 }
+        return Double(completed) / Double(total)
+    }
+}
+
+private struct NativeEnvironmentSection<Content: View>: View {
+    let title: String
+    let content: Content
+
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider().opacity(0.35)
+            Text(title)
+                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+            content
+        }
+    }
+}
+
+private struct NativeEnvironmentRow<Content: View>: View {
+    let icon: String
+    let label: String
+    let content: Content
+
+    init(icon: String, label: String, @ViewBuilder content: () -> Content) {
+        self.icon = icon
+        self.label = label
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: icon)
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+            Text(label)
+                .foregroundStyle(.secondary)
+                .frame(width: 58, alignment: .leading)
+            Spacer(minLength: 8)
+            content
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .font(.system(size: 12, design: .rounded))
+    }
+}
+
+private struct NativeEmptyPopoverState: View {
+    let icon: String
+    let title: String
+    let detail: String
+
+    var body: some View {
+        VStack(spacing: 7) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+            Text(detail)
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+    }
+}
+
+private struct NativeSessionPlanCard: View {
+    let plan: NativeSessionPlanSnapshot
+    @State private var expanded = true
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $expanded) {
+            VStack(alignment: .leading, spacing: 7) {
+                ForEach(plan.items) { item in
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: nativePlanItemIcon(item.status))
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(nativePlanItemTint(item.status))
+                            .frame(width: 14)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.content)
+                                .font(.system(size: 11.5, design: .rounded))
+                                .lineLimit(3)
+                            Text(item.priority.capitalized)
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+            .padding(.top, 8)
+        } label: {
+            VStack(alignment: .leading, spacing: 7) {
+                HStack {
+                    Label("Latest plan", systemImage: "checklist")
+                        .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    Spacer()
+                    Text("\(plan.completed)/\(plan.total) complete")
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                ProgressView(value: plan.progress)
+                    .tint(plan.completed >= plan.total ? .green : .blue)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.05)))
+    }
+}
+
+private struct NativeSubagentCompactRow: View {
+    let subagent: NativeSubagentSummary
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(nativeSubagentStatusColor(subagent.status))
+                .frame(width: 7, height: 7)
+            Text(subagent.label)
+                .lineLimit(1)
+            Spacer()
+            Text(subagent.status.capitalized)
+                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+        .font(.system(size: 12, design: .rounded))
+    }
+}
+
+private struct NativeSubagentDetailRow: View {
+    let subagent: NativeSubagentSummary
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(nativeSubagentStatusColor(subagent.status))
+                    .frame(width: 8, height: 8)
+                Text(subagent.label)
+                    .font(.system(size: 12.5, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                Spacer()
+                Text(subagent.status.capitalized)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+            if let task = firstNonEmptyGatewayString(subagent.task) {
+                Text(task)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+            HStack(spacing: 8) {
+                if let model = firstNonEmptyGatewayString(subagent.model) {
+                    Label(model, systemImage: "cpu")
+                }
+                if let workspace = gatewayWorkspaceLabel(subagent.workspaceDir, maxLength: 28) {
+                    Label(workspace, systemImage: "folder")
+                }
+            }
+            .font(.system(size: 10, design: .rounded))
+            .foregroundStyle(.tertiary)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.05)))
+    }
+}
+
+private struct NativeToolNameCloud: View {
+    let names: [String]
+
+    var body: some View {
+        FlowLayout(spacing: 6) {
+            ForEach(names.prefix(18), id: \.self) { name in
+                Text(name)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Capsule().fill(Color.white.opacity(0.06)))
+            }
+        }
+    }
+}
+
+private func summarizeNativeChatFileChanges(_ messages: [GatewaySessionMessage]) -> NativeChatFileChangeSummary {
+    var files: [String: NativeChatFileChangeItem] = [:]
+    for tool in messages.flatMap({ $0.tool_calls ?? [] }) {
+        let lowerName = tool.name.lowercased()
+        let relevant = lowerName.contains("write") || lowerName.contains("edit") || lowerName.contains("patch")
+        guard relevant else { continue }
+        let paths = nativeToolFilePaths(tool)
+        for path in paths {
+            let diff = nativeJSONString(tool.result, key: "diff") ?? nativeJSONString(tool.args, key: "diff") ?? ""
+            let counts = nativeUnifiedDiffCounts(diff)
+            files[path] = NativeChatFileChangeItem(
+                path: path,
+                kind: nativeFileChangeKind(tool),
+                added: counts.added,
+                removed: counts.removed
+            )
+        }
+    }
+    let sorted = files.values.sorted { $0.path.localizedCaseInsensitiveCompare($1.path) == .orderedAscending }
+    return NativeChatFileChangeSummary(
+        files: sorted,
+        totalAdded: sorted.reduce(0) { $0 + $1.added },
+        totalRemoved: sorted.reduce(0) { $0 + $1.removed }
+    )
+}
+
+private func nativeToolFilePaths(_ tool: GatewayToolCall) -> [String] {
+    var paths: [String] = []
+    for object in [tool.args, nativeJSONObject(tool.result)] {
+        guard let object else { continue }
+        for key in ["path", "file", "filePath", "targetPath", "oldPath", "newPath"] {
+            if let path = nativeJSONString(object, key: key) {
+                paths.append(path)
+            }
+        }
+        for key in ["files", "changedFiles"] {
+            if case .array(let values)? = object[key] {
+                for value in values {
+                    if case .string(let path) = value {
+                        paths.append(path)
+                    } else if case .object(let fileObject) = value,
+                              let path = nativeJSONString(fileObject, key: "path") ?? nativeJSONString(fileObject, key: "file") {
+                        paths.append(path)
+                    }
+                }
+            }
+        }
+    }
+    let unique = Array(NSOrderedSet(array: paths.compactMap { firstNonEmptyGatewayString($0) })) as? [String]
+    return unique?.isEmpty == false ? unique! : ["\(tool.name) change"]
+}
+
+private func nativeFileChangeKind(_ tool: GatewayToolCall) -> String {
+    let name = tool.name.lowercased()
+    if name.contains("delete") || name.contains("remove") { return "deleted" }
+    if name.contains("create") || name.contains("write") { return "created" }
+    return "updated"
+}
+
+private func nativeUnifiedDiffCounts(_ diff: String) -> (added: Int, removed: Int) {
+    guard !diff.isEmpty else { return (0, 0) }
+    var added = 0
+    var removed = 0
+    for line in diff.split(separator: "\n", omittingEmptySubsequences: false) {
+        if line.hasPrefix("+"), !line.hasPrefix("+++") { added += 1 }
+        if line.hasPrefix("-"), !line.hasPrefix("---") { removed += 1 }
+    }
+    return (added, removed)
+}
+
+private func extractNativeSessionPlan(
+    from messages: [GatewaySessionMessage],
+    sessionID: String?
+) -> NativeSessionPlanSnapshot? {
+    for message in messages.reversed() {
+        guard let tools = message.tool_calls else { continue }
+        for tool in tools.reversed() where tool.name.lowercased() == "todo" {
+            let items = nativePlanItems(from: tool.result)
+            let fallbackItems = items.isEmpty ? nativePlanItems(from: tool.args.map(JSONValue.object)) : items
+            guard !fallbackItems.isEmpty else { continue }
+            let completed = fallbackItems.filter { $0.status == "completed" }.count
+            return NativeSessionPlanSnapshot(
+                items: fallbackItems,
+                completed: completed,
+                total: fallbackItems.count,
+                updatedAt: message.timestamp
+            )
+        }
+    }
+    return nil
+}
+
+private func nativePlanItems(from value: JSONValue?) -> [NativeSessionPlanItem] {
+    guard case .object(let object)? = value,
+          case .array(let rawItems)? = object["items"] else { return [] }
+    return rawItems.compactMap { item in
+        guard case .object(let itemObject) = item else { return nil }
+        guard let content = nativeJSONString(itemObject, key: "content") else { return nil }
+        return NativeSessionPlanItem(
+            content: String(content.prefix(500)),
+            status: nativeJSONString(itemObject, key: "status") == "completed"
+                ? "completed"
+                : nativeJSONString(itemObject, key: "status") == "in_progress" ? "in_progress" : "pending",
+            priority: nativeJSONString(itemObject, key: "priority") ?? "medium"
+        )
+    }
+}
+
+private func nativePlanItemIcon(_ status: String) -> String {
+    switch status {
+    case "completed": return "checkmark.circle.fill"
+    case "in_progress": return "circle.dotted"
+    default: return "circle"
+    }
+}
+
+private func nativePlanItemTint(_ status: String) -> Color {
+    switch status {
+    case "completed": return .green
+    case "in_progress": return .blue
+    default: return .secondary
+    }
+}
+
+private func nativeSubagentStatusColor(_ status: String) -> Color {
+    switch status.lowercased() {
+    case "completed": return .green
+    case "failed", "timeout": return .red
+    case "running": return .blue
+    default: return .secondary
+    }
+}
+
+private func nativeJSONObject(_ value: JSONValue?) -> [String: JSONValue]? {
+    guard case .object(let object)? = value else { return nil }
+    return object
+}
+
+private func nativeJSONString(_ object: [String: JSONValue]?, key: String) -> String? {
+    guard let value = object?[key] else { return nil }
+    return nativeJSONString(value)
+}
+
+private func nativeJSONString(_ value: JSONValue?) -> String? {
+    guard let value else { return nil }
+    switch value {
+    case .string(let string):
+        return firstNonEmptyGatewayString(string)
+    case .number(let number):
+        return number.rounded() == number ? String(Int(number)) : String(number)
+    case .bool(let bool):
+        return bool ? "true" : "false"
+    default:
+        return nil
     }
 }
 
