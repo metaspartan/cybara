@@ -452,6 +452,7 @@ export interface ProviderPlanWindow {
   resetsAt?: string;
   resetDescription: string;
   usageKnown: boolean;
+  unlimited?: boolean;
 }
 
 export interface ProviderPlanSnapshot {
@@ -461,6 +462,9 @@ export interface ProviderPlanSnapshot {
   providerName: string;
   authType: string;
   monitored: boolean;
+  managedAutomatically: boolean;
+  manualPlanEditable: boolean;
+  automaticTrackingLabel?: string;
   appliedPresetId?: string;
   planName?: string;
   source?: string;
@@ -1774,6 +1778,14 @@ function normalizeProviderPlanSnapshot(value: unknown, index = 0): ProviderPlanS
     providerName: readString(record, ["providerName", "provider_name", "name"]) || providerId,
     authType: readString(record, ["authType", "auth_type"]) || "unknown",
     monitored: record?.monitored === true,
+    managedAutomatically:
+      record?.managedAutomatically === true || record?.managed_automatically === true,
+    manualPlanEditable:
+      record?.manualPlanEditable === false || record?.manual_plan_editable === false ? false : true,
+    automaticTrackingLabel: readString(record, [
+      "automaticTrackingLabel",
+      "automatic_tracking_label",
+    ]),
     appliedPresetId: readString(record, ["appliedPresetId", "applied_preset_id"]),
     planName: readString(record, ["planName", "plan_name"]),
     source: readString(record, ["source"]),
@@ -1814,6 +1826,7 @@ function normalizeProviderPlanSnapshot(value: unknown, index = 0): ProviderPlanS
         resetsAt: readString(windowRecord, ["resetsAt", "resets_at"]),
         resetDescription: readString(windowRecord, ["resetDescription", "reset_description"]) || "",
         usageKnown: windowRecord?.usageKnown !== false && windowRecord?.usage_known !== false,
+        unlimited: windowRecord?.unlimited === true || windowRecord?.unlimited === 1,
       };
     }),
     presetSuggestions: normalizeArrayResponse(record?.presetSuggestions, [

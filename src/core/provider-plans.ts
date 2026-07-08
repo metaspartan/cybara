@@ -72,6 +72,7 @@ export interface ProviderPlanUsageWindow {
   resetsAt?: string;
   resetDescription: string;
   usageKnown: boolean;
+  unlimited?: boolean;
 }
 
 export interface ProviderPlanSnapshot {
@@ -81,6 +82,9 @@ export interface ProviderPlanSnapshot {
   providerName: string;
   authType: string;
   monitored: boolean;
+  managedAutomatically: boolean;
+  manualPlanEditable: boolean;
+  automaticTrackingLabel?: string;
   appliedPresetId?: string;
   planName?: string;
   source: string;
@@ -129,7 +133,9 @@ export interface ProviderPlanRouteConstraint {
 const CONFIG_KEY = "provider_plan_monitoring";
 
 const CODING_PLAN_PROVIDER_TYPES = new Set<string>([
+  "anthropic",
   "openai-codex",
+  "minimax",
   "github_copilot",
   "google-gemini-cli",
   "minimax-portal",
@@ -141,6 +147,16 @@ const CODING_PLAN_PROVIDER_TYPES = new Set<string>([
   "opencode_zen",
   "opencode-go",
   "kilocode",
+]);
+
+const AUTOMATIC_PLAN_PROVIDER_TYPES = new Set<string>([
+  "anthropic",
+  "openai-codex",
+  "minimax",
+  "minimax-portal",
+  "z.ai",
+  "z.ai-coding",
+  "kimi-code",
 ]);
 
 const DEFAULT_CONFIG: ProviderPlanMonitoringConfig = {
@@ -197,8 +213,23 @@ const EXTERNAL_PLAN_SOURCE_CATALOG: Record<string, ExternalPlanSourceInfo> = {
   },
   "minimax-portal": {
     mode: "provider_api",
-    label: "MiniMax billing source",
-    hint: "Use MiniMax API tokens first; browser cookies should be opt-in for dashboard-only quota details.",
+    label: "MiniMax token-plan quota",
+    hint: "Uses the MiniMax token-plan quota endpoint when credentials are configured; otherwise Cybara falls back to local token and spend telemetry.",
+  },
+  minimax: {
+    mode: "provider_api",
+    label: "MiniMax token-plan quota",
+    hint: "Uses the MiniMax token-plan quota endpoint when credentials are configured; otherwise Cybara falls back to local token and spend telemetry.",
+  },
+  "z.ai": {
+    mode: "provider_api",
+    label: "Z.ai quota monitor",
+    hint: "Uses Z.ai's quota monitor endpoint when credentials are configured; otherwise Cybara falls back to local token and spend telemetry.",
+  },
+  "z.ai-coding": {
+    mode: "provider_api",
+    label: "Z.ai quota monitor",
+    hint: "Uses Z.ai's quota monitor endpoint when credentials are configured; otherwise Cybara falls back to local token and spend telemetry.",
   },
   "qwen-portal": {
     mode: "browser_cookie",
@@ -374,10 +405,11 @@ const PROVIDER_PLAN_PRESETS: ProviderPlanPresetSuggestion[] = [
     planName: "Claude Code Pro",
     description: "Claude Code access with Pro subscription limits.",
     confidence: "dynamic",
-    sourceMode: "manual",
+    sourceMode: "oauth_api",
     sourceUrl: "https://www.anthropic.com/news/higher-limits-spacex",
     limitDescription:
       "Claude Code uses rolling five-hour limits; Anthropic doubled Pro, Max, Team, and Enterprise limits in May 2026.",
+    externalSourceEnabled: true,
   },
   {
     id: "claude-code-max-5x",
@@ -386,10 +418,11 @@ const PROVIDER_PLAN_PRESETS: ProviderPlanPresetSuggestion[] = [
     planName: "Claude Code Max 5x",
     description: "Claude Max tier with 5x Pro usage capacity.",
     confidence: "dynamic",
-    sourceMode: "manual",
+    sourceMode: "oauth_api",
     sourceUrl: "https://support.claude.com/en/articles/11049741-what-is-the-max-plan",
     limitDescription:
       "$100/month Max tier with 5x Pro usage capacity; exact task count is dynamic.",
+    externalSourceEnabled: true,
   },
   {
     id: "claude-code-max-20x",
@@ -398,10 +431,37 @@ const PROVIDER_PLAN_PRESETS: ProviderPlanPresetSuggestion[] = [
     planName: "Claude Code Max 20x",
     description: "Claude Max tier with 20x Pro usage capacity.",
     confidence: "dynamic",
-    sourceMode: "manual",
+    sourceMode: "oauth_api",
     sourceUrl: "https://support.claude.com/en/articles/11049741-what-is-the-max-plan",
     limitDescription:
       "$200/month Max tier with 20x Pro usage capacity; exact task count is dynamic.",
+    externalSourceEnabled: true,
+  },
+  {
+    id: "minimax-token-plan",
+    providerTypes: ["minimax", "minimax-portal"],
+    label: "MiniMax Token Plan",
+    planName: "MiniMax Token Plan",
+    description: "Provider-managed MiniMax quota from the token-plan quota endpoint.",
+    confidence: "dynamic",
+    sourceMode: "provider_api",
+    sourceUrl: "https://platform.minimax.io/docs/token-plan/intro",
+    limitDescription:
+      "Cybara reads MiniMax rolling and weekly quota usage from the provider; no manual plan caps are needed.",
+    externalSourceEnabled: true,
+  },
+  {
+    id: "zai-coding-plan",
+    providerTypes: ["z.ai", "z.ai-coding"],
+    label: "GLM Coding Plan",
+    planName: "GLM Coding Plan",
+    description: "Provider-managed GLM Coding Plan quota from Z.ai monitor usage.",
+    confidence: "dynamic",
+    sourceMode: "provider_api",
+    sourceUrl: "https://github.com/zai-org/zai-coding-plugins",
+    limitDescription:
+      "Cybara reads Z.ai quota monitor usage when credentials are available; no manual plan caps are needed.",
+    externalSourceEnabled: true,
   },
 ];
 
@@ -575,6 +635,14 @@ function sourceLabelFor(mode: ProviderPlanSourceMode, configured: boolean): stri
   if (mode === "browser_cookie") return "Browser session source";
   if (mode === "cli") return "Local CLI quota source";
   return "Manual plan limits";
+}
+
+function automaticTrackingLabel(
+  providerType: string,
+  externalSource?: ExternalPlanSourceInfo
+): string | undefined {
+  if (!AUTOMATIC_PLAN_PROVIDER_TYPES.has(providerType)) return undefined;
+  return externalSource?.label ?? "Automatic Cybara usage tracking";
 }
 
 function configuredProviderForRoute(
@@ -843,6 +911,21 @@ function buildProviderPlanWindows(params: {
   ].filter((window): window is ProviderPlanUsageWindow => Boolean(window));
 }
 
+function buildAutomaticUsageWindow(params: {
+  usedTokens: number;
+  usedSpend: number;
+}): ProviderPlanUsageWindow {
+  return {
+    id: "local_30d",
+    title: "Last 30 days",
+    kind: "billing_month",
+    usedTokens: Math.round(params.usedTokens),
+    usedSpend: Number(params.usedSpend.toFixed(4)),
+    resetDescription: "Rolling 30d",
+    usageKnown: true,
+  };
+}
+
 function resolveStatus(
   windows: ProviderPlanUsageWindow[],
   providerConfig: ProviderPlanProviderConfig | undefined,
@@ -960,6 +1043,8 @@ export function getProviderPlanSnapshot(
   const providerConfig = planConfigFor(cfg, providerId, providerType);
   const monitored = cfg.enabled && isPlanCapableProvider(providerType, authType);
   const externalSource = EXTERNAL_PLAN_SOURCE_CATALOG[providerType];
+  const managedAutomatically = AUTOMATIC_PLAN_PROVIDER_TYPES.has(providerType);
+  const manualPlanEditable = !managedAutomatically;
   const presetSuggestions = getProviderPlanPresetSuggestions(providerType);
   const activeSourceMode: ProviderPlanSourceMode = "local";
   const keys = providerMetricKeys({
@@ -982,7 +1067,7 @@ export function getProviderPlanSnapshot(
     context?.metricIndex
   );
   const localSpend30d = sumMetricWindow("router_usage", keys, thirtyDayStart, context?.metricIndex);
-  const windows = buildProviderPlanWindows({
+  const configuredWindows = buildProviderPlanWindows({
     providerConfig,
     keys,
     now,
@@ -990,10 +1075,16 @@ export function getProviderPlanSnapshot(
     weeklyStart,
     metricIndex: context?.metricIndex,
   });
+  const windows =
+    configuredWindows.length > 0 || !managedAutomatically
+      ? configuredWindows
+      : [buildAutomaticUsageWindow({ usedTokens: localTokens30d, usedSpend: localSpend30d })];
 
-  const resolved = monitored
-    ? resolveStatus(windows, providerConfig, cfg.warningThresholdPct)
-    : { status: "disabled" as const, reason: "Provider is not monitored" };
+  const resolved = !monitored
+    ? { status: "disabled" as const, reason: "Provider is not monitored" }
+    : managedAutomatically && !providerConfig
+      ? { status: "ok" as const, reason: "Automatic provider-plan tracking active" }
+      : resolveStatus(windows, providerConfig, cfg.warningThresholdPct);
 
   return {
     providerId: routeKey,
@@ -1002,6 +1093,9 @@ export function getProviderPlanSnapshot(
     providerName,
     authType,
     monitored,
+    managedAutomatically,
+    manualPlanEditable,
+    automaticTrackingLabel: automaticTrackingLabel(providerType, externalSource),
     appliedPresetId: providerConfig?.presetId,
     planName: providerConfig?.planName,
     source: providerConfig ? "local_metrics_configured_limits" : "local_metrics",
@@ -1128,7 +1222,7 @@ function liveUsageWindow(
   id: string,
   title: string,
   kind: ProviderPlanWindowKind,
-  live: { usedPercent: number; resetsAt?: string } | undefined,
+  live: { usedPercent: number; resetsAt?: string; unlimited?: boolean } | undefined,
   resetDescription: string
 ): ProviderPlanUsageWindow | null {
   if (!live) return base ?? null;
@@ -1145,6 +1239,7 @@ function liveUsageWindow(
     resetsAt: live.resetsAt ?? base?.resetsAt,
     resetDescription: base?.resetDescription ?? resetDescription,
     usageKnown: true,
+    unlimited: live.unlimited,
   };
 }
 
@@ -1169,8 +1264,18 @@ function applyLiveUsageToSnapshot(
     live.weekly,
     "Rolling 7d"
   );
-  const others = snapshot.windows.filter((window) => window.id !== "5h" && window.id !== "weekly");
-  const windows = [fiveHour, weekly, ...others].filter(
+  const monthly = liveUsageWindow(
+    byId.get("billing_month"),
+    "billing_month",
+    "Billing month",
+    "billing_month",
+    live.monthly,
+    "Billing month"
+  );
+  const others = snapshot.windows.filter(
+    (window) => !["5h", "weekly", "billing_month"].includes(window.id)
+  );
+  const windows = [fiveHour, weekly, monthly, ...others].filter(
     (window): window is ProviderPlanUsageWindow => Boolean(window)
   );
   const worst = windows.reduce((max, window) => Math.max(max, window.usedPercent ?? 0), 0);
@@ -1197,12 +1302,6 @@ function applyLiveUsageToSnapshot(
   };
 }
 
-/**
- * Enrich a plan-status response with live usage windows fetched from each
- * provider's own usage API (Codex / Anthropic OAuth). Providers with live data
- * get real 5h/weekly percentages and reset times without any manual limit
- * configuration; the rest are returned unchanged. Best-effort and cached.
- */
 export async function enrichProviderPlanStatusWithLiveUsage(
   status: ProviderPlanStatusResponse
 ): Promise<ProviderPlanStatusResponse> {
@@ -1212,12 +1311,13 @@ export async function enrichProviderPlanStatusWithLiveUsage(
     status.providers.map(async (snapshot) => {
       const row = byId.get(snapshot.configuredProviderId ?? snapshot.providerId);
       if (!row) return snapshot;
-      // Raw DB rows store the token encrypted; getWithCredentials decrypts it.
       const withCreds = providerManager.getWithCredentials(row.id);
       const live = await fetchLiveProviderUsage({
         id: row.id,
         providerType: providerTypeOf(row),
+        apiKey: withCreds?.api_key,
         accessToken: withCreds?.access_token,
+        baseUrl: withCreds?.base_url,
       });
       return live ? applyLiveUsageToSnapshot(snapshot, live) : snapshot;
     })

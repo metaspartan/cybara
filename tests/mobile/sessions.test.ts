@@ -97,6 +97,13 @@ describe("mobile: chat management", () => {
     expect(screen).toContain("Context: ${mobileContextUsageDetail(contextUsage)}");
     expect(screen).toContain("mobileProviderPlanFor(providerPlanStatus");
     expect(screen).toContain("mobileProviderPlanDetail(activeProviderPlan)");
+    expect(screen).toContain("!plan?.managedAutomatically");
+    expect(screen).toContain("Plan usage: 5h");
+    expect(screen).toContain('percentFor("rolling_5h")');
+    expect(screen).toContain('percentFor("rolling_week")');
+    expect(screen).toContain("mobileProviderPlanResetLabel");
+    expect(screen).toContain('window.unlimited ? "∞"');
+    expect(screen).toContain("Math.ceil(window.usedPercent ?? 0)");
     expect(screen).toContain('text: "Change agent"');
     expect(screen).toContain('text: "Tool approvals"');
     expect(screen).toContain("setPendingSessionAgentId(agentId)");

@@ -455,6 +455,16 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain('label="API key"');
     expect(dashboardScreenSource).toContain('label="Access token"');
     expect(dashboardScreenSource).toContain("No API key is required.");
+    expect(dashboardScreenSource).toContain("Plan tracked automatically");
+    expect(dashboardScreenSource).toContain("manualPlanEditable");
+    expect(dashboardScreenSource).toContain("providerPlanUsageSummary(providerPlan)");
+    expect(dashboardScreenSource).toContain("providerPlanWindowValue");
+    expect(dashboardScreenSource).toContain("mobilePlanResetLabel");
+    expect(dashboardScreenSource).toContain("window.unlimited");
+    expect(dashboardScreenSource).toContain("Math.ceil(window.usedPercent ?? 0)");
+    expect(dashboardScreenSource).toContain(
+      "Manual plan caps are hidden because this provider reports plan usage automatically."
+    );
   });
 
   test("exposes root settings toggles that mirror web and Tauri settings", () => {

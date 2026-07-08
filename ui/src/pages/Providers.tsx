@@ -34,6 +34,10 @@ import {
 import { useUIStore } from "@/stores/uiStore";
 import { providerPlansApi } from "@/lib/api";
 import { apiFetch } from "@/lib/auth";
+import {
+  providerPlanWindowDisplay,
+  type ProviderPlanWindowDisplay,
+} from "@/lib/providerPlanDisplay";
 import type {
   Provider,
   AvailableProvider,
@@ -47,28 +51,6 @@ import type {
 function parsePlanLimitInput(value: FormDataEntryValue | null): number | undefined {
   const parsed = Number(String(value ?? "").replace(/[,\s]/g, ""));
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
-}
-
-function providerPlanStatusClass(status: ProviderPlanSnapshot["status"]): string {
-  if (status === "ok") return "text-emerald-300";
-  if (status === "warning") return "text-amber-300";
-  if (status === "exhausted") return "text-red-300";
-  if (status === "disabled") return "text-gray-500";
-  return "text-gray-400";
-}
-
-function providerPlanProgress(plan: ProviderPlanSnapshot): number | null {
-  const usage = plan.windows
-    .map((window) => window.usedPercent)
-    .filter((value): value is number => typeof value === "number");
-  if (usage.length === 0) return null;
-  return Math.min(100, Math.max(...usage));
-}
-
-function formatCompactNumber(value: number): string {
-  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(value) >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
-  return String(Math.round(value));
 }
 
 export function Providers() {
@@ -164,6 +146,9 @@ export function Providers() {
   const planConfigForProvider = (provider: Provider): ProviderPlanProviderConfig | undefined =>
     providerPlanConfig?.providers[provider.id] ?? providerPlanConfig?.providers[provider.provider];
 
+  const planForProvider = (provider: Provider): ProviderPlanSnapshot | undefined =>
+    providerPlanByKey.get(provider.id) ?? providerPlanByKey.get(provider.provider);
+
   const planPresetsForProvider = (provider: Provider): ProviderPlanPresetSuggestion[] =>
     providerPlanByKey.get(provider.id)?.presetSuggestions ??
     providerPlanByKey.get(provider.provider)?.presetSuggestions ??
@@ -178,6 +163,8 @@ export function Providers() {
 
   const savePlanWindows = async (provider: Provider, formData: FormData) => {
     if (!providerPlanConfig) return;
+    const snapshot = planForProvider(provider);
+    if (snapshot?.manualPlanEditable === false) return;
     const planName = String(formData.get("plan_name") ?? "").trim();
     const presetId = String(formData.get("plan_preset_id") ?? "").trim();
     const fiveHourTokens = parsePlanLimitInput(formData.get("plan_five_hour_tokens"));
@@ -408,7 +395,7 @@ export function Providers() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-medium text-white truncate">{provider.name}</h3>
-                          {provider.is_default && (
+                          {isProviderDefault(provider) && (
                             <Badge variant="success" size="sm">
                               <Star className="w-3 h-3 mr-1" />
                               Default
@@ -416,12 +403,7 @@ export function Providers() {
                           )}
                         </div>
                         <p className="text-sm text-gray-400 capitalize">{provider.provider}</p>
-                        <ProviderPlanSummary
-                          plan={
-                            providerPlanByKey.get(provider.id) ??
-                            providerPlanByKey.get(provider.provider)
-                          }
-                        />
+                        <ProviderPlanSummary plan={planForProvider(provider)} />
                       </div>
                     </div>
 
@@ -502,6 +484,7 @@ export function Providers() {
           isLoading={updateProvider.isPending}
           isEdit
           planConfig={editingProvider ? planConfigForProvider(editingProvider) : undefined}
+          planSnapshot={editingProvider ? planForProvider(editingProvider) : undefined}
           planConfigReady={providerPlanConfig !== null}
           planPresets={editingProvider ? planPresetsForProvider(editingProvider) : []}
           routePricing={editingRoutePricing ?? undefined}
@@ -524,38 +507,71 @@ export function Providers() {
 
 function ProviderPlanSummary({ plan }: { plan?: ProviderPlanSnapshot }) {
   if (!plan) return null;
-  const progress = providerPlanProgress(plan);
-  const source = plan.sourceLabel || plan.source?.replace(/_/g, " ") || "Local Cybara usage";
-  const externalSource = plan.externalSourceAvailable
-    ? plan.externalSourceLabel || "External billing source available"
-    : null;
+  const fiveHour = providerPlanWindowDisplay(plan, "rolling_5h");
+  const weekly = providerPlanWindowDisplay(plan, "rolling_week");
+  if (!plan.managedAutomatically) return null;
 
   return (
-    <div className="mt-2 w-full max-w-xl rounded-lg border border-white/10 bg-white/[0.035] p-2">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-        <span className={`font-medium ${providerPlanStatusClass(plan.status)}`}>
-          {plan.status.replace("_", " ")}
-        </span>
-        <span className="text-gray-400">{source}</span>
-        <span className="text-gray-500">{formatCompactNumber(plan.localTokens30d)} tokens 30d</span>
-        {plan.localSpend30d > 0 && (
-          <span className="text-gray-500">${plan.localSpend30d.toFixed(2)} local 30d</span>
-        )}
-      </div>
-      {progress !== null && (
-        <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
-          <div
-            className="h-full rounded-full bg-cyan-400"
-            style={{ width: `${Math.min(100, progress)}%` }}
-          />
-        </div>
-      )}
-      {externalSource && (
-        <p className="mt-1 text-[11px] leading-4 text-gray-500">
-          {externalSource}: {plan.externalSourceHint}
-        </p>
-      )}
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      <ProviderPlanUsagePill label="5h" usage={fiveHour} />
+      <ProviderPlanUsagePill label="Weekly" usage={weekly} />
     </div>
+  );
+}
+
+function ProviderPlanUsagePill({
+  label,
+  usage,
+}: {
+  label: string;
+  usage: ProviderPlanWindowDisplay;
+}) {
+  const percent = usage.percent;
+  const isKnown = percent !== null || usage.unlimited;
+  const tone = !isKnown
+    ? "border-white/10 bg-white/[0.03] text-gray-500"
+    : usage.unlimited
+      ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
+      : percent >= 95
+        ? "border-red-400/25 bg-red-400/10 text-red-200"
+        : percent >= 80
+          ? "border-amber-400/25 bg-amber-400/10 text-amber-200"
+          : "border-cyan-400/20 bg-cyan-400/10 text-cyan-200";
+  const fillClass = usage.unlimited
+    ? "bg-emerald-300/80"
+    : percent !== null && percent >= 95
+      ? "bg-red-300"
+      : percent !== null && percent >= 80
+        ? "bg-amber-300"
+        : "bg-cyan-300";
+  const width = usage.unlimited ? 100 : (percent ?? 0);
+  return (
+    <span
+      className={`inline-flex min-w-[92px] flex-col gap-1 rounded-full border px-2.5 py-1.5 text-xs ${tone}`}
+    >
+      <span className="flex w-full items-center justify-between gap-2">
+        <span className="text-gray-400">{label}</span>
+        <span className="font-semibold tabular-nums">{usage.value}</span>
+      </span>
+      <span className="h-1 w-full overflow-hidden rounded-full bg-white/10">
+        <span
+          className={`block h-full rounded-full ${fillClass}`}
+          style={{ width: `${Math.max(usage.unlimited ? 100 : 0, width)}%` }}
+        />
+      </span>
+      {usage.resetLabel && (
+        <span className="truncate text-[10px] leading-none text-gray-400">{usage.resetLabel}</span>
+      )}
+    </span>
+  );
+}
+
+function isProviderDefault(provider?: Pick<Provider, "isDefault" | "is_default"> | null) {
+  return (
+    provider?.isDefault === true ||
+    provider?.isDefault === 1 ||
+    provider?.is_default === true ||
+    provider?.is_default === 1
   );
 }
 
@@ -569,6 +585,7 @@ interface ProviderModalProps {
   isLoading: boolean;
   isEdit?: boolean;
   planConfig?: ProviderPlanProviderConfig;
+  planSnapshot?: ProviderPlanSnapshot;
   planConfigReady?: boolean;
   planPresets?: ProviderPlanPresetSuggestion[];
   routePricing?: { priceInputPerM?: number; priceOutputPerM?: number };
@@ -584,6 +601,7 @@ function ProviderModal({
   isLoading,
   isEdit,
   planConfig,
+  planSnapshot,
   planConfigReady,
   planPresets = [],
   routePricing,
@@ -649,6 +667,7 @@ function ProviderModal({
   }, [isOpen, planConfig, routePricing]);
 
   const selectedPlanPreset = planPresets.find((preset) => preset.id === planPresetId);
+  const manualPlanEditable = planSnapshot?.manualPlanEditable !== false;
 
   const applyPlanPreset = (presetId: string) => {
     setPlanPresetId(presetId);
@@ -1097,13 +1116,28 @@ function ProviderModal({
           <input
             type="checkbox"
             name="is_default"
-            defaultChecked={provider?.is_default}
+            defaultChecked={isProviderDefault(provider)}
             className="w-4 h-4 rounded border-white/20 bg-white/5 text-indigo-500 focus:ring-indigo-500"
           />
           <span className="text-sm text-gray-300">Set as default provider</span>
         </label>
 
-        {isEdit && planConfigReady && (
+        {isEdit && planConfigReady && !manualPlanEditable && (
+          <div className="space-y-2 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.05] p-3">
+            <div className="flex items-start gap-3">
+              <Shield className="mt-0.5 h-4 w-4 flex-shrink-0 text-cyan-300" />
+              <div>
+                <p className="text-sm font-medium text-cyan-100">Plan tracked automatically</p>
+                <p className="mt-0.5 text-xs leading-5 text-gray-400">
+                  Manual plan caps are hidden because this provider reports plan usage
+                  automatically.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isEdit && planConfigReady && manualPlanEditable && (
           <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
             <div>
               <p className="text-sm font-medium text-white">Plan limits</p>
@@ -1166,6 +1200,18 @@ function ProviderModal({
                 onChange={(e) => setPlanMonthlySpend(e.target.value)}
               />
             </div>
+          </div>
+        )}
+
+        {isEdit && planConfigReady && (
+          <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <div>
+              <p className="text-sm font-medium text-white">Cost estimation</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Custom per-token pricing overrides the built-in model catalog when estimating spend.
+                Leave blank to use catalog prices.
+              </p>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <Input
                 name="plan_price_input"
@@ -1184,10 +1230,6 @@ function ProviderModal({
                 onChange={(e) => setPlanPriceOutput(e.target.value)}
               />
             </div>
-            <p className="text-[11px] leading-4 text-gray-500">
-              Custom per-token pricing overrides the built-in model catalog when estimating spend.
-              Leave blank to use catalog prices.
-            </p>
           </div>
         )}
 

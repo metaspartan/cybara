@@ -1537,7 +1537,7 @@ function MetricsPanel({
         return {
           label: plan.providerName,
           value: progress === null ? plan.status : `${Math.round(progress)}%`,
-          detail: `${plan.status} - ${plan.sourceLabel || plan.source || "local usage"}`,
+          detail: plan.planName || plan.status,
           amount: progress ?? plan.localTokens30d,
         };
       }) ?? [];
@@ -3421,23 +3421,38 @@ function mobileProviderPlanFor(
 function mobileProviderPlanDetail(
   plan?: ProviderPlanStatusResponse["providers"][number] | null
 ): string | null {
-  if (!plan) return null;
-  const windows = plan.windows.filter((window) => typeof window.usedPercent === "number");
-  const label = plan.planName || plan.providerName;
-  if (windows.length > 0) {
-    const summary = windows
-      .slice(0, 2)
-      .map(
-        (window) =>
-          `${window.title.replace(" window", "")}: ${Math.round(window.usedPercent ?? 0)}%`
-      )
-      .join(" · ");
-    return `Plan: ${label} - ${summary}`;
+  if (!plan?.managedAutomatically) return null;
+  const percentFor = (kind: "rolling_5h" | "rolling_week") => {
+    const window = plan.windows.find(
+      (entry) =>
+        entry.kind === kind &&
+        entry.usageKnown &&
+        (entry.unlimited || typeof entry.usedPercent === "number")
+    );
+    if (!window || (!window.unlimited && typeof window.usedPercent !== "number")) return "--";
+    const value = window.unlimited ? "∞" : `${Math.ceil(window.usedPercent ?? 0)}%`;
+    const reset = mobileProviderPlanResetLabel(window.resetsAt);
+    return reset ? `${value} (${reset})` : value;
+  };
+  return `Plan usage: 5h ${percentFor("rolling_5h")} · Weekly ${percentFor("rolling_week")}`;
+}
+
+function mobileProviderPlanResetLabel(resetsAt?: string): string | null {
+  if (!resetsAt) return null;
+  const resetMs = Date.parse(resetsAt);
+  if (!Number.isFinite(resetMs)) return null;
+  const diffMs = resetMs - Date.now();
+  if (diffMs <= 0) return "reset ready";
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diffMs < hour) return `${Math.max(1, Math.ceil(diffMs / minute))}m reset`;
+  if (diffMs < day) {
+    const hours = Math.floor(diffMs / hour);
+    const minutes = Math.ceil((diffMs % hour) / minute);
+    return minutes > 0 ? `${hours}h ${minutes}m reset` : `${hours}h reset`;
   }
-  if (plan.externalSourceAvailable) {
-    return `Plan: ${label} - ${plan.externalSourceLabel || "provider usage"} available`;
-  }
-  return null;
+  return `${Math.ceil(diffMs / day)}d reset`;
 }
 
 function TasksPanel({

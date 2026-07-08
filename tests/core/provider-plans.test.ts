@@ -18,13 +18,17 @@ import {
 const createdProviders: string[] = [];
 const originalFetch = globalThis.fetch;
 
-function createProvider(provider = "openai-codex", accessToken = "token"): string {
+function createProvider(
+  provider = "openai-codex",
+  accessToken = "token",
+  baseUrl = "https://example.test"
+): string {
   const id = `plan-test-${crypto.randomUUID()}`;
   tables.providers.create({
     id,
     provider,
     name: `Plan Test ${id}`,
-    base_url: "https://example.test",
+    base_url: baseUrl,
     api_key: undefined,
     access_token: accessToken,
     refresh_token: "refresh",
@@ -272,8 +276,145 @@ describe("provider plan monitoring", () => {
     expect(snapshot?.windows.map((window) => [window.id, window.usedPercent])).toEqual([
       ["5h", 48],
       ["weekly", 82],
+      ["local_30d", undefined, undefined],
     ]);
     expect(status.summary.configured).toBeGreaterThanOrEqual(1);
     expect(status.summary.warnings).toBeGreaterThanOrEqual(1);
+  });
+
+  test("marks provider-managed plans as automatic and read-only for manual caps", () => {
+    const providerId = createProvider("minimax");
+    addProviderTokens(providerId, 321);
+    setProviderPlanMonitoringConfig({ enabled: true, providers: {} });
+
+    const snapshot = getProviderPlanSnapshot(providerId);
+
+    expect(snapshot.providerType).toBe("minimax");
+    expect(snapshot.managedAutomatically).toBe(true);
+    expect(snapshot.manualPlanEditable).toBe(false);
+    expect(snapshot.automaticTrackingLabel).toBe("MiniMax token-plan quota");
+    expect(snapshot.status).toBe("ok");
+    expect(snapshot.reason).toBe("Automatic provider-plan tracking active");
+    const localWindow = snapshot.windows.find((window) => window.id === "local_30d");
+    expect(localWindow?.title).toBe("Last 30 days");
+    expect(localWindow?.usedTokens).toBeGreaterThanOrEqual(321);
+    expect(snapshot.presetSuggestions.map((preset) => preset.id)).toContain("minimax-token-plan");
+  });
+
+  test("enriches MiniMax token-plan quota from provider API", async () => {
+    const providerId = createProvider("minimax", "sk-cp-test-token");
+    const seenUrls: string[] = [];
+    globalThis.fetch = (async (url, init) => {
+      seenUrls.push(String(url));
+      expect((init?.headers as Record<string, string>)?.Authorization).toBe(
+        "Bearer sk-cp-test-token"
+      );
+      return Response.json({
+        model_remains: [
+          {
+            model_name: "MiniMax-M3",
+            current_interval_remaining_percent: 38.4,
+            current_weekly_status: 3,
+          },
+        ],
+      });
+    }) as typeof fetch;
+    setProviderPlanMonitoringConfig({ enabled: true, providers: {} });
+
+    const status = await enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus());
+    const snapshot = status.providers.find(
+      (provider) => provider.configuredProviderId === providerId
+    );
+
+    expect(seenUrls[0]).toBe("https://api.minimax.io/v1/token_plan/remains");
+    expect(snapshot?.sourceMode).toBe("provider_api");
+    expect(snapshot?.sourceLabel).toBe("MiniMax token-plan quota");
+    expect(snapshot?.manualPlanEditable).toBe(false);
+    expect(
+      snapshot?.windows.map((window) => [window.id, window.usedPercent, window.unlimited])
+    ).toEqual([
+      ["5h", 61.6, undefined],
+      ["weekly", 0, true],
+      ["local_30d", undefined],
+    ]);
+  });
+
+  test("enriches Z.ai coding plan quota from provider monitor endpoint", async () => {
+    const providerId = createProvider(
+      "z.ai-coding",
+      "zai-token",
+      "https://api.z.ai/api/coding/paas/v4"
+    );
+    const seenUrls: string[] = [];
+    globalThis.fetch = (async (url, init) => {
+      seenUrls.push(String(url));
+      expect((init?.headers as Record<string, string>)?.Authorization).toBe("zai-token");
+      return Response.json({
+        data: {
+          limits: [
+            { type: "TIME_LIMIT", percentage: 22 },
+            { type: "TOKENS_LIMIT", percentage: 91 },
+          ],
+        },
+      });
+    }) as typeof fetch;
+    setProviderPlanMonitoringConfig({ enabled: true, providers: {} });
+
+    const status = await enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus());
+    const snapshot = status.providers.find(
+      (provider) => provider.configuredProviderId === providerId
+    );
+
+    expect(seenUrls[0]).toBe("https://api.z.ai/api/monitor/usage/quota/limit");
+    expect(snapshot?.sourceMode).toBe("provider_api");
+    expect(snapshot?.sourceLabel).toBe("Z.ai quota monitor");
+    expect(snapshot?.status).toBe("warning");
+    expect(snapshot?.manualPlanEditable).toBe(false);
+    expect(snapshot?.windows.map((window) => [window.id, window.usedPercent])).toEqual([
+      ["5h", 91],
+      ["weekly", 22],
+      ["local_30d", undefined],
+    ]);
+  });
+
+  test("enriches Kimi coding plan quota from provider usage endpoint", async () => {
+    const providerId = createProvider(
+      "kimi-code",
+      "sk-kimi-test-token",
+      "https://api.kimi.com/coding/v1"
+    );
+    const seenUrls: string[] = [];
+    globalThis.fetch = (async (url, init) => {
+      seenUrls.push(String(url));
+      expect((init?.headers as Record<string, string>)?.Authorization).toBe(
+        "Bearer sk-kimi-test-token"
+      );
+      return Response.json({
+        usage: { name: "Weekly Usage", limit: 1000, used: 420, resetTime: 1783665881000 },
+        limits: [
+          {
+            detail: { name: "5h Limit", limit: 100, used: 64, resetTime: 1783405927000 },
+            window: { duration: 5, time_unit: "HOUR" },
+          },
+        ],
+      });
+    }) as typeof fetch;
+    setProviderPlanMonitoringConfig({ enabled: true, providers: {} });
+
+    const status = await enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus());
+    const snapshot = status.providers.find(
+      (provider) => provider.configuredProviderId === providerId
+    );
+
+    expect(seenUrls[0]).toBe("https://api.kimi.com/coding/v1/usages");
+    expect(snapshot?.sourceMode).toBe("provider_api");
+    expect(snapshot?.sourceLabel).toBe("Kimi usage source");
+    expect(snapshot?.planName).toBe("Kimi Coding Plan");
+    expect(snapshot?.manualPlanEditable).toBe(false);
+    expect(snapshot?.windows.map((window) => [window.id, window.usedPercent])).toEqual([
+      ["5h", 64],
+      ["weekly", 42],
+      ["local_30d", undefined],
+    ]);
   });
 });

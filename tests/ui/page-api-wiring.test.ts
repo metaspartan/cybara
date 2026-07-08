@@ -161,6 +161,8 @@ describe("UI page API wiring", () => {
     expect(typesSource).toContain("export type ProviderAuthType");
     expect(typesSource).toContain('"none" | "api_key" | "bearer" | "token" | "oauth" | "aws-sdk"');
     expect(typesSource).toContain("authType?: ProviderAuthType;");
+    expect(typesSource).toContain("manualPlanEditable: boolean;");
+    expect(typesSource).toContain("automaticTrackingLabel?: string;");
     expect(source).toMatch(/apiFetch\(["']\/api\/providers\/oauth\/device-code["']/);
     expect(source).toMatch(/apiFetch\(["']\/api\/providers\/oauth\/poll["']/);
     expect(source).toMatch(/apiFetch\(["']\/api\/providers\/oauth\/start["']/);

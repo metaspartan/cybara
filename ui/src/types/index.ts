@@ -47,8 +47,8 @@ export interface Provider {
   accessToken?: string;
   access_token?: string;
   models: string[];
-  isDefault?: boolean;
-  is_default?: boolean;
+  isDefault?: boolean | number;
+  is_default?: boolean | number;
   config?: Record<string, unknown>;
   authType?: ProviderAuthType;
   createdAt?: string;
@@ -92,6 +92,7 @@ export interface ProviderPlanWindow {
   resetsAt?: string;
   resetDescription: string;
   usageKnown: boolean;
+  unlimited?: boolean;
 }
 
 export interface ProviderPlanSnapshot {
@@ -101,6 +102,9 @@ export interface ProviderPlanSnapshot {
   providerName: string;
   authType: string;
   monitored: boolean;
+  managedAutomatically: boolean;
+  manualPlanEditable: boolean;
+  automaticTrackingLabel?: string;
   appliedPresetId?: string;
   planName?: string;
   source: string;

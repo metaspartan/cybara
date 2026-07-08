@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import {
   parseAnthropicUsageResponse,
   parseCodexUsageResponse,
+  parseKimiUsageResponse,
+  parseMiniMaxUsageResponse,
+  parseZaiUsageResponse,
 } from "../../src/core/provider-usage-source";
 
 // Real shape captured from chatgpt.com/backend-api/wham/usage.
@@ -94,5 +97,130 @@ describe("parseAnthropicUsageResponse", () => {
     expect(parseAnthropicUsageResponse({}, 1)).toBeNull();
     expect(parseAnthropicUsageResponse({ subscriptionType: "Max" }, 1)).toBeNull();
     expect(parseAnthropicUsageResponse(null, 1)).toBeNull();
+  });
+});
+
+describe("parseMiniMaxUsageResponse", () => {
+  test("maps token-plan remaining quota into used 5h and weekly percentages", () => {
+    const result = parseMiniMaxUsageResponse(
+      {
+        model_remains: [
+          {
+            model_name: "MiniMax-M*",
+            end_time: 1783405927000,
+            current_interval_total_count: 1500,
+            current_interval_usage_count: 228,
+            weekly_end_time: 1783665881000,
+            current_weekly_total_count: 15000,
+            current_weekly_usage_count: 6000,
+          },
+        ],
+      },
+      700
+    );
+
+    expect(result?.planLabel).toBe("MiniMax Token Plan");
+    expect(result?.source).toBe("provider_api");
+    expect(result?.fiveHour?.usedPercent).toBeCloseTo(84.8, 1);
+    expect(result?.fiveHour?.resetsAt).toBe(new Date(1783405927000).toISOString());
+    expect(result?.weekly?.usedPercent).toBe(60);
+    expect(result?.weekly?.resetsAt).toBe(new Date(1783665881000).toISOString());
+  });
+
+  test("uses server remaining percentages and handles unlimited weekly quota", () => {
+    const result = parseMiniMaxUsageResponse(
+      {
+        model_remains: [
+          {
+            model_name: "MiniMax-M3",
+            current_interval_remaining_percent: 35,
+            current_weekly_status: 3,
+            weekly_end_time: 1783665881000,
+          },
+        ],
+      },
+      701
+    );
+
+    expect(result?.fiveHour?.usedPercent).toBe(65);
+    expect(result?.weekly?.usedPercent).toBe(0);
+    expect(result?.weekly?.unlimited).toBe(true);
+  });
+});
+
+describe("parseZaiUsageResponse", () => {
+  test("maps quota-limit token and time percentages into five-hour and weekly windows", () => {
+    const result = parseZaiUsageResponse(
+      {
+        data: {
+          limits: [
+            { type: "TIME_LIMIT", percentage: 7, nextResetTime: 1783984001998 },
+            { type: "TOKENS_LIMIT", percentage: 44, nextResetTime: 1783489036671 },
+          ],
+        },
+      },
+      800
+    );
+
+    expect(result?.planLabel).toBe("GLM Coding Plan");
+    expect(result?.source).toBe("provider_api");
+    expect(result?.fiveHour?.usedPercent).toBe(44);
+    expect(result?.fiveHour?.resetsAt).toBe(new Date(1783489036671).toISOString());
+    expect(result?.weekly?.usedPercent).toBe(7);
+    expect(result?.weekly?.resetsAt).toBe(new Date(1783984001998).toISOString());
+    expect(result?.fetchedAt).toBe(800);
+  });
+
+  test("returns null when no token quota limit is present", () => {
+    expect(
+      parseZaiUsageResponse({ data: { limits: [{ type: "TIME_LIMIT", percentage: 7 }] } }, 1)
+    ).toBeNull();
+    expect(parseZaiUsageResponse({}, 1)).toBeNull();
+  });
+});
+
+describe("parseKimiUsageResponse", () => {
+  test("maps coding-plan usage payloads into 5h, weekly, and monthly windows", () => {
+    const result = parseKimiUsageResponse(
+      {
+        usage: { name: "Weekly Usage", limit: 1000, used: 300, resetTime: 1783665881000 },
+        limits: [
+          {
+            detail: { name: "Fast 5h", limit: 100, remaining: 25, reset_in: 3600 },
+            window: { duration: 5, time_unit: "HOUR" },
+          },
+          {
+            detail: { name: "Monthly", percent: 41, reset_at: "2026-07-31T00:00:00Z" },
+            window: { duration: 1, time_unit: "MONTH" },
+          },
+        ],
+      },
+      900
+    );
+
+    expect(result?.planLabel).toBe("Kimi Coding Plan");
+    expect(result?.source).toBe("provider_api");
+    expect(result?.weekly?.usedPercent).toBe(30);
+    expect(result?.weekly?.resetsAt).toBe(new Date(1783665881000).toISOString());
+    expect(result?.fiveHour?.usedPercent).toBe(75);
+    expect(result?.fiveHour?.resetsAt).toBe(new Date(900 + 3600_000).toISOString());
+    expect(result?.monthly?.usedPercent).toBe(41);
+    expect(result?.monthly?.resetsAt).toBe("2026-07-31T00:00:00Z");
+  });
+
+  test("maps Kimi data-list summaries and returns null for unknown shapes", () => {
+    const result = parseKimiUsageResponse(
+      {
+        data: [
+          { model_name: "all", limit: 1000, used: 450 },
+          { name: "5h Limit", limit: 100, used: 20 },
+        ],
+      },
+      901
+    );
+
+    expect(result?.weekly?.usedPercent).toBe(45);
+    expect(result?.fiveHour?.usedPercent).toBe(20);
+    expect(parseKimiUsageResponse({ data: [{ name: "unknown" }] }, 1)).toBeNull();
   });
 });

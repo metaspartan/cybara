@@ -304,62 +304,122 @@ struct ProvidersScreen: View {
 private struct ProviderPlanInlineView: View {
     let plan: ProviderPlanSnapshot
 
-    private var progress: Double? {
-        let values = plan.windows.compactMap(\.usedPercent)
-        guard let maxValue = values.max() else { return nil }
-        return min(100, max(0, maxValue))
+    private var fiveHourUsage: ProviderPlanUsageValue {
+        providerPlanWindowValue(plan, kind: "rolling_5h")
     }
 
-    private var statusTint: Color {
-        switch plan.status {
-        case "ok": return .green
-        case "warning": return .orange
-        case "exhausted": return .red
-        default: return .secondary
-        }
+    private var weeklyUsage: ProviderPlanUsageValue {
+        providerPlanWindowValue(plan, kind: "rolling_week")
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 8) {
-                Text(plan.status)
-                    .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                    .foregroundStyle(statusTint)
-                    .textCase(.uppercase)
-                Text(plan.sourceLabel ?? plan.source?.replacingOccurrences(of: "_", with: " ") ?? "Local usage")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Text("\(providerPlanFormatCount(plan.localTokens30d)) tokens 30d")
-                    .font(.system(size: 11, design: .rounded))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-            }
-            if let progress {
-                ProgressView(value: progress, total: 100)
-                    .progressViewStyle(.linear)
-                    .tint(statusTint)
-                    .frame(maxWidth: 260)
-            }
-            if plan.externalSourceAvailable, let label = plan.externalSourceLabel {
-                Text("External source available: \(label)")
-                    .font(.system(size: 10.5, design: .rounded))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
+        Group {
+            if plan.managedAutomatically {
+                HStack(spacing: 6) {
+                    ProviderPlanUsageCapsule(label: "5h", usage: fiveHourUsage)
+                    ProviderPlanUsageCapsule(label: "Weekly", usage: weeklyUsage)
+                }
+                .padding(.top, 3)
             }
         }
-        .padding(.top, 3)
     }
 }
 
-private func providerPlanFormatCount(_ value: Int) -> String {
-    if value >= 1_000_000 {
-        return String(format: "%.2fM", Double(value) / 1_000_000)
+private struct ProviderPlanUsageValue {
+    let text: String
+    let percent: Double?
+    let unlimited: Bool
+    let resetText: String?
+}
+
+private struct ProviderPlanUsageCapsule: View {
+    let label: String
+    let usage: ProviderPlanUsageValue
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Text(label)
+                    .foregroundStyle(.secondary)
+                Text(usage.text)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(providerPlanUsageTint(usage))
+            }
+            GeometryReader { proxy in
+                let width = proxy.size.width * providerPlanProgress(usage)
+                Capsule()
+                    .fill(.white.opacity(0.1))
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(providerPlanUsageTint(usage))
+                            .frame(width: width)
+                    }
+            }
+            .frame(height: 3)
+            if let resetText = usage.resetText {
+                Text(resetText)
+                    .font(.system(size: 9, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .font(.system(size: 11, design: .rounded))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Capsule().fill(providerPlanUsageTint(usage).opacity(0.12)))
+        .overlay(Capsule().stroke(providerPlanUsageTint(usage).opacity(0.2), lineWidth: 1))
     }
-    if value >= 1_000 {
-        return String(format: "%.1fK", Double(value) / 1_000)
+}
+
+private func providerPlanWindowValue(_ plan: ProviderPlanSnapshot, kind: String) -> ProviderPlanUsageValue {
+    guard plan.managedAutomatically else {
+        return ProviderPlanUsageValue(text: "--", percent: nil, unlimited: false, resetText: nil)
     }
-    return "\(value)"
+    guard let window = plan.windows.first(where: {
+        $0.kind == kind && $0.usageKnown && ($0.unlimited || $0.usedPercent != nil)
+    }) else {
+        return ProviderPlanUsageValue(text: "--", percent: nil, unlimited: false, resetText: nil)
+    }
+    let resetText = providerPlanResetText(window.resetsAt)
+    if window.unlimited {
+        return ProviderPlanUsageValue(text: "∞", percent: nil, unlimited: true, resetText: resetText)
+    }
+    let percent = min(100, max(0, ceil(window.usedPercent ?? 0)))
+    return ProviderPlanUsageValue(text: "\(Int(percent))%", percent: percent, unlimited: false, resetText: resetText)
+}
+
+private func providerPlanResetText(_ resetsAt: String?) -> String? {
+    guard let resetsAt else { return nil }
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let date = formatter.date(from: resetsAt) ?? ISO8601DateFormatter().date(from: resetsAt)
+    guard let date else { return nil }
+    let seconds = date.timeIntervalSinceNow
+    if seconds <= 0 { return "reset ready" }
+    let minute = 60.0
+    let hour = 60.0 * minute
+    let day = 24.0 * hour
+    if seconds < hour { return "\(max(1, Int(ceil(seconds / minute))))m reset" }
+    if seconds < day {
+        let hours = Int(seconds / hour)
+        let minutes = Int(ceil(seconds.truncatingRemainder(dividingBy: hour) / minute))
+        return minutes > 0 ? "\(hours)h \(minutes)m reset" : "\(hours)h reset"
+    }
+    return "\(Int(ceil(seconds / day)))d reset"
+}
+
+private func providerPlanUsageTint(_ usage: ProviderPlanUsageValue) -> Color {
+    if usage.unlimited { return .green }
+    guard let percent = usage.percent else { return .secondary }
+    if percent >= 95 { return .red }
+    if percent >= 80 { return .orange }
+    return .cyan
+}
+
+private func providerPlanProgress(_ usage: ProviderPlanUsageValue) -> Double {
+    if usage.unlimited { return 1 }
+    guard let percent = usage.percent else { return 0 }
+    return min(1, max(0, percent / 100))
 }
 
 struct ProviderEditorDraft {
@@ -401,6 +461,7 @@ private struct ProviderEditorSheet: View {
     @State private var planPriceInput = ""
     @State private var planPriceOutput = ""
     @State private var routerConfig: [String: Any]?
+    @State private var planManualEditable = true
 
     init(
         client: GatewayClient,
@@ -462,7 +523,16 @@ private struct ProviderEditorSheet: View {
                 TextField("Base URL", text: $baseURL)
                 credentialSection
                 Toggle("Use as default provider", isOn: $isDefault)
-                if provider != nil, planConfig != nil {
+                if provider != nil, planConfig != nil, !planManualEditable {
+                    Section("Provider plan") {
+                        Text("Plan tracked automatically")
+                            .font(.system(size: 12, weight: .semibold, design: .rounded))
+                        Text("Manual plan caps are hidden because this provider reports plan usage automatically.")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if provider != nil, planConfig != nil, planManualEditable {
                     Section("Plan limits") {
                         if !planPresets.isEmpty {
                             Picker("Plan preset", selection: $planPresetId) {
@@ -862,6 +932,7 @@ private struct ProviderEditorSheet: View {
                 [plan.providerId, plan.configuredProviderId, plan.providerType].contains(provider.providerType)
             }
             planPresets = snapshot?.presetSuggestions ?? []
+            planManualEditable = snapshot?.manualPlanEditable ?? true
         }
 
         if let router = try? await client.routerConfig() {
@@ -899,6 +970,10 @@ private struct ProviderEditorSheet: View {
 
     private func savePlanLimits() async throws {
         guard provider != nil, var config = planConfig else { return }
+        if !planManualEditable {
+            try await saveRoutePricing()
+            return
+        }
         let trimmedPlanName = planName.trimmingCharacters(in: .whitespacesAndNewlines)
         let fiveHourLimit = parsePlanLimit(planFiveHourTokens)
         let weeklyLimit = parsePlanLimit(planWeeklyTokens)

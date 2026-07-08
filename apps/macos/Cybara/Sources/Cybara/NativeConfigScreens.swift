@@ -218,6 +218,7 @@ struct RouterScreen: View {
             get: { monthlySpendDrafts[route.providerId] ?? "" },
             set: { monthlySpendDrafts[route.providerId] = $0 }
         )
+        let manualPlanEditable = plan?.manualPlanEditable ?? true
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
@@ -239,30 +240,36 @@ struct RouterScreen: View {
                     .tint(planStatusColor(plan?.status ?? "ok"))
             }
 
-            HStack(spacing: 8) {
-                TextField("Monthly tokens", text: tokenBinding)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12, design: .rounded))
-                    .onSubmit { saveProviderPlan(route.providerId) }
-                TextField("Monthly $", text: spendBinding)
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 12, design: .rounded))
-                    .onSubmit { saveProviderPlan(route.providerId) }
-                Button {
-                    saveProviderPlan(route.providerId)
-                } label: {
-                    if savingPlanProvider == route.providerId {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("Save", systemImage: "checkmark")
+            if manualPlanEditable {
+                HStack(spacing: 8) {
+                    TextField("Monthly tokens", text: tokenBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .rounded))
+                        .onSubmit { saveProviderPlan(route.providerId) }
+                    TextField("Monthly $", text: spendBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.system(size: 12, design: .rounded))
+                        .onSubmit { saveProviderPlan(route.providerId) }
+                    Button {
+                        saveProviderPlan(route.providerId)
+                    } label: {
+                        if savingPlanProvider == route.providerId {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label("Save", systemImage: "checkmark")
+                        }
                     }
+                    .disabled(savingPlanProvider == route.providerId)
+                    .labelStyle(.iconOnly)
+                    .help("Save provider plan limits")
                 }
-                .disabled(savingPlanProvider == route.providerId)
-                .labelStyle(.iconOnly)
-                .help("Save provider plan limits")
+            } else {
+                Text("Manual plan caps are hidden because this provider reports plan usage automatically.")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.secondary)
             }
 
-            if let plan, !plan.presetSuggestions.isEmpty {
+            if manualPlanEditable, let plan, !plan.presetSuggestions.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Picker("Coding plan", selection: Binding(
                         get: { providerPlanPresetId(for: route.providerId, plan: plan) },

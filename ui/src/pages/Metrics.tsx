@@ -642,9 +642,7 @@ export function Metrics() {
               <Gauge className="w-5 h-5 text-emerald-400" />
               Provider Plan Health
             </CardTitle>
-            <CardDescription>
-              Plan limits, source quality, and billing source coverage
-            </CardDescription>
+            <CardDescription>Automatic usage windows for connected coding plans</CardDescription>
           </CardHeader>
           <CardContent>
             {providerPlansPending ? (
@@ -659,7 +657,7 @@ export function Metrics() {
                         <div className="min-w-0">
                           <p className="text-sm text-white truncate">{plan.providerName}</p>
                           <p className="text-xs text-gray-500 truncate">
-                            {plan.sourceLabel || plan.source.replace(/_/g, " ")}
+                            {plan.planName || plan.status}
                           </p>
                         </div>
                         <span className={`text-xs font-medium ${providerPlanTone(plan)}`}>
@@ -680,11 +678,6 @@ export function Metrics() {
                           <span>${plan.localSpend30d.toFixed(2)} 30d</span>
                         )}
                       </div>
-                      {plan.externalSourceAvailable && (
-                        <p className="mt-1 text-[11px] leading-4 text-gray-500">
-                          External: {plan.externalSourceLabel}
-                        </p>
-                      )}
                     </div>
                   );
                 })}

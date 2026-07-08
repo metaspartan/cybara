@@ -264,6 +264,8 @@ describe("native macOS shell wiring", () => {
 
     expect(gatewayModels).toContain("struct GatewaySessionContextUsage");
     expect(gatewayModels).toContain("let contextUsage: GatewaySessionContextUsage?");
+    expect(gatewayModels).toContain("let manualPlanEditable: Bool");
+    expect(gatewayModels).toContain("let automaticTrackingLabel: String?");
     expect(gatewayModels).toContain("let messagesList: [GatewaySessionMessage]?");
     expect(gatewayClient).toContain("func sessionDetail(_ id: String)");
     expect(gatewayClient).toContain("func updateSessionAgent(");
@@ -288,6 +290,30 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("private func changeChatAgent(_ agentID: String) async");
     expect(nativeScreens).toContain(
       "agentId: selectedChatAgentID.isEmpty ? nil : selectedChatAgentID"
+    );
+  });
+
+  test("native provider plan editors respect automatic provider-managed plans", () => {
+    const providersScreen = readFileSync(
+      join(MACOS_APP_DIR, "NativeProvidersScreen.swift"),
+      "utf8"
+    );
+    const configScreens = readFileSync(join(MACOS_APP_DIR, "NativeConfigScreens.swift"), "utf8");
+
+    expect(providersScreen).toContain("planManualEditable");
+    expect(providersScreen).toContain("Plan tracked automatically");
+    expect(providersScreen).toContain("ProviderPlanUsageCapsule");
+    expect(providersScreen).toContain('providerPlanWindowValue(plan, kind: "rolling_5h")');
+    expect(providersScreen).toContain('ProviderPlanUsageValue(text: "∞"');
+    expect(providersScreen).toContain("providerPlanResetText(window.resetsAt)");
+    expect(providersScreen).toContain("ceil(window.usedPercent");
+    expect(providersScreen).toContain("if !planManualEditable");
+    expect(configScreens).toContain("let manualPlanEditable = plan?.manualPlanEditable ?? true");
+    expect(configScreens).toContain(
+      "Manual plan caps are hidden because this provider reports plan usage automatically."
+    );
+    expect(configScreens).toContain(
+      "if manualPlanEditable, let plan, !plan.presetSuggestions.isEmpty"
     );
   });
 

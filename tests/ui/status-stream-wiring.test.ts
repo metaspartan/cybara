@@ -10,6 +10,9 @@ const notificationsPath = fileURLToPath(
   new URL("../../ui/src/hooks/useNotifications.ts", import.meta.url)
 );
 const gatewayIndexPath = fileURLToPath(new URL("../../src/index.ts", import.meta.url));
+const providerPlanDisplayPath = fileURLToPath(
+  new URL("../../ui/src/lib/providerPlanDisplay.ts", import.meta.url)
+);
 
 function readSource(path: string): string {
   return readFileSync(path, "utf8");
@@ -18,6 +21,7 @@ function readSource(path: string): string {
 describe("status stream websocket wiring", () => {
   test("chat page uses shared status websocket stream helper", () => {
     const source = readSource(chatPath);
+    const displaySource = readSource(providerPlanDisplayPath);
     expect(source).toContain("connectStatusStream");
     expect(source).toContain("PendingChatQueue");
     expect(source).toContain("chatApi.steerPendingMessage");
@@ -31,6 +35,11 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("providerPlanStatus");
     expect(source).toContain("activeProviderPlan");
     expect(source).toContain("providerPlanTooltipDetail");
+    expect(source).toContain("Plan usage:");
+    expect(source).toContain("providerPlanWindowSummary");
+    expect(displaySource).toContain("formatProviderPlanReset");
+    expect(displaySource).toContain('value: "∞"');
+    expect(displaySource).toContain("Math.ceil(window.usedPercent)");
     expect(source).toContain("context-usage-tooltip-plan");
     expect(source).toContain("contextUsageLabel");
     expect(source).toContain("contextUsageTooltip");

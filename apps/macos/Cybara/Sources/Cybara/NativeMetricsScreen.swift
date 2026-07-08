@@ -290,14 +290,6 @@ struct MetricsScreen: View {
                     )
                 }
                 MetricsBarList(title: "Plan Usage", rows: snapshot.providerPlanRows, tint: .green)
-                if let source = snapshot.providerPlans?.providers.first(where: { $0.externalSourceAvailable }),
-                   let label = source.externalSourceLabel {
-                    MetricsCallout(
-                        title: "External billing source",
-                        value: label,
-                        detail: source.externalSourceHint ?? "Available as an explicit provider setup source."
-                    )
-                }
             }
 
             MetricsPanel(

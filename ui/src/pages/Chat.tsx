@@ -63,6 +63,7 @@ import type {
 import { PageLayout } from "@/components/layout";
 import { GlassCard, Input, Badge, Modal, Button } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
+import { providerPlanWindowSummary } from "@/lib/providerPlanDisplay";
 import { useUIStore } from "@/stores/uiStore";
 import { appendApiTokenParam, apiFetch } from "@/lib/auth";
 import {
@@ -227,28 +228,9 @@ function contextUsageLabel(usage?: SessionContextUsage | null): string {
   )} tokens remaining.`;
 }
 
-function providerPlanWindowSummary(plan?: ProviderPlanSnapshot | null): string | null {
-  const windows = plan?.windows.filter((window) => typeof window.usedPercent === "number") ?? [];
-  if (windows.length === 0) return null;
-  return windows
-    .slice(0, 2)
-    .map(
-      (window) => `${window.title.replace(" window", "")}: ${Math.round(window.usedPercent ?? 0)}%`
-    )
-    .join(" · ");
-}
-
 function providerPlanTooltipDetail(plan?: ProviderPlanSnapshot | null): string | null {
-  if (!plan) return null;
   const windowSummary = providerPlanWindowSummary(plan);
-  const label = plan.planName || plan.providerName;
-  if (windowSummary) {
-    return `${label}: ${windowSummary} (${plan.sourceLabel || "live usage"})`;
-  }
-  if (plan.externalSourceAvailable) {
-    return `${label}: ${plan.externalSourceLabel || "Provider usage"} available when OAuth usage can be read.`;
-  }
-  return null;
+  return windowSummary ? `Plan usage: ${windowSummary}` : null;
 }
 
 function contextUsageTooltip(

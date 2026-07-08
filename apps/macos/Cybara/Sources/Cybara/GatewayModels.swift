@@ -1521,11 +1521,13 @@ struct ProviderPlanUsageWindow: Decodable, Identifiable, Hashable {
     let resetsAt: String?
     let resetDescription: String
     let usageKnown: Bool
+    let unlimited: Bool
 
     private enum CodingKeys: String, CodingKey {
         case id, title, kind, usedTokens, used_tokens, tokenLimit, token_limit, usedSpend, used_spend
         case spendLimit, spend_limit, usedPercent, used_percent, remainingPercent, remaining_percent
         case resetsAt, resets_at, resetDescription, reset_description, usageKnown, usage_known
+        case unlimited
     }
 
     init(from decoder: Decoder) throws {
@@ -1544,6 +1546,7 @@ struct ProviderPlanUsageWindow: Decodable, Identifiable, Hashable {
             forKeys: [.resetDescription, .reset_description]
         ) ?? ""
         usageKnown = try container.decodeFlexibleBool(forKeys: [.usageKnown, .usage_known]) ?? true
+        unlimited = try container.decodeFlexibleBool(forKeys: [.unlimited]) ?? false
     }
 }
 
@@ -1604,6 +1607,9 @@ struct ProviderPlanSnapshot: Decodable, Identifiable, Hashable {
     let providerName: String
     let authType: String
     let monitored: Bool
+    let managedAutomatically: Bool
+    let manualPlanEditable: Bool
+    let automaticTrackingLabel: String?
     let appliedPresetId: String?
     let planName: String?
     let source: String?
@@ -1630,7 +1636,9 @@ struct ProviderPlanSnapshot: Decodable, Identifiable, Hashable {
     private enum CodingKeys: String, CodingKey {
         case providerId, provider_id, configuredProviderId, configured_provider_id
         case providerType, provider_type, providerName, provider_name, authType, auth_type
-        case monitored, appliedPresetId, applied_preset_id, planName, plan_name, source, status, reason
+        case monitored, managedAutomatically, managed_automatically, manualPlanEditable, manual_plan_editable
+        case automaticTrackingLabel, automatic_tracking_label, appliedPresetId, applied_preset_id
+        case planName, plan_name, source, status, reason
         case sourceMode, source_mode, sourceLabel, source_label, sourceDescription, source_description
         case externalSourceAvailable, external_source_available, externalSourceMode, external_source_mode
         case externalSourceLabel, external_source_label, externalSourceHint, external_source_hint
@@ -1650,6 +1658,15 @@ struct ProviderPlanSnapshot: Decodable, Identifiable, Hashable {
         providerName = try container.decodeFlexibleString(forKeys: [.providerName, .provider_name]) ?? providerId
         authType = try container.decodeFlexibleString(forKeys: [.authType, .auth_type]) ?? "unknown"
         monitored = try container.decodeFlexibleBool(forKeys: [.monitored]) ?? false
+        managedAutomatically = try container.decodeFlexibleBool(
+            forKeys: [.managedAutomatically, .managed_automatically]
+        ) ?? false
+        manualPlanEditable = try container.decodeFlexibleBool(
+            forKeys: [.manualPlanEditable, .manual_plan_editable]
+        ) ?? true
+        automaticTrackingLabel = try container.decodeFlexibleString(
+            forKeys: [.automaticTrackingLabel, .automatic_tracking_label]
+        )
         appliedPresetId = try container.decodeFlexibleString(forKeys: [.appliedPresetId, .applied_preset_id])
         planName = try container.decodeFlexibleString(forKeys: [.planName, .plan_name])
         source = try container.decodeFlexibleString(forKeys: [.source])

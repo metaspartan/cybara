@@ -1032,18 +1032,38 @@ struct ChatScreen: View {
 
     private var providerPlanText: String? {
         guard let plan = activeProviderPlan else { return nil }
-        let windows = plan.windows.filter { $0.usedPercent != nil }
-        let label = firstNonEmptyGatewayString(plan.planName, plan.providerName) ?? "Provider plan"
-        if !windows.isEmpty {
-            let summary = windows.prefix(2).map { window in
-                "\(window.title.replacingOccurrences(of: " window", with: "")): \(formatNativePercent(window.usedPercent ?? 0))"
-            }.joined(separator: " · ")
-            return "\(label): \(summary)"
+        guard plan.managedAutomatically else { return nil }
+        func percent(for kind: String) -> String {
+            guard let window = plan.windows.first(where: {
+                $0.kind == kind && $0.usageKnown && ($0.unlimited || $0.usedPercent != nil)
+            }) else {
+                return "--"
+            }
+            let value = window.unlimited ? "∞" : "\(Int(ceil(window.usedPercent ?? 0)))%"
+            guard let reset = nativeProviderPlanResetText(window.resetsAt) else { return value }
+            return "\(value) (\(reset))"
         }
-        if plan.externalSourceAvailable {
-            return "\(label): \(firstNonEmptyGatewayString(plan.externalSourceLabel) ?? "provider usage") available"
+        return "Plan usage: 5h \(percent(for: "rolling_5h")) · Weekly \(percent(for: "rolling_week"))"
+    }
+
+    private func nativeProviderPlanResetText(_ resetsAt: String?) -> String? {
+        guard let resetsAt else { return nil }
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = fractionalFormatter.date(from: resetsAt) ?? ISO8601DateFormatter().date(from: resetsAt)
+        guard let date else { return nil }
+        let seconds = date.timeIntervalSinceNow
+        if seconds <= 0 { return "reset ready" }
+        let minute = 60.0
+        let hour = 60.0 * minute
+        let day = 24.0 * hour
+        if seconds < hour { return "\(max(1, Int(ceil(seconds / minute))))m reset" }
+        if seconds < day {
+            let hours = Int(seconds / hour)
+            let minutes = Int(ceil(seconds.truncatingRemainder(dividingBy: hour) / minute))
+            return minutes > 0 ? "\(hours)h \(minutes)m reset" : "\(hours)h reset"
         }
-        return nil
+        return "\(Int(ceil(seconds / day)))d reset"
     }
 
     private var workspaceHelpText: String {

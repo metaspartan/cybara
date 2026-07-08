@@ -164,21 +164,51 @@ function gatewayActionError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-function providerPlanProgress(
-  plan: ProviderPlanStatusResponse["providers"][number] | null
-): number | null {
-  const usage = (plan?.windows || [])
-    .map((window) => window.usedPercent)
-    .filter((value): value is number => typeof value === "number");
-  if (usage.length === 0) return null;
-  return Math.min(100, Math.max(...usage));
+function providerPlanWindowValue(
+  plan: ProviderPlanStatusResponse["providers"][number] | null,
+  kind: "rolling_5h" | "rolling_week"
+): string {
+  if (!plan?.managedAutomatically) return "--";
+  const window = plan.windows.find(
+    (entry) =>
+      entry.kind === kind &&
+      entry.usageKnown &&
+      (entry.unlimited || typeof entry.usedPercent === "number")
+  );
+  if (!window || (!window.unlimited && typeof window.usedPercent !== "number")) return "--";
+  const value = window.unlimited
+    ? "∞"
+    : `${Math.min(100, Math.max(0, Math.ceil(window.usedPercent ?? 0)))}%`;
+  const reset = mobilePlanResetLabel(window.resetsAt);
+  return reset ? `${value} (${reset})` : value;
 }
 
-function providerPlanStatusTone(status: ProviderPlanStatusResponse["providers"][number]["status"]) {
-  if (status === "ok") return colors.green;
-  if (status === "warning") return colors.amber;
-  if (status === "exhausted") return colors.red;
-  return colors.textMuted;
+function providerPlanUsageSummary(
+  plan: ProviderPlanStatusResponse["providers"][number] | null
+): string | null {
+  if (!plan?.managedAutomatically) return null;
+  return `5h ${providerPlanWindowValue(plan, "rolling_5h")} · Weekly ${providerPlanWindowValue(
+    plan,
+    "rolling_week"
+  )}`;
+}
+
+function mobilePlanResetLabel(resetsAt?: string): string | null {
+  if (!resetsAt) return null;
+  const resetMs = Date.parse(resetsAt);
+  if (!Number.isFinite(resetMs)) return null;
+  const diffMs = resetMs - Date.now();
+  if (diffMs <= 0) return "reset ready";
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diffMs < hour) return `${Math.max(1, Math.ceil(diffMs / minute))}m reset`;
+  if (diffMs < day) {
+    const hours = Math.floor(diffMs / hour);
+    const minutes = Math.ceil((diffMs % hour) / minute);
+    return minutes > 0 ? `${hours}h ${minutes}m reset` : `${hours}h reset`;
+  }
+  return `${Math.ceil(diffMs / day)}d reset`;
 }
 
 function providerPlanPresetLimitLabel(
@@ -564,6 +594,8 @@ export function ProviderSettingsPanel({
 
   const planPresets = providerPlan?.presetSuggestions ?? [];
   const selectedPlanPreset = planPresets.find((preset) => preset.id === planPresetId);
+  const manualPlanEditable = providerPlan?.manualPlanEditable !== false;
+  const planUsageSummary = providerPlanUsageSummary(providerPlan);
 
   const applyPlanPreset = (presetId: string) => {
     setPlanPresetId(presetId);
@@ -578,6 +610,10 @@ export function ProviderSettingsPanel({
 
   const savePlanLimits = async () => {
     if (!planMonitoringConfig) return;
+    if (!manualPlanEditable) {
+      await saveRoutePricing();
+      return;
+    }
     const trimmedPlanName = planName.trim();
     const fiveHourLimit = parsePlanLimit(planFiveHourTokens);
     const weeklyLimit = parsePlanLimit(planWeeklyTokens);
@@ -828,42 +864,15 @@ export function ProviderSettingsPanel({
         </View>
       </View>
 
-      {providerPlan ? (
+      {planUsageSummary ? (
         <View style={styles.settingsInfoBox}>
           <View style={styles.routerSummaryRow}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.settingsInfoTitle}>Provider plan</Text>
-              <Text style={styles.settingsInfoText}>
-                {providerPlan.sourceLabel || providerPlan.source || "Local Cybara usage"}
-              </Text>
+              <Text style={styles.settingsInfoTitle}>Plan usage</Text>
+              <Text style={styles.settingsInfoText}>{planUsageSummary}</Text>
             </View>
-            <Text
-              style={[
-                styles.routerSummaryValue,
-                { color: providerPlanStatusTone(providerPlan.status) },
-              ]}
-            >
-              {providerPlan.status}
-            </Text>
+            <Text style={[styles.routerSummaryValue, { color: colors.blueText }]}>Auto</Text>
           </View>
-          {providerPlanProgress(providerPlan) !== null ? (
-            <MonitorUsageBar
-              detail={`${formatMetricNumber(providerPlan.localTokens30d)} tokens tracked over 30d`}
-              label={providerPlan.planName || "Usage window"}
-              tone={providerPlanStatusTone(providerPlan.status)}
-              value={providerPlanProgress(providerPlan) || 0}
-            />
-          ) : (
-            <Text style={styles.settingsInfoText}>
-              {formatMetricNumber(providerPlan.localTokens30d)} local tokens over 30 days.
-            </Text>
-          )}
-          {providerPlan.externalSourceAvailable ? (
-            <Text style={styles.settingsInfoText}>
-              External source available: {providerPlan.externalSourceLabel}.{" "}
-              {providerPlan.externalSourceHint}
-            </Text>
-          ) : null}
         </View>
       ) : null}
 
@@ -882,7 +891,35 @@ export function ProviderSettingsPanel({
           placeholder="Provider default"
           value={baseUrl}
         />
-        {planMonitoringConfig ? (
+        {planMonitoringConfig && !manualPlanEditable ? (
+          <>
+            <View style={styles.settingsInfoBox}>
+              <Text style={styles.settingsInfoTitle}>Plan tracked automatically</Text>
+              <Text style={styles.settingsInfoText}>
+                Manual plan caps are hidden because this provider reports plan usage automatically.
+              </Text>
+            </View>
+            {routerPricingConfig ? (
+              <>
+                <SettingsTextField
+                  help="Custom per-token pricing overrides catalog prices when estimating spend."
+                  keyboardType="decimal-pad"
+                  label="$ / 1M input tokens"
+                  onChangeText={setPlanPriceInput}
+                  placeholder="catalog price"
+                  value={planPriceInput}
+                />
+                <SettingsTextField
+                  keyboardType="decimal-pad"
+                  label="$ / 1M output tokens"
+                  onChangeText={setPlanPriceOutput}
+                  placeholder="catalog price"
+                  value={planPriceOutput}
+                />
+              </>
+            ) : null}
+          </>
+        ) : planMonitoringConfig ? (
           <>
             {planPresets.length > 0 ? (
               <SettingSelector
@@ -2435,6 +2472,7 @@ export function ModelRouterPanel({
                 monthlySpendDrafts[route.providerId] ??
                 (monthly.spendLimit ? String(monthly.spendLimit) : "");
               const firstWindow = plan?.windows[0];
+              const manualPlanEditable = plan?.manualPlanEditable !== false;
               return (
                 <View key={route.providerId} style={styles.settingsSegmentField}>
                   <Text style={styles.settingsFieldLabel}>
@@ -2445,7 +2483,15 @@ export function ModelRouterPanel({
                       ? `${plan.status} - ${firstWindow?.usedPercent?.toFixed(1) ?? "0"}% used`
                       : "No plan snapshot yet"}
                   </Text>
-                  {presetSuggestions.length > 0 ? (
+                  {!manualPlanEditable ? (
+                    <View style={styles.settingsInfoBox}>
+                      <Text style={styles.settingsInfoTitle}>Plan tracked automatically</Text>
+                      <Text style={styles.settingsInfoText}>
+                        Manual plan caps are hidden because this provider reports plan usage
+                        automatically.
+                      </Text>
+                    </View>
+                  ) : presetSuggestions.length > 0 ? (
                     <>
                       <SettingSelector
                         disabled={savingRouterConfig}
@@ -2477,56 +2523,60 @@ export function ModelRouterPanel({
                       </Text>
                     </>
                   ) : null}
-                  <View style={styles.settingsActionRow}>
-                    <TextInput
-                      editable={!savingRouterConfig}
-                      keyboardType="number-pad"
-                      onBlur={() => {
-                        const parsed = Number(tokenDraft.trim());
-                        void savePlanConfigPatch(route.providerId, {
-                          monthly: {
-                            enabled: true,
-                            tokenLimit: Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
-                          },
-                        });
-                      }}
-                      onChangeText={(value) =>
-                        setMonthlyTokenDrafts((current) => ({
-                          ...current,
-                          [route.providerId]: value,
-                        }))
-                      }
-                      placeholder="Monthly tokens"
-                      placeholderTextColor={colors.textDim}
-                      returnKeyType="done"
-                      style={[styles.settingsInput, { flex: 1 }]}
-                      value={tokenDraft}
-                    />
-                    <TextInput
-                      editable={!savingRouterConfig}
-                      keyboardType="decimal-pad"
-                      onBlur={() => {
-                        const parsed = Number(spendDraft.trim());
-                        void savePlanConfigPatch(route.providerId, {
-                          monthly: {
-                            enabled: true,
-                            spendLimit: Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
-                          },
-                        });
-                      }}
-                      onChangeText={(value) =>
-                        setMonthlySpendDrafts((current) => ({
-                          ...current,
-                          [route.providerId]: value,
-                        }))
-                      }
-                      placeholder="Monthly $"
-                      placeholderTextColor={colors.textDim}
-                      returnKeyType="done"
-                      style={[styles.settingsInput, { flex: 1 }]}
-                      value={spendDraft}
-                    />
-                  </View>
+                  {manualPlanEditable ? (
+                    <View style={styles.settingsActionRow}>
+                      <TextInput
+                        editable={!savingRouterConfig}
+                        keyboardType="number-pad"
+                        onBlur={() => {
+                          const parsed = Number(tokenDraft.trim());
+                          void savePlanConfigPatch(route.providerId, {
+                            monthly: {
+                              enabled: true,
+                              tokenLimit:
+                                Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
+                            },
+                          });
+                        }}
+                        onChangeText={(value) =>
+                          setMonthlyTokenDrafts((current) => ({
+                            ...current,
+                            [route.providerId]: value,
+                          }))
+                        }
+                        placeholder="Monthly tokens"
+                        placeholderTextColor={colors.textDim}
+                        returnKeyType="done"
+                        style={[styles.settingsInput, { flex: 1 }]}
+                        value={tokenDraft}
+                      />
+                      <TextInput
+                        editable={!savingRouterConfig}
+                        keyboardType="decimal-pad"
+                        onBlur={() => {
+                          const parsed = Number(spendDraft.trim());
+                          void savePlanConfigPatch(route.providerId, {
+                            monthly: {
+                              enabled: true,
+                              spendLimit:
+                                Number.isFinite(parsed) && parsed > 0 ? parsed : undefined,
+                            },
+                          });
+                        }}
+                        onChangeText={(value) =>
+                          setMonthlySpendDrafts((current) => ({
+                            ...current,
+                            [route.providerId]: value,
+                          }))
+                        }
+                        placeholder="Monthly $"
+                        placeholderTextColor={colors.textDim}
+                        returnKeyType="done"
+                        style={[styles.settingsInput, { flex: 1 }]}
+                        value={spendDraft}
+                      />
+                    </View>
+                  ) : null}
                 </View>
               );
             })}

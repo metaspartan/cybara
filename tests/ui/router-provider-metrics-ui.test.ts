@@ -25,6 +25,8 @@ describe("router, provider, and metrics UI wiring", () => {
     expect(source).toContain("globalSpendLimitDaily: monthly ? monthly / 30 : undefined");
     expect(source).toContain("Plan-aware routing");
     expect(source).toContain("Coding plan preset");
+    expect(source).toContain("manualPlanEditable");
+    expect(source).toContain("Plan tracked automatically");
     expect(source).toContain("presetLimitSummary(preset)");
     expect(source).toContain("Array.isArray(p.info?.models)");
     expect(source).toContain("displayName={plan?.providerName || providerName(routeType)}");
@@ -48,10 +50,26 @@ describe("router, provider, and metrics UI wiring", () => {
 
   test("providers page renders empty model lists without a stray zero label", () => {
     const source = read("ui/src/pages/Providers.tsx");
+    const displaySource = read("ui/src/lib/providerPlanDisplay.ts");
 
     expect(source).toContain("No bundled models listed");
     expect(source).toContain("provider.models.length > 0");
     expect(source).toContain("selectedProviderInfo.models.length > 0");
+    expect(source).toContain("function isProviderDefault");
+    expect(source).toContain("defaultChecked={isProviderDefault(provider)}");
+    expect(source).toContain("ProviderPlanUsagePill");
+    expect(source).toContain("providerPlanWindowDisplay");
+    expect(source).toContain('label="5h"');
+    expect(source).toContain('label="Weekly"');
+    expect(source).toContain("usage.resetLabel");
+    expect(displaySource).toContain('value: "∞"');
+    expect(displaySource).toContain("formatProviderPlanReset");
+    expect(displaySource).toContain("Math.ceil(window.usedPercent)");
+    expect(source).toContain("Plan tracked automatically");
+    expect(source).toContain("manualPlanEditable");
+    expect(source).toContain(
+      "Manual plan caps are hidden because this provider reports plan usage"
+    );
   });
 
   test("metrics page includes token velocity and provider/model share views", () => {

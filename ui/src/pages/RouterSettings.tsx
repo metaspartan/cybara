@@ -68,13 +68,17 @@ interface ProviderPlanRouteConstraint {
 interface ProviderPlanWindow {
   id: string;
   title: string;
+  kind: "rolling_5h" | "rolling_week" | "billing_month";
   usedTokens: number;
   tokenLimit?: number;
   usedSpend: number;
   spendLimit?: number;
   usedPercent?: number;
   remainingPercent?: number;
+  resetsAt?: string;
   resetDescription: string;
+  usageKnown: boolean;
+  unlimited?: boolean;
 }
 
 interface ProviderPlanPresetSuggestion {
@@ -101,6 +105,9 @@ interface ProviderPlanSnapshot {
   providerType: string;
   providerName: string;
   monitored: boolean;
+  managedAutomatically?: boolean;
+  manualPlanEditable?: boolean;
+  automaticTrackingLabel?: string;
   appliedPresetId?: string;
   planName?: string;
   status: "ok" | "warning" | "exhausted" | "unconfigured" | "disabled";
@@ -946,6 +953,7 @@ function RouteRow({
   };
 
   const suggestions = plan?.presetSuggestions || [];
+  const manualPlanEditable = plan?.manualPlanEditable !== false;
 
   return (
     <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
@@ -1025,7 +1033,7 @@ function RouteRow({
           onClick={() => setOpen((v) => !v)}
           className="ml-auto text-indigo-400 hover:text-indigo-300"
         >
-          {open ? "Hide limits" : "Limits & pricing"}
+          {open ? "Hide controls" : manualPlanEditable ? "Limits & pricing" : "Routing & pricing"}
         </button>
       </div>
 
@@ -1068,88 +1076,98 @@ function RouteRow({
               step={0.5}
             />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] p-3">
-            <div className="sm:col-span-3">
-              <div className="mb-2 flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold text-amber-100">Coding plan preset</p>
-                  <p className="text-[10px] text-amber-100/60">
-                    Pick the subscription you actually use. Presets fill known guardrails; dynamic
-                    plans still need provider usage data or manual hard stops.
-                  </p>
+          {manualPlanEditable ? (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 rounded-lg border border-amber-400/15 bg-amber-400/[0.04] p-3">
+              <div className="sm:col-span-3">
+                <div className="mb-2 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold text-amber-100">Coding plan preset</p>
+                    <p className="text-[10px] text-amber-100/60">
+                      Pick the subscription you actually use. Presets fill known guardrails; dynamic
+                      plans still need provider usage data or manual hard stops.
+                    </p>
+                  </div>
+                  {plan?.appliedPresetId && (
+                    <span className="rounded-full bg-amber-300/15 px-2 py-0.5 text-[10px] text-amber-100">
+                      preset applied
+                    </span>
+                  )}
                 </div>
-                {plan?.appliedPresetId && (
-                  <span className="rounded-full bg-amber-300/15 px-2 py-0.5 text-[10px] text-amber-100">
-                    preset applied
-                  </span>
+                {suggestions.length > 0 ? (
+                  <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
+                    {suggestions.map((preset) => {
+                      const selected =
+                        (planConfig?.presetId || plan?.appliedPresetId) === preset.id;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => applyPreset(preset)}
+                          className={cn(
+                            "rounded-lg border px-3 py-2 text-left transition-colors",
+                            selected
+                              ? "border-amber-300/60 bg-amber-300/15"
+                              : "border-white/10 bg-black/20 hover:bg-white/[0.05]"
+                          )}
+                        >
+                          <span className="flex items-start justify-between gap-2">
+                            <span className="min-w-0">
+                              <span className="block truncate text-[11px] font-semibold text-white">
+                                {preset.label}
+                              </span>
+                              <span className="mt-0.5 block text-[10px] text-gray-400">
+                                {presetLimitSummary(preset)}
+                              </span>
+                            </span>
+                            <span className="rounded-full bg-black/25 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-amber-100/80">
+                              {confidenceLabel(preset.confidence)}
+                            </span>
+                          </span>
+                          <span className="mt-1 block line-clamp-2 text-[10px] text-gray-500">
+                            {preset.limitDescription}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-gray-400">
+                    No published coding-plan preset for this provider yet. Use manual caps below.
+                  </p>
                 )}
               </div>
-              {suggestions.length > 0 ? (
-                <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
-                  {suggestions.map((preset) => {
-                    const selected = (planConfig?.presetId || plan?.appliedPresetId) === preset.id;
-                    return (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        onClick={() => applyPreset(preset)}
-                        className={cn(
-                          "rounded-lg border px-3 py-2 text-left transition-colors",
-                          selected
-                            ? "border-amber-300/60 bg-amber-300/15"
-                            : "border-white/10 bg-black/20 hover:bg-white/[0.05]"
-                        )}
-                      >
-                        <span className="flex items-start justify-between gap-2">
-                          <span className="min-w-0">
-                            <span className="block truncate text-[11px] font-semibold text-white">
-                              {preset.label}
-                            </span>
-                            <span className="mt-0.5 block text-[10px] text-gray-400">
-                              {presetLimitSummary(preset)}
-                            </span>
-                          </span>
-                          <span className="rounded-full bg-black/25 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-amber-100/80">
-                            {confidenceLabel(preset.confidence)}
-                          </span>
-                        </span>
-                        <span className="mt-1 block line-clamp-2 text-[10px] text-gray-500">
-                          {preset.limitDescription}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="rounded-lg border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-gray-400">
-                  No published coding-plan preset for this provider yet. Use manual caps below.
-                </p>
-              )}
-            </div>
-            <label className="flex flex-col gap-0.5">
-              <span className="text-[10px] text-amber-200/70">Manual plan name</span>
-              <input
-                key={`plan-name-${planConfig?.planName || plan?.planName || ""}`}
-                defaultValue={planConfig?.planName || plan?.planName || ""}
-                placeholder="$20 coding plan"
-                onBlur={(e) => updatePlan("planName", e.target.value)}
-                className="w-full rounded bg-black/25 border border-white/10 px-2 py-1 text-xs text-white placeholder:text-gray-600"
+              <label className="flex flex-col gap-0.5">
+                <span className="text-[10px] text-amber-200/70">Manual plan name</span>
+                <input
+                  key={`plan-name-${planConfig?.planName || plan?.planName || ""}`}
+                  defaultValue={planConfig?.planName || plan?.planName || ""}
+                  placeholder="$20 coding plan"
+                  onBlur={(e) => updatePlan("planName", e.target.value)}
+                  className="w-full rounded bg-black/25 border border-white/10 px-2 py-1 text-xs text-white placeholder:text-gray-600"
+                />
+              </label>
+              <RoutePlanField
+                label="Monthly tokens"
+                value={planConfig?.monthly?.tokenLimit}
+                placeholder="20000000"
+                onChange={(value) => updatePlan("monthlyTokenLimit", value)}
               />
-            </label>
-            <RoutePlanField
-              label="Monthly tokens"
-              value={planConfig?.monthly?.tokenLimit}
-              placeholder="20000000"
-              onChange={(value) => updatePlan("monthlyTokenLimit", value)}
-            />
-            <RoutePlanField
-              label="Monthly spend"
-              value={planConfig?.monthly?.spendLimit}
-              placeholder="20"
-              step={0.5}
-              onChange={(value) => updatePlan("monthlySpendLimit", value)}
-            />
-          </div>
+              <RoutePlanField
+                label="Monthly spend"
+                value={planConfig?.monthly?.spendLimit}
+                placeholder="20"
+                step={0.5}
+                onChange={(value) => updatePlan("monthlySpendLimit", value)}
+              />
+            </div>
+          ) : (
+            <div className="rounded-lg border border-cyan-400/15 bg-cyan-400/[0.05] p-3 text-[11px] text-cyan-100/80">
+              <p className="font-semibold text-cyan-100">Plan tracked automatically</p>
+              <p className="mt-1 text-cyan-100/65">
+                Manual plan caps are hidden because this provider reports plan usage automatically.
+              </p>
+            </div>
+          )}
           <p className="text-[10px] text-gray-600">
             Route limits of 0 mean unlimited. Plan limits feed usage monitoring and can block an
             exhausted provider before the router chooses it.
@@ -1161,6 +1179,7 @@ function RouteRow({
 }
 
 function PlanStatusPanel({ plan }: { plan: ProviderPlanSnapshot }) {
+  const automaticUsageSummary = planAutomaticUsageSummary(plan);
   const statusClass =
     plan.status === "exhausted"
       ? "border-red-400/25 bg-red-500/10 text-red-200"
@@ -1178,7 +1197,8 @@ function PlanStatusPanel({ plan }: { plan: ProviderPlanSnapshot }) {
             {plan.planName || "Provider plan"} · {plan.status}
           </p>
           <p className="mt-0.5 text-[11px] opacity-75">
-            {plan.reason ||
+            {automaticUsageSummary ||
+              plan.reason ||
               `${formatCompactNumber(plan.localTokens30d)} local tokens · ${formatMoney(
                 plan.localSpend30d,
                 4
@@ -1191,7 +1211,7 @@ function PlanStatusPanel({ plan }: { plan: ProviderPlanSnapshot }) {
           </span>
         )}
       </div>
-      {plan.windows.length > 0 && (
+      {!plan.managedAutomatically && plan.windows.length > 0 && (
         <div className="mt-3 grid gap-2">
           {plan.windows.map((window) => {
             const percentValue = Math.min(100, Math.max(0, window.usedPercent ?? 0));
@@ -1227,6 +1247,48 @@ function PlanStatusPanel({ plan }: { plan: ProviderPlanSnapshot }) {
       )}
     </div>
   );
+}
+
+function planAutomaticUsageSummary(plan: ProviderPlanSnapshot): string | null {
+  if (!plan.managedAutomatically) return null;
+  const windows = plan.windows.filter(
+    (window) =>
+      (window.kind === "rolling_5h" || window.kind === "rolling_week") &&
+      window.usageKnown &&
+      (window.unlimited || typeof window.usedPercent === "number")
+  );
+  if (windows.length === 0) return null;
+  return windows
+    .slice(0, 2)
+    .map(
+      (window) =>
+        `${window.kind === "rolling_5h" ? "5h" : "Weekly"} ${
+          window.unlimited
+            ? "∞"
+            : typeof window.usedPercent === "number"
+              ? `${Math.ceil(window.usedPercent)}%`
+              : "--"
+        }${formatRouterPlanReset(window.resetsAt)}`
+    )
+    .join(" · ");
+}
+
+function formatRouterPlanReset(resetsAt?: string): string {
+  if (!resetsAt) return "";
+  const resetMs = Date.parse(resetsAt);
+  if (!Number.isFinite(resetMs)) return "";
+  const diffMs = resetMs - Date.now();
+  if (diffMs <= 0) return " (reset ready)";
+  const minute = 60_000;
+  const hour = 60 * minute;
+  const day = 24 * hour;
+  if (diffMs < hour) return ` (resets in ${Math.max(1, Math.ceil(diffMs / minute))}m)`;
+  if (diffMs < day) {
+    const hours = Math.floor(diffMs / hour);
+    const minutes = Math.ceil((diffMs % hour) / minute);
+    return minutes > 0 ? ` (resets in ${hours}h ${minutes}m)` : ` (resets in ${hours}h)`;
+  }
+  return ` (resets in ${Math.ceil(diffMs / day)}d)`;
 }
 
 function RouteField({
