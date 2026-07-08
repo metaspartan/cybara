@@ -156,6 +156,7 @@ describe("app release surface wiring", () => {
         newArchEnabled?: boolean;
         ios?: {
           bundleIdentifier?: string;
+          buildNumber?: string;
           infoPlist?: {
             NSLocalNetworkUsageDescription?: string;
             NSAppTransportSecurity?: { NSAllowsLocalNetworking?: boolean };
@@ -184,6 +185,7 @@ describe("app release surface wiring", () => {
     expect(appJson.expo?.scheme).toBe("cybara");
     expect(appJson.expo?.newArchEnabled).toBe(true);
     expect(appJson.expo?.ios?.bundleIdentifier).toBe("com.ck.cybara");
+    expect(appJson.expo?.ios?.buildNumber).toBe(String(expectedVersionCode));
     expect(appJson.expo?.ios?.infoPlist?.NSLocalNetworkUsageDescription).toContain(
       "Cybara gateway"
     );

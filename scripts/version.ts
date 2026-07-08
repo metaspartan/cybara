@@ -15,29 +15,35 @@ const CARGO_TOML_PATH = join(ROOT, "src-tauri", "Cargo.toml");
 const TAURI_CONFIG_PATH = join(ROOT, "src-tauri", "tauri.conf.json");
 const MOBILE_APP_JSON_PATH = join(ROOT, "apps", "mobile", "app.json");
 
-function androidVersionCode(version: string): number {
+function mobileBuildNumber(version: string): number {
   const match = version.match(/^(\d+)\.(\d+)\.(\d+)/);
   if (!match) {
-    throw new Error(`Invalid Android release version: ${version}`);
+    throw new Error(`Invalid mobile release version: ${version}`);
   }
   const [, majorRaw, minorRaw, patchRaw] = match;
   const major = Number(majorRaw);
   const minor = Number(minorRaw);
   const patch = Number(patchRaw);
   if (minor > 99 || patch > 9999) {
-    throw new Error(`Android versionCode cannot encode release version: ${version}`);
+    throw new Error(`Mobile build number cannot encode release version: ${version}`);
   }
   return major * 1_000_000 + minor * 10_000 + patch;
 }
 
 function replaceExpoVersion(jsonText: string, version: string): string {
   const parsed = JSON.parse(jsonText) as {
-    expo?: { android?: Record<string, unknown> } & Record<string, unknown>;
+    expo?: { android?: Record<string, unknown>; ios?: Record<string, unknown> } & Record<
+      string,
+      unknown
+    >;
   };
   if (parsed.expo) {
+    const buildNumber = mobileBuildNumber(version);
     parsed.expo.version = version;
+    parsed.expo.ios = parsed.expo.ios || {};
+    parsed.expo.ios.buildNumber = String(buildNumber);
     parsed.expo.android = parsed.expo.android || {};
-    parsed.expo.android.versionCode = androidVersionCode(version);
+    parsed.expo.android.versionCode = buildNumber;
   }
   return `${JSON.stringify(parsed, null, 2)}\n`;
 }

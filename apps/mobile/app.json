@@ -22,7 +22,8 @@
         "NSAppTransportSecurity": {
           "NSAllowsLocalNetworking": true
         }
-      }
+      },
+      "buildNumber": "1000979"
     },
     "android": {
       "package": "com.ck.cybara",
