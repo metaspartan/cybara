@@ -3899,6 +3899,8 @@ interface GitHubReleaseAsset {
   browser_download_url?: string;
 }
 
+type GitHubReleaseNamedAsset = GitHubReleaseAsset & { name: string };
+
 interface GitHubReleaseResponse {
   tag_name?: string;
   html_url?: string;
@@ -3936,9 +3938,10 @@ async function fetchGitHubRelease(
   const hasExe = assetName.endsWith(".exe");
   const legacyBase = hasExe ? assetName.slice(0, -4) : assetName;
   const suffix = `${legacyBase.replace(/^cybara/, "")}-cli`;
-  const asset = (release.assets || []).find((candidate) => {
-    if (candidate.name.endsWith(".sha256")) return false;
-    const base = candidate.name.endsWith(".exe") ? candidate.name.slice(0, -4) : candidate.name;
+  const asset = (release.assets || []).find((candidate): candidate is GitHubReleaseNamedAsset => {
+    const candidateName = candidate.name;
+    if (!candidateName || candidateName.endsWith(".sha256")) return false;
+    const base = candidateName.endsWith(".exe") ? candidateName.slice(0, -4) : candidateName;
     return base.endsWith(suffix);
   });
   const downloadUrl = asset?.browser_download_url;
@@ -3951,14 +3954,12 @@ async function fetchGitHubRelease(
   return { release, assetName: asset.name, downloadUrl };
 }
 
-/** Compute the SHA256 hex digest of a file on disk. */
 function computeFileSha256(filePath: string): string {
   const hash = createHash("sha256");
   hash.update(readFileSync(filePath));
   return hash.digest("hex");
 }
 
-/** Fetch the expected SHA256 for an asset from its published sidecar. Returns null if unavailable. */
 async function fetchExpectedChecksum(
   repository: string,
   assetName: string,

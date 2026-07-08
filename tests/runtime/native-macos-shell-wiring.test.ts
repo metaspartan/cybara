@@ -338,6 +338,10 @@ describe("native macOS shell wiring", () => {
     expect(metricsScreen).toContain("nativeProviderPlanWindowMetric(plan: plan, kind: kind)");
     expect(metricsScreen).toContain('("5h", "rolling_5h")');
     expect(metricsScreen).toContain('("Weekly", "rolling_week")');
+    expect(metricsScreen).toContain("private struct NativeProviderPlanWindowRow");
+    expect(metricsScreen).toContain("private struct MetricsPlanWindowList");
+    expect(metricsScreen).toContain('Text("Automatic Plan Windows")');
+    expect(metricsScreen).toContain('Label(row.unlimited ? "Unlimited"');
     expect(metricsScreen).toContain("nativeProviderPlanUsageTint(progress:");
     expect(metricsScreen).toContain("let tint: Color?");
     expect(metricsScreen).toContain("let progress: Double?");
@@ -347,6 +351,35 @@ describe("native macOS shell wiring", () => {
     expect(metricsScreen).toContain("if progress < 65 { return .blue }");
     expect(metricsScreen).toContain("if progress < 80 { return .yellow }");
     expect(metricsScreen).toContain("if progress < 95 { return .orange }");
+  });
+
+  test("native metrics loads fast and keeps a polished glass loading state", () => {
+    const metricsScreen = readFileSync(join(MACOS_APP_DIR, "NativeMetricsScreen.swift"), "utf8");
+
+    expect(metricsScreen).toContain("private struct MetricsLoadingSkeleton");
+    expect(metricsScreen).toContain("private struct MetricsInsightStrip");
+    expect(metricsScreen).toContain("MetricsInsightCard(");
+    expect(metricsScreen).toContain("async let overviewFetch = client.metricsOverview()");
+    expect(metricsScreen).toContain("let overview = try await overviewFetch");
+    expect(metricsScreen).toContain("lastUpdated = Date()");
+    expect(metricsScreen).toContain(".cybaraGlass(cornerRadius: 18)");
+    expect(metricsScreen).toContain(".redacted(reason: .placeholder)");
+  });
+
+  test("native journey uses glass timeline sections with loading and empty states", () => {
+    const journeyScreen = readFileSync(join(MACOS_APP_DIR, "JourneyScreen.swift"), "utf8");
+
+    expect(journeyScreen).toContain("ScreenHeader(");
+    expect(journeyScreen).toContain("JourneyLoadingSkeleton()");
+    expect(journeyScreen).toContain("JourneyStatsRow(counts: journey.counts)");
+    expect(journeyScreen).toContain("JourneyTimeline(groups: grouped)");
+    expect(journeyScreen).toContain("private struct JourneyDaySection");
+    expect(journeyScreen).toContain("private struct JourneyTimelineRow");
+    expect(journeyScreen).toContain("GlassCard {");
+    expect(journeyScreen).toContain('Label(day, systemImage: "calendar")');
+    expect(journeyScreen).toContain("Rectangle()");
+    expect(journeyScreen).toContain("Color.primary.opacity(0.10)");
+    expect(journeyScreen).toContain("private struct JourneyEmptyState");
   });
 
   test("native chat sidebar groups sessions compactly by workspace", () => {

@@ -8,6 +8,7 @@ struct MetricsScreen: View {
     @State private var loaded = false
     @State private var loading = false
     @State private var error: String?
+    @State private var lastUpdated: Date?
 
     private let summaryColumns = [
         GridItem(.adaptive(minimum: 172, maximum: 260), spacing: 12, alignment: .top),
@@ -16,23 +17,30 @@ struct MetricsScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                HStack(alignment: .firstTextBaseline) {
+                HStack(alignment: .center) {
                     ScreenHeader(
                         title: "Metrics",
                         subtitle: "Token usage, storage, tools, providers, and model activity"
                     )
                     Spacer()
-                    Button {
-                        Task { await load(force: true) }
-                    } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise")
+                    VStack(alignment: .trailing, spacing: 6) {
+                        if let lastUpdated {
+                            Text("Updated \(lastUpdated.formatted(date: .omitted, time: .shortened))")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
+                        Button {
+                            Task { await load(force: true) }
+                        } label: {
+                            Label(loading ? "Refreshing" : "Refresh", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(loading)
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(loading)
                 }
 
                 if !loaded {
-                    ProgressView().frame(maxWidth: .infinity)
+                    MetricsLoadingSkeleton()
                 } else if let error {
                     LoadFailedView(message: error) { Task { await load(force: true) } }
                 } else if let snapshot {
@@ -87,6 +95,8 @@ struct MetricsScreen: View {
                 tint: .cyan
             )
         }
+
+        MetricsInsightStrip(snapshot: snapshot, accent: accentTint)
 
         MetricsResponsiveColumns {
             MetricsPanel(
@@ -289,7 +299,7 @@ struct MetricsScreen: View {
                         tint: .red
                     )
                 }
-                MetricsBarList(title: "Plan Usage", rows: snapshot.providerPlanRows, tint: .green)
+                MetricsPlanWindowList(rows: snapshot.providerPlanRows)
             }
 
             MetricsPanel(
@@ -372,8 +382,12 @@ struct MetricsScreen: View {
     private func load(force: Bool = false) async {
         guard !loading || force else { return }
         loading = true
+        defer {
+            loaded = true
+            loading = false
+        }
         do {
-            let overview = try await client.metricsOverview()
+            async let overviewFetch = client.metricsOverview()
             async let tokensFetch: TokenMetrics? = loadOptional { try await client.metricsTokens() }
             async let tokenAnalysisFetch: TokenAnalysisMetrics? = loadOptional { try await client.metricsTokenAnalysis() }
             async let filesFetch: FileMetrics? = loadOptional { try await client.metricsFiles() }
@@ -386,6 +400,7 @@ struct MetricsScreen: View {
             async let providerPlansFetch: ProviderPlanStatusResponse? = loadOptional {
                 try await client.providerPlanStatus()
             }
+            let overview = try await overviewFetch
 
             snapshot = NativeMetricsSnapshot(
                 overview: overview,
@@ -400,12 +415,11 @@ struct MetricsScreen: View {
                 insights: await insightsFetch,
                 providerPlans: await providerPlansFetch
             )
+            lastUpdated = Date()
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
-        loaded = true
-        loading = false
     }
 
     private func loadOptional<T>(_ operation: () async throws -> T) async -> T? {
@@ -489,7 +503,7 @@ private struct NativeMetricsSnapshot {
             .sorted { $0.bytes > $1.bytes }
     }
 
-    var providerPlanRows: [MetricsBarList.Row] {
+    var providerPlanRows: [NativeProviderPlanWindowRow] {
         Array(
             (providerPlans?.providers ?? [])
                 .filter { $0.monitored || !$0.windows.isEmpty || $0.externalSourceAvailable }
@@ -497,29 +511,45 @@ private struct NativeMetricsSnapshot {
                     [
                         ("5h", "rolling_5h"),
                         ("Weekly", "rolling_week"),
-                    ].compactMap { label, kind -> MetricsBarList.Row? in
+                    ].compactMap { label, kind -> NativeProviderPlanWindowRow? in
                         guard let usage = nativeProviderPlanWindowMetric(plan: plan, kind: kind) else {
                             return nil
                         }
-                        let planLabel = plan.planName ?? plan.status
-                        let valueLabel =
-                            usage.resetText.map { "\(usage.valueLabel) · \($0)" }
-                            ?? usage.valueLabel
-                        return MetricsBarList.Row(
-                            label: "\(plan.providerName) · \(label)",
-                            value: usage.progress,
-                            valueLabel: planLabel.isEmpty ? valueLabel : "\(valueLabel) · \(planLabel)",
+                        return NativeProviderPlanWindowRow(
+                            id: "\(plan.providerId)-\(kind)",
+                            providerName: plan.providerName,
+                            windowLabel: label,
+                            planName: plan.planName ?? plan.automaticTrackingLabel ?? plan.status,
+                            valueLabel: usage.valueLabel,
+                            resetText: usage.resetText,
+                            sourceLabel: plan.sourceLabel ?? plan.externalSourceLabel ?? plan.automaticTrackingLabel,
+                            status: plan.status,
+                            progress: usage.progress,
                             tint: nativeProviderPlanUsageTint(
                                 progress: usage.progress,
                                 unlimited: usage.unlimited
                             ),
-                            progress: usage.progress
+                            unlimited: usage.unlimited
                         )
                     }
                 }
                 .prefix(12)
         )
     }
+}
+
+private struct NativeProviderPlanWindowRow: Identifiable {
+    let id: String
+    let providerName: String
+    let windowLabel: String
+    let planName: String
+    let valueLabel: String
+    let resetText: String?
+    let sourceLabel: String?
+    let status: String
+    let progress: Double
+    let tint: Color
+    let unlimited: Bool
 }
 
 private struct NativeProviderPlanWindowMetric {
@@ -629,6 +659,142 @@ private struct MetricsResponsiveColumns<Left: View, Right: View>: View {
     }
 }
 
+private struct MetricsLoadingSkeleton: View {
+    private let columns = [
+        GridItem(.adaptive(minimum: 172, maximum: 260), spacing: 12, alignment: .top),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(0..<5, id: \.self) { _ in
+                    MetricsSkeletonBlock(height: 116)
+                }
+            }
+            MetricsResponsiveColumns {
+                ForEach(0..<3, id: \.self) { _ in
+                    MetricsSkeletonBlock(height: 238)
+                }
+            } right: {
+                ForEach(0..<3, id: \.self) { _ in
+                    MetricsSkeletonBlock(height: 214)
+                }
+            }
+        }
+        .redacted(reason: .placeholder)
+        .allowsHitTesting(false)
+    }
+}
+
+private struct MetricsSkeletonBlock: View {
+    let height: CGFloat
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.14))
+                .frame(width: 128, height: 12)
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.10))
+                .frame(maxWidth: .infinity, minHeight: max(42, height - 58), maxHeight: max(42, height - 58))
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(Color.primary.opacity(0.08))
+                .frame(width: 190, height: 9)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, minHeight: height, alignment: .leading)
+        .cybaraGlass(cornerRadius: 18)
+    }
+}
+
+private struct MetricsInsightStrip: View {
+    let snapshot: NativeMetricsSnapshot
+    let accent: Color
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                insightCards
+            }
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 190), spacing: 12, alignment: .top)],
+                spacing: 12
+            ) {
+                insightCards
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var insightCards: some View {
+        MetricsInsightCard(
+            title: "Current Pace",
+            value: metricsFormatCount(snapshot.tokenAnalysis?.summary?.averageTokensPerCall.map(Int.init) ?? snapshot.avgTokensPerMessage),
+            detail: "avg tokens per model call",
+            systemImage: "speedometer",
+            tint: accent
+        )
+        MetricsInsightCard(
+            title: "Reliability",
+            value: metricsFormatPercent(snapshot.insights?.toolReliability?.successRatePct ?? snapshot.apiSuccessRate),
+            detail: "tool/API success signal",
+            systemImage: "checkmark.seal",
+            tint: .green
+        )
+        MetricsInsightCard(
+            title: "Context Health",
+            value: metricsFormatCount(snapshot.contextWarnings24h),
+            detail: "\(metricsFormatCount(snapshot.contextCriticalWarnings24h)) critical warnings",
+            systemImage: "circle.dashed.inset.filled",
+            tint: snapshot.contextCriticalWarnings24h > 0 ? .red : .orange
+        )
+        MetricsInsightCard(
+            title: "Plan Windows",
+            value: metricsFormatCount(snapshot.providerPlanRows.count),
+            detail: "automatic provider limits",
+            systemImage: "creditcard",
+            tint: .cyan
+        )
+    }
+}
+
+private struct MetricsInsightCard: View {
+    let title: String
+    let value: String
+    let detail: String
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(tint.opacity(0.14)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .textCase(.uppercase)
+                Text(value)
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                Text(detail)
+                    .font(.system(size: 10.5, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(13)
+        .frame(maxWidth: .infinity, minHeight: 76, alignment: .leading)
+        .cybaraGlass(cornerRadius: 16)
+    }
+}
+
 private struct MetricsPanel<Content: View>: View {
     let title: String
     let subtitle: String
@@ -654,7 +820,7 @@ private struct MetricsPanel<Content: View>: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)
-                    .background(Circle().fill(Color.white.opacity(0.07)))
+                    .background(Circle().fill(Color.primary.opacity(0.07)))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title)
                         .font(.system(size: 15, weight: .bold, design: .rounded))
@@ -730,7 +896,7 @@ private struct MetricsMiniStat: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color.white.opacity(0.055))
+                .fill(Color.primary.opacity(0.055))
         )
     }
 }
@@ -760,7 +926,7 @@ private struct MetricsCallout: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.055))
+                .fill(Color.primary.opacity(0.055))
         )
     }
 }
@@ -779,7 +945,7 @@ private struct MetricsEmptyState: View {
             .frame(maxWidth: .infinity, minHeight: 54)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.white.opacity(0.035))
+                    .fill(Color.primary.opacity(0.035))
             )
     }
 }
@@ -848,7 +1014,7 @@ private struct MetricsTokenVelocityArea: View {
 
                     ZStack(alignment: .bottomLeading) {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.white.opacity(0.035))
+                        .fill(Color.primary.opacity(0.035))
 
                         Path { path in
                             path.move(to: CGPoint(x: 0, y: height))
@@ -953,7 +1119,7 @@ private struct MetricsTokenStack: View {
             GeometryReader { proxy in
                 if total == 0 {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
+                        .fill(Color.primary.opacity(0.06))
                 } else {
                     HStack(spacing: 3) {
                         tokenSegment(value: input, total: total, width: proxy.size.width, color: .blue)
@@ -1046,7 +1212,7 @@ private struct MetricsBarList: View {
                         }
                         GeometryReader { proxy in
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(Color.white.opacity(0.06))
+                                .fill(Color.primary.opacity(0.06))
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .fill(rowTint.opacity(0.75))
                                 .frame(
@@ -1058,6 +1224,75 @@ private struct MetricsBarList: View {
                         }
                         .frame(height: 6)
                     }
+                }
+            }
+        }
+        .padding(.top, 2)
+    }
+}
+
+private struct MetricsPlanWindowList: View {
+    let rows: [NativeProviderPlanWindowRow]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Automatic Plan Windows")
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+            if rows.isEmpty {
+                MetricsEmptyState("No automatic provider plan data yet")
+            } else {
+                ForEach(rows) { row in
+                    VStack(alignment: .leading, spacing: 7) {
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(row.providerName)
+                                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                                    .lineLimit(1)
+                                HStack(spacing: 6) {
+                                    Text(row.windowLabel)
+                                        .font(.system(size: 10.5, weight: .semibold, design: .rounded))
+                                        .foregroundStyle(row.tint)
+                                    Text(row.planName)
+                                        .font(.system(size: 10.5, design: .rounded))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            Spacer()
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(row.valueLabel)
+                                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                                    .foregroundStyle(row.tint)
+                                if let resetText = row.resetText {
+                                    Text(resetText)
+                                        .font(.system(size: 10, design: .rounded))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        GeometryReader { proxy in
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.primary.opacity(0.07))
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(row.tint.opacity(row.unlimited ? 0.52 : 0.78))
+                                .frame(width: max(4, proxy.size.width * CGFloat(row.progress / 100)))
+                        }
+                        .frame(height: 7)
+                        HStack(spacing: 6) {
+                            Label(row.unlimited ? "Unlimited" : row.status.capitalized, systemImage: row.unlimited ? "infinity" : "gauge.with.dots.needle.50percent")
+                            if let sourceLabel = row.sourceLabel, !sourceLabel.isEmpty {
+                                Text(sourceLabel)
+                            }
+                        }
+                        .font(.system(size: 10, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    }
+                    .padding(11)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.primary.opacity(0.045))
+                    )
                 }
             }
         }
@@ -1129,7 +1364,7 @@ private struct MetricsProviderRow: View {
         .padding(11)
         .background(
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.white.opacity(0.045))
+                .fill(Color.primary.opacity(0.045))
         )
     }
 }
@@ -1163,7 +1398,7 @@ private struct MetricsModelPerformanceList: View {
                         }
                         GeometryReader { proxy in
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(Color.white.opacity(0.06))
+                                .fill(Color.primary.opacity(0.06))
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .fill(tint.opacity(0.78))
                                 .frame(width: max(4, proxy.size.width * CGFloat(model.avgTps / maxTps)))
@@ -1182,7 +1417,7 @@ private struct MetricsModelPerformanceList: View {
                     .padding(11)
                     .background(
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.white.opacity(0.045))
+                            .fill(Color.primary.opacity(0.045))
                     )
                 }
             }
@@ -1256,7 +1491,7 @@ private struct MetricsStorageList: View {
                         GeometryReader { proxy in
                             let share = totalBytes > 0 ? Double(entry.bytes) / Double(totalBytes) : 0
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(Color.white.opacity(0.06))
+                                .fill(Color.primary.opacity(0.06))
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .fill(Color.cyan.opacity(0.76))
                                 .frame(width: max(4, proxy.size.width * CGFloat(share)))
@@ -1310,7 +1545,7 @@ private struct MetricsPathSizeList: View {
                     .padding(10)
                     .background(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color.white.opacity(0.04))
+                            .fill(Color.primary.opacity(0.04))
                     )
                 }
             }
