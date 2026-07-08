@@ -1229,14 +1229,7 @@ function PlanStatusPanel({ plan }: { plan: ProviderPlanSnapshot }) {
                 </div>
                 <div className="h-1.5 overflow-hidden rounded-full bg-black/30">
                   <div
-                    className={cn(
-                      "h-full rounded-full",
-                      percentValue >= 95
-                        ? "bg-red-300"
-                        : percentValue >= 80
-                          ? "bg-amber-300"
-                          : "bg-emerald-300"
-                    )}
+                    className={cn("h-full rounded-full", routerPlanUsageFillClass(percentValue))}
                     style={{ width: `${Math.max(2, percentValue)}%` }}
                   />
                 </div>
@@ -1247,6 +1240,14 @@ function PlanStatusPanel({ plan }: { plan: ProviderPlanSnapshot }) {
       )}
     </div>
   );
+}
+
+function routerPlanUsageFillClass(percent: number): string {
+  if (percent < 40) return "bg-emerald-300/80";
+  if (percent < 65) return "bg-sky-300";
+  if (percent < 80) return "bg-yellow-300";
+  if (percent < 95) return "bg-orange-300";
+  return "bg-red-300";
 }
 
 function planAutomaticUsageSummary(plan: ProviderPlanSnapshot): string | null {

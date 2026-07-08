@@ -185,7 +185,7 @@ export function MetricShareRows({
   rows,
   tone,
 }: {
-  rows: Array<{ label: string; value: string; detail?: string; amount: number }>;
+  rows: Array<{ label: string; value: string; detail?: string; amount: number; progress?: number; tone?: string }>;
   tone: string;
 }) {
   const max = Math.max(1, ...rows.map((row) => row.amount));
@@ -205,14 +205,14 @@ export function MetricShareRows({
             </Text>
           </View>
           <View style={styles.shareValue}>
-            <Text style={[styles.counter, { color: tone }]}>{row.value}</Text>
+            <Text style={[styles.counter, { color: row.tone ?? tone }]}>{row.value}</Text>
             <View style={styles.trackSmall}>
               <View
                 style={[
                   styles.trackFill,
                   {
-                    backgroundColor: tone,
-                    width: `${Math.max(4, (row.amount / max) * 100)}%`,
+                    backgroundColor: row.tone ?? tone,
+                    width: `${Math.max(4, row.progress ?? (row.amount / max) * 100)}%`,
                   },
                 ]}
               />

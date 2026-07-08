@@ -63,7 +63,12 @@ import type {
 import { PageLayout } from "@/components/layout";
 import { GlassCard, Input, Badge, Modal, Button } from "@/components/ui";
 import { formatRelativeTime } from "@/lib/utils";
-import { providerPlanWindowSummary } from "@/lib/providerPlanDisplay";
+import {
+  providerPlanUsageClasses,
+  providerPlanWindowDisplay,
+  providerPlanWindowSummary,
+  type ProviderPlanWindowDisplay,
+} from "@/lib/providerPlanDisplay";
 import { useUIStore } from "@/stores/uiStore";
 import { appendApiTokenParam, apiFetch } from "@/lib/auth";
 import {
@@ -233,11 +238,22 @@ function providerPlanTooltipDetail(plan?: ProviderPlanSnapshot | null): string |
   return windowSummary ? `Plan usage: ${windowSummary}` : null;
 }
 
+function providerPlanTooltipRows(
+  plan?: ProviderPlanSnapshot | null
+): Array<{ label: string; usage: ProviderPlanWindowDisplay }> {
+  if (!plan?.managedAutomatically) return [];
+  return [
+    { label: "5h", usage: providerPlanWindowDisplay(plan, "rolling_5h") },
+    { label: "Weekly", usage: providerPlanWindowDisplay(plan, "rolling_week") },
+  ].filter(({ usage }) => usage.unlimited || usage.percent !== null);
+}
+
 function contextUsageTooltip(
   usage?: SessionContextUsage | null,
   providerPlan?: ProviderPlanSnapshot | null
 ) {
   const planDetail = providerPlanTooltipDetail(providerPlan);
+  const planRows = providerPlanTooltipRows(providerPlan);
   if (!usage) {
     return {
       percent: "?",
@@ -245,6 +261,7 @@ function contextUsageTooltip(
       body: "Not loaded yet",
       detail: "Open a session or send a message to estimate usage.",
       planDetail,
+      planRows,
     };
   }
   const percent = Math.min(100, Math.max(0, usage.usedPercent));
@@ -256,6 +273,7 @@ function contextUsageTooltip(
       usage.limitTokens
     )} tokens used`,
     planDetail,
+    planRows,
   };
 }
 
@@ -315,10 +333,44 @@ function ContextUsageRing({
         <div className="context-usage-tooltip-title">{tooltip.title}</div>
         <div className="context-usage-tooltip-body font-medium">{tooltip.body}</div>
         <div className="context-usage-tooltip-detail">{tooltip.detail}</div>
-        {tooltip.planDetail && (
-          <div className="context-usage-tooltip-plan mt-2 border-t pt-2">{tooltip.planDetail}</div>
+        {tooltip.planRows.length > 0 && (
+          <div className="context-usage-tooltip-plan mt-2 space-y-1.5 border-t pt-2 text-left">
+            <div className="text-[11px] font-medium">Plan usage</div>
+            {tooltip.planRows.map(({ label, usage }) => (
+              <ProviderPlanTooltipBar key={label} label={label} usage={usage} />
+            ))}
+            {tooltip.planDetail && <div className="sr-only">{tooltip.planDetail}</div>}
+          </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function ProviderPlanTooltipBar({
+  label,
+  usage,
+}: {
+  label: string;
+  usage: ProviderPlanWindowDisplay;
+}) {
+  const classes = providerPlanUsageClasses(usage);
+  const width = usage.unlimited ? 100 : (usage.percent ?? 0);
+  return (
+    <div className="context-usage-tooltip-plan-bar">
+      <div className="flex items-center justify-between gap-3 text-[11px]">
+        <span className="text-gray-500">{label}</span>
+        <span className={`font-semibold tabular-nums ${classes.textClass}`}>{usage.value}</span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/10">
+        <div
+          className={`h-full rounded-full ${classes.fillClass}`}
+          style={{ width: `${Math.max(usage.unlimited ? 100 : 2, width)}%` }}
+        />
+      </div>
+      {usage.resetLabel && (
+        <div className="mt-0.5 truncate text-[10px] text-gray-500">{usage.resetLabel}</div>
+      )}
     </div>
   );
 }

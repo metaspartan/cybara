@@ -411,9 +411,11 @@ private func providerPlanResetText(_ resetsAt: String?) -> String? {
 private func providerPlanUsageTint(_ usage: ProviderPlanUsageValue) -> Color {
     if usage.unlimited { return .green }
     guard let percent = usage.percent else { return .secondary }
-    if percent >= 95 { return .red }
-    if percent >= 80 { return .orange }
-    return .cyan
+    if percent < 40 { return .green }
+    if percent < 65 { return .blue }
+    if percent < 80 { return .yellow }
+    if percent < 95 { return .orange }
+    return .red
 }
 
 private func providerPlanProgress(_ usage: ProviderPlanUsageValue) -> Double {

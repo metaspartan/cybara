@@ -1528,19 +1528,26 @@ function MetricsPanel({
   const providerPlanRows =
     metrics?.providerPlans?.providers
       .filter((plan) => plan.monitored || plan.windows.length > 0 || plan.externalSourceAvailable)
-      .slice(0, 6)
-      .map((plan) => {
-        const usage = plan.windows
-          .map((window) => window.usedPercent)
-          .filter((value): value is number => typeof value === "number");
-        const progress = usage.length > 0 ? Math.max(...usage) : null;
-        return {
-          label: plan.providerName,
-          value: progress === null ? plan.status : `${Math.round(progress)}%`,
-          detail: plan.planName || plan.status,
-          amount: progress ?? plan.localTokens30d,
-        };
-      }) ?? [];
+      .flatMap((plan) =>
+        [
+          { label: "5h", kind: "rolling_5h" as const },
+          { label: "Weekly", kind: "rolling_week" as const },
+        ]
+          .map(({ label, kind }) => {
+            const usage = mobileProviderPlanWindowDisplay(plan, kind);
+            if (!usage) return null;
+            return {
+              label: `${plan.providerName} · ${label}`,
+              value: usage.value,
+              detail: usage.reset ? `${plan.planName || plan.status} · ${usage.reset}` : plan.planName || plan.status,
+              amount: usage.progress,
+              progress: usage.progress,
+              tone: usage.tone,
+            };
+          })
+          .filter((row): row is NonNullable<typeof row> => row !== null)
+      )
+      .slice(0, 12) ?? [];
 
   return (
     <StableDetailPanel>
@@ -3423,18 +3430,42 @@ function mobileProviderPlanDetail(
 ): string | null {
   if (!plan?.managedAutomatically) return null;
   const percentFor = (kind: "rolling_5h" | "rolling_week") => {
-    const window = plan.windows.find(
-      (entry) =>
-        entry.kind === kind &&
-        entry.usageKnown &&
-        (entry.unlimited || typeof entry.usedPercent === "number")
-    );
-    if (!window || (!window.unlimited && typeof window.usedPercent !== "number")) return "--";
-    const value = window.unlimited ? "∞" : `${Math.ceil(window.usedPercent ?? 0)}%`;
-    const reset = mobileProviderPlanResetLabel(window.resetsAt);
-    return reset ? `${value} (${reset})` : value;
+    const usage = mobileProviderPlanWindowDisplay(plan, kind);
+    if (!usage) return "--";
+    return usage.reset ? `${usage.value} (${usage.reset})` : usage.value;
   };
   return `Plan usage: 5h ${percentFor("rolling_5h")} · Weekly ${percentFor("rolling_week")}`;
+}
+
+function mobileProviderPlanWindowDisplay(
+  plan: ProviderPlanStatusResponse["providers"][number] | null | undefined,
+  kind: "rolling_5h" | "rolling_week"
+): { value: string; progress: number; tone: string; reset: string | null } | null {
+  if (!plan?.managedAutomatically) return null;
+  const window = plan.windows.find(
+    (entry) =>
+      entry.kind === kind &&
+      entry.usageKnown &&
+      (entry.unlimited || typeof entry.usedPercent === "number")
+  );
+  if (!window || (!window.unlimited && typeof window.usedPercent !== "number")) return null;
+  const progress = window.unlimited
+    ? 100
+    : Math.min(100, Math.max(0, Math.ceil(window.usedPercent ?? 0)));
+  return {
+    value: window.unlimited ? "∞" : `${progress}%`,
+    progress,
+    tone: mobilePlanUsageTone(progress, window.unlimited),
+    reset: mobileProviderPlanResetLabel(window.resetsAt),
+  };
+}
+
+function mobilePlanUsageTone(percent: number, unlimited = false): string {
+  if (unlimited || percent < 40) return colors.green;
+  if (percent < 65) return colors.blueText;
+  if (percent < 80) return colors.amber;
+  if (percent < 95) return accentPalette.orange;
+  return colors.red;
 }
 
 function mobileProviderPlanResetLabel(resetsAt?: string): string | null {

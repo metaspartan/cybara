@@ -490,18 +490,98 @@ private struct NativeMetricsSnapshot {
     }
 
     var providerPlanRows: [MetricsBarList.Row] {
-        (providerPlans?.providers ?? [])
-            .filter { $0.monitored || !$0.windows.isEmpty || $0.externalSourceAvailable }
-            .prefix(6)
-            .map { plan in
-                let progress = plan.windows.compactMap(\.usedPercent).max()
-                return MetricsBarList.Row(
-                    label: plan.providerName,
-                    value: progress ?? Double(plan.localTokens30d),
-                    valueLabel: progress.map { "\(Int($0.rounded()))%" } ?? plan.status
-                )
-            }
+        Array(
+            (providerPlans?.providers ?? [])
+                .filter { $0.monitored || !$0.windows.isEmpty || $0.externalSourceAvailable }
+                .flatMap { plan in
+                    [
+                        ("5h", "rolling_5h"),
+                        ("Weekly", "rolling_week"),
+                    ].compactMap { label, kind -> MetricsBarList.Row? in
+                        guard let usage = nativeProviderPlanWindowMetric(plan: plan, kind: kind) else {
+                            return nil
+                        }
+                        let planLabel = plan.planName ?? plan.status
+                        let valueLabel =
+                            usage.resetText.map { "\(usage.valueLabel) · \($0)" }
+                            ?? usage.valueLabel
+                        return MetricsBarList.Row(
+                            label: "\(plan.providerName) · \(label)",
+                            value: usage.progress,
+                            valueLabel: planLabel.isEmpty ? valueLabel : "\(valueLabel) · \(planLabel)",
+                            tint: nativeProviderPlanUsageTint(
+                                progress: usage.progress,
+                                unlimited: usage.unlimited
+                            ),
+                            progress: usage.progress
+                        )
+                    }
+                }
+                .prefix(12)
+        )
     }
+}
+
+private struct NativeProviderPlanWindowMetric {
+    let progress: Double
+    let valueLabel: String
+    let resetText: String?
+    let unlimited: Bool
+}
+
+private func nativeProviderPlanWindowMetric(
+    plan: ProviderPlanSnapshot,
+    kind: String
+) -> NativeProviderPlanWindowMetric? {
+    guard plan.managedAutomatically else { return nil }
+    guard let window = plan.windows.first(where: {
+        $0.kind == kind && $0.usageKnown && ($0.unlimited || $0.usedPercent != nil)
+    }) else {
+        return nil
+    }
+    if window.unlimited {
+        return NativeProviderPlanWindowMetric(
+            progress: 100,
+            valueLabel: "∞",
+            resetText: nativeProviderPlanMetricResetText(window.resetsAt),
+            unlimited: true
+        )
+    }
+    let progress = min(100, max(0, ceil(window.usedPercent ?? 0)))
+    return NativeProviderPlanWindowMetric(
+        progress: progress,
+        valueLabel: "\(Int(progress))%",
+        resetText: nativeProviderPlanMetricResetText(window.resetsAt),
+        unlimited: false
+    )
+}
+
+private func nativeProviderPlanUsageTint(progress: Double, unlimited: Bool) -> Color {
+    if unlimited || progress < 40 { return .green }
+    if progress < 65 { return .blue }
+    if progress < 80 { return .yellow }
+    if progress < 95 { return .orange }
+    return .red
+}
+
+private func nativeProviderPlanMetricResetText(_ resetsAt: String?) -> String? {
+    guard let resetsAt else { return nil }
+    let fractionalFormatter = ISO8601DateFormatter()
+    fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    let date = fractionalFormatter.date(from: resetsAt) ?? ISO8601DateFormatter().date(from: resetsAt)
+    guard let date else { return nil }
+    let seconds = date.timeIntervalSinceNow
+    if seconds <= 0 { return "reset ready" }
+    let minute = 60.0
+    let hour = 60.0 * minute
+    let day = 24.0 * hour
+    if seconds < hour { return "\(max(1, Int(ceil(seconds / minute))))m reset" }
+    if seconds < day {
+        let hours = Int(seconds / hour)
+        let minutes = Int(ceil(seconds.truncatingRemainder(dividingBy: hour) / minute))
+        return minutes > 0 ? "\(hours)h \(minutes)m reset" : "\(hours)h reset"
+    }
+    return "\(Int(ceil(seconds / day)))d reset"
 }
 
 private struct NativeStorageCategoryEntry: Identifiable, Hashable {
@@ -917,6 +997,22 @@ private struct MetricsBarList: View {
         let label: String
         let value: Double
         let valueLabel: String
+        let tint: Color?
+        let progress: Double?
+
+        init(
+            label: String,
+            value: Double,
+            valueLabel: String,
+            tint: Color? = nil,
+            progress: Double? = nil
+        ) {
+            self.label = label
+            self.value = value
+            self.valueLabel = valueLabel
+            self.tint = tint
+            self.progress = progress
+        }
     }
 
     let title: String
@@ -933,6 +1029,9 @@ private struct MetricsBarList: View {
             } else {
                 let maxValue = max(rows.map(\.value).max() ?? 0, 1)
                 ForEach(rows) { row in
+                    let rowTint = row.tint ?? tint
+                    let rowProgress = row.progress ?? row.value
+                    let denominator = row.progress == nil ? maxValue : 100
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
                             Text(row.label)
@@ -949,8 +1048,13 @@ private struct MetricsBarList: View {
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
                                 .fill(Color.white.opacity(0.06))
                             RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(tint.opacity(0.75))
-                                .frame(width: max(4, proxy.size.width * CGFloat(row.value / maxValue)))
+                                .fill(rowTint.opacity(0.75))
+                                .frame(
+                                    width: max(
+                                        4,
+                                        proxy.size.width * CGFloat(rowProgress / denominator)
+                                    )
+                                )
                         }
                         .frame(height: 6)
                     }

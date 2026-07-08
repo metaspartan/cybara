@@ -35,6 +35,7 @@ import { useUIStore } from "@/stores/uiStore";
 import { providerPlansApi } from "@/lib/api";
 import { apiFetch } from "@/lib/auth";
 import {
+  providerPlanUsageClasses,
   providerPlanWindowDisplay,
   type ProviderPlanWindowDisplay,
 } from "@/lib/providerPlanDisplay";
@@ -527,27 +528,11 @@ function ProviderPlanUsagePill({
   usage: ProviderPlanWindowDisplay;
 }) {
   const percent = usage.percent;
-  const isKnown = percent !== null || usage.unlimited;
-  const tone = !isKnown
-    ? "border-white/10 bg-white/[0.03] text-gray-500"
-    : usage.unlimited
-      ? "border-emerald-400/20 bg-emerald-400/10 text-emerald-200"
-      : percent >= 95
-        ? "border-red-400/25 bg-red-400/10 text-red-200"
-        : percent >= 80
-          ? "border-amber-400/25 bg-amber-400/10 text-amber-200"
-          : "border-cyan-400/20 bg-cyan-400/10 text-cyan-200";
-  const fillClass = usage.unlimited
-    ? "bg-emerald-300/80"
-    : percent !== null && percent >= 95
-      ? "bg-red-300"
-      : percent !== null && percent >= 80
-        ? "bg-amber-300"
-        : "bg-cyan-300";
+  const tone = providerPlanUsageClasses(usage);
   const width = usage.unlimited ? 100 : (percent ?? 0);
   return (
     <span
-      className={`inline-flex min-w-[92px] flex-col gap-1 rounded-full border px-2.5 py-1.5 text-xs ${tone}`}
+      className={`inline-flex min-w-[92px] flex-col gap-1 rounded-full border px-2.5 py-1.5 text-xs ${tone.borderClass} ${tone.bgClass} ${tone.textClass}`}
     >
       <span className="flex w-full items-center justify-between gap-2">
         <span className="text-gray-400">{label}</span>
@@ -555,7 +540,7 @@ function ProviderPlanUsagePill({
       </span>
       <span className="h-1 w-full overflow-hidden rounded-full bg-white/10">
         <span
-          className={`block h-full rounded-full ${fillClass}`}
+          className={`block h-full rounded-full ${tone.fillClass}`}
           style={{ width: `${Math.max(usage.unlimited ? 100 : 0, width)}%` }}
         />
       </span>

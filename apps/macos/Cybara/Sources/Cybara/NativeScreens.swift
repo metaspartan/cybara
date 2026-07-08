@@ -1046,6 +1046,40 @@ struct ChatScreen: View {
         return "Plan usage: 5h \(percent(for: "rolling_5h")) · Weekly \(percent(for: "rolling_week"))"
     }
 
+    private var providerPlanUsageRows: [NativeContextProviderPlanUsageRow] {
+        guard let plan = activeProviderPlan else { return [] }
+        guard plan.managedAutomatically else { return [] }
+        return [
+            ("5h", "rolling_5h"),
+            ("Weekly", "rolling_week"),
+        ].compactMap { label, kind in
+            guard let window = plan.windows.first(where: {
+                $0.kind == kind && $0.usageKnown && ($0.unlimited || $0.usedPercent != nil)
+            }) else {
+                return nil
+            }
+            if window.unlimited {
+                return NativeContextProviderPlanUsageRow(
+                    id: kind,
+                    label: label,
+                    value: "∞",
+                    percent: nil,
+                    unlimited: true,
+                    resetText: nativeProviderPlanResetText(window.resetsAt)
+                )
+            }
+            let percent = min(100, max(0, ceil(window.usedPercent ?? 0)))
+            return NativeContextProviderPlanUsageRow(
+                id: kind,
+                label: label,
+                value: "\(Int(percent))%",
+                percent: percent,
+                unlimited: false,
+                resetText: nativeProviderPlanResetText(window.resetsAt)
+            )
+        }
+    }
+
     private func nativeProviderPlanResetText(_ resetsAt: String?) -> String? {
         guard let resetsAt else { return nil }
         let fractionalFormatter = ISO8601DateFormatter()
@@ -1507,7 +1541,8 @@ struct ChatScreen: View {
     }
 
     private var contextUsagePopover: some View {
-        VStack(spacing: 3) {
+        let planRows = providerPlanUsageRows
+        return VStack(spacing: 3) {
             Text("Context window:")
                 .foregroundStyle(.secondary)
             if let usage = activeContextUsage {
@@ -1520,11 +1555,16 @@ struct ChatScreen: View {
                 Text("Open a session or send a message to estimate usage.")
                     .multilineTextAlignment(.center)
             }
-            if let providerPlanText {
+            if !planRows.isEmpty {
                 Divider().padding(.vertical, 4)
-                Text(providerPlanText)
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.center)
+                Text("Plan usage")
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                VStack(spacing: 7) {
+                    ForEach(planRows) { row in
+                        NativeContextProviderPlanUsageBar(row: row)
+                    }
+                }
             }
         }
         .font(.system(size: 12, design: .rounded))
@@ -2627,6 +2667,70 @@ private struct TaskEditorSheet: View {
         }
         saving = false
     }
+}
+
+private struct NativeContextProviderPlanUsageRow: Identifiable {
+    let id: String
+    let label: String
+    let value: String
+    let percent: Double?
+    let unlimited: Bool
+    let resetText: String?
+}
+
+private struct NativeContextProviderPlanUsageBar: View {
+    let row: NativeContextProviderPlanUsageRow
+
+    var body: some View {
+        let tint = nativeContextProviderPlanUsageTint(row)
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 8) {
+                Text(row.label)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 12)
+                Text(row.value)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(tint)
+            }
+            GeometryReader { proxy in
+                Capsule()
+                    .fill(Color.white.opacity(0.08))
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(tint.opacity(0.82))
+                            .frame(
+                                width: max(
+                                    3,
+                                    proxy.size.width * nativeContextProviderPlanProgress(row)
+                                )
+                            )
+                    }
+            }
+            .frame(height: 5)
+            if let resetText = row.resetText {
+                Text(resetText)
+                    .font(.system(size: 10, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+
+private func nativeContextProviderPlanUsageTint(_ row: NativeContextProviderPlanUsageRow) -> Color {
+    if row.unlimited { return .green }
+    guard let percent = row.percent else { return .secondary }
+    if percent < 40 { return .green }
+    if percent < 65 { return .blue }
+    if percent < 80 { return .yellow }
+    if percent < 95 { return .orange }
+    return .red
+}
+
+private func nativeContextProviderPlanProgress(_ row: NativeContextProviderPlanUsageRow) -> Double {
+    if row.unlimited { return 1 }
+    guard let percent = row.percent else { return 0 }
+    return min(1, max(0, percent / 100))
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

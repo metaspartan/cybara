@@ -38,6 +38,11 @@ import {
   type MetricsStorage,
 } from "@/hooks/useApi";
 import { providerPlansApi } from "@/lib/api";
+import {
+  providerPlanUsageClasses,
+  providerPlanWindowDisplay,
+  type ProviderPlanWindowDisplay,
+} from "@/lib/providerPlanDisplay";
 import type { ProviderPlanSnapshot, ProviderPlanStatusResponse } from "@/types";
 
 const DETAIL_METRICS_IDLE_DELAY_MS = 120;
@@ -60,19 +65,20 @@ function formatBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
-function providerPlanProgress(plan: ProviderPlanSnapshot): number | null {
-  const usage = plan.windows
-    .map((window) => window.usedPercent)
-    .filter((value): value is number => typeof value === "number");
-  if (usage.length === 0) return null;
-  return Math.min(100, Math.max(...usage));
+function providerPlanStatusTone(status: ProviderPlanSnapshot["status"]): string {
+  if (status === "ok") return "text-emerald-300";
+  if (status === "warning") return "text-amber-300";
+  if (status === "exhausted") return "text-red-300";
+  return "text-gray-400";
 }
 
-function providerPlanTone(plan: ProviderPlanSnapshot): string {
-  if (plan.status === "ok") return "text-emerald-300";
-  if (plan.status === "warning") return "text-amber-300";
-  if (plan.status === "exhausted") return "text-red-300";
-  return "text-gray-400";
+interface ProviderPlanMetricRow {
+  id: string;
+  providerName: string;
+  planName?: string;
+  status: ProviderPlanSnapshot["status"];
+  label: string;
+  usage: ProviderPlanWindowDisplay;
 }
 
 export function Metrics() {
@@ -382,11 +388,26 @@ export function Metrics() {
     [modelMetrics?.models, tokenAnalysisData?.modelThoughtProfiles]
   );
 
-  const providerPlanRows = useMemo(
+  const providerPlanRows = useMemo<ProviderPlanMetricRow[]>(
     () =>
       (providerPlanStatus?.providers || [])
         .filter((plan) => plan.monitored || plan.windows.length > 0 || plan.externalSourceAvailable)
-        .slice(0, 8),
+        .flatMap((plan) =>
+          [
+            { label: "5h", usage: providerPlanWindowDisplay(plan, "rolling_5h") },
+            { label: "Weekly", usage: providerPlanWindowDisplay(plan, "rolling_week") },
+          ]
+            .filter(({ usage }) => usage.unlimited || usage.percent !== null)
+            .map(({ label, usage }) => ({
+              id: `${plan.providerId}:${label}`,
+              providerName: plan.providerName,
+              planName: plan.planName,
+              status: plan.status,
+              label,
+              usage,
+            }))
+        )
+        .slice(0, 12),
     [providerPlanStatus?.providers]
   );
 
@@ -649,34 +670,33 @@ export function Metrics() {
               <MetricRowsSkeleton />
             ) : (
               <div className="space-y-3">
-                {providerPlanRows.map((plan) => {
-                  const progress = providerPlanProgress(plan);
+                {providerPlanRows.map((row) => {
+                  const classes = providerPlanUsageClasses(row.usage);
+                  const width = row.usage.unlimited ? 100 : (row.usage.percent ?? 0);
                   return (
-                    <div key={plan.providerId} className="rounded-lg bg-white/5 p-3">
+                    <div key={row.id} className="rounded-lg bg-white/5 p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="text-sm text-white truncate">{plan.providerName}</p>
+                          <p className="text-sm text-white truncate">{row.providerName}</p>
                           <p className="text-xs text-gray-500 truncate">
-                            {plan.planName || plan.status}
+                            {row.label} limit{row.planName ? ` · ${row.planName}` : ""}
                           </p>
                         </div>
-                        <span className={`text-xs font-medium ${providerPlanTone(plan)}`}>
-                          {plan.status}
+                        <span className={`text-xs font-medium ${classes.textClass}`}>
+                          {row.usage.value}
                         </span>
                       </div>
-                      {progress !== null && (
-                        <div className="mt-2 h-1.5 rounded-full bg-white/10 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-emerald-400"
-                            style={{ width: `${progress}%` }}
-                          />
-                        </div>
-                      )}
+                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className={`h-full rounded-full ${classes.fillClass}`}
+                          style={{ width: `${Math.max(row.usage.unlimited ? 100 : 2, width)}%` }}
+                        />
+                      </div>
                       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
-                        <span>{formatNumber(plan.localTokens30d)} tokens 30d</span>
-                        {plan.localSpend30d > 0 && (
-                          <span>${plan.localSpend30d.toFixed(2)} 30d</span>
-                        )}
+                        <span className={providerPlanStatusTone(row.status)}>
+                          {row.status}
+                        </span>
+                        {row.usage.resetLabel && <span>{row.usage.resetLabel}</span>}
                       </div>
                     </div>
                   );
