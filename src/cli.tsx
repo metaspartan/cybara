@@ -3933,9 +3933,6 @@ async function fetchGitHubRelease(
   }
 
   const release = (await releaseResponse.json()) as GitHubReleaseResponse;
-  // Release CLI binaries are published as `cybara-v<version>-<target>-cli`
-  // (with `.exe` on Windows). Derive that stable suffix from the legacy asset
-  // name and match by it, so a version bump never breaks the self-update.
   const hasExe = assetName.endsWith(".exe");
   const legacyBase = hasExe ? assetName.slice(0, -4) : assetName;
   const suffix = `${legacyBase.replace(/^cybara/, "")}-cli`;

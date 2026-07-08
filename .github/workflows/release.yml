@@ -80,10 +80,6 @@ jobs:
       - name: Build TypeScript
         run: bun run build
       - name: Cross-compile CLI binary
-        # main.ts is the CLI dispatcher (subcommands like `update`, `version`,
-        # `status`, plus `start`/no-args → gateway). Compiling index.ts here made
-        # the standalone binary gateway-only, so `cybara update` just booted the
-        # server. The app sidecar (build-sidecar.ts) still uses index.ts.
         run: |
           bun build src/main.ts --compile --target=bun-${{ matrix.target }} --outfile=${{ matrix.artifact }} --external electron --external @aws-sdk/client-s3 --external onnxruntime-node --external onnxruntime-web --external @huggingface/transformers
       - name: Upload CLI artifact
@@ -617,6 +613,12 @@ jobs:
               exit 1
             fi
             cp cybara.mobileprovision "$HOME/Library/MobileDevice/Provisioning Profiles/${PROFILE_UUID}.mobileprovision"
+            PROFILE_HAS_PUSH="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' profile.plist 2>/dev/null || true)"
+            if [ -z "$PROFILE_HAS_PUSH" ]; then
+              for ENT in $(find . -name '*.entitlements'); do
+                /usr/libexec/PlistBuddy -c 'Delete :aps-environment' "$ENT" 2>/dev/null || true
+              done
+            fi
             {
               echo '<?xml version="1.0" encoding="UTF-8"?>'
               echo '<plist version="1.0"><dict>'

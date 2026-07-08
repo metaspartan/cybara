@@ -4,10 +4,6 @@ set -euo pipefail
 REPO="${CYBARA_RELEASE_REPOSITORY:-metaspartan/cybara}"
 VERSION="${CYBARA_VERSION:-latest}"
 
-# Install to a directory that's already on PATH when possible so `cybara` is
-# callable directly. Prefer /usr/local/bin (writable without sudo on most
-# macOS/Homebrew + Linux dev setups); otherwise fall back to ~/.local/bin.
-# `/usr/bin` is intentionally avoided — it's SIP-protected on macOS.
 if [ -n "${CYBARA_INSTALL_DIR:-}" ]; then
   INSTALL_DIR="$CYBARA_INSTALL_DIR"
 elif [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
@@ -73,9 +69,6 @@ case "$ARCH" in
     ;;
 esac
 
-# Release CLI binaries are published as `cybara-v<version>-<platform>-<arch>-cli`
-# (with a `.exe` suffix on Windows). Match by that stable suffix rather than a
-# fixed name so a version bump never breaks the installer.
 ASSET_SUFFIX="-${PLATFORM}-${RELEASE_ARCH}-cli"
 if [ "$VERSION" = "latest" ]; then
   API_URL="https://api.github.com/repos/${REPO}/releases/latest"
@@ -84,9 +77,6 @@ else
   API_URL="https://api.github.com/repos/${REPO}/releases/tags/v${VERSION}"
 fi
 
-# Download the release metadata, then parse it with only curl + grep + sed (no
-# python/jq). Every asset's `browser_download_url` ends with its filename, so we
-# list those URLs and pick the one whose basename ends with our CLI suffix.
 REL_JSON="$(mktemp "${TMPDIR:-/tmp}/cybara-release.XXXXXX")"
 trap 'rm -f "$REL_JSON"' EXIT
 if ! curl -fsSL "$API_URL" -o "$REL_JSON"; then
@@ -98,7 +88,6 @@ ASSET_URLS="$(
   grep -oE '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]+"' "$REL_JSON" \
     | sed -E 's/.*"(https[^"]+)".*/\1/'
 )"
-# `-e` marks the pattern explicitly so the leading dash isn't read as an option.
 DOWNLOAD_URL="$(printf '%s\n' "$ASSET_URLS" | grep -E -e "${ASSET_SUFFIX}\$" | head -n 1)"
 CHECKSUM_URL="$(printf '%s\n' "$ASSET_URLS" | grep -E -e "${ASSET_SUFFIX}\.sha256\$" | head -n 1)"
 RELEASE_TAG="$(
@@ -124,7 +113,6 @@ trap 'rm -f "$TMP_FILE"' EXIT
 echo "Downloading cybara${ASSET_SUFFIX} from ${REPO} (${VERSION})..."
 curl -fsSL "$DOWNLOAD_URL" -o "$TMP_FILE"
 
-# Verify the SHA256 of the downloaded binary against the published sidecar.
 if [ -n "$CHECKSUM_URL" ]; then
   EXPECTED="$(curl -fsSL "$CHECKSUM_URL" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
   if [ -n "$EXPECTED" ] && command -v sha256sum >/dev/null 2>&1; then
@@ -154,9 +142,6 @@ trap - EXIT
 
 echo "Cybara ${VERSION} installed to $INSTALL_DIR/cybara"
 
-# Make `cybara` callable without a full path. If the install dir isn't already
-# on PATH, add it to the current shell's rc file (idempotently) and tell the
-# user how to activate it now.
 case ":$PATH:" in
   *":$INSTALL_DIR:"*)
     echo "Run: cybara --help"
