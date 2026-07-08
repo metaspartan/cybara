@@ -26,6 +26,9 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("opencode_zen")).toBe("claude-opus-4-8");
     expect(getDefaultModel("opencode")).toBe("claude-opus-4-8");
     expect(getDefaultModel("openai-codex")).toBe("gpt-5.5");
+    expect(getDefaultModel("chutes")).toBe("Qwen/Qwen3-32B-TEE");
+    expect(getDefaultModel("featherless")).toBe("Qwen/Qwen3-32B");
+    expect(getDefaultModel("longcat")).toBe("LongCat-2.0");
     expect(getDefaultModel("github_copilot")).toBe("gpt-5.5");
     expect(getDefaultModel("github-copilot")).toBe("gpt-5.5");
     expect(getDefaultModel("kimi-coding")).toBe("kimi-for-coding");
@@ -61,6 +64,9 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers.together.api).toBe("openai-completions");
     expect(providers.huggingface.api).toBe("openai-completions");
     expect(providers["cloudflare-ai-gateway"].api).toBe("anthropic-messages");
+    expect(providers.chutes.api).toBe("openai-completions");
+    expect(providers.featherless.api).toBe("openai-completions");
+    expect(providers.longcat.api).toBe("openai-completions");
     expect(providers.xai.api).toBe("openai-responses");
     expect(providers["xai-oauth"].api).toBe("openai-responses");
   });
@@ -107,6 +113,10 @@ describe("Provider model defaults and API-family parity", () => {
     expect(
       providers.nvidia.models.some((model) => model.id === "nvidia/llama-3.1-nemotron-70b-instruct")
     ).toBe(true);
+    expect(providers.chutes.baseUrl).toBe("https://llm.chutes.ai/v1");
+    expect(providers.chutes.authType).toBe("api_key");
+    expect(providers.featherless.models.some((model) => model.id === "Qwen/Qwen3-32B")).toBe(true);
+    expect(providers.longcat.models.some((model) => model.id === "LongCat-2.0")).toBe(true);
   });
 
   test("configures google-gemini-cli for redirect OAuth", () => {

@@ -51,7 +51,9 @@ export const PROVIDER_TO_MODELS_DEV: Record<string, string> = {
   "ollama-cloud": "ollama-cloud",
   bedrock: "amazon-bedrock",
   arcee: "arcee",
+  featherless: "featherless-ai",
   gmi: "gmi",
+  longcat: "longcat",
 };
 
 export function extractModelsDevProvider(apiJson: unknown, slug: string): ModelsDevModel[] {

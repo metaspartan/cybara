@@ -1,6 +1,6 @@
 # Cybara AI Providers
 
-Cybara ships with 62 provider definitions in `src/core/providers.ts`. The registry covers hosted
+Cybara ships with 64 provider definitions in `src/core/providers.ts`. The registry covers hosted
 AI APIs, OAuth-backed coding providers, local OpenAI-compatible runtimes, proxy/gateway providers,
 and AWS Bedrock. Model names change frequently, so use the UI, `GET /api/providers/available`, or
 `cybara provider models <provider-id>` for the current model catalog exposed by a configured
@@ -112,10 +112,12 @@ sent.
 | `z.ai` | Z.AI (Zhipu / GLM) | API key |
 | `z.ai-coding` | Z.AI Coding Plan | API key |
 | `openai-codex` | OpenAI Codex (ChatGPT OAuth) | OAuth |
-| `chutes` | Chutes | OAuth |
+| `chutes` | Chutes | API key |
 | `vercel-ai-gateway` | Vercel AI Gateway | API key |
 | `google-gemini-cli` | Google Gemini CLI | OAuth |
 | `copilot-proxy` | Copilot Proxy | OAuth |
+| `featherless` | Featherless AI | API key |
+| `longcat` | LongCat | API key |
 | `deepseek` | DeepSeek | API key |
 | `alibaba` | Alibaba DashScope | API key |
 | `alibaba-coding-plan` | Alibaba Coding Plan | API key |
@@ -147,7 +149,6 @@ The following providers use browser-based OAuth instead of raw API keys:
 - `qwen-portal`
 - `github_copilot`
 - `openai-codex`
-- `chutes`
 - `google-gemini-cli`
 - `copilot-proxy`
 

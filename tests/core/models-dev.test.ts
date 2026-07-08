@@ -41,7 +41,17 @@ describe("models.dev extraction", () => {
   });
 
   test("provider mapping covers major providers", () => {
-    for (const id of ["openai", "anthropic", "google", "xai", "deepseek", "mistral", "groq"]) {
+    for (const id of [
+      "openai",
+      "anthropic",
+      "google",
+      "xai",
+      "deepseek",
+      "mistral",
+      "groq",
+      "featherless",
+      "longcat",
+    ]) {
       expect(PROVIDER_TO_MODELS_DEV[id]).toBeTruthy();
     }
   });
