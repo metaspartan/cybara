@@ -11,7 +11,7 @@ const MAX_RUN_LOGS = 100;
 
 function ensureDir(): void {
   if (!existsSync(CRON_DIR)) {
-    mkdirSync(CRON_DIR, { recursive: true });
+    mkdirSync(CRON_DIR, { recursive: true, mode: 0o700 });
   }
 }
 
@@ -31,7 +31,7 @@ export function loadJobs(): CronJob[] {
 export function saveJobs(jobs: CronJob[]): void {
   ensureDir();
   const store: CronStoreFile = { version: 1, jobs };
-  writeFileSync(JOBS_FILE, JSON.stringify(store, null, 2));
+  writeFileSync(JOBS_FILE, JSON.stringify(store, null, 2), { mode: 0o600 });
 }
 
 function generateId(): string {
@@ -177,7 +177,7 @@ export function loadRunLogs(): CronRunLog[] {
 export function saveRunLogs(logs: CronRunLog[]): void {
   ensureDir();
   const trimmed = logs.slice(-MAX_RUN_LOGS);
-  writeFileSync(RUNS_FILE, JSON.stringify(trimmed, null, 2));
+  writeFileSync(RUNS_FILE, JSON.stringify(trimmed, null, 2), { mode: 0o600 });
 }
 
 export function addRunLog(log: CronRunLog): void {

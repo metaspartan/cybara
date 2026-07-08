@@ -125,8 +125,8 @@ jobs:
             sidecar: "src-tauri/bin/cybara-x86_64-pc-windows-msvc.exe"
           # Linux x64 — GitHub-hosted Linux runner
           - platform: linux
-            runner: ubuntu-latest
-            args: ""
+            runner: ubuntu-22.04
+            args: "--bundles deb,rpm"
             rust_target: x86_64-unknown-linux-gnu
             bun_target: bun-linux-x64
             sidecar: "src-tauri/bin/cybara-x86_64-unknown-linux-gnu"
@@ -162,7 +162,27 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf build-essential libssl-dev
+          FUSE_PACKAGE="libfuse2"
+          if ! apt-cache show "$FUSE_PACKAGE" >/dev/null 2>&1; then
+            FUSE_PACKAGE="libfuse2t64"
+          fi
+          sudo apt-get install -y \
+            appstream \
+            build-essential \
+            curl \
+            desktop-file-utils \
+            file \
+            libayatana-appindicator3-dev \
+            libglib2.0-dev \
+            libgtk-3-dev \
+            libssl-dev \
+            libwebkit2gtk-4.1-dev \
+            librsvg2-dev \
+            patchelf \
+            pkg-config \
+            wget \
+            zsync \
+            "$FUSE_PACKAGE"
       # Split into two steps (no '&&') so it runs under each OS's native shell
       # — bash on Linux/macOS, PowerShell on the self-hosted Windows runner —
       # On the hosted Windows runner `shell: bash` is git-bash (not WSL), so the
@@ -241,6 +261,23 @@ jobs:
           releaseDraft: true
           includeUpdaterJson: false
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+      - name: Build Linux AppImage (best-effort)
+        if: matrix.platform == 'linux'
+        continue-on-error: true
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          NO_STRIP: "true"
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "Cybara ${{ github.ref_name }}"
+          releaseBody: "Download the appropriate installer for your platform below."
+          releaseDraft: true
+          includeUpdaterJson: false
+          args: --verbose --bundles appimage --config src-tauri/tauri.release.conf.json
       - name: Build Tauri App (signed macOS)
         if: matrix.platform == 'macos' && env.HAS_MACOS_SIGNING == 'true' && env.HAS_MACOS_NOTARY != 'true'
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0

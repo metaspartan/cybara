@@ -168,7 +168,10 @@ function evaluateExpression(input: string): number {
     let value = parseUnary();
     for (;;) {
       const token = peek();
-      if (token?.kind === "op" && (token.value === "*" || token.value === "/" || token.value === "%")) {
+      if (
+        token?.kind === "op" &&
+        (token.value === "*" || token.value === "/" || token.value === "%")
+      ) {
         next();
         const rhs = parseUnary();
         if (token.value === "*") value *= rhs;

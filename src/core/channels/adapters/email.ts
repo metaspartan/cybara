@@ -101,6 +101,16 @@ export function sendSmtp(params: {
   body: string;
   allowInsecure?: boolean;
 }): Promise<boolean> {
+  if (/[\r\n]/.test(params.to) || /[\r\n]/.test(params.from)) {
+    return Promise.reject(new Error("Invalid email address: contains line breaks"));
+  }
+  if (
+    !/^[^\s<>@]+@[^\s<>@]+$/.test(params.to.trim()) ||
+    !/^[^\s<>@]+@[^\s<>@]+$/.test(params.from.trim())
+  ) {
+    return Promise.reject(new Error("Invalid email address"));
+  }
+  const subject = params.subject.replace(/[\r\n]+/g, " ");
   return new Promise((resolve) => {
     const implicitTls = params.port === 465;
     let socket: Socket | TLSSocket;
@@ -215,7 +225,7 @@ export function sendSmtp(params: {
       const message = [
         `From: ${params.from}`,
         `To: ${params.to}`,
-        `Subject: ${params.subject}`,
+        `Subject: ${subject}`,
         `Content-Type: text/plain; charset=utf-8`,
         ``,
         params.body,

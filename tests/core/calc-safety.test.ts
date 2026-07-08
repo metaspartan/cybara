@@ -58,9 +58,7 @@ describe("handleCalc rejects code injection", () => {
 
   test("does not execute side effects", async () => {
     (globalThis as Record<string, unknown>).__calcPwned = false;
-    await expect(
-      handleCalc({ expression: "__calcPwned = true" })
-    ).rejects.toThrow();
+    await expect(handleCalc({ expression: "__calcPwned = true" })).rejects.toThrow();
     expect((globalThis as Record<string, unknown>).__calcPwned).toBe(false);
   });
 });

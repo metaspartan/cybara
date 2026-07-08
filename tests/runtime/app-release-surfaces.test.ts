@@ -119,7 +119,19 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain("bun_target: bun-windows-x64");
     expect(workflow).toContain('sidecar: "src-tauri/bin/cybara-x86_64-pc-windows-msvc.exe"');
     expect(workflow).toContain("bun_target: bun-linux-x64");
+    expect(workflow).toContain("runner: ubuntu-22.04");
     expect(workflow).toContain('sidecar: "src-tauri/bin/cybara-x86_64-unknown-linux-gnu"');
+    expect(workflow).toContain('FUSE_PACKAGE="libfuse2"');
+    expect(workflow).toContain("desktop-file-utils");
+    expect(workflow).toContain("zsync");
+    expect(workflow).toContain('args: "--bundles deb,rpm"');
+    expect(workflow).toContain("name: Build Linux AppImage (best-effort)");
+    expect(workflow).toContain(
+      "args: --verbose --bundles appimage --config src-tauri/tauri.release.conf.json"
+    );
+    expect(workflow.indexOf('args: "--bundles deb,rpm"')).toBeLessThan(
+      workflow.indexOf("name: Build Linux AppImage (best-effort)")
+    );
   });
 
   test("release workflow runs native macOS unit tests when XCTest is available", () => {

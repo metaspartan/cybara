@@ -95,9 +95,17 @@ final class UpdateChecker: ObservableObject {
         }
         let notesResponse: NSApplication.ModalResponse =
             asset == nil ? .alertFirstButtonReturn : .alertSecondButtonReturn
-        if response == notesResponse, let url = URL(string: release.htmlURL) {
+        if response == notesResponse, let url = UpdateChecker.safeReleaseURL(release.htmlURL) {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    static func safeReleaseURL(_ raw: String) -> URL? {
+        guard let url = URL(string: raw), url.scheme?.lowercased() == "https" else { return nil }
+        guard let host = url.host?.lowercased() else { return nil }
+        let allowedHosts: Set<String> = ["github.com", "www.github.com"]
+        guard allowedHosts.contains(host) else { return nil }
+        return url
     }
 
     private func installAndRelaunch(_ asset: ReleaseAsset) async {
