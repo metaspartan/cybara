@@ -421,6 +421,19 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("NativeToolTimelineView(message: message)");
   });
 
+  test("native chat activity rows render markdown thoughts with neutral icons", () => {
+    const toolTimeline = readFileSync(join(MACOS_APP_DIR, "NativeToolTimeline.swift"), "utf8");
+
+    expect(toolTimeline).toContain("private func nativeActivityMarkdownText");
+    expect(toolTimeline).toContain("nativeActivityMarkdownText(activity.text)");
+    expect(toolTimeline).toContain("nativeActivityMarkdownText(displayCurrentStep)");
+    expect(toolTimeline).toContain("Circle()");
+    expect(toolTimeline).toContain(".fill(.secondary)");
+    expect(toolTimeline).toContain(".foregroundStyle(.secondary)");
+    expect(toolTimeline).not.toContain('if activity.toolName == "__thought" { return "sparkles" }');
+    expect(toolTimeline).not.toContain(".foregroundStyle(.green)");
+  });
+
   test("native chat strips assistant reasoning markup without altering user messages", () => {
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
     const markdown = readFileSync(join(MACOS_APP_DIR, "NativeMarkdown.swift"), "utf8");

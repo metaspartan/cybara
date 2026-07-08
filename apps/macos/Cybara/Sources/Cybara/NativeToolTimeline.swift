@@ -135,9 +135,10 @@ struct NativeLiveToolTimelineView: View {
                 HStack(alignment: .top, spacing: 7) {
                     ProgressView()
                         .controlSize(.mini)
+                        .tint(.secondary)
                         .frame(width: 13, height: 13)
                         .padding(.top, 1)
-                    Text(displayCurrentStep)
+                    nativeActivityMarkdownText(displayCurrentStep)
                         .font(.system(size: 11.8, design: .rounded))
                         .foregroundStyle(.secondary)
                         .lineLimit(3)
@@ -145,7 +146,9 @@ struct NativeLiveToolTimelineView: View {
                 }
             } else if visibleActivities.isEmpty {
                 HStack(spacing: 5) {
-                    ProgressView().controlSize(.mini)
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(.secondary)
                     Text("Thinking...")
                         .font(.system(size: 11.8, design: .rounded))
                         .foregroundStyle(.secondary)
@@ -163,8 +166,16 @@ private struct NativeToolActivityRow: View {
             if activity.phase == .start {
                 ProgressView()
                     .controlSize(.mini)
+                    .tint(.secondary)
                     .frame(width: 13, height: 13)
                     .padding(.top, 1)
+            } else if activity.toolName == "__thought" {
+                Circle()
+                    .fill(.secondary)
+                    .opacity(0.75)
+                    .frame(width: 6, height: 6)
+                    .frame(width: 13, alignment: .center)
+                    .padding(.top, 5)
             } else {
                 Image(systemName: icon)
                     .font(.system(size: 11.5, weight: .semibold))
@@ -173,9 +184,9 @@ private struct NativeToolActivityRow: View {
                     .padding(.top, 1)
             }
             HStack(alignment: .firstTextBaseline, spacing: 7) {
-                Text(activity.text)
+                nativeActivityMarkdownText(activity.text)
                     .font(.system(size: 11.8, design: .rounded))
-                    .foregroundStyle(activity.toolName == "__thought" ? .primary : .secondary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(3)
                     .textSelection(.enabled)
                 if let provider = activity.sandboxProvider {
@@ -186,7 +197,6 @@ private struct NativeToolActivityRow: View {
     }
 
     private var icon: String {
-        if activity.toolName == "__thought" { return "sparkles" }
         switch activity.phase {
         case .start: return "clock"
         case .result: return "checkmark.circle.fill"
@@ -195,13 +205,20 @@ private struct NativeToolActivityRow: View {
     }
 
     private var tint: Color {
-        if activity.toolName == "__thought" { return .indigo }
-        switch activity.phase {
-        case .start: return .orange
-        case .result: return .green
-        case .error: return .red
-        }
+        .secondary
     }
+}
+
+private func nativeActivityMarkdownText(_ text: String) -> Text {
+    if let attributed = try? AttributedString(
+        markdown: text,
+        options: AttributedString.MarkdownParsingOptions(
+            interpretedSyntax: .inlineOnlyPreservingWhitespace
+        )
+    ) {
+        return Text(attributed)
+    }
+    return Text(text)
 }
 
 private struct NativeToolCallDetailRow: View {
@@ -1272,7 +1289,7 @@ struct NativeGroupedActivities: View {
                         HStack(alignment: .top, spacing: 7) {
                             Image(systemName: "checkmark.circle.fill")
                                 .font(.system(size: 11.5, weight: .semibold))
-                                .foregroundStyle(.green)
+                                .foregroundStyle(.secondary)
                                 .frame(width: 13, alignment: .center)
                                 .padding(.top, 1)
                             Text(label)

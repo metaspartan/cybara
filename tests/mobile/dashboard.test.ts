@@ -69,6 +69,14 @@ const dashboardHelpersSource = readFileSync(
   new URL("../../apps/mobile/src/screens/dashboardHelpers.ts", import.meta.url),
   "utf8"
 );
+const dashboardChatSource = readFileSync(
+  new URL("../../apps/mobile/src/screens/dashboardChat.tsx", import.meta.url),
+  "utf8"
+);
+const dashboardStylesSource = readFileSync(
+  new URL("../../apps/mobile/src/screens/dashboardStyles.ts", import.meta.url),
+  "utf8"
+);
 
 const profile: GatewayProfile = {
   id: "local",
@@ -263,6 +271,17 @@ describe("mobile dashboard model", () => {
     expect(mobileComposerHeightForDraft("one\ntwo\nthree", 300)).toBe(
       MOBILE_CHAT_COMPOSER.maxHeight
     );
+  });
+
+  test("formats chat activity thoughts with markdown and neutral icons", () => {
+    expect(dashboardChatSource).toContain("parseInlineMarkdown(activity.text)");
+    expect(dashboardChatSource).toContain("styles.messageActivityDot");
+    expect(dashboardChatSource).toContain("CheckCircle2 color={colors.textMuted}");
+    expect(dashboardChatSource).toContain("Loader2 color={colors.textMuted}");
+    expect(dashboardChatSource).not.toContain("Sparkles");
+    expect(dashboardStylesSource).toContain("messageActivityDot");
+    expect(dashboardStylesSource).toContain("backgroundColor: colors.textMuted");
+    expect(dashboardStylesSource).toContain("messageThoughtText");
   });
 
   test("keeps chat settings in the persistent header with heavy metadata in the menu", () => {

@@ -16,7 +16,6 @@ import {
   Copy,
   Loader2,
   RotateCcw,
-  Sparkles,
   User,
 } from "lucide-react-native";
 import { colors } from "../theme/liquidGlass";
@@ -28,6 +27,7 @@ import {
   type MobileWorkActivity,
   hasUnicodeTextFallback,
   parseMarkdownBlocks,
+  parseInlineMarkdown,
   shouldUseSelectableNativeText,
   splitMessageContent,
   type MarkdownInline,
@@ -279,18 +279,18 @@ export function ChatMessageRow({
 
 export function WorkActivityIcon({ phase, toolName }: { phase: string; toolName?: string }) {
   if (toolName === "__thought") {
-    return <Sparkles color={colors.blueText} size={13} strokeWidth={2.2} />;
+    return <View style={styles.messageActivityDot} />;
   }
   if (phase === "start") {
-    return <Loader2 color={colors.amber} size={13} strokeWidth={2.2} />;
+    return <Loader2 color={colors.textMuted} size={13} strokeWidth={2.2} />;
   }
   if (phase === "error") {
-    return <AlertTriangle color={colors.red} size={13} strokeWidth={2.2} />;
+    return <AlertTriangle color={colors.textMuted} size={13} strokeWidth={2.2} />;
   }
   if (phase === "blocked") {
-    return <AlertTriangle color={colors.amber} size={13} strokeWidth={2.2} />;
+    return <AlertTriangle color={colors.textMuted} size={13} strokeWidth={2.2} />;
   }
-  return <CheckCircle2 color={colors.green} size={13} strokeWidth={2.2} />;
+  return <CheckCircle2 color={colors.textMuted} size={13} strokeWidth={2.2} />;
 }
 
 function MobileActivityRow({ activity }: { activity: MobileWorkActivity }) {
@@ -306,7 +306,7 @@ function MobileActivityRow({ activity }: { activity: MobileWorkActivity }) {
           activity.toolName === "__thought" && styles.messageThoughtText,
         ]}
       >
-        {activity.text}
+        <InlineMarkdown tokens={parseInlineMarkdown(activity.text)} />
       </Text>
     </View>
   );
@@ -344,7 +344,7 @@ export function WorkTimeline({
                 style={styles.messageActivityRow}
               >
                 <View style={styles.messageActivityIcon}>
-                  <CheckCircle2 color={colors.green} size={13} strokeWidth={2.2} />
+                  <CheckCircle2 color={colors.textMuted} size={13} strokeWidth={2.2} />
                 </View>
                 <Text style={styles.messageActivityGroupLabel}>
                   {entry.label} {expanded ? "▾" : "▸"}

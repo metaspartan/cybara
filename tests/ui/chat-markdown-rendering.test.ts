@@ -6,6 +6,9 @@ const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import
 const messageContentPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/MessageContent.tsx", import.meta.url)
 );
+const activityTimelinePath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ActivityTimeline.tsx", import.meta.url)
+);
 
 function readChatSource(): string {
   return readFileSync(chatPagePath, "utf8") + readFileSync(messageContentPath, "utf8");
@@ -37,5 +40,18 @@ describe("Chat markdown rendering behavior", () => {
       "const cleanedContent = useMemo(() => preprocessChatMarkdown(content), [content]);"
     );
     expect(source).toContain("{cleanedContent}");
+  });
+
+  test("renders activity thoughts with inline markdown and neutral status icons", () => {
+    const source = readFileSync(activityTimelinePath, "utf8");
+
+    expect(source).toContain("part.slice(2, -2)");
+    expect(source).toContain("<strong");
+    expect(source).toContain("ActivityText text={displayCurrentStep}");
+    expect(source).toContain("text-current opacity-70");
+    expect(source).toContain("bg-current opacity-70");
+    expect(source).not.toContain("Sparkles");
+    expect(source).not.toContain("text-indigo-300");
+    expect(source).not.toContain("text-emerald-400 mt-0.5");
   });
 });

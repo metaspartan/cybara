@@ -1014,7 +1014,31 @@ final class GatewayClientModelTests: XCTestCase {
 
         XCTAssertTrue(device.isActive)
         XCTAssertEqual(device.scopeSummary, "chat, manage, read")
-        XCTAssertEqual(device.pushSummary, "Push: expo · ios")
+        XCTAssertEqual(device.pushSummary, "Push: expo · ios · chat on · tasks on")
+
+        let deviceWithPrefs = try JSONDecoder().decode(
+            GatewayMobileDevice.self,
+            from: Data(
+                #"""
+                {
+                  "id": "mobile_456",
+                  "name": "Carsen iPad",
+                  "baseUrl": "http://192.168.1.20:4269",
+                  "status": "active",
+                  "scopes": ["chat"],
+                  "createdAt": "2026-07-02T18:00:00.000Z",
+                  "push": {
+                    "configured": true,
+                    "enabled": true,
+                    "provider": "expo",
+                    "platform": "android",
+                    "preferences": { "chatCompletions": false, "taskCompletions": true }
+                  }
+                }
+                """#.utf8
+            )
+        )
+        XCTAssertEqual(deviceWithPrefs.pushSummary, "Push: expo · android · chat off · tasks on")
     }
 
     func testMobilePairingCodeDecodesExpiryAndPayload() throws {

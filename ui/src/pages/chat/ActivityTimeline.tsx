@@ -1,13 +1,5 @@
 import { useState } from "react";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Loader2,
-  Sparkles,
-  Zap,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Loader2, Zap } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import type { Subagent } from "@/hooks/useApi";
@@ -31,15 +23,15 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
       )}
     >
       {activity.toolName === "__thought" ? (
-        <Sparkles className="w-3 h-3 text-indigo-300 mt-0.5 flex-shrink-0" />
+        <span className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-current opacity-70" />
       ) : activity.phase === "start" ? (
-        <Loader2 className="w-3 h-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
+        <Loader2 className="w-3 h-3 animate-spin text-current opacity-70 mt-0.5 flex-shrink-0" />
       ) : activity.phase === "result" ? (
-        <CheckCircle2 className="w-3 h-3 text-emerald-400 mt-0.5 flex-shrink-0" />
+        <CheckCircle2 className="w-3 h-3 text-current opacity-70 mt-0.5 flex-shrink-0" />
       ) : activity.phase === "blocked" ? (
-        <AlertTriangle className="w-3 h-3 text-amber-300 mt-0.5 flex-shrink-0" />
+        <AlertTriangle className="w-3 h-3 text-current opacity-70 mt-0.5 flex-shrink-0" />
       ) : (
-        <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 flex-shrink-0" />
+        <AlertTriangle className="w-3 h-3 text-current opacity-70 mt-0.5 flex-shrink-0" />
       )}
       <div className="min-w-0 flex-1 flex items-center gap-2">
         <ActivityText text={activity.text} />
@@ -90,7 +82,7 @@ export function GroupedActivityRows({ activities }: { activities: LiveActivityIt
               aria-expanded={expanded}
               title={expanded ? "Collapse" : "Show each call"}
             >
-              <CheckCircle2 className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+              <CheckCircle2 className="w-3 h-3 text-current opacity-70 flex-shrink-0" />
               <span className="min-w-0 truncate">{entry.label}</span>
               {expanded ? (
                 <ChevronUp className="w-3 h-3 text-gray-600 flex-shrink-0" />
@@ -211,8 +203,8 @@ export function LiveActivityTimeline({
       {visibleActivities.length > 0 && <GroupedActivityRows activities={visibleActivities} />}
       {displayCurrentStep ? (
         <div className="flex items-start gap-2 text-[12px] px-0.5 text-gray-300">
-          <Loader2 className="w-3 h-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
-          <span className="whitespace-pre-wrap break-words">{displayCurrentStep}</span>
+          <Loader2 className="w-3 h-3 animate-spin text-current opacity-70 mt-0.5 flex-shrink-0" />
+          <ActivityText text={displayCurrentStep} />
         </div>
       ) : visibleActivities.length === 0 ? (
         <div className="flex gap-1 px-1">
@@ -258,11 +250,11 @@ export function ActivityStepCard({
 
   const phaseIcon =
     activity.phase === "start" ? (
-      <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-300" />
+      <Loader2 className="w-3.5 h-3.5 animate-spin text-current opacity-70" />
     ) : activity.phase === "result" ? (
-      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+      <CheckCircle2 className="w-3.5 h-3.5 text-current opacity-70" />
     ) : (
-      <AlertTriangle className="w-3.5 h-3.5 text-rose-300" />
+      <AlertTriangle className="w-3.5 h-3.5 text-current opacity-70" />
     );
 
   return (
@@ -294,24 +286,43 @@ export function ActivityStepCard({
 
 export function ActivityText({ text }: { text: string }) {
   const shouldHighlightCounters = /^(Edited|Created|Updated|Deleted)\b/i.test(text);
-  if (!shouldHighlightCounters) {
-    return <span className="whitespace-pre-wrap break-words">{text}</span>;
-  }
-
-  const parts = text.split(/(\s\+\d+\b|\s-\d+\b)/g);
+  const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`|\s\+\d+\b|\s-\d+\b)/g);
   return (
     <span className="whitespace-pre-wrap break-words">
       {parts.map((part, index) => {
+        if (/^\*\*[^*]+\*\*$/.test(part)) {
+          return (
+            <strong key={`activity-text-${index}`} className="font-semibold text-inherit">
+              {part.slice(2, -2)}
+            </strong>
+          );
+        }
+        if (/^`[^`]+`$/.test(part)) {
+          return (
+            <code
+              key={`activity-text-${index}`}
+              className="rounded border border-white/10 bg-white/[0.04] px-1 py-0.5 font-mono text-[0.92em] text-inherit"
+            >
+              {part.slice(1, -1)}
+            </code>
+          );
+        }
         if (/^\s\+\d+$/.test(part)) {
           return (
-            <span key={`activity-text-${index}`} className="text-green-300">
+            <span
+              key={`activity-text-${index}`}
+              className={shouldHighlightCounters ? "text-green-300" : undefined}
+            >
               {part}
             </span>
           );
         }
         if (/^\s-\d+$/.test(part)) {
           return (
-            <span key={`activity-text-${index}`} className="text-red-300">
+            <span
+              key={`activity-text-${index}`}
+              className={shouldHighlightCounters ? "text-red-300" : undefined}
+            >
               {part}
             </span>
           );

@@ -858,6 +858,13 @@ const makeStyles = () =>
       marginTop: 1,
       width: 16,
     },
+    messageActivityDot: {
+      backgroundColor: colors.textMuted,
+      borderRadius: 3,
+      height: 6,
+      opacity: 0.75,
+      width: 6,
+    },
     messageActivityText: {
       color: colors.textMuted,
       flex: 1,
@@ -865,7 +872,7 @@ const makeStyles = () =>
       lineHeight: 18,
     },
     messageThoughtText: {
-      color: colors.text,
+      color: colors.textMuted,
     },
     messageActivityGroupLabel: {
       color: colors.textMuted,
