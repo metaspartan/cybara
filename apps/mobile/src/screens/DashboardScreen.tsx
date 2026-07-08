@@ -57,8 +57,6 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import SegmentedControl from "@react-native-segmented-control/segmented-control";
-import * as ImagePicker from "expo-image-picker";
-import * as Clipboard from "expo-clipboard";
 import { haptics } from "../lib/haptics";
 import { useThemeControls } from "../theme/ThemeContext";
 import {
@@ -73,14 +71,12 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
-  ClipboardPaste,
   Clock,
   Cpu,
   Database,
   Folder,
   HeartPulse,
   House,
-  ImagePlus,
   Link2,
   ListTodo,
   Loader2,
@@ -277,6 +273,9 @@ import {
   type IconGlyph,
 } from "./dashboardPrimitives";
 import cybaraLogo from "../../assets/cybara.png";
+
+type ImagePickerModule = typeof import("expo-image-picker");
+type ClipboardModule = typeof import("expo-clipboard");
 
 interface ModuleCard {
   key: string;
@@ -2186,6 +2185,22 @@ function pendingImageUri(image: MobileMessageImage): string {
   return `data:${image.mimeType || "image/jpeg"};base64,${image.data ?? ""}`;
 }
 
+let imagePickerModulePromise: Promise<ImagePickerModule | null> | null = null;
+function loadImagePickerModule(): Promise<ImagePickerModule | null> {
+  if (!imagePickerModulePromise) {
+    imagePickerModulePromise = import("expo-image-picker").catch(() => null);
+  }
+  return imagePickerModulePromise;
+}
+
+let clipboardModulePromise: Promise<ClipboardModule | null> | null = null;
+function loadClipboardModule(): Promise<ClipboardModule | null> {
+  if (!clipboardModulePromise) {
+    clipboardModulePromise = import("expo-clipboard").catch(() => null);
+  }
+  return clipboardModulePromise;
+}
+
 function SessionDetailPanel({
   accentColor,
   api,
@@ -2576,6 +2591,11 @@ function SessionDetailPanel({
 
   const pickImages = async () => {
     if (pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS) return;
+    const ImagePicker = await loadImagePickerModule();
+    if (!ImagePicker) {
+      Alert.alert("Photo library unavailable", "This build cannot open the photo library.");
+      return;
+    }
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
       setLoadError("Photo library access is required to attach images.");
@@ -2599,12 +2619,60 @@ function SessionDetailPanel({
 
   const pasteImage = async () => {
     if (pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS) return;
+    const Clipboard = await loadClipboardModule();
+    if (!Clipboard?.hasImageAsync || !Clipboard?.getImageAsync) {
+      Alert.alert("Clipboard unavailable", "This build cannot read image data from the clipboard.");
+      return;
+    }
     const hasImage = await Clipboard.hasImageAsync();
-    if (!hasImage) return;
+    if (!hasImage) {
+      Alert.alert("No image found", "Copy an image first, then attach it from the composer.");
+      return;
+    }
     const img = await Clipboard.getImageAsync({ format: "png" });
     if (!img) return;
     const rawBase64 = img.data.replace(/^data:[^;]+;base64,/, "");
     appendPendingImages([{ data: rawBase64, mimeType: "image/png" }]);
+  };
+
+  const openAttachmentMenu = () => {
+    if (pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS) {
+      Alert.alert(
+        "Attachment limit reached",
+        `You can attach up to ${MOBILE_CHAT_MAX_ATTACHMENTS} images per message.`
+      );
+      return;
+    }
+    haptics.select();
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: "Attach",
+          options: ["Photo library", "Paste image", "Cancel"],
+          cancelButtonIndex: 2,
+        },
+        (index) => {
+          if (index === 0) void pickImages();
+          if (index === 1) void pasteImage();
+        }
+      );
+      return;
+    }
+    Alert.alert("Attach", "Choose an attachment source.", [
+      {
+        text: "Photo library",
+        onPress: () => {
+          void pickImages();
+        },
+      },
+      {
+        text: "Paste image",
+        onPress: () => {
+          void pasteImage();
+        },
+      },
+      { text: "Cancel", style: "cancel" },
+    ]);
   };
 
   const replacePendingMessagesFromGateway = (messages: MobilePendingChatMessage[]) => {
@@ -3503,12 +3571,10 @@ function SessionDetailPanel({
               textAlignVertical="top"
             />
             <Pressable
-              accessibilityLabel="Attach images"
+              accessibilityLabel="Attach files or images"
               accessibilityRole="button"
               disabled={pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS}
-              onPress={() => {
-                void pickImages();
-              }}
+              onPress={openAttachmentMenu}
               style={[
                 styles.sendButton,
                 {
@@ -3517,24 +3583,7 @@ function SessionDetailPanel({
                 },
               ]}
             >
-              <ImagePlus color={colors.text} size={19} strokeWidth={2.4} />
-            </Pressable>
-            <Pressable
-              accessibilityLabel="Paste image from clipboard"
-              accessibilityRole="button"
-              disabled={pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS}
-              onPress={() => {
-                void pasteImage();
-              }}
-              style={[
-                styles.sendButton,
-                {
-                  backgroundColor: colors.inset,
-                  opacity: pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS ? 0.55 : 1,
-                },
-              ]}
-            >
-              <ClipboardPaste color={colors.text} size={19} strokeWidth={2.4} />
+              <Paperclip color={colors.text} size={19} strokeWidth={2.4} />
             </Pressable>
             <Pressable
               accessibilityLabel="Send message"

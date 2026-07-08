@@ -273,6 +273,13 @@ describe("mobile dashboard model", () => {
     expect(mobileComposerHeightForDraft("one\ntwo\nthree", 300)).toBe(
       MOBILE_CHAT_COMPOSER.maxHeight
     );
+    expect(dashboardScreenSource).toContain('accessibilityLabel="Attach files or images"');
+    expect(dashboardScreenSource).toContain("const openAttachmentMenu");
+    expect(dashboardScreenSource).toContain('options: ["Photo library", "Paste image", "Cancel"]');
+    expect(dashboardScreenSource).toContain("<Paperclip color={colors.text}");
+    expect(dashboardScreenSource).not.toContain('accessibilityLabel="Paste image from clipboard"');
+    expect(dashboardScreenSource).not.toContain("ClipboardPaste");
+    expect(dashboardScreenSource).not.toContain("ImagePlus");
   });
 
   test("formats chat activity thoughts with markdown and neutral icons", () => {

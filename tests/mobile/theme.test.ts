@@ -158,10 +158,11 @@ describe("mobile theming", () => {
 
   test("mobile connect screen does not load camera native modules until scanning", () => {
     const src = read("screens/ConnectScreen.tsx");
+    const lazyCameraImport = ["await", 'import("expo-camera")'].join(" ");
     expect(src).toContain('import type { BarcodeScanningResult } from "expo-camera"');
     expect(src).not.toContain("useCameraPermissions");
     expect(src).not.toContain("import { CameraView");
-    expect(src).toContain('await import("expo-camera")');
+    expect(src).toContain(lazyCameraImport);
     expect(src).toContain(
       "onBarcodeScanned={scanLocked || connectBusy ? undefined : connectScannedPayload}"
     );
