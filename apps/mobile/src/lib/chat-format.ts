@@ -17,10 +17,7 @@ export function mobilePendingImageBytes(image: MobileMessageImage): number {
   return 0;
 }
 
-export function mobileMediaSummaryLabel(
-  images: MobileMessageImage[],
-  maxImages: number
-): string {
+export function mobileMediaSummaryLabel(images: MobileMessageImage[], maxImages: number): string {
   if (images.length === 0) return "";
   const parts = [`${images.length} image${images.length === 1 ? "" : "s"}`];
   const totalBytes = images.reduce((sum, image) => sum + mobilePendingImageBytes(image), 0);

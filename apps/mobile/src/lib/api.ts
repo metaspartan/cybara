@@ -609,6 +609,7 @@ export type FeatureEndpointKey =
   | "sessions"
   | "agents"
   | "providers"
+  | "skills"
   | "channels"
   | "tasks"
   | "tools"
@@ -838,6 +839,7 @@ export interface FeatureSummary {
   sessionTotal?: number;
   agents: AgentSummary[];
   providers: ProviderSummary[];
+  skills: RemoteItemSummary[];
   channels: RemoteItemSummary[];
   tasks: RemoteItemSummary[];
   tools: RemoteItemSummary[];
@@ -874,6 +876,7 @@ function emptyAvailability(): FeatureAvailability {
     sessions: { ok: false },
     agents: { ok: false },
     providers: { ok: false },
+    skills: { ok: false },
     channels: { ok: false },
     tasks: { ok: false },
     tools: { ok: false },
@@ -2951,6 +2954,7 @@ export class CybaraMobileApi {
       sessionList,
       agents,
       providers,
+      skills,
       channels,
       tasks,
       tools,
@@ -2977,6 +2981,13 @@ export class CybaraMobileApi {
       ),
       safe<AgentSummary[]>("agents", [], () => this.agents()),
       safe<ProviderSummary[]>("providers", [], () => this.providers()),
+      safe<RemoteItemSummary[]>("skills", [], async () =>
+        normalizeRemoteItems(
+          await this.request<unknown>("/api/skills"),
+          ["skills", "items"],
+          "skill"
+        )
+      ),
       safe<RemoteItemSummary[]>("channels", [], async () =>
         normalizeRemoteItems(
           await this.request<unknown>("/api/channels"),
@@ -3028,6 +3039,7 @@ export class CybaraMobileApi {
       sessionTotal: sessionList.total,
       agents,
       providers,
+      skills,
       channels,
       tasks,
       tools,

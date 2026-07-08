@@ -1,3 +1,4 @@
+import { Platform } from "react-native";
 import type { CybaraMobileApi } from "./api";
 
 type PermissionStatus = "granted" | "denied" | "undetermined" | string;
@@ -16,6 +17,8 @@ interface ConstantsLike {
   easConfig?: {
     projectId?: string;
   };
+  executionEnvironment?: string;
+  appOwnership?: string | null;
 }
 
 export interface MobilePushRegistrationResult {
@@ -49,13 +52,13 @@ async function loadConstants(): Promise<ConstantsLike | null> {
   }
 }
 
-async function loadNativePlatform(): Promise<string> {
-  try {
-    const mod = await import("react-native");
-    return (mod as { Platform?: { OS?: string } }).Platform?.OS || "unknown";
-  } catch {
-    return "unknown";
-  }
+async function isExpoGoRuntime(constants?: ConstantsLike | null): Promise<boolean> {
+  const resolved = constants === undefined ? await loadConstants() : constants;
+  return resolved?.executionEnvironment === "storeClient" || resolved?.appOwnership === "expo";
+}
+
+function nativePlatform(): string {
+  return Platform.OS || "unknown";
 }
 
 function expoProjectId(constants: ConstantsLike | null | undefined): string | undefined {
@@ -79,6 +82,9 @@ function nativePushPlatform(platform: string): "ios" | "android" | null {
 export async function configureMobileNotificationPresentation(
   options: MobilePushRegistrationOptions = {}
 ): Promise<boolean> {
+  if (options.notifications === undefined && (await isExpoGoRuntime(options.constants))) {
+    return false;
+  }
   const notifications =
     options.notifications === undefined ? await loadNotifications() : options.notifications;
   if (!notifications?.setNotificationHandler) return false;
@@ -98,7 +104,14 @@ export async function registerMobilePushNotifications(
   api: CybaraMobileApi,
   options: MobilePushRegistrationOptions = {}
 ): Promise<MobilePushRegistrationResult> {
-  const platform = nativePushPlatform(options.platform ?? (await loadNativePlatform()));
+  if (options.notifications === undefined && (await isExpoGoRuntime(options.constants))) {
+    return {
+      status: "unavailable",
+      message: "Push notifications require a development build (not Expo Go).",
+    };
+  }
+
+  const platform = nativePushPlatform(options.platform ?? nativePlatform());
   if (!platform)
     return { status: "unavailable", message: "Push notifications require iOS or Android." };
 

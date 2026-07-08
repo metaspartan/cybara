@@ -57,12 +57,25 @@ extension EnvironmentValues {
 enum NativeDestination: String, CaseIterable, Identifiable {
     case dashboard
     case chat
-    case mobile
     case agents
     case providers
+    case router
+    case channels
+    case mobile
+    case mcp
+    case lsp
+    case ide
+    case sessions
+    case skills
+    case tools
+    case terminal
+    case memory
+    case journey
+    case wallet
+    case artifacts
     case tasks
     case metrics
-    case journey
+    case logs
     case settings
     case webUI
 
@@ -72,12 +85,25 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "Dashboard"
         case .chat: return "Chat"
-        case .mobile: return "Mobile"
         case .agents: return "Agents"
         case .providers: return "Providers"
+        case .router: return "Model Router"
+        case .channels: return "Channels"
+        case .mobile: return "Mobile"
+        case .mcp: return "MCP Servers"
+        case .lsp: return "LSP"
+        case .ide: return "IDE"
+        case .sessions: return "Sessions"
+        case .skills: return "Skills"
+        case .tools: return "Tools"
+        case .terminal: return "Terminal"
+        case .memory: return "Memory"
+        case .journey: return "Journey"
+        case .wallet: return "Wallet"
+        case .artifacts: return "Artifacts"
         case .tasks: return "Tasks"
         case .metrics: return "Metrics"
-        case .journey: return "Journey"
+        case .logs: return "Logs"
         case .settings: return "Settings"
         case .webUI: return "Web UI"
         }
@@ -87,14 +113,41 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         switch self {
         case .dashboard: return "square.grid.2x2"
         case .chat: return "bubble.left.and.bubble.right"
-        case .mobile: return "iphone.gen3"
         case .agents: return "cpu"
         case .providers: return "shippingbox"
+        case .router: return "point.3.connected.trianglepath.dotted"
+        case .channels: return "link"
+        case .mobile: return "iphone.gen3"
+        case .mcp: return "terminal"
+        case .lsp: return "curlybraces.square"
+        case .ide: return "folder"
+        case .sessions: return "bubble.left.and.text.bubble.right"
+        case .skills: return "wand.and.stars"
+        case .tools: return "wrench.and.screwdriver"
+        case .terminal: return "terminal"
+        case .memory: return "brain"
+        case .journey: return "sparkles"
+        case .wallet: return "creditcard"
+        case .artifacts: return "doc.text"
         case .tasks: return "calendar.badge.clock"
         case .metrics: return "chart.bar"
-        case .journey: return "sparkles"
+        case .logs: return "list.bullet.rectangle"
         case .settings: return "gearshape"
         case .webUI: return "globe"
+        }
+    }
+
+    var webRoute: String? {
+        switch self {
+        case .mcp: return "mcp"
+        case .lsp: return "lsp"
+        case .ide: return "ide"
+        case .sessions: return "sessions"
+        case .tools: return "tools"
+        case .terminal: return "terminal"
+        case .artifacts: return "artifacts"
+        case .webUI: return nil
+        default: return nil
         }
     }
 }
@@ -183,13 +236,19 @@ struct ContentView: View {
 
             List(selection: $destination) {
                 Section {
-                    ForEach([NativeDestination.dashboard, .chat, .agents, .providers, .tasks, .metrics, .journey, .mobile]) { item in
+                    ForEach([NativeDestination.dashboard, .chat, .agents, .providers, .router, .channels, .mobile]) { item in
+                        Label(item.title, systemImage: item.systemImage)
+                            .tag(item)
+                    }
+                }
+                Section("Developer") {
+                    ForEach([NativeDestination.mcp, .lsp, .ide, .sessions, .skills, .tools, .terminal]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
                 }
                 Section("System") {
-                    ForEach([NativeDestination.settings, .webUI]) { item in
+                    ForEach([NativeDestination.memory, .journey, .wallet, .artifacts, .metrics, .tasks, .logs, .settings, .webUI]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -220,6 +279,12 @@ struct ContentView: View {
                 AgentsScreen(client: client)
             case .providers:
                 ProvidersScreen(client: client)
+            case .router:
+                RouterScreen(client: client)
+            case .channels:
+                ChannelsScreen(client: client)
+            case .mcp, .lsp, .ide, .sessions, .tools, .terminal, .artifacts:
+                webBackedDetail(path: destination.webRoute ?? "")
             case .tasks:
                 TasksScreen(client: client) { sessionID in
                     selectedChatSessionID = sessionID
@@ -227,8 +292,16 @@ struct ContentView: View {
                 }
             case .metrics:
                 MetricsScreen(client: client)
+            case .memory:
+                MemoryScreen(client: client)
             case .journey:
                 JourneyScreen(client: client)
+            case .wallet:
+                WalletScreen(client: client)
+            case .skills:
+                SkillsScreen(client: client)
+            case .logs:
+                LogsScreen(client: client)
             case .settings:
                 NativeSettingsScreen(client: client) { key in
                     accent = CybaraAccent.color(for: key)
@@ -257,10 +330,14 @@ struct ContentView: View {
     }
 
     private var webUIDetail: some View {
+        webBackedDetail(path: nil)
+    }
+
+    private func webBackedDetail(path: String?) -> some View {
         ZStack {
             if sidecar.isReady {
                 CybaraWebView(
-                    url: sidecar.serverURL,
+                    url: webURL(path),
                     gatewayPort: sidecar.port,
                     managesGateway: sidecar.managesGateway
                 )
@@ -270,6 +347,11 @@ struct ContentView: View {
                 startingView
             }
         }
+    }
+
+    private func webURL(_ path: String?) -> URL {
+        guard let path, !path.isEmpty else { return sidecar.serverURL }
+        return sidecar.serverURL.appendingPathComponent(path)
     }
 }
 

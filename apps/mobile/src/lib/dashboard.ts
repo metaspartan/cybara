@@ -21,6 +21,7 @@ export type MobileSettingsTab =
 export type MobileSurfaceKey =
   | "agents"
   | "providers"
+  | "skills"
   | "tools"
   | "approvals"
   | "wallet"
@@ -40,6 +41,7 @@ export interface FeatureCounts {
   sessions: number;
   agents: number;
   providers: number;
+  skills: number;
   tools: number;
   approvals: number;
   channels: number;
@@ -269,6 +271,7 @@ const MOBILE_AUTH_HEALTH_ENDPOINTS: FeatureEndpointKey[] = [
   "sessions",
   "agents",
   "providers",
+  "skills",
   "channels",
   "tasks",
   "tools",
@@ -332,6 +335,7 @@ export const MOBILE_FEATURE_SECTIONS = [
   "sessions",
   "agents",
   "providers",
+  "skills",
   "tools",
   "approvals",
   "wallet",
@@ -345,6 +349,7 @@ export const MOBILE_FEATURE_SECTIONS = [
 export const MOBILE_SURFACES: MobileSurfaceKey[] = [
   "agents",
   "providers",
+  "skills",
   "tools",
   "approvals",
   "wallet",
@@ -358,6 +363,7 @@ export const MOBILE_SURFACES: MobileSurfaceKey[] = [
 export const MOBILE_SETTINGS_SURFACES: MobileSurfaceKey[] = [
   "agents",
   "providers",
+  "skills",
   "tools",
   "approvals",
   "channels",
@@ -377,6 +383,7 @@ export function summarizeFeatureCounts(summary: FeatureSummary | null): FeatureC
     sessions: summary?.sessionTotal ?? summary?.sessions.length ?? 0,
     agents: summary?.agents.length ?? 0,
     providers: summary?.providers.length ?? 0,
+    skills: countArray(summary?.skills),
     tools: countArray(summary?.tools),
     approvals: countArray(summary?.approvals),
     channels: countArray(summary?.channels),

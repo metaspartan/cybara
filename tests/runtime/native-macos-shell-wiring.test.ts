@@ -48,6 +48,63 @@ describe("native macOS shell wiring", () => {
     expect(brand).toContain("logoURLCandidates");
   });
 
+  test("native shell exposes the same major web and Tauri destinations", () => {
+    const contentView = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
+    const app = readFileSync(join(ROOT_DIR, "ui", "src", "App.tsx"), "utf8");
+
+    for (const route of [
+      "/agents",
+      "/providers",
+      "/router",
+      "/channels",
+      "/mobile",
+      "/mcp",
+      "/lsp",
+      "/ide",
+      "/sessions",
+      "/skills",
+      "/tools",
+      "/terminal",
+      "/memory",
+      "/journey",
+      "/wallet",
+      "/artifacts",
+      "/metrics",
+      "/tasks",
+      "/logs",
+      "/settings",
+    ]) {
+      expect(app).toContain(`path="${route}"`);
+    }
+
+    for (const nativeScreen of [
+      "RouterScreen(client: client)",
+      "ChannelsScreen(client: client)",
+      "MemoryScreen(client: client)",
+      "WalletScreen(client: client)",
+      "SkillsScreen(client: client)",
+      "LogsScreen(client: client)",
+    ]) {
+      expect(contentView).toContain(nativeScreen);
+    }
+
+    for (const webRoute of [
+      'case .mcp: return "mcp"',
+      'case .lsp: return "lsp"',
+      'case .ide: return "ide"',
+      'case .sessions: return "sessions"',
+      'case .tools: return "tools"',
+      'case .terminal: return "terminal"',
+      'case .artifacts: return "artifacts"',
+    ]) {
+      expect(contentView).toContain(webRoute);
+    }
+
+    expect(contentView).toContain('Section("Developer")');
+    expect(contentView).toContain('Section("System")');
+    expect(contentView).toContain('webBackedDetail(path: destination.webRoute ?? "")');
+  });
+
   test("native settings centers its content column and keeps cards left-aligned", () => {
     const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
 

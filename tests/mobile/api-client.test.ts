@@ -1742,6 +1742,8 @@ describe("mobile API client", () => {
       if (path === "/api/agents") return Response.json([{ id: "a1", name: "Main" }]);
       if (path === "/api/providers")
         return Response.json([{ id: "p1", name: "Anthropic", provider: "anthropic" }]);
+      if (path === "/api/skills")
+        return Response.json({ skills: [{ name: "code-review", description: "Review changes" }] });
       if (path === "/api/system/monitor") {
         return Response.json({
           status: "healthy",
@@ -1789,6 +1791,10 @@ describe("mobile API client", () => {
       expect(summary.sessionTotal).toBe(1200);
       expect(summary.agents).toHaveLength(1);
       expect(summary.providers).toHaveLength(1);
+      expect(summary.skills).toEqual([
+        expect.objectContaining({ id: "code-review", title: "code-review" }),
+      ]);
+      expect(summary.availability.skills.ok).toBe(true);
       expect(summary.channels).toEqual([]);
       expect(summary.availability.channels.ok).toBe(false);
       expect(summary.availability.channels.status).toBe(404);

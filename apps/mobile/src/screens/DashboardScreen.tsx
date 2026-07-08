@@ -344,6 +344,14 @@ const surfaceMeta: Record<
     },
     endpoint: "providers",
   },
+  skills: {
+    title: "Skills",
+    Icon: Sparkles,
+    get tone() {
+      return colors.amber;
+    },
+    endpoint: "skills",
+  },
   tools: {
     title: "Tools",
     Icon: Wrench,
@@ -460,6 +468,8 @@ function surfaceRows(
           provider as unknown as Record<string, unknown>
         )
       );
+    case "skills":
+      return summary.skills;
     case "tools":
       return summary.tools;
     case "approvals":
@@ -563,6 +573,8 @@ function surfaceMenuDetail(
       return surfaceCount(summary, "agents", counts.agents, "configured", "None configured");
     case "providers":
       return surfaceCount(summary, "providers", counts.providers, "enabled", "None enabled");
+    case "skills":
+      return surfaceCount(summary, "skills", counts.skills, "available", "No skills");
     case "tools":
       return surfaceCount(summary, "tools", counts.tools, "registered", "No tools");
     case "approvals":
