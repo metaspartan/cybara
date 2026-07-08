@@ -14,7 +14,7 @@ export interface ToolCall {
   duration?: number;
   timeline_index?: number;
   started_at?: number;
-  status: "pending" | "executing" | "completed" | "failed" | "success" | "error";
+  status: "pending" | "executing" | "completed" | "failed" | "success" | "error" | "blocked";
 }
 
 export interface ArtifactSummaryView {
@@ -32,7 +32,7 @@ export interface ChatMessage {
   tool_calls?: ToolCall[];
   process_activities?: Array<{
     id?: string;
-    phase?: "start" | "result" | "error";
+    phase?: "start" | "result" | "error" | "blocked";
     text?: string;
     timestamp?: number | string;
     toolName?: string;
@@ -79,14 +79,14 @@ export interface StatusStreamEvent {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
-  toolPhase?: "start" | "result" | "error";
+  toolPhase?: "start" | "result" | "error" | "blocked";
   durationMs?: number;
   type?: string;
 }
 
 export interface SessionStatusActivity {
   id: string;
-  phase: "start" | "result" | "error";
+  phase: "start" | "result" | "error" | "blocked";
   text: string;
   timestamp: number;
   toolName?: string;
@@ -442,7 +442,10 @@ export function normalizePersistedLiveActivityItem(value: unknown): LiveActivity
       ? candidate.timestamp
       : Date.now();
   const phase =
-    candidate.phase === "start" || candidate.phase === "result" || candidate.phase === "error"
+    candidate.phase === "start" ||
+    candidate.phase === "result" ||
+    candidate.phase === "error" ||
+    candidate.phase === "blocked"
       ? candidate.phase
       : "result";
   if (!id || !text) return null;
@@ -666,7 +669,7 @@ export function getLatestInFlightStep(activities: LiveActivityItem[]): string | 
 export function applyLiveActivityEvent(
   previous: LiveActivityItem[],
   event: {
-    phase: "start" | "result" | "error";
+    phase: "start" | "result" | "error" | "blocked";
     text: string;
     timestamp?: number;
     toolName?: string;
@@ -856,7 +859,7 @@ export function summarizeCommand(command: string): string {
 export function formatToolIntent(
   toolName: string,
   args: Record<string, unknown>,
-  phase: "start" | "result" | "error",
+  phase: "start" | "result" | "error" | "blocked",
   fallbackDetail?: string
 ): string {
   if (fallbackDetail && fallbackDetail.trim()) {

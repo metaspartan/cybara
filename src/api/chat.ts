@@ -73,7 +73,7 @@ const log = createLogger("Chat");
 
 export interface ProcessActivityInfo {
   id: string;
-  phase: "start" | "result" | "error";
+  phase: "start" | "result" | "error" | "blocked";
   text: string;
   timestamp: number;
   toolName?: string;
@@ -585,7 +585,10 @@ function sanitizeObservedProcessActivities(activities: unknown): ProcessActivity
         ? record.id.trim().slice(0, 160)
         : `${timestamp}-${Math.random().toString(36).slice(2, 8)}`;
     const phase =
-      record.phase === "start" || record.phase === "result" || record.phase === "error"
+      record.phase === "start" ||
+      record.phase === "result" ||
+      record.phase === "error" ||
+      record.phase === "blocked"
         ? record.phase
         : "result";
     const toolName =
@@ -1007,7 +1010,7 @@ function isMeaningfulProcessThought(value?: string): boolean {
 
 function normalizeProcessActivityTextForPhase(
   value: string,
-  phase: "start" | "result" | "error"
+  phase: "start" | "result" | "error" | "blocked"
 ): string {
   if (phase === "start") return value;
   if (phase === "result") {
@@ -1018,6 +1021,15 @@ function normalizeProcessActivityTextForPhase(
       .replace(/^Running\b/i, "Ran")
       .replace(/^Writing\b/i, "Edited")
       .replace(/^Editing\b/i, "Edited");
+  }
+  if (phase === "blocked") {
+    return value
+      .replace(/^Exploring\b/i, "Read blocked")
+      .replace(/^Searching\b/i, "Search blocked")
+      .replace(/^Fetching\b/i, "Fetch blocked")
+      .replace(/^Running\b/i, "Command blocked")
+      .replace(/^Writing\b/i, "Edit blocked")
+      .replace(/^Editing\b/i, "Edit blocked");
   }
   return value
     .replace(/^Exploring\b/i, "Read failed")
@@ -1177,7 +1189,7 @@ function buildFallbackProcessActivities(
 
   for (let index = 0; index < toolCalls.length; index += 1) {
     const toolCall = toolCalls[index];
-    const phase: "start" | "result" | "error" =
+    const phase: "start" | "result" | "error" | "blocked" =
       toolCall.status === "failed" ? "error" : toolCall.status === "executing" ? "start" : "result";
     const timelineOffset =
       typeof toolCall.timeline_index === "number" && Number.isFinite(toolCall.timeline_index)

@@ -35,13 +35,13 @@ export async function runPackage(): Promise<void> {
     mkdirSync(DIST_DIR);
   }
 
-  await $`bun build src/main.ts --outdir ${DIST_DIR} --target bun --external electron`.quiet();
+  await $`bun build src/main.ts --outdir ${DIST_DIR} --target bun --external electron --external tiny-secp256k1`.quiet();
   console.log("   ✓ Main entry built");
 
-  await $`bun build src/index.ts --outdir ${DIST_DIR} --target bun --external electron`.quiet();
+  await $`bun build src/index.ts --outdir ${DIST_DIR} --target bun --external electron --external tiny-secp256k1`.quiet();
   console.log("   ✓ Server built");
 
-  await $`bun build src/cli.tsx --outdir ${DIST_DIR} --target bun --external electron`.quiet();
+  await $`bun build src/cli.tsx --outdir ${DIST_DIR} --target bun --external electron --external tiny-secp256k1`.quiet();
   console.log("   ✓ CLI built");
 
   console.log("📋 Preparing static assets...");

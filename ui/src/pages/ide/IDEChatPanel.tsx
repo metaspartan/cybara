@@ -451,7 +451,10 @@ export function IDEChatPanel({
           .map((entry): IdeProcessActivity | null => {
             if (!isPlainRecord(entry)) return null;
             const phase =
-              entry.phase === "start" || entry.phase === "result" || entry.phase === "error"
+              entry.phase === "start" ||
+              entry.phase === "result" ||
+              entry.phase === "error" ||
+              entry.phase === "blocked"
                 ? entry.phase
                 : "result";
             const text = typeof entry.text === "string" ? entry.text.trim() : "";
@@ -496,7 +499,7 @@ export function IDEChatPanel({
 
   const appendLiveActivity = useCallback(
     (
-      phase: "start" | "result" | "error",
+      phase: "start" | "result" | "error" | "blocked",
       text: string,
       toolName?: string,
       eventTimestamp?: number,
@@ -788,12 +791,13 @@ export function IDEChatPanel({
           payload.status === "tool_completed" ||
           payload.status === "error"
         ) {
-          const phase: "start" | "result" | "error" =
-            payload.status === "tool_executing"
+          const phase =
+            payload.toolPhase ||
+            (payload.status === "tool_executing"
               ? "start"
               : payload.status === "tool_completed"
                 ? "result"
-                : "error";
+                : "error");
           const text = formatIdeStatusEventText(payload.toolName, phase, payload.detail);
           appendLiveActivity(
             phase,

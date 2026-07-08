@@ -6,7 +6,7 @@ import { notifyMobilePushForStatus, notifyMobilePushForTask } from "./mobile-pus
 export type AgentStatus =
   "idle" | "thinking" | "tool_executing" | "tool_completed" | "generating" | "compacting" | "error";
 
-export type ToolStatusPhase = "start" | "result" | "error";
+export type ToolStatusPhase = "start" | "result" | "error" | "blocked";
 
 export interface StatusPayload {
   status: AgentStatus;
@@ -176,7 +176,11 @@ function isMeaningfulThoughtDetail(detail: string): boolean {
   return true;
 }
 
-function statusToPhase(status: AgentStatus): ToolStatusPhase | null {
+function statusToPhase(
+  status: AgentStatus,
+  requestedPhase?: ToolStatusPhase
+): ToolStatusPhase | null {
+  if (requestedPhase) return requestedPhase;
   if (status === "tool_executing") return "start";
   if (status === "tool_completed") return "result";
   if (status === "error") return "error";
@@ -209,6 +213,16 @@ function normalizeActivityTextForPhase(text: string, phase: ToolStatusPhase): st
       .replace(/^Editing\b/i, "Edited");
   }
 
+  if (phase === "blocked") {
+    return trimmed
+      .replace(/^Exploring\b/i, "Read blocked")
+      .replace(/^Searching\b/i, "Search blocked")
+      .replace(/^Fetching\b/i, "Fetch blocked")
+      .replace(/^Running\b/i, "Command blocked")
+      .replace(/^Writing\b/i, "Edit blocked")
+      .replace(/^Editing\b/i, "Edit blocked");
+  }
+
   return trimmed
     .replace(/^Exploring\b/i, "Read failed")
     .replace(/^Searching\b/i, "Search failed")
@@ -222,6 +236,7 @@ function defaultToolActivityText(toolName: string | undefined, phase: ToolStatus
   const label = toolName || "Tool";
   if (phase === "start") return `${label} running...`;
   if (phase === "result") return `${label} complete`;
+  if (phase === "blocked") return `${label} blocked`;
   return `${label} failed`;
 }
 
@@ -263,7 +278,7 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
 
   const previous = sessionStatusSnapshots.get(sessionId);
   const nextActivities = previous?.activities ? [...previous.activities] : [];
-  const phase = statusToPhase(payload.status);
+  const phase = statusToPhase(payload.status, payload.toolPhase);
   const rawActivityText = sanitizeActivityText(payload.detail);
   const activityText =
     phase && rawActivityText

@@ -5,7 +5,7 @@ export type StreamAgentStatus =
 
 export interface StatusActivity {
   id: string;
-  phase: "start" | "result" | "error";
+  phase: "start" | "result" | "error" | "blocked";
   text: string;
   timestamp: number;
   toolName?: string;
@@ -44,7 +44,7 @@ export interface StatusStreamStatusEvent {
   toolName?: string;
   toolCallId?: string;
   sandboxProvider?: string;
-  toolPhase?: "start" | "result" | "error";
+  toolPhase?: "start" | "result" | "error" | "blocked";
   durationMs?: number;
 }
 

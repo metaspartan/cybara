@@ -918,7 +918,10 @@ export function sanitizeProcessActivities(
   for (const entry of entries) {
     if (!isObjectRecord(entry)) continue;
     const phase =
-      entry.phase === "start" || entry.phase === "result" || entry.phase === "error"
+      entry.phase === "start" ||
+      entry.phase === "result" ||
+      entry.phase === "error" ||
+      entry.phase === "blocked"
         ? entry.phase
         : "result";
     const text = typeof entry.text === "string" ? entry.text.trim() : "";

@@ -249,7 +249,7 @@ export interface ToolCallInfo {
   name: string;
   args?: Record<string, unknown>;
   arguments?: Record<string, unknown>; // Alias for compatibility
-  status: "pending" | "executing" | "completed" | "failed" | "success" | "error";
+  status: "pending" | "executing" | "completed" | "failed" | "success" | "error" | "blocked";
   result?: unknown;
   error?: string;
   duration?: number;

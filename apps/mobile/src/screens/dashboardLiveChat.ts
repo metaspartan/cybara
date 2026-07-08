@@ -149,9 +149,11 @@ export function liveActivityFromStatusEvent(
           ? "Summarizing context..."
           : event.status === "error"
             ? "Run failed"
-            : event.toolName
-              ? `${event.toolName} running...`
-              : "Working...";
+            : phase === "blocked"
+              ? "Tool blocked"
+              : event.toolName
+                ? `${event.toolName} running...`
+                : "Working...";
   const text = isMeaningfulLiveDetail(event.detail) ? event.detail.trim() : fallbackText;
   return {
     id: event.toolCallId || `live-${event.status}-${timestamp}`,

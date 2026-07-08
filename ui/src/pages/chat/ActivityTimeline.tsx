@@ -36,6 +36,8 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
         <Loader2 className="w-3 h-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
       ) : activity.phase === "result" ? (
         <CheckCircle2 className="w-3 h-3 text-emerald-400 mt-0.5 flex-shrink-0" />
+      ) : activity.phase === "blocked" ? (
+        <AlertTriangle className="w-3 h-3 text-amber-300 mt-0.5 flex-shrink-0" />
       ) : (
         <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 flex-shrink-0" />
       )}

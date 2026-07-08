@@ -2321,7 +2321,7 @@ export function Chat() {
 
   const appendLiveActivity = useCallback(
     (
-      phase: "start" | "result" | "error",
+      phase: "start" | "result" | "error" | "blocked",
       text: string,
       toolName?: string,
       eventTimestamp?: number,
@@ -2969,12 +2969,13 @@ export function Chat() {
           return;
         }
         if (status === "tool_executing" || status === "tool_completed" || status === "error") {
-          const phase: "start" | "result" | "error" =
-            status === "tool_executing"
+          const phase =
+            payload.toolPhase ||
+            (status === "tool_executing"
               ? "start"
               : status === "tool_completed"
                 ? "result"
-                : "error";
+                : "error");
           const toolName = payload.toolName || "tool";
           const text = formatToolIntent(toolName, {}, phase, payload.detail);
           const eventTimestamp =

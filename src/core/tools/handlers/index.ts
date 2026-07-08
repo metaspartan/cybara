@@ -87,6 +87,11 @@ import { handlePdf } from "../../skills/pdf";
 import { trackMetric, trackToolCall } from "../../metrics";
 import { logToolExecution } from "../../logging";
 import { config } from "../../config";
+import { coerceToolArguments } from "../../tool-argument-coercion";
+import {
+  isToolPolicyBlockedMessage,
+  sanitizeToolErrorMessage,
+} from "../../tool-result-classification";
 import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
 import { createHash } from "crypto";
@@ -475,6 +480,8 @@ export async function executeTool(
     throw new Error(`Unknown tool: ${name}`);
   }
 
+  args = coerceToolArguments(name, args, toolSchemaRegistry[name]?.input_schema);
+
   const missing = getMissingRequiredToolArguments(name, args);
   if (missing.length > 0) {
     throw new Error(formatMissingRequiredToolArgumentsError(name, missing));
@@ -590,20 +597,34 @@ export async function executeTool(
     return result;
   } catch (error) {
     const duration = Date.now() - startTime;
-    log.exception("Tool execution failed", error, {
+    const errorMessage = sanitizeToolErrorMessage(error);
+    const blocked = isToolPolicyBlockedMessage(errorMessage);
+    const logContext = {
       name,
       durationMs: duration,
       sessionId: context?.sessionId,
       agentId: context?.agentId,
-    });
+    };
+    if (blocked) {
+      log.warn("Tool execution blocked", { ...logContext, reason: errorMessage });
+    } else {
+      log.exception("Tool execution failed", error, logContext);
+    }
 
-    await trackToolCall(name, duration, false);
+    await trackToolCall(name, duration, blocked);
+    if (blocked) {
+      trackMetric("tool_blocked", name, 1, {
+        sessionId: context?.sessionId,
+        agentId: context?.agentId,
+        reason: errorMessage,
+      });
+    }
 
-    await logToolExecution(name, "error", duration, {
+    await logToolExecution(name, blocked ? "blocked" : "error", duration, {
       sessionId: context?.sessionId,
       agentId: context?.agentId,
       argsPreview,
-      error: (error as Error).message,
+      error: errorMessage,
     });
 
     throw error;

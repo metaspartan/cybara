@@ -64,6 +64,8 @@ export function IdeProcessActivityList({ activities }: { activities: LiveActivit
             <Loader2 className="h-3 w-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
           ) : activity.phase === "result" ? (
             <CheckCircle2 className="h-3 w-3 text-emerald-400 mt-0.5 flex-shrink-0" />
+          ) : activity.phase === "blocked" ? (
+            <AlertTriangle className="h-3 w-3 text-amber-300 mt-0.5 flex-shrink-0" />
           ) : (
             <AlertTriangle className="h-3 w-3 text-rose-400 mt-0.5 flex-shrink-0" />
           )}

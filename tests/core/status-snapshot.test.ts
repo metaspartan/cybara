@@ -179,6 +179,43 @@ describe("session status snapshots", () => {
     });
   });
 
+  test("preserves blocked tool activity phase without turning it into an error", () => {
+    const sessionId = `status-tool-blocked-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const baseTimestamp = Date.now();
+
+    broadcastStatus({
+      status: "tool_executing",
+      timestamp: baseTimestamp,
+      sessionId,
+      toolName: "read",
+      toolCallId: "read-blocked",
+      detail: "Exploring .env.example",
+    });
+
+    broadcastStatus({
+      status: "tool_completed",
+      timestamp: baseTimestamp + 10,
+      sessionId,
+      toolName: "read",
+      toolCallId: "read-blocked",
+      toolPhase: "blocked",
+      detail: "Read blocked for .env.example",
+    });
+
+    const snapshot = getSessionStatusSnapshot(sessionId);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.activities).toHaveLength(1);
+    expect(snapshot?.activities[0]?.phase).toBe("blocked");
+    expect(snapshot?.activities[0]?.text).toBe("Read blocked for .env.example");
+
+    broadcastStatus({
+      status: "idle",
+      timestamp: baseTimestamp + 20,
+      sessionId,
+      detail: "idle",
+    });
+  });
+
   test("does not list tool completion result snapshots as active sessions", () => {
     const sessionId = `status-tool-result-inactive-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const baseTimestamp = Date.now();

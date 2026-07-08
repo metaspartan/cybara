@@ -1,4 +1,4 @@
-export type ActivityPhase = "start" | "result" | "error";
+export type ActivityPhase = "start" | "result" | "error" | "blocked";
 
 export interface LiveActivityItem {
   id: string;
@@ -16,7 +16,7 @@ export interface ToolCallLike {
   arguments?: Record<string, unknown>;
   args?: Record<string, unknown>;
   result?: unknown;
-  status?: "pending" | "executing" | "completed" | "failed" | "success" | "error";
+  status?: "pending" | "executing" | "completed" | "failed" | "success" | "error" | "blocked";
   started_at?: number | string;
   timeline_index?: number;
   duration?: number | string;
@@ -118,6 +118,16 @@ function toCanonicalVerb(text: string, phase: ActivityPhase): string {
       .replace(/^Editing\b/i, "Edited");
   }
 
+  if (phase === "blocked") {
+    return trimmed
+      .replace(/^Exploring\b/i, "Read blocked")
+      .replace(/^Searching\b/i, "Search blocked")
+      .replace(/^Fetching\b/i, "Fetch blocked")
+      .replace(/^Running\b/i, "Command blocked")
+      .replace(/^Writing\b/i, "Edit blocked")
+      .replace(/^Editing\b/i, "Edit blocked");
+  }
+
   return trimmed
     .replace(/^Exploring\b/i, "Read failed")
     .replace(/^Searching\b/i, "Search failed")
@@ -161,6 +171,7 @@ function canonicalActivityKey(activity: LiveActivityItem): string {
 
 function normalizeToolPhase(status: ToolCallLike["status"]): ActivityPhase {
   if (status === "pending" || status === "executing") return "start";
+  if (status === "blocked") return "blocked";
   if (status === "failed" || status === "error") return "error";
   return "result";
 }

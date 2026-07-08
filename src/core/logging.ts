@@ -183,7 +183,7 @@ export async function logChannelMessage(
 
 export async function logToolExecution(
   toolName: string,
-  status: "success" | "error",
+  status: "success" | "error" | "blocked",
   durationMs: number,
   options?: {
     sessionId?: string;
@@ -195,7 +195,9 @@ export async function logToolExecution(
   const message =
     status === "success"
       ? `Tool ${toolName} completed in ${durationMs}ms`
-      : `Tool ${toolName} failed after ${durationMs}ms: ${options?.error || "Unknown error"}`;
+      : status === "blocked"
+        ? `Tool ${toolName} blocked after ${durationMs}ms: ${options?.error || "Blocked"}`
+        : `Tool ${toolName} failed after ${durationMs}ms: ${options?.error || "Unknown error"}`;
   const safeMessage = redactSecretText(message);
   const safeMetadata = redactLogMetadata({
     toolName,
@@ -209,7 +211,7 @@ export async function logToolExecution(
 
   const logEntry = {
     id: randomUUID(),
-    level: status === "success" ? "info" : "error",
+    level: status === "success" ? "info" : status === "blocked" ? "warn" : "error",
     source: "tool",
     message: safeMessage,
     metadata: JSON.stringify(safeMetadata),

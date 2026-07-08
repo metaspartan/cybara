@@ -11,9 +11,9 @@
     "postinstall": "bun run scripts/postinstall.ts",
     "version:print": "bun run scripts/version.ts print",
     "version:sync": "bun run scripts/version.ts sync",
-    "build": "bun build src/index.ts --outdir dist --target bun --external electron --external @aws-sdk/client-s3",
-    "build:cli": "bun build src/cli.tsx --outdir dist --target bun --external electron --external @aws-sdk/client-s3",
-    "build:main": "bun build src/main.ts --outdir dist --target bun --external electron --external @aws-sdk/client-s3",
+    "build": "bun build src/index.ts --outdir dist --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1",
+    "build:cli": "bun build src/cli.tsx --outdir dist --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1",
+    "build:main": "bun build src/main.ts --outdir dist --target bun --external electron --external @aws-sdk/client-s3 --external tiny-secp256k1",
     "start": "bun run dist/index.js",
     "cli": "bun run src/cli.tsx",
     "ui:dev": "cd ui && bun dev",
@@ -147,8 +147,5 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/metaspartan/cybara.git"
-  },
-  "build": "bun build src/index.ts --outdir dist --target bun --external electron --external @aws-sdk/client-s3",
-  "build:cli": "bun build src/cli.tsx --outdir dist --target bun --external electron --external @aws-sdk/client-s3",
-  "build:main": "bun build src/main.ts --outdir dist --target bun --external electron --external @aws-sdk/client-s3"
+  }
 }

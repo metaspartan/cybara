@@ -522,7 +522,7 @@ export function appendToolErrorSummary(label: string, error: unknown): string {
 export function formatToolActivityDetail(
   toolName: string,
   args: Record<string, unknown>,
-  phase: "start" | "result" | "error",
+  phase: "start" | "result" | "error" | "blocked",
   result?: unknown
 ): string {
   const key = toolName.toLowerCase();
@@ -540,19 +540,25 @@ export function formatToolActivityDetail(
           ? `Exploring ${path} (lines ${startLine}-${endLine})`
           : phase === "result"
             ? `Explored ${path} (lines ${startLine}-${endLine})`
-            : appendToolErrorSummary(`Read failed for ${path}`, result);
+            : appendToolErrorSummary(
+                `${phase === "blocked" ? "Read blocked for" : "Read failed for"} ${path}`,
+                result
+              );
       }
       return phase === "start"
         ? `Exploring ${path}`
         : phase === "result"
           ? `Explored ${path}`
-          : appendToolErrorSummary(`Read failed for ${path}`, result);
+          : appendToolErrorSummary(
+              `${phase === "blocked" ? "Read blocked for" : "Read failed for"} ${path}`,
+              result
+            );
     }
     return phase === "start"
       ? "Exploring files..."
       : phase === "result"
         ? "Exploration complete"
-        : appendToolErrorSummary("Read failed", result);
+        : appendToolErrorSummary(phase === "blocked" ? "Read blocked" : "Read failed", result);
   }
 
   if (key === "write" || key === "edit") {

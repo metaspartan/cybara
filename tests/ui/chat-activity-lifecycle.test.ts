@@ -10,17 +10,19 @@ import {
 function formatToolIntent(
   toolName: string,
   args: Record<string, unknown>,
-  phase: "start" | "result" | "error"
+  phase: "start" | "result" | "error" | "blocked"
 ): string {
   if (toolName === "file_search") {
     const pattern = typeof args.pattern === "string" ? args.pattern : "query";
     if (phase === "start") return `Searching for "${pattern}"`;
     if (phase === "result") return `Search complete for "${pattern}"`;
+    if (phase === "blocked") return `Search blocked for "${pattern}"`;
     return `Search failed for "${pattern}"`;
   }
 
   if (phase === "start") return `${toolName} running...`;
   if (phase === "result") return `${toolName} complete`;
+  if (phase === "blocked") return `${toolName} blocked`;
   return `${toolName} failed`;
 }
 

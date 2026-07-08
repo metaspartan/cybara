@@ -24,7 +24,7 @@ const API_BASE = "/api";
 
 type ChatProcessActivityPayload = Array<{
   id?: string;
-  phase?: "start" | "result" | "error";
+  phase?: "start" | "result" | "error" | "blocked";
   text?: string;
   timestamp?: number | string;
   toolName?: string;
@@ -1271,7 +1271,7 @@ export const chatApi = {
         agentId?: string;
         activities: Array<{
           id: string;
-          phase: "start" | "result" | "error";
+          phase: "start" | "result" | "error" | "blocked";
           text: string;
           timestamp: number;
           toolName?: string;
@@ -1287,7 +1287,7 @@ export const chatApi = {
         agentId?: string;
         activities: Array<{
           id: string;
-          phase: "start" | "result" | "error";
+          phase: "start" | "result" | "error" | "blocked";
           text: string;
           timestamp: number;
           toolName?: string;

@@ -158,7 +158,7 @@ export function toIdeLiveActivityItems(
   activities:
     | Array<{
         id?: string;
-        phase?: "start" | "result" | "error";
+        phase?: "start" | "result" | "error" | "blocked";
         text?: string;
         timestamp?: number;
         toolName?: string;
@@ -179,7 +179,10 @@ export function toIdeLiveActivityItems(
     .sort((left, right) => left.timestamp - right.timestamp)
     .map((activity) => ({
       id: activity.id as string,
-      phase: activity.phase === "start" || activity.phase === "error" ? activity.phase : "result",
+      phase:
+        activity.phase === "start" || activity.phase === "error" || activity.phase === "blocked"
+          ? activity.phase
+          : "result",
       text: activity.text as string,
       timestamp: activity.timestamp as number,
       toolName: activity.toolName,
@@ -190,7 +193,7 @@ export function toIdeLiveActivityItems(
 
 export function formatIdeStatusEventText(
   toolName: string | undefined,
-  phase: "start" | "result" | "error",
+  phase: "start" | "result" | "error" | "blocked",
   detail?: string
 ): string {
   const normalizedDetail = typeof detail === "string" ? detail.trim() : "";
@@ -200,6 +203,7 @@ export function formatIdeStatusEventText(
   const label = toolName || "Tool";
   if (phase === "start") return `${label} running...`;
   if (phase === "result") return `${label} complete`;
+  if (phase === "blocked") return `${label} blocked`;
   return `${label} failed`;
 }
 

@@ -287,6 +287,9 @@ export function WorkActivityIcon({ phase, toolName }: { phase: string; toolName?
   if (phase === "error") {
     return <AlertTriangle color={colors.red} size={13} strokeWidth={2.2} />;
   }
+  if (phase === "blocked") {
+    return <AlertTriangle color={colors.amber} size={13} strokeWidth={2.2} />;
+  }
   return <CheckCircle2 color={colors.green} size={13} strokeWidth={2.2} />;
 }
 

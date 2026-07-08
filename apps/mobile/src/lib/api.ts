@@ -650,7 +650,7 @@ export interface MobileStatusStreamStatusEvent {
   agentId?: string;
   toolName?: string;
   toolCallId?: string;
-  toolPhase?: "start" | "result" | "error";
+  toolPhase?: "start" | "result" | "error" | "blocked";
   durationMs?: number;
 }
 

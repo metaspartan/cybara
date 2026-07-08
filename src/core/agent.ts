@@ -7,7 +7,12 @@ import {
   providers as providerCatalog,
   type ProviderType,
 } from "./providers";
-import { getToolSchemasForLLM, isToolEnabledForAgent, type ToolContext } from "./tools/index";
+import {
+  getToolSchemasForLLM,
+  isToolEnabledForAgent,
+  toolSchemas,
+  type ToolContext,
+} from "./tools/index";
 import {
   acquireCredential,
   markCredentialCooldown,
@@ -154,6 +159,8 @@ import {
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
 import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
 import { resolveAgentToolSelection } from "./agent-tool-selection";
+import { coerceToolArguments } from "./tool-argument-coercion";
+import { isToolPolicyBlockedMessage, sanitizeToolErrorMessage } from "./tool-result-classification";
 import {
   BedrockRuntimeClient,
   ConverseCommand,
@@ -1681,6 +1688,8 @@ class AgentManager {
       return { skipped: false, result: { error: reason } };
     }
 
+    args = coerceToolArguments(toolName, args, toolSchemas[toolName]?.input_schema);
+
     const missingArgs = getMissingRequiredToolArguments(toolName, args);
     if (missingArgs.length > 0) {
       const reason = formatMissingRequiredToolArgumentsError(toolName, missingArgs);
@@ -1747,17 +1756,29 @@ class AgentManager {
       });
       return { skipped: false, result };
     } catch (error) {
-      const errorMessage = this.normalizeErrorMessage(error);
+      const errorMessage = sanitizeToolErrorMessage(this.normalizeErrorMessage(error));
+      const blocked = isToolPolicyBlockedMessage(errorMessage);
+      const phase = blocked ? "blocked" : "error";
       this.broadcastAgentStatus(
-        "error",
+        blocked ? "tool_completed" : "error",
         toolContext,
-        formatToolActivityDetail(toolName, args, "error", errorMessage),
+        formatToolActivityDetail(toolName, args, phase, errorMessage),
         {
           toolName,
           toolCallId,
-          toolPhase: "error",
+          toolPhase: phase,
         }
       );
+      if (blocked) {
+        await emitAgentHook({
+          type: "tool_blocked",
+          context: hookContext,
+          toolName,
+          args,
+          reason: errorMessage,
+        });
+        return { skipped: false, result: { error: errorMessage, blocked: true } };
+      }
       await emitAgentHook({
         type: "tool_error",
         context: hookContext,

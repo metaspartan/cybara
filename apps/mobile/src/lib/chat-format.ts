@@ -8,7 +8,7 @@ export type UnicodeTextRun = {
   content: string;
 };
 
-export type MobileWorkActivityPhase = "start" | "result" | "error";
+export type MobileWorkActivityPhase = "start" | "result" | "error" | "blocked";
 
 export interface MobileWorkActivity {
   id: string;
@@ -154,6 +154,7 @@ function toolPhase(status: string | undefined): MobileWorkActivityPhase {
   if (normalized === "pending" || normalized === "executing" || normalized === "running") {
     return "start";
   }
+  if (normalized === "blocked") return "blocked";
   if (normalized === "failed" || normalized === "error") return "error";
   return "result";
 }
@@ -169,6 +170,15 @@ function normalizeVerb(text: string, phase: MobileWorkActivityPhase): string {
       .replace(/^Running\b/i, "Ran")
       .replace(/^Writing\b/i, "Edited")
       .replace(/^Editing\b/i, "Edited");
+  }
+  if (phase === "blocked") {
+    return trimmed
+      .replace(/^Exploring\b/i, "Read blocked")
+      .replace(/^Searching\b/i, "Search blocked")
+      .replace(/^Fetching\b/i, "Fetch blocked")
+      .replace(/^Running\b/i, "Command blocked")
+      .replace(/^Writing\b/i, "Edit blocked")
+      .replace(/^Editing\b/i, "Edit blocked");
   }
   return trimmed
     .replace(/^Exploring\b/i, "Read failed")
@@ -202,15 +212,15 @@ function formatToolIntent(
         const endLine = startLine + Math.max(1, Math.floor(limit)) - 1;
         if (phase === "start") return `Exploring ${displayPath} (lines ${startLine}-${endLine})`;
         if (phase === "result") return `Explored ${displayPath} (lines ${startLine}-${endLine})`;
-        return `Read failed for ${displayPath}`;
+        return `${phase === "blocked" ? "Read blocked for" : "Read failed for"} ${displayPath}`;
       }
       if (phase === "start") return `Exploring ${displayPath}`;
       if (phase === "result") return `Explored ${displayPath}`;
-      return `Read failed for ${displayPath}`;
+      return `${phase === "blocked" ? "Read blocked for" : "Read failed for"} ${displayPath}`;
     }
     if (phase === "start") return "Exploring files...";
     if (phase === "result") return "Exploration complete";
-    return "Read failed";
+    return phase === "blocked" ? "Read blocked" : "Read failed";
   }
 
   if (key === "write" || key === "edit" || key === "apply_patch") {
