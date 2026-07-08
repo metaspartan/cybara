@@ -754,7 +754,11 @@ export function parseGrokUsageResponse(body: unknown, now: number): LiveProvider
   const billingCycle = asRecord(result.billingCycle ?? result.billing_cycle);
   return {
     planLabel: "Grok Build",
-    monthly: {
+    fiveHour: {
+      usedPercent: 0,
+      unlimited: true,
+    },
+    weekly: {
       usedPercent,
       resetsAt: resetToIso(
         billingCycle?.billingPeriodEnd,
@@ -1076,7 +1080,11 @@ export function parseGrokWebBillingResponse(
 
   return {
     planLabel: "Grok Build",
-    monthly: {
+    fiveHour: {
+      usedPercent: 0,
+      unlimited: true,
+    },
+    weekly: {
       usedPercent: Math.max(0, Math.min(100, usedPercent)),
       resetsAt: preferredReset ? new Date(preferredReset).toISOString() : undefined,
     },

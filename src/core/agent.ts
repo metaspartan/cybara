@@ -80,6 +80,7 @@ import {
   anthropicRequestHeaders,
 } from "./llm/anthropic-vertex";
 import {
+  getRouterRouteModel,
   selectProvider,
   recordUsage,
   recordRateLimit as recordRouterRateLimit,
@@ -275,6 +276,7 @@ interface AgentExecutionOptions {
   requiredToolName?: string;
   abortSignal?: AbortSignal;
   consumeSteeringMessages?: () => Array<{ id: string; content: string; createdAt: number }>;
+  useModelRouter?: boolean;
 }
 
 interface RunningAgentState {
@@ -1008,7 +1010,9 @@ class AgentManager {
       throw new Error("Agent not found");
     }
 
-    let provider = this.resolveProviderForAgent(agent, true);
+    let provider = options?.useModelRouter
+      ? this.resolveProviderForAgent({ ...agent, provider_id: undefined }, false)
+      : this.resolveProviderForAgent(agent, true);
     if (!provider) {
       return { content: this.generateFallbackResponse(messages) };
     }
@@ -1052,10 +1056,15 @@ class AgentManager {
 
     const toolContext = this.buildToolExecutionContext(agent, options);
 
+    const routedModel =
+      options?.useModelRouter && provider
+        ? (getRouterRouteModel(provider.id) ?? getRouterRouteModel(provider.provider))
+        : undefined;
     const selectedModel =
-      typeof options?.modelOverride === "string" && options.modelOverride.trim().length > 0
+      routedModel ||
+      (typeof options?.modelOverride === "string" && options.modelOverride.trim().length > 0
         ? options.modelOverride.trim()
-        : agent.model;
+        : agent.model);
 
     const resolvedExecution = this.resolveProviderModelForExecution(provider, selectedModel);
     const activeProvider = resolvedExecution.provider;

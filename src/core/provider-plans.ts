@@ -275,12 +275,12 @@ const EXTERNAL_PLAN_SOURCE_CATALOG: Record<string, ExternalPlanSourceInfo> = {
   xai: {
     mode: "cli",
     label: "Grok Build usage",
-    hint: "xAI API-key usage is metered separately; Grok Build plan usage comes from the local Grok CLI session when available.",
+    hint: "xAI API-key usage is metered separately; Grok Build plan usage comes from the shared weekly SuperGrok/X plan pool when available.",
   },
   "xai-oauth": {
     mode: "oauth_api",
     label: "Grok Build usage",
-    hint: "Uses the connected xAI OAuth account for Grok Build billing data, with local Grok CLI billing as a fallback.",
+    hint: "Uses the connected xAI OAuth account for shared weekly Grok Build usage, with local Grok CLI billing as a fallback.",
   },
   kilocode: {
     mode: "provider_api",
@@ -434,7 +434,7 @@ const PROVIDER_PLAN_PRESETS: ProviderPlanPresetSuggestion[] = [
     sourceMode: "oauth_api",
     sourceUrl: "https://docs.x.ai/build/overview",
     limitDescription:
-      "Use xAI Grok OAuth for SuperGrok or X Premium plan access; xAI API keys are metered separately.",
+      "SuperGrok and X paid plans use a shared weekly usage pool; no separate five-hour Grok Build cap is published.",
     externalSourceEnabled: true,
   },
   {

@@ -554,6 +554,13 @@ export function selectProvider(preferredProviderId?: string): string | null {
   }
 }
 
+export function getRouterRouteModel(providerId?: string): string | undefined {
+  if (!providerId) return undefined;
+  const routerCfg = getRouterConfig();
+  const route = routerCfg.routes[providerId];
+  return route ? normalizeRoute(route).model : undefined;
+}
+
 // ─── Usage recording (DB-persisted) ─────────────────────────────────────────
 
 export function recordUsage(

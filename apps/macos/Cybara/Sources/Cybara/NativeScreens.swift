@@ -423,6 +423,8 @@ private func nativeSessionGroups(
     }
 }
 
+private let nativeModelRouterSelectorValue = "__model_router__"
+
 struct ChatScreen: View {
     let client: GatewayClient
     @Binding var selectedSessionID: String?
@@ -445,6 +447,8 @@ struct ChatScreen: View {
     @State private var deleteTarget: GatewaySession?
     @State private var pendingAgentID = ""
     @State private var pendingAgentSessionID: String?
+    @State private var modelRouterEnabled = false
+    @State private var useModelRouter = false
     @State private var pendingWorkspaceDir = ""
     @State private var workspaceSaving = false
     @State private var agentSaving = false
@@ -498,6 +502,7 @@ struct ChatScreen: View {
                 pendingAgentSessionID = nil
                 if selectedSessionID != nil { pendingAgentID = "" }
             }
+            useModelRouter = false
             guard let selectedSessionID else {
                 messages = []
                 return
@@ -1034,7 +1039,7 @@ struct ChatScreen: View {
         gatewayWorkspaceLabel(activeWorkspaceDir, maxLength: 42)
     }
 
-    private var selectedChatAgentID: String {
+    private var selectedConcreteChatAgentID: String {
         if let selectedSessionID,
            pendingAgentSessionID == selectedSessionID,
            let pending = firstNonEmptyGatewayString(pendingAgentID) {
@@ -1046,8 +1051,12 @@ struct ChatScreen: View {
         return firstNonEmptyGatewayString(activeSession?.agent_id) ?? ""
     }
 
+    private var selectedChatAgentID: String {
+        useModelRouter ? nativeModelRouterSelectorValue : selectedConcreteChatAgentID
+    }
+
     private var selectedChatAgent: GatewayAgent? {
-        agents.first { $0.id == selectedChatAgentID }
+        agents.first { $0.id == selectedConcreteChatAgentID }
     }
 
     private var agentSelectionBinding: Binding<String> {
@@ -1077,6 +1086,7 @@ struct ChatScreen: View {
     }
 
     private var activeProviderPlan: ProviderPlanSnapshot? {
+        guard !useModelRouter else { return nil }
         guard let providerPlanStatus else { return nil }
         let keys = Set([
             selectedChatAgent?.provider_id,
@@ -1589,7 +1599,11 @@ struct ChatScreen: View {
             }
 
             Picker("Agent", selection: agentSelectionBinding) {
-                Text("Gateway default").tag("")
+                if modelRouterEnabled {
+                    Text("Model Router").tag(nativeModelRouterSelectorValue)
+                } else {
+                    Text("Gateway default").tag("")
+                }
                 ForEach(agents) { agent in
                     Text(agent.model.map { "\(agent.name) - \($0)" } ?? agent.name).tag(agent.id)
                 }
@@ -1598,7 +1612,7 @@ struct ChatScreen: View {
             .pickerStyle(.menu)
             .controlSize(.small)
             .frame(width: 176)
-            .disabled(agentSaving || agents.isEmpty)
+            .disabled(agentSaving || (!modelRouterEnabled && agents.isEmpty))
 
             if agentSaving {
                 ProgressView().controlSize(.small)
@@ -1722,6 +1736,16 @@ struct ChatScreen: View {
         } catch {
             toolApprovalMode = "always_allow"
         }
+        do {
+            let router = try await client.routerConfig()
+            modelRouterEnabled = router["enabled"] as? Bool == true
+            if !modelRouterEnabled {
+                useModelRouter = false
+            }
+        } catch {
+            modelRouterEnabled = false
+            useModelRouter = false
+        }
     }
 
     private func changeToolApprovalMode(_ nextMode: String) async {
@@ -1790,6 +1814,7 @@ struct ChatScreen: View {
         pendingMessages = []
         pendingAgentID = ""
         pendingAgentSessionID = nil
+        useModelRouter = false
         pendingWorkspaceDir = ""
         error = nil
     }
@@ -1840,6 +1865,12 @@ struct ChatScreen: View {
 
     private func changeChatAgent(_ agentID: String) async {
         guard !agentSaving else { return }
+        guard agentID != nativeModelRouterSelectorValue else {
+            guard modelRouterEnabled else { return }
+            useModelRouter = true
+            return
+        }
+        useModelRouter = false
         guard !agentID.isEmpty else {
             if selectedSessionID == nil { pendingAgentID = "" }
             return
@@ -2091,9 +2122,10 @@ struct ChatScreen: View {
             let result = try await client.sendChat(
                 message: outgoing,
                 sessionId: selectedSessionID,
-                agentId: selectedChatAgentID.isEmpty ? nil : selectedChatAgentID,
+                agentId: selectedConcreteChatAgentID.isEmpty ? nil : selectedConcreteChatAgentID,
                 workspaceDir: activeWorkspaceDir,
                 queueMode: queuedSend ? "queue" : nil,
+                useModelRouter: useModelRouter,
                 images: attachments.map { ["data": $0.base64, "mimeType": $0.mimeType] }
             )
             if result.queued == true {

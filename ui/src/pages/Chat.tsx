@@ -71,6 +71,7 @@ import {
   fileToChatImage,
   fileToTextAttachment,
   formatAttachedFiles,
+  imageToolResultSrc,
   isSupportedImageType,
   isTextLikeFile,
   type ChatFileAttachment,
@@ -442,9 +443,13 @@ function ChatApprovalControls({
   );
 }
 
+const MODEL_ROUTER_SELECTOR_VALUE = "__model_router__";
+
 function ChatAgentControls({
   agents,
   selectedAgentId,
+  modelRouterEnabled,
+  useModelRouter,
   contextUsage,
   providerPlan,
   onSelectAgent,
@@ -452,13 +457,17 @@ function ChatAgentControls({
 }: {
   agents: Agent[];
   selectedAgentId?: string;
+  modelRouterEnabled?: boolean;
+  useModelRouter?: boolean;
   contextUsage?: SessionContextUsage | null;
   providerPlan?: ProviderPlanSnapshot | null;
   onSelectAgent: (agentId?: string) => void;
   updating?: boolean;
 }) {
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
-  const routeLabel = selectedAgent?.model || selectedAgent?.name || "Gateway default";
+  const routeLabel = useModelRouter
+    ? "Model Router"
+    : selectedAgent?.model || selectedAgent?.name || "Gateway default";
   return (
     <div className="flex min-w-0 items-center gap-0.5">
       <ContextUsageRing usage={contextUsage} providerPlan={providerPlan} />
@@ -468,15 +477,21 @@ function ChatAgentControls({
       <div className="relative min-w-0">
         <select
           id="chat-agent-selector"
-          value={selectedAgentId || ""}
+          value={useModelRouter ? MODEL_ROUTER_SELECTOR_VALUE : selectedAgentId || ""}
           disabled={updating}
           onChange={(event) => onSelectAgent(event.target.value || undefined)}
           title={routeLabel}
           className="h-7 min-w-[104px] max-w-[196px] appearance-none truncate rounded-full border border-transparent bg-transparent py-1 pl-2 pr-6 text-[11px] font-medium text-gray-300 outline-none transition-colors [color-scheme:dark] hover:bg-white/[0.06] hover:text-white focus:border-white/15 focus:bg-white/[0.06] disabled:opacity-60"
         >
-          <option value="" className="bg-[#11131c] text-white">
-            Gateway default
-          </option>
+          {modelRouterEnabled ? (
+            <option value={MODEL_ROUTER_SELECTOR_VALUE} className="bg-[#11131c] text-white">
+              Model Router
+            </option>
+          ) : (
+            <option value="" className="bg-[#11131c] text-white">
+              Gateway default
+            </option>
+          )}
           {agents.map((agent) => (
             <option key={agent.id} value={agent.id} className="bg-[#11131c] text-white">
               {agent.model ? `${agent.name} - ${agent.model}` : agent.name}
@@ -1799,7 +1814,12 @@ export function Chat() {
   const { data: info } = useInfo();
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
   const [sessionAgentId, setSessionAgentId] = useState<string | null>(null);
+  const [modelRouterEnabled, setModelRouterEnabled] = useState(false);
+  const [useModelRouter, setUseModelRouter] = useState(false);
   const [lastWorkspaceDir, setLastWorkspaceDir] = useState<string | null>(null);
+  const chatAgentId = useModelRouter
+    ? selectedAgentId || sessionAgentId || undefined
+    : selectedAgentId;
   const {
     messages,
     isLoading,
@@ -1811,7 +1831,7 @@ export function Chat() {
     workspaceDir,
     setWorkspaceDir,
     revertToMessage,
-  } = useChat(selectedAgentId);
+  } = useChat(chatAgentId, { useModelRouter });
   const typedMessages = messages as ChatMessage[];
   const turnStartedAtMsByIndex = useMemo(() => {
     const lookup = new Map<number, number | undefined>();
@@ -1990,6 +2010,7 @@ export function Chat() {
     [agents, selectedAgentId, sessionAgentId]
   );
   const activeProviderPlan = useMemo(() => {
+    if (useModelRouter) return null;
     if (!providerPlanStatus || !activeAgentForPlan) return null;
     const keys = new Set(
       [
@@ -2005,7 +2026,7 @@ export function Chat() {
         )
       ) ?? null
     );
-  }, [activeAgentForPlan, providerPlanStatus]);
+  }, [activeAgentForPlan, providerPlanStatus, useModelRouter]);
   const syncSessionAgentSelection = useCallback(
     (agentId?: string | null) => {
       const normalized = typeof agentId === "string" && agentId.trim() ? agentId.trim() : null;
@@ -2033,11 +2054,28 @@ export function Chat() {
 
   useEffect(() => {
     let active = true;
+    const loadRouterConfig = async () => {
+      try {
+        const response = await apiFetch("/api/router/config");
+        if (!active) return;
+        const data = await response.json();
+        setModelRouterEnabled(data?.enabled === true);
+        if (data?.enabled !== true) {
+          setUseModelRouter(false);
+        }
+      } catch {
+        if (active) {
+          setModelRouterEnabled(false);
+          setUseModelRouter(false);
+        }
+      }
+    };
     const loadProviderPlans = async () => {
       const response = await providerPlansApi.status();
       if (!active) return;
       setProviderPlanStatus(response.success ? (response.data ?? null) : null);
     };
+    void loadRouterConfig();
     void loadProviderPlans();
     const interval = window.setInterval(loadProviderPlans, 60_000);
     return () => {
@@ -2060,9 +2098,16 @@ export function Chat() {
 
   const handleSelectAgent = useCallback(
     async (agentId?: string) => {
+      if (agentId === MODEL_ROUTER_SELECTOR_VALUE) {
+        if (!modelRouterEnabled) return;
+        setUseModelRouter(true);
+        setSessionContextUsage(null);
+        return;
+      }
       const previousSelectedAgentId = selectedAgentId;
       const previousSessionAgentId = sessionAgentId;
       const nextAgentId = resolveSelectableSessionAgentId(agentId);
+      setUseModelRouter(false);
       setSelectedAgentId(nextAgentId);
       setSessionAgentId(nextAgentId ?? null);
 
@@ -2098,6 +2143,7 @@ export function Chat() {
     },
     [
       resolveSelectableSessionAgentId,
+      modelRouterEnabled,
       selectedAgentId,
       sessionAgentId,
       sessionId,
@@ -2811,6 +2857,7 @@ export function Chat() {
       if (options?.resetAgentSelection) {
         setSessionAgentId(null);
         setSelectedAgentId(undefined);
+        setUseModelRouter(false);
       }
     },
     [clearChat]
@@ -4197,6 +4244,7 @@ export function Chat() {
             onLoadSession={(id, msgs, loadedWorkspaceDir, loadedAgentId, loadedContextUsage) => {
               suppressAutoRestoreRef.current = false;
               activeSessionRef.current = id;
+              setUseModelRouter(false);
               loadSession(id, msgs, loadedWorkspaceDir);
               syncSessionAgentSelection(loadedAgentId);
               setSessionContextUsage(loadedContextUsage ?? null);
@@ -4363,6 +4411,33 @@ export function Chat() {
                               </div>
                             )}
                             <MessageContent content={message.content} />
+                            {message.role !== "user" &&
+                              (() => {
+                                const outputImages = (message.tool_calls || [])
+                                  .map((toolCall) => imageToolResultSrc(toolCall.result))
+                                  .filter((src): src is string => !!src);
+                                if (outputImages.length === 0) return null;
+                                return (
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {outputImages.map((src, imageIndex) => (
+                                      <a
+                                        key={`tool-image-${originalIndex}-${imageIndex}`}
+                                        href={src}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="block max-w-[320px] overflow-hidden rounded-lg border border-white/12"
+                                      >
+                                        <img
+                                          src={src}
+                                          alt="Tool output"
+                                          loading="lazy"
+                                          className="h-auto max-h-80 w-full object-contain"
+                                        />
+                                      </a>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
                             {message.role !== "user" && (
                               <AssistantMetaInline
                                 message={message}
@@ -4578,6 +4653,8 @@ export function Chat() {
                     <ChatAgentControls
                       agents={agents}
                       selectedAgentId={selectedAgentId}
+                      modelRouterEnabled={modelRouterEnabled}
+                      useModelRouter={useModelRouter}
                       contextUsage={sessionContextUsage}
                       providerPlan={activeProviderPlan}
                       onSelectAgent={(agentId) => void handleSelectAgent(agentId)}
@@ -4691,6 +4768,7 @@ export function Chat() {
                 const result = await loadSessionMutation.mutateAsync(sessionKey);
                 if (result?.messagesList) {
                   activeSessionRef.current = sessionKey;
+                  setUseModelRouter(false);
                   loadSession(
                     sessionKey,
                     result.messagesList as ChatMessage[],

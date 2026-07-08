@@ -132,7 +132,8 @@ export const agentsApi = {
     signal?: AbortSignal,
     queueMode?: "queue" | "steer",
     clientPendingId?: string,
-    images?: ChatImageAttachment[]
+    images?: ChatImageAttachment[],
+    useModelRouter?: boolean
   ) =>
     fetchApi<{
       message: ChatMessage;
@@ -151,6 +152,7 @@ export const agentsApi = {
         workspaceDir,
         queueMode,
         clientPendingId,
+        useModelRouter,
         ...(images && images.length ? { images } : {}),
       }),
       signal,
@@ -1087,7 +1089,8 @@ export const chatApi = {
     signal?: AbortSignal,
     queueMode?: "queue" | "steer",
     clientPendingId?: string,
-    images?: ChatImageAttachment[]
+    images?: ChatImageAttachment[],
+    useModelRouter?: boolean
   ) =>
     fetchApi<{
       message: ChatMessage;
@@ -1107,6 +1110,7 @@ export const chatApi = {
         workspaceDir,
         queueMode,
         clientPendingId,
+        useModelRouter,
         ...(images && images.length ? { images } : {}),
       }),
       signal,

@@ -308,7 +308,7 @@ describe("parseKimiUsageResponse", () => {
 });
 
 describe("parseGrokUsageResponse", () => {
-  test("maps Grok billing JSON-RPC results into a monthly usage window", () => {
+  test("maps Grok billing JSON-RPC results into weekly usage with unlimited five-hour usage", () => {
     const result = parseGrokUsageResponse(
       {
         result: {
@@ -326,13 +326,16 @@ describe("parseGrokUsageResponse", () => {
 
     expect(result?.planLabel).toBe("Grok Build");
     expect(result?.source).toBe("cli");
-    expect(result?.monthly?.usedPercent).toBe(25);
-    expect(result?.monthly?.resetsAt).toBe("2026-08-01T00:00:00Z");
+    expect(result?.fiveHour?.usedPercent).toBe(0);
+    expect(result?.fiveHour?.unlimited).toBe(true);
+    expect(result?.weekly?.usedPercent).toBe(25);
+    expect(result?.weekly?.resetsAt).toBe("2026-08-01T00:00:00Z");
+    expect(result?.monthly).toBeUndefined();
   });
 });
 
 describe("parseGrokWebBillingResponse", () => {
-  test("maps Grok Build gRPC-web billing payloads into monthly usage", () => {
+  test("maps Grok Build gRPC-web billing payloads into weekly usage with unlimited five-hour usage", () => {
     const hex =
       "0a3f0d7f6a9c3f12001a002206088097f3d0062a060880b191d2063a07080215a9389b3f3a07080115d6ea183c421208011206088097f3d0061a060880b191d206";
     const bytes = Uint8Array.from(hex.match(/../g)?.map((part) => Number.parseInt(part, 16)) ?? []);
@@ -340,8 +343,11 @@ describe("parseGrokWebBillingResponse", () => {
 
     expect(result?.planLabel).toBe("Grok Build");
     expect(result?.source).toBe("oauth_api");
-    expect(result?.monthly?.usedPercent).toBeCloseTo(1.222, 3);
-    expect(result?.monthly?.resetsAt).toBe(new Date(1_782_864_000 * 1000).toISOString());
+    expect(result?.fiveHour?.usedPercent).toBe(0);
+    expect(result?.fiveHour?.unlimited).toBe(true);
+    expect(result?.weekly?.usedPercent).toBeCloseTo(1.222, 3);
+    expect(result?.weekly?.resetsAt).toBe(new Date(1_782_864_000 * 1000).toISOString());
+    expect(result?.monthly).toBeUndefined();
   });
 
   test("unwraps gRPC-web data frames before scanning protobuf payloads", () => {
@@ -351,7 +357,8 @@ describe("parseGrokWebBillingResponse", () => {
     frame.set(payload, 5);
     const result = parseGrokWebBillingResponse(frame, 1);
 
-    expect(result?.monthly?.usedPercent).toBe(10);
+    expect(result?.fiveHour?.unlimited).toBe(true);
+    expect(result?.weekly?.usedPercent).toBe(10);
   });
 });
 

@@ -269,6 +269,8 @@ describe("native macOS shell wiring", () => {
     expect(gatewayModels).toContain("let messagesList: [GatewaySessionMessage]?");
     expect(gatewayClient).toContain("func sessionDetail(_ id: String)");
     expect(gatewayClient).toContain("func updateSessionAgent(");
+    expect(gatewayClient).toContain("useModelRouter: Bool = false");
+    expect(gatewayClient).toContain('payload["useModelRouter"] = true');
     expect(gatewayClient).toContain('request("api/sessions/\\(id)/agent", method: "PUT"');
     expect(nativeScreens).toContain("private var composerControls: some View");
     expect(nativeScreens).toContain("private var composerSecurityControls: some View");
@@ -279,6 +281,9 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("try await client.updateAppConfig(body)");
     expect(nativeScreens).toContain('"tool_approval_mode": normalized');
     expect(nativeScreens).toContain('Picker("Agent", selection: agentSelectionBinding)');
+    expect(nativeScreens).toContain('Text("Model Router").tag(nativeModelRouterSelectorValue)');
+    expect(nativeScreens).toContain("let router = try await client.routerConfig()");
+    expect(nativeScreens).toContain("useModelRouter: useModelRouter");
     expect(nativeScreens).toContain(".frame(width: 176)");
     expect(nativeScreens).toContain("private var contextUsageText: String");
     expect(nativeScreens).toContain("private var contextUsagePopover: some View");
@@ -296,8 +301,9 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("pendingAgentSessionID = selectedSessionID");
     expect(nativeScreens).toContain("private func changeChatAgent(_ agentID: String) async");
     expect(nativeScreens).toContain(
-      "agentId: selectedChatAgentID.isEmpty ? nil : selectedChatAgentID"
+      "agentId: selectedConcreteChatAgentID.isEmpty ? nil : selectedConcreteChatAgentID"
     );
+    expect(nativeScreens).toContain("useModelRouter: useModelRouter");
   });
 
   test("native provider plan editors respect automatic provider-managed plans", () => {

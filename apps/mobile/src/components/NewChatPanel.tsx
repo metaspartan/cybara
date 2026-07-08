@@ -43,6 +43,8 @@ export function NewChatPanel({
 }) {
   const defaultAgentId = agents.find((agent) => agent.status === "running")?.id || agents[0]?.id;
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(defaultAgentId);
+  const [routerEnabled, setRouterEnabled] = useState(false);
+  const [useModelRouter, setUseModelRouter] = useState(false);
   const [agentSelectionInitialized, setAgentSelectionInitialized] = useState(
     () => defaultAgentId !== undefined
   );
@@ -70,6 +72,25 @@ export function NewChatPanel({
     }
   }, [savingApprovalMode, toolApprovalMode]);
 
+  useEffect(() => {
+    let active = true;
+    api
+      .routerConfig()
+      .then((config) => {
+        if (!active) return;
+        setRouterEnabled(config.enabled === true);
+        if (config.enabled !== true) setUseModelRouter(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setRouterEnabled(false);
+        setUseModelRouter(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api]);
+
   const createChat = async () => {
     const trimmed = message.trim();
     if (!trimmed || creating) return;
@@ -80,6 +101,7 @@ export function NewChatPanel({
         message: trimmed,
         agentId: selectedAgentId,
         workspaceDir: workspaceDir.trim() || undefined,
+        useModelRouter,
       });
       if (!result.sessionId) {
         throw new Error("Gateway did not return a session id.");
@@ -123,27 +145,48 @@ export function NewChatPanel({
         <Text style={styles.counterText}>{agents.length || "Default"}</Text>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalPicker}>
-        <Pressable
-          onPress={() => {
-            setSelectedAgentId(undefined);
-            setAgentSelectionInitialized(true);
-          }}
-          style={[
-            styles.agentChip,
-            !selectedAgentId && [styles.agentChipActive, { borderColor: accentColor }],
-          ]}
-        >
-          <Text style={[styles.agentChipTitle, !selectedAgentId && { color: accentColor }]}>
-            Gateway default
-          </Text>
-          <Text style={styles.agentChipDetail}>Auto route</Text>
-        </Pressable>
+        {routerEnabled ? (
+          <Pressable
+            onPress={() => {
+              setUseModelRouter(true);
+              setSelectedAgentId(undefined);
+              setAgentSelectionInitialized(true);
+            }}
+            style={[
+              styles.agentChip,
+              useModelRouter && [styles.agentChipActive, { borderColor: accentColor }],
+            ]}
+          >
+            <Text style={[styles.agentChipTitle, useModelRouter && { color: accentColor }]}>
+              Model Router
+            </Text>
+            <Text style={styles.agentChipDetail}>Auto route</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => {
+              setUseModelRouter(false);
+              setSelectedAgentId(undefined);
+              setAgentSelectionInitialized(true);
+            }}
+            style={[
+              styles.agentChip,
+              !selectedAgentId && [styles.agentChipActive, { borderColor: accentColor }],
+            ]}
+          >
+            <Text style={[styles.agentChipTitle, !selectedAgentId && { color: accentColor }]}>
+              Gateway default
+            </Text>
+            <Text style={styles.agentChipDetail}>Auto route</Text>
+          </Pressable>
+        )}
         {agents.map((agent) => {
-          const selected = selectedAgentId === agent.id;
+          const selected = !useModelRouter && selectedAgentId === agent.id;
           return (
             <Pressable
               key={agent.id}
               onPress={() => {
+                setUseModelRouter(false);
                 setSelectedAgentId(agent.id);
                 setAgentSelectionInitialized(true);
               }}

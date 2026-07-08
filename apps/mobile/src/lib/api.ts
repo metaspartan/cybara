@@ -2270,6 +2270,7 @@ export class CybaraMobileApi {
     queueMode?: "queue" | "steer";
     clientPendingId?: string;
     images?: MobileMessageImage[];
+    useModelRouter?: boolean;
   }): Promise<{
     sessionId: string;
     message: SessionMessageSummary;
@@ -2290,6 +2291,7 @@ export class CybaraMobileApi {
         queueMode: input.queueMode,
         clientPendingId: input.clientPendingId,
         images: input.images,
+        useModelRouter: input.useModelRouter === true,
       }),
     });
     const record = asRecord(response);

@@ -18,7 +18,7 @@ interface RevertMessageInput {
 
 const CHAT_SESSION_LIST_LIMIT = 150;
 
-export function useChat(agentId?: string) {
+export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boolean }) {
   const activeRequestAbortRef = useRef<AbortController | null>(null);
   const queryClient = useQueryClient();
   const [state, setState] = useState<ChatState>({
@@ -65,7 +65,8 @@ export function useChat(agentId?: string) {
     }));
 
     try {
-      const response = agentId
+      const response =
+        agentId && !hookOptions?.useModelRouter
         ? await agentsApi.chat(
             agentId,
             content,
@@ -78,13 +79,14 @@ export function useChat(agentId?: string) {
           )
         : await chatApi.send(
             content,
-            undefined,
+            agentId,
             requestSessionId || undefined,
             requestedWorkspaceDir || undefined,
             controller.signal,
             queueMode,
             options?.clientPendingId,
-            options?.images
+            options?.images,
+            hookOptions?.useModelRouter === true
           );
 
       if (response.success && response.data) {

@@ -124,6 +124,7 @@ export interface ChatRequest {
   source?: string;
   queueMode?: "queue" | "steer";
   recordedUserMessageId?: string;
+  useModelRouter?: boolean;
   /** Optional image inputs (vision) for this user turn. */
   images?: AgentImage[];
 }
@@ -1556,6 +1557,7 @@ async function handleChatTurn(
   effectiveSessionId: string
 ): Promise<ChatResponse> {
   const { message, agentId, tools = true, channel, userId, source, workspaceDir } = request;
+  const useModelRouter = request.useModelRouter === true;
   const requestedWorkspaceDir =
     workspaceDir !== undefined ? normalizeSessionWorkspaceDir(workspaceDir) : undefined;
 
@@ -1873,6 +1875,7 @@ async function handleChatTurn(
         workspaceDir: session.workspaceDir || undefined,
         abortSignal: turnAbortController.signal,
         consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
+        useModelRouter,
       });
       responseContent = result.content;
 
@@ -1923,6 +1926,7 @@ async function handleChatTurn(
             workspaceDir: session.workspaceDir || undefined,
             abortSignal: turnAbortController.signal,
             consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
+            useModelRouter,
           });
           const forcedToolCalls = forcedResult.tool_calls || [];
           const forcedHasArtifacts = forcedToolCalls.some(

@@ -266,11 +266,13 @@ struct GatewayClient: Sendable {
         agentId: String?,
         workspaceDir: String? = nil,
         queueMode: String? = nil,
+        useModelRouter: Bool = false,
         images: [[String: String]] = []
     ) async throws -> ChatSendResponse {
         var payload: [String: Any] = ["message": message]
         if let sessionId { payload["sessionId"] = sessionId }
         if let agentId { payload["agentId"] = agentId }
+        if useModelRouter { payload["useModelRouter"] = true }
         if let workspaceDir = firstNonEmptyGatewayString(workspaceDir) {
             payload["workspaceDir"] = workspaceDir
         }

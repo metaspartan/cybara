@@ -4,6 +4,7 @@ import { tables } from "../../src/core/database";
 import {
   getProviderAvailability,
   getPricing,
+  getRouterRouteModel,
   getRouterStatus,
   getMixtureOfAgentsRoutingConfig,
   isMixtureOfAgentsRoutingActive,
@@ -193,6 +194,16 @@ describe("provider selection", () => {
   test("preferred provider passthrough when available", () => {
     setRouterConfig({ routes: { openai: { weight: 50 }, anthropic: { weight: 50 } } });
     expect(selectProvider("openai")).toBe("openai");
+  });
+
+  test("exposes pinned route model for explicit router-mode execution", () => {
+    setRouterConfig({
+      routes: {
+        openai: { weight: 50, model: "gpt-router" },
+      },
+    });
+    expect(getRouterRouteModel("openai")).toBe("gpt-router");
+    expect(getRouterRouteModel("anthropic")).toBeUndefined();
   });
 
   test("failover when preferred is rate-limited", () => {

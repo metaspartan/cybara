@@ -391,6 +391,29 @@ describe("UI API client wiring", () => {
     expect(calls[6].init?.method).toBe("DELETE");
   });
 
+  test("chatApi sends explicit model router flag without fake agent endpoints", async () => {
+    await chatApi.send(
+      "route this",
+      "agent-1",
+      "session-1",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      true
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("/api/chat");
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({
+      message: "route this",
+      agentId: "agent-1",
+      sessionId: "session-1",
+      useModelRouter: true,
+    });
+  });
+
   test("logsApi activity/stats attach query params", async () => {
     await logsApi.getActivity(30);
     await logsApi.getStats(12);

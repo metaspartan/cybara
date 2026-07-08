@@ -30,6 +30,11 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("chatApi.deletePendingMessage");
     expect(source).toContain("chatApi.getPendingMessages");
     expect(source).toContain("ChatAgentControls");
+    expect(source).toContain("MODEL_ROUTER_SELECTOR_VALUE");
+    expect(source).toContain("Model Router");
+    expect(source).toContain('apiFetch("/api/router/config")');
+    expect(source).toContain("useChat(chatAgentId, { useModelRouter })");
+    expect(source).toContain("setUseModelRouter(true)");
     expect(source).toContain("useUpdateSessionAgent");
     expect(source).toContain("providerPlansApi.status()");
     expect(source).toContain("providerPlanStatus");

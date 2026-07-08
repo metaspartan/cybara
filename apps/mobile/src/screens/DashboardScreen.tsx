@@ -315,6 +315,8 @@ const tabIcons: Record<MobileTabKey, IconGlyph> = {
   settings: Settings,
 };
 
+const MOBILE_MODEL_ROUTER_SELECTOR_VALUE = "__model_router__";
+
 const surfaceMeta: Record<
   MobileSurfaceKey,
   { title: string; Icon: IconGlyph; tone: string; endpoint?: FeatureEndpointKey }
@@ -2228,6 +2230,8 @@ function SessionDetailPanel({
   const [pinning, setPinning] = useState(false);
   const [agentUpdating, setAgentUpdating] = useState(false);
   const [pendingSessionAgentId, setPendingSessionAgentId] = useState<string | null>(null);
+  const [routerEnabled, setRouterEnabled] = useState(false);
+  const [useModelRouter, setUseModelRouter] = useState(false);
   const [toolApprovalUpdating, setToolApprovalUpdating] = useState(false);
   const [pendingToolApprovalMode, setPendingToolApprovalMode] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -2240,6 +2244,26 @@ function SessionDetailPanel({
     SessionDetailSummary["messages"][number] | null
   >(() => cachedLiveAssistant?.message ?? null);
   const [liveNowMs, setLiveNowMs] = useState(() => cachedLiveAssistant?.nowMs ?? Date.now());
+
+  useEffect(() => {
+    let active = true;
+    setUseModelRouter(false);
+    api
+      .routerConfig()
+      .then((routerConfig) => {
+        if (!active) return;
+        setRouterEnabled(routerConfig.enabled === true);
+        if (routerConfig.enabled !== true) setUseModelRouter(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setRouterEnabled(false);
+        setUseModelRouter(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, sessionId]);
 
   const commitLiveAssistant = useCallback(
     (
@@ -2635,6 +2659,7 @@ function SessionDetailPanel({
         queueMode: queuedSend ? "queue" : undefined,
         clientPendingId: optimisticPendingMessageId || undefined,
         images: attachments.length > 0 ? attachments : undefined,
+        useModelRouter,
       });
       if (result.queued) {
         replacePendingMessagesFromGateway(pendingMessagesFromResponse(result));
@@ -2915,20 +2940,24 @@ function SessionDetailPanel({
     mobileFirstNonEmptyString(detail?.agentId, sessionSummary?.agent_id) ||
     "";
   const selectedAgent = agents.find((agent) => agent.id === currentAgentId);
-  const activeProviderPlan = mobileProviderPlanFor(providerPlanStatus, {
-    agent: selectedAgent,
-    detail,
-    sessionSummary,
-  });
+  const activeProviderPlan = useModelRouter
+    ? null
+    : mobileProviderPlanFor(providerPlanStatus, {
+        agent: selectedAgent,
+        detail,
+        sessionSummary,
+      });
   const agentOptions = useMemo(
     () => [
-      { label: "Gateway default", value: "" },
+      ...(routerEnabled
+        ? [{ label: "Model Router", value: MOBILE_MODEL_ROUTER_SELECTOR_VALUE }]
+        : [{ label: "Gateway default", value: "" }]),
       ...agents.map((agent) => ({
         label: agent.model ? `${agent.name} - ${agent.model}` : agent.name,
         value: agent.id,
       })),
     ],
-    [agents]
+    [agents, routerEnabled]
   );
   const contextUsage = detail?.contextUsage;
   const toolApprovalMode = pendingToolApprovalMode || readMobileToolApprovalMode(config);
@@ -2992,7 +3021,14 @@ function SessionDetailPanel({
   };
 
   const changeSessionAgent = async (agentId: string) => {
+    if (agentId === MOBILE_MODEL_ROUTER_SELECTOR_VALUE) {
+      if (!routerEnabled) return;
+      setUseModelRouter(true);
+      haptics.select();
+      return;
+    }
     if (!agentId || agentId === currentAgentId || agentUpdating) return;
+    setUseModelRouter(false);
     setAgentUpdating(true);
     setPendingSessionAgentId(agentId);
     haptics.select();
@@ -3025,17 +3061,20 @@ function SessionDetailPanel({
   };
 
   const openAgentSelector = () => {
-    if (agentUpdating || agents.length === 0) return;
+    if (agentUpdating || (!routerEnabled && agents.length === 0)) return;
     haptics.select();
     if (Platform.OS === "ios") {
       const labels = agentOptions.map((option) =>
-        option.value === currentAgentId ? `${option.label} ✓` : option.label
+        (useModelRouter && option.value === MOBILE_MODEL_ROUTER_SELECTOR_VALUE) ||
+        (!useModelRouter && option.value === currentAgentId)
+          ? `${option.label} ✓`
+          : option.label
       );
       ActionSheetIOS.showActionSheetWithOptions(
         {
           title: "Chat settings",
           message: [
-            `Agent: ${selectedAgent?.name ?? "Gateway default"}`,
+            `Agent: ${useModelRouter ? "Model Router" : selectedAgent?.name ?? "Gateway default"}`,
             mobileContextUsageDetail(contextUsage),
             mobileProviderPlanDetail(activeProviderPlan),
           ]
@@ -3046,7 +3085,10 @@ function SessionDetailPanel({
         },
         (index) => {
           const option = agentOptions[index];
-          if (option?.value && option.value !== currentAgentId) {
+          if (
+            option?.value &&
+            (option.value === MOBILE_MODEL_ROUTER_SELECTOR_VALUE || option.value !== currentAgentId)
+          ) {
             void changeSessionAgent(option.value);
           }
         }
@@ -3058,19 +3100,27 @@ function SessionDetailPanel({
       onPress?: () => void;
       style?: "default" | "cancel" | "destructive";
     }> = agentOptions
-      .filter((option) => option.value)
       .slice(0, 8)
       .map((option) => ({
-        text: option.value === currentAgentId ? `${option.label} ✓` : option.label,
+        text:
+          (useModelRouter && option.value === MOBILE_MODEL_ROUTER_SELECTOR_VALUE) ||
+          (!useModelRouter && option.value === currentAgentId)
+            ? `${option.label} ✓`
+            : option.label,
         onPress: () => {
-          if (option.value !== currentAgentId) void changeSessionAgent(option.value);
+          if (
+            option.value === MOBILE_MODEL_ROUTER_SELECTOR_VALUE ||
+            option.value !== currentAgentId
+          ) {
+            void changeSessionAgent(option.value);
+          }
         },
       }));
     buttons.push({ text: "Cancel", style: "cancel" });
     Alert.alert(
       "Chat settings",
       [
-        `Agent: ${selectedAgent?.name ?? "Gateway default"}`,
+        `Agent: ${useModelRouter ? "Model Router" : selectedAgent?.name ?? "Gateway default"}`,
         mobileContextUsageDetail(contextUsage),
         mobileProviderPlanDetail(activeProviderPlan),
       ]

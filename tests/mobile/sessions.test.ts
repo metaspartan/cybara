@@ -88,9 +88,17 @@ describe("mobile: chat management", () => {
     const styles = read("screens/dashboardStyles.ts");
     expect(api).toContain("interface SessionContextUsage");
     expect(api).toContain("updateSessionAgent(");
+    expect(api).toContain("useModelRouter?: boolean");
+    expect(api).toContain("useModelRouter: input.useModelRouter === true");
     expect(api).toContain("/api/sessions/${encodeURIComponent(id)}/agent");
+    expect(newChat).toContain("Model Router");
+    expect(newChat).toContain(".routerConfig()");
+    expect(newChat).toContain("useModelRouter");
     expect(screen).toContain("const changeSessionAgent");
     expect(screen).toContain("const openAgentSelector");
+    expect(screen).toContain("MOBILE_MODEL_ROUTER_SELECTOR_VALUE");
+    expect(screen).toContain("setUseModelRouter(true)");
+    expect(screen).toContain("useModelRouter,");
     expect(screen).toContain("const openToolApprovalSelector");
     expect(screen).toContain("Tool approvals: ${toolApprovalLabel}");
     expect(screen).toContain("mobileContextUsageDetail(");
