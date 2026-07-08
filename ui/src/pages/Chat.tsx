@@ -2774,6 +2774,19 @@ export function Chat() {
         }
 
         if (!isActive || !snapshot) {
+          // A periodic snapshot can briefly omit an in-progress session between
+          // tool steps (or right after a remount, before the stream reattaches).
+          // Preserve buffered live activity across those transient gaps so the
+          // tool-call history doesn't flicker away; the definitive idle/error
+          // status event and the canonicalization pruning still clear it once the
+          // turn actually ends.
+          const bufferedLive = readCachedLiveSessionState(resolvedSessionId);
+          const hasBufferedLive =
+            !!bufferedLive &&
+            (bufferedLive.activities.length > 0 ||
+              bufferedLive.status !== "idle" ||
+              !!bufferedLive.streamingContent);
+          if (hasBufferedLive) return;
           if (
             !loadingRef.current &&
             activeSessionRef.current === resolvedSessionId &&

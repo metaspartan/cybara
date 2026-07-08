@@ -101,6 +101,17 @@ describe("native macOS shell wiring", () => {
       '"api/mcp"',
       '"api/lsp/status"',
       '"api/ide/index/status"',
+      '"api/ide/browse"',
+      '"api/ide/read"',
+      '"api/ide/write"',
+      '"api/ide/create"',
+      '"api/ide/rename"',
+      '"api/ide/search"',
+      '"api/ide/replace"',
+      '"api/ide/replace/preview"',
+      '"api/ide/reveal"',
+      '"api/ide/open-terminal"',
+      '"api/ide/permalink"',
       '"api/sessions/\\(',
       '"api/tools"',
       '"api/terminal/sessions"',
@@ -111,6 +122,36 @@ describe("native macOS shell wiring", () => {
 
     expect(contentView).toContain('Section("Developer")');
     expect(contentView).toContain('Section("System")');
+  });
+
+  test("native IDE screen provides browser editor and search replace controls", () => {
+    const nativePlatformScreens = readFileSync(
+      join(MACOS_APP_DIR, "NativePlatformScreens.swift"),
+      "utf8"
+    );
+
+    for (const snippet of [
+      "NativeIDEBrowseResult",
+      "NativeIDEReadResult",
+      "NativeIDESearchResult",
+      "NativeIDEReplacePreviewResult",
+      "TextEditor(text: $fileContent)",
+      "Create Item",
+      "Rename Item",
+      "browseIDE(path:",
+      "readIDEFile(path:",
+      "writeIDEFile(path: selectedFilePath",
+      "createIDEItem(parentPath:",
+      "renameIDEItem(path:",
+      "searchIDE(",
+      "previewIDEReplace(",
+      "applyIDEReplace(",
+      "revealIDEPath",
+      "openIDETerminal",
+      "idePermalink",
+    ]) {
+      expect(nativePlatformScreens).toContain(snippet);
+    }
   });
 
   test("native settings centers its content column and keeps cards left-aligned", () => {

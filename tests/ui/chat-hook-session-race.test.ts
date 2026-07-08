@@ -41,7 +41,9 @@ describe("useChat session race guards", () => {
   test("keeps in-flight requests alive when loading another session", () => {
     const source = readFileSync(hookPath, "utf8");
     const loadSessionBlock = source.slice(source.indexOf("const loadSession = useCallback"));
-    expect(loadSessionBlock).toContain("setState({");
+    expect(loadSessionBlock).toContain("setState((prev)");
+    expect(loadSessionBlock).toContain("readCachedSessionMessages(sessionId)");
+    expect(loadSessionBlock).toContain("enrichReloadedMessages(reference, messages)");
     expect(loadSessionBlock).not.toContain("activeRequestAbortRef.current?.abort();");
   });
 
