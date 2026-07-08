@@ -7,6 +7,7 @@ import {
   isValidElement,
   type ComponentPropsWithoutRef,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -40,6 +41,10 @@ import {
   ShieldAlert,
   GripVertical,
   Paperclip,
+  ListChecks,
+  SlidersHorizontal,
+  GitCompare,
+  Globe2,
 } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
@@ -153,6 +158,7 @@ import {
   resolvePathForIde,
   resolveToolCallSandboxProvider,
   collectPlanFromToolCalls,
+  collectPlanTimelineFromMessages,
   extractLatestPlanFromMessages,
   summarizeMessageFileChanges,
   summarizeSessionFileChanges,
@@ -168,6 +174,8 @@ import {
   type FileChangeSummary,
   type PendingProcessCapture,
   type RevertTarget,
+  type SessionPlanView,
+  type SessionPlanTimelineEntry,
   type SessionStatusResponse,
   type SessionStatusSnapshot,
   type SpeechRecognitionLike,
@@ -228,6 +236,216 @@ function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function sessionPlanProgressLabel(plan: SessionPlanTimelineEntry | SessionPlanView): string {
+  if (plan.summary.total === 0) return "No tasks";
+  return `${plan.summary.completed}/${plan.summary.total} complete`;
+}
+
+function sessionPlanCurrentTask(plan: SessionPlanTimelineEntry | SessionPlanView): string {
+  return (
+    plan.items.find((item) => item.status === "in_progress")?.content ||
+    plan.items.find((item) => item.status === "pending")?.content ||
+    plan.items[plan.items.length - 1]?.content ||
+    "No active task"
+  );
+}
+
+function ChatEnvironmentOverview({
+  browserOrigin,
+  currentPlan,
+  fileChanges,
+  isOpen,
+  onClose,
+  planTimeline,
+  subagents,
+  toolNames,
+  workspaceDir,
+}: {
+  browserOrigin: string;
+  currentPlan: SessionPlanView | null;
+  fileChanges: FileChangeSummary | null;
+  isOpen: boolean;
+  onClose: () => void;
+  planTimeline: SessionPlanTimelineEntry[];
+  subagents: Subagent[];
+  toolNames: string[];
+  workspaceDir: string | null;
+}) {
+  if (!isOpen) return null;
+  const latestPlans = [...planTimeline].reverse().slice(0, 8);
+  const currentProgress =
+    currentPlan && currentPlan.summary.total > 0
+      ? Math.round((currentPlan.summary.completed / currentPlan.summary.total) * 100)
+      : 0;
+  return (
+    <div className="absolute right-3 top-[44px] z-50 w-[340px] max-w-[calc(100vw-24px)] overflow-hidden rounded-xl border border-white/10 bg-[#17181d]/95 p-3 text-sm shadow-2xl backdrop-blur-xl">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-[12px] font-medium text-gray-400">Environment</div>
+          <div className="text-[11px] text-gray-600">Chat overview and current plan state</div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-200"
+          title="Close environment overview"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+
+      <div className="space-y-3">
+        <div className="space-y-2">
+          <EnvironmentRow icon={<GitCompare className="h-3.5 w-3.5" />} label="Changes">
+            {fileChanges && fileChanges.files.length > 0 ? (
+              <span>
+                {fileChanges.files.length} files
+                <span className="ml-2 text-green-300">+{fileChanges.totalAdded}</span>
+                <span className="ml-1 text-red-300">-{fileChanges.totalRemoved}</span>
+              </span>
+            ) : (
+              <span className="text-gray-500">No file diffs</span>
+            )}
+          </EnvironmentRow>
+          <EnvironmentRow icon={<FolderOpen className="h-3.5 w-3.5" />} label="Local">
+            <span className="truncate font-mono text-[11px] text-gray-300">
+              {workspaceDir ? formatWorkspaceLabel(workspaceDir, 34) : "No workspace"}
+            </span>
+          </EnvironmentRow>
+          <EnvironmentRow icon={<Globe2 className="h-3.5 w-3.5" />} label="Browser">
+            <span className="truncate font-mono text-[11px] text-gray-300">{browserOrigin}</span>
+          </EnvironmentRow>
+        </div>
+
+        <EnvironmentSection title="Plans">
+          {currentPlan ? (
+            <div className="rounded-lg border border-white/10 bg-white/[0.025] p-2.5">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  <ListChecks className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                  <span className="truncate text-[12px] font-medium text-gray-200">
+                    Latest plan update
+                  </span>
+                </div>
+                <span className="shrink-0 text-[11px] text-gray-500">
+                  {sessionPlanProgressLabel(currentPlan)}
+                </span>
+              </div>
+              <div className="mb-2 h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gray-400/70"
+                  style={{ width: `${currentProgress}%` }}
+                />
+              </div>
+              <p className="line-clamp-2 text-[12px] leading-5 text-gray-400">
+                {sessionPlanCurrentTask(currentPlan)}
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-white/10 bg-white/[0.02] p-2.5 text-[12px] text-gray-500">
+              No plan has been recorded for this chat.
+            </div>
+          )}
+          {latestPlans.length > 0 && (
+            <div className="space-y-1.5">
+              {latestPlans.map((plan) => (
+                <div
+                  key={`${plan.messageIndex}-${plan.toolIndex}`}
+                  className="rounded-lg border border-white/10 bg-black/15 px-2.5 py-2"
+                >
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="text-gray-500">
+                      Update {plan.messageIndex + 1}.{plan.toolIndex + 1}
+                    </span>
+                    <span className="text-gray-400">{sessionPlanProgressLabel(plan)}</span>
+                  </div>
+                  <p className="mt-1 truncate text-[12px] text-gray-300">
+                    {sessionPlanCurrentTask(plan)}
+                  </p>
+                  {plan.updatedAt && (
+                    <p className="mt-0.5 text-[10px] text-gray-600">
+                      {formatRelativeTime(plan.updatedAt)}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </EnvironmentSection>
+
+        <EnvironmentSection title="Subagents">
+          {subagents.length > 0 ? (
+            <div className="grid grid-cols-1 gap-1.5">
+              {subagents.slice(0, 6).map((subagent) => (
+                <div
+                  key={subagent.id}
+                  className="flex items-center justify-between gap-2 rounded-lg px-1 py-1 text-[12px]"
+                >
+                  <span className="truncate text-gray-300">{subagent.label}</span>
+                  <span className="shrink-0 text-[10px] capitalize text-gray-500">
+                    {subagent.status}
+                  </span>
+                </div>
+              ))}
+              {subagents.length > 6 && (
+                <div className="px-1 text-[11px] text-gray-600">
+                  Show {subagents.length - 6} more in Subagents
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-[12px] text-gray-500">No active subagents</div>
+          )}
+        </EnvironmentSection>
+
+        <EnvironmentSection title="Sources">
+          {toolNames.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {toolNames.map((name) => (
+                <span
+                  key={name}
+                  className="rounded-full border border-white/10 bg-white/[0.03] px-2 py-1 text-[11px] text-gray-400"
+                >
+                  {name}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[12px] text-gray-500">No tool sources yet</div>
+          )}
+        </EnvironmentSection>
+      </div>
+    </div>
+  );
+}
+
+function EnvironmentSection({ children, title }: { children: ReactNode; title: string }) {
+  return (
+    <div className="border-t border-white/10 pt-3">
+      <div className="mb-2 text-[12px] font-medium text-gray-500">{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function EnvironmentRow({
+  children,
+  icon,
+  label,
+}: {
+  children: ReactNode;
+  icon: ReactNode;
+  label: string;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-[12px]">
+      <span className="text-gray-500">{icon}</span>
+      <span className="w-16 shrink-0 text-gray-300">{label}</span>
+      <span className="min-w-0 flex-1 text-right">{children}</span>
     </div>
   );
 }
@@ -1820,6 +2038,7 @@ function PendingApprovalRow({
 export function Chat() {
   const navigate = useNavigate();
   const { data: agents = [] } = useAgents();
+  const { data: environmentSubagents = [] } = useSubagents();
   const stopAgent = useStopAgent();
   const { data: info } = useInfo();
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
@@ -1918,6 +2137,7 @@ export function Chat() {
   const [showSubagentPanel, setShowSubagentPanel] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(true);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
+  const [showEnvironmentOverview, setShowEnvironmentOverview] = useState(false);
   const [diffPanelWidth, setDiffPanelWidth] = useState<number>(() => readPersistedDiffPanelWidth());
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
   const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
@@ -2006,6 +2226,23 @@ export function Chat() {
     () => extractLatestPlanFromMessages(typedMessages, sessionId),
     [typedMessages, sessionId]
   );
+  const sessionPlanTimeline = useMemo(
+    () => collectPlanTimelineFromMessages(typedMessages, sessionId),
+    [typedMessages, sessionId]
+  );
+  const environmentToolNames = useMemo(() => {
+    const names = new Set<string>();
+    for (const message of typedMessages) {
+      for (const toolCall of message.tool_calls || []) {
+        if (toolCall.name.trim().length > 0) {
+          names.add(toolCall.name);
+        }
+      }
+    }
+    return Array.from(names).slice(0, 24);
+  }, [typedMessages]);
+  const browserOrigin =
+    typeof window === "undefined" ? "local" : window.location.origin.replace(/^https?:\/\//, "");
   const resolveSelectableSessionAgentId = useCallback(
     (agentId?: string | null): string | undefined => {
       if (typeof agentId !== "string") return undefined;
@@ -4187,7 +4424,7 @@ export function Chat() {
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
-      <div className="flex items-center justify-between px-3 sm:px-4 py-2 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl flex-shrink-0">
+      <div className="relative flex items-center justify-between px-3 sm:px-4 py-2 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl flex-shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
             onClick={() => setShowSessionsPanel(!showSessionsPanel)}
@@ -4232,7 +4469,10 @@ export function Chat() {
             </span>
           </button>
           <button
-            onClick={() => setShowDiffPanel(!showDiffPanel)}
+            onClick={() => {
+              setShowDiffPanel(!showDiffPanel);
+              setShowEnvironmentOverview(false);
+            }}
             className={cn(
               "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
               showDiffPanel ? "text-indigo-300" : "text-gray-500"
@@ -4247,7 +4487,29 @@ export function Chat() {
             )}
           </button>
           <button
-            onClick={() => setShowSubagentPanel(!showSubagentPanel)}
+            onClick={() => {
+              setShowEnvironmentOverview((value) => !value);
+              setShowDiffPanel(false);
+              setShowSubagentPanel(false);
+            }}
+            className={cn(
+              "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
+              showEnvironmentOverview ? "text-gray-200 bg-white/[0.04]" : "text-gray-500"
+            )}
+            title="Environment overview"
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            {(currentSessionPlan ||
+              (sessionFileChanges && sessionFileChanges.files.length > 0) ||
+              environmentSubagents.length > 0) && (
+              <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-gray-300" />
+            )}
+          </button>
+          <button
+            onClick={() => {
+              setShowSubagentPanel(!showSubagentPanel);
+              setShowEnvironmentOverview(false);
+            }}
             className={cn(
               "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
               showSubagentPanel ? "text-amber-400" : "text-gray-500"
@@ -4256,6 +4518,17 @@ export function Chat() {
           >
             <Zap className="w-4 h-4" />
           </button>
+          <ChatEnvironmentOverview
+            browserOrigin={browserOrigin}
+            currentPlan={currentSessionPlan}
+            fileChanges={sessionFileChanges}
+            isOpen={showEnvironmentOverview}
+            onClose={() => setShowEnvironmentOverview(false)}
+            planTimeline={sessionPlanTimeline}
+            subagents={environmentSubagents}
+            toolNames={environmentToolNames}
+            workspaceDir={effectiveWorkspaceDir}
+          />
         </div>
       </div>
 

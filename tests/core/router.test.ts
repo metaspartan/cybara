@@ -116,6 +116,14 @@ describe("built-in pricing DB", () => {
       cacheReadPerM: 0.125,
       cacheWritePerM: undefined,
     });
+
+    const grok45 = getPricing("xai-oauth", "grok-4.5");
+    expect(grok45).toEqual({
+      inputPerM: 2,
+      outputPerM: 6,
+      cacheReadPerM: 0.5,
+      cacheWritePerM: undefined,
+    });
   });
 
   test("getPricing returns null for unknown provider", () => {

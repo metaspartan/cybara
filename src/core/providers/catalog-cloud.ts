@@ -77,6 +77,15 @@ const XAI_GROK_MODELS = [
     input: ["text", "image"],
   },
   {
+    id: "grok-4.5",
+    name: "Grok 4.5",
+    context: 500000,
+    maxTokens: 64000,
+    reasoning: true,
+    input: ["text", "image"],
+    code: true,
+  },
+  {
     id: "grok-4.20-beta-latest-reasoning",
     name: "Grok 4.20 Beta Latest (Reasoning)",
     context: 1000000,

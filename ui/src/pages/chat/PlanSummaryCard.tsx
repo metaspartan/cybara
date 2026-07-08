@@ -58,7 +58,9 @@ export function PlanSummaryCard({
         <ListChecks className="h-3.5 w-3.5 shrink-0 text-gray-300" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-medium text-gray-200">Plan</span>
+            <span className="font-medium text-gray-200">
+              {compact ? "Latest plan update" : "Plan"}
+            </span>
             <span className="text-gray-500">{planProgressLabel(plan)}</span>
           </div>
           {compact && (

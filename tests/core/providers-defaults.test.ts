@@ -117,6 +117,7 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers.chutes.authType).toBe("api_key");
     expect(providers.featherless.models.some((model) => model.id === "Qwen/Qwen3-32B")).toBe(true);
     expect(providers.longcat.models.some((model) => model.id === "LongCat-2.0")).toBe(true);
+    expect(providers.xai.models.some((model) => model.id === "grok-4.5")).toBe(true);
   });
 
   test("configures google-gemini-cli for redirect OAuth", () => {
@@ -169,6 +170,7 @@ describe("Provider model defaults and API-family parity", () => {
         "grok-build-0.1",
         "grok-composer-2.5-fast",
         "grok-4.3",
+        "grok-4.5",
         "grok-4.20-0309-reasoning",
         "grok-4.20-0309-non-reasoning",
         "grok-4.20-multi-agent-0309",
@@ -177,6 +179,10 @@ describe("Provider model defaults and API-family parity", () => {
         "grok-3-mini-fast",
       ])
     );
+    const grok45 = provider.models.find((model) => model.id === "grok-4.5");
+    expect(grok45?.context).toBe(500000);
+    expect(grok45?.reasoning).toBe(true);
+    expect(grok45?.input).toEqual(["text", "image"]);
   });
 
   test("uses current MiniMax IDs and output/context caps", () => {

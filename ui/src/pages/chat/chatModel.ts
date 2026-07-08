@@ -28,6 +28,11 @@ export interface ArtifactSummaryView {
 
 export type SessionPlanView = SessionPlanSnapshot;
 
+export interface SessionPlanTimelineEntry extends SessionPlanSnapshot {
+  messageIndex: number;
+  toolIndex: number;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
@@ -1228,7 +1233,7 @@ export function normalizePlanItems(value: unknown): SessionPlanItem[] {
       const content = typeof entry.content === "string" ? entry.content.trim() : "";
       if (!content) return null;
       return {
-        content,
+        content: content.slice(0, 500),
         status: normalizePlanStatus(entry.status),
         priority: normalizePlanPriority(entry.priority),
       };
@@ -1288,6 +1293,22 @@ export function extractLatestPlanFromMessages(
     }
   }
   return null;
+}
+
+export function collectPlanTimelineFromMessages(
+  messages: ChatMessage[],
+  sessionId?: string | null
+): SessionPlanTimelineEntry[] {
+  const plans: SessionPlanTimelineEntry[] = [];
+  messages.forEach((message, messageIndex) => {
+    if (!message || !Array.isArray(message.tool_calls)) return;
+    message.tool_calls.forEach((toolCall, toolIndex) => {
+      const plan = parsePlanFromToolCall(toolCall, sessionId, message.timestamp);
+      if (!plan) return;
+      plans.push({ ...plan, messageIndex, toolIndex });
+    });
+  });
+  return plans;
 }
 
 export function collectPlanFromToolCalls(

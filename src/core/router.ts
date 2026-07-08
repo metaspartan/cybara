@@ -77,6 +77,8 @@ const PROVIDER_PRICING: readonly PricingEntry[] = [
   ["xai", "grok-4.20-0309-reasoning", 1.25, 2.5, 0.125],
   ["xai", "grok-4.20-0309-non-reasoning", 1.25, 2.5, 0.125],
   ["xai", "grok-4.20-multi-agent-0309", 1.25, 2.5, 0.125],
+  ["xai", "grok-4.5", 2.0, 6.0, 0.5],
+  ["xai-oauth", "grok-4.5", 2.0, 6.0, 0.5],
   ["xai-oauth", "grok-4.20-0309-reasoning", 1.25, 2.5, 0.125],
   ["xai-oauth", "grok-4.20-0309-non-reasoning", 1.25, 2.5, 0.125],
   ["xai-oauth", "grok-4.20-multi-agent-0309", 1.25, 2.5, 0.125],
