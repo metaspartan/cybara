@@ -242,6 +242,11 @@ import {
 import { IDEChatPanel } from "./ide/IDEChatPanel";
 import { IDEWelcomeScreen } from "./ide/IDEWelcomeScreen";
 
+function formatIdeScannedFiles(value?: number): string | null {
+  if (!Number.isFinite(value)) return null;
+  return `${Math.max(0, value as number).toLocaleString()} scanned`;
+}
+
 export function IDE() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -292,6 +297,7 @@ export function IDE() {
   >([]);
   const [quickOpenLoading, setQuickOpenLoading] = useState(false);
   const [quickOpenError, setQuickOpenError] = useState<string | null>(null);
+  const [quickOpenNotice, setQuickOpenNotice] = useState<string | null>(null);
   const [quickOpenSelectedIndex, setQuickOpenSelectedIndex] = useState(0);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
@@ -1201,6 +1207,7 @@ export function IDE() {
       const { query } = parseQuickOpenQuery(queryValue);
       setQuickOpenLoading(true);
       setQuickOpenError(null);
+      setQuickOpenNotice(null);
       try {
         const params = new URLSearchParams({
           path: workspaceSearchPath,
@@ -1224,18 +1231,26 @@ export function IDE() {
             if (rankedFiles.length === 0) return 0;
             return Math.min(previous, rankedFiles.length - 1);
           });
+          const scanned = formatIdeScannedFiles(data.filesScanned);
+          const notices: string[] = [];
           if (data.source === "filesystem" && data.indexError) {
-            setQuickOpenError(
-              `Indexer unavailable (${data.indexError}). Showing filesystem search.`
+            notices.push(`Indexer unavailable (${data.indexError}); showing filesystem search.`);
+          }
+          if (data.scanTruncated) {
+            notices.push(
+              `Filesystem scan limited${scanned ? ` after ${scanned}` : ""}. Narrow the query or reindex this workspace.`
             );
           }
+          setQuickOpenNotice(notices.length > 0 ? notices.join(" ") : null);
         } else {
           setQuickOpenResults([]);
           setQuickOpenError(data.error || "Quick open failed");
+          setQuickOpenNotice(null);
         }
       } catch (error) {
         setQuickOpenResults([]);
         setQuickOpenError(String(error));
+        setQuickOpenNotice(null);
       } finally {
         setQuickOpenLoading(false);
       }
@@ -1254,6 +1269,7 @@ export function IDE() {
   const openQuickOpenPalette = useCallback(() => {
     setShowQuickOpen(true);
     setQuickOpenError(null);
+    setQuickOpenNotice(null);
     setQuickOpenSelectedIndex(0);
     window.requestAnimationFrame(() => {
       quickOpenInputRef.current?.focus();
@@ -2882,7 +2898,12 @@ export function IDE() {
               <div className="px-3 py-2 border-b border-white/10 text-xs text-gray-500 flex items-center justify-between">
                 <span>
                   {globalSearchResults
-                    ? `${globalSearchResults.totalMatches} matches in ${globalSearchResults.files.length} files`
+                    ? [
+                        `${globalSearchResults.totalMatches} matches in ${globalSearchResults.files.length} files`,
+                        formatIdeScannedFiles(globalSearchResults.filesScanned),
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")
                     : "No results"}
                 </span>
                 <div className="flex items-center gap-2">
@@ -2891,8 +2912,16 @@ export function IDE() {
                       Preview: {globalReplacePreview.totalReplacements}
                     </span>
                   )}
-                  {globalSearchResults?.truncated && (
-                    <span className="text-amber-300">Truncated</span>
+                  {globalSearchResults?.scanTruncated && (
+                    <span
+                      className="text-amber-300"
+                      title="The filesystem scan hit its safety limit before visiting every candidate file."
+                    >
+                      Scan limited
+                    </span>
+                  )}
+                  {globalSearchResults?.truncated && !globalSearchResults.scanTruncated && (
+                    <span className="text-amber-300">Match limit reached</span>
                   )}
                 </div>
               </div>
@@ -2910,10 +2939,20 @@ export function IDE() {
                       <span>
                         Replace Preview: {globalReplacePreview.totalReplacements} replacements in{" "}
                         {globalReplacePreview.files.length} files
+                        {formatIdeScannedFiles(globalReplacePreview.filesScanned)
+                          ? ` · ${formatIdeScannedFiles(globalReplacePreview.filesScanned)}`
+                          : ""}
                       </span>
-                      {globalReplacePreview.truncated && (
-                        <span className="text-amber-300">Truncated</span>
-                      )}
+                      {globalReplacePreview.scanTruncated ? (
+                        <span
+                          className="text-amber-300"
+                          title="The filesystem scan hit its safety limit before visiting every candidate file."
+                        >
+                          Scan limited
+                        </span>
+                      ) : globalReplacePreview.truncated ? (
+                        <span className="text-amber-300">Preview limited</span>
+                      ) : null}
                     </div>
                     <div className="max-h-56 overflow-y-auto divide-y divide-indigo-500/10">
                       {globalReplacePreview.files.map((file) => (
@@ -3406,6 +3445,11 @@ export function IDE() {
             {quickOpenError && (
               <div className="px-3 py-2 border-b border-red-500/20 bg-red-500/10 text-xs text-red-300">
                 {quickOpenError}
+              </div>
+            )}
+            {quickOpenNotice && !quickOpenError && (
+              <div className="px-3 py-2 border-b border-amber-500/20 bg-amber-500/10 text-xs text-amber-200">
+                {quickOpenNotice}
               </div>
             )}
 

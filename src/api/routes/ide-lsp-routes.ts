@@ -930,7 +930,14 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
         : "~";
     const query = (params?.query as string | undefined) || "";
     const parsedLimit = Number.parseInt((params?.limit as string | undefined) || "", 10);
+    const parsedMaxFilesScanned = Number.parseInt(
+      (params?.maxFilesScanned as string | undefined) || "",
+      10
+    );
     const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
+    const maxFilesScanned = Number.isFinite(parsedMaxFilesScanned)
+      ? parsedMaxFilesScanned
+      : undefined;
     const indexedResult = await workspaceIndexer.search(query, {
       workspacePath: path,
       limit,
@@ -947,13 +954,15 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
       return indexedResult;
     }
 
-    const fallback = await listWorkspaceFiles(path, { query, limit });
+    const fallback = await listWorkspaceFiles(path, { query, limit, maxFilesScanned });
     const success = fallback.success !== false;
     trackIdeOperation("index_search", path, success, {
       source: "filesystem",
       queryLength: query.length,
       totalFiles: fallback.totalFiles,
       truncated: fallback.truncated,
+      filesScanned: fallback.filesScanned,
+      scanTruncated: fallback.scanTruncated,
       indexError: indexedResult.error,
       indexState: indexedResult.indexState,
     });
@@ -1255,16 +1264,30 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
     const query = (params?.query as string | undefined) || "";
     const caseSensitive = params?.caseSensitive === "true";
     const wholeWord = params?.wholeWord === "true";
-    const result = await searchWorkspace(path, query, { caseSensitive, wholeWord });
+    const parsedMaxResults = Number.parseInt((params?.maxResults as string | undefined) || "", 10);
+    const parsedMaxFilesScanned = Number.parseInt(
+      (params?.maxFilesScanned as string | undefined) || "",
+      10
+    );
+    const result = await searchWorkspace(path, query, {
+      caseSensitive,
+      wholeWord,
+      maxResults: Number.isFinite(parsedMaxResults) ? parsedMaxResults : undefined,
+      maxFilesScanned: Number.isFinite(parsedMaxFilesScanned) ? parsedMaxFilesScanned : undefined,
+    });
     const success = result.success !== false;
     trackIdeOperation("search", path, success, {
       queryLength: query.length,
       totalMatches: result.totalMatches,
+      filesScanned: result.filesScanned,
+      scanTruncated: result.scanTruncated,
     });
     trackFileOperation("search", path || process.cwd(), {
       success,
       queryLength: query.length,
       totalMatches: result.totalMatches,
+      filesScanned: result.filesScanned,
+      scanTruncated: result.scanTruncated,
     });
     return result;
   },
@@ -1273,31 +1296,44 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
     const path = (params?.path as string | undefined) || "~";
     const query = (params?.query as string | undefined) || "";
     const parsedLimit = Number.parseInt((params?.limit as string | undefined) || "", 10);
+    const parsedMaxFilesScanned = Number.parseInt(
+      (params?.maxFilesScanned as string | undefined) || "",
+      10
+    );
     const limit = Number.isFinite(parsedLimit) ? parsedLimit : undefined;
-    const result = await listWorkspaceFiles(path, { query, limit });
+    const result = await listWorkspaceFiles(path, {
+      query,
+      limit,
+      maxFilesScanned: Number.isFinite(parsedMaxFilesScanned) ? parsedMaxFilesScanned : undefined,
+    });
     const success = result.success !== false;
     trackIdeOperation("list_files", path, success, {
       queryLength: query.length,
       totalFiles: result.totalFiles,
       truncated: result.truncated,
+      filesScanned: result.filesScanned,
+      scanTruncated: result.scanTruncated,
     });
     trackFileOperation("search", path || process.cwd(), {
       success,
       queryLength: query.length,
       totalFiles: result.totalFiles,
       truncated: result.truncated,
+      filesScanned: result.filesScanned,
+      scanTruncated: result.scanTruncated,
     });
     return result;
   },
 
   "POST /api/ide/replace": async (body) => {
-    const { path, query, replacement, caseSensitive, wholeWord, files } = body as {
+    const { path, query, replacement, caseSensitive, wholeWord, files, maxFilesScanned } = body as {
       path?: string;
       query?: string;
       replacement?: string;
       caseSensitive?: boolean;
       wholeWord?: boolean;
       files?: string[];
+      maxFilesScanned?: number;
     };
     if (!query || typeof query !== "string") {
       return { success: false, error: "Missing 'query' parameter" };
@@ -1311,6 +1347,7 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
       caseSensitive: caseSensitive === true,
       wholeWord: wholeWord === true,
       files: Array.isArray(files) ? files : undefined,
+      maxFilesScanned: Number.isFinite(maxFilesScanned) ? maxFilesScanned : undefined,
     });
 
     const success = result.success !== false;
@@ -1319,27 +1356,35 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
       replacementLength: replacement.length,
       changedFiles: result.changedFiles.length,
       totalReplacements: result.totalReplacements,
+      truncated: result.truncated,
+      filesScanned: result.filesScanned,
+      scanTruncated: result.scanTruncated,
     });
     trackFileOperation("write", targetPath || process.cwd(), {
       success,
       queryLength: query.length,
       totalReplacements: result.totalReplacements,
       changedFiles: result.changedFiles.length,
+      truncated: result.truncated,
+      filesScanned: result.filesScanned,
+      scanTruncated: result.scanTruncated,
     });
 
     return result;
   },
 
   "POST /api/ide/replace/preview": async (body) => {
-    const { path, query, replacement, caseSensitive, wholeWord, files, maxFiles } = body as {
-      path?: string;
-      query?: string;
-      replacement?: string;
-      caseSensitive?: boolean;
-      wholeWord?: boolean;
-      files?: string[];
-      maxFiles?: number;
-    };
+    const { path, query, replacement, caseSensitive, wholeWord, files, maxFiles, maxFilesScanned } =
+      body as {
+        path?: string;
+        query?: string;
+        replacement?: string;
+        caseSensitive?: boolean;
+        wholeWord?: boolean;
+        files?: string[];
+        maxFiles?: number;
+        maxFilesScanned?: number;
+      };
     if (!query || typeof query !== "string") {
       return { success: false, error: "Missing 'query' parameter" };
     }
@@ -1353,6 +1398,7 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
       wholeWord: wholeWord === true,
       files: Array.isArray(files) ? files : undefined,
       maxFiles: Number.isFinite(maxFiles) ? maxFiles : undefined,
+      maxFilesScanned: Number.isFinite(maxFilesScanned) ? maxFilesScanned : undefined,
     });
 
     const success = result.success !== false;
@@ -1362,6 +1408,8 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
       files: result.files.length,
       totalReplacements: result.totalReplacements,
       truncated: result.truncated,
+      filesScanned: result.filesScanned,
+      scanTruncated: result.scanTruncated,
     });
     trackFileOperation("search", targetPath || process.cwd(), {
       success,
@@ -1369,6 +1417,8 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
       totalReplacements: result.totalReplacements,
       files: result.files.length,
       truncated: result.truncated,
+      filesScanned: result.filesScanned,
+      scanTruncated: result.scanTruncated,
     });
 
     return result;

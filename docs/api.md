@@ -115,6 +115,15 @@ Legacy message-only alias:
 GET /api/chat/sessions/:id/messages
 ```
 
+### Session Plan
+```http
+GET /api/sessions/:sessionId/plan
+```
+
+Returns the latest session-scoped `todo` tool snapshot, including task items, status counts, and the
+timestamp of the assistant turn that updated the plan. The chat response and session detail payloads
+also include this `plan` field when a plan exists.
+
 ### Pending Messages, Queueing, And Steering
 ```http
 GET /api/chat/sessions/:id/pending
@@ -137,6 +146,14 @@ DELETE /api/sessions/:sessionId
 Legacy alias:
 ```http
 DELETE /api/chat/sessions/:id
+```
+
+### Session Artifacts
+```http
+GET /api/sessions/:sessionId/artifacts
+GET /api/sessions/:sessionId/artifacts/:artifactName
+DELETE /api/sessions/:sessionId/artifacts/:artifactName
+GET /api/artifacts
 ```
 
 ## Agents

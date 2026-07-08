@@ -172,6 +172,62 @@ describe("handleChat per-session serialization", () => {
     expect(persisted?.agentId).toBe(secondAgent.id);
   });
 
+  test("chat turns can override the active agent model for one turn", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Override Model Provider",
+      api_key: "sk-override-model",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Override Model Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-agent-default",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let sentModel = "";
+    globalThis.fetch = (async (_url, init) => {
+      const request = JSON.parse(String(init?.body || "{}")) as { model?: string };
+      sentModel = request.model || "";
+      return new Response(
+        JSON.stringify({
+          id: "override-model-response",
+          object: "chat.completion",
+          model: sentModel,
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: `reply from ${sentModel}` },
+            },
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const sessionId = `override-model-${Date.now()}`;
+    createdSessionIds.push(sessionId);
+
+    const response = await handleChat({
+      message: "use override",
+      agentId: agent.id,
+      sessionId,
+      modelOverride: "gpt-cli-override",
+      tools: false,
+    });
+
+    expect(sentModel).toBe("gpt-cli-override");
+    expect(response.message.content).toBe("reply from gpt-cli-override");
+    expect(response.contextUsage?.limitTokens).toBeGreaterThan(0);
+  });
+
   test("two concurrent messages to one session do not interleave", async () => {
     const provider = providerManager.create({
       provider: "openai",

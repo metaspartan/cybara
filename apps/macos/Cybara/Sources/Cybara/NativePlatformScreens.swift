@@ -96,6 +96,8 @@ struct NativeIDEFileList: Decodable, Hashable {
     let query: String?
     let totalFiles: Int?
     let truncated: Bool?
+    let filesScanned: Int?
+    let scanTruncated: Bool?
     let files: [NativeIDEFile]
     let error: String?
 }
@@ -173,6 +175,8 @@ struct NativeIDESearchResult: Decodable, Hashable {
     let query: String?
     let totalMatches: Int?
     let truncated: Bool?
+    let filesScanned: Int?
+    let scanTruncated: Bool?
     let files: [NativeIDESearchFile]
     let error: String?
 }
@@ -201,6 +205,8 @@ struct NativeIDEReplacePreviewResult: Decodable, Hashable {
     let totalReplacements: Int?
     let files: [NativeIDEReplacePreviewFile]
     let truncated: Bool?
+    let filesScanned: Int?
+    let scanTruncated: Bool?
     let error: String?
 }
 
@@ -211,6 +217,9 @@ struct NativeIDEReplaceResult: Decodable, Hashable {
     let replacement: String?
     let changedFiles: [NativeIDEChangedFile]
     let totalReplacements: Int?
+    let truncated: Bool?
+    let filesScanned: Int?
+    let scanTruncated: Bool?
     let error: String?
 }
 
@@ -967,6 +976,11 @@ struct IDEScreen: View {
                     .font(.system(size: 12, design: .monospaced))
                     .onSubmit { Task { await browsePath(currentPath) } }
 
+                Label("Trusted local workspace", systemImage: "checkmark.shield")
+                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .help("IDE reads and writes are confined to local paths accepted by the gateway.")
+
                 HStack(spacing: 8) {
                     Button {
                         Task { await browsePath(currentPath) }
@@ -1193,6 +1207,12 @@ struct IDEScreen: View {
                         .foregroundStyle(.secondary)
                 }
 
+                if let resultLimitText {
+                    Label(resultLimitText, systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(.orange)
+                }
+
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
                         if let replacePreview, !replacePreview.files.isEmpty {
@@ -1288,12 +1308,50 @@ struct IDEScreen: View {
 
     private var resultSummary: String {
         if let replacePreview {
-            return "\(replacePreview.totalReplacements ?? 0) replacements"
+            return nativeIDEScanSummary(
+                "\(replacePreview.totalReplacements ?? 0) replacements",
+                filesScanned: replacePreview.filesScanned
+            )
         }
         if let searchResult {
-            return "\(searchResult.totalMatches ?? 0) matches"
+            return nativeIDEScanSummary(
+                "\(searchResult.totalMatches ?? 0) matches",
+                filesScanned: searchResult.filesScanned
+            )
         }
         return "Idle"
+    }
+
+    private var resultLimitText: String? {
+        if let replacePreview {
+            if replacePreview.scanTruncated == true {
+                return nativeIDEScanLimitText(filesScanned: replacePreview.filesScanned)
+            }
+            if replacePreview.truncated == true {
+                return "Results limited to keep replacement preview responsive."
+            }
+        }
+        if let searchResult {
+            if searchResult.scanTruncated == true {
+                return nativeIDEScanLimitText(filesScanned: searchResult.filesScanned)
+            }
+            if searchResult.truncated == true {
+                return "Results limited to keep search responsive."
+            }
+        }
+        return nil
+    }
+
+    private func nativeIDEScanSummary(_ prefix: String, filesScanned: Int?) -> String {
+        guard let filesScanned else { return prefix }
+        return "\(prefix) · \(filesScanned.formatted()) scanned"
+    }
+
+    private func nativeIDEScanLimitText(filesScanned: Int?) -> String {
+        if let filesScanned {
+            return "Filesystem scan limited after \(filesScanned.formatted()) files. Narrow the query or reindex."
+        }
+        return "Filesystem scan limited. Narrow the query or reindex."
     }
 
     private func fileRow(_ entry: NativeIDEEntry) -> some View {

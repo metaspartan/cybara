@@ -26,6 +26,7 @@ import { printCompletion } from "./cli-completion";
 import { rawComputerUse } from "./cli-computer-use";
 import { configureChatCli, rawAgent, rawChatCommand } from "./cli-chat";
 import { getFlagValue, hasFlag } from "./cli-args";
+import { parseSubagentSpawnArgs, type SubagentSpawnPayload } from "./cli-subagent-args";
 import {
   configureWalletCli,
   rawWalletAccounts,
@@ -94,7 +95,7 @@ configureWalletCli({ apiBase: API_BASE, withAuthHeaders: withCliAuthHeaders });
 interface StatusResponse {
   status: string;
   uptime: number;
-  checks: Record<string, { status: string; total?: number; running?: number }>;
+  checks: Record<string, { status?: string; total?: number; running?: number }>;
   timestamp: string;
   system?: {
     cpu?: {
@@ -1956,6 +1957,9 @@ interface SubagentInfo {
   label: string;
   status: string;
   createdAt: string;
+  model?: string;
+  workspaceDir?: string;
+  runTimeoutSeconds?: number;
 }
 
 async function rawSubagents(): Promise<void> {
@@ -1984,20 +1988,30 @@ async function rawSubagents(): Promise<void> {
     console.log(`${status} ${sub.label.slice(0, 50)}`);
     console.log(`  id: ${sub.id}`);
     console.log(`  status: ${sub.status}`);
+    if (sub.model) console.log(`  model: ${sub.model}`);
+    if (sub.workspaceDir) console.log(`  workspace: ${sub.workspaceDir}`);
+    if (typeof sub.runTimeoutSeconds === "number") {
+      console.log(`  timeout: ${sub.runTimeoutSeconds === 0 ? "none" : `${sub.runTimeoutSeconds}s`}`);
+    }
   }
 }
 
-async function rawSubagentSpawn(task: string): Promise<void> {
-  if (!task) {
-    console.error("ERROR: Please specify a task");
-    console.log("Usage: cybara subagent spawn <task>");
+async function rawSubagentSpawn(args: string[]): Promise<void> {
+  let payload: SubagentSpawnPayload;
+  try {
+    payload = parseSubagentSpawnArgs(args);
+  } catch (error) {
+    console.error(`ERROR: ${(error as Error).message}`);
+    console.log(
+      "Usage: cybara subagent spawn [--agent <id>] [--model <model>] [--timeout <seconds>|--no-timeout] [--cleanup keep|delete] [--workspace <dir>] [--max-active <n>] <task>"
+    );
     process.exit(1);
   }
 
   const response = await fetch(`${API_BASE}/api/subagents/spawn`, {
     method: "POST",
     headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ task, label: `Task: ${task.slice(0, 30)}...` }),
+    body: JSON.stringify(payload),
   });
 
   const result = (await response.json()) as {
@@ -2011,6 +2025,7 @@ async function rawSubagentSpawn(task: string): Promise<void> {
 
   if (subagentId) {
     console.log(`✓ Spawned subagent: ${subagentId}`);
+    if (result.status) console.log(`status: ${result.status}`);
   } else {
     const reason = result.error || result.status || response.statusText || "Unknown error";
     console.error(`✗ Failed to spawn: ${reason}`);
@@ -2593,6 +2608,10 @@ const StatusBadge = ({ status }: { status: string }) => {
   return <Text color={colors[status] || "white"}>{status}</Text>;
 };
 
+function healthCheckStatus(info: { status?: string }): string {
+  return info.status || "ok";
+}
+
 const LoadingState = ({ message }: { message: string }) => (
   <Box>
     <Text color="yellow">
@@ -2707,7 +2726,7 @@ const TUIStatusCommand = () => {
               <Box width={15}>
                 <Text color="gray">{name}</Text>
               </Box>
-              <StatusBadge status={info.status} />
+              <StatusBadge status={healthCheckStatus(info)} />
               {info.total !== undefined && <Text color="gray"> ({info.total} total)</Text>}
             </Box>
           ))}
@@ -4442,7 +4461,7 @@ async function main() {
           await rawSubagents();
           break;
         case "spawn":
-          await rawSubagentSpawn(args.slice(2).join(" "));
+          await rawSubagentSpawn(args.slice(2));
           break;
         case "kill":
           await rawSubagentKill(args[2]);

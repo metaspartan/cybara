@@ -4,6 +4,7 @@ import { join } from "path";
 
 const root = join(import.meta.dir, "..", "..");
 const cliSource = readFileSync(join(root, "src", "cli.tsx"), "utf8");
+const cliChatSource = readFileSync(join(root, "src", "cli-chat.ts"), "utf8");
 const cliDocs = readFileSync(join(root, "docs", "cli.md"), "utf8");
 
 const tuiPanels = [
@@ -49,5 +50,22 @@ describe("CLI TUI source wiring", () => {
     for (const command of ["providers", "router", "sessions", "logs", "mobile"]) {
       expect(cliDocs).toContain(`cybara tui ${command}`);
     }
+  });
+
+  test("terminal chat exposes app-parity slash controls", () => {
+    for (const command of [
+      "/status",
+      "/agents",
+      "/agent <id|name|default>",
+      "/model <id|router|default>",
+      "/router on|off",
+      "/permissions ask|always_allow|show",
+      "/subagent spawn <task>",
+    ]) {
+      expect(cliChatSource).toContain(command);
+    }
+    expect(cliChatSource).toContain("modelOverride");
+    expect(cliChatSource).toContain("useModelRouter");
+    expect(cliChatSource).toContain("formatAgentLine");
   });
 });

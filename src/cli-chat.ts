@@ -15,9 +15,29 @@ interface ChatCliContext {
 
 interface CliChatOptions {
   agentId?: string;
+  modelOverride?: string;
   sessionId?: string;
   showThinking: boolean;
+  useModelRouter: boolean;
   workspaceDir?: string;
+}
+
+interface CliAgentSummary {
+  id: string;
+  name?: string;
+  model?: string;
+  provider_id?: string;
+  providerId?: string;
+  status?: string;
+}
+
+interface CliGatewayConfig {
+  default_agent_id?: string;
+  defaultAgentId?: string;
+  default_workspace_dir?: string;
+  defaultWorkspaceDir?: string;
+  tool_approval_mode?: string;
+  toolApprovalMode?: string;
 }
 
 interface CliChatSessionSummary {
@@ -91,6 +111,13 @@ interface CliPendingResponse {
   pendingMessage?: CliPendingMessage;
   pendingMessages?: CliPendingMessage[];
   interruptedMessage?: { role?: string; content?: string; process_activities?: unknown[] };
+}
+
+interface CliTurnContext {
+  agentId?: string;
+  modelOverride?: string;
+  workspaceDir?: string;
+  useModelRouter?: boolean;
 }
 
 let context: ChatCliContext | null = null;
@@ -185,6 +212,31 @@ function formatSessionLabel(session: CliChatSessionSummary): string {
   return [title, model, count].filter(Boolean).join(" - ");
 }
 
+function formatAgentLine(agent: CliAgentSummary): string {
+  const status = agent.status ? ` ${agent.status}` : "";
+  const model = agent.model ? ` ${agent.model}` : "";
+  const name = agent.name || agent.id;
+  return `${agent.id}  ${name}${model}${status}`;
+}
+
+function matchAgent(agent: CliAgentSummary, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  const name = (agent.name || "").trim().toLowerCase();
+  return agent.id.toLowerCase() === normalized || name === normalized || name.includes(normalized);
+}
+
+async function fetchChatAgents(): Promise<CliAgentSummary[]> {
+  const agents = await chatContext().fetchAPI<CliAgentSummary[]>("/api/agents");
+  return Array.isArray(agents) ? agents : [];
+}
+
+async function resolveAgentId(query: string): Promise<string | undefined> {
+  const trimmed = query.trim();
+  if (!trimmed) return undefined;
+  const agents = await fetchChatAgents();
+  return agents.find((agent) => matchAgent(agent, trimmed))?.id || trimmed;
+}
+
 function formatPendingLabel(message: CliPendingMessage): string {
   const sequence = message.sequence ? `#${message.sequence}` : "#?";
   const mode = message.mode || "queued";
@@ -254,16 +306,24 @@ function printAssistantResponse(response: CliChatResponse, showThinking: boolean
 function printChatHelp(): void {
   console.log("  Chat commands");
   console.log("    /help                      Show this help");
+  console.log(
+    "    /status                    Show active session, agent, model, workspace, permissions"
+  );
   console.log("    /sessions                  List sessions");
   console.log("    /new                       Start a new session");
-  console.log("    /agent <id>                Use another agent for future turns");
+  console.log("    /agents                    List agents");
+  console.log("    /agent <id|name|default>   Use another agent for future turns");
+  console.log("    /model <id|router|default> Use a model override or the model router");
+  console.log("    /router on|off             Toggle model-router sends");
   console.log("    /workspace <path>          Use a workspace for future turns");
+  console.log("    /permissions ask|always_allow|show");
   console.log("    /pending                   Show queued follow-ups");
   console.log("    /queue <message>           Queue a follow-up while a run is active");
   console.log("    /steer <id|#n>             Inject a queued follow-up now");
   console.log("    /edit <id|#n> <message>    Edit a queued follow-up");
   console.log("    /delete <id|#n>            Delete a queued follow-up");
   console.log("    /reorder <id|#n>...        Reorder queued follow-ups");
+  console.log("    /subagent spawn <task>     Delegate a task to an isolated subagent");
   console.log("    /quit                      Exit chat");
 }
 
@@ -292,17 +352,25 @@ function parseActivityJson(rawArgs: string[]): unknown[] | undefined {
 }
 
 function parseChatOptions(rawArgs: string[]): CliChatOptions {
-  const options: CliChatOptions = { showThinking: !rawArgs.includes("--no-thinking") };
+  const options: CliChatOptions = {
+    showThinking: !rawArgs.includes("--no-thinking"),
+    useModelRouter: rawArgs.includes("--router"),
+  };
   const positional: string[] = [];
   for (let i = 0; i < rawArgs.length; i++) {
     const arg = rawArgs[i];
     if (arg === "--no-thinking") continue;
+    if (arg === "--router") continue;
     if (arg === "--session" || arg === "-s") {
       options.sessionId = rawArgs[++i];
       continue;
     }
     if (arg === "--agent" || arg === "-a") {
       options.agentId = rawArgs[++i];
+      continue;
+    }
+    if (arg === "--model" || arg === "-m") {
+      options.modelOverride = rawArgs[++i];
       continue;
     }
     if (arg === "--workspace" || arg === "-w") {
@@ -342,12 +410,21 @@ async function fetchPendingMessages(sessionId: string): Promise<CliPendingMessag
 
 async function queueMessage(
   sessionId: string,
-  message: string
+  message: string,
+  turnContext?: CliTurnContext
 ): Promise<CliPendingResponse | null> {
   return await chatContext().fetchAPI<CliPendingResponse>("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessionId, message, queueMode: "queue" }),
+    body: JSON.stringify({
+      sessionId,
+      message,
+      queueMode: "queue",
+      agentId: turnContext?.agentId,
+      modelOverride: turnContext?.modelOverride,
+      workspaceDir: turnContext?.workspaceDir,
+      useModelRouter: turnContext?.useModelRouter === true,
+    }),
   });
 }
 
@@ -409,6 +486,8 @@ export async function rawAgent(rawArgs: string[]): Promise<void> {
   const json = rawArgs.includes("--json");
   let sessionId: string | undefined;
   let agentId: string | undefined;
+  let modelOverride: string | undefined;
+  let useModelRouter = false;
   let workspaceDir: string | undefined;
   const words: string[] = [];
   for (let i = 0; i < rawArgs.length; i++) {
@@ -420,6 +499,14 @@ export async function rawAgent(rawArgs: string[]): Promise<void> {
     }
     if (arg === "--agent" || arg === "-a") {
       agentId = rawArgs[++i];
+      continue;
+    }
+    if (arg === "--model" || arg === "-m") {
+      modelOverride = rawArgs[++i];
+      continue;
+    }
+    if (arg === "--router") {
+      useModelRouter = true;
       continue;
     }
     if (arg === "--workspace" || arg === "-w") {
@@ -434,7 +521,7 @@ export async function rawAgent(rawArgs: string[]): Promise<void> {
   }
   if (!prompt) {
     console.error(
-      'Usage: cybara agent "<prompt>" [--json] [--session <id>] [--agent <id>] [--workspace <path>]'
+      'Usage: cybara agent "<prompt>" [--json] [--session <id>] [--agent <id>] [--model <id>|--router] [--workspace <path>]'
     );
     console.error("       echo '<prompt>' | cybara agent --json");
     process.exit(1);
@@ -444,9 +531,11 @@ export async function rawAgent(rawArgs: string[]): Promise<void> {
     message: prompt,
     sessionId,
     agentId,
+    modelOverride: useModelRouter ? undefined : modelOverride,
     workspaceDir,
     tools: true,
   };
+  if (useModelRouter) body.useModelRouter = true;
   const res = await chatContext().fetchAPI<CliChatResponse>("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -617,6 +706,8 @@ async function rawChat(options: CliChatOptions): Promise<void> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   let sessionId = options.sessionId;
   let agentId = options.agentId;
+  let modelOverride = options.modelOverride;
+  let useModelRouter = options.useModelRouter;
   let workspaceDir = options.workspaceDir;
   let running = false;
   let pendingMessages: CliPendingMessage[] = [];
@@ -634,6 +725,33 @@ async function rawChat(options: CliChatOptions): Promise<void> {
     }
   }
 
+  const printStatus = async () => {
+    const [agents, config] = await Promise.all([
+      fetchChatAgents(),
+      chatContext().fetchAPI<CliGatewayConfig>("/api/config"),
+    ]);
+    const selectedAgent = agents.find((agent) => agent.id === agentId);
+    const defaultAgentId = config?.default_agent_id || config?.defaultAgentId;
+    const fallbackAgent = agents.find((agent) => agent.id === defaultAgentId) || agents[0];
+    const agent = selectedAgent || fallbackAgent;
+    const agentLabel = useModelRouter
+      ? `Model Router${agent ? ` via ${agent.name || agent.id}` : ""}`
+      : agent
+        ? `${agent.name || agent.id}${agent.model ? ` (${agent.model})` : ""}`
+        : "Gateway default";
+    const modelLabel = useModelRouter ? "router" : modelOverride || agent?.model || "agent default";
+    const approvalMode = config?.tool_approval_mode || config?.toolApprovalMode || "unknown";
+    const activeWorkspace =
+      workspaceDir || config?.default_workspace_dir || config?.defaultWorkspaceDir || "default";
+    console.log("  Context");
+    console.log(`    Session: ${sessionId || "new"}`);
+    console.log(`    Agent: ${agentLabel}`);
+    console.log(`    Model: ${modelLabel}`);
+    console.log(`    Workspace: ${activeWorkspace}`);
+    console.log(`    Permissions: ${approvalMode}`);
+  };
+
+  await printStatus();
   console.log("  Cybara Chat (type /help for commands, Ctrl+C to exit)\n");
   rl.setPrompt("  You: ");
   rl.prompt();
@@ -658,6 +776,8 @@ async function rawChat(options: CliChatOptions): Promise<void> {
       const body: Record<string, unknown> = { message, tools: true };
       if (sessionId) body.sessionId = sessionId;
       if (agentId) body.agentId = agentId;
+      if (modelOverride && !useModelRouter) body.modelOverride = modelOverride;
+      if (useModelRouter) body.useModelRouter = true;
       if (workspaceDir) body.workspaceDir = workspaceDir;
 
       const current = chatContext();
@@ -693,7 +813,12 @@ async function rawChat(options: CliChatOptions): Promise<void> {
 
   const handleQueuedInput = async (message: string) => {
     if (!requireSession()) return;
-    const data = await queueMessage(sessionId as string, message);
+    const data = await queueMessage(sessionId as string, message, {
+      agentId,
+      modelOverride: useModelRouter ? undefined : modelOverride,
+      workspaceDir,
+      useModelRouter,
+    });
     if (!data) return;
     pendingMessages = data.pendingMessages || (data.pendingMessage ? [data.pendingMessage] : []);
     console.log("  Queued follow-up");
@@ -711,10 +836,23 @@ async function rawChat(options: CliChatOptions): Promise<void> {
       printChatHelp();
       return true;
     }
+    if (command === "status") {
+      await printStatus();
+      return true;
+    }
     if (command === "sessions") {
       const sessions = await chatContext().fetchAPI<CliChatSessionSummary[]>("/api/sessions");
       for (const session of sessions || []) {
         console.log(`  ${session.id}  ${formatSessionLabel(session)}`);
+      }
+      return true;
+    }
+    if (command === "agents") {
+      const agents = await fetchChatAgents();
+      if (agents.length === 0) {
+        console.log("  No agents configured");
+      } else {
+        for (const agent of agents) console.log(`  ${formatAgentLine(agent)}`);
       }
       return true;
     }
@@ -725,13 +863,124 @@ async function rawChat(options: CliChatOptions): Promise<void> {
       return true;
     }
     if (command === "agent") {
-      agentId = argument || undefined;
+      if (!argument) {
+        const agents = await fetchChatAgents();
+        for (const agent of agents) console.log(`  ${formatAgentLine(agent)}`);
+        return true;
+      }
+      if (["default", "off", "reset"].includes(argument.toLowerCase())) {
+        agentId = undefined;
+        console.log("  Agent reset to gateway default");
+        return true;
+      }
+      agentId = await resolveAgentId(argument);
+      useModelRouter = false;
       console.log(agentId ? `  Agent set to ${agentId}` : "  Agent reset to default");
+      return true;
+    }
+    if (command === "model") {
+      if (!argument) {
+        console.log(`  Model: ${useModelRouter ? "router" : modelOverride || "agent default"}`);
+        return true;
+      }
+      if (["router", "auto"].includes(argument.toLowerCase())) {
+        modelOverride = undefined;
+        useModelRouter = true;
+        console.log("  Model Router enabled for future turns");
+        return true;
+      }
+      if (["default", "off", "reset"].includes(argument.toLowerCase())) {
+        modelOverride = undefined;
+        useModelRouter = false;
+        console.log("  Model reset to active agent default");
+        return true;
+      }
+      modelOverride = argument;
+      useModelRouter = false;
+      console.log(`  Model override set to ${modelOverride}`);
+      return true;
+    }
+    if (command === "router") {
+      const mode = argument.toLowerCase();
+      if (["on", "enable", "enabled"].includes(mode)) {
+        modelOverride = undefined;
+        useModelRouter = true;
+        console.log("  Model Router enabled for future turns");
+      } else if (["off", "disable", "disabled"].includes(mode)) {
+        useModelRouter = false;
+        console.log("  Model Router disabled for future turns");
+      } else {
+        console.log(`  Model Router: ${useModelRouter ? "enabled" : "disabled"}`);
+      }
+      return true;
+    }
+    if (command === "permissions" || command === "approval" || command === "approvals") {
+      const mode = argument.toLowerCase();
+      if (!mode || mode === "show") {
+        const config = await chatContext().fetchAPI<CliGatewayConfig>("/api/config");
+        console.log(
+          `  Permissions: ${config?.tool_approval_mode || config?.toolApprovalMode || "unknown"}`
+        );
+        return true;
+      }
+      const normalized =
+        mode === "always" || mode === "always_allow" || mode === "allow" ? "always_allow" : mode;
+      if (normalized !== "ask" && normalized !== "always_allow") {
+        console.log("  Usage: /permissions ask|always_allow|show");
+        return true;
+      }
+      const result = await chatContext().fetchAPI<{ success?: boolean; error?: string }>(
+        "/api/config",
+        {
+          method: "PUT",
+          body: JSON.stringify({ tool_approval_mode: normalized }),
+        }
+      );
+      if (result?.success === false) {
+        console.log(`  Error: ${result.error || "Failed to update permissions"}`);
+      } else {
+        console.log(`  Permissions set to ${normalized}`);
+      }
       return true;
     }
     if (command === "workspace") {
       workspaceDir = argument || undefined;
       console.log(workspaceDir ? `  Workspace set to ${workspaceDir}` : "  Workspace cleared");
+      return true;
+    }
+    if (command === "subagent" || command === "subagents") {
+      const [subcommand, ...subRest] = rest;
+      if (subcommand !== "spawn") {
+        console.log("  Usage: /subagent spawn <task>");
+        return true;
+      }
+      const task = subRest.join(" ").trim();
+      if (!task) {
+        console.log("  Usage: /subagent spawn <task>");
+        return true;
+      }
+      const result = await chatContext().fetchAPI<{
+        subagentId?: string;
+        error?: string;
+        status?: string;
+        warning?: string;
+      }>("/api/subagents/spawn", {
+        method: "POST",
+        body: JSON.stringify({
+          task,
+          agentId,
+          model: useModelRouter ? undefined : modelOverride,
+          workspaceDir,
+          cleanup: "keep",
+        }),
+      });
+      if (result?.subagentId) {
+        console.log(`  Spawned subagent ${result.subagentId}`);
+      } else {
+        console.log(
+          `  Error: ${result?.error || result?.warning || result?.status || "spawn failed"}`
+        );
+      }
       return true;
     }
     if (command === "pending") {

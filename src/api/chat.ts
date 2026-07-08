@@ -7,6 +7,7 @@ import { config } from "../core/config";
 import type { Agent } from "../core/database";
 import { expandPromptCommand } from "../core/prompt-commands";
 import { getActiveGoalContextLine, handleSessionGoalCommand } from "../core/session-goals";
+import { extractLatestSessionPlan, type SessionPlanSnapshot } from "../core/session-plan";
 import {
   getToolSchemasForLLM,
   checkCircuit,
@@ -115,6 +116,7 @@ export interface ChatRequest {
   message: string;
   agentId?: string;
   sessionId?: string;
+  modelOverride?: string;
   clientPendingId?: string;
   workspaceDir?: string;
   stream?: boolean;
@@ -142,6 +144,7 @@ export interface ChatResponse {
   interrupted?: boolean;
   pendingMessage?: PendingChatMessageSnapshot;
   pendingMessages?: PendingChatMessageSnapshot[];
+  plan?: SessionPlanSnapshot | null;
   agent?: {
     id: string;
     name: string;
@@ -342,6 +345,7 @@ async function finishInterruptedChatTurn(
     sessionId: session.id,
     workspaceDir: session.workspaceDir ?? null,
     interrupted: true,
+    plan: extractLatestSessionPlan(session.id, session.messages),
     message: {
       role: "assistant",
       content: "",
@@ -435,6 +439,9 @@ function enqueuePendingChatMessage(
     pendingMessage: pendingChatSnapshot(item),
     pendingMessages,
     workspaceDir: request.workspaceDir ?? null,
+    plan: chatSessions.has(sessionId)
+      ? extractLatestSessionPlan(sessionId, chatSessions.get(sessionId)?.messages || [])
+      : null,
     message: {
       role: "assistant",
       content:
@@ -1558,6 +1565,10 @@ async function handleChatTurn(
 ): Promise<ChatResponse> {
   const { message, agentId, tools = true, channel, userId, source, workspaceDir } = request;
   const useModelRouter = request.useModelRouter === true;
+  const requestedModelOverride =
+    typeof request.modelOverride === "string" && request.modelOverride.trim()
+      ? request.modelOverride.trim()
+      : undefined;
   const requestedWorkspaceDir =
     workspaceDir !== undefined ? normalizeSessionWorkspaceDir(workspaceDir) : undefined;
 
@@ -1736,7 +1747,8 @@ async function handleChatTurn(
   }
 
   if (provider && agent) {
-    const contextWindow = getContextWindow(agent.model);
+    const effectiveModel = requestedModelOverride || agent.model;
+    const contextWindow = getContextWindow(effectiveModel);
     const currentTokens = estimateMessagesTokens(session.messages);
     const flushSettings = resolveMemoryFlushSettings();
 
@@ -1769,7 +1781,7 @@ async function handleChatTurn(
 
         const flushResult = await agentManager.callLLM(
           provider,
-          agent.model,
+          effectiveModel,
           flushMessages,
           [], // No tools - just let agent respond naturally (it can write to files if needed)
           {
@@ -1790,7 +1802,7 @@ async function handleChatTurn(
           compactionCount: session.compactionCount || 0,
           durationMs: Date.now() - flushStartTime,
         });
-        trackSessionEvent(session.id, "memory_flushed", { model: agent.model });
+        trackSessionEvent(session.id, "memory_flushed", { model: effectiveModel });
 
         log.info("Memory flush completed", {
           sessionId: session.id,
@@ -1805,7 +1817,7 @@ async function handleChatTurn(
       }
     }
 
-    const contextCheck = shouldCompactContext(session.messages, agent.model, message);
+    const contextCheck = shouldCompactContext(session.messages, effectiveModel, message);
 
     if (contextCheck.needed) {
       log.info("Context compaction needed", {
@@ -1827,7 +1839,7 @@ async function handleChatTurn(
         detail: "Summarizing earlier conversation to continue...",
       });
 
-      const compaction = await compactContext(session.messages, agent.model, agent.provider_id);
+      const compaction = await compactContext(session.messages, effectiveModel, agent.provider_id);
       if (compaction.wasCompacted) {
         session.messages = compaction.messages;
         session.compactionCount = (session.compactionCount || 0) + 1;
@@ -1841,7 +1853,7 @@ async function handleChatTurn(
           model: agent.model,
           durationMs: Date.now() - compactionStart,
         });
-        trackSessionEvent(session.id, "compacted", { model: agent.model });
+        trackSessionEvent(session.id, "compacted", { model: effectiveModel });
 
         log.info("Context compacted", {
           sessionId: session.id,
@@ -1876,6 +1888,7 @@ async function handleChatTurn(
         abortSignal: turnAbortController.signal,
         consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
         useModelRouter,
+        modelOverride: requestedModelOverride,
       });
       responseContent = result.content;
 
@@ -1927,6 +1940,7 @@ async function handleChatTurn(
             abortSignal: turnAbortController.signal,
             consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
             useModelRouter,
+            modelOverride: requestedModelOverride,
           });
           const forcedToolCalls = forcedResult.tool_calls || [];
           const forcedHasArtifacts = forcedToolCalls.some(
@@ -2264,7 +2278,11 @@ async function handleChatTurn(
   return {
     sessionId: session.id,
     workspaceDir: session.workspaceDir ?? null,
-    contextUsage: estimateSessionContextUsage(session.messages, agent?.model),
+    contextUsage: estimateSessionContextUsage(
+      session.messages,
+      requestedModelOverride || agent?.model
+    ),
+    plan: extractLatestSessionPlan(session.id, session.messages),
     message: assistantMessage,
     agent: agent
       ? {

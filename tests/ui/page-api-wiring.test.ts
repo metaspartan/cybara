@@ -63,6 +63,8 @@ describe("UI page API wiring", () => {
   test("Settings feature toggle uses settingsApi and restores state on update failure", () => {
     const source =
       readPage("Settings.tsx") +
+      readUiSource("pages/settings/FeatureSettings.tsx") +
+      readUiSource("pages/settings/SpeechSettingsSection.tsx") +
       readUiSource("components/settings/GatewayPathSettingsSection.tsx") +
       readUiSource("components/settings/GatewayRemoteAccessSection.tsx");
 

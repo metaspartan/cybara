@@ -437,7 +437,15 @@ function route(method: string, url: URL, body: string): Response {
 
   if (method === "POST" && pathname === "/api/chat") {
     const parsed = body
-      ? (JSON.parse(body) as { sessionId?: string; message?: string; queueMode?: string })
+      ? (JSON.parse(body) as {
+          sessionId?: string;
+          message?: string;
+          queueMode?: string;
+          modelOverride?: string;
+          useModelRouter?: boolean;
+          agentId?: string;
+          workspaceDir?: string;
+        })
       : {};
     chatPendingRequests.push({ method, path: pathname, body: parsed });
     if (parsed.queueMode === "queue") {
@@ -1663,6 +1671,46 @@ describe("CLI Commands", () => {
     expect(chatPendingRequests[4]?.body).toEqual({
       pendingMessageIds: ["pending-2", "pending-1"],
     });
+  });
+
+  test("agent command forwards model overrides and model-router sends", async () => {
+    chatPendingRequests.length = 0;
+
+    const override = await runCli([
+      "agent",
+      "--session",
+      "session-1",
+      "--agent",
+      "agent-1",
+      "--model",
+      "gpt-cli-override",
+      "review this workspace",
+    ]);
+    expect(override.exitCode).toBe(0);
+    expect(chatPendingRequests.at(-1)?.body).toMatchObject({
+      sessionId: "session-1",
+      agentId: "agent-1",
+      modelOverride: "gpt-cli-override",
+      message: "review this workspace",
+    });
+
+    const router = await runCli([
+      "agent",
+      "--session",
+      "session-1",
+      "--agent",
+      "agent-1",
+      "--router",
+      "route this prompt",
+    ]);
+    expect(router.exitCode).toBe(0);
+    expect(chatPendingRequests.at(-1)?.body).toMatchObject({
+      sessionId: "session-1",
+      agentId: "agent-1",
+      useModelRouter: true,
+      message: "route this prompt",
+    });
+    expect(chatPendingRequests.at(-1)?.body).not.toHaveProperty("modelOverride");
   });
 
   test("plugin command group is wired", async () => {

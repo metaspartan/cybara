@@ -1,6 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { FileText, RefreshCw, Search, Loader2, Clock, Folder, HardDrive } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  FileText,
+  RefreshCw,
+  Search,
+  Loader2,
+  Clock,
+  Folder,
+  HardDrive,
+  Trash2,
+} from "lucide-react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { PageLayout } from "@/components/layout";
@@ -95,6 +104,7 @@ const artifactMarkdownComponents: Components = {
 };
 
 export function Artifacts() {
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<ArtifactSummary | null>(null);
   const [rawView, setRawView] = useState(false);
@@ -154,6 +164,21 @@ export function Artifacts() {
         throw new Error(response.error || "Failed to load artifact content");
       }
       return response.data;
+    },
+  });
+
+  const deleteArtifactMutation = useMutation({
+    mutationFn: async (artifact: ArtifactSummary) => {
+      const response = await chatApi.deleteSessionArtifact(artifact.sessionId, artifact.fileName);
+      if (!response.success) throw new Error(response.error || "Failed to delete artifact");
+      return artifact;
+    },
+    onSuccess: async (artifact) => {
+      if (selected?.sessionId === artifact.sessionId && selected?.fileName === artifact.fileName) {
+        setSelected(null);
+        setRawView(false);
+      }
+      await queryClient.invalidateQueries({ queryKey: ["artifacts"] });
     },
   });
 
@@ -250,6 +275,25 @@ export function Artifacts() {
                   <span className="truncate">{selected?.fileName || "Artifact Preview"}</span>
                 </CardTitle>
                 <div className="ml-auto flex items-center gap-1">
+                  {selected && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`Delete ${selected.fileName}? This cannot be undone.`)) {
+                          deleteArtifactMutation.mutate(selected);
+                        }
+                      }}
+                      disabled={deleteArtifactMutation.isPending}
+                      className="inline-flex items-center gap-1 rounded-md border border-red-400/25 bg-red-500/10 px-2 py-1 text-xs text-red-200 transition-colors hover:bg-red-500/15 disabled:opacity-60"
+                    >
+                      {deleteArtifactMutation.isPending ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                      Delete
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setRawView(false)}

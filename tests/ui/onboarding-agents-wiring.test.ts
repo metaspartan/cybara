@@ -39,7 +39,7 @@ describe("Agents: auto-start on boot + default model", () => {
 });
 
 describe("Settings: system prompt preview wiring", () => {
-  const settings = read("pages/Settings.tsx");
+  const settings = read("pages/settings/SystemPromptSection.tsx");
 
   test("renders the preview from the API and has a graceful fallback", () => {
     expect(settings).toContain("useSystemPromptPreview");

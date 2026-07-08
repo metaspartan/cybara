@@ -6,7 +6,10 @@ import { getGitStatus } from "./git-api";
 import { checkWritePath } from "../core/tools/path-policy";
 
 const HOME_DIR = homedir();
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB limit (industry standard for browser IDEs)
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const SEARCH_MAX_FILE_SIZE = 2 * 1024 * 1024;
+const SEARCH_DEFAULT_MAX_FILES_SCANNED = 25_000;
+const SEARCH_HARD_MAX_FILES_SCANNED = 100_000;
 
 function resolveCanonicalPath(path: string): string {
   try {
@@ -112,6 +115,8 @@ export interface IdeSearchResult {
   query: string;
   totalMatches: number;
   truncated: boolean;
+  filesScanned?: number;
+  scanTruncated?: boolean;
   files: IdeSearchFileResult[];
   error?: string;
 }
@@ -123,6 +128,9 @@ export interface IdeReplaceResult {
   replacement: string;
   changedFiles: Array<{ file: string; replacements: number }>;
   totalReplacements: number;
+  truncated?: boolean;
+  filesScanned?: number;
+  scanTruncated?: boolean;
   error?: string;
 }
 
@@ -140,6 +148,8 @@ export interface IdeReplacePreviewResult {
   totalReplacements: number;
   files: IdeReplacePreviewFile[];
   truncated: boolean;
+  filesScanned?: number;
+  scanTruncated?: boolean;
   error?: string;
 }
 
@@ -149,6 +159,8 @@ export interface IdeListFilesResult {
   query: string;
   totalFiles: number;
   truncated: boolean;
+  filesScanned?: number;
+  scanTruncated?: boolean;
   files: Array<{ path: string; relativePath: string }>;
   error?: string;
 }
@@ -691,7 +703,6 @@ const SEARCH_IGNORED_DIRS = new Set([
   ".vscode",
   "__pycache__",
 ]);
-const SEARCH_MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB
 
 function isTextSearchCandidate(filePath: string): boolean {
   const ext = extname(filePath).toLowerCase();
@@ -787,19 +798,38 @@ function findMatchesInContent(
   return matches;
 }
 
-async function collectSearchFiles(dirPath: string, out: string[]): Promise<void> {
+function normalizeMaxFilesScanned(value: number | undefined): number {
+  if (!Number.isFinite(value)) return SEARCH_DEFAULT_MAX_FILES_SCANNED;
+  return Math.max(1, Math.min(Math.floor(value as number), SEARCH_HARD_MAX_FILES_SCANNED));
+}
+
+interface SearchFileCollector {
+  files: string[];
+  filesScanned: number;
+  truncated: boolean;
+  maxFilesScanned: number;
+}
+
+async function collectSearchFiles(dirPath: string, collector: SearchFileCollector): Promise<void> {
+  if (collector.truncated) return;
   const entries = await readdir(dirPath, { withFileTypes: true });
   for (const entry of entries) {
+    if (collector.truncated) return;
     const entryPath = join(dirPath, entry.name);
     if (entry.isDirectory()) {
       if (SEARCH_IGNORED_DIRS.has(entry.name)) continue;
       if (entry.name.startsWith(".") && entry.name !== ".cybara") continue;
-      await collectSearchFiles(entryPath, out);
+      await collectSearchFiles(entryPath, collector);
       continue;
     }
     if (!entry.isFile()) continue;
     if (!isTextSearchCandidate(entryPath)) continue;
-    out.push(entryPath);
+    if (collector.filesScanned >= collector.maxFilesScanned) {
+      collector.truncated = true;
+      return;
+    }
+    collector.filesScanned += 1;
+    collector.files.push(entryPath);
   }
 }
 
@@ -818,6 +848,7 @@ export async function searchWorkspace(
     wholeWord?: boolean;
     useRegex?: boolean;
     maxResults?: number;
+    maxFilesScanned?: number;
   }
 ): Promise<IdeSearchResult> {
   const targetPath = normalizePath(inputPath || HOME_DIR);
@@ -829,6 +860,8 @@ export async function searchWorkspace(
       query: "",
       totalMatches: 0,
       truncated: false,
+      filesScanned: 0,
+      scanTruncated: false,
       files: [],
     };
   }
@@ -840,6 +873,8 @@ export async function searchWorkspace(
       query: trimmedQuery,
       totalMatches: 0,
       truncated: false,
+      filesScanned: 0,
+      scanTruncated: false,
       files: [],
       error: "Access denied: Path outside home directory",
     };
@@ -852,6 +887,8 @@ export async function searchWorkspace(
       query: trimmedQuery,
       totalMatches: 0,
       truncated: false,
+      filesScanned: 0,
+      scanTruncated: false,
       files: [],
       error: "Path does not exist",
     };
@@ -859,15 +896,20 @@ export async function searchWorkspace(
 
   const maxResults = Math.max(1, Math.min(options?.maxResults || 2000, 10000));
   const targetStats = await stat(targetPath);
-  const filesToSearch: string[] = [];
   const searchFilesStartPath = resolveWorkspaceSearchRoot(targetPath, targetStats);
-  await collectSearchFiles(searchFilesStartPath, filesToSearch);
+  const collector: SearchFileCollector = {
+    files: [],
+    filesScanned: 0,
+    truncated: false,
+    maxFilesScanned: normalizeMaxFilesScanned(options?.maxFilesScanned),
+  };
+  await collectSearchFiles(searchFilesStartPath, collector);
 
   const files: IdeSearchFileResult[] = [];
   let totalMatches = 0;
-  let truncated = false;
+  let truncated = collector.truncated;
 
-  for (const filePath of filesToSearch) {
+  for (const filePath of collector.files) {
     if (totalMatches >= maxResults) {
       truncated = true;
       break;
@@ -900,6 +942,8 @@ export async function searchWorkspace(
     query: trimmedQuery,
     totalMatches,
     truncated,
+    filesScanned: collector.filesScanned,
+    scanTruncated: collector.truncated,
     files,
   };
 }
@@ -937,6 +981,7 @@ export async function replaceInWorkspace(
     wholeWord?: boolean;
     useRegex?: boolean;
     files?: string[];
+    maxFilesScanned?: number;
   }
 ): Promise<IdeReplaceResult> {
   const targetPath = normalizePath(inputPath || HOME_DIR);
@@ -949,6 +994,9 @@ export async function replaceInWorkspace(
       replacement,
       changedFiles: [],
       totalReplacements: 0,
+      truncated: false,
+      filesScanned: 0,
+      scanTruncated: false,
       error: "Query cannot be empty",
     };
   }
@@ -962,6 +1010,9 @@ export async function replaceInWorkspace(
       replacement,
       changedFiles: [],
       totalReplacements: 0,
+      truncated: searchResult.truncated,
+      filesScanned: searchResult.filesScanned,
+      scanTruncated: searchResult.scanTruncated,
       error: searchResult.error || "Search failed",
     };
   }
@@ -995,6 +1046,9 @@ export async function replaceInWorkspace(
     replacement,
     changedFiles,
     totalReplacements,
+    truncated: searchResult.truncated,
+    filesScanned: searchResult.filesScanned,
+    scanTruncated: searchResult.scanTruncated,
   };
 }
 
@@ -1007,6 +1061,7 @@ export async function previewReplaceInWorkspace(
     wholeWord?: boolean;
     files?: string[];
     maxFiles?: number;
+    maxFilesScanned?: number;
   }
 ): Promise<IdeReplacePreviewResult> {
   const targetPath = normalizePath(inputPath || HOME_DIR);
@@ -1020,6 +1075,8 @@ export async function previewReplaceInWorkspace(
       totalReplacements: 0,
       files: [],
       truncated: false,
+      filesScanned: 0,
+      scanTruncated: false,
       error: "Query cannot be empty",
     };
   }
@@ -1028,6 +1085,7 @@ export async function previewReplaceInWorkspace(
     caseSensitive: options?.caseSensitive,
     wholeWord: options?.wholeWord,
     maxResults: 10000,
+    maxFilesScanned: options?.maxFilesScanned,
   });
   if (!searchResult.success) {
     return {
@@ -1038,6 +1096,8 @@ export async function previewReplaceInWorkspace(
       totalReplacements: 0,
       files: [],
       truncated: false,
+      filesScanned: searchResult.filesScanned,
+      scanTruncated: searchResult.scanTruncated,
       error: searchResult.error || "Search failed",
     };
   }
@@ -1086,12 +1146,14 @@ export async function previewReplaceInWorkspace(
     totalReplacements,
     files: previewFiles,
     truncated,
+    filesScanned: searchResult.filesScanned,
+    scanTruncated: searchResult.scanTruncated,
   };
 }
 
 export async function listWorkspaceFiles(
   inputPath: string,
-  options?: { query?: string; limit?: number }
+  options?: { query?: string; limit?: number; maxFilesScanned?: number }
 ): Promise<IdeListFilesResult> {
   const targetPath = normalizePath(inputPath || HOME_DIR);
   const query = (options?.query || "").trim();
@@ -1103,6 +1165,8 @@ export async function listWorkspaceFiles(
       query,
       totalFiles: 0,
       truncated: false,
+      filesScanned: 0,
+      scanTruncated: false,
       files: [],
       error: "Access denied: Path outside home directory",
     };
@@ -1115,6 +1179,8 @@ export async function listWorkspaceFiles(
       query,
       totalFiles: 0,
       truncated: false,
+      filesScanned: 0,
+      scanTruncated: false,
       files: [],
       error: "Path does not exist",
     };
@@ -1122,15 +1188,20 @@ export async function listWorkspaceFiles(
 
   const targetStats = await stat(targetPath);
   const searchRootPath = resolveWorkspaceSearchRoot(targetPath, targetStats);
-  const filesToSearch: string[] = [];
-  await collectSearchFiles(searchRootPath, filesToSearch);
+  const collector: SearchFileCollector = {
+    files: [],
+    filesScanned: 0,
+    truncated: false,
+    maxFilesScanned: normalizeMaxFilesScanned(options?.maxFilesScanned),
+  };
+  await collectSearchFiles(searchRootPath, collector);
 
   const normalizedQuery = query.toLowerCase();
   const limit = Math.max(1, Math.min(options?.limit || 200, 2000));
   const files: Array<{ path: string; relativePath: string }> = [];
-  let truncated = false;
+  let truncated = collector.truncated;
 
-  for (const filePath of filesToSearch) {
+  for (const filePath of collector.files) {
     const relativePath = relative(searchRootPath, filePath).replaceAll("\\", "/");
     if (normalizedQuery && !relativePath.toLowerCase().includes(normalizedQuery)) continue;
     files.push({
@@ -1151,6 +1222,8 @@ export async function listWorkspaceFiles(
     query,
     totalFiles: files.length,
     truncated,
+    filesScanned: collector.filesScanned,
+    scanTruncated: collector.truncated,
     files,
   };
 }

@@ -1636,6 +1636,16 @@ describe("Tools API", () => {
       "Dangerous tool 'exec' blocked by policy"
     );
 
+    const codeBlocked = await api("POST", "/api/tools/execute", {
+      name: "execute_code",
+      args: { code: "return 2 + 2" },
+      context: { agentId: "dangerous-policy-test" },
+    });
+    expect(codeBlocked.status).toBe(400);
+    expect(String(codeBlocked.data.error || "")).toContain(
+      "Dangerous tool 'execute_code' blocked by policy"
+    );
+
     const resetPolicy = await api("PUT", "/api/config", {
       dangerous_tool_policy: { enabled: false, mode: "audit" },
     });
@@ -2071,6 +2081,79 @@ describe("Session API", () => {
     expect((fullAssistant as { _truncated?: string })._truncated).toBeUndefined();
   });
 
+  test("GET /api/sessions/:sessionId/plan returns the latest sanitized todo plan", async () => {
+    const sessionId = `session-plan-route-${Date.now()}`;
+    const agentId = `agent-plan-route-${Date.now()}`;
+    try {
+      insertRawSession(sessionId, agentId, [
+        {
+          role: "assistant",
+          content: "First plan",
+          metadata: {
+            source: "chat_api",
+            tool_calls: [
+              {
+                id: "todo-old",
+                name: "todo",
+                status: "completed",
+                result: {
+                  items: [{ content: "old item", status: "completed", priority: "low" }],
+                },
+              },
+            ],
+          },
+        },
+        {
+          role: "assistant",
+          content: "Updated plan",
+          metadata: {
+            source: "chat_api",
+            tool_calls: [
+              {
+                id: "todo-new",
+                name: "todo",
+                status: "completed",
+                result: {
+                  items: [
+                    { content: "review auth", status: "completed", priority: "high" },
+                    { content: "add fuzz test", status: "in_progress", priority: "medium" },
+                    { content: "run CI", status: "pending", priority: "medium" },
+                  ],
+                  note: "ready",
+                },
+              },
+            ],
+          },
+        },
+      ]);
+
+      const detail = await api("GET", `/api/sessions/${sessionId}`);
+      expect(detail.status).toBe(200);
+      expect(detail.data.plan.summary).toEqual({
+        total: 3,
+        pending: 1,
+        inProgress: 1,
+        completed: 1,
+      });
+
+      const plan = await api("GET", `/api/sessions/${sessionId}/plan`);
+      expect(plan.status).toBe(200);
+      expect(plan.data.sessionId).toBe(sessionId);
+      expect(plan.data.plan).toEqual(detail.data.plan);
+      expect(plan.data.plan.items.map((item: { content: string }) => item.content)).toEqual([
+        "review auth",
+        "add fuzz test",
+        "run CI",
+      ]);
+
+      const missing = await api("GET", `/api/sessions/${sessionId}-missing/plan`);
+      expect(missing.status).toBe(200);
+      expect(missing.data.error).toBe("Session not found");
+    } finally {
+      deleteRawSession(sessionId);
+    }
+  });
+
   test("POST /api/sessions/:sessionId/revert truncates later conversation history", async () => {
     const agentId = `revert-session-agent-${Date.now()}`;
     insertRawAgent(agentId, "Revert Session Agent", "{}");
@@ -2473,8 +2556,11 @@ describe("Subagents API", () => {
       task: "api spawn metadata wiring",
       agentId: requestedAgentId,
       model: "gpt-test-model",
-      timeout: 5,
+      runTimeoutSeconds: 0,
       label: "metadata test",
+      cleanup: "keep",
+      workspaceDir: process.cwd(),
+      maxActiveChildren: 3,
     });
 
     expect(spawnRes.status).toBe(200);
@@ -2489,6 +2575,10 @@ describe("Subagents API", () => {
     const getRes = await api("GET", `/api/subagents/${spawnRes.data.subagentId}`);
     expect(getRes.status).toBe(200);
     expect(getRes.data.id).toBe(spawnRes.data.subagentId);
+    expect(getRes.data.model).toBe("gpt-test-model");
+    expect(getRes.data.workspaceDir).toBe(process.cwd());
+    expect(getRes.data.runTimeoutSeconds).toBe(0);
+    expect(getRes.data.cleanup).toBe("keep");
   });
 });
 

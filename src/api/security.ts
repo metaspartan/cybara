@@ -823,6 +823,20 @@ export function routeRequiredScope(method: string, path: string): string | null 
     if (method === "GET") return null;
     return "wallet";
   }
+  if (path === "/api/chat" || path.startsWith("/api/chat/")) {
+    return "chat";
+  }
+  if (path.startsWith("/api/sessions")) {
+    if (method === "GET") return "read";
+    return "chat";
+  }
+  if (path.startsWith("/api/artifacts")) {
+    if (method === "GET") return "read";
+    return "chat";
+  }
+  if (path.startsWith("/api/logs/sessions")) {
+    return "read";
+  }
   if (path === "/api/ide/open-terminal" || path.startsWith("/api/terminal")) {
     return "terminal";
   }

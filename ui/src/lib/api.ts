@@ -9,6 +9,7 @@ import type {
   ChatImageAttachment,
   ChatSession,
   SessionContextUsage,
+  SessionPlanSnapshot,
   ApiResponse,
   DashboardStats,
   MobileDevice,
@@ -140,6 +141,7 @@ export const agentsApi = {
       sessionId: string;
       workspaceDir?: string | null;
       contextUsage?: SessionContextUsage;
+      plan?: SessionPlanSnapshot | null;
       queued?: boolean;
       interrupted?: boolean;
       pendingMessage?: PendingChatMessage;
@@ -1097,6 +1099,7 @@ export const chatApi = {
       sessionId: string;
       workspaceDir?: string | null;
       contextUsage?: SessionContextUsage;
+      plan?: SessionPlanSnapshot | null;
       queued?: boolean;
       interrupted?: boolean;
       pendingMessage?: PendingChatMessage;
@@ -1215,8 +1218,11 @@ export const chatApi = {
       updated_at: string;
       workspace_dir?: string | null;
       contextUsage?: SessionContextUsage;
+      plan?: SessionPlanSnapshot | null;
       messagesList: ChatMessage[];
     }>("/sessions/" + id + (options?.includeFullToolCalls ? "?includeFullToolCalls=1" : "")),
+  getSessionPlan: (id: string) =>
+    fetchApi<{ sessionId: string; plan: SessionPlanSnapshot | null }>("/sessions/" + id + "/plan"),
   updateSessionAgent: (id: string, agentId: string) =>
     fetchApi<{
       success: boolean;
@@ -1346,6 +1352,15 @@ export const chatApi = {
       truncated: boolean;
       totalChars: number;
     }>(`/sessions/${encodeURIComponent(sessionId)}/artifacts/${encodeURIComponent(artifactName)}`),
+  deleteSessionArtifact: (sessionId: string, artifactName: string) =>
+    fetchApi<{
+      success: boolean;
+      sessionId: string;
+      artifactName: string;
+      deleted?: boolean;
+    }>(`/sessions/${encodeURIComponent(sessionId)}/artifacts/${encodeURIComponent(artifactName)}`, {
+      method: "DELETE",
+    }),
   deleteSession: (id: string) => fetchApi<void>("/sessions/" + id, { method: "DELETE" }),
 };
 

@@ -9,6 +9,8 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("Commands:");
   console.log("  (none)      Interactive TUI menu");
   console.log("  chat        Interactive chat with AI");
+  console.log("    chat --agent <id> --model <id>     Chat with an agent/model override");
+  console.log("    chat --router                      Chat through the model router");
   console.log("  status      Show system status");
   console.log("  health      Alias for status");
   console.log("  gateway     Gateway lifecycle commands");
@@ -71,7 +73,7 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    logs --follow          Follow logs until interrupted");
   console.log("  subagent    Subagent commands");
   console.log("    subagent list       List subagents");
-  console.log("    subagent spawn <t>  Spawn with task");
+  console.log("    subagent spawn [--agent <id>] [--model <id>] [--workspace <dir>] <task>");
   console.log("    subagent kill <id>  Kill subagent");
   console.log("  loop        Autonomous agent loop commands");
   console.log("    loop list [--agent <id>]              List loop runs");

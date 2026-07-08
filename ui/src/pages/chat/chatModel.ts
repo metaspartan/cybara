@@ -5,7 +5,7 @@ import {
   type LiveActivityItem,
 } from "@/lib/chatActivities";
 import type { PendingChatMessage } from "@/lib/status-stream";
-import type { ChatImageAttachment } from "@/types";
+import type { ChatImageAttachment, SessionPlanItem, SessionPlanSnapshot } from "@/types";
 export interface ToolCall {
   id: string;
   name: string;
@@ -25,6 +25,8 @@ export interface ArtifactSummaryView {
   title: string;
   path?: string;
 }
+
+export type SessionPlanView = SessionPlanSnapshot;
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -1206,6 +1208,100 @@ export function inferArtifactSummaries(
   }
 
   return dedupeArtifactSummaries(summaries);
+}
+
+function normalizePlanStatus(value: unknown): SessionPlanItem["status"] {
+  if (value === "in_progress" || value === "completed") return value;
+  return "pending";
+}
+
+function normalizePlanPriority(value: unknown): SessionPlanItem["priority"] {
+  if (value === "high" || value === "low") return value;
+  return "medium";
+}
+
+export function normalizePlanItems(value: unknown): SessionPlanItem[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!isRecord(entry)) return null;
+      const content = typeof entry.content === "string" ? entry.content.trim() : "";
+      if (!content) return null;
+      return {
+        content,
+        status: normalizePlanStatus(entry.status),
+        priority: normalizePlanPriority(entry.priority),
+      };
+    })
+    .filter((entry): entry is SessionPlanItem => entry !== null)
+    .slice(0, 50);
+}
+
+export function summarizePlanItems(items: SessionPlanItem[]): SessionPlanSnapshot["summary"] {
+  return {
+    total: items.length,
+    pending: items.filter((item) => item.status === "pending").length,
+    inProgress: items.filter((item) => item.status === "in_progress").length,
+    completed: items.filter((item) => item.status === "completed").length,
+  };
+}
+
+export function parsePlanFromToolCall(
+  tool: ToolCall,
+  sessionId?: string | null,
+  updatedAt?: string
+): SessionPlanSnapshot | null {
+  if (tool.name !== "todo") return null;
+  const result = tryParseJsonRecord(tool.result);
+  const resultRecord = isRecord(result) ? result : null;
+  const args = tool.arguments || tool.args || {};
+  const resultItems = normalizePlanItems(resultRecord?.items);
+  const items = resultItems.length ? resultItems : normalizePlanItems(args.items);
+  if (items.length === 0) return null;
+  const planSessionId =
+    (resultRecord && typeof resultRecord.sessionId === "string" ? resultRecord.sessionId : "") ||
+    (typeof sessionId === "string" ? sessionId : "");
+  if (!planSessionId) return null;
+  return {
+    sessionId: planSessionId,
+    items,
+    summary: summarizePlanItems(items),
+    ...(updatedAt ? { updatedAt } : {}),
+    source: "todo_tool",
+  };
+}
+
+export function extractLatestPlanFromMessages(
+  messages: ChatMessage[],
+  sessionId?: string | null
+): SessionPlanSnapshot | null {
+  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const message = messages[messageIndex];
+    if (!message || !Array.isArray(message.tool_calls)) continue;
+    for (let toolIndex = message.tool_calls.length - 1; toolIndex >= 0; toolIndex -= 1) {
+      const plan = parsePlanFromToolCall(
+        message.tool_calls[toolIndex],
+        sessionId,
+        message.timestamp
+      );
+      if (plan) return plan;
+    }
+  }
+  return null;
+}
+
+export function collectPlanFromToolCalls(
+  toolCalls: ToolCall[] | undefined,
+  sessionId?: string | null,
+  updatedAt?: string
+): SessionPlanSnapshot | null {
+  for (let index = (toolCalls || []).length - 1; index >= 0; index -= 1) {
+    const toolCall = toolCalls?.[index];
+    if (!toolCall || toolCall.name !== "todo") continue;
+    const plan = parsePlanFromToolCall(toolCall, sessionId, updatedAt);
+    if (plan) return plan;
+  }
+  return null;
 }
 
 export function countLines(content: string): number {

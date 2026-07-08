@@ -304,6 +304,91 @@ struct RouterScreen: View {
         .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
+    private struct RouterAutomaticPlanUsage: View {
+        let plan: ProviderPlanSnapshot
+
+        private var windows: [(label: String, window: ProviderPlanUsageWindow)] {
+            [
+                ("5h", "rolling_5h"),
+                ("Weekly", "rolling_week"),
+            ].compactMap { label, kind in
+                guard let window = plan.windows.first(where: {
+                    $0.kind == kind && $0.usageKnown && ($0.unlimited || $0.usedPercent != nil)
+                }) else {
+                    return nil
+                }
+                return (label, window)
+            }
+        }
+
+        var body: some View {
+            if windows.isEmpty {
+                Text("Automatic usage data is not available yet.")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(windows, id: \.window.id) { row in
+                        VStack(alignment: .leading, spacing: 5) {
+                            HStack {
+                                Text(row.label)
+                                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(tint(row.window))
+                                Text(row.window.title)
+                                    .font(.system(size: 11, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                Spacer()
+                                Text(value(row.window))
+                                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                                    .foregroundStyle(tint(row.window))
+                                if !row.window.resetDescription.isEmpty {
+                                    Text(row.window.resetDescription)
+                                        .font(.system(size: 10, design: .rounded))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            GeometryReader { proxy in
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(Color.primary.opacity(0.06))
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .fill(tint(row.window).opacity(row.window.unlimited ? 0.52 : 0.82))
+                                    .frame(
+                                        width: max(
+                                            4,
+                                            proxy.size.width * CGFloat(progress(row.window))
+                                        )
+                                    )
+                            }
+                            .frame(height: 6)
+                        }
+                    }
+                }
+                .padding(.vertical, 2)
+            }
+        }
+
+        private func tint(_ window: ProviderPlanUsageWindow) -> Color {
+            if window.unlimited { return .green }
+            let percent = window.usedPercent ?? 0
+            if percent < 40 { return .green }
+            if percent < 65 { return .blue }
+            if percent < 80 { return .yellow }
+            if percent < 95 { return .orange }
+            return .red
+        }
+
+        private func value(_ window: ProviderPlanUsageWindow) -> String {
+            if window.unlimited { return "∞" }
+            return "\(Int(ceil(min(100, max(0, window.usedPercent ?? 0)))))%"
+        }
+
+        private func progress(_ window: ProviderPlanUsageWindow) -> Double {
+            if window.unlimited { return 1 }
+            return min(1, max(0, (window.usedPercent ?? 0) / 100))
+        }
+    }
+
     private func infoRow(_ label: String, _ value: String) -> some View {
         HStack {
             Text(label)

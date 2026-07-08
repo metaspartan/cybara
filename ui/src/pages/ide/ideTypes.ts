@@ -72,6 +72,8 @@ export interface IdeSearchResult {
   query: string;
   totalMatches: number;
   truncated: boolean;
+  filesScanned?: number;
+  scanTruncated?: boolean;
   files: IdeSearchFileResult[];
   error?: string;
 }
@@ -83,6 +85,9 @@ export interface IdeReplaceResult {
   replacement: string;
   changedFiles: Array<{ file: string; replacements: number }>;
   totalReplacements: number;
+  truncated?: boolean;
+  filesScanned?: number;
+  scanTruncated?: boolean;
   error?: string;
 }
 
@@ -100,6 +105,8 @@ export interface IdeReplacePreviewResult {
   totalReplacements: number;
   files: IdeReplacePreviewFile[];
   truncated: boolean;
+  filesScanned?: number;
+  scanTruncated?: boolean;
   error?: string;
 }
 
@@ -109,6 +116,8 @@ export interface IdeListFilesResult {
   query: string;
   totalFiles: number;
   truncated: boolean;
+  filesScanned?: number;
+  scanTruncated?: boolean;
   files: Array<{ path: string; relativePath: string }>;
   error?: string;
 }

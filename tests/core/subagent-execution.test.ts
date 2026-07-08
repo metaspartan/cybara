@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { agentManager } from "../../src/core/agent";
 import { providerManager } from "../../src/core/providers";
 import type { ToolDefinition } from "../../src/core/database";
-import { resetSubagentRegistryForTests } from "../../src/core/subagent-registry";
+import { getRun, resetSubagentRegistryForTests } from "../../src/core/subagent-registry";
 import {
   getSubagentSession,
   handleSessionsSpawn,
@@ -259,6 +259,98 @@ describe("Subagent execution wiring", () => {
 
     expect(nestedSpawn.status).toBe("forbidden");
     expect(nestedSpawn.warning).toContain("not allowed from sub-agent sessions");
+  });
+
+  test("preserves explicit no-timeout subagent runs with metadata", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "No Timeout Provider",
+      api_key: "subagent-no-timeout-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const targetAgent = agentManager.create({
+      name: "No Timeout Agent",
+      type: "subagent",
+      provider_id: provider.id,
+      model: "model-default",
+      tools: [],
+    });
+    createdAgentIds.push(targetAgent.id);
+
+    const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
+    (agentManager as unknown as { execute: ExecuteShape }).execute = async () =>
+      new Promise<{ content: string; tool_calls?: Array<{ name: string; result: unknown }> }>(
+        () => {}
+      );
+
+    try {
+      const workspaceDir = process.cwd();
+      const spawnResult = await handleSessionsSpawn({
+        task: "stay active without timeout",
+        agentId: targetAgent.id,
+        model: "model-no-timeout",
+        runTimeoutSeconds: 0,
+        workspaceDir,
+        _requesterSessionKey: "main",
+      });
+
+      expect(spawnResult.status).toBe("accepted");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+
+      const run = getRun(spawnResult.runId);
+      expect(run?.runTimeoutSeconds).toBe(0);
+      expect(run?.model).toBe("model-no-timeout");
+      expect(run?.workspaceDir).toBe(workspaceDir);
+      expect(run?.outcome).toBeUndefined();
+    } finally {
+      (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
+    }
+  });
+
+  test("limits active child subagents per requester", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Subagent Limit Provider",
+      api_key: "subagent-limit-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const targetAgent = agentManager.create({
+      name: "Limit Agent",
+      type: "subagent",
+      provider_id: provider.id,
+      model: "model-limit",
+      tools: [],
+    });
+    createdAgentIds.push(targetAgent.id);
+
+    const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
+    (agentManager as unknown as { execute: ExecuteShape }).execute = async () =>
+      new Promise<{ content: string; tool_calls?: Array<{ name: string; result: unknown }> }>(
+        () => {}
+      );
+
+    try {
+      const first = await handleSessionsSpawn({
+        task: "first child",
+        agentId: targetAgent.id,
+        maxActiveChildren: 1,
+        _requesterSessionKey: "main",
+      });
+      expect(first.status).toBe("accepted");
+
+      const second = await handleSessionsSpawn({
+        task: "second child",
+        agentId: targetAgent.id,
+        maxActiveChildren: 1,
+        _requesterSessionKey: "main",
+      });
+      expect(second.status).toBe("forbidden");
+      expect(second.warning).toContain("active sub-agent limit (1)");
+    } finally {
+      (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
+    }
   });
 
   test("propagates requester session/workspace from tool context when args omit them", async () => {

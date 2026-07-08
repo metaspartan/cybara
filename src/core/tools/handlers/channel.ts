@@ -42,6 +42,7 @@ interface SubagentSession {
 }
 
 const sessions = new Map<string, SubagentSession>();
+const DEFAULT_SUBAGENT_MAX_ACTIVE_CHILDREN = 5;
 
 export function getSubagentSession(sessionKey: string): SubagentSession | undefined {
   return sessions.get(sessionKey);
@@ -55,6 +56,32 @@ export function resetSubagentSessionsForTests(): void {
   sessions.clear();
 }
 
+function readTrimmedString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readNonNegativeInteger(value: unknown): number | undefined {
+  const numeric =
+    typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(numeric) || numeric < 0) return undefined;
+  return Math.floor(numeric);
+}
+
+function resolveRunTimeoutSeconds(args: Record<string, unknown>): number | undefined {
+  const explicit = readNonNegativeInteger(args.runTimeoutSeconds);
+  if (explicit !== undefined) return explicit;
+  return readNonNegativeInteger(args.timeoutSeconds);
+}
+
+function resolveMaxActiveChildren(args: Record<string, unknown>): number | undefined {
+  const explicit = readNonNegativeInteger(args.maxActiveChildren);
+  const envValue = readNonNegativeInteger(process.env.CYBARA_SUBAGENT_MAX_ACTIVE_CHILDREN);
+  const limit = explicit ?? envValue ?? DEFAULT_SUBAGENT_MAX_ACTIVE_CHILDREN;
+  return limit > 0 ? limit : undefined;
+}
+
 export async function handleSessionsSpawn(
   args: Record<string, unknown>,
   context?: ToolContext
@@ -66,25 +93,18 @@ export async function handleSessionsSpawn(
   modelApplied?: boolean;
   warning?: string;
 }> {
-  const task = args.task as string;
-  const label = (args.label as string)?.trim() || undefined;
-  const requestedAgentId = args.agentId as string | undefined;
-  const modelOverride = args.model as string | undefined;
-  const runTimeoutSeconds =
-    typeof args.runTimeoutSeconds === "number"
-      ? Math.max(0, Math.floor(args.runTimeoutSeconds))
-      : typeof args.timeoutSeconds === "number" // Back-compat alias
-        ? Math.max(0, Math.floor(args.timeoutSeconds))
-        : 0;
+  const task = readTrimmedString(args.task);
+  const label = readTrimmedString(args.label);
+  const requestedAgentId = readTrimmedString(args.agentId);
+  const modelOverride = readTrimmedString(args.model);
+  const runTimeoutSeconds = resolveRunTimeoutSeconds(args);
   const cleanup = args.cleanup === "delete" ? "delete" : "keep";
   const silent = args.silent === true;
 
   const requesterSessionKey =
-    (args._requesterSessionKey as string) || (context?.sessionId as string) || "main";
+    readTrimmedString(args._requesterSessionKey) || readTrimmedString(context?.sessionId) || "main";
   const requestedWorkspaceDir =
-    (typeof args.workspaceDir === "string" && args.workspaceDir.trim()) ||
-    (typeof context?.workspaceDir === "string" && context.workspaceDir.trim()) ||
-    undefined;
+    readTrimmedString(args.workspaceDir) || readTrimmedString(context?.workspaceDir);
 
   if (!task) {
     throw new Error("task is required");
@@ -100,6 +120,18 @@ export async function handleSessionsSpawn(
     };
   }
 
+  const maxActiveChildren = resolveMaxActiveChildren(args);
+  const activeChildren = subagentRegistry.countActiveRunsForRequester(requesterSessionKey);
+  if (maxActiveChildren !== undefined && activeChildren >= maxActiveChildren) {
+    return {
+      status: "forbidden",
+      childSessionKey: "",
+      runId: "",
+      task,
+      warning: `sessions_spawn has reached the active sub-agent limit (${maxActiveChildren}) for this session`,
+    };
+  }
+
   const agentId = requestedAgentId || "default";
   const childSessionKey = subagentRegistry.generateSubagentSessionKey(agentId);
   const runId = crypto.randomUUID();
@@ -112,7 +144,9 @@ export async function handleSessionsSpawn(
     task,
     cleanup,
     label,
-    runTimeoutSeconds: runTimeoutSeconds > 0 ? runTimeoutSeconds : undefined,
+    model: modelOverride,
+    workspaceDir: requestedWorkspaceDir,
+    runTimeoutSeconds,
     silent,
   });
 
@@ -122,7 +156,7 @@ export async function handleSessionsSpawn(
     parentSessionId: requesterSessionKey,
     task,
     model: modelOverride,
-    timeout: runTimeoutSeconds > 0 ? runTimeoutSeconds : undefined,
+    timeout: runTimeoutSeconds && runTimeoutSeconds > 0 ? runTimeoutSeconds : undefined,
     status: "pending",
     messages: [
       {
@@ -181,6 +215,7 @@ function buildSubagentSystemPrompt(
     "## Instructions",
     "- Complete the task thoroughly but concisely",
     "- Focus only on the specified task",
+    "- Do not spawn additional sub-agents from this sub-agent session",
     silent
       ? "- This is a silent background task. Do NOT announce your result to the requester."
       : "- When done, use sessions_send to announce your result to the requester",
@@ -334,6 +369,8 @@ export async function handleSessionsList(): Promise<{
     createdAt: string;
     completedAt?: string;
     workspaceDir?: string;
+    model?: string;
+    timeout?: number;
     messageCount: number;
   }>;
 }> {
@@ -345,6 +382,8 @@ export async function handleSessionsList(): Promise<{
       createdAt: s.createdAt,
       completedAt: s.completedAt,
       workspaceDir: s.workspaceDir,
+      model: s.model,
+      timeout: s.timeout,
       messageCount: s.messages.length,
     })),
   };

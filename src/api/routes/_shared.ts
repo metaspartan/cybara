@@ -8,6 +8,7 @@ import { join } from "path";
 import type { MetricsEntry } from "../queries";
 import { cybaraDir, dataDir, memoryDir, logsDir, secureDir, userSkillsDir } from "../../core/paths";
 import { getArtifactsRootDir } from "../../core/artifacts";
+import { sanitizeTodoToolResult } from "../../core/session-plan";
 import type { ChatMessage } from "../chat";
 import type { WalletChain, WalletTokenChain } from "../../core/wallet";
 import { sanitizeAssistantContent } from "../../core/llm/text-tool-calls";
@@ -901,6 +902,11 @@ export function isArtifactToolCall(toolCall: unknown): boolean {
   return !!sanitizeArtifactToolResult(toolCall.result);
 }
 
+function isTodoToolCall(toolCall: unknown): boolean {
+  if (!isObjectRecord(toolCall)) return false;
+  return typeof toolCall.name === "string" && toolCall.name.toLowerCase() === "todo";
+}
+
 export function sanitizeProcessActivities(
   activities: unknown,
   options?: { maxItems?: number; maxTextLength?: number }
@@ -1069,8 +1075,11 @@ export function sanitizeSessionMessages(
             tc.name === "artifacts" || tc.name === "artifact"
               ? sanitizeArtifactToolResult(tc.result)
               : undefined;
+          const todoResult = isTodoToolCall(tc) ? sanitizeTodoToolResult(tc.result) : undefined;
           if (artifactResult) {
             sanitized.result = artifactResult;
+          } else if (todoResult) {
+            sanitized.result = todoResult;
           } else {
             const resultStr = typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result);
             sanitized.result =

@@ -28,7 +28,7 @@ describe("CLI chat source wiring", () => {
       "/edit <id|#n> <message>",
       "/delete <id|#n>",
       "/reorder <id|#n>...",
-      "/agent <id>",
+      "/agent <id|name|default>",
       "/workspace <path>",
     ]) {
       expect(chatSource).toContain(command);

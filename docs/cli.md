@@ -27,6 +27,8 @@ cybara gateway restart    # Restart the running gateway
 ```bash
 cybara chat               # Interactive terminal chat with sessions, tools, queueing, and steering
 cybara chat --agent <id>  # Start chat with a specific agent
+cybara chat --model <id>  # Override the active agent model for future turns
+cybara chat --router      # Send future turns through the model router
 cybara chat --workspace <path>  # Bind new turns to a workspace
 cybara wizard             # Setup wizard (first-time configuration)
 cybara setup              # Setup wizard
@@ -44,7 +46,13 @@ cybara tui mobile         # Paired mobile devices
 
 `cybara chat` is the terminal chat surface. It supports session history, queued follow-ups while a
 run is active, steering a queued follow-up into the active run, pending-message edit/delete/reorder,
-agent switching, workspace switching, markdown emphasis, and grouped tool/activity output.
+agent switching, model-router sends, one-turn model overrides, workspace switching, tool permission
+mode changes, subagent spawning, markdown emphasis, and grouped tool/activity output.
+
+Inside `cybara chat`, use `/status` to show the active session, agent, model/router mode, workspace,
+and approval mode. `/agents`, `/agent <id|name|default>`, `/model <id|router|default>`,
+`/router on|off`, `/permissions ask|always_allow|show`, and `/subagent spawn <task>` mirror the
+same control-plane concepts used by the web/Tauri, mobile, and native macOS clients.
 
 The dashboard TUI is optimized for normal terminals and remains read-only for dashboard panels. Use
 the raw CLI commands when you need to mutate providers, router settings, mobile pairings, wallet
@@ -155,7 +163,8 @@ cybara memory <query>     # Search memories semantically
 ```bash
 cybara subagent           # List all subagents
 cybara subagent list      # List all subagents (explicit)
-cybara subagent spawn <t> # Spawn subagent with task
+cybara subagent spawn [--agent <id>] [--model <id>] [--workspace <dir>] <task>
+                          # Spawn subagent with task
 cybara subagent kill <id> # Kill running subagent
 ```
 

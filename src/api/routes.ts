@@ -45,6 +45,7 @@ import {
   sessionModelMetadataSnapshot,
   type SessionModelMetadata,
 } from "./routes/session-model-metadata";
+import { extractLatestSessionPlan } from "../core/session-plan";
 import { formatSkillInstallSpec } from "./routes/skill-formatting";
 import { tables } from "../core/database";
 import { agentManager, getBuiltinTools } from "../core/agent";
@@ -1719,6 +1720,8 @@ const routes: Record<string, RouteHandler> = {
       message: string;
       agentId?: string;
       sessionId?: string;
+      model?: string;
+      modelOverride?: string;
       clientPendingId?: string;
       workspaceDir?: string;
       stream?: boolean;
@@ -1727,7 +1730,13 @@ const routes: Record<string, RouteHandler> = {
       queueMode?: "queue" | "steer";
       useModelRouter?: boolean;
     };
-    return await handleChat(data);
+    const modelOverride =
+      typeof data.modelOverride === "string" && data.modelOverride.trim()
+        ? data.modelOverride.trim()
+        : typeof data.model === "string" && data.model.trim()
+          ? data.model.trim()
+          : undefined;
+    return await handleChat({ ...data, modelOverride });
   },
   "POST /api/speech/dictate": async (body) => {
     const data = body as {
@@ -1788,11 +1797,11 @@ const routes: Record<string, RouteHandler> = {
     const session = await getSession(params!.id);
     if (!session) return session;
     const sessionObj = session as Record<string, unknown>;
+    const messages = Array.isArray(session.messages) ? session.messages : [];
     return {
       ...session,
-      messages: Array.isArray(session.messages)
-        ? sanitizeSessionMessages(session.messages)
-        : session.messages,
+      plan: extractLatestSessionPlan(params!.id, messages),
+      messages: Array.isArray(session.messages) ? sanitizeSessionMessages(session.messages) : [],
       messagesList: Array.isArray(sessionObj.messagesList)
         ? sanitizeSessionMessages(sessionObj.messagesList as SessionMessageView[])
         : undefined,
@@ -2236,7 +2245,18 @@ const routes: Record<string, RouteHandler> = {
           ? session.workspaceDir
           : null,
       contextUsage: estimateSessionContextUsage(messages, detailModelMetadata.model),
+      plan: extractLatestSessionPlan(session.id, messages),
       messagesList: sanitizedMessages,
+    };
+  },
+  "GET /api/sessions/:sessionId/plan": async (_body, params) => {
+    const sessionId = params!.sessionId;
+    const session = await getSession(sessionId);
+    if (!session) return { error: "Session not found" };
+    const messages = await getSessionMessages(sessionId);
+    return {
+      sessionId,
+      plan: extractLatestSessionPlan(sessionId, messages),
     };
   },
   "PUT /api/sessions/:sessionId/agent": async (body, params) => {
@@ -2421,8 +2441,13 @@ const routes: Record<string, RouteHandler> = {
       task: string;
       model?: string;
       timeout?: number;
+      timeoutSeconds?: number;
+      runTimeoutSeconds?: number;
       label?: string;
       agentId?: string;
+      cleanup?: "keep" | "delete";
+      workspaceDir?: string;
+      maxActiveChildren?: number;
     };
     if (!data.task) {
       return { error: "task is required", success: false };
@@ -2431,10 +2456,14 @@ const routes: Record<string, RouteHandler> = {
     const result = await handleSessionsSpawn({
       task: data.task,
       model: data.model,
-      timeoutSeconds: data.timeout,
+      runTimeoutSeconds: data.runTimeoutSeconds,
+      timeoutSeconds: data.timeoutSeconds ?? data.timeout,
       label: data.label,
       agentId: data.agentId,
-      _requesterSessionKey: "main", // API spawns are from main
+      cleanup: data.cleanup,
+      workspaceDir: data.workspaceDir,
+      maxActiveChildren: data.maxActiveChildren,
+      _requesterSessionKey: "main",
     });
 
     return {
@@ -2443,6 +2472,7 @@ const routes: Record<string, RouteHandler> = {
       sessionKey: result.childSessionKey,
       status: result.status,
       warning: result.warning,
+      modelApplied: result.modelApplied,
     };
   },
   "GET /api/subagents": () => {
@@ -2463,6 +2493,10 @@ const routes: Record<string, RouteHandler> = {
       createdAt: new Date(run.createdAt).toISOString(),
       task: run.task.slice(0, 200),
       sessionKey: run.childSessionKey,
+      model: run.model,
+      workspaceDir: run.workspaceDir,
+      runTimeoutSeconds: run.runTimeoutSeconds,
+      cleanup: run.cleanup,
     }));
   },
   "GET /api/subagents/:id": (_body, params) => {
@@ -2486,6 +2520,10 @@ const routes: Record<string, RouteHandler> = {
       endedAt: run.endedAt ? new Date(run.endedAt).toISOString() : undefined,
       task: run.task,
       sessionKey: run.childSessionKey,
+      model: run.model,
+      workspaceDir: run.workspaceDir,
+      runTimeoutSeconds: run.runTimeoutSeconds,
+      cleanup: run.cleanup,
       outcome: run.outcome,
     };
   },

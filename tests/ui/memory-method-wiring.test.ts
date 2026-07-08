@@ -7,7 +7,7 @@ const read = (rel: string) => readFileSync(`${uiSrc}/${rel}`, "utf8");
 
 describe("Memory and Settings pages: memory controls", () => {
   const memory = read("pages/Memory.tsx");
-  const settings = read("pages/Settings.tsx");
+  const settings = read("pages/settings/MemoryBehaviorSettings.tsx");
 
   test("keeps durable memory editing separate from recall configuration", () => {
     expect(memory).toContain("Memory Store");

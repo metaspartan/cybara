@@ -25,6 +25,9 @@ export interface SubagentRunRecord {
   task: string;
   cleanup: "keep" | "delete";
   label?: string;
+  model?: string;
+  workspaceDir?: string;
+  runTimeoutSeconds?: number;
   createdAt: number;
   startedAt?: number;
   endedAt?: number;
@@ -32,11 +35,6 @@ export interface SubagentRunRecord {
   archiveAtMs?: number;
   cleanupCompletedAt?: number;
   cleanupHandled?: boolean;
-  /**
-   * Silent runs (e.g. the background memory review) must never surface their
-   * lifecycle completion to the requester's chat. When true, runAnnounceFlow
-   * skips the announcement entirely.
-   */
   silent?: boolean;
 }
 
@@ -48,7 +46,7 @@ interface SubagentConfig {
 
 const DEFAULT_CONFIG: SubagentConfig = {
   archiveAfterMinutes: 60,
-  defaultTimeoutSeconds: 600, // 10 minutes
+  defaultTimeoutSeconds: 600,
   persistPath: join(homedir(), ".cybara", "subagent-registry.json"),
 };
 
@@ -99,6 +97,14 @@ function resolveArchiveAfterMs(): number | undefined {
     return undefined;
   }
   return Math.max(1, Math.floor(minutes)) * 60_000;
+}
+
+function resolveRunTimeoutMs(runTimeoutSeconds: number | undefined): number | undefined {
+  const seconds = runTimeoutSeconds ?? config.defaultTimeoutSeconds;
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return undefined;
+  }
+  return Math.floor(seconds) * 1000;
 }
 
 function startSweeper(): void {
@@ -297,8 +303,10 @@ function resumeSubagentRun(runId: string): void {
     return;
   }
 
-  const timeoutMs = config.defaultTimeoutSeconds * 1000;
-  void waitForSubagentCompletion(runId, timeoutMs);
+  const timeoutMs = resolveRunTimeoutMs(entry.runTimeoutSeconds);
+  if (timeoutMs) {
+    void waitForSubagentCompletion(runId, timeoutMs);
+  }
   resumedRuns.add(runId);
 }
 
@@ -375,6 +383,8 @@ export function registerSubagentRun(params: {
   task: string;
   cleanup?: "keep" | "delete";
   label?: string;
+  model?: string;
+  workspaceDir?: string;
   runTimeoutSeconds?: number;
   silent?: boolean;
 }): SubagentRunRecord {
@@ -382,7 +392,7 @@ export function registerSubagentRun(params: {
   const now = Date.now();
   const archiveAfterMs = resolveArchiveAfterMs();
   const archiveAtMs = archiveAfterMs ? now + archiveAfterMs : undefined;
-  const timeoutMs = (params.runTimeoutSeconds ?? config.defaultTimeoutSeconds) * 1000;
+  const timeoutMs = resolveRunTimeoutMs(params.runTimeoutSeconds);
 
   const run: SubagentRunRecord = {
     runId,
@@ -393,6 +403,9 @@ export function registerSubagentRun(params: {
     task: params.task,
     cleanup: params.cleanup || "keep",
     label: params.label,
+    model: params.model,
+    workspaceDir: params.workspaceDir,
+    runTimeoutSeconds: params.runTimeoutSeconds,
     silent: params.silent === true,
     createdAt: now,
     startedAt: now,
@@ -408,7 +421,9 @@ export function registerSubagentRun(params: {
     startSweeper();
   }
 
-  void waitForSubagentCompletion(runId, timeoutMs);
+  if (timeoutMs) {
+    void waitForSubagentCompletion(runId, timeoutMs);
+  }
 
   console.log(`[Subagent] Registered run ${runId} for child session ${params.childSessionKey}`);
   return run;
@@ -493,6 +508,14 @@ export function getRunsByRequester(requesterSessionKey: string): SubagentRunReco
   const key = requesterSessionKey.trim();
   if (!key) return [];
   return [...subagentRuns.values()].filter((r) => r.requesterSessionKey === key);
+}
+
+export function countActiveRunsForRequester(requesterSessionKey: string): number {
+  const key = requesterSessionKey.trim();
+  if (!key) return 0;
+  return [...subagentRuns.values()].filter(
+    (run) => run.requesterSessionKey === key && (!run.endedAt || run.endedAt === 0)
+  ).length;
 }
 
 export function listActiveRuns(): SubagentRunRecord[] {

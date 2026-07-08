@@ -19,7 +19,7 @@ import {
   updateMobileDevicePushToken,
 } from "../../src/core/mobile-devices";
 import { secureDir } from "../../src/core/paths";
-import { routeRequiredScope } from "../../src/api/security";
+import { routeRequiredScope, securityCheck } from "../../src/api/security";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -146,11 +146,51 @@ describe("route scope requirements", () => {
   });
 
   test("ordinary routes need no special scope", () => {
-    expect(routeRequiredScope("POST", "/api/chat")).toBeNull();
     expect(routeRequiredScope("GET", "/api/agents")).toBeNull();
     expect(routeRequiredScope("GET", "/api/mobile/device")).toBeNull();
     expect(routeRequiredScope("POST", "/api/mobile/push-token")).toBeNull();
     expect(routeRequiredScope("PUT", "/api/mobile/push-preferences")).toBeNull();
+  });
+
+  test("chat, session, and artifact surfaces enforce read and chat scopes", () => {
+    expect(routeRequiredScope("POST", "/api/chat")).toBe("chat");
+    expect(routeRequiredScope("POST", "/api/chat/sessions/session-1/pending/reorder")).toBe("chat");
+    expect(routeRequiredScope("GET", "/api/sessions/session-1")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/sessions/session-1/plan")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/sessions/session-1/artifacts")).toBe("read");
+    expect(routeRequiredScope("DELETE", "/api/sessions/session-1/artifacts/file.md")).toBe("chat");
+    expect(routeRequiredScope("GET", "/api/artifacts")).toBe("read");
+    expect(routeRequiredScope("POST", "/api/artifacts")).toBe("chat");
+    expect(routeRequiredScope("GET", "/api/logs/sessions/session-1/messages")).toBe("read");
+  });
+
+  test("custom scoped mobile tokens cannot mutate chat without the chat scope", () => {
+    const previousApiKey = process.env.CYBARA_API_KEY;
+    process.env.CYBARA_API_KEY = "cybara_scope_test_key";
+    const { token } = createMobileDevice({
+      baseUrl: "http://127.0.0.1:4269",
+      scopes: ["read"],
+    });
+    try {
+      const headers = { authorization: `Bearer ${token}` };
+
+      const read = routeRequiredScope("GET", "/api/sessions/session-1/plan");
+      expect(read).toBe("read");
+
+      const allowed = securityCheck("GET", "/api/sessions/session-1/plan", headers, "10.1.2.3");
+      expect(allowed.passed).toBe(true);
+
+      const denied = securityCheck("POST", "/api/chat", headers, "10.1.2.3");
+      expect(denied.passed).toBe(false);
+      expect(denied.statusCode).toBe(403);
+      expect(denied.error).toContain("'chat'");
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.CYBARA_API_KEY;
+      } else {
+        process.env.CYBARA_API_KEY = previousApiKey;
+      }
+    }
   });
 
   test("mutating management surfaces require the manage scope", () => {

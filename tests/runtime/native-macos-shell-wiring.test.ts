@@ -258,7 +258,8 @@ describe("native macOS shell wiring", () => {
     expect(managementClient).toContain('rawObject("api/auth/key")');
     expect(managementClient).toContain("func rotateAuthKey() async throws -> String?");
     expect(managementClient).toContain('request("api/auth/rotate-key", method: "POST")');
-    expect(settings).toContain('Text("Gateway Logs")');
+    expect(settings).toContain('Text("Gateway Activity")');
+    expect(settings).toContain("NativeLogTimeline(");
     expect(settings).toContain("client.systemLogsPage(limit: 80)");
     expect(settings).toContain("Task { await restartGateway() }");
     expect(settings).toContain("try await client.restartGateway()");
@@ -444,7 +445,7 @@ describe("native macOS shell wiring", () => {
     expect(providersScreen).toContain("if !planManualEditable");
     expect(configScreens).toContain("let manualPlanEditable = plan?.manualPlanEditable ?? true");
     expect(configScreens).toContain(
-      "Live provider usage is used for routing. No manual plan limits are needed."
+      "Automatic usage tracking is active. Routing uses live provider limits."
     );
     expect(configScreens).toContain(
       "if manualPlanEditable, let plan, !plan.presetSuggestions.isEmpty"

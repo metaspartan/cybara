@@ -152,6 +152,8 @@ import {
   resolveDictationRuntime,
   resolvePathForIde,
   resolveToolCallSandboxProvider,
+  collectPlanFromToolCalls,
+  extractLatestPlanFromMessages,
   summarizeMessageFileChanges,
   summarizeSessionFileChanges,
   toLiveActivityItems,
@@ -174,6 +176,7 @@ import {
 } from "./chat/chatModel";
 import { LiveActivityTimeline, ProcessActivityList } from "./chat/ActivityTimeline";
 import { DiffCodeBlock, MessageContent } from "./chat/MessageContent";
+import { PlanSummaryCard } from "./chat/PlanSummaryCard";
 import { SessionsPanel } from "./chat/SessionSidebar";
 import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
 
@@ -1005,6 +1008,8 @@ function AssistantMetaInline({
   const orderedToolCalls = getToolCallsInTimelineOrder(message.tool_calls);
   const fileChangeSummary = summarizeMessageFileChanges(orderedToolCalls);
   const hasFileChangeSummary = !!fileChangeSummary;
+  const planSummary = collectPlanFromToolCalls(orderedToolCalls, sessionId, message.timestamp);
+  const hasPlanSummary = !!planSummary;
   const artifactSummary = collectMessageArtifacts(orderedToolCalls, sessionId);
   const hasArtifacts = artifactSummary.length > 0;
   const workedDurationMs = resolveWorkedDurationMs(processActivities, message.tool_calls, {
@@ -1060,7 +1065,7 @@ function AssistantMetaInline({
     };
   });
   const hasWorkSectionContent = workActivities.length > 0;
-  const hasSummarySectionContent = hasFileChangeSummary || hasArtifacts;
+  const hasSummarySectionContent = hasPlanSummary || hasFileChangeSummary || hasArtifacts;
 
   if ((isWorkSection && !hasWorkSectionContent) || (!isWorkSection && !hasSummarySectionContent)) {
     return null;
@@ -1081,6 +1086,7 @@ function AssistantMetaInline({
         <ProcessActivityList activities={workActivitiesWithSandbox} />
       )}
 
+      {!isWorkSection && hasPlanSummary && planSummary && <PlanSummaryCard plan={planSummary} />}
       {!isWorkSection && hasFileChangeSummary && fileChangeSummary && (
         <FileChangesCard summary={fileChangeSummary} />
       )}
@@ -1995,6 +2001,10 @@ export function Chat() {
   const sessionFileChanges = useMemo(
     () => summarizeSessionFileChanges(typedMessages),
     [typedMessages]
+  );
+  const currentSessionPlan = useMemo(
+    () => extractLatestPlanFromMessages(typedMessages, sessionId),
+    [typedMessages, sessionId]
   );
   const resolveSelectableSessionAgentId = useCallback(
     (agentId?: string | null): string | undefined => {
@@ -4545,6 +4555,7 @@ export function Chat() {
                 ref={composerRef}
                 className="flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl"
               >
+                {currentSessionPlan && <PlanSummaryCard plan={currentSessionPlan} compact />}
                 {pendingMessages.length > 0 && (
                   <PendingChatQueue
                     messages={pendingMessages}

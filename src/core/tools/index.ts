@@ -769,11 +769,15 @@ Use for tasks that may take longer or require separate context.`,
           type: "number",
           description: "Back-compat alias for runTimeoutSeconds",
         },
+        maxActiveChildren: {
+          type: "number",
+          description:
+            "Maximum active child sub-agents allowed for this requester (0 = no cap, default 5)",
+        },
         cleanup: {
           type: "string",
           enum: ["keep", "delete"],
-          description:
-            "Cleanup policy after completion (keep = preserve session, delete = remove after 5s)",
+          description: "Cleanup policy after completion (keep = preserve run, delete = remove run)",
         },
       },
       required: ["task"],

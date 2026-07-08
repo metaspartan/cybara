@@ -289,6 +289,30 @@ export interface ChatMessage {
   _tool_calls_total_count?: number;
 }
 
+export type SessionPlanItemStatus = "pending" | "in_progress" | "completed";
+export type SessionPlanItemPriority = "high" | "medium" | "low";
+
+export interface SessionPlanItem {
+  content: string;
+  status: SessionPlanItemStatus;
+  priority: SessionPlanItemPriority;
+}
+
+export interface SessionPlanSummary {
+  total: number;
+  pending: number;
+  inProgress: number;
+  completed: number;
+}
+
+export interface SessionPlanSnapshot {
+  sessionId: string;
+  items: SessionPlanItem[];
+  summary: SessionPlanSummary;
+  updatedAt?: string;
+  source: "todo_tool";
+}
+
 export interface SessionContextUsage {
   usedTokens: number;
   limitTokens: number;
