@@ -1311,20 +1311,6 @@ export function collectPlanTimelineFromMessages(
   return plans;
 }
 
-export function collectPlanFromToolCalls(
-  toolCalls: ToolCall[] | undefined,
-  sessionId?: string | null,
-  updatedAt?: string
-): SessionPlanSnapshot | null {
-  for (let index = (toolCalls || []).length - 1; index >= 0; index -= 1) {
-    const toolCall = toolCalls?.[index];
-    if (!toolCall || toolCall.name !== "todo") continue;
-    const plan = parsePlanFromToolCall(toolCall, sessionId, updatedAt);
-    if (plan) return plan;
-  }
-  return null;
-}
-
 export function countLines(content: string): number {
   if (!content) return 0;
   return content.split(/\r?\n/).length;

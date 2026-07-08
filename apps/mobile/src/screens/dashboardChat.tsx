@@ -44,25 +44,25 @@ function InlineMarkdown({ tokens }: { tokens: MarkdownInline[] }) {
         switch (token.type) {
           case "bold":
             return (
-              <Text key={index} style={styles.mdBold}>
+              <Text key={index} selectable style={styles.mdBold}>
                 {token.text}
               </Text>
             );
           case "italic":
             return (
-              <Text key={index} style={styles.mdItalic}>
+              <Text key={index} selectable style={styles.mdItalic}>
                 {token.text}
               </Text>
             );
           case "strike":
             return (
-              <Text key={index} style={styles.mdStrike}>
+              <Text key={index} selectable style={styles.mdStrike}>
                 {token.text}
               </Text>
             );
           case "code":
             return (
-              <Text key={index} style={styles.mdInlineCode}>
+              <Text key={index} selectable style={styles.mdInlineCode}>
                 {token.text}
               </Text>
             );
@@ -70,6 +70,7 @@ function InlineMarkdown({ tokens }: { tokens: MarkdownInline[] }) {
             return (
               <Text
                 key={index}
+                selectable
                 style={styles.mdLink}
                 onPress={() => {
                   void Linking.openURL(token.href).catch(() => {});
@@ -79,7 +80,11 @@ function InlineMarkdown({ tokens }: { tokens: MarkdownInline[] }) {
               </Text>
             );
           default:
-            return <Text key={index}>{token.text}</Text>;
+            return (
+              <Text key={index} selectable>
+                {token.text}
+              </Text>
+            );
         }
       })}
     </>
@@ -309,7 +314,7 @@ export function MobilePlanSummaryCard({ plan }: { plan: SessionPlanSnapshot }) {
         <View style={styles.mobilePlanHeaderText}>
           <View style={styles.mobilePlanTitleRow}>
             <Text selectable style={styles.mobilePlanTitle}>
-              Plan
+              Latest plan update
             </Text>
             <Text selectable style={styles.mobilePlanProgressText}>
               {mobilePlanProgressLabel(plan)}
@@ -506,7 +511,7 @@ export function WorkTimeline({
                 <View style={styles.messageActivityIcon}>
                   <CheckCircle2 color={colors.textMuted} size={13} strokeWidth={2.2} />
                 </View>
-                <Text style={styles.messageActivityGroupLabel}>
+                <Text selectable style={styles.messageActivityGroupLabel}>
                   {entry.label} {expanded ? "▾" : "▸"}
                 </Text>
               </Pressable>

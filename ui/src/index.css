@@ -36,6 +36,9 @@
   --context-tooltip-title: #9ca3af;
   --context-tooltip-body: #e5e7eb;
   --context-tooltip-detail: #f3f4f6;
+  --chat-environment-panel-bg: #0d0f15;
+  --chat-environment-panel-border: #343843;
+  --chat-environment-panel-text: #e5e7eb;
 
   /* Theme accent color (set dynamically via JS) */
   --accent-primary: 99, 102, 241;
@@ -272,6 +275,27 @@ html[data-runtime="tauri"][data-platform="linux"] .shimmer {
 
 .glass-button:active {
   background: rgba(255, 255, 255, 0.06);
+}
+
+.chat-environment-panel {
+  background: var(--chat-environment-panel-bg) !important;
+  background-color: var(--chat-environment-panel-bg) !important;
+  background-image: none !important;
+  border-color: var(--chat-environment-panel-border) !important;
+  color: var(--chat-environment-panel-text) !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  isolation: isolate;
+}
+
+.chat-environment-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--chat-environment-panel-bg);
 }
 
 /* ---- Utilities referenced by shared primitives ----
@@ -734,6 +758,9 @@ html.light {
   --context-tooltip-title: #64748b;
   --context-tooltip-body: #1f2937;
   --context-tooltip-detail: #111827;
+  --chat-environment-panel-bg: #ffffff;
+  --chat-environment-panel-border: rgba(15, 23, 42, 0.14);
+  --chat-environment-panel-text: #1f2937;
 }
 
 html.light body {

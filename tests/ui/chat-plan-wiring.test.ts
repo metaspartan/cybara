@@ -31,20 +31,55 @@ function readUiSource(): string {
   ].join("\n");
 }
 
+function readChatPageSource(): string {
+  return readFileSync(chatPagePath, "utf8");
+}
+
+function readEnvironmentOverviewSource(): string {
+  return readFileSync(environmentOverviewPath, "utf8");
+}
+
+function readPlanCardSource(): string {
+  return readFileSync(planCardPath, "utf8");
+}
+
 describe("chat plan and artifact UI wiring", () => {
-  test("renders todo plans in transcript and composer", () => {
+  test("renders todo plans in a dismissible composer card and current-chat environment overview", () => {
     const source = readUiSource();
-    expect(source).toContain("function PlanSummaryCard");
-    expect(source).toContain("collectPlanFromToolCalls");
+    const chatPage = readChatPageSource();
+    const environmentOverview = readEnvironmentOverviewSource();
+    const planCard = readPlanCardSource();
     expect(source).toContain("collectPlanTimelineFromMessages(typedMessages, sessionId)");
     expect(source).toContain("ChatEnvironmentOverview");
-    expect(source).toContain("Chat overview and current plan state");
+    expect(source).toContain("function PlanSummaryCard");
+    expect(source).toContain("Current chat only");
     expect(source).toContain("Latest plan update");
     expect(source).toContain("extractLatestPlanFromMessages(typedMessages, sessionId)");
-    expect(source).toContain(
-      "{currentSessionPlan && <PlanSummaryCard plan={currentSessionPlan} compact />}"
-    );
-    expect(source).toContain("parsePlanFromToolCall(toolCall, sessionId, updatedAt)");
+    expect(chatPage).toContain('key={sessionId || "new-chat-environment"}');
+    expect(chatPage).toContain("setShowEnvironmentOverview(false);");
+    expect(chatPage).toContain("sessionId={sessionId}");
+    expect(chatPage).toContain("hiddenComposerPlanKey");
+    expect(chatPage).toContain("showComposerPlan");
+    expect(chatPage).toContain("<PlanSummaryCard");
+    expect(chatPage).toContain("dismissible");
+    expect(chatPage).toContain("expandable");
+    expect(chatPage).toContain("setHiddenComposerPlanKey(currentSessionPlanKey)");
+    expect(chatPage).not.toContain("collectPlanFromToolCalls");
+    expect(chatPage).not.toContain("<PlanSummaryCard plan={planSummary}");
+    expect(environmentOverview).not.toContain('label="Browser"');
+    expect(environmentOverview).not.toContain("browserOrigin");
+    expect(environmentOverview).toContain("<PlanSummaryCard plan={currentPlan} expandable");
+    expect(environmentOverview).toContain("chat-environment-panel");
+    expect(environmentOverview).toContain("createPortal(panel, document.body)");
+    expect(environmentOverview).toContain('data-session-id={sessionId || "new-chat"}');
+    expect(environmentOverview).toContain('background: "var(--chat-environment-panel-bg)"');
+    expect(environmentOverview).toContain('backdropFilter: "none"');
+    expect(environmentOverview).toContain("Earlier updates in this chat");
+    expect(planCard).toContain('aria-label="Hide current plan"');
+    expect(planCard).toContain("<details");
+    expect(planCard).toContain("<summary");
+    expect(planCard).toContain('data-testid={compact ? "chat-composer-plan" : "chat-plan-card"}');
+    expect(source).toContain("parsePlanFromToolCall(toolCall, sessionId, message.timestamp)");
   });
 
   test("exposes session plan and artifact delete API wiring", () => {
@@ -102,13 +137,34 @@ describe("chat plan and artifact UI wiring", () => {
           },
         ],
       },
+      {
+        role: "assistant",
+        content: "Done.",
+        timestamp: "2026-07-08T20:08:00.000Z",
+        tool_calls: [
+          {
+            id: "plan-3",
+            name: "todo",
+            status: "completed",
+            result: {
+              items: [
+                { content: "Inspect state", status: "completed", priority: "high" },
+                { content: "Patch UI", status: "completed", priority: "medium" },
+                { content: "Test browser", status: "completed", priority: "medium" },
+                { content: "Add xAI model", status: "completed", priority: "low" },
+              ],
+            },
+          },
+        ],
+      },
     ];
 
     const timeline = collectPlanTimelineFromMessages(messages, "session-plan-ui");
-    expect(timeline).toHaveLength(2);
+    expect(timeline).toHaveLength(3);
     expect(timeline.map((entry) => [entry.messageIndex, entry.toolIndex])).toEqual([
       [0, 0],
       [1, 1],
+      [2, 0],
     ]);
     expect(timeline[0]?.summary).toEqual({
       total: 3,
@@ -122,8 +178,19 @@ describe("chat plan and artifact UI wiring", () => {
       inProgress: 1,
       completed: 2,
     });
-    expect(extractLatestPlanFromMessages(messages, "session-plan-ui")?.items[3]?.content).toBe(
-      "Add xAI model"
-    );
+    expect(timeline[2]?.summary).toEqual({
+      total: 4,
+      pending: 0,
+      inProgress: 0,
+      completed: 4,
+    });
+    const latestPlan = extractLatestPlanFromMessages(messages, "session-plan-ui");
+    expect(latestPlan?.summary).toEqual({
+      total: 4,
+      pending: 0,
+      inProgress: 0,
+      completed: 4,
+    });
+    expect(latestPlan?.items[3]?.content).toBe("Add xAI model");
   });
 });

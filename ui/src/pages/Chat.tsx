@@ -153,7 +153,6 @@ import {
   resolveDictationRuntime,
   resolvePathForIde,
   resolveToolCallSandboxProvider,
-  collectPlanFromToolCalls,
   collectPlanTimelineFromMessages,
   extractLatestPlanFromMessages,
   summarizeMessageFileChanges,
@@ -178,8 +177,8 @@ import {
 } from "./chat/chatModel";
 import { LiveActivityTimeline, ProcessActivityList } from "./chat/ActivityTimeline";
 import { DiffCodeBlock, MessageContent } from "./chat/MessageContent";
-import { PlanSummaryCard } from "./chat/PlanSummaryCard";
 import { ChatEnvironmentOverview } from "./chat/ChatEnvironmentOverview";
+import { PlanSummaryCard } from "./chat/PlanSummaryCard";
 import { SessionsPanel } from "./chat/SessionSidebar";
 import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
 
@@ -1011,8 +1010,6 @@ function AssistantMetaInline({
   const orderedToolCalls = getToolCallsInTimelineOrder(message.tool_calls);
   const fileChangeSummary = summarizeMessageFileChanges(orderedToolCalls);
   const hasFileChangeSummary = !!fileChangeSummary;
-  const planSummary = collectPlanFromToolCalls(orderedToolCalls, sessionId, message.timestamp);
-  const hasPlanSummary = !!planSummary;
   const artifactSummary = collectMessageArtifacts(orderedToolCalls, sessionId);
   const hasArtifacts = artifactSummary.length > 0;
   const workedDurationMs = resolveWorkedDurationMs(processActivities, message.tool_calls, {
@@ -1068,7 +1065,7 @@ function AssistantMetaInline({
     };
   });
   const hasWorkSectionContent = workActivities.length > 0;
-  const hasSummarySectionContent = hasPlanSummary || hasFileChangeSummary || hasArtifacts;
+  const hasSummarySectionContent = hasFileChangeSummary || hasArtifacts;
 
   if ((isWorkSection && !hasWorkSectionContent) || (!isWorkSection && !hasSummarySectionContent)) {
     return null;
@@ -1089,7 +1086,6 @@ function AssistantMetaInline({
         <ProcessActivityList activities={workActivitiesWithSandbox} />
       )}
 
-      {!isWorkSection && hasPlanSummary && planSummary && <PlanSummaryCard plan={planSummary} />}
       {!isWorkSection && hasFileChangeSummary && fileChangeSummary && (
         <FileChangesCard summary={fileChangeSummary} />
       )}
@@ -1923,6 +1919,7 @@ export function Chat() {
   const [showSessionsPanel, setShowSessionsPanel] = useState(true);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
   const [showEnvironmentOverview, setShowEnvironmentOverview] = useState(false);
+  const [hiddenComposerPlanKey, setHiddenComposerPlanKey] = useState<string | null>(null);
   const [diffPanelWidth, setDiffPanelWidth] = useState<number>(() => readPersistedDiffPanelWidth());
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
   const [activeSessionIds, setActiveSessionIds] = useState<string[]>([]);
@@ -2011,6 +2008,19 @@ export function Chat() {
     () => extractLatestPlanFromMessages(typedMessages, sessionId),
     [typedMessages, sessionId]
   );
+  const currentSessionPlanKey = useMemo(() => {
+    if (!currentSessionPlan) return null;
+    return [
+      sessionId || "new-chat",
+      currentSessionPlan.updatedAt || "",
+      currentSessionPlan.summary.completed,
+      currentSessionPlan.summary.inProgress,
+      currentSessionPlan.summary.pending,
+      currentSessionPlan.summary.total,
+      currentSessionPlan.items.map((item) => `${item.status}:${item.content}`).join("|"),
+    ].join(":");
+  }, [currentSessionPlan, sessionId]);
+  const showComposerPlan = !!currentSessionPlan && currentSessionPlanKey !== hiddenComposerPlanKey;
   const sessionPlanTimeline = useMemo(
     () => collectPlanTimelineFromMessages(typedMessages, sessionId),
     [typedMessages, sessionId]
@@ -2026,8 +2036,6 @@ export function Chat() {
     }
     return Array.from(names).slice(0, 24);
   }, [typedMessages]);
-  const browserOrigin =
-    typeof window === "undefined" ? "local" : window.location.origin.replace(/^https?:\/\//, "");
   const resolveSelectableSessionAgentId = useCallback(
     (agentId?: string | null): string | undefined => {
       if (typeof agentId !== "string") return undefined;
@@ -2908,6 +2916,10 @@ export function Chat() {
 
   useEffect(() => {
     activeSessionRef.current = sessionId;
+  }, [sessionId]);
+
+  useEffect(() => {
+    setShowEnvironmentOverview(false);
   }, [sessionId]);
 
   useEffect(() => {
@@ -4304,12 +4316,13 @@ export function Chat() {
             <Zap className="w-4 h-4" />
           </button>
           <ChatEnvironmentOverview
-            browserOrigin={browserOrigin}
+            key={sessionId || "new-chat-environment"}
             currentPlan={currentSessionPlan}
             fileChanges={sessionFileChanges}
             isOpen={showEnvironmentOverview}
             onClose={() => setShowEnvironmentOverview(false)}
             planTimeline={sessionPlanTimeline}
+            sessionId={sessionId}
             subagents={environmentSubagents}
             toolNames={environmentToolNames}
             workspaceDir={effectiveWorkspaceDir}
@@ -4613,7 +4626,15 @@ export function Chat() {
                 ref={composerRef}
                 className="flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl"
               >
-                {currentSessionPlan && <PlanSummaryCard plan={currentSessionPlan} compact />}
+                {showComposerPlan && currentSessionPlan && currentSessionPlanKey && (
+                  <PlanSummaryCard
+                    plan={currentSessionPlan}
+                    compact
+                    dismissible
+                    expandable
+                    onDismiss={() => setHiddenComposerPlanKey(currentSessionPlanKey)}
+                  />
+                )}
                 {pendingMessages.length > 0 && (
                   <PendingChatQueue
                     messages={pendingMessages}
