@@ -4206,6 +4206,7 @@ export function Chat() {
             )}
           </button>
           <button
+            aria-label="Environment overview"
             onClick={() => {
               setShowEnvironmentOverview((value) => !value);
               setShowDiffPanel(false);
@@ -4834,9 +4835,9 @@ export function Chat() {
         >
           <div className="space-y-4">
             <p className="text-sm text-gray-300">
-              Are you sure you want to revert here? This will remove this message and{" "}
-              {revertFollowingCount} following message{revertFollowingCount === 1 ? "" : "s"} from
-              this session, then place this text back in the input box for resend.
+              Are you sure you want to revert here? This will keep this message, remove{" "}
+              {revertFollowingCount} later message{revertFollowingCount === 1 ? "" : "s"} from this
+              session, then place this text back in the input box for resend.
             </p>
             {revertTarget && (
               <div className="rounded-lg border border-white/10 bg-black/30 p-3">

@@ -78,6 +78,7 @@ describe("chat plan and artifact UI wiring", () => {
     expect(chatPage).toContain("environmentOverviewSignalKey");
     expect(chatPage).toContain("showEnvironmentOverviewDot");
     expect(chatPage).toContain("setSeenEnvironmentOverviewKey(environmentOverviewSignalKey)");
+    expect(chatPage).toContain('aria-label="Environment overview"');
     expect(chatPage).toContain("<PlanSummaryCard");
     expect(chatPage).toContain("dismissible");
     expect(chatPage).toContain("expandable");
