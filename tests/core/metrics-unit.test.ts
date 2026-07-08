@@ -73,6 +73,7 @@ metrics.trackContextCompaction("s1", {
 // The reduction is stored under type=context_compaction with key=sessionId,
 // and separately under type=compaction_reduction key=tokens.
 out.compactionBySession = tables.metrics.getTotal("context_compaction", "s1"); // 600
+out.compactionBySessionCount = tables.metrics.getCount("context_compaction", "s1"); // 1
 out.compactionReductionTokens = tables.metrics.getTotal("compaction_reduction", "tokens"); // 600
 out.compactionReductionMessages = tables.metrics.getTotal("compaction_reduction", "messages"); // 6
 // getMetricsSummary counts compactions via ("compaction_reduction","count"),
@@ -199,6 +200,7 @@ describe("metrics api + session + flush + compaction", () => {
 
   test("compaction records token reduction under sessionId and reduction keys", () => {
     expect(r.compactionBySession).toBe(600);
+    expect(r.compactionBySessionCount).toBe(1);
     expect(r.compactionReductionTokens).toBe(600);
     expect(r.compactionReductionMessages).toBe(6);
   });

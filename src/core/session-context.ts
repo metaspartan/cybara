@@ -281,9 +281,14 @@ export function estimateSessionContextUsage(
     typeof options?.sessionId === "string" && options.sessionId.trim()
       ? Math.max(0, tables.metrics.getTotal("context_compaction", options.sessionId.trim()))
       : 0;
+  const persistedCompactionCount =
+    typeof options?.sessionId === "string" && options.sessionId.trim()
+      ? Math.max(0, tables.metrics.getCount("context_compaction", options.sessionId.trim()))
+      : 0;
   const compactionCount = Math.max(
     0,
     Number.isFinite(options?.compactionCount) ? Math.floor(options?.compactionCount ?? 0) : 0,
+    persistedCompactionCount,
     messages.filter(
       (message) =>
         typeof message.content === "string" &&

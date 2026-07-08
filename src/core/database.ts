@@ -763,7 +763,9 @@ const stmts = {
     ),
     // lifetime aggregates read the rollup (~10K rows), never the raw table
     getTotal: prepare("SELECT total FROM metrics_totals WHERE type = ? AND key = ?"),
+    getCount: prepare("SELECT count FROM metrics_totals WHERE type = ? AND key = ?"),
     getTotalRaw: prepare("SELECT SUM(value) as total FROM metrics WHERE type = ? AND key = ?"),
+    getCountRaw: prepare("SELECT COUNT(*) as count FROM metrics WHERE type = ? AND key = ?"),
     getTotalByType: prepare("SELECT SUM(total) as total FROM metrics_totals WHERE type = ?"),
     getTotalByTypeRawMissing: prepare(
       `SELECT SUM(m.value) as total
@@ -1220,6 +1222,11 @@ export const tables = {
       const rolledUp = stmts.metrics?.getTotal.get(type, key) as { total?: number } | null;
       if (rolledUp?.total !== undefined && rolledUp.total !== null) return rolledUp.total || 0;
       return (stmts.metrics?.getTotalRaw.get(type, key) as { total?: number } | null)?.total || 0;
+    },
+    getCount: (type: string, key: string) => {
+      const rolledUp = stmts.metrics?.getCount.get(type, key) as { count?: number } | null;
+      if (rolledUp?.count !== undefined && rolledUp.count !== null) return rolledUp.count || 0;
+      return (stmts.metrics?.getCountRaw.get(type, key) as { count?: number } | null)?.count || 0;
     },
     getTotalByType: (type: string) => {
       const rolledUp =
