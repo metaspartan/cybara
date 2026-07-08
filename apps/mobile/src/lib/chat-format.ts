@@ -1,4 +1,34 @@
-import type { SessionMessageSummary } from "./api";
+import type { MobileMessageImage, SessionMessageSummary } from "./api";
+
+export function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0 || !Number.isFinite(bytes)) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return `${value >= 10 || unit === 0 ? Math.round(value) : value.toFixed(1)} ${units[unit]}`;
+}
+
+export function mobilePendingImageBytes(image: MobileMessageImage): number {
+  if (image.data) return Math.floor((image.data.length * 3) / 4);
+  return 0;
+}
+
+export function mobileMediaSummaryLabel(
+  images: MobileMessageImage[],
+  maxImages: number
+): string {
+  if (images.length === 0) return "";
+  const parts = [`${images.length} image${images.length === 1 ? "" : "s"}`];
+  const totalBytes = images.reduce((sum, image) => sum + mobilePendingImageBytes(image), 0);
+  const size = formatBytes(totalBytes);
+  let label = size ? `${parts.join(" · ")} · ${size}` : parts.join(" · ");
+  if (images.length >= maxImages) label += ` · max ${maxImages} images`;
+  return label;
+}
 
 export type MessageContentPart =
   | { type: "text"; content: string }

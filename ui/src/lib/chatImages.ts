@@ -18,7 +18,12 @@ export async function fileToChatImage(file: File): Promise<ChatImageAttachment> 
   for (let i = 0; i < buffer.length; i += chunk) {
     binary += String.fromCharCode(...buffer.subarray(i, i + chunk));
   }
-  return { data: btoa(binary), mimeType: file.type || "image/png", name: file.name, size: file.size };
+  return {
+    data: btoa(binary),
+    mimeType: file.type || "image/png",
+    name: file.name,
+    size: file.size,
+  };
 }
 
 export function chatImageSrc(image: ChatImageAttachment): string {

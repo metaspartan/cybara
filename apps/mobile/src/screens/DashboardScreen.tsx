@@ -87,6 +87,7 @@ import {
   MessageCircle,
   Mic,
   Network,
+  Paperclip,
   Pencil,
   Plus,
   Play,
@@ -147,7 +148,13 @@ import {
   type WalletChain,
   type WalletTokenChain,
 } from "../lib/api";
-import { chatIsWaitingForAssistant, latestVisibleChatMessages } from "../lib/chat-format";
+import {
+  chatIsWaitingForAssistant,
+  latestVisibleChatMessages,
+  mobileMediaSummaryLabel,
+  mobilePendingImageBytes,
+  formatBytes,
+} from "../lib/chat-format";
 import type { GatewayProfile } from "../lib/connection";
 import {
   MOBILE_NAV_CHROME,
@@ -3416,30 +3423,49 @@ function SessionDetailPanel({
           }
         >
           {pendingImages.length > 0 ? (
-            <ScrollView
-              horizontal
-              keyboardShouldPersistTaps="handled"
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.composerAttachments}
-            >
-              {pendingImages.map((image, index) => (
-                <View key={`${image.mimeType ?? "image"}-${index}`} style={styles.composerThumb}>
-                  <Image
-                    resizeMode="cover"
-                    source={{ uri: pendingImageUri(image) }}
-                    style={styles.composerThumbImage}
-                  />
-                  <Pressable
-                    accessibilityLabel="Remove image"
-                    accessibilityRole="button"
-                    onPress={() => removePendingImage(index)}
-                    style={styles.composerThumbRemove}
-                  >
-                    <X color={colors.text} size={12} strokeWidth={2.6} />
-                  </Pressable>
-                </View>
-              ))}
-            </ScrollView>
+            <>
+              <View style={styles.composerSummary}>
+                <Paperclip color={colors.textDim} size={12} strokeWidth={2.4} />
+                <Text style={styles.composerSummaryText}>
+                  {mobileMediaSummaryLabel(pendingImages, MOBILE_CHAT_MAX_ATTACHMENTS)}
+                </Text>
+              </View>
+              <ScrollView
+                horizontal
+                keyboardShouldPersistTaps="handled"
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.composerAttachments}
+              >
+                {pendingImages.map((image, index) => {
+                  const sizeLabel = formatBytes(mobilePendingImageBytes(image));
+                  return (
+                    <View
+                      key={`${image.mimeType ?? "image"}-${index}`}
+                      style={styles.composerThumb}
+                    >
+                      <Image
+                        resizeMode="cover"
+                        source={{ uri: pendingImageUri(image) }}
+                        style={styles.composerThumbImage}
+                      />
+                      {sizeLabel ? (
+                        <View style={styles.composerThumbBadge}>
+                          <Text style={styles.composerThumbBadgeText}>{sizeLabel}</Text>
+                        </View>
+                      ) : null}
+                      <Pressable
+                        accessibilityLabel="Remove image"
+                        accessibilityRole="button"
+                        onPress={() => removePendingImage(index)}
+                        style={styles.composerThumbRemove}
+                      >
+                        <X color={colors.text} size={12} strokeWidth={2.6} />
+                      </Pressable>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </>
           ) : null}
           <View style={styles.composer}>
             <TextInput

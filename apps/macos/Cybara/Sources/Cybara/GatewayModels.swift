@@ -336,11 +336,13 @@ struct NativeAttachedImage: Identifiable, Hashable, Sendable {
     let id: UUID
     let base64: String
     let mimeType: String
+    let size: Int
 
-    init(id: UUID = UUID(), base64: String, mimeType: String) {
+    init(id: UUID = UUID(), base64: String, mimeType: String, size: Int? = nil) {
         self.id = id
         self.base64 = base64
         self.mimeType = mimeType
+        self.size = size ?? (base64.count * 3) / 4
     }
 }
 

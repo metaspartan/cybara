@@ -171,12 +171,43 @@ struct NativeAttachedFile: Identifiable, Hashable, Sendable {
     let id: UUID
     let name: String
     let content: String
+    let size: Int
 
-    init(id: UUID = UUID(), name: String, content: String) {
+    init(id: UUID = UUID(), name: String, content: String, size: Int? = nil) {
         self.id = id
         self.name = name
         self.content = content
+        self.size = size ?? content.utf8.count
     }
+}
+
+func nativeFormatBytes(_ bytes: Int) -> String {
+    guard bytes > 0 else { return "" }
+    let units = ["B", "KB", "MB", "GB"]
+    var value = Double(bytes)
+    var unit = 0
+    while value >= 1024 && unit < units.count - 1 {
+        value /= 1024
+        unit += 1
+    }
+    if value >= 10 || unit == 0 {
+        return "\(Int(value.rounded())) \(units[unit])"
+    }
+    return String(format: "%.1f %@", value, units[unit])
+}
+
+func nativeMediaSummaryLabel(images: [NativeAttachedImage], files: [NativeAttachedFile]) -> String {
+    var parts: [String] = []
+    if !images.isEmpty {
+        parts.append("\(images.count) image\(images.count == 1 ? "" : "s")")
+    }
+    if !files.isEmpty {
+        parts.append("\(files.count) file\(files.count == 1 ? "" : "s")")
+    }
+    let totalBytes = images.reduce(0) { $0 + $1.size } + files.reduce(0) { $0 + $1.size }
+    let size = nativeFormatBytes(totalBytes)
+    let joined = parts.joined(separator: " · ")
+    return size.isEmpty ? joined : "\(joined) · \(size)"
 }
 
 let nativeImageFileExtensions: Set<String> = ["png", "jpg", "jpeg", "gif", "webp"]
@@ -1507,6 +1538,19 @@ struct ChatScreen: View {
             }
             VStack(spacing: 6) {
                 if !pendingAttachments.isEmpty || !pendingFiles.isEmpty {
+                    HStack(spacing: 5) {
+                        Image(systemName: "paperclip")
+                            .font(.system(size: 10))
+                        Text(nativeMediaSummaryLabel(images: pendingAttachments, files: pendingFiles))
+                        if pendingAttachments.count >= 8 {
+                            Text("· max 8 images")
+                                .foregroundStyle(.orange.opacity(0.8))
+                        }
+                    }
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 4)
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             ForEach(pendingAttachments) { attachment in
@@ -1925,14 +1969,15 @@ struct ChatScreen: View {
             pendingAttachments.append(
                 NativeAttachedImage(
                     base64: data.base64EncodedString(),
-                    mimeType: nativeImageMimeType(for: url)
+                    mimeType: nativeImageMimeType(for: url),
+                    size: data.count
                 )
             )
             return
         }
         guard pendingFiles.count < 8, data.count <= 256 * 1024 else { return }
         guard let content = String(data: data, encoding: .utf8) else { return }
-        pendingFiles.append(NativeAttachedFile(name: url.lastPathComponent, content: content))
+        pendingFiles.append(NativeAttachedFile(name: url.lastPathComponent, content: content, size: data.count))
     }
 
     @MainActor
@@ -1964,7 +2009,7 @@ struct ChatScreen: View {
                   let rep = NSBitmapImageRep(data: tiff),
                   let png = rep.representation(using: .png, properties: [:]) else { continue }
             pendingAttachments.append(
-                NativeAttachedImage(base64: png.base64EncodedString(), mimeType: "image/png")
+                NativeAttachedImage(base64: png.base64EncodedString(), mimeType: "image/png", size: png.count)
             )
         }
     }
@@ -1983,6 +2028,18 @@ struct ChatScreen: View {
                 }
             }
             .frame(width: 56, height: 56)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(alignment: .bottom) {
+                if attachment.size > 0 {
+                    Text(nativeFormatBytes(attachment.size))
+                        .font(.system(size: 9))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 1)
+                        .background(Color.black.opacity(0.55))
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -2006,11 +2063,18 @@ struct ChatScreen: View {
             Image(systemName: "doc.text")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text(file.name)
-                .font(.system(size: 11.5, weight: .medium, design: .rounded))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: 140)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(file.name)
+                    .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if !nativeFormatBytes(file.size).isEmpty {
+                    Text(nativeFormatBytes(file.size))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: 140, alignment: .leading)
             Button {
                 pendingFiles.removeAll { $0.id == file.id }
             } label: {

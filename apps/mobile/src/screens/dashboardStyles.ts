@@ -1060,6 +1060,17 @@ const makeStyles = () =>
       paddingHorizontal: spacing.sm,
       paddingTop: spacing.xs,
     },
+    composerSummary: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: spacing.xs,
+      paddingHorizontal: spacing.sm,
+      paddingTop: spacing.xs,
+    },
+    composerSummaryText: {
+      color: colors.textDim,
+      fontSize: typography.tiny,
+    },
     composerThumb: {
       borderColor: colors.border,
       borderRadius: radius.md,
@@ -1067,6 +1078,19 @@ const makeStyles = () =>
       height: 56,
       overflow: "hidden",
       width: 56,
+    },
+    composerThumbBadge: {
+      backgroundColor: colors.scrim,
+      borderRadius: radius.sm,
+      bottom: 2,
+      left: 2,
+      paddingHorizontal: 4,
+      paddingVertical: 1,
+      position: "absolute",
+    },
+    composerThumbBadgeText: {
+      color: colors.text,
+      fontSize: typography.tiny,
     },
     composerThumbImage: {
       height: "100%",
