@@ -46,6 +46,12 @@ describe("web settings navigation", () => {
   test("routes high-impact settings into the matching grouped sections", () => {
     expect(settingsSource).toContain("<SettingsNavigation activeSection={activeSection}");
     expect(navigationSource).toContain('aria-label="Settings sections"');
+    expect(settingsSource).toContain('<PageLayout title="Settings">');
+    expect(settingsSource).not.toContain(
+      '<PageLayout title="Settings" subtitle="Platform configuration and system information">'
+    );
+    expect(navigationSource).not.toContain("{section.description}");
+    expect(navigationSource).toContain('className="block text-sm font-medium leading-5"');
     expect(settingsSource).toContain('activeSection === "gateway"');
     expect(settingsSource).toContain("<GatewayPathSettingsSection");
     expect(settingsSource).toContain("<GatewayAuthSettingsSection");

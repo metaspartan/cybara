@@ -2538,7 +2538,7 @@ export function Settings() {
     : [];
 
   return (
-    <PageLayout title="Settings" subtitle="Platform configuration and system information">
+    <PageLayout title="Settings">
       <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
         <SettingsNavigation activeSection={activeSection} onSelect={selectSection} />
 

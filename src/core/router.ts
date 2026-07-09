@@ -554,13 +554,18 @@ export function selectProvider(preferredProviderId?: string): string | null {
     }
     case "weighted":
     default: {
-      const positiveWeight = candidates.filter((c) => c.avail.weight > 0);
+      const planWeight = (c: { avail: ProviderAvailability }): number => {
+        const status = c.avail.plan?.status;
+        if (status === "warning") return c.avail.weight * 0.25;
+        return c.avail.weight;
+      };
+      const positiveWeight = candidates.filter((c) => planWeight(c) > 0);
       const pool = positiveWeight.length > 0 ? positiveWeight : candidates;
-      const totalWeight = pool.reduce((sum, c) => sum + c.avail.weight, 0);
+      const totalWeight = pool.reduce((sum, c) => sum + planWeight(c), 0);
       if (totalWeight <= 0) return pool[0].id;
       let roll = Math.random() * totalWeight;
       for (const c of pool) {
-        roll -= c.avail.weight;
+        roll -= planWeight(c);
         if (roll <= 0) return c.id;
       }
       return pool[pool.length - 1].id;
