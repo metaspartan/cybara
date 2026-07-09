@@ -288,22 +288,21 @@ export function summarizeSessionTokenUsage(sessionId: string): SessionTokenUsage
     };
   }
 
-  const row = db
+  let row = db
     .prepare(
       `SELECT
-         COALESCE(SUM(CASE WHEN key = 'input' THEN value ELSE 0 END), 0) as inputTokens,
-         COALESCE(SUM(CASE WHEN key = 'output' THEN value ELSE 0 END), 0) as outputTokens,
-         COALESCE(SUM(CASE WHEN key = 'all' THEN value ELSE 0 END), 0) as totalTokens,
+         COALESCE(SUM(CAST(json_extract(metadata, '$.inputTokens') AS REAL)), 0) as inputTokens,
+         COALESCE(SUM(CAST(json_extract(metadata, '$.outputTokens') AS REAL)), 0) as outputTokens,
+         COALESCE(SUM(value), 0) as totalTokens,
          COALESCE(SUM(CASE
-           WHEN key = 'all' AND CAST(json_extract(metadata, '$.durationMs') AS REAL) > 0
+           WHEN CAST(json_extract(metadata, '$.durationMs') AS REAL) > 0
            THEN CAST(json_extract(metadata, '$.durationMs') AS REAL)
            ELSE 0
          END), 0) as durationMs,
-         COALESCE(SUM(CASE WHEN key = 'all' THEN 1 ELSE 0 END), 0) as callCount
+         COUNT(*) as callCount
        FROM metrics
-       WHERE type = 'token_usage'
-         AND metadata IS NOT NULL
-         AND json_extract(metadata, '$.sessionId') = ?`
+       WHERE type = 'token_usage_by_session'
+         AND key = ?`
     )
     .get(normalizedSessionId) as {
     inputTokens?: number;
@@ -312,6 +311,33 @@ export function summarizeSessionTokenUsage(sessionId: string): SessionTokenUsage
     durationMs?: number;
     callCount?: number;
   } | null;
+
+  if (!row || Number(row.callCount || 0) === 0) {
+    row = db
+      .prepare(
+        `SELECT
+           COALESCE(SUM(CASE WHEN key = 'input' THEN value ELSE 0 END), 0) as inputTokens,
+           COALESCE(SUM(CASE WHEN key = 'output' THEN value ELSE 0 END), 0) as outputTokens,
+           COALESCE(SUM(CASE WHEN key = 'all' THEN value ELSE 0 END), 0) as totalTokens,
+           COALESCE(SUM(CASE
+             WHEN key = 'all' AND CAST(json_extract(metadata, '$.durationMs') AS REAL) > 0
+             THEN CAST(json_extract(metadata, '$.durationMs') AS REAL)
+             ELSE 0
+           END), 0) as durationMs,
+           COALESCE(SUM(CASE WHEN key = 'all' THEN 1 ELSE 0 END), 0) as callCount
+         FROM metrics
+         WHERE type = 'token_usage'
+           AND metadata IS NOT NULL
+           AND json_extract(metadata, '$.sessionId') = ?`
+      )
+      .get(normalizedSessionId) as {
+      inputTokens?: number;
+      outputTokens?: number;
+      totalTokens?: number;
+      durationMs?: number;
+      callCount?: number;
+    } | null;
+  }
 
   const inputTokens = Math.max(0, Math.round(Number(row?.inputTokens || 0)));
   const outputTokens = Math.max(0, Math.round(Number(row?.outputTokens || 0)));

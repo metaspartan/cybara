@@ -76,6 +76,7 @@ import {
   Cpu,
   Database,
   Folder,
+  Gauge,
   HeartPulse,
   House,
   Link2,
@@ -319,6 +320,7 @@ const tabIcons: Record<MobileTabKey, IconGlyph> = {
   overview: House,
   sessions: UsersRound,
   metrics: Cpu,
+  usage: Gauge,
   tasks: CalendarCheck,
   settings: Settings,
 };
@@ -780,7 +782,10 @@ export function DashboardScreen({
   const refreshAll = async (showRefreshing = true) => {
     if (showRefreshing) setRefreshing(true);
     const shouldRefreshMetrics =
-      !MOBILE_METRICS_CHROME.lazyLoadUntilOpened || activeTab === "metrics" || hasLoadedMetrics;
+      !MOBILE_METRICS_CHROME.lazyLoadUntilOpened ||
+      activeTab === "metrics" ||
+      activeTab === "usage" ||
+      hasLoadedMetrics;
     await Promise.all([
       refresh(false),
       shouldRefreshMetrics ? refreshMetrics({ force: true }) : Promise.resolve(),
@@ -800,7 +805,12 @@ export function DashboardScreen({
   }, [profile.id]);
 
   useEffect(() => {
-    if (MOBILE_METRICS_CHROME.lazyLoadUntilOpened && activeTab !== "metrics" && !hasLoadedMetrics) {
+    if (
+      MOBILE_METRICS_CHROME.lazyLoadUntilOpened &&
+      activeTab !== "metrics" &&
+      activeTab !== "usage" &&
+      !hasLoadedMetrics
+    ) {
       return;
     }
     const refreshMs =
@@ -1117,6 +1127,9 @@ export function DashboardScreen({
               summary={summary}
               openSurface={openSurface}
             />
+          ) : null}
+          {!detailRoute && activeTab === "usage" ? (
+            <UsagePanel metrics={metrics} metricsError={metricsError} accentColor={accentColor} />
           ) : null}
           {!detailRoute && activeTab === "tasks" ? (
             <TasksPanel
@@ -1565,27 +1578,7 @@ function MetricsPanel({
   const providerRows = providerTokenShareRows(metrics);
   const modelRows = modelTokenShareRows(metrics);
   const storageRows = storageCategoryEntries(metrics?.storage ?? null).slice(0, 8);
-  const providerPlanRows =
-    metrics?.providerPlans?.providers
-      .filter((plan) => plan.monitored || plan.windows.length > 0 || plan.externalSourceAvailable)
-      .map((plan) => ({
-        id: plan.providerId,
-        providerName: plan.providerName,
-        planName: plan.planName || "Automatic plan",
-        status: plan.status,
-        windows: [
-          { label: "5h", kind: "rolling_5h" as const },
-          { label: "Weekly", kind: "rolling_week" as const },
-        ]
-          .map(({ label, kind }) => {
-            const usage = mobileProviderPlanWindowDisplay(plan, kind);
-            if (!usage) return null;
-            return { label, ...usage };
-          })
-          .filter((row): row is NonNullable<typeof row> => row !== null),
-      }))
-      .filter((plan) => plan.windows.length > 0)
-      .slice(0, 8) ?? [];
+  const providerPlanRows = mobileProviderPlanRows(metrics).slice(0, 8);
 
   return (
     <StableDetailPanel>
@@ -1867,23 +1860,109 @@ function MetricsPanel({
   );
 }
 
-function ProviderPlanMetricsGrid({
-  plans,
+function UsagePanel({
+  accentColor,
+  metrics,
+  metricsError,
 }: {
-  plans: Array<{
-    id: string;
-    providerName: string;
-    planName: string;
-    status: string;
-    windows: Array<{
-      label: string;
-      value: string;
-      progress: number;
-      tone: string;
-      reset: string | null;
-    }>;
-  }>;
+  accentColor: string;
+  metrics: MetricsSnapshot | null;
+  metricsError: string | null;
 }) {
+  if (!metrics && !metricsError) {
+    return (
+      <StableDetailPanel>
+        <LoadingState label="Loading usage" detail="Checking provider plan windows." />
+      </StableDetailPanel>
+    );
+  }
+
+  const providerPlanRows = mobileProviderPlanRows(metrics);
+  return (
+    <StableDetailPanel>
+      <View style={styles.summaryGrid}>
+        <SummaryTile
+          Icon={Gauge}
+          label="Tracked"
+          value={formatMetricNumber(providerPlanRows.length)}
+          detail="Automatic plans"
+          tone={accentColor}
+        />
+        <SummaryTile
+          Icon={CheckCircle2}
+          label="Configured"
+          value={formatMetricNumber(metrics?.providerPlans?.summary?.configured)}
+          detail="Ready providers"
+          tone={colors.green}
+        />
+        <SummaryTile
+          Icon={AlertTriangle}
+          label="Warnings"
+          value={formatMetricNumber(metrics?.providerPlans?.summary?.warnings)}
+          detail="Near limits"
+          tone={colors.amber}
+        />
+        <SummaryTile
+          Icon={ShieldAlert}
+          label="Exhausted"
+          value={formatMetricNumber(metrics?.providerPlans?.summary?.exhausted)}
+          detail="Hard stops"
+          tone={colors.red}
+        />
+      </View>
+
+      {metricsError ? <EmptyState label="Usage unavailable" detail={metricsError} /> : null}
+
+      <MetricSection title="Provider usage" detail="5-hour and weekly coding-plan windows">
+        <ProviderPlanMetricsGrid plans={providerPlanRows} />
+      </MetricSection>
+    </StableDetailPanel>
+  );
+}
+
+type MobileProviderPlanRow = {
+  id: string;
+  providerName: string;
+  planName: string;
+  status: string;
+  windows: Array<{
+    label: string;
+    value: string;
+    progress: number;
+    tone: string;
+    reset: string | null;
+  }>;
+};
+
+function mobileProviderPlanRows(metrics: MetricsSnapshot | null): MobileProviderPlanRow[] {
+  return (
+    metrics?.providerPlans?.providers
+      .filter(
+        (plan) =>
+          plan.managedAutomatically &&
+          (plan.monitored || plan.windows.length > 0 || plan.externalSourceAvailable)
+      )
+      .map((plan) => ({
+        id: plan.providerId,
+        providerName: plan.providerName,
+        planName: plan.planName || plan.automaticTrackingLabel || "Automatic plan",
+        status: plan.status,
+        windows: [
+          { label: "5h", kind: "rolling_5h" as const },
+          { label: "Weekly", kind: "rolling_week" as const },
+        ]
+          .map(({ label, kind }) => {
+            const usage = mobileProviderPlanWindowDisplay(plan, kind);
+            if (!usage) return null;
+            return { label, ...usage };
+          })
+          .filter((row): row is NonNullable<typeof row> => row !== null),
+      }))
+      .filter((plan) => plan.windows.length > 0) ?? []
+  );
+}
+
+function ProviderPlanMetricsGrid({ plans }: { plans: MobileProviderPlanRow[] }) {
   if (plans.length === 0) {
     return <Text style={styles.settingsInfoText}>No provider plan data yet</Text>;
   }

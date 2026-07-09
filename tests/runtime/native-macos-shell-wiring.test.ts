@@ -64,6 +64,7 @@ describe("native macOS shell wiring", () => {
       "/lsp",
       "/ide",
       "/sessions",
+      "/usage",
       "/skills",
       "/tools",
       "/terminal",
@@ -86,6 +87,7 @@ describe("native macOS shell wiring", () => {
       "LSPScreen(client: client)",
       "IDEScreen(client: client)",
       "SessionsManagementScreen(client: client)",
+      "UsageScreen(client: client)",
       "ToolsScreen(client: client)",
       "TerminalScreen(client: client)",
       "MemoryScreen(client: client)",
@@ -479,6 +481,22 @@ describe("native macOS shell wiring", () => {
     expect(metricsScreen).toContain("if progress < 65 { return .blue }");
     expect(metricsScreen).toContain("if progress < 80 { return .yellow }");
     expect(metricsScreen).toContain("if progress < 95 { return .orange }");
+  });
+
+  test("native usage screen is a native provider plan surface", () => {
+    const usageScreen = readFileSync(join(MACOS_APP_DIR, "NativeUsageScreen.swift"), "utf8");
+    const contentView = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
+
+    expect(contentView).toContain("case usage");
+    expect(contentView).toContain("UsageScreen(client: client)");
+    expect(usageScreen).toContain("struct UsageScreen: View");
+    expect(usageScreen).toContain("try await client.providerPlanStatus()");
+    expect(usageScreen).toContain("NativeUsageProviderCard");
+    expect(usageScreen).toContain('NativeUsageWindow(label: "5h"');
+    expect(usageScreen).toContain('NativeUsageWindow(label: "Weekly"');
+    expect(usageScreen).toContain('NativeUsageWindowValue(text: "∞"');
+    expect(usageScreen).toContain("if percent < 65 { return .blue }");
+    expect(usageScreen).not.toContain("WebView");
   });
 
   test("native metrics loads fast and keeps a polished glass loading state", () => {

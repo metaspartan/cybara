@@ -298,6 +298,7 @@ try {
   CREATE INDEX IF NOT EXISTS idx_metrics_type_key ON metrics(type, key);
   CREATE INDEX IF NOT EXISTS idx_metrics_type_key_value ON metrics(type, key, value);
   CREATE INDEX IF NOT EXISTS idx_metrics_type_created ON metrics(type, created_at);
+  CREATE INDEX IF NOT EXISTS idx_metrics_type_key_created ON metrics(type, key, created_at);
   CREATE INDEX IF NOT EXISTS idx_metrics_created ON metrics(created_at);
   CREATE INDEX IF NOT EXISTS idx_metrics_daily_date ON metrics_daily(date);
 `);

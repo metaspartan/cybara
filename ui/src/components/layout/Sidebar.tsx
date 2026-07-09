@@ -27,10 +27,12 @@ import {
   Wallet as WalletIcon,
   FileText,
   TabletSmartphone,
+  Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { connectStatusStream } from "@/lib/status-stream";
+import { providerPlansApi } from "@/lib/api";
 
 interface SidebarContextType {
   collapsed: boolean;
@@ -194,6 +196,7 @@ const navCategories = [
       { path: "/lsp", icon: Code, label: "LSP" },
       { path: "/ide", icon: FolderOpen, label: "IDE" },
       { path: "/sessions", icon: MessagesSquare, label: "Sessions" },
+      { path: "/usage", icon: Gauge, label: "Usage", requiresUsage: true },
       { path: "/skills", icon: LibraryBig, label: "Skills" },
       { path: "/tools", icon: Wrench, label: "Tools" },
       { path: "/terminal", icon: SquareTerminal, label: "Terminal" },
@@ -219,6 +222,13 @@ const navCategories = [
   },
 ];
 
+type SidebarNavItem = {
+  path: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  requiresUsage?: boolean;
+};
+
 export function Sidebar() {
   const location = useLocation();
   const status = useAgentStatus();
@@ -227,10 +237,38 @@ export function Sidebar() {
     developer: false,
     system: true,
   });
+  const [usageAvailable, setUsageAvailable] = useState(false);
 
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname, setMobileOpen]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadUsageAvailability = async () => {
+      try {
+        const response = await providerPlansApi.status();
+        if (!mounted || !response.success) return;
+        const available = (response.data?.providers ?? []).some(
+          (plan) =>
+            plan.managedAutomatically &&
+            (Boolean(plan.configuredProviderId) ||
+              plan.monitored ||
+              plan.externalSourceAvailable ||
+              plan.windows.some((window) => window.usageKnown))
+        );
+        setUsageAvailable(available);
+      } catch {
+        if (mounted) setUsageAvailable(false);
+      }
+    };
+    void loadUsageAvailability();
+    const interval = window.setInterval(() => void loadUsageAvailability(), 60000);
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const toggleSection = (id: string) => {
     setExpandedSections((prev) => ({
@@ -239,11 +277,7 @@ export function Sidebar() {
     }));
   };
 
-  const renderNavItem = (item: {
-    path: string;
-    icon: React.ComponentType<{ className?: string }>;
-    label: string;
-  }) => {
+  const renderNavItem = (item: SidebarNavItem) => {
     const Icon = item.icon;
     const isActive =
       location.pathname === item.path ||
@@ -358,11 +392,17 @@ export function Sidebar() {
                         expandedSections[category.id] ? "max-h-96 opacity-100" : "max-h-0 opacity-0"
                       )}
                     >
-                      {category.items.map(renderNavItem)}
+                      {category.items
+                        .filter((item) => !item.requiresUsage || usageAvailable)
+                        .map(renderNavItem)}
                     </div>
                   </>
                 ) : (
-                  <div className="space-y-0.5">{category.items.map(renderNavItem)}</div>
+                  <div className="space-y-0.5">
+                    {category.items
+                      .filter((item) => !item.requiresUsage || usageAvailable)
+                      .map(renderNavItem)}
+                  </div>
                 )}
               </div>
             ))}

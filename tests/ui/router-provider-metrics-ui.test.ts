@@ -98,10 +98,31 @@ describe("router, provider, and metrics UI wiring", () => {
     expect(source).toContain("<MetricAreaChart");
     expect(source).toContain("Provider Token Share");
     expect(source).toContain("Model Token Share");
-    expect(source).toContain("providerPlanUsageClasses(row.usage)");
+    expect(source).toContain("providerPlanUsageClasses(usage)");
     expect(source).toContain('label: "5h"');
     expect(source).toContain('label: "Weekly"');
     expect(source).toContain('providerPlanWindowDisplay(plan, "rolling_5h")');
     expect(source).toContain('providerPlanWindowDisplay(plan, "rolling_week")');
+  });
+
+  test("usage page is conditional and renders compact automatic provider limits", () => {
+    const app = read("ui/src/App.tsx");
+    const sidebar = read("ui/src/components/layout/Sidebar.tsx");
+    const usage = read("ui/src/pages/Usage.tsx");
+
+    expect(app).toContain('path="/usage"');
+    expect(app).toContain("element={<Usage />}");
+    expect(sidebar).toContain('path: "/usage"');
+    expect(sidebar).toContain("requiresUsage: true");
+    expect(sidebar).toContain("providerPlansApi.status()");
+    expect(sidebar).toContain("setUsageAvailable(available)");
+    expect(usage).toContain('providerPlanWindowDisplay(plan, "rolling_5h")');
+    expect(usage).toContain('providerPlanWindowDisplay(plan, "rolling_week")');
+    expect(usage).toContain("providerPlanUsageClasses(usage)");
+    expect(usage).toContain("UsageProviderCard");
+    expect(usage).toContain("UsageSkeleton");
+    expect(usage).toContain("No automatic usage yet");
+    expect(usage).not.toContain("browser_cookie");
+    expect(usage).not.toContain("sourceMode");
   });
 });

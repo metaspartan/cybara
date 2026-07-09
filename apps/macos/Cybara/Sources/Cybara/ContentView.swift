@@ -66,6 +66,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
     case lsp
     case ide
     case sessions
+    case usage
     case skills
     case tools
     case terminal
@@ -93,6 +94,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .lsp: return "LSP"
         case .ide: return "IDE"
         case .sessions: return "Sessions"
+        case .usage: return "Usage"
         case .skills: return "Skills"
         case .tools: return "Tools"
         case .terminal: return "Terminal"
@@ -120,6 +122,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .lsp: return "curlybraces.square"
         case .ide: return "folder"
         case .sessions: return "bubble.left.and.text.bubble.right"
+        case .usage: return "gauge.with.dots.needle.67percent"
         case .skills: return "wand.and.stars"
         case .tools: return "wrench.and.screwdriver"
         case .terminal: return "terminal"
@@ -225,7 +228,7 @@ struct ContentView: View {
                     }
                 }
                 Section("Developer") {
-                    ForEach([NativeDestination.mcp, .lsp, .ide, .sessions, .skills, .tools, .terminal]) { item in
+                    ForEach([NativeDestination.mcp, .lsp, .ide, .sessions, .usage, .skills, .tools, .terminal]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -277,6 +280,8 @@ struct ContentView: View {
                     selectedChatSessionID = session.id
                     destination = .chat
                 }
+            case .usage:
+                UsageScreen(client: client)
             case .tools:
                 ToolsScreen(client: client)
             case .terminal:

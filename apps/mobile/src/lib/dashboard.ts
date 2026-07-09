@@ -7,7 +7,7 @@ import type {
 } from "./api";
 import type { GatewayProfile } from "./connection";
 
-export type MobileTabKey = "overview" | "sessions" | "metrics" | "tasks" | "settings";
+export type MobileTabKey = "overview" | "sessions" | "metrics" | "usage" | "tasks" | "settings";
 export type MobileSettingsTab =
   | "general"
   | "gateway"
@@ -59,6 +59,7 @@ export const MOBILE_TABS: MobileTabDefinition[] = [
   { key: "overview", label: "Home", showsGatewayPanel: false },
   { key: "sessions", label: "Chats", showsGatewayPanel: false },
   { key: "metrics", label: "Metrics", showsGatewayPanel: false },
+  { key: "usage", label: "Usage", showsGatewayPanel: false },
   { key: "tasks", label: "Tasks", showsGatewayPanel: false },
   { key: "settings", label: "Settings", showsGatewayPanel: false },
 ];
@@ -584,6 +585,11 @@ export function buildMobileHeaderCopy(
         detail: `${sessionLabel} - ${counts.tools} tools - ${eventLabel}`,
       };
     }
+    case "usage":
+      return {
+        title: "Usage",
+        detail: "Provider plan windows",
+      };
     case "tasks":
       return {
         title: "Tasks",

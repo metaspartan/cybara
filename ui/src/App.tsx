@@ -18,6 +18,7 @@ import { Chat } from "@/pages/Chat";
 import { Logs } from "@/pages/Logs";
 import { Sessions } from "@/pages/Sessions";
 import { Metrics } from "@/pages/Metrics";
+import { Usage } from "@/pages/Usage";
 import { MCPServers } from "@/pages/MCPServers";
 import { LSP } from "@/pages/LSP";
 import { IDE } from "@/pages/IDE";
@@ -130,6 +131,7 @@ function AppRoutes() {
       <Route path="/tools" element={<Tools />} />
       <Route path="/memory" element={<Memory />} />
       <Route path="/metrics" element={<Metrics />} />
+      <Route path="/usage" element={<Usage />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/chat" element={<Chat />} />
       <Route path="/logs" element={<Logs />} />

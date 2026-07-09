@@ -58,6 +58,16 @@ export function trackTokenUsage(
       metadata: serializeMetricMetadata({ ...tokenMetadata, url: providerUrl }),
     });
 
+    if (typeof tokenMetadata.sessionId === "string") {
+      tables.metrics.add({
+        id: crypto.randomUUID(),
+        type: "token_usage_by_session",
+        key: tokenMetadata.sessionId,
+        value: totalTokens,
+        metadata: serializeMetricMetadata(tokenMetadata),
+      });
+    }
+
     tables.metrics.add({
       id: crypto.randomUUID(),
       type: "token_usage",

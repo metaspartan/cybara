@@ -1212,6 +1212,9 @@ export interface TokenAnalysisMetrics {
     velocityHours: number;
     newestCallAt: string | null;
     oldestCallAt: string | null;
+    sampledRows?: number;
+    rowLimit?: number;
+    truncated?: boolean;
     recent24hTokens: number;
   };
 }

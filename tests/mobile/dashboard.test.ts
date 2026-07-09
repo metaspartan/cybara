@@ -204,6 +204,7 @@ describe("mobile dashboard model", () => {
       "overview",
       "sessions",
       "metrics",
+      "usage",
       "tasks",
       "settings",
     ]);
@@ -402,11 +403,13 @@ describe("mobile dashboard model", () => {
   test("does not fetch all metrics on initial dashboard load before metrics opens", () => {
     expect(dashboardScreenSource).toContain("const hasLoadedMetrics = metrics !== null;");
     expect(dashboardScreenSource).toContain("const shouldRefreshMetrics =");
-    expect(dashboardScreenSource).toContain('activeTab === "metrics" || hasLoadedMetrics');
+    expect(dashboardScreenSource).toContain('activeTab === "metrics" ||');
+    expect(dashboardScreenSource).toContain('activeTab === "usage" ||');
     expect(dashboardScreenSource).toContain(
       "shouldRefreshMetrics ? refreshMetrics({ force: true }) : Promise.resolve()"
     );
-    expect(dashboardScreenSource).toContain('activeTab !== "metrics" && !hasLoadedMetrics');
+    expect(dashboardScreenSource).toContain('activeTab !== "metrics" &&');
+    expect(dashboardScreenSource).toContain('activeTab !== "usage" &&');
   });
 
   test("shows a native metrics skeleton while the metrics snapshot loads", () => {

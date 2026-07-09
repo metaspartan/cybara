@@ -19,6 +19,8 @@ import {
 } from "./_shared";
 import { getDailyLogCounts, getModelMetrics, type MetricsEntry } from "../queries";
 
+const TOKEN_ANALYSIS_ROW_LIMIT = 6000;
+
 const sqlUtc = (ms: number) => new Date(ms).toISOString().slice(0, 19).replace("T", " ");
 type MetricsEndpointKey =
   | "overview"
@@ -733,7 +735,10 @@ function buildMetricsTokenAnalysis() {
   const now = Date.now();
   const hourMs = 60 * 60 * 1000;
   const dayMs = 24 * hourMs;
-  const tokenUsageEntries = metrics.getByType("token_usage") as MetricsEntry[];
+  const tokenUsageEntries = metrics.getByTypeRecent(
+    "token_usage",
+    TOKEN_ANALYSIS_ROW_LIMIT
+  ) as MetricsEntry[];
   const tokenCalls = buildTokenCallSnapshots(tokenUsageEntries).filter(
     (entry) => entry.totalTokens > 0 || entry.inputTokens > 0 || entry.outputTokens > 0
   );
@@ -822,6 +827,9 @@ function buildMetricsTokenAnalysis() {
       velocityHours: 24,
       newestCallAt: tokenCalls[tokenCalls.length - 1]?.timestamp || null,
       oldestCallAt: tokenCalls[0]?.timestamp || null,
+      sampledRows: tokenUsageEntries.length,
+      rowLimit: TOKEN_ANALYSIS_ROW_LIMIT,
+      truncated: tokenUsageEntries.length >= TOKEN_ANALYSIS_ROW_LIMIT,
       recent24hTokens: tokenCalls.reduce((sum, entry) => {
         if (entry.timestampMs === null || entry.timestampMs < now - dayMs) return sum;
         return sum + entry.totalTokens;
