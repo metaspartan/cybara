@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { summarizeSessionFileChanges, type ChatMessage } from "../../ui/src/pages/chat/chatModel";
+import {
+  formatFilePathForDisplay,
+  summarizeSessionFileChanges,
+  type ChatMessage,
+} from "../../ui/src/pages/chat/chatModel";
 
 const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
 const chatModelPath = fileURLToPath(
@@ -59,6 +63,9 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("summarizeSessionFileChanges");
     expect(source).toContain("summarizeSessionFileChanges(typedMessages, liveActivities)");
     expect(source).toContain("files changed");
+    expect(source).toContain("formatFilePathForDisplay");
+    expect(source).toContain("workspaceDir={effectiveWorkspaceDir}");
+    expect(source).toContain("title={pathDisplay.fullPath}");
     expect(source).toContain("<DiffCodeBlock code={file.diff} />");
     expect(source).toContain("Worked for");
     expect(source).toContain('section="work"');
@@ -69,6 +76,32 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("findPriorUserTimestampMs");
     expect(source).toContain("turnStartedAtMs");
     expect(source).toContain("assistantTimestamp: message.timestamp");
+  });
+
+  test("shortens file diff paths relative to the active workspace", () => {
+    const workspaceDir = "/Users/carsen/Documents/GitHub/cybara";
+    expect(
+      formatFilePathForDisplay(
+        "/Users/carsen/Documents/GitHub/cybara/ui/src/pages/Chat.tsx",
+        workspaceDir
+      )
+    ).toMatchObject({
+      fileName: "Chat.tsx",
+      parentPath: "ui/src/pages",
+      relativePath: "ui/src/pages/Chat.tsx",
+      isOutsideWorkspace: false,
+    });
+    expect(formatFilePathForDisplay("/tmp/cybara-secret.txt", workspaceDir)).toMatchObject({
+      fileName: "cybara-secret.txt",
+      parentPath: "Outside workspace",
+      isOutsideWorkspace: true,
+    });
+    expect(formatFilePathForDisplay("src/api/chat.ts", workspaceDir)).toMatchObject({
+      fileName: "chat.ts",
+      parentPath: "src/api",
+      relativePath: "src/api/chat.ts",
+      isOutsideWorkspace: false,
+    });
   });
 
   test("includes live and persisted edit activities in session file changes", () => {

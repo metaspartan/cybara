@@ -1133,12 +1133,12 @@ const makeStyles = () =>
       fontWeight: "700",
     },
     mobileFileChangesAdded: {
-      color: colors.success,
+      color: colors.green,
       fontSize: typography.label,
       fontWeight: "700",
     },
     mobileFileChangesRemoved: {
-      color: colors.danger,
+      color: colors.red,
       fontSize: typography.label,
       fontWeight: "700",
     },

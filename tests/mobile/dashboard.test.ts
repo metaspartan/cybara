@@ -329,6 +329,19 @@ describe("mobile dashboard model", () => {
     expect(dashboardStylesSource).toContain("messageThoughtText");
   });
 
+  test("renders compact mobile file change summaries from chat activity", () => {
+    expect(dashboardChatSource).toContain("collectMobileFileChanges");
+    expect(dashboardChatSource).toContain("mobileActivityFileChange");
+    expect(dashboardChatSource).toContain("mobileFilePathDisplay");
+    expect(dashboardChatSource).toContain("MobileFileChangesCard");
+    expect(dashboardChatSource).toContain("Edited\\s+(.+?)\\s+\\+(\\d+)\\s+-(\\d+)");
+    expect(dashboardChatSource).toContain("<MobileFileChangesCard summary={fileChanges} />");
+    expect(dashboardStylesSource).toContain("mobileFileChangesCard");
+    expect(dashboardStylesSource).toContain("mobileFileChangeName");
+    expect(dashboardStylesSource).toContain("color: colors.green");
+    expect(dashboardStylesSource).toContain("color: colors.red");
+  });
+
   test("keeps chat settings in the persistent header with heavy metadata in the menu", () => {
     expect(MOBILE_CHAT_DETAIL_CHROME.settingsInHeader).toBe(true);
     expect(MOBILE_CHAT_DETAIL_CHROME.timelineMetadataBar).toBe(false);

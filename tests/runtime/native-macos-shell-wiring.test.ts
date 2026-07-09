@@ -385,6 +385,12 @@ describe("native macOS shell wiring", () => {
       "for activity in messages.flatMap({ $0.process_activities ?? [] })"
     );
     expect(nativeScreens).toContain("for activity in liveActivities");
+    expect(nativeScreens).toContain(
+      "nativeChatFilePathDisplay(file.path, workspaceDir: activeWorkspaceDir)"
+    );
+    expect(nativeScreens).toContain("private struct NativeChatFilePathDisplay");
+    expect(nativeScreens).toContain('"Outside workspace"');
+    expect(nativeScreens).toContain(".help(display.fullPath)");
   });
 
   test("native chat composer exposes agent switching and context usage", () => {
