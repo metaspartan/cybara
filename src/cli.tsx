@@ -300,7 +300,7 @@ configureChatCli({
 
 async function rawMigrate(args: string[]): Promise<void> {
   const { detectMigrationSources, runSourceMigration } = await import("./core/source-migration");
-  const json = hasFlag(args, "--json");
+  const json = hasFlag(args, "--json", "-j");
   const subcommand = args.find((arg) => !arg.startsWith("--"));
   if (subcommand === "sources" || subcommand === "detect") {
     const sources = detectMigrationSources();
@@ -327,7 +327,7 @@ async function rawMigrate(args: string[]): Promise<void> {
     "openclaw" | "hermes" | undefined;
   const presetFlag = getFlagValue(args, "--preset");
   const skillConflictFlag = getFlagValue(args, "--skill-conflict");
-  const apply = hasFlag(args, "--apply") || hasFlag(args, "--execute") || hasFlag(args, "--yes");
+  const apply = hasFlag(args, "--apply", "--execute", "--yes", "-y");
   const report = await runSourceMigration({
     sourceKind,
     sourcePath: getFlagValue(args, "--source"),
@@ -1701,18 +1701,23 @@ function parseProviderFlags(args: string[]): {
   for (let i = 0; i < args.length; i++) {
     switch (args[i]) {
       case "--name":
+      case "-n":
         name = args[++i];
         break;
       case "--key":
+      case "-k":
         key = args[++i];
         break;
       case "--token":
+      case "-t":
         token = args[++i];
         break;
       case "--default":
+      case "-d":
         isDefault = true;
         break;
       case "--oauth":
+      case "-o":
         oauth = true;
         break;
     }
@@ -3975,7 +3980,7 @@ const args = process.argv.slice(2);
 const command = args[0];
 
 function wantsForegroundStart(rest: string[]): boolean {
-  return hasFlag(rest, "--foreground") || hasFlag(rest, "--attach") || hasFlag(rest, "-f");
+  return hasFlag(rest, "--foreground", "--attach", "-f");
 }
 
 function resolveGatewayLogPath(): string {
@@ -4307,6 +4312,14 @@ async function rawUpdate(options: UpdateOptions = {}): Promise<void> {
 }
 
 async function main() {
+  // --help / -h are global: honor them anywhere in the args (e.g.
+  // `cybara start --help`) so a subcommand never runs instead of printing help.
+  // (--version is a value flag for `update`, so it stays command-position only.)
+  if (command !== "chat" && hasFlag(args, "--help", "-h")) {
+    rawHelp(getVersion(), API_BASE);
+    return;
+  }
+
   switch (command) {
     case "status":
       await rawStatus();
@@ -4327,8 +4340,8 @@ async function main() {
     case "update":
       await rawUpdate({
         version: getFlagValue(args.slice(1), "--version"),
-        checkOnly: hasFlag(args.slice(1), "--check") || args[1] === "check",
-        force: hasFlag(args.slice(1), "--force"),
+        checkOnly: hasFlag(args.slice(1), "--check", "-c") || args[1] === "check",
+        force: hasFlag(args.slice(1), "--force", "-F"),
       });
       break;
     case "metrics":

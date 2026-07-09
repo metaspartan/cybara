@@ -1,9 +1,11 @@
-export function getFlagValue(args: string[], flag: string): string | undefined {
-  const index = args.indexOf(flag);
-  if (index === -1) return undefined;
-  return args[index + 1];
+export function getFlagValue(args: string[], ...flags: string[]): string | undefined {
+  for (const flag of flags) {
+    const index = args.indexOf(flag);
+    if (index !== -1) return args[index + 1];
+  }
+  return undefined;
 }
 
-export function hasFlag(args: string[], flag: string): boolean {
-  return args.includes(flag);
+export function hasFlag(args: string[], ...flags: string[]): boolean {
+  return flags.some((flag) => args.includes(flag));
 }

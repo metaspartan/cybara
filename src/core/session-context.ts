@@ -9,6 +9,7 @@ import { homedir } from "os";
 import { isAbsolute, resolve } from "path";
 import { createLogger } from "./logger";
 import { createHash } from "crypto";
+import { compactChatContentForPrompt } from "./chat-token-optimization";
 
 const log = createLogger("Session");
 
@@ -223,13 +224,19 @@ export function estimateTokens(text: string): number {
 }
 
 export function estimateMessageTokens(message: ChatMessage): number {
-  const contentTokens = estimateTokens(message.content);
+  const contentTokens = estimateTokens(compactChatContentForPrompt(message));
   const imageTokens = Array.isArray(message.images) ? message.images.length * 768 : 0;
   return contentTokens + imageTokens + 50;
 }
 
 export function estimateMessagesTokens(messages: ChatMessage[]): number {
   return messages.reduce((sum, msg) => sum + estimateMessageTokens(msg), 0);
+}
+
+function estimateRawMessageTokens(message: ChatMessage): number {
+  const contentTokens = estimateTokens(message.content);
+  const imageTokens = Array.isArray(message.images) ? message.images.length * 768 : 0;
+  return contentTokens + imageTokens + 50;
 }
 
 export function estimateMessageTranscriptTokens(message: ChatMessage): number {
@@ -243,7 +250,7 @@ export function estimateMessageTranscriptTokens(message: ChatMessage): number {
         0
       )
     : 0;
-  return estimateMessageTokens(message) + thinkingTokens + toolTokens + processActivityTokens;
+  return estimateRawMessageTokens(message) + thinkingTokens + toolTokens + processActivityTokens;
 }
 
 export function estimateMessagesTranscriptTokens(messages: ChatMessage[]): number {

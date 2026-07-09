@@ -55,6 +55,13 @@ describe("session-context chunking helpers", () => {
     expect(estimateMessageTranscriptTokens(message)).toBeGreaterThan(10_000);
   });
 
+  test("active context estimate compacts historical tool-result dumps", () => {
+    const dump = `Here are the results from the tool execution:\n\nTool: file_search\nResult: ${"x".repeat(200_000)}`;
+    const message = msg("assistant", dump);
+    expect(estimateMessageTokens(message)).toBeLessThan(120);
+    expect(estimateMessageTranscriptTokens(message)).toBeGreaterThan(50_000);
+  });
+
   test("session context usage reports active tokens separately from transcript metadata", () => {
     const messages = [
       msg("user", "review this repository"),

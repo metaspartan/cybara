@@ -144,6 +144,15 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("  completion  Print shell completion script (zsh or bash)");
   console.log("  help        Show this help");
   console.log("");
+  console.log("Common flags:");
+  console.log("  -h, --help        Show help (works after any command)");
+  console.log("  -v, --version     Print version");
+  console.log("  -f, --foreground  Run 'start' attached to this terminal");
+  console.log("  -c, --check       'update' — check only, don't install");
+  console.log("  -y, --yes         Skip confirmation prompts");
+  console.log("  -j, --json        JSON output where supported");
+  console.log("  -n/-k/-t/-d/-o    provider add: name/key/token/default/oauth");
+  console.log("");
   console.log(`Version: ${version}`);
   console.log(`Environment: CYBARA_API=${apiBase}`);
 }

@@ -68,12 +68,17 @@ import {
 } from "../core/status";
 import { emitAgentHook } from "../core/agent-hooks";
 import { createLogger } from "../core/logger";
-import { formatToolResultForModel } from "../core/llm/model-visible-format";
 import {
   buildToolExecutionFallbackMessage,
   shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
 } from "./chat-tool-summary";
+import {
+  buildMemoryFlushMessages,
+  compactChatContentForPrompt,
+  formatToolResultPromptBlock,
+  TOOL_RESULT_FINAL_PROMPT_MAX_CHARS,
+} from "../core/chat-token-optimization";
 import { stripThinkingTags } from "./chat-formatting";
 import {
   activeAgentSystemPrompt,
@@ -165,7 +170,7 @@ export function buildChatExecutionMessagesForAgent(
 ): AgentMessage[] {
   const executionMessages: AgentMessage[] = sessionMessages.map((sessionMessage) => ({
     role: sessionMessage.role,
-    content: sessionMessage.content,
+    content: compactChatContentForPrompt(sessionMessage),
     ...(sessionMessage.images
       ? { images: sessionMessage.images.map(hydrateImageDataFromPath) }
       : {}),
@@ -1862,10 +1867,7 @@ async function handleChatTurn(
       const flushStartTime = Date.now();
 
       try {
-        const flushMessages: AgentMessage[] = [
-          ...session.messages.map((m) => ({ role: m.role, content: m.content })),
-          { role: "user", content: flushSettings.prompt },
-        ];
+        const flushMessages = buildMemoryFlushMessages(session.messages, flushSettings.prompt);
 
         const flushResult = await agentManager.callLLM(
           provider,
@@ -2067,21 +2069,19 @@ async function handleChatTurn(
         }
 
         const toolResultsText = toolResults
-          .map(
-            (tc) =>
-              `Tool: ${tc.name}\nResult: ${
-                typeof tc.result === "string"
-                  ? tc.result.slice(0, 2000)
-                  : formatToolResultForModel(tc.result, {
-                      toonEnabled: toonStructuredDataEnabled,
-                    }).slice(0, 2000)
-              }`
+          .map((tc) =>
+            formatToolResultPromptBlock(tc.name, tc.result, {
+              toonEnabled: toonStructuredDataEnabled,
+            })
           )
           .join("\n\n");
 
         try {
           const summaryMessages: AgentMessage[] = [
-            ...session.messages.slice(0, -1).map((m) => ({ role: m.role, content: m.content })),
+            ...session.messages.slice(0, -1).map((m) => ({
+              role: m.role,
+              content: compactChatContentForPrompt(m),
+            })),
             {
               role: "user",
               content: `The user asked: "${message}"\n\nTools executed:\n${toolResultsText}\n\nIf more actions are needed to fully complete the user's request (e.g., taking a screenshot after navigating), call the appropriate tools. Otherwise, respond to the user with what was accomplished.`,
@@ -2149,15 +2149,11 @@ async function handleChatTurn(
                 responseContent = `Here's the screenshot of the page:\n\n📸 Screenshot saved: ${screenshotPath}\n\n![Screenshot](file://${screenshotPath})`;
               } else {
                 const allToolResultsText = [...toolResults, ...summaryResult.tool_calls]
-                  .map(
-                    (tc) =>
-                      `Tool: ${tc.name}\nResult: ${
-                        typeof tc.result === "string"
-                          ? tc.result
-                          : formatToolResultForModel(tc.result, {
-                              toonEnabled: toonStructuredDataEnabled,
-                            }).substring(0, 500)
-                      }`
+                  .map((tc) =>
+                    formatToolResultPromptBlock(tc.name, tc.result, {
+                      toonEnabled: toonStructuredDataEnabled,
+                      maxChars: TOOL_RESULT_FINAL_PROMPT_MAX_CHARS,
+                    })
                   )
                   .join("\n\n");
 
