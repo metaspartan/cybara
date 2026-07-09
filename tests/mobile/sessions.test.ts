@@ -123,6 +123,7 @@ describe("mobile: chat management", () => {
   test("chat composer exposes agent switching and context usage", () => {
     const api = read("lib/api.ts");
     const newChat = read("components/NewChatPanel.tsx");
+    const metricsPanels = read("screens/dashboardMetricsPanels.tsx");
     const styles = read("screens/dashboardStyles.ts");
     expect(api).toContain("interface SessionContextUsage");
     expect(api).toContain("interface SessionTokenUsage");
@@ -148,13 +149,13 @@ describe("mobile: chat management", () => {
     expect(screen).toContain("Context: ${mobileContextUsageDetail(contextUsage)}");
     expect(screen).toContain("mobileProviderPlanFor(providerPlanStatus");
     expect(screen).toContain("mobileProviderPlanDetail(activeProviderPlan)");
-    expect(screen).toContain("!plan?.managedAutomatically");
-    expect(screen).toContain("Plan usage: 5h");
-    expect(screen).toContain('percentFor("rolling_5h")');
-    expect(screen).toContain('percentFor("rolling_week")');
-    expect(screen).toContain("mobileProviderPlanResetLabel");
-    expect(screen).toContain('window.unlimited ? "∞"');
-    expect(screen).toContain("Math.ceil(window.usedPercent ?? 0)");
+    expect(metricsPanels).toContain("!plan?.managedAutomatically");
+    expect(metricsPanels).toContain("Plan usage: 5h");
+    expect(metricsPanels).toContain('percentFor("rolling_5h")');
+    expect(metricsPanels).toContain('percentFor("rolling_week")');
+    expect(metricsPanels).toContain("mobileProviderPlanResetLabel");
+    expect(metricsPanels).toContain('window.unlimited ? "∞"');
+    expect(metricsPanels).toContain("Math.ceil(window.usedPercent ?? 0)");
     expect(screen).toContain('text: "Change agent"');
     expect(screen).toContain('text: "Tool approvals"');
     expect(screen).toContain("setPendingSessionAgentId(agentId)");

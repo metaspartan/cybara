@@ -61,6 +61,14 @@ const dashboardScreenSource =
   readFileSync(
     new URL("../../apps/mobile/src/screens/dashboardSettingsPanels.tsx", import.meta.url),
     "utf8"
+  ) +
+  readFileSync(
+    new URL("../../apps/mobile/src/screens/dashboardGatewayPanel.tsx", import.meta.url),
+    "utf8"
+  ) +
+  readFileSync(
+    new URL("../../apps/mobile/src/screens/dashboardMetricsPanels.tsx", import.meta.url),
+    "utf8"
   );
 const dashboardHelpersSource = readFileSync(
   new URL("../../apps/mobile/src/screens/dashboardHelpers.ts", import.meta.url),
