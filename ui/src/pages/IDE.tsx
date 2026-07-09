@@ -261,10 +261,18 @@ function formatIdeScannedFiles(value?: number): string | null {
   return `${Math.max(0, value as number).toLocaleString()} scanned`;
 }
 
+function readWorkspacePathFromUrl(): string | null {
+  if (typeof window === "undefined") return null;
+  const raw = new URLSearchParams(window.location.search).get("workspacePath")?.trim();
+  return raw || null;
+}
+
 export function IDE() {
   const navigate = useNavigate();
   const location = useLocation();
-  const [currentPath, setCurrentPath] = useState<string>(() => readPersistedWorkspacePath());
+  const [currentPath, setCurrentPath] = useState<string>(
+    () => readWorkspacePathFromUrl() || readPersistedWorkspacePath()
+  );
   const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null);
   // Restore open tabs from localStorage on mount.
   const [openTabs, setOpenTabs] = useState<IdeTab[]>(() => {

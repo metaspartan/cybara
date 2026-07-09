@@ -261,6 +261,33 @@ export class VectorStore {
     this.providerFallbackReason = null;
     this.providerReady = this.initProvider();
     await this.providerReady;
+    await this.purgeMismatchedDimensions();
+  }
+
+  private async purgeMismatchedDimensions(): Promise<void> {
+    if (!this.provider || this.chunks.size === 0) return;
+    let dimension = 0;
+    try {
+      const probe = await this.provider.embedQuery("dimension probe");
+      dimension = Array.isArray(probe) ? probe.length : 0;
+    } catch {
+      return;
+    }
+    if (dimension <= 0) return;
+    const stale: string[] = [];
+    for (const [id, chunk] of this.chunks) {
+      if (chunk.embedding.length !== dimension) stale.push(id);
+    }
+    if (stale.length === 0) return;
+    const remove = this.db.prepare("DELETE FROM chunks WHERE id = ?");
+    const removeMany = this.db.transaction((ids: string[]) => {
+      for (const id of ids) remove.run(id);
+    });
+    removeMany(stale);
+    for (const id of stale) this.chunks.delete(id);
+    console.warn(
+      `[VectorStore] Cleared ${stale.length} vectors that no longer match the ${dimension}-dim embedding model`
+    );
   }
 
   async stopLocalRuntime(selection?: EmbeddingSelection): Promise<{
