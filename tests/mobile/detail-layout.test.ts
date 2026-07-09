@@ -11,16 +11,14 @@ describe("mobile: iOS-style detail layout", () => {
     read("screens/dashboardDetailPanels.tsx") +
     read("screens/dashboardSessionDetail.tsx") +
     read("screens/dashboardSurfaceData.ts");
-  // Styles were extracted out of the god component into a dedicated module.
   const styleSrc = read("screens/dashboardStyles.ts");
   const controls = read("screens/dashboardControls.tsx");
   const settingsPanels = read("screens/dashboardSettingsPanels.tsx");
+  const gatewayPanel = read("screens/dashboardGatewayPanel.tsx");
 
   test("detail info renders through a grouped DetailInfoSection", () => {
-    // Definition lives in the extracted controls module; usage stays in the screen.
     expect(read("screens/dashboardControls.tsx")).toContain("function DetailInfoSection(");
     expect(screen).toContain("<DetailInfoSection");
-    // grouped inset card with key-value rows
     expect(styleSrc).toContain("infoCard:");
     expect(styleSrc).toContain("infoRow:");
     expect(styleSrc).toContain("infoRowDivider:");
@@ -34,8 +32,6 @@ describe("mobile: iOS-style detail layout", () => {
   });
 
   test("no flat stacked label-over-value dumps remain in detail panels", () => {
-    // The old pattern paired listTitle + listDetail inside a listText block for
-    // key/value dumps; detail info now uses DetailInfoSection instead.
     expect(screen).not.toContain("numberOfLines={2} style={styles.listDetail}");
   });
 
@@ -53,5 +49,15 @@ describe("mobile: iOS-style detail layout", () => {
     expect(settingsPanels).not.toContain(
       "<GlassPanel elevated style={[styles.detailPanel, styles.mainTabPanel]}"
     );
+  });
+
+  test("journey and gateway settings stay grouped into native mobile sections", () => {
+    expect(settingsPanels).toContain("styles.journeyStatGrid");
+    expect(settingsPanels).toContain("styles.journeyEventRow");
+    expect(settingsPanels).toContain('label="Loading journey"');
+    expect(gatewayPanel).toContain('<SettingsSection title="Gateway runtime">');
+    expect(gatewayPanel).toContain('<SettingsSection title="Storage">');
+    expect(gatewayPanel).toContain('<SettingsSection title="Security">');
+    expect(gatewayPanel).toContain('<SettingsSection title="Remote access">');
   });
 });

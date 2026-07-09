@@ -3916,59 +3916,81 @@ export function JourneyPanel({ accentColor, api }: { accentColor: string; api: C
 
   return (
     <StableDetailPanel>
-      <SettingsSection title="Journey">
-        <Text style={styles.settingsInfoText}>
-          Everything your agent has learned — skills and memories over time.
-        </Text>
-        <View style={styles.gatewayDetailGrid}>
-          <View style={styles.gatewayDetailPill}>
-            <Text style={styles.gatewayDetailLabel}>Skills</Text>
-            <Text style={[styles.gatewayDetailValue, { color: colors.cyan }]}>
-              {journey?.counts.skills ?? 0}
-            </Text>
+      {!journey && !error ? (
+        <LoadingState label="Loading journey" detail="Fetching memories and learned skills." />
+      ) : null}
+      {journey ? (
+        <SettingsSection title="Journey">
+          <Text style={styles.journeySummaryText}>
+            Everything your agent has learned, grouped by saved memories and skills.
+          </Text>
+          <View style={styles.journeyStatGrid}>
+            <View style={styles.journeyStatCard}>
+              <Text style={styles.gatewayDetailLabel}>Skills</Text>
+              <Text style={[styles.gatewayDetailValue, { color: colors.cyan }]}>
+                {journey.counts.skills}
+              </Text>
+            </View>
+            <View style={styles.journeyStatCard}>
+              <Text style={styles.gatewayDetailLabel}>Memories</Text>
+              <Text style={[styles.gatewayDetailValue, { color: accentColor }]}>
+                {journey.counts.memories}
+              </Text>
+            </View>
+            <View style={styles.journeyStatCard}>
+              <Text style={styles.gatewayDetailLabel}>Total</Text>
+              <Text style={styles.gatewayDetailValue}>{journey.counts.total}</Text>
+            </View>
           </View>
-          <View style={styles.gatewayDetailPill}>
-            <Text style={styles.gatewayDetailLabel}>Memories</Text>
-            <Text style={[styles.gatewayDetailValue, { color: accentColor }]}>
-              {journey?.counts.memories ?? 0}
-            </Text>
-          </View>
-          <View style={styles.gatewayDetailPill}>
-            <Text style={styles.gatewayDetailLabel}>Total</Text>
-            <Text style={styles.gatewayDetailValue}>{journey?.counts.total ?? 0}</Text>
-          </View>
-        </View>
-      </SettingsSection>
+        </SettingsSection>
+      ) : null}
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
       {journey && journey.events.length === 0 && !error ? (
         <EmptyState label="No learning yet" detail="Saved skills and memories will appear here." />
       ) : null}
       {groups.map((group) => (
         <SettingsSection key={group.day} title={group.day}>
-          {group.events.map((event) => (
-            <View key={event.id} style={styles.settingsInfoBox}>
-              <View style={styles.routerSummaryRow}>
-                <Text style={[styles.settingsInfoTitle, { flex: 1 }]} numberOfLines={2}>
-                  {event.title}
-                </Text>
-                <Text style={styles.settingsInfoText}>
-                  {journeyRelativeTime(event.createdAtMs)}
+          {group.events.map((event, index) => (
+            <View
+              key={event.id}
+              style={[
+                styles.journeyEventRow,
+                index === group.events.length - 1 && styles.journeyEventRowLast,
+              ]}
+            >
+              <View style={styles.journeyEventMarkerRail}>
+                <View
+                  style={[
+                    styles.journeyEventMarker,
+                    { backgroundColor: event.kind === "skill" ? colors.cyan : accentColor },
+                  ]}
+                />
+              </View>
+              <View style={styles.journeyEventContent}>
+                <View style={styles.journeyEventHeader}>
+                  <Text style={styles.journeyEventTitle} numberOfLines={2}>
+                    {event.title}
+                  </Text>
+                  <Text style={styles.journeyEventTime}>
+                    {journeyRelativeTime(event.createdAtMs)}
+                  </Text>
+                </View>
+                {event.detail && event.detail !== event.title ? (
+                  <Text style={styles.journeyEventDetail} numberOfLines={3}>
+                    {event.detail}
+                  </Text>
+                ) : null}
+                <Text
+                  style={[
+                    styles.journeyEventMeta,
+                    { color: event.kind === "skill" ? colors.cyan : accentColor },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {event.kind}
+                  {event.category ? ` · ${event.category}` : ""}
                 </Text>
               </View>
-              {event.detail && event.detail !== event.title ? (
-                <Text style={styles.settingsInfoText} numberOfLines={3}>
-                  {event.detail}
-                </Text>
-              ) : null}
-              <Text
-                style={[
-                  styles.settingsInfoText,
-                  { color: event.kind === "skill" ? colors.cyan : accentColor },
-                ]}
-              >
-                {event.kind}
-                {event.category ? ` · ${event.category}` : ""}
-              </Text>
             </View>
           ))}
         </SettingsSection>

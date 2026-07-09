@@ -599,6 +599,8 @@ export function GatewayManagementPanel({
             value={pushPreferences.taskCompletions}
           />
         </View>
+      </SettingsSection>
+      <SettingsSection title="Storage">
         <View style={styles.settingsInfoBox}>
           <View style={styles.settingsInfoHeader}>
             <Folder color={colors.cyan} size={18} strokeWidth={2.2} />
@@ -677,6 +679,8 @@ export function GatewayManagementPanel({
             />
           </View>
         </View>
+      </SettingsSection>
+      <SettingsSection title="Security">
         <View style={styles.settingsInfoBox}>
           <View style={styles.settingsInfoHeader}>
             <ShieldCheck color={colors.amber} size={18} strokeWidth={2.2} />
@@ -783,6 +787,25 @@ export function GatewayManagementPanel({
             />
           </View>
         </View>
+        {authSettings ? (
+          <SettingToggle
+            busy={busyAction === "localhost"}
+            detail={
+              authSettings.requireAuthForLocalhostForced
+                ? "Forced by environment or production mode."
+                : "When on, localhost browser requests must include the API key."
+            }
+            disabled={authSettings.requireAuthForLocalhostForced || busyAction !== null}
+            label="Require API key for localhost"
+            onPress={() => {
+              void updateRequireLocalhost();
+            }}
+            tone={colors.amber}
+            value={authSettings.requireAuthForLocalhost}
+          />
+        ) : null}
+      </SettingsSection>
+      <SettingsSection title="Remote access">
         <View style={styles.settingsInfoBox}>
           <View style={styles.settingsInfoHeader}>
             <Network color={colors.cyan} size={18} strokeWidth={2.2} />
@@ -846,23 +869,6 @@ export function GatewayManagementPanel({
             />
           </View>
         </View>
-        {authSettings ? (
-          <SettingToggle
-            busy={busyAction === "localhost"}
-            detail={
-              authSettings.requireAuthForLocalhostForced
-                ? "Forced by environment or production mode."
-                : "When on, localhost browser requests must include the API key."
-            }
-            disabled={authSettings.requireAuthForLocalhostForced || busyAction !== null}
-            label="Require API key for localhost"
-            onPress={() => {
-              void updateRequireLocalhost();
-            }}
-            tone={colors.amber}
-            value={authSettings.requireAuthForLocalhost}
-          />
-        ) : null}
       </SettingsSection>
       <SettingsSection title="Recent gateway logs">
         {recentLogs.length === 0 ? (
