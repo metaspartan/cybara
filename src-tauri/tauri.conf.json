@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Cybara",
-  "version": "1.0.1083",
+  "version": "1.0.1085",
   "identifier": "com.cybara.desktop",
   "build": {
     "frontendDist": "../ui/dist",
