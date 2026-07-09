@@ -20,9 +20,9 @@ describe("Sidebar status indicator behavior", () => {
     const developerStart = source.indexOf('id: "developer"');
     const chatStart = source.indexOf('id: "chat"');
     const sessionsItem = source.indexOf(
-      '{ path: "/sessions", icon: MessagesSquare, label: "Sessions" }'
+      '{ path: "/sessions", icon: MessagesSquare, labelKey: "nav.sessions" }'
     );
-    const chatItem = source.indexOf('{ path: "/chat", icon: MessageSquare, label: "Chat" }');
+    const chatItem = source.indexOf('{ path: "/chat", icon: MessageSquare, labelKey: "nav.chat" }');
 
     expect(developerStart).toBeGreaterThan(-1);
     expect(chatStart).toBeGreaterThan(developerStart);

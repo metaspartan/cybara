@@ -122,7 +122,8 @@ describe("router, provider, and metrics UI wiring", () => {
     expect(usage).toContain("UsageProviderCard");
     expect(usage).toContain("UsageSkeleton");
     expect(usage).toContain("No automatic usage yet");
-    expect(usage).toContain("window.setInterval(() => void load(), 30000)");
+    expect(usage).toContain("refetchInterval: 30_000");
+    expect(usage).toContain('queryKey: ["provider-plan-status"]');
     expect(usage).not.toContain("RefreshCw");
     expect(usage).not.toContain(">Refresh<");
     expect(usage).not.toContain("browser_cookie");

@@ -176,7 +176,7 @@ describe("mobile theming", () => {
     const src = read("screens/ConnectScreen.tsx");
     expect(src).toContain("await verifyGatewayProfile(profile)");
     expect(src).toContain("await onConnect(profile)");
-    expect(src).toContain('Alert.alert("Could not connect", message)');
+    expect(src).toContain('Alert.alert(t("connect.errorTitle"), message)');
     expect(src).toContain("disabled={connectBusy}");
   });
 

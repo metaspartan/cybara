@@ -129,8 +129,8 @@ describe("native macOS shell wiring", () => {
       expect(source).toContain(gatewayRoute);
     }
 
-    expect(contentView).toContain('Section("Developer")');
-    expect(contentView).toContain('Section("System")');
+    expect(contentView).toContain('Section(NativeI18n.t("nav.developer"))');
+    expect(contentView).toContain('Section(NativeI18n.t("nav.system"))');
   });
 
   test("native IDE screen provides browser editor and search replace controls", () => {
@@ -181,7 +181,9 @@ describe("native macOS shell wiring", () => {
     const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
 
-    expect(settings).toContain('memoryTab.tabItem { Label("Memory", systemImage: "memorychip") }');
+    expect(settings).toContain(
+      'memoryTab.tabItem { Label(NativeI18n.t("nav.memory"), systemImage: "memorychip") }'
+    );
     for (const provider of ["supermemory", "mem0", "honcho", "openviking", "hindsight"]) {
       expect(settings).toContain(`"${provider}"`);
     }
@@ -202,15 +204,15 @@ describe("native macOS shell wiring", () => {
     const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
 
     for (const label of [
-      'Label("General", systemImage: "switch.2")',
-      'Label("Gateway", systemImage: "server.rack")',
-      'Label("AI", systemImage: "brain")',
-      'Label("Memory", systemImage: "memorychip")',
-      'Label("Voice", systemImage: "waveform")',
-      'Label("Safety", systemImage: "slider.horizontal.3")',
-      'Label("Wallet", systemImage: "creditcard")',
-      'Label("Migration", systemImage: "folder.badge.gearshape")',
-      'Label("System", systemImage: "square.grid.3x3")',
+      'Label(NativeI18n.t("settings.general"), systemImage: "switch.2")',
+      'Label(NativeI18n.t("settings.gateway"), systemImage: "server.rack")',
+      'Label(NativeI18n.t("settings.ai"), systemImage: "brain")',
+      'Label(NativeI18n.t("nav.memory"), systemImage: "memorychip")',
+      'Label(NativeI18n.t("settings.voice"), systemImage: "waveform")',
+      'Label(NativeI18n.t("settings.safety"), systemImage: "slider.horizontal.3")',
+      'Label(NativeI18n.t("nav.wallet"), systemImage: "creditcard")',
+      'Label(NativeI18n.t("settings.migration"), systemImage: "folder.badge.gearshape")',
+      'Label(NativeI18n.t("nav.system"), systemImage: "square.grid.3x3")',
     ]) {
       expect(settings).toContain(label);
     }
@@ -301,7 +303,7 @@ describe("native macOS shell wiring", () => {
     expect(gatewayClient).toContain('request("api/migrations/preview", method: "POST"');
     expect(gatewayClient).toContain("func runMigration(body: Data)");
     expect(gatewayClient).toContain('request("api/migrations/run", method: "POST"');
-    expect(settings).toContain('migrationTab.tabItem { Label("Migration"');
+    expect(settings).toContain('migrationTab.tabItem { Label(NativeI18n.t("settings.migration")');
     expect(settings).toContain('Text("OpenClaw").tag("openclaw")');
     expect(settings).toContain('Text("Hermes").tag("hermes")');
     expect(settings).toContain("migrationImportSecrets");

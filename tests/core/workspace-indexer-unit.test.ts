@@ -42,6 +42,9 @@ interface WorkerReport {
   emptyStatus: { state: string; filesIndexed: number };
   emptySearch: SearchShape;
   homeRootStatus: { state: string; indexedWorkspacePath: string | null };
+  backgroundStartStatus: { state: string; filesIndexed: number };
+  backgroundReadyStatus: { state: string; filesIndexed: number };
+  backgroundReindexStartStatus: { state: string };
   outsideHomeError: string;
   reindexNoWorkspaceError: string;
   stopWhenIdleState: string;
@@ -126,6 +129,25 @@ const emptySearch = await workspaceIndexer.search("anything");
 await workspaceIndexer.setWorkspace(home);
 const homeRootFull = workspaceIndexer.getStatus();
 
+const backgroundWs = join(home, "background-project");
+mkdirSync(join(backgroundWs, "src"), { recursive: true });
+for (let index = 0; index < 200; index += 1) {
+  writeFileSync(join(backgroundWs, "src", "file-" + index + ".ts"), "export const v" + index + " = " + index + ";\\n");
+}
+workspaceIndexer.updateSettings({
+  enabled: true,
+  semanticEnabled: false,
+  autoReindexOnWorkspaceSet: true,
+});
+const backgroundStartFull = workspaceIndexer.setWorkspaceInBackground(backgroundWs);
+for (let attempt = 0; attempt < 200 && workspaceIndexer.getStatus().state === "indexing"; attempt += 1) {
+  await new Promise((resolve) => setTimeout(resolve, 5));
+}
+const backgroundReadyFull = workspaceIndexer.getStatus();
+writeFileSync(join(backgroundWs, "src", "added.ts"), "export const added = true;\\n");
+const backgroundReindexStartFull = workspaceIndexer.reindexInBackground(backgroundWs);
+workspaceIndexer.stop();
+
 let outsideHomeError = "";
 try {
   await workspaceIndexer.setWorkspace("/");
@@ -189,6 +211,15 @@ console.log(
         state: homeRootFull.state,
         indexedWorkspacePath: homeRootFull.indexedWorkspacePath,
       },
+      backgroundStartStatus: {
+        state: backgroundStartFull.state,
+        filesIndexed: backgroundStartFull.filesIndexed,
+      },
+      backgroundReadyStatus: {
+        state: backgroundReadyFull.state,
+        filesIndexed: backgroundReadyFull.filesIndexed,
+      },
+      backgroundReindexStartStatus: { state: backgroundReindexStartFull.state },
       outsideHomeError,
       reindexNoWorkspaceError,
       stopWhenIdleState,
@@ -332,6 +363,14 @@ describe("workspace indexer guards", () => {
   test("home directory as workspace resets to idle instead of indexing", () => {
     expect(report.homeRootStatus.state).toBe("idle");
     expect(report.homeRootStatus.indexedWorkspacePath).toBeNull();
+  });
+
+  test("background workspace starts return immediately while indexing continues", () => {
+    expect(report.backgroundStartStatus.state).toBe("indexing");
+    expect(report.backgroundStartStatus.filesIndexed).toBe(0);
+    expect(report.backgroundReadyStatus.state).toBe("ready");
+    expect(report.backgroundReadyStatus.filesIndexed).toBe(200);
+    expect(report.backgroundReindexStartStatus.state).toBe("indexing");
   });
 
   test("workspace outside home is rejected", () => {

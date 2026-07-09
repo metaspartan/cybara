@@ -183,6 +183,7 @@ class WorkspaceIndexer {
   private workspacePath: string | null = null;
   private indexedWorkspacePath: string | null = null;
   private indexedFiles: IndexedFileRecord[] = [];
+  private emptyQueryFiles: IndexedFileRecord[] = [];
   private filesIndexed = 0;
   private filesScanned = 0;
   private directoriesScanned = 0;
@@ -391,6 +392,25 @@ class WorkspaceIndexer {
     return this.getStatus();
   }
 
+  setWorkspaceInBackground(pathValue: string): WorkspaceIndexerStatus {
+    const resolvedWorkspacePath = this.resolveWorkspacePath(pathValue);
+    this.workspacePath = resolvedWorkspacePath;
+    if (isHomeRootPath(resolvedWorkspacePath)) {
+      this.resetToIdle("home_workspace");
+      return this.getStatus();
+    }
+
+    const settings = config.getWorkspaceIndexerSettings();
+    if (settings.enabled && settings.autoReindexOnWorkspaceSet) {
+      return this.startIndexInBackground(resolvedWorkspacePath, "workspace_set");
+    }
+    if (this.state === "idle" || this.state === "stopped") {
+      this.progress = 0;
+      this.error = null;
+    }
+    return this.getStatus();
+  }
+
   async reindex(pathValue?: string): Promise<WorkspaceIndexerStatus> {
     const targetPath = pathValue
       ? this.resolveWorkspacePath(pathValue)
@@ -406,6 +426,22 @@ class WorkspaceIndexer {
     this.workspacePath = targetPath;
     await this.startIndex(targetPath, "manual_reindex");
     return this.getStatus();
+  }
+
+  reindexInBackground(pathValue?: string): WorkspaceIndexerStatus {
+    const targetPath = pathValue
+      ? this.resolveWorkspacePath(pathValue)
+      : this.workspacePath || this.indexedWorkspacePath;
+    if (!targetPath) {
+      throw new Error("No workspace selected for indexing");
+    }
+    if (isHomeRootPath(targetPath)) {
+      throw new Error(
+        "Workspace indexer is disabled for the home directory. Select a project folder."
+      );
+    }
+    this.workspacePath = targetPath;
+    return this.startIndexInBackground(targetPath, "manual_reindex");
   }
 
   stop(): WorkspaceIndexerStatus {
@@ -491,13 +527,32 @@ class WorkspaceIndexer {
     }
 
     const normalizedQuery = query.toLowerCase();
-    const matchingFiles = normalizedQuery
-      ? this.indexedFiles.filter(
-          (file) =>
-            file.relativePathLower.includes(normalizedQuery) ||
-            file.baseNameLower.includes(normalizedQuery)
-        )
-      : this.indexedFiles;
+    if (!normalizedQuery) {
+      const files = this.emptyQueryFiles.slice(0, limit).map((file) => ({
+        path: file.path,
+        relativePath: file.relativePath,
+      }));
+
+      return {
+        success: true,
+        source: "index",
+        indexed: true,
+        indexState: this.state,
+        path: targetPath,
+        workspacePath: this.workspacePath,
+        query,
+        totalFiles: this.indexedFiles.length,
+        truncated: this.indexedFiles.length > limit,
+        semanticMatches: 0,
+        files,
+      };
+    }
+
+    const matchingFiles = this.indexedFiles.filter(
+      (file) =>
+        file.relativePathLower.includes(normalizedQuery) ||
+        file.baseNameLower.includes(normalizedQuery)
+    );
 
     const rankedFiles = [...matchingFiles].sort((left, right) => {
       const leftScore = scoreIndexedFile(left.relativePath, query);
@@ -649,6 +704,7 @@ class WorkspaceIndexer {
     this.state = "idle";
     this.indexedWorkspacePath = null;
     this.indexedFiles = [];
+    this.emptyQueryFiles = [];
     this.filesIndexed = 0;
     this.filesScanned = 0;
     this.directoriesScanned = 0;
@@ -805,7 +861,6 @@ class WorkspaceIndexer {
 
           if (this.filesScanned % STATUS_UPDATE_INTERVAL === 0) {
             this.updateIndexingProgress(settings);
-            // Yield periodically so API/status polling remains responsive.
             await new Promise<void>((resolveYield) => setTimeout(resolveYield, 0));
           }
         }
@@ -815,6 +870,12 @@ class WorkspaceIndexer {
       this.indexedFiles = discoveredFiles.sort((left, right) =>
         left.relativePath.localeCompare(right.relativePath)
       );
+      this.emptyQueryFiles = [...this.indexedFiles].sort((left, right) => {
+        if (left.relativePath.length !== right.relativePath.length) {
+          return left.relativePath.length - right.relativePath.length;
+        }
+        return left.relativePath.localeCompare(right.relativePath);
+      });
       this.indexedWorkspacePath = workspacePath;
       this.lastIndexedAt = new Date().toISOString();
       this.error = null;
@@ -965,6 +1026,24 @@ class WorkspaceIndexer {
         error: message,
       });
     }
+  }
+
+  private startIndexInBackground(workspacePath: string, reason: string): WorkspaceIndexerStatus {
+    void this.startIndex(workspacePath, reason).catch((errorValue) => {
+      const message =
+        errorValue instanceof Error
+          ? errorValue.message
+          : `Unexpected indexer error: ${String(errorValue)}`;
+      this.state = "error";
+      this.error = message;
+      this.progress = 0;
+      log.error("Background indexing failed", {
+        workspacePath,
+        reason,
+        error: message,
+      });
+    });
+    return this.getStatus();
   }
 }
 

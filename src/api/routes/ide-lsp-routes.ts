@@ -810,7 +810,7 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
       return { success: false, error: "Missing 'workspacePath' parameter" };
     }
     try {
-      const status = await workspaceIndexer.setWorkspace(data.workspacePath);
+      const status = workspaceIndexer.setWorkspaceInBackground(data.workspacePath);
       trackIdeOperation("index_workspace", data.workspacePath, true, {
         state: status.state,
         filesIndexed: status.filesIndexed,
@@ -826,7 +826,7 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
   "POST /api/ide/index/reindex": async (body) => {
     const data = body as { workspacePath?: string };
     try {
-      const status = await workspaceIndexer.reindex(
+      const status = workspaceIndexer.reindexInBackground(
         typeof data?.workspacePath === "string" && data.workspacePath.trim()
           ? data.workspacePath
           : undefined

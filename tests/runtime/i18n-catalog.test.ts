@@ -30,6 +30,11 @@ describe("shared i18n catalog", () => {
     expect(detectLocale(["it-IT"])).toBe("it");
     expect(detectLocale(["th-TH"])).toBe("th");
     expect(detectLocale(["ar-SA"])).toBe("ar");
+    expect(detectLocale(["ru-RU"])).toBe("ru");
+    expect(detectLocale(["uk-UA"])).toBe("uk");
+    expect(detectLocale(["sv-SE"])).toBe("sv");
+    expect(detectLocale(["da-DK"])).toBe("da");
+    expect(detectLocale(["fi-FI"])).toBe("fi");
     expect(detectLocale(["zz-ZZ"])).toBe("en");
   });
 
