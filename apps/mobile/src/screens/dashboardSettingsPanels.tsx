@@ -19,7 +19,6 @@ import {
   ShieldAlert,
   ShieldCheck,
   Sparkles,
-  Square,
   Trash2,
   Volume2,
   Zap,
@@ -42,7 +41,6 @@ import {
 } from "./dashboardControls";
 import {
   absoluteTimestampLabel,
-  agentIsRunning,
   agentProviderId,
   arraySettingCount,
   booleanSetting,
@@ -350,10 +348,8 @@ export function AgentSettingsPanel({
   const [model, setModel] = useState(agent.model || "");
   const [systemPrompt, setSystemPrompt] = useState(agent.system_prompt || "");
   const [saving, setSaving] = useState(false);
-  const [runningAction, setRunningAction] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const providerOptions = summary?.providers ?? [];
-  const running = agentIsRunning(agent);
 
   useEffect(() => {
     setName(agent.name);
@@ -395,23 +391,6 @@ export function AgentSettingsPanel({
     }
   };
 
-  const toggleAgentRuntime = async () => {
-    setRunningAction(true);
-    try {
-      const result = running ? await api.stopAgent(agent.id) : await api.startAgent(agent.id);
-      await refreshSummary();
-      if (result.success === false) {
-        throw new Error(
-          running ? "The gateway did not stop this agent." : "The gateway did not start this agent."
-        );
-      }
-    } catch (error) {
-      Alert.alert("Agent action failed", error instanceof Error ? error.message : String(error));
-    } finally {
-      setRunningAction(false);
-    }
-  };
-
   const deleteAgent = async () => {
     setDeleting(true);
     try {
@@ -450,7 +429,7 @@ export function AgentSettingsPanel({
             {agent.name}
           </Text>
           <Text numberOfLines={1} style={styles.itemDetail}>
-            {[agent.status || "stopped", agent.model || "model not set"].join(" - ")}
+            {agent.model || "Model not set"}
           </Text>
         </View>
       </View>
@@ -498,13 +477,6 @@ export function AgentSettingsPanel({
 
       <View style={styles.settingsActionRow}>
         <DetailActionButton Icon={Save} busy={saving} label="Save" onPress={saveAgent} />
-        <DetailActionButton
-          Icon={running ? Square : Play}
-          busy={runningAction}
-          label={running ? "Stop" : "Start"}
-          onPress={toggleAgentRuntime}
-          tone={running ? colors.amber : colors.green}
-        />
         <DetailActionButton
           Icon={Trash2}
           busy={deleting}

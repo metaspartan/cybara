@@ -32,14 +32,16 @@ describe("onboarding boot: no shell flash + full-screen spinner", () => {
   });
 });
 
-describe("Agents: auto-start on boot + default model", () => {
+describe("Agents: ready-on-demand chat routing + default model", () => {
   const agents = read("pages/Agents.tsx");
 
-  test("auto-start toggle is wired end to end", () => {
-    expect(agents).toContain("onToggleAutostart");
-    expect(agents).toContain("handleToggleAutostart");
-    expect(agents).toContain("autostart: !current");
-    expect(agents).toContain("Auto-start on boot");
+  test("agent identities link into the primary chat without activation controls", () => {
+    expect(agents).toContain("buildAgentChatPath(agent.id)");
+    expect(agents).toContain("Ready on demand");
+    expect(agents).not.toContain("useStartAgent");
+    expect(agents).not.toContain("useStopAgent");
+    expect(agents).not.toContain("ChatModal");
+    expect(agents).not.toContain("onToggleStatus");
   });
 
   test("default model selector persists via config", () => {

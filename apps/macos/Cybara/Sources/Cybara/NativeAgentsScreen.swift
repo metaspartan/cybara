@@ -24,7 +24,6 @@ struct AgentsScreen: View {
     @State private var agents: [GatewayAgent] = []
     @State private var providers: [GatewayProvider] = []
     @State private var searchText = ""
-    @State private var busyAgent: String?
     @State private var showingCreate = false
     @State private var editingAgent: GatewayAgent?
     @State private var deleteTarget: GatewayAgent?
@@ -94,7 +93,7 @@ struct AgentsScreen: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                ScreenHeader(title: "Agents", subtitle: "Create, edit, and run gateway agents")
+                ScreenHeader(title: "Agents", subtitle: "Create and manage gateway agents")
                 Spacer()
                 Button {
                     Task { await createDefault() }
@@ -147,18 +146,15 @@ struct AgentsScreen: View {
 
     private func agentRow(_ agent: GatewayAgent) -> some View {
         HStack(spacing: 14) {
-            Image(systemName: agent.isRunning ? "cpu.fill" : "cpu")
+            Image(systemName: "cpu")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(agent.isRunning ? Color.green : Color.secondary)
+                .foregroundStyle(Color.secondary)
                 .frame(width: 38, height: 38)
                 .background(Circle().fill(Color.white.opacity(0.06)))
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 8) {
-                    Text(agent.name)
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
-                    statusPill(agent.status ?? "stopped")
-                }
+                Text(agent.name)
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
                 Text([agent.type, agent.model, providerName(for: agent.providerID)]
                     .compactMap { firstNonEmptyGatewayString($0) }
                     .joined(separator: " · "))
@@ -169,16 +165,6 @@ struct AgentsScreen: View {
 
             Spacer()
 
-            if busyAgent == agent.id {
-                ProgressView().controlSize(.small)
-            } else {
-                Button {
-                    Task { await toggle(agent) }
-                } label: {
-                    Label(agent.isRunning ? "Stop" : "Start", systemImage: agent.isRunning ? "stop.fill" : "play.fill")
-                }
-                .buttonStyle(.bordered)
-            }
             Button {
                 editingAgent = agent
             } label: {
@@ -196,16 +182,6 @@ struct AgentsScreen: View {
         }
         .padding(16)
         .cybaraGlass(cornerRadius: 16)
-    }
-
-    private func statusPill(_ status: String) -> some View {
-        let running = status.lowercased() == "running"
-        return Text(running ? "Running" : status.capitalized)
-            .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-            .padding(.horizontal, 7)
-            .padding(.vertical, 3)
-            .background(Capsule().fill((running ? Color.green : Color.secondary).opacity(0.18)))
-            .foregroundStyle(running ? Color.green : Color.secondary)
     }
 
     private func providerName(for id: String?) -> String? {
@@ -234,21 +210,6 @@ struct AgentsScreen: View {
         }
     }
 
-    private func toggle(_ agent: GatewayAgent) async {
-        busyAgent = agent.id
-        do {
-            if agent.isRunning {
-                try await client.stopAgent(agent.id)
-            } else {
-                try await client.startAgent(agent.id)
-            }
-            await load()
-        } catch {
-            self.error = error.localizedDescription
-        }
-        busyAgent = nil
-    }
-
     private func remove(_ agent: GatewayAgent) async {
         deleteTarget = nil
         do {
@@ -273,7 +234,6 @@ private struct AgentEditorSheet: View {
     @State private var model: String
     @State private var reasoningEffort: String
     @State private var systemPrompt: String
-    @State private var autostart: Bool
     @State private var providerModels: [GatewayProviderModel] = []
     @State private var saving = false
     @State private var error: String?
@@ -294,7 +254,6 @@ private struct AgentEditorSheet: View {
         _model = State(initialValue: agent?.model ?? "")
         _reasoningEffort = State(initialValue: agent?.reasoningEffort ?? "")
         _systemPrompt = State(initialValue: agent?.system_prompt ?? "")
-        _autostart = State(initialValue: agent?.autostart ?? false)
     }
 
     var body: some View {
@@ -327,7 +286,6 @@ private struct AgentEditorSheet: View {
                         Text(option.label).tag(option.value)
                     }
                 }
-                Toggle("Auto-start on gateway boot", isOn: $autostart)
             }
             .formStyle(.grouped)
 
@@ -395,7 +353,6 @@ private struct AgentEditorSheet: View {
 
     private func agentPayload(existingConfig: [String: JSONValue]?) -> [String: Any] {
         var config = existingConfig?.mapValues(\.anyValue) ?? [:]
-        config["autostart"] = autostart
         var modelParams = config["model_params"] as? [String: Any] ?? [:]
         if reasoningEffort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             modelParams.removeValue(forKey: "reasoning_effort")

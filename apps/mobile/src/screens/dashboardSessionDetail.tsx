@@ -102,6 +102,11 @@ import {
   readCachedMobileOptimisticPendingMessages,
   writeCachedMobileOptimisticPendingMessages,
 } from "./dashboardPendingQueue";
+import {
+  clearCachedMobileOptimisticTranscript,
+  mergeCachedMobileOptimisticTranscript,
+  writeCachedMobileOptimisticTranscriptMessage,
+} from "./dashboardOptimisticTranscript";
 
 export interface ChatHeaderAction {
   busy: boolean;
@@ -478,8 +483,15 @@ export function SessionDetailPanel({
   const [pendingToolApprovalMode, setPendingToolApprovalMode] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
   const headerActionRef = useRef<() => void>(() => {});
-  const sessionRefreshInFlight = useRef(false);
+  const currentSessionIdRef = useRef(sessionId);
+  currentSessionIdRef.current = sessionId;
+  const sessionRefreshInFlight = useRef<{
+    sessionId: string;
+    token: symbol;
+    promise: Promise<void>;
+  } | null>(null);
   const sendingRef = useRef(false);
+  const optimisticPendingGraceUntilRef = useRef(0);
   const optimisticPendingCounterRef = useRef(0);
   const cachedLiveAssistant = readCachedMobileLiveAssistant(sessionId);
   const [liveAssistant, setLiveAssistant] = useState<
@@ -528,27 +540,57 @@ export function SessionDetailPanel({
     [sessionId]
   );
 
-  const loadSession = async (showLoading = false) => {
-    if (sessionRefreshInFlight.current) return;
-    sessionRefreshInFlight.current = true;
-    if (showLoading) setLoading(true);
-    setLoadError(null);
-    try {
-      const nextDetail = await api.session(sessionId);
-      setDetail(nextDetail);
+  const applySessionDetail = useCallback(
+    (nextDetail: SessionDetailSummary) => {
+      const reconciledDetail = {
+        ...nextDetail,
+        messages: mergeCachedMobileOptimisticTranscript(sessionId, nextDetail.messages),
+      };
+      setDetail(reconciledDetail);
       commitLiveAssistant((current) =>
-        prunePersistedMobileLiveAssistant(current, nextDetail.messages)
+        prunePersistedMobileLiveAssistant(current, reconciledDetail.messages)
       );
-      if (typeof nextDetail.pinned === "boolean") {
-        setPinned(nextDetail.pinned);
+      if (typeof reconciledDetail.pinned === "boolean") {
+        setPinned(reconciledDetail.pinned);
       }
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : String(error));
-    } finally {
-      sessionRefreshInFlight.current = false;
-      if (showLoading) setLoading(false);
-    }
-  };
+    },
+    [commitLiveAssistant, sessionId]
+  );
+
+  const loadSession = useCallback(
+    (showLoading = false): Promise<void> => {
+      const requestedSessionId = sessionId;
+      const existing = sessionRefreshInFlight.current;
+      if (existing?.sessionId === requestedSessionId) return existing.promise;
+      const token = Symbol(requestedSessionId);
+      const promise = (async (): Promise<void> => {
+        if (showLoading) setLoading(true);
+        setLoadError(null);
+        try {
+          const nextDetail = await api.session(requestedSessionId);
+          if (currentSessionIdRef.current !== requestedSessionId) return;
+          applySessionDetail(nextDetail);
+        } catch (error) {
+          if (currentSessionIdRef.current === requestedSessionId) {
+            setLoadError(error instanceof Error ? error.message : String(error));
+          }
+        } finally {
+          if (sessionRefreshInFlight.current?.token === token) {
+            sessionRefreshInFlight.current = null;
+          }
+          if (showLoading && currentSessionIdRef.current === requestedSessionId) setLoading(false);
+        }
+      })();
+      sessionRefreshInFlight.current = { sessionId: requestedSessionId, token, promise };
+      return promise;
+    },
+    [api, applySessionDetail, sessionId]
+  );
+
+  const shouldPreserveOptimisticPending = useCallback(
+    () => sendingRef.current || Date.now() < optimisticPendingGraceUntilRef.current,
+    []
+  );
 
   const hydrateLiveAssistant = useCallback(async () => {
     try {
@@ -571,12 +613,13 @@ export function SessionDetailPanel({
           snapshotStatus === "tool_executing" ||
           snapshotStatus === "compacting");
       const snapshotPendingMessages = snapshot?.pendingMessages ?? [];
-      if (!sendingRef.current && snapshotPendingMessages.length === 0) {
+      const preserveOptimisticPending = shouldPreserveOptimisticPending();
+      if (!preserveOptimisticPending && snapshotPendingMessages.length === 0) {
         clearCachedMobileOptimisticPendingMessages(sessionId);
       }
       setPendingMessages((current) =>
         mergeMobilePendingMessages(snapshotPendingMessages, current, {
-          preserveOptimistic: sendingRef.current,
+          preserveOptimistic: preserveOptimisticPending,
         })
       );
       if (!active || !snapshot) {
@@ -588,7 +631,9 @@ export function SessionDetailPanel({
           } else {
             commitLiveAssistant(() => null);
           }
-          clearCachedMobileOptimisticPendingMessages(sessionId);
+          if (!preserveOptimisticPending) {
+            clearCachedMobileOptimisticPendingMessages(sessionId);
+          }
         }
         return;
       }
@@ -597,22 +642,23 @@ export function SessionDetailPanel({
         snapshot.timestamp
       );
     } catch {}
-  }, [api, commitLiveAssistant, sessionId]);
+  }, [api, commitLiveAssistant, sessionId, shouldPreserveOptimisticPending]);
 
   const hydratePendingMessages = useCallback(async () => {
     try {
       const pending = await api.pendingChatMessages(sessionId);
       const pendingMessages = pending.pendingMessages ?? [];
-      if (!sendingRef.current && pendingMessages.length === 0) {
+      const preserveOptimisticPending = shouldPreserveOptimisticPending();
+      if (!preserveOptimisticPending && pendingMessages.length === 0) {
         clearCachedMobileOptimisticPendingMessages(sessionId);
       }
       setPendingMessages((current) =>
         mergeMobilePendingMessages(pendingMessages, current, {
-          preserveOptimistic: sendingRef.current,
+          preserveOptimistic: preserveOptimisticPending,
         })
       );
     } catch {}
-  }, [api, sessionId]);
+  }, [api, sessionId, shouldPreserveOptimisticPending]);
 
   useEffect(() => {
     if (typeof sessionSummary?.pinned === "boolean") {
@@ -634,6 +680,7 @@ export function SessionDetailPanel({
     setLiveNowMs(cached?.nowMs ?? Date.now());
     const cachedOptimistic = readCachedMobileOptimisticPendingMessages(sessionId);
     if (cachedOptimistic.length > 0) {
+      optimisticPendingGraceUntilRef.current = Date.now() + 15_000;
       setPendingMessages((current) => mergeMobilePendingMessages(cachedOptimistic, current));
     } else {
       setPendingMessages([]);
@@ -648,32 +695,9 @@ export function SessionDetailPanel({
   }, [pendingMessages, sessionId]);
 
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
-    api
-      .session(sessionId)
-      .then((nextDetail) => {
-        if (!cancelled) {
-          setDetail(nextDetail);
-          commitLiveAssistant((current) =>
-            prunePersistedMobileLiveAssistant(current, nextDetail.messages)
-          );
-          if (typeof nextDetail.pinned === "boolean") {
-            setPinned(nextDetail.pinned);
-          }
-        }
-      })
-      .catch((error) => {
-        if (!cancelled) setLoadError(error instanceof Error ? error.message : String(error));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [api, commitLiveAssistant, sessionId]);
+    setDetail(null);
+    void loadSession(true);
+  }, [loadSession]);
 
   useEffect(() => {
     const disconnect = api.connectStatusStream({
@@ -693,23 +717,25 @@ export function SessionDetailPanel({
         if (event.type === "snapshot") {
           const snapshot = event.activeSessions.find((entry) => entry.sessionId === sessionId);
           if (!snapshot) {
-            if (!sendingRef.current) {
+            const preserveOptimisticPending = shouldPreserveOptimisticPending();
+            if (!preserveOptimisticPending) {
               clearCachedMobileOptimisticPendingMessages(sessionId);
             }
             setPendingMessages((current) =>
               mergeMobilePendingMessages([], current, {
-                preserveOptimistic: sendingRef.current,
+                preserveOptimistic: preserveOptimisticPending,
               })
             );
             return;
           }
           const pendingMessages = snapshot.pendingMessages ?? [];
-          if (!sendingRef.current && pendingMessages.length === 0) {
+          const preserveOptimisticPending = shouldPreserveOptimisticPending();
+          if (!preserveOptimisticPending && pendingMessages.length === 0) {
             clearCachedMobileOptimisticPendingMessages(sessionId);
           }
           setPendingMessages((current) =>
             mergeMobilePendingMessages(pendingMessages, current, {
-              preserveOptimistic: sendingRef.current,
+              preserveOptimistic: preserveOptimisticPending,
             })
           );
           commitLiveAssistant(
@@ -740,17 +766,24 @@ export function SessionDetailPanel({
       },
     });
     return disconnect;
-  }, [api, commitLiveAssistant, hydrateLiveAssistant, sessionId]);
+  }, [
+    api,
+    commitLiveAssistant,
+    hydrateLiveAssistant,
+    loadSession,
+    sessionId,
+    shouldPreserveOptimisticPending,
+  ]);
 
   useEffect(() => {
     const interval = setInterval(
       () => {
         void loadSession(false);
       },
-      sending ? 1800 : 3500
+      sending || liveAssistant ? 1800 : 3500
     );
     return () => clearInterval(interval);
-  }, [api, sessionId, sending]);
+  }, [loadSession, liveAssistant, sending]);
 
   useEffect(() => {
     if (!liveAssistant) return;
@@ -942,13 +975,18 @@ export function SessionDetailPanel({
         sequence:
           pendingMessages.reduce((max, pending) => Math.max(max, pending.sequence || 0), 0) + 1,
       };
+      optimisticPendingGraceUntilRef.current = Date.now() + 30_000;
+      writeCachedMobileOptimisticPendingMessages(sessionId, [
+        ...readCachedMobileOptimisticPendingMessages(sessionId),
+        optimisticPendingMessage,
+      ]);
       setPendingMessages((current) =>
         [...current, optimisticPendingMessage].sort(
           (a, b) => a.sequence - b.sequence || a.createdAt - b.createdAt
         )
       );
     }
-    const optimistic = {
+    const optimistic: SessionDetailSummary["messages"][number] = {
       id: `local-${Date.now()}`,
       role: "user",
       content: message,
@@ -957,6 +995,7 @@ export function SessionDetailPanel({
     };
     if (!queuedSend) {
       optimisticMessageId = optimistic.id;
+      writeCachedMobileOptimisticTranscriptMessage(sessionId, optimistic);
       setDetail((current) =>
         current
           ? {
@@ -978,6 +1017,9 @@ export function SessionDetailPanel({
         useModelRouter,
       });
       if (result.queued) {
+        if (optimisticMessageId) {
+          clearCachedMobileOptimisticTranscript(sessionId, optimisticMessageId);
+        }
         replacePendingMessagesFromGateway(pendingMessagesFromResponse(result));
         setDetail((current) =>
           current
@@ -1031,6 +1073,17 @@ export function SessionDetailPanel({
       if (optimisticPendingMessageId) {
         setPendingMessages((current) =>
           current.filter((entry) => entry.id !== optimisticPendingMessageId)
+        );
+      }
+      if (optimisticMessageId) {
+        clearCachedMobileOptimisticTranscript(sessionId, optimisticMessageId);
+        setDetail((current) =>
+          current
+            ? {
+                ...current,
+                messages: current.messages.filter((entry) => entry.id !== optimisticMessageId),
+              }
+            : current
         );
       }
       const failedAt = Date.now();
@@ -1199,6 +1252,7 @@ export function SessionDetailPanel({
                 if (result?.success === false) {
                   throw new Error(result.error || "Failed to revert session");
                 }
+                clearCachedMobileOptimisticTranscript(sessionId);
                 setComposerDraft(message.content || "");
                 return loadSession(false);
               })
@@ -1222,6 +1276,9 @@ export function SessionDetailPanel({
           void api
             .deleteSession(sessionId)
             .then(() => {
+              clearCachedMobileLiveAssistant(sessionId);
+              clearCachedMobileOptimisticPendingMessages(sessionId);
+              clearCachedMobileOptimisticTranscript(sessionId);
               refreshSummary();
               closeDetail();
             })

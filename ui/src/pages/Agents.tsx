@@ -1,24 +1,9 @@
 import { useState, useRef, useEffect } from "react";
-import {
-  Bot,
-  Plus,
-  Play,
-  Square,
-  Trash2,
-  Edit2,
-  Search,
-  RefreshCw,
-  MessageSquare,
-  Clock,
-  Hash,
-  Send,
-  X,
-  RotateCcw,
-} from "lucide-react";
+import { ArrowUpRight, Bot, Trash2, Edit2 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
-import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Select } from "@/components/ui/Input";
@@ -31,15 +16,11 @@ import {
   useCreateDefaultAgent,
   useUpdateAgent,
   useDeleteAgent,
-  useStartAgent,
-  useStopAgent,
-  useAgentMessage,
-  useClearAgentHistory,
-  useAgentState,
 } from "@/hooks/useApi";
 import { useUIStore } from "@/stores/uiStore";
 import { settingsApi } from "@/lib/api";
-import type { Agent, AgentMessage } from "@/types";
+import { buildAgentChatPath } from "./chat/chatRoute";
+import type { Agent } from "@/types";
 
 const agentTypes = [
   { value: "main", label: "Main Assistant" },
@@ -86,12 +67,6 @@ export function Agents() {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
   const [deletingAgent, setDeletingAgent] = useState<Agent | null>(null);
-  const [chatAgent, setChatAgent] = useState<Agent | null>(null);
-  const [chatMessages, setChatMessages] = useState<
-    Array<{ role: "user" | "assistant"; content: string }>
-  >([]);
-  const [chatInput, setChatInput] = useState("");
-  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const { data: agents, isLoading } = useAgents();
   const { data: providers } = useProviders();
@@ -101,10 +76,6 @@ export function Agents() {
   const createDefaultAgent = useCreateDefaultAgent();
   const updateAgent = useUpdateAgent();
   const deleteAgent = useDeleteAgent();
-  const startAgent = useStartAgent();
-  const stopAgent = useStopAgent();
-  const sendMessage = useAgentMessage();
-  const clearHistory = useClearAgentHistory();
 
   const [defaultModel, setDefaultModel] = useState("");
   const [savingDefaultModel, setSavingDefaultModel] = useState(false);
@@ -147,51 +118,6 @@ export function Agents() {
       (agent.type && agent.type.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
-
-  const handleOpenChat = async (agent: Agent) => {
-    setChatAgent(agent);
-    setChatMessages([]);
-    setChatInput("");
-  };
-
-  const handleSendMessage = async () => {
-    if (!chatAgent || !chatInput.trim() || sendMessage.isPending) return;
-
-    const userMessage = chatInput.trim();
-    setChatInput("");
-    setChatMessages((prev) => [...prev, { role: "user", content: userMessage }]);
-
-    try {
-      const result = await sendMessage.mutateAsync({
-        id: chatAgent.id,
-        message: userMessage,
-      });
-      setChatMessages((prev) => [...prev, { role: "assistant", content: result.response }]);
-    } catch (error) {
-      setChatMessages((prev) => [
-        ...prev,
-        {
-          role: "assistant",
-          content: `Error: ${error instanceof Error ? error.message : "Failed to send message"}`,
-        },
-      ]);
-    }
-  };
-
-  const handleClearHistory = async () => {
-    if (!chatAgent) return;
-    try {
-      await clearHistory.mutateAsync(chatAgent.id);
-      setChatMessages([]);
-      addToast("success", "Conversation cleared");
-    } catch (error) {
-      addToast("error", error instanceof Error ? error.message : "Failed to clear history");
-    }
-  };
-
   const handleCreate = async (formData: FormData) => {
     try {
       await createAgent.mutateAsync({
@@ -212,37 +138,9 @@ export function Agents() {
   const handleCreateDefault = async () => {
     try {
       await createDefaultAgent.mutateAsync();
-      addToast("success", 'Default agent "Mini" created and started');
+      addToast("success", 'Default agent "Mini" created');
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to create default agent");
-    }
-  };
-
-  const handleToggleAutostart = async (agent: Agent) => {
-    const rawConfig =
-      typeof agent.config === "string"
-        ? (() => {
-            try {
-              return JSON.parse(agent.config as unknown as string) as Record<string, unknown>;
-            } catch {
-              return {};
-            }
-          })()
-        : agent.config || {};
-    const current = Boolean((rawConfig as { autostart?: boolean }).autostart);
-    try {
-      await updateAgent.mutateAsync({
-        id: agent.id,
-        data: { config: { ...rawConfig, autostart: !current } },
-      });
-      addToast(
-        "success",
-        !current
-          ? `"${agent.name}" will auto-start when Cybara boots`
-          : `Auto-start disabled for "${agent.name}"`
-      );
-    } catch (error) {
-      addToast("error", error instanceof Error ? error.message : "Failed to update auto-start");
     }
   };
 
@@ -275,43 +173,6 @@ export function Agents() {
       setDeletingAgent(null);
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to delete agent");
-    }
-  };
-
-  const handleToggleStatus = async (agent: Agent) => {
-    try {
-      if (agent.status === "running") {
-        await stopAgent.mutateAsync(agent.id);
-        addToast("success", `Agent "${agent.name}" stopped`);
-      } else {
-        await startAgent.mutateAsync(agent.id);
-        addToast("success", `Agent "${agent.name}" started`);
-      }
-    } catch (error) {
-      addToast("error", error instanceof Error ? error.message : "Failed to toggle status");
-    }
-  };
-
-  const getStatusBadge = (status: string | undefined) => {
-    switch (status) {
-      case "running":
-        return (
-          <Badge variant="success" size="sm">
-            Running
-          </Badge>
-        );
-      case "stopped":
-        return (
-          <Badge variant="default" size="sm">
-            Stopped
-          </Badge>
-        );
-      default:
-        return (
-          <Badge variant="default" size="sm">
-            {status || "unknown"}
-          </Badge>
-        );
     }
   };
 
@@ -383,11 +244,8 @@ export function Agents() {
             <AgentCard
               key={agent.id}
               agent={agent}
-              onToggleStatus={() => handleToggleStatus(agent)}
               onEdit={() => setEditingAgent(agent)}
               onDelete={() => setDeletingAgent(agent)}
-              onChat={() => handleOpenChat(agent)}
-              onToggleAutostart={() => handleToggleAutostart(agent)}
             />
           ))}
         </div>
@@ -422,85 +280,42 @@ export function Agents() {
         variant="danger"
         isLoading={deleteAgent.isPending}
       />
-
-      <ChatModal
-        isOpen={!!chatAgent}
-        onClose={() => setChatAgent(null)}
-        agent={chatAgent}
-        messages={chatMessages}
-        input={chatInput}
-        onInputChange={setChatInput}
-        onSend={handleSendMessage}
-        onClearHistory={handleClearHistory}
-        isLoading={sendMessage.isPending}
-        chatEndRef={chatEndRef}
-      />
     </PageLayout>
   );
 }
 
 function AgentCard({
   agent,
-  onToggleStatus,
   onEdit,
   onDelete,
-  onChat,
-  onToggleAutostart,
 }: {
   agent: Agent;
-  onToggleStatus: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onChat: () => void;
-  onToggleAutostart: () => void;
 }) {
-  const { data: state } = useAgentState(agent.status === "running" ? agent.id : null);
-  const isRunning = agent.status === "running";
-  const rawConfig =
-    typeof agent.config === "string"
-      ? (() => {
-          try {
-            return JSON.parse(agent.config as unknown as string) as Record<string, unknown>;
-          } catch {
-            return {};
-          }
-        })()
-      : agent.config || {};
-  const autostart = Boolean((rawConfig as { autostart?: boolean }).autostart);
-
   return (
     <Card hover>
       <CardContent>
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <div
-              className={`w-10 h-10 rounded-lg flex items-center justify-center ${isRunning ? "bg-green-500/20" : "bg-indigo-500/20"}`}
-            >
-              <Bot className={`w-5 h-5 ${isRunning ? "text-green-400" : "text-indigo-400"}`} />
+        <Link
+          to={buildAgentChatPath(agent.id)}
+          className="group flex items-start justify-between gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+          aria-label={`Open ${agent.name} in Chat`}
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-500/20">
+              <Bot className="h-5 w-5 text-indigo-400" />
             </div>
-            <div>
-              <h3 className="font-medium text-white">{agent.name}</h3>
-              {isRunning && state ? (
-                <div className="flex items-center gap-2 mt-1">
-                  <Badge variant="success" size="sm">
-                    Running
-                  </Badge>
-                  <span className="text-xs text-gray-500 flex items-center gap-1">
-                    <Hash className="w-3 h-3" />
-                    {state.messageCount || 0}
-                  </span>
-                </div>
-              ) : (
-                getStatusBadge(agent.status)
-              )}
+            <div className="min-w-0">
+              <h3 className="truncate font-medium text-white group-hover:text-indigo-200">
+                {agent.name}
+              </h3>
+              <p className="mt-1 text-xs text-gray-500">Ready on demand</p>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={onToggleStatus}>
-            {isRunning ? <Square className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-          </Button>
-        </div>
+          <ArrowUpRight className="mt-1 h-4 w-4 shrink-0 text-gray-500 transition-colors group-hover:text-indigo-300" />
+        </Link>
 
-        <div className="space-y-2 text-sm">
+        <div className="mt-4 space-y-2 text-sm">
           <div className="flex justify-between">
             <span className="text-gray-500">Type</span>
             <span className="text-gray-300 capitalize">{agent.type || "main"}</span>
@@ -509,49 +324,15 @@ function AgentCard({
             <span className="text-gray-500">Model</span>
             <span className="text-gray-300">{agent.model}</span>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-500">Auto-start on boot</span>
-            <button
-              type="button"
-              onClick={onToggleAutostart}
-              title="Start this agent automatically when Cybara boots"
-              className={`text-xs px-2 py-0.5 rounded transition-colors ${
-                autostart
-                  ? "bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30"
-                  : "bg-white/5 text-gray-400 hover:bg-white/10"
-              }`}
-            >
-              {autostart ? "On" : "Off"}
-            </button>
-          </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Created</span>
             <span className="text-gray-300">
               {agent.created_at ? new Date(agent.created_at).toLocaleDateString() : "Unknown"}
             </span>
           </div>
-          {isRunning && state?.lastActive && (
-            <div className="flex justify-between">
-              <span className="text-gray-500">Last active</span>
-              <span className="text-gray-300 flex items-center gap-1">
-                <Clock className="w-3 h-3" />
-                {new Date(state.lastActive).toLocaleTimeString()}
-              </span>
-            </div>
-          )}
         </div>
 
         <div className="flex gap-2 mt-4 pt-4 border-t border-white/10">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="flex-1"
-            leftIcon={<MessageSquare className="w-4 h-4" />}
-            onClick={onChat}
-            disabled={!isRunning}
-          >
-            Chat
-          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -574,137 +355,6 @@ function AgentCard({
       </CardContent>
     </Card>
   );
-}
-
-function ChatModal({
-  isOpen,
-  onClose,
-  agent,
-  messages,
-  input,
-  onInputChange,
-  onSend,
-  onClearHistory,
-  isLoading,
-  chatEndRef,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  agent: Agent | null;
-  messages: Array<{ role: "user" | "assistant"; content: string }>;
-  input: string;
-  onInputChange: (value: string) => void;
-  onSend: () => void;
-  onClearHistory: () => void;
-  isLoading: boolean;
-  chatEndRef: React.RefObject<HTMLDivElement>;
-}) {
-  if (!isOpen || !agent) return null;
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} size="lg">
-      <div className="flex flex-col h-[600px]">
-        <div className="flex items-center justify-between p-4 border-b border-white/10">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-green-500/20 flex items-center justify-center">
-              <Bot className="w-4 h-4 text-green-400" />
-            </div>
-            <div>
-              <h3 className="font-medium text-white">{agent.name}</h3>
-              <p className="text-xs text-gray-500">Running agent</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onClearHistory}
-              leftIcon={<RotateCcw className="w-4 h-4" />}
-            >
-              Clear
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onClose}>
-              <X className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.length === 0 ? (
-            <div className="text-center text-gray-500 py-8">
-              <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
-              <p>Start a conversation with {agent.name}</p>
-              <p className="text-sm mt-1">Messages will appear here</p>
-            </div>
-          ) : (
-            messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-              >
-                <div
-                  className={`max-w-[80%] rounded-xl px-4 py-2 ${
-                    msg.role === "user"
-                      ? "bg-indigo-500/20 text-indigo-100"
-                      : "bg-white/5 text-gray-200"
-                  }`}
-                >
-                  <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                </div>
-              </div>
-            ))
-          )}
-          <div ref={chatEndRef} />
-        </div>
-
-        <div className="p-4 border-t border-white/10">
-          <div className="flex gap-2">
-            <Textarea
-              value={input}
-              onChange={(e) => onInputChange(e.target.value)}
-              placeholder="Type your message..."
-              className="min-h-[44px] max-h-32 resize-none"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  onSend();
-                }
-              }}
-            />
-            <Button onClick={onSend} disabled={!input.trim() || isLoading} className="shrink-0">
-              <Send className="w-4 h-4" />
-            </Button>
-          </div>
-          <p className="text-xs text-gray-500 mt-2">
-            Press Enter to send, Shift+Enter for new line
-          </p>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-function getStatusBadge(status: string | undefined) {
-  switch (status) {
-    case "running":
-      return (
-        <Badge variant="success" size="sm">
-          Running
-        </Badge>
-      );
-    case "stopped":
-      return (
-        <Badge variant="default" size="sm">
-          Stopped
-        </Badge>
-      );
-    default:
-      return (
-        <Badge variant="default" size="sm">
-          {status || "unknown"}
-        </Badge>
-      );
-  }
 }
 
 function AgentModal({

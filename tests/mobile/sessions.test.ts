@@ -54,6 +54,8 @@ describe("mobile: chat management", () => {
     expect(screen).toContain("Array.isArray(result.pendingMessages)");
     expect(screen).toContain("result.interrupted");
     expect(screen).toContain("void hydratePendingMessages();");
+    expect(screen).toContain("optimisticPendingGraceUntilRef.current = Date.now() + 30_000");
+    expect(screen).toContain("preserveOptimistic: preserveOptimisticPending");
     expect(screen).toContain("api.reorderPendingMessages(");
     expect(screen).toContain("api.updatePendingMessage(");
     expect(screen).toContain("api.deletePendingMessage(");
@@ -70,6 +72,23 @@ describe("mobile: chat management", () => {
     expect(styles).toContain("pendingQueueActions:");
     expect(styles).toContain("pendingEditCard:");
     expect(styles).toContain("pendingOrderControls:");
+  });
+
+  test("active messages and live work survive chat navigation", () => {
+    const liveCache = read("screens/dashboardLiveChat.ts");
+    const optimisticTranscript = read("screens/dashboardOptimisticTranscript.ts");
+
+    expect(screen).toContain("writeCachedMobileOptimisticTranscriptMessage(sessionId, optimistic)");
+    expect(screen).toContain(
+      "mergeCachedMobileOptimisticTranscript(sessionId, nextDetail.messages)"
+    );
+    expect(screen).toContain("const existing = sessionRefreshInFlight.current");
+    expect(screen).toContain("return existing.promise");
+    expect(liveCache).toContain(
+      "mergeMobileLiveActivities(currentActivities, snapshot.activities)"
+    );
+    expect(liveCache).not.toContain("return next.slice(-12)");
+    expect(optimisticTranscript).toContain("acknowledgedByPersistedHistory");
   });
 
   test("queued follow-ups stay above the composer instead of entering the message transcript", () => {

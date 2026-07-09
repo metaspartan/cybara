@@ -27,7 +27,9 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
   test("mobile: idle event reloads the session before pruning the live assistant", () => {
     const source = read("apps/mobile/src/screens/dashboardSessionDetail.tsx");
     expect(source).toContain("void loadSession(false).finally(() => {");
-    expect(source).toContain("prunePersistedMobileLiveAssistant(current, nextDetail.messages)");
+    expect(source).toContain(
+      "prunePersistedMobileLiveAssistant(current, reconciledDetail.messages)"
+    );
     expect(source).toContain("const cached = readCachedMobileLiveAssistant(sessionId);");
     expect(source).toContain('snapshotStatus === "compacting"');
     expect(source).not.toContain('snapshotStatus === "tool_completed"');

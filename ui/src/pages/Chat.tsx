@@ -174,6 +174,7 @@ import { DiffCodeBlock, MessageContent } from "./chat/MessageContent";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
 import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
 import { ChatEnvironmentOverview } from "./chat/ChatEnvironmentOverview";
+import { parseInitialChatRoute } from "./chat/chatRoute";
 import { WorkspaceOpenMenu } from "./chat/WorkspaceOpenMenu";
 import { FileChangesCard } from "./chat/FileChangesCard";
 import { GitBranchSelector, type GitBranchOption } from "./chat/GitBranchSelector";
@@ -1587,7 +1588,10 @@ export function Chat() {
   const { data: environmentSubagents = [] } = useSubagents();
   const stopAgent = useStopAgent();
   const { data: info } = useInfo();
-  const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>();
+  const [initialChatRoute] = useState(() => parseInitialChatRoute(window.location.search));
+  const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(
+    initialChatRoute.agentId ?? undefined
+  );
   const [sessionAgentId, setSessionAgentId] = useState<string | null>(null);
   const [modelRouterEnabled, setModelRouterEnabled] = useState(false);
   const [useModelRouter, setUseModelRouter] = useState(false);
@@ -4029,12 +4033,7 @@ export function Chat() {
   }, [revertTarget, revertToMessage]);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const sessionParamRaw = params.get("session");
-    const sessionParam =
-      typeof sessionParamRaw === "string" && sessionParamRaw.trim().length > 0
-        ? sessionParamRaw.trim()
-        : null;
+    const sessionParam = initialChatRoute.sessionId;
     const persistedSessionId = readPersistedSessionId();
     const restoreGeneration = restoreSessionGenerationRef.current;
     const isRestorableChatSessionId = (value: unknown): value is string =>
@@ -4098,6 +4097,12 @@ export function Chat() {
     };
 
     void (async () => {
+      if (initialChatRoute.startFresh) {
+        suppressAutoRestoreRef.current = true;
+        persistSessionId(null);
+        window.history.replaceState({}, "", "/chat");
+        return;
+      }
       if (sessionParam) {
         await restoreSessionFromId(sessionParam, { replaceRoute: true });
         return;

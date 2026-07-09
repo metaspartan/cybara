@@ -3,6 +3,7 @@ import {
   clearCachedMobileLiveAssistant,
   liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
+  mergeLiveActivity,
   mobilePreSteerProcessActivities,
   prunePersistedMobileLiveAssistant,
   readCachedMobileLiveAssistant,
@@ -87,6 +88,61 @@ describe("mobile live chat cache", () => {
     expect(live.processActivities?.map((activity) => activity.text)).toEqual([
       "Ran repo review command",
     ]);
+  });
+
+  test("merges partial snapshots without dropping earlier tool activity", () => {
+    const sessionId = `mobile-partial-snapshot-${Date.now()}`;
+    const current = {
+      ...liveAssistantMessage(sessionId, null, 1783015200000),
+      processActivities: [
+        {
+          id: "tool-1",
+          phase: "result" as const,
+          text: "Read package.json",
+          timestamp: 1783015200100,
+          toolName: "read",
+          toolCallId: "tool-1",
+        },
+      ],
+    };
+
+    const live = liveAssistantFromStatusSnapshot(sessionId, current, {
+      sessionId,
+      status: "tool_executing",
+      timestamp: 1783015200500,
+      activities: [
+        {
+          id: "tool-2",
+          phase: "start",
+          text: "Running tests",
+          timestamp: 1783015200500,
+          toolName: "exec",
+          toolCallId: "tool-2",
+        },
+      ],
+    });
+
+    expect(live.processActivities?.map((activity) => activity.text)).toEqual([
+      "Read package.json",
+      "Running tests",
+    ]);
+  });
+
+  test("does not discard older live activities during long runs", () => {
+    let activities = [];
+    for (let index = 0; index < 24; index += 1) {
+      activities = mergeLiveActivity(activities, {
+        id: `tool-${index}`,
+        phase: "result",
+        text: `Ran command ${index}`,
+        timestamp: 1783015200000 + index,
+        toolName: "exec",
+        toolCallId: `tool-${index}`,
+      });
+    }
+
+    expect(activities).toHaveLength(24);
+    expect(activities[0]?.text).toBe("Ran command 0");
   });
 
   test("drops cached live rows after matching activity is persisted", () => {

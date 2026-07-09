@@ -186,15 +186,28 @@ export function mergeLiveActivity(
   current: SessionProcessActivitySummary[],
   incoming: SessionProcessActivitySummary
 ): SessionProcessActivitySummary[] {
-  const key = incoming.toolCallId || incoming.id;
-  const next = [...current];
-  const index = next.findIndex((activity) => (activity.toolCallId || activity.id) === key);
-  if (index >= 0) {
-    next[index] = { ...next[index], ...incoming };
-  } else {
-    next.push(incoming);
+  return mergeMobileLiveActivities(current, [incoming]);
+}
+
+export function mergeMobileLiveActivities(
+  current: SessionProcessActivitySummary[],
+  incoming: SessionProcessActivitySummary[]
+): SessionProcessActivitySummary[] {
+  const next = current.map((activity) => ({ ...activity }));
+  const indexes = new Map(
+    next.map((activity, index) => [activity.toolCallId || activity.id, index] as const)
+  );
+  for (const activity of incoming) {
+    const activityKey = activity.toolCallId || activity.id;
+    const index = indexes.get(activityKey);
+    if (typeof index === "number") {
+      next[index] = { ...next[index], ...activity };
+    } else {
+      indexes.set(activityKey, next.length);
+      next.push({ ...activity });
+    }
   }
-  return next.slice(-12);
+  return next;
 }
 
 export function mobilePreSteerProcessActivities(
@@ -244,11 +257,19 @@ export function liveAssistantFromStatusSnapshot(
 ): SessionDetailSummary["messages"][number] {
   const timestamp = typeof snapshot.timestamp === "number" ? snapshot.timestamp : Date.now();
   const base = liveAssistantMessage(sessionId, current, timestamp);
+  const currentActivities = (base.processActivities || []).filter(
+    (activity) =>
+      !(
+        activity.toolName === "__thought" &&
+        activity.text.trim().toLowerCase() === "thinking..." &&
+        activity.id.startsWith("live-thinking-")
+      )
+  );
   return {
     ...base,
     processActivities:
       snapshot.activities.length > 0
-        ? snapshot.activities.map((activity) => ({ ...activity }))
+        ? mergeMobileLiveActivities(currentActivities, snapshot.activities)
         : base.processActivities,
   };
 }
