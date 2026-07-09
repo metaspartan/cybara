@@ -15,6 +15,7 @@ interface IndexedFileRecord {
   relativePath: string;
   relativePathLower: string;
   baseNameLower: string;
+  sizeBytes: number;
 }
 
 export interface WorkspaceIndexerStatus {
@@ -101,6 +102,27 @@ const BINARY_EXTENSIONS = new Set([
 const HOME_DIR = homedir();
 const HOME_ROOTS = Array.from(new Set([resolve(HOME_DIR), resolveCanonicalPath(HOME_DIR)]));
 const STATUS_UPDATE_INTERVAL = 200;
+const SEMANTIC_WORKSPACE_MAX_FILE_SIZE_BYTES = 256 * 1024;
+const SEMANTIC_WORKSPACE_EMBEDDING_BATCH_SIZE = 24;
+const SEMANTIC_WORKSPACE_EMBEDDING_CONCURRENCY = 1;
+const HARD_IGNORE_DIRS = new Set([
+  ".git",
+  ".hg",
+  ".svn",
+  ".research",
+  ".cache",
+  ".gradle",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".ruff_cache",
+  ".expo",
+  "node_modules",
+  "dist",
+  "build",
+  "target",
+  "coverage",
+  "__pycache__",
+]);
 
 function resolveCanonicalPath(pathValue: string): string {
   try {
@@ -654,8 +676,9 @@ class WorkspaceIndexer {
   }
 
   private shouldSkipDirectory(name: string, settings: WorkspaceIndexerSettings): boolean {
-    if (!settings.includeHidden && name.startsWith(".")) return true;
     const normalizedName = name.trim().toLowerCase();
+    if (HARD_IGNORE_DIRS.has(normalizedName)) return true;
+    if (!settings.includeHidden && name.startsWith(".")) return true;
     return settings.ignoreDirs.includes(normalizedName);
   }
 
@@ -768,6 +791,7 @@ class WorkspaceIndexer {
             relativePath,
             relativePathLower: relativePath.toLowerCase(),
             baseNameLower: basename(relativePath).toLowerCase(),
+            sizeBytes: fileStats.size,
           });
           this.filesIndexed = discoveredFiles.length;
 
@@ -849,7 +873,9 @@ class WorkspaceIndexer {
     settings: WorkspaceIndexerSettings,
     previousIndexedFiles: IndexedFileRecord[]
   ): Promise<void> {
-    const semanticCandidates = this.indexedFiles.slice(0, settings.semanticMaxFiles);
+    const semanticCandidates = this.indexedFiles
+      .filter((file) => file.sizeBytes <= SEMANTIC_WORKSPACE_MAX_FILE_SIZE_BYTES)
+      .slice(0, settings.semanticMaxFiles);
     if (semanticCandidates.length === 0) {
       this.semanticReady = false;
       return;
@@ -892,7 +918,11 @@ class WorkspaceIndexer {
           const chunks = await vectorStore.indexFile(
             `${workspacePrefix}/${candidate.relativePath}`,
             content,
-            "workspace"
+            "workspace",
+            {
+              embeddingBatchSize: SEMANTIC_WORKSPACE_EMBEDDING_BATCH_SIZE,
+              embeddingConcurrency: SEMANTIC_WORKSPACE_EMBEDDING_CONCURRENCY,
+            }
           );
           if (chunks > 0) {
             indexedFileCount += 1;
@@ -906,9 +936,7 @@ class WorkspaceIndexer {
         this.progress = Math.max(this.progress, Math.min(99, Math.floor(40 + ratio * 59)));
         this.semanticIndexedFiles = indexedFileCount;
         this.semanticIndexedChunks = indexedChunkCount;
-        if (index % 10 === 0) {
-          await new Promise<void>((resolveYield) => setTimeout(resolveYield, 0));
-        }
+        await new Promise<void>((resolveYield) => setTimeout(resolveYield, 0));
       }
 
       this.semanticIndexedFiles = indexedFileCount;

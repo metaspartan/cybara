@@ -38,6 +38,7 @@ interface WorkerReport {
   searchInvalidPath: SearchShape;
   afterChange: SearchShape;
   removedGoneAfterReindex: SearchShape;
+  hardIgnoredWithHiddenEnabled: SearchShape;
   emptyStatus: { state: string; filesIndexed: number };
   emptySearch: SearchShape;
   homeRootStatus: { state: string; indexedWorkspacePath: string | null };
@@ -95,6 +96,23 @@ rmSync(join(ws, "alpha.ts"));
 await workspaceIndexer.reindex();
 const afterChange = await workspaceIndexer.search("delta-new");
 const removedGoneAfterReindex = await workspaceIndexer.search("alpha.ts");
+
+mkdirSync(join(ws, ".research", "hermes-agent"), { recursive: true });
+mkdirSync(join(ws, "coverage"), { recursive: true });
+mkdirSync(join(ws, "custom_ignored"), { recursive: true });
+writeFileSync(join(ws, ".research", "hermes-agent", "ignored.ts"), "export const hiddenResearch = 1;\\n");
+writeFileSync(join(ws, "coverage", "ignored.ts"), "export const ignoredCoverage = 1;\\n");
+writeFileSync(join(ws, "custom_ignored", "ignored.ts"), "export const ignoredCustom = 1;\\n");
+writeFileSync(join(ws, ".visible-hidden.ts"), "export const visibleHidden = 1;\\n");
+workspaceIndexer.updateSettings({
+  enabled: true,
+  semanticEnabled: false,
+  autoReindexOnWorkspaceSet: true,
+  includeHidden: true,
+  ignoreDirs: ["custom_ignored"],
+});
+await workspaceIndexer.reindex(ws);
+const hardIgnoredWithHiddenEnabled = await workspaceIndexer.search("");
 
 const emptyWs = join(home, "empty-project");
 mkdirSync(emptyWs, { recursive: true });
@@ -161,6 +179,7 @@ console.log(
       searchInvalidPath: pick(searchInvalidPath),
       afterChange: pick(afterChange),
       removedGoneAfterReindex: pick(removedGoneAfterReindex),
+      hardIgnoredWithHiddenEnabled: pick(hardIgnoredWithHiddenEnabled),
       emptyStatus: { state: emptyStatusFull.state, filesIndexed: emptyStatusFull.filesIndexed },
       emptySearch: pick(emptySearch),
       homeRootStatus: {
@@ -245,6 +264,14 @@ describe("workspace indexer lexical indexing", () => {
     expect(paths.some((p) => p.includes("node_modules"))).toBe(false);
     expect(paths.some((p) => p.includes(".git"))).toBe(false);
     expect(paths.some((p) => p.includes(".hidden"))).toBe(false);
+  });
+
+  test("keeps heavy generated and research directories ignored when hidden files are enabled", () => {
+    const paths = report.hardIgnoredWithHiddenEnabled.files.map((f) => f.relativePath);
+    expect(paths).toContain(".visible-hidden.ts");
+    expect(paths.some((p) => p.includes(".research"))).toBe(false);
+    expect(paths.some((p) => p.includes("coverage"))).toBe(false);
+    expect(paths.some((p) => p.includes("custom_ignored"))).toBe(false);
   });
 
   test("indexes files with null bytes and huge lines without crashing", () => {
