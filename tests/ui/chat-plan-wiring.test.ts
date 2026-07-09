@@ -65,6 +65,8 @@ describe("chat plan and artifact UI wiring", () => {
     expect(chatPage).toContain("useEnvironmentGitBranches(effectiveWorkspaceDir)");
     expect(chatPage).toContain("gitBranch={environmentGit.currentBranch}");
     expect(source).toContain("/api/git/branches?path=");
+    expect(source).toContain("GIT_BRANCH_LOAD_TIMEOUT_MS");
+    expect(source).toContain("signal: controller.signal");
     expect(source).toContain('apiFetch("/api/git/branch"');
     expect(source).toContain("function GitBranchSelector");
     expect(source).toContain("Search branches");

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -46,6 +46,13 @@ afterAll(() => {
 });
 
 describe("getGitStatus", () => {
+  test("bounds git subprocess duration", () => {
+    const source = readFileSync(join(process.cwd(), "src", "api", "git-api.ts"), "utf8");
+    expect(source).toContain("GIT_COMMAND_TIMEOUT_MS");
+    expect(source).toContain("proc.kill()");
+    expect(source).toContain('stderr: timedOut ? "Git command timed out"');
+  });
+
   test("reports repo root, branch, and file buckets", async () => {
     const status = await getGitStatus(repoDir);
     expect(status.isRepo).toBe(true);

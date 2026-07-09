@@ -1229,7 +1229,7 @@ export const chatApi = {
       }[]
     >("/sessions" + (suffix ? `?${suffix}` : ""));
   },
-  getSession: (id: string, options?: { includeFullToolCalls?: boolean }) =>
+  getSession: (id: string, options?: { includeFullToolCalls?: boolean; signal?: AbortSignal }) =>
     fetchApi<{
       id: string;
       agent_id: string;
@@ -1245,7 +1245,9 @@ export const chatApi = {
       tokenUsage?: SessionTokenUsage;
       plan?: SessionPlanSnapshot | null;
       messagesList: ChatMessage[];
-    }>("/sessions/" + id + (options?.includeFullToolCalls ? "?includeFullToolCalls=1" : "")),
+    }>("/sessions/" + id + (options?.includeFullToolCalls ? "?includeFullToolCalls=1" : ""), {
+      signal: options?.signal,
+    }),
   getSessionPlan: (id: string) =>
     fetchApi<{ sessionId: string; plan: SessionPlanSnapshot | null }>("/sessions/" + id + "/plan"),
   updateSessionAgent: (id: string, agentId: string) =>
@@ -1393,9 +1395,10 @@ export const chatApi = {
 };
 
 export const workspaceOpenApi = {
-  targets: (path: string) =>
+  targets: (path: string, signal?: AbortSignal) =>
     fetchApi<{ success: boolean; path: string; targets: WorkspaceOpenTarget[]; error?: string }>(
-      `/ide/open-targets?path=${encodeURIComponent(path)}`
+      `/ide/open-targets?path=${encodeURIComponent(path)}`,
+      { signal }
     ),
   open: (path: string, targetId: string) =>
     fetchApi<{ success: boolean; path: string; error?: string }>("/ide/open", {

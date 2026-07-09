@@ -19,7 +19,7 @@ describe("metrics performance wiring", () => {
     expect(metricsRoute).not.toContain('metrics.getByType("token_usage") as MetricsEntry[];');
   });
 
-  test("session token summaries use keyed rollups before json metadata fallback", () => {
+  test("session token summaries never scan legacy json metadata on chat load", () => {
     const tracker = read("src/core/llm/token-usage-tracking.ts");
     const sessionContext = read("src/core/session-context.ts");
     const database = read("src/core/database.ts");
@@ -31,7 +31,10 @@ describe("metrics performance wiring", () => {
     expect(tracker).toContain("key: tokenMetadata.sessionId");
     expect(sessionContext).toContain("WHERE type = 'token_usage_by_session'");
     expect(sessionContext).toContain("AND key = ?");
-    expect(sessionContext).toContain("WHERE type = 'token_usage'");
-    expect(sessionContext).toContain("json_extract(metadata, '$.sessionId') = ?");
+    const summaryStart = sessionContext.indexOf("export function summarizeSessionTokenUsage");
+    const summaryEnd = sessionContext.indexOf("export function estimateSessionContextUsage");
+    const summary = sessionContext.slice(summaryStart, summaryEnd);
+    expect(summary).not.toContain("legacySessionTokenUsage");
+    expect(summary).not.toContain("json_extract(metadata, '$.sessionId')");
   });
 });

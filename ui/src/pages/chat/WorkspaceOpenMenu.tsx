@@ -67,6 +67,7 @@ export function WorkspaceOpenMenu({
   const rootRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const targetLoadRequestRef = useRef(0);
+  const targetLoadAbortRef = useRef<AbortController | null>(null);
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const [targets, setTargets] = useState<WorkspaceOpenTarget[]>([]);
@@ -80,32 +81,41 @@ export function WorkspaceOpenMenu({
     if (!trimmedWorkspace) return;
     const requestId = targetLoadRequestRef.current + 1;
     targetLoadRequestRef.current = requestId;
+    targetLoadAbortRef.current?.abort();
+    const controller = new AbortController();
+    targetLoadAbortRef.current = controller;
+    let timedOut = false;
     setLoading(true);
     const timeoutId = window.setTimeout(() => {
       if (targetLoadRequestRef.current !== requestId) return;
+      timedOut = true;
+      controller.abort();
       setTargets((current) => (current.length > 0 ? current : FALLBACK_WORKSPACE_TARGETS));
       setLoading(false);
       addToast("error", "App detection is taking longer than expected. Cybara IDE is still ready.");
     }, WORKSPACE_TARGET_LOAD_TIMEOUT_MS);
     try {
-      const response = await workspaceOpenApi.targets(trimmedWorkspace);
+      const response = await workspaceOpenApi.targets(trimmedWorkspace, controller.signal);
       if (targetLoadRequestRef.current !== requestId) return;
       if (!response.success || !response.data?.success) {
         throw new Error(response.data?.error || response.error || "Unable to load open targets");
       }
       setTargets(response.data.targets);
     } catch (error) {
-      if (targetLoadRequestRef.current !== requestId) return;
+      if (targetLoadRequestRef.current !== requestId || timedOut) return;
       setTargets(FALLBACK_WORKSPACE_TARGETS);
       addToast("error", error instanceof Error ? error.message : "Unable to load open targets");
     } finally {
       window.clearTimeout(timeoutId);
-      if (targetLoadRequestRef.current === requestId) setLoading(false);
+      if (targetLoadAbortRef.current === controller) targetLoadAbortRef.current = null;
+      if (targetLoadRequestRef.current === requestId && !timedOut) setLoading(false);
     }
   }, [addToast, trimmedWorkspace]);
 
   useEffect(() => {
     if (!trimmedWorkspace) {
+      targetLoadAbortRef.current?.abort();
+      targetLoadAbortRef.current = null;
       setTargets([]);
       setOpen(false);
       return;
@@ -113,6 +123,13 @@ export function WorkspaceOpenMenu({
     setTargets([]);
     setLoading(false);
   }, [trimmedWorkspace]);
+
+  useEffect(
+    () => () => {
+      targetLoadAbortRef.current?.abort();
+    },
+    []
+  );
 
   useEffect(() => {
     if (!open || !trimmedWorkspace || targets.length > 0 || loading) return;

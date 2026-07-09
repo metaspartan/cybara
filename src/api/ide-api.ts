@@ -1,7 +1,7 @@
 import { readdir, readFile, stat, writeFile, mkdir, rename } from "fs/promises";
-import { join, basename, extname, dirname, resolve, relative, isAbsolute, delimiter } from "path";
+import { join, basename, extname, dirname, resolve, relative, isAbsolute } from "path";
 import { homedir } from "os";
-import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "fs";
 import { getGitStatus } from "./git-api";
 import { checkWritePath } from "../core/tools/path-policy";
 
@@ -13,12 +13,13 @@ const SEARCH_HARD_MAX_FILES_SCANNED = 100_000;
 const WORKSPACE_OPEN_TARGET_CACHE_MS = 60_000;
 const commandAvailabilityCache = new Map<string, boolean>();
 const commandPathCache = new Map<string, string | null>();
-const windowsExecutablePathCache = new Map<string, string | null>();
+const windowsExecutablePathCache = new Map<string, Promise<string | null>>();
 let workspaceOpenTargetsCache: {
   platform: NodeJS.Platform;
   expiresAt: number;
   targets: WorkspaceOpenTarget[];
 } | null = null;
+let workspaceOpenTargetsPromise: Promise<WorkspaceOpenTarget[]> | null = null;
 
 function resolveCanonicalPath(path: string): string {
   try {
@@ -1384,16 +1385,7 @@ function commandAvailable(command: string): boolean {
   const cacheKey = `${process.platform}:${command}`;
   const cached = commandAvailabilityCache.get(cacheKey);
   if (typeof cached === "boolean") return cached;
-  if (process.platform === "win32") {
-    const available = windowsPathCommandPath(command) !== null;
-    commandAvailabilityCache.set(cacheKey, available);
-    return available;
-  }
-  const result = Bun.spawnSync(["which", command], {
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  const available = (result.exitCode ?? 1) === 0;
+  const available = Bun.which(command) !== null;
   commandAvailabilityCache.set(cacheKey, available);
   return available;
 }
@@ -1414,27 +1406,9 @@ function windowsPathCommandPath(command: string): string | null {
   if (process.platform !== "win32") return null;
   const cacheKey = `path:${command.toLowerCase()}`;
   if (commandPathCache.has(cacheKey)) return commandPathCache.get(cacheKey) ?? null;
-  const pathEntries = (process.env.PATH || "")
-    .split(delimiter)
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-  const extensionCandidates = /\.[a-z0-9]+$/i.test(command)
-    ? [""]
-    : (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
-        .split(";")
-        .map((extension) => extension.trim())
-        .filter(Boolean);
-  for (const entry of pathEntries) {
-    for (const extension of extensionCandidates) {
-      const candidate = join(entry, `${command}${extension}`);
-      if (existsSync(candidate)) {
-        commandPathCache.set(cacheKey, candidate);
-        return candidate;
-      }
-    }
-  }
-  commandPathCache.set(cacheKey, null);
-  return null;
+  const resolved = Bun.which(command);
+  commandPathCache.set(cacheKey, resolved);
+  return resolved;
 }
 
 function macAppBundlePath(appName: string): string | null {
@@ -1489,30 +1463,45 @@ function windowsDirectExecutableCandidates(executableNames: string[]): string[] 
   return candidates;
 }
 
-function findExecutableUnderKnownVendorRoots(executableNames: string[]): string | null {
-  const vendorRoots = windowsProgramRoots()
-    .flatMap((root) => [
-      join(root, "JetBrains"),
-      join(root, "Microsoft VS Code"),
-      join(root, "Cursor"),
-      join(root, "Windsurf"),
-      join(root, "Zed"),
-    ])
-    .filter((root) => existsSync(root));
+async function pathExists(pathValue: string): Promise<boolean> {
+  try {
+    await stat(pathValue);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-  for (const root of vendorRoots) {
+async function findExecutableUnderKnownVendorRoots(
+  executableNames: string[]
+): Promise<string | null> {
+  const vendorRootCandidates = windowsProgramRoots().flatMap((root) => [
+    join(root, "JetBrains"),
+    join(root, "Programs"),
+    join(root, "Microsoft VS Code"),
+    join(root, "Cursor"),
+    join(root, "Windsurf"),
+    join(root, "Zed"),
+  ]);
+  const vendorRoots = (
+    await Promise.all(
+      vendorRootCandidates.map(async (root) => ({ root, exists: await pathExists(root) }))
+    )
+  ).filter((entry) => entry.exists);
+
+  for (const { root } of vendorRoots) {
     let entries: string[];
     try {
-      entries = readdirSync(root);
+      entries = await readdir(root);
     } catch {
       continue;
     }
     for (const entry of entries.slice(0, 80)) {
       for (const executable of executableNames) {
         const direct = join(root, entry, executable);
-        if (existsSync(direct)) return direct;
+        if (await pathExists(direct)) return direct;
         const bin = join(root, entry, "bin", executable);
-        if (existsSync(bin)) return bin;
+        if (await pathExists(bin)) return bin;
       }
     }
   }
@@ -1526,21 +1515,18 @@ function windowsExecutableCacheKey(executableNames: string[]): string {
     .join("|");
 }
 
-function findWindowsExecutablePath(executableNames: string[]): string | null {
+function findWindowsExecutablePath(executableNames: string[]): Promise<string | null> {
   const cacheKey = windowsExecutableCacheKey(executableNames);
-  if (windowsExecutablePathCache.has(cacheKey)) {
-    return windowsExecutablePathCache.get(cacheKey) ?? null;
-  }
-  let detected: string | null = null;
-  for (const candidate of windowsDirectExecutableCandidates(executableNames)) {
-    if (existsSync(candidate)) {
-      detected = candidate;
-      break;
+  const cached = windowsExecutablePathCache.get(cacheKey);
+  if (cached) return cached;
+  const pending = (async (): Promise<string | null> => {
+    for (const candidate of windowsDirectExecutableCandidates(executableNames)) {
+      if (await pathExists(candidate)) return candidate;
     }
-  }
-  if (!detected) detected = findExecutableUnderKnownVendorRoots(executableNames);
-  windowsExecutablePathCache.set(cacheKey, detected);
-  return detected;
+    return await findExecutableUnderKnownVendorRoots(executableNames);
+  })();
+  windowsExecutablePathCache.set(cacheKey, pending);
+  return pending;
 }
 
 function windowsCommandPath(executableNames: string[]): string | null {
@@ -1550,15 +1536,15 @@ function windowsCommandPath(executableNames: string[]): string | null {
   );
 }
 
-function windowsExecutableAvailable(executableNames: string[]): boolean {
+async function windowsExecutableAvailable(executableNames: string[]): Promise<boolean> {
   if (process.platform !== "win32") return false;
   if (executableNames.some(commandAvailable)) return true;
-  return Boolean(findWindowsExecutablePath(executableNames));
+  return Boolean(await findWindowsExecutablePath(executableNames));
 }
 
-function windowsExecutablePath(executableNames: string[]): string | null {
+async function windowsExecutablePath(executableNames: string[]): Promise<string | null> {
   if (process.platform !== "win32") return null;
-  return windowsCommandPath(executableNames) || findWindowsExecutablePath(executableNames);
+  return windowsCommandPath(executableNames) || (await findWindowsExecutablePath(executableNames));
 }
 
 const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
@@ -1745,12 +1731,12 @@ const MAC_SYSTEM_APP_NAMES: Record<string, string[]> = {
   terminal: ["Terminal"],
 };
 
-function definitionAvailable(definition: WorkspaceOpenTargetDefinition): boolean {
+async function definitionAvailable(definition: WorkspaceOpenTargetDefinition): Promise<boolean> {
   if (definition.platforms && !definition.platforms.includes(process.platform)) return false;
   if (definition.kind === "internal") return true;
   if (process.platform === "darwin" && definition.macApps?.some(macAppExists)) return true;
   if (process.platform === "win32" && definition.windowsExecutables) {
-    return windowsExecutableAvailable(definition.windowsExecutables);
+    return await windowsExecutableAvailable(definition.windowsExecutables);
   }
   return definition.commands?.some(commandAvailable) ?? false;
 }
@@ -1839,7 +1825,7 @@ function validateWorkspaceOpenPath(
   return { success: true, path: targetPath };
 }
 
-function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
+async function availableTargetsForPlatform(): Promise<WorkspaceOpenTarget[]> {
   const now = Date.now();
   if (
     workspaceOpenTargetsCache &&
@@ -1848,94 +1834,102 @@ function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
   ) {
     return workspaceOpenTargetsCache.targets;
   }
-  const targets: WorkspaceOpenTarget[] = [
-    ...WORKSPACE_OPEN_TARGET_DEFINITIONS.map((definition) => ({
-      id: definition.id,
-      label: definition.label,
-      kind: definition.kind,
-      icon: definition.icon,
-      iconUrl: definition.iconUrl,
-      available: definitionAvailable(definition),
-      detail: definition.id === "cybara_ide" ? "Open in Cybara's workspace IDE" : undefined,
-    })),
-  ];
+  if (workspaceOpenTargetsPromise) return await workspaceOpenTargetsPromise;
+  workspaceOpenTargetsPromise = (async (): Promise<WorkspaceOpenTarget[]> => {
+    const targets: WorkspaceOpenTarget[] = await Promise.all(
+      WORKSPACE_OPEN_TARGET_DEFINITIONS.map(async (definition) => ({
+        id: definition.id,
+        label: definition.label,
+        kind: definition.kind,
+        icon: definition.icon,
+        iconUrl: definition.iconUrl,
+        available: await definitionAvailable(definition),
+        detail: definition.id === "cybara_ide" ? "Open in Cybara's workspace IDE" : undefined,
+      }))
+    );
 
-  if (process.platform === "darwin") {
-    targets.push(
-      {
-        id: "finder",
-        label: "Finder",
-        kind: "file-manager",
-        icon: "finder",
-        iconUrl: "/app-icons/finder.svg",
-        available: true,
-      },
-      {
-        id: "terminal",
-        label: "Terminal",
-        kind: "terminal",
-        icon: "terminal",
-        iconUrl: "/app-icons/terminal.svg",
-        available: true,
-      }
-    );
-  } else if (process.platform === "win32") {
-    targets.push(
-      {
-        id: "explorer",
-        label: "Explorer",
-        kind: "file-manager",
-        icon: "folder",
-        iconUrl: "/app-icons/explorer.svg",
-        available: true,
-      },
-      {
-        id: "terminal",
-        label: "Terminal",
-        kind: "terminal",
-        icon: "terminal",
-        iconUrl: "/app-icons/terminal.svg",
-        available: true,
-      }
-    );
-  } else {
-    targets.push(
-      {
-        id: "files",
-        label: "Files",
-        kind: "file-manager",
-        icon: "folder",
-        iconUrl: "/app-icons/files.svg",
-        available: commandAvailable("xdg-open"),
-      },
-      {
-        id: "terminal",
-        label: "Terminal",
-        kind: "terminal",
-        icon: "terminal",
-        iconUrl: "/app-icons/terminal.svg",
-        available: ["gnome-terminal", "konsole", "xfce4-terminal", "x-terminal-emulator"].some(
-          commandAvailable
-        ),
-      }
-    );
+    if (process.platform === "darwin") {
+      targets.push(
+        {
+          id: "finder",
+          label: "Finder",
+          kind: "file-manager",
+          icon: "finder",
+          iconUrl: "/app-icons/finder.svg",
+          available: true,
+        },
+        {
+          id: "terminal",
+          label: "Terminal",
+          kind: "terminal",
+          icon: "terminal",
+          iconUrl: "/app-icons/terminal.svg",
+          available: true,
+        }
+      );
+    } else if (process.platform === "win32") {
+      targets.push(
+        {
+          id: "explorer",
+          label: "Explorer",
+          kind: "file-manager",
+          icon: "folder",
+          iconUrl: "/app-icons/explorer.svg",
+          available: true,
+        },
+        {
+          id: "terminal",
+          label: "Terminal",
+          kind: "terminal",
+          icon: "terminal",
+          iconUrl: "/app-icons/terminal.svg",
+          available: true,
+        }
+      );
+    } else {
+      targets.push(
+        {
+          id: "files",
+          label: "Files",
+          kind: "file-manager",
+          icon: "folder",
+          iconUrl: "/app-icons/files.svg",
+          available: commandAvailable("xdg-open"),
+        },
+        {
+          id: "terminal",
+          label: "Terminal",
+          kind: "terminal",
+          icon: "terminal",
+          iconUrl: "/app-icons/terminal.svg",
+          available: ["gnome-terminal", "konsole", "xfce4-terminal", "x-terminal-emulator"].some(
+            commandAvailable
+          ),
+        }
+      );
+    }
+
+    const availableTargets = targets
+      .filter((target) => target.available)
+      .map((target) => ({
+        ...target,
+        iconUrl:
+          target.id === "cybara_ide"
+            ? "/cybara.png"
+            : cachedMacAppIconDataUrl(target.id) || target.iconUrl,
+      }));
+    workspaceOpenTargetsCache = {
+      platform: process.platform,
+      expiresAt: now + WORKSPACE_OPEN_TARGET_CACHE_MS,
+      targets: availableTargets,
+    };
+    return availableTargets;
+  })();
+  try {
+    return await workspaceOpenTargetsPromise;
+  } finally {
+    workspaceOpenTargetsPromise = null;
   }
-
-  const availableTargets = targets
-    .filter((target) => target.available)
-    .map((target) => ({
-      ...target,
-      iconUrl:
-        target.id === "cybara_ide"
-          ? "/cybara.png"
-          : cachedMacAppIconDataUrl(target.id) || target.iconUrl,
-    }));
-  workspaceOpenTargetsCache = {
-    platform: process.platform,
-    expiresAt: now + WORKSPACE_OPEN_TARGET_CACHE_MS,
-    targets: availableTargets,
-  };
-  return availableTargets;
 }
 
 function openWithCommand(targetPath: string, command: string, appName?: string): RevealResult {
@@ -1969,10 +1963,10 @@ function openMacApp(targetPath: string, appName: string): RevealResult {
   return { success: true, path: targetPath };
 }
 
-function openWorkspaceDefinition(
+async function openWorkspaceDefinition(
   targetPath: string,
   definition: WorkspaceOpenTargetDefinition
-): RevealResult {
+): Promise<RevealResult> {
   if (process.platform === "darwin") {
     const command = definition.commands?.find(commandAvailable);
     if (command) return openWithCommand(targetPath, command);
@@ -1984,7 +1978,7 @@ function openWorkspaceDefinition(
     const command = definition.commands?.find(commandAvailable);
     if (command) return openWithCommand(targetPath, command);
     const executable = definition.windowsExecutables
-      ? windowsExecutablePath(definition.windowsExecutables)
+      ? await windowsExecutablePath(definition.windowsExecutables)
       : null;
     if (executable) return openWithCommand(targetPath, executable);
   }
@@ -2303,7 +2297,7 @@ export async function listWorkspaceOpenTargets(
   return {
     success: true,
     path: validation.path,
-    targets: availableTargetsForPlatform(),
+    targets: await availableTargetsForPlatform(),
   };
 }
 
@@ -2328,7 +2322,7 @@ export async function openWorkspaceTarget(
       {
         const definition = targetDefinition(targetId);
         if (definition) {
-          return openWorkspaceDefinition(targetPath, definition);
+          return await openWorkspaceDefinition(targetPath, definition);
         }
       }
       return {

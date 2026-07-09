@@ -195,7 +195,13 @@ describe("status stream websocket wiring", () => {
   test("chat session selection uses bounded session detail payloads", () => {
     const source = readSource(useChatPath);
     const loadSessionDetail = source.slice(source.indexOf("const loadSessionDetail"));
-    expect(loadSessionDetail).toContain("chatApi.getSession(sessionId)");
+    expect(loadSessionDetail).toContain(
+      "chatApi.getSession(sessionId, { signal: controller.signal })"
+    );
+    expect(loadSessionDetail).toContain("SESSION_DETAIL_TIMEOUT_MS");
+    expect(loadSessionDetail).toContain(
+      "queryFn: ({ signal }) => loadSessionDetail(sessionId, signal)"
+    );
     expect(loadSessionDetail).not.toContain("includeFullToolCalls: true");
   });
 
@@ -203,6 +209,8 @@ describe("status stream websocket wiring", () => {
     const source = readSource(workspaceOpenMenuPath);
     expect(source).toContain("WORKSPACE_TARGET_LOAD_TIMEOUT_MS");
     expect(source).toContain("FALLBACK_WORKSPACE_TARGETS");
+    expect(source).toContain("targetLoadAbortRef");
+    expect(source).toContain("workspaceOpenApi.targets(trimmedWorkspace, controller.signal)");
     expect(source).toContain("if (!open || !trimmedWorkspace || targets.length > 0 || loading)");
     const resetStart = source.indexOf("setTargets([]);");
     const resetEnd = source.indexOf("useEffect(() => {\n    if (!open", resetStart);

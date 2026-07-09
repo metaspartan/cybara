@@ -64,9 +64,13 @@ describe("IDE workspace open targets", () => {
     expect(source).toContain("windowsPathCommandPath");
     expect(source).toContain("windowsDirectExecutableCandidates");
     expect(source).toContain("findExecutableUnderKnownVendorRoots");
+    expect(source).toContain("async function windowsExecutableAvailable");
+    expect(source).toContain("await pathExists(candidate)");
+    expect(source).toContain("workspaceOpenTargetsPromise");
     expect(source).not.toContain("findNestedExecutable");
     expect(source).not.toContain("windowsProgramRoots().some((root)");
     expect(source).not.toContain('Bun.spawnSync(["where"');
+    expect(source).not.toContain('Bun.spawnSync(["which"');
   });
 
   test("workspace open targets use packaged icons for Windows and Linux targets", () => {

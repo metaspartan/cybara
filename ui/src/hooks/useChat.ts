@@ -21,6 +21,7 @@ const CHAT_SESSION_LIST_LIMIT = 150;
 export const SESSION_DETAIL_QUERY_KEY = "session-detail";
 const SESSION_DETAIL_STALE_MS = 45_000;
 const SESSION_DETAIL_GC_MS = 10 * 60_000;
+const SESSION_DETAIL_TIMEOUT_MS = 15_000;
 
 export interface LoadedChatSession {
   id: string;
@@ -428,13 +429,28 @@ export function useUpdateSessionAgent() {
 
 export function useLoadSession() {
   const queryClient = useQueryClient();
-  const loadSessionDetail = useCallback(async (sessionId: string): Promise<LoadedChatSession> => {
-    const response = await chatApi.getSession(sessionId);
-    if (response.success && response.data) {
-      return response.data as LoadedChatSession;
-    }
-    throw new Error(response.error || "Failed to load session");
-  }, []);
+  const loadSessionDetail = useCallback(
+    async (sessionId: string, querySignal?: AbortSignal): Promise<LoadedChatSession> => {
+      const controller = new AbortController();
+      const abortFromQuery = () => controller.abort(querySignal?.reason);
+      querySignal?.addEventListener("abort", abortFromQuery, { once: true });
+      const timeoutId = globalThis.setTimeout(
+        () => controller.abort(new DOMException("Session load timed out", "TimeoutError")),
+        SESSION_DETAIL_TIMEOUT_MS
+      );
+      try {
+        const response = await chatApi.getSession(sessionId, { signal: controller.signal });
+        if (response.success && response.data) {
+          return response.data as LoadedChatSession;
+        }
+        throw new Error(response.error || "Failed to load session");
+      } finally {
+        globalThis.clearTimeout(timeoutId);
+        querySignal?.removeEventListener("abort", abortFromQuery);
+      }
+    },
+    []
+  );
 
   const mutation = useMutation({
     mutationFn: (sessionId: string) =>
@@ -442,7 +458,7 @@ export function useLoadSession() {
         queryKey: sessionDetailQueryKey(sessionId),
         staleTime: SESSION_DETAIL_STALE_MS,
         gcTime: SESSION_DETAIL_GC_MS,
-        queryFn: () => loadSessionDetail(sessionId),
+        queryFn: ({ signal }) => loadSessionDetail(sessionId, signal),
       }),
   });
 

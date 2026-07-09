@@ -24,6 +24,7 @@ interface CachedGitBranches {
 }
 
 const branchCache = new Map<string, CachedGitBranches>();
+const GIT_BRANCH_LOAD_TIMEOUT_MS = 6000;
 
 function normalizeGitBranches(value: unknown): GitBranchOption[] {
   if (!Array.isArray(value)) return [];
@@ -51,17 +52,24 @@ export function useEnvironmentGitBranches(workspaceDir: string | null) {
   const [changingBranch, setChangingBranch] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  const requestAbortRef = useRef<AbortController | null>(null);
 
   const refresh = useCallback(async () => {
     const workspace = workspaceDir?.trim();
     const requestId = ++requestIdRef.current;
     if (!workspace) {
+      requestAbortRef.current?.abort();
+      requestAbortRef.current = null;
       setBranches([]);
       setCurrentBranch(null);
       setRoot(null);
       setError(null);
       return;
     }
+    requestAbortRef.current?.abort();
+    const controller = new AbortController();
+    requestAbortRef.current = controller;
+    const timeoutId = window.setTimeout(() => controller.abort(), GIT_BRANCH_LOAD_TIMEOUT_MS);
     const cached = branchCache.get(workspace);
     if (cached) {
       setBranches(cached.branches);
@@ -71,7 +79,9 @@ export function useEnvironmentGitBranches(workspaceDir: string | null) {
     }
     setLoading(true);
     try {
-      const response = await apiFetch(`/api/git/branches?path=${encodeURIComponent(workspace)}`);
+      const response = await apiFetch(`/api/git/branches?path=${encodeURIComponent(workspace)}`, {
+        signal: controller.signal,
+      });
       const data = (await response.json().catch(() => ({}))) as GitBranchesResponse;
       if (requestId !== requestIdRef.current) return;
       if (!response.ok || data.success === false) {
@@ -99,6 +109,8 @@ export function useEnvironmentGitBranches(workspaceDir: string | null) {
       }
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
+      window.clearTimeout(timeoutId);
+      if (requestAbortRef.current === controller) requestAbortRef.current = null;
       if (requestId === requestIdRef.current) {
         setLoading(false);
       }
@@ -151,6 +163,13 @@ export function useEnvironmentGitBranches(workspaceDir: string | null) {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(
+    () => () => {
+      requestAbortRef.current?.abort();
+    },
+    []
+  );
 
   return {
     branches,

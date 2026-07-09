@@ -47,6 +47,7 @@ interface GitStatusOptions {
 const GIT_ROOT_CACHE_TTL_MS = 5000;
 const GIT_STATUS_CACHE_TTL_MS = 2000;
 const GIT_BRANCH_CACHE_TTL_MS = 1500;
+const GIT_COMMAND_TIMEOUT_MS = 5000;
 
 const gitRootCache = new Map<string, { value: string | null; expiresAt: number }>();
 const gitStatusCache = new Map<string, { value: GitStatus; expiresAt: number }>();
@@ -69,13 +70,17 @@ async function runGit(
       stdout: "pipe",
       stderr: "pipe",
     });
+    let timedOut = false;
+    const timeoutId = setTimeout(() => {
+      timedOut = true;
+      proc.kill();
+    }, GIT_COMMAND_TIMEOUT_MS);
 
-    const [stdout, stderr] = await Promise.all([
+    const [stdout, stderr, exitCode] = await Promise.all([
       new Response(proc.stdout).text(),
       new Response(proc.stderr).text(),
-    ]);
-
-    const exitCode = await proc.exited;
+      proc.exited,
+    ]).finally(() => clearTimeout(timeoutId));
 
     return {
       // trimEnd only: leading whitespace is significant in `git status
@@ -83,8 +88,8 @@ async function runGit(
       // space), so a full trim() would shift the status columns of the first
       // line and truncate its path.
       stdout: stdout.trimEnd(),
-      stderr: stderr.trim(),
-      success: exitCode === 0,
+      stderr: timedOut ? "Git command timed out" : stderr.trim(),
+      success: !timedOut && exitCode === 0,
     };
   } catch (e) {
     return {
