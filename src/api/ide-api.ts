@@ -1612,6 +1612,11 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
   },
 ];
 
+const MAC_SYSTEM_APP_NAMES: Record<string, string[]> = {
+  finder: ["Finder"],
+  terminal: ["Terminal"],
+};
+
 function definitionAvailable(definition: WorkspaceOpenTargetDefinition): boolean {
   if (definition.platforms && !definition.platforms.includes(process.platform)) return false;
   if (definition.kind === "internal") return true;
@@ -1650,9 +1655,8 @@ function macAppIconSource(appPath: string): string | null {
 
 function cachedMacAppIconDataUrl(targetId: string): string | undefined {
   if (process.platform !== "darwin") return undefined;
-  const appPath = targetDefinition(targetId)
-    ?.macApps?.map(macAppBundlePath)
-    .find((path): path is string => Boolean(path));
+  const appNames = targetDefinition(targetId)?.macApps ?? MAC_SYSTEM_APP_NAMES[targetId];
+  const appPath = appNames?.map(macAppBundlePath).find((path): path is string => Boolean(path));
   if (!appPath) return undefined;
   const iconSource = macAppIconSource(appPath);
   if (!iconSource) return undefined;
