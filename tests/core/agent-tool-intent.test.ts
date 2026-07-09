@@ -18,8 +18,19 @@ describe("implicit builtin tool intent selection", () => {
   test("selects coding tools for repository review requests", () => {
     const names = namesFor("review this repo and fix the TypeScript tests");
     expect(names).toEqual(expect.arrayContaining(["read", "grep", "exec", "git", "todo"]));
+    expect(names).toEqual(expect.arrayContaining(["write", "edit", "apply_patch"]));
     expect(names).not.toContain("wallet");
     expect(names).not.toContain("browser");
+  });
+
+  test("keeps read-only repository prompts lean", () => {
+    const names = namesFor("use tools to read package.json and review repo token usage");
+    expect(names).toEqual(expect.arrayContaining(["read", "grep", "exec", "git", "todo"]));
+    expect(names).not.toContain("write");
+    expect(names).not.toContain("edit");
+    expect(names).not.toContain("apply_patch");
+    expect(names).not.toContain("weather");
+    expect(names).not.toContain("clipboard");
   });
 
   test("selects browser tools for current web lookup requests", () => {
@@ -38,6 +49,21 @@ describe("implicit builtin tool intent selection", () => {
     const names = namesFor("Use the exec tool to run exactly: printf cybara");
     expect(names).toContain("exec");
     expect(names).not.toContain("execute_code");
+  });
+
+  test("token accounting prompts do not advertise wallet tools", () => {
+    const names = namesFor(
+      "review the repo token usage, input tokens, output tokens, and context metrics"
+    );
+    expect(names).toEqual(expect.arrayContaining(["read", "grep", "exec"]));
+    expect(names).not.toContain("write");
+    expect(names).not.toContain("wallet");
+  });
+
+  test("crypto token actions still advertise wallet tools", () => {
+    expect(namesFor("show my wallet balance and token prices")).toContain("wallet");
+    expect(namesFor("send 1 USDC token on Solana")).toContain("wallet");
+    expect(namesFor("get a Jupiter quote to swap tokens")).toContain("wallet");
   });
 
   test("cuts default tool schema payload by an order of magnitude for simple chat", () => {

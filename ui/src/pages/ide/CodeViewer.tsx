@@ -183,6 +183,8 @@ import {
   IdeLiveActivityTimeline,
 } from "./IdeActivityTimeline";
 
+const BLAME_POPOVER_HOVER_DELAY_MS = 1000;
+
 export function CodeViewer({
   path,
   previewMode = false,
@@ -303,6 +305,7 @@ export function CodeViewer({
   const appliedJumpRequestRef = useRef<string>("");
   const hasUnsavedChangesRef = useRef(false);
   const blameHideTimeoutRef = useRef<number | null>(null);
+  const blameShowTimeoutRef = useRef<number | null>(null);
   const scrollMetricsFrameRef = useRef<number | null>(null);
   const pendingScrollMetricsRef = useRef<{
     top: number;
@@ -655,6 +658,10 @@ export function CodeViewer({
       window.clearTimeout(blameHideTimeoutRef.current);
       blameHideTimeoutRef.current = null;
     }
+    if (blameShowTimeoutRef.current !== null) {
+      window.clearTimeout(blameShowTimeoutRef.current);
+      blameShowTimeoutRef.current = null;
+    }
     setBlamePopoverLine(null);
     setCopiedCommit(null);
     setCursorLine(1);
@@ -723,6 +730,10 @@ export function CodeViewer({
       if (blameHideTimeoutRef.current !== null) {
         window.clearTimeout(blameHideTimeoutRef.current);
         blameHideTimeoutRef.current = null;
+      }
+      if (blameShowTimeoutRef.current !== null) {
+        window.clearTimeout(blameShowTimeoutRef.current);
+        blameShowTimeoutRef.current = null;
       }
       if (completionDebounceRef.current !== null) {
         window.clearTimeout(completionDebounceRef.current);
@@ -2625,13 +2636,37 @@ export function CodeViewer({
     }
   };
 
+  const clearBlameShowTimer = () => {
+    if (blameShowTimeoutRef.current !== null) {
+      window.clearTimeout(blameShowTimeoutRef.current);
+      blameShowTimeoutRef.current = null;
+    }
+  };
+
   const showBlamePopover = (line: number) => {
     clearBlameHideTimer();
-    setBlamePopoverLine(line);
+    clearBlameShowTimer();
+    // Zed-like: once a blame popover is already open, switching to an adjacent
+    // line is instant (warm). When none is open, wait ~1s so scrolling and
+    // moving the cursor through a file stays smooth and doesn't flash popovers.
+    if (blamePopoverLine !== null) {
+      setBlamePopoverLine(line);
+      return;
+    }
+    blameShowTimeoutRef.current = window.setTimeout(() => {
+      blameShowTimeoutRef.current = null;
+      setBlamePopoverLine(line);
+    }, BLAME_POPOVER_HOVER_DELAY_MS);
+  };
+
+  const cancelBlamePopover = () => {
+    clearBlameShowTimer();
+    scheduleHideBlamePopover();
   };
 
   const scheduleHideBlamePopover = () => {
     clearBlameHideTimer();
+    clearBlameShowTimer();
     blameHideTimeoutRef.current = window.setTimeout(() => {
       setBlamePopoverLine(null);
       blameHideTimeoutRef.current = null;
@@ -3184,6 +3219,7 @@ export function CodeViewer({
                                 whiteSpace: "pre",
                                 overflowWrap: "normal",
                                 wordBreak: "normal",
+                                tabSize: 4,
                                 lineHeight: `${normalizedLineHeight}px`,
                                 fontSize: `${normalizedFontSize}px`,
                                 fontFamily:
@@ -3203,15 +3239,19 @@ export function CodeViewer({
                                   pendingDeletedBlocksByLine.get(i + 1)
                                 );
                                 const blameLine = blameLines.get(i + 1) || null;
-                                const blameDate = formatBlameStamp(blameLine?.authorDate);
-                                const blameSummary =
-                                  blameLine?.summary ||
-                                  (blameLine?.isUncommitted ? "Uncommitted" : "");
-                                const blameText = blameLine
-                                  ? `${blameLine.author} · ${blameLine.shortCommit}${blameDate ? ` · ${blameDate}` : ""}${blameSummary ? ` · ${blameSummary}` : ""}`
-                                  : "";
                                 const shouldShowLineBlame =
                                   (isActiveLine || blameAllLines) && showInlineBlame && !!blameLine;
+                                const blameDate = shouldShowLineBlame
+                                  ? formatBlameStamp(blameLine?.authorDate)
+                                  : "";
+                                const blameSummary = shouldShowLineBlame
+                                  ? blameLine?.summary ||
+                                    (blameLine?.isUncommitted ? "Uncommitted" : "")
+                                  : "";
+                                const blameText =
+                                  shouldShowLineBlame && blameLine
+                                    ? `${blameLine.author} · ${blameLine.shortCommit}${blameDate ? ` · ${blameDate}` : ""}${blameSummary ? ` · ${blameSummary}` : ""}`
+                                    : "";
                                 const lineProps = getLineProps({ line });
                                 return (
                                   <div
@@ -3277,7 +3317,7 @@ export function CodeViewer({
                                         <button
                                           type="button"
                                           onMouseEnter={() => showBlamePopover(i + 1)}
-                                          onMouseLeave={scheduleHideBlamePopover}
+                                          onMouseLeave={cancelBlamePopover}
                                           disabled={!blameLine}
                                           className={cn(
                                             "max-w-full truncate border-0 bg-transparent p-0 text-left font-mono text-[14px] leading-[22px]",
@@ -3387,7 +3427,7 @@ export function CodeViewer({
                       spellCheck={false}
                       wrap="off"
                       style={{
-                        tabSize: 2,
+                        tabSize: 4,
                         lineHeight: `${normalizedLineHeight}px`,
                         fontSize: `${normalizedFontSize}px`,
                         color: "transparent",

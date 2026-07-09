@@ -1,14 +1,11 @@
 import type { ToolDefinition } from "./database";
 
 const baseTools = ["todo", "clarify"];
-const codeTools = [
+const codeReadTools = [
   "read",
-  "write",
-  "edit",
   "file_search",
   "grep",
   "workspace_index_search",
-  "apply_patch",
   "exec",
   "process",
   "git",
@@ -17,6 +14,11 @@ const codeTools = [
   "lsp_references",
   "lsp_hover",
   "lsp_languages",
+];
+const codeWriteTools = [
+  "write",
+  "edit",
+  "apply_patch",
   "artifacts",
 ];
 const browserTools = ["browser", "web_fetch", "web_search", "x_search", "http", "data"];
@@ -74,6 +76,14 @@ function includesAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text));
 }
 
+function isWalletIntent(text: string): boolean {
+  return includesAny(text, [
+    /\b(wallet|balance|send|swap|trade|price|quote|address|transaction|sign|portfolio|chain|solana|ethereum|crypto|btc|bitcoin|eth|erc20|spl|jupiter|uniswap|pyth|chainlink)\b/,
+    /\b(token|tokens)\b.*\b(send|swap|trade|price|quote|balance|address|transaction|wallet|solana|ethereum|crypto|jupiter|uniswap)\b/,
+    /\b(send|swap|trade|price|quote|balance)\b.*\b(token|tokens)\b/,
+  ]);
+}
+
 function latestUserText(messages: Array<{ role?: string; content?: string }> = []): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -108,7 +118,15 @@ export function selectBuiltinToolNamesForIntent(
       /\/users\/|src\/|apps\/|tests\/|package\.json|cargo\.toml|\.ts\b|\.tsx\b|\.swift\b|\.rs\b/,
     ])
   ) {
-    addTools(selected, [...baseTools, ...codeTools, ...utilityTools]);
+    addTools(selected, [...baseTools, ...codeReadTools]);
+    if (
+      includesAny(text, [
+        /\b(fix|implement|refactor|write|edit|patch|apply patch|change|update|modify|create|delete|remove|add|repair)\b/,
+        /\bcommit|pr|pull request\b/,
+      ])
+    ) {
+      addTools(selected, codeWriteTools);
+    }
   }
 
   if (
@@ -125,14 +143,13 @@ export function selectBuiltinToolNamesForIntent(
   }
 
   if (includesAny(text, [/\b(subagent|agent|session|background|parallel|delegate|spawn)\b/])) {
-    addTools(selected, [...baseTools, ...sessionTools, ...codeTools]);
+    addTools(selected, [...baseTools, ...sessionTools, ...codeReadTools]);
+    if (includesAny(text, [/\b(fix|implement|write|edit|patch|change|update|modify)\b/])) {
+      addTools(selected, codeWriteTools);
+    }
   }
 
-  if (
-    includesAny(text, [
-      /\b(wallet|balance|send|swap|trade|token|price|quote|address|transaction|sign|portfolio|chain|solana|ethereum|crypto)\b/,
-    ])
-  ) {
+  if (isWalletIntent(text)) {
     addTools(selected, [...baseTools, ...walletTools]);
   }
 

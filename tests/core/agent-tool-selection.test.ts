@@ -88,6 +88,23 @@ describe("normalizeExplicitAgentTools", () => {
     expect(names).toContain("calc");
   });
 
+  test("refreshes partial broad builtin snapshots instead of treating them as fixed schemas", () => {
+    const partialLegacy = getToolSchemasForLLM()
+      .filter((tool) => !["sessions_send", "sessions_spawn", "wallet"].includes(tool.name))
+      .slice(0, 42)
+      .map((tool) => ({
+        name: tool.name,
+        description: `stale ${tool.name}`,
+        input_schema: { type: "object", properties: {} },
+      }));
+
+    const names = normalizeExplicitAgentTools(partialLegacy).map((tool) => tool.name);
+    const currentEnabledNames = getToolSchemasForLLM().map((tool) => tool.name);
+
+    expect(names).toEqual(currentEnabledNames);
+    expect(names.length).toBeGreaterThan(partialLegacy.length);
+  });
+
   test("keeps narrow intentional allowlists narrow", () => {
     expect(normalizeExplicitAgentTools([{ name: "read" }]).map((tool) => tool.name)).toEqual([
       "read",
@@ -139,5 +156,54 @@ describe("legacy broad builtin snapshots", () => {
     expect(captured[0]).toEqual([]);
     expect(captured[1]).toEqual(expect.arrayContaining(["read", "grep", "exec", "git"]));
     expect(captured[1].length).toBeLessThan(getToolSchemasForLLM().length / 2);
+  });
+
+  test("partial broad builtin snapshots are narrowed by intent at execution time", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Partial Intent Provider",
+      api_key: "sk-partial-intent",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const partialSnapshot = JSON.stringify(
+      getToolSchemasForLLM()
+        .filter((tool) => tool.name !== "sessions_send")
+        .slice(0, 42)
+        .map((tool) => ({ name: tool.name }))
+    );
+    const agent = agentManager.create({
+      name: "Partial Intent Agent",
+      provider_id: provider.id,
+      model: "gpt-partial-intent",
+      tools: partialSnapshot,
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    const captured: string[][] = [];
+    const originalCallLLM = agentManager.callLLM.bind(agentManager) as CallLLMShape;
+    (agentManager as unknown as { callLLM: CallLLMShape }).callLLM = async (
+      _provider,
+      _model,
+      _messages,
+      tools
+    ) => {
+      captured.push(tools.map((tool) => tool.name));
+      return { content: "ok" };
+    };
+
+    try {
+      await agentManager.execute(agent.id, [
+        { role: "user", content: "review repo token usage in package.json" },
+      ]);
+    } finally {
+      (agentManager as unknown as { callLLM: CallLLMShape }).callLLM = originalCallLLM;
+    }
+
+    expect(captured[0]).toEqual(expect.arrayContaining(["read", "grep", "exec", "git"]));
+    expect(captured[0]).not.toContain("wallet");
+    expect(captured[0].length).toBeLessThan(getToolSchemasForLLM().length / 2);
   });
 });

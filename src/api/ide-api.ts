@@ -1228,9 +1228,19 @@ export async function listWorkspaceFiles(
   };
 }
 
+interface BlameCommitMeta {
+  author: string;
+  authorTime: string;
+  summary: string;
+}
+
 function parseBlamePorcelain(output: string): IdeBlameLine[] {
   const rows = output.split("\n");
   const lines: IdeBlameLine[] = [];
+  // `git blame --porcelain` emits full commit metadata only the first time a
+  // commit is seen; later lines from the same commit carry just the header.
+  // Remember metadata per commit so every line still resolves author/summary.
+  const commitMeta = new Map<string, BlameCommitMeta>();
   let index = 0;
 
   while (index < rows.length) {
@@ -1266,6 +1276,16 @@ function parseBlamePorcelain(output: string): IdeBlameLine[] {
     }
 
     if (!Number.isFinite(lineNumber) || lineNumber <= 0) continue;
+
+    const cached = commitMeta.get(rawCommit);
+    if (author || authorTime || summary) {
+      commitMeta.set(rawCommit, { author, authorTime, summary });
+    } else if (cached) {
+      author = cached.author;
+      authorTime = cached.authorTime;
+      summary = cached.summary;
+    }
+
     const parsedTime = Number.parseInt(authorTime, 10);
     const isUncommitted = /^0+$/.test(rawCommit);
     lines.push({
@@ -1506,7 +1526,7 @@ export async function getFileBlame(
     const relativePath = relative(gitStatus.root, targetPath).replaceAll("\\", "/");
 
     const proc = Bun.spawn(
-      ["git", "blame", "--line-porcelain", "-L", `1,${lineLimit}`, "--", relativePath],
+      ["git", "blame", "--porcelain", "-L", `1,${lineLimit}`, "--", relativePath],
       {
         cwd: gitStatus.root,
         stdout: "pipe",

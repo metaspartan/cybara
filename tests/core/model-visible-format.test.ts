@@ -67,4 +67,18 @@ describe("model-visible structured data formatting", () => {
 
     config.setTokenOptimizationSettings({ toonStructuredDataEnabled: true });
   });
+
+  test("agent tool-result context budget is capped below large model windows", () => {
+    const budget = (
+      agentManager as unknown as {
+        resolveContextGuardBudgets: (contextWindowTokens: number) => {
+          contextBudgetChars: number;
+          maxSingleToolResultChars: number;
+        };
+      }
+    ).resolveContextGuardBudgets(1_000_000);
+
+    expect(budget.contextBudgetChars).toBeGreaterThan(1_000_000);
+    expect(budget.maxSingleToolResultChars).toBe(6_000);
+  });
 });

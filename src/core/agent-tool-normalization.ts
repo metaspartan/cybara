@@ -39,6 +39,10 @@ function currentToolDefinition(tool: {
 export function isLegacyBuiltinSnapshot(tools: unknown[]): boolean {
   if (tools.length < 20) return false;
   const names = new Set(tools.map(toolName).filter(Boolean));
+  if (names.size > 0 && names.size === tools.length) {
+    const builtinNames = new Set(getToolSchemasForLLM().map((tool) => tool.name));
+    if ([...names].every((name) => builtinNames.has(name))) return true;
+  }
   return legacyBuiltinSnapshotMarkers.every((name) => names.has(name));
 }
 
