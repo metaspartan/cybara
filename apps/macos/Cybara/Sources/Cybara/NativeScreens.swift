@@ -1000,25 +1000,6 @@ struct ChatScreen: View {
             .disabled(workspaceSaving)
             .help(workspaceHelpText)
 
-            if activeWorkspaceDir != nil {
-                Button {
-                    showGitBranchPicker = true
-                    Task { await loadActiveGitBranch() }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.triangle.branch")
-                        Text(activeGitBranchLabel ?? "Branch")
-                            .lineLimit(1)
-                    }
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
-                }
-                .buttonStyle(.borderless)
-                .popover(isPresented: $showGitBranchPicker, arrowEdge: .bottom) {
-                    gitBranchPicker
-                }
-                .help("Change git branch")
-            }
-
             Button {
                 showFileDiffsPopover.toggle()
             } label: {
@@ -1061,27 +1042,6 @@ struct ChatScreen: View {
                 subagentsPopover
             }
             .help("Subagents")
-
-            Button {
-                Task {
-                    await loadSessions()
-                    if let selectedSessionID {
-                        await loadMessages(selectedSessionID)
-                    }
-                }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-            }
-            .buttonStyle(.borderless)
-            .help("Refresh chat")
-
-            Button {
-                startNewChat()
-            } label: {
-                Image(systemName: "square.and.pencil")
-            }
-            .buttonStyle(.borderless)
-            .help("New chat")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 13)
@@ -2034,10 +1994,25 @@ struct ChatScreen: View {
                         .truncationMode(.middle)
                 }
                 NativeEnvironmentRow(icon: "arrow.triangle.branch", label: "Branch") {
-                    Text(activeGitBranchLabel ?? "No branch")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(activeGitBranchLabel == nil ? .secondary : .primary)
-                        .lineLimit(1)
+                    Button {
+                        showGitBranchPicker = true
+                        Task { await loadActiveGitBranch() }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text(activeGitBranchLabel ?? "No branch")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(activeGitBranchLabel == nil ? .secondary : .primary)
+                                .lineLimit(1)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(activeWorkspaceDir == nil)
+                    .popover(isPresented: $showGitBranchPicker, arrowEdge: .trailing) {
+                        gitBranchPicker
+                    }
                 }
             }
 
@@ -3037,7 +3012,7 @@ private struct NativeToolNameCloud: View {
     let names: [String]
 
     var body: some View {
-        FlowLayout(spacing: 6) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 6)], alignment: .leading, spacing: 6) {
             ForEach(names.prefix(18), id: \.self) { name in
                 Text(name)
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -3058,7 +3033,7 @@ private func summarizeNativeChatFileChanges(_ messages: [GatewaySessionMessage])
         guard relevant else { continue }
         let paths = nativeToolFilePaths(tool)
         for path in paths {
-            let diff = nativeJSONString(tool.result, key: "diff") ?? nativeJSONString(tool.args, key: "diff") ?? ""
+            let diff = nativeJSONString(nativeJSONObject(tool.result), key: "diff") ?? nativeJSONString(tool.args, key: "diff") ?? ""
             let counts = nativeUnifiedDiffCounts(diff)
             files[path] = NativeChatFileChangeItem(
                 path: path,

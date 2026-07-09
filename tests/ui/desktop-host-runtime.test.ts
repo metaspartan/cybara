@@ -52,10 +52,25 @@ describe("desktop host runtime wiring", () => {
 
   test("chat workspace picker routes through shared desktop host dialog", () => {
     const chatTsx = readFileSync(join(ROOT_DIR, "ui", "src", "pages", "Chat.tsx"), "utf8");
+    const localFolderPicker = readFileSync(
+      join(ROOT_DIR, "ui", "src", "components", "LocalFolderPickerModal.tsx"),
+      "utf8"
+    );
+    const gatewayPaths = readFileSync(
+      join(ROOT_DIR, "ui", "src", "components", "settings", "GatewayPathSettingsSection.tsx"),
+      "utf8"
+    );
 
     expect(chatTsx).toContain("openDesktopDirectoryDialog");
     expect(chatTsx).toContain("isDesktopHostRuntime()");
+    expect(chatTsx).toContain("LocalFolderPickerModal");
+    expect(chatTsx).not.toContain("Enter workspace folder path");
+    expect(chatTsx).not.toContain("Unable to open native folder picker");
     expect(chatTsx).not.toContain("tauriOpenDialog");
+    expect(localFolderPicker).toContain("/api/ide/browse");
+    expect(localFolderPicker).toContain('entry.type === "directory"');
+    expect(gatewayPaths).toContain("LocalFolderPickerModal");
+    expect(gatewayPaths).toContain("isDesktopHostRuntime()");
   });
 
   test("desktop updater is bundled with the main UI chunk, not lazy-loaded on click", () => {

@@ -1,7 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { openDesktopDirectoryDialog } from "@/lib/desktopHost";
+import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
+import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
 import { settingsApi } from "@/lib/api";
 import { useUIStore } from "@/stores/uiStore";
 import type { InfoData } from "@/hooks/useApi";
@@ -32,6 +33,7 @@ export function GatewayPathSettingsSection({ infoData }: { infoData: InfoData })
   const [loading, setLoading] = useState(true);
   const [savingWorkspace, setSavingWorkspace] = useState(false);
   const [savingDataDir, setSavingDataDir] = useState(false);
+  const [folderPickerTarget, setFolderPickerTarget] = useState<"workspace" | "data" | null>(null);
   const detectedWorkspace =
     typeof infoData.defaultWorkspaceDir === "string" && infoData.defaultWorkspaceDir.trim()
       ? infoData.defaultWorkspaceDir.trim()
@@ -87,19 +89,41 @@ export function GatewayPathSettingsSection({ infoData }: { infoData: InfoData })
   }, [load]);
 
   async function chooseWorkspaceDir() {
-    const selected = await openDesktopDirectoryDialog({
-      defaultPath: defaultWorkspaceDir || detectedWorkspace,
-      title: "Choose Default Workspace",
-    });
-    if (selected) setDefaultWorkspaceDir(selected);
+    if (!isDesktopHostRuntime()) {
+      setFolderPickerTarget("workspace");
+      return;
+    }
+    try {
+      const selected = await openDesktopDirectoryDialog({
+        defaultPath: defaultWorkspaceDir || detectedWorkspace,
+        title: "Choose Default Workspace",
+      });
+      if (selected) {
+        setDefaultWorkspaceDir(selected);
+        return;
+      }
+    } catch {
+      setFolderPickerTarget("workspace");
+    }
   }
 
   async function chooseCybaraDataDir() {
-    const selected = await openDesktopDirectoryDialog({
-      defaultPath: cybaraDataDirDraft || configuredCybaraDataDir || activeCybaraDataDir,
-      title: "Choose Cybara Data Directory",
-    });
-    if (selected) setCybaraDataDirDraft(selected);
+    if (!isDesktopHostRuntime()) {
+      setFolderPickerTarget("data");
+      return;
+    }
+    try {
+      const selected = await openDesktopDirectoryDialog({
+        defaultPath: cybaraDataDirDraft || configuredCybaraDataDir || activeCybaraDataDir,
+        title: "Choose Cybara Data Directory",
+      });
+      if (selected) {
+        setCybaraDataDirDraft(selected);
+        return;
+      }
+    } catch {
+      setFolderPickerTarget("data");
+    }
   }
 
   async function saveWorkspaceDir() {
@@ -151,136 +175,165 @@ export function GatewayPathSettingsSection({ infoData }: { infoData: InfoData })
     loading || savingDataDir || cybaraDataDirForced || !cybaraDataDirDraft.trim();
 
   return (
-    <Card variant="liquid">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Folder className="w-5 h-5 text-cyan-400" />
-          Gateway Paths
-        </CardTitle>
-        <CardDescription>
-          Choose where new sessions start and where the gateway keeps its local data.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <div className="space-y-3">
-          <div>
-            <div className="text-sm font-medium text-gray-200">Default Workspace</div>
-            <p className="mt-1 text-xs text-gray-500">
-              New chats and agent prompts use this directory when no session workspace is selected.
-            </p>
+    <>
+      <LocalFolderPickerModal
+        isOpen={folderPickerTarget !== null}
+        onClose={() => setFolderPickerTarget(null)}
+        onSelect={(path) => {
+          if (folderPickerTarget === "data") {
+            setCybaraDataDirDraft(path);
+          } else {
+            setDefaultWorkspaceDir(path);
+          }
+        }}
+        defaultPath={
+          folderPickerTarget === "data"
+            ? cybaraDataDirDraft || configuredCybaraDataDir || activeCybaraDataDir
+            : defaultWorkspaceDir || detectedWorkspace
+        }
+        title={
+          folderPickerTarget === "data"
+            ? "Choose Cybara Data Directory"
+            : "Choose Default Workspace"
+        }
+        description={
+          folderPickerTarget === "data"
+            ? "Choose where the gateway should store local config, logs, memory, and media."
+            : "Choose the default local folder for new chats and workspace-aware prompts."
+        }
+      />
+      <Card variant="liquid">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Folder className="w-5 h-5 text-cyan-400" />
+            Gateway Paths
+          </CardTitle>
+          <CardDescription>
+            Choose where new sessions start and where the gateway keeps its local data.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="space-y-3">
+            <div>
+              <div className="text-sm font-medium text-gray-200">Default Workspace</div>
+              <p className="mt-1 text-xs text-gray-500">
+                New chats and agent prompts use this directory when no session workspace is
+                selected.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-3 items-end">
+              <Input
+                label="Workspace directory"
+                value={defaultWorkspaceDir}
+                placeholder={detectedWorkspace || "/Users/you"}
+                disabled={loading || savingWorkspace}
+                onChange={(event) => setDefaultWorkspaceDir(event.target.value)}
+              />
+              <Button
+                variant="secondary"
+                onClick={() => void chooseWorkspaceDir()}
+                disabled={savingWorkspace}
+              >
+                Browse
+              </Button>
+              <Button
+                leftIcon={
+                  savingWorkspace ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )
+                }
+                onClick={() => void saveWorkspaceDir()}
+                disabled={loading || savingWorkspace}
+              >
+                Save
+              </Button>
+            </div>
           </div>
-          <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-3 items-end">
-            <Input
-              label="Workspace directory"
-              value={defaultWorkspaceDir}
-              placeholder={detectedWorkspace || "/Users/you"}
-              disabled={loading || savingWorkspace}
-              onChange={(event) => setDefaultWorkspaceDir(event.target.value)}
-            />
-            <Button
-              variant="secondary"
-              onClick={() => void chooseWorkspaceDir()}
-              disabled={savingWorkspace}
-            >
-              Browse
-            </Button>
-            <Button
-              leftIcon={
-                savingWorkspace ? (
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )
-              }
-              onClick={() => void saveWorkspaceDir()}
-              disabled={loading || savingWorkspace}
-            >
-              Save
-            </Button>
-          </div>
-        </div>
 
-        <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-3">
-          <div className="flex items-start gap-3">
-            <Database className="mt-0.5 w-4 h-4 shrink-0 text-indigo-300" />
-            <div className="min-w-0 flex-1 space-y-3">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium text-gray-200">Data Directory</span>
-                  {cybaraDataDirRestartRequired && (
-                    <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-200">
-                      Restart required
-                    </span>
+          <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-3">
+            <div className="flex items-start gap-3">
+              <Database className="mt-0.5 w-4 h-4 shrink-0 text-indigo-300" />
+              <div className="min-w-0 flex-1 space-y-3">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-gray-200">Data Directory</span>
+                    {cybaraDataDirRestartRequired && (
+                      <span className="rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-200">
+                        Restart required
+                      </span>
+                    )}
+                    {cybaraDataDirForced && (
+                      <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-200">
+                        Environment forced
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Stores config, database, API keys, memory, logs, skills, and local media.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-3 items-end">
+                  <Input
+                    label="Configured data directory"
+                    value={cybaraDataDirDraft}
+                    placeholder={defaultCybaraDataDir || "~/.cybara"}
+                    disabled={loading || savingDataDir || cybaraDataDirForced}
+                    onChange={(event) => setCybaraDataDirDraft(event.target.value)}
+                  />
+                  <Button
+                    variant="secondary"
+                    onClick={() => void chooseCybaraDataDir()}
+                    disabled={savingDataDir || cybaraDataDirForced}
+                  >
+                    Browse
+                  </Button>
+                  <Button
+                    leftIcon={
+                      savingDataDir ? (
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Save className="w-4 h-4" />
+                      )
+                    }
+                    onClick={() => void saveCybaraDataDir()}
+                    disabled={saveDataDisabled || (!dataDirDirty && !cybaraDataDirRestartRequired)}
+                  >
+                    Save
+                  </Button>
+                </div>
+                <div className="grid gap-1 text-xs text-gray-500">
+                  <div>
+                    Active now:{" "}
+                    <span className="font-mono text-gray-300 break-all">{activeCybaraDataDir}</span>
+                  </div>
+                  {configuredCybaraDataDir !== activeCybaraDataDir && (
+                    <div>
+                      After restart:{" "}
+                      <span className="font-mono text-gray-300 break-all">
+                        {configuredCybaraDataDir}
+                      </span>
+                    </div>
+                  )}
+                  <div>Source: {cybaraDataDirSource}</div>
+                  {cybaraDataDirOverrideFile && !cybaraDataDirForced && (
+                    <div>
+                      Override file:{" "}
+                      <span className="font-mono text-gray-400 break-all">
+                        {cybaraDataDirOverrideFile}
+                      </span>
+                    </div>
                   )}
                   {cybaraDataDirForced && (
-                    <span className="rounded-full border border-cyan-400/30 bg-cyan-500/10 px-2 py-0.5 text-[11px] font-medium text-cyan-200">
-                      Environment forced
-                    </span>
+                    <div>Unset CYBARA_HOME before launch to manage this path from Settings.</div>
                   )}
                 </div>
-                <p className="mt-1 text-xs text-gray-500">
-                  Stores config, database, API keys, memory, logs, skills, and local media.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_auto] gap-3 items-end">
-                <Input
-                  label="Configured data directory"
-                  value={cybaraDataDirDraft}
-                  placeholder={defaultCybaraDataDir || "~/.cybara"}
-                  disabled={loading || savingDataDir || cybaraDataDirForced}
-                  onChange={(event) => setCybaraDataDirDraft(event.target.value)}
-                />
-                <Button
-                  variant="secondary"
-                  onClick={() => void chooseCybaraDataDir()}
-                  disabled={savingDataDir || cybaraDataDirForced}
-                >
-                  Browse
-                </Button>
-                <Button
-                  leftIcon={
-                    savingDataDir ? (
-                      <RefreshCw className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Save className="w-4 h-4" />
-                    )
-                  }
-                  onClick={() => void saveCybaraDataDir()}
-                  disabled={saveDataDisabled || (!dataDirDirty && !cybaraDataDirRestartRequired)}
-                >
-                  Save
-                </Button>
-              </div>
-              <div className="grid gap-1 text-xs text-gray-500">
-                <div>
-                  Active now:{" "}
-                  <span className="font-mono text-gray-300 break-all">{activeCybaraDataDir}</span>
-                </div>
-                {configuredCybaraDataDir !== activeCybaraDataDir && (
-                  <div>
-                    After restart:{" "}
-                    <span className="font-mono text-gray-300 break-all">
-                      {configuredCybaraDataDir}
-                    </span>
-                  </div>
-                )}
-                <div>Source: {cybaraDataDirSource}</div>
-                {cybaraDataDirOverrideFile && !cybaraDataDirForced && (
-                  <div>
-                    Override file:{" "}
-                    <span className="font-mono text-gray-400 break-all">
-                      {cybaraDataDirOverrideFile}
-                    </span>
-                  </div>
-                )}
-                {cybaraDataDirForced && (
-                  <div>Unset CYBARA_HOME before launch to manage this path from Settings.</div>
-                )}
               </div>
             </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </>
   );
 }

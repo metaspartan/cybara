@@ -80,6 +80,7 @@ import {
 } from "@/lib/chatImages";
 import { PageLayout } from "@/components/layout";
 import { GlassCard, Input, Badge, Modal, Button } from "@/components/ui";
+import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
 import { formatRelativeTime } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
 import { appendApiTokenParam, apiFetch } from "@/lib/auth";
@@ -1680,6 +1681,7 @@ export function Chat() {
   const [imageDragActive, setImageDragActive] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
+  const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const copiedMessageTimerRef = useRef<number | null>(null);
@@ -3840,35 +3842,21 @@ export function Chat() {
   );
 
   const handleSelectWorkspace = useCallback(async () => {
+    if (!isDesktopHostRuntime()) {
+      setShowWorkspacePicker(true);
+      return;
+    }
     try {
-      let selectedPath: string | null = null;
-
-      if (isDesktopHostRuntime()) {
-        selectedPath = await openDesktopDirectoryDialog({
-          defaultPath: effectiveWorkspaceDir || undefined,
-          title: "Select Session Workspace",
-        });
-      } else {
-        const manual = window.prompt("Enter workspace folder path", effectiveWorkspaceDir || "");
-        if (typeof manual === "string" && manual.trim()) {
-          selectedPath = manual.trim();
-        }
-      }
-
+      const selectedPath = await openDesktopDirectoryDialog({
+        defaultPath: effectiveWorkspaceDir || undefined,
+        title: "Select Session Workspace",
+      });
       if (selectedPath) {
         await applySessionWorkspace(selectedPath);
       }
     } catch (error) {
       console.error("Failed to select workspace:", error);
-      if (typeof window !== "undefined") {
-        const manual = window.prompt(
-          "Unable to open native folder picker. Enter workspace folder path manually:",
-          effectiveWorkspaceDir || ""
-        );
-        if (typeof manual === "string" && manual.trim()) {
-          await applySessionWorkspace(manual.trim());
-        }
-      }
+      setShowWorkspacePicker(true);
     }
   }, [applySessionWorkspace, effectiveWorkspaceDir]);
 
@@ -4143,6 +4131,14 @@ export function Chat() {
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
+      <LocalFolderPickerModal
+        isOpen={showWorkspacePicker}
+        onClose={() => setShowWorkspacePicker(false)}
+        onSelect={applySessionWorkspace}
+        defaultPath={effectiveWorkspaceDir}
+        title="Select Session Workspace"
+        description="Choose the local folder this chat should use for file tools, git context, and workspace-aware prompts."
+      />
       <div className="relative flex items-center justify-between px-3 sm:px-4 py-2 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl flex-shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
