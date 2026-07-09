@@ -6,7 +6,11 @@ const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
 
 describe("mobile: iOS-style detail layout", () => {
-  const screen = read("screens/DashboardScreen.tsx");
+  const screen =
+    read("screens/DashboardScreen.tsx") +
+    read("screens/dashboardDetailPanels.tsx") +
+    read("screens/dashboardSessionDetail.tsx") +
+    read("screens/dashboardSurfaceData.ts");
   // Styles were extracted out of the god component into a dedicated module.
   const styleSrc = read("screens/dashboardStyles.ts");
   const controls = read("screens/dashboardControls.tsx");

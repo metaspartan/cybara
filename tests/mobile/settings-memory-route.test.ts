@@ -6,7 +6,11 @@ const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
 
 describe("mobile settings: Memory lives on its own screen", () => {
-  const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardSettingsPanels.tsx");
+  const screen =
+    read("screens/DashboardScreen.tsx") +
+    read("screens/dashboardDetailPanels.tsx") +
+    read("screens/dashboardSettingsPanels.tsx") +
+    read("screens/dashboardSurfaceData.ts");
   const helpers = read("screens/dashboardHelpers.ts");
   const api = read("lib/api.ts");
 

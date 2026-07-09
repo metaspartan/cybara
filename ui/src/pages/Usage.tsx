@@ -7,7 +7,7 @@ import {
 } from "@/lib/providerPlanDisplay";
 import { cn } from "@/lib/utils";
 import type { ProviderPlanSnapshot, ProviderPlanStatusResponse } from "@/types";
-import { AlertTriangle, Gauge, RefreshCw } from "lucide-react";
+import { AlertTriangle, Gauge } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 function planHasUsage(plan: ProviderPlanSnapshot): boolean {
@@ -32,13 +32,10 @@ function sortPlans(a: ProviderPlanSnapshot, b: ProviderPlanSnapshot) {
 export function Usage() {
   const [status, setStatus] = useState<ProviderPlanStatusResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     setError(null);
-    const wasLoaded = !loading;
-    if (wasLoaded) setRefreshing(true);
     try {
       const response = await providerPlansApi.status();
       if (!response.success || !response.data) {
@@ -49,7 +46,6 @@ export function Usage() {
       setError(loadError instanceof Error ? loadError.message : String(loadError));
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
@@ -65,20 +61,7 @@ export function Usage() {
   );
 
   return (
-    <PageLayout
-      title="Usage"
-      subtitle="Coding plan windows and provider limits"
-      actions={
-        <button
-          onClick={() => void load()}
-          disabled={loading || refreshing}
-          className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-gray-200 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} />
-          Refresh
-        </button>
-      }
-    >
+    <PageLayout title="Usage" subtitle="Coding plan windows and provider limits">
       {loading ? (
         <UsageSkeleton />
       ) : error ? (

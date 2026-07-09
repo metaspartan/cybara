@@ -24,7 +24,10 @@ describe("mobile: task creation", () => {
   });
 
   test("Tasks tab renders TasksPanel with a create entry point + newTask route", () => {
-    const screen = read("screens/DashboardScreen.tsx");
+    const screen =
+      read("screens/DashboardScreen.tsx") +
+      read("screens/dashboardDetailPanels.tsx") +
+      read("screens/dashboardSurfaceData.ts");
     expect(screen).toContain("function TasksPanel(");
     expect(screen).toContain("<TasksPanel");
     expect(screen).toContain('kind: "newTask"');
@@ -35,7 +38,7 @@ describe("mobile: task creation", () => {
 });
 
 describe("mobile: home shortcuts", () => {
-  const screen = read("screens/DashboardScreen.tsx");
+  const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardSurfaceData.ts");
 
   test("Wallet is a Home shortcut, promoted ahead of providers", () => {
     const walletIdx = screen.indexOf('key: "wallet"');

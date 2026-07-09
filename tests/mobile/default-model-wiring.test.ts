@@ -4,9 +4,14 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
+const readDashboardModules = () =>
+  read("screens/DashboardScreen.tsx") +
+  read("screens/dashboardDetailPanels.tsx") +
+  read("screens/dashboardSettingsPanels.tsx") +
+  read("screens/dashboardSurfaceData.ts");
 
 describe("mobile: model config lives in agent details, not global settings", () => {
-  const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardSettingsPanels.tsx");
+  const screen = readDashboardModules();
 
   test("global settings do not carry a default-model field or quick pick", () => {
     expect(screen).not.toContain('label="Default model"');
@@ -20,7 +25,7 @@ describe("mobile: model config lives in agent details, not global settings", () 
 });
 
 describe("mobile: memory method toggle", () => {
-  const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardSettingsPanels.tsx");
+  const screen = readDashboardModules();
 
   test("recall-method selector lives on the Memory sub-page, not the settings tab", () => {
     // Recall now belongs to the Memory detail page (MemoryRecallCard),
@@ -51,7 +56,7 @@ describe("mobile: memory method toggle", () => {
 });
 
 describe("mobile: primary navigation", () => {
-  const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardSettingsPanels.tsx");
+  const screen = readDashboardModules();
 
   test("Tasks and Settings are bottom tabs (no header gear)", () => {
     expect(screen).toContain("tasks: CalendarCheck");
@@ -73,7 +78,7 @@ describe("mobile: primary navigation", () => {
 });
 
 describe("mobile: system prompt sub-page (web parity)", () => {
-  const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardSettingsPanels.tsx");
+  const screen = readDashboardModules();
 
   test("identity + instructions live on a dedicated System Prompt page reached from settings", () => {
     // Dedicated sub-page component + settings nav row + route
@@ -97,7 +102,7 @@ describe("mobile: system prompt sub-page (web parity)", () => {
 });
 
 describe("mobile: model router sub-page", () => {
-  const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardSettingsPanels.tsx");
+  const screen = readDashboardModules();
 
   test("router config lives on its own Model Router page reached from settings", () => {
     expect(screen).toContain("function ModelRouterPanel(");
@@ -129,7 +134,7 @@ describe("mobile: model router sub-page", () => {
 });
 
 describe("mobile HIG: safe-area inset on the tab bar", () => {
-  const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardSettingsPanels.tsx");
+  const screen = readDashboardModules();
 
   test("floats the tab bar above the home indicator using safe-area insets", () => {
     expect(screen).toContain("useSafeAreaInsets");

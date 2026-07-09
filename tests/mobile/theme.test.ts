@@ -62,7 +62,7 @@ describe("mobile theming", () => {
   });
 
   test("settings expose a System/Light/Dark appearance control", () => {
-    const screen = read("screens/DashboardScreen.tsx");
+    const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardDetailPanels.tsx");
     expect(screen).toContain('title="Appearance"');
     expect(screen).toContain("setAppearanceMode");
     expect(screen).toContain('{ label: "System", value: "system" }');

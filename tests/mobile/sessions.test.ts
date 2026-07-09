@@ -6,7 +6,10 @@ const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
 
 describe("mobile: chat management", () => {
-  const screen = read("screens/DashboardScreen.tsx");
+  const screen =
+    read("screens/DashboardScreen.tsx") +
+    read("screens/dashboardSessionDetail.tsx") +
+    read("screens/dashboardSurfaceData.ts");
 
   test("long-pressing a chat offers a native delete confirmation", () => {
     expect(screen).toContain("onLongPress={() => confirmDeleteSession(session)}");

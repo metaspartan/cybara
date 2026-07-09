@@ -6,7 +6,11 @@ const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
 
 describe("mobile settings: Speech lives on its own screen", () => {
-  const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardSettingsPanels.tsx");
+  const screen =
+    read("screens/DashboardScreen.tsx") +
+    read("screens/dashboardDetailPanels.tsx") +
+    read("screens/dashboardSettingsPanels.tsx") +
+    read("screens/dashboardSurfaceData.ts");
 
   test("there is a dedicated SpeechSettingsPanel with TTS + STT sections", () => {
     expect(screen).toContain("function SpeechSettingsPanel(");

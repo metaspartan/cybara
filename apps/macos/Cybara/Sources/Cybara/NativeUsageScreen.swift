@@ -29,19 +29,10 @@ struct UsageScreen: View {
                 HStack(alignment: .center) {
                     ScreenHeader(title: "Usage", subtitle: "Coding-plan windows across providers")
                     Spacer()
-                    VStack(alignment: .trailing, spacing: 6) {
-                        if let lastUpdated {
-                            Text("Updated \(lastUpdated.formatted(date: .omitted, time: .shortened))")
-                                .font(.system(size: 11, weight: .medium, design: .rounded))
-                                .foregroundStyle(.secondary)
-                        }
-                        Button {
-                            Task { await load(force: true) }
-                        } label: {
-                            Label(loading ? "Refreshing" : "Refresh", systemImage: "arrow.clockwise")
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(loading)
+                    if let lastUpdated {
+                        Text("Updated \(lastUpdated.formatted(date: .omitted, time: .shortened))")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
                     }
                 }
 
@@ -64,6 +55,12 @@ struct UsageScreen: View {
         }
         .task {
             if !loaded {
+                await load()
+            }
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000)
                 await load()
             }
         }

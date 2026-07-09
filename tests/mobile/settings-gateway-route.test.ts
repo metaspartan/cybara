@@ -8,6 +8,7 @@ const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
 describe("mobile settings: Gateway runtime controls", () => {
   const screen =
     read("screens/DashboardScreen.tsx") +
+    read("screens/dashboardDetailPanels.tsx") +
     read("screens/dashboardSettingsPanels.tsx") +
     read("screens/dashboardGatewayPanel.tsx");
   const api = read("lib/api.ts");
