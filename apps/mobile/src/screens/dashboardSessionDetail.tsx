@@ -25,9 +25,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   ArrowDown,
   ArrowUp,
+  Bot,
+  Clock3,
+  Folder,
+  Gauge,
+  GitBranch,
+  MessageSquareText,
   Paperclip,
   Pencil,
+  Pin,
   Send,
+  Settings2,
   ShieldAlert,
   Trash2,
   X,
@@ -51,12 +59,12 @@ import {
   MOBILE_CHAT_CHROME,
   MOBILE_CHAT_COMPOSER,
   MOBILE_NAV_CHROME,
-  buildMobileChatSettingsLines,
   mobileComposerHeightForDraft,
   boundedMobileComposerHeight,
   mobileFirstNonEmptyString,
   mobileSessionTitle,
   readMobileToolApprovalMode,
+  sessionProviderModelLabel,
 } from "../lib/dashboard";
 import type {
   AgentSummary,
@@ -197,8 +205,140 @@ function ChatApprovalBanner({ api }: { api: CybaraMobileApi }) {
 const MOBILE_CHAT_MAX_ATTACHMENTS = 8;
 const MOBILE_CHAT_MAX_IMAGE_BASE64_LENGTH = 7_000_000;
 
+type ChatSettingsAction = {
+  destructive?: boolean;
+  disabled?: boolean;
+  icon: typeof Settings2;
+  label: string;
+  onPress: () => void;
+};
+
+type ChatSettingsRow = {
+  detail?: string | null;
+  icon: typeof Settings2;
+  label: string;
+  value: string;
+};
+
 function pendingImageUri(image: MobileMessageImage): string {
   return `data:${image.mimeType || "image/jpeg"};base64,${image.data ?? ""}`;
+}
+
+function ChatSettingsInfoRow({ row }: { row: ChatSettingsRow }) {
+  const Icon = row.icon;
+  return (
+    <View style={styles.chatSettingsInfoRow}>
+      <View style={styles.chatSettingsInfoIcon}>
+        <Icon color={colors.textMuted} size={16} strokeWidth={2.2} />
+      </View>
+      <View style={styles.chatSettingsInfoText}>
+        <Text style={styles.chatSettingsInfoLabel}>{row.label}</Text>
+        <Text selectable style={styles.chatSettingsInfoValue}>
+          {row.value}
+        </Text>
+        {row.detail ? (
+          <Text selectable style={styles.chatSettingsInfoDetail}>
+            {row.detail}
+          </Text>
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+function ChatSettingsActionButton({ action }: { action: ChatSettingsAction }) {
+  const Icon = action.icon;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      disabled={action.disabled}
+      onPress={action.onPress}
+      style={[
+        styles.chatSettingsActionButton,
+        action.destructive && styles.chatSettingsActionButtonDestructive,
+        action.disabled && styles.chatSettingsActionButtonDisabled,
+      ]}
+    >
+      <Icon color={action.destructive ? colors.red : colors.text} size={16} strokeWidth={2.3} />
+      <Text
+        style={[
+          styles.chatSettingsActionText,
+          action.destructive && styles.chatSettingsActionTextDestructive,
+        ]}
+      >
+        {action.label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function ChatSettingsSheet({
+  actions,
+  onClose,
+  rows,
+  subtitle,
+  title,
+  visible,
+}: {
+  actions: ChatSettingsAction[];
+  onClose: () => void;
+  rows: ChatSettingsRow[];
+  subtitle: string;
+  title: string;
+  visible: boolean;
+}) {
+  return (
+    <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
+      <View style={styles.chatSettingsOverlay}>
+        <Pressable
+          accessibilityRole="button"
+          style={styles.chatSettingsBackdrop}
+          onPress={onClose}
+        />
+        <LiquidGlass
+          intensity={76}
+          contentStyle={styles.chatSettingsSheetContent}
+          style={styles.chatSettingsSheet}
+        >
+          <View style={styles.chatSettingsGrabber} />
+          <View style={styles.chatSettingsHeader}>
+            <View style={styles.chatSettingsTitleWrap}>
+              <Text numberOfLines={2} style={styles.chatSettingsTitle}>
+                {title}
+              </Text>
+              <Text numberOfLines={1} style={styles.chatSettingsSubtitle}>
+                {subtitle}
+              </Text>
+            </View>
+            <Pressable
+              accessibilityLabel="Close chat settings"
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={onClose}
+              style={styles.chatSettingsCloseButton}
+            >
+              <X color={colors.textMuted} size={18} strokeWidth={2.4} />
+            </Pressable>
+          </View>
+          <ScrollView
+            contentContainerStyle={styles.chatSettingsScrollContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.chatSettingsInfoGroup}>
+              {rows.map((row) => (
+                <ChatSettingsInfoRow key={row.label} row={row} />
+              ))}
+            </View>
+            <View style={styles.chatSettingsActionsGrid}>
+              {actions.map((action) => (
+                <ChatSettingsActionButton key={action.label} action={action} />
+              ))}
+            </View>
+          </ScrollView>
+        </LiquidGlass>
+      </View>
+    </Modal>
+  );
 }
 
 export function SessionDetailPanel({
@@ -226,9 +366,6 @@ export function SessionDetailPanel({
 }) {
   const insets = useSafeAreaInsets();
   const navFootprint = insets.bottom + MOBILE_NAV_CHROME.floatingMargin + MOBILE_NAV_CHROME.height;
-  // The composer bar is absolutely positioned, so KeyboardAvoidingView can't
-  // move it (and does nothing on Android). Track the keyboard height directly
-  // and lift the composer above it so what you type stays visible.
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   useEffect(() => {
     const showEvent = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -272,6 +409,7 @@ export function SessionDetailPanel({
   const [pendingSessionAgentId, setPendingSessionAgentId] = useState<string | null>(null);
   const [routerEnabled, setRouterEnabled] = useState(false);
   const [useModelRouter, setUseModelRouter] = useState(false);
+  const [chatSettingsVisible, setChatSettingsVisible] = useState(false);
   const [toolApprovalUpdating, setToolApprovalUpdating] = useState(false);
   const [pendingToolApprovalMode, setPendingToolApprovalMode] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -1300,83 +1438,153 @@ export function SessionDetailPanel({
     );
   };
 
+  const messageCount = detail?.messages.length ?? sessionSummary?.message_count ?? 0;
+  const updatedAt =
+    detail?.updatedAt ||
+    sessionSummary?.updated_at ||
+    detail?.messages[detail.messages.length - 1]?.timestamp;
+  const title = mobileSessionTitle({
+    title: mobileFirstNonEmptyString(detail?.title, sessionSummary?.title),
+  });
+  const agentId = mobileFirstNonEmptyString(detail?.agentId, sessionSummary?.agent_id);
+  const model = mobileFirstNonEmptyString(detail?.model, sessionSummary?.model);
+  const provider = mobileFirstNonEmptyString(
+    detail?.provider,
+    sessionSummary?.provider,
+    sessionSummary?.provider_id
+  );
+  const providerName = mobileFirstNonEmptyString(
+    detail?.providerName,
+    sessionSummary?.provider_name
+  );
+  const providerModelLabel = sessionProviderModelLabel({
+    agentId,
+    model,
+    provider,
+    providerName,
+  });
+  const selectedAgentLabel = useModelRouter
+    ? "Model Router"
+    : selectedAgent?.name || (agentId ? "Selected agent" : "Gateway default");
+  const contextSummary = contextUsage
+    ? `${mobileFormatTokenCount(contextUsage.usedTokens)} / ${mobileFormatTokenCount(
+        contextUsage.limitTokens
+      )} tokens (${contextUsage.usedPercent}%)`
+    : "Loading from gateway";
+  const tokenSummary =
+    detail?.tokenUsage && detail.tokenUsage.totalTokens > 0
+      ? `${mobileFormatTokenCount(detail.tokenUsage.inputTokens)} in / ${mobileFormatTokenCount(
+          detail.tokenUsage.outputTokens
+        )} out`
+      : "No token usage recorded";
+  const planDetail = mobileProviderPlanDetail(activeProviderPlan);
+  const chatSettingsRows: ChatSettingsRow[] = [
+    {
+      icon: Bot,
+      label: "Agent",
+      value: selectedAgentLabel,
+      detail: providerModelLabel !== selectedAgentLabel ? providerModelLabel : null,
+    },
+    {
+      icon: MessageSquareText,
+      label: "Messages",
+      value: `${messageCount} message${messageCount === 1 ? "" : "s"}`,
+      detail: `Updated ${absoluteTimestampLabel(updatedAt)}`,
+    },
+    {
+      icon: Gauge,
+      label: "Context",
+      value: contextSummary,
+      detail: mobileContextUsageDetail(contextUsage),
+    },
+    {
+      icon: Clock3,
+      label: "Tokens",
+      value: tokenSummary,
+      detail: mobileSessionTokenUsageDetail(detail?.tokenUsage),
+    },
+    ...(planDetail
+      ? [
+          {
+            icon: Gauge,
+            label: "Plan usage",
+            value: planDetail.replace(/^Plan usage:\s*/, ""),
+          } satisfies ChatSettingsRow,
+        ]
+      : []),
+    {
+      icon: ShieldAlert,
+      label: "Tool approvals",
+      value: toolApprovalLabel,
+    },
+    {
+      icon: Folder,
+      label: "Workspace",
+      value: compactWorkspace(chatWorkspaceDir),
+      detail:
+        chatWorkspaceDir && compactWorkspace(chatWorkspaceDir) !== chatWorkspaceDir
+          ? chatWorkspaceDir
+          : null,
+    },
+    {
+      icon: GitBranch,
+      label: "Branch",
+      value: gitBranch || (gitBranchLoading ? "Loading..." : "No branch"),
+      detail: gitBranchError,
+    },
+  ];
+  const runFromChatSettings = (action: () => void) => {
+    setChatSettingsVisible(false);
+    setTimeout(action, 180);
+  };
+  const chatSettingsActions: ChatSettingsAction[] = [
+    {
+      icon: ShieldAlert,
+      label: "Tool approvals",
+      disabled: toolApprovalUpdating,
+      onPress: () => runFromChatSettings(openToolApprovalSelector),
+    },
+    ...(agents.length || routerEnabled
+      ? [
+          {
+            icon: Bot,
+            label: "Change agent",
+            disabled: agentUpdating,
+            onPress: () => runFromChatSettings(openAgentSelector),
+          } satisfies ChatSettingsAction,
+        ]
+      : []),
+    ...(chatWorkspaceDir
+      ? [
+          {
+            icon: GitBranch,
+            label: "Change branch",
+            disabled: gitBranchLoading,
+            onPress: () =>
+              runFromChatSettings(() => {
+                setBranchPickerVisible(true);
+                void refreshMobileGitBranches();
+              }),
+          } satisfies ChatSettingsAction,
+        ]
+      : []),
+    {
+      icon: Pin,
+      label: pinned ? "Unpin chat" : "Pin chat",
+      disabled: pinning,
+      onPress: () => runFromChatSettings(() => void togglePinned()),
+    },
+    {
+      icon: Trash2,
+      label: "Delete chat",
+      destructive: true,
+      onPress: () => runFromChatSettings(deleteChat),
+    },
+  ];
+
   const showChatActions = () => {
-    const messageCount = detail?.messages.length ?? sessionSummary?.message_count ?? 0;
-    const updatedAt =
-      detail?.updatedAt ||
-      sessionSummary?.updated_at ||
-      detail?.messages[detail.messages.length - 1]?.timestamp;
-    const title = mobileSessionTitle({
-      title: mobileFirstNonEmptyString(detail?.title, sessionSummary?.title),
-    });
-    const agentId = mobileFirstNonEmptyString(detail?.agentId, sessionSummary?.agent_id);
-    const model = mobileFirstNonEmptyString(detail?.model, sessionSummary?.model);
-    const provider = mobileFirstNonEmptyString(
-      detail?.provider,
-      sessionSummary?.provider,
-      sessionSummary?.provider_id
-    );
-    const providerName = mobileFirstNonEmptyString(
-      detail?.providerName,
-      sessionSummary?.provider_name
-    );
-    const workspaceDir = chatWorkspaceDir;
-    Alert.alert(
-      "Chat settings",
-      [
-        ...buildMobileChatSettingsLines({
-          agentId,
-          model,
-          messageCount,
-          provider,
-          providerName,
-          sessionId,
-          title,
-          updatedLabel: absoluteTimestampLabel(updatedAt),
-          gitBranch,
-          workspaceDir,
-        }),
-        `Context: ${mobileContextUsageDetail(contextUsage)}`,
-        mobileSessionTokenUsageDetail(detail?.tokenUsage),
-        mobileProviderPlanDetail(activeProviderPlan),
-        `Tool approvals: ${toolApprovalLabel}`,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-      [
-        {
-          text: "Tool approvals",
-          onPress: openToolApprovalSelector,
-        },
-        ...(agents.length
-          ? [
-              {
-                text: "Change agent",
-                onPress: openAgentSelector,
-              },
-            ]
-          : []),
-        ...(workspaceDir
-          ? [
-              {
-                text: "Change branch",
-                onPress: () => {
-                  setBranchPickerVisible(true);
-                  void refreshMobileGitBranches();
-                },
-              },
-            ]
-          : []),
-        {
-          text: pinned ? "Unpin chat" : "Pin chat",
-          onPress: () => {
-            void togglePinned();
-          },
-        },
-        { text: "Delete chat", style: "destructive", onPress: deleteChat },
-        { text: "Cancel", style: "cancel" },
-      ]
-    );
+    haptics.select();
+    setChatSettingsVisible(true);
   };
   headerActionRef.current = showChatActions;
 
@@ -1420,6 +1628,14 @@ export function SessionDetailPanel({
         onClose={() => setBranchPickerVisible(false)}
         onCreate={(branch) => void changeMobileGitBranch(branch, true)}
         visible={branchPickerVisible}
+      />
+      <ChatSettingsSheet
+        actions={chatSettingsActions}
+        onClose={() => setChatSettingsVisible(false)}
+        rows={chatSettingsRows}
+        subtitle={selectedAgentLabel}
+        title={title}
+        visible={chatSettingsVisible}
       />
       <ChatApprovalBanner api={api} />
       <ScrollView

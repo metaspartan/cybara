@@ -1235,7 +1235,7 @@ function parseBlamePorcelain(output: string): IdeBlameLine[] {
 
   while (index < rows.length) {
     const header = rows[index] || "";
-    const headerMatch = header.match(/^([0-9a-f]{40}|\^[0-9a-f]{40})\s+\d+\s+(\d+)\s+\d+$/i);
+    const headerMatch = header.match(/^(\^?[0-9a-f]{40})\s+\d+\s+(\d+)(?:\s+\d+)?$/i);
     if (!headerMatch) {
       index += 1;
       continue;

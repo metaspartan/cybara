@@ -151,10 +151,12 @@ describe("mobile: chat management", () => {
     expect(screen).toContain("setUseModelRouter(true)");
     expect(screen).toContain("useModelRouter,");
     expect(screen).toContain("const openToolApprovalSelector");
-    expect(screen).toContain("Tool approvals: ${toolApprovalLabel}");
+    expect(screen).toContain("function ChatSettingsSheet(");
+    expect(screen).toContain("const chatSettingsRows");
+    expect(screen).toContain('label: "Tool approvals"');
     expect(screen).toContain("mobileContextUsageDetail(");
     expect(screen).toContain("mobileSessionTokenUsageDetail(");
-    expect(screen).toContain("Context: ${mobileContextUsageDetail(contextUsage)}");
+    expect(screen).toContain('label: "Context"');
     expect(screen).toContain("mobileProviderPlanFor(providerPlanStatus");
     expect(screen).toContain("mobileProviderPlanDetail(activeProviderPlan)");
     expect(metricsPanels).toContain("!plan?.managedAutomatically");
@@ -164,8 +166,8 @@ describe("mobile: chat management", () => {
     expect(metricsPanels).toContain("mobileProviderPlanResetLabel");
     expect(metricsPanels).toContain('window.unlimited ? "∞"');
     expect(metricsPanels).toContain("Math.ceil(window.usedPercent ?? 0)");
-    expect(screen).toContain('text: "Change agent"');
-    expect(screen).toContain('text: "Tool approvals"');
+    expect(screen).toContain('label: "Change agent"');
+    expect(screen).toContain('label: "Tool approvals"');
     expect(screen).toContain("setPendingSessionAgentId(agentId)");
     expect(screen).toContain("contextUsage: result.contextUsage ?? current.contextUsage");
     expect(newChat).toContain("<Text style={styles.sectionTitle}>Permissions</Text>");
