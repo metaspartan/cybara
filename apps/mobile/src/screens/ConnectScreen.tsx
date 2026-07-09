@@ -10,6 +10,7 @@ import {
   type GatewayProfile,
 } from "../lib/connection";
 import { Camera, CameraView } from "../lib/expoNativeModules";
+import { useMobileI18n } from "../i18n";
 import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
 import cybaraLogo from "../../assets/cybara.png";
 
@@ -40,6 +41,7 @@ export function ConnectScreen({
   const [connectError, setConnectError] = useState("");
   const mountedRef = useRef(true);
   const scanLockRef = useRef(false);
+  const { t } = useMobileI18n();
 
   useEffect(
     () => () => {
@@ -57,15 +59,15 @@ export function ConnectScreen({
     if (!mountedRef.current) return;
     setConnectError(message);
     setStatusIfMounted("");
-    Alert.alert("Could not connect", message);
+    Alert.alert(t("connect.errorTitle"), message);
   };
 
   const finishConnect = async (profile: GatewayProfile) => {
-    setStatusIfMounted("Checking gateway...");
+    setStatusIfMounted(t("connect.checking"));
     await verifyGatewayProfile(profile);
-    setStatusIfMounted("Saving connection...");
+    setStatusIfMounted(t("connect.saving"));
     await onConnect(profile);
-    setStatusIfMounted("Connected");
+    setStatusIfMounted(t("connect.connected"));
   };
 
   const connectManual = async () => {
@@ -86,7 +88,7 @@ export function ConnectScreen({
     setConnectBusy(true);
     setConnectError("");
     try {
-      setConnectStatus("Connecting to gateway...");
+      setConnectStatus(t("action.connecting"));
       await finishConnect(await resolveGatewayProfile(payload));
     } catch (error) {
       showConnectError(error);
@@ -102,10 +104,7 @@ export function ConnectScreen({
         ? currentPermission
         : await Camera.requestCameraPermissionsAsync();
       if (!nextPermission.granted) {
-        Alert.alert(
-          "Camera permission is required",
-          "Enable camera access to scan a Cybara gateway QR code."
-        );
+        Alert.alert(t("connect.cameraPermissionTitle"), t("connect.cameraPermissionBody"));
         return;
       }
     } catch (error) {
@@ -134,7 +133,7 @@ export function ConnectScreen({
     setScannerOpen(false);
     setPayload(nextPayload);
     try {
-      setStatusIfMounted("Connecting to gateway...");
+      setStatusIfMounted(t("action.connecting"));
       await finishConnect(await resolveGatewayProfile(nextPayload));
     } catch (error) {
       showConnectError(error);
@@ -154,16 +153,16 @@ export function ConnectScreen({
           <Image accessibilityIgnoresInvertColors source={cybaraLogo} style={styles.logoImage} />
         </View>
         <View style={styles.brandText}>
-          <Text style={styles.title}>Cybara</Text>
-          <Text style={styles.subtitle}>Connect this phone to a running Cybara gateway.</Text>
+          <Text style={styles.title}>{t("app.name")}</Text>
+          <Text style={styles.subtitle}>{t("connect.subtitle")}</Text>
         </View>
       </View>
       <GlassPanel elevated style={styles.card}>
-        <Text style={styles.cardTitle}>Quick connect</Text>
-        <Text style={styles.help}>Scan the Mobile page QR or paste a CLI pairing payload.</Text>
+        <Text style={styles.cardTitle}>{t("connect.quick")}</Text>
+        <Text style={styles.help}>{t("connect.quickHelp")}</Text>
         <GlassButton
-          label="Scan QR"
-          detail="Camera pairing"
+          label={t("action.scanQr")}
+          detail={t("connect.cameraPairing")}
           onPress={openScanner}
           selected={scannerOpen}
           disabled={connectBusy}
@@ -184,21 +183,21 @@ export function ConnectScreen({
         <TextInput
           value={payload}
           onChangeText={setPayload}
-          placeholder="Paste QR payload"
+          placeholder={t("connect.payloadPlaceholder")}
           placeholderTextColor={colors.textDim}
           multiline
           style={[styles.input, styles.payload]}
         />
         <GlassButton
-          label={connectBusy ? "Connecting..." : "Connect from payload"}
-          detail={connectStatus || "QR/manual payload"}
+          label={connectBusy ? t("action.connecting") : t("connect.payload")}
+          detail={connectStatus || t("connect.payloadDetail")}
           onPress={connectPayload}
           disabled={connectBusy}
         />
         {connectError ? <Text style={styles.errorText}>{connectError}</Text> : null}
         {scannerOpen ? (
           <GlassButton
-            label="Cancel scan"
+            label={t("connect.cancelScan")}
             onPress={() => {
               scanLockRef.current = false;
               setScanLocked(false);
@@ -210,11 +209,11 @@ export function ConnectScreen({
       </GlassPanel>
 
       <GlassPanel style={styles.card}>
-        <Text style={styles.cardTitle}>Manual gateway</Text>
+        <Text style={styles.cardTitle}>{t("connect.manual")}</Text>
         <TextInput
           value={name}
           onChangeText={setName}
-          placeholder="Device name"
+          placeholder={t("connect.deviceName")}
           placeholderTextColor={colors.textDim}
           style={styles.input}
         />
@@ -231,13 +230,13 @@ export function ConnectScreen({
           onChangeText={setApiKey}
           autoCapitalize="none"
           secureTextEntry
-          placeholder="API key"
+          placeholder={t("connect.apiKey")}
           placeholderTextColor={colors.textDim}
           style={styles.input}
         />
         <GlassButton
-          label={connectBusy ? "Connecting..." : "Connect gateway"}
-          detail={connectStatus || "Stores this profile locally"}
+          label={connectBusy ? t("action.connecting") : t("connect.gateway")}
+          detail={connectStatus || t("connect.localProfile")}
           onPress={connectManual}
           disabled={connectBusy}
         />

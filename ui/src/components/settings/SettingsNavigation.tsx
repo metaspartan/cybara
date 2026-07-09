@@ -1,4 +1,5 @@
 import { settingsSectionGroups, type SettingsSectionId } from "@/lib/settingsNavigation";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export function SettingsNavigation({
@@ -8,6 +9,8 @@ export function SettingsNavigation({
   activeSection: SettingsSectionId;
   onSelect: (section: SettingsSectionId) => void;
 }) {
+  const { t } = useI18n();
+
   return (
     <nav
       aria-label="Settings sections"
@@ -15,9 +18,9 @@ export function SettingsNavigation({
     >
       <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-1">
         {settingsSectionGroups.map((group) => (
-          <div key={group.label} className="space-y-1">
+          <div key={group.labelKey} className="space-y-1">
             <p className="px-2 pt-1 text-[10px] font-semibold uppercase tracking-wide text-gray-500">
-              {group.label}
+              {t(group.labelKey)}
             </p>
             {group.sections.map((section) => {
               const active = activeSection === section.id;
@@ -34,7 +37,7 @@ export function SettingsNavigation({
                   )}
                   aria-current={active ? "page" : undefined}
                 >
-                  <span className="block text-sm font-medium leading-5">{section.label}</span>
+                  <span className="block text-sm font-medium leading-5">{t(section.labelKey)}</span>
                 </button>
               );
             })}

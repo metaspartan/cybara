@@ -3,6 +3,7 @@ import { Icon, type IconName } from "./Icon";
 import { SectionHeading } from "./SectionHeading";
 import { DOWNLOAD_GROUPS, type DownloadClient } from "../content";
 import { useLatestRelease, resolveAssetUrl, type LatestRelease } from "../hooks/useLatestRelease";
+import { useSiteI18n } from "../i18n";
 
 interface DownloadCardProps {
   client: DownloadClient;
@@ -52,12 +53,13 @@ function DownloadCard({ client, release }: DownloadCardProps): React.ReactElemen
 
 export function Downloads(): React.ReactElement {
   const { data: release } = useLatestRelease();
+  const { t } = useSiteI18n();
 
   return (
     <section className="section" id="download">
       <SectionHeading
-        eyebrow="Get Cybara"
-        title="Install on every platform"
+        eyebrow={t("site.download.title")}
+        title={t("site.download.title")}
         description="Direct downloads of the latest signed binaries — desktop, mobile, and CLI — resolved straight from GitHub Releases."
       />
       {release && release.version ? (

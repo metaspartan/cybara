@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { NAV_LINKS, GITHUB_URL } from "../content";
+import { useSiteI18n } from "../i18n";
 
 export function Nav(): React.ReactElement {
   const [scrolled, setScrolled] = useState<boolean>(false);
+  const { t } = useSiteI18n();
 
   useEffect(() => {
     const onScroll = (): void => setScrolled(window.scrollY > 12);
@@ -29,7 +31,7 @@ export function Nav(): React.ReactElement {
         <nav className="nav-links" aria-label="Primary">
           {NAV_LINKS.map((link) => (
             <a key={link.href} href={link.href} className="nav-link">
-              {link.label}
+              {t(link.labelKey)}
             </a>
           ))}
         </nav>

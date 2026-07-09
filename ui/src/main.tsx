@@ -5,6 +5,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { getDesktopHostRuntime } from "./lib/desktopHost";
 import { getGatewayBasePath } from "./lib/auth";
+import { I18nProvider } from "./lib/i18n";
 import "./index.css";
 
 const rootElement = document.documentElement;
@@ -40,9 +41,11 @@ const routerBasename = getGatewayBasePath() || undefined;
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter basename={routerBasename}>
-        <App />
-      </BrowserRouter>
+      <I18nProvider>
+        <BrowserRouter basename={routerBasename}>
+          <App />
+        </BrowserRouter>
+      </I18nProvider>
     </QueryClientProvider>
   </StrictMode>
 );

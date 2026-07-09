@@ -1,13 +1,16 @@
 import { Icon } from "./Icon";
 import { SectionHeading } from "./SectionHeading";
 import { CONTROL_POINTS } from "../content";
+import { useSiteI18n } from "../i18n";
 
 export function Control(): React.ReactElement {
+  const { t } = useSiteI18n();
+
   return (
     <section className="section" id="control">
       <SectionHeading
-        eyebrow="Operator in control"
-        title="Powerful agents, on your terms"
+        eyebrow={t("site.control.title")}
+        title={t("site.control.title")}
         description="Cybara is built for people who want autonomy without giving up the keys."
       />
       <div className="control-layout">

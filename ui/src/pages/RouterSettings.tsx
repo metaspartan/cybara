@@ -463,9 +463,14 @@ export function RouterSettings() {
             </div>
             <button
               type="button"
+              role="switch"
+              aria-checked={config.enabled}
               onClick={() => saveConfig({ ...config, enabled: !config.enabled })}
               disabled={!config.enabled && !hasEnoughRoutes}
-              className="p-1 disabled:opacity-40 disabled:cursor-not-allowed"
+              className={cn(
+                "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed",
+                config.enabled ? "bg-emerald-500" : "bg-white/15"
+              )}
               title={
                 !config.enabled && !hasEnoughRoutes
                   ? "The router needs at least two providers in the rotation"
@@ -473,29 +478,17 @@ export function RouterSettings() {
               }
               aria-label={config.enabled ? "Disable router" : "Enable router"}
             >
-              {config.enabled ? (
-                <ToggleRight className="w-8 h-8 text-emerald-400" />
-              ) : (
-                <ToggleLeft className="w-8 h-8 text-gray-600" />
-              )}
+              <span
+                className={cn(
+                  "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+                  config.enabled ? "translate-x-[22px]" : "translate-x-0.5"
+                )}
+              />
             </button>
           </div>
 
           <div className="space-y-2">
             <label className="text-sm text-gray-300">Selection strategy</label>
-            <select
-              value={config.strategy}
-              onChange={(e) =>
-                saveConfig({ ...config, strategy: e.target.value as RouterConfig["strategy"] })
-              }
-              className={`${SELECT_CONTROL_CLASS} w-full`}
-            >
-              {STRATEGY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
             <p className="text-xs text-gray-500">{STRATEGY_HELP[config.strategy]}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
               {STRATEGY_OPTIONS.map((option) => (

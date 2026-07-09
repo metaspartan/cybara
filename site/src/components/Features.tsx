@@ -1,13 +1,16 @@
 import { Icon, type IconName } from "./Icon";
 import { SectionHeading } from "./SectionHeading";
 import { FEATURES } from "../content";
+import { useSiteI18n } from "../i18n";
 
 export function Features(): React.ReactElement {
+  const { t } = useSiteI18n();
+
   return (
     <section className="section" id="features">
       <SectionHeading
-        eyebrow="Capabilities"
-        title="One stack, from prompt to production"
+        eyebrow={t("settings.capabilities")}
+        title={t("site.features.title")}
         description="Everything an operator needs to run agents that actually do the work — not just answer questions."
       />
       <div className="feature-grid">

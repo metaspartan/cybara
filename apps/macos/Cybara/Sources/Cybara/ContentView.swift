@@ -82,30 +82,34 @@ enum NativeDestination: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var title: String {
+        NativeI18n.t(titleKey)
+    }
+
+    var titleKey: String {
         switch self {
-        case .dashboard: return "Dashboard"
-        case .chat: return "Chat"
-        case .agents: return "Agents"
-        case .providers: return "Providers"
-        case .router: return "Model Router"
-        case .channels: return "Channels"
-        case .mobile: return "Mobile"
-        case .mcp: return "MCP Servers"
-        case .lsp: return "LSP"
-        case .ide: return "IDE"
-        case .sessions: return "Sessions"
-        case .usage: return "Usage"
-        case .skills: return "Skills"
-        case .tools: return "Tools"
-        case .terminal: return "Terminal"
-        case .memory: return "Memory"
-        case .journey: return "Journey"
-        case .wallet: return "Wallet"
-        case .artifacts: return "Artifacts"
-        case .tasks: return "Tasks"
-        case .metrics: return "Metrics"
-        case .logs: return "Logs"
-        case .settings: return "Settings"
+        case .dashboard: return "nav.dashboard"
+        case .chat: return "nav.chat"
+        case .agents: return "nav.agents"
+        case .providers: return "nav.providers"
+        case .router: return "nav.router"
+        case .channels: return "nav.channels"
+        case .mobile: return "nav.mobile"
+        case .mcp: return "nav.mcp"
+        case .lsp: return "nav.lsp"
+        case .ide: return "nav.ide"
+        case .sessions: return "nav.sessions"
+        case .usage: return "nav.usage"
+        case .skills: return "nav.skills"
+        case .tools: return "nav.tools"
+        case .terminal: return "nav.terminal"
+        case .memory: return "nav.memory"
+        case .journey: return "nav.journey"
+        case .wallet: return "nav.wallet"
+        case .artifacts: return "nav.artifacts"
+        case .tasks: return "nav.tasks"
+        case .metrics: return "nav.metrics"
+        case .logs: return "nav.logs"
+        case .settings: return "nav.settings"
         }
     }
 
@@ -210,7 +214,7 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Cybara")
                         .font(.system(size: 18, weight: .bold, design: .rounded))
-                    Text(sidecar.isReady ? "Gateway online" : "Starting…")
+                    Text(sidecar.isReady ? NativeI18n.t("status.gatewayOnline") : NativeI18n.t("status.starting"))
                         .font(.system(size: 11, weight: .medium, design: .rounded))
                         .foregroundStyle(sidecar.isReady ? Color.green : Color.secondary)
                 }
@@ -227,13 +231,13 @@ struct ContentView: View {
                             .tag(item)
                     }
                 }
-                Section("Developer") {
+                Section(NativeI18n.t("nav.developer")) {
                     ForEach([NativeDestination.mcp, .lsp, .ide, .sessions, .usage, .skills, .tools, .terminal]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
                 }
-                Section("System") {
+                Section(NativeI18n.t("nav.system")) {
                     ForEach([NativeDestination.memory, .journey, .wallet, .artifacts, .metrics, .tasks, .logs, .settings]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
@@ -328,7 +332,7 @@ struct ContentView: View {
                 .controlSize(.large)
             Text(sidecar.statusMessage)
                 .font(.system(size: 15, weight: .medium, design: .rounded))
-            Text("Waiting for the local Cybara gateway to come online.")
+            Text(NativeI18n.t("status.waitingGateway"))
                 .font(.system(size: 13, weight: .regular, design: .rounded))
                 .foregroundStyle(.secondary)
         }

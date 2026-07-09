@@ -1,13 +1,16 @@
 import { SectionHeading } from "./SectionHeading";
 import { ProviderMark } from "./ProviderMark";
 import { PROVIDERS, PROVIDER_NOTE } from "../content";
+import { useSiteI18n } from "../i18n";
 
 export function Providers(): React.ReactElement {
+  const { t } = useSiteI18n();
+
   return (
     <section className="section" id="providers">
       <SectionHeading
-        eyebrow="Bring your own model"
-        title="Works with every major provider"
+        eyebrow={t("site.providers.title")}
+        title={t("site.providers.title")}
         description={PROVIDER_NOTE}
       />
       <div className="provider-grid">

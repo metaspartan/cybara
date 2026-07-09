@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { Icon } from "./Icon";
 import { STATS, GITHUB_URL, INSTALL_COMMAND } from "../content";
+import { useSiteI18n } from "../i18n";
 
 export function Hero(): React.ReactElement {
   const [copied, setCopied] = useState<boolean>(false);
+  const { t } = useSiteI18n();
 
   const copyInstall = async (): Promise<void> => {
     try {
@@ -20,24 +22,16 @@ export function Hero(): React.ReactElement {
       <div className="hero-inner">
         <span className="pill">
           <span className="pill-dot" />
-          Self-hosted agent operating system
+          {t("site.features.title")}
         </span>
 
-        <h1 className="hero-title">
-          Your agents. Your tools. Your runtime.
-          <span className="hero-title-accent"> Harness the power of AI.</span>
-        </h1>
+        <h1 className="hero-title">{t("site.hero.title")}</h1>
 
-        <p className="hero-sub">
-          Cybara pairs a Bun agent runtime with a web UI, desktop and mobile shells, a broad tool
-          layer, secure messaging channels, and encrypted wallet controls — so agents can plan,
-          execute, verify, and report while you keep control in the loop. Self-hosted, open source,
-          and yours to run.
-        </p>
+        <p className="hero-sub">{t("site.hero.subtitle")}</p>
 
         <div className="hero-actions">
           <a className="btn btn--primary" href={GITHUB_URL} target="_blank" rel="noreferrer">
-            <span>Get started</span>
+            <span>{t("site.hero.primary")}</span>
             <Icon name="arrow" className="btn-icon" />
           </a>
           <button

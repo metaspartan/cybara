@@ -30,6 +30,8 @@ import {
   Gauge,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/lib/i18n";
+import type { TranslationKey } from "../../../../shared/i18n/catalog";
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { connectStatusStream } from "@/lib/status-stream";
 import { providerPlansApi } from "@/lib/api";
@@ -175,63 +177,70 @@ function useAgentStatus() {
   return status;
 }
 
-const navCategories = [
+type SidebarNavItem = {
+  path: string;
+  icon: React.ComponentType<{ className?: string }>;
+  labelKey: TranslationKey;
+  requiresUsage?: boolean;
+};
+
+type SidebarNavCategory = {
+  id: string;
+  labelKey: TranslationKey | null;
+  items: SidebarNavItem[];
+};
+
+const navCategories: SidebarNavCategory[] = [
   {
     id: "main",
-    label: null,
+    labelKey: null,
     items: [
-      { path: "/", icon: LayoutDashboard, label: "Dashboard" },
-      { path: "/agents", icon: Bot, label: "Agents" },
-      { path: "/providers", icon: Plug, label: "Providers" },
-      { path: "/router", icon: Network, label: "Model Router" },
-      { path: "/channels", icon: Smartphone, label: "Channels" },
-      { path: "/mobile", icon: TabletSmartphone, label: "Mobile" },
+      { path: "/", icon: LayoutDashboard, labelKey: "nav.dashboard" },
+      { path: "/agents", icon: Bot, labelKey: "nav.agents" },
+      { path: "/providers", icon: Plug, labelKey: "nav.providers" },
+      { path: "/router", icon: Network, labelKey: "nav.router" },
+      { path: "/channels", icon: Smartphone, labelKey: "nav.channels" },
+      { path: "/mobile", icon: TabletSmartphone, labelKey: "nav.mobile" },
     ],
   },
   {
     id: "developer",
-    label: "Developer",
+    labelKey: "nav.developer",
     items: [
-      { path: "/mcp", icon: Terminal, label: "MCP Servers" },
-      { path: "/lsp", icon: Code, label: "LSP" },
-      { path: "/ide", icon: FolderOpen, label: "IDE" },
-      { path: "/sessions", icon: MessagesSquare, label: "Sessions" },
-      { path: "/usage", icon: Gauge, label: "Usage", requiresUsage: true },
-      { path: "/skills", icon: LibraryBig, label: "Skills" },
-      { path: "/tools", icon: Wrench, label: "Tools" },
-      { path: "/terminal", icon: SquareTerminal, label: "Terminal" },
+      { path: "/mcp", icon: Terminal, labelKey: "nav.mcp" },
+      { path: "/lsp", icon: Code, labelKey: "nav.lsp" },
+      { path: "/ide", icon: FolderOpen, labelKey: "nav.ide" },
+      { path: "/sessions", icon: MessagesSquare, labelKey: "nav.sessions" },
+      { path: "/usage", icon: Gauge, labelKey: "nav.usage", requiresUsage: true },
+      { path: "/skills", icon: LibraryBig, labelKey: "nav.skills" },
+      { path: "/tools", icon: Wrench, labelKey: "nav.tools" },
+      { path: "/terminal", icon: SquareTerminal, labelKey: "nav.terminal" },
     ],
   },
   {
     id: "chat",
-    label: null,
-    items: [{ path: "/chat", icon: MessageSquare, label: "Chat" }],
+    labelKey: null,
+    items: [{ path: "/chat", icon: MessageSquare, labelKey: "nav.chat" }],
   },
   {
     id: "system",
-    label: "System",
+    labelKey: "nav.system",
     items: [
-      { path: "/memory", icon: Brain, label: "Memory" },
-      { path: "/journey", icon: Sparkles, label: "Journey" },
-      { path: "/wallet", icon: WalletIcon, label: "Wallet" },
-      { path: "/artifacts", icon: FileText, label: "Artifacts" },
-      { path: "/metrics", icon: BarChart3, label: "Metrics" },
-      { path: "/tasks", icon: ListTodo, label: "Tasks" },
-      { path: "/logs", icon: Logs, label: "Logs" },
+      { path: "/memory", icon: Brain, labelKey: "nav.memory" },
+      { path: "/journey", icon: Sparkles, labelKey: "nav.journey" },
+      { path: "/wallet", icon: WalletIcon, labelKey: "nav.wallet" },
+      { path: "/artifacts", icon: FileText, labelKey: "nav.artifacts" },
+      { path: "/metrics", icon: BarChart3, labelKey: "nav.metrics" },
+      { path: "/tasks", icon: ListTodo, labelKey: "nav.tasks" },
+      { path: "/logs", icon: Logs, labelKey: "nav.logs" },
     ],
   },
 ];
 
-type SidebarNavItem = {
-  path: string;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  requiresUsage?: boolean;
-};
-
 export function Sidebar() {
   const location = useLocation();
   const status = useAgentStatus();
+  const { t } = useI18n();
   const { collapsed, setCollapsed, mobileOpen, setMobileOpen } = useSidebar();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     developer: false,
@@ -279,6 +288,7 @@ export function Sidebar() {
 
   const renderNavItem = (item: SidebarNavItem) => {
     const Icon = item.icon;
+    const label = t(item.labelKey);
     const isActive =
       location.pathname === item.path ||
       (item.path !== "/" && location.pathname.startsWith(item.path));
@@ -287,7 +297,7 @@ export function Sidebar() {
       <NavLink
         key={item.path}
         to={item.path}
-        title={collapsed ? item.label : undefined}
+        title={collapsed ? label : undefined}
         className={cn(
           "flex items-center gap-2.5 rounded-lg text-[13px] font-medium transition-all duration-200",
           "!ring-0 !border-transparent",
@@ -306,7 +316,7 @@ export function Sidebar() {
             isActive ? "accent-text" : "text-gray-500"
           )}
         />
-        {!collapsed && <span className="truncate">{item.label}</span>}
+        {!collapsed && <span className="truncate">{label}</span>}
       </NavLink>
     );
   };
@@ -359,7 +369,7 @@ export function Sidebar() {
             {!collapsed && (
               <div className="flex-1 min-w-0">
                 <h1 className="font-bold text-lg text-white">Cybara</h1>
-                <p className="text-[10px] text-gray-400 leading-tight">Agent Platform</p>
+                <p className="text-[10px] text-gray-400 leading-tight">{t("app.tagline")}</p>
               </div>
             )}
           </div>
@@ -372,13 +382,13 @@ export function Sidebar() {
           >
             {navCategories.map((category) => (
               <div key={category.id}>
-                {category.label && !collapsed ? (
+                {category.labelKey && !collapsed ? (
                   <>
                     <button
                       onClick={() => toggleSection(category.id)}
                       className="w-full flex items-center justify-between px-3 py-1.5 mt-3 mb-1 text-[11px] font-semibold text-gray-500 uppercase tracking-wider hover:text-gray-400 transition-colors !ring-0"
                     >
-                      <span>{category.label}</span>
+                      <span>{t(category.labelKey)}</span>
                       <ChevronDown
                         className={cn(
                           "w-3.5 h-3.5 transition-transform duration-200",
@@ -411,7 +421,7 @@ export function Sidebar() {
           <div className="border-t border-white/5 bg-black/20 p-2 backdrop-blur-md">
             <NavLink
               to="/settings"
-              title={collapsed ? "Settings" : undefined}
+              title={collapsed ? t("nav.settings") : undefined}
               className={cn(
                 "flex items-center gap-2.5 rounded-lg text-[13px] font-medium transition-all duration-200 mb-2",
                 "!ring-0 !border-transparent",
@@ -432,20 +442,20 @@ export function Sidebar() {
                   location.pathname === "/settings" ? "accent-text" : "text-gray-500"
                 )}
               />
-              {!collapsed && <span>Settings</span>}
+              {!collapsed && <span>{t("nav.settings")}</span>}
             </NavLink>
 
             <button
               onClick={() => setCollapsed(!collapsed)}
               className="hidden md:flex w-full items-center justify-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-white hover:bg-white/5 transition-colors"
-              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={collapsed ? t("nav.expand") : t("nav.collapse")}
             >
               {collapsed ? (
                 <ChevronRight className="w-3.5 h-3.5" />
               ) : (
                 <>
                   <ChevronLeft className="w-3.5 h-3.5" />
-                  <span className="text-xs">Collapse</span>
+                  <span className="text-xs">{t("nav.collapse")}</span>
                 </>
               )}
             </button>

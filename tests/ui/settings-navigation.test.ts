@@ -16,11 +16,22 @@ const navigationSource = readFileSync(
 
 describe("web settings navigation", () => {
   test("uses the shared settings information architecture", () => {
-    expect(settingsSectionGroups.map((group) => group.label)).toEqual([
-      "Core",
-      "Capabilities",
-      "Security",
-      "System",
+    expect(settingsSectionGroups.map((group) => group.labelKey)).toEqual([
+      "settings.core",
+      "settings.capabilities",
+      "settings.security",
+      "nav.system",
+    ]);
+    expect(settingsSections.map((section) => section.labelKey)).toEqual([
+      "settings.general",
+      "settings.gateway",
+      "settings.ai",
+      "nav.memory",
+      "settings.voice",
+      "nav.wallet",
+      "settings.safety",
+      "settings.migration",
+      "nav.system",
     ]);
     expect(settingsSections.map((section) => section.id)).toEqual([
       "general",
@@ -46,7 +57,9 @@ describe("web settings navigation", () => {
   test("routes high-impact settings into the matching grouped sections", () => {
     expect(settingsSource).toContain("<SettingsNavigation activeSection={activeSection}");
     expect(navigationSource).toContain('aria-label="Settings sections"');
-    expect(settingsSource).toContain('<PageLayout title="Settings">');
+    expect(settingsSource).toContain('title={t("settings.title")}');
+    expect(settingsSource).toContain("<Select");
+    expect(settingsSource).toContain("languageOptions(locale).map");
     expect(settingsSource).not.toContain(
       '<PageLayout title="Settings" subtitle="Platform configuration and system information">'
     );

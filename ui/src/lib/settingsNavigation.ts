@@ -1,3 +1,5 @@
+import type { TranslationKey } from "../../../shared/i18n/catalog";
+
 export type SettingsSectionId =
   | "general"
   | "gateway"
@@ -11,77 +13,77 @@ export type SettingsSectionId =
 
 export interface SettingsSectionDefinition {
   id: SettingsSectionId;
-  label: string;
+  labelKey: TranslationKey;
   description: string;
 }
 
 export interface SettingsSectionGroup {
-  label: string;
+  labelKey: TranslationKey;
   sections: SettingsSectionDefinition[];
 }
 
 export const settingsSectionGroups: SettingsSectionGroup[] = [
   {
-    label: "Core",
+    labelKey: "settings.core",
     sections: [
       {
         id: "general",
-        label: "General",
+        labelKey: "settings.general",
         description: "Appearance and product identity",
       },
       {
         id: "gateway",
-        label: "Gateway",
+        labelKey: "settings.gateway",
         description: "Connection, auth, paths, and runtime",
       },
       {
         id: "ai",
-        label: "AI",
+        labelKey: "settings.ai",
         description: "Prompting, model defaults, and watchdogs",
       },
     ],
   },
   {
-    label: "Capabilities",
+    labelKey: "settings.capabilities",
     sections: [
       {
         id: "memory",
-        label: "Memory",
+        labelKey: "nav.memory",
         description: "Memory provider, learning, and indexing",
       },
       {
         id: "voice",
-        label: "Voice",
+        labelKey: "settings.voice",
         description: "Text-to-speech and dictation",
       },
       {
         id: "wallet",
-        label: "Wallet",
+        labelKey: "nav.wallet",
         description: "Wallet access and agent policy",
       },
     ],
   },
   {
-    label: "Security",
+    labelKey: "settings.security",
     sections: [
       {
         id: "safety",
-        label: "Safety",
+        labelKey: "settings.safety",
         description: "Approvals, terminal, sandbox, and computer use",
       },
     ],
   },
   {
-    label: "System",
+    labelKey: "nav.system",
     sections: [
       {
         id: "migration",
-        label: "Migration",
+        labelKey: "settings.migration",
         description: "Import from OpenClaw or Hermes",
       },
       {
         id: "system",
-        label: "System",
+        labelKey: "nav.system",
         description: "Updates, metrics, diagnostics, and health",
       },
     ],

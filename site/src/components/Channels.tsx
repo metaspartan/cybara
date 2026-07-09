@@ -1,13 +1,16 @@
 import { SectionHeading } from "./SectionHeading";
 import { ChannelMark } from "./ChannelMark";
 import { CHANNELS } from "../content";
+import { useSiteI18n } from "../i18n";
 
 export function Channels(): React.ReactElement {
+  const { t } = useSiteI18n();
+
   return (
     <section className="section" id="channels">
       <SectionHeading
-        eyebrow="Everywhere your team talks"
-        title="Meet agents in every channel"
+        eyebrow={t("site.channels.title")}
+        title={t("site.channels.title")}
         description="One agent runtime, adapters for the platforms people already use — each gated by pairing, allowlists, and per-channel policy."
       />
       <div className="glass channel-panel">

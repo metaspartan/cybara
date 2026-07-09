@@ -73,6 +73,7 @@ import {
   type ThemeMode,
 } from "@/stores/uiStore";
 import { resolveSettingsSectionId, type SettingsSectionId } from "@/lib/settingsNavigation";
+import { languageOptions, useI18n } from "@/lib/i18n";
 import {
   cn,
   formatByteCount,
@@ -132,6 +133,7 @@ function getCheckStatus(value: unknown): {
 
 function ThemeSettings() {
   const { accent, setAccent, mode, setMode, addToast } = useUIStore();
+  const { locale, mode: languageMode, setMode: setLanguageMode, t } = useI18n();
   const [savingAccent, setSavingAccent] = useState<ThemeAccent | null>(null);
   const { data: identity, isLoading: identityLoading } = useIdentity();
   const updateIdentity = useUpdateIdentity();
@@ -150,7 +152,7 @@ function ThemeSettings() {
     try {
       const current = (identity as IdentityConfig | undefined) ?? {};
       await updateIdentity.mutateAsync({ ...current, theme: next });
-      addToast("success", `Theme set to ${next}`);
+      addToast("success", `${t("settings.theme")} set to ${next}`);
     } catch (error) {
       setMode(previous);
       addToast("error", error instanceof Error ? error.message : "Failed to update theme");
@@ -196,7 +198,7 @@ function ThemeSettings() {
       if (!result.success || !result.data?.success) {
         throw new Error(result.error || "Config update failed");
       }
-      addToast("success", `Theme changed to ${themeAccents[key].name}`);
+      addToast("success", `${t("settings.accent")} changed to ${themeAccents[key].name}`);
     } catch {
       setAccent(previous);
       addToast("error", "Failed to update theme");
@@ -210,65 +212,80 @@ function ThemeSettings() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Palette className="w-5 h-5 text-indigo-400" />
-          Theme Settings
+          {t("settings.theme")}
         </CardTitle>
-        <CardDescription>Appearance and UI accent color</CardDescription>
+        <CardDescription>{t("settings.themeHelp")}</CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="mb-5 space-y-2">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-sm font-medium text-gray-200">Theme</p>
-              <p className="text-xs text-gray-500">
-                Follow the device or pin a specific appearance.
-              </p>
+        <div className="mb-5 grid gap-5 lg:grid-cols-[1fr_260px]">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-gray-200">{t("settings.theme")}</p>
+                <p className="text-xs text-gray-500">{t("settings.themeHelp")}</p>
+              </div>
+            </div>
+            <div
+              role="radiogroup"
+              aria-label={t("settings.theme")}
+              className="grid grid-cols-3 gap-1 rounded-xl border border-white/10 bg-black/20 p-1"
+            >
+              {[
+                {
+                  value: "system" as const,
+                  label: t("settings.themeSystem"),
+                  icon: Monitor,
+                },
+                {
+                  value: "light" as const,
+                  label: t("settings.themeLight"),
+                  icon: Sun,
+                },
+                {
+                  value: "dark" as const,
+                  label: t("settings.themeDark"),
+                  icon: Moon,
+                },
+              ].map((option) => {
+                const selected = mode === option.value;
+                const Icon = option.icon;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    disabled={updateIdentity.isPending || identityLoading}
+                    onClick={() => void updateThemeMode(option.value)}
+                    className={cn(
+                      "flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors",
+                      selected
+                        ? "border border-white/10 bg-white/10 text-white shadow-sm"
+                        : "text-gray-400 hover:bg-white/5 hover:text-gray-200",
+                      (updateIdentity.isPending || identityLoading) &&
+                        "cursor-not-allowed opacity-60"
+                    )}
+                  >
+                    <Icon className="h-4 w-4" />
+                    {option.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
-          <div
-            role="radiogroup"
-            aria-label="Theme"
-            className="grid grid-cols-3 gap-1 rounded-xl border border-white/10 bg-black/20 p-1"
-          >
-            {[
-              {
-                value: "system" as const,
-                label: "System",
-                icon: Monitor,
-              },
-              {
-                value: "light" as const,
-                label: "Light",
-                icon: Sun,
-              },
-              {
-                value: "dark" as const,
-                label: "Dark",
-                icon: Moon,
-              },
-            ].map((option) => {
-              const selected = mode === option.value;
-              const Icon = option.icon;
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  disabled={updateIdentity.isPending || identityLoading}
-                  onClick={() => void updateThemeMode(option.value)}
-                  className={cn(
-                    "flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors",
-                    selected
-                      ? "border border-white/10 bg-white/10 text-white shadow-sm"
-                      : "text-gray-400 hover:bg-white/5 hover:text-gray-200",
-                    (updateIdentity.isPending || identityLoading) && "cursor-not-allowed opacity-60"
-                  )}
-                >
-                  <Icon className="h-4 w-4" />
-                  {option.label}
-                </button>
-              );
-            })}
+          <div className="space-y-2">
+            <div>
+              <p className="text-sm font-medium text-gray-200">{t("settings.language")}</p>
+              <p className="text-xs text-gray-500">{t("settings.languageHelp")}</p>
+            </div>
+            <Select
+              value={languageMode}
+              onChange={(value) => setLanguageMode(value as typeof languageMode)}
+              options={languageOptions(locale).map((option) => ({
+                value: option.value,
+                label: option.label,
+              }))}
+            />
           </div>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -290,7 +307,9 @@ function ThemeSettings() {
             />
           ))}
         </div>
-        <p className="text-xs text-gray-500 mt-3">Selected: {themeAccents[accent].name}</p>
+        <p className="text-xs text-gray-500 mt-3">
+          {t("settings.accent")}: {themeAccents[accent].name}
+        </p>
       </CardContent>
     </Card>
   );
@@ -2468,6 +2487,7 @@ function GatewayAuthSettingsSection() {
 }
 
 export function Settings() {
+  const { t } = useI18n();
   const { data: health } = useHealth();
   const { data: info } = useInfo();
   const { data: systemMonitor } = useSystemMonitor();
@@ -2538,7 +2558,7 @@ export function Settings() {
     : [];
 
   return (
-    <PageLayout title="Settings">
+    <PageLayout title={t("settings.title")}>
       <div className="grid gap-6 lg:grid-cols-[260px_minmax(0,1fr)]">
         <SettingsNavigation activeSection={activeSection} onSelect={selectSection} />
 

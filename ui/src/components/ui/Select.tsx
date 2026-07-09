@@ -11,12 +11,12 @@ interface SelectProps extends Omit<React.SelectHTMLAttributes<HTMLSelectElement>
   label?: string;
   error?: string;
   helperText?: string;
-  options: SelectOption[];
+  options?: SelectOption[];
   onChange?: (value: string) => void;
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(
-  ({ label, error, helperText, options, className, onChange, ...props }, ref) => {
+  ({ label, error, helperText, options = [], className, onChange, ...props }, ref) => {
     return (
       <div className="w-full">
         {label && <label className="block text-sm font-medium text-gray-300 mb-1.5">{label}</label>}

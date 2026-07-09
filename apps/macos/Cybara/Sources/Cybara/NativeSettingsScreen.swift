@@ -132,18 +132,18 @@ struct NativeSettingsScreen: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ScreenHeader(title: "Settings", subtitle: "Native app preferences synced through the gateway")
+            ScreenHeader(title: NativeI18n.t("nav.settings"), subtitle: NativeI18n.t("settings.subtitle"))
 
             TabView(selection: $selectedTab) {
-                generalTab.tabItem { Label("General", systemImage: "switch.2") }.tag(SettingsTab.general)
-                gatewayTab.tabItem { Label("Gateway", systemImage: "server.rack") }.tag(SettingsTab.gateway)
-                modelTab.tabItem { Label("AI", systemImage: "brain") }.tag(SettingsTab.model)
-                memoryTab.tabItem { Label("Memory", systemImage: "memorychip") }.tag(SettingsTab.memory)
-                speechTab.tabItem { Label("Voice", systemImage: "waveform") }.tag(SettingsTab.speech)
-                featuresTab.tabItem { Label("Safety", systemImage: "slider.horizontal.3") }.tag(SettingsTab.features)
-                WalletScreen(client: client).tabItem { Label("Wallet", systemImage: "creditcard") }.tag(SettingsTab.wallet)
-                migrationTab.tabItem { Label("Migration", systemImage: "folder.badge.gearshape") }.tag(SettingsTab.migration)
-                advancedTab.tabItem { Label("System", systemImage: "square.grid.3x3") }.tag(SettingsTab.advanced)
+                generalTab.tabItem { Label(NativeI18n.t("settings.general"), systemImage: "switch.2") }.tag(SettingsTab.general)
+                gatewayTab.tabItem { Label(NativeI18n.t("settings.gateway"), systemImage: "server.rack") }.tag(SettingsTab.gateway)
+                modelTab.tabItem { Label(NativeI18n.t("settings.ai"), systemImage: "brain") }.tag(SettingsTab.model)
+                memoryTab.tabItem { Label(NativeI18n.t("nav.memory"), systemImage: "memorychip") }.tag(SettingsTab.memory)
+                speechTab.tabItem { Label(NativeI18n.t("settings.voice"), systemImage: "waveform") }.tag(SettingsTab.speech)
+                featuresTab.tabItem { Label(NativeI18n.t("settings.safety"), systemImage: "slider.horizontal.3") }.tag(SettingsTab.features)
+                WalletScreen(client: client).tabItem { Label(NativeI18n.t("nav.wallet"), systemImage: "creditcard") }.tag(SettingsTab.wallet)
+                migrationTab.tabItem { Label(NativeI18n.t("settings.migration"), systemImage: "folder.badge.gearshape") }.tag(SettingsTab.migration)
+                advancedTab.tabItem { Label(NativeI18n.t("nav.system"), systemImage: "square.grid.3x3") }.tag(SettingsTab.advanced)
             }
 
             if let error {

@@ -28,15 +28,16 @@ export interface UseCase {
 
 export interface NavLink {
   label: string;
+  labelKey: TranslationKey;
   href: string;
 }
 
 export const NAV_LINKS: readonly NavLink[] = [
-  { label: "Features", href: "#features" },
-  { label: "Providers", href: "#providers" },
-  { label: "Channels", href: "#channels" },
-  { label: "Download", href: "#download" },
-  { label: "Control", href: "#control" },
+  { label: "Features", labelKey: "site.nav.features", href: "#features" },
+  { label: "Providers", labelKey: "site.nav.providers", href: "#providers" },
+  { label: "Channels", labelKey: "site.nav.channels", href: "#channels" },
+  { label: "Download", labelKey: "site.nav.download", href: "#download" },
+  { label: "Control", labelKey: "site.nav.control", href: "#control" },
 ];
 
 export const GITHUB_URL = "https://github.com/metaspartan/cybara";
@@ -428,3 +429,4 @@ export const CONTROL_POINTS: readonly ControlPoint[] = [
       "Filesystem snapshots and rollback, structured plan-execute-verify loops, and a centralized error taxonomy keep long runs recoverable.",
   },
 ];
+import type { TranslationKey } from "../../shared/i18n/catalog";
