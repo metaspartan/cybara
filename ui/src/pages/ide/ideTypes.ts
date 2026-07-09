@@ -272,6 +272,10 @@ export interface IdeChatMessage {
 export interface IdeChatAgentOption {
   id: string;
   name: string;
+  model?: string;
+  provider?: string;
+  provider_id?: string;
+  fallback_provider_id?: string;
   status?: string;
 }
 

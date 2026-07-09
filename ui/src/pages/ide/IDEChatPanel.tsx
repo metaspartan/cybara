@@ -38,8 +38,10 @@ import type { CSSProperties } from "react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/auth";
-import { chatApi, agentsApi } from "@/lib/api";
+import { chatApi, providerPlansApi } from "@/lib/api";
 import { useStopAgent } from "@/hooks/useApi";
+import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "../chat/ChatAgentControls";
+import { ChatComposerActionButton } from "../chat/ChatComposerActionButton";
 import {
   mergeActivityLists,
   normalizeActivityTextForPhase,
@@ -140,6 +142,12 @@ import {
   readPersistedIdePreferences,
 } from "./idePersistence";
 import type {
+  Agent,
+  ProviderPlanSnapshot,
+  ProviderPlanStatusResponse,
+  SessionContextUsage,
+} from "@/types";
+import type {
   FileEntry,
   BrowseResult,
   ReadResult,
@@ -191,6 +199,7 @@ export function IDEChatPanel({
   onClose,
   selectedAgentId,
   onSelectedAgentIdChange,
+  agents,
   onPendingFileDiffsChange,
   onPendingFileDiffControllerChange,
 }: {
@@ -201,6 +210,7 @@ export function IDEChatPanel({
   onClose: () => void;
   selectedAgentId: string;
   onSelectedAgentIdChange: (agentId: string) => void;
+  agents: IdeChatAgentOption[];
   onPendingFileDiffsChange?: (diffs: IdePendingFileDiff[]) => void;
   onPendingFileDiffControllerChange?: (controller: IdePendingFileDiffController | null) => void;
 }) {
@@ -209,7 +219,6 @@ export function IDEChatPanel({
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [messages, setMessages] = useState<IdeChatMessage[]>([]);
-  const [agents, setAgents] = useState<IdeChatAgentOption[]>([]);
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [isReverting, setIsReverting] = useState(false);
@@ -217,6 +226,12 @@ export function IDEChatPanel({
   const [liveStatus, setLiveStatus] = useState<"thinking" | "generating" | "idle">("idle");
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const [liveCurrentStep, setLiveCurrentStep] = useState<string | null>(null);
+  const [sessionContextUsage, setSessionContextUsage] = useState<SessionContextUsage | null>(null);
+  const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
+    null
+  );
+  const [modelRouterEnabled, setModelRouterEnabled] = useState(false);
+  const [useModelRouter, setUseModelRouter] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fileDiffDecision, setFileDiffDecision] = useState<Record<string, "accepted" | "rejected">>(
     {}
@@ -244,37 +259,86 @@ export function IDEChatPanel({
   }, [isSending, sessionId]);
 
   useEffect(() => {
-    let isCancelled = false;
-    const loadAgents = async () => {
-      try {
-        const response = await agentsApi.list();
-        if (!response.success || !response.data || isCancelled) return;
-        const options = (response.data || [])
-          .map((agent) => ({
-            id: typeof agent.id === "string" ? agent.id : "",
-            name: typeof agent.name === "string" ? agent.name : "Agent",
-            status: typeof agent.status === "string" ? agent.status : undefined,
-          }))
-          .filter((agent) => agent.id);
-        setAgents(options);
-        if (!selectedAgentId && options.length === 1) {
-          onSelectedAgentIdChange(options[0]?.id || "");
-        }
-      } catch {
-        // Keep chat usable with default agent fallback.
-      }
-    };
-    void loadAgents();
-    return () => {
-      isCancelled = true;
-    };
-  }, [onSelectedAgentIdChange, selectedAgentId]);
+    if (!selectedAgentId && agents.length === 1) {
+      onSelectedAgentIdChange(agents[0]?.id || "");
+    }
+  }, [agents, onSelectedAgentIdChange, selectedAgentId]);
 
   useEffect(() => {
     if (!selectedAgentId) return;
     if (agents.some((agent) => agent.id === selectedAgentId)) return;
     onSelectedAgentIdChange("");
   }, [agents, onSelectedAgentIdChange, selectedAgentId]);
+
+  const chatAgentOptions = useMemo<Agent[]>(
+    () =>
+      agents.map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        model: agent.model || "",
+        provider: agent.provider || "",
+        provider_id: agent.provider_id,
+        fallback_provider_id: agent.fallback_provider_id,
+        status: agent.status as Agent["status"],
+      })),
+    [agents]
+  );
+
+  const activeAgentForPlan = useMemo(
+    () => chatAgentOptions.find((agent) => agent.id === (activeAgentId || selectedAgentId)) ?? null,
+    [activeAgentId, chatAgentOptions, selectedAgentId]
+  );
+
+  const activeProviderPlan = useMemo<ProviderPlanSnapshot | null>(() => {
+    if (useModelRouter) return null;
+    if (!providerPlanStatus || !activeAgentForPlan) return null;
+    const keys = new Set(
+      [
+        activeAgentForPlan.provider_id,
+        activeAgentForPlan.provider,
+        activeAgentForPlan.fallback_provider_id,
+      ].filter((value): value is string => typeof value === "string" && value.length > 0)
+    );
+    return (
+      providerPlanStatus.providers.find((plan) =>
+        [plan.configuredProviderId, plan.providerId, plan.providerType].some(
+          (key) => typeof key === "string" && keys.has(key)
+        )
+      ) ?? null
+    );
+  }, [activeAgentForPlan, providerPlanStatus, useModelRouter]);
+
+  useEffect(() => {
+    let active = true;
+    const loadRouterConfig = async () => {
+      try {
+        const response = await apiFetch("/api/router/config");
+        if (!active) return;
+        const data = await response.json();
+        setModelRouterEnabled(data?.enabled === true);
+        if (data?.enabled !== true) {
+          setUseModelRouter(false);
+        }
+      } catch {
+        if (active) {
+          setModelRouterEnabled(false);
+          setUseModelRouter(false);
+        }
+      }
+    };
+    const loadProviderPlans = async () => {
+      const response = await providerPlansApi.status();
+      if (!active) return;
+      setProviderPlanStatus(response.success ? (response.data ?? null) : null);
+    };
+    void loadRouterConfig();
+    void loadProviderPlans();
+    const interval = window.setInterval(loadProviderPlans, 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   const getMessageKey = useCallback((message: IdeChatMessage, index: number): string => {
     return `${message.role}:${message.timestamp}:${index}`;
@@ -707,6 +771,7 @@ export function IDEChatPanel({
         if (typeof response.data.agent_id === "string" && response.data.agent_id.trim()) {
           setActiveAgentId(response.data.agent_id.trim());
         }
+        setSessionContextUsage(response.data.contextUsage ?? null);
       } catch {
         if (!isCancelled) {
           setSessionTitle(null);
@@ -875,7 +940,11 @@ export function IDEChatPanel({
         selectedAgentId || undefined,
         requestSessionId,
         workspaceDir || null,
-        controller.signal
+        controller.signal,
+        undefined,
+        undefined,
+        undefined,
+        useModelRouter
       );
       if (activeRequestAbortRef.current !== controller) return;
       if (!response.success || !response.data) {
@@ -884,6 +953,7 @@ export function IDEChatPanel({
         return;
       }
       setSessionId(response.data.sessionId || requestSessionId);
+      setSessionContextUsage(response.data.contextUsage ?? null);
       const mappedAssistant = mapApiMessageToIde(response.data.message);
       const bufferedActivities = finalizeCompletedActivities(
         mergeActivityLists([], liveRunBufferRef.current)
@@ -949,6 +1019,7 @@ export function IDEChatPanel({
     selectedAgentId,
     sessionId,
     terminalContext,
+    useModelRouter,
     workspaceDir,
   ]);
 
@@ -975,6 +1046,8 @@ export function IDEChatPanel({
     setMessages([]);
     setInput("");
     setIsSending(false);
+    setSessionContextUsage(null);
+    setUseModelRouter(false);
     setError(null);
     setFileDiffDecision({});
     setResolvedPendingDiffs({});
@@ -1014,6 +1087,7 @@ export function IDEChatPanel({
         } else {
           setMessages(messages.slice(0, messageIndex + 1));
         }
+        setSessionContextUsage(response.data.contextUsage ?? null);
         setFileDiffDecision({});
         setResolvedPendingDiffs({});
         setExpandedDiffs({});
@@ -1025,6 +1099,18 @@ export function IDEChatPanel({
       }
     },
     [isReverting, isSending, mapApiMessageToIde, messages, sessionId]
+  );
+
+  const handleSelectAgent = useCallback(
+    (agentId?: string) => {
+      if (agentId === MODEL_ROUTER_SELECTOR_VALUE) {
+        setUseModelRouter(true);
+        return;
+      }
+      setUseModelRouter(false);
+      onSelectedAgentIdChange(agentId || "");
+    },
+    [onSelectedAgentIdChange]
   );
 
   const setDecisionForFileKeys = useCallback(
@@ -1764,55 +1850,44 @@ export function IDEChatPanel({
         </div>
       )}
 
-      <div className="p-3 border-t border-white/10 space-y-2">
-        <textarea
-          value={input}
-          onChange={(event) => setInput(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              void handleSend();
-            }
-          }}
-          placeholder="Message IDE chat (Shift+Enter for newline)"
-          disabled={isApplyingDiffAction}
-          className="w-full min-h-[82px] max-h-56 px-2 py-1.5 rounded border border-white/10 bg-black/40 text-xs text-gray-200 !outline-none focus:border-indigo-500/40 resize-y"
-        />
-        <div className="flex items-center gap-2">
-          <select
-            value={selectedAgentId}
-            onChange={(event) => onSelectedAgentIdChange(event.target.value)}
-            className="flex-1 min-w-0 px-2 py-1 rounded border border-white/10 bg-black/40 text-[11px] text-gray-200 !outline-none focus:border-indigo-500/40"
-            title="Agent for IDE chat"
-          >
-            <option value="">Default Agent</option>
-            {agents.map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-                {agent.status ? ` (${agent.status})` : ""}
-              </option>
-            ))}
-          </select>
-          <Button
-            variant="ghost"
-            size="sm"
-            disabled={
-              isSending ||
-              isReverting ||
-              isApplyingDiffAction ||
-              showWorkingTimeline ||
-              !input.trim()
-            }
-            onClick={() => void handleSend()}
-            className="h-7 px-2.5"
-          >
-            {showWorkingTimeline ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <MessageSquare className="w-3.5 h-3.5" />
-            )}
-            <span className="ml-1 text-xs">{showWorkingTimeline ? "Running" : "Send"}</span>
-          </Button>
+      <div className="border-t border-white/10 p-3">
+        <div className="rounded-2xl border border-white/10 bg-[#111118] px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
+          <textarea
+            value={input}
+            onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return;
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void handleSend();
+              }
+            }}
+            placeholder="Ask about this workspace..."
+            disabled={isApplyingDiffAction}
+            rows={1}
+            className="w-full min-h-[38px] max-h-[180px] resize-none overflow-y-auto bg-transparent px-0 py-1 text-[13px] leading-5 text-white placeholder-gray-500 !outline-none disabled:opacity-60"
+          />
+          <div className="mt-0.5 flex min-h-8 items-center gap-1.5">
+            <div className="min-w-0 flex-1" />
+            <ChatAgentControls
+              agents={chatAgentOptions}
+              selectedAgentId={selectedAgentId}
+              modelRouterEnabled={modelRouterEnabled}
+              useModelRouter={useModelRouter}
+              contextUsage={sessionContextUsage}
+              providerPlan={activeProviderPlan}
+              onSelectAgent={handleSelectAgent}
+              updating={false}
+            />
+            <ChatComposerActionButton
+              disabled={isSending || isReverting || isApplyingDiffAction || !input.trim()}
+              isStopping={stopAgent.isPending}
+              queueing={showWorkingTimeline}
+              showStop={showWorkingTimeline}
+              onSend={() => void handleSend()}
+              onStop={() => void handleStopActive()}
+            />
+          </div>
         </div>
       </div>
     </div>

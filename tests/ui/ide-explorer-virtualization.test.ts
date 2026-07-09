@@ -26,4 +26,11 @@ describe("IDE explorer virtualization correctness", () => {
     // Declaration + at least one use in the gate.
     expect(uses).toBeGreaterThanOrEqual(2);
   });
+
+  test("browse cache is bounded for large workspace navigation", () => {
+    expect(src).toContain("EXPLORER_BROWSE_CACHE_MAX_ENTRIES");
+    expect(src).toContain("function setTreeBrowseCache");
+    expect(src).toContain("while (treeBrowseCache.size > EXPLORER_BROWSE_CACHE_MAX_ENTRIES)");
+    expect(src).not.toContain("treeBrowseCache.set(cacheKey, nextEntries);");
+  });
 });

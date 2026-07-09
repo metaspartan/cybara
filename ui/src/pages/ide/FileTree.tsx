@@ -9,6 +9,7 @@ import {
   EXPLORER_VIRTUALIZATION_MIN_ENTRIES,
   EXPLORER_VIRTUALIZATION_OVERSCAN,
   EXPLORER_VIRTUALIZATION_ROW_HEIGHT,
+  EXPLORER_BROWSE_CACHE_MAX_ENTRIES,
 } from "./ideConstants";
 const FileTreeItem = memo(function FileTreeItem({
   entry,
@@ -107,6 +108,15 @@ const FileTreeItem = memo(function FileTreeItem({
 
 export const treeBrowseCache = new Map<string, FileEntry[]>();
 
+function setTreeBrowseCache(cacheKey: string, entries: FileEntry[]) {
+  treeBrowseCache.set(cacheKey, entries);
+  while (treeBrowseCache.size > EXPLORER_BROWSE_CACHE_MAX_ENTRIES) {
+    const oldestKey = treeBrowseCache.keys().next().value;
+    if (!oldestKey) break;
+    treeBrowseCache.delete(oldestKey);
+  }
+}
+
 interface FileTreeProps {
   path: string;
   level?: number;
@@ -157,7 +167,7 @@ export const FileTree = memo(function FileTree({
         if (isCancelled) return;
         if (data.success) {
           const nextEntries = Array.isArray(data.entries) ? data.entries : [];
-          treeBrowseCache.set(cacheKey, nextEntries);
+          setTreeBrowseCache(cacheKey, nextEntries);
           setEntries(nextEntries);
         } else {
           setError(data.error || "Failed to load");

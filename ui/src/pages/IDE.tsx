@@ -400,6 +400,13 @@ export function IDE() {
           .map((agent) => ({
             id: typeof agent.id === "string" ? agent.id : "",
             name: typeof agent.name === "string" ? agent.name : "Agent",
+            model: typeof agent.model === "string" ? agent.model : "",
+            provider: typeof agent.provider === "string" ? agent.provider : "",
+            provider_id: typeof agent.provider_id === "string" ? agent.provider_id : undefined,
+            fallback_provider_id:
+              typeof agent.fallback_provider_id === "string"
+                ? agent.fallback_provider_id
+                : undefined,
             status: typeof agent.status === "string" ? agent.status : undefined,
           }))
           .filter((agent) => agent.id);
@@ -3281,6 +3288,7 @@ export function IDE() {
                   onClose={() => setIsIdeChatOpen(false)}
                   selectedAgentId={ideChatSelectedAgentId}
                   onSelectedAgentIdChange={setIdeChatSelectedAgentId}
+                  agents={ideAgentOptions}
                   onPendingFileDiffsChange={setIdePendingFileDiffs}
                   onPendingFileDiffControllerChange={setIdePendingFileDiffController}
                 />

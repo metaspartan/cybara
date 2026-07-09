@@ -1260,6 +1260,7 @@ export const chatApi = {
       keptCount: number;
       removedCount: number;
       removedFromIndex: number;
+      contextUsage?: SessionContextUsage;
       messagesList: ChatMessage[];
       error?: string;
     }>("/sessions/" + id + "/revert", {

@@ -11,6 +11,14 @@ const ideActivityHelpersSourcePath = join(
   "ide",
   "ideActivityHelpers.ts"
 );
+const chatAgentControlsSourcePath = join(
+  process.cwd(),
+  "ui",
+  "src",
+  "pages",
+  "chat",
+  "ChatAgentControls.tsx"
+);
 
 function readIdeChatPanelSource(): string {
   return readFileSync(ideChatPanelSourcePath, "utf8");
@@ -18,6 +26,10 @@ function readIdeChatPanelSource(): string {
 
 function readIdeActivityHelpersSource(): string {
   return readFileSync(ideActivityHelpersSourcePath, "utf8");
+}
+
+function readChatAgentControlsSource(): string {
+  return readFileSync(chatAgentControlsSourcePath, "utf8");
 }
 
 describe("IDE chat sidebar live wiring", () => {
@@ -55,5 +67,18 @@ describe("IDE chat sidebar live wiring", () => {
     expect(panelSource).toContain(
       "max-h-52 overflow-auto rounded border border-white/10 bg-[#06060b]"
     );
+  });
+
+  test("uses the shared main chat composer controls for context and routing", () => {
+    const panelSource = readIdeChatPanelSource();
+    const controlsSource = readChatAgentControlsSource();
+    expect(panelSource).toContain("ChatAgentControls");
+    expect(panelSource).toContain("ChatComposerActionButton");
+    expect(panelSource).toContain("providerPlansApi.status()");
+    expect(panelSource).toContain("setSessionContextUsage(response.data.contextUsage ?? null)");
+    expect(panelSource).toContain("useModelRouter");
+    expect(panelSource).toContain("MODEL_ROUTER_SELECTOR_VALUE");
+    expect(controlsSource).toContain("ContextUsageRing");
+    expect(controlsSource).toContain("Model Router");
   });
 });
