@@ -2038,7 +2038,7 @@ describe("Session API", () => {
     expect(fullLastTimelineIndex).toBe(54);
   });
 
-  test("GET /api/sessions/:sessionId includeFullToolCalls preserves full content, process activities, and tool payloads", async () => {
+  test("GET /api/sessions/:sessionId always preserves full assistant content while tool detail remains selectable", async () => {
     const sessionId = `session-full-history-${Date.now()}`;
     const agentId = `agent-full-history-${Date.now()}`;
     const longAssistantContent = `Audit output\n${"A".repeat(12050)}`;
@@ -2084,7 +2084,8 @@ describe("Session API", () => {
       (entry) => entry.role === "assistant"
     ) as Record<string, unknown> | undefined;
     expect(compactAssistant).toBeDefined();
-    expect(String(compactAssistant?.content || "")).toContain("[content truncated");
+    expect(String(compactAssistant?.content || "")).toBe(longAssistantContent);
+    expect(String(compactAssistant?.content || "")).not.toContain("[content truncated");
     expect(
       ((compactAssistant?.process_activities as Array<Record<string, unknown>> | undefined) || [])
         .length
@@ -2264,6 +2265,34 @@ describe("Session API", () => {
         deleteRawSession(first.data.sessionId);
       }
       deleteRawAgent(agentId);
+    }
+  });
+
+  test("POST /api/sessions/:sessionId/revert preserves retained message content", async () => {
+    const sessionId = `revert-full-content-${Date.now()}`;
+    const agentId = `revert-full-content-agent-${Date.now()}`;
+    const longUserContent = `Complete retained request\n${"evidence ".repeat(1800)}`;
+    insertRawSession(sessionId, agentId, [
+      { role: "user", content: longUserContent },
+      { role: "assistant", content: "Review complete" },
+      { role: "user", content: "Follow-up that should be removed" },
+    ]);
+
+    try {
+      const reverted = await api("POST", `/api/sessions/${sessionId}/revert`, {
+        messageIndex: 0,
+      });
+      expect(reverted.status).toBe(200);
+      expect(reverted.data.success).toBe(true);
+      expect(reverted.data.messagesList).toHaveLength(1);
+      expect(reverted.data.messagesList[0]?.content).toBe(longUserContent);
+      expect(reverted.data.messagesList[0]?.content).not.toContain("[content truncated");
+
+      const reloaded = await api("GET", `/api/sessions/${sessionId}`);
+      expect(reloaded.status).toBe(200);
+      expect(reloaded.data.messagesList[0]?.content).toBe(longUserContent);
+    } finally {
+      deleteRawSession(sessionId);
     }
   });
 

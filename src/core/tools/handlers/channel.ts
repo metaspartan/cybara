@@ -188,6 +188,16 @@ export async function handleSessionsSpawn(
     throw new Error("task is required");
   }
 
+  if (subagentRegistry.isSubagentSessionKey(requesterSessionKey)) {
+    return {
+      status: "forbidden",
+      childSessionKey: "",
+      runId: "",
+      task,
+      warning: "sessions_spawn is not allowed from sub-agent sessions",
+    };
+  }
+
   const providerBlockReason = getSubagentProviderBlockReason(requestedAgentId);
   if (providerBlockReason) {
     return {
@@ -209,16 +219,6 @@ export async function handleSessionsSpawn(
       warning: requestedAgentId
         ? `sessions_spawn was not started because agent ${requestedAgentId} was not found`
         : "sessions_spawn was not started because no agent is available",
-    };
-  }
-
-  if (subagentRegistry.isSubagentSessionKey(requesterSessionKey)) {
-    return {
-      status: "forbidden",
-      childSessionKey: "",
-      runId: "",
-      task,
-      warning: "sessions_spawn is not allowed from sub-agent sessions",
     };
   }
 

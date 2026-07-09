@@ -2,6 +2,7 @@ import { agentManager, type AgentMessage } from "../core/agent";
 import { KeyedMutex } from "../core/keyed-mutex";
 import { type AgentImage, hasImages, sanitizeAgentImages } from "../core/llm/image-blocks";
 import { persistImageAttachments, hydrateImageDataFromPath } from "../core/chat/attachments";
+import { mergeSessionTranscriptMessages } from "./session-transcript";
 import { providerManager } from "../core/providers";
 import { config } from "../core/config";
 import { resolveChannelAgentId } from "../core/channels/agent-selection";
@@ -2606,7 +2607,11 @@ export async function updateSessionAgent(
 
 export async function getSessionMessages(sessionId: string): Promise<ChatMessage[]> {
   const session = await getSession(sessionId);
-  return session?.messages || [];
+  if (!session) return [];
+  if ("isSubagent" in session && session.isSubagent === true) return session.messages || [];
+  const persisted = await loadPersistedSession(sessionId);
+  if (!persisted) return session.messages || [];
+  return mergeSessionTranscriptMessages(persisted.messages, session.messages || []);
 }
 
 function normalizeSessionPageOptions(options?: { limit?: number; offset?: number }): {

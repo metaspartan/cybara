@@ -67,23 +67,7 @@ function redactLogMetadata(
   return metadata ? (redactSecrets(metadata) as Record<string, unknown>) : undefined;
 }
 
-// Storage caps for persisted session messages. Un-capped writes have produced
-// single rows near 200MB (a giant tool result mirrored into metadata), which
-// made every session-list query re-read hundreds of MB. Message content keeps
-// head + tail; metadata beyond the cap carries no display value and is elided.
-const SESSION_MESSAGE_CONTENT_MAX_CHARS = 2_000_000;
-const SESSION_MESSAGE_CONTENT_TAIL_CHARS = 16_000;
 const SESSION_MESSAGE_METADATA_MAX_CHARS = 262_144;
-
-function capSessionMessageContent(content: string): string {
-  if (content.length <= SESSION_MESSAGE_CONTENT_MAX_CHARS) return content;
-  const head = content.slice(
-    0,
-    SESSION_MESSAGE_CONTENT_MAX_CHARS - SESSION_MESSAGE_CONTENT_TAIL_CHARS
-  );
-  const tail = content.slice(-SESSION_MESSAGE_CONTENT_TAIL_CHARS);
-  return `${head}\n\n[...elided: oversized message truncated for storage...]\n\n${tail}`;
-}
 
 function capSessionMessageMetadata(metadataJson?: string): string | undefined {
   if (!metadataJson || metadataJson.length <= SESSION_MESSAGE_METADATA_MAX_CHARS) {
@@ -119,7 +103,7 @@ export async function logSessionMessage(
     channel_type: options?.channelType,
     channel_id: options?.channelId,
     role,
-    content: capSessionMessageContent(content),
+    content,
     metadata: capSessionMessageMetadata(safeMetadata ? JSON.stringify(safeMetadata) : undefined),
     created_at: normalizeCreatedAt(options?.createdAt),
   };

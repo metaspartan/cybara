@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   computeAdaptiveChunkRatio,
+  compactContext,
   estimateMessageTokens,
   estimateMessageTranscriptTokens,
   estimateMessagesTokens,
@@ -142,5 +143,24 @@ describe("session-context chunking helpers", () => {
     const hugeMsg = msg("user", "x".repeat(100000));
     expect(isOversizedForSummary(smallMsg, 128000)).toBe(false);
     expect(isOversizedForSummary(hugeMsg, 1000)).toBe(true);
+  });
+
+  test("long-conversation compaction preserves source history and detailed recent context", async () => {
+    const messages = Array.from({ length: 30 }, (_, index) =>
+      msg(
+        index % 2 === 0 ? "user" : "assistant",
+        `turn-${index}-${"x".repeat(1100)}-MARKER_${index}-${"y".repeat(3900)}`
+      )
+    );
+    const original = structuredClone(messages);
+    const result = await compactContext(messages, "mixtral");
+
+    expect(result.wasCompacted).toBe(true);
+    expect(messages).toEqual(original);
+    expect(result.messages.length).toBeLessThan(messages.length);
+    expect(result.summary).toContain("MARKER_");
+    expect(result.summary).not.toContain("[...truncated]");
+    expect(result.messages.at(-1)).toEqual(messages.at(-1));
+    expect(result.messages.at(-2)).toEqual(messages.at(-2));
   });
 });

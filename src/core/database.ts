@@ -328,27 +328,18 @@ try {
   }
 
   try {
-    // Repair pathological session_messages rows written before storage caps
-    // existed (single rows near 200MB made session-list queries re-read
-    // hundreds of MB). Idempotent: repaired rows no longer match the WHERE.
     const repaired = db
       .prepare(
         `UPDATE session_messages SET
-           content = CASE
-             WHEN LENGTH(content) > 2097152
-             THEN substr(content, 1, 2000000) || char(10) || '[...elided: oversized message truncated for storage...]'
-             ELSE content END,
            metadata = CASE
              WHEN LENGTH(COALESCE(metadata, '')) > 262144
              THEN json_object('elided', 1, 'originalChars', LENGTH(metadata))
              ELSE metadata END
-         WHERE LENGTH(content) > 2097152 OR LENGTH(COALESCE(metadata, '')) > 262144`
+         WHERE LENGTH(COALESCE(metadata, '')) > 262144`
       )
       .run();
     if (repaired.changes > 0) {
-      console.log(
-        `[Database] Migration: truncated ${repaired.changes} oversized session message(s)`
-      );
+      console.log(`[Database] Migration: compacted ${repaired.changes} oversized metadata row(s)`);
     }
   } catch (error) {
     console.warn("[Database] session_messages size repair failed:", error);

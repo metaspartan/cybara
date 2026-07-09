@@ -1824,11 +1824,11 @@ const routes: Record<string, RouteHandler> = {
     const session = await getSession(params!.id);
     if (!session) return session;
     const sessionObj = session as Record<string, unknown>;
-    const messages = Array.isArray(session.messages) ? session.messages : [];
+    const messages = await getSessionMessages(params!.id);
     return {
       ...session,
       plan: extractLatestSessionPlan(params!.id, messages),
-      messages: Array.isArray(session.messages) ? sanitizeSessionMessages(session.messages) : [],
+      messages: sanitizeSessionMessages(messages),
       messagesList: Array.isArray(sessionObj.messagesList)
         ? sanitizeSessionMessages(sessionObj.messagesList as SessionMessageView[])
         : undefined,
@@ -2229,22 +2229,13 @@ const routes: Record<string, RouteHandler> = {
       params?.includeFullToolCalls === "1" ||
       params?.includeFullToolCalls === "true" ||
       params?.includeFullToolCalls === "yes";
-    const MAX_CONTENT_SIZE = includeFullToolCalls ? 0 : 10000;
     const sanitizedMessages = sanitizeSessionMessages(messages, {
       maxToolCalls: includeFullToolCalls ? 0 : 50,
       includeFullToolCalls,
-    }).map((m) => {
-      const truncatedContent =
-        MAX_CONTENT_SIZE > 0 && typeof m.content === "string" && m.content.length > MAX_CONTENT_SIZE
-          ? m.content.slice(0, MAX_CONTENT_SIZE) +
-            `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
-          : m.content;
-      return {
-        ...m,
-        content: truncatedContent,
-        timestamp: normalizeTimestamp(m.timestamp),
-      };
-    });
+    }).map((m) => ({
+      ...m,
+      timestamp: normalizeTimestamp(m.timestamp),
+    }));
 
     const detailModelMetadata = sessionModelMetadata(
       session.agentId,
@@ -2272,7 +2263,7 @@ const routes: Record<string, RouteHandler> = {
         "workspaceDir" in session && typeof session.workspaceDir === "string"
           ? session.workspaceDir
           : null,
-      contextUsage: estimateSessionContextUsage(messages, detailModelMetadata.model, {
+      contextUsage: estimateSessionContextUsage(session.messages || [], detailModelMetadata.model, {
         sessionId: session.id,
         compactionCount:
           "compactionCount" in session && typeof session.compactionCount === "number"
@@ -2437,19 +2428,10 @@ const routes: Record<string, RouteHandler> = {
         messageContent,
         messageTimestamp,
       });
-      const MAX_CONTENT_SIZE = 10000;
-      const sanitizedMessages = sanitizeSessionMessages(reverted.messages).map((m) => {
-        const truncatedContent =
-          typeof m.content === "string" && m.content.length > MAX_CONTENT_SIZE
-            ? m.content.slice(0, MAX_CONTENT_SIZE) +
-              `\n\n... [content truncated, ${m.content.length - MAX_CONTENT_SIZE} chars omitted]`
-            : m.content;
-        return {
-          ...m,
-          content: truncatedContent,
-          timestamp: normalizeTimestamp(m.timestamp),
-        };
-      });
+      const sanitizedMessages = sanitizeSessionMessages(reverted.messages).map((m) => ({
+        ...m,
+        timestamp: normalizeTimestamp(m.timestamp),
+      }));
 
       return {
         success: true,

@@ -214,6 +214,8 @@ const DEFAULT_CONTEXT_TOKENS = 200_000;
 const CONTEXT_SAFETY_MARGIN = 1.2; // 20% buffer for token estimation
 const MAX_HISTORY_SHARE = 0.5; // Max 50% of context for history
 const SUMMARY_RESERVE_TOKENS = 4000; // Reserve tokens for summary generation
+const COMPACTION_SUMMARY_MAX_CHARS = 4000;
+const COMPACTION_CHUNK_SUMMARY_MAX_CHARS = 2400;
 
 const BASE_CHUNK_RATIO = 0.4;
 const MIN_CHUNK_RATIO = 0.15;
@@ -641,10 +643,7 @@ ${conversationText}`;
 
 function messagesToConversationText(messages: ChatMessage[]): string {
   return messages
-    .map(
-      (m) =>
-        `${m.role}: ${m.content.slice(0, 800)}${m.content.length > 800 ? " [...truncated]" : ""}`
-    )
+    .map((message) => `${message.role}: ${compactChatContentForPrompt(message)}`)
     .join("\n\n");
 }
 
@@ -672,7 +671,7 @@ async function generateContextSummary(
       [{ role: "user", content: prompt }],
       []
     );
-    return response.content.slice(0, 1200);
+    return response.content.slice(0, COMPACTION_SUMMARY_MAX_CHARS);
   }
 
   // Multi-stage: summarize each chunk, then merge.
@@ -687,7 +686,7 @@ async function generateContextSummary(
       [{ role: "user", content: prompt }],
       []
     );
-    const summary = response.content.slice(0, 600);
+    const summary = response.content.slice(0, COMPACTION_CHUNK_SUMMARY_MAX_CHARS);
     chunkSummaries.push(summary);
     previousSummary = summary;
   }
@@ -705,22 +704,15 @@ ${chunkSummaries.map((s, i) => `--- Part ${i + 1} ---\n${s}`).join("\n")}`;
     [{ role: "user", content: mergePrompt }],
     []
   );
-  return merged.content.slice(0, 1200);
+  return merged.content.slice(0, COMPACTION_SUMMARY_MAX_CHARS);
 }
 
 function createFallbackSummary(messages: ChatMessage[]): string {
-  const topics = new Set<string>();
-  const userMessages = messages.filter((m) => m.role === "user");
-
-  for (const msg of userMessages.slice(-5)) {
-    const words = msg.content
-      .toLowerCase()
-      .split(/\s+/)
-      .filter((w) => w.length > 5);
-    words.slice(0, 3).forEach((w) => topics.add(w));
-  }
-
-  return `Previous conversation covered: ${Array.from(topics).slice(0, 5).join(", ") || "various topics"}. ${messages.length} messages summarized.`;
+  const transcript = messagesToConversationText(messages.slice(-12));
+  return `Earlier conversation (${messages.length} messages):\n${transcript}`.slice(
+    0,
+    COMPACTION_SUMMARY_MAX_CHARS
+  );
 }
 
 export async function persistSession(
