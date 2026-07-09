@@ -25,7 +25,7 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
   });
 
   test("mobile: idle event reloads the session before dropping the live assistant", () => {
-    const source = read("apps/mobile/src/screens/DashboardScreen.tsx");
+    const source = read("apps/mobile/src/screens/dashboardSessionDetail.tsx");
     expect(source).toContain("void loadSession(false).finally(() => {");
     expect(source).toContain("commitLiveAssistant(() => null, event.timestamp);");
     expect(source).toContain('snapshotStatus === "compacting"');
@@ -74,7 +74,7 @@ describe("chat live auto-scroll", () => {
   });
 
   test("mobile: scrolls to end as the live assistant message grows", () => {
-    const source = read("apps/mobile/src/screens/DashboardScreen.tsx");
+    const source = read("apps/mobile/src/screens/dashboardSessionDetail.tsx");
     expect(source).toContain("scrollRef.current?.scrollToEnd({ animated: true });");
     expect(source).toContain("liveAssistant?.content,");
     expect(source).toContain("liveAssistant?.processActivities?.length,");

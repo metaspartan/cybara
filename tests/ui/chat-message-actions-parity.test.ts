@@ -15,7 +15,7 @@ describe("chat message actions parity (copy + confirmed revert on all clients)",
     expect(chat).toContain('accessibilityLabel="Revert session to this message"');
     expect(chat).toContain("Clipboard.setStringAsync(content)");
 
-    const screen = read("apps/mobile/src/screens/DashboardScreen.tsx");
+    const screen = read("apps/mobile/src/screens/dashboardSessionDetail.tsx");
     // Revert goes through a native confirmation alert and refreshes the session.
     expect(screen).toContain('"Revert to this message?"');
     expect(screen).toContain('{ text: "Cancel", style: "cancel" }');
@@ -43,7 +43,7 @@ describe("chat message actions parity (copy + confirmed revert on all clients)",
   });
 
   test("mobile revert resolves the target by content/timestamp like the web client", () => {
-    const screen = read("apps/mobile/src/screens/DashboardScreen.tsx");
+    const screen = read("apps/mobile/src/screens/dashboardSessionDetail.tsx");
     expect(screen).toContain('messageRole: "user"');
     expect(screen).toContain("messageContent: message.content");
     expect(screen).toContain("messageTimestamp: message.timestamp");
