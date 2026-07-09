@@ -37,32 +37,38 @@ import {
 import type { SessionDetailSummary, SessionMessageSummary, SessionPlanSnapshot } from "../lib/api";
 import { Clipboard } from "../lib/expoNativeModules";
 
-function InlineMarkdown({ tokens }: { tokens: MarkdownInline[] }) {
+function InlineMarkdown({
+  selectable = false,
+  tokens,
+}: {
+  selectable?: boolean;
+  tokens: MarkdownInline[];
+}) {
   return (
     <>
       {tokens.map((token, index) => {
         switch (token.type) {
           case "bold":
             return (
-              <Text key={index} selectable style={styles.mdBold}>
+              <Text key={index} selectable={selectable} style={styles.mdBold}>
                 {token.text}
               </Text>
             );
           case "italic":
             return (
-              <Text key={index} selectable style={styles.mdItalic}>
+              <Text key={index} selectable={selectable} style={styles.mdItalic}>
                 {token.text}
               </Text>
             );
           case "strike":
             return (
-              <Text key={index} selectable style={styles.mdStrike}>
+              <Text key={index} selectable={selectable} style={styles.mdStrike}>
                 {token.text}
               </Text>
             );
           case "code":
             return (
-              <Text key={index} selectable style={styles.mdInlineCode}>
+              <Text key={index} selectable={selectable} style={styles.mdInlineCode}>
                 {token.text}
               </Text>
             );
@@ -70,7 +76,7 @@ function InlineMarkdown({ tokens }: { tokens: MarkdownInline[] }) {
             return (
               <Text
                 key={index}
-                selectable
+                selectable={selectable}
                 style={styles.mdLink}
                 onPress={() => {
                   void Linking.openURL(token.href).catch(() => {});
@@ -81,7 +87,7 @@ function InlineMarkdown({ tokens }: { tokens: MarkdownInline[] }) {
             );
           default:
             return (
-              <Text key={index} selectable>
+              <Text key={index} selectable={selectable}>
                 {token.text}
               </Text>
             );

@@ -103,11 +103,14 @@ describe("mobile: chat management", () => {
     expect(chat).toContain("Latest plan update");
     expect(planCard).toBeGreaterThan(0);
     expect(messageLoop).toBeGreaterThan(planCard);
-    expect(chat).toContain("<Text key={index} selectable style={styles.mdBold}>");
-    expect(chat).toContain("<Text key={index} selectable style={styles.mdItalic}>");
-    expect(chat).toContain("<Text key={index} selectable style={styles.mdStrike}>");
-    expect(chat).toContain("<Text key={index} selectable style={styles.mdInlineCode}>");
-    expect(chat).toContain("<Text key={index} selectable>");
+    expect(chat).toContain("selectable?: boolean;");
+    expect(chat).toContain("<Text key={index} selectable={selectable} style={styles.mdBold}>");
+    expect(chat).toContain("<Text key={index} selectable={selectable} style={styles.mdItalic}>");
+    expect(chat).toContain("<Text key={index} selectable={selectable} style={styles.mdStrike}>");
+    expect(chat).toContain(
+      "<Text key={index} selectable={selectable} style={styles.mdInlineCode}>"
+    );
+    expect(chat).toContain("<Text key={index} selectable={selectable}>");
     expect(chat).toContain("<Text selectable style={styles.mdListMarker}>");
     expect(chat).toContain("<Text selectable style={styles.mdListText}>");
     expect(chat).toContain("<Text selectable style={styles.mdQuoteText}>");
@@ -119,6 +122,8 @@ describe("mobile: chat management", () => {
     expect(chat).toContain('accessibilityLabel="Add message to chat"');
     expect(chat).toContain("onAddToChat?: (content: string) => void");
     expect(screen).toContain("onAddToChat={appendTextToComposer}");
+    expect(screen).toContain("contextMenuHidden={false}");
+    expect(screen).toContain("selectionColor={accentColor}");
     expect(styles).toContain("mobilePlanCard:");
     expect(styles).toContain("mobilePlanProgressFill:");
   });

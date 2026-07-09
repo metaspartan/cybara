@@ -1657,6 +1657,7 @@ export function SessionDetailPanel({
           <View style={styles.composer}>
             <TextInput
               blurOnSubmit={false}
+              contextMenuHidden={false}
               editable
               multiline
               onContentSizeChange={(event) => {
@@ -1673,6 +1674,7 @@ export function SessionDetailPanel({
               placeholderTextColor={colors.textDim}
               returnKeyType="default"
               scrollEnabled={composerHeight >= MOBILE_CHAT_COMPOSER.maxHeight}
+              selectionColor={accentColor}
               style={[styles.composerInput, { height: composerHeight }]}
               submitBehavior="newline"
               textAlignVertical="top"
@@ -1722,10 +1724,12 @@ export function SessionDetailPanel({
             <Text style={styles.pendingEditTitle}>Edit queued message</Text>
             <TextInput
               autoFocus
+              contextMenuHidden={false}
               multiline
               onChangeText={setEditingPendingDraft}
               placeholder="Queued message"
               placeholderTextColor={colors.textDim}
+              selectionColor={accentColor}
               style={styles.pendingEditInput}
               value={editingPendingDraft}
             />
