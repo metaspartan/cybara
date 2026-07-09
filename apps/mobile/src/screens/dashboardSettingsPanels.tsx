@@ -59,6 +59,7 @@ import {
   readMobileLlmTimeoutSettings,
   type MobileLlmTimeoutSettings,
   readMobileMemoryProviderSettings,
+  readMobileTokenOptimizationSettings,
   readMobileSpeechSettings,
   remoteItemEnabled,
   remoteTaskRunning,
@@ -68,6 +69,7 @@ import {
   type MobileMemoryProviderChoice,
   type MobileMemoryProviderSettings,
   type MobileSpeechSettings,
+  type MobileTokenOptimizationSettings,
 } from "./dashboardHelpers";
 import {
   MOBILE_ROUTER_STRATEGY_OPTIONS,
@@ -3043,22 +3045,25 @@ export function MemorySettingsPanel({
   const memorySettings = readMobileMemoryBehaviorSettings(summary?.config);
   const providerSettings = readMobileMemoryProviderSettings(summary?.config);
   const indexingSettings = readMobileIndexingSettings(summary?.config);
+  const tokenOptimizationSettings = readMobileTokenOptimizationSettings(summary?.config);
   const [memoryDraft, setMemoryDraft] = useState(memorySettings);
   const [timeoutsDraft, setTimeoutsDraft] = useState(() =>
     readMobileLlmTimeoutSettings(summary?.config)
   );
+  const [tokenOptimizationDraft, setTokenOptimizationDraft] =
+    useState<MobileTokenOptimizationSettings>(tokenOptimizationSettings);
   const [providerDraft, setProviderDraft] = useState(providerSettings);
   const [indexingDraft, setIndexingDraft] = useState(indexingSettings);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
-  const configSignature = JSON.stringify(summary?.config?.memory_provider ?? null);
+  const configSignature = JSON.stringify(summary?.config ?? null);
 
   useEffect(() => {
     setMemoryDraft(memorySettings);
     setProviderDraft(providerSettings);
     setIndexingDraft(indexingSettings);
-    // Re-sync drafts only when the gateway config itself changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setTokenOptimizationDraft(tokenOptimizationSettings);
+    setTimeoutsDraft(readMobileLlmTimeoutSettings(summary?.config));
   }, [configSignature, configAvailable]);
 
   const persist = async (payload: Record<string, unknown>, failureTitle: string) => {
@@ -3085,6 +3090,12 @@ export function MemorySettingsPanel({
     const next = { ...timeoutsDraft, ...patch };
     setTimeoutsDraft(next);
     void persist({ llm_timeouts: next }, "Watchdog setting failed");
+  };
+
+  const saveTokenOptimization = (patch: Partial<MobileTokenOptimizationSettings>) => {
+    const next = { ...tokenOptimizationDraft, ...patch };
+    setTokenOptimizationDraft(next);
+    void persist({ token_optimization: next }, "Token optimization setting failed");
   };
 
   const saveProvider = (patch: Partial<MobileMemoryProviderSettings>) => {
@@ -3239,6 +3250,20 @@ export function MemorySettingsPanel({
           }
           placeholder="1800"
           value={String(timeoutsDraft.nonStreamingSeconds || "")}
+        />
+      </SettingsSection>
+      <SettingsSection title="Token optimization">
+        <SettingToggle
+          busy={saving}
+          detail="Use TOON for structured tool outputs when it is smaller than compact JSON."
+          label="Compact structured results"
+          onPress={() =>
+            saveTokenOptimization({
+              toonStructuredDataEnabled: !tokenOptimizationDraft.toonStructuredDataEnabled,
+            })
+          }
+          tone={accentColor}
+          value={tokenOptimizationDraft.toonStructuredDataEnabled}
         />
       </SettingsSection>
       <SettingsSection title="Self-improvement">

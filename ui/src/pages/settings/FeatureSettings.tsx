@@ -51,6 +51,8 @@ export function FeatureSettings() {
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
   const [reasoningEffort, setReasoningEffort] = useState("");
   const [savingReasoningEffort, setSavingReasoningEffort] = useState(false);
+  const [toonStructuredDataEnabled, setToonStructuredDataEnabled] = useState(true);
+  const [savingTokenOptimization, setSavingTokenOptimization] = useState(false);
   const [savingDangerousPolicy, setSavingDangerousPolicy] = useState(false);
   const [savingSandboxRuntime, setSavingSandboxRuntime] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -133,6 +135,14 @@ export function FeatureSettings() {
         );
         setSandboxNetwork(sandboxRaw?.network === "allow" ? "allow" : "deny");
         setReasoningEffort(typeof data?.reasoning_effort === "string" ? data.reasoning_effort : "");
+        const tokenOptimization = data?.token_optimization as
+          | { toonStructuredDataEnabled?: boolean; toon_structured_data_enabled?: boolean }
+          | undefined;
+        setToonStructuredDataEnabled(
+          tokenOptimization?.toonStructuredDataEnabled ??
+            tokenOptimization?.toon_structured_data_enabled ??
+            true
+        );
         setBackgroundAgentId(
           typeof data?.background_agent_id === "string" ? data.background_agent_id : ""
         );
@@ -268,6 +278,28 @@ export function FeatureSettings() {
       addToast("error", "Failed to update reasoning effort");
     } finally {
       setSavingReasoningEffort(false);
+    }
+  };
+
+  const toggleToonStructuredData = async (enabled: boolean) => {
+    setToonStructuredDataEnabled(enabled);
+    setSavingTokenOptimization(true);
+    try {
+      const result = await settingsApi.updateConfig({
+        token_optimization: { toonStructuredDataEnabled: enabled },
+      });
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || "Config update failed");
+      }
+      addToast(
+        "success",
+        enabled ? "Structured tool results use adaptive TOON" : "Structured tool results use JSON"
+      );
+    } catch {
+      setToonStructuredDataEnabled(!enabled);
+      addToast("error", "Failed to update token optimization");
+    } finally {
+      setSavingTokenOptimization(false);
     }
   };
 
@@ -492,6 +524,31 @@ export function FeatureSettings() {
               disabled={loading || savingReasoningEffort}
             />
           </div>
+        </div>
+
+        <div className="flex items-center justify-between py-3 border-b border-white/10">
+          <div>
+            <p className="text-sm text-white font-medium">Compact Structured Tool Results</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Use TOON for model-visible tool data when it is smaller than JSON.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={toonStructuredDataEnabled}
+            disabled={loading || savingTokenOptimization}
+            onClick={() => void toggleToonStructuredData(!toonStructuredDataEnabled)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              toonStructuredDataEnabled ? "bg-cyan-500" : "bg-white/10"
+            } ${loading || savingTokenOptimization ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                toonStructuredDataEnabled ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
         </div>
 
         <div className="py-3">

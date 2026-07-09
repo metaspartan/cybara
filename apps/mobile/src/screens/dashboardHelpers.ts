@@ -245,6 +245,10 @@ export interface MobileLlmTimeoutSettings {
   nonStreamingSeconds: number;
 }
 
+export interface MobileTokenOptimizationSettings {
+  toonStructuredDataEnabled: boolean;
+}
+
 export function readMobileLlmTimeoutSettings(
   configRecord: Record<string, unknown> | null | undefined
 ): MobileLlmTimeoutSettings {
@@ -254,6 +258,19 @@ export function readMobileLlmTimeoutSettings(
     stallSeconds: numberSetting(timeouts, "stallSeconds", 300),
     totalSeconds: numberSetting(timeouts, "totalSeconds", 0),
     nonStreamingSeconds: numberSetting(timeouts, "nonStreamingSeconds", 1800),
+  };
+}
+
+export function readMobileTokenOptimizationSettings(
+  configRecord: Record<string, unknown> | null | undefined
+): MobileTokenOptimizationSettings {
+  const tokenOptimization = objectRecord(configRecord?.token_optimization);
+  return {
+    toonStructuredDataEnabled: boolSetting(
+      tokenOptimization,
+      "toonStructuredDataEnabled",
+      boolSetting(tokenOptimization, "toon_structured_data_enabled", true)
+    ),
   };
 }
 

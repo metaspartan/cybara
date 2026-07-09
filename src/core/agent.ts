@@ -61,6 +61,7 @@ import {
   TOOL_RESULT_COMPACTION_NOTICE,
 } from "./llm/tool-transcript";
 import { trackTokenUsage } from "./llm/token-usage-tracking";
+import { formatToolResultForModel } from "./llm/model-visible-format";
 import {
   hasTextToolCallMarkup,
   normalizeAnthropicToolUses,
@@ -1849,12 +1850,9 @@ class AgentManager {
   }
 
   private truncateToolResultContentForContext(resultPayload: unknown, maxChars: number): string {
-    let serialized = "";
-    try {
-      serialized = JSON.stringify(resultPayload);
-    } catch {
-      serialized = String(resultPayload);
-    }
+    const serialized = formatToolResultForModel(resultPayload, {
+      toonEnabled: config.getTokenOptimizationSettings().toonStructuredDataEnabled,
+    });
     return this.truncateTextWithHeadAndTail(serialized, maxChars);
   }
 

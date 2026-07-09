@@ -52,6 +52,7 @@ import {
   readMobileToolApprovalMode,
   summarizeFeatureCounts,
 } from "../../apps/mobile/src/lib/dashboard";
+import { readMobileTokenOptimizationSettings } from "../../apps/mobile/src/screens/dashboardHelpers";
 
 const dashboardScreenSource =
   readFileSync(
@@ -567,6 +568,14 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_SETTINGS_ROOT_CHROME.nativeGroupedSections).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.nativeSegmentedControls).toBe(true);
     expect(MOBILE_SETTINGS_ROOT_CHROME.nativeSwitchControls).toBe(true);
+    expect(dashboardScreenSource).toContain("readMobileTokenOptimizationSettings");
+    expect(dashboardScreenSource).toContain("token_optimization: next");
+    expect(readMobileTokenOptimizationSettings({}).toonStructuredDataEnabled).toBe(true);
+    expect(
+      readMobileTokenOptimizationSettings({
+        token_optimization: { toonStructuredDataEnabled: false },
+      }).toonStructuredDataEnabled
+    ).toBe(false);
     expect(MOBILE_PLATFORM_SETTING_KEYS).toEqual([
       "terminal_enabled",
       "tool_approval_mode",

@@ -391,6 +391,7 @@ describe("native macOS shell wiring", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
     const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const configScreens = readFileSync(join(MACOS_APP_DIR, "NativeConfigScreens.swift"), "utf8");
 
     expect(gatewayModels).toContain("struct GatewaySessionContextUsage");
     expect(gatewayModels).toContain("let contextUsage: GatewaySessionContextUsage?");
@@ -415,6 +416,9 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("private var toolApprovalColor: Color");
     expect(nativeScreens).toContain("try await client.updateAppConfig(body)");
     expect(nativeScreens).toContain('"tool_approval_mode": normalized');
+    expect(configScreens).toContain("Compact structured tool results");
+    expect(configScreens).toContain('"token_optimization"');
+    expect(configScreens).toContain('"toonStructuredDataEnabled": newValue');
     expect(nativeScreens).toContain('Picker("Agent", selection: agentSelectionBinding)');
     expect(nativeScreens).toContain('Text("Model Router").tag(nativeModelRouterSelectorValue)');
     expect(nativeScreens).toContain("let router = try await client.routerConfig()");

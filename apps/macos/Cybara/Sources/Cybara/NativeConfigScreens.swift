@@ -734,6 +734,7 @@ struct SystemPromptScreen: View {
     @State private var saving = false
     @State private var error: String?
     @State private var selfImprovingSkills = true
+    @State private var toonStructuredDataEnabled = true
 
     private static let featureRows: [(key: String, label: String)] = [
         ("memoryEnabled", "Memory"),
@@ -797,6 +798,13 @@ struct SystemPromptScreen: View {
                                 .toggleStyle(.switch)
                                 .font(.system(size: 13, weight: .medium, design: .rounded))
                             Text("Let agents save reusable skills with skill_save after complex tasks. When off, the tool is withheld.")
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.secondary)
+                            Divider().opacity(0.3)
+                            Toggle("Compact structured tool results", isOn: toonBinding)
+                                .toggleStyle(.switch)
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                            Text("Use TOON for model-visible tool data when it is smaller than compact JSON.")
                                 .font(.system(size: 11, design: .rounded))
                                 .foregroundStyle(.secondary)
                         }
@@ -874,6 +882,30 @@ struct SystemPromptScreen: View {
         )
     }
 
+    private var toonBinding: Binding<Bool> {
+        Binding(
+            get: { toonStructuredDataEnabled },
+            set: { newValue in
+                toonStructuredDataEnabled = newValue
+                let payload: [String: Any] = [
+                    "token_optimization": [
+                        "toonStructuredDataEnabled": newValue
+                    ]
+                ]
+                guard let body = try? JSONSerialization.data(withJSONObject: payload) else { return }
+                Task {
+                    do {
+                        try await client.updateAppConfig(body)
+                        error = nil
+                    } catch {
+                        self.error = error.localizedDescription
+                        self.toonStructuredDataEnabled = !newValue
+                    }
+                }
+            }
+        )
+    }
+
     private func saveIdentity() async {
         saving = true
         var next = config
@@ -906,6 +938,11 @@ struct SystemPromptScreen: View {
             customPrompt = config["customPrompt"] as? String ?? ""
             if let appConfig = try? await client.appConfig() {
                 selfImprovingSkills = (appConfig["self_improving_skills_enabled"] as? Bool) ?? true
+                let tokenOptimization = appConfig["token_optimization"] as? [String: Any]
+                toonStructuredDataEnabled =
+                    (tokenOptimization?["toonStructuredDataEnabled"] as? Bool) ??
+                    (tokenOptimization?["toon_structured_data_enabled"] as? Bool) ??
+                    true
             }
             loaded = true
             error = nil
