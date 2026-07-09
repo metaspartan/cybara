@@ -178,14 +178,14 @@ describe("status stream websocket wiring", () => {
     expect(source).not.toContain("new EventSource(");
   });
 
-  test("session sidebar keeps idle detail prefetch bounded", () => {
+  test("session sidebar does not background-prefetch full tool-call details", () => {
     const source = readSource(
       fileURLToPath(new URL("../../ui/src/pages/chat/SessionSidebar.tsx", import.meta.url))
     );
-    expect(source).toContain("const SIDEBAR_IDLE_PREFETCH_LIMIT = 1");
-    expect(source).toContain("const SIDEBAR_IDLE_PREFETCH_TOTAL_LIMIT = 4");
-    expect(source).toContain("remainingWarmBudget <= 0");
-    expect(source).toContain("Math.min(SIDEBAR_IDLE_PREFETCH_LIMIT, remainingWarmBudget)");
+    expect(source).toContain("const cached = loadSession.getCached(sessionId)");
+    expect(source).not.toContain("loadSession.prefetch");
+    expect(source).not.toContain("requestIdleCallback");
+    expect(source).not.toContain("warmedSessionIdsRef");
   });
 
   test("status stream helper multiplexes subscribers through one websocket", () => {

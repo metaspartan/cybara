@@ -741,13 +741,20 @@ export function IDE() {
     fetchRoot();
   }, [currentPath, refreshKey]);
 
+  const autoAssignIndexerWorkspace = Boolean(
+    (indexSettingsDraft || indexStatus?.settings || DEFAULT_INDEXER_SETTINGS_DRAFT).enabled &&
+      (indexSettingsDraft || indexStatus?.settings || DEFAULT_INDEXER_SETTINGS_DRAFT)
+        .autoReindexOnWorkspaceSet
+  );
+
   useEffect(() => {
     if (!effectiveWorkspacePath) return;
+    if (!autoAssignIndexerWorkspace) return;
     if (lastIndexedWorkspaceAssignmentRef.current === effectiveWorkspacePath) return;
     lastIndexedWorkspaceAssignmentRef.current = effectiveWorkspacePath;
     setIndexSettingsError(null);
     void assignWorkspaceToIndexer(effectiveWorkspacePath);
-  }, [assignWorkspaceToIndexer, effectiveWorkspacePath]);
+  }, [assignWorkspaceToIndexer, autoAssignIndexerWorkspace, effectiveWorkspacePath]);
 
   useEffect(() => {
     void fetchIndexStatus(currentPath);

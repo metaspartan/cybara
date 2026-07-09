@@ -59,10 +59,10 @@ const defaultMemoryBehaviorSettings: MemoryBehaviorSettingsState = {
 };
 
 const defaultMemoryRecallSettings: MemoryRecallSettingsState = {
-  enabled: true,
-  semanticEnabled: true,
+  enabled: false,
+  semanticEnabled: false,
   includeHidden: false,
-  autoReindexOnWorkspaceSet: true,
+  autoReindexOnWorkspaceSet: false,
   maxFiles: 25000,
   maxFileSizeMb: 1,
   semanticMaxFiles: 2000,
@@ -748,14 +748,14 @@ export function MemoryBehaviorSettings() {
         <CardContent className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <Switch
-              label="Build recall index"
-              description="Index memory and workspace files for search"
+              label="Build search index"
+              description="Index memories, sessions, and workspace files for faster search"
               checked={recall.enabled}
               disabled={loading || savingRecall}
               onChange={(checked) => updateRecall({ enabled: checked })}
             />
             <Switch
-              label="Semantic recall"
+              label="Embedding search"
               description="Use embeddings for similarity search"
               checked={recall.semanticEnabled}
               disabled={loading || savingRecall}

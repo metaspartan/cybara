@@ -3369,8 +3369,8 @@ export function MemorySettingsPanel({
         </View>
         <SettingToggle
           busy={saving}
-          detail="Index memory and workspace files for search. Separate from memory itself."
-          label="Build recall index"
+          detail="Index memories, sessions, and workspace files for faster search. Separate from memory itself."
+          label="Build search index"
           onPress={() => saveIndexing({ enabled: !indexingDraft.enabled })}
           tone={accentColor}
           value={indexingDraft.enabled}
@@ -3378,7 +3378,7 @@ export function MemorySettingsPanel({
         <SettingToggle
           busy={saving}
           detail="Use embeddings for similarity search."
-          label="Semantic recall"
+          label="Embedding search"
           onPress={() => saveIndexing({ semanticEnabled: !indexingDraft.semanticEnabled })}
           tone={accentColor}
           value={indexingDraft.semanticEnabled}

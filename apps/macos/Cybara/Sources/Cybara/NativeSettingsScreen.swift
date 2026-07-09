@@ -67,10 +67,10 @@ struct NativeSettingsScreen: View {
     @State private var memoryTestResult: String?
     @State private var memoryTestOK = false
     @State private var memoryTesting = false
-    @State private var indexEnabled = true
-    @State private var indexSemantic = true
+    @State private var indexEnabled = false
+    @State private var indexSemantic = false
     @State private var indexHidden = false
-    @State private var indexAutoReindex = true
+    @State private var indexAutoReindex = false
     @State private var indexEmbeddingProvider = "auto"
     @State private var indexEmbeddingModel = ""
     @State private var savingKey: String?
@@ -1030,14 +1030,14 @@ struct NativeSettingsScreen: View {
                             .font(.system(size: 11, design: .rounded))
                             .foregroundStyle(.secondary)
                         toggleRow(
-                            "Build recall index",
-                            detail: "Index memory and workspace files for search.",
+                            "Build search index",
+                            detail: "Index memories, sessions, and workspace files for faster search.",
                             isOn: $indexEnabled
                         ) {
                             saveIndexingSettings()
                         }
                         toggleRow(
-                            "Semantic recall",
+                            "Embedding search",
                             detail: "Use embeddings for similarity search.",
                             isOn: $indexSemantic
                         ) {
@@ -2038,10 +2038,10 @@ struct NativeSettingsScreen: View {
         }
         memoryProviderFields = fieldValues
         let indexer = config["workspace_indexer"] as? [String: Any] ?? [:]
-        indexEnabled = indexer["enabled"] as? Bool ?? true
-        indexSemantic = indexer["semanticEnabled"] as? Bool ?? true
+        indexEnabled = indexer["enabled"] as? Bool ?? false
+        indexSemantic = indexer["semanticEnabled"] as? Bool ?? false
         indexHidden = indexer["includeHidden"] as? Bool ?? false
-        indexAutoReindex = indexer["autoReindexOnWorkspaceSet"] as? Bool ?? true
+        indexAutoReindex = indexer["autoReindexOnWorkspaceSet"] as? Bool ?? false
         let embedding = indexer["embeddingProvider"] as? String ?? "auto"
         indexEmbeddingProvider = ["auto", "local", "transformers_js", "openai", "voyage", "gemini", "ollama"].contains(embedding) ? embedding : "auto"
         indexEmbeddingModel = indexer["embeddingModel"] as? String ?? ""

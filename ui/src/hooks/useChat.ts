@@ -450,12 +450,5 @@ export function useLoadSession() {
     ...mutation,
     getCached: (sessionId: string) =>
       queryClient.getQueryData<LoadedChatSession>(sessionDetailQueryKey(sessionId)),
-    prefetch: (sessionId: string) =>
-      queryClient.prefetchQuery({
-        queryKey: sessionDetailQueryKey(sessionId),
-        staleTime: SESSION_DETAIL_STALE_MS,
-        gcTime: SESSION_DETAIL_GC_MS,
-        queryFn: () => loadSessionDetail(sessionId),
-      }),
   };
 }

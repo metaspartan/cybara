@@ -44,13 +44,88 @@ describe("security-sensitive runtime defaults", () => {
 
   test("workspace indexing does not start automatically by default", () => {
     const configSource = readFileSync(join(ROOT_DIR, "src", "core", "config.ts"), "utf8");
+    const ideConstantsSource = readFileSync(
+      join(ROOT_DIR, "ui", "src", "pages", "ide", "ideConstants.ts"),
+      "utf8"
+    );
+    const ideSource = readFileSync(join(ROOT_DIR, "ui", "src", "pages", "IDE.tsx"), "utf8");
+    const settingsSource = readFileSync(
+      join(ROOT_DIR, "ui", "src", "pages", "settings", "MemoryBehaviorSettings.tsx"),
+      "utf8"
+    );
+    const mobileHelpersSource = readFileSync(
+      join(ROOT_DIR, "apps", "mobile", "src", "screens", "dashboardHelpers.ts"),
+      "utf8"
+    );
+    const nativeSettingsSource = readFileSync(
+      join(ROOT_DIR, "apps", "macos", "Cybara", "Sources", "Cybara", "NativeSettingsScreen.swift"),
+      "utf8"
+    );
     const indexerSource = readFileSync(
       join(ROOT_DIR, "src", "core", "workspace-indexer.ts"),
       "utf8"
     );
 
+    expect(configSource).toContain("DEFAULT_WORKSPACE_INDEXER_SETTINGS: WorkspaceIndexerSettings");
+    expect(configSource).toContain("enabled: false");
     expect(configSource).toContain("autoReindexOnWorkspaceSet: false");
+    expect(configSource).toContain("semanticEnabled: false");
+    expect(ideConstantsSource).toContain(
+      "DEFAULT_INDEXER_SETTINGS_DRAFT: WorkspaceIndexerSettings"
+    );
+    expect(ideConstantsSource).toContain("enabled: false");
+    expect(ideConstantsSource).toContain("autoReindexOnWorkspaceSet: false");
+    expect(ideConstantsSource).toContain("semanticEnabled: false");
+    expect(ideSource).toContain("if (!autoAssignIndexerWorkspace) return;");
+    expect(settingsSource).toContain("const defaultMemoryRecallSettings");
+    expect(settingsSource).toContain("autoReindexOnWorkspaceSet: false");
+    expect(mobileHelpersSource).toContain('boolSetting(indexer, "enabled", false)');
+    expect(mobileHelpersSource).toContain('boolSetting(indexer, "semanticEnabled", false)');
+    expect(mobileHelpersSource).toContain(
+      'boolSetting(indexer, "autoReindexOnWorkspaceSet", false)'
+    );
+    expect(nativeSettingsSource).toContain("@State private var indexEnabled = false");
+    expect(nativeSettingsSource).toContain("@State private var indexSemantic = false");
+    expect(nativeSettingsSource).toContain("@State private var indexAutoReindex = false");
+    expect(nativeSettingsSource).toContain('indexer["enabled"] as? Bool ?? false');
+    expect(nativeSettingsSource).toContain('indexer["semanticEnabled"] as? Bool ?? false');
+    expect(nativeSettingsSource).toContain(
+      'indexer["autoReindexOnWorkspaceSet"] as? Bool ?? false'
+    );
     expect(indexerSource).toContain("settings.enabled && settings.autoReindexOnWorkspaceSet");
+  });
+
+  test("memory remains enabled even when optional indexing is off by default", () => {
+    const configSource = readFileSync(join(ROOT_DIR, "src", "core", "config.ts"), "utf8");
+    const providerSource = readFileSync(
+      join(ROOT_DIR, "src", "core", "memory", "providers.ts"),
+      "utf8"
+    );
+    const webSettingsSource = readFileSync(
+      join(ROOT_DIR, "ui", "src", "pages", "settings", "MemoryBehaviorSettings.tsx"),
+      "utf8"
+    );
+    const mobileSettingsSource = readFileSync(
+      join(ROOT_DIR, "apps", "mobile", "src", "screens", "dashboardSettingsPanels.tsx"),
+      "utf8"
+    );
+    const nativeSettingsSource = readFileSync(
+      join(ROOT_DIR, "apps", "macos", "Cybara", "Sources", "Cybara", "NativeSettingsScreen.swift"),
+      "utf8"
+    );
+
+    expect(configSource).toContain("DEFAULT_MEMORY_BEHAVIOR_SETTINGS: MemoryBehaviorSettings");
+    expect(configSource).toContain("backgroundReviewEnabled: true");
+    expect(configSource).toContain("memoryFlushEnabled: true");
+    expect(providerSource).toContain('provider: "local"');
+    expect(providerSource).toContain("autoRecall: true");
+    expect(providerSource).toContain("autoCapture: true");
+    expect(webSettingsSource).toContain("Separate from memory itself");
+    expect(webSettingsSource).toContain("Build search index");
+    expect(mobileSettingsSource).toContain("Separate from memory itself");
+    expect(mobileSettingsSource).toContain("Build search index");
+    expect(nativeSettingsSource).toContain("Separate from memory itself");
+    expect(nativeSettingsSource).toContain("Build search index");
   });
 
   test("legacy chat session listing stays bounded for older clients", () => {

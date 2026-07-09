@@ -63,13 +63,11 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain("sessionLoadSequenceRef.current = loadSequence");
     expect(source).toContain("const cached = loadSession.getCached(sessionId)");
     expect(source).toContain("applyLoadedSession(sessionId, cached)");
-    expect(source).toContain("warmSessionDetail(session.id)");
-    expect(source).toContain("loadSession.prefetch(sessionId)");
-    expect(source).toContain("const SIDEBAR_IDLE_PREFETCH_LIMIT = 4");
-    expect(source).toContain("const SIDEBAR_IDLE_PREFETCH_MAX_MESSAGES = 90");
-    expect(source).toContain("warmedSessionIdsRef");
-    expect(source).toContain(".slice(0, SIDEBAR_IDLE_PREFETCH_LIMIT)");
-    expect(source).toContain("idleWindow.requestIdleCallback(warm, { timeout: 2000 })");
+    expect(source).not.toContain("warmSessionDetail");
+    expect(source).not.toContain("loadSession.prefetch");
+    expect(source).not.toContain("SIDEBAR_IDLE_PREFETCH");
+    expect(source).not.toContain("warmedSessionIdsRef");
+    expect(source).not.toContain("requestIdleCallback");
     expect(source).toContain(
       "sessionLoadSequenceRef.current === loadSequence && result?.messagesList"
     );
@@ -86,7 +84,7 @@ describe("chat session sidebar layout", () => {
     expect(hookSource).toContain("queryKey: sessionDetailQueryKey(sessionId)");
     expect(hookSource).toContain("staleTime: SESSION_DETAIL_STALE_MS");
     expect(hookSource).toContain("getCached: (sessionId: string)");
-    expect(hookSource).toContain("prefetch: (sessionId: string)");
+    expect(hookSource).not.toContain("prefetch: (sessionId: string)");
     expect(hookSource).toContain("invalidateSessionDetail(queryClient");
   });
 

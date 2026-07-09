@@ -200,12 +200,12 @@ export const DEFAULT_TOKEN_OPTIMIZATION_SETTINGS: TokenOptimizationSettings = {
 };
 
 export const DEFAULT_WORKSPACE_INDEXER_SETTINGS: WorkspaceIndexerSettings = {
-  enabled: true,
+  enabled: false,
   autoReindexOnWorkspaceSet: false,
   includeHidden: false,
   maxFileSizeBytes: 1024 * 1024,
   maxFiles: 25000,
-  semanticEnabled: true,
+  semanticEnabled: false,
   semanticMaxFiles: 2000,
   semanticMinScore: 0.45,
   embeddingProvider: "auto",

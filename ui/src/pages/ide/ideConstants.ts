@@ -1,4 +1,3 @@
-/** IDE layout/storage constants and default preferences — extracted from IDE.tsx. */
 import type { IdePreferences, WorkspaceIndexerSettings } from "./ideTypes";
 
 export const IDE_SIDEBAR_WIDTH_STORAGE_KEY = "cybara.ide.sidebar.width";
@@ -45,12 +44,12 @@ export const IDE_DEFAULT_PREFERENCES: IdePreferences = {
   terminalPanelHeight: IDE_TERMINAL_DEFAULT_HEIGHT,
 };
 export const DEFAULT_INDEXER_SETTINGS_DRAFT: WorkspaceIndexerSettings = {
-  enabled: true,
-  autoReindexOnWorkspaceSet: true,
+  enabled: false,
+  autoReindexOnWorkspaceSet: false,
   includeHidden: false,
   maxFileSizeBytes: 1024 * 1024,
   maxFiles: 25000,
-  semanticEnabled: true,
+  semanticEnabled: false,
   semanticMaxFiles: 2000,
   semanticMinScore: 0.45,
   embeddingProvider: "auto",

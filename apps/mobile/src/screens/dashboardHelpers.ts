@@ -323,10 +323,10 @@ export function readMobileIndexingSettings(
     ? (rawProvider as MobileIndexingSettings["embeddingProvider"])
     : "auto";
   return {
-    enabled: boolSetting(indexer, "enabled", true),
-    semanticEnabled: boolSetting(indexer, "semanticEnabled", true),
+    enabled: boolSetting(indexer, "enabled", false),
+    semanticEnabled: boolSetting(indexer, "semanticEnabled", false),
     includeHidden: boolSetting(indexer, "includeHidden", false),
-    autoReindexOnWorkspaceSet: boolSetting(indexer, "autoReindexOnWorkspaceSet", true),
+    autoReindexOnWorkspaceSet: boolSetting(indexer, "autoReindexOnWorkspaceSet", false),
     embeddingProvider,
     embeddingModel: stringSetting(indexer, "embeddingModel", ""),
   };
