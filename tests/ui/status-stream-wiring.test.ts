@@ -15,6 +15,9 @@ const contextUsageRingPath = fileURLToPath(
 const environmentOverviewPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatEnvironmentOverview.tsx", import.meta.url)
 );
+const workspaceOpenMenuPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/WorkspaceOpenMenu.tsx", import.meta.url)
+);
 const sidebarPath = fileURLToPath(
   new URL("../../ui/src/components/layout/Sidebar.tsx", import.meta.url)
 );
@@ -28,6 +31,7 @@ const providerPlanDisplayPath = fileURLToPath(
 const statusStreamPath = fileURLToPath(
   new URL("../../ui/src/lib/status-stream.ts", import.meta.url)
 );
+const useChatPath = fileURLToPath(new URL("../../ui/src/hooks/useChat.ts", import.meta.url));
 
 function readSource(path: string): string {
   return readFileSync(path, "utf8");
@@ -186,6 +190,25 @@ describe("status stream websocket wiring", () => {
     expect(source).not.toContain("loadSession.prefetch");
     expect(source).not.toContain("requestIdleCallback");
     expect(source).not.toContain("warmedSessionIdsRef");
+  });
+
+  test("chat session selection uses bounded session detail payloads", () => {
+    const source = readSource(useChatPath);
+    const loadSessionDetail = source.slice(source.indexOf("const loadSessionDetail"));
+    expect(loadSessionDetail).toContain("chatApi.getSession(sessionId)");
+    expect(loadSessionDetail).not.toContain("includeFullToolCalls: true");
+  });
+
+  test("workspace open targets are lazy-loaded with a fallback timeout", () => {
+    const source = readSource(workspaceOpenMenuPath);
+    expect(source).toContain("WORKSPACE_TARGET_LOAD_TIMEOUT_MS");
+    expect(source).toContain("FALLBACK_WORKSPACE_TARGETS");
+    expect(source).toContain("if (!open || !trimmedWorkspace || targets.length > 0 || loading)");
+    const resetStart = source.indexOf("setTargets([]);");
+    const resetEnd = source.indexOf("useEffect(() => {\n    if (!open", resetStart);
+    const resetEffect = source.slice(resetStart, resetEnd);
+    expect(resetEffect).toContain("setTargets([])");
+    expect(resetEffect).not.toContain("void loadTargets();");
   });
 
   test("status stream helper multiplexes subscribers through one websocket", () => {

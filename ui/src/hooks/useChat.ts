@@ -429,7 +429,7 @@ export function useUpdateSessionAgent() {
 export function useLoadSession() {
   const queryClient = useQueryClient();
   const loadSessionDetail = useCallback(async (sessionId: string): Promise<LoadedChatSession> => {
-    const response = await chatApi.getSession(sessionId, { includeFullToolCalls: true });
+    const response = await chatApi.getSession(sessionId);
     if (response.success && response.data) {
       return response.data as LoadedChatSession;
     }

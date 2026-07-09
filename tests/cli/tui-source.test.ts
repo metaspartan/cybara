@@ -11,6 +11,14 @@ const cliTuiInteractiveChatSource = readFileSync(
   join(root, "src", "cli-tui-interactive-chat.tsx"),
   "utf8"
 );
+const cliTuiChatEnvironmentSource = readFileSync(
+  join(root, "src", "cli-tui-chat-environment.ts"),
+  "utf8"
+);
+const cliTuiChatEnvironmentViewSource = readFileSync(
+  join(root, "src", "cli-tui-chat-environment-view.tsx"),
+  "utf8"
+);
 const cliDocs = readFileSync(join(root, "docs", "cli.md"), "utf8");
 
 const tuiPanels = [
@@ -90,10 +98,20 @@ describe("CLI TUI source wiring", () => {
 
   test("interactive chat TUI has editable input, slash commands, and pending queue parity", () => {
     for (const command of [
+      "/status",
       "/agents",
       "/agent",
+      "/model",
       "/router",
       "/permissions",
+      "/context",
+      "/usage",
+      "/environment",
+      "/plan",
+      "/diffs",
+      "/tasks",
+      "/subagents",
+      "/compact",
       "/queue",
       "/steer",
       "/edit",
@@ -107,6 +125,10 @@ describe("CLI TUI source wiring", () => {
       "/api/agents",
       "/api/config",
       "/api/router/status",
+      "/api/tasks",
+      "/api/subagents",
+      "/api/subagents/spawn",
+      "/api/sessions/${encodeURIComponent(targetSessionId)}",
       "/api/sessions/${encodeURIComponent(localSessionId)}/agent",
       "/api/chat/sessions/${encodeURIComponent(localSessionId)}/pending",
       "/pending/reorder",
@@ -117,6 +139,13 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("PendingQueue");
     expect(cliTuiInteractiveChatSource).toContain("CommandPalette");
     expect(cliTuiInteractiveChatSource).toContain("StatusRail");
+    expect(cliTuiInteractiveChatSource).toContain("EnvironmentPanel");
+    expect(cliTuiInteractiveChatSource).toContain("environmentSnapshotFromDetail");
+    expect(cliTuiInteractiveChatSource).toContain("formatContextUsageLine");
+    expect(cliTuiInteractiveChatSource).toContain("formatTokenUsageLine");
+    expect(cliTuiInteractiveChatSource).toContain("formatFileChangeLine");
+    expect(cliTuiInteractiveChatSource).toContain("formatTaskLine");
+    expect(cliTuiInteractiveChatSource).toContain("formatSubagentLine");
     expect(cliTuiInteractiveChatSource).toContain("setUseModelRouter(true)");
     expect(cliTuiInteractiveChatSource).toContain("tool_approval_mode");
     expect(cliTuiInteractiveChatSource).toContain("agentId: selectedAgentId || undefined");
@@ -130,6 +159,28 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("tool_calls");
   });
 
+  test("terminal chat environment panel is backed by shared parsing helpers", () => {
+    for (const symbol of [
+      "TuiEnvironmentSnapshot",
+      "environmentSnapshotFromDetail",
+      "contextUsageFromDetail",
+      "tokenUsageFromDetail",
+      "fileChangesFromMessages",
+      "tasksFromResponse",
+      "subagentsFromResponse",
+      "formatContextUsageLine",
+      "formatTokenUsageLine",
+      "formatPlanLine",
+      "formatFileChangeLine",
+    ]) {
+      expect(cliTuiChatEnvironmentSource).toContain(symbol);
+    }
+    expect(cliTuiChatEnvironmentViewSource).toContain("EnvironmentPanel");
+    expect(cliTuiChatEnvironmentViewSource).toContain("Workspace");
+    expect(cliTuiChatEnvironmentViewSource).toContain("Branch");
+    expect(cliTuiChatEnvironmentViewSource).toContain("Subagents");
+  });
+
   test("terminal chat exposes app-parity slash controls", () => {
     for (const command of [
       "/status",
@@ -138,6 +189,14 @@ describe("CLI TUI source wiring", () => {
       "/model <id|router|default>",
       "/router on|off",
       "/permissions ask|always_allow|show",
+      "/environment",
+      "/context",
+      "/usage",
+      "/plan",
+      "/diffs",
+      "/tasks",
+      "/subagents",
+      "/compact",
       "/queue <message>",
       "/steer <id|#n>",
       "/edit <id|#n> <message>",
@@ -151,6 +210,9 @@ describe("CLI TUI source wiring", () => {
     expect(cliChatSource).toContain("modelOverride");
     expect(cliChatSource).toContain("useModelRouter");
     expect(cliChatSource).toContain("formatAgentLine");
+    expect(cliChatSource).toContain("printEnvironment");
+    expect(cliChatSource).toContain("fetchSessionEnvironment");
+    expect(cliChatSource).toContain("environmentSnapshotFromDetail");
     expect(cliChatSource).toContain("/api/chat/sessions/${encodeURIComponent(sessionId)}/stop");
   });
 });

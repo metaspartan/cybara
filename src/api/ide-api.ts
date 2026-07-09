@@ -1,5 +1,5 @@
 import { readdir, readFile, stat, writeFile, mkdir, rename } from "fs/promises";
-import { join, basename, extname, dirname, resolve, relative, isAbsolute } from "path";
+import { join, basename, extname, dirname, resolve, relative, isAbsolute, delimiter } from "path";
 import { homedir } from "os";
 import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync } from "fs";
 import { getGitStatus } from "./git-api";
@@ -10,6 +10,15 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const SEARCH_MAX_FILE_SIZE = 2 * 1024 * 1024;
 const SEARCH_DEFAULT_MAX_FILES_SCANNED = 25_000;
 const SEARCH_HARD_MAX_FILES_SCANNED = 100_000;
+const WORKSPACE_OPEN_TARGET_CACHE_MS = 60_000;
+const commandAvailabilityCache = new Map<string, boolean>();
+const commandPathCache = new Map<string, string | null>();
+const windowsExecutablePathCache = new Map<string, string | null>();
+let workspaceOpenTargetsCache: {
+  platform: NodeJS.Platform;
+  expiresAt: number;
+  targets: WorkspaceOpenTarget[];
+} | null = null;
 
 function resolveCanonicalPath(path: string): string {
   try {
@@ -1372,12 +1381,21 @@ function getRepositoryCommitBaseUrl(repoRoot: string): string | null {
 }
 
 function commandAvailable(command: string): boolean {
-  const checker = process.platform === "win32" ? "where" : "which";
-  const result = Bun.spawnSync([checker, command], {
+  const cacheKey = `${process.platform}:${command}`;
+  const cached = commandAvailabilityCache.get(cacheKey);
+  if (typeof cached === "boolean") return cached;
+  if (process.platform === "win32") {
+    const available = windowsPathCommandPath(command) !== null;
+    commandAvailabilityCache.set(cacheKey, available);
+    return available;
+  }
+  const result = Bun.spawnSync(["which", command], {
     stdout: "pipe",
     stderr: "pipe",
   });
-  return (result.exitCode ?? 1) === 0;
+  const available = (result.exitCode ?? 1) === 0;
+  commandAvailabilityCache.set(cacheKey, available);
+  return available;
 }
 
 type WorkspaceOpenTargetDefinition = {
@@ -1385,11 +1403,39 @@ type WorkspaceOpenTargetDefinition = {
   label: string;
   kind: WorkspaceOpenTarget["kind"];
   icon: string;
+  iconUrl?: string;
   commands?: string[];
   macApps?: string[];
   windowsExecutables?: string[];
   platforms?: NodeJS.Platform[];
 };
+
+function windowsPathCommandPath(command: string): string | null {
+  if (process.platform !== "win32") return null;
+  const cacheKey = `path:${command.toLowerCase()}`;
+  if (commandPathCache.has(cacheKey)) return commandPathCache.get(cacheKey) ?? null;
+  const pathEntries = (process.env.PATH || "")
+    .split(delimiter)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const extensionCandidates = /\.[a-z0-9]+$/i.test(command)
+    ? [""]
+    : (process.env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
+        .split(";")
+        .map((extension) => extension.trim())
+        .filter(Boolean);
+  for (const entry of pathEntries) {
+    for (const extension of extensionCandidates) {
+      const candidate = join(entry, `${command}${extension}`);
+      if (existsSync(candidate)) {
+        commandPathCache.set(cacheKey, candidate);
+        return candidate;
+      }
+    }
+  }
+  commandPathCache.set(cacheKey, null);
+  return null;
+}
 
 function macAppBundlePath(appName: string): string | null {
   return (
@@ -1415,40 +1461,104 @@ function windowsProgramRoots(): string[] {
   ].filter((path): path is string => Boolean(path));
 }
 
-function findNestedExecutable(root: string, executableNames: string[], depth = 3): string | null {
-  if (depth < 0 || !existsSync(root)) return null;
-  let entries: string[];
-  try {
-    entries = readdirSync(root);
-  } catch {
-    return null;
-  }
-  for (const entry of entries) {
-    const candidate = join(root, entry);
-    if (executableNames.some((name) => entry.toLowerCase() === name.toLowerCase())) {
-      return candidate;
+function windowsDirectExecutableCandidates(executableNames: string[]): string[] {
+  const roots = windowsProgramRoots();
+  const folders = [
+    "Microsoft VS Code",
+    "Cursor",
+    "cursor",
+    "Windsurf",
+    "PearAI",
+    "Zed",
+    "Ghostty",
+    "Android Studio",
+    "JetBrains",
+  ];
+  const candidates: string[] = [];
+  for (const root of roots) {
+    for (const executable of executableNames) {
+      candidates.push(join(root, executable));
     }
-    if (depth > 0) {
-      const nested = findNestedExecutable(candidate, executableNames, depth - 1);
-      if (nested) return nested;
+    for (const folder of folders) {
+      for (const executable of executableNames) {
+        candidates.push(join(root, folder, executable));
+        candidates.push(join(root, folder, "bin", executable));
+      }
+    }
+  }
+  return candidates;
+}
+
+function findExecutableUnderKnownVendorRoots(executableNames: string[]): string | null {
+  const vendorRoots = windowsProgramRoots()
+    .flatMap((root) => [
+      join(root, "JetBrains"),
+      join(root, "Microsoft VS Code"),
+      join(root, "Cursor"),
+      join(root, "Windsurf"),
+      join(root, "Zed"),
+    ])
+    .filter((root) => existsSync(root));
+
+  for (const root of vendorRoots) {
+    let entries: string[];
+    try {
+      entries = readdirSync(root);
+    } catch {
+      continue;
+    }
+    for (const entry of entries.slice(0, 80)) {
+      for (const executable of executableNames) {
+        const direct = join(root, entry, executable);
+        if (existsSync(direct)) return direct;
+        const bin = join(root, entry, "bin", executable);
+        if (existsSync(bin)) return bin;
+      }
     }
   }
   return null;
 }
 
+function windowsExecutableCacheKey(executableNames: string[]): string {
+  return executableNames
+    .map((name) => name.toLowerCase())
+    .sort()
+    .join("|");
+}
+
+function findWindowsExecutablePath(executableNames: string[]): string | null {
+  const cacheKey = windowsExecutableCacheKey(executableNames);
+  if (windowsExecutablePathCache.has(cacheKey)) {
+    return windowsExecutablePathCache.get(cacheKey) ?? null;
+  }
+  let detected: string | null = null;
+  for (const candidate of windowsDirectExecutableCandidates(executableNames)) {
+    if (existsSync(candidate)) {
+      detected = candidate;
+      break;
+    }
+  }
+  if (!detected) detected = findExecutableUnderKnownVendorRoots(executableNames);
+  windowsExecutablePathCache.set(cacheKey, detected);
+  return detected;
+}
+
+function windowsCommandPath(executableNames: string[]): string | null {
+  return (
+    executableNames.map(windowsPathCommandPath).find((path): path is string => Boolean(path)) ??
+    null
+  );
+}
+
 function windowsExecutableAvailable(executableNames: string[]): boolean {
   if (process.platform !== "win32") return false;
   if (executableNames.some(commandAvailable)) return true;
-  return windowsProgramRoots().some((root) => Boolean(findNestedExecutable(root, executableNames)));
+  return Boolean(findWindowsExecutablePath(executableNames));
 }
 
 function windowsExecutablePath(executableNames: string[]): string | null {
   if (process.platform !== "win32") return null;
-  return (
-    windowsProgramRoots()
-      .map((root) => findNestedExecutable(root, executableNames))
-      .find((path): path is string => Boolean(path)) ?? null
-  );
+  return windowsCommandPath(executableNames) || findWindowsExecutablePath(executableNames);
 }
 
 const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
@@ -1457,12 +1567,14 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "Cybara IDE",
     kind: "internal",
     icon: "cybara",
+    iconUrl: "/cybara.png",
   },
   {
     id: "zed",
     label: "Zed",
     kind: "ide",
     icon: "zed",
+    iconUrl: "/app-icons/zed.svg",
     commands: ["zed"],
     macApps: ["Zed"],
     windowsExecutables: ["Zed.exe"],
@@ -1472,6 +1584,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "VS Code",
     kind: "ide",
     icon: "code",
+    iconUrl: "/app-icons/vscode.svg",
     commands: ["code"],
     macApps: ["Visual Studio Code"],
     windowsExecutables: ["Code.exe"],
@@ -1481,6 +1594,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "Cursor",
     kind: "ide",
     icon: "cursor",
+    iconUrl: "/app-icons/cursor.svg",
     commands: ["cursor"],
     macApps: ["Cursor"],
     windowsExecutables: ["Cursor.exe"],
@@ -1490,6 +1604,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "Windsurf",
     kind: "ide",
     icon: "windsurf",
+    iconUrl: "/app-icons/windsurf.svg",
     commands: ["windsurf"],
     macApps: ["Windsurf"],
     windowsExecutables: ["Windsurf.exe"],
@@ -1499,6 +1614,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "PearAI",
     kind: "ide",
     icon: "pearai",
+    iconUrl: "/app-icons/pearai.svg",
     commands: ["pearai"],
     macApps: ["PearAI"],
     windowsExecutables: ["PearAI.exe"],
@@ -1508,6 +1624,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "IntelliJ IDEA",
     kind: "ide",
     icon: "jetbrains",
+    iconUrl: "/app-icons/jetbrains.svg",
     commands: ["idea", "idea64"],
     macApps: ["IntelliJ IDEA", "IntelliJ IDEA CE"],
     windowsExecutables: ["idea64.exe", "idea.exe"],
@@ -1517,6 +1634,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "WebStorm",
     kind: "ide",
     icon: "jetbrains",
+    iconUrl: "/app-icons/jetbrains.svg",
     commands: ["webstorm"],
     macApps: ["WebStorm"],
     windowsExecutables: ["webstorm64.exe", "webstorm.exe"],
@@ -1526,6 +1644,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "PyCharm",
     kind: "ide",
     icon: "jetbrains",
+    iconUrl: "/app-icons/jetbrains.svg",
     commands: ["pycharm"],
     macApps: ["PyCharm", "PyCharm CE"],
     windowsExecutables: ["pycharm64.exe", "pycharm.exe"],
@@ -1535,6 +1654,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "GoLand",
     kind: "ide",
     icon: "jetbrains",
+    iconUrl: "/app-icons/jetbrains.svg",
     commands: ["goland"],
     macApps: ["GoLand"],
     windowsExecutables: ["goland64.exe", "goland.exe"],
@@ -1544,6 +1664,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "CLion",
     kind: "ide",
     icon: "jetbrains",
+    iconUrl: "/app-icons/jetbrains.svg",
     commands: ["clion"],
     macApps: ["CLion"],
     windowsExecutables: ["clion64.exe", "clion.exe"],
@@ -1553,6 +1674,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "PhpStorm",
     kind: "ide",
     icon: "jetbrains",
+    iconUrl: "/app-icons/jetbrains.svg",
     commands: ["phpstorm"],
     macApps: ["PhpStorm"],
     windowsExecutables: ["phpstorm64.exe", "phpstorm.exe"],
@@ -1562,6 +1684,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "RubyMine",
     kind: "ide",
     icon: "jetbrains",
+    iconUrl: "/app-icons/jetbrains.svg",
     commands: ["rubymine"],
     macApps: ["RubyMine"],
     windowsExecutables: ["rubymine64.exe", "rubymine.exe"],
@@ -1571,6 +1694,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "Rider",
     kind: "ide",
     icon: "jetbrains",
+    iconUrl: "/app-icons/jetbrains.svg",
     commands: ["rider"],
     macApps: ["Rider"],
     windowsExecutables: ["rider64.exe", "rider.exe"],
@@ -1580,6 +1704,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "DataGrip",
     kind: "ide",
     icon: "jetbrains",
+    iconUrl: "/app-icons/jetbrains.svg",
     commands: ["datagrip"],
     macApps: ["DataGrip"],
     windowsExecutables: ["datagrip64.exe", "datagrip.exe"],
@@ -1589,6 +1714,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "Android Studio",
     kind: "ide",
     icon: "android-studio",
+    iconUrl: "/app-icons/android-studio.svg",
     commands: ["studio", "android-studio"],
     macApps: ["Android Studio"],
     windowsExecutables: ["studio64.exe", "studio.exe"],
@@ -1598,6 +1724,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "Xcode",
     kind: "ide",
     icon: "xcode",
+    iconUrl: "/app-icons/xcode.svg",
     macApps: ["Xcode"],
     platforms: ["darwin"],
   },
@@ -1606,6 +1733,7 @@ const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
     label: "Ghostty",
     kind: "terminal",
     icon: "terminal",
+    iconUrl: "/app-icons/ghostty.svg",
     commands: ["ghostty"],
     macApps: ["Ghostty"],
     windowsExecutables: ["ghostty.exe"],
@@ -1712,12 +1840,21 @@ function validateWorkspaceOpenPath(
 }
 
 function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
+  const now = Date.now();
+  if (
+    workspaceOpenTargetsCache &&
+    workspaceOpenTargetsCache.platform === process.platform &&
+    workspaceOpenTargetsCache.expiresAt > now
+  ) {
+    return workspaceOpenTargetsCache.targets;
+  }
   const targets: WorkspaceOpenTarget[] = [
     ...WORKSPACE_OPEN_TARGET_DEFINITIONS.map((definition) => ({
       id: definition.id,
       label: definition.label,
       kind: definition.kind,
       icon: definition.icon,
+      iconUrl: definition.iconUrl,
       available: definitionAvailable(definition),
       detail: definition.id === "cybara_ide" ? "Open in Cybara's workspace IDE" : undefined,
     })),
@@ -1730,6 +1867,7 @@ function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
         label: "Finder",
         kind: "file-manager",
         icon: "finder",
+        iconUrl: "/app-icons/finder.svg",
         available: true,
       },
       {
@@ -1737,6 +1875,7 @@ function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
         label: "Terminal",
         kind: "terminal",
         icon: "terminal",
+        iconUrl: "/app-icons/terminal.svg",
         available: true,
       }
     );
@@ -1747,6 +1886,7 @@ function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
         label: "Explorer",
         kind: "file-manager",
         icon: "folder",
+        iconUrl: "/app-icons/explorer.svg",
         available: true,
       },
       {
@@ -1754,6 +1894,7 @@ function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
         label: "Terminal",
         kind: "terminal",
         icon: "terminal",
+        iconUrl: "/app-icons/terminal.svg",
         available: true,
       }
     );
@@ -1764,6 +1905,7 @@ function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
         label: "Files",
         kind: "file-manager",
         icon: "folder",
+        iconUrl: "/app-icons/files.svg",
         available: commandAvailable("xdg-open"),
       },
       {
@@ -1771,6 +1913,7 @@ function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
         label: "Terminal",
         kind: "terminal",
         icon: "terminal",
+        iconUrl: "/app-icons/terminal.svg",
         available: ["gnome-terminal", "konsole", "xfce4-terminal", "x-terminal-emulator"].some(
           commandAvailable
         ),
@@ -1778,12 +1921,21 @@ function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
     );
   }
 
-  return targets
+  const availableTargets = targets
     .filter((target) => target.available)
     .map((target) => ({
       ...target,
-      iconUrl: target.id === "cybara_ide" ? "/cybara.png" : cachedMacAppIconDataUrl(target.id),
+      iconUrl:
+        target.id === "cybara_ide"
+          ? "/cybara.png"
+          : cachedMacAppIconDataUrl(target.id) || target.iconUrl,
     }));
+  workspaceOpenTargetsCache = {
+    platform: process.platform,
+    expiresAt: now + WORKSPACE_OPEN_TARGET_CACHE_MS,
+    targets: availableTargets,
+  };
+  return availableTargets;
 }
 
 function openWithCommand(targetPath: string, command: string, appName?: string): RevealResult {

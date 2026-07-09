@@ -14,6 +14,19 @@ import { workspaceOpenApi, type WorkspaceOpenTarget } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
 
+const WORKSPACE_TARGET_LOAD_TIMEOUT_MS = 3_000;
+const FALLBACK_WORKSPACE_TARGETS: WorkspaceOpenTarget[] = [
+  {
+    id: "cybara_ide",
+    label: "Cybara IDE",
+    kind: "internal",
+    icon: "cybara",
+    iconUrl: "/cybara.png",
+    available: true,
+    detail: "Open in Cybara's workspace IDE",
+  },
+];
+
 interface WorkspaceOpenMenuProps {
   workspaceDir: string | null;
   workspaceSaving?: boolean;
@@ -53,6 +66,7 @@ export function WorkspaceOpenMenu({
 }: WorkspaceOpenMenuProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const targetLoadRequestRef = useRef(0);
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const [targets, setTargets] = useState<WorkspaceOpenTarget[]>([]);
@@ -64,18 +78,29 @@ export function WorkspaceOpenMenu({
 
   const loadTargets = useCallback(async () => {
     if (!trimmedWorkspace) return;
+    const requestId = targetLoadRequestRef.current + 1;
+    targetLoadRequestRef.current = requestId;
     setLoading(true);
+    const timeoutId = window.setTimeout(() => {
+      if (targetLoadRequestRef.current !== requestId) return;
+      setTargets((current) => (current.length > 0 ? current : FALLBACK_WORKSPACE_TARGETS));
+      setLoading(false);
+      addToast("error", "App detection is taking longer than expected. Cybara IDE is still ready.");
+    }, WORKSPACE_TARGET_LOAD_TIMEOUT_MS);
     try {
       const response = await workspaceOpenApi.targets(trimmedWorkspace);
+      if (targetLoadRequestRef.current !== requestId) return;
       if (!response.success || !response.data?.success) {
         throw new Error(response.data?.error || response.error || "Unable to load open targets");
       }
       setTargets(response.data.targets);
     } catch (error) {
-      setTargets([]);
+      if (targetLoadRequestRef.current !== requestId) return;
+      setTargets(FALLBACK_WORKSPACE_TARGETS);
       addToast("error", error instanceof Error ? error.message : "Unable to load open targets");
     } finally {
-      setLoading(false);
+      window.clearTimeout(timeoutId);
+      if (targetLoadRequestRef.current === requestId) setLoading(false);
     }
   }, [addToast, trimmedWorkspace]);
 
@@ -85,8 +110,14 @@ export function WorkspaceOpenMenu({
       setOpen(false);
       return;
     }
+    setTargets([]);
+    setLoading(false);
+  }, [trimmedWorkspace]);
+
+  useEffect(() => {
+    if (!open || !trimmedWorkspace || targets.length > 0 || loading) return;
     void loadTargets();
-  }, [loadTargets, trimmedWorkspace]);
+  }, [loadTargets, loading, open, targets.length, trimmedWorkspace]);
 
   useEffect(() => {
     if (!open) return;

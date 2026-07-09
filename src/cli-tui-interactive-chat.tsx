@@ -2,6 +2,22 @@ import React from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
 import type { TUIFetchAPI } from "./cli-tui-chat";
+import {
+  environmentSnapshotFromDetail,
+  formatContextUsageLine,
+  formatFileChangeLine,
+  formatPlanLine,
+  formatSubagentLine,
+  formatTaskLine,
+  formatTokenUsageLine,
+  messagesFromDetail,
+  subagentsFromResponse,
+  tasksFromResponse,
+  type TuiEnvironmentSnapshot,
+  type TuiSubagentSummary,
+  type TuiTaskSummary,
+} from "./cli-tui-chat-environment";
+import { EnvironmentPanel } from "./cli-tui-chat-environment-view";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -63,8 +79,17 @@ const COMMANDS = [
   { name: "/status", detail: "Show session, model, and queue state" },
   { name: "/agents", detail: "List available agents" },
   { name: "/agent", detail: "Switch the active chat agent" },
+  { name: "/model", detail: "Alias for /agent; supports router and default" },
   { name: "/router", detail: "Use or disable model router for new turns" },
   { name: "/permissions", detail: "Show or change tool approval mode" },
+  { name: "/context", detail: "Show context, compaction, and token usage" },
+  { name: "/usage", detail: "Show token usage for this session" },
+  { name: "/environment", detail: "Toggle the environment panel" },
+  { name: "/plan", detail: "Show the latest plan state" },
+  { name: "/diffs", detail: "Show file changes detected in the session" },
+  { name: "/tasks", detail: "Show current tasks" },
+  { name: "/subagents", detail: "List or spawn subagents" },
+  { name: "/compact", detail: "Show compaction status" },
   { name: "/pending", detail: "Refresh queued follow-ups" },
   { name: "/queue", detail: "Queue a follow-up while the run continues" },
   { name: "/steer", detail: "Inject a queued message into the active run" },
@@ -395,6 +420,8 @@ function HelpPanel(): React.ReactElement {
       </Text>
       <Text>Enter send · Ctrl+J newline · ←/→ move · ↑/↓ history · Tab complete slash command</Text>
       <Text>/agents lists · /agent name switches · /router on|off · /permissions ask|always_allow</Text>
+      <Text>/environment toggles context, plan, diffs, tasks, and subagents</Text>
+      <Text>/context, /usage, /plan, /diffs, /tasks, /subagents inspect session state</Text>
       <Text>/queue queues · /steer injects · /edit, /delete, /reorder manage queue</Text>
       <Text>/stop interrupts · /pending refreshes queue</Text>
       <Text>/reload refetches · /new starts fresh · Esc returns to sessions · Ctrl+C quits</Text>
@@ -469,6 +496,11 @@ export function InteractiveChatTUI({
   const [useModelRouter, setUseModelRouter] = React.useState(false);
   const [approvalMode, setApprovalMode] = React.useState("always_allow");
   const [routerStatus, setRouterStatus] = React.useState<RouterStatus | null>(null);
+  const [environmentSnapshot, setEnvironmentSnapshot] =
+    React.useState<TuiEnvironmentSnapshot | null>(null);
+  const [tasks, setTasks] = React.useState<TuiTaskSummary[]>([]);
+  const [subagents, setSubagents] = React.useState<TuiSubagentSummary[]>([]);
+  const [showEnvironment, setShowEnvironment] = React.useState(false);
 
   const selectedAgent = React.useMemo(
     () => agents.find((agent) => agent.id === selectedAgentId),
@@ -505,15 +537,44 @@ export function InteractiveChatTUI({
     [fetchAPI]
   );
 
+  const loadEnvironmentForSession = React.useCallback(
+    async (targetSessionId: string): Promise<unknown | null> => {
+      const response = await fetchAPI<unknown>(`/api/sessions/${encodeURIComponent(targetSessionId)}`);
+      setEnvironmentSnapshot(environmentSnapshotFromDetail(response));
+      return response;
+    },
+    [fetchAPI]
+  );
+
+  const loadTasks = React.useCallback(async () => {
+    const response = await fetchAPI<unknown>("/api/tasks");
+    const next = tasksFromResponse(response);
+    setTasks(next);
+    return next;
+  }, [fetchAPI]);
+
+  const loadSubagents = React.useCallback(async () => {
+    const response = await fetchAPI<unknown>("/api/subagents");
+    const next = subagentsFromResponse(response);
+    setSubagents(next);
+    return next;
+  }, [fetchAPI]);
+
   const loadMessagesForSession = React.useCallback(
     async (targetSessionId: string) => {
-      const response = await fetchAPI<unknown>(
-        `/api/chat/sessions/${encodeURIComponent(targetSessionId)}/messages`
-      );
-      setMessages(messagesFromResponse(response));
+      const detail = await loadEnvironmentForSession(targetSessionId);
+      const detailMessages = messagesFromDetail(detail);
+      if (detailMessages.length > 0) {
+        setMessages(messagesFromResponse(detailMessages));
+      } else {
+        const response = await fetchAPI<unknown>(
+          `/api/chat/sessions/${encodeURIComponent(targetSessionId)}/messages`
+        );
+        setMessages(messagesFromResponse(response));
+      }
       await loadPendingForSession(targetSessionId);
     },
-    [fetchAPI, loadPendingForSession]
+    [fetchAPI, loadEnvironmentForSession, loadPendingForSession]
   );
 
   const loadPending = React.useCallback(async () => {
@@ -560,13 +621,14 @@ export function InteractiveChatTUI({
   const runCommand = React.useCallback(
     async (text: string): Promise<boolean> => {
       const [command, ...rest] = text.slice(1).split(/\s+/);
+      const normalizedCommand = command === "model" ? "agent" : command;
       const argument = rest.join(" ").trim();
-      if (command === "help") {
+      if (normalizedCommand === "help") {
         setShowHelp((value) => !value);
         setNotice("Help toggled.");
         return true;
       }
-      if (command === "status") {
+      if (normalizedCommand === "status") {
         setNotice(
           [
             `Session ${localSessionId || "new"}`,
@@ -577,7 +639,7 @@ export function InteractiveChatTUI({
         );
         return true;
       }
-      if (command === "agents") {
+      if (normalizedCommand === "agents") {
         const control = await loadControlPlane();
         setNotice(
           control.agents.length
@@ -589,7 +651,7 @@ export function InteractiveChatTUI({
         );
         return true;
       }
-      if (command === "agent") {
+      if (normalizedCommand === "agent") {
         if (!argument) {
           setNotice("Usage: /agent <id|name|default|router>");
           return true;
@@ -632,7 +694,7 @@ export function InteractiveChatTUI({
         setNotice(`Agent selected: ${nextAgent ? agentLine(nextAgent) : agentId}`);
         return true;
       }
-      if (command === "router") {
+      if (normalizedCommand === "router") {
         const value = argument.trim().toLowerCase();
         if (!value || value === "show") {
           const control = await loadControlPlane();
@@ -657,7 +719,7 @@ export function InteractiveChatTUI({
         setNotice("Usage: /router on|off|show");
         return true;
       }
-      if (command === "permissions") {
+      if (normalizedCommand === "permissions") {
         const value = argument.trim().toLowerCase();
         if (!value || value === "show") {
           setNotice(`Tool approvals: ${approvalMode}`);
@@ -681,29 +743,124 @@ export function InteractiveChatTUI({
         setNotice(`Tool approvals set to ${nextMode}.`);
         return true;
       }
-      if (command === "clear") {
+      if (normalizedCommand === "context" || normalizedCommand === "usage") {
+        if (!localSessionId) {
+          setNotice("No session yet. Send a message first.");
+          return true;
+        }
+        const detail = await loadEnvironmentForSession(localSessionId);
+        const snapshot = environmentSnapshotFromDetail(detail);
+        setEnvironmentSnapshot(snapshot);
+        setNotice(
+          [
+            formatContextUsageLine(snapshot.contextUsage),
+            formatTokenUsageLine(snapshot.tokenUsage),
+            formatPlanLine(snapshot.plan),
+          ].join("\n")
+        );
+        return true;
+      }
+      if (normalizedCommand === "environment") {
+        if (localSessionId) await loadEnvironmentForSession(localSessionId);
+        await Promise.all([loadTasks(), loadSubagents()]);
+        setShowEnvironment((value) => !value);
+        setNotice("Environment panel toggled.");
+        return true;
+      }
+      if (normalizedCommand === "plan") {
+        if (!localSessionId) {
+          setNotice("No session plan yet.");
+          return true;
+        }
+        const detail = await loadEnvironmentForSession(localSessionId);
+        const snapshot = environmentSnapshotFromDetail(detail);
+        setNotice(formatPlanLine(snapshot.plan));
+        return true;
+      }
+      if (normalizedCommand === "diffs") {
+        if (!localSessionId) {
+          setNotice("No session diffs yet.");
+          return true;
+        }
+        const detail = await loadEnvironmentForSession(localSessionId);
+        const snapshot = environmentSnapshotFromDetail(detail);
+        const fileLines =
+          snapshot.fileChanges?.files.slice(0, 8).map((file) => `${file.path} +${file.added} -${file.removed}`) || [];
+        setNotice([formatFileChangeLine(snapshot.fileChanges), ...fileLines].join("\n"));
+        return true;
+      }
+      if (normalizedCommand === "tasks") {
+        const nextTasks = await loadTasks();
+        setNotice(nextTasks.length ? nextTasks.slice(0, 8).map(formatTaskLine).join("\n") : "No tasks.");
+        return true;
+      }
+      if (normalizedCommand === "subagents" || normalizedCommand === "subagent") {
+        const action = rest[0]?.toLowerCase();
+        if (action === "spawn") {
+          const task = rest.slice(1).join(" ").trim();
+          if (!task) {
+            setNotice("Usage: /subagents spawn <task>");
+            return true;
+          }
+          const response = await fetchAPI<unknown>("/api/subagents/spawn", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              task,
+              agentId: selectedAgentId || undefined,
+              sessionId: localSessionId || undefined,
+            }),
+          });
+          const spawnedId =
+            isRecord(response) && (typeof response.subagentId === "string" || typeof response.id === "string")
+              ? String(response.subagentId || response.id)
+              : "";
+          await loadSubagents();
+          setNotice(spawnedId ? `Spawned subagent ${spawnedId}.` : "Subagent spawn requested.");
+          return true;
+        }
+        const nextSubagents = await loadSubagents();
+        setNotice(
+          nextSubagents.length
+            ? nextSubagents.slice(0, 8).map(formatSubagentLine).join("\n")
+            : "No subagents."
+        );
+        return true;
+      }
+      if (normalizedCommand === "compact") {
+        if (!localSessionId) {
+          setNotice("Compaction is automatic after a session exists.");
+          return true;
+        }
+        const detail = await loadEnvironmentForSession(localSessionId);
+        const snapshot = environmentSnapshotFromDetail(detail);
+        setNotice(formatContextUsageLine(snapshot.contextUsage));
+        return true;
+      }
+      if (normalizedCommand === "clear") {
         setMessages([]);
         setNotice("Cleared local view. Session history is unchanged.");
         return true;
       }
-      if (command === "reload") {
+      if (normalizedCommand === "reload") {
         await loadMessages();
         setNotice("Conversation reloaded.");
         return true;
       }
-      if (command === "new") {
+      if (normalizedCommand === "new") {
         setLocalSessionId("");
         setMessages([]);
         setPendingMessages([]);
+        setEnvironmentSnapshot(null);
         setNotice("New session ready.");
         return true;
       }
-      if (command === "pending") {
+      if (normalizedCommand === "pending") {
         await loadPending();
         setNotice("Pending queue refreshed.");
         return true;
       }
-      if (command === "queue") {
+      if (normalizedCommand === "queue") {
         if (!localSessionId) {
           setNotice("Send the first turn before queueing follow-ups.");
           return true;
@@ -727,7 +884,7 @@ export function InteractiveChatTUI({
         setNotice("Queued follow-up.");
         return true;
       }
-      if (command === "steer") {
+      if (normalizedCommand === "steer") {
         const pendingId = resolvePendingId(rest[0], pendingMessages);
         if (!localSessionId || !pendingId) {
           setNotice("Usage: /steer <id|#n>");
@@ -744,7 +901,7 @@ export function InteractiveChatTUI({
         setNotice("Steered queued message.");
         return true;
       }
-      if (command === "edit") {
+      if (normalizedCommand === "edit") {
         const pendingId = resolvePendingId(rest[0], pendingMessages);
         const content = rest.slice(1).join(" ").trim();
         if (!localSessionId || !pendingId || !content) {
@@ -765,7 +922,7 @@ export function InteractiveChatTUI({
         setNotice("Edited queued follow-up.");
         return true;
       }
-      if (command === "delete") {
+      if (normalizedCommand === "delete") {
         const pendingId = resolvePendingId(rest[0], pendingMessages);
         if (!localSessionId || !pendingId) {
           setNotice("Usage: /delete <id|#n>");
@@ -781,7 +938,7 @@ export function InteractiveChatTUI({
         setNotice("Deleted queued follow-up.");
         return true;
       }
-      if (command === "reorder") {
+      if (normalizedCommand === "reorder") {
         const pendingMessageIds = resolvePendingIds(rest, pendingMessages);
         if (!localSessionId || pendingMessageIds.length === 0) {
           setNotice("Usage: /reorder <id|#n>...");
@@ -799,7 +956,7 @@ export function InteractiveChatTUI({
         setNotice("Reordered queued follow-ups.");
         return true;
       }
-      if (command === "stop") {
+      if (normalizedCommand === "stop") {
         if (!localSessionId) {
           setNotice("No active session to stop.");
           return true;
@@ -811,7 +968,7 @@ export function InteractiveChatTUI({
         setNotice("Stop requested.");
         return true;
       }
-      if (command === "quit" || command === "exit") {
+      if (normalizedCommand === "quit" || normalizedCommand === "exit") {
         onExit();
         return true;
       }
@@ -821,9 +978,12 @@ export function InteractiveChatTUI({
       agents,
       approvalMode,
       fetchAPI,
+      loadEnvironmentForSession,
       loadControlPlane,
       loadMessages,
       loadPending,
+      loadSubagents,
+      loadTasks,
       localSessionId,
       modelLine,
       onExit,
@@ -863,6 +1023,7 @@ export function InteractiveChatTUI({
         if (nextSessionId) {
           setLocalSessionId(nextSessionId);
           await loadMessagesForSession(nextSessionId);
+          await loadSubagents().catch(() => undefined);
         }
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
@@ -870,7 +1031,16 @@ export function InteractiveChatTUI({
         setSending(false);
       }
     },
-    [fetchAPI, loadMessagesForSession, localSessionId, runCommand, selectedAgentId, sending, useModelRouter]
+    [
+      fetchAPI,
+      loadMessagesForSession,
+      loadSubagents,
+      localSessionId,
+      runCommand,
+      selectedAgentId,
+      sending,
+      useModelRouter,
+    ]
   );
 
   useInput((value, key) => {
@@ -1022,6 +1192,9 @@ export function InteractiveChatTUI({
         </Box>
       ) : null}
       <PendingQueue messages={pendingMessages} />
+      {showEnvironment ? (
+        <EnvironmentPanel snapshot={environmentSnapshot} tasks={tasks} subagents={subagents} />
+      ) : null}
       {showHelp ? <HelpPanel /> : null}
       <CommandPalette input={input} />
       {error ? (

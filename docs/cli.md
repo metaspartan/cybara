@@ -53,8 +53,11 @@ mode changes, subagent spawning, markdown emphasis, and grouped tool/activity ou
 
 Inside `cybara chat`, use `/status` to show the active session, agent, model/router mode, workspace,
 and approval mode. `/agents`, `/agent <id|name|default>`, `/model <id|router|default>`,
-`/router on|off`, `/permissions ask|always_allow|show`, `/stop`, and `/subagent spawn <task>`
-mirror the same control-plane concepts used by the web/Tauri, mobile, and native macOS clients.
+`/router on|off`, `/permissions ask|always_allow|show`, `/environment`, `/context`, `/usage`,
+`/plan`, `/diffs`, `/tasks`, `/subagents`, `/compact`, `/stop`, and `/subagent spawn <task>` mirror
+the same control-plane concepts used by the web/Tauri, mobile, and native macOS clients. The
+environment panel summarizes workspace, branch, context window, token usage, file changes, plan
+progress, tasks, and subagents without leaving the terminal.
 
 The dashboard TUI is optimized for normal terminals. The main menu supports grouped destinations,
 single-key shortcuts, `j`/`k` or arrow navigation, `/` search, `?` help, direct panel launch, and a
@@ -62,9 +65,9 @@ small detail pane for the selected destination. The chat panel supports session 
 navigation, new-chat entry, editable prompt input, multiline prompts with `Ctrl+J`, slash command
 completion with `Tab`, agent switching with `/agent`, available-agent lookup with `/agents`, model
 router selection with `/router`, tool approval switching with `/permissions`, pending follow-up
-queueing, steering, queue edit/delete/reorder, and active-run stop. Dashboard panels outside chat
-remain read-only; use raw CLI commands when you need to mutate providers, router settings, mobile
-pairings, wallet state, or channel configuration.
+queueing, steering, queue edit/delete/reorder, active-run stop, and app-parity session environment
+inspection. Dashboard panels outside chat remain read-only; use raw CLI commands when you need to
+mutate providers, router settings, mobile pairings, wallet state, or channel configuration.
 
 ### System Status
 

@@ -1,5 +1,17 @@
 import { createInterface } from "readline";
 import { getFlagValue } from "./cli-args";
+import {
+  environmentSnapshotFromDetail,
+  formatContextUsageLine,
+  formatFileChangeLine,
+  formatPlanLine,
+  formatSubagentLine,
+  formatTaskLine,
+  formatTokenUsageLine,
+  shortPath,
+  subagentsFromResponse,
+  tasksFromResponse,
+} from "./cli-tui-chat-environment";
 
 type FetchAPI = <T>(endpoint: string, options?: RequestInit) => Promise<T | null>;
 type WithAuthHeaders = (
@@ -317,6 +329,14 @@ function printChatHelp(): void {
   console.log("    /router on|off             Toggle model-router sends");
   console.log("    /workspace <path>          Use a workspace for future turns");
   console.log("    /permissions ask|always_allow|show");
+  console.log("    /environment               Show workspace, branch, context, plan, diffs, tasks");
+  console.log("    /context                   Show context and compaction state");
+  console.log("    /usage                     Show token usage for this session");
+  console.log("    /plan                      Show latest plan progress");
+  console.log("    /diffs                     Show detected file changes");
+  console.log("    /tasks                     Show current tasks");
+  console.log("    /subagents                 Show current subagents");
+  console.log("    /compact                   Show compaction state");
   console.log("    /pending                   Show queued follow-ups");
   console.log("    /queue <message>           Queue a follow-up while a run is active");
   console.log("    /steer <id|#n>             Inject a queued follow-up now");
@@ -721,7 +741,47 @@ async function printSessionHistory(sessionId: string): Promise<void> {
   console.log("  ----------------------\n");
 }
 
+async function fetchSessionEnvironment(sessionId: string) {
+  const detail = await chatContext().fetchAPI<unknown>(
+    `/api/sessions/${encodeURIComponent(sessionId)}`
+  );
+  return environmentSnapshotFromDetail(detail);
+}
+
+async function printEnvironment(sessionId: string): Promise<void> {
+  const [snapshot, taskResponse, subagentResponse] = await Promise.all([
+    fetchSessionEnvironment(sessionId),
+    chatContext().fetchAPI<unknown>("/api/tasks"),
+    chatContext().fetchAPI<unknown>("/api/subagents"),
+  ]);
+  const tasks = tasksFromResponse(taskResponse);
+  const subagents = subagentsFromResponse(subagentResponse);
+  console.log("  Environment");
+  console.log(
+    `    Workspace: ${snapshot.workspaceDir ? shortPath(snapshot.workspaceDir, 64) : "none"}`
+  );
+  console.log(`    Branch: ${snapshot.gitBranch || "not loaded"}`);
+  console.log(`    ${formatContextUsageLine(snapshot.contextUsage)}`);
+  console.log(`    ${formatTokenUsageLine(snapshot.tokenUsage)}`);
+  console.log(`    ${formatFileChangeLine(snapshot.fileChanges)}`);
+  console.log(`    ${formatPlanLine(snapshot.plan)}`);
+  if (tasks.length > 0) {
+    console.log("    Tasks:");
+    for (const task of tasks.slice(0, 6)) console.log(`      ${formatTaskLine(task)}`);
+  }
+  if (subagents.length > 0) {
+    console.log("    Subagents:");
+    for (const subagent of subagents.slice(0, 6)) {
+      console.log(`      ${formatSubagentLine(subagent)}`);
+    }
+  }
+}
+
 export async function rawChatCommand(rawArgs: string[]): Promise<void> {
+  if (rawArgs.includes("--help") || rawArgs.includes("-h")) {
+    printChatHelp();
+    return;
+  }
   if (await rawChatPendingCommand(rawArgs)) return;
   await rawChat(parseChatOptions(rawArgs));
 }
@@ -972,10 +1032,60 @@ async function rawChat(options: CliChatOptions): Promise<void> {
       console.log(workspaceDir ? `  Workspace set to ${workspaceDir}` : "  Workspace cleared");
       return true;
     }
+    if (command === "environment") {
+      if (!requireSession()) return true;
+      await printEnvironment(sessionId as string);
+      return true;
+    }
+    if (command === "context" || command === "compact") {
+      if (!requireSession()) return true;
+      const snapshot = await fetchSessionEnvironment(sessionId as string);
+      console.log(`  ${formatContextUsageLine(snapshot.contextUsage)}`);
+      return true;
+    }
+    if (command === "usage") {
+      if (!requireSession()) return true;
+      const snapshot = await fetchSessionEnvironment(sessionId as string);
+      console.log(`  ${formatTokenUsageLine(snapshot.tokenUsage)}`);
+      return true;
+    }
+    if (command === "plan") {
+      if (!requireSession()) return true;
+      const snapshot = await fetchSessionEnvironment(sessionId as string);
+      console.log(`  ${formatPlanLine(snapshot.plan)}`);
+      return true;
+    }
+    if (command === "diffs") {
+      if (!requireSession()) return true;
+      const snapshot = await fetchSessionEnvironment(sessionId as string);
+      console.log(`  ${formatFileChangeLine(snapshot.fileChanges)}`);
+      for (const file of snapshot.fileChanges?.files.slice(0, 8) || []) {
+        console.log(`    ${shortPath(file.path, 72)} +${file.added} -${file.removed}`);
+      }
+      return true;
+    }
+    if (command === "tasks") {
+      const response = await chatContext().fetchAPI<unknown>("/api/tasks");
+      const tasks = tasksFromResponse(response);
+      if (tasks.length === 0) {
+        console.log("  No tasks");
+      } else {
+        for (const task of tasks.slice(0, 12)) console.log(`  ${formatTaskLine(task)}`);
+      }
+      return true;
+    }
     if (command === "subagent" || command === "subagents") {
       const [subcommand, ...subRest] = rest;
       if (subcommand !== "spawn") {
-        console.log("  Usage: /subagent spawn <task>");
+        const response = await chatContext().fetchAPI<unknown>("/api/subagents");
+        const subagents = subagentsFromResponse(response);
+        if (subagents.length === 0) {
+          console.log("  No subagents");
+        } else {
+          for (const subagent of subagents.slice(0, 12)) {
+            console.log(`  ${formatSubagentLine(subagent)}`);
+          }
+        }
         return true;
       }
       const task = subRest.join(" ").trim();
