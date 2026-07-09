@@ -519,38 +519,42 @@ export function IDE() {
     indexStatus?.settings,
   ]);
 
-  const fetchEmbeddingRuntimeStatus = useCallback(
-    async (options?: { silent?: boolean }) => {
-      const selection = resolveEmbeddingRuntimeSelection();
-      const silent = options?.silent === true;
-      if (!silent) setEmbeddingRuntimeLoading(true);
-      try {
-        const params = new URLSearchParams();
-        if (selection.provider) params.set("provider", selection.provider);
-        if (selection.model) params.set("model", selection.model);
-        const query = params.toString();
-        const response = await apiFetch(
-          `/api/ide/index/embedding/runtime${query ? `?${query}` : ""}`
-        );
-        const data: WorkspaceEmbeddingRuntimeResponse = await response.json();
-        if (data.success) {
-          setEmbeddingRuntime(data);
-          if (!silent) {
-            setIndexSettingsError(null);
-          }
-        } else if (!silent) {
-          setIndexSettingsError(data.error || "Failed to load embedding runtime status");
-        }
-      } catch (error) {
+  // Keep the fetch callback below stable: reading the selection through a ref
+  // avoids a feedback loop where each poll updates embeddingRuntime, which
+  // changes resolveEmbeddingRuntimeSelection's identity, which would re-fire
+  // the "on open" effect with a non-silent fetch and flicker the spinner.
+  const resolveEmbeddingRuntimeSelectionRef = useRef(resolveEmbeddingRuntimeSelection);
+  resolveEmbeddingRuntimeSelectionRef.current = resolveEmbeddingRuntimeSelection;
+
+  const fetchEmbeddingRuntimeStatus = useCallback(async (options?: { silent?: boolean }) => {
+    const selection = resolveEmbeddingRuntimeSelectionRef.current();
+    const silent = options?.silent === true;
+    if (!silent) setEmbeddingRuntimeLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selection.provider) params.set("provider", selection.provider);
+      if (selection.model) params.set("model", selection.model);
+      const query = params.toString();
+      const response = await apiFetch(
+        `/api/ide/index/embedding/runtime${query ? `?${query}` : ""}`
+      );
+      const data: WorkspaceEmbeddingRuntimeResponse = await response.json();
+      if (data.success) {
+        setEmbeddingRuntime(data);
         if (!silent) {
-          setIndexSettingsError(String(error));
+          setIndexSettingsError(null);
         }
-      } finally {
-        if (!silent) setEmbeddingRuntimeLoading(false);
+      } else if (!silent) {
+        setIndexSettingsError(data.error || "Failed to load embedding runtime status");
       }
-    },
-    [resolveEmbeddingRuntimeSelection]
-  );
+    } catch (error) {
+      if (!silent) {
+        setIndexSettingsError(String(error));
+      }
+    } finally {
+      if (!silent) setEmbeddingRuntimeLoading(false);
+    }
+  }, []);
 
   const assignWorkspaceToIndexer = useCallback(
     async (workspacePath: string) => {
@@ -2280,6 +2284,37 @@ export function IDE() {
     selectedTransformersRuntimeError,
   ]);
 
+  const runtimeModelStatus = useMemo<{
+    label: string;
+    tone: "loaded" | "loading" | "error" | "idle";
+  }>(() => {
+    if (runtimeTargetProvider === "transformers_js") {
+      const state = embeddingRuntime?.transformers?.selectedState;
+      const entry = selectedTransformersRuntimeEntry;
+      if (state === "ready") return { label: "Loaded", tone: "loaded" };
+      if (state === "loading") {
+        const pct = typeof entry?.loadProgress === "number" ? ` ${entry.loadProgress}%` : "…";
+        return { label: `Loading${pct}`, tone: "loading" };
+      }
+      if (state === "error") return { label: "Load failed", tone: "error" };
+      return {
+        label: entry?.estimatedModelBytes ? "Not loaded · cached" : "Not loaded",
+        tone: "idle",
+      };
+    }
+    if (runtimeTargetProvider === "ollama") {
+      return embeddingRuntime?.vectorProvider === "ollama"
+        ? { label: "Ready via Ollama", tone: "loaded" }
+        : { label: "Ollama unavailable", tone: "idle" };
+    }
+    return { label: "Managed by provider", tone: "idle" };
+  }, [
+    embeddingRuntime?.transformers?.selectedState,
+    embeddingRuntime?.vectorProvider,
+    runtimeTargetProvider,
+    selectedTransformersRuntimeEntry,
+  ]);
+
   useEffect(() => {
     const indexingSettingsVisible =
       showIndexerSettings || (showIdeSettings && ideSettingsSection === "indexing");
@@ -3783,20 +3818,34 @@ export function IDE() {
                           </div>
                         </div>
                         <div>
-                          <div className="text-gray-500">Transformers state</div>
+                          <div className="text-gray-500">Model status</div>
                           <div
                             className={cn(
-                              "font-medium",
-                              embeddingRuntime?.transformers?.selectedState === "ready"
+                              "flex items-center gap-1.5 font-medium",
+                              runtimeModelStatus.tone === "loaded"
                                 ? "text-emerald-300"
-                                : embeddingRuntime?.transformers?.selectedState === "loading"
+                                : runtimeModelStatus.tone === "loading"
                                   ? "text-indigo-300"
-                                  : embeddingRuntime?.transformers?.selectedState === "error"
+                                  : runtimeModelStatus.tone === "error"
                                     ? "text-red-300"
-                                    : "text-gray-300"
+                                    : "text-gray-400"
                             )}
                           >
-                            {embeddingRuntime?.transformers?.selectedState || "idle"}
+                            {runtimeModelStatus.tone === "loading" ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <span
+                                className={cn(
+                                  "inline-block w-2 h-2 rounded-full",
+                                  runtimeModelStatus.tone === "loaded"
+                                    ? "bg-emerald-400"
+                                    : runtimeModelStatus.tone === "error"
+                                      ? "bg-red-400"
+                                      : "bg-gray-500"
+                                )}
+                              />
+                            )}
+                            <span>{runtimeModelStatus.label}</span>
                           </div>
                         </div>
                       </div>

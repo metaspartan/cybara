@@ -30,6 +30,7 @@ cybara chat --agent <id>  # Start chat with a specific agent
 cybara chat --model <id>  # Override the active agent model for future turns
 cybara chat --router      # Send future turns through the model router
 cybara chat --workspace <path>  # Bind new turns to a workspace
+cybara chat stop <session>      # Stop the active run in a session
 cybara wizard             # Setup wizard (first-time configuration)
 cybara setup              # Setup wizard
 cybara configure          # Setup wizard alias
@@ -52,13 +53,13 @@ mode changes, subagent spawning, markdown emphasis, and grouped tool/activity ou
 
 Inside `cybara chat`, use `/status` to show the active session, agent, model/router mode, workspace,
 and approval mode. `/agents`, `/agent <id|name|default>`, `/model <id|router|default>`,
-`/router on|off`, `/permissions ask|always_allow|show`, and `/subagent spawn <task>` mirror the
-same control-plane concepts used by the web/Tauri, mobile, and native macOS clients.
+`/router on|off`, `/permissions ask|always_allow|show`, `/stop`, and `/subagent spawn <task>`
+mirror the same control-plane concepts used by the web/Tauri, mobile, and native macOS clients.
 
 The dashboard TUI is optimized for normal terminals and remains read-only for dashboard panels. The
 chat panel lists recent sessions, running status, queued follow-ups, active model metadata, and the
-matching `cybara chat queue|steer|edit|delete|reorder` command surface. Use the raw CLI commands when
-you need to mutate providers, router settings, mobile pairings, wallet state, or channel
+matching `cybara chat queue|steer|edit|delete|reorder|stop` command surface. Use the raw CLI commands
+when you need to mutate providers, router settings, mobile pairings, wallet state, or channel
 configuration.
 
 ### System Status

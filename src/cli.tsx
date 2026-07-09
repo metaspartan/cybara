@@ -68,6 +68,11 @@ import {
 } from "./cli-wallet";
 
 const API_BASE = process.env.CYBARA_API || "http://localhost:4269";
+const TUI_INPUT_OPTIONS = {
+  isActive:
+    Boolean(process.stdin.isTTY) &&
+    typeof (process.stdin as typeof process.stdin & { setRawMode?: unknown }).setRawMode === "function",
+};
 
 function resolveCliApiKey(): string | null {
   const envKey = process.env.CYBARA_API_KEY?.trim();
@@ -2642,9 +2647,12 @@ const TUIStatusCommand = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  useInput((input) => {
-    if (input === "q") exit();
-  });
+  useInput(
+    (input) => {
+      if (input === "q") exit();
+    },
+    TUI_INPUT_OPTIONS
+  );
 
   React.useEffect(() => {
     fetchAPI<StatusResponse>("/api/health")
@@ -2755,9 +2763,12 @@ const TUIMetricsCommand = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  useInput((input) => {
-    if (input === "q") exit();
-  });
+  useInput(
+    (input) => {
+      if (input === "q") exit();
+    },
+    TUI_INPUT_OPTIONS
+  );
 
   React.useEffect(() => {
     fetchAPI<MetricsResponse>("/api/metrics/overview")
@@ -2837,9 +2848,12 @@ const TUISkillsCommand = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  useInput((input) => {
-    if (input === "q") exit();
-  });
+  useInput(
+    (input) => {
+      if (input === "q") exit();
+    },
+    TUI_INPUT_OPTIONS
+  );
 
   React.useEffect(() => {
     fetchAPI<{ skills: SkillItem[] }>("/api/skills/status")
@@ -2888,9 +2902,12 @@ const TUIAgentsCommand = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  useInput((input) => {
-    if (input === "q") exit();
-  });
+  useInput(
+    (input) => {
+      if (input === "q") exit();
+    },
+    TUI_INPUT_OPTIONS
+  );
 
   React.useEffect(() => {
     fetchAPI<AgentItem[]>("/api/agents")
@@ -2938,9 +2955,12 @@ const TUITasksCommand = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  useInput((input) => {
-    if (input === "q") exit();
-  });
+  useInput(
+    (input) => {
+      if (input === "q") exit();
+    },
+    TUI_INPUT_OPTIONS
+  );
 
   React.useEffect(() => {
     fetchAPI<TaskItem[]>("/api/tasks")
@@ -3134,9 +3154,12 @@ const TUIProvidersCommand = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  useInput((input) => {
-    if (input === "q") exit();
-  });
+  useInput(
+    (input) => {
+      if (input === "q") exit();
+    },
+    TUI_INPUT_OPTIONS
+  );
 
   React.useEffect(() => {
     Promise.all([fetchAPI<ProviderInfo[]>("/api/providers"), fetchAPI<TUIProviderPlanStatus>("/api/provider-plans/status")])
@@ -3222,9 +3245,12 @@ const TUIRouterCommand = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  useInput((input) => {
-    if (input === "q") exit();
-  });
+  useInput(
+    (input) => {
+      if (input === "q") exit();
+    },
+    TUI_INPUT_OPTIONS
+  );
 
   React.useEffect(() => {
     fetchAPI<TUIRouterStatus>("/api/router/status")
@@ -3295,9 +3321,12 @@ const TUISessionsCommand = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  useInput((input) => {
-    if (input === "q") exit();
-  });
+  useInput(
+    (input) => {
+      if (input === "q") exit();
+    },
+    TUI_INPUT_OPTIONS
+  );
 
   React.useEffect(() => {
     fetchAPI<SessionInfo[]>("/api/sessions")
@@ -3345,9 +3374,12 @@ const TUILogsCommand = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  useInput((input) => {
-    if (input === "q") exit();
-  });
+  useInput(
+    (input) => {
+      if (input === "q") exit();
+    },
+    TUI_INPUT_OPTIONS
+  );
 
   React.useEffect(() => {
     fetchAPI<LogEntry[]>("/api/logs/system?limit=12")
@@ -3409,9 +3441,12 @@ const TUIMobileCommand = () => {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
-  useInput((input) => {
-    if (input === "q") exit();
-  });
+  useInput(
+    (input) => {
+      if (input === "q") exit();
+    },
+    TUI_INPUT_OPTIONS
+  );
 
   React.useEffect(() => {
     fetchAPI<{ devices: TUIMobileDevice[] }>("/api/mobile/devices")
@@ -3506,17 +3541,20 @@ const MainMenu = () => {
     { label: "Exit", action: "exit" },
   ];
 
-  useInput((input, key) => {
-    if (key.upArrow) {
-      setSelected((s) => (s > 0 ? s - 1 : menuItems.length - 1));
-    } else if (key.downArrow) {
-      setSelected((s) => (s < menuItems.length - 1 ? s + 1 : 0));
-    } else if (key.return) {
-      handleAction(menuItems[selected].action);
-    } else if (input === "q") {
-      exit();
-    }
-  });
+  useInput(
+    (input, key) => {
+      if (key.upArrow) {
+        setSelected((s) => (s > 0 ? s - 1 : menuItems.length - 1));
+      } else if (key.downArrow) {
+        setSelected((s) => (s < menuItems.length - 1 ? s + 1 : 0));
+      } else if (key.return) {
+        handleAction(menuItems[selected].action);
+      } else if (input === "q") {
+        exit();
+      }
+    },
+    TUI_INPUT_OPTIONS
+  );
 
   const handleAction = async (action: string) => {
     switch (action) {
@@ -3675,66 +3713,69 @@ const SetupWizard = () => {
     }
   }, [providerOptions, selectedProvider]);
 
-  useInput((input, key) => {
-    if (step === "welcome") {
-      if (key.return || input === " ") {
-        setStep("provider");
-      } else if (input === "q") {
-        exit();
-      }
-    } else if (step === "provider") {
-      if (key.upArrow) {
-        setSelectedProvider((s) => (s > 0 ? s - 1 : Math.max(0, providerOptions.length - 1)));
-      } else if (key.downArrow) {
-        setSelectedProvider((s) => (s < providerOptions.length - 1 ? s + 1 : 0));
-      } else if (key.return) {
-        const provider = providerOptions[selectedProvider];
-        if (!provider) return;
-        if (provider.requiresApiKey) {
-          setStep("apikey");
-        } else {
-          createProvider(provider.id, "");
+  useInput(
+    (input, key) => {
+      if (step === "welcome") {
+        if (key.return || input === " ") {
+          setStep("provider");
+        } else if (input === "q") {
+          exit();
         }
-      } else if (input === "q") {
-        exit();
-      }
-    } else if (step === "apikey") {
-      if (key.return) {
-        if (apiKey.length > 0) {
+      } else if (step === "provider") {
+        if (key.upArrow) {
+          setSelectedProvider((s) => (s > 0 ? s - 1 : Math.max(0, providerOptions.length - 1)));
+        } else if (key.downArrow) {
+          setSelectedProvider((s) => (s < providerOptions.length - 1 ? s + 1 : 0));
+        } else if (key.return) {
           const provider = providerOptions[selectedProvider];
-          if (provider) {
-            createProvider(provider.id, apiKey);
+          if (!provider) return;
+          if (provider.requiresApiKey) {
+            setStep("apikey");
+          } else {
+            createProvider(provider.id, "");
           }
+        } else if (input === "q") {
+          exit();
         }
-      } else if (key.backspace || key.delete) {
-        setApiKey((k) => k.slice(0, -1));
-      } else if (input && input.length === 1 && !key.ctrl && !key.meta) {
-        setApiKey((k) => k + input);
-      } else if (input === "") {
-        exit();
+      } else if (step === "apikey") {
+        if (key.return) {
+          if (apiKey.length > 0) {
+            const provider = providerOptions[selectedProvider];
+            if (provider) {
+              createProvider(provider.id, apiKey);
+            }
+          }
+        } else if (key.backspace || key.delete) {
+          setApiKey((k) => k.slice(0, -1));
+        } else if (input && input.length === 1 && !key.ctrl && !key.meta) {
+          setApiKey((k) => k + input);
+        } else if (input === "") {
+          exit();
+        }
+      } else if (step === "permissions") {
+        if (key.leftArrow || input === "1" || input.toLowerCase() === "a") {
+          setToolApprovalMode("always_allow");
+        } else if (key.rightArrow || input === "2" || input.toLowerCase() === "s") {
+          setToolApprovalMode("ask");
+        } else if (key.return) {
+          saveToolApprovalMode();
+        } else if (input === "b" || input === "B") {
+          setStep("provider");
+        }
+      } else if (step === "agent") {
+        if (key.return || input === "y" || input === "Y") {
+          createDefaultAgent();
+        } else if (input === "n" || input === "N") {
+          completeSetup();
+        }
+      } else if (step === "complete") {
+        if (key.return || input === " " || input === "q") {
+          exit();
+        }
       }
-    } else if (step === "permissions") {
-      if (key.leftArrow || input === "1" || input.toLowerCase() === "a") {
-        setToolApprovalMode("always_allow");
-      } else if (key.rightArrow || input === "2" || input.toLowerCase() === "s") {
-        setToolApprovalMode("ask");
-      } else if (key.return) {
-        saveToolApprovalMode();
-      } else if (input === "b" || input === "B") {
-        setStep("provider");
-      }
-    } else if (step === "agent") {
-      if (key.return || input === "y" || input === "Y") {
-        createDefaultAgent();
-      } else if (input === "n" || input === "N") {
-        completeSetup();
-      }
-    } else if (step === "complete") {
-      if (key.return || input === " " || input === "q") {
-        exit();
-      }
-    }
-  });
+    },
+    TUI_INPUT_OPTIONS
+  );
 
   const createProvider = async (providerId: string, key: string) => {
     setStatus({ message: "Creating provider...", type: "loading" });

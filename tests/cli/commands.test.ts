@@ -562,6 +562,11 @@ function route(method: string, url: URL, body: string): Response {
     });
   }
 
+  if (method === "POST" && pathname === "/api/chat/sessions/session-1/stop") {
+    chatPendingRequests.push({ method, path: pathname });
+    return json({ success: true });
+  }
+
   if (method === "GET" && pathname === "/api/memory") {
     return json([{ id: "m-1", content: "remember this", createdAt: new Date().toISOString() }]);
   }
@@ -1604,7 +1609,7 @@ describe("CLI Commands", () => {
     expect(lastLogsLimit).toBe("1");
   });
 
-  test("chat pending CLI commands cover queue, list, steer, edit, delete, and reorder", async () => {
+  test("chat pending CLI commands cover queue, list, steer, edit, delete, reorder, and stop", async () => {
     chatPendingRequests.length = 0;
 
     const queue = await runCli(["chat", "queue", "session-1", "queued follow-up"]);
@@ -1652,6 +1657,10 @@ describe("CLI Commands", () => {
     expect(deleted.exitCode).toBe(0);
     expect(deleted.stdout).toContain("Deleted pending message");
 
+    const stopped = await runCli(["chat", "stop", "session-1"]);
+    expect(stopped.exitCode).toBe(0);
+    expect(stopped.stdout).toContain("Stopped active run");
+
     expect(chatPendingRequests.map((request) => `${request.method} ${request.path}`)).toEqual([
       "POST /api/chat",
       "GET /api/chat/sessions/session-1/pending",
@@ -1659,6 +1668,7 @@ describe("CLI Commands", () => {
       "PATCH /api/chat/sessions/session-1/pending/pending-1",
       "POST /api/chat/sessions/session-1/pending/reorder",
       "DELETE /api/chat/sessions/session-1/pending/pending-1",
+      "POST /api/chat/sessions/session-1/stop",
     ]);
     expect(chatPendingRequests[0]?.body).toMatchObject({
       sessionId: "session-1",

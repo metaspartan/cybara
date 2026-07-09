@@ -323,6 +323,7 @@ function printChatHelp(): void {
   console.log("    /edit <id|#n> <message>    Edit a queued follow-up");
   console.log("    /delete <id|#n>            Delete a queued follow-up");
   console.log("    /reorder <id|#n>...        Reorder queued follow-ups");
+  console.log("    /stop                      Stop the active run for this session");
   console.log("    /subagent spawn <task>     Delegate a task to an isolated subagent");
   console.log("    /quit                      Exit chat");
 }
@@ -335,6 +336,7 @@ function chatPendingUsage(): void {
   console.log('  cybara chat edit <session> <pending-id> "<message>"');
   console.log("  cybara chat delete <session> <pending-id>");
   console.log("  cybara chat reorder <session> <pending-id>...");
+  console.log("  cybara chat stop <session>");
 }
 
 function parseActivityJson(rawArgs: string[]): unknown[] | undefined {
@@ -482,6 +484,15 @@ async function reorderPending(
   );
 }
 
+async function stopSession(
+  sessionId: string
+): Promise<{ success?: boolean; error?: string } | null> {
+  return await chatContext().fetchAPI<{ success?: boolean; error?: string }>(
+    `/api/chat/sessions/${encodeURIComponent(sessionId)}/stop`,
+    { method: "POST" }
+  );
+}
+
 export async function rawAgent(rawArgs: string[]): Promise<void> {
   const json = rawArgs.includes("--json");
   let sessionId: string | undefined;
@@ -556,7 +567,9 @@ export async function rawAgent(rawArgs: string[]): Promise<void> {
 
 async function rawChatPendingCommand(rawArgs: string[]): Promise<boolean> {
   const subcommand = rawArgs[0];
-  if (!["queue", "pending", "steer", "edit", "delete", "reorder"].includes(subcommand || "")) {
+  if (
+    !["queue", "pending", "steer", "edit", "delete", "reorder", "stop"].includes(subcommand || "")
+  ) {
     return false;
   }
 
@@ -584,6 +597,17 @@ async function rawChatPendingCommand(rawArgs: string[]): Promise<boolean> {
   if (subcommand === "pending") {
     const messages = await fetchPendingMessages(sessionId);
     printPendingMessages(messages);
+    return true;
+  }
+
+  if (subcommand === "stop") {
+    const data = await stopSession(sessionId);
+    if (!data) process.exit(1);
+    if (data.success === false) {
+      console.error(`ERROR: ${data.error || "Failed to stop session"}`);
+      process.exit(1);
+    }
+    console.log("Stopped active run");
     return true;
   }
 
@@ -995,6 +1019,17 @@ async function rawChat(options: CliChatOptions): Promise<void> {
         return true;
       }
       await handleQueuedInput(argument);
+      return true;
+    }
+    if (command === "stop") {
+      if (!requireSession()) return true;
+      const data = await stopSession(sessionId as string);
+      if (data?.success === false) {
+        console.log(`  Error: ${data.error || "Failed to stop session"}`);
+      } else {
+        running = false;
+        console.log("  Stop requested");
+      }
       return true;
     }
     if (command === "steer") {

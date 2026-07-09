@@ -58,6 +58,8 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiChatSource).toContain("/api/sessions");
     expect(cliTuiChatSource).toContain("cybara chat queue");
     expect(cliTuiChatSource).toContain("cybara chat steer");
+    expect(cliTuiChatSource).toContain("cybara chat stop");
+    expect(cliTuiChatSource).toContain("Steer/Edit/Delete/Reorder");
     expect(cliTuiChatSource).toContain("pending");
     expect(cliTuiChatSource).toContain("running");
     expect(cliTuiChatSource).toContain('input === "q"');
@@ -71,6 +73,12 @@ describe("CLI TUI source wiring", () => {
       "/model <id|router|default>",
       "/router on|off",
       "/permissions ask|always_allow|show",
+      "/queue <message>",
+      "/steer <id|#n>",
+      "/edit <id|#n> <message>",
+      "/delete <id|#n>",
+      "/reorder <id|#n>...",
+      "/stop",
       "/subagent spawn <task>",
     ]) {
       expect(cliChatSource).toContain(command);
@@ -78,5 +86,6 @@ describe("CLI TUI source wiring", () => {
     expect(cliChatSource).toContain("modelOverride");
     expect(cliChatSource).toContain("useModelRouter");
     expect(cliChatSource).toContain("formatAgentLine");
+    expect(cliChatSource).toContain("/api/chat/sessions/${encodeURIComponent(sessionId)}/stop");
   });
 });
