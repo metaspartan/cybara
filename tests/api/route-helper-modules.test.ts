@@ -50,6 +50,15 @@ describe("route helper modules", () => {
       api_key: "***redacted***",
       theme: "dark",
     });
+    expect(
+      redactSecretConfig({
+        token_optimization: { toonStructuredDataEnabled: true },
+        access_token: "secret",
+      })
+    ).toEqual({
+      token_optimization: { toonStructuredDataEnabled: true },
+      access_token: "***redacted***",
+    });
     expect(buildCorsHeaders("http://127.0.0.1:4269")).toMatchObject({
       "Access-Control-Allow-Origin": "http://127.0.0.1:4269",
     });

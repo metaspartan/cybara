@@ -428,6 +428,10 @@ const routes: Record<string, RouteHandler> = {
         config.setMemoryProviderSettings(value);
         continue;
       }
+      if (key === "token_optimization") {
+        config.setTokenOptimizationSettings(value);
+        continue;
+      }
       if (key === "speech") {
         config.setSpeechSettings(value);
         continue;

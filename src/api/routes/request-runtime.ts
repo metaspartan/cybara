@@ -15,6 +15,7 @@ const MAX_LOGS = 1000;
 const isProduction = process.env.NODE_ENV === "production";
 const SECRET_CONFIG_KEY =
   /(secret|token|password|passwd|api[_-]?key|private[_-]?key|mnemonic|credential|seed)/i;
+const PUBLIC_SECRET_SHAPED_CONFIG_KEYS = new Set(["token_optimization"]);
 
 const corsBaseHeaders: Record<string, string> = {
   "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -56,7 +57,12 @@ export function redactSecretConfig(cfg: Record<string, unknown>): Record<string,
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(cfg)) {
     out[key] =
-      SECRET_CONFIG_KEY.test(key) && value != null && value !== "" ? "***redacted***" : value;
+      SECRET_CONFIG_KEY.test(key) &&
+      !PUBLIC_SECRET_SHAPED_CONFIG_KEYS.has(key) &&
+      value != null &&
+      value !== ""
+        ? "***redacted***"
+        : value;
   }
   return out;
 }

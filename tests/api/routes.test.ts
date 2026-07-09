@@ -2825,6 +2825,31 @@ describe("Config API", () => {
     expect(resetRes.status).toBe(200);
   });
 
+  test("PUT /api/config normalizes token optimization payloads", async () => {
+    const putDisabled = await api("PUT", "/api/config", {
+      token_optimization: { toon_structured_data_enabled: false },
+    });
+    expect(putDisabled.status).toBe(200);
+    expect(putDisabled.data.success).toBe(true);
+
+    const getDisabled = await api("GET", "/api/config");
+    expect(getDisabled.status).toBe(200);
+    expect(getDisabled.data.token_optimization).toEqual({
+      toonStructuredDataEnabled: false,
+    });
+
+    const putInvalid = await api("PUT", "/api/config", {
+      token_optimization: { toonStructuredDataEnabled: "yes" },
+    });
+    expect(putInvalid.status).toBe(200);
+
+    const getInvalid = await api("GET", "/api/config");
+    expect(getInvalid.status).toBe(200);
+    expect(getInvalid.data.token_optimization).toEqual({
+      toonStructuredDataEnabled: true,
+    });
+  });
+
   test("PUT /api/config normalizes tool approval mode payloads", async () => {
     const putAsk = await api("PUT", "/api/config", {
       tool_approval_mode: "ask",

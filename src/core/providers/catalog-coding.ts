@@ -585,7 +585,7 @@ export const codingProviderCatalog = {
   },
   "vercel-ai-gateway": {
     name: "Vercel AI Gateway",
-    baseUrl: "https://gateway.ai.vercel.app/v1",
+    baseUrl: "https://ai-gateway.vercel.sh/v1",
     api: "openai-completions",
     authType: "api_key",
     models: [
