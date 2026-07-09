@@ -194,6 +194,12 @@ registerCredentialsFromEnv("xai", "XAI_API_KEY");
 
 registerShellHooks();
 
+function sessionIdForVisibleTokenUsage(toolContext?: ToolContext): string | undefined {
+  if (toolContext?.suppressStreaming) return undefined;
+  const sessionId = typeof toolContext?.sessionId === "string" ? toolContext.sessionId.trim() : "";
+  return sessionId || undefined;
+}
+
 export interface AgentDefinition {
   name: string;
   type?: "main" | "research" | "coder" | "planner" | "ops" | "subagent" | "worker";
@@ -2424,7 +2430,7 @@ class AgentManager {
         inputTokens,
         outputTokens,
         durationMs,
-        { sessionId: toolContext?.sessionId }
+        { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
       );
     }
 
@@ -3265,7 +3271,7 @@ class AgentManager {
           turn.usage.inputTokens,
           turn.usage.outputTokens,
           durationMs,
-          { sessionId: toolContext?.sessionId }
+          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
         );
       }
 
@@ -3492,7 +3498,7 @@ class AgentManager {
         const inputTokens = usage.promptTokenCount || 0;
         const outputTokens = usage.candidatesTokenCount || 0;
         trackTokenUsage(modelId, providerConfig, baseUrl, inputTokens, outputTokens, durationMs, {
-          sessionId: toolContext?.sessionId,
+          sessionId: sessionIdForVisibleTokenUsage(toolContext),
         });
       }
 
@@ -3711,7 +3717,7 @@ class AgentManager {
           inputTokens,
           outputTokens,
           durationMs,
-          { sessionId: toolContext?.sessionId }
+          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
         );
       }
 
@@ -3995,7 +4001,7 @@ class AgentManager {
       const inputTokens = data.usage.input_tokens || 0;
       const outputTokens = data.usage.output_tokens || 0;
       trackTokenUsage(modelId, providerConfig, baseUrl, inputTokens, outputTokens, durationMs, {
-        sessionId: toolContext?.sessionId,
+        sessionId: sessionIdForVisibleTokenUsage(toolContext),
       });
     }
 
@@ -4410,7 +4416,7 @@ class AgentManager {
       const inputTokens = data.usage.prompt_tokens || 0;
       const outputTokens = data.usage.completion_tokens || 0;
       trackTokenUsage(modelId, "openai", baseUrl, inputTokens, outputTokens, durationMs, {
-        sessionId: toolContext?.sessionId,
+        sessionId: sessionIdForVisibleTokenUsage(toolContext),
       });
     }
 

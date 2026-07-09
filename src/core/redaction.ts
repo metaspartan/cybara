@@ -41,9 +41,13 @@ export function redactSecrets(value: unknown, depth = 0, seen = new WeakSet<obje
     seen.add(value);
     const output: Record<string, unknown> = {};
     for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
-      output[key] = SENSITIVE_KEY_PATTERN.test(key)
-        ? "[REDACTED]"
-        : redactSecrets(raw, depth + 1, seen);
+      output[key] =
+        SENSITIVE_KEY_PATTERN.test(key) &&
+        typeof raw !== "number" &&
+        typeof raw !== "boolean" &&
+        typeof raw !== "bigint"
+          ? "[REDACTED]"
+          : redactSecrets(raw, depth + 1, seen);
     }
     return output;
   }

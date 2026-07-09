@@ -6,6 +6,10 @@ import { fileURLToPath } from "url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const METRICS_MODULE = join(ROOT_DIR, "src", "core", "metrics.ts").replace(/\\/g, "/");
+const TOKEN_TRACKING_MODULE = join(ROOT_DIR, "src", "core", "llm", "token-usage-tracking.ts").replace(
+  /\\/g,
+  "/"
+);
 const DB_MODULE = join(ROOT_DIR, "src", "core", "database.ts").replace(/\\/g, "/");
 
 // metrics.ts writes to the platform.db resolved from paths.ts (CYBARA_HOME),
@@ -13,6 +17,7 @@ const DB_MODULE = join(ROOT_DIR, "src", "core", "database.ts").replace(/\\/g, "/
 // with CYBARA_HOME pointed at a throwaway directory.
 const WORKER_SOURCE = `
 import * as metrics from "${METRICS_MODULE}";
+import { trackTokenUsage as trackDetailedTokenUsage } from "${TOKEN_TRACKING_MODULE}";
 import { tables } from "${DB_MODULE}";
 
 const out: Record<string, unknown> = {};
@@ -34,6 +39,13 @@ out.tokenInput = tables.metrics.getTotal("token_usage", "input"); // 150
 out.tokenOutput = tables.metrics.getTotal("token_usage", "output"); // 50
 out.tokenByModel = tables.metrics.getTotal("token_usage", "gpt-x"); // 120+80=200
 out.tokenByProvider = tables.metrics.getTotal("token_usage", "prov-a"); // 200
+trackDetailedTokenUsage("gpt-y", "prov-b", "https://provider.test/v1", 120, 45, 1000, {
+  sessionId: "metric-redaction-session",
+});
+const tokenMetricRow = tables.metrics
+  .getByTypeRecent("token_usage", 10)
+  .find((row) => row.key === "all" && row.metadata);
+out.tokenMetricMetadata = tokenMetricRow?.metadata || "";
 
 // Tool call monotonic counters.
 metrics.trackToolCall("read", 12, true);
@@ -235,5 +247,16 @@ describe("metrics trackMetric arbitrary values", () => {
     expect(metadata).toContain("[REDACTED]");
     expect(metadata).not.toContain("sk-1234567890abcdef");
     expect(metadata).not.toContain("cybara_mobile_abcdefabcdefabcdefabcdef");
+  });
+
+  test("numeric token counters remain visible in metric metadata", () => {
+    const metadata = JSON.parse(String(r.tokenMetricMetadata)) as {
+      inputTokens?: number;
+      outputTokens?: number;
+      totalTokens?: number;
+    };
+    expect(typeof metadata.inputTokens).toBe("number");
+    expect(typeof metadata.outputTokens).toBe("number");
+    expect(typeof metadata.totalTokens).toBe("number");
   });
 });

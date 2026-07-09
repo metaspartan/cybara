@@ -234,6 +234,69 @@ describe("handleChat per-session serialization", () => {
     expect(updated.tokenUsage?.tokensPerSecond).toBeGreaterThan(0);
   });
 
+  test("session token metrics exclude suppressed title generation usage", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Visible Usage Provider",
+      api_key: "sk-visible-usage",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Visible Usage Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-visible-usage",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    globalThis.fetch = (async (_url, init) => {
+      const request = JSON.parse(String(init?.body || "{}")) as {
+        messages?: Array<{ role: string; content: string }>;
+      };
+      const text = (request.messages || []).map((message) => message.content).join("\n");
+      const isTitleCall = text.includes("Generate the best session title now.");
+      return new Response(
+        JSON.stringify({
+          id: isTitleCall ? "title-usage" : "visible-usage",
+          object: "chat.completion",
+          model: "gpt-visible-usage",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: isTitleCall ? "Visible usage test" : "Visible chat response.",
+              },
+            },
+          ],
+          usage: isTitleCall
+            ? { prompt_tokens: 300, completion_tokens: 9, total_tokens: 309 }
+            : { prompt_tokens: 11, completion_tokens: 7, total_tokens: 18 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const response = await handleChat({
+      message: "record only visible chat usage",
+      agentId: agent.id,
+      tools: false,
+    });
+    createdSessionIds.push(response.sessionId);
+
+    expect(response.message.content).toBe("Visible chat response.");
+    expect(response.tokenUsage).toMatchObject({
+      inputTokens: 11,
+      outputTokens: 7,
+      totalTokens: 18,
+      callCount: 1,
+    });
+  });
+
   test("chat turns can override the active agent model for one turn", async () => {
     const provider = providerManager.create({
       provider: "openai",
