@@ -1113,6 +1113,59 @@ const makeStyles = () =>
       marginLeft: 6,
       paddingLeft: spacing.sm,
     },
+    mobileFileChangesCard: {
+      backgroundColor: colors.surfaceMuted,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      gap: spacing.xs,
+      padding: spacing.sm,
+    },
+    mobileFileChangesHeader: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: spacing.xs,
+    },
+    mobileFileChangesTitle: {
+      color: colors.textMuted,
+      flex: 1,
+      fontSize: typography.label,
+      fontWeight: "700",
+    },
+    mobileFileChangesAdded: {
+      color: colors.success,
+      fontSize: typography.label,
+      fontWeight: "700",
+    },
+    mobileFileChangesRemoved: {
+      color: colors.danger,
+      fontSize: typography.label,
+      fontWeight: "700",
+    },
+    mobileFileChangeRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: spacing.sm,
+    },
+    mobileFileChangeNameColumn: {
+      flex: 1,
+      minWidth: 0,
+    },
+    mobileFileChangeName: {
+      color: colors.text,
+      fontSize: typography.label,
+      fontWeight: "700",
+      lineHeight: 18,
+    },
+    mobileFileChangePath: {
+      color: colors.textDim,
+      fontSize: 11,
+      lineHeight: 15,
+    },
+    mobileFileChangeCounts: {
+      flexDirection: "row",
+      gap: spacing.xs,
+    },
     loadingRow: {
       alignItems: "center",
       flexDirection: "row",
