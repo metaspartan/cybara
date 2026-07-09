@@ -92,4 +92,17 @@ describe("IDE workspace open targets", () => {
       expect(existsSync(join(appIconDir, iconPath))).toBe(true);
     }
   });
+
+  test("packaged editor marks use their official vector geometry", () => {
+    const cursor = readFileSync(join(appIconDir, "cursor.svg"), "utf8");
+    const windsurf = readFileSync(join(appIconDir, "windsurf.svg"), "utf8");
+    const pearai = readFileSync(join(appIconDir, "pearai.svg"), "utf8");
+
+    expect(cursor).toContain('viewBox="0 0 466.73 532.09"');
+    expect(cursor).toContain("M457.43,125.94L244.42,2.96");
+    expect(windsurf).toContain('viewBox="0 0 1024 1024"');
+    expect(windsurf).toContain("M897.246 286.869H889.819");
+    expect(pearai).toContain('viewBox="0 0 15 29"');
+    expect(pearai).toContain("M7.32818 7.7793");
+  });
 });

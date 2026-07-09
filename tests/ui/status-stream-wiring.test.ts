@@ -219,6 +219,12 @@ describe("status stream websocket wiring", () => {
     expect(resetEffect).not.toContain("void loadTargets();");
   });
 
+  test("workspace editor marks remain visible across light and dark themes", () => {
+    const source = readSource(workspaceOpenMenuPath);
+    expect(source).toContain('new Set(["cursor", "windsurf", "pearai"])');
+    expect(source).toContain('MONOCHROME_TARGET_IDS.has(target.id) && "invert dark:invert-0"');
+  });
+
   test("status stream helper multiplexes subscribers through one websocket", () => {
     const source = readSource(statusStreamPath);
     expect(source).toContain("const statusStreamSubscribers = new Set");

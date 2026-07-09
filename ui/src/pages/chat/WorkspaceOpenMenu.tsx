@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
 
 const WORKSPACE_TARGET_LOAD_TIMEOUT_MS = 3_000;
+const MONOCHROME_TARGET_IDS = new Set(["cursor", "windsurf", "pearai"]);
 const FALLBACK_WORKSPACE_TARGETS: WorkspaceOpenTarget[] = [
   {
     id: "cybara_ide",
@@ -40,7 +41,10 @@ function targetIcon(target: WorkspaceOpenTarget) {
       <img
         src={target.iconUrl}
         alt=""
-        className="h-4 w-4 shrink-0 rounded-[4px] object-contain"
+        className={cn(
+          "h-4 w-4 shrink-0 rounded-[4px] object-contain",
+          MONOCHROME_TARGET_IDS.has(target.id) && "invert dark:invert-0"
+        )}
         loading="lazy"
       />
     );
