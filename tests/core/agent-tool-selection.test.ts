@@ -149,6 +149,9 @@ describe("legacy broad builtin snapshots", () => {
     try {
       await agentManager.execute(agent.id, [{ role: "user", content: "hello" }]);
       await agentManager.execute(agent.id, [{ role: "user", content: "review this repo" }]);
+      await agentManager.execute(agent.id, [
+        { role: "user", content: "Build a todo app in this workspace" },
+      ]);
     } finally {
       (agentManager as unknown as { callLLM: CallLLMShape }).callLLM = originalCallLLM;
     }
@@ -156,6 +159,9 @@ describe("legacy broad builtin snapshots", () => {
     expect(captured[0]).toEqual([]);
     expect(captured[1]).toEqual(expect.arrayContaining(["read", "grep", "exec", "git"]));
     expect(captured[1].length).toBeLessThan(getToolSchemasForLLM().length / 2);
+    expect(captured[2]).toEqual(
+      expect.arrayContaining(["read", "write", "edit", "apply_patch", "exec"])
+    );
   });
 
   test("partial broad builtin snapshots are narrowed by intent at execution time", async () => {

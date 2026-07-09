@@ -23,6 +23,28 @@ describe("implicit builtin tool intent selection", () => {
     expect(names).not.toContain("browser");
   });
 
+  test("selects file mutation tools for natural app-building requests", () => {
+    for (const prompt of [
+      "Can you make me a small webpage for tracking reading goals in this folder?",
+      "Build a todo app in this workspace",
+      "Develop a small project in this directory",
+      "Scaffold a website here in the workspace",
+    ]) {
+      const names = namesFor(prompt);
+      expect(names).toEqual(
+        expect.arrayContaining(["read", "write", "edit", "apply_patch", "exec"])
+      );
+    }
+  });
+
+  test("keeps explanatory app-building questions read-only", () => {
+    const names = namesFor("How would I build an app in this workspace?");
+    expect(names).toContain("read");
+    expect(names).not.toContain("write");
+    expect(names).not.toContain("edit");
+    expect(names).not.toContain("apply_patch");
+  });
+
   test("keeps read-only repository prompts lean", () => {
     const names = namesFor("use tools to read package.json and review repo token usage");
     expect(names).toEqual(expect.arrayContaining(["read", "grep", "exec", "git", "todo"]));

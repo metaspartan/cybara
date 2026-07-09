@@ -25,11 +25,20 @@ describe("chat tool summary utilities", () => {
     expect(shouldEnforceToolUseForMessage("scan the project and run lint to fix issues")).toBe(
       true
     );
+    expect(
+      shouldEnforceToolUseForMessage(
+        "Can you make me a small webpage for tracking reading goals in this folder?"
+      )
+    ).toBe(true);
+    expect(shouldEnforceToolUseForMessage("Build a todo app in this workspace")).toBe(true);
   });
 
   test("does not force tools for greetings or capability questions", () => {
     expect(shouldEnforceToolUseForMessage("hello what can you do")).toBe(false);
     expect(shouldEnforceToolUseForMessage("thanks")).toBe(false);
+    expect(shouldEnforceToolUseForMessage("How would I build an app in this workspace?")).toBe(
+      false
+    );
   });
 
   test("detects artifact-focused prompts for artifact-preferred tool execution", () => {

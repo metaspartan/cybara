@@ -72,6 +72,19 @@ function includesAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(text));
 }
 
+const codeMutationActionPattern =
+  /\b(add|build|change|code|create|delete|develop|edit|fix|implement|make|modify|patch|refactor|remove|repair|scaffold|update|write)\b/;
+const codeMutationTargetPattern =
+  /\b(api|app|application|code|component|directory|feature|file|files|folder|page|program|project|repo|repository|script|service|site|test|tests|webpage|website|workspace)\b/;
+const explanatoryCodePattern =
+  /\b(explain|describe|estimate|what (?:is|are)|tell me how|how (?:do|can|could|would|should) (?:i|we|you))\b/;
+
+export function isCodeMutationIntent(text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  if (!normalized || explanatoryCodePattern.test(normalized)) return false;
+  return codeMutationActionPattern.test(normalized) && codeMutationTargetPattern.test(normalized);
+}
+
 function isWalletIntent(text: string): boolean {
   return includesAny(text, [
     /\b(wallet|balance|send|swap|trade|price|quote|address|transaction|sign|portfolio|chain|solana|ethereum|crypto|btc|bitcoin|eth|erc20|spl|jupiter|uniswap|pyth|chainlink)\b/,
@@ -106,8 +119,10 @@ export function selectBuiltinToolNamesForIntent(
     .toLowerCase();
   const text = `${latest}\n${recent}`.toLowerCase();
   const selected = new Set<string>();
+  const codeMutationIntent = isCodeMutationIntent(latest);
 
   if (
+    codeMutationIntent ||
     includesAny(text, [
       /\b(code|repo|repository|file|files|folder|directory|source|bug|fix|implement|refactor|test|tests|ci|build|lint|typecheck|tsc|biome|knip|git|branch|commit|diff|pr|pull request|workspace|terminal|shell|command|exec|logs?)\b/,
       /\b(read|write|edit|patch|grep|search)\b.*\b(file|code|repo|workspace)\b/,
@@ -116,6 +131,7 @@ export function selectBuiltinToolNamesForIntent(
   ) {
     addTools(selected, [...baseTools, ...codeReadTools]);
     if (
+      codeMutationIntent ||
       includesAny(text, [
         /\b(fix|implement|refactor|write|edit|patch|apply patch|change|update|modify|create|delete|remove|add|repair)\b/,
         /\bcommit|pr|pull request\b/,

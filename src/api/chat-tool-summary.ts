@@ -1,3 +1,5 @@
+import { isCodeMutationIntent } from "../core/agent-tool-intent";
+
 export interface ToolCallResultLike {
   name: string;
   result: unknown;
@@ -131,6 +133,7 @@ export function shouldEnforceToolUseForMessage(message: string): boolean {
   if (NON_ACTIONABLE_PATTERNS.some((pattern) => pattern.test(trimmed))) {
     return false;
   }
+  if (isCodeMutationIntent(trimmed)) return true;
 
   const lower = trimmed.toLowerCase();
   const tokens = lower.split(/[^a-z0-9_.:/-]+/).filter(Boolean);
