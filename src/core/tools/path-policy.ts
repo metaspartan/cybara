@@ -230,7 +230,11 @@ export function assertWritablePath(
 // wallet) caused spurious "sensitive credential" tool failures. These read-only
 // carve-outs re-permit exactly those subtrees; the sensitive parts (data/*.db,
 // api_key, security.json, wallet) remain blocked by the deny-list.
-const READABLE_CYBARA_SUBDIRS: readonly string[] = [".cybara/memory", ".cybara/skills"];
+const READABLE_CYBARA_SUBDIRS: readonly string[] = [
+  ".cybara/memory",
+  ".cybara/skills",
+  ".cybara/tool-results",
+];
 
 /**
  * Read-side guard. The same sensitive-file deny-list applies to reads — an
