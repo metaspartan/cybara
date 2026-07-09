@@ -89,6 +89,35 @@ async function route(request: Request): Promise<Response> {
     return json({ success: true });
   }
 
+  if (method === "GET" && pathname === "/api/subagents/sub-1") {
+    const unauthorized = requireAuth(request);
+    if (unauthorized) return unauthorized;
+    return json({
+      id: "sub-1",
+      label: "Auth smoke",
+      task: "Auth smoke",
+      status: "completed",
+      result: "done",
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/subagents/wait") {
+    const unauthorized = requireAuth(request);
+    if (unauthorized) return unauthorized;
+    return json({
+      status: "completed",
+      runs: [{ runId: "sub-1", status: "completed", label: "Auth smoke", toolCallCount: 0 }],
+      pendingRunIds: [],
+      elapsedMs: 0,
+    });
+  }
+
+  if (method === "DELETE" && pathname === "/api/subagents/sub-1") {
+    const unauthorized = requireAuth(request);
+    if (unauthorized) return unauthorized;
+    return json({ success: true });
+  }
+
   if (method === "POST" && pathname === "/api/chat") {
     const unauthorized = requireAuth(request);
     if (unauthorized) return unauthorized;
@@ -179,7 +208,7 @@ describe("CLI auth header forwarding", () => {
     expect(uninstall.stdout).toContain("Successfully uninstalled python");
   });
 
-  test("subagent direct-fetch spawn/kill commands include authorization header", async () => {
+  test("subagent lifecycle commands include authorization header", async () => {
     const spawn = await runCli(["subagent", "spawn", "auth forwarding smoke"]);
     expect(spawn.exitCode).toBe(0);
     expect(spawn.stdout).toContain("Spawned subagent: sub-1");
@@ -187,6 +216,18 @@ describe("CLI auth header forwarding", () => {
     const kill = await runCli(["subagent", "kill", "sub-1"]);
     expect(kill.exitCode).toBe(0);
     expect(kill.stdout).toContain("Killed subagent: sub-1");
+
+    const show = await runCli(["subagent", "show", "sub-1"]);
+    expect(show.exitCode).toBe(0);
+    expect(show.stdout).toContain("done");
+
+    const wait = await runCli(["subagent", "wait", "sub-1", "--timeout", "0"]);
+    expect(wait.exitCode).toBe(0);
+    expect(wait.stdout).toContain("status: completed");
+
+    const clear = await runCli(["subagent", "clear", "sub-1"]);
+    expect(clear.exitCode).toBe(0);
+    expect(clear.stdout).toContain("Cleared subagent: sub-1");
   });
 
   test("config set includes authorization header and fails without key", async () => {

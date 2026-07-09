@@ -119,6 +119,7 @@ import { executeTool, hasTool } from "../core/tools/handlers/index";
 import {
   clearSubagentSession,
   handleSessionsSpawn,
+  handleSessionsWait,
   killSubagentSession,
 } from "../core/tools/handlers/channel";
 import { serializeSubagentDetail, serializeSubagentSummary } from "./subagents";
@@ -2522,6 +2523,33 @@ const routes: Record<string, RouteHandler> = {
       ? subagentRegistry.getRunsByRequester(requesterSessionId)
       : subagentRegistry.listAllRuns();
     return runs.map(serializeSubagentSummary);
+  },
+  "POST /api/subagents/wait": async (body) => {
+    const data = body as {
+      runIds?: unknown;
+      timeoutSeconds?: unknown;
+      requesterSessionId?: unknown;
+    };
+    try {
+      return await handleSessionsWait(
+        {
+          runIds: data.runIds,
+          timeoutSeconds: data.timeoutSeconds,
+        },
+        {
+          agentId: "api",
+          sessionId:
+            typeof data.requesterSessionId === "string" && data.requesterSessionId.trim()
+              ? data.requesterSessionId.trim()
+              : undefined,
+        }
+      );
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unable to wait for subagents",
+      };
+    }
   },
   "GET /api/subagents/:id": (_body, params) => {
     const run = subagentRegistry.getRun(params!.id);

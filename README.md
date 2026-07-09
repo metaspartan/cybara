@@ -360,6 +360,7 @@ cybara wallet status
 cybara wallet swap --venue uniswap_v3 --token LINK --amount-eth 0.2
 cybara wallet x402 --url https://merchant.example/x402/resource --dry-run
 cybara subagent spawn "Research X and return a summary"
+cybara subagent wait <run-id> --timeout 120
 cybara mcp list
 cybara mcp search <query>
 cybara mcp install <package>

@@ -117,6 +117,49 @@ function getSubagentProviderBlockReason(requestedAgentId?: string): string | und
   return `${label} is temporarily unavailable: ${availability.reason || "provider cooldown"}`;
 }
 
+function modelFamilyForName(model: string): string | undefined {
+  const normalized = model.toLowerCase();
+  if (/\b(claude|sonnet|opus|haiku)\b/.test(normalized)) return "anthropic";
+  if (/\b(gpt|codex|o[134](?:-|$))\b/.test(normalized)) return "openai";
+  if (/\b(gemini)\b/.test(normalized)) return "google";
+  if (/\b(minimax|m[123](?:\.|-|$))\b/.test(normalized)) return "minimax";
+  if (/\b(glm)\b/.test(normalized)) return "zai";
+  if (/\b(grok)\b/.test(normalized)) return "xai";
+  if (/\b(kimi)\b/.test(normalized)) return "kimi";
+  return undefined;
+}
+
+function providerFamily(providerType: string): string | undefined {
+  const normalized = providerType.toLowerCase();
+  if (normalized.includes("anthropic") || normalized.includes("bedrock")) return "anthropic";
+  if (normalized.includes("openai") || normalized.includes("azure")) return "openai";
+  if (normalized.includes("google") || normalized.includes("gemini")) return "google";
+  if (normalized.includes("minimax")) return "minimax";
+  if (normalized.includes("zai") || normalized.includes("z.ai")) return "zai";
+  if (normalized.includes("xai") || normalized.includes("grok")) return "xai";
+  if (normalized.includes("kimi") || normalized.includes("moonshot")) return "kimi";
+  return undefined;
+}
+
+function resolveSubagentModel(
+  agent: ReturnType<typeof resolveSubagentTargetAgent>,
+  requestedModel?: string
+): { model?: string; modelApplied?: boolean; warning?: string } {
+  if (!agent) return {};
+  if (!requestedModel) return { model: agent.model };
+  const provider = agent.provider_id ? providerManager.get(agent.provider_id) : undefined;
+  const requestedFamily = modelFamilyForName(requestedModel);
+  const activeFamily = providerFamily(String(provider?.provider || ""));
+  if (requestedFamily && activeFamily && requestedFamily !== activeFamily) {
+    return {
+      model: agent.model,
+      modelApplied: false,
+      warning: `Ignored model override ${requestedModel}; it does not match the ${provider?.name || activeFamily} provider`,
+    };
+  }
+  return { model: requestedModel, modelApplied: true };
+}
+
 export async function handleSessionsSpawn(
   args: Record<string, unknown>,
   context?: ToolContext
@@ -156,6 +199,19 @@ export async function handleSessionsSpawn(
     };
   }
 
+  const targetAgent = resolveSubagentTargetAgent(requestedAgentId);
+  if (!targetAgent) {
+    return {
+      status: "forbidden",
+      childSessionKey: "",
+      runId: "",
+      task,
+      warning: requestedAgentId
+        ? `sessions_spawn was not started because agent ${requestedAgentId} was not found`
+        : "sessions_spawn was not started because no agent is available",
+    };
+  }
+
   if (subagentRegistry.isSubagentSessionKey(requesterSessionKey)) {
     return {
       status: "forbidden",
@@ -178,7 +234,8 @@ export async function handleSessionsSpawn(
     };
   }
 
-  const agentId = requestedAgentId || "default";
+  const agentId = targetAgent.id;
+  const modelSelection = resolveSubagentModel(targetAgent, modelOverride);
   const childSessionKey = subagentRegistry.generateSubagentSessionKey(agentId);
   const runId = crypto.randomUUID();
 
@@ -190,7 +247,7 @@ export async function handleSessionsSpawn(
     task,
     cleanup,
     label,
-    model: modelOverride,
+    model: modelSelection.model,
     workspaceDir: requestedWorkspaceDir,
     runTimeoutSeconds,
     silent,
@@ -198,10 +255,10 @@ export async function handleSessionsSpawn(
 
   const session: SubagentSession = {
     id: childSessionKey,
-    agentId: requestedAgentId,
+    agentId,
     parentSessionId: requesterSessionKey,
     task,
-    model: modelOverride,
+    model: modelSelection.model,
     timeout: runTimeoutSeconds && runTimeoutSeconds > 0 ? runTimeoutSeconds : undefined,
     status: "pending",
     messages: [
@@ -239,7 +296,122 @@ export async function handleSessionsSpawn(
     childSessionKey,
     runId,
     task,
-    modelApplied: modelOverride ? true : undefined,
+    modelApplied: modelSelection.modelApplied,
+    warning: modelSelection.warning,
+  };
+}
+
+interface SubagentWaitResult {
+  runId: string;
+  childSessionKey: string;
+  status: "pending" | "running" | "completed" | "failed" | "timeout" | "killed";
+  label: string;
+  task: string;
+  result?: string;
+  error?: string;
+  activityCount: number;
+  toolCallCount: number;
+  endedAt?: number;
+}
+
+function subagentWaitStatus(run: SubagentRunRecord): SubagentWaitResult["status"] {
+  if (!run.endedAt) return run.startedAt ? "running" : "pending";
+  if (run.outcome?.status === "ok") return "completed";
+  if (run.outcome?.status === "timeout") return "timeout";
+  if (run.outcome?.status === "killed") return "killed";
+  return "failed";
+}
+
+function subagentWaitResult(run: SubagentRunRecord): SubagentWaitResult {
+  return {
+    runId: run.runId,
+    childSessionKey: run.childSessionKey,
+    status: subagentWaitStatus(run),
+    label: run.label || run.task.slice(0, 80),
+    task: run.task,
+    result: run.outcome?.result,
+    error: run.outcome?.error,
+    activityCount: run.activities?.length || 0,
+    toolCallCount: run.toolCalls?.length || 0,
+    endedAt: run.endedAt,
+  };
+}
+
+function readRunIds(args: Record<string, unknown>): string[] {
+  const values = Array.isArray(args.runIds)
+    ? args.runIds
+    : typeof args.runId === "string"
+      ? [args.runId]
+      : [];
+  return [
+    ...new Set(
+      values
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => value.trim())
+        .filter(Boolean)
+    ),
+  ];
+}
+
+function waitDelay(milliseconds: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(signal.reason || new Error("Wait cancelled"));
+  return new Promise((resolve, reject) => {
+    const finish = () => {
+      signal?.removeEventListener("abort", abort);
+      resolve();
+    };
+    const timer = setTimeout(finish, milliseconds);
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal?.reason || new Error("Wait cancelled"));
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+export async function handleSessionsWait(
+  args: Record<string, unknown>,
+  context?: ToolContext
+): Promise<{
+  status: "completed" | "partial" | "timeout";
+  runs: SubagentWaitResult[];
+  pendingRunIds: string[];
+  elapsedMs: number;
+}> {
+  const runIds = readRunIds(args);
+  if (runIds.length === 0) throw new Error("runIds is required");
+  if (runIds.length > 10) throw new Error("sessions_wait accepts at most 10 run IDs");
+
+  const runs = runIds.map((runId) => subagentRegistry.getRun(runId));
+  const missing = runIds.filter((_runId, index) => !runs[index]);
+  if (missing.length > 0) throw new Error(`Subagent run not found: ${missing.join(", ")}`);
+
+  const requesterSessionKey = readTrimmedString(context?.sessionId);
+  if (requesterSessionKey && runs.some((run) => run?.requesterSessionKey !== requesterSessionKey)) {
+    throw new Error("Cannot wait for subagents from another session");
+  }
+
+  const requestedTimeout = readNonNegativeInteger(args.timeoutSeconds);
+  const timeoutSeconds = Math.min(requestedTimeout ?? 120, 600);
+  const startedAt = Date.now();
+  const deadline = startedAt + timeoutSeconds * 1000;
+
+  while (Date.now() < deadline) {
+    const current = runIds.map((runId) => subagentRegistry.getRun(runId));
+    if (current.every((run) => Boolean(run?.endedAt))) break;
+    await waitDelay(Math.min(200, Math.max(1, deadline - Date.now())), context?.abortSignal);
+  }
+
+  const completedRuns = runIds
+    .map((runId) => subagentRegistry.getRun(runId))
+    .filter((run): run is SubagentRunRecord => Boolean(run));
+  const pendingRunIds = completedRuns.filter((run) => !run.endedAt).map((run) => run.runId);
+  const finishedCount = completedRuns.length - pendingRunIds.length;
+  return {
+    status: pendingRunIds.length === 0 ? "completed" : finishedCount > 0 ? "partial" : "timeout",
+    runs: completedRuns.map(subagentWaitResult),
+    pendingRunIds,
+    elapsedMs: Date.now() - startedAt,
   };
 }
 
@@ -261,6 +433,9 @@ function buildSubagentSystemPrompt(
     "## Instructions",
     "- Complete the task thoroughly but concisely",
     "- Focus only on the specified task",
+    "- Return the requested result directly in plain Markdown with concrete evidence",
+    "- Use the smallest sufficient set of tool calls and stop once the task is answered",
+    "- Do not save memories or create skills unless the task explicitly requests it",
     "- Do not spawn additional sub-agents from this sub-agent session",
     silent
       ? "- This is a silent background task. Do NOT announce your result to the requester."

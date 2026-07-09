@@ -128,7 +128,7 @@ bun test tests/core/tool-schema-import.test.ts tests/core/agent-tool-allowlist.t
 - Agent/tool guardrails: lazy built-in tool import stability, agent tool allowlist enforcement, optional permission enforcement contexts
 - Channel security and pairing flows
 - Channel manager lifecycle (start/stop/update/delete/masking)
-- CLI command wiring: providers, channels, pairing, MCP, tasks, skills, sessions, memory, logs, subagents, chat pending queue/steer/edit/delete/reorder commands
+- CLI command wiring: providers, channels, pairing, MCP, tasks, skills, sessions, memory, logs, subagent list/detail/spawn/wait/stop/clear, chat pending queue/steer/edit/delete/reorder commands
 - CLI/TUI source wiring: direct status, metrics, providers, router, chat, sessions, logs, mobile, tasks, and skills panels stay listed in source and docs; interactive chat stays split from the main CLI file with queueing, steering, agent, and workspace commands
 - UI/Tauri utility seam: `openExternal` backend-first with browser fallback
 - React Native mobile companion: gateway payload parsing, API auth/fallback behavior, profile persistence, and mobile app script wiring/typecheck
@@ -143,7 +143,7 @@ bun test tests/core/tool-schema-import.test.ts tests/core/agent-tool-allowlist.t
 - Channel security contracts (mocked manager): pairings mapping, verify/reject, allowlist, DM policy config
 - Open URL route contracts (mocked opener): valid URL delegation, localhost/private blocking, error-path header consistency
 - API security module: auth behavior, rate limiting, URL validation, input sanitization
-- API route integration extras: health/live/ready + setup/info, provider catalog + OAuth validation/callback-status, channel type metadata + telegram webhook contracts, MCP lifecycle + registry contracts, LSP status/diagnostics/install validation, tool catalog/execute validation, subagent list/get/spawn/kill contracts, skills categories/status/registry search, task lifecycle, builtin skill execution, IDE/git route contracts (including HOME sandbox sibling-prefix and symlink escape blocking), system prompt/identity persistence, open-url scheme/localhost blocking
+- API route integration extras: health/live/ready + setup/info, provider catalog + OAuth validation/callback-status, channel type metadata + telegram webhook contracts, MCP lifecycle + registry contracts, LSP status/diagnostics/install validation, tool catalog/execute validation, session-scoped subagent list/get/spawn/wait/kill/clear contracts, skills categories/status/registry search, task lifecycle, builtin skill execution, IDE/git route contracts (including HOME sandbox sibling-prefix and symlink escape blocking), system prompt/identity persistence, open-url scheme/localhost blocking
 - Metrics route resilience: malformed `metrics.metadata` JSON does not break providers/tokens/files/tools endpoints; large dashboard routes are guarded by cached/prewarmed route contracts and token-analysis/time-series performance checks
 - Source migration: OpenClaw/Hermes dry-run/apply flows, skill conflict modes, memory/persona/provider/speech import reporting, and CLI/API/native settings wiring
 - Provider plan monitoring: config normalization, preset suggestions, local usage windows, router enforcement constraints, and Web/mobile/native UI wiring

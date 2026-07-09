@@ -1603,6 +1603,20 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(detail.result, "Review complete")
     }
 
+    func testNativeSubagentSpawnResponseDecodesGatewayResult() throws {
+        let response = try JSONDecoder().decode(
+            NativeSubagentMutationResponse.self,
+            from: Data(
+                #"{"success":true,"subagentId":"run-2","sessionKey":"agent:mini:subagent:2","status":"accepted"}"#.utf8
+            )
+        )
+
+        XCTAssertEqual(response.success, true)
+        XCTAssertEqual(response.subagentId, "run-2")
+        XCTAssertEqual(response.sessionKey, "agent:mini:subagent:2")
+        XCTAssertEqual(response.status, "accepted")
+    }
+
     private func decodeSession(_ json: String) throws -> GatewaySession {
         try JSONDecoder().decode(GatewaySession.self, from: Data(json.utf8))
     }

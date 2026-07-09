@@ -2600,75 +2600,110 @@ describe("Subagents API", () => {
 
   test("spawn route forwards optional agent/model metadata and returns session/run identifiers", async () => {
     const requestedAgentId = `requested-agent-${Date.now()}`;
+    const providerId = `requested-provider-${Date.now()}`;
     const requesterSessionId = `parent-chat-${Date.now()}`;
-    const spawnRes = await api("POST", "/api/subagents/spawn", {
-      task: "api spawn metadata wiring",
-      agentId: requestedAgentId,
+    insertRawProvider(providerId, "openai", "Requested Subagent Provider");
+    insertRawAgent(requestedAgentId, "Requested Subagent", "{}", {
       model: "gpt-test-model",
-      runTimeoutSeconds: 0,
-      label: "metadata test",
-      cleanup: "keep",
-      workspaceDir: process.cwd(),
-      maxActiveChildren: 3,
-      requesterSessionId,
+      providerId,
     });
 
-    expect(spawnRes.status).toBe(200);
-    expect(spawnRes.data.success).toBe(true);
-    expect(spawnRes.data.status).toBe("accepted");
-    expect(typeof spawnRes.data.subagentId).toBe("string");
-    expect(typeof spawnRes.data.sessionKey).toBe("string");
-    expect(
-      (spawnRes.data.sessionKey as string).startsWith(`agent:${requestedAgentId}:subagent:`)
-    ).toBe(true);
+    try {
+      const spawnRes = await api("POST", "/api/subagents/spawn", {
+        task: "api spawn metadata wiring",
+        agentId: requestedAgentId,
+        model: "gpt-test-model",
+        runTimeoutSeconds: 0,
+        label: "metadata test",
+        cleanup: "keep",
+        workspaceDir: process.cwd(),
+        maxActiveChildren: 3,
+        requesterSessionId,
+      });
 
-    const getRes = await api("GET", `/api/subagents/${spawnRes.data.subagentId}`);
-    expect(getRes.status).toBe(200);
-    expect(getRes.data.id).toBe(spawnRes.data.subagentId);
-    expect(getRes.data.model).toBe("gpt-test-model");
-    expect(getRes.data.workspaceDir).toBe(process.cwd());
-    expect(getRes.data.runTimeoutSeconds).toBe(0);
-    expect(getRes.data.cleanup).toBe("keep");
-    expect(getRes.data.requesterSessionId).toBe(requesterSessionId);
-    expect(Array.isArray(getRes.data.activities)).toBe(true);
-    expect(Array.isArray(getRes.data.toolCalls)).toBe(true);
+      expect(spawnRes.status).toBe(200);
+      expect(spawnRes.data.success).toBe(true);
+      expect(spawnRes.data.status).toBe("accepted");
+      expect(typeof spawnRes.data.subagentId).toBe("string");
+      expect(typeof spawnRes.data.sessionKey).toBe("string");
+      expect(
+        (spawnRes.data.sessionKey as string).startsWith(`agent:${requestedAgentId}:subagent:`)
+      ).toBe(true);
 
-    const scopedListRes = await api(
-      "GET",
-      `/api/subagents?sessionId=${encodeURIComponent(requesterSessionId)}`
-    );
-    expect(scopedListRes.status).toBe(200);
-    expect(scopedListRes.data.map((run: { id: string }) => run.id)).toEqual([
-      spawnRes.data.subagentId,
-    ]);
+      const getRes = await api("GET", `/api/subagents/${spawnRes.data.subagentId}`);
+      expect(getRes.status).toBe(200);
+      expect(getRes.data.id).toBe(spawnRes.data.subagentId);
+      expect(getRes.data.model).toBe("gpt-test-model");
+      expect(getRes.data.workspaceDir).toBe(process.cwd());
+      expect(getRes.data.runTimeoutSeconds).toBe(0);
+      expect(getRes.data.cleanup).toBe("keep");
+      expect(getRes.data.requesterSessionId).toBe(requesterSessionId);
+      expect(Array.isArray(getRes.data.activities)).toBe(true);
+      expect(Array.isArray(getRes.data.toolCalls)).toBe(true);
 
-    const otherChatListRes = await api(
-      "GET",
-      `/api/subagents?sessionId=${encodeURIComponent(`${requesterSessionId}-other`)}`
-    );
-    expect(otherChatListRes.status).toBe(200);
-    expect(otherChatListRes.data).toEqual([]);
+      const scopedListRes = await api(
+        "GET",
+        `/api/subagents?sessionId=${encodeURIComponent(requesterSessionId)}`
+      );
+      expect(scopedListRes.status).toBe(200);
+      expect(scopedListRes.data.map((run: { id: string }) => run.id)).toEqual([
+        spawnRes.data.subagentId,
+      ]);
 
-    let status = String(getRes.data.status);
-    for (let attempt = 0; attempt < 50 && ["pending", "running"].includes(status); attempt += 1) {
-      await sleep(20);
-      const current = await api("GET", `/api/subagents/${spawnRes.data.subagentId}`);
-      status = String(current.data.status);
+      const otherChatListRes = await api(
+        "GET",
+        `/api/subagents?sessionId=${encodeURIComponent(`${requesterSessionId}-other`)}`
+      );
+      expect(otherChatListRes.status).toBe(200);
+      expect(otherChatListRes.data).toEqual([]);
+
+      let status = String(getRes.data.status);
+      for (let attempt = 0; attempt < 50 && ["pending", "running"].includes(status); attempt += 1) {
+        await sleep(20);
+        const current = await api("GET", `/api/subagents/${spawnRes.data.subagentId}`);
+        status = String(current.data.status);
+      }
+      expect(["pending", "running"]).not.toContain(status);
+
+      const waitRes = await api("POST", "/api/subagents/wait", {
+        runIds: [spawnRes.data.subagentId],
+        timeoutSeconds: 0,
+        requesterSessionId,
+      });
+      expect(waitRes.status).toBe(200);
+      expect(waitRes.data.status).toBe("completed");
+      expect(waitRes.data.pendingRunIds).toEqual([]);
+      expect(waitRes.data.runs[0]).toMatchObject({
+        runId: spawnRes.data.subagentId,
+        status: "completed",
+      });
+      expect(String(waitRes.data.runs[0].result)).toContain("No API key available");
+
+      const crossSessionWaitRes = await api("POST", "/api/subagents/wait", {
+        runIds: [spawnRes.data.subagentId],
+        timeoutSeconds: 0,
+        requesterSessionId: `${requesterSessionId}-other`,
+      });
+      expect(crossSessionWaitRes.status).toBe(200);
+      expect(crossSessionWaitRes.data.success).toBe(false);
+      expect(String(crossSessionWaitRes.data.error)).toContain("another session");
+
+      const clearRes = await api(
+        "DELETE",
+        `/api/subagents?sessionId=${encodeURIComponent(requesterSessionId)}`
+      );
+      expect(clearRes.status).toBe(200);
+      expect(clearRes.data).toEqual({ success: true, cleared: 1 });
+
+      const clearedListRes = await api(
+        "GET",
+        `/api/subagents?sessionId=${encodeURIComponent(requesterSessionId)}`
+      );
+      expect(clearedListRes.data).toEqual([]);
+    } finally {
+      deleteRawAgent(requestedAgentId);
+      deleteRawProvider(providerId);
     }
-    expect(["pending", "running"]).not.toContain(status);
-
-    const clearRes = await api(
-      "DELETE",
-      `/api/subagents?sessionId=${encodeURIComponent(requesterSessionId)}`
-    );
-    expect(clearRes.status).toBe(200);
-    expect(clearRes.data).toEqual({ success: true, cleared: 1 });
-
-    const clearedListRes = await api(
-      "GET",
-      `/api/subagents?sessionId=${encodeURIComponent(requesterSessionId)}`
-    );
-    expect(clearedListRes.data).toEqual([]);
   });
 });
 

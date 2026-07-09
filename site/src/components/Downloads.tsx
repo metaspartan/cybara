@@ -28,7 +28,7 @@ function DownloadCard({ client, release }: DownloadCardProps): React.ReactElemen
 
   return (
     <article className="glass download-card">
-      <span className="download-icon">
+      <span className={`download-icon download-icon--${client.icon}`}>
         <Icon name={client.icon as IconName} className="download-icon-svg" />
       </span>
       <div className="download-body">

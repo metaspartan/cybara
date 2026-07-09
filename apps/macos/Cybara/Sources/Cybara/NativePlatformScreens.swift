@@ -79,6 +79,15 @@ struct NativeSubagentSummary: Decodable, Identifiable, Hashable {
     let toolCalls: [GatewayToolCall]?
 }
 
+struct NativeSubagentMutationResponse: Decodable, Hashable {
+    let success: Bool?
+    let subagentId: String?
+    let sessionKey: String?
+    let status: String?
+    let warning: String?
+    let error: String?
+}
+
 struct NativeLSPLanguage: Decodable, Identifiable, Hashable {
     let name: String
     let available: Bool
@@ -382,8 +391,32 @@ extension GatewayClient {
         try await nativeGet("api/subagents/\(nativePathSegment(id))", as: NativeSubagentSummary.self)
     }
 
+    func spawnNativeSubagent(
+        task: String,
+        agentID: String?,
+        workspaceDir: String?,
+        requesterSessionID: String
+    ) async throws -> NativeSubagentMutationResponse {
+        var payload: [String: Any] = [
+            "task": task,
+            "label": task.count > 42 ? "\(task.prefix(39))..." : task,
+            "requesterSessionId": requesterSessionID,
+        ]
+        if let agentID = firstNonEmptyGatewayString(agentID) {
+            payload["agentId"] = agentID
+        }
+        if let workspaceDir = firstNonEmptyGatewayString(workspaceDir) {
+            payload["workspaceDir"] = workspaceDir
+        }
+        return try await nativePostJSON("api/subagents/spawn", payload: payload)
+    }
+
     func stopNativeSubagent(_ id: String) async throws {
         _ = try await request("api/subagents/\(nativePathSegment(id))/kill", method: "POST")
+    }
+
+    func clearNativeSubagent(_ id: String) async throws {
+        _ = try await request("api/subagents/\(nativePathSegment(id))", method: "DELETE")
     }
 
     func clearNativeSubagentHistory(sessionID: String) async throws {

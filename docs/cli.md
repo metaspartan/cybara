@@ -173,10 +173,14 @@ cybara memory <query>     # Search memories semantically
 
 ```bash
 cybara subagent           # List all subagents
-cybara subagent list      # List all subagents (explicit)
+cybara subagent list [--session <id>]
 cybara subagent spawn [--agent <id>] [--model <id>] [--workspace <dir>] <task>
                           # Spawn subagent with task
+cybara subagent show <id> # Show thoughts, tools, activity, and output
+cybara subagent wait <id...> [--timeout <seconds>] [--session <id>]
 cybara subagent kill <id> # Kill running subagent
+cybara subagent clear <id>
+cybara subagent clear --session <id>
 ```
 
 ### Browser

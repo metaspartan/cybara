@@ -99,7 +99,7 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | [Architecture](./architecture.md) | Platform design and data flow |
 | [CLI Reference](./cli.md) | Command-line interface |
 | [Plugins](./plugins.md) | Installable plugin runtime and manifests |
-| [Tools Reference](./tools.md) | 76 built-in tools |
+| [Tools Reference](./tools.md) | 77 built-in tools |
 | [Skills Guide](./skills.md) | Creating and managing skills |
 | [Channels](./channels.md) | Multi-platform messaging |
 | [Providers](./providers.md) | 64 provider definitions |
@@ -131,7 +131,7 @@ Conversation contexts with message history, token tracking, and adaptive context
 Modular capabilities loaded from SKILL.md files with eligibility gating (OS, env, binaries).
 
 ### Tools
-76 built-in tool definitions the agent can invoke, plus compatibility aliases for direct computer-control actions: file I/O, browser, exec, web search, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and more.
+77 built-in tool definitions the agent can invoke, plus compatibility aliases for direct computer-control actions: file I/O, browser, exec, web search, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and more.
 
 ### Channels
 Communication interfaces across 26 platforms: Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, Web, Webhook, SMS, and Email.

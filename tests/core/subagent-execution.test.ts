@@ -16,6 +16,7 @@ import {
   getRun,
   getRunsByRequester,
   onSubagentLifecycle,
+  registerSubagentRun,
   resetSubagentRegistryForTests,
 } from "../../src/core/subagent-registry";
 import {
@@ -26,6 +27,7 @@ import {
   getSubagentSession,
   handleSessionsSend,
   handleSessionsSpawn,
+  handleSessionsWait,
   resetSubagentSessionsForTests,
 } from "../../src/core/tools/handlers/channel";
 
@@ -221,6 +223,58 @@ describe("Subagent execution wiring", () => {
           ? captured.messages[captured.messages.length - 1]
           : undefined;
       expect(lastMessage).toEqual({ role: "user", content: task });
+      expect(captured?.messages[0]?.content).toContain("plain Markdown with concrete evidence");
+      expect(captured?.messages[0]?.content).toContain(
+        "Do not save memories or create skills unless the task explicitly requests it"
+      );
+    } finally {
+      (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
+    }
+  });
+
+  test("ignores model overrides from a different provider family", async () => {
+    const provider = providerManager.create({
+      provider: "minimax",
+      name: "MiniMax Subagent Provider",
+      api_key: "subagent-minimax-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const targetAgent = agentManager.create({
+      name: "MiniMax Subagent",
+      type: "subagent",
+      provider_id: provider.id,
+      model: "MiniMax-M3",
+      tools: [],
+    });
+    createdAgentIds.push(targetAgent.id);
+
+    let capturedModel: string | undefined;
+    const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
+    (agentManager as unknown as { execute: ExecuteShape }).execute = async (
+      _agentId,
+      _messages,
+      options
+    ) => {
+      capturedModel = options?.modelOverride;
+      return { content: "MiniMax child complete" };
+    };
+
+    try {
+      const result = await handleSessionsSpawn({
+        task: "review the repository",
+        agentId: targetAgent.id,
+        model: "sonnet",
+        _requesterSessionKey: "model-family-parent",
+      });
+
+      expect(result.status).toBe("accepted");
+      expect(result.modelApplied).toBe(false);
+      expect(result.warning).toContain("does not match");
+      await waitFor(() => getSubagentSession(result.childSessionKey)?.status === "completed", 2000);
+      expect(capturedModel).toBe("MiniMax-M3");
+      expect(getRun(result.runId)?.model).toBe("MiniMax-M3");
+      expect(getSubagentSession(result.childSessionKey)?.agentId).toBe(targetAgent.id);
     } finally {
       (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
     }
@@ -255,6 +309,91 @@ describe("Subagent execution wiring", () => {
     expect(delivered[0]?.role).toBe("assistant");
     expect(delivered[0]?.content).toBe("CHILD_RESULT=delivered");
     expect(Number.isFinite(Date.parse(delivered[0]?.timestamp || ""))).toBe(true);
+  });
+
+  test("waits for parallel child runs and returns synthesis-ready results", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Subagent Wait Provider",
+      api_key: "subagent-wait-key",
+    });
+    createdProviderIds.push(provider.id);
+    const targetAgent = agentManager.create({
+      name: "Subagent Wait Agent",
+      type: "subagent",
+      provider_id: provider.id,
+      model: "model-wait",
+      tools: [],
+    });
+    createdAgentIds.push(targetAgent.id);
+
+    const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
+    (agentManager as unknown as { execute: ExecuteShape }).execute = async (_agentId, messages) => {
+      const task = messages.at(-1)?.content || "unknown";
+      await new Promise((resolve) => setTimeout(resolve, task.includes("mobile") ? 30 : 10));
+      return {
+        content: `RESULT:${task}`,
+        tool_calls: [
+          {
+            id: `tool-${task}`,
+            name: "read",
+            args: { path: task },
+            result: { content: task },
+            status: "completed",
+          },
+        ],
+      };
+    };
+
+    try {
+      const first = await handleSessionsSpawn({
+        task: "review gateway",
+        agentId: targetAgent.id,
+        _requesterSessionKey: "parent-review",
+      });
+      const second = await handleSessionsSpawn({
+        task: "review mobile",
+        agentId: targetAgent.id,
+        _requesterSessionKey: "parent-review",
+      });
+      const waited = await handleSessionsWait(
+        { runIds: [first.runId, second.runId], timeoutSeconds: 2 },
+        { agentId: targetAgent.id, sessionId: "parent-review" }
+      );
+
+      expect(waited.status).toBe("completed");
+      expect(waited.pendingRunIds).toEqual([]);
+      expect(waited.runs.map((run) => run.result).sort()).toEqual([
+        "RESULT:review gateway",
+        "RESULT:review mobile",
+      ]);
+      expect(waited.runs.every((run) => run.toolCallCount === 1)).toBe(true);
+    } finally {
+      (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
+    }
+  });
+
+  test("sessions_wait is scoped to the requester and reports pending runs without blocking", async () => {
+    const run = registerSubagentRun({
+      childSessionKey: "agent:wait:subagent:pending",
+      requesterSessionKey: "parent-one",
+      task: "pending review",
+    });
+
+    await expect(
+      handleSessionsWait(
+        { runIds: [run.runId], timeoutSeconds: 0 },
+        { agentId: "parent-agent", sessionId: "parent-two" }
+      )
+    ).rejects.toThrow("another session");
+
+    const result = await handleSessionsWait(
+      { runIds: [run.runId], timeoutSeconds: 0 },
+      { agentId: "parent-agent", sessionId: "parent-one" }
+    );
+    expect(result.status).toBe("timeout");
+    expect(result.pendingRunIds).toEqual([run.runId]);
+    expect(result.runs[0]?.status).toBe("running");
   });
 
   test("includes the completed child result in the requester announcement", async () => {

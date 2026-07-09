@@ -17,6 +17,8 @@ describe("CLI subagent spawn argument parsing", () => {
         "delete",
         "--max-active",
         "3",
+        "--session",
+        "chat-1",
         "review",
         "repo",
       ])
@@ -27,6 +29,7 @@ describe("CLI subagent spawn argument parsing", () => {
       runTimeoutSeconds: 120,
       cleanup: "delete",
       maxActiveChildren: 3,
+      requesterSessionId: "chat-1",
       task: "review repo",
       label: "Task: review repo...",
     });

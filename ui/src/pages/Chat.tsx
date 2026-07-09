@@ -15,7 +15,6 @@ import {
   Sparkles,
   ChevronDown,
   ChevronUp,
-  Zap,
   Plus,
   Square,
   Loader2,
@@ -98,6 +97,7 @@ import {
 } from "./chat/liveSessionState";
 import { writeCachedSessionMessages } from "./chat/messageCache";
 import { SubagentPanel } from "./chat/SubagentPanel";
+import { SubagentIcon } from "./chat/SubagentIcon";
 import {
   clearCachedOptimisticPendingMessages,
   readCachedOptimisticPendingMessages,
@@ -3912,7 +3912,7 @@ export function Chat() {
             )}
             title="Subagents"
           >
-            <Zap className="w-4 h-4" />
+            <SubagentIcon className="h-4 w-4" />
           </button>
           <ChatEnvironmentOverview
             key={sessionId || "new-chat-environment"}

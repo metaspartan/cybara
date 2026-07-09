@@ -20,6 +20,7 @@ const browserTools = ["browser", "web_fetch", "web_search", "x_search", "http", 
 const memoryTools = ["memory_search", "memory_get", "memory_save", "memory_context"];
 const sessionTools = [
   "sessions_spawn",
+  "sessions_wait",
   "sessions_send",
   "sessions_history",
   "sessions_list",

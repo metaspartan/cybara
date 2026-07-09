@@ -1760,10 +1760,12 @@ export function SessionDetailPanel({
         visible={branchPickerVisible}
       />
       <MobileSubagentsSheet
+        agentId={agentId}
         api={api}
         onClose={() => setSubagentsVisible(false)}
         sessionId={sessionId}
         visible={subagentsVisible}
+        workspaceDir={chatWorkspaceDir}
       />
       <ChatSettingsSheet
         actions={chatSettingsActions}

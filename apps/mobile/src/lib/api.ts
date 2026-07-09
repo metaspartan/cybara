@@ -749,6 +749,22 @@ export interface MobileSubagentSummary {
   toolCalls?: MobileSubagentToolCall[];
 }
 
+export interface MobileSubagentSpawnRequest {
+  task: string;
+  label?: string;
+  agentId?: string;
+  workspaceDir?: string;
+  requesterSessionId: string;
+}
+
+export interface MobileSubagentSpawnResponse {
+  success: boolean;
+  subagentId?: string;
+  sessionKey?: string;
+  status?: string;
+  warning?: string;
+}
+
 export type MobileAgentStatus =
   | "idle"
   | "thinking"
@@ -2095,10 +2111,24 @@ export class CybaraMobileApi {
     return this.request<MobileSubagentSummary>(`/api/subagents/${encodeURIComponent(id)}`);
   }
 
+  spawnSubagent(payload: MobileSubagentSpawnRequest): Promise<MobileSubagentSpawnResponse> {
+    return this.request<MobileSubagentSpawnResponse>("/api/subagents/spawn", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
   stopSubagent(id: string): Promise<{ success: boolean; message?: string }> {
     return this.request<{ success: boolean; message?: string }>(
       `/api/subagents/${encodeURIComponent(id)}/kill`,
       { method: "POST" }
+    );
+  }
+
+  clearSubagent(id: string): Promise<{ success: boolean; error?: string }> {
+    return this.request<{ success: boolean; error?: string }>(
+      `/api/subagents/${encodeURIComponent(id)}`,
+      { method: "DELETE" }
     );
   }
 

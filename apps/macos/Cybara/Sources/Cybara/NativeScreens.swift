@@ -505,6 +505,9 @@ struct ChatScreen: View {
     @State private var subagents: [NativeSubagentSummary] = []
     @State private var subagentsLoading = false
     @State private var selectedSubagent: NativeSubagentSummary?
+    @State private var showSpawnSubagent = false
+    @State private var subagentTaskDraft = ""
+    @State private var subagentMutating = false
     @State private var showClearSubagentHistoryConfirm = false
     @State private var liveStatus = "idle"
     @State private var revertCandidate: GatewaySessionMessage?
@@ -557,6 +560,8 @@ struct ChatScreen: View {
                 messages = []
                 subagents = []
                 selectedSubagent = nil
+                showSpawnSubagent = false
+                subagentTaskDraft = ""
                 return
             }
             await loadMessages(selectedSessionID)
@@ -2225,34 +2230,79 @@ struct ChatScreen: View {
     private var subagentsPopover: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                if selectedSubagent != nil {
+                if selectedSubagent != nil || showSpawnSubagent {
                     Button {
                         selectedSubagent = nil
+                        showSpawnSubagent = false
                     } label: {
                         Image(systemName: "chevron.left")
                     }
                     .buttonStyle(.borderless)
                 }
-                Label(selectedSubagent?.label ?? "Subagents", systemImage: "person.2.wave.2")
+                Label(
+                    selectedSubagent?.label ?? (showSpawnSubagent ? "New Subagent" : "Subagents"),
+                    systemImage: "person.2.wave.2"
+                )
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .lineLimit(1)
                 Spacer()
-                if selectedSubagent == nil && subagents.contains(where: { $0.status != "running" && $0.status != "pending" }) {
-                    Button(role: .destructive) {
-                        showClearSubagentHistoryConfirm = true
+                if selectedSubagent == nil && !showSpawnSubagent {
+                    if subagents.contains(where: { $0.status != "running" && $0.status != "pending" }) {
+                        Button(role: .destructive) {
+                            showClearSubagentHistoryConfirm = true
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+                    Button {
+                        showSpawnSubagent = true
                     } label: {
-                        Image(systemName: "trash")
+                        Image(systemName: "plus")
                     }
                     .buttonStyle(.borderless)
                 }
             }
-            if let selectedSubagent {
+            if showSpawnSubagent {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Delegate a focused task using this chat's agent and workspace.")
+                        .font(.system(size: 11.5, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    TextEditor(text: $subagentTaskDraft)
+                        .font(.system(size: 12, design: .rounded))
+                        .scrollContentBackground(.hidden)
+                        .padding(7)
+                        .frame(minHeight: 130)
+                        .background(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.white.opacity(0.05))
+                        )
+                    HStack {
+                        Spacer()
+                        Button {
+                            Task { await spawnSubagent() }
+                        } label: {
+                            if subagentMutating {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Label("Start Subagent", systemImage: "plus")
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .disabled(subagentTaskDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || subagentMutating)
+                    }
+                }
+            } else if let selectedSubagent {
                 ScrollView {
                     NativeSubagentRunDetail(
                         subagent: selectedSubagent,
                         onStop: ["running", "pending"].contains(selectedSubagent.status)
                             ? { Task { await stopSubagent(selectedSubagent.id) } }
-                            : nil
+                            : nil,
+                        onClear: ["running", "pending"].contains(selectedSubagent.status)
+                            ? nil
+                            : { Task { await clearSubagent(selectedSubagent.id) } }
                     )
                 }
                 .frame(maxHeight: 430)
@@ -2365,6 +2415,47 @@ struct ChatScreen: View {
     private func loadSubagentDetail(_ id: String) async {
         do {
             selectedSubagent = try await client.nativeSubagent(id)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func spawnSubagent() async {
+        guard let selectedSessionID else { return }
+        let task = subagentTaskDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !task.isEmpty, !subagentMutating else { return }
+        subagentMutating = true
+        defer { subagentMutating = false }
+        do {
+            let response = try await client.spawnNativeSubagent(
+                task: task,
+                agentID: selectedConcreteChatAgentID,
+                workspaceDir: activeWorkspaceDir,
+                requesterSessionID: selectedSessionID
+            )
+            guard response.success != false else {
+                throw NSError(
+                    domain: "Cybara.Subagent",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: response.warning ?? response.error ?? "Subagent could not be started"]
+                )
+            }
+            subagentTaskDraft = ""
+            showSpawnSubagent = false
+            await loadSubagents()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func clearSubagent(_ id: String) async {
+        guard !subagentMutating else { return }
+        subagentMutating = true
+        defer { subagentMutating = false }
+        do {
+            try await client.clearNativeSubagent(id)
+            selectedSubagent = nil
+            await loadSubagents()
         } catch {
             self.error = error.localizedDescription
         }
@@ -3336,6 +3427,7 @@ private struct NativeSubagentDetailRow: View {
 private struct NativeSubagentRunDetail: View {
     let subagent: NativeSubagentSummary
     let onStop: (() -> Void)?
+    let onClear: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -3366,6 +3458,12 @@ private struct NativeSubagentRunDetail: View {
             if let onStop {
                 Button(role: .destructive, action: onStop) {
                     Label("Stop Subagent", systemImage: "stop.fill")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } else if let onClear {
+                Button(role: .destructive, action: onClear) {
+                    Label("Clear This Run", systemImage: "trash")
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.small)

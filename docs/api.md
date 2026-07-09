@@ -821,7 +821,8 @@ Content-Type: application/json
 
 {
   "task": "Research best practices for...",
-  "agentId": "optional-agent-id"
+  "agentId": "optional-agent-id",
+  "requesterSessionId": "current-chat-session"
 }
 ```
 
@@ -835,9 +836,27 @@ GET /api/subagents
 GET /api/subagents/:id
 ```
 
+### Wait for Subagents
+```http
+POST /api/subagents/wait
+Content-Type: application/json
+
+{
+  "runIds": ["run-id-1", "run-id-2"],
+  "timeoutSeconds": 120,
+  "requesterSessionId": "current-chat-session"
+}
+```
+
 ### Kill Subagent
 ```http
 POST /api/subagents/:id/kill
+```
+
+### Clear Subagent History
+```http
+DELETE /api/subagents/:id
+DELETE /api/subagents?sessionId=current-chat-session
 ```
 
 ## Memory

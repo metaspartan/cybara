@@ -7,9 +7,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
-import { Bot, ChevronDown, ChevronRight, Square, Trash2, X } from "lucide-react-native";
+import { Bot, ChevronDown, ChevronRight, Plus, Square, Trash2, X } from "lucide-react-native";
 import { LiquidGlass } from "../components/LiquidGlass";
 import type { CybaraMobileApi, MobileSubagentSummary, MobileSubagentToolCall } from "../lib/api";
 import { colors, spacing } from "../theme/liquidGlass";
@@ -65,18 +66,25 @@ function MobileSubagentToolRow({ tool }: { tool: MobileSubagentToolCall }) {
 }
 
 export function MobileSubagentsSheet({
+  agentId,
   api,
   onClose,
   sessionId,
   visible,
+  workspaceDir,
 }: {
+  agentId?: string | null;
   api: CybaraMobileApi;
   onClose: () => void;
   sessionId: string;
   visible: boolean;
+  workspaceDir?: string | null;
 }) {
   const [items, setItems] = useState<MobileSubagentSummary[]>([]);
   const [selected, setSelected] = useState<MobileSubagentSummary | null>(null);
+  const [showSpawn, setShowSpawn] = useState(false);
+  const [taskDraft, setTaskDraft] = useState("");
+  const [mutating, setMutating] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,6 +107,8 @@ export function MobileSubagentsSheet({
   useEffect(() => {
     if (!visible) return;
     setSelected(null);
+    setShowSpawn(false);
+    setTaskDraft("");
     void load();
     const timer = setInterval(() => void load(), 3_000);
     return () => clearInterval(timer);
@@ -145,6 +155,54 @@ export function MobileSubagentsSheet({
     );
   };
 
+  const spawn = async () => {
+    const task = taskDraft.trim();
+    if (!task || mutating) return;
+    setMutating(true);
+    setError(null);
+    try {
+      const result = await api.spawnSubagent({
+        task,
+        label: task.length > 42 ? `${task.slice(0, 39)}...` : task,
+        agentId: agentId || undefined,
+        workspaceDir: workspaceDir || undefined,
+        requesterSessionId: sessionId,
+      });
+      if (!result.success) throw new Error(result.warning || "Subagent could not be started");
+      setTaskDraft("");
+      setShowSpawn(false);
+      await load();
+    } catch (spawnError) {
+      setError(spawnError instanceof Error ? spawnError.message : String(spawnError));
+    } finally {
+      setMutating(false);
+    }
+  };
+
+  const confirmClearSelected = () => {
+    if (!selected || ["running", "pending"].includes(selected.status)) return;
+    Alert.alert("Clear this subagent?", "Remove this completed run and its saved details?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Clear",
+        style: "destructive",
+        onPress: () => {
+          setMutating(true);
+          void api
+            .clearSubagent(selected.id)
+            .then(async () => {
+              setSelected(null);
+              await load();
+            })
+            .catch((clearError: unknown) => {
+              setError(clearError instanceof Error ? clearError.message : String(clearError));
+            })
+            .finally(() => setMutating(false));
+        },
+      },
+    ]);
+  };
+
   return (
     <Modal
       animationType="slide"
@@ -159,8 +217,14 @@ export function MobileSubagentsSheet({
           style={styles.headerGlass}
         >
           <View style={styles.header}>
-            {selected ? (
-              <Pressable onPress={() => setSelected(null)} style={styles.headerButton}>
+            {selected || showSpawn ? (
+              <Pressable
+                onPress={() => {
+                  setSelected(null);
+                  setShowSpawn(false);
+                }}
+                style={styles.headerButton}
+              >
                 <ChevronDown color={colors.text} size={18} />
               </Pressable>
             ) : (
@@ -168,20 +232,55 @@ export function MobileSubagentsSheet({
             )}
             <View style={styles.headerTitleWrap}>
               <Text numberOfLines={1} style={styles.title}>
-                {selected?.label || "Subagents"}
+                {selected?.label || (showSpawn ? "New Subagent" : "Subagents")}
               </Text>
               <Text style={styles.subtitle}>Current chat only</Text>
             </View>
-            <Pressable onPress={onClose} style={styles.headerButton}>
-              <X color={colors.textMuted} size={19} />
-            </Pressable>
+            {selected || showSpawn ? (
+              <Pressable onPress={onClose} style={styles.headerButton}>
+                <X color={colors.textMuted} size={19} />
+              </Pressable>
+            ) : (
+              <Pressable onPress={() => setShowSpawn(true)} style={styles.headerButton}>
+                <Plus color={colors.textMuted} size={19} />
+              </Pressable>
+            )}
           </View>
         </LiquidGlass>
 
         <ScrollView contentContainerStyle={styles.content}>
           {loading && items.length === 0 ? <ActivityIndicator color={colors.textMuted} /> : null}
           {error ? <Text style={styles.error}>{error}</Text> : null}
-          {selected ? (
+          {showSpawn ? (
+            <View style={styles.spawnCard}>
+              <Text style={styles.spawnTitle}>Delegate a focused task</Text>
+              <Text style={styles.spawnHint}>
+                This worker inherits the current chat agent and workspace.
+              </Text>
+              <TextInput
+                autoFocus
+                multiline
+                onChangeText={setTaskDraft}
+                placeholder="Review a specific area and report findings..."
+                placeholderTextColor={colors.textDim}
+                style={styles.taskInput}
+                textAlignVertical="top"
+                value={taskDraft}
+              />
+              <Pressable
+                disabled={!taskDraft.trim() || mutating}
+                onPress={() => void spawn()}
+                style={[styles.spawnButton, (!taskDraft.trim() || mutating) && styles.disabled]}
+              >
+                {mutating ? (
+                  <ActivityIndicator color={colors.cyan} size="small" />
+                ) : (
+                  <Plus color={colors.cyan} size={15} />
+                )}
+                <Text style={styles.spawnButtonText}>Start subagent</Text>
+              </Pressable>
+            </View>
+          ) : selected ? (
             <View style={styles.detailStack}>
               <View style={styles.summaryCard}>
                 <View style={styles.statusRow}>
@@ -204,7 +303,16 @@ export function MobileSubagentsSheet({
                     <Square color={colors.red} size={14} />
                     <Text style={styles.stopText}>Stop subagent</Text>
                   </Pressable>
-                ) : null}
+                ) : (
+                  <Pressable
+                    disabled={mutating}
+                    onPress={confirmClearSelected}
+                    style={styles.stopButton}
+                  >
+                    <Trash2 color={colors.red} size={14} />
+                    <Text style={styles.stopText}>Clear this run</Text>
+                  </Pressable>
+                )}
               </View>
               {(selected.activities || []).length > 0 ? (
                 <View style={styles.section}>
@@ -323,6 +431,41 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   clearText: { color: colors.red, fontSize: 13, fontWeight: "600" },
+  spawnCard: {
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing.sm,
+    padding: spacing.md,
+  },
+  spawnTitle: { color: colors.text, fontSize: 15, fontWeight: "700" },
+  spawnHint: { color: colors.textDim, fontSize: 12, lineHeight: 17 },
+  taskInput: {
+    backgroundColor: colors.background,
+    borderColor: colors.border,
+    borderRadius: 11,
+    borderWidth: StyleSheet.hairlineWidth,
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
+    minHeight: 132,
+    padding: spacing.md,
+  },
+  spawnButton: {
+    alignItems: "center",
+    alignSelf: "flex-end",
+    backgroundColor: colors.softCyan,
+    borderColor: colors.softCyanBorder,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    flexDirection: "row",
+    gap: spacing.xs,
+    minHeight: 40,
+    paddingHorizontal: spacing.md,
+  },
+  spawnButtonText: { color: colors.cyan, fontSize: 13, fontWeight: "700" },
+  disabled: { opacity: 0.45 },
   detailStack: { gap: spacing.md },
   summaryCard: {
     backgroundColor: colors.surface,

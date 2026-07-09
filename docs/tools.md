@@ -208,6 +208,13 @@ Spawn a sub-agent for background work.
 ```
 Options: `agentId`, `model`, `thinking` (off/minimal/low/medium/high/max), `runTimeoutSeconds`, `cleanup` (keep/delete)
 
+### sessions_wait
+Wait for up to 10 child runs and return their results together for parent-agent synthesis.
+```json
+{"name": "sessions_wait", "args": {"runIds": ["run-1", "run-2"], "timeoutSeconds": 120}}
+```
+Waits are scoped to the requesting chat and may return `completed`, `partial`, or `timeout` with pending run IDs.
+
 ### sessions_send
 Send a message to another session.
 ```json

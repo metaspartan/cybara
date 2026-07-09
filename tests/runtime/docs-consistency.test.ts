@@ -75,7 +75,7 @@ describe("documentation consistency", () => {
     );
     const packageJson = JSON.parse(read("package.json")) as { description?: string };
 
-    expect(toolCount).toBe(76);
+    expect(toolCount).toBe(77);
     expect(providerCount).toBe(64);
     expect(packageJson.description).toContain(`${toolCount} tools`);
     expect(packageJson.description).toContain(`${providerCount} provider definitions`);

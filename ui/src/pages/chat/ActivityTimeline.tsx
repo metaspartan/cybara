@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Loader2, Zap } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import type { Subagent } from "@/hooks/useApi";
@@ -13,6 +13,7 @@ import {
   mergeActivityLists,
   type LiveActivityItem,
 } from "@/lib/chatActivities";
+import { SubagentIcon } from "./SubagentIcon";
 
 function ActivityRow({ activity }: { activity: LiveActivityItem }) {
   return (
@@ -138,7 +139,7 @@ export function SubagentCallItem({
         className="w-full px-3 py-2 flex items-center gap-2 text-sm"
       >
         {config.icon}
-        <Zap className="w-3 h-3" />
+        <SubagentIcon className="h-3 w-3" />
         <span className="font-medium truncate">Subagent: {subagent.task.slice(0, 50)}...</span>
         <span className="flex-1" />
         {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -10,7 +10,6 @@ import {
   Square,
   Trash2,
   X,
-  Zap,
 } from "lucide-react";
 import {
   type Subagent,
@@ -25,6 +24,12 @@ import { connectStatusStream } from "@/lib/status-stream";
 import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
 import { useUIStore } from "@/stores/uiStore";
 import { Badge, Button, Modal } from "@/components/ui";
+import { SubagentIcon } from "./SubagentIcon";
+import {
+  clampSubagentPanelWidth,
+  SUBAGENT_PANEL_DEFAULT_WIDTH,
+  SUBAGENT_PANEL_WIDTH_STORAGE_KEY,
+} from "./subagentPanelSizing";
 
 interface SubagentPanelProps {
   agentId?: string;
@@ -33,6 +38,18 @@ interface SubagentPanelProps {
   onViewSession?: (sessionKey: string) => void;
   sessionId: string | null;
   workspaceDir?: string | null;
+}
+
+function readSubagentPanelWidth(): number {
+  if (typeof window === "undefined") return SUBAGENT_PANEL_DEFAULT_WIDTH;
+  const storedWidth = Number.parseInt(
+    window.localStorage.getItem(SUBAGENT_PANEL_WIDTH_STORAGE_KEY) || "",
+    10
+  );
+  return clampSubagentPanelWidth(
+    Number.isFinite(storedWidth) ? storedWidth : SUBAGENT_PANEL_DEFAULT_WIDTH,
+    window.innerWidth
+  );
 }
 
 function statusVariant(status: Subagent["status"]): "success" | "error" | "default" {
@@ -193,8 +210,10 @@ export function SubagentPanel({
   const [showSpawnModal, setShowSpawnModal] = useState(false);
   const [showClearModal, setShowClearModal] = useState(false);
   const [selectedSubagentId, setSelectedSubagentId] = useState<string | null>(null);
+  const [panelWidth, setPanelWidth] = useState(readSubagentPanelWidth);
   const { data: selectedSubagent, isLoading: detailLoading } = useSubagent(selectedSubagentId);
   const subagentRefreshTimerRef = useRef<number | null>(null);
+  const panelResizeCleanupRef = useRef<(() => void) | null>(null);
   const completedCount = subagents.filter(
     (subagent) => subagent.status !== "running" && subagent.status !== "pending"
   ).length;
@@ -225,6 +244,69 @@ export function SubagentPanel({
     setSelectedSubagentId(null);
   }, [sessionId]);
 
+  useEffect(() => {
+    const handleWindowResize = () => {
+      setPanelWidth((current) => clampSubagentPanelWidth(current, window.innerWidth));
+    };
+    window.addEventListener("resize", handleWindowResize);
+    return () => {
+      window.removeEventListener("resize", handleWindowResize);
+      panelResizeCleanupRef.current?.();
+    };
+  }, []);
+
+  const persistPanelWidth = (width: number) => {
+    window.localStorage.setItem(SUBAGENT_PANEL_WIDTH_STORAGE_KEY, String(width));
+  };
+
+  const resizePanelBy = (delta: number) => {
+    setPanelWidth((current) => {
+      const next = clampSubagentPanelWidth(current + delta, window.innerWidth);
+      persistPanelWidth(next);
+      return next;
+    });
+  };
+
+  const beginPanelResize = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    panelResizeCleanupRef.current?.();
+    const startX = event.clientX;
+    const startWidth = panelWidth;
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      setPanelWidth(
+        clampSubagentPanelWidth(startWidth + startX - moveEvent.clientX, window.innerWidth)
+      );
+    };
+
+    const cleanup = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      panelResizeCleanupRef.current = null;
+    };
+
+    const handleMouseUp = (upEvent: MouseEvent) => {
+      const next = clampSubagentPanelWidth(
+        startWidth + startX - upEvent.clientX,
+        window.innerWidth
+      );
+      setPanelWidth(next);
+      persistPanelWidth(next);
+      cleanup();
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    panelResizeCleanupRef.current = cleanup;
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
   const handleSpawn = async () => {
     const task = newTask.trim();
     if (!task || !sessionId || spawnSubagent.isPending) return;
@@ -249,10 +331,33 @@ export function SubagentPanel({
 
   return (
     <>
-      <aside className="flex w-80 flex-col border-l border-white/5 bg-[var(--chat-environment-panel-bg)]">
+      <aside
+        className="relative flex shrink-0 flex-col border-l border-white/5 bg-[var(--chat-environment-panel-bg)]"
+        style={{ width: panelWidth }}
+      >
+        <div
+          aria-label="Resize subagent panel"
+          aria-orientation="vertical"
+          className="group absolute left-[-3px] top-0 z-40 h-full w-1.5 cursor-col-resize touch-none bg-transparent"
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") {
+              event.preventDefault();
+              resizePanelBy(16);
+            } else if (event.key === "ArrowRight") {
+              event.preventDefault();
+              resizePanelBy(-16);
+            }
+          }}
+          onMouseDown={beginPanelResize}
+          role="separator"
+          tabIndex={0}
+          title="Resize subagent panel"
+        >
+          <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/10 transition-colors group-hover:bg-[rgba(var(--accent-primary),0.65)] group-focus-visible:bg-[rgba(var(--accent-primary),0.65)]" />
+        </div>
         <header className="flex items-center justify-between border-b border-white/5 px-3 py-2.5">
           <div className="flex items-center gap-2">
-            <Zap className="h-3.5 w-3.5 text-gray-400" />
+            <SubagentIcon className="h-3.5 w-3.5 text-gray-400" />
             <h3 className="text-sm font-medium text-gray-200">Subagents</h3>
             {subagents.length > 0 && <Badge size="sm">{subagents.length}</Badge>}
           </div>
@@ -297,7 +402,7 @@ export function SubagentPanel({
             </div>
           ) : subagents.length === 0 ? (
             <div className="py-8 text-center text-gray-500">
-              <Zap className="mx-auto mb-2 h-6 w-6 opacity-30" />
+              <SubagentIcon className="mx-auto mb-2 h-6 w-6 opacity-30" />
               <p className="text-xs">No subagents in this chat</p>
             </div>
           ) : (
@@ -366,7 +471,7 @@ export function SubagentPanel({
               {spawnSubagent.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <Zap className="mr-2 h-4 w-4" />
+                <SubagentIcon className="mr-2 h-4 w-4" />
               )}
               Spawn
             </Button>

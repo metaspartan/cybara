@@ -641,6 +641,20 @@ function route(method: string, url: URL, body: string): Response {
     ]);
   }
 
+  if (method === "GET" && pathname === "/api/subagents/sub-2") {
+    return json({
+      id: "sub-2",
+      task: "Write summary",
+      label: "Write release summary",
+      status: "completed",
+      activityCount: 1,
+      toolCallCount: 1,
+      activities: [{ text: "Read package", toolName: "read", phase: "result" }],
+      toolCalls: [{ name: "read", status: "completed" }],
+      result: "Release summary complete",
+    });
+  }
+
   if (method === "POST" && pathname === "/api/subagents/spawn") {
     const parsed = body ? (JSON.parse(body) as { task?: string }) : {};
     if (!parsed.task) return json({ error: "missing task" }, 400);
@@ -648,6 +662,27 @@ function route(method: string, url: URL, body: string): Response {
   }
 
   if (method === "POST" && pathname === "/api/subagents/sub-2/kill") {
+    return json({ success: true });
+  }
+
+  if (method === "POST" && pathname === "/api/subagents/wait") {
+    return json({
+      status: "completed",
+      runs: [
+        {
+          runId: "sub-2",
+          status: "completed",
+          label: "Write release summary",
+          result: "Release summary complete",
+          toolCallCount: 1,
+        },
+      ],
+      pendingRunIds: [],
+      elapsedMs: 25,
+    });
+  }
+
+  if (method === "DELETE" && pathname === "/api/subagents/sub-2") {
     return json({ success: true });
   }
 
@@ -2162,9 +2197,23 @@ describe("CLI Commands", () => {
     expect(spawn.exitCode).toBe(0);
     expect(spawn.stdout).toContain("Spawned subagent: sub-2");
 
+    const show = await runCli(["subagent", "show", "sub-2"]);
+    expect(show.exitCode).toBe(0);
+    expect(show.stdout).toContain("Release summary complete");
+    expect(show.stdout).toContain("read · completed");
+
+    const wait = await runCli(["subagent", "wait", "sub-2", "--timeout", "1"]);
+    expect(wait.exitCode).toBe(0);
+    expect(wait.stdout).toContain("status: completed");
+    expect(wait.stdout).toContain("Release summary complete");
+
     const kill = await runCli(["subagent", "kill", "sub-2"]);
     expect(kill.exitCode).toBe(0);
     expect(kill.stdout).toContain("Killed subagent: sub-2");
+
+    const clear = await runCli(["subagent", "clear", "sub-2"]);
+    expect(clear.exitCode).toBe(0);
+    expect(clear.stdout).toContain("Cleared subagent: sub-2");
 
     const mcpList = await runCli(["mcp", "list"]);
     expect(mcpList.exitCode).toBe(0);

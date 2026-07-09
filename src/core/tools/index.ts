@@ -735,7 +735,7 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     description: `Spawn a background sub-agent run in an isolated session and announce the result back to the requester chat.
     
 The sub-agent runs independently, and its final response is automatically delivered to the requester session.
-Use for tasks that may take longer or require separate context.`,
+Use for tasks that may take longer or require separate context. For parallel delegation that needs one combined answer, spawn the workers first, then call sessions_wait with every returned runId and synthesize the completed results.`,
     category: "core",
     input_schema: {
       type: "object",
@@ -783,6 +783,29 @@ Use for tasks that may take longer or require separate context.`,
       required: ["task"],
     },
     permissions: ["sessions:create"],
+  },
+
+  sessions_wait: {
+    name: "sessions_wait",
+    description:
+      "Wait for one or more sub-agent runs from the current session and return concise results for synthesis. Use after parallel sessions_spawn calls before answering the user.",
+    category: "core",
+    input_schema: {
+      type: "object",
+      properties: {
+        runIds: {
+          type: "array",
+          items: { type: "string" },
+          description: "Run IDs returned by sessions_spawn (maximum 10)",
+        },
+        timeoutSeconds: {
+          type: "number",
+          description: "Maximum wait in seconds (default 120, maximum 600, 0 checks once)",
+        },
+      },
+      required: ["runIds"],
+    },
+    permissions: ["sessions:read"],
   },
 
   sessions_send: {

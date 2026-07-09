@@ -44,6 +44,7 @@ const systemPromptFixture: SystemPromptConfig = {
 describe("mobile API client", () => {
   test("scopes subagent details and history to the active chat", async () => {
     const calls: Array<{ method: string; path: string; sessionId: string | null }> = [];
+    let spawnPayload: Record<string, unknown> | undefined;
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input, init) => {
       const url = new URL(String(input));
@@ -52,13 +53,20 @@ describe("mobile API client", () => {
         path: url.pathname,
         sessionId: url.searchParams.get("sessionId"),
       });
-      if (url.pathname === "/api/subagents/sub%2Fone") {
+      if (url.pathname === "/api/subagents/spawn") {
+        spawnPayload = JSON.parse(String(init?.body || "{}")) as Record<string, unknown>;
+        return Response.json({ success: true, subagentId: "sub/new", status: "accepted" });
+      }
+      if (url.pathname === "/api/subagents/sub%2Fone" && (init?.method || "GET") === "GET") {
         return Response.json({ id: "sub/one", label: "Review", status: "completed" });
       }
       if (url.pathname === "/api/subagents/sub%2Fone/kill") {
         return Response.json({ success: true, message: "Subagent killed" });
       }
-      if (init?.method === "DELETE") return Response.json({ success: true, cleared: 1 });
+      if (init?.method === "DELETE" && url.pathname === "/api/subagents") {
+        return Response.json({ success: true, cleared: 1 });
+      }
+      if (init?.method === "DELETE") return Response.json({ success: true });
       return Response.json([{ id: "sub/one", label: "Review", status: "completed" }]);
     }) as typeof fetch;
 
@@ -66,7 +74,16 @@ describe("mobile API client", () => {
       const api = new CybaraMobileApi(profile);
       await expect(api.subagents("chat/one")).resolves.toHaveLength(1);
       await expect(api.subagent("sub/one")).resolves.toMatchObject({ id: "sub/one" });
+      await expect(
+        api.spawnSubagent({
+          task: "Review mobile chat",
+          agentId: "mini",
+          workspaceDir: "/repo",
+          requesterSessionId: "chat/one",
+        })
+      ).resolves.toMatchObject({ success: true, subagentId: "sub/new" });
       await expect(api.stopSubagent("sub/one")).resolves.toMatchObject({ success: true });
+      await expect(api.clearSubagent("sub/one")).resolves.toMatchObject({ success: true });
       await expect(api.clearSubagentHistory("chat/one")).resolves.toEqual({
         success: true,
         cleared: 1,
@@ -74,9 +91,17 @@ describe("mobile API client", () => {
       expect(calls).toEqual([
         { method: "GET", path: "/api/subagents", sessionId: "chat/one" },
         { method: "GET", path: "/api/subagents/sub%2Fone", sessionId: null },
+        { method: "POST", path: "/api/subagents/spawn", sessionId: null },
         { method: "POST", path: "/api/subagents/sub%2Fone/kill", sessionId: null },
+        { method: "DELETE", path: "/api/subagents/sub%2Fone", sessionId: null },
         { method: "DELETE", path: "/api/subagents", sessionId: "chat/one" },
       ]);
+      expect(spawnPayload).toEqual({
+        task: "Review mobile chat",
+        agentId: "mini",
+        workspaceDir: "/repo",
+        requesterSessionId: "chat/one",
+      });
     } finally {
       globalThis.fetch = originalFetch;
     }

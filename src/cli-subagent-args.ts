@@ -7,6 +7,7 @@ export interface SubagentSpawnPayload {
   cleanup?: "keep" | "delete";
   workspaceDir?: string;
   maxActiveChildren?: number;
+  requesterSessionId?: string;
 }
 
 function readFlagValue(args: string[], index: number, flag: string): string {
@@ -79,6 +80,12 @@ export function parseSubagentSpawnArgs(args: string[]): SubagentSpawnPayload {
 
     if (parseFlags && arg === "--max-active") {
       payload.maxActiveChildren = parseNonNegativeInteger(readFlagValue(args, index, arg), arg);
+      index += 1;
+      continue;
+    }
+
+    if (parseFlags && arg === "--session") {
+      payload.requesterSessionId = readFlagValue(args, index, arg);
       index += 1;
       continue;
     }

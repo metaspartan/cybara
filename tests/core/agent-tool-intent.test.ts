@@ -48,7 +48,13 @@ describe("implicit builtin tool intent selection", () => {
   test("selects subagent tools for plural subagent delegation requests", () => {
     const names = namesFor("Use subagents in parallel to review the mobile chat and report back");
     expect(names).toEqual(
-      expect.arrayContaining(["sessions_spawn", "sessions_list", "sessions_history", "todo"])
+      expect.arrayContaining([
+        "sessions_spawn",
+        "sessions_wait",
+        "sessions_list",
+        "sessions_history",
+        "todo",
+      ])
     );
   });
 

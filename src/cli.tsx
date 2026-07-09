@@ -33,11 +33,11 @@ import { rawHelp } from "./cli-help";
 import { printCompletion } from "./cli-completion";
 import { rawComputerUse } from "./cli-computer-use";
 import { configureChatCli, rawAgent, rawChatCommand } from "./cli-chat";
+import { runSubagentCommand } from "./cli-subagents";
 import { TUIChatCommand } from "./cli-tui-chat";
 import { MainMenu, type MainMenuAction } from "./cli-tui-menu";
 import { getFlagValue, hasFlag } from "./cli-args";
 import { commandExists } from "./core/platform";
-import { parseSubagentSpawnArgs, type SubagentSpawnPayload } from "./cli-subagent-args";
 import {
   configureWalletCli,
   rawWalletAccounts,
@@ -1977,110 +1977,6 @@ async function rawLogsCommand(args: string[]): Promise<void> {
       console.log(`[${time}] ${level} ${module} ${(log.message || "").slice(0, 60)}`);
     }
     await new Promise((resolve) => setTimeout(resolve, 2000));
-  }
-}
-
-interface SubagentInfo {
-  id: string;
-  task: string;
-  label: string;
-  status: string;
-  createdAt: string;
-  model?: string;
-  workspaceDir?: string;
-  runTimeoutSeconds?: number;
-}
-
-async function rawSubagents(): Promise<void> {
-  const data = await fetchAPI<SubagentInfo[]>("/api/subagents");
-  if (!data) {
-    console.error("ERROR: Failed to fetch subagents from", API_BASE);
-    process.exit(1);
-  }
-
-  const subagents = Array.isArray(data) ? data : [];
-  const running = subagents.filter((s) => s.status === "running").length;
-
-  console.log("CYBARA SUBAGENTS");
-  console.log("================");
-  console.log(`total: ${subagents.length}`);
-  console.log(`running: ${running}`);
-  console.log("");
-
-  if (subagents.length === 0) {
-    console.log("No subagents");
-    return;
-  }
-
-  for (const sub of subagents) {
-    const status = sub.status === "running" ? "⟳" : sub.status === "completed" ? "✓" : "✗";
-    console.log(`${status} ${sub.label.slice(0, 50)}`);
-    console.log(`  id: ${sub.id}`);
-    console.log(`  status: ${sub.status}`);
-    if (sub.model) console.log(`  model: ${sub.model}`);
-    if (sub.workspaceDir) console.log(`  workspace: ${sub.workspaceDir}`);
-    if (typeof sub.runTimeoutSeconds === "number") {
-      console.log(`  timeout: ${sub.runTimeoutSeconds === 0 ? "none" : `${sub.runTimeoutSeconds}s`}`);
-    }
-  }
-}
-
-async function rawSubagentSpawn(args: string[]): Promise<void> {
-  let payload: SubagentSpawnPayload;
-  try {
-    payload = parseSubagentSpawnArgs(args);
-  } catch (error) {
-    console.error(`ERROR: ${(error as Error).message}`);
-    console.log(
-      "Usage: cybara subagent spawn [--agent <id>] [--model <model>] [--timeout <seconds>|--no-timeout] [--cleanup keep|delete] [--workspace <dir>] [--max-active <n>] <task>"
-    );
-    process.exit(1);
-  }
-
-  const response = await fetch(`${API_BASE}/api/subagents/spawn`, {
-    method: "POST",
-    headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify(payload),
-  });
-
-  const result = (await response.json()) as {
-    id?: string;
-    subagentId?: string;
-    success?: boolean;
-    status?: string;
-    error?: string;
-  };
-  const subagentId = result.subagentId || result.id;
-
-  if (subagentId) {
-    console.log(`✓ Spawned subagent: ${subagentId}`);
-    if (result.status) console.log(`status: ${result.status}`);
-  } else {
-    const reason = result.error || result.status || response.statusText || "Unknown error";
-    console.error(`✗ Failed to spawn: ${reason}`);
-    process.exit(1);
-  }
-}
-
-async function rawSubagentKill(id: string): Promise<void> {
-  if (!id) {
-    console.error("ERROR: Please specify a subagent ID");
-    console.log("Usage: cybara subagent kill <id>");
-    process.exit(1);
-  }
-
-  const response = await fetch(`${API_BASE}/api/subagents/${id}/kill`, {
-    method: "POST",
-    headers: withCliAuthHeaders(),
-  });
-
-  const result = (await response.json()) as { success?: boolean; error?: string };
-
-  if (result.success) {
-    console.log(`✓ Killed subagent: ${id}`);
-  } else {
-    console.error(`✗ Failed to kill: ${result.error}`);
-    process.exit(1);
   }
 }
 
@@ -4472,24 +4368,10 @@ async function main() {
     }
     case "subagent":
     case "subagents":
-      switch (args[1]) {
-        case "list":
-        case undefined:
-          await rawSubagents();
-          break;
-        case "spawn":
-          await rawSubagentSpawn(args.slice(2));
-          break;
-        case "kill":
-          await rawSubagentKill(args[2]);
-          break;
-        default:
-          console.log("Subagent Commands:");
-          console.log("  cybara subagent list       - List all subagents");
-          console.log("  cybara subagent spawn <t>  - Spawn with task");
-          console.log("  cybara subagent kill <id>  - Kill subagent");
-          break;
-      }
+      await runSubagentCommand(args.slice(1), {
+        apiBase: API_BASE,
+        apiKey: CLI_API_KEY,
+      });
       break;
     case "loop":
     case "loops":

@@ -18,6 +18,7 @@ import {
 } from "./memory";
 import {
   handleSessionsSpawn,
+  handleSessionsWait,
   handleSessionsSend,
   handleSessionsHistory,
   handleSessionsList,
@@ -214,6 +215,7 @@ const toolHandlers: Record<
   heartbeat_state: handleHeartbeatState,
 
   sessions_spawn: handleSessionsSpawn,
+  sessions_wait: handleSessionsWait,
   sessions_send: handleSessionsSend,
   sessions_history: handleSessionsHistory,
   sessions_list: handleSessionsList,
