@@ -42,6 +42,27 @@ describe("security-sensitive runtime defaults", () => {
     expect(serverSource).not.toContain("?token=${gatewayKey}");
   });
 
+  test("workspace indexing does not start automatically by default", () => {
+    const configSource = readFileSync(join(ROOT_DIR, "src", "core", "config.ts"), "utf8");
+    const indexerSource = readFileSync(
+      join(ROOT_DIR, "src", "core", "workspace-indexer.ts"),
+      "utf8"
+    );
+
+    expect(configSource).toContain("autoReindexOnWorkspaceSet: false");
+    expect(indexerSource).toContain("settings.enabled && settings.autoReindexOnWorkspaceSet");
+  });
+
+  test("legacy chat session listing stays bounded for older clients", () => {
+    const routesSource = readFileSync(join(ROOT_DIR, "src", "api", "routes.ts"), "utf8");
+
+    expect(routesSource).toContain('"GET /api/chat/sessions": (_body, params) =>');
+    expect(routesSource).toContain("limit: parseBoundedQueryNumber(params?.limit, 1, 500) ?? 150");
+    expect(routesSource).toContain(
+      "offset: parseBoundedQueryNumber(params?.offset, 0, 100000) ?? 0"
+    );
+  });
+
   test("core, CLI, speech, and plugins storage paths use shared Cybara home resolver", () => {
     const homeSource = readFileSync(join(ROOT_DIR, "src", "core", "cybara-home.ts"), "utf8");
     const pathsSource = readFileSync(join(ROOT_DIR, "src", "core", "paths.ts"), "utf8");

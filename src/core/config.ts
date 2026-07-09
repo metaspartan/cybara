@@ -201,7 +201,7 @@ export const DEFAULT_TOKEN_OPTIMIZATION_SETTINGS: TokenOptimizationSettings = {
 
 export const DEFAULT_WORKSPACE_INDEXER_SETTINGS: WorkspaceIndexerSettings = {
   enabled: true,
-  autoReindexOnWorkspaceSet: true,
+  autoReindexOnWorkspaceSet: false,
   includeHidden: false,
   maxFileSizeBytes: 1024 * 1024,
   maxFiles: 25000,

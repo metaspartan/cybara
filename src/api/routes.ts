@@ -1797,7 +1797,11 @@ const routes: Record<string, RouteHandler> = {
       model: result.model,
     };
   },
-  "GET /api/chat/sessions": () => listSessions(),
+  "GET /api/chat/sessions": (_body, params) =>
+    listSessions({
+      limit: parseBoundedQueryNumber(params?.limit, 1, 500) ?? 150,
+      offset: parseBoundedQueryNumber(params?.offset, 0, 100000) ?? 0,
+    }),
   "GET /api/chat/sessions/:id": async (_body, params) => {
     const session = await getSession(params!.id);
     if (!session) return session;
