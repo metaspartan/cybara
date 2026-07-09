@@ -37,6 +37,10 @@ async function discoverViaModelsDev(providerId: string): Promise<DiscoveryResult
           max_tokens: m.maxTokens || 8192,
           reasoning: m.reasoning || false,
           input_types: m.input && m.input.length > 0 ? m.input : ["text"],
+          cost_input: m.costInput,
+          cost_output: m.costOutput,
+          cost_cache_read: m.costCacheRead,
+          cost_cache_write: m.costCacheWrite,
         });
         added += 1;
       } catch {

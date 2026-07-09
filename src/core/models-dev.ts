@@ -13,7 +13,17 @@ export interface ModelsDevModel {
   contextWindow?: number;
   maxTokens?: number;
   reasoning?: boolean;
+  toolCall?: boolean;
   input?: string[];
+  output?: string[];
+  costInput?: number;
+  costOutput?: number;
+  costCacheRead?: number;
+  costCacheWrite?: number;
+  knowledge?: string;
+  releaseDate?: string;
+  lastUpdated?: string;
+  openWeights?: boolean;
 }
 
 export const PROVIDER_TO_MODELS_DEV: Record<string, string> = {
@@ -54,6 +64,17 @@ export const PROVIDER_TO_MODELS_DEV: Record<string, string> = {
   featherless: "featherless-ai",
   gmi: "gmi",
   longcat: "longcat",
+  azure: "azure",
+  azure_foundry: "azure",
+  google_vertex: "google-vertex",
+  anthropic_vertex: "google-vertex-anthropic",
+  venice: "venice",
+  chutes: "chutes",
+  github_copilot: "github-copilot",
+  opencode_zen: "opencode",
+  "vercel-ai-gateway": "vercel",
+  llama: "llama",
+  nous: "nous",
 };
 
 export function extractModelsDevProvider(apiJson: unknown, slug: string): ModelsDevModel[] {
@@ -71,18 +92,37 @@ export function extractModelsDevProvider(apiJson: unknown, slug: string): Models
       name?: string;
       limit?: { context?: number; output?: number };
       reasoning?: boolean;
-      modalities?: { input?: string[] };
+      tool_call?: boolean;
+      open_weights?: boolean;
+      knowledge?: string;
+      release_date?: string;
+      last_updated?: string;
+      modalities?: { input?: string[]; output?: string[] };
+      cost?: { input?: number; output?: number; cache_read?: number; cache_write?: number };
     };
-    const input = Array.isArray(m.modalities?.input)
-      ? m.modalities.input.filter((x): x is string => typeof x === "string")
-      : undefined;
+    const strings = (value: unknown): string[] | undefined =>
+      Array.isArray(value)
+        ? value.filter((x): x is string => typeof x === "string")
+        : undefined;
+    const num = (value: unknown): number | undefined =>
+      typeof value === "number" && Number.isFinite(value) ? value : undefined;
     out.push({
       id: m.id || modelId,
       name: m.name,
-      contextWindow: typeof m.limit?.context === "number" ? m.limit.context : undefined,
-      maxTokens: typeof m.limit?.output === "number" ? m.limit.output : undefined,
+      contextWindow: num(m.limit?.context),
+      maxTokens: num(m.limit?.output),
       reasoning: m.reasoning === true,
-      input,
+      toolCall: m.tool_call === true,
+      openWeights: m.open_weights === true,
+      knowledge: typeof m.knowledge === "string" ? m.knowledge : undefined,
+      releaseDate: typeof m.release_date === "string" ? m.release_date : undefined,
+      lastUpdated: typeof m.last_updated === "string" ? m.last_updated : undefined,
+      input: strings(m.modalities?.input),
+      output: strings(m.modalities?.output),
+      costInput: num(m.cost?.input),
+      costOutput: num(m.cost?.output),
+      costCacheRead: num(m.cost?.cache_read),
+      costCacheWrite: num(m.cost?.cache_write),
     });
   }
   return out;
