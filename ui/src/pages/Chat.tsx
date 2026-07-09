@@ -96,6 +96,11 @@ import {
   writeCachedLiveSessionState,
 } from "./chat/liveSessionState";
 import { writeCachedSessionMessages } from "./chat/messageCache";
+import {
+  createFileDiffSignature,
+  persistSeenFileDiffSignature,
+  readSeenFileDiffSignature,
+} from "./chat/fileDiffNotifications";
 import { SubagentPanel } from "./chat/SubagentPanel";
 import { SubagentIcon } from "./chat/SubagentIcon";
 import {
@@ -123,6 +128,7 @@ import {
   inferArtifactSummaries,
   isGenericStatusLabel,
   isMeaningfulThoughtDetail,
+  isSessionPlanComplete,
   isRecord,
   normalizeMessageProcessActivities,
   normalizeDictationMode,
@@ -1361,6 +1367,9 @@ export function Chat() {
   const [showSubagentPanel, setShowSubagentPanel] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(true);
   const [showDiffPanel, setShowDiffPanel] = useState(false);
+  const [seenFileDiffSignature, setSeenFileDiffSignature] = useState<string | null>(() =>
+    readSeenFileDiffSignature(sessionId)
+  );
   const [showEnvironmentOverview, setShowEnvironmentOverview] = useState(false);
   const [seenEnvironmentOverviewKey, setSeenEnvironmentOverviewKey] = useState<string | null>(null);
   const [hiddenComposerPlanKey, setHiddenComposerPlanKey] = useState<string | null>(null);
@@ -1472,6 +1481,17 @@ export function Chat() {
     () => summarizeSessionFileChanges(typedMessages, liveActivities),
     [liveActivities, typedMessages]
   );
+  const currentFileDiffSignature = useMemo(
+    () => createFileDiffSignature(sessionId, sessionFileChanges),
+    [sessionFileChanges, sessionId]
+  );
+  const hasUnreadFileDiffs =
+    !!currentFileDiffSignature && currentFileDiffSignature !== seenFileDiffSignature;
+  const markCurrentFileDiffsSeen = useCallback(() => {
+    if (!sessionId || !currentFileDiffSignature) return;
+    persistSeenFileDiffSignature(sessionId, currentFileDiffSignature);
+    setSeenFileDiffSignature(currentFileDiffSignature);
+  }, [currentFileDiffSignature, sessionId]);
   const currentSessionPlan = useMemo(
     () => extractLatestPlanFromMessages(typedMessages, sessionId),
     [typedMessages, sessionId]
@@ -1488,7 +1508,10 @@ export function Chat() {
       currentSessionPlan.items.map((item) => `${item.status}:${item.content}`).join("|"),
     ].join(":");
   }, [currentSessionPlan, sessionId]);
-  const showComposerPlan = !!currentSessionPlan && currentSessionPlanKey !== hiddenComposerPlanKey;
+  const showComposerPlan =
+    !!currentSessionPlan &&
+    !isSessionPlanComplete(currentSessionPlan) &&
+    currentSessionPlanKey !== hiddenComposerPlanKey;
   const environmentToolNames = useMemo(() => {
     const names = new Set<string>();
     for (const message of typedMessages) {
@@ -1578,6 +1601,14 @@ export function Chat() {
   useEffect(() => {
     setLastWorkspaceDir(readPersistedWorkspaceDir());
   }, []);
+
+  useEffect(() => {
+    setSeenFileDiffSignature(readSeenFileDiffSignature(sessionId));
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (showDiffPanel) markCurrentFileDiffsSeen();
+  }, [markCurrentFileDiffsSeen, showDiffPanel]);
 
   useEffect(() => {
     if (!workspaceDir) return;
@@ -3866,18 +3897,21 @@ export function Chat() {
             onOpenCybaraIde={handleOpenWorkspaceInCybaraIde}
           />
           <button
+            aria-label="File diffs"
             onClick={() => {
-              setShowDiffPanel(!showDiffPanel);
+              const nextOpen = !showDiffPanel;
+              setShowDiffPanel(nextOpen);
               setShowEnvironmentOverview(false);
+              if (nextOpen) markCurrentFileDiffsSeen();
             }}
             className={cn(
               "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
-              showDiffPanel ? "text-indigo-300" : "text-gray-500"
+              showDiffPanel ? "text-indigo-300 bg-white/[0.04]" : "text-gray-500"
             )}
             title="File diffs"
           >
             <FileText className="w-4 h-4" />
-            {sessionFileChanges && sessionFileChanges.files.length > 0 && (
+            {hasUnreadFileDiffs && sessionFileChanges && sessionFileChanges.files.length > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] rounded-full bg-indigo-500/80 px-1 text-[9px] leading-[15px] text-white text-center">
                 {sessionFileChanges.files.length}
               </span>

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import {
   collectPlanTimelineFromMessages,
   extractLatestPlanFromMessages,
+  isSessionPlanComplete,
   type ChatMessage,
 } from "../../ui/src/pages/chat/chatModel";
 
@@ -76,6 +77,7 @@ describe("chat plan and artifact UI wiring", () => {
     expect(chatPage).toContain("sessionId={sessionId}");
     expect(chatPage).toContain("hiddenComposerPlanKey");
     expect(chatPage).toContain("showComposerPlan");
+    expect(chatPage).toContain("!isSessionPlanComplete(currentSessionPlan)");
     expect(chatPage).toContain("seenEnvironmentOverviewKey");
     expect(chatPage).toContain("environmentOverviewSignalKey");
     expect(chatPage).toContain("showEnvironmentOverviewDot");
@@ -107,6 +109,25 @@ describe("chat plan and artifact UI wiring", () => {
     expect(planCard).toContain("<summary");
     expect(planCard).toContain('data-testid={compact ? "chat-composer-plan" : "chat-plan-card"}');
     expect(source).toContain("parsePlanFromToolCall(toolCall, sessionId, message.timestamp)");
+  });
+
+  test("hides only completed plans from the composer", () => {
+    expect(
+      isSessionPlanComplete({
+        sessionId: "completed-plan",
+        source: "todo_tool",
+        items: [{ content: "Finish work", status: "completed", priority: "medium" }],
+        summary: { total: 1, pending: 0, inProgress: 0, completed: 1 },
+      })
+    ).toBe(true);
+    expect(
+      isSessionPlanComplete({
+        sessionId: "active-plan",
+        source: "todo_tool",
+        items: [{ content: "Finish work", status: "in_progress", priority: "medium" }],
+        summary: { total: 1, pending: 0, inProgress: 1, completed: 0 },
+      })
+    ).toBe(false);
   });
 
   test("exposes session plan and artifact delete API wiring", () => {

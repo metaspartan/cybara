@@ -1312,6 +1312,15 @@ export function summarizePlanItems(items: SessionPlanItem[]): SessionPlanSnapsho
   };
 }
 
+export function isSessionPlanComplete(plan: SessionPlanSnapshot): boolean {
+  return (
+    plan.summary.total > 0 &&
+    plan.summary.completed >= plan.summary.total &&
+    plan.summary.inProgress === 0 &&
+    plan.summary.pending === 0
+  );
+}
+
 export function parsePlanFromToolCall(
   tool: ToolCall,
   sessionId?: string | null,

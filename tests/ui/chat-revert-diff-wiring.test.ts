@@ -6,6 +6,7 @@ import {
   summarizeSessionFileChanges,
   type ChatMessage,
 } from "../../ui/src/pages/chat/chatModel";
+import { createFileDiffSignature } from "../../ui/src/pages/chat/fileDiffNotifications";
 
 const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
 const chatModelPath = fileURLToPath(
@@ -73,9 +74,47 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("function SessionDiffPanel");
     expect(source).toContain("No file diffs in this session yet");
     expect(source).toContain("showDiffPanel");
+    expect(source).toContain('aria-label="File diffs"');
+    expect(source).toContain("hasUnreadFileDiffs");
+    expect(source).toContain("markCurrentFileDiffsSeen");
     expect(source).toContain("findPriorUserTimestampMs");
     expect(source).toContain("turnStartedAtMs");
     expect(source).toContain("assistantTimestamp: message.timestamp");
+  });
+
+  test("tracks unread diffs by stable content instead of file count", () => {
+    const summary = {
+      files: [
+        { path: "src/b.ts", type: "updated" as const, added: 2, removed: 1, diff: "+next" },
+        { path: "src/a.ts", type: "created" as const, added: 1, removed: 0, diff: "+first" },
+      ],
+      totalAdded: 3,
+      totalRemoved: 1,
+    };
+    const signature = createFileDiffSignature("session-diff", summary);
+    expect(signature).not.toBeNull();
+    expect(
+      createFileDiffSignature("session-diff", {
+        ...summary,
+        files: [...summary.files].reverse(),
+      })
+    ).toBe(signature);
+    expect(
+      createFileDiffSignature("session-diff", {
+        ...summary,
+        files: summary.files.map((file) =>
+          file.path === "src/b.ts" ? { ...file, diff: "+newer" } : file
+        ),
+      })
+    ).not.toBe(signature);
+    expect(createFileDiffSignature(null, summary)).toBeNull();
+    expect(
+      createFileDiffSignature("session-diff", {
+        files: [],
+        totalAdded: 0,
+        totalRemoved: 0,
+      })
+    ).toBeNull();
   });
 
   test("shortens file diff paths relative to the active workspace", () => {
