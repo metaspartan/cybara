@@ -209,12 +209,16 @@ describe("checkWritePath", () => {
     expect(() => assertReadablePath(`${homedir()}/.cybara/memory/MEMORY.md`)).not.toThrow();
     expect(() => assertReadablePath(`${homedir()}/.cybara/memory/2026-07-07.md`)).not.toThrow();
     expect(() => assertReadablePath(`${homedir()}/.cybara/skills/my-skill/SKILL.md`)).not.toThrow();
+    expect(() =>
+      assertReadablePath(`${homedir()}/.cybara/tool-results/session/tool-output.txt`)
+    ).not.toThrow();
   });
 
   test("sensitive parts of ~/.cybara stay blocked for reads", () => {
     expect(() => assertReadablePath(`${homedir()}/.cybara/api_key`)).toThrow();
     expect(() => assertReadablePath(`${homedir()}/.cybara/data/platform.db`)).toThrow();
     expect(() => assertReadablePath(`${homedir()}/.cybara/security.json`)).toThrow();
+    expect(() => assertReadablePath(`${homedir()}/.cybara/tool-results/session/.env`)).toThrow();
     // Writes to memory/skills remain blocked — the dedicated tools handle those.
     expect(checkWritePath(`${homedir()}/.cybara/memory/MEMORY.md`).allowed).toBe(false);
   });

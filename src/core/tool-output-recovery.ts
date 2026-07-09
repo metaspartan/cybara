@@ -1,13 +1,5 @@
 import { createHash } from "crypto";
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
 import { cybaraDir } from "./paths";
 
@@ -30,7 +22,10 @@ export interface RecoverableToolOutputPreview {
 }
 
 function segment(value: string | undefined, fallback: string): string {
-  const normalized = (value || fallback).replace(/[^a-zA-Z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "");
+  const normalized = (value || fallback)
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
   return (normalized || fallback).slice(0, 96);
 }
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync, rmSync } from "fs";
 import {
   buildMemoryFlushMessages,
   compactChatContentForPrompt,
@@ -12,15 +13,28 @@ import { buildChatExecutionMessagesForAgent, type ChatMessage } from "../../src/
 describe("chat token optimization", () => {
   test("caps string tool results before model-facing summary prompts", () => {
     const output = "line\n".repeat(10_000);
-    const block = formatToolResultPromptBlock("exec", output);
+    const block = formatToolResultPromptBlock("exec", output, {
+      sessionId: "test-session-token-optimization",
+      toolCallId: "call-1",
+    });
     expect(block).toContain("Tool: exec");
-    expect(block).toContain("[omitted ");
-    expect(block.length).toBeLessThan(TOOL_RESULT_PROMPT_MAX_CHARS + 96);
+    expect(block).toContain("[truncated: omitted ");
+    expect(block).toContain("Full output saved to:");
+    expect(block.length).toBeLessThan(TOOL_RESULT_PROMPT_MAX_CHARS + 360);
+    const savedPath = block.match(/Full output saved to: (.+)/)?.[1]?.trim();
+    expect(savedPath).toBeTruthy();
+    expect(existsSync(savedPath!)).toBe(true);
+    expect(readFileSync(savedPath!, "utf8")).toBe(output);
+    rmSync(savedPath!, { force: true });
 
     const finalBlock = formatToolResultPromptBlock("exec", output, {
       maxChars: TOOL_RESULT_FINAL_PROMPT_MAX_CHARS,
+      sessionId: "test-session-token-optimization",
+      toolCallId: "call-2",
     });
-    expect(finalBlock.length).toBeLessThan(TOOL_RESULT_FINAL_PROMPT_MAX_CHARS + 96);
+    expect(finalBlock.length).toBeLessThan(TOOL_RESULT_FINAL_PROMPT_MAX_CHARS + 360);
+    const finalSavedPath = finalBlock.match(/Full output saved to: (.+)/)?.[1]?.trim();
+    if (finalSavedPath) rmSync(finalSavedPath, { force: true });
   });
 
   test("compacts historical tool output dumps without changing normal assistant text", () => {
