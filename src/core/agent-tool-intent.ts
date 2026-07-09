@@ -15,12 +15,7 @@ const codeReadTools = [
   "lsp_hover",
   "lsp_languages",
 ];
-const codeWriteTools = [
-  "write",
-  "edit",
-  "apply_patch",
-  "artifacts",
-];
+const codeWriteTools = ["write", "edit", "apply_patch", "artifacts"];
 const browserTools = ["browser", "web_fetch", "web_search", "x_search", "http", "data"];
 const memoryTools = ["memory_search", "memory_get", "memory_save", "memory_context"];
 const sessionTools = [
