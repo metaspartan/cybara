@@ -1838,6 +1838,46 @@ export function IDE() {
     toggleTerminalPanel,
   ]);
 
+  const applyKeymapOverride = useCallback((id: IdeActionId, binding: string) => {
+    setKeymapOverrides((previous) => {
+      const next = { ...previous, [id]: binding };
+      persistKeymapOverrides(next);
+      return next;
+    });
+  }, []);
+
+  const resetKeymapAction = useCallback((id: IdeActionId) => {
+    setKeymapOverrides((previous) => {
+      if (!(id in previous)) return previous;
+      const next = { ...previous };
+      delete next[id];
+      persistKeymapOverrides(next);
+      return next;
+    });
+  }, []);
+
+  const resetAllKeymap = useCallback(() => {
+    setKeymapOverrides({});
+    persistKeymapOverrides({});
+  }, []);
+
+  useEffect(() => {
+    if (!recordingActionId) return;
+    const capture = (event: KeyboardEvent) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.key === "Escape") {
+        setRecordingActionId(null);
+        return;
+      }
+      if (["Shift", "Control", "Alt", "Meta"].includes(event.key)) return;
+      applyKeymapOverride(recordingActionId, bindingFromEvent(event));
+      setRecordingActionId(null);
+    };
+    window.addEventListener("keydown", capture, true);
+    return () => window.removeEventListener("keydown", capture, true);
+  }, [recordingActionId, applyKeymapOverride]);
+
   const handleSidebarResizeStart = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const container = workspacePaneRef.current;
