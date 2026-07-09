@@ -49,6 +49,7 @@ import { styles } from "./dashboardStyles";
 import { LiquidGlass } from "../components/LiquidGlass";
 import { MobileBranchPicker } from "../components/MobileBranchPicker";
 import { ChatMessageRow, MobilePlanSummaryCard } from "./dashboardChat";
+import { MobileSubagentsSheet } from "./dashboardSubagents";
 import { EmptyState } from "./dashboardPrimitives";
 import {
   latestVisibleChatMessages,
@@ -479,6 +480,7 @@ export function SessionDetailPanel({
   const [routerEnabled, setRouterEnabled] = useState(false);
   const [useModelRouter, setUseModelRouter] = useState(false);
   const [chatSettingsVisible, setChatSettingsVisible] = useState(false);
+  const [subagentsVisible, setSubagentsVisible] = useState(false);
   const [toolApprovalUpdating, setToolApprovalUpdating] = useState(false);
   const [pendingToolApprovalMode, setPendingToolApprovalMode] = useState<string | null>(null);
   const scrollRef = useRef<ScrollView>(null);
@@ -1662,6 +1664,11 @@ export function SessionDetailPanel({
   };
   const chatSettingsActions: ChatSettingsAction[] = [
     {
+      icon: Bot,
+      label: "Subagents",
+      onPress: () => runFromChatSettings(() => setSubagentsVisible(true)),
+    },
+    {
       icon: ShieldAlert,
       label: "Tool approvals",
       disabled: toolApprovalUpdating,
@@ -1751,6 +1758,12 @@ export function SessionDetailPanel({
         onClose={() => setBranchPickerVisible(false)}
         onCreate={(branch) => void changeMobileGitBranch(branch, true)}
         visible={branchPickerVisible}
+      />
+      <MobileSubagentsSheet
+        api={api}
+        onClose={() => setSubagentsVisible(false)}
+        sessionId={sessionId}
+        visible={subagentsVisible}
       />
       <ChatSettingsSheet
         actions={chatSettingsActions}

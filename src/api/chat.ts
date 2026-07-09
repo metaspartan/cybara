@@ -18,6 +18,7 @@ import {
   getRateLimitStatus,
 } from "../core/tools/index";
 import { getSubagentSession } from "../core/tools/handlers/index";
+import { getRunBySessionKey } from "../core/subagent-registry";
 import { maybeRunBackgroundReview } from "../core/background-review";
 import { logSessionMessage, logAgentActivity } from "../core/logging";
 import {
@@ -278,6 +279,7 @@ interface PendingChatItem {
 
 const pendingChatQueues = new Map<string, PendingChatItem[]>();
 const pendingChatDrainScheduled = new Set<string>();
+const deferredSessionMessages = new Map<string, ChatMessage[]>();
 const activeChatTurnAbortControllers = new Map<string, AbortController>();
 const interruptedChatTurnSteeringIds = new WeakMap<AbortController, string>();
 const stoppedChatTurnControllers = new WeakSet<AbortController>();
@@ -830,7 +832,10 @@ function runChatTurnWithQueueDrain(
   const result = chatTurnMutex.run(effectiveSessionId, () =>
     handleChatTurn(request, effectiveSessionId)
   );
-  void result.finally(() => schedulePendingChatDrain(effectiveSessionId));
+  void result.finally(() => {
+    flushDeferredSessionMessages(effectiveSessionId);
+    schedulePendingChatDrain(effectiveSessionId);
+  });
   return result;
 }
 
@@ -2432,11 +2437,63 @@ export async function getSession(sessionId: string) {
         role: m.role as ChatMessage["role"],
         content: m.content,
         timestamp: m.timestamp,
+        thinking: m.thinking,
+        tool_calls: m.tool_calls?.map((toolCall, index) => ({
+          id: toolCall.id || `${sessionId}-tool-${index}`,
+          name: toolCall.name,
+          args: toolCall.args || {},
+          status: toolCall.status || "completed",
+          result: toolCall.result,
+          timeline_index: toolCall.timeline_index,
+        })),
+        process_activities: m.process_activities,
       })),
       createdAt: subagentSession.createdAt,
       isSubagent: true,
       status: subagentSession.status,
       result: subagentSession.result,
+    };
+  }
+
+  const persistedSubagentRun = getRunBySessionKey(sessionId);
+  if (persistedSubagentRun) {
+    const createdAt = new Date(persistedSubagentRun.createdAt).toISOString();
+    const completedAt = persistedSubagentRun.endedAt
+      ? new Date(persistedSubagentRun.endedAt).toISOString()
+      : createdAt;
+    const messages: ChatMessage[] = [
+      {
+        role: "user",
+        content: persistedSubagentRun.task,
+        timestamp: createdAt,
+      },
+    ];
+    if (persistedSubagentRun.outcome?.result || persistedSubagentRun.outcome?.error) {
+      messages.push({
+        role: "assistant",
+        content:
+          persistedSubagentRun.outcome.result || persistedSubagentRun.outcome.error || "No result",
+        timestamp: completedAt,
+        thinking: persistedSubagentRun.thinking,
+        tool_calls: persistedSubagentRun.toolCalls?.map((toolCall, index) => ({
+          id: toolCall.id || `${sessionId}-tool-${index}`,
+          name: toolCall.name,
+          args: toolCall.args || {},
+          status: toolCall.status || "completed",
+          result: toolCall.result,
+          timeline_index: toolCall.timeline_index,
+        })),
+        process_activities: persistedSubagentRun.activities,
+      });
+    }
+    return {
+      id: sessionId,
+      agentId: "subagent",
+      messages,
+      createdAt,
+      isSubagent: true,
+      status: persistedSubagentRun.outcome?.status || "running",
+      result: persistedSubagentRun.outcome?.result,
     };
   }
 
@@ -2999,30 +3056,63 @@ export async function updateSessionTitle(
   return { sessionId, title: normalizedTitle };
 }
 
+function injectSessionMessage(session: InMemoryChatSession, message: ChatMessage): void {
+  session.messages.push(message);
+  session.updatedAt = message.timestamp || new Date().toISOString();
+  if (!session.title && session.messages.some((entry) => entry.role === "assistant")) {
+    session.title = deriveSessionTitleFromMessages(
+      session.messages,
+      agentManager.get(session.agentId)?.name
+    );
+  }
+  if (session.persisted) {
+    void logSessionMessage(session.id, message.role, message.content, {
+      agentId: session.agentId,
+      createdAt: message.timestamp,
+      metadata: {
+        source: "session_injection",
+        ...(resolveSessionModelMetadata(session.agentId) ?? {}),
+      },
+    });
+    upsertPersistedSessionIndex({
+      id: session.id,
+      agentId: session.agentId,
+      title: session.title,
+      messageCount: session.messages.length,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      workspaceDir: session.workspaceDir ?? null,
+      lastMessage: buildLastMessagePreview(message),
+    });
+  }
+  log.debug("Injected message into session", { sessionId: session.id });
+}
+
+function flushDeferredSessionMessages(sessionKey: string): void {
+  const messages = deferredSessionMessages.get(sessionKey);
+  if (!messages?.length) return;
+  deferredSessionMessages.delete(sessionKey);
+  const session = chatSessions.get(sessionKey);
+  if (!session) return;
+  const deliveredAt = Date.now();
+  messages.forEach((message, index) => {
+    injectSessionMessage(session, {
+      ...message,
+      timestamp: new Date(deliveredAt + index).toISOString(),
+    });
+  });
+}
+
 export function sendToSession(sessionKey: string, message: ChatMessage): boolean {
   const session = chatSessions.get(sessionKey);
   if (session) {
-    session.messages.push(message);
-    session.updatedAt = message.timestamp || new Date().toISOString();
-    if (!session.title && session.messages.some((entry) => entry.role === "assistant")) {
-      session.title = deriveSessionTitleFromMessages(
-        session.messages,
-        agentManager.get(session.agentId)?.name
-      );
+    if (chatTurnMutex.isLocked(sessionKey)) {
+      const queued = deferredSessionMessages.get(sessionKey) || [];
+      queued.push(message);
+      deferredSessionMessages.set(sessionKey, queued);
+      return true;
     }
-    if (session.persisted) {
-      upsertPersistedSessionIndex({
-        id: session.id,
-        agentId: session.agentId,
-        title: session.title,
-        messageCount: session.messages.length,
-        createdAt: session.createdAt,
-        updatedAt: session.updatedAt,
-        workspaceDir: session.workspaceDir ?? null,
-        lastMessage: buildLastMessagePreview(message),
-      });
-    }
-    log.debug("Injected message into session", { sessionId: sessionKey });
+    injectSessionMessage(session, message);
     return true;
   }
   log.debug("Session not in memory, skipping announcement", { sessionId: sessionKey });

@@ -82,6 +82,7 @@ describe("modal action buttons keep shared padding and radius", () => {
   const glassButton = read("../../ui/src/components/ui/GlassButton.tsx");
   const chatSidebar = read("../../ui/src/pages/chat/SessionSidebar.tsx");
   const chatPage = read("../../ui/src/pages/Chat.tsx");
+  const subagentPanel = read("../../ui/src/pages/chat/SubagentPanel.tsx");
 
   test("GlassButton applies sizing, radius, and focus treatment to every variant", () => {
     expect(glassButton).toContain("sizes[size]");
@@ -95,6 +96,8 @@ describe("modal action buttons keep shared padding and radius", () => {
     expect(chatSidebar).not.toContain("<GlassButton");
     expect(chatSidebar).toMatch(/<Button\s+variant="danger"/);
     expect(chatPage).not.toContain("<GlassButton");
-    expect(chatPage).toMatch(/<Button\s+variant="primary"/);
+    expect(subagentPanel).not.toContain("<GlassButton");
+    expect(subagentPanel).toMatch(/<Button\s+variant="primary"/);
+    expect(subagentPanel).toMatch(/<Button\s+variant="danger"/);
   });
 });

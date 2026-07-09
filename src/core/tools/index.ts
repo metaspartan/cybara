@@ -734,7 +734,7 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     name: "sessions_spawn",
     description: `Spawn a background sub-agent run in an isolated session and announce the result back to the requester chat.
     
-The sub-agent runs independently, completing the task and sending back results via sessions_send.
+The sub-agent runs independently, and its final response is automatically delivered to the requester session.
 Use for tasks that may take longer or require separate context.`,
     category: "core",
     input_schema: {

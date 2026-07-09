@@ -1647,14 +1647,33 @@ export const sessionsApi = {
 };
 
 export const subagentApi = {
-  spawn: (task: string, options?: { model?: string; timeout?: number; label?: string }) =>
+  spawn: (
+    task: string,
+    options?: {
+      model?: string;
+      timeout?: number;
+      label?: string;
+      agentId?: string;
+      workspaceDir?: string;
+      requesterSessionId?: string;
+    }
+  ) =>
     fetchApi<{ subagentId: string; status: string }>("/subagents/spawn", {
       method: "POST",
       body: JSON.stringify({ task, ...options }),
     }),
-  list: () =>
-    fetchApi<{ id: string; label: string; status: string; createdAt: string }[]>("/subagents"),
-  get: (id: string) =>
-    fetchApi<{ id: string; label: string; status: string; result?: unknown }>(`/subagents/${id}`),
-  kill: (id: string) => fetchApi<void>(`/subagents/${id}/kill`, { method: "POST" }),
+  list: (requesterSessionId?: string) =>
+    fetchApi<Array<Record<string, unknown>>>(
+      `/subagents${requesterSessionId ? `?sessionId=${encodeURIComponent(requesterSessionId)}` : ""}`
+    ),
+  get: (id: string) => fetchApi<Record<string, unknown>>(`/subagents/${encodeURIComponent(id)}`),
+  kill: (id: string) =>
+    fetchApi<void>(`/subagents/${encodeURIComponent(id)}/kill`, { method: "POST" }),
+  clear: (id: string) =>
+    fetchApi<void>(`/subagents/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  clearHistory: (requesterSessionId: string) =>
+    fetchApi<{ success: boolean; cleared: number }>(
+      `/subagents?sessionId=${encodeURIComponent(requesterSessionId)}`,
+      { method: "DELETE" }
+    ),
 };

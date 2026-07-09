@@ -9,7 +9,7 @@ export function Channels(): React.ReactElement {
   return (
     <section className="section" id="channels">
       <SectionHeading
-        eyebrow={t("site.channels.title")}
+        eyebrow={t("site.channels.eyebrow")}
         title={t("site.channels.title")}
         description="One agent runtime, adapters for the platforms people already use — each gated by pairing, allowlists, and per-channel policy."
       />

@@ -20,7 +20,10 @@ export type IconName =
   | "refresh"
   | "import"
   | "android"
-  | "package";
+  | "package"
+  | "code"
+  | "gauge"
+  | "plug";
 
 interface IconProps {
   name: IconName;
@@ -38,13 +41,13 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
   tools: (
     <>
-      <path d="M14.5 5.5a3.5 3.5 0 0 0-4.7 4.4L4 15.7 8.3 20l5.8-5.8a3.5 3.5 0 0 0 4.4-4.7l-2.3 2.3-2.3-.6-.6-2.3z" />
+      <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
     </>
   ),
   skills: (
     <>
-      <path d="M12 3 4 7v6c0 4.4 3.4 7.3 8 8 4.6-.7 8-3.6 8-8V7z" />
-      <path d="m9 12 2 2 4-4" />
+      <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+      <path d="M20 3v4M22 5h-4M4 17v2M5 18H3" />
     </>
   ),
   wallet: (
@@ -56,7 +59,8 @@ const PATHS: Record<IconName, React.ReactNode> = {
   ),
   providers: (
     <>
-      <path d="M12 3v18M3 8l9 4 9-4M3 16l9 4 9-4" />
+      <path d="m12 2 10 5-10 5L2 7z" />
+      <path d="m2 12 10 5 10-5M2 17l10 5 10-5" />
     </>
   ),
   control: (
@@ -154,6 +158,23 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M12 3 4 7v10l8 4 8-4V7z" />
       <path d="m4 7 8 4 8-4M12 11v10M8 5l8 4" />
+    </>
+  ),
+  code: (
+    <>
+      <path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16" />
+    </>
+  ),
+  gauge: (
+    <>
+      <path d="m12 14 4-4" />
+      <path d="M3.34 19a10 10 0 1 1 17.32 0" />
+    </>
+  ),
+  plug: (
+    <>
+      <path d="M12 22v-5M9 8V2M15 8V2" />
+      <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
     </>
   ),
 };

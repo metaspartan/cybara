@@ -504,6 +504,8 @@ struct ChatScreen: View {
     @State private var showFileDiffsPopover = false
     @State private var subagents: [NativeSubagentSummary] = []
     @State private var subagentsLoading = false
+    @State private var selectedSubagent: NativeSubagentSummary?
+    @State private var showClearSubagentHistoryConfirm = false
     @State private var liveStatus = "idle"
     @State private var revertCandidate: GatewaySessionMessage?
     @State private var showRevertConfirm = false
@@ -553,10 +555,13 @@ struct ChatScreen: View {
             useModelRouter = false
             guard let selectedSessionID else {
                 messages = []
+                subagents = []
+                selectedSubagent = nil
                 return
             }
             await loadMessages(selectedSessionID)
             await hydrateStatus(selectedSessionID)
+            await loadSubagents()
         }
         .task(id: activeWorkspaceDir) {
             await loadActiveGitBranch()
@@ -1364,9 +1369,7 @@ struct ChatScreen: View {
     }
 
     private var environmentSubagents: [NativeSubagentSummary] {
-        guard let workspace = firstNonEmptyGatewayString(activeWorkspaceDir) else { return subagents }
-        let scoped = subagents.filter { firstNonEmptyGatewayString($0.workspaceDir) == workspace }
-        return scoped.isEmpty ? subagents : scoped
+        subagents
     }
 
     private var hasEnvironmentSignal: Bool {
@@ -2222,30 +2225,56 @@ struct ChatScreen: View {
     private var subagentsPopover: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label("Subagents", systemImage: "person.2.wave.2")
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                Spacer()
-                Button {
-                    Task { await loadSubagents() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
+                if selectedSubagent != nil {
+                    Button {
+                        selectedSubagent = nil
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .buttonStyle(.borderless)
                 }
-                .buttonStyle(.borderless)
-                .disabled(subagentsLoading)
+                Label(selectedSubagent?.label ?? "Subagents", systemImage: "person.2.wave.2")
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                Spacer()
+                if selectedSubagent == nil && subagents.contains(where: { $0.status != "running" && $0.status != "pending" }) {
+                    Button(role: .destructive) {
+                        showClearSubagentHistoryConfirm = true
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                }
             }
-            if subagentsLoading && subagents.isEmpty {
+            if let selectedSubagent {
+                ScrollView {
+                    NativeSubagentRunDetail(
+                        subagent: selectedSubagent,
+                        onStop: ["running", "pending"].contains(selectedSubagent.status)
+                            ? { Task { await stopSubagent(selectedSubagent.id) } }
+                            : nil
+                    )
+                }
+                .frame(maxHeight: 430)
+            } else if subagentsLoading && subagents.isEmpty {
                 ProgressView().frame(maxWidth: .infinity)
             } else if subagents.isEmpty {
                 NativeEmptyPopoverState(
                     icon: "person.2",
                     title: "No subagents",
-                    detail: "Spawned subagent runs appear here."
+                    detail: "Runs spawned from this chat appear here."
                 )
             } else {
                 ScrollView {
                     LazyVStack(spacing: 8) {
                         ForEach(subagents) { subagent in
-                            NativeSubagentDetailRow(subagent: subagent)
+                            Button {
+                                selectedSubagent = subagent
+                                Task { await loadSubagentDetail(subagent.id) }
+                            } label: {
+                                NativeSubagentDetailRow(subagent: subagent)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -2253,7 +2282,28 @@ struct ChatScreen: View {
             }
         }
         .padding(14)
-        .frame(width: 360, alignment: .leading)
+        .frame(width: 390, alignment: .leading)
+        .confirmationDialog(
+            "Clear completed subagent history for this chat?",
+            isPresented: $showClearSubagentHistoryConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Clear History", role: .destructive) {
+                Task { await clearSubagentHistory() }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .task(id: selectedSubagent?.id) {
+            while !Task.isCancelled {
+                await loadSubagents()
+                if let id = selectedSubagent?.id,
+                   let status = selectedSubagent?.status,
+                   ["running", "pending"].contains(status) {
+                    await loadSubagentDetail(id)
+                }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
     }
 
     private var contextColor: Color {
@@ -2300,11 +2350,44 @@ struct ChatScreen: View {
         subagentsLoading = true
         defer { subagentsLoading = false }
         do {
-            subagents = try await client.nativeSubagents()
+            guard let selectedSessionID else {
+                subagents = []
+                return
+            }
+            subagents = try await client.nativeSubagents(sessionID: selectedSessionID)
         } catch {
             if subagents.isEmpty {
                 subagents = []
             }
+        }
+    }
+
+    private func loadSubagentDetail(_ id: String) async {
+        do {
+            selectedSubagent = try await client.nativeSubagent(id)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func clearSubagentHistory() async {
+        guard let selectedSessionID else { return }
+        do {
+            try await client.clearNativeSubagentHistory(sessionID: selectedSessionID)
+            selectedSubagent = nil
+            await loadSubagents()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func stopSubagent(_ id: String) async {
+        do {
+            try await client.stopNativeSubagent(id)
+            await loadSubagentDetail(id)
+            await loadSubagents()
+        } catch {
+            self.error = error.localizedDescription
         }
     }
 
@@ -3247,6 +3330,179 @@ private struct NativeSubagentDetailRow: View {
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.white.opacity(0.05)))
+    }
+}
+
+private struct NativeSubagentRunDetail: View {
+    let subagent: NativeSubagentSummary
+    let onStop: (() -> Void)?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(nativeSubagentStatusColor(subagent.status))
+                    .frame(width: 8, height: 8)
+                Text(subagent.status.capitalized)
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
+                Spacer()
+                Text("\(subagent.toolCallCount ?? 0) tool calls")
+                    .font(.system(size: 10, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+
+            if let task = firstNonEmptyGatewayString(subagent.task) {
+                Text(task)
+                    .font(.system(size: 12, design: .rounded))
+                    .textSelection(.enabled)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.white.opacity(0.05))
+                    )
+            }
+
+            if let onStop {
+                Button(role: .destructive, action: onStop) {
+                    Label("Stop Subagent", systemImage: "stop.fill")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+
+            if let activities = subagent.activities, !activities.isEmpty {
+                nativeSubagentSection("Activity") {
+                    VStack(alignment: .leading, spacing: 9) {
+                        ForEach(activities) { activity in
+                            HStack(alignment: .top, spacing: 8) {
+                                Circle()
+                                    .fill(.secondary)
+                                    .frame(width: 5, height: 5)
+                                    .padding(.top, 6)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    if let text = firstNonEmptyGatewayString(activity.text) {
+                                        Text(text)
+                                            .font(.system(size: 11.5, design: .rounded))
+                                            .textSelection(.enabled)
+                                    }
+                                    if let toolName = firstNonEmptyGatewayString(activity.toolName), toolName != "__thought" {
+                                        Text("\(toolName) · \(activity.phase ?? "activity")")
+                                            .font(.system(size: 9.5, design: .monospaced))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let thinking = firstNonEmptyGatewayString(subagent.thinking),
+               !(subagent.activities ?? []).contains(where: { $0.toolName == "__thought" }) {
+                nativeSubagentSection("Thinking") {
+                    Text(thinking)
+                        .font(.system(size: 11.5, design: .rounded))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+
+            if let toolCalls = subagent.toolCalls, !toolCalls.isEmpty {
+                nativeSubagentSection("Tool Calls") {
+                    VStack(alignment: .leading, spacing: 7) {
+                        ForEach(toolCalls) { toolCall in
+                            NativeSubagentToolCallRow(toolCall: toolCall)
+                        }
+                    }
+                }
+            }
+
+            if let output = firstNonEmptyGatewayString(subagent.result)
+                ?? firstNonEmptyGatewayString(subagent.error) {
+                nativeSubagentSection("Final Output") {
+                    NativeMarkdownView(content: output, isUser: false)
+                        .textSelection(.enabled)
+                }
+            }
+        }
+    }
+
+    private func nativeSubagentSection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title.uppercased())
+                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(.tertiary)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+private struct NativeSubagentToolCallRow: View {
+    let toolCall: GatewayToolCall
+    @State private var expanded = false
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $expanded) {
+            VStack(alignment: .leading, spacing: 8) {
+                if let args = toolCall.args, !args.isEmpty {
+                    nativeToolValue("Arguments", value: JSONValue.object(args).displayString)
+                }
+                nativeToolValue(
+                    "Output",
+                    value: nativeSubagentToolOutput(toolCall.result)
+                        ?? firstNonEmptyGatewayString(toolCall.error)
+                        ?? "No output recorded"
+                )
+            }
+            .padding(.top, 7)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: toolCall.status == "failed" ? "xmark.circle" : "terminal")
+                    .foregroundStyle(toolCall.status == "failed" ? .red : .secondary)
+                Text(toolCall.name)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .lineLimit(1)
+                Spacer()
+                Text((toolCall.status ?? "completed").capitalized)
+                    .font(.system(size: 9.5, design: .rounded))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .padding(9)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.04))
+        )
+    }
+
+    private func nativeToolValue(_ label: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label.uppercased())
+                .font(.system(size: 9, weight: .semibold, design: .rounded))
+                .foregroundStyle(.tertiary)
+            Text(value)
+                .font(.system(size: 10.5, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func nativeSubagentToolOutput(_ result: JSONValue?) -> String? {
+        guard let result else { return nil }
+        if case .object(let values) = result {
+            for key in ["content", "output", "stdout"] {
+                if case .string(let value) = values[key], let normalized = firstNonEmptyGatewayString(value) {
+                    return normalized
+                }
+            }
+        }
+        return result.displayString
     }
 }
 

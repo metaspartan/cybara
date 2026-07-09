@@ -91,10 +91,15 @@ describe("UI hooks API wiring", () => {
     const source = readHooksSource();
 
     expect(source).toContain("import { subagentApi, skillsApi } from '@/lib/api';");
-    expect(source).toContain("const response = await subagentApi.list();");
+    expect(source).toContain("const response = await subagentApi.list(requesterSessionId);");
     expect(source).toContain(
-      "const response = await subagentApi.spawn(task, { model, timeout, label });"
+      "const response = await subagentApi.spawn(task, { model, timeout, label, agentId, workspaceDir, requesterSessionId, });"
     );
+    expect(source).toContain("const response = await subagentApi.get(id);");
+    expect(source).toContain(
+      "const response = await subagentApi.clearHistory(requesterSessionId);"
+    );
+    expect(source).toContain("const response = await subagentApi.clear(id);");
     expect(source).toContain("const response = await subagentApi.kill(id);");
     expect(source).toContain("const response = await skillsApi.create(skill);");
     expect(source).not.toContain(

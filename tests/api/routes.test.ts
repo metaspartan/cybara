@@ -2600,6 +2600,7 @@ describe("Subagents API", () => {
 
   test("spawn route forwards optional agent/model metadata and returns session/run identifiers", async () => {
     const requestedAgentId = `requested-agent-${Date.now()}`;
+    const requesterSessionId = `parent-chat-${Date.now()}`;
     const spawnRes = await api("POST", "/api/subagents/spawn", {
       task: "api spawn metadata wiring",
       agentId: requestedAgentId,
@@ -2609,6 +2610,7 @@ describe("Subagents API", () => {
       cleanup: "keep",
       workspaceDir: process.cwd(),
       maxActiveChildren: 3,
+      requesterSessionId,
     });
 
     expect(spawnRes.status).toBe(200);
@@ -2627,6 +2629,46 @@ describe("Subagents API", () => {
     expect(getRes.data.workspaceDir).toBe(process.cwd());
     expect(getRes.data.runTimeoutSeconds).toBe(0);
     expect(getRes.data.cleanup).toBe("keep");
+    expect(getRes.data.requesterSessionId).toBe(requesterSessionId);
+    expect(Array.isArray(getRes.data.activities)).toBe(true);
+    expect(Array.isArray(getRes.data.toolCalls)).toBe(true);
+
+    const scopedListRes = await api(
+      "GET",
+      `/api/subagents?sessionId=${encodeURIComponent(requesterSessionId)}`
+    );
+    expect(scopedListRes.status).toBe(200);
+    expect(scopedListRes.data.map((run: { id: string }) => run.id)).toEqual([
+      spawnRes.data.subagentId,
+    ]);
+
+    const otherChatListRes = await api(
+      "GET",
+      `/api/subagents?sessionId=${encodeURIComponent(`${requesterSessionId}-other`)}`
+    );
+    expect(otherChatListRes.status).toBe(200);
+    expect(otherChatListRes.data).toEqual([]);
+
+    let status = String(getRes.data.status);
+    for (let attempt = 0; attempt < 50 && ["pending", "running"].includes(status); attempt += 1) {
+      await sleep(20);
+      const current = await api("GET", `/api/subagents/${spawnRes.data.subagentId}`);
+      status = String(current.data.status);
+    }
+    expect(["pending", "running"]).not.toContain(status);
+
+    const clearRes = await api(
+      "DELETE",
+      `/api/subagents?sessionId=${encodeURIComponent(requesterSessionId)}`
+    );
+    expect(clearRes.status).toBe(200);
+    expect(clearRes.data).toEqual({ success: true, cleared: 1 });
+
+    const clearedListRes = await api(
+      "GET",
+      `/api/subagents?sessionId=${encodeURIComponent(requesterSessionId)}`
+    );
+    expect(clearedListRes.data).toEqual([]);
   });
 });
 

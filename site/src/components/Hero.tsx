@@ -22,10 +22,13 @@ export function Hero(): React.ReactElement {
       <div className="hero-inner">
         <span className="pill">
           <span className="pill-dot" />
-          {t("site.features.title")}
+          {t("site.hero.pill")}
         </span>
 
-        <h1 className="hero-title">{t("site.hero.title")}</h1>
+        <h1 className="hero-title">
+          {t("site.hero.slogan")}
+          <span className="hero-title-accent"> {t("site.hero.sloganAccent")}</span>
+        </h1>
 
         <p className="hero-sub">{t("site.hero.subtitle")}</p>
 

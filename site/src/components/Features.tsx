@@ -9,7 +9,7 @@ export function Features(): React.ReactElement {
   return (
     <section className="section" id="features">
       <SectionHeading
-        eyebrow={t("settings.capabilities")}
+        eyebrow={t("site.features.eyebrow")}
         title={t("site.features.title")}
         description="Everything an operator needs to run agents that actually do the work — not just answer questions."
       />

@@ -138,6 +138,24 @@ export const FEATURES: readonly Feature[] = [
       "Per-session and persistent tool allowlists, filesystem checkpoint and rollback, transform hooks, and localhost auth policy keep control where it belongs.",
     icon: "control",
   },
+  {
+    title: "Code-aware IDE",
+    description:
+      "A built-in IDE with semantic workspace indexing — embeddings run locally via Transformers.js — plus LSP diagnostics, git blame, and project-wide search and replace.",
+    icon: "code",
+  },
+  {
+    title: "Usage-aware routing",
+    description:
+      "Coding-plan windows are detected automatically from your subscriptions. The router skips exhausted plans, downweights near-limit providers, and honors spend caps.",
+    icon: "gauge",
+  },
+  {
+    title: "MCP in both directions",
+    description:
+      "Install MCP servers as agent tools — or flip it around and expose Cybara's own tools to Claude Desktop, editors, and other agents over MCP and ACP.",
+    icon: "plug",
+  },
 ];
 
 export const CHANNELS: readonly string[] = [

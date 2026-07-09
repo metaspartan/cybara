@@ -112,11 +112,19 @@ export type TranslationKey =
   | "site.hero.subtitle"
   | "site.hero.primary"
   | "site.hero.secondary"
+  | "site.hero.pill"
+  | "site.hero.slogan"
+  | "site.hero.sloganAccent"
   | "site.features.title"
+  | "site.features.eyebrow"
   | "site.providers.title"
+  | "site.providers.eyebrow"
   | "site.channels.title"
+  | "site.channels.eyebrow"
   | "site.download.title"
-  | "site.control.title";
+  | "site.download.eyebrow"
+  | "site.control.title"
+  | "site.control.eyebrow";
 
 export type TranslationCatalog = Record<TranslationKey, string>;
 
@@ -256,11 +264,19 @@ const englishTranslations: TranslationCatalog = {
     "site.hero.subtitle": "An open-source local AI agent platform for coding, automation, chat, wallets, and multi-agent work across desktop, mobile, web, and CLI.",
     "site.hero.primary": "Download Cybara",
     "site.hero.secondary": "View on GitHub",
+    "site.hero.pill": "Self-hosted agent operating system",
+    "site.hero.slogan": "Your agents. Your tools. Your runtime.",
+    "site.hero.sloganAccent": "Harness the power of AI.",
     "site.features.title": "Agentic work, local-first",
+    "site.features.eyebrow": "Your agents",
     "site.providers.title": "Bring any model provider",
+    "site.providers.eyebrow": "Your models",
     "site.channels.title": "Meet agents where your team works",
+    "site.channels.eyebrow": "Your channels",
     "site.download.title": "Download Cybara",
+    "site.download.eyebrow": "Your platforms",
     "site.control.title": "Operator control by default",
+    "site.control.eyebrow": "Your rules",
 };
 
 export const translations: Record<SupportedLocale, TranslationCatalog> = {
@@ -354,6 +370,14 @@ export const translations: Record<SupportedLocale, TranslationCatalog> = {
     "site.channels.title": "Agentes donde trabaja tu equipo",
     "site.download.title": "Descargar Cybara",
     "site.control.title": "Control del operador por defecto",
+    "site.hero.pill": "Sistema operativo de agentes autoalojado",
+    "site.hero.slogan": "Your agents. Your tools. Your runtime.",
+    "site.hero.sloganAccent": "Harness the power of AI.",
+    "site.features.eyebrow": "Tus agentes",
+    "site.providers.eyebrow": "Tus modelos",
+    "site.channels.eyebrow": "Tus canales",
+    "site.download.eyebrow": "Tus plataformas",
+    "site.control.eyebrow": "Tus reglas",
   },
   "zh-CN": {
     "app.name": "Cybara",
@@ -444,6 +468,14 @@ export const translations: Record<SupportedLocale, TranslationCatalog> = {
     "site.channels.title": "让智能体进入团队工作渠道",
     "site.download.title": "下载 Cybara",
     "site.control.title": "默认由操作者掌控",
+    "site.hero.pill": "自托管智能体操作系统",
+    "site.hero.slogan": "Your agents. Your tools. Your runtime.",
+    "site.hero.sloganAccent": "Harness the power of AI.",
+    "site.features.eyebrow": "你的智能体",
+    "site.providers.eyebrow": "你的模型",
+    "site.channels.eyebrow": "你的频道",
+    "site.download.eyebrow": "你的平台",
+    "site.control.eyebrow": "你的规则",
   },
   ja: {
     "app.name": "Cybara",
@@ -534,6 +566,14 @@ export const translations: Record<SupportedLocale, TranslationCatalog> = {
     "site.channels.title": "チームの作業場所にエージェントを",
     "site.download.title": "Cybaraをダウンロード",
     "site.control.title": "標準でオペレーター制御",
+    "site.hero.pill": "セルフホスト型エージェントOS",
+    "site.hero.slogan": "Your agents. Your tools. Your runtime.",
+    "site.hero.sloganAccent": "Harness the power of AI.",
+    "site.features.eyebrow": "あなたのエージェント",
+    "site.providers.eyebrow": "あなたのモデル",
+    "site.channels.eyebrow": "あなたのチャンネル",
+    "site.download.eyebrow": "あなたのプラットフォーム",
+    "site.control.eyebrow": "あなたのルール",
   },
   fr: {
     "app.name": "Cybara",
@@ -624,6 +664,14 @@ export const translations: Record<SupportedLocale, TranslationCatalog> = {
     "site.channels.title": "Des agents là où votre équipe travaille",
     "site.download.title": "Télécharger Cybara",
     "site.control.title": "Contrôle opérateur par défaut",
+    "site.hero.pill": "Système d'exploitation d'agents auto-hébergé",
+    "site.hero.slogan": "Your agents. Your tools. Your runtime.",
+    "site.hero.sloganAccent": "Harness the power of AI.",
+    "site.features.eyebrow": "Vos agents",
+    "site.providers.eyebrow": "Vos modèles",
+    "site.channels.eyebrow": "Vos canaux",
+    "site.download.eyebrow": "Vos plateformes",
+    "site.control.eyebrow": "Vos règles",
   },
   de: {
     ...englishTranslations,

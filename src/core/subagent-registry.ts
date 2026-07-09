@@ -1,12 +1,39 @@
 import { randomUUID } from "crypto";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
-import { homedir } from "os";
+import { homedir, tmpdir } from "os";
 import { EventEmitter } from "events";
+import { redactSecrets, redactSecretText } from "./redaction";
+
+export interface SubagentActivity {
+  id: string;
+  phase: "start" | "result" | "error" | "blocked";
+  text: string;
+  timestamp: number;
+  toolName?: string;
+  toolCallId?: string;
+  sandboxProvider?: string;
+}
+
+export interface SubagentToolCall {
+  id?: string;
+  name: string;
+  args?: Record<string, unknown>;
+  result: unknown;
+  status?: "pending" | "executing" | "completed" | "failed";
+  timeline_index?: number;
+}
+
+export interface SubagentRunDetails {
+  thinking?: string;
+  activities?: SubagentActivity[];
+  toolCalls?: SubagentToolCall[];
+}
 
 export type SubagentRunOutcome = {
-  status: "ok" | "error" | "timeout";
+  status: "ok" | "error" | "timeout" | "killed";
   error?: string;
+  result?: string;
 };
 
 export type DeliveryContext = {
@@ -32,6 +59,9 @@ export interface SubagentRunRecord {
   startedAt?: number;
   endedAt?: number;
   outcome?: SubagentRunOutcome;
+  thinking?: string;
+  activities?: SubagentActivity[];
+  toolCalls?: SubagentToolCall[];
   archiveAtMs?: number;
   cleanupCompletedAt?: number;
   cleanupHandled?: boolean;
@@ -44,11 +74,86 @@ interface SubagentConfig {
   persistPath: string;
 }
 
+const defaultPersistPath =
+  process.env.NODE_ENV === "test"
+    ? join(tmpdir(), `cybara-subagent-registry-${process.pid}.json`)
+    : join(homedir(), ".cybara", "subagent-registry.json");
+
 const DEFAULT_CONFIG: SubagentConfig = {
   archiveAfterMinutes: 60,
   defaultTimeoutSeconds: 600,
-  persistPath: join(homedir(), ".cybara", "subagent-registry.json"),
+  persistPath: defaultPersistPath,
 };
+const SUBAGENT_RESULT_MAX_CHARS = 12_000;
+const SUBAGENT_THINKING_MAX_CHARS = 24_000;
+const SUBAGENT_ACTIVITY_MAX_CHARS = 4_000;
+const SUBAGENT_MAX_ACTIVITIES = 300;
+const SUBAGENT_MAX_TOOL_CALLS = 100;
+const SUBAGENT_TOOL_VALUE_MAX_CHARS = 24_000;
+
+function normalizeSubagentResult(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = redactSecretText(value).trim();
+  if (!normalized) return undefined;
+  if (normalized.length <= SUBAGENT_RESULT_MAX_CHARS) return normalized;
+  return `${normalized.slice(0, SUBAGENT_RESULT_MAX_CHARS)}\n\n... [subagent result truncated]`;
+}
+
+function normalizeSubagentThinking(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = redactSecretText(value).trim();
+  if (!normalized) return undefined;
+  if (normalized.length <= SUBAGENT_THINKING_MAX_CHARS) return normalized;
+  return `${normalized.slice(0, SUBAGENT_THINKING_MAX_CHARS)}\n\n... [thinking truncated]`;
+}
+
+function normalizeSubagentToolValue(value: unknown): unknown {
+  const redacted = redactSecrets(value);
+  try {
+    const serialized = JSON.stringify(redacted, (_key, nested) =>
+      typeof nested === "bigint" ? nested.toString() : nested
+    );
+    if (serialized.length <= SUBAGENT_TOOL_VALUE_MAX_CHARS) return redacted;
+    return {
+      truncated: true,
+      preview: serialized.slice(0, SUBAGENT_TOOL_VALUE_MAX_CHARS),
+    };
+  } catch {
+    return redactSecretText(String(value)).slice(0, SUBAGENT_TOOL_VALUE_MAX_CHARS);
+  }
+}
+
+function normalizeSubagentToolArgs(
+  value: Record<string, unknown> | undefined
+): Record<string, unknown> | undefined {
+  if (!value) return undefined;
+  const normalized = normalizeSubagentToolValue(value);
+  if (normalized && typeof normalized === "object" && !Array.isArray(normalized)) {
+    return normalized as Record<string, unknown>;
+  }
+  return { value: normalized };
+}
+
+function normalizeSubagentActivities(
+  activities: SubagentActivity[] | undefined
+): SubagentActivity[] | undefined {
+  if (!activities?.length) return undefined;
+  return activities.slice(-SUBAGENT_MAX_ACTIVITIES).map((activity) => ({
+    ...activity,
+    text: redactSecretText(activity.text).slice(0, SUBAGENT_ACTIVITY_MAX_CHARS),
+  }));
+}
+
+function normalizeSubagentToolCalls(
+  toolCalls: SubagentToolCall[] | undefined
+): SubagentToolCall[] | undefined {
+  if (!toolCalls?.length) return undefined;
+  return toolCalls.slice(-SUBAGENT_MAX_TOOL_CALLS).map((toolCall) => ({
+    ...toolCall,
+    args: normalizeSubagentToolArgs(toolCall.args),
+    result: normalizeSubagentToolValue(toolCall.result),
+  }));
+}
 
 let config: SubagentConfig = { ...DEFAULT_CONFIG };
 
@@ -191,7 +296,8 @@ function ensureListener(): void {
         const error = typeof evt.data?.error === "string" ? evt.data.error : undefined;
         entry.outcome = { status: "error", error };
       } else {
-        entry.outcome = { status: "ok" };
+        const result = normalizeSubagentResult(evt.data?.result);
+        entry.outcome = { status: "ok", result };
       }
 
       persistSubagentRuns();
@@ -227,6 +333,7 @@ async function runAnnounceFlow(runId: string): Promise<boolean> {
       `${status} **Subagent completed**: ${label}`,
       `Duration: ${duration}s`,
       entry.outcome?.error ? `Error: ${entry.outcome.error}` : "",
+      entry.outcome?.result ? `\n${entry.outcome.result}` : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -445,12 +552,36 @@ export function markRunStarted(runId: string): boolean {
   return true;
 }
 
-export function markRunCompleted(runId: string, result?: string): boolean {
+export function updateRunDetails(runId: string, details: SubagentRunDetails): boolean {
+  const entry = subagentRuns.get(runId);
+  if (!entry) return false;
+  if (details.thinking !== undefined) {
+    entry.thinking = normalizeSubagentThinking(details.thinking);
+  }
+  if (details.activities !== undefined) {
+    entry.activities = normalizeSubagentActivities(details.activities);
+  }
+  if (details.toolCalls !== undefined) {
+    entry.toolCalls = normalizeSubagentToolCalls(details.toolCalls);
+  }
+  persistSubagentRuns();
+  return true;
+}
+
+export function markRunCompleted(
+  runId: string,
+  result?: string,
+  details?: SubagentRunDetails
+): boolean {
   const entry = subagentRuns.get(runId);
   if (!entry) return false;
 
   entry.endedAt = Date.now();
-  entry.outcome = { status: "ok" };
+  const normalizedResult = normalizeSubagentResult(result);
+  entry.outcome = { status: "ok", result: normalizedResult };
+  entry.thinking = normalizeSubagentThinking(details?.thinking);
+  entry.activities = normalizeSubagentActivities(details?.activities);
+  entry.toolCalls = normalizeSubagentToolCalls(details?.toolCalls);
   persistSubagentRuns();
 
   const timer = runTimers.get(runId);
@@ -462,8 +593,26 @@ export function markRunCompleted(runId: string, result?: string): boolean {
   emitLifecycle({
     runId,
     type: "end",
-    data: { endedAt: entry.endedAt, result },
+    data: { endedAt: entry.endedAt, result: normalizedResult },
   });
+
+  return true;
+}
+
+export function markRunKilled(runId: string): boolean {
+  const entry = subagentRuns.get(runId);
+  if (!entry) return false;
+  if (entry.endedAt && entry.outcome) return entry.outcome.status === "killed";
+
+  entry.endedAt = Date.now();
+  entry.outcome = { status: "killed" };
+  persistSubagentRuns();
+
+  const timer = runTimers.get(runId);
+  if (timer) {
+    clearTimeout(timer);
+    runTimers.delete(runId);
+  }
 
   return true;
 }
@@ -541,6 +690,27 @@ export function releaseSubagentRun(runId: string): boolean {
     stopSweeper();
   }
   return didDelete;
+}
+
+export type ClearSubagentRunResult = "cleared" | "active" | "missing";
+
+export function clearSubagentRun(runId: string): ClearSubagentRunResult {
+  const run = subagentRuns.get(runId);
+  if (!run) return "missing";
+  if (!run.endedAt) return "active";
+  releaseSubagentRun(runId);
+  return "cleared";
+}
+
+export function clearSubagentRunsForRequester(requesterSessionKey: string): number {
+  const key = requesterSessionKey.trim();
+  if (!key) return 0;
+  let cleared = 0;
+  for (const run of [...subagentRuns.values()]) {
+    if (run.requesterSessionKey !== key || !run.endedAt) continue;
+    if (releaseSubagentRun(run.runId)) cleared += 1;
+  }
+  return cleared;
 }
 
 export function cleanupOldRuns(maxAgeMs: number = 3600000): number {

@@ -1554,6 +1554,55 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(install.requiresConfirmation, true)
     }
 
+    func testNativeSubagentDetailDecodesThoughtsToolsAndOutput() throws {
+        let detail = try JSONDecoder().decode(
+            NativeSubagentSummary.self,
+            from: Data(
+                #"""
+                {
+                  "id": "run-1",
+                  "label": "Review repository",
+                  "status": "completed",
+                  "requesterSessionId": "chat-1",
+                  "task": "Review the repository",
+                  "result": "Review complete",
+                  "thinking": "I should inspect the package first.",
+                  "activityCount": 2,
+                  "toolCallCount": 1,
+                  "activities": [
+                    {
+                      "id": "activity-1",
+                      "phase": "result",
+                      "text": "Read package metadata",
+                      "timestamp": 100,
+                      "toolName": "read",
+                      "toolCallId": "read-1"
+                    }
+                  ],
+                  "toolCalls": [
+                    {
+                      "id": "read-1",
+                      "name": "read",
+                      "args": { "path": "package.json" },
+                      "result": { "content": "package metadata" },
+                      "status": "completed",
+                      "timeline_index": 1
+                    }
+                  ]
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(detail.requesterSessionId, "chat-1")
+        XCTAssertEqual(detail.thinking, "I should inspect the package first.")
+        XCTAssertEqual(detail.activities?.first?.text, "Read package metadata")
+        XCTAssertEqual(detail.toolCalls?.first?.name, "read")
+        XCTAssertEqual(detail.toolCalls?.first?.args?["path"]?.displayString, "package.json")
+        XCTAssertTrue(detail.toolCalls?.first?.result?.displayString.contains("package metadata") == true)
+        XCTAssertEqual(detail.result, "Review complete")
+    }
+
     private func decodeSession(_ json: String) throws -> GatewaySession {
         try JSONDecoder().decode(GatewaySession.self, from: Data(json.utf8))
     }

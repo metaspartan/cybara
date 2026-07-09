@@ -8,6 +8,7 @@ import {
   listPendingChatMessages,
   deletePendingChatMessage,
   reorderPendingChatMessages,
+  sendToSession,
   steerPendingChatMessage,
   updatePendingChatMessage,
   updateSessionAgent,
@@ -39,6 +40,92 @@ afterEach(async () => {
 });
 
 describe("handleChat per-session serialization", () => {
+  test("orders injected subagent results after the active parent response", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Subagent Ordering Provider",
+      api_key: "sk-subagent-ordering",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Subagent Ordering Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-subagent-ordering",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let markFetchStarted: (() => void) | undefined;
+    const fetchStarted = new Promise<void>((resolve) => {
+      markFetchStarted = resolve;
+    });
+    globalThis.fetch = (async () => {
+      markFetchStarted?.();
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      return new Response(
+        JSON.stringify({
+          id: "subagent-ordering",
+          object: "chat.completion",
+          model: "gpt-subagent-ordering",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: "Parent accepted the spawn" },
+            },
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 4, total_tokens: 9 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const sessionId = `subagent-ordering-${Date.now()}`;
+    createdSessionIds.push(sessionId);
+    const parentTurn = handleChat({
+      message: "Spawn a child",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+    });
+
+    await fetchStarted;
+    expect(
+      sendToSession(sessionId, {
+        role: "assistant",
+        content: "Child result delivered",
+        timestamp: new Date().toISOString(),
+      })
+    ).toBe(true);
+
+    await parentTurn;
+    const messages = await waitForVisibleSessionMessages(sessionId, 3);
+    expect(messages.map((message) => message.content)).toEqual([
+      "Spawn a child",
+      "Parent accepted the spawn",
+      "Child result delivered",
+    ]);
+
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const durable = await loadPersistedSession(sessionId);
+      const visible = (durable?.messages || []).filter((message) => message.role !== "system");
+      if (visible.length >= 3) {
+        expect(visible.map((message) => message.content)).toEqual([
+          "Spawn a child",
+          "Parent accepted the spawn",
+          "Child result delivered",
+        ]);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    throw new Error("Timed out waiting for the injected subagent result to persist");
+  });
+
   test("chat execution refreshes stale generated agent prompts before calling the model", async () => {
     const provider = providerManager.create({
       provider: "openai",

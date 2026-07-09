@@ -709,6 +709,46 @@ export interface SessionDetailSummary {
   messages: SessionMessageSummary[];
 }
 
+export interface MobileSubagentActivity {
+  id: string;
+  phase: "start" | "result" | "error" | "blocked";
+  text: string;
+  timestamp: number;
+  toolName?: string;
+  toolCallId?: string;
+  sandboxProvider?: string;
+}
+
+export interface MobileSubagentToolCall {
+  id?: string;
+  name: string;
+  args?: Record<string, unknown>;
+  result: unknown;
+  status?: "pending" | "executing" | "completed" | "failed";
+  timeline_index?: number;
+}
+
+export interface MobileSubagentSummary {
+  id: string;
+  label: string;
+  status: "pending" | "running" | "completed" | "failed" | "timeout" | "killed";
+  createdAt: string;
+  startedAt?: string;
+  endedAt?: string;
+  task: string;
+  sessionKey: string;
+  requesterSessionId: string;
+  model?: string;
+  workspaceDir?: string;
+  result?: string;
+  error?: string;
+  thinking?: string;
+  activityCount: number;
+  toolCallCount: number;
+  activities?: MobileSubagentActivity[];
+  toolCalls?: MobileSubagentToolCall[];
+}
+
 export type MobileAgentStatus =
   | "idle"
   | "thinking"
@@ -2043,6 +2083,30 @@ export class CybaraMobileApi {
 
   async sessions(): Promise<SessionSummary[]> {
     return (await this.sessionList()).sessions;
+  }
+
+  subagents(sessionId: string): Promise<MobileSubagentSummary[]> {
+    return this.request<MobileSubagentSummary[]>(
+      `/api/subagents?sessionId=${encodeURIComponent(sessionId)}`
+    );
+  }
+
+  subagent(id: string): Promise<MobileSubagentSummary> {
+    return this.request<MobileSubagentSummary>(`/api/subagents/${encodeURIComponent(id)}`);
+  }
+
+  stopSubagent(id: string): Promise<{ success: boolean; message?: string }> {
+    return this.request<{ success: boolean; message?: string }>(
+      `/api/subagents/${encodeURIComponent(id)}/kill`,
+      { method: "POST" }
+    );
+  }
+
+  clearSubagentHistory(sessionId: string): Promise<{ success: boolean; cleared: number }> {
+    return this.request<{ success: boolean; cleared: number }>(
+      `/api/subagents?sessionId=${encodeURIComponent(sessionId)}`,
+      { method: "DELETE" }
+    );
   }
 
   async session(id: string): Promise<SessionDetailSummary> {

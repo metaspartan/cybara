@@ -9,7 +9,7 @@ export function Providers(): React.ReactElement {
   return (
     <section className="section" id="providers">
       <SectionHeading
-        eyebrow={t("site.providers.title")}
+        eyebrow={t("site.providers.eyebrow")}
         title={t("site.providers.title")}
         description={PROVIDER_NOTE}
       />

@@ -927,7 +927,7 @@ class AgentManager {
     agentId: string,
     messages: AgentMessage[],
     options?: AgentExecutionOptions
-  ): Promise<{ content: string; tool_calls?: AgentToolCallResult[] }> {
+  ): Promise<{ content: string; thinking?: string; tool_calls?: AgentToolCallResult[] }> {
     const agent = this.get(agentId);
     if (!agent) {
       throw new Error("Agent not found");

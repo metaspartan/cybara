@@ -9,7 +9,7 @@ export function Control(): React.ReactElement {
   return (
     <section className="section" id="control">
       <SectionHeading
-        eyebrow={t("site.control.title")}
+        eyebrow={t("site.control.eyebrow")}
         title={t("site.control.title")}
         description="Cybara is built for people who want autonomy without giving up the keys."
       />

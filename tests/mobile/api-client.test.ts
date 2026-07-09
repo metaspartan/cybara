@@ -42,6 +42,46 @@ const systemPromptFixture: SystemPromptConfig = {
 };
 
 describe("mobile API client", () => {
+  test("scopes subagent details and history to the active chat", async () => {
+    const calls: Array<{ method: string; path: string; sessionId: string | null }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input, init) => {
+      const url = new URL(String(input));
+      calls.push({
+        method: init?.method || "GET",
+        path: url.pathname,
+        sessionId: url.searchParams.get("sessionId"),
+      });
+      if (url.pathname === "/api/subagents/sub%2Fone") {
+        return Response.json({ id: "sub/one", label: "Review", status: "completed" });
+      }
+      if (url.pathname === "/api/subagents/sub%2Fone/kill") {
+        return Response.json({ success: true, message: "Subagent killed" });
+      }
+      if (init?.method === "DELETE") return Response.json({ success: true, cleared: 1 });
+      return Response.json([{ id: "sub/one", label: "Review", status: "completed" }]);
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.subagents("chat/one")).resolves.toHaveLength(1);
+      await expect(api.subagent("sub/one")).resolves.toMatchObject({ id: "sub/one" });
+      await expect(api.stopSubagent("sub/one")).resolves.toMatchObject({ success: true });
+      await expect(api.clearSubagentHistory("chat/one")).resolves.toEqual({
+        success: true,
+        cleared: 1,
+      });
+      expect(calls).toEqual([
+        { method: "GET", path: "/api/subagents", sessionId: "chat/one" },
+        { method: "GET", path: "/api/subagents/sub%2Fone", sessionId: null },
+        { method: "POST", path: "/api/subagents/sub%2Fone/kill", sessionId: null },
+        { method: "DELETE", path: "/api/subagents", sessionId: "chat/one" },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("builds and normalizes the authenticated mobile status stream", () => {
     expect(buildMobileStatusStreamUrl(profile)).toBe(
       "ws://127.0.0.1:4269/api/ws/status?token=cybara_mobile_test"

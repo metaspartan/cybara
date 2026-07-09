@@ -116,7 +116,12 @@ import {
   type ToolContext,
 } from "../core/tools/index";
 import { executeTool, hasTool } from "../core/tools/handlers/index";
-import { handleSessionsSpawn } from "../core/tools/handlers/channel";
+import {
+  clearSubagentSession,
+  handleSessionsSpawn,
+  killSubagentSession,
+} from "../core/tools/handlers/channel";
+import { serializeSubagentDetail, serializeSubagentSummary } from "./subagents";
 import {
   handleMemoryList,
   handleMemorySearch,
@@ -2477,6 +2482,7 @@ const routes: Record<string, RouteHandler> = {
       cleanup?: "keep" | "delete";
       workspaceDir?: string;
       maxActiveChildren?: number;
+      requesterSessionId?: string;
     };
     if (!data.task) {
       return { error: "task is required", success: false };
@@ -2492,7 +2498,10 @@ const routes: Record<string, RouteHandler> = {
       cleanup: data.cleanup,
       workspaceDir: data.workspaceDir,
       maxActiveChildren: data.maxActiveChildren,
-      _requesterSessionKey: "main",
+      _requesterSessionKey:
+        typeof data.requesterSessionId === "string" && data.requesterSessionId.trim()
+          ? data.requesterSessionId.trim()
+          : "main",
     });
 
     return {
@@ -2504,61 +2513,51 @@ const routes: Record<string, RouteHandler> = {
       modelApplied: result.modelApplied,
     };
   },
-  "GET /api/subagents": () => {
-    const runs = subagentRegistry.listAllRuns();
-    return runs.map((run) => ({
-      id: run.runId,
-      label: run.label || run.task.slice(0, 50),
-      status:
-        run.outcome?.status === "ok"
-          ? "completed"
-          : run.outcome?.status === "error"
-            ? "failed"
-            : run.outcome?.status === "timeout"
-              ? "timeout"
-              : run.startedAt
-                ? "running"
-                : "pending",
-      createdAt: new Date(run.createdAt).toISOString(),
-      task: run.task.slice(0, 200),
-      sessionKey: run.childSessionKey,
-      model: run.model,
-      workspaceDir: run.workspaceDir,
-      runTimeoutSeconds: run.runTimeoutSeconds,
-      cleanup: run.cleanup,
-    }));
+  "GET /api/subagents": (_body, params) => {
+    const requesterSessionId =
+      typeof params?.sessionId === "string" && params.sessionId.trim()
+        ? params.sessionId.trim()
+        : undefined;
+    const runs = requesterSessionId
+      ? subagentRegistry.getRunsByRequester(requesterSessionId)
+      : subagentRegistry.listAllRuns();
+    return runs.map(serializeSubagentSummary);
   },
   "GET /api/subagents/:id": (_body, params) => {
     const run = subagentRegistry.getRun(params!.id);
     if (!run) return { error: "Subagent not found" };
-    return {
-      id: run.runId,
-      label: run.label || run.task.slice(0, 50),
-      status:
-        run.outcome?.status === "ok"
-          ? "completed"
-          : run.outcome?.status === "error"
-            ? "failed"
-            : run.outcome?.status === "timeout"
-              ? "timeout"
-              : run.startedAt
-                ? "running"
-                : "pending",
-      createdAt: new Date(run.createdAt).toISOString(),
-      startedAt: run.startedAt ? new Date(run.startedAt).toISOString() : undefined,
-      endedAt: run.endedAt ? new Date(run.endedAt).toISOString() : undefined,
-      task: run.task,
-      sessionKey: run.childSessionKey,
-      model: run.model,
-      workspaceDir: run.workspaceDir,
-      runTimeoutSeconds: run.runTimeoutSeconds,
-      cleanup: run.cleanup,
-      outcome: run.outcome,
-    };
+    return serializeSubagentDetail(run);
   },
   "POST /api/subagents/:id/kill": (_body, params) => {
-    const released = subagentRegistry.releaseSubagentRun(params!.id);
-    return { success: released, message: released ? "Subagent killed" : "Subagent not found" };
+    const killed = killSubagentSession(params!.id);
+    return {
+      success: killed,
+      message: killed ? "Subagent killed" : "Subagent not found or inactive",
+    };
+  },
+  "DELETE /api/subagents/:id": (_body, params) => {
+    const run = subagentRegistry.getRun(params!.id);
+    const result = subagentRegistry.clearSubagentRun(params!.id);
+    if (result === "active")
+      return { success: false, error: "Stop the subagent before clearing it" };
+    if (result === "missing") return { success: false, error: "Subagent not found" };
+    if (run) clearSubagentSession(run.childSessionKey);
+    return { success: true };
+  },
+  "DELETE /api/subagents": (_body, params) => {
+    const requesterSessionId =
+      typeof params?.sessionId === "string" && params.sessionId.trim()
+        ? params.sessionId.trim()
+        : "";
+    if (!requesterSessionId) {
+      return { success: false, error: "sessionId is required" };
+    }
+    const completedRuns = subagentRegistry
+      .getRunsByRequester(requesterSessionId)
+      .filter((run) => !!run.endedAt);
+    const cleared = subagentRegistry.clearSubagentRunsForRequester(requesterSessionId);
+    completedRuns.forEach((run) => clearSubagentSession(run.childSessionKey));
+    return { success: true, cleared };
   },
   "GET /api/loops": () => ({
     runs: listAgentLoopRuns(),

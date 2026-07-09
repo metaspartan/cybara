@@ -69,6 +69,14 @@ struct NativeSubagentSummary: Decodable, Identifiable, Hashable {
     let workspaceDir: String?
     let runTimeoutSeconds: Int?
     let cleanup: String?
+    let requesterSessionId: String?
+    let result: String?
+    let error: String?
+    let thinking: String?
+    let activityCount: Int?
+    let toolCallCount: Int?
+    let activities: [GatewayProcessActivity]?
+    let toolCalls: [GatewayToolCall]?
 }
 
 struct NativeLSPLanguage: Decodable, Identifiable, Hashable {
@@ -362,8 +370,28 @@ extension GatewayClient {
         try await nativeGet("api/tools/dangerous", as: NativeDangerousTools.self)
     }
 
-    func nativeSubagents() async throws -> [NativeSubagentSummary] {
-        try await nativeList("api/subagents", keys: ["subagents", "items"])
+    func nativeSubagents(sessionID: String? = nil) async throws -> [NativeSubagentSummary] {
+        try await nativeList(
+            "api/subagents",
+            keys: ["subagents", "items"],
+            queryItems: sessionID.map { [URLQueryItem(name: "sessionId", value: $0)] } ?? []
+        )
+    }
+
+    func nativeSubagent(_ id: String) async throws -> NativeSubagentSummary {
+        try await nativeGet("api/subagents/\(nativePathSegment(id))", as: NativeSubagentSummary.self)
+    }
+
+    func stopNativeSubagent(_ id: String) async throws {
+        _ = try await request("api/subagents/\(nativePathSegment(id))/kill", method: "POST")
+    }
+
+    func clearNativeSubagentHistory(sessionID: String) async throws {
+        _ = try await request(
+            "api/subagents",
+            method: "DELETE",
+            queryItems: [URLQueryItem(name: "sessionId", value: sessionID)]
+        )
     }
 
     func lspStatus() async throws -> NativeLSPStatus {

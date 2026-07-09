@@ -474,6 +474,21 @@ describe("UI API client wiring", () => {
     expect(calls[3].init?.method).toBe("POST");
   });
 
+  test("subagent client scopes lists and completed history to one chat", async () => {
+    await subagentApi.list("chat/one");
+    await subagentApi.get("sub/one");
+    await subagentApi.clear("sub/one");
+    await subagentApi.clearHistory("chat/one");
+
+    expect(calls).toHaveLength(4);
+    expect(calls[0].url).toBe("/api/subagents?sessionId=chat%2Fone");
+    expect(calls[1].url).toBe("/api/subagents/sub%2Fone");
+    expect(calls[2].url).toBe("/api/subagents/sub%2Fone");
+    expect(calls[2].init?.method).toBe("DELETE");
+    expect(calls[3].url).toBe("/api/subagents?sessionId=chat%2Fone");
+    expect(calls[3].init?.method).toBe("DELETE");
+  });
+
   test("tasksApi.getRuns hits /api/tasks/:id/runs", async () => {
     await tasksApi.getRuns("task-1");
 

@@ -922,21 +922,48 @@ export function useUninstallLSP() {
 export interface Subagent {
   id: string;
   label: string;
-  status: "running" | "completed" | "failed" | "killed";
+  status: "pending" | "running" | "completed" | "failed" | "timeout" | "killed";
   createdAt: string;
+  startedAt?: string;
+  endedAt?: string;
   task: string;
   sessionKey: string;
-  result?: unknown;
+  requesterSessionId: string;
+  model?: string;
+  workspaceDir?: string;
+  result?: string;
+  error?: string;
+  thinking?: string;
+  activityCount: number;
+  toolCallCount: number;
+  activities?: Array<{
+    id: string;
+    phase: "start" | "result" | "error" | "blocked";
+    text: string;
+    timestamp: number;
+    toolName?: string;
+    toolCallId?: string;
+    sandboxProvider?: string;
+  }>;
+  toolCalls?: Array<{
+    id?: string;
+    name: string;
+    args?: Record<string, unknown>;
+    result: unknown;
+    status?: "pending" | "executing" | "completed" | "failed";
+    timeline_index?: number;
+  }>;
 }
 
-export function useSubagents() {
+export function useSubagents(requesterSessionId?: string | null) {
   return useQuery({
-    queryKey: ["subagents"],
+    queryKey: ["subagents", requesterSessionId || "none"],
     queryFn: async () => {
-      const response = await subagentApi.list();
+      if (!requesterSessionId) return [];
+      const response = await subagentApi.list(requesterSessionId);
       if (response.success && response.data) {
         const dedupedById = new Map<string, Subagent>();
-        for (const subagent of response.data as Subagent[]) {
+        for (const subagent of response.data as unknown as Subagent[]) {
           if (!subagent?.id) continue;
           dedupedById.set(subagent.id, subagent);
         }
@@ -955,6 +982,21 @@ export function useSubagents() {
   });
 }
 
+export function useSubagent(id?: string | null) {
+  return useQuery({
+    queryKey: ["subagents", "detail", id || "none"],
+    queryFn: async () => {
+      if (!id) return null;
+      const response = await subagentApi.get(id);
+      if (response.success && response.data) return response.data as unknown as Subagent;
+      throw new Error(response.error || "Failed to fetch subagent details");
+    },
+    enabled: !!id,
+    refetchInterval: (query) =>
+      (query.state.data as Subagent | null)?.status === "running" ? LIST_POLL_INTERVAL_MS : false,
+  });
+}
+
 export function useSpawnSubagent() {
   const queryClient = useQueryClient();
 
@@ -964,17 +1006,58 @@ export function useSpawnSubagent() {
       model,
       timeout,
       label,
+      agentId,
+      workspaceDir,
+      requesterSessionId,
     }: {
       task: string;
       model?: string;
       timeout?: number;
       label?: string;
+      agentId?: string;
+      workspaceDir?: string;
+      requesterSessionId?: string;
     }) => {
-      const response = await subagentApi.spawn(task, { model, timeout, label });
+      const response = await subagentApi.spawn(task, {
+        model,
+        timeout,
+        label,
+        agentId,
+        workspaceDir,
+        requesterSessionId,
+      });
       if (response.success && response.data) {
         return response.data;
       }
       throw new Error(response.error || "Failed to spawn subagent");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subagents"] });
+    },
+  });
+}
+
+export function useClearSubagentHistory() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (requesterSessionId: string) => {
+      const response = await subagentApi.clearHistory(requesterSessionId);
+      if (response.success && response.data) return response.data.cleared;
+      throw new Error(response.error || "Failed to clear subagent history");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subagents"] });
+    },
+  });
+}
+
+export function useClearSubagent() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const response = await subagentApi.clear(id);
+      if (response.success) return id;
+      throw new Error(response.error || "Failed to clear subagent");
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subagents"] });

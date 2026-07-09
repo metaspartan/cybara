@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { agentManager } from "../../src/core/agent";
 import { providerManager } from "../../src/core/providers";
 import {
@@ -7,9 +10,21 @@ import {
   resetRouterForTests,
 } from "../../src/core/router";
 import type { ToolDefinition } from "../../src/core/database";
-import { getRun, resetSubagentRegistryForTests } from "../../src/core/subagent-registry";
+import type { AgentToolCallResult } from "../../src/core/agent-internals";
+import { broadcastStatus } from "../../src/core/status";
+import {
+  getRun,
+  getRunsByRequester,
+  onSubagentLifecycle,
+  resetSubagentRegistryForTests,
+} from "../../src/core/subagent-registry";
+import {
+  configureChannelChatRuntime,
+  resetChannelChatRuntime,
+} from "../../src/core/channels/chat-runtime";
 import {
   getSubagentSession,
+  handleSessionsSend,
   handleSessionsSpawn,
   resetSubagentSessionsForTests,
 } from "../../src/core/tools/handlers/channel";
@@ -24,12 +39,14 @@ type ExecuteShape = (
     channel?: string;
     userId?: string;
     modelOverride?: string;
+    abortSignal?: AbortSignal;
   }
-) => Promise<{ content: string; tool_calls?: Array<{ name: string; result: unknown }> }>;
+) => Promise<{ content: string; thinking?: string; tool_calls?: AgentToolCallResult[] }>;
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
 const originalFetch = globalThis.fetch;
+const testRegistryPath = join(tmpdir(), `cybara-subagent-registry-${process.pid}.json`);
 
 async function waitFor(predicate: () => boolean, timeoutMs = 1000, intervalMs = 10): Promise<void> {
   const start = Date.now();
@@ -50,7 +67,9 @@ afterEach(() => {
   }
   resetSubagentSessionsForTests();
   resetSubagentRegistryForTests();
+  rmSync(testRegistryPath, { force: true });
   resetRouterForTests();
+  resetChannelChatRuntime();
 });
 
 describe("Subagent execution wiring", () => {
@@ -94,9 +113,11 @@ describe("Subagent execution wiring", () => {
             channel?: string;
             userId?: string;
             modelOverride?: string;
+            abortSignal?: AbortSignal;
           };
         }
       | undefined;
+    let capturedLiveActivities: string[] = [];
 
     const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
     (agentManager as unknown as { execute: ExecuteShape }).execute = async (
@@ -105,7 +126,45 @@ describe("Subagent execution wiring", () => {
       options
     ) => {
       captured = { agentId, messages, options };
-      return { content: "subagent complete" };
+      const sessionId = options?.sessionId || "";
+      broadcastStatus({
+        status: "thinking",
+        detail: "Inspecting the requested files",
+        sessionId,
+        timestamp: 100,
+      });
+      broadcastStatus({
+        status: "tool_executing",
+        detail: "Reading package metadata",
+        sessionId,
+        timestamp: 101,
+        toolName: "read",
+        toolCallId: "read-1",
+      });
+      broadcastStatus({
+        status: "tool_completed",
+        detail: "Read package metadata",
+        sessionId,
+        timestamp: 102,
+        toolName: "read",
+        toolCallId: "read-1",
+      });
+      capturedLiveActivities =
+        getRunsByRequester("main")[0]?.activities?.map((activity) => activity.text) || [];
+      return {
+        content: "subagent complete",
+        thinking: "The package metadata confirms the result.",
+        tool_calls: [
+          {
+            id: "read-1",
+            name: "read",
+            args: { path: "package.json" },
+            result: { content: "package metadata" },
+            status: "completed",
+            timeline_index: 1,
+          },
+        ],
+      };
     };
 
     try {
@@ -118,6 +177,7 @@ describe("Subagent execution wiring", () => {
 
       expect(spawnResult.status).toBe("accepted");
       expect(spawnResult.modelApplied).toBe(true);
+      expect(existsSync(testRegistryPath)).toBe(true);
 
       await waitFor(
         () => getSubagentSession(spawnResult.childSessionKey)?.status === "completed",
@@ -127,6 +187,27 @@ describe("Subagent execution wiring", () => {
       const session = getSubagentSession(spawnResult.childSessionKey);
       expect(session?.status).toBe("completed");
       expect(session?.result).toBe("subagent complete");
+      expect(session?.messages.at(-1)?.thinking).toBe("The package metadata confirms the result.");
+      expect(session?.messages.at(-1)?.tool_calls?.[0]?.name).toBe("read");
+      expect(
+        session?.messages.at(-1)?.process_activities?.map((activity) => activity.text)
+      ).toEqual(["Inspecting the requested files", "Read package metadata"]);
+
+      const persistedRun = getRun(spawnResult.runId);
+      expect(persistedRun?.thinking).toBe("The package metadata confirms the result.");
+      expect(persistedRun?.toolCalls?.[0]).toMatchObject({
+        id: "read-1",
+        name: "read",
+        status: "completed",
+      });
+      expect(persistedRun?.activities?.map((activity) => activity.text)).toEqual([
+        "Inspecting the requested files",
+        "Read package metadata",
+      ]);
+      expect(capturedLiveActivities).toEqual([
+        "Inspecting the requested files",
+        "Read package metadata",
+      ]);
 
       expect(captured?.agentId).toBe(targetAgent.id);
       expect(captured?.options?.useTools).toBe(true);
@@ -141,6 +222,85 @@ describe("Subagent execution wiring", () => {
           : undefined;
       expect(lastMessage).toEqual({ role: "user", content: task });
     } finally {
+      (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
+    }
+  });
+
+  test("delivers sessions_send messages from a child to a normal requester session", async () => {
+    const delivered: Array<{
+      sessionId: string;
+      role: string;
+      content: string;
+      timestamp: string;
+    }> = [];
+    configureChannelChatRuntime({
+      sendToSession: (sessionId, message) => {
+        delivered.push({ sessionId, ...message });
+        return true;
+      },
+    });
+
+    const result = await handleSessionsSend({
+      sessionId: "parent-chat-session",
+      message: "CHILD_RESULT=delivered",
+    });
+
+    expect(result).toEqual({
+      success: true,
+      sessionId: "parent-chat-session",
+      message: "Message delivered to session.",
+    });
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0]?.sessionId).toBe("parent-chat-session");
+    expect(delivered[0]?.role).toBe("assistant");
+    expect(delivered[0]?.content).toBe("CHILD_RESULT=delivered");
+    expect(Number.isFinite(Date.parse(delivered[0]?.timestamp || ""))).toBe(true);
+  });
+
+  test("includes the completed child result in the requester announcement", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Subagent Result Provider",
+      api_key: "subagent-result-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const targetAgent = agentManager.create({
+      name: "Subagent Result Agent",
+      type: "subagent",
+      provider_id: provider.id,
+      model: "model-result",
+      tools: [],
+    });
+    createdAgentIds.push(targetAgent.id);
+
+    let announcement = "";
+    const unsubscribe = onSubagentLifecycle((event) => {
+      if (event.type === "announce" && typeof event.data?.message === "string") {
+        announcement = event.data.message;
+      }
+    });
+    const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
+    (agentManager as unknown as { execute: ExecuteShape }).execute = async () => ({
+      content: "AUTO_CHILD_RESULT=verified",
+    });
+
+    try {
+      const spawnResult = await handleSessionsSpawn({
+        task: "return a deterministic result",
+        agentId: targetAgent.id,
+        label: "Result delivery",
+        _requesterSessionKey: "parent-result-session",
+      });
+
+      expect(spawnResult.status).toBe("accepted");
+      await waitFor(() => announcement.includes("AUTO_CHILD_RESULT=verified"), 2000);
+      expect(announcement).toContain("Subagent completed");
+      expect(announcement).toContain("Result delivery");
+      expect(announcement).toContain("AUTO_CHILD_RESULT=verified");
+      expect(getRun(spawnResult.runId)?.outcome?.result).toBe("AUTO_CHILD_RESULT=verified");
+    } finally {
+      unsubscribe();
       (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
     }
   });

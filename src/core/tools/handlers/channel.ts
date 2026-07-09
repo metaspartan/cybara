@@ -17,6 +17,7 @@ import type { Channel } from "../../database";
 import * as subagentRegistry from "../../subagent-registry";
 import type { SubagentRunRecord } from "../../subagent-registry";
 import { getInboundMediaRootDir, saveInboundMediaFromUrl } from "../../channels/media";
+import { sendChannelRuntimeMessage } from "../../channels/chat-runtime";
 import {
   synthesizeSpeech,
   synthesizeWithSystemVoice,
@@ -24,6 +25,8 @@ import {
 } from "../../speech";
 import { providerManager } from "../../providers";
 import { getProviderAvailability } from "../../router";
+import { onStatus, type StatusPayload, type ToolStatusPhase } from "../../status";
+import type { AgentToolCallResult } from "../../agent-internals";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -35,8 +38,15 @@ interface SubagentSession {
   task: string;
   model?: string;
   timeout?: number;
-  status: "pending" | "running" | "completed" | "failed";
-  messages: Array<{ role: string; content: string; timestamp: string }>;
+  status: "pending" | "running" | "completed" | "failed" | "killed";
+  messages: Array<{
+    role: string;
+    content: string;
+    timestamp: string;
+    thinking?: string;
+    tool_calls?: AgentToolCallResult[];
+    process_activities?: subagentRegistry.SubagentActivity[];
+  }>;
   result?: string;
   error?: string;
   createdAt: string;
@@ -44,6 +54,7 @@ interface SubagentSession {
 }
 
 const sessions = new Map<string, SubagentSession>();
+const subagentAbortControllers = new Map<string, AbortController>();
 const DEFAULT_SUBAGENT_MAX_ACTIVE_CHILDREN = 3;
 
 export function getSubagentSession(sessionKey: string): SubagentSession | undefined {
@@ -55,6 +66,10 @@ export function getAllSubagentSessions(): SubagentSession[] {
 }
 
 export function resetSubagentSessionsForTests(): void {
+  for (const controller of subagentAbortControllers.values()) {
+    controller.abort();
+  }
+  subagentAbortControllers.clear();
   sessions.clear();
 }
 
@@ -249,7 +264,7 @@ function buildSubagentSystemPrompt(
     "- Do not spawn additional sub-agents from this sub-agent session",
     silent
       ? "- This is a silent background task. Do NOT announce your result to the requester."
-      : "- When done, use sessions_send to announce your result to the requester",
+      : "- Return the completed result in your final response; Cybara delivers it to the requester automatically",
     "",
     `Requester session: ${requesterSessionKey}`,
     `Your session: ${childSessionKey}`,
@@ -257,6 +272,66 @@ function buildSubagentSystemPrompt(
   ];
 
   return lines.filter(Boolean).join("\n");
+}
+
+function statusPhase(payload: StatusPayload): ToolStatusPhase | undefined {
+  if (payload.toolPhase) return payload.toolPhase;
+  if (payload.status === "tool_executing") return "start";
+  if (payload.status === "tool_completed") return "result";
+  if (payload.status === "error") return "error";
+  return undefined;
+}
+
+function recordSubagentActivity(
+  activities: subagentRegistry.SubagentActivity[],
+  payload: StatusPayload
+): boolean {
+  const text = payload.detail?.trim();
+  const phase = statusPhase(payload);
+  if (phase && (payload.toolName || payload.toolCallId)) {
+    const matchingIndex = payload.toolCallId
+      ? activities.findIndex(
+          (activity) => activity.phase === "start" && activity.toolCallId === payload.toolCallId
+        )
+      : activities.findIndex(
+          (activity) => activity.phase === "start" && activity.toolName === payload.toolName
+        );
+    const activity: subagentRegistry.SubagentActivity = {
+      id:
+        matchingIndex >= 0
+          ? activities[matchingIndex]?.id || `${payload.timestamp}`
+          : payload.toolCallId || `${payload.timestamp}-${activities.length}`,
+      phase,
+      text: text || `${payload.toolName || "Tool"} ${phase}`,
+      timestamp: payload.timestamp,
+      toolName: payload.toolName,
+      toolCallId: payload.toolCallId,
+      sandboxProvider: payload.sandboxProvider,
+    };
+    if (matchingIndex >= 0) activities[matchingIndex] = activity;
+    else activities.push(activity);
+    return true;
+  }
+
+  if (!text || !["thinking", "generating", "compacting"].includes(payload.status)) return false;
+  const normalized = text.toLowerCase();
+  if (
+    ["thinking", "thinking...", "generating response", "generating response..."].includes(
+      normalized
+    )
+  ) {
+    return false;
+  }
+  const previous = activities[activities.length - 1];
+  if (previous?.toolName === "__thought" && previous.text === text) return false;
+  activities.push({
+    id: `${payload.timestamp}-${activities.length}`,
+    phase: "result",
+    text,
+    timestamp: payload.timestamp,
+    toolName: "__thought",
+  });
+  return true;
 }
 
 async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Promise<void> {
@@ -267,6 +342,16 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
   if (run) {
     subagentRegistry.markRunStarted(run.runId);
   }
+
+  const activities: subagentRegistry.SubagentActivity[] = [];
+  const abortController = new AbortController();
+  subagentAbortControllers.set(sessionId, abortController);
+  const stopStatusCapture = onStatus((payload) => {
+    if (payload.sessionId !== sessionId) return;
+    if (recordSubagentActivity(activities, payload) && run) {
+      subagentRegistry.updateRunDetails(run.runId, { activities });
+    }
+  });
 
   try {
     const availableAgents = agentManager.list();
@@ -295,12 +380,16 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
       channel: "subagent",
       userId: "subagent",
       modelOverride: session.model,
+      abortSignal: abortController.signal,
     });
 
     session.messages.push({
       role: "assistant",
       content: result.content,
       timestamp: new Date().toISOString(),
+      thinking: result.thinking,
+      tool_calls: result.tool_calls,
+      process_activities: activities,
     });
 
     session.result = result.content;
@@ -308,13 +397,25 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
     session.completedAt = new Date().toISOString();
 
     if (run) {
-      subagentRegistry.markRunCompleted(run.runId, result.content);
+      subagentRegistry.markRunCompleted(run.runId, result.content, {
+        thinking: result.thinking,
+        activities,
+        toolCalls: result.tool_calls,
+      });
     }
 
     console.log(
       `[Subagent] Session ${sessionId} completed with ${result.tool_calls?.length || 0} tool calls`
     );
   } catch (error) {
+    if (abortController.signal.aborted) {
+      session.status = "killed";
+      session.completedAt = new Date().toISOString();
+      if (run && subagentRegistry.getRun(run.runId)?.outcome?.status !== "killed") {
+        subagentRegistry.markRunKilled(run.runId);
+      }
+      return;
+    }
     session.status = "failed";
     session.error = (error as Error).message;
     session.completedAt = new Date().toISOString();
@@ -324,14 +425,38 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
     }
 
     console.error(`[Subagent] Session ${sessionId} failed:`, error);
+  } finally {
+    stopStatusCapture();
+    if (subagentAbortControllers.get(sessionId) === abortController) {
+      subagentAbortControllers.delete(sessionId);
+    }
   }
+}
+
+export function killSubagentSession(runId: string): boolean {
+  const run = subagentRegistry.getRun(runId);
+  if (!run || run.endedAt) return false;
+  const session = sessions.get(run.childSessionKey);
+  if (session) {
+    session.status = "killed";
+    session.completedAt = new Date().toISOString();
+  }
+  subagentRegistry.markRunKilled(runId);
+  subagentAbortControllers.get(run.childSessionKey)?.abort(new Error("Subagent stopped"));
+  return true;
+}
+
+export function clearSubagentSession(sessionKey: string): void {
+  subagentAbortControllers.get(sessionKey)?.abort();
+  subagentAbortControllers.delete(sessionKey);
+  sessions.delete(sessionKey);
 }
 
 export async function handleSessionsSend(
   args: Record<string, unknown>
 ): Promise<{ success: boolean; sessionId: string; message: string }> {
-  const sessionId = args.sessionId as string;
-  const message = args.message as string;
+  const sessionId = readTrimmedString(args.sessionId);
+  const message = readTrimmedString(args.message);
 
   if (!sessionId || !message) {
     throw new Error("sessionId and message are required");
@@ -339,7 +464,19 @@ export async function handleSessionsSend(
 
   const session = sessions.get(sessionId);
   if (!session) {
-    throw new Error(`Session not found: ${sessionId}`);
+    const delivered = sendChannelRuntimeMessage(sessionId, {
+      role: "assistant",
+      content: message,
+      timestamp: new Date().toISOString(),
+    });
+    if (!delivered) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+    return {
+      success: true,
+      sessionId,
+      message: "Message delivered to session.",
+    };
   }
 
   session.messages.push({

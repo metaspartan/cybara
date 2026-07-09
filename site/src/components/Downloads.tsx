@@ -58,7 +58,7 @@ export function Downloads(): React.ReactElement {
   return (
     <section className="section" id="download">
       <SectionHeading
-        eyebrow={t("site.download.title")}
+        eyebrow={t("site.download.eyebrow")}
         title={t("site.download.title")}
         description="Direct downloads of the latest signed binaries — desktop, mobile, and CLI — resolved straight from GitHub Releases."
       />
