@@ -28,6 +28,7 @@ struct NativeWorkspaceOpenTarget: Decodable, Identifiable, Hashable {
     let label: String
     let kind: String
     let icon: String?
+    let iconUrl: String?
     let available: Bool?
     let detail: String?
 }

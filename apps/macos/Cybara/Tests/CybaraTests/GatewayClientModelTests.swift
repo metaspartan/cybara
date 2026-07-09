@@ -118,6 +118,33 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertNil(gatewayWorkspaceLabel("   "))
     }
 
+    func testWorkspaceFolderNameMatchesOpenInMenu() {
+        XCTAssertEqual(gatewayWorkspaceFolderName("/Users/carsen/Documents/GitHub/cybara"), "cybara")
+        XCTAssertEqual(gatewayWorkspaceFolderName("C:\\Users\\Carsen\\Projects\\cybara"), "cybara")
+        XCTAssertEqual(gatewayWorkspaceFolderName("/tmp/cybara/"), "cybara")
+        XCTAssertNil(gatewayWorkspaceFolderName("   "))
+    }
+
+    func testWorkspaceOpenTargetDecodesIconURL() throws {
+        let target = try JSONDecoder().decode(
+            NativeWorkspaceOpenTarget.self,
+            from: Data(
+                #"""
+                {
+                  "id": "zed",
+                  "label": "Zed",
+                  "kind": "ide",
+                  "icon": "zed",
+                  "iconUrl": "data:image/png;base64,AAAA",
+                  "available": true
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(target.iconUrl, "data:image/png;base64,AAAA")
+    }
+
     func testChatSendResponseDecodesWorkspaceDir() throws {
         let response = try JSONDecoder().decode(
             ChatSendResponse.self,

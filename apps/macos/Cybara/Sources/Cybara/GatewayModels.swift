@@ -857,6 +857,15 @@ func gatewayWorkspaceLabel(_ path: String?, maxLength: Int = 44) -> String? {
     return String(normalized.prefix(prefixLength)) + ".../" + tail
 }
 
+func gatewayWorkspaceFolderName(_ path: String?) -> String? {
+    guard let path = firstNonEmptyGatewayString(path) else { return nil }
+    let normalized = path
+        .replacingOccurrences(of: "\\", with: "/")
+        .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    let segments = normalized.split(separator: "/").map(String.init)
+    return firstNonEmptyGatewayString(segments.last, normalized)
+}
+
 private func gatewayProviderDisplayNameForProviderType(_ value: String?) -> String? {
     guard let value = firstNonEmptyGatewayString(value) else { return nil }
     // Provider IDs are UUIDs in normal gateway rows. Do not turn those into

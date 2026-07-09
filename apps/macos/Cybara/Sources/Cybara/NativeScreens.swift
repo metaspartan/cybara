@@ -1045,16 +1045,18 @@ struct ChatScreen: View {
     private var workspaceOpenMenu: some View {
         if let workspace = activeWorkspaceDir {
             Menu {
-                if workspaceOpenTargetsLoading {
-                    Label("Detecting apps…", systemImage: "progress.indicator")
-                }
-                ForEach(workspaceOpenTargets.sorted(by: workspaceOpenTargetSort)) { target in
-                    Button {
-                        openWorkspaceTarget(target, workspace: workspace)
-                    } label: {
-                        Label(target.label, systemImage: workspaceOpenTargetIcon(target))
+                Section(gatewayWorkspaceFolderName(workspace) ?? "Workspace") {
+                    if workspaceOpenTargetsLoading {
+                        Label("Detecting apps…", systemImage: "progress.indicator")
                     }
-                    .disabled(workspaceOpeningTargetID != nil)
+                    ForEach(workspaceOpenTargets.sorted(by: workspaceOpenTargetSort)) { target in
+                        Button {
+                            openWorkspaceTarget(target, workspace: workspace)
+                        } label: {
+                            workspaceOpenTargetLabel(target)
+                        }
+                        .disabled(workspaceOpeningTargetID != nil)
+                    }
                 }
                 Divider()
                 Button {
@@ -1115,6 +1117,37 @@ struct ChatScreen: View {
         default:
             return "curlybraces.square"
         }
+    }
+
+    @ViewBuilder
+    private func workspaceOpenTargetLabel(_ target: NativeWorkspaceOpenTarget) -> some View {
+        Label {
+            Text(target.label)
+        } icon: {
+            if let image = workspaceOpenTargetImage(target) {
+                Image(nsImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 14, height: 14)
+            } else {
+                Image(systemName: workspaceOpenTargetIcon(target))
+            }
+        }
+    }
+
+    private func workspaceOpenTargetImage(_ target: NativeWorkspaceOpenTarget) -> NSImage? {
+        if target.iconUrl == "/cybara.png" {
+            return CybaraBrand.logoImage
+        }
+        guard let iconUrl = firstNonEmptyGatewayString(target.iconUrl),
+              let commaIndex = iconUrl.firstIndex(of: ","),
+              iconUrl[..<commaIndex].lowercased().hasPrefix("data:image/")
+        else {
+            return nil
+        }
+        let encoded = String(iconUrl[iconUrl.index(after: commaIndex)...])
+        guard let data = Data(base64Encoded: encoded) else { return nil }
+        return NSImage(data: data)
     }
 
     private var sessionDetailLine: String {
@@ -2681,6 +2714,7 @@ struct ChatScreen: View {
                         label: "Cybara IDE",
                         kind: "internal",
                         icon: "cybara",
+                        iconUrl: "/cybara.png",
                         available: true,
                         detail: nil
                     )
@@ -2693,16 +2727,14 @@ struct ChatScreen: View {
 
     private func openWorkspaceTarget(_ target: NativeWorkspaceOpenTarget, workspace: String) {
         workspaceOpeningTargetID = target.id
-        if target.id == "cybara_ide" {
-            openCybaraIDEWorkspace(workspace)
-            workspaceOpeningTargetID = nil
-            return
-        }
         Task {
             do {
                 let response = try await client.openWorkspaceTarget(path: workspace, targetID: target.id)
                 if response.success == false {
                     throw GatewayClientError.badStatus(200, response.error ?? "Unable to open workspace")
+                }
+                if target.id == "cybara_ide" {
+                    openCybaraIDEWorkspace(response.path ?? workspace)
                 }
                 error = nil
             } catch {

@@ -218,8 +218,14 @@ class WorkspaceIndexer {
     }
     if (embeddingSelectionChanged) {
       this.semanticReady = false;
-      this.semanticError =
-        "Embedding provider/model changed. Run Reindex to refresh semantic vectors.";
+      const reindexTarget = this.indexedWorkspacePath;
+      if (settings.enabled && reindexTarget && !isHomeRootPath(reindexTarget)) {
+        this.semanticError = "Embedding model changed — reindexing semantic vectors…";
+        void this.reindex(reindexTarget).catch(() => undefined);
+      } else {
+        this.semanticError =
+          "Embedding provider/model changed. Run Reindex to refresh semantic vectors.";
+      }
     }
     return settings;
   }
