@@ -52,6 +52,33 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain('setSearchQuery("")');
   });
 
+  test("clicking a session exposes immediate loading state and ignores stale loads", () => {
+    const source = chatSource();
+    const hookSource = readFileSync(
+      join(process.cwd(), "ui", "src", "hooks", "useChat.ts"),
+      "utf8"
+    );
+
+    expect(source).toContain("pendingSessionLoadId");
+    expect(source).toContain("sessionLoadSequenceRef.current = loadSequence");
+    expect(source).toContain(
+      "sessionLoadSequenceRef.current === loadSequence && result?.messagesList"
+    );
+    expect(source).toContain("const isRowLoading = pendingSessionLoadId === session.id");
+    expect(source).toContain(
+      "const isSessionSelected = currentSessionId === session.id || isRowLoading"
+    );
+    expect(source).toContain("aria-busy={isRowLoading}");
+    expect(source).toContain('data-loading={isRowLoading ? "true" : undefined}');
+    expect(hookSource).toContain('const SESSION_DETAIL_QUERY_KEY = "session-detail"');
+    expect(hookSource).toContain("queryClient.fetchQuery({");
+    expect(hookSource).toContain(
+      'queryKey: [SESSION_DETAIL_QUERY_KEY, sessionId, "fullToolCalls"]'
+    );
+    expect(hookSource).toContain("staleTime: 0");
+    expect(hookSource).toContain("invalidateSessionDetail(queryClient");
+  });
+
   test("groups chat sessions into pinned and workspace sections", () => {
     const source = chatSource();
     expect(source).toContain("groupSessionsForSidebar(sessions, deferredSearchQuery)");

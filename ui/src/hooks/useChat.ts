@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { chatApi, agentsApi, extractApiError } from "@/lib/api";
 import type { ChatMessage, ChatImageAttachment } from "@/types";
 import { enrichReloadedMessages, readCachedSessionMessages } from "@/pages/chat/messageCache";
@@ -18,6 +18,15 @@ interface RevertMessageInput {
 }
 
 const CHAT_SESSION_LIST_LIMIT = 150;
+const SESSION_DETAIL_QUERY_KEY = "session-detail";
+
+function invalidateSessionDetail(queryClient: QueryClient, sessionId?: string | null) {
+  return queryClient.invalidateQueries({
+    queryKey: sessionId
+      ? [SESSION_DETAIL_QUERY_KEY, sessionId, "fullToolCalls"]
+      : [SESSION_DETAIL_QUERY_KEY],
+  });
+}
 
 export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boolean }) {
   const activeRequestAbortRef = useRef<AbortController | null>(null);
@@ -113,6 +122,7 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
                 }
           );
           void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+          void invalidateSessionDetail(queryClient, response.data.sessionId);
           return response.data;
         }
         if (response.data.interrupted) {
@@ -120,10 +130,10 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
             prev.sessionId === requestSessionId ? { ...prev, isLoading: false } : prev
           );
           void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+          void invalidateSessionDetail(queryClient, response.data.sessionId);
           return response.data;
         }
         setState((prev) => ({
-          // Ignore stale responses if the user switched sessions while the request was in-flight.
           ...(prev.sessionId !== requestSessionId
             ? prev
             : {
@@ -136,6 +146,7 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
               }),
         }));
         void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+        void invalidateSessionDetail(queryClient, response.data.sessionId);
         return response.data;
       }
       throw new Error(response.error || "Failed to send message");
@@ -280,6 +291,7 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
         isLoading: false,
       }));
       void queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      void invalidateSessionDetail(queryClient, activeSessionId);
 
       return response.data;
     } catch (error) {
@@ -331,8 +343,9 @@ export function useDeleteSession() {
       }
       throw new Error(response.error || "Failed to delete session");
     },
-    onSuccess: () => {
+    onSuccess: (_data, sessionId) => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      void invalidateSessionDetail(queryClient, sessionId);
     },
   });
 }
@@ -348,8 +361,9 @@ export function useRenameSession() {
       }
       throw new Error(extractApiError(response, "Failed to rename session"));
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      void invalidateSessionDetail(queryClient, variables.sessionId);
     },
   });
 }
@@ -365,8 +379,9 @@ export function usePinSession() {
       }
       throw new Error(extractApiError(response, "Failed to pin session"));
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      void invalidateSessionDetail(queryClient, variables.sessionId);
     },
   });
 }
@@ -382,20 +397,29 @@ export function useUpdateSessionAgent() {
       }
       throw new Error(extractApiError(response, "Failed to update session agent"));
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ["sessions"] });
+      void invalidateSessionDetail(queryClient, variables.sessionId);
     },
   });
 }
 
 export function useLoadSession() {
+  const queryClient = useQueryClient();
+
   return useMutation({
-    mutationFn: async (sessionId: string) => {
-      const response = await chatApi.getSession(sessionId, { includeFullToolCalls: true });
-      if (response.success && response.data) {
-        return response.data;
-      }
-      throw new Error(response.error || "Failed to load session");
-    },
+    mutationFn: (sessionId: string) =>
+      queryClient.fetchQuery({
+        queryKey: [SESSION_DETAIL_QUERY_KEY, sessionId, "fullToolCalls"],
+        staleTime: 0,
+        gcTime: 120_000,
+        queryFn: async () => {
+          const response = await chatApi.getSession(sessionId, { includeFullToolCalls: true });
+          if (response.success && response.data) {
+            return response.data;
+          }
+          throw new Error(response.error || "Failed to load session");
+        },
+      }),
   });
 }

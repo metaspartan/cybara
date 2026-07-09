@@ -8,7 +8,8 @@ import {
 import { cn } from "@/lib/utils";
 import type { ProviderPlanSnapshot, ProviderPlanStatusResponse } from "@/types";
 import { AlertTriangle, Gauge } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 function planHasUsage(plan: ProviderPlanSnapshot): boolean {
   return (
@@ -30,47 +31,48 @@ function sortPlans(a: ProviderPlanSnapshot, b: ProviderPlanSnapshot) {
 }
 
 export function Usage() {
-  const [status, setStatus] = useState<ProviderPlanStatusResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const load = async () => {
-    setError(null);
-    try {
+  const {
+    data: status,
+    isLoading,
+    isError,
+    error,
+  } = useQuery<ProviderPlanStatusResponse>({
+    queryKey: ["provider-plan-status"],
+    queryFn: async () => {
       const response = await providerPlansApi.status();
       if (!response.success || !response.data) {
         throw new Error(response.error || "Failed to load usage");
       }
-      setStatus(response.data);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : String(loadError));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void load();
-    const interval = window.setInterval(() => void load(), 30000);
-    return () => window.clearInterval(interval);
-  }, []);
+      return response.data;
+    },
+    staleTime: 15_000,
+    gcTime: 30 * 60_000,
+    refetchInterval: 30_000,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
+  });
 
   const plans = useMemo(
     () => (status?.providers ?? []).filter(planHasUsage).sort(sortPlans),
     [status?.providers]
   );
 
+  const showSkeleton = isLoading && !status;
+  const showError = isError && !status;
+  const errorMessage = error instanceof Error ? error.message : String(error ?? "");
+
   return (
     <PageLayout title="Usage" subtitle="Coding plan windows and provider limits">
-      {loading ? (
+      {showSkeleton ? (
         <UsageSkeleton />
-      ) : error ? (
+      ) : showError ? (
         <div className="rounded-xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">
           <div className="flex items-center gap-2 font-semibold">
             <AlertTriangle className="h-4 w-4" />
             Usage unavailable
           </div>
-          <p className="mt-2 text-red-100/80">{error}</p>
+          <p className="mt-2 text-red-100/80">{errorMessage}</p>
         </div>
       ) : plans.length === 0 ? (
         <div className="flex min-h-[360px] items-center justify-center rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">

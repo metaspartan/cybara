@@ -375,7 +375,8 @@ export class VectorStore {
   async indexFile(
     path: string,
     content: string,
-    source: "memory" | "sessions" | "workspace" = "memory"
+    source: "memory" | "sessions" | "workspace" = "memory",
+    options: { embeddingBatchSize?: number; embeddingConcurrency?: number } = {}
   ): Promise<number> {
     await this.ensureReady();
 
@@ -394,7 +395,10 @@ export class VectorStore {
       ? await embedInSubBatches(
           textChunks.map((chunk) => chunk.text),
           (batch) => provider.embedBatch(batch),
-          { batchSize: 96, concurrency: 4 }
+          {
+            batchSize: options.embeddingBatchSize ?? 96,
+            concurrency: options.embeddingConcurrency ?? 4,
+          }
         )
       : textChunks.map(() => [] as number[]);
     const now = Date.now();

@@ -218,6 +218,14 @@ export const DEFAULT_WORKSPACE_INDEXER_SETTINGS: WorkspaceIndexerSettings = {
     "target",
     ".next",
     ".turbo",
+    ".research",
+    ".cache",
+    ".gradle",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".expo",
+    "coverage",
     ".idea",
     ".vscode",
     "__pycache__",
@@ -590,10 +598,12 @@ function normalizeWorkspaceIndexerSettings(value: unknown): WorkspaceIndexerSett
     semanticMinScore,
     embeddingProvider: normalizeEmbeddingProvider(parsed?.embeddingProvider),
     embeddingModel: normalizeEmbeddingModel(parsed?.embeddingModel),
-    ignoreDirs:
-      normalizeStringList(parsed?.ignoreDirs).length > 0
-        ? normalizeStringList(parsed?.ignoreDirs)
-        : [...DEFAULT_WORKSPACE_INDEXER_SETTINGS.ignoreDirs],
+    ignoreDirs: [
+      ...new Set([
+        ...DEFAULT_WORKSPACE_INDEXER_SETTINGS.ignoreDirs,
+        ...normalizeStringList(parsed?.ignoreDirs),
+      ]),
+    ],
     includeExtensions: normalizeExtensions(parsed?.includeExtensions),
   };
 }

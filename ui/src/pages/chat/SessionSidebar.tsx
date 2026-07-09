@@ -200,11 +200,13 @@ export function SessionsPanel({
   );
   const [openGroupMenuId, setOpenGroupMenuId] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
+  const [pendingSessionLoadId, setPendingSessionLoadId] = useState<string | null>(null);
   const [pinnedWorkspaceGroupIds, setPinnedWorkspaceGroupIds] = useState<Set<string>>(
     readPinnedWorkspaceGroupIds
   );
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const sessionsRefreshTimerRef = useRef<number | null>(null);
+  const sessionLoadSequenceRef = useRef(0);
   const sessionGroups = useMemo(() => {
     const groups = groupSessionsForSidebar(sessions, deferredSearchQuery);
     return [...groups].sort((a, b) => {
@@ -284,9 +286,13 @@ export function SessionsPanel({
   };
 
   const handleLoadSession = async (sessionId: string) => {
+    if (pendingSessionLoadId === sessionId) return;
+    const loadSequence = sessionLoadSequenceRef.current + 1;
+    sessionLoadSequenceRef.current = loadSequence;
+    setPendingSessionLoadId(sessionId);
     try {
       const result = await loadSession.mutateAsync(sessionId);
-      if (result?.messagesList) {
+      if (sessionLoadSequenceRef.current === loadSequence && result?.messagesList) {
         onLoadSession(
           sessionId,
           result.messagesList as ChatMessage[],
@@ -297,7 +303,13 @@ export function SessionsPanel({
         );
       }
     } catch (error) {
-      console.error("Failed to load session:", error);
+      if (sessionLoadSequenceRef.current === loadSequence) {
+        console.error("Failed to load session:", error);
+      }
+    } finally {
+      if (sessionLoadSequenceRef.current === loadSequence) {
+        setPendingSessionLoadId(null);
+      }
     }
   };
 
@@ -541,19 +553,24 @@ export function SessionsPanel({
                       routeLabel,
                       previewText
                     );
+                    const isRowLoading = pendingSessionLoadId === session.id;
                     const isSessionActive =
                       activeSessionIds.includes(session.id) ||
+                      isRowLoading ||
                       (currentSessionLoading && currentSessionId === session.id);
+                    const isSessionSelected = currentSessionId === session.id || isRowLoading;
                     return (
                       <div
                         key={session.id}
                         className={`deferred-list-row relative px-2.5 py-2 rounded-lg transition-all cursor-pointer group ${
-                          currentSessionId === session.id
+                          isSessionSelected
                             ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
                             : "bg-white/[0.03] border border-white/5 hover:border-white/15"
                         }`}
                         aria-label={tooltip}
-                        onClick={() => handleLoadSession(session.id)}
+                        aria-busy={isRowLoading}
+                        data-loading={isRowLoading ? "true" : undefined}
+                        onClick={() => void handleLoadSession(session.id)}
                         onMouseEnter={(event) =>
                           setHoveredSessionTooltip({
                             anchor: event.currentTarget.getBoundingClientRect(),
