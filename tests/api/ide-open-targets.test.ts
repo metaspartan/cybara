@@ -28,6 +28,7 @@ describe("IDE workspace open targets", () => {
       "/cybara.png"
     );
     expect(result.targets.every((target) => target.available)).toBe(true);
+    expect(new Set(result.targets.map((target) => target.id)).size).toBe(result.targets.length);
   });
 
   test("rejects paths outside the allowed home workspace boundary", async () => {

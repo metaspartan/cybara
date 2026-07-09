@@ -13,13 +13,12 @@ import {
 import { workspaceOpenApi, type WorkspaceOpenTarget } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
-import { formatWorkspaceLabel } from "./chatModel";
 
 interface WorkspaceOpenMenuProps {
   workspaceDir: string | null;
   workspaceSaving?: boolean;
-  onSelectWorkspace: () => void;
-  onOpenCybaraIde: (workspaceDir: string) => void;
+  onSelectWorkspace: () => void | Promise<void>;
+  onOpenCybaraIde: (workspaceDir: string) => void | Promise<void>;
 }
 
 function targetIcon(target: WorkspaceOpenTarget) {
@@ -40,6 +39,12 @@ function targetIcon(target: WorkspaceOpenTarget) {
   return <Code2 className="h-3.5 w-3.5 text-emerald-300" />;
 }
 
+function workspaceFolderName(workspaceDir: string): string {
+  const normalized = workspaceDir.replace(/[\\/]+$/, "");
+  const parts = normalized.split(/[\\/]+/);
+  return parts[parts.length - 1] || normalized || "Workspace";
+}
+
 export function WorkspaceOpenMenu({
   workspaceDir,
   workspaceSaving = false,
@@ -55,6 +60,7 @@ export function WorkspaceOpenMenu({
   const [openingTargetId, setOpeningTargetId] = useState<string | null>(null);
   const addToast = useUIStore((state) => state.addToast);
   const trimmedWorkspace = workspaceDir?.trim() || null;
+  const workspaceName = trimmedWorkspace ? workspaceFolderName(trimmedWorkspace) : null;
 
   const loadTargets = useCallback(async () => {
     if (!trimmedWorkspace) return;
@@ -134,7 +140,13 @@ export function WorkspaceOpenMenu({
     setOpeningTargetId(target.id);
     try {
       if (target.id === "cybara_ide") {
-        onOpenCybaraIde(trimmedWorkspace);
+        const response = await workspaceOpenApi.open(trimmedWorkspace, target.id);
+        if (!response.success || response.data?.success === false) {
+          throw new Error(
+            response.data?.error || response.error || "Unable to open workspace in Cybara IDE"
+          );
+        }
+        await onOpenCybaraIde(response.data?.path || trimmedWorkspace);
         setOpen(false);
         return;
       }
@@ -142,10 +154,7 @@ export function WorkspaceOpenMenu({
       if (!response.success || response.data?.success === false) {
         throw new Error(response.data?.error || response.error || `Unable to open ${target.label}`);
       }
-      addToast(
-        "success",
-        `Opened ${formatWorkspaceLabel(trimmedWorkspace, 28)} in ${target.label}`
-      );
+      addToast("success", `Opened ${workspaceFolderName(trimmedWorkspace)} in ${target.label}`);
       setOpen(false);
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : `Unable to open ${target.label}`);
@@ -168,7 +177,7 @@ export function WorkspaceOpenMenu({
         }}
       >
         <div className="px-2 pb-1 pt-1 text-[10px] uppercase tracking-[0.12em] text-gray-500">
-          {formatWorkspaceLabel(trimmedWorkspace, 30)}
+          {workspaceName}
         </div>
         {loading ? (
           <div className="flex items-center gap-2 rounded-lg px-2 py-2 text-xs text-gray-400">

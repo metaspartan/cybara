@@ -1,7 +1,7 @@
 import { readdir, readFile, stat, writeFile, mkdir, rename } from "fs/promises";
 import { join, basename, extname, dirname, resolve, relative, isAbsolute } from "path";
 import { homedir } from "os";
-import { existsSync, mkdirSync, readFileSync, realpathSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, readdirSync } from "fs";
 import { getGitStatus } from "./git-api";
 import { checkWritePath } from "../core/tools/path-policy";
 
@@ -1380,6 +1380,17 @@ function commandAvailable(command: string): boolean {
   return (result.exitCode ?? 1) === 0;
 }
 
+type WorkspaceOpenTargetDefinition = {
+  id: string;
+  label: string;
+  kind: WorkspaceOpenTarget["kind"];
+  icon: string;
+  commands?: string[];
+  macApps?: string[];
+  windowsExecutables?: string[];
+  platforms?: NodeJS.Platform[];
+};
+
 function macAppBundlePath(appName: string): string | null {
   return (
     [
@@ -1396,16 +1407,224 @@ function macAppExists(appName: string): boolean {
   return macAppBundlePath(appName) !== null;
 }
 
-const MAC_TARGET_APP_NAMES: Record<string, string[]> = {
-  finder: ["Finder"],
-  terminal: ["Terminal"],
-  ghostty: ["Ghostty"],
-  zed: ["Zed"],
-  code: ["Visual Studio Code"],
-  cursor: ["Cursor"],
-  windsurf: ["Windsurf"],
-  xcode: ["Xcode"],
-};
+function windowsProgramRoots(): string[] {
+  return [
+    process.env.LOCALAPPDATA,
+    process.env.PROGRAMFILES,
+    process.env["PROGRAMFILES(X86)"],
+  ].filter((path): path is string => Boolean(path));
+}
+
+function findNestedExecutable(root: string, executableNames: string[], depth = 3): string | null {
+  if (depth < 0 || !existsSync(root)) return null;
+  let entries: string[];
+  try {
+    entries = readdirSync(root);
+  } catch {
+    return null;
+  }
+  for (const entry of entries) {
+    const candidate = join(root, entry);
+    if (executableNames.some((name) => entry.toLowerCase() === name.toLowerCase())) {
+      return candidate;
+    }
+    if (depth > 0) {
+      const nested = findNestedExecutable(candidate, executableNames, depth - 1);
+      if (nested) return nested;
+    }
+  }
+  return null;
+}
+
+function windowsExecutableAvailable(executableNames: string[]): boolean {
+  if (process.platform !== "win32") return false;
+  if (executableNames.some(commandAvailable)) return true;
+  return windowsProgramRoots().some((root) => Boolean(findNestedExecutable(root, executableNames)));
+}
+
+function windowsExecutablePath(executableNames: string[]): string | null {
+  if (process.platform !== "win32") return null;
+  return (
+    windowsProgramRoots()
+      .map((root) => findNestedExecutable(root, executableNames))
+      .find((path): path is string => Boolean(path)) ?? null
+  );
+}
+
+const WORKSPACE_OPEN_TARGET_DEFINITIONS: WorkspaceOpenTargetDefinition[] = [
+  {
+    id: "cybara_ide",
+    label: "Cybara IDE",
+    kind: "internal",
+    icon: "cybara",
+  },
+  {
+    id: "zed",
+    label: "Zed",
+    kind: "ide",
+    icon: "zed",
+    commands: ["zed"],
+    macApps: ["Zed"],
+    windowsExecutables: ["Zed.exe"],
+  },
+  {
+    id: "code",
+    label: "VS Code",
+    kind: "ide",
+    icon: "code",
+    commands: ["code"],
+    macApps: ["Visual Studio Code"],
+    windowsExecutables: ["Code.exe"],
+  },
+  {
+    id: "cursor",
+    label: "Cursor",
+    kind: "ide",
+    icon: "cursor",
+    commands: ["cursor"],
+    macApps: ["Cursor"],
+    windowsExecutables: ["Cursor.exe"],
+  },
+  {
+    id: "windsurf",
+    label: "Windsurf",
+    kind: "ide",
+    icon: "windsurf",
+    commands: ["windsurf"],
+    macApps: ["Windsurf"],
+    windowsExecutables: ["Windsurf.exe"],
+  },
+  {
+    id: "pearai",
+    label: "PearAI",
+    kind: "ide",
+    icon: "pearai",
+    commands: ["pearai"],
+    macApps: ["PearAI"],
+    windowsExecutables: ["PearAI.exe"],
+  },
+  {
+    id: "intellij",
+    label: "IntelliJ IDEA",
+    kind: "ide",
+    icon: "jetbrains",
+    commands: ["idea", "idea64"],
+    macApps: ["IntelliJ IDEA", "IntelliJ IDEA CE"],
+    windowsExecutables: ["idea64.exe", "idea.exe"],
+  },
+  {
+    id: "webstorm",
+    label: "WebStorm",
+    kind: "ide",
+    icon: "jetbrains",
+    commands: ["webstorm"],
+    macApps: ["WebStorm"],
+    windowsExecutables: ["webstorm64.exe", "webstorm.exe"],
+  },
+  {
+    id: "pycharm",
+    label: "PyCharm",
+    kind: "ide",
+    icon: "jetbrains",
+    commands: ["pycharm"],
+    macApps: ["PyCharm", "PyCharm CE"],
+    windowsExecutables: ["pycharm64.exe", "pycharm.exe"],
+  },
+  {
+    id: "goland",
+    label: "GoLand",
+    kind: "ide",
+    icon: "jetbrains",
+    commands: ["goland"],
+    macApps: ["GoLand"],
+    windowsExecutables: ["goland64.exe", "goland.exe"],
+  },
+  {
+    id: "clion",
+    label: "CLion",
+    kind: "ide",
+    icon: "jetbrains",
+    commands: ["clion"],
+    macApps: ["CLion"],
+    windowsExecutables: ["clion64.exe", "clion.exe"],
+  },
+  {
+    id: "phpstorm",
+    label: "PhpStorm",
+    kind: "ide",
+    icon: "jetbrains",
+    commands: ["phpstorm"],
+    macApps: ["PhpStorm"],
+    windowsExecutables: ["phpstorm64.exe", "phpstorm.exe"],
+  },
+  {
+    id: "rubymine",
+    label: "RubyMine",
+    kind: "ide",
+    icon: "jetbrains",
+    commands: ["rubymine"],
+    macApps: ["RubyMine"],
+    windowsExecutables: ["rubymine64.exe", "rubymine.exe"],
+  },
+  {
+    id: "rider",
+    label: "Rider",
+    kind: "ide",
+    icon: "jetbrains",
+    commands: ["rider"],
+    macApps: ["Rider"],
+    windowsExecutables: ["rider64.exe", "rider.exe"],
+  },
+  {
+    id: "datagrip",
+    label: "DataGrip",
+    kind: "ide",
+    icon: "jetbrains",
+    commands: ["datagrip"],
+    macApps: ["DataGrip"],
+    windowsExecutables: ["datagrip64.exe", "datagrip.exe"],
+  },
+  {
+    id: "android_studio",
+    label: "Android Studio",
+    kind: "ide",
+    icon: "android-studio",
+    commands: ["studio", "android-studio"],
+    macApps: ["Android Studio"],
+    windowsExecutables: ["studio64.exe", "studio.exe"],
+  },
+  {
+    id: "xcode",
+    label: "Xcode",
+    kind: "ide",
+    icon: "xcode",
+    macApps: ["Xcode"],
+    platforms: ["darwin"],
+  },
+  {
+    id: "ghostty",
+    label: "Ghostty",
+    kind: "terminal",
+    icon: "terminal",
+    commands: ["ghostty"],
+    macApps: ["Ghostty"],
+    windowsExecutables: ["ghostty.exe"],
+  },
+];
+
+function definitionAvailable(definition: WorkspaceOpenTargetDefinition): boolean {
+  if (definition.platforms && !definition.platforms.includes(process.platform)) return false;
+  if (definition.kind === "internal") return true;
+  if (process.platform === "darwin" && definition.macApps?.some(macAppExists)) return true;
+  if (process.platform === "win32" && definition.windowsExecutables) {
+    return windowsExecutableAvailable(definition.windowsExecutables);
+  }
+  return definition.commands?.some(commandAvailable) ?? false;
+}
+
+function targetDefinition(targetId: string): WorkspaceOpenTargetDefinition | undefined {
+  return WORKSPACE_OPEN_TARGET_DEFINITIONS.find((definition) => definition.id === targetId);
+}
 
 function macAppIconSource(appPath: string): string | null {
   const infoPlist = join(appPath, "Contents", "Info.plist");
@@ -1431,8 +1650,8 @@ function macAppIconSource(appPath: string): string | null {
 
 function cachedMacAppIconDataUrl(targetId: string): string | undefined {
   if (process.platform !== "darwin") return undefined;
-  const appPath = MAC_TARGET_APP_NAMES[targetId]
-    ?.map(macAppBundlePath)
+  const appPath = targetDefinition(targetId)
+    ?.macApps?.map(macAppBundlePath)
     .find((path): path is string => Boolean(path));
   if (!appPath) return undefined;
   const iconSource = macAppIconSource(appPath);
@@ -1490,14 +1709,14 @@ function validateWorkspaceOpenPath(
 
 function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
   const targets: WorkspaceOpenTarget[] = [
-    {
-      id: "cybara_ide",
-      label: "Cybara IDE",
-      kind: "internal",
-      icon: "cybara",
-      available: true,
-      detail: "Open in Cybara's workspace IDE",
-    },
+    ...WORKSPACE_OPEN_TARGET_DEFINITIONS.map((definition) => ({
+      id: definition.id,
+      label: definition.label,
+      kind: definition.kind,
+      icon: definition.icon,
+      available: definitionAvailable(definition),
+      detail: definition.id === "cybara_ide" ? "Open in Cybara's workspace IDE" : undefined,
+    })),
   ];
 
   if (process.platform === "darwin") {
@@ -1515,48 +1734,6 @@ function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
         kind: "terminal",
         icon: "terminal",
         available: true,
-      },
-      {
-        id: "ghostty",
-        label: "Ghostty",
-        kind: "terminal",
-        icon: "terminal",
-        available: macAppExists("Ghostty"),
-      },
-      {
-        id: "zed",
-        label: "Zed",
-        kind: "ide",
-        icon: "zed",
-        available: commandAvailable("zed") || macAppExists("Zed"),
-      },
-      {
-        id: "code",
-        label: "VS Code",
-        kind: "ide",
-        icon: "code",
-        available: commandAvailable("code") || macAppExists("Visual Studio Code"),
-      },
-      {
-        id: "cursor",
-        label: "Cursor",
-        kind: "ide",
-        icon: "cursor",
-        available: commandAvailable("cursor") || macAppExists("Cursor"),
-      },
-      {
-        id: "windsurf",
-        label: "Windsurf",
-        kind: "ide",
-        icon: "windsurf",
-        available: commandAvailable("windsurf") || macAppExists("Windsurf"),
-      },
-      {
-        id: "xcode",
-        label: "Xcode",
-        kind: "ide",
-        icon: "xcode",
-        available: macAppExists("Xcode"),
       }
     );
   } else if (process.platform === "win32") {
@@ -1574,27 +1751,6 @@ function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
         kind: "terminal",
         icon: "terminal",
         available: true,
-      },
-      {
-        id: "code",
-        label: "VS Code",
-        kind: "ide",
-        icon: "code",
-        available: commandAvailable("code"),
-      },
-      {
-        id: "cursor",
-        label: "Cursor",
-        kind: "ide",
-        icon: "cursor",
-        available: commandAvailable("cursor"),
-      },
-      {
-        id: "windsurf",
-        label: "Windsurf",
-        kind: "ide",
-        icon: "windsurf",
-        available: commandAvailable("windsurf"),
       }
     );
   } else {
@@ -1614,34 +1770,6 @@ function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
         available: ["gnome-terminal", "konsole", "xfce4-terminal", "x-terminal-emulator"].some(
           commandAvailable
         ),
-      },
-      {
-        id: "zed",
-        label: "Zed",
-        kind: "ide",
-        icon: "zed",
-        available: commandAvailable("zed"),
-      },
-      {
-        id: "code",
-        label: "VS Code",
-        kind: "ide",
-        icon: "code",
-        available: commandAvailable("code"),
-      },
-      {
-        id: "cursor",
-        label: "Cursor",
-        kind: "ide",
-        icon: "cursor",
-        available: commandAvailable("cursor"),
-      },
-      {
-        id: "windsurf",
-        label: "Windsurf",
-        kind: "ide",
-        icon: "windsurf",
-        available: commandAvailable("windsurf"),
       }
     );
   }
@@ -1683,6 +1811,36 @@ function openMacApp(targetPath: string, appName: string): RevealResult {
     };
   }
   return { success: true, path: targetPath };
+}
+
+function openWorkspaceDefinition(
+  targetPath: string,
+  definition: WorkspaceOpenTargetDefinition
+): RevealResult {
+  if (process.platform === "darwin") {
+    const command = definition.commands?.find(commandAvailable);
+    if (command) return openWithCommand(targetPath, command);
+    const appName = definition.macApps?.find(macAppExists);
+    if (appName) return openMacApp(targetPath, appName);
+  }
+
+  if (process.platform === "win32") {
+    const command = definition.commands?.find(commandAvailable);
+    if (command) return openWithCommand(targetPath, command);
+    const executable = definition.windowsExecutables
+      ? windowsExecutablePath(definition.windowsExecutables)
+      : null;
+    if (executable) return openWithCommand(targetPath, executable);
+  }
+
+  const command = definition.commands?.find(commandAvailable);
+  if (command) return openWithCommand(targetPath, command);
+
+  return {
+    success: false,
+    path: targetPath,
+    error: `${definition.label} is not installed or its launcher is not available`,
+  };
 }
 
 function encodeRepoPath(pathValue: string): string {
@@ -2010,23 +2168,13 @@ export async function openWorkspaceTarget(
       return revealInSystemExplorer(targetPath);
     case "terminal":
       return openInSystemTerminal(targetPath);
-    case "ghostty":
-      return process.platform === "darwin"
-        ? openWithCommand(targetPath, "ghostty", "Ghostty")
-        : { success: false, path: targetPath, error: "Ghostty opener is only supported on macOS" };
-    case "zed":
-      return openWithCommand(targetPath, "zed", "Zed");
-    case "code":
-      return openWithCommand(targetPath, "code", "Visual Studio Code");
-    case "cursor":
-      return openWithCommand(targetPath, "cursor", "Cursor");
-    case "windsurf":
-      return openWithCommand(targetPath, "windsurf", "Windsurf");
-    case "xcode":
-      return process.platform === "darwin"
-        ? openMacApp(targetPath, "Xcode")
-        : { success: false, path: targetPath, error: "Xcode opener is only supported on macOS" };
     default:
+      {
+        const definition = targetDefinition(targetId);
+        if (definition) {
+          return openWorkspaceDefinition(targetPath, definition);
+        }
+      }
       return {
         success: false,
         path: targetPath,

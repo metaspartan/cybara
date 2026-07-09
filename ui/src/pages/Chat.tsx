@@ -3855,10 +3855,23 @@ export function Chat() {
   }, [applySessionWorkspace, effectiveWorkspaceDir]);
 
   const handleOpenWorkspaceInCybaraIde = useCallback(
-    (targetWorkspaceDir: string) => {
-      const params = new URLSearchParams();
-      params.set("workspacePath", targetWorkspaceDir);
-      navigate(`/ide?${params.toString()}`);
+    async (targetWorkspaceDir: string) => {
+      const normalized = targetWorkspaceDir.trim();
+      if (!normalized) return;
+      try {
+        persistWorkspaceDir(normalized);
+        setLastWorkspaceDir(normalized);
+        const params = new URLSearchParams();
+        params.set("workspacePath", normalized);
+        navigate(`/ide?${params.toString()}`);
+      } catch (error) {
+        useUIStore
+          .getState()
+          .addToast(
+            "error",
+            error instanceof Error ? error.message : "Unable to open workspace in Cybara IDE"
+          );
+      }
     },
     [navigate]
   );
