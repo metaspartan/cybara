@@ -1004,6 +1004,14 @@ export function IDE() {
     [updateTreeFilter]
   );
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const rawWorkspacePath = params.get("workspacePath");
+    const targetWorkspacePath = rawWorkspacePath?.trim();
+    if (!targetWorkspacePath || targetWorkspacePath === currentPath) return;
+    handleSetWorkspacePath(targetWorkspacePath);
+  }, [currentPath, handleSetWorkspacePath, location.search]);
+
   const handlePromptOpenWorkspace = useCallback(async () => {
     const suggested = rootInfo?.path || currentPath || "~";
     const rawPath = window.prompt("Enter workspace folder path", suggested);
