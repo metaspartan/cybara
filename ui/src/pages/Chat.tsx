@@ -1767,8 +1767,8 @@ export function Chat() {
     return true;
   }, []);
   const sessionFileChanges = useMemo(
-    () => summarizeSessionFileChanges(typedMessages),
-    [typedMessages]
+    () => summarizeSessionFileChanges(typedMessages, liveActivities),
+    [liveActivities, typedMessages]
   );
   const currentSessionPlan = useMemo(
     () => extractLatestPlanFromMessages(typedMessages, sessionId),

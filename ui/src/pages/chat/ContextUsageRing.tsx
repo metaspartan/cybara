@@ -52,9 +52,6 @@ function contextUsageDetailRows(usage?: SessionContextUsage | null): Array<strin
       `${formatTokenCount(usage.metadataTokens || 0)} tool/timeline metadata tokens not replayed`
     );
   }
-  if (usage.source === "estimated") {
-    rows.push("Estimated from the active provider prompt");
-  }
   return rows;
 }
 

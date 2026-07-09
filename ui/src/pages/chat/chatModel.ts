@@ -1544,26 +1544,43 @@ export function extractToolFileChanges(tool: ToolCall): FileChangeItem[] {
   return [];
 }
 
-export function summarizeMessageFileChanges(toolCalls?: ToolCall[]): FileChangeSummary | null {
-  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return null;
+function parseActivityFileChange(
+  activity: Pick<LiveActivityItem, "phase" | "text">
+): FileChangeItem | null {
+  if (activity.phase !== "result") return null;
+  const text = typeof activity.text === "string" ? activity.text.trim() : "";
+  const match = text.match(/^Edited\s+(.+?)\s+\+(\d+)\s+-(\d+)$/i);
+  if (!match) return null;
+  const path = match[1]?.trim();
+  if (!path || path.toLowerCase() === "file") return null;
+  const added = Number.parseInt(match[2] || "0", 10);
+  const removed = Number.parseInt(match[3] || "0", 10);
+  if (!Number.isFinite(added) || !Number.isFinite(removed)) return null;
+  return {
+    path,
+    type: removed > 0 ? "updated" : "created",
+    added: Math.max(0, added),
+    removed: Math.max(0, removed),
+  };
+}
 
+function summarizeFileChanges(changes: FileChangeItem[]): FileChangeSummary | null {
+  if (changes.length === 0) return null;
   const byPath = new Map<string, FileChangeItem>();
-  for (const tool of toolCalls) {
-    const changes = extractToolFileChanges(tool);
-    for (const change of changes) {
-      if (!change.path) continue;
-      const existing = byPath.get(change.path);
-      if (!existing) {
-        byPath.set(change.path, { ...change });
-        continue;
-      }
 
-      existing.added += change.added;
-      existing.removed += change.removed;
-      if (change.diff) existing.diff = change.diff;
-      if (change.type === "deleted") existing.type = "deleted";
-      if (existing.type !== "deleted" && change.type === "updated") existing.type = "updated";
+  for (const change of changes) {
+    if (!change.path) continue;
+    const existing = byPath.get(change.path);
+    if (!existing) {
+      byPath.set(change.path, { ...change });
+      continue;
     }
+
+    existing.added += change.added;
+    existing.removed += change.removed;
+    if (change.diff) existing.diff = change.diff;
+    if (change.type === "deleted") existing.type = "deleted";
+    if (existing.type !== "deleted" && change.type === "updated") existing.type = "updated";
   }
 
   const files = Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path));
@@ -1574,13 +1591,35 @@ export function summarizeMessageFileChanges(toolCalls?: ToolCall[]): FileChangeS
   return { files, totalAdded, totalRemoved };
 }
 
-export function summarizeSessionFileChanges(messages: ChatMessage[]): FileChangeSummary | null {
+export function summarizeMessageFileChanges(toolCalls?: ToolCall[]): FileChangeSummary | null {
+  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return null;
+  return summarizeFileChanges(toolCalls.flatMap((tool) => extractToolFileChanges(tool)));
+}
+
+export function summarizeSessionFileChanges(
+  messages: ChatMessage[],
+  liveActivities: LiveActivityItem[] = []
+): FileChangeSummary | null {
   const toolCalls: ToolCall[] = [];
+  const changes: FileChangeItem[] = [];
   for (const message of messages) {
-    if (!Array.isArray(message.tool_calls) || message.tool_calls.length === 0) continue;
-    toolCalls.push(...getToolCallsInTimelineOrder(message.tool_calls));
+    if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+      toolCalls.push(...getToolCallsInTimelineOrder(message.tool_calls));
+    }
+    for (const activity of message.process_activities || []) {
+      const parsed = parseActivityFileChange({
+        phase: activity.phase || "result",
+        text: activity.text || "",
+      });
+      if (parsed) changes.push(parsed);
+    }
   }
-  return summarizeMessageFileChanges(toolCalls);
+  for (const activity of liveActivities) {
+    const parsed = parseActivityFileChange(activity);
+    if (parsed) changes.push(parsed);
+  }
+  changes.push(...toolCalls.flatMap((tool) => extractToolFileChanges(tool)));
+  return summarizeFileChanges(changes);
 }
 
 export function getToolCallsInTimelineOrder(toolCalls?: ToolCall[]): ToolCall[] {

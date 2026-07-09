@@ -130,7 +130,7 @@ export function trackTokenUsage(
     });
 
     if (durationMs && durationMs > 0) {
-      const tps = Math.round((outputTokens / durationMs) * 1000); // output tokens per second
+      const tps = Math.round((outputTokens / durationMs) * 1000);
 
       tables.metrics.add({
         id: crypto.randomUUID(),

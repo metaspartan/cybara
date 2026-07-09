@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { summarizeSessionFileChanges, type ChatMessage } from "../../ui/src/pages/chat/chatModel";
 
 const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
 const chatModelPath = fileURLToPath(
@@ -53,6 +54,7 @@ describe("Chat revert and diff wiring", () => {
     const source = readChatSource();
     expect(source).toContain("summarizeMessageFileChanges");
     expect(source).toContain("summarizeSessionFileChanges");
+    expect(source).toContain("summarizeSessionFileChanges(typedMessages, liveActivities)");
     expect(source).toContain("files changed");
     expect(source).toContain("<DiffCodeBlock code={file.diff} />");
     expect(source).toContain("Worked for");
@@ -64,6 +66,34 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("findPriorUserTimestampMs");
     expect(source).toContain("turnStartedAtMs");
     expect(source).toContain("assistantTimestamp: message.timestamp");
+  });
+
+  test("includes live and persisted edit activities in session file changes", () => {
+    const messages: ChatMessage[] = [
+      {
+        role: "assistant",
+        content: "",
+        process_activities: [
+          {
+            phase: "result",
+            text: "Edited src/persisted.ts +3 -1",
+            timestamp: 1,
+          },
+        ],
+      },
+    ];
+    const summary = summarizeSessionFileChanges(messages, [
+      {
+        id: "live-edit",
+        phase: "result",
+        text: "Edited _path_keys.py +182 -0",
+        timestamp: 2,
+        toolName: "edit",
+      },
+    ]);
+    expect(summary?.files.map((file) => file.path)).toEqual(["_path_keys.py", "src/persisted.ts"]);
+    expect(summary?.totalAdded).toBe(185);
+    expect(summary?.totalRemoved).toBe(1);
   });
 
   test("renders full tool-call timeline inline without truncation controls", () => {

@@ -1245,7 +1245,7 @@ struct ChatScreen: View {
     }
 
     private var activeFileChanges: NativeChatFileChangeSummary {
-        summarizeNativeChatFileChanges(messages)
+        summarizeNativeChatFileChanges(messages, liveActivities: liveActivities)
     }
 
     private var environmentToolNames: [String] {
@@ -3059,8 +3059,27 @@ private struct NativeToolNameCloud: View {
     }
 }
 
-private func summarizeNativeChatFileChanges(_ messages: [GatewaySessionMessage]) -> NativeChatFileChangeSummary {
+private func summarizeNativeChatFileChanges(
+    _ messages: [GatewaySessionMessage],
+    liveActivities: [NativeToolActivity] = []
+) -> NativeChatFileChangeSummary {
     var files: [String: NativeChatFileChangeItem] = [:]
+    func merge(_ item: NativeChatFileChangeItem) {
+        if let existing = files[item.path] {
+            let kind = item.kind == "deleted" || existing.kind == "deleted"
+                ? "deleted"
+                : (item.kind == "updated" || existing.kind == "updated" ? "updated" : item.kind)
+            files[item.path] = NativeChatFileChangeItem(
+                path: item.path,
+                kind: kind,
+                added: existing.added + item.added,
+                removed: existing.removed + item.removed
+            )
+        } else {
+            files[item.path] = item
+        }
+    }
+
     for tool in messages.flatMap({ $0.tool_calls ?? [] }) {
         let lowerName = tool.name.lowercased()
         let relevant = lowerName.contains("write") || lowerName.contains("edit") || lowerName.contains("patch")
@@ -3069,12 +3088,22 @@ private func summarizeNativeChatFileChanges(_ messages: [GatewaySessionMessage])
         for path in paths {
             let diff = nativeJSONString(nativeJSONObject(tool.result), key: "diff") ?? nativeJSONString(tool.args, key: "diff") ?? ""
             let counts = nativeUnifiedDiffCounts(diff)
-            files[path] = NativeChatFileChangeItem(
+            merge(NativeChatFileChangeItem(
                 path: path,
                 kind: nativeFileChangeKind(tool),
                 added: counts.added,
                 removed: counts.removed
-            )
+            ))
+        }
+    }
+    for activity in messages.flatMap({ $0.process_activities ?? [] }) {
+        if let item = nativeActivityFileChange(text: activity.text, phase: activity.phase) {
+            merge(item)
+        }
+    }
+    for activity in liveActivities {
+        if let item = nativeActivityFileChange(text: activity.text, phase: activity.phase.rawValue) {
+            merge(item)
         }
     }
     let sorted = files.values.sorted { $0.path.localizedCaseInsensitiveCompare($1.path) == .orderedAscending }
@@ -3082,6 +3111,30 @@ private func summarizeNativeChatFileChanges(_ messages: [GatewaySessionMessage])
         files: sorted,
         totalAdded: sorted.reduce(0) { $0 + $1.added },
         totalRemoved: sorted.reduce(0) { $0 + $1.removed }
+    )
+}
+
+private func nativeActivityFileChange(text: String?, phase: String?) -> NativeChatFileChangeItem? {
+    guard (phase ?? "result").lowercased() == "result",
+          let text = firstNonEmptyGatewayString(text)
+    else { return nil }
+    let parts = text.split(separator: " ").map(String.init)
+    guard parts.count >= 4,
+          parts.first?.lowercased() == "edited",
+          let addedRaw = parts.dropLast().last,
+          let removedRaw = parts.last,
+          addedRaw.hasPrefix("+"),
+          removedRaw.hasPrefix("-"),
+          let added = Int(addedRaw.dropFirst()),
+          let removed = Int(removedRaw.dropFirst())
+    else { return nil }
+    let path = parts.dropFirst().dropLast(2).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !path.isEmpty, path.lowercased() != "file" else { return nil }
+    return NativeChatFileChangeItem(
+        path: path,
+        kind: removed > 0 ? "updated" : "created",
+        added: max(0, added),
+        removed: max(0, removed)
     )
 }
 
