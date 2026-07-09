@@ -379,12 +379,7 @@ export interface IdeBreadcrumb {
   isFile: boolean;
 }
 
-export type IdeSettingsSectionId =
-  | "general"
-  | "editor"
-  | "indexing"
-  | "shortcuts"
-  | "terminal";
+export type IdeSettingsSectionId = "general" | "editor" | "indexing" | "shortcuts" | "terminal";
 export type IdeTopMenuId = "file" | "edit" | "view" | "terminal" | "go";
 
 export interface IdePreferences {

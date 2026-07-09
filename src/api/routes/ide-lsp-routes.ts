@@ -17,6 +17,8 @@ import {
   getFilePermalink,
   listWorkspaceFiles,
   openInSystemTerminal,
+  listWorkspaceOpenTargets,
+  openWorkspaceTarget,
   previewReplaceInWorkspace,
   readFileContent,
   renameItem,
@@ -1166,6 +1168,32 @@ export const ideLspRoutes: Record<string, RouteHandler> = {
     const success =
       !!result && typeof result === "object" && (result as { success?: boolean }).success !== false;
     trackIdeOperation("open_terminal", path, success);
+    return result;
+  },
+  "GET /api/ide/open-targets": async (_body, params) => {
+    const path = params?.path as string | undefined;
+    if (!path || typeof path !== "string") {
+      trackIdeOperation("open_targets", path, false, { reason: "missing_path" });
+      return { success: false, path: path || "", targets: [], error: "Missing 'path' parameter" };
+    }
+    const result = await listWorkspaceOpenTargets(path);
+    trackIdeOperation("open_targets", path, result.success !== false, {
+      count: result.targets.length,
+    });
+    return result;
+  },
+  "POST /api/ide/open": async (body) => {
+    const { path, targetId } = body as { path?: string; targetId?: string };
+    if (!path || typeof path !== "string") {
+      trackIdeOperation("open_workspace", path, false, { reason: "missing_path" });
+      return { success: false, path: path || "", error: "Missing 'path' parameter" };
+    }
+    if (!targetId || typeof targetId !== "string") {
+      trackIdeOperation("open_workspace", path, false, { reason: "missing_target" });
+      return { success: false, path, error: "Missing 'targetId' parameter" };
+    }
+    const result = await openWorkspaceTarget(path, targetId);
+    trackIdeOperation("open_workspace", path, result.success !== false, { targetId });
     return result;
   },
   "GET /api/ide/permalink": async (_body, params) => {

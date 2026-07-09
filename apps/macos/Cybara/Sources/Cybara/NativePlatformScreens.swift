@@ -919,6 +919,7 @@ struct LSPScreen: View {
 
 struct IDEScreen: View {
     let client: GatewayClient
+    @AppStorage("cybara.ide.pendingWorkspacePath") private var pendingWorkspacePath = ""
     @State private var status: NativeIDEIndexStatus?
     @State private var browse: NativeIDEBrowseResult?
     @State private var workspacePath = ""
@@ -1631,6 +1632,11 @@ struct IDEScreen: View {
 
     private func load() async {
         do {
+            if let pending = firstNonEmptyGatewayString(pendingWorkspacePath) {
+                workspacePath = pending
+                currentPath = pending
+                pendingWorkspacePath = ""
+            }
             status = try await client.ideIndexStatus(workspacePath: firstNonEmptyGatewayString(workspacePath))
             if workspacePath.isEmpty {
                 workspacePath = status?.workspacePath ?? status?.indexedWorkspacePath ?? ""

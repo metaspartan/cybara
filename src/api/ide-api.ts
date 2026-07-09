@@ -199,6 +199,22 @@ export interface IdeUrlResult {
   error?: string;
 }
 
+export interface WorkspaceOpenTarget {
+  id: string;
+  label: string;
+  kind: "internal" | "file-manager" | "terminal" | "ide";
+  icon: string;
+  available: boolean;
+  detail?: string;
+}
+
+export interface WorkspaceOpenTargetsResult {
+  success: boolean;
+  path: string;
+  targets: WorkspaceOpenTarget[];
+  error?: string;
+}
+
 function isBinaryExtension(ext: string): boolean {
   const binaryExts = [
     ".png",
@@ -1366,6 +1382,231 @@ function commandAvailable(command: string): boolean {
   return (result.exitCode ?? 1) === 0;
 }
 
+function macAppExists(appName: string): boolean {
+  return [`/Applications/${appName}.app`, join(HOME_DIR, "Applications", `${appName}.app`)].some(
+    existsSync
+  );
+}
+
+function validateWorkspaceOpenPath(inputPath: string): { success: true; path: string } | RevealResult {
+  const targetPath = normalizePath(inputPath);
+  if (!isPathAllowed(targetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+  if (!existsSync(targetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Path does not exist",
+    };
+  }
+  const canonicalTargetPath = resolveCanonicalPath(targetPath);
+  if (!isWithinHome(canonicalTargetPath)) {
+    return {
+      success: false,
+      path: targetPath,
+      error: "Access denied: Path outside home directory",
+    };
+  }
+  return { success: true, path: targetPath };
+}
+
+function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
+  const targets: WorkspaceOpenTarget[] = [
+    {
+      id: "cybara_ide",
+      label: "Cybara IDE",
+      kind: "internal",
+      icon: "cybara",
+      available: true,
+      detail: "Open in Cybara's workspace IDE",
+    },
+  ];
+
+  if (process.platform === "darwin") {
+    targets.push(
+      {
+        id: "finder",
+        label: "Finder",
+        kind: "file-manager",
+        icon: "finder",
+        available: true,
+      },
+      {
+        id: "terminal",
+        label: "Terminal",
+        kind: "terminal",
+        icon: "terminal",
+        available: true,
+      },
+      {
+        id: "ghostty",
+        label: "Ghostty",
+        kind: "terminal",
+        icon: "terminal",
+        available: macAppExists("Ghostty"),
+      },
+      {
+        id: "zed",
+        label: "Zed",
+        kind: "ide",
+        icon: "zed",
+        available: commandAvailable("zed") || macAppExists("Zed"),
+      },
+      {
+        id: "code",
+        label: "VS Code",
+        kind: "ide",
+        icon: "code",
+        available: commandAvailable("code") || macAppExists("Visual Studio Code"),
+      },
+      {
+        id: "cursor",
+        label: "Cursor",
+        kind: "ide",
+        icon: "cursor",
+        available: commandAvailable("cursor") || macAppExists("Cursor"),
+      },
+      {
+        id: "windsurf",
+        label: "Windsurf",
+        kind: "ide",
+        icon: "windsurf",
+        available: commandAvailable("windsurf") || macAppExists("Windsurf"),
+      },
+      {
+        id: "xcode",
+        label: "Xcode",
+        kind: "ide",
+        icon: "xcode",
+        available: macAppExists("Xcode"),
+      }
+    );
+  } else if (process.platform === "win32") {
+    targets.push(
+      {
+        id: "explorer",
+        label: "Explorer",
+        kind: "file-manager",
+        icon: "folder",
+        available: true,
+      },
+      {
+        id: "terminal",
+        label: "Terminal",
+        kind: "terminal",
+        icon: "terminal",
+        available: true,
+      },
+      {
+        id: "code",
+        label: "VS Code",
+        kind: "ide",
+        icon: "code",
+        available: commandAvailable("code"),
+      },
+      {
+        id: "cursor",
+        label: "Cursor",
+        kind: "ide",
+        icon: "cursor",
+        available: commandAvailable("cursor"),
+      },
+      {
+        id: "windsurf",
+        label: "Windsurf",
+        kind: "ide",
+        icon: "windsurf",
+        available: commandAvailable("windsurf"),
+      }
+    );
+  } else {
+    targets.push(
+      {
+        id: "files",
+        label: "Files",
+        kind: "file-manager",
+        icon: "folder",
+        available: commandAvailable("xdg-open"),
+      },
+      {
+        id: "terminal",
+        label: "Terminal",
+        kind: "terminal",
+        icon: "terminal",
+        available: ["gnome-terminal", "konsole", "xfce4-terminal", "x-terminal-emulator"].some(
+          commandAvailable
+        ),
+      },
+      {
+        id: "zed",
+        label: "Zed",
+        kind: "ide",
+        icon: "zed",
+        available: commandAvailable("zed"),
+      },
+      {
+        id: "code",
+        label: "VS Code",
+        kind: "ide",
+        icon: "code",
+        available: commandAvailable("code"),
+      },
+      {
+        id: "cursor",
+        label: "Cursor",
+        kind: "ide",
+        icon: "cursor",
+        available: commandAvailable("cursor"),
+      },
+      {
+        id: "windsurf",
+        label: "Windsurf",
+        kind: "ide",
+        icon: "windsurf",
+        available: commandAvailable("windsurf"),
+      }
+    );
+  }
+
+  return targets.filter((target) => target.available);
+}
+
+function openWithCommand(targetPath: string, command: string, appName?: string): RevealResult {
+  const args =
+    process.platform === "darwin" && appName && !commandAvailable(command)
+      ? ["open", "-a", appName, targetPath]
+      : [command, targetPath];
+  const result = Bun.spawnSync(args, { stdout: "pipe", stderr: "pipe" });
+  if ((result.exitCode ?? 1) !== 0) {
+    return {
+      success: false,
+      path: targetPath,
+      error: result.stderr.toString().trim() || `Failed to open ${appName || command}`,
+    };
+  }
+  return { success: true, path: targetPath };
+}
+
+function openMacApp(targetPath: string, appName: string): RevealResult {
+  const result = Bun.spawnSync(["open", "-a", appName, targetPath], {
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  if ((result.exitCode ?? 1) !== 0) {
+    return {
+      success: false,
+      path: targetPath,
+      error: result.stderr.toString().trim() || `Failed to open ${appName}`,
+    };
+  }
+  return { success: true, path: targetPath };
+}
+
 function encodeRepoPath(pathValue: string): string {
   return pathValue
     .split("/")
@@ -1657,6 +1898,62 @@ export async function revealInSystemExplorer(inputPath: string): Promise<RevealR
       path: targetPath,
       error: error instanceof Error ? error.message : String(error),
     };
+  }
+}
+
+export async function listWorkspaceOpenTargets(
+  inputPath: string
+): Promise<WorkspaceOpenTargetsResult> {
+  const validation = validateWorkspaceOpenPath(inputPath);
+  if (!validation.success) {
+    return { ...validation, targets: [] };
+  }
+  return {
+    success: true,
+    path: validation.path,
+    targets: availableTargetsForPlatform(),
+  };
+}
+
+export async function openWorkspaceTarget(
+  inputPath: string,
+  targetId: string
+): Promise<RevealResult> {
+  const validation = validateWorkspaceOpenPath(inputPath);
+  if (!validation.success) return validation;
+  const targetPath = validation.path;
+
+  switch (targetId) {
+    case "cybara_ide":
+      return { success: true, path: targetPath };
+    case "finder":
+    case "explorer":
+    case "files":
+      return revealInSystemExplorer(targetPath);
+    case "terminal":
+      return openInSystemTerminal(targetPath);
+    case "ghostty":
+      return process.platform === "darwin"
+        ? openWithCommand(targetPath, "ghostty", "Ghostty")
+        : { success: false, path: targetPath, error: "Ghostty opener is only supported on macOS" };
+    case "zed":
+      return openWithCommand(targetPath, "zed", "Zed");
+    case "code":
+      return openWithCommand(targetPath, "code", "Visual Studio Code");
+    case "cursor":
+      return openWithCommand(targetPath, "cursor", "Cursor");
+    case "windsurf":
+      return openWithCommand(targetPath, "windsurf", "Windsurf");
+    case "xcode":
+      return process.platform === "darwin"
+        ? openMacApp(targetPath, "Xcode")
+        : { success: false, path: targetPath, error: "Xcode opener is only supported on macOS" };
+    default:
+      return {
+        success: false,
+        path: targetPath,
+        error: `Unsupported open target: ${targetId}`,
+      };
   }
 }
 

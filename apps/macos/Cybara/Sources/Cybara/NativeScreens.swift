@@ -459,6 +459,7 @@ private let nativeModelRouterSelectorValue = "__model_router__"
 struct ChatScreen: View {
     let client: GatewayClient
     @Binding var selectedSessionID: String?
+    var openCybaraIDEWorkspace: (String) -> Void = { _ in }
     @Environment(\.cybaraAccent) private var accentTint
 
     @State private var sessions: [GatewaySession] = []
@@ -484,6 +485,9 @@ struct ChatScreen: View {
     @State private var workspaceSaving = false
     @State private var activeGitBranch: String?
     @State private var activeGitBranches: [GatewayGitBranchSummary] = []
+    @State private var workspaceOpenTargets: [NativeWorkspaceOpenTarget] = []
+    @State private var workspaceOpenTargetsLoading = false
+    @State private var workspaceOpeningTargetID: String?
     @State private var gitBranchSearch = ""
     @State private var newGitBranchName = ""
     @State private var gitBranchLoading = false
@@ -556,6 +560,7 @@ struct ChatScreen: View {
         }
         .task(id: activeWorkspaceDir) {
             await loadActiveGitBranch()
+            await loadWorkspaceOpenTargets()
         }
         .onReceive(statusStream.$latest.compactMap { $0 }) { event in
             handleStatusEvent(event)
@@ -987,18 +992,7 @@ struct ChatScreen: View {
                     .lineLimit(1)
             }
             Spacer()
-            Button {
-                Task { await chooseWorkspace(for: activeSession) }
-            } label: {
-                if workspaceSaving {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Image(systemName: "folder")
-                }
-            }
-            .buttonStyle(.borderless)
-            .disabled(workspaceSaving)
-            .help(workspaceHelpText)
+            workspaceOpenMenu
 
             Button {
                 showFileDiffsPopover.toggle()
@@ -1045,6 +1039,82 @@ struct ChatScreen: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 13)
+    }
+
+    @ViewBuilder
+    private var workspaceOpenMenu: some View {
+        if let workspace = activeWorkspaceDir {
+            Menu {
+                if workspaceOpenTargetsLoading {
+                    Label("Detecting apps…", systemImage: "progress.indicator")
+                }
+                ForEach(workspaceOpenTargets.sorted(by: workspaceOpenTargetSort)) { target in
+                    Button {
+                        openWorkspaceTarget(target, workspace: workspace)
+                    } label: {
+                        Label(target.label, systemImage: workspaceOpenTargetIcon(target))
+                    }
+                    .disabled(workspaceOpeningTargetID != nil)
+                }
+                Divider()
+                Button {
+                    Task { await chooseWorkspace(for: activeSession) }
+                } label: {
+                    Label("Change Workspace…", systemImage: "folder")
+                }
+            } label: {
+                HStack(spacing: 5) {
+                    if workspaceOpeningTargetID != nil || workspaceSaving {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: "rectangle.and.arrow.up.right.and.arrow.down.left")
+                    }
+                    Text("Open in")
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .menuStyle(.borderlessButton)
+            .help("Workspace: \(workspace)")
+            .task(id: workspace) {
+                await loadWorkspaceOpenTargets()
+            }
+        } else {
+            Button {
+                Task { await chooseWorkspace(for: activeSession) }
+            } label: {
+                if workspaceSaving {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "folder")
+                }
+            }
+            .buttonStyle(.borderless)
+            .disabled(workspaceSaving)
+            .help(workspaceHelpText)
+        }
+    }
+
+    private func workspaceOpenTargetSort(_ left: NativeWorkspaceOpenTarget, _ right: NativeWorkspaceOpenTarget) -> Bool {
+        if left.id == "cybara_ide" { return true }
+        if right.id == "cybara_ide" { return false }
+        return left.label.localizedCaseInsensitiveCompare(right.label) == .orderedAscending
+    }
+
+    private func workspaceOpenTargetIcon(_ target: NativeWorkspaceOpenTarget) -> String {
+        switch target.id {
+        case "cybara_ide":
+            return "macwindow"
+        case "finder", "explorer", "files":
+            return "folder"
+        case "terminal", "ghostty":
+            return "terminal"
+        case "xcode":
+            return "hammer"
+        default:
+            return "curlybraces.square"
+        }
     }
 
     private var sessionDetailLine: String {
@@ -2590,6 +2660,56 @@ struct ChatScreen: View {
             }
         }
         gitBranchLoading = false
+    }
+
+    private func loadWorkspaceOpenTargets() async {
+        guard let workspace = firstNonEmptyGatewayString(activeWorkspaceDir) else {
+            workspaceOpenTargets = []
+            return
+        }
+        workspaceOpenTargetsLoading = true
+        do {
+            let targets = try await client.workspaceOpenTargets(path: workspace)
+            if firstNonEmptyGatewayString(activeWorkspaceDir) == workspace {
+                workspaceOpenTargets = targets.filter { $0.available != false }
+            }
+        } catch {
+            if firstNonEmptyGatewayString(activeWorkspaceDir) == workspace {
+                workspaceOpenTargets = [
+                    NativeWorkspaceOpenTarget(
+                        id: "cybara_ide",
+                        label: "Cybara IDE",
+                        kind: "internal",
+                        icon: "cybara",
+                        available: true,
+                        detail: nil
+                    )
+                ]
+                self.error = error.localizedDescription
+            }
+        }
+        workspaceOpenTargetsLoading = false
+    }
+
+    private func openWorkspaceTarget(_ target: NativeWorkspaceOpenTarget, workspace: String) {
+        workspaceOpeningTargetID = target.id
+        if target.id == "cybara_ide" {
+            openCybaraIDEWorkspace(workspace)
+            workspaceOpeningTargetID = nil
+            return
+        }
+        Task {
+            do {
+                let response = try await client.openWorkspaceTarget(path: workspace, targetID: target.id)
+                if response.success == false {
+                    throw GatewayClientError.badStatus(200, response.error ?? "Unable to open workspace")
+                }
+                error = nil
+            } catch {
+                self.error = error.localizedDescription
+            }
+            workspaceOpeningTargetID = nil
+        }
     }
 
     private func changeGitBranch(_ branch: String, create: Bool = false) async {

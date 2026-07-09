@@ -35,6 +35,15 @@ type ChatProcessActivityPayload = Array<{
   sandboxProvider?: string;
 }>;
 
+export interface WorkspaceOpenTarget {
+  id: string;
+  label: string;
+  kind: "internal" | "file-manager" | "terminal" | "ide";
+  icon: string;
+  available: boolean;
+  detail?: string;
+}
+
 /**
  * Resolve a human-readable error from an ApiResponse: prefer a nested
  * `data.error` (envelope returned with HTTP 200), then the transport `error`,
@@ -1374,6 +1383,18 @@ export const chatApi = {
       method: "DELETE",
     }),
   deleteSession: (id: string) => fetchApi<void>("/sessions/" + id, { method: "DELETE" }),
+};
+
+export const workspaceOpenApi = {
+  targets: (path: string) =>
+    fetchApi<{ success: boolean; path: string; targets: WorkspaceOpenTarget[]; error?: string }>(
+      `/ide/open-targets?path=${encodeURIComponent(path)}`
+    ),
+  open: (path: string, targetId: string) =>
+    fetchApi<{ success: boolean; path: string; error?: string }>("/ide/open", {
+      method: "POST",
+      body: JSON.stringify({ path, targetId }),
+    }),
 };
 
 export const dashboardApi = {

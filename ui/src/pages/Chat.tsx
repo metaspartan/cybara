@@ -174,6 +174,7 @@ import { DiffCodeBlock, MessageContent } from "./chat/MessageContent";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
 import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
 import { ChatEnvironmentOverview } from "./chat/ChatEnvironmentOverview";
+import { WorkspaceOpenMenu } from "./chat/WorkspaceOpenMenu";
 import { FileChangesCard } from "./chat/FileChangesCard";
 import { GitBranchSelector, type GitBranchOption } from "./chat/GitBranchSelector";
 import { PlanSummaryCard } from "./chat/PlanSummaryCard";
@@ -3853,6 +3854,15 @@ export function Chat() {
     }
   }, [applySessionWorkspace, effectiveWorkspaceDir]);
 
+  const handleOpenWorkspaceInCybaraIde = useCallback(
+    (targetWorkspaceDir: string) => {
+      const params = new URLSearchParams();
+      params.set("workspacePath", targetWorkspaceDir);
+      navigate(`/ide?${params.toString()}`);
+    },
+    [navigate]
+  );
+
   const handleOpenDiffFileInIde = useCallback(
     (file: FileChangeItem) => {
       const resolvedPath = resolvePathForIde(file.path, effectiveWorkspaceDir);
@@ -4158,27 +4168,12 @@ export function Chat() {
           )}
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
-          <button
-            onClick={() => void handleSelectWorkspace()}
-            disabled={workspaceSaving}
-            className="inline-flex items-center gap-1.5 px-2 py-1.5 rounded-lg border border-blue-500/30 bg-blue-500/10 text-[11px] text-blue-300 hover:text-blue-200 hover:bg-blue-500/15 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-            title={
-              effectiveWorkspaceDir
-                ? `Workspace: ${effectiveWorkspaceDir} — click to change`
-                : "Select workspace folder for this session"
-            }
-          >
-            {workspaceSaving ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-            ) : (
-              <FolderOpen className="w-3.5 h-3.5" />
-            )}
-            <span className="hidden md:inline font-mono">
-              {effectiveWorkspaceDir
-                ? formatWorkspaceLabel(effectiveWorkspaceDir, 36)
-                : "Select Workspace"}
-            </span>
-          </button>
+          <WorkspaceOpenMenu
+            workspaceDir={effectiveWorkspaceDir}
+            workspaceSaving={workspaceSaving}
+            onSelectWorkspace={() => void handleSelectWorkspace()}
+            onOpenCybaraIde={handleOpenWorkspaceInCybaraIde}
+          />
           <button
             onClick={() => {
               setShowDiffPanel(!showDiffPanel);

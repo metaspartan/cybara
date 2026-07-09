@@ -258,7 +258,14 @@ struct ContentView: View {
                     destination = .chat
                 }
             case .chat:
-                ChatScreen(client: client, selectedSessionID: $selectedChatSessionID)
+                ChatScreen(
+                    client: client,
+                    selectedSessionID: $selectedChatSessionID,
+                    openCybaraIDEWorkspace: { workspace in
+                        UserDefaults.standard.set(workspace, forKey: "cybara.ide.pendingWorkspacePath")
+                        destination = .ide
+                    }
+                )
             case .mobile:
                 MobileScreen(client: client, defaultBaseURL: sidecar.serverURL)
             case .agents:

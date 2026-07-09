@@ -23,6 +23,22 @@ private struct GatewaySteerPendingBody: Encodable {
     let processActivities: [GatewayProcessActivityPayload]
 }
 
+struct NativeWorkspaceOpenTarget: Decodable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let kind: String
+    let icon: String?
+    let available: Bool?
+    let detail: String?
+}
+
+private struct NativeWorkspaceOpenTargetsResponse: Decodable {
+    let success: Bool?
+    let path: String
+    let targets: [NativeWorkspaceOpenTarget]
+    let error: String?
+}
+
 /// Native async client for the local Cybara gateway. Authenticates with the
 /// root API key at ~/.cybara/api_key (same user as the sidecar), so the native
 /// UI has the same access the web UI gets via the localhost same-origin bypass.
@@ -239,6 +255,26 @@ struct GatewayClient: Sendable {
             as: GatewayGitBranchesResponse.self,
             queryItems: [URLQueryItem(name: "path", value: workspace)]
         )
+    }
+
+    func workspaceOpenTargets(path: String) async throws -> [NativeWorkspaceOpenTarget] {
+        let response = try await get(
+            "api/ide/open-targets",
+            as: NativeWorkspaceOpenTargetsResponse.self,
+            queryItems: [URLQueryItem(name: "path", value: path)]
+        )
+        if response.success == false {
+            throw GatewayClientError.badStatus(400, response.error ?? "Failed to load workspace open targets")
+        }
+        return response.targets
+    }
+
+    func openWorkspaceTarget(path: String, targetID: String) async throws -> NativeIDEPathResult {
+        let body = try JSONSerialization.data(
+            withJSONObject: ["path": path, "targetId": targetID]
+        )
+        let data = try await request("api/ide/open", method: "POST", body: body)
+        return try JSONDecoder().decode(NativeIDEPathResult.self, from: data)
     }
 
     func checkoutGitBranch(path: String, branch: String, create: Bool = false) async throws -> GatewayGitBranchCheckoutResponse {

@@ -183,6 +183,10 @@ import {
   resolveKeymap,
 } from "./ide/ideKeymap";
 import {
+  computeRuntimeModelStatus,
+  resolveEmbeddingRuntimeSelection as resolveEmbeddingRuntimeSelectionModel,
+} from "./ide/indexerModel";
+import {
   getFileIcon,
   formatSize,
   formatDurationMs,
@@ -510,31 +514,8 @@ export function IDE() {
   const resolveEmbeddingRuntimeSelection = useCallback(() => {
     const activeSettings =
       indexSettingsDraft || indexStatus?.settings || DEFAULT_INDEXER_SETTINGS_DRAFT;
-    const explicitProvider = activeSettings.embeddingProvider;
-    const runtimeProvider =
-      explicitProvider === "auto"
-        ? embeddingRuntime?.vectorProvider === "transformers_js" ||
-          embeddingRuntime?.vectorProvider === "ollama"
-          ? embeddingRuntime.vectorProvider
-          : "transformers_js"
-        : explicitProvider;
-    const runtimeModel =
-      activeSettings.embeddingModel ||
-      (runtimeProvider === "transformers_js"
-        ? embeddingRuntime?.transformers?.selectedModel || ""
-        : embeddingRuntime?.vectorModel || "");
-
-    return {
-      provider: runtimeProvider,
-      model: runtimeModel,
-    };
-  }, [
-    embeddingRuntime?.transformers?.selectedModel,
-    embeddingRuntime?.vectorModel,
-    embeddingRuntime?.vectorProvider,
-    indexSettingsDraft,
-    indexStatus?.settings,
-  ]);
+    return resolveEmbeddingRuntimeSelectionModel(activeSettings, embeddingRuntime);
+  }, [embeddingRuntime, indexSettingsDraft, indexStatus?.settings]);
 
   // Keep the fetch callback below stable: reading the selection through a ref
   // avoids a feedback loop where each poll updates embeddingRuntime, which
@@ -2306,36 +2287,15 @@ export function IDE() {
     selectedTransformersRuntimeError,
   ]);
 
-  const runtimeModelStatus = useMemo<{
-    label: string;
-    tone: "loaded" | "loading" | "error" | "idle";
-  }>(() => {
-    if (runtimeTargetProvider === "transformers_js") {
-      const state = embeddingRuntime?.transformers?.selectedState;
-      const entry = selectedTransformersRuntimeEntry;
-      if (state === "ready") return { label: "Loaded", tone: "loaded" };
-      if (state === "loading") {
-        const pct = typeof entry?.loadProgress === "number" ? ` ${entry.loadProgress}%` : "…";
-        return { label: `Loading${pct}`, tone: "loading" };
-      }
-      if (state === "error") return { label: "Load failed", tone: "error" };
-      return {
-        label: entry?.estimatedModelBytes ? "Not loaded · cached" : "Not loaded",
-        tone: "idle",
-      };
-    }
-    if (runtimeTargetProvider === "ollama") {
-      return embeddingRuntime?.vectorProvider === "ollama"
-        ? { label: "Ready via Ollama", tone: "loaded" }
-        : { label: "Ollama unavailable", tone: "idle" };
-    }
-    return { label: "Managed by provider", tone: "idle" };
-  }, [
-    embeddingRuntime?.transformers?.selectedState,
-    embeddingRuntime?.vectorProvider,
-    runtimeTargetProvider,
-    selectedTransformersRuntimeEntry,
-  ]);
+  const runtimeModelStatus = useMemo(
+    () =>
+      computeRuntimeModelStatus(
+        runtimeTargetProvider,
+        embeddingRuntime,
+        selectedTransformersRuntimeEntry
+      ),
+    [embeddingRuntime, runtimeTargetProvider, selectedTransformersRuntimeEntry]
+  );
 
   useEffect(() => {
     const indexingSettingsVisible =
