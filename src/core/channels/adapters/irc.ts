@@ -188,6 +188,7 @@ export class IrcAdapter implements ChannelAdapter {
     let response: string;
     try {
       response = await this.messageHandler(text, replyTarget, sessionId, {
+        channelId,
         hasFile: false,
         filePath: "",
         fileType: "",

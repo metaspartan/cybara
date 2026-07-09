@@ -130,6 +130,7 @@ export class ZulipAdapter implements ChannelAdapter {
     let response: string;
     try {
       response = await this.messageHandler(text, recipient || sender, sessionId, {
+        channelId,
         hasFile: false,
         filePath: "",
         fileType: "",

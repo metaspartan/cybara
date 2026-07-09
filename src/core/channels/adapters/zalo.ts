@@ -117,6 +117,7 @@ export class ZaloAdapter implements ChannelAdapter {
     let response: string;
     try {
       response = await this.messageHandler(text, senderId, sessionId, {
+        channelId,
         hasFile: false,
         filePath: "",
         fileType: "",

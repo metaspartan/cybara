@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import db, { tables } from "../../src/core/database";
 import { securityManager } from "../../src/core/channels/security";
+import { configuredChannelAgentId } from "../../src/core/channels/agent-selection";
 import {
   processTelegramWebhook,
   resetTelegramSessionTrackingForTests,
@@ -607,7 +608,7 @@ describe("Telegram webhook mocked flows", () => {
 
       expect(ok).toBe(true);
       expect(handlerCalls).toBe(0);
-      expect(config.get<string>("default_agent_id")).toBe(secondAgentId);
+      expect(configuredChannelAgentId(channelId)).toBe(secondAgentId);
 
       const sendMessageCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
       expect(sendMessageCall).toBeDefined();

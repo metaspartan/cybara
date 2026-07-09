@@ -13,6 +13,7 @@ import {
   setChannelSubagentSpawnHandler,
 } from "../../src/core/channels/commands";
 import { securityManager } from "../../src/core/channels/security";
+import { configuredChannelAgentId } from "../../src/core/channels/agent-selection";
 import { config } from "../../src/core/config";
 import { tables } from "../../src/core/database";
 
@@ -39,6 +40,7 @@ function makeChannelId(prefix: string): string {
 
 const createdAgents: string[] = [];
 const createdProviders: string[] = [];
+const createdChannels: string[] = [];
 
 function createProvider(name: string): string {
   const providerId = makeChannelId("wa-provider");
@@ -125,6 +127,9 @@ async function invokeWhatsAppMessage(
 afterEach(() => {
   config.set("default_agent_id", "");
   clearChannelSubagentSpawnHandler();
+  for (const channelId of createdChannels.splice(0)) {
+    tables.channels.delete(channelId);
+  }
   for (const agentId of createdAgents.splice(0)) {
     tables.agents.delete(agentId);
   }
@@ -1101,6 +1106,14 @@ describe("WhatsApp adapter mocked flows", () => {
     const firstAgentId = createAgent("WA Agent One", providerId, "model-one");
     const secondAgentId = createAgent("WA Agent Two", providerId, "model-two");
     config.set("default_agent_id", firstAgentId);
+    tables.channels.create({
+      id: channelId,
+      type: "whatsapp",
+      name: "WhatsApp Agent Command",
+      config: {},
+      enabled: true,
+    });
+    createdChannels.push(channelId);
 
     securityManager.setConfig(channelId, { dm_policy: "open" });
     adapter.setMessageHandler(async () => {
@@ -1119,7 +1132,7 @@ describe("WhatsApp adapter mocked flows", () => {
     await invokeWhatsAppMessage(adapter, channelId, message);
 
     expect(handlerCalls).toBe(0);
-    expect(config.get<string>("default_agent_id")).toBe(secondAgentId);
+    expect(configuredChannelAgentId(channelId)).toBe(secondAgentId);
     expect(replies).toHaveLength(1);
     expect(replies[0]).toContain("WA Agent Two");
     expect(chatSends).toHaveLength(0);

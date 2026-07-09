@@ -166,6 +166,7 @@ export class TwitchAdapter implements ChannelAdapter {
     let response: string;
     try {
       response = await this.messageHandler(text, target, sessionId, {
+        channelId,
         hasFile: false,
         filePath: "",
         fileType: "",

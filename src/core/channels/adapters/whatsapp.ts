@@ -1017,6 +1017,7 @@ export class WhatsAppAdapter implements ChannelAdapter {
         response = commandResponse;
       } else {
         response = await this.messageHandler(content, chatId, sessionId, {
+          channelId,
           hasFile,
           filePath,
           fileType,

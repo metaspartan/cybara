@@ -190,6 +190,7 @@ export class MatrixAdapter implements ChannelAdapter {
     let response: string;
     try {
       response = await this.messageHandler(body, roomId, sessionId, {
+        channelId,
         hasFile: false,
         filePath: "",
         fileType: "",

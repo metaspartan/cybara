@@ -33,6 +33,12 @@ import {
   escapeMarkdown,
 } from "./formatting";
 import { createLogger } from "../logger";
+import {
+  CHANNEL_AGENT_ID_KEY,
+  CHANNEL_MODEL_ROUTER_KEY,
+  normalizeChannelAgentId,
+  parseChannelConfig,
+} from "./agent-selection";
 
 const log = createLogger("ChannelManager");
 
@@ -44,27 +50,6 @@ export {
   whatsappSessions,
   imessageSessions,
 };
-
-function parseChannelConfig(config: unknown, channelId?: string): Record<string, unknown> {
-  if (typeof config === "string") {
-    try {
-      const parsed = JSON.parse(config);
-      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-        return parsed as Record<string, unknown>;
-      }
-      return {};
-    } catch {
-      log.warn("Invalid channel config JSON; using empty config", { channelId });
-      return {};
-    }
-  }
-
-  if (config && typeof config === "object" && !Array.isArray(config)) {
-    return config as Record<string, unknown>;
-  }
-
-  return {};
-}
 
 export class ChannelManager {
   private adapters = new Map<ChannelType, ChannelAdapter>();
@@ -110,7 +95,7 @@ export class ChannelManager {
   list(): (Channel & { info?: (typeof channels)[ChannelType] })[] {
     const all = tables.channels.all() as Channel[];
     return all.map((c) => {
-      const rawConfig = parseChannelConfig(c.config, c.id);
+      const rawConfig = parseChannelConfig(c.config);
       const channelDef = channels[c.type as ChannelType];
 
       const maskedConfig: Record<string, unknown> = {};
@@ -125,6 +110,11 @@ export class ChannelManager {
             }
           }
         }
+      }
+      const agentId = normalizeChannelAgentId(rawConfig[CHANNEL_AGENT_ID_KEY]);
+      if (agentId) maskedConfig[CHANNEL_AGENT_ID_KEY] = agentId;
+      if (rawConfig[CHANNEL_MODEL_ROUTER_KEY] === true) {
+        maskedConfig[CHANNEL_MODEL_ROUTER_KEY] = true;
       }
 
       return {
@@ -159,6 +149,11 @@ export class ChannelManager {
       throw new Error(
         `Validation error: Missing required config field(s) for ${type}: ${missingRequired.join(", ")}`
       );
+    }
+
+    const agentId = normalizeChannelAgentId(config[CHANNEL_AGENT_ID_KEY]);
+    if (agentId && !tables.agents.get(agentId)) {
+      throw new Error(`Validation error: Agent "${agentId}" does not exist`);
     }
   }
 
@@ -248,9 +243,10 @@ export class ChannelManager {
 
     const existingType = existing.type as ChannelType;
     const existingEnabled = !!existing.enabled;
-    const existingConfig = parseChannelConfig(existing.config, id);
+    const existingConfig = parseChannelConfig(existing.config);
     const mergedConfig = updates.config ? { ...existingConfig, ...updates.config } : existingConfig;
     const nextEnabled = updates.enabled !== undefined ? updates.enabled : existingEnabled;
+    this.validateConfig(existingType, mergedConfig);
 
     let finalUpdates = updates;
     if (updates.config && existing.config) {
@@ -264,13 +260,17 @@ export class ChannelManager {
 
     const isDisabling = updates.enabled === false && existingEnabled;
     const isEnabling = updates.enabled === true && !existingEnabled;
-    const hasConfigUpdate = !!updates.config;
+    const configUpdateKeys = updates.config ? Object.keys(updates.config) : [];
+    const hasConfigUpdate = configUpdateKeys.length > 0;
+    const hasAdapterConfigUpdate = configUpdateKeys.some(
+      (key) => key !== CHANNEL_AGENT_ID_KEY && key !== CHANNEL_MODEL_ROUTER_KEY
+    );
 
     if (isDisabling) {
       this.stopAdapter(id, existingType);
     }
 
-    if (hasConfigUpdate && nextEnabled) {
+    if (hasAdapterConfigUpdate && nextEnabled) {
       this.restartAdapter(id, existingType, mergedConfig);
     } else if (isEnabling) {
       this.startAdapter(id, existingType, mergedConfig);
@@ -312,7 +312,7 @@ export class ChannelManager {
 
       const adapter = this.adapters.get(channel.type as ChannelType);
       if (adapter) {
-        const config = parseChannelConfig(channel.config, channel.id);
+        const config = parseChannelConfig(channel.config);
         await this.startAdapter(channel.id, channel.type as ChannelType, config);
       }
     }

@@ -129,6 +129,7 @@ export class NextcloudAdapter implements ChannelAdapter {
     let response: string;
     try {
       response = await this.messageHandler(text, roomToken, sessionId, {
+        channelId,
         hasFile: false,
         filePath: "",
         fileType: "",

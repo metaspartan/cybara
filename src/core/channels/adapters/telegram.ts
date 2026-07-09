@@ -1405,6 +1405,7 @@ export class TelegramBotManager implements ChannelAdapter {
 
           const messageWithFile = hasFile ? `${content}\n\n[File: ${filePath}]` : content;
           response = await this.messageHandler(messageWithFile, chatId, userId, channelId, {
+            channelId,
             hasFile,
             filePath,
             fileType,

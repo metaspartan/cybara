@@ -136,6 +136,7 @@ export class LineAdapter implements ChannelAdapter {
     let response: string;
     try {
       response = await this.messageHandler(text, sourceId, sessionId, {
+        channelId,
         hasFile: false,
         filePath: "",
         fileType: "",

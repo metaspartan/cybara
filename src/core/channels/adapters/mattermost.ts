@@ -158,6 +158,7 @@ export class MattermostAdapter implements ChannelAdapter {
     let response: string;
     try {
       response = await this.messageHandler(message, mmChannelId, sessionId, {
+        channelId,
         hasFile: false,
         filePath: "",
         fileType: "",

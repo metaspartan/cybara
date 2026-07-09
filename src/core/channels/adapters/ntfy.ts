@@ -175,6 +175,7 @@ export class NtfyAdapter implements ChannelAdapter {
     let response: string;
     try {
       response = await this.messageHandler(event.message, topic, sessionId, {
+        channelId,
         hasFile: false,
         filePath: "",
         fileType: "",

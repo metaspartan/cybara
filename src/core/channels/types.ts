@@ -538,6 +538,7 @@ export interface MessageHandlerFileInfo {
   filePath: string;
   fileType: string;
   placeholder: string;
+  channelId: string;
 }
 
 export type MessageHandler = (

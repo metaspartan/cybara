@@ -197,6 +197,7 @@ export class FeishuAdapter implements ChannelAdapter {
     let response: string;
     try {
       response = await this.messageHandler(text, chatId, sessionId, {
+        channelId,
         hasFile: false,
         filePath: "",
         fileType: "",

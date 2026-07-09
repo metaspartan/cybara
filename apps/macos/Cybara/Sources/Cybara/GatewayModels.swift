@@ -1431,9 +1431,18 @@ struct GatewayChannel: Decodable, Identifiable, Hashable {
     let type: String?
     let name: String?
     let enabled: Int?
+    let config: [String: JSONValue]?
 
     var displayName: String { firstNonEmptyGatewayString(name, type, id) ?? id }
     var isEnabled: Bool { enabled == 1 }
+    var agentID: String? {
+        guard case .string(let value)? = config?["agent_id"], !value.isEmpty else { return nil }
+        return value
+    }
+    var usesModelRouter: Bool {
+        guard case .bool(let value)? = config?["use_model_router"] else { return false }
+        return value
+    }
 }
 
 struct GatewayLogEntry: Decodable, Identifiable, Hashable {

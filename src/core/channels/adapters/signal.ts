@@ -275,6 +275,7 @@ export class SignalAdapter implements ChannelAdapter {
         response = commandResponse;
       } else {
         response = await this.messageHandler(content, sender, sessionId, {
+          channelId,
           hasFile,
           filePath: "",
           fileType,

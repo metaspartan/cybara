@@ -285,6 +285,10 @@ function getRouterConfig(): RouterConfig {
   };
 }
 
+export function isModelRouterEnabled(): boolean {
+  return getRouterConfig().enabled;
+}
+
 /**
  * True when the router is enabled and configured to run the mixture-of-agents
  * strategy, so the chat path should fan out to proposer agents and synthesize.

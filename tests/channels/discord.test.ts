@@ -12,6 +12,7 @@ import {
   clearChannelSubagentSpawnHandler,
   setChannelSubagentSpawnHandler,
 } from "../../src/core/channels/commands";
+import { configuredChannelAgentId } from "../../src/core/channels/agent-selection";
 import {
   configureChannelChatRuntime,
   resetChannelChatRuntime,
@@ -763,6 +764,14 @@ describe("Discord adapter mocked message flows", () => {
     const firstAgentId = createAgent("Discord Agent One", providerId, "model-one");
     const secondAgentId = createAgent("Discord Agent Two", providerId, "model-two");
     config.set("default_agent_id", firstAgentId);
+    tables.channels.create({
+      id: channelId,
+      type: "discord",
+      name: "Discord Agent Command",
+      config: {},
+      enabled: true,
+    });
+    createdChannels.push(channelId);
 
     securityManager.setConfig(channelId, { dm_policy: "open" });
     adapter.setMessageHandler(async () => {
@@ -782,7 +791,7 @@ describe("Discord adapter mocked message flows", () => {
     await handleDiscordMessage(adapter, channelId, message);
 
     expect(handlerCalls).toBe(0);
-    expect(config.get<string>("default_agent_id")).toBe(secondAgentId);
+    expect(configuredChannelAgentId(channelId)).toBe(secondAgentId);
     expect(replies).toHaveLength(1);
     expect(replies[0]).toContain("Discord Agent Two");
     expect(followUps).toHaveLength(0);

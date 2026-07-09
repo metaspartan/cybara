@@ -6,6 +6,13 @@ import { resolve } from "path";
 import { existsSync, statSync } from "fs";
 import { listChannelRuntimeSessions } from "./chat-runtime";
 import { handleSessionGoalCommand } from "../session-goals";
+import {
+  configuredChannelUsesModelRouter,
+  resolveChannelAgentId,
+  setChannelAgentId,
+  setChannelModelRouter,
+} from "./agent-selection";
+import { isModelRouterEnabled } from "../router";
 
 type AgentRow = {
   id: string;
@@ -133,21 +140,10 @@ function resolveByToken<T extends { id: string; name: string }>(
   return { error: `${kind} "${token}" not found.` };
 }
 
-function getConfiguredDefaultAgentId(): string | undefined {
-  const configured = config.get<string>("default_agent_id");
-  return typeof configured === "string" && configured.trim() ? configured : undefined;
-}
-
-function getDefaultAgent(agents: AgentRow[]): AgentRow | undefined {
+function getDefaultAgent(agents: AgentRow[], channelId?: string): AgentRow | undefined {
   if (agents.length === 0) return undefined;
-
-  const configuredId = getConfiguredDefaultAgentId();
-  if (configuredId) {
-    const configuredAgent = agents.find((agent) => agent.id === configuredId);
-    if (configuredAgent) return configuredAgent;
-  }
-
-  return agents.find((agent) => agent.status === "running") || agents[0];
+  const selectedId = resolveChannelAgentId(channelId, agents);
+  return selectedId ? agents.find((agent) => agent.id === selectedId) : undefined;
 }
 
 function getCurrentProvider(agent: AgentRow, providers: ProviderRow[]): ProviderRow | undefined {
@@ -263,12 +259,12 @@ function formatCommandHelp(): string {
   ].join("\n");
 }
 
-function formatAgentsList(agents: AgentRow[]): string {
+function formatAgentsList(agents: AgentRow[], channelId?: string): string {
   if (agents.length === 0) {
     return "No agents configured yet.";
   }
 
-  const defaultAgentId = getDefaultAgent(agents)?.id;
+  const defaultAgentId = getDefaultAgent(agents, channelId)?.id;
   const providers = getProviders();
   const providerNameById = new Map(providers.map((provider) => [provider.id, provider.name]));
 
@@ -278,11 +274,13 @@ function formatAgentsList(agents: AgentRow[]): string {
       ? (providerNameById.get(agent.provider_id) ?? "Unknown provider")
       : "No provider";
     const modelName = agent.model || "default";
-    const status = agent.status === "running" ? "running" : "stopped";
-    return `${marker} ${index + 1}. ${agent.name} (${status}) - ${providerName} / ${modelName}`;
+    return `${marker} ${index + 1}. ${agent.name} - ${providerName} / ${modelName}`;
   });
 
-  return `Agents:\n${lines.join("\n")}`;
+  const routerLine = isModelRouterEnabled()
+    ? "\nModel Router is available with /agent router."
+    : "";
+  return `Agents:\n${lines.join("\n")}${routerLine}`;
 }
 
 function formatProvidersList(
@@ -336,13 +334,13 @@ function resolveModelToken(token: string, models: ProviderModelRow[]): string | 
   return undefined;
 }
 
-function getStatusSummary(): string {
+function getStatusSummary(channelId?: string): string {
   const agents = getAgents();
   const providers = getProviders();
   const channels = tables.channels.all() as Array<{ enabled?: boolean }>;
-  const runningAgents = agents.filter((agent) => agent.status === "running").length;
   const enabledChannels = channels.filter((channel) => !!channel.enabled).length;
-  const defaultAgent = getDefaultAgent(agents);
+  const defaultAgent = getDefaultAgent(agents, channelId);
+  const useModelRouter = configuredChannelUsesModelRouter(channelId) && isModelRouterEnabled();
   const toolApprovalMode = config.getToolApprovalMode();
   const toolApprovalSummary =
     toolApprovalMode === "ask"
@@ -351,13 +349,15 @@ function getStatusSummary(): string {
 
   return [
     "Status:",
-    `Agents: ${agents.length} total, ${runningAgents} running`,
+    `Agents: ${agents.length} available`,
     `Providers: ${providers.length} configured`,
     `Channels: ${enabledChannels} enabled`,
     toolApprovalSummary,
-    defaultAgent
-      ? `Default agent: ${defaultAgent.name} (${defaultAgent.model || "default model"})`
-      : "Default agent: none",
+    useModelRouter
+      ? "Channel routing: Model Router"
+      : defaultAgent
+        ? `Channel agent: ${defaultAgent.name} (${defaultAgent.model || "default model"})`
+        : "Channel agent: none",
   ].join("\n");
 }
 
@@ -492,7 +492,7 @@ export async function handleChannelManagementCommand(
   }
 
   if (command === "status") {
-    return getStatusSummary();
+    return getStatusSummary(context.channelId);
   }
 
   if (command === "permissions" || command === "approval" || command === "approvals") {
@@ -538,7 +538,7 @@ export async function handleChannelManagementCommand(
   }
 
   if (command === "agents") {
-    return formatAgentsList(getAgents());
+    return formatAgentsList(getAgents(), context.channelId);
   }
 
   if (command === "agent") {
@@ -546,19 +546,31 @@ export async function handleChannelManagementCommand(
     if (agents.length === 0) return "No agents configured yet.";
 
     if (!joinedArgs || joinedArgs.toLowerCase() === "show") {
-      const current = getDefaultAgent(agents);
+      if (configuredChannelUsesModelRouter(context.channelId) && isModelRouterEnabled()) {
+        return "Current channel routing: Model Router\nUse /agent <id|name|number> to select a concrete agent.";
+      }
+      const current = getDefaultAgent(agents, context.channelId);
       if (!current) return "No agents configured yet.";
       return [
-        `Current default agent: ${current.name}`,
+        `Current channel agent: ${current.name}`,
         `ID: ${current.id}`,
         `Model: ${current.model || "default"}`,
-        `Status: ${current.status || "stopped"}`,
-        "Use /agent <id|name|number> to switch.",
+        "Use /agent <id|name|number> to switch this channel.",
       ].join("\n");
     }
 
     if (joinedArgs.toLowerCase() === "list") {
-      return formatAgentsList(agents);
+      return formatAgentsList(agents, context.channelId);
+    }
+
+    if (joinedArgs.toLowerCase() === "router") {
+      if (!setChannelModelRouter(context.channelId)) {
+        return "Model Router is disabled. Enable it in Model Router settings first.";
+      }
+      const rotated = rotateSession(context);
+      return rotated
+        ? `Channel routing set to Model Router. Started a new session (${rotated.slice(0, 8)}...) so changes apply immediately.`
+        : "Channel routing set to Model Router.";
     }
 
     const resolved = resolveByToken(joinedArgs, agents, "Agent");
@@ -566,23 +578,25 @@ export async function handleChannelManagementCommand(
       return resolved.error || "Agent not found.";
     }
 
-    config.set("default_agent_id", resolved.item.id);
+    if (!setChannelAgentId(context.channelId, resolved.item.id)) {
+      return "Unable to update this channel's agent.";
+    }
     const rotated = rotateSession(context);
 
     return rotated
-      ? `Default agent set to ${resolved.item.name}. Started a new session (${rotated.slice(0, 8)}...) so changes apply immediately.`
-      : `Default agent set to ${resolved.item.name}.`;
+      ? `Channel agent set to ${resolved.item.name}. Started a new session (${rotated.slice(0, 8)}...) so changes apply immediately.`
+      : `Channel agent set to ${resolved.item.name}.`;
   }
 
   if (command === "providers") {
     const providers = getProviders();
-    const defaultAgent = getDefaultAgent(getAgents());
+    const defaultAgent = getDefaultAgent(getAgents(), context.channelId);
     return formatProvidersList(providers, defaultAgent?.provider_id, defaultAgent?.name);
   }
 
   if (command === "provider") {
     const agents = getAgents();
-    const agent = getDefaultAgent(agents);
+    const agent = getDefaultAgent(agents, context.channelId);
     if (!agent) return "No agents configured yet.";
 
     const providers = getProviders();
@@ -642,7 +656,7 @@ export async function handleChannelManagementCommand(
 
   if (command === "models") {
     const agents = getAgents();
-    const agent = getDefaultAgent(agents);
+    const agent = getDefaultAgent(agents, context.channelId);
     if (!agent) return "No agents configured yet.";
 
     const providers = getProviders();
@@ -672,7 +686,7 @@ export async function handleChannelManagementCommand(
 
   if (command === "model") {
     const agents = getAgents();
-    const agent = getDefaultAgent(agents);
+    const agent = getDefaultAgent(agents, context.channelId);
     if (!agent) return "No agents configured yet.";
 
     if (!joinedArgs || joinedArgs.toLowerCase() === "show") {

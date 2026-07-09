@@ -196,6 +196,7 @@ export class IMessageAdapter implements ChannelAdapter {
         response = commandResponse;
       } else {
         response = await this.messageHandler(content, chatGuid, sessionId, {
+          channelId,
           hasFile,
           filePath: "",
           fileType,

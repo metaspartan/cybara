@@ -213,6 +213,7 @@ export class SlackAdapter implements ChannelAdapter {
         response = commandResponse;
       } else {
         response = await this.messageHandler(content, chatId, sessionId, {
+          channelId,
           hasFile: inboundFile.hasFile,
           filePath: inboundFile.filePath,
           fileType: inboundFile.fileType,
@@ -315,6 +316,7 @@ export class SlackAdapter implements ChannelAdapter {
         response = commandResponse;
       } else {
         response = await this.messageHandler(content, chatId, sessionId, {
+          channelId,
           hasFile: inboundFile.hasFile,
           filePath: inboundFile.filePath,
           fileType: inboundFile.fileType,

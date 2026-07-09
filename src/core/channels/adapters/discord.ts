@@ -389,6 +389,7 @@ export class DiscordAdapter implements ChannelAdapter {
           response = commandResponse;
         } else {
           response = await this.messageHandler(content, chatId, sessionId, {
+            channelId,
             hasFile,
             filePath,
             fileType,
@@ -635,6 +636,7 @@ export class DiscordAdapter implements ChannelAdapter {
         response = commandResponse;
       } else {
         response = await this.messageHandler(commandInput, chatId, sessionId, {
+          channelId,
           hasFile: false,
           filePath: "",
           fileType: "",

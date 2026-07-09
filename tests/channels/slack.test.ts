@@ -11,6 +11,7 @@ import {
   resetChannelChatRuntime,
 } from "../../src/core/channels/chat-runtime";
 import { securityManager } from "../../src/core/channels/security";
+import { configuredChannelAgentId } from "../../src/core/channels/agent-selection";
 import { config } from "../../src/core/config";
 import { tables } from "../../src/core/database";
 import { cybaraDir } from "../../src/core/paths";
@@ -667,6 +668,14 @@ describe("Slack adapter mocked flows", () => {
     const firstAgentId = createAgent("Slack Agent One", providerId, "model-one");
     const secondAgentId = createAgent("Slack Agent Two", providerId, "model-two");
     config.set("default_agent_id", firstAgentId);
+    tables.channels.create({
+      id: channelId,
+      type: "slack",
+      name: "Slack Agent Command",
+      config: {},
+      enabled: true,
+    });
+    createdChannels.push(channelId);
 
     securityManager.setConfig(channelId, { dm_policy: "open", group_policy: "open" });
     adapter.setMessageHandler(async () => {
@@ -690,7 +699,7 @@ describe("Slack adapter mocked flows", () => {
     );
 
     expect(handlerCalls).toBe(0);
-    expect(config.get<string>("default_agent_id")).toBe(secondAgentId);
+    expect(configuredChannelAgentId(channelId)).toBe(secondAgentId);
     expect(sayMessages).toHaveLength(1);
     expect(sayMessages[0]).toContain("Slack Agent Two");
   });

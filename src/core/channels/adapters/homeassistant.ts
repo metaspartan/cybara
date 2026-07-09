@@ -128,6 +128,7 @@ export class HomeAssistantAdapter implements ChannelAdapter {
     let response: string;
     try {
       response = await this.messageHandler(text, conversationId, sessionId, {
+        channelId,
         hasFile: false,
         filePath: "",
         fileType: "",

@@ -981,6 +981,20 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(idFallback.displayName, "webhook-1")
     }
 
+    func testChannelDecodesDefaultAgentAssignment() throws {
+        let assigned = try decodeChannel(
+            #"{"id":"telegram-1","type":"telegram","config":{"agent_id":"agent-2","use_model_router":true}}"#
+        )
+        let inherited = try decodeChannel(
+            #"{"id":"telegram-2","type":"telegram","config":{"agent_id":null}}"#
+        )
+
+        XCTAssertEqual(assigned.agentID, "agent-2")
+        XCTAssertTrue(assigned.usesModelRouter)
+        XCTAssertNil(inherited.agentID)
+        XCTAssertFalse(inherited.usesModelRouter)
+    }
+
     func testGatewayLogPageDecodesBoundedCombinedLogs() throws {
         let page = try JSONDecoder().decode(
             GatewayLogPage.self,

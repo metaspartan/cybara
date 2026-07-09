@@ -4,6 +4,7 @@ import { type AgentImage, hasImages, sanitizeAgentImages } from "../core/llm/ima
 import { persistImageAttachments, hydrateImageDataFromPath } from "../core/chat/attachments";
 import { providerManager } from "../core/providers";
 import { config } from "../core/config";
+import { resolveChannelAgentId } from "../core/channels/agent-selection";
 import type { Agent } from "../core/database";
 import { expandPromptCommand } from "../core/prompt-commands";
 import { getActiveGoalContextLine, handleSessionGoalCommand } from "../core/session-goals";
@@ -1657,12 +1658,13 @@ async function handleChatTurn(
     // (Discord/Slack/etc.) call handleChat WITHOUT an agentId, so without this
     // they'd silently land on agentManager.list()[0] — which may be an agent
     // whose provider token is expired (the source of spurious 401s in chat).
-    const configuredDefaultId = config.get<string>("default_agent_id");
+    const agents = agentManager.list();
+    const resolvedDefaultId = resolveChannelAgentId(undefined, agents);
     const agent = agentId
       ? agentManager.get(agentId)
-      : (configuredDefaultId ? agentManager.get(configuredDefaultId) : undefined) ||
-        agentManager.list().find((a) => a.status === "running") ||
-        agentManager.list()[0];
+      : resolvedDefaultId
+        ? agentManager.get(resolvedDefaultId)
+        : undefined;
 
     if (!agent) {
       return {

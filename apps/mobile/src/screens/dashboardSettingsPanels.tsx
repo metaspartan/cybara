@@ -117,6 +117,7 @@ import {
 import { saveProfile } from "../lib/storage";
 
 const agentTypeOptions = ["main", "research", "coder", "planner", "ops", "worker"] as const;
+const CHANNEL_MODEL_ROUTER_SELECTOR_VALUE = "__model_router__";
 
 const systemPromptFeatureCopy: Record<SystemPromptFeatureKey, { label: string; detail: string }> = {
   memoryEnabled: {
@@ -1145,8 +1146,14 @@ export function ChannelSettingsPanel({
   item: RemoteItemSummary | ActivitySummary;
   refreshSummary: () => void;
 }) {
+  const itemAgentId = "agentId" in item ? item.agentId || "" : "";
+  const itemUsesModelRouter = "useModelRouter" in item && item.useModelRouter === true;
   const [name, setName] = useState(item.title);
   const [enabled, setEnabled] = useState(remoteItemEnabled(item));
+  const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = useState(itemAgentId);
+  const [useModelRouter, setUseModelRouter] = useState(itemUsesModelRouter);
+  const [modelRouterEnabled, setModelRouterEnabled] = useState(false);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -1154,7 +1161,29 @@ export function ChannelSettingsPanel({
   useEffect(() => {
     setName(item.title);
     setEnabled(remoteItemEnabled(item));
-  }, [item]);
+    setSelectedAgentId(itemAgentId);
+    setUseModelRouter(itemUsesModelRouter);
+  }, [item, itemAgentId, itemUsesModelRouter]);
+
+  useEffect(() => {
+    let active = true;
+    void Promise.all([api.agents(), api.routerConfig()])
+      .then(([nextAgents, router]) => {
+        if (active) {
+          setAgents(nextAgents);
+          setModelRouterEnabled(router.enabled === true);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setAgents([]);
+          setModelRouterEnabled(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [api]);
 
   const saveChannel = async () => {
     const trimmedName = name.trim();
@@ -1167,6 +1196,10 @@ export function ChannelSettingsPanel({
       const result = await api.updateChannel(item.id, {
         name: trimmedName,
         enabled,
+        config: {
+          agent_id: useModelRouter ? null : selectedAgentId || null,
+          use_model_router: useModelRouter && modelRouterEnabled,
+        },
       });
       if (result.success === false) throw new Error("The gateway did not save this channel.");
       await refreshSummary();
@@ -1251,6 +1284,29 @@ export function ChannelSettingsPanel({
           label="Enabled"
           onPress={() => setEnabled((value) => !value)}
           value={enabled}
+        />
+        <SettingSelector
+          label="Default routing"
+          onSelect={(value) => {
+            if (value === CHANNEL_MODEL_ROUTER_SELECTOR_VALUE) {
+              setUseModelRouter(true);
+              return;
+            }
+            setUseModelRouter(false);
+            setSelectedAgentId(value);
+          }}
+          options={[
+            { label: "Gateway default", value: "" },
+            ...(modelRouterEnabled
+              ? [{ label: "Model Router", value: CHANNEL_MODEL_ROUTER_SELECTOR_VALUE }]
+              : []),
+            ...agents.map((agent) => ({
+              label: agent.model ? `${agent.name} - ${agent.model}` : agent.name,
+              value: agent.id,
+            })),
+          ]}
+          selected={useModelRouter ? CHANNEL_MODEL_ROUTER_SELECTOR_VALUE : selectedAgentId}
+          variant="menu"
         />
       </View>
 

@@ -23,11 +23,13 @@ describe("UI page API wiring", () => {
   test("Channels page routes pairing and test actions through channelsApi helpers", () => {
     const source = readPage("Channels.tsx");
 
-    expect(source).toContain('import { channelsApi } from "@/lib/api";');
+    expect(source).toContain('import { channelsApi, routerApi } from "@/lib/api";');
     expect(source).toContain("channelsApi.getPairings(channelId)");
     expect(source).toContain("channelsApi.verifyPairing(securityChannel.id, code.toUpperCase())");
     expect(source).toContain("channelsApi.rejectPairing(securityChannel.id, pairingId)");
     expect(source).toContain("channelsApi.test(channel.id)");
+    expect(source).toContain("routerApi");
+    expect(source).toContain(".config()");
     expect(source).toContain("if (securityChannel) {");
     expect(source).toContain("fetchPairings(securityChannel.id);");
     expect(source).toContain('setPairingCode("");');

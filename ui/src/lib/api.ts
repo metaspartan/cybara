@@ -223,6 +223,10 @@ export const providerPlansApi = {
   },
 };
 
+export const routerApi = {
+  config: () => fetchApi<{ enabled?: boolean }>("/router/config"),
+};
+
 export const channelsApi = {
   list: () => fetchApi<Channel[]>("/channels"),
   get: (id: string) => fetchApi<Channel>(`/channels/${id}`),

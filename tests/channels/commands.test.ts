@@ -22,6 +22,7 @@ function id(prefix: string): string {
 
 const createdAgents: string[] = [];
 const createdProviders: string[] = [];
+const createdChannels: string[] = [];
 
 function createProvider(name: string): string {
   const providerId = id("provider");
@@ -61,13 +62,30 @@ function addProviderModel(providerId: string, modelId: string): void {
   });
 }
 
+function createChannel(type = "discord"): string {
+  const channelId = id("channel");
+  tables.channels.create({
+    id: channelId,
+    type: type as "discord",
+    name: "Command Channel",
+    config: {},
+    enabled: true,
+  });
+  createdChannels.push(channelId);
+  return channelId;
+}
+
 afterEach(() => {
   config.set("default_agent_id", "");
+  config.set("router", null);
   config.set("tool_approval_mode", "always_allow");
   clearChannelSubagentSpawnHandler();
   resetSubagentSessionsForTests();
   resetSubagentRegistryForTests();
   resetChannelChatRuntime();
+  for (const channelId of createdChannels.splice(0)) {
+    tables.channels.delete(channelId);
+  }
   for (const agentId of createdAgents.splice(0)) {
     tables.agents.delete(agentId);
   }
@@ -91,15 +109,16 @@ describe("channel management commands", () => {
     expect(response).toContain("Status:");
   });
 
-  test("switches default agent and rotates session", async () => {
+  test("switches the channel agent and rotates session", async () => {
     const providerId = createProvider("Command Provider");
     createAgent("Worker One", providerId, "model-a");
     const targetAgentId = createAgent("Worker Two", providerId, "model-b");
+    const channelId = createChannel();
 
     let sessionId = "session-initial";
 
     const response = await handleChannelManagementCommand("/agent Worker Two", {
-      channelId: "channel-1",
+      channelId,
       chatId: "chat-1",
       platform: "discord",
       createSessionId: () => "session-rotated",
@@ -109,8 +128,29 @@ describe("channel management commands", () => {
     });
 
     expect(response).toContain("Worker Two");
-    expect(config.get<string>("default_agent_id")).toBe(targetAgentId);
+    const channel = tables.channels.get(channelId) as { config?: string } | undefined;
+    expect(JSON.parse(channel?.config || "{}").agent_id).toBe(targetAgentId);
+    expect(config.get<string>("default_agent_id")).toBe("");
     expect(sessionId).toBe("session-rotated");
+  });
+
+  test("switches a channel to model router when enabled", async () => {
+    const providerId = createProvider("Router Provider");
+    createAgent("Router Base Agent", providerId, "router-model");
+    const channelId = createChannel();
+    config.set("router", { enabled: true, strategy: "weighted", fallbackToAny: true, routes: {} });
+
+    const response = await handleChannelManagementCommand("/agent router", {
+      channelId,
+      chatId: "chat-router",
+      platform: "discord",
+      createSessionId: () => "session-router",
+      setSessionId: () => {},
+    });
+    const channel = tables.channels.get(channelId) as { config?: string } | undefined;
+
+    expect(response).toContain("Model Router");
+    expect(JSON.parse(channel?.config || "{}").use_model_router).toBe(true);
   });
 
   test("updates model for default agent using provider model index", async () => {

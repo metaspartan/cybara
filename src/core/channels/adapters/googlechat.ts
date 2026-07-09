@@ -115,6 +115,7 @@ export class GoogleChatAdapter implements ChannelAdapter {
     let response: string;
     try {
       response = await this.messageHandler(text, space, sessionId, {
+        channelId,
         hasFile: false,
         filePath: "",
         fileType: "",

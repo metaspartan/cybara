@@ -17,6 +17,7 @@ import {
   QrCode,
   RefreshCw,
   Copy,
+  Bot,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -32,11 +33,13 @@ import {
   useUpdateChannel,
   useDeleteChannel,
   useToggleChannel,
+  useAgents,
 } from "../hooks/useApi";
 import { useUIStore } from "../stores/uiStore";
 import { PageLayout } from "@/components/layout";
-import { channelsApi } from "@/lib/api";
-import type { Channel, AvailableChannel, ChannelField } from "../types";
+import { channelsApi, routerApi } from "@/lib/api";
+import { MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
+import type { Agent, Channel, AvailableChannel, ChannelField } from "../types";
 
 interface PairingInfo {
   id: string;
@@ -75,15 +78,32 @@ export function Channels() {
   const [pairings, setPairings] = useState<PairingInfo[]>([]);
   const [pairingCode, setPairingCode] = useState("");
   const [isApproving, setIsApproving] = useState(false);
+  const [modelRouterEnabled, setModelRouterEnabled] = useState(false);
 
   const { data: channels, isLoading } = useChannels();
   const { data: availableChannels } = useAvailableChannels();
+  const { data: agents = [] } = useAgents();
   const { addToast } = useUIStore();
 
   const createChannel = useCreateChannel();
   const updateChannel = useUpdateChannel();
   const deleteChannel = useDeleteChannel();
   const toggleChannel = useToggleChannel();
+
+  useEffect(() => {
+    let active = true;
+    void routerApi
+      .config()
+      .then((response) => {
+        if (active) setModelRouterEnabled(response.success && response.data?.enabled === true);
+      })
+      .catch(() => {
+        if (active) setModelRouterEnabled(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (securityChannel) {
@@ -189,6 +209,11 @@ export function Channels() {
       const name = formData.get("name") as string;
 
       const config: Record<string, unknown> = {};
+      const routing = formData.get("routing");
+      config.use_model_router = routing === MODEL_ROUTER_SELECTOR_VALUE;
+      if (typeof routing === "string" && routing && routing !== MODEL_ROUTER_SELECTOR_VALUE) {
+        config.agent_id = routing;
+      }
       const channelType = availableChannels?.find((c) => c.id === type);
       channelType?.fields.forEach((field) => {
         const key = `config_${field.name}`;
@@ -216,6 +241,12 @@ export function Channels() {
       const name = formData.get("name") as string;
 
       const config: Record<string, unknown> = {};
+      const routing = formData.get("routing");
+      config.use_model_router = routing === MODEL_ROUTER_SELECTOR_VALUE;
+      config.agent_id =
+        typeof routing === "string" && routing && routing !== MODEL_ROUTER_SELECTOR_VALUE
+          ? routing
+          : null;
       const channelType = availableChannels?.find((c) => c.id === editingChannel.type);
       channelType?.fields.forEach((field) => {
         const key = `config_${field.name}`;
@@ -377,6 +408,15 @@ export function Channels() {
                           </Badge>
                         </div>
                         <p className="text-sm text-gray-400 capitalize">{channel.type}</p>
+                        <p className="mt-1 flex items-center gap-1.5 text-xs text-gray-500">
+                          <Bot className="h-3.5 w-3.5" />
+                          {channel.config?.use_model_router === true
+                            ? modelRouterEnabled
+                              ? "Model Router"
+                              : "Model Router disabled - using gateway default"
+                            : agents.find((agent) => agent.id === channel.config?.agent_id)?.name ||
+                              "Gateway default agent"}
+                        </p>
                         {webhookChannelTypes.has(channel.type) && (
                           <button
                             type="button"
@@ -492,6 +532,8 @@ export function Channels() {
           onSubmit={handleCreate}
           title="Add Channel"
           availableChannels={availableChannels || []}
+          agents={agents}
+          modelRouterEnabled={modelRouterEnabled}
           isLoading={createChannel.isPending}
         />
 
@@ -503,6 +545,8 @@ export function Channels() {
             title="Edit Channel"
             channel={editingChannel}
             availableChannels={availableChannels || []}
+            agents={agents}
+            modelRouterEnabled={modelRouterEnabled}
             isLoading={updateChannel.isPending}
             isEdit
           />
@@ -718,6 +762,8 @@ interface ChannelModalProps {
   title: string;
   channel?: Channel | null;
   availableChannels: AvailableChannel[];
+  agents: Agent[];
+  modelRouterEnabled: boolean;
   isLoading: boolean;
   isEdit?: boolean;
 }
@@ -729,6 +775,8 @@ function ChannelModal({
   title,
   channel,
   availableChannels,
+  agents,
+  modelRouterEnabled,
   isLoading,
   isEdit,
 }: ChannelModalProps) {
@@ -769,6 +817,29 @@ function ChannelModal({
           placeholder="My Telegram Bot"
           defaultValue={channel?.name}
           required
+        />
+
+        <Select
+          name="routing"
+          label="Default Routing"
+          options={[
+            { value: "", label: "Gateway default" },
+            ...(modelRouterEnabled
+              ? [{ value: MODEL_ROUTER_SELECTOR_VALUE, label: "Model Router" }]
+              : []),
+            ...agents.map((agent) => ({
+              value: agent.id,
+              label: `${agent.name}${agent.model ? ` - ${agent.model}` : ""}`,
+            })),
+          ]}
+          defaultValue={
+            channel?.config?.use_model_router === true && modelRouterEnabled
+              ? MODEL_ROUTER_SELECTOR_VALUE
+              : typeof channel?.config?.agent_id === "string"
+                ? channel.config.agent_id
+                : ""
+          }
+          helperText="Choose a fixed agent or let Model Router select the provider and model."
         />
 
         {(isEdit ? channel?.type : selectedType) && (

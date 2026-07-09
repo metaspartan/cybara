@@ -190,6 +190,7 @@ export class WeComAdapter implements ChannelAdapter {
     let response: string;
     try {
       response = await this.messageHandler(text, userId, sessionId, {
+        channelId,
         hasFile: false,
         filePath: "",
         fileType: "",

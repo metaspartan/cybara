@@ -564,6 +564,8 @@ export interface RemoteItemSummary {
   status?: string;
   type?: string;
   enabled?: boolean;
+  agentId?: string;
+  useModelRouter?: boolean;
   fields?: Array<{ label: string; value: string }>;
 }
 
@@ -1008,6 +1010,9 @@ export function normalizeRemoteItems(
       readString(record, ["status", "state"]) ||
       (enabled !== undefined ? (enabled ? "enabled" : "disabled") : undefined);
     const description = readString(record, ["description", "summary", "schedule"]);
+    const itemConfig = asRecord(record?.config);
+    const agentId = readString(itemConfig, ["agent_id", "agentId"]);
+    const useModelRouter = readBoolean(itemConfig, ["use_model_router", "useModelRouter"]);
     const title =
       readString(record, ["title", "name", "label", "id", "tool"]) ||
       `${fallbackPrefix} ${index + 1}`;
@@ -1019,6 +1024,8 @@ export function normalizeRemoteItems(
       status,
       type,
       enabled,
+      agentId,
+      useModelRouter,
       fields: detailFields(record),
     };
   });

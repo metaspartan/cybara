@@ -16,6 +16,7 @@ import { config } from "./core/config";
 import { startScheduler, setAgentHandler, setWakeHandler } from "./core/cron";
 import { setChannelSubagentSpawnHandler } from "./core/channels/commands";
 import { configureChannelChatRuntime } from "./core/channels/chat-runtime";
+import { resolveChannelAgentRouting } from "./core/channels/agent-selection";
 import {
   channelManager,
   telegramBot,
@@ -855,9 +856,12 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
 
     const fullMessage = buildMessageWithFileContext(message, fileInfo);
     const images = buildChannelImages(fileInfo);
+    const routing = resolveChannelAgentRouting(channelId, agentManager.list());
 
     const response = await handleChat({
       message: fullMessage || message,
+      agentId: routing.agentId,
+      useModelRouter: routing.useModelRouter,
       sessionId,
       channel: "telegram",
       userId: String(userId),
@@ -914,8 +918,11 @@ const createChannelChatHandler =
   ): Promise<string> => {
     const fullMessage = buildMessageWithFileContext(message, fileInfo);
     const images = buildChannelImages(fileInfo);
+    const routing = resolveChannelAgentRouting(fileInfo.channelId, agentManager.list());
     const response = await handleChat({
       message: fullMessage || message,
+      agentId: routing.agentId,
+      useModelRouter: routing.useModelRouter,
       sessionId,
       channel: channelName,
       userId: String(chatId),

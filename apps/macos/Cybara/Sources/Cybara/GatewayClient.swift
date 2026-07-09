@@ -701,6 +701,19 @@ struct GatewayClient: Sendable {
         _ = try await request("api/channels/\(id)/toggle", method: "POST", body: body)
     }
 
+    func setChannelRouting(_ id: String, agentID: String?, useModelRouter: Bool) async throws {
+        let value: Any
+        if let agentID, !agentID.isEmpty {
+            value = agentID
+        } else {
+            value = NSNull()
+        }
+        let body = try JSONSerialization.data(
+            withJSONObject: ["config": ["agent_id": value, "use_model_router": useModelRouter]]
+        )
+        _ = try await request("api/channels/\(id)", method: "PUT", body: body)
+    }
+
     @discardableResult
     func deleteChannel(_ id: String) async throws -> Data {
         try await request("api/channels/\(id)", method: "DELETE")
