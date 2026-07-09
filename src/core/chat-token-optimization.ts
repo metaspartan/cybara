@@ -1,5 +1,6 @@
 import type { AgentMessage } from "./agent";
 import { formatToolResultForModel } from "./llm/model-visible-format";
+import { formatRecoverableToolOutputPreview } from "./tool-output-recovery";
 
 export const TOOL_RESULT_PROMPT_MAX_CHARS = 2000;
 export const TOOL_RESULT_FINAL_PROMPT_MAX_CHARS = 800;
@@ -10,12 +11,12 @@ interface PromptMessageLike {
   content: string;
 }
 
-function truncateForPrompt(value: string, maxChars: number): string {
-  const normalized = value.replace(/\u0000/g, "").trim();
-  if (normalized.length <= maxChars) return normalized;
-  const headChars = Math.max(0, Math.floor(maxChars * 0.68));
-  const tailChars = Math.max(0, maxChars - headChars - 72);
-  return `${normalized.slice(0, headChars)}\n[omitted ${normalized.length - headChars - tailChars} chars]\n${normalized.slice(-tailChars)}`;
+function truncateForPrompt(
+  value: string,
+  maxChars: number,
+  options: { sessionId?: string; toolName?: string; toolCallId?: string } = {}
+): string {
+  return formatRecoverableToolOutputPreview(value, maxChars, options).content;
 }
 
 function isToolExecutionDump(content: string): boolean {
@@ -67,11 +68,15 @@ export function buildMemoryFlushMessages(
 export function formatToolResultPromptBlock(
   toolName: string,
   result: unknown,
-  options: { toonEnabled?: boolean; maxChars?: number } = {}
+  options: { toonEnabled?: boolean; maxChars?: number; sessionId?: string; toolCallId?: string } = {}
 ): string {
   const content =
     typeof result === "string"
       ? result
       : formatToolResultForModel(result, { toonEnabled: options.toonEnabled });
-  return `Tool: ${toolName}\nResult: ${truncateForPrompt(content, options.maxChars ?? TOOL_RESULT_PROMPT_MAX_CHARS)}`;
+  return `Tool: ${toolName}\nResult: ${truncateForPrompt(content, options.maxChars ?? TOOL_RESULT_PROMPT_MAX_CHARS, {
+    sessionId: options.sessionId,
+    toolName,
+    toolCallId: options.toolCallId,
+  })}`;
 }

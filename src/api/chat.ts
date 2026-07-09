@@ -2072,6 +2072,8 @@ async function handleChatTurn(
           .map((tc) =>
             formatToolResultPromptBlock(tc.name, tc.result, {
               toonEnabled: toonStructuredDataEnabled,
+              sessionId: session.id,
+              toolCallId: typeof tc.id === "string" ? tc.id : undefined,
             })
           )
           .join("\n\n");
@@ -2153,6 +2155,8 @@ async function handleChatTurn(
                     formatToolResultPromptBlock(tc.name, tc.result, {
                       toonEnabled: toonStructuredDataEnabled,
                       maxChars: TOOL_RESULT_FINAL_PROMPT_MAX_CHARS,
+                      sessionId: session.id,
+                      toolCallId: typeof tc.id === "string" ? tc.id : undefined,
                     })
                   )
                   .join("\n\n");

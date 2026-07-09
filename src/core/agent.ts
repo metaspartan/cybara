@@ -62,6 +62,7 @@ import {
 } from "./llm/tool-transcript";
 import { trackTokenUsage } from "./llm/token-usage-tracking";
 import { formatToolResultForModel } from "./llm/model-visible-format";
+import { formatRecoverableToolOutputPreview } from "./tool-output-recovery";
 import {
   hasTextToolCallMarkup,
   normalizeAnthropicToolUses,
@@ -1898,11 +1899,15 @@ class AgentManager {
     return head + marker + tail;
   }
 
-  private truncateToolResultContentForContext(resultPayload: unknown, maxChars: number): string {
+  private truncateToolResultContentForContext(
+    resultPayload: unknown,
+    maxChars: number,
+    recovery?: { sessionId?: string; toolName?: string; toolCallId?: string }
+  ): string {
     const serialized = formatToolResultForModel(resultPayload, {
       toonEnabled: config.getTokenOptimizationSettings().toonStructuredDataEnabled,
     });
-    return this.truncateTextWithHeadAndTail(serialized, maxChars);
+    return formatRecoverableToolOutputPreview(serialized, maxChars, recovery).content;
   }
 
   private compactAnthropicLoopMessagesForContext(
@@ -2549,7 +2554,12 @@ class AgentManager {
             role: "tool",
             content: this.truncateToolResultContentForContext(
               missingNamePayload,
-              contextGuard.maxSingleToolResultChars
+              contextGuard.maxSingleToolResultChars,
+              {
+                sessionId: toolContext?.sessionId,
+                toolName: "__missing_tool_name__",
+                toolCallId,
+              }
             ),
           });
           continue;
@@ -2576,7 +2586,12 @@ class AgentManager {
           role: "tool",
           content: this.truncateToolResultContentForContext(
             resultPayload,
-            contextGuard.maxSingleToolResultChars
+            contextGuard.maxSingleToolResultChars,
+            {
+              sessionId: toolContext?.sessionId,
+              toolName,
+              toolCallId,
+            }
           ),
         });
       }
@@ -3387,9 +3402,11 @@ class AgentManager {
         functionCallOutputs.push({
           type: "function_call_output",
           call_id: toolCall.callId,
-          // Cap a single tool output so one huge read/exec can't blow the
-          // context window on a deep, hundreds-of-tool-call run.
-          output: this.truncateToolResultContentForContext(resultPayload, codexMaxOutputChars),
+          output: this.truncateToolResultContentForContext(resultPayload, codexMaxOutputChars, {
+            sessionId: toolContext?.sessionId,
+            toolName: toolCall.name,
+            toolCallId: toolCall.callId,
+          }),
         });
       }
 
@@ -4165,7 +4182,12 @@ class AgentManager {
             tool_use_id: toolUseId,
             content: this.truncateToolResultContentForContext(
               missingNamePayload,
-              contextGuard.maxSingleToolResultChars
+              contextGuard.maxSingleToolResultChars,
+              {
+                sessionId: toolContext?.sessionId,
+                toolName: "__missing_tool_name__",
+                toolCallId: toolUseId,
+              }
             ),
           });
           continue;
@@ -4188,7 +4210,12 @@ class AgentManager {
           tool_use_id: toolUseId,
           content: this.truncateToolResultContentForContext(
             resultPayload,
-            contextGuard.maxSingleToolResultChars
+            contextGuard.maxSingleToolResultChars,
+            {
+              sessionId: toolContext?.sessionId,
+              toolName,
+              toolCallId: toolUseId,
+            }
           ),
         });
       }
@@ -4201,7 +4228,12 @@ class AgentManager {
           tool_use_id: expectedId,
           content: this.truncateToolResultContentForContext(
             { error: "Missing tool result synthesized by Cybara" },
-            contextGuard.maxSingleToolResultChars
+            contextGuard.maxSingleToolResultChars,
+            {
+              sessionId: toolContext?.sessionId,
+              toolName: "__missing_tool_result__",
+              toolCallId: expectedId,
+            }
           ),
         });
       }
@@ -4548,7 +4580,12 @@ class AgentManager {
             role: "tool",
             content: this.truncateToolResultContentForContext(
               missingNamePayload,
-              contextGuard.maxSingleToolResultChars
+              contextGuard.maxSingleToolResultChars,
+              {
+                sessionId: toolContext?.sessionId,
+                toolName: "__missing_tool_name__",
+                toolCallId,
+              }
             ),
           });
           continue;
@@ -4575,7 +4612,12 @@ class AgentManager {
           role: "tool",
           content: this.truncateToolResultContentForContext(
             resultPayload,
-            contextGuard.maxSingleToolResultChars
+            contextGuard.maxSingleToolResultChars,
+            {
+              sessionId: toolContext?.sessionId,
+              toolName,
+              toolCallId,
+            }
           ),
         });
       }
