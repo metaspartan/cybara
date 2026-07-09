@@ -5,9 +5,17 @@ import Gradient from "ink-gradient";
 import Spinner from "ink-spinner";
 import { spawn } from "child_process";
 import { createHash } from "crypto";
-import { chmodSync, copyFileSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "fs";
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+} from "fs";
 import { dirname, join } from "path";
-import { tmpdir } from "os";
+import { homedir, tmpdir } from "os";
 import { getAppVersion, getReleaseRepository } from "./core/build-info";
 import {
   buildGitHubReleaseApiUrl,
@@ -3966,14 +3974,46 @@ const TUIApp = ({ command }: { command?: string }) => {
 const args = process.argv.slice(2);
 const command = args[0];
 
+function wantsForegroundStart(rest: string[]): boolean {
+  return hasFlag(rest, "--foreground") || hasFlag(rest, "--attach") || hasFlag(rest, "-f");
+}
+
+function resolveGatewayLogPath(): string {
+  const base = process.env.CYBARA_HOME || join(process.env.HOME || homedir(), ".cybara");
+  const dir = join(base, "logs");
+  mkdirSync(dir, { recursive: true });
+  return join(dir, "gateway.out.log");
+}
+
+function launchGateway(rest: string[]): void {
+  if (wantsForegroundStart(rest)) {
+    spawn("bun", ["run", "dev"], { stdio: "inherit" });
+    return;
+  }
+  const logPath = resolveGatewayLogPath();
+  const logFd = openSync(logPath, "a");
+  const child = spawn("bun", ["run", "dev"], {
+    stdio: ["ignore", logFd, logFd],
+    detached: true,
+  });
+  child.unref();
+  console.log(`Cybara gateway starting in the background (pid ${child.pid ?? "?"}).`);
+  console.log(`  Logs:   ${logPath}`);
+  console.log("  Status: cybara status");
+  console.log("  Follow: cybara gateway logs --follow");
+  console.log("  Attach instead next time with: cybara start --foreground");
+}
+
 function shouldExitAfterMain(): boolean {
   if (!command) return false;
   if (command === "mcp" && args[1] === "serve") return false;
   if (command === "chat") return false;
-  if (command === "gateway" && ["start", "run"].includes(args[1] || "")) return false;
-  return !["start", "dev", "wizard", "setup", "install", "configure", "onboard", "tui"].includes(
-    command
-  );
+  if (command === "dev") return false;
+  if (command === "start") return !wantsForegroundStart(args.slice(1));
+  if (command === "gateway" && ["start", "run"].includes(args[1] || "")) {
+    return !wantsForegroundStart(args.slice(2));
+  }
+  return !["wizard", "setup", "install", "configure", "onboard", "tui"].includes(command);
 }
 
 interface GitHubReleaseAsset {
@@ -4028,7 +4068,7 @@ async function rawGateway(args: string[]): Promise<void> {
       break;
     case "start":
     case "run":
-      spawn("bun", ["run", "dev"], { stdio: "inherit" });
+      launchGateway(args.slice(1));
       break;
     default:
       console.log("Gateway Commands:");
@@ -4037,7 +4077,8 @@ async function rawGateway(args: string[]): Promise<void> {
       console.log("  cybara gateway logs [--tail N] - Show gateway logs");
       console.log("  cybara gateway logs --follow   - Follow gateway logs");
       console.log("  cybara gateway restart         - Restart the gateway");
-      console.log("  cybara gateway start           - Start the local gateway");
+      console.log("  cybara gateway start           - Start the local gateway (background)");
+      console.log("  cybara gateway start --foreground - Start attached to this terminal");
       break;
   }
 }
@@ -4781,6 +4822,8 @@ async function main() {
       break;
 
     case "start":
+      launchGateway(args.slice(1));
+      break;
     case "dev":
       spawn("bun", ["run", "dev"], { stdio: "inherit" });
       break;

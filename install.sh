@@ -111,7 +111,10 @@ TMP_FILE="$(mktemp "${TMPDIR:-/tmp}/cybara-install.XXXXXX")"
 trap 'rm -f "$TMP_FILE"' EXIT
 
 echo "Downloading cybara${ASSET_SUFFIX} from ${REPO} (${VERSION})..."
-curl -fsSL "$DOWNLOAD_URL" -o "$TMP_FILE"
+# Drop -s so curl prints its transfer meter (received / total bytes, %, speed, ETA)
+# to stderr while the binary downloads. -L follows the GitHub -> asset redirect.
+curl -fL "$DOWNLOAD_URL" -o "$TMP_FILE"
+echo
 
 if [ -n "$CHECKSUM_URL" ]; then
   EXPECTED="$(curl -fsSL "$CHECKSUM_URL" | awk '{print $1}' | tr '[:upper:]' '[:lower:]')"
@@ -144,7 +147,11 @@ echo "Cybara ${VERSION} installed to $INSTALL_DIR/cybara"
 
 case ":$PATH:" in
   *":$INSTALL_DIR:"*)
-    echo "Run: cybara --help"
+    echo
+    echo "Get started:"
+    echo "  cybara help     - list all commands"
+    echo "  cybara start    - launch the gateway in the background"
+    echo "  cybara status   - check that it is running"
     ;;
   *)
     case "$(basename "${SHELL:-sh}")" in
@@ -158,6 +165,10 @@ case ":$PATH:" in
       echo "Added $INSTALL_DIR to your PATH in $SHELL_RC"
     fi
     echo "Activate it now with:  $PATH_LINE"
-    echo "Then run: cybara --help"
+    echo
+    echo "Then get started:"
+    echo "  cybara help     - list all commands"
+    echo "  cybara start    - launch the gateway in the background"
+    echo "  cybara status   - check that it is running"
     ;;
 esac

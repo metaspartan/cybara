@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, ChevronUp, Wrench } from "lucide-react";
+import { ChevronDown, ChevronUp, FileText } from "lucide-react";
 import { DiffCodeBlock } from "./MessageContent";
 import { formatFilePathForDisplay, type FileChangeSummary } from "./chatModel";
 
@@ -18,7 +18,7 @@ export function FileChangesCard({
         onClick={() => setExpanded((value) => !value)}
         className="w-full px-3 py-2 flex items-center gap-2 text-[12px] cursor-pointer hover:bg-white/5 transition-colors"
       >
-        <Wrench className="w-3 h-3 text-indigo-300" />
+        <FileText className="w-3 h-3 text-indigo-300" />
         <span className="text-gray-200 font-medium">
           {summary.files.length} files changed
           <span className="ml-2 text-green-300">+{summary.totalAdded}</span>

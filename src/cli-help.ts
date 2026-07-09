@@ -8,6 +8,7 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("");
   console.log("Commands:");
   console.log("  (none)      Interactive TUI menu");
+  console.log("  start       Launch the gateway in the background (add --foreground to attach)");
   console.log("  chat        Interactive chat with AI");
   console.log("    chat --agent <id> --model <id>     Chat with an agent/model override");
   console.log("    chat --router                      Chat through the model router");
@@ -18,7 +19,7 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    gateway logs [--tail N] Show recent gateway logs");
   console.log("    gateway logs --follow   Follow gateway logs");
   console.log("    gateway restart         Restart the gateway");
-  console.log("    gateway start           Start the local gateway");
+  console.log("    gateway start           Start the local gateway (background)");
   console.log("  metrics     Show token usage and metrics");
   console.log("  doctor      Run environment diagnostics");
   console.log("  update      Download and install the latest CLI release (verifies SHA256)");
@@ -137,7 +138,6 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    lsp list       Show language server status");
   console.log("    lsp install    Install language server");
   console.log("    lsp uninstall  Uninstall language server");
-  console.log("  start       Start the server");
   console.log("  wizard      Run setup wizard (first-time configuration)");
   console.log("  configure   Alias for setup wizard");
   console.log("  onboard     Alias for setup wizard");

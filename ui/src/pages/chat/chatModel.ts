@@ -573,7 +573,9 @@ export function formatFilePathForDisplay(
   workspaceDir?: string | null
 ): FilePathDisplay {
   const fullPath = normalizeDisplayPath(path);
-  const normalizedWorkspace = workspaceDir ? trimTrailingSlash(normalizeDisplayPath(workspaceDir)) : "";
+  const normalizedWorkspace = workspaceDir
+    ? trimTrailingSlash(normalizeDisplayPath(workspaceDir))
+    : "";
   let relativePath = fullPath.replace(/^\.\//, "");
   let isOutsideWorkspace = false;
 
