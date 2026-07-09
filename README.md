@@ -346,6 +346,7 @@ Full reference: [docs/api.md](docs/api.md)
 cybara chat
 cybara chat --agent agent-codex --workspace ~/Documents/GitHub/cybara
 cybara chat steer <session-id> <pending-id>
+cybara tui chat
 cybara tui providers
 cybara tui router
 cybara status

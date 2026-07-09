@@ -24,16 +24,17 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
     expect(source).toContain("sessionToRefresh === activeSessionRef.current");
   });
 
-  test("mobile: idle event reloads the session before dropping the live assistant", () => {
+  test("mobile: idle event reloads the session before pruning the live assistant", () => {
     const source = read("apps/mobile/src/screens/dashboardSessionDetail.tsx");
     expect(source).toContain("void loadSession(false).finally(() => {");
-    expect(source).toContain("commitLiveAssistant(() => null, event.timestamp);");
+    expect(source).toContain("prunePersistedMobileLiveAssistant(current, nextDetail.messages)");
+    expect(source).toContain("const cached = readCachedMobileLiveAssistant(sessionId);");
     expect(source).toContain('snapshotStatus === "compacting"');
     expect(source).not.toContain('snapshotStatus === "tool_completed"');
-    // The old instant-clear form must not come back.
     expect(source).not.toMatch(
       /if \(event\.status === "idle"\) \{\s*\n\s*if \(!sendingRef\.current\) \{\s*\n\s*commitLiveAssistant\(\(\) => null, event\.timestamp\);/
     );
+    expect(source).not.toContain("commitLiveAssistant(() => null, event.timestamp);");
   });
 
   test("macos: idle status loads messages before resetting the live timeline", () => {

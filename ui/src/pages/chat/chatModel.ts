@@ -73,6 +73,14 @@ export interface FileChangeSummary {
   totalRemoved: number;
 }
 
+export interface FilePathDisplay {
+  fileName: string;
+  parentPath: string | null;
+  relativePath: string;
+  fullPath: string;
+  isOutsideWorkspace: boolean;
+}
+
 export interface RevertTarget {
   index: number;
   content: string;
@@ -546,6 +554,57 @@ export function formatWorkspaceLabel(path: string, maxLength = 44): string {
   if (tail.length + 4 >= maxLength) return `.../${tail.slice(-(maxLength - 4))}`;
   const prefixLength = Math.max(0, maxLength - tail.length - 4);
   return `${normalized.slice(0, prefixLength)}.../${tail}`;
+}
+
+function normalizeDisplayPath(path: string): string {
+  return path.trim().replace(/\\/g, "/").replace(/\/+/g, "/");
+}
+
+function trimTrailingSlash(path: string): string {
+  return path.replace(/\/+$/, "");
+}
+
+function isAbsoluteDisplayPath(path: string): boolean {
+  return path.startsWith("/") || path.startsWith("~/") || /^[A-Za-z]:\//.test(path);
+}
+
+export function formatFilePathForDisplay(
+  path: string,
+  workspaceDir?: string | null
+): FilePathDisplay {
+  const fullPath = normalizeDisplayPath(path);
+  const normalizedWorkspace = workspaceDir ? trimTrailingSlash(normalizeDisplayPath(workspaceDir)) : "";
+  let relativePath = fullPath.replace(/^\.\//, "");
+  let isOutsideWorkspace = false;
+
+  if (normalizedWorkspace) {
+    const fullPathCompare = fullPath.toLowerCase();
+    const workspaceCompare = normalizedWorkspace.toLowerCase();
+    if (fullPathCompare === workspaceCompare) {
+      relativePath = fullPath.split("/").filter(Boolean).pop() || fullPath;
+    } else if (fullPathCompare.startsWith(`${workspaceCompare}/`)) {
+      relativePath = fullPath.slice(normalizedWorkspace.length + 1);
+    } else if (isAbsoluteDisplayPath(fullPath)) {
+      isOutsideWorkspace = true;
+    }
+  }
+
+  const segments = relativePath.split("/").filter(Boolean);
+  const fileName = segments.pop() || relativePath || fullPath || "file";
+  const parentPath =
+    isOutsideWorkspace && normalizedWorkspace
+      ? "Outside workspace"
+      : segments.length > 0
+        ? formatWorkspaceLabel(segments.join("/"), 42)
+        : null;
+
+  return {
+    fileName,
+    parentPath,
+    relativePath,
+    fullPath,
+    isOutsideWorkspace,
+  };
 }
 
 export function displayProviderLabel(value?: string | null): string | null {

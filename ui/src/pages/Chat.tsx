@@ -119,6 +119,7 @@ import {
   clampDiffPanelWidth,
   dedupeArtifactSummaries,
   extractFirstTargetLine,
+  formatFilePathForDisplay,
   formatSandboxProviderLabel,
   formatToolIntent,
   formatWorkspaceLabel,
@@ -738,6 +739,7 @@ function AssistantMetaInline({
   turnStartedAtMs,
   onOpenArtifact,
   section = "work",
+  workspaceDir,
 }: {
   message: ChatMessage;
   processActivities?: LiveActivityItem[];
@@ -745,6 +747,7 @@ function AssistantMetaInline({
   turnStartedAtMs?: number;
   onOpenArtifact?: (artifact: ArtifactSummaryView) => void;
   section?: "work" | "summary";
+  workspaceDir?: string | null;
 }) {
   const isWorkSection = section === "work";
   const orderedToolCalls = getToolCallsInTimelineOrder(message.tool_calls);
@@ -827,7 +830,7 @@ function AssistantMetaInline({
       )}
 
       {!isWorkSection && hasFileChangeSummary && fileChangeSummary && (
-        <FileChangesCard summary={fileChangeSummary} />
+        <FileChangesCard summary={fileChangeSummary} workspaceDir={workspaceDir} />
       )}
       {!isWorkSection && hasArtifacts && (
         <ArtifactSummaryCard artifacts={artifactSummary} onOpenArtifact={onOpenArtifact} />
@@ -945,6 +948,7 @@ function SessionDiffPanel({
   width,
   onResizeStart,
   onOpenInIDE,
+  workspaceDir,
 }: {
   isOpen: boolean;
   summary: FileChangeSummary | null;
@@ -954,6 +958,7 @@ function SessionDiffPanel({
   width: number;
   onResizeStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
   onOpenInIDE: (file: FileChangeItem) => void;
+  workspaceDir?: string | null;
 }) {
   if (!isOpen) return null;
 
@@ -1024,11 +1029,13 @@ function SessionDiffPanel({
           <div className="max-h-56 overflow-y-auto p-2 space-y-1.5 border-b border-white/5">
             {summary.files.map((file) => {
               const isSelected = selectedFile?.path === file.path;
+              const pathDisplay = formatFilePathForDisplay(file.path, workspaceDir);
               return (
                 <div key={`${file.path}-${file.type}`} className="flex items-stretch gap-1">
                   <button
                     type="button"
                     onClick={() => onSelectPath(file.path)}
+                    title={pathDisplay.fullPath}
                     className={cn(
                       "flex-1 text-left rounded-lg border px-2.5 py-2 transition-colors cursor-pointer",
                       isSelected
@@ -1036,13 +1043,18 @@ function SessionDiffPanel({
                         : "bg-white/[0.02] border-white/10 hover:bg-white/[0.06]"
                     )}
                   >
-                    <p className="text-[12px] text-gray-100 truncate">{file.path}</p>
-                    <p className="mt-1 text-[10px] text-gray-500 uppercase tracking-[0.08em]">
-                      {file.type}
+                    <p className="truncate text-[12px] font-medium text-gray-100">
+                      {pathDisplay.fileName}
                     </p>
-                    <div className="mt-1 text-[10px]">
+                    <p className="mt-0.5 truncate text-[10px] text-gray-500">
+                      {pathDisplay.parentPath || file.type}
+                    </p>
+                    <div className="mt-1 flex items-center gap-2 text-[10px]">
+                      <span className="rounded-full bg-white/[0.04] px-1.5 py-0.5 uppercase tracking-[0.08em] text-gray-500">
+                        {file.type}
+                      </span>
                       <span className="text-green-300">+{file.added}</span>
-                      <span className="ml-2 text-red-300">-{file.removed}</span>
+                      <span className="text-red-300">-{file.removed}</span>
                     </div>
                   </button>
                   <button
@@ -1066,9 +1078,21 @@ function SessionDiffPanel({
 
           <div className="flex-1 min-h-0 overflow-y-auto p-2.5">
             {selectedFile ? (
-              <div className="rounded-lg border border-white/10 bg-black/20 overflow-hidden">
-                <div className="px-2.5 py-2 border-b border-white/10 flex items-center gap-2">
-                  <p className="text-[12px] text-gray-200 truncate flex-1">{selectedFile.path}</p>
+              <div className="overflow-hidden rounded-lg border border-white/10 bg-black/20">
+                <div className="flex items-center gap-2 border-b border-white/10 px-2.5 py-2">
+                  {(() => {
+                    const pathDisplay = formatFilePathForDisplay(selectedFile.path, workspaceDir);
+                    return (
+                      <div className="min-w-0 flex-1" title={pathDisplay.fullPath}>
+                        <p className="truncate text-[12px] font-medium text-gray-100">
+                          {pathDisplay.fileName}
+                        </p>
+                        <p className="truncate text-[10px] text-gray-500">
+                          {pathDisplay.parentPath || pathDisplay.relativePath}
+                        </p>
+                      </div>
+                    );
+                  })()}
                   <button
                     type="button"
                     onClick={() => onOpenInIDE(selectedFile)}
@@ -4378,6 +4402,7 @@ export function Chat() {
                                 turnStartedAtMs={turnStartedAtMs}
                                 onOpenArtifact={openArtifactViewer}
                                 section="work"
+                                workspaceDir={effectiveWorkspaceDir}
                               />
                             )}
                             {hasAssistantToolCalls && (
@@ -4449,6 +4474,7 @@ export function Chat() {
                                 turnStartedAtMs={turnStartedAtMs}
                                 onOpenArtifact={openArtifactViewer}
                                 section="summary"
+                                workspaceDir={effectiveWorkspaceDir}
                               />
                             )}
                           </div>
@@ -4770,6 +4796,7 @@ export function Chat() {
             width={diffPanelWidth}
             onResizeStart={handleDiffPanelResizeStart}
             onOpenInIDE={handleOpenDiffFileInIde}
+            workspaceDir={effectiveWorkspaceDir}
           />
         )}
 

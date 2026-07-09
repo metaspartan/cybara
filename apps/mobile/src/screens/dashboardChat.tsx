@@ -16,6 +16,7 @@ import {
   ChevronDown,
   ChevronUp,
   Copy,
+  FileText,
   ListChecks,
   Loader2,
   RotateCcw,
@@ -36,6 +37,82 @@ import {
 } from "../lib/chat-format";
 import type { SessionDetailSummary, SessionMessageSummary, SessionPlanSnapshot } from "../lib/api";
 import { Clipboard } from "../lib/expoNativeModules";
+
+interface MobileFileChangeItem {
+  path: string;
+  fileName: string;
+  parentPath: string | null;
+  added: number;
+  removed: number;
+}
+
+function mobileFilePathDisplay(path: string): { fileName: string; parentPath: string | null } {
+  const normalized = path.trim().replace(/\\/g, "/").replace(/\/+/g, "/");
+  const segments = normalized.split("/").filter(Boolean);
+  const fileName = segments.pop() || normalized || "file";
+  if (segments.length === 0) return { fileName, parentPath: null };
+  const parentTail = segments.slice(-2).join("/");
+  return {
+    fileName,
+    parentPath: segments.length > 2 ? `.../${parentTail}` : parentTail,
+  };
+}
+
+function mobileActivityFileChange(text: string, phase: string): MobileFileChangeItem | null {
+  if ((phase || "result").toLowerCase() !== "result") return null;
+  const match = text.trim().match(/^Edited\s+(.+?)\s+\+(\d+)\s+-(\d+)$/i);
+  if (!match) return null;
+  const path = match[1]?.trim() || "";
+  if (!path || path.toLowerCase() === "file") return null;
+  const added = Number.parseInt(match[2] || "0", 10);
+  const removed = Number.parseInt(match[3] || "0", 10);
+  if (!Number.isFinite(added) || !Number.isFinite(removed)) return null;
+  const display = mobileFilePathDisplay(path);
+  return {
+    path,
+    fileName: display.fileName,
+    parentPath: display.parentPath,
+    added: Math.max(0, added),
+    removed: Math.max(0, removed),
+  };
+}
+
+function collectMobileFileChanges(
+  message: SessionDetailSummary["messages"][number]
+): { files: MobileFileChangeItem[]; totalAdded: number; totalRemoved: number } | null {
+  const byPath = new Map<string, MobileFileChangeItem>();
+  for (const activity of message.processActivities || []) {
+    const parsed = mobileActivityFileChange(activity.text || "", activity.phase || "result");
+    if (!parsed) continue;
+    const existing = byPath.get(parsed.path);
+    if (existing) {
+      existing.added += parsed.added;
+      existing.removed += parsed.removed;
+    } else {
+      byPath.set(parsed.path, parsed);
+    }
+  }
+  for (const toolCall of message.toolCalls || []) {
+    if (!toolCall.filePath) continue;
+    const display = mobileFilePathDisplay(toolCall.filePath);
+    if (!byPath.has(toolCall.filePath)) {
+      byPath.set(toolCall.filePath, {
+        path: toolCall.filePath,
+        fileName: display.fileName,
+        parentPath: display.parentPath,
+        added: 0,
+        removed: 0,
+      });
+    }
+  }
+  const files = Array.from(byPath.values()).sort((a, b) => a.path.localeCompare(b.path));
+  if (files.length === 0) return null;
+  return {
+    files,
+    totalAdded: files.reduce((sum, file) => sum + file.added, 0),
+    totalRemoved: files.reduce((sum, file) => sum + file.removed, 0),
+  };
+}
 
 function InlineMarkdown({
   selectable = false,
@@ -315,6 +392,51 @@ function MobilePlanStatusIcon({
   return <View style={styles.mobilePlanPendingDot} />;
 }
 
+function MobileFileChangesCard({
+  summary,
+}: {
+  summary: { files: MobileFileChangeItem[]; totalAdded: number; totalRemoved: number };
+}) {
+  return (
+    <View style={styles.mobileFileChangesCard}>
+      <View style={styles.mobileFileChangesHeader}>
+        <FileText color={colors.textMuted} size={13} strokeWidth={2.2} />
+        <Text selectable style={styles.mobileFileChangesTitle}>
+          {summary.files.length} files changed
+        </Text>
+        <Text selectable style={styles.mobileFileChangesAdded}>
+          +{summary.totalAdded}
+        </Text>
+        <Text selectable style={styles.mobileFileChangesRemoved}>
+          -{summary.totalRemoved}
+        </Text>
+      </View>
+      {summary.files.slice(0, 4).map((file) => (
+        <View key={file.path} style={styles.mobileFileChangeRow}>
+          <View style={styles.mobileFileChangeNameColumn}>
+            <Text selectable numberOfLines={1} style={styles.mobileFileChangeName}>
+              {file.fileName}
+            </Text>
+            {file.parentPath ? (
+              <Text selectable numberOfLines={1} style={styles.mobileFileChangePath}>
+                {file.parentPath}
+              </Text>
+            ) : null}
+          </View>
+          <View style={styles.mobileFileChangeCounts}>
+            <Text selectable style={styles.mobileFileChangesAdded}>
+              +{file.added}
+            </Text>
+            <Text selectable style={styles.mobileFileChangesRemoved}>
+              -{file.removed}
+            </Text>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export function MobilePlanSummaryCard({ plan }: { plan: SessionPlanSnapshot }) {
   const [expanded, setExpanded] = useState(false);
   const progressPercent =
@@ -409,10 +531,12 @@ export function ChatMessageRow({
     );
     const isLiveMessage =
       typeof message.id === "string" && message.id.startsWith("live-assistant-");
+    const fileChanges = collectMobileFileChanges(message);
     if (isLiveMessage) {
       return (
         <View style={styles.agentMessageRow}>
           <WorkTimeline message={message} nowMs={nowMs} />
+          {fileChanges ? <MobileFileChangesCard summary={fileChanges} /> : null}
           <ChatImageAttachments uris={toolImageUris} />
         </View>
       );
@@ -426,6 +550,7 @@ export function ChatMessageRow({
         {hasContent || !hasWorkTimeline ? (
           <MessageContent content={hasContent ? content : "(empty message)"} />
         ) : null}
+        {fileChanges ? <MobileFileChangesCard summary={fileChanges} /> : null}
         <MessageActionsRow
           content={message.content || ""}
           onAddToChat={onAddToChat}

@@ -25,6 +25,7 @@ import { rawHelp } from "./cli-help";
 import { printCompletion } from "./cli-completion";
 import { rawComputerUse } from "./cli-computer-use";
 import { configureChatCli, rawAgent, rawChatCommand } from "./cli-chat";
+import { TUIChatCommand } from "./cli-tui-chat";
 import { getFlagValue, hasFlag } from "./cli-args";
 import { commandExists } from "./core/platform";
 import { parseSubagentSpawnArgs, type SubagentSpawnPayload } from "./cli-subagent-args";
@@ -3481,6 +3482,7 @@ const MainMenu = () => {
     { label: "Agents", action: "agents" },
     { label: "Providers", action: "providers" },
     { label: "Model Router", action: "router" },
+    { label: "Chat", action: "chat" },
     { label: "Sessions", action: "sessions" },
     { label: "Logs", action: "logs" },
     { label: "Mobile Pairing", action: "mobile" },
@@ -3516,6 +3518,7 @@ const MainMenu = () => {
       case "tasks":
       case "providers":
       case "router":
+      case "chat":
       case "sessions":
       case "logs":
       case "mobile":
@@ -3537,7 +3540,7 @@ const MainMenu = () => {
       <UpdateBanner />
       <Box marginBottom={1} flexDirection="column">
         <Text color="gray">Gateway: {API_BASE}</Text>
-        <Text color="gray">Direct panels: cybara tui status|metrics|providers|router|sessions|logs</Text>
+        <Text color="gray">Direct panels: cybara tui status|metrics|providers|router|chat|sessions|logs</Text>
       </Box>
       <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
         <Text bold>Main Menu</Text>
@@ -3947,6 +3950,8 @@ const TUIApp = ({ command }: { command?: string }) => {
       return <TUIProvidersCommand />;
     case "router":
       return <TUIRouterCommand />;
+    case "chat":
+      return <TUIChatCommand fetchAPI={fetchAPI} />;
     case "sessions":
       return <TUISessionsCommand />;
     case "logs":

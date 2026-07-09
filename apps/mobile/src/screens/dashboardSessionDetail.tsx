@@ -517,7 +517,13 @@ export function SessionDetailPanel({
       );
       if (!active || !snapshot) {
         if (!sendingRef.current) {
-          commitLiveAssistant(() => null);
+          const cached = readCachedMobileLiveAssistant(sessionId);
+          if (cached) {
+            setLiveNowMs(cached.nowMs);
+            setLiveAssistant((current) => current ?? cached.message);
+          } else {
+            commitLiveAssistant(() => null);
+          }
           clearCachedMobileOptimisticPendingMessages(sessionId);
         }
         return;
@@ -652,11 +658,7 @@ export function SessionDetailPanel({
         if (event.type !== "status" || event.sessionId !== sessionId) return;
         if (event.status === "idle") {
           if (!sendingRef.current) {
-            // Keep the live working message on screen until the persisted
-            // assistant reply has been fetched — clearing first left the chat
-            // empty for seconds right as a run finished.
             void loadSession(false).finally(() => {
-              commitLiveAssistant(() => null, event.timestamp);
               void hydrateLiveAssistant();
             });
           }

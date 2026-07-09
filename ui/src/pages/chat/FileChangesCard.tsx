@@ -1,9 +1,15 @@
 import { useState } from "react";
 import { ChevronDown, ChevronUp, Wrench } from "lucide-react";
 import { DiffCodeBlock } from "./MessageContent";
-import type { FileChangeSummary } from "./chatModel";
+import { formatFilePathForDisplay, type FileChangeSummary } from "./chatModel";
 
-export function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
+export function FileChangesCard({
+  summary,
+  workspaceDir,
+}: {
+  summary: FileChangeSummary;
+  workspaceDir?: string | null;
+}) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -27,26 +33,33 @@ export function FileChangesCard({ summary }: { summary: FileChangeSummary }) {
       </button>
       {expanded && (
         <div className="border-t border-white/5 px-3 py-2 space-y-3">
-          {summary.files.map((file) => (
-            <div
-              key={`${file.path}-${file.type}`}
-              className="rounded-md border border-white/10 bg-black/25"
-            >
-              <div className="flex items-center justify-between gap-3 px-2.5 py-2 text-[12px]">
-                <div className="min-w-0">
-                  <p className="truncate text-gray-200">{file.path}</p>
-                  <p className="text-[10px] text-gray-500 uppercase tracking-[0.08em]">
-                    {file.type}
-                  </p>
+          {summary.files.map((file) => {
+            const pathDisplay = formatFilePathForDisplay(file.path, workspaceDir);
+            return (
+              <div
+                key={`${file.path}-${file.type}`}
+                className="rounded-md border border-white/10 bg-black/25"
+                title={pathDisplay.fullPath}
+              >
+                <div className="flex items-center justify-between gap-3 px-2.5 py-2 text-[12px]">
+                  <div className="min-w-0">
+                    <p className="truncate font-medium text-gray-100">{pathDisplay.fileName}</p>
+                    <p className="truncate text-[10px] text-gray-500">
+                      {pathDisplay.parentPath || file.type}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="rounded-full bg-white/[0.04] px-1.5 py-0.5 text-[10px] uppercase tracking-[0.08em] text-gray-500">
+                      {file.type}
+                    </span>
+                    <span className="text-green-300">+{file.added}</span>
+                    <span className="text-red-300">-{file.removed}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-green-300">+{file.added}</span>
-                  <span className="text-red-300">-{file.removed}</span>
-                </div>
+                {file.diff && <DiffCodeBlock code={file.diff} />}
               </div>
-              {file.diff && <DiffCodeBlock code={file.diff} />}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -5,6 +5,7 @@ import { join } from "path";
 const root = join(import.meta.dir, "..", "..");
 const cliSource = readFileSync(join(root, "src", "cli.tsx"), "utf8");
 const cliChatSource = readFileSync(join(root, "src", "cli-chat.ts"), "utf8");
+const cliTuiChatSource = readFileSync(join(root, "src", "cli-tui-chat.tsx"), "utf8");
 const cliDocs = readFileSync(join(root, "docs", "cli.md"), "utf8");
 
 const tuiPanels = [
@@ -13,6 +14,7 @@ const tuiPanels = [
   { command: "agents", component: "TUIAgentsCommand", label: "Agents" },
   { command: "providers", component: "TUIProvidersCommand", label: "Providers" },
   { command: "router", component: "TUIRouterCommand", label: "Model Router" },
+  { command: "chat", component: "TUIChatCommand", label: "Chat" },
   { command: "sessions", component: "TUISessionsCommand", label: "Sessions" },
   { command: "logs", component: "TUILogsCommand", label: "Logs" },
   { command: "mobile", component: "TUIMobileCommand", label: "Mobile Pairing" },
@@ -25,11 +27,11 @@ describe("CLI TUI source wiring", () => {
     for (const panel of tuiPanels) {
       expect(cliSource).toContain(`{ label: "${panel.label}", action: "${panel.command}" }`);
       expect(cliSource).toContain(`case "${panel.command}":`);
-      expect(cliSource).toContain(`<${panel.component} />`);
+      expect(cliSource).toContain(panel.component);
     }
     expect(cliSource).toContain("render(<TUIApp command={args[1]} />)");
     expect(cliSource).toContain(
-      "Direct panels: cybara tui status|metrics|providers|router|sessions|logs"
+      "Direct panels: cybara tui status|metrics|providers|router|chat|sessions|logs"
     );
   });
 
@@ -47,9 +49,18 @@ describe("CLI TUI source wiring", () => {
   });
 
   test("CLI docs list direct TUI panels", () => {
-    for (const command of ["providers", "router", "sessions", "logs", "mobile"]) {
+    for (const command of ["providers", "router", "chat", "sessions", "logs", "mobile"]) {
       expect(cliDocs).toContain(`cybara tui ${command}`);
     }
+  });
+
+  test("chat TUI surfaces terminal chat queue and steering controls", () => {
+    expect(cliTuiChatSource).toContain("/api/sessions");
+    expect(cliTuiChatSource).toContain("cybara chat queue");
+    expect(cliTuiChatSource).toContain("cybara chat steer");
+    expect(cliTuiChatSource).toContain("pending");
+    expect(cliTuiChatSource).toContain("running");
+    expect(cliTuiChatSource).toContain('input === "q"');
   });
 
   test("terminal chat exposes app-parity slash controls", () => {

@@ -82,13 +82,34 @@ export function prunePersistedMobileLiveAssistant(
   persistedMessages: SessionDetailSummary["messages"]
 ): SessionDetailSummary["messages"][number] | null {
   if (!live) return null;
+  const liveTimestampMs = Date.parse(live.timestamp || "");
   const persistedActivityKeys = new Set<string>();
+  let persistedAssistantCaughtUp = false;
+  let latestPersistedTimestampMs = -Infinity;
+  let latestPersistedRole: string | null = null;
+  let latestPersistedHasMaterial = false;
   for (const message of persistedMessages) {
+    const messageTimestampMs = Date.parse(message.timestamp || "");
+    if (
+      Number.isFinite(liveTimestampMs) &&
+      Number.isFinite(messageTimestampMs) &&
+      messageTimestampMs >= liveTimestampMs &&
+      messageTimestampMs >= latestPersistedTimestampMs
+    ) {
+      latestPersistedTimestampMs = messageTimestampMs;
+      latestPersistedRole = message.role;
+      latestPersistedHasMaterial =
+        Boolean((message.content || "").trim()) ||
+        Boolean(message.processActivities?.length) ||
+        Boolean(message.toolCalls?.length);
+    }
     if (message.role !== "assistant") continue;
     for (const activity of message.processActivities || []) {
       persistedActivityKeys.add(mobileActivityKey(activity));
     }
   }
+  persistedAssistantCaughtUp = latestPersistedRole === "assistant" && latestPersistedHasMaterial;
+  if (persistedAssistantCaughtUp) return null;
   if (persistedActivityKeys.size === 0) return live;
   const processActivities = (live.processActivities || []).filter(
     (activity) => !persistedActivityKeys.has(mobileActivityKey(activity))

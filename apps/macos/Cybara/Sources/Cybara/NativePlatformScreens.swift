@@ -194,6 +194,23 @@ struct NativeIDEPathResult: Decodable, Hashable {
     let error: String?
 }
 
+struct NativeIDEBlameLine: Decodable, Hashable {
+    let line: Int
+    let shortCommit: String?
+    let author: String?
+    let authorDate: String?
+    let summary: String?
+    let isUncommitted: Bool?
+}
+
+struct NativeIDEBlameResult: Decodable, Hashable {
+    let success: Bool?
+    let isRepo: Bool?
+    let truncated: Bool?
+    let lines: [NativeIDEBlameLine]?
+    let error: String?
+}
+
 struct NativeIDESearchMatch: Decodable, Identifiable, Hashable {
     let line: Int
     let column: Int
@@ -417,6 +434,17 @@ extension GatewayClient {
 
     func writeIDEFile(path: String, content: String) async throws -> NativeIDEPathResult {
         try await nativePostJSON("api/ide/write", payload: ["path": path, "content": content])
+    }
+
+    func blameIDEFile(path: String, maxLines: Int) async throws -> NativeIDEBlameResult {
+        try await nativeGet(
+            "api/ide/blame",
+            as: NativeIDEBlameResult.self,
+            queryItems: [
+                URLQueryItem(name: "path", value: path),
+                URLQueryItem(name: "maxLines", value: String(maxLines)),
+            ]
+        )
     }
 
     func createIDEItem(parentPath: String, name: String, type: String) async throws -> NativeIDEPathResult {
@@ -920,6 +948,9 @@ struct IDEScreen: View {
     @State private var renameName = ""
     @State private var renamePath = ""
     @State private var inspectorSection = "search"
+    @State private var editorMode = "view"
+    @State private var showBlame = false
+    @State private var blameByLine: [Int: NativeIDEBlameLine] = [:]
 
     private var filteredEntries: [NativeIDEEntry] {
         let entries = browse?.entries ?? []
@@ -1149,14 +1180,37 @@ struct IDEScreen: View {
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 } else {
-                    TextEditor(text: $fileContent)
-                        .font(.system(size: 12, design: .monospaced))
-                        .scrollContentBackground(.hidden)
-                        .background(
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color.primary.opacity(0.035))
-                        )
-                        .frame(minHeight: 360, maxHeight: .infinity)
+                    HStack(spacing: 10) {
+                        Picker("Mode", selection: $editorMode) {
+                            Text("View").tag("view")
+                            Text("Edit").tag("edit")
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 150)
+                        Toggle(isOn: $showBlame) {
+                            Label("Blame", systemImage: "clock.arrow.circlepath")
+                        }
+                        .toggleStyle(.button)
+                        .controlSize(.small)
+                        .disabled(blameByLine.isEmpty)
+                        .help(blameByLine.isEmpty ? "Git blame unavailable for this file" : "Toggle inline git blame")
+                        Spacer()
+                    }
+
+                    if editorMode == "edit" {
+                        TextEditor(text: $fileContent)
+                            .font(.system(size: 12, design: .monospaced))
+                            .scrollContentBackground(.hidden)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color.primary.opacity(0.035))
+                            )
+                            .frame(minHeight: 360, maxHeight: .infinity)
+                    } else {
+                        codeViewer
+                            .frame(minHeight: 360, maxHeight: .infinity)
+                    }
 
                     HStack {
                         Text("\(lineCount(fileContent)) lines")
@@ -1179,6 +1233,50 @@ struct IDEScreen: View {
                 }
             }
         }
+    }
+
+    private var codeViewer: some View {
+        let lines = fileContent.components(separatedBy: "\n")
+        let gutterWidth = max(44, CGFloat(String(lines.count).count) * 9 + 20)
+        return ScrollView([.vertical, .horizontal]) {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(lines.enumerated()), id: \.offset) { index, text in
+                    let number = index + 1
+                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                        Text("\(number)")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .frame(width: gutterWidth, alignment: .trailing)
+                            .padding(.trailing, 12)
+                            .overlay(alignment: .trailing) {
+                                Rectangle()
+                                    .fill(Color.primary.opacity(0.08))
+                                    .frame(width: 1)
+                            }
+                        Text(text.isEmpty ? " " : text)
+                            .font(.system(size: 12, design: .monospaced))
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .padding(.leading, 14)
+                        if showBlame, let blame = blameByLine[number] {
+                            Text(blameLabel(blame))
+                                .font(.system(size: 10, design: .rounded))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                                .padding(.leading, 16)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 1.5)
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.primary.opacity(0.035))
+        )
     }
 
     private var searchReplacePane: some View {
@@ -1587,11 +1685,43 @@ struct IDEScreen: View {
                 fileContent = result.content ?? ""
                 originalFileContent = fileContent
                 error = nil
+                blameByLine = [:]
+                if result.isBinary != true {
+                    await loadBlame(path: result.path, content: fileContent)
+                }
             }
         } catch {
             self.error = error.localizedDescription
         }
         loadingFile = false
+    }
+
+    private func loadBlame(path: String, content: String) async {
+        let lineTotal = max(1, content.components(separatedBy: "\n").count)
+        let maxLines = max(3000, min(lineTotal + 64, 50000))
+        do {
+            let result = try await client.blameIDEFile(path: path, maxLines: maxLines)
+            guard result.success == true, result.isRepo == true, let lines = result.lines else {
+                blameByLine = [:]
+                return
+            }
+            var map: [Int: NativeIDEBlameLine] = [:]
+            for entry in lines {
+                map[entry.line] = entry
+            }
+            blameByLine = map
+        } catch {
+            blameByLine = [:]
+        }
+    }
+
+    private func blameLabel(_ blame: NativeIDEBlameLine) -> String {
+        if blame.isUncommitted == true {
+            return "Uncommitted"
+        }
+        let author = blame.author ?? "Unknown"
+        let commit = blame.shortCommit ?? ""
+        return commit.isEmpty ? author : "\(author) · \(commit)"
     }
 
     private func saveFile() async {

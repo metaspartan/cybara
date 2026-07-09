@@ -2153,11 +2153,11 @@ export function IDE() {
   const statusIndent = selectedFile ? "Spaces: 2" : null;
   const gitHistoryStatusLabel = useMemo(() => {
     if (!selectedFile?.path) return null;
-    if (gitHistoryStatus === "loading") return "Git history: loading";
-    if (gitHistoryStatus === "ready") return "Git history: ready";
-    if (gitHistoryStatus === "unavailable") return "Git history: unavailable";
-    if (gitHistoryStatus === "error") return "Git history: error";
-    return "Git history: idle";
+    if (gitHistoryStatus === "loading") return "Git blame: loading";
+    if (gitHistoryStatus === "ready") return "Git blame: ready";
+    if (gitHistoryStatus === "unavailable") return "Git blame: not tracked";
+    if (gitHistoryStatus === "error") return "Git blame: error";
+    return null;
   }, [gitHistoryStatus, selectedFile?.path]);
   const contextMenuPosition = treeContextMenu
     ? {

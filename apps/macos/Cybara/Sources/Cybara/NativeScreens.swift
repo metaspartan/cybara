@@ -1951,13 +1951,23 @@ struct ChatScreen: View {
                     }
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     ForEach(summary.files.prefix(10)) { file in
+                        let display = nativeChatFilePathDisplay(file.path, workspaceDir: activeWorkspaceDir)
                         HStack(spacing: 8) {
                             Image(systemName: file.systemImage)
                                 .foregroundStyle(.secondary)
-                            Text(file.path)
-                                .font(.system(size: 11, design: .monospaced))
-                                .lineLimit(1)
-                                .truncationMode(.middle)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(display.fileName)
+                                    .font(.system(size: 11, weight: .medium, design: .rounded))
+                                    .lineLimit(1)
+                                if let parent = display.parentPath {
+                                    Text(parent)
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                }
+                            }
+                            .help(display.fullPath)
                             Spacer()
                             Text(file.kind)
                                 .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -2850,6 +2860,52 @@ private struct NativeChatFileChangeSummary: Hashable {
     let files: [NativeChatFileChangeItem]
     let totalAdded: Int
     let totalRemoved: Int
+}
+
+private struct NativeChatFilePathDisplay: Hashable {
+    let fileName: String
+    let parentPath: String?
+    let fullPath: String
+}
+
+private func nativeNormalizeDisplayPath(_ path: String) -> String {
+    path.trimmingCharacters(in: .whitespacesAndNewlines)
+        .replacingOccurrences(of: "\\", with: "/")
+        .replacingOccurrences(of: #"/+"#, with: "/", options: .regularExpression)
+}
+
+private func nativeIsAbsoluteDisplayPath(_ path: String) -> Bool {
+    path.hasPrefix("/") || path.hasPrefix("~/") || path.range(of: #"^[A-Za-z]:/"#, options: .regularExpression) != nil
+}
+
+private func nativeChatFilePathDisplay(_ path: String, workspaceDir: String?) -> NativeChatFilePathDisplay {
+    let fullPath = nativeNormalizeDisplayPath(path)
+    let workspace = nativeNormalizeDisplayPath(workspaceDir ?? "").replacingOccurrences(
+        of: #"/+$"#,
+        with: "",
+        options: .regularExpression
+    )
+    var relativePath = fullPath.replacingOccurrences(of: #"^\./"#, with: "", options: .regularExpression)
+    var outsideWorkspace = false
+    if !workspace.isEmpty {
+        if fullPath.caseInsensitiveCompare(workspace) == .orderedSame {
+            relativePath = fullPath.split(separator: "/").last.map(String.init) ?? fullPath
+        } else if fullPath.lowercased().hasPrefix("\(workspace.lowercased())/") {
+            relativePath = String(fullPath.dropFirst(workspace.count + 1))
+        } else if nativeIsAbsoluteDisplayPath(fullPath) {
+            outsideWorkspace = true
+        }
+    }
+    var segments = relativePath.split(separator: "/").map(String.init)
+    let fileName = segments.popLast() ?? relativePath
+    let parentPath = outsideWorkspace && !workspace.isEmpty
+        ? "Outside workspace"
+        : (segments.isEmpty ? nil : segments.joined(separator: "/"))
+    return NativeChatFilePathDisplay(
+        fileName: fileName.isEmpty ? "file" : fileName,
+        parentPath: parentPath,
+        fullPath: fullPath
+    )
 }
 
 private struct NativeSessionPlanItem: Identifiable, Hashable {

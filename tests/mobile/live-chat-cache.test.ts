@@ -156,6 +156,25 @@ describe("mobile live chat cache", () => {
     expect(pruned?.processActivities?.[0]?.text).toBe("Running build");
   });
 
+  test("drops live rows after a later persisted assistant reply catches up", () => {
+    const sessionId = `mobile-live-caught-up-${Date.now()}`;
+    const live = {
+      ...liveAssistantMessage(sessionId, null, 1783015200000),
+      content: "Partial answer",
+    };
+
+    const pruned = prunePersistedMobileLiveAssistant(live, [
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "Final answer",
+        timestamp: "2026-07-02T18:00:01.000Z",
+      },
+    ]);
+
+    expect(pruned).toBeNull();
+  });
+
   test("prunes persisted live tool work without requiring identical timestamps", () => {
     const sessionId = `mobile-prune-live-timestamp-${Date.now()}`;
     const live = {
