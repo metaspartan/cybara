@@ -1758,18 +1758,30 @@ function sessionUpdatedAt(session: SessionInfo): string | undefined {
   return session.updated_at ?? session.updatedAt ?? session.created_at ?? session.createdAt;
 }
 
-function sessionAgentLabel(session: SessionInfo): string {
-  return session.modelMetadata?.agent_name || session.agent_id || session.agentId || "-";
+function sessionAgentLabel(session: SessionInfo, agentsById = new Map<string, AgentItem>()): string {
+  const metadata = session.modelMetadata;
+  const metadataModel = [metadata?.agent_name, metadata?.model].filter(Boolean).join(" · ");
+  if (metadataModel) return metadataModel;
+  const agentId = session.agent_id || session.agentId;
+  const agent = agentId ? agentsById.get(agentId) : undefined;
+  if (agent?.name && agent.model) return `${agent.name} · ${agent.model}`;
+  if (agent?.name) return agent.name;
+  if (agent?.model) return agent.model;
+  return "-";
 }
 
 async function rawSessions(): Promise<void> {
-  const data = await fetchAPI<SessionInfo[]>("/api/sessions");
+  const [data, agents] = await Promise.all([
+    fetchAPI<SessionInfo[]>("/api/sessions"),
+    fetchAPI<AgentItem[]>("/api/agents"),
+  ]);
   if (!data) {
     console.error("ERROR: Failed to fetch sessions from", API_BASE);
     process.exit(1);
   }
 
   const sessions = Array.isArray(data) ? data : [];
+  const agentsById = new Map((Array.isArray(agents) ? agents : []).map((agent) => [agent.id, agent]));
 
   console.log("CYBARA SESSIONS");
   console.log("===============");
@@ -1784,6 +1796,7 @@ async function rawSessions(): Promise<void> {
   for (const session of sessions.slice(0, 20)) {
     console.log(`- ${(session.title || session.id).slice(0, 80)}`);
     console.log(`  id: ${session.id.slice(0, 8)}...`);
+    console.log(`  agent: ${sessionAgentLabel(session, agentsById)}`);
     console.log(`  messages: ${sessionMessageCount(session)}`);
     console.log(`  updated: ${sessionUpdatedAt(session) || "-"}`);
   }
@@ -3318,6 +3331,7 @@ const TUIRouterCommand = () => {
 const TUISessionsCommand = () => {
   const { exit } = useApp();
   const [data, setData] = React.useState<SessionInfo[]>([]);
+  const [agentsById, setAgentsById] = React.useState<Map<string, AgentItem>>(() => new Map());
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -3329,10 +3343,13 @@ const TUISessionsCommand = () => {
   );
 
   React.useEffect(() => {
-    fetchAPI<SessionInfo[]>("/api/sessions")
-      .then((sessions) => {
+    Promise.all([fetchAPI<SessionInfo[]>("/api/sessions"), fetchAPI<AgentItem[]>("/api/agents")])
+      .then(([sessions, agents]) => {
         if (sessions) setData(Array.isArray(sessions) ? sessions : []);
         else setError("Failed to fetch sessions");
+        setAgentsById(
+          new Map((Array.isArray(agents) ? agents : []).map((agent) => [agent.id, agent]))
+        );
       })
       .finally(() => setLoading(false));
   }, []);
@@ -3355,7 +3372,7 @@ const TUISessionsCommand = () => {
           headers={["Session", "Agent", "Messages", "Updated"]}
           rows={data.slice(0, 14).map((session) => [
             truncateText(session.title || session.id, 18),
-            truncateText(sessionAgentLabel(session), 14),
+            truncateText(sessionAgentLabel(session, agentsById), 18),
             String(sessionMessageCount(session)),
             formatRelativeTime(sessionUpdatedAt(session)),
           ])}

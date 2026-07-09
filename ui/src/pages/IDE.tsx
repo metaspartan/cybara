@@ -340,6 +340,7 @@ export function IDE() {
     useState<WorkspaceEmbeddingRuntimeResponse | null>(null);
   const [embeddingRuntimeLoading, setEmbeddingRuntimeLoading] = useState(false);
   const [embeddingRuntimeActionLoading, setEmbeddingRuntimeActionLoading] = useState(false);
+  const [embeddingModelCustom, setEmbeddingModelCustom] = useState(false);
   const [isIdeChatOpen, setIsIdeChatOpen] = useState<boolean>(() => readPersistedChatOpen());
   const [idePendingFileDiffs, setIdePendingFileDiffs] = useState<IdePendingFileDiff[]>([]);
   const [idePendingFileDiffController, setIdePendingFileDiffController] =
@@ -3780,32 +3781,65 @@ export function IDE() {
 
                         <label className="text-xs text-gray-400 space-y-1">
                           <span>Embedding model</span>
-                          <input
-                            type="text"
-                            list="ide-settings-embedding-models"
-                            value={activeIndexSettings.embeddingModel}
-                            onChange={(event) => {
-                              setIndexSettingsDraft({
-                                ...activeIndexSettings,
-                                embeddingModel: event.target.value,
-                              });
-                              setIndexSettingsDirty(true);
-                            }}
-                            placeholder={
-                              selectedEmbeddingProvider?.defaultModel || "provider default"
-                            }
-                            className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
-                          />
-                          <datalist id="ide-settings-embedding-models">
-                            {selectedEmbeddingModelOptions.map((model) => (
-                              <option key={model} value={model} />
-                            ))}
-                          </datalist>
-                          {selectedEmbeddingModelOptions.length > 0 && (
-                            <span className="block text-[11px] text-gray-500 truncate">
-                              Suggested: {selectedEmbeddingModelOptions.slice(0, 3).join(", ")}
-                            </span>
-                          )}
+                          {(() => {
+                            const currentModel = activeIndexSettings.embeddingModel || "";
+                            const modelOptions = Array.from(
+                              new Set(
+                                [...selectedEmbeddingModelOptions, currentModel].filter(Boolean)
+                              )
+                            );
+                            const isCustom =
+                              embeddingModelCustom ||
+                              (currentModel !== "" && !modelOptions.includes(currentModel));
+                            return (
+                              <>
+                                <select
+                                  value={isCustom ? "__custom__" : currentModel}
+                                  onChange={(event) => {
+                                    const next = event.target.value;
+                                    if (next === "__custom__") {
+                                      setEmbeddingModelCustom(true);
+                                      return;
+                                    }
+                                    setEmbeddingModelCustom(false);
+                                    setIndexSettingsDraft({
+                                      ...activeIndexSettings,
+                                      embeddingModel: next,
+                                    });
+                                    setIndexSettingsDirty(true);
+                                  }}
+                                  className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
+                                >
+                                  {modelOptions.length === 0 && (
+                                    <option value="">provider default</option>
+                                  )}
+                                  {modelOptions.map((model) => (
+                                    <option key={model} value={model}>
+                                      {model}
+                                    </option>
+                                  ))}
+                                  <option value="__custom__">Custom model…</option>
+                                </select>
+                                {isCustom && (
+                                  <input
+                                    type="text"
+                                    value={currentModel}
+                                    onChange={(event) => {
+                                      setIndexSettingsDraft({
+                                        ...activeIndexSettings,
+                                        embeddingModel: event.target.value,
+                                      });
+                                      setIndexSettingsDirty(true);
+                                    }}
+                                    placeholder={
+                                      selectedEmbeddingProvider?.defaultModel || "org/model-id"
+                                    }
+                                    className="mt-1 w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 font-mono text-[11px] text-gray-100 !outline-none focus:border-indigo-500/50"
+                                  />
+                                )}
+                              </>
+                            );
+                          })()}
                         </label>
                       </div>
 
@@ -3861,11 +3895,25 @@ export function IDE() {
                               </div>
                             </div>
                             <div>
-                              <div className="text-gray-500">Model cache</div>
+                              <div className="text-gray-500">Model memory</div>
                               <div className="truncate">
                                 {selectedTransformersRuntimeEntry.estimatedModelBytes
                                   ? formatSize(selectedTransformersRuntimeEntry.estimatedModelBytes)
-                                  : "Not cached"}
+                                  : "Not loaded"}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="text-gray-500">
+                                {selectedTransformersRuntimeEntry.device === "webgpu"
+                                  ? "VRAM"
+                                  : "VRAM (GPU only)"}
+                              </div>
+                              <div className="truncate">
+                                {selectedTransformersRuntimeEntry.vramBytes
+                                  ? formatSize(selectedTransformersRuntimeEntry.vramBytes)
+                                  : selectedTransformersRuntimeEntry.device === "webgpu"
+                                    ? "Measuring…"
+                                    : "— (CPU/RAM)"}
                               </div>
                             </div>
                             <div>
@@ -3874,14 +3922,6 @@ export function IDE() {
                                 {selectedTransformersRuntimeEntry.residentMemoryBytes
                                   ? formatSize(selectedTransformersRuntimeEntry.residentMemoryBytes)
                                   : "Unavailable"}
-                              </div>
-                            </div>
-                            <div>
-                              <div className="text-gray-500">Load</div>
-                              <div className="truncate">
-                                {typeof selectedTransformersRuntimeEntry.loadProgress === "number"
-                                  ? `${selectedTransformersRuntimeEntry.loadProgress}%`
-                                  : selectedTransformersRuntimeEntry.loadStatus || "Idle"}
                               </div>
                             </div>
                           </div>

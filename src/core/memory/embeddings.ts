@@ -135,11 +135,14 @@ const OLLAMA_RECOMMENDED_MODELS = [
 const TRANSFORMERS_DEFAULT_MODEL = "Xenova/all-MiniLM-L6-v2";
 const TRANSFORMERS_RECOMMENDED_MODELS = [
   "Xenova/all-MiniLM-L6-v2",
-  "Xenova/e5-small-v2",
+  "Xenova/bge-small-en-v1.5",
   "Xenova/gte-small",
+  "Xenova/bge-base-en-v1.5",
+  "mixedbread-ai/mxbai-embed-large-v1",
+  "nomic-ai/nomic-embed-text-v1.5",
+  "Xenova/e5-small-v2",
   "Xenova/multilingual-e5-small",
   "Xenova/paraphrase-multilingual-MiniLM-L12-v2",
-  "Xenova/bge-small-en-v1.5",
   "Xenova/paraphrase-MiniLM-L3-v2",
 ];
 
@@ -1637,7 +1640,10 @@ export function getTransformersRuntimeStatus(
           normalizedState === "ready" || normalizedState === "loading"
             ? getResidentMemoryBytes()
             : null,
-        vramBytes: null,
+        vramBytes:
+          (normalizedState === "ready" || normalizedState === "loading") && device === "webgpu"
+            ? estimateCachedModelBytes(model)
+            : null,
         memoryNote:
           normalizedState === "ready" || normalizedState === "loading"
             ? getTransformersMemoryNote(device)
