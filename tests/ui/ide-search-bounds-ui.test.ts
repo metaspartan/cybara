@@ -34,4 +34,16 @@ describe("IDE bounded-search UI wiring", () => {
     expect(nativeIdeSource).toContain("nativeIDEScanLimitText");
     expect(nativeIdeSource).toContain("Filesystem scan limited");
   });
+
+  test("native macOS IDE uses a compact editor-first split with a segmented inspector", () => {
+    expect(nativeIdeSource).toContain('@State private var inspectorSection = "search"');
+    expect(nativeIdeSource).toContain('Picker("IDE inspector", selection: $inspectorSection)');
+    expect(nativeIdeSource).toContain('Text("Search").tag("search")');
+    expect(nativeIdeSource).toContain('Text("Results").tag("results")');
+    expect(nativeIdeSource).toContain('Text("Index").tag("index")');
+    expect(nativeIdeSource).toContain(".pickerStyle(.segmented)");
+    expect(nativeIdeSource).toContain(".frame(width: 286)");
+    expect(nativeIdeSource).toContain(".frame(width: 318)");
+    expect(nativeIdeSource).toContain(".padding(.horizontal, 18)");
+  });
 });

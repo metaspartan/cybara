@@ -919,6 +919,7 @@ struct IDEScreen: View {
     @State private var showingRename = false
     @State private var renameName = ""
     @State private var renamePath = ""
+    @State private var inspectorSection = "search"
 
     private var filteredEntries: [NativeIDEEntry] {
         let entries = browse?.entries ?? []
@@ -943,7 +944,7 @@ struct IDEScreen: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center, spacing: 12) {
                 ScreenHeader(title: "IDE", subtitle: "Native workspace browser, editor, search, and index")
                 Spacer()
@@ -971,6 +972,7 @@ struct IDEScreen: View {
                 .buttonStyle(.bordered)
                 .disabled(busy || status?.isIndexing != true)
             }
+            .controlSize(.small)
 
             if let notice {
                 Text(notice)
@@ -984,17 +986,18 @@ struct IDEScreen: View {
                 LoadFailedView(message: error) { Task { await load() } }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .top, spacing: 10) {
                     fileBrowserPane
-                        .frame(width: 330)
+                        .frame(width: 286)
                     editorPane
                     searchReplacePane
-                        .frame(width: 360)
+                        .frame(width: 318)
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
             }
         }
-        .padding(24)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
         .task { await load() }
         .sheet(isPresented: $showingCreate) {
             createSheet
@@ -1006,7 +1009,7 @@ struct IDEScreen: View {
 
     private var fileBrowserPane: some View {
         GlassCard {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Label("Workspace", systemImage: "folder")
                         .font(.system(size: 14, weight: .bold, design: .rounded))
@@ -1093,7 +1096,7 @@ struct IDEScreen: View {
 
     private var editorPane: some View {
         GlassCard {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .center) {
                     Label("Editor", systemImage: "doc.text")
                         .font(.system(size: 14, weight: .bold, design: .rounded))
@@ -1153,7 +1156,7 @@ struct IDEScreen: View {
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
                                 .fill(Color.primary.opacity(0.035))
                         )
-                        .frame(minHeight: 420)
+                        .frame(minHeight: 360, maxHeight: .infinity)
 
                     HStack {
                         Text("\(lineCount(fileContent)) lines")
@@ -1180,62 +1183,89 @@ struct IDEScreen: View {
 
     private var searchReplacePane: some View {
         VStack(alignment: .leading, spacing: 14) {
-            GlassCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Label("Index", systemImage: "sparkle.magnifyingglass")
-                            .font(.system(size: 14, weight: .bold, design: .rounded))
-                        Spacer()
-                        StatusBadge(
-                            label: status?.state ?? "unknown",
-                            color: status?.isIndexing == true ? .orange : .secondary
-                        )
-                    }
-                    NativeMetricGrid(rows: [
-                        ("Files", "\(status?.filesIndexed ?? 0)/\(status?.filesScanned ?? 0)"),
-                        ("Directories", "\(status?.directoriesScanned ?? 0)"),
-                        ("Skipped", "\(status?.skippedFiles ?? 0)"),
-                        ("Chunks", "\(status?.semanticIndexedChunks ?? 0)"),
-                    ])
-                    ProgressView(value: normalizedProgress)
-                    Text(indexSubtitle)
-                        .font(.system(size: 11, design: .rounded))
-                        .foregroundStyle(.secondary)
-                }
+            Picker("IDE inspector", selection: $inspectorSection) {
+                Text("Search").tag("search")
+                Text("Results").tag("results")
+                Text("Index").tag("index")
             }
+            .pickerStyle(.segmented)
+            .labelsHidden()
 
-            GlassCard {
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("Search and Replace", systemImage: "magnifyingglass")
+            if inspectorSection == "index" {
+                indexCard
+            } else if inspectorSection == "results" {
+                searchResultsPane
+            } else {
+                searchControlsCard
+            }
+        }
+    }
+
+    private var indexCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("Index", systemImage: "sparkle.magnifyingglass")
                         .font(.system(size: 14, weight: .bold, design: .rounded))
-                    TextField("Search text", text: $searchQuery)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit { Task { await runSearch() } }
-                    TextField("Replacement", text: $replacement)
-                        .textFieldStyle(.roundedBorder)
-                    Toggle("Case sensitive", isOn: $caseSensitive)
-                        .toggleStyle(.switch)
-                    Toggle("Whole word", isOn: $wholeWord)
-                        .toggleStyle(.switch)
-                    HStack {
-                        Button("Search") {
-                            Task { await runSearch() }
-                        }
-                        .buttonStyle(.bordered)
-                        Button("Preview") {
-                            Task { await previewReplace() }
-                        }
-                        .buttonStyle(.bordered)
-                        Button("Apply") {
-                            Task { await applyReplace() }
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
-                    .disabled(searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
+                    Spacer()
+                    StatusBadge(
+                        label: status?.state ?? "unknown",
+                        color: status?.isIndexing == true ? .orange : .secondary
+                    )
                 }
+                NativeMetricGrid(rows: [
+                    ("Files", "\(status?.filesIndexed ?? 0)/\(status?.filesScanned ?? 0)"),
+                    ("Directories", "\(status?.directoriesScanned ?? 0)"),
+                    ("Skipped", "\(status?.skippedFiles ?? 0)"),
+                    ("Chunks", "\(status?.semanticIndexedChunks ?? 0)"),
+                ])
+                ProgressView(value: normalizedProgress)
+                Text(indexSubtitle)
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.secondary)
             }
+        }
+    }
 
-            searchResultsPane
+    private var searchControlsCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Search and Replace", systemImage: "magnifyingglass")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                TextField("Search text", text: $searchQuery)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { Task { await runSearch() } }
+                TextField("Replacement", text: $replacement)
+                    .textFieldStyle(.roundedBorder)
+                Toggle("Case sensitive", isOn: $caseSensitive)
+                    .toggleStyle(.switch)
+                Toggle("Whole word", isOn: $wholeWord)
+                    .toggleStyle(.switch)
+                HStack {
+                    Button("Search") {
+                        Task {
+                            inspectorSection = "results"
+                            await runSearch()
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    Button("Preview") {
+                        Task {
+                            inspectorSection = "results"
+                            await previewReplace()
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    Button("Apply") {
+                        Task {
+                            inspectorSection = "results"
+                            await applyReplace()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .disabled(searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || busy)
+            }
         }
     }
 

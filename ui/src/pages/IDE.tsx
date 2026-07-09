@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useDeferredValue,
+  useTransition,
   memo,
   type CSSProperties,
 } from "react";
@@ -263,7 +264,9 @@ export function IDE() {
     return readPersistedOpenTabs().activeTabPath;
   });
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set());
+  const [treeFilterDraft, setTreeFilterDraft] = useState("");
   const [treeFilter, setTreeFilter] = useState("");
+  const [isTreeFilterPending, startTreeFilterTransition] = useTransition();
   const deferredTreeFilter = useDeferredValue(treeFilter);
   const [rootInfo, setRootInfo] = useState<BrowseResult | null>(null);
   const [createType, setCreateType] = useState<"file" | "directory" | null>(null);
@@ -388,6 +391,14 @@ export function IDE() {
       }, 75);
     },
     []
+  );
+
+  const updateTreeFilter = useCallback(
+    (nextFilter: string) => {
+      setTreeFilterDraft(nextFilter);
+      startTreeFilterTransition(() => setTreeFilter(nextFilter));
+    },
+    [startTreeFilterTransition]
   );
 
   useEffect(() => {
@@ -942,7 +953,7 @@ export function IDE() {
     const separatorIndex = Math.max(targetPath.lastIndexOf("/"), targetPath.lastIndexOf("\\"));
     const directoryPath = separatorIndex >= 0 ? targetPath.slice(0, separatorIndex) : "";
     openFileInEditor(targetEntry, targetLine);
-    setTreeFilter("");
+    updateTreeFilter("");
 
     if (directoryPath) {
       setCurrentPath((previous) => (previous === directoryPath ? previous : directoryPath));
@@ -952,7 +963,7 @@ export function IDE() {
         return next;
       });
     }
-  }, [location.search, openFileInEditor]);
+  }, [location.search, openFileInEditor, updateTreeFilter]);
 
   const handleSelectFile = useCallback(
     (entry: FileEntry) => {
@@ -980,17 +991,20 @@ export function IDE() {
     });
   }, []);
 
-  const handleSetWorkspacePath = useCallback((nextPath: string) => {
-    setCurrentPath(nextPath);
-    setSelectedFile(null);
-    setActiveTabPath(null);
-    setRequestedJumpLine(null);
-    setExpandedDirs(new Set());
-    setTreeFilter("");
-    treeBrowseCache.clear();
-    setRefreshKey((previous) => previous + 1);
-    setIndexSettingsError(null);
-  }, []);
+  const handleSetWorkspacePath = useCallback(
+    (nextPath: string) => {
+      setCurrentPath(nextPath);
+      setSelectedFile(null);
+      setActiveTabPath(null);
+      setRequestedJumpLine(null);
+      setExpandedDirs(new Set());
+      updateTreeFilter("");
+      treeBrowseCache.clear();
+      setRefreshKey((previous) => previous + 1);
+      setIndexSettingsError(null);
+    },
+    [updateTreeFilter]
+  );
 
   const handlePromptOpenWorkspace = useCallback(async () => {
     const suggested = rootInfo?.path || currentPath || "~";
@@ -1078,8 +1092,9 @@ export function IDE() {
     setActiveTabPath(null);
     setRequestedJumpLine(null);
     setExpandedDirs(new Set());
+    updateTreeFilter("");
     treeBrowseCache.clear();
-  }, []);
+  }, [updateTreeFilter]);
 
   const handleGoUp = useCallback(() => {
     if (rootInfo?.parent) {
@@ -2674,15 +2689,18 @@ export function IDE() {
                     <input
                       ref={treeFilterInputRef}
                       type="text"
-                      value={treeFilter}
-                      onChange={(event) => setTreeFilter(event.target.value)}
+                      value={treeFilterDraft}
+                      onChange={(event) => updateTreeFilter(event.target.value)}
                       placeholder="Filter files"
                       className="w-full bg-transparent text-xs text-gray-200 placeholder-gray-600 !outline-none"
                     />
-                    {treeFilter.trim() && (
+                    {isTreeFilterPending && (
+                      <Loader2 className="h-3 w-3 animate-spin text-gray-500" />
+                    )}
+                    {treeFilterDraft.trim() && (
                       <button
                         type="button"
-                        onClick={() => setTreeFilter("")}
+                        onClick={() => updateTreeFilter("")}
                         className="text-gray-500 hover:text-gray-300"
                         title="Clear filter"
                       >

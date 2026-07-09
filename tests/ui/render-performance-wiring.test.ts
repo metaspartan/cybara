@@ -62,4 +62,17 @@ describe("UI render performance wiring", () => {
     expect(source).toContain("translateY(${gutterStartLine * lineHeightPx}px)");
     expect(source).not.toContain("sourceLines.map((line, i) =>");
   });
+
+  test("IDE explorer filters schedule large tree updates without blocking typing", () => {
+    const source = read("pages/IDE.tsx");
+
+    expect(source).toContain("useTransition");
+    expect(source).toContain('const [treeFilterDraft, setTreeFilterDraft] = useState("")');
+    expect(source).toContain(
+      "const [isTreeFilterPending, startTreeFilterTransition] = useTransition()"
+    );
+    expect(source).toContain("startTreeFilterTransition(() => setTreeFilter(nextFilter))");
+    expect(source).toContain("value={treeFilterDraft}");
+    expect(source).toContain("isTreeFilterPending &&");
+  });
 });
