@@ -1,6 +1,8 @@
 services:
   site:
-    build: .
+    build:
+      context: ..
+      dockerfile: site/Dockerfile
     image: cybara-site
     ports:
       - "3399:3399"

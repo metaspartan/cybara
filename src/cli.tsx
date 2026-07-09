@@ -34,6 +34,7 @@ import { printCompletion } from "./cli-completion";
 import { rawComputerUse } from "./cli-computer-use";
 import { configureChatCli, rawAgent, rawChatCommand } from "./cli-chat";
 import { TUIChatCommand } from "./cli-tui-chat";
+import { MainMenu, type MainMenuAction } from "./cli-tui-menu";
 import { getFlagValue, hasFlag } from "./cli-args";
 import { commandExists } from "./core/platform";
 import { parseSubagentSpawnArgs, type SubagentSpawnPayload } from "./cli-subagent-args";
@@ -3533,115 +3534,6 @@ const UpdateBanner = () => {
   );
 };
 
-const MainMenu = () => {
-  const { exit } = useApp();
-  const [selected, setSelected] = React.useState(0);
-  const [status, setStatus] = React.useState<{
-    message: string;
-    type: "info" | "success" | "error" | "loading";
-  } | null>(null);
-
-  const menuItems = [
-    { label: "Status", action: "status" },
-    { label: "Metrics", action: "metrics" },
-    { label: "Agents", action: "agents" },
-    { label: "Providers", action: "providers" },
-    { label: "Model Router", action: "router" },
-    { label: "Chat", action: "chat" },
-    { label: "Sessions", action: "sessions" },
-    { label: "Logs", action: "logs" },
-    { label: "Mobile Pairing", action: "mobile" },
-    { label: "Tasks", action: "tasks" },
-    { label: "Skills", action: "skills" },
-    { label: "Open Web UI", action: "ui" },
-    { label: "Start Server", action: "start" },
-    { label: "Exit", action: "exit" },
-  ];
-
-  useInput(
-    (input, key) => {
-      if (key.upArrow) {
-        setSelected((s) => (s > 0 ? s - 1 : menuItems.length - 1));
-      } else if (key.downArrow) {
-        setSelected((s) => (s < menuItems.length - 1 ? s + 1 : 0));
-      } else if (key.return) {
-        handleAction(menuItems[selected].action);
-      } else if (input === "q") {
-        exit();
-      }
-    },
-    TUI_INPUT_OPTIONS
-  );
-
-  const handleAction = async (action: string) => {
-    switch (action) {
-      case "start":
-        setStatus({ message: "Starting Cybara server...", type: "loading" });
-        spawn("bun", ["run", "dev"], { stdio: "inherit" });
-        break;
-      case "status":
-      case "metrics":
-      case "skills":
-      case "agents":
-      case "tasks":
-      case "providers":
-      case "router":
-      case "chat":
-      case "sessions":
-      case "logs":
-      case "mobile":
-        render(<TUIApp command={action} />);
-        break;
-      case "ui":
-        setStatus({ message: "Opening browser...", type: "info" });
-        spawn("open", [`${API_BASE}`]);
-        break;
-      case "exit":
-        exit();
-        break;
-    }
-  };
-
-  return (
-    <Box flexDirection="column">
-      <Logo />
-      <UpdateBanner />
-      <Box marginBottom={1} flexDirection="column">
-        <Text color="gray">Gateway: {API_BASE}</Text>
-        <Text color="gray">Direct panels: cybara tui status|metrics|providers|router|chat|sessions|logs</Text>
-      </Box>
-      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
-        <Text bold>Main Menu</Text>
-        {menuItems.map((item, i) => (
-          <Text key={item.action} color={i === selected ? "cyan" : "white"}>
-            {i === selected ? "❯ " : "  "}
-            {item.label}
-          </Text>
-        ))}
-      </Box>
-      {status && (
-        <Box marginY={1}>
-          {status.type === "loading" ? (
-            <Text color="yellow">
-              <Spinner type="dots" /> {status.message}
-            </Text>
-          ) : (
-            <Text
-              color={status.type === "success" ? "green" : status.type === "error" ? "red" : "cyan"}
-            >
-              {status.type === "success" ? "✓" : status.type === "error" ? "✗" : "→"}{" "}
-              {status.message}
-            </Text>
-          )}
-        </Box>
-      )}
-      <Box marginTop={1}>
-        <Text color="gray">↑/↓ Navigate • Enter Select • q Quit</Text>
-      </Box>
-    </Box>
-  );
-};
-
 interface ProviderOption {
   id: string;
   name: string;
@@ -4030,7 +3922,22 @@ const TUIApp = ({ command }: { command?: string }) => {
     case "mobile":
       return <TUIMobileCommand />;
     default:
-      return <MainMenu />;
+      return (
+        <MainMenu
+          apiBase={API_BASE}
+          header={<Logo />}
+          onOpenPanel={(action: MainMenuAction) => {
+            render(<TUIApp command={action} />);
+          }}
+          onOpenWebUI={() => {
+            spawn("open", [`${API_BASE}`]);
+          }}
+          onStartServer={() => {
+            spawn("bun", ["run", "dev"], { stdio: "inherit" });
+          }}
+          updateBanner={<UpdateBanner />}
+        />
+      );
   }
 };
 

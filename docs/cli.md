@@ -35,12 +35,12 @@ cybara wizard             # Setup wizard (first-time configuration)
 cybara setup              # Setup wizard
 cybara configure          # Setup wizard alias
 cybara onboard            # Setup wizard alias
-cybara tui                # Main menu (interactive terminal dashboard)
+cybara tui                # Searchable terminal dashboard menu
 cybara tui status         # Gateway health panel
 cybara tui metrics        # Token/tool/API metrics panel
 cybara tui providers      # Provider and coding-plan usage panel
 cybara tui router         # Model router state and route windows
-cybara tui chat           # Recent chats plus terminal queue/steer command hints
+cybara tui chat           # Modern terminal chat with search, input, queueing, and steering
 cybara tui sessions       # Recent chat/session list
 cybara tui logs           # Recent gateway/app logs
 cybara tui mobile         # Paired mobile devices
@@ -56,11 +56,13 @@ and approval mode. `/agents`, `/agent <id|name|default>`, `/model <id|router|def
 `/router on|off`, `/permissions ask|always_allow|show`, `/stop`, and `/subagent spawn <task>`
 mirror the same control-plane concepts used by the web/Tauri, mobile, and native macOS clients.
 
-The dashboard TUI is optimized for normal terminals and remains read-only for dashboard panels. The
-chat panel lists recent sessions, running status, queued follow-ups, active model metadata, and the
-matching `cybara chat queue|steer|edit|delete|reorder|stop` command surface. Use the raw CLI commands
-when you need to mutate providers, router settings, mobile pairings, wallet state, or channel
-configuration.
+The dashboard TUI is optimized for normal terminals. The main menu supports grouped destinations,
+single-key shortcuts, `j`/`k` or arrow navigation, `/` search, `?` help, direct panel launch, and a
+small detail pane for the selected destination. The chat panel supports session search, keyboard
+navigation, new-chat entry, editable prompt input, multiline prompts with `Ctrl+J`, slash command
+completion with `Tab`, pending follow-up queueing, steering, queue edit/delete/reorder, and
+active-run stop. Dashboard panels outside chat remain read-only; use raw CLI commands when you need
+to mutate providers, router settings, mobile pairings, wallet state, or channel configuration.
 
 ### System Status
 

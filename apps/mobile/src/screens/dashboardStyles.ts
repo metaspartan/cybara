@@ -1323,16 +1323,24 @@ const makeStyles = () =>
     chatSettingsBackdrop: {
       ...StyleSheet.absoluteFill,
     },
+    chatSettingsSheetFrame: {
+      marginHorizontal: spacing.md,
+      maxHeight: "88%",
+    },
     chatSettingsSheet: {
       borderRadius: radius.xl,
-      marginBottom: spacing.lg,
-      marginHorizontal: spacing.md,
-      maxHeight: "82%",
+      maxHeight: "100%",
     },
     chatSettingsSheetContent: {
-      flex: 0,
-      gap: spacing.md,
-      padding: spacing.md,
+      flexShrink: 1,
+      gap: spacing.sm,
+      paddingBottom: spacing.md,
+      paddingHorizontal: spacing.md,
+      paddingTop: spacing.sm,
+    },
+    chatSettingsDragHandle: {
+      gap: spacing.sm,
+      paddingBottom: spacing.xs,
     },
     chatSettingsGrabber: {
       alignSelf: "center",
@@ -1343,9 +1351,9 @@ const makeStyles = () =>
       width: 42,
     },
     chatSettingsHeader: {
-      alignItems: "flex-start",
+      alignItems: "center",
       flexDirection: "row",
-      gap: spacing.md,
+      gap: spacing.sm,
     },
     chatSettingsTitleWrap: {
       flex: 1,
@@ -1354,9 +1362,9 @@ const makeStyles = () =>
     },
     chatSettingsTitle: {
       color: colors.text,
-      fontSize: typography.title,
+      fontSize: typography.heading,
       fontWeight: "900",
-      lineHeight: 24,
+      lineHeight: 22,
     },
     chatSettingsSubtitle: {
       color: colors.textMuted,
@@ -1373,9 +1381,12 @@ const makeStyles = () =>
       justifyContent: "center",
       width: 34,
     },
+    chatSettingsScroll: {
+      flexShrink: 1,
+    },
     chatSettingsScrollContent: {
       gap: spacing.md,
-      paddingBottom: spacing.xs,
+      paddingBottom: spacing.xl,
     },
     chatSettingsInfoGroup: {
       backgroundColor: colors.surface,
@@ -1389,7 +1400,7 @@ const makeStyles = () =>
       borderBottomWidth: StyleSheet.hairlineWidth,
       flexDirection: "row",
       gap: spacing.md,
-      minHeight: 62,
+      minHeight: 58,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
     },
@@ -1440,7 +1451,7 @@ const makeStyles = () =>
       flexDirection: "row",
       flexGrow: 1,
       gap: spacing.xs,
-      minHeight: 48,
+      minHeight: 46,
       minWidth: 132,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,

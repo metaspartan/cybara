@@ -5,7 +5,12 @@ import { join } from "path";
 const root = join(import.meta.dir, "..", "..");
 const cliSource = readFileSync(join(root, "src", "cli.tsx"), "utf8");
 const cliChatSource = readFileSync(join(root, "src", "cli-chat.ts"), "utf8");
+const cliTuiMenuSource = readFileSync(join(root, "src", "cli-tui-menu.tsx"), "utf8");
 const cliTuiChatSource = readFileSync(join(root, "src", "cli-tui-chat.tsx"), "utf8");
+const cliTuiInteractiveChatSource = readFileSync(
+  join(root, "src", "cli-tui-interactive-chat.tsx"),
+  "utf8"
+);
 const cliDocs = readFileSync(join(root, "docs", "cli.md"), "utf8");
 
 const tuiPanels = [
@@ -25,14 +30,29 @@ const tuiPanels = [
 describe("CLI TUI source wiring", () => {
   test("main menu and direct command routing cover operational panels", () => {
     for (const panel of tuiPanels) {
-      expect(cliSource).toContain(`{ label: "${panel.label}", action: "${panel.command}" }`);
+      expect(cliTuiMenuSource).toContain(`label: "${panel.label}"`);
+      expect(cliTuiMenuSource).toContain(`action: "${panel.command}"`);
       expect(cliSource).toContain(`case "${panel.command}":`);
       expect(cliSource).toContain(panel.component);
     }
     expect(cliSource).toContain("render(<TUIApp command={args[1]} />)");
-    expect(cliSource).toContain(
+    expect(cliTuiMenuSource).toContain(
       "Direct panels: cybara tui status|metrics|providers|router|chat|sessions|logs"
     );
+    expect(cliSource).toContain("<MainMenu");
+    expect(cliSource).toContain("onOpenPanel");
+  });
+
+  test("main TUI menu supports modern terminal navigation", () => {
+    expect(cliTuiMenuSource).toContain("MAIN_TUI_MENU_ITEMS");
+    expect(cliTuiMenuSource).toContain("Search: {query");
+    expect(cliTuiMenuSource).toContain("setSearchMode(true)");
+    expect(cliTuiMenuSource).toContain("shortcut");
+    expect(cliTuiMenuSource).toContain("j/k or arrows move");
+    expect(cliTuiMenuSource).toContain("selectedIndexForShortcut");
+    expect(cliTuiMenuSource).toContain("Workflows");
+    expect(cliTuiMenuSource).toContain("Setup");
+    expect(cliTuiMenuSource).toContain("System");
   });
 
   test("read-only parity panels use the shared gateway API routes", () => {
@@ -56,13 +76,39 @@ describe("CLI TUI source wiring", () => {
 
   test("chat TUI surfaces terminal chat queue and steering controls", () => {
     expect(cliTuiChatSource).toContain("/api/sessions");
+    expect(cliTuiChatSource).toContain('input === "n"');
+    expect(cliTuiChatSource).toContain("setSearchMode(true)");
+    expect(cliTuiChatSource).toContain("InteractiveChatTUI");
+    expect(cliTuiChatSource).toContain("Recent sessions");
     expect(cliTuiChatSource).toContain("cybara chat queue");
-    expect(cliTuiChatSource).toContain("cybara chat steer");
+    expect(cliTuiChatSource).toContain("queue|steer");
     expect(cliTuiChatSource).toContain("cybara chat stop");
-    expect(cliTuiChatSource).toContain("Steer/Edit/Delete/Reorder");
     expect(cliTuiChatSource).toContain("pending");
     expect(cliTuiChatSource).toContain("running");
     expect(cliTuiChatSource).toContain('input === "q"');
+  });
+
+  test("interactive chat TUI has editable input, slash commands, and pending queue parity", () => {
+    for (const command of ["/queue", "/steer", "/edit", "/delete", "/reorder", "/stop"]) {
+      expect(cliTuiInteractiveChatSource).toContain(command);
+    }
+    for (const route of [
+      "/api/chat/sessions/${encodeURIComponent(localSessionId)}/pending",
+      "/pending/reorder",
+      "/stop",
+    ]) {
+      expect(cliTuiInteractiveChatSource).toContain(route);
+    }
+    expect(cliTuiInteractiveChatSource).toContain("PendingQueue");
+    expect(cliTuiInteractiveChatSource).toContain("CommandPalette");
+    expect(cliTuiInteractiveChatSource).toContain("Ctrl+J newline");
+    expect(cliTuiInteractiveChatSource).toContain("key.leftArrow");
+    expect(cliTuiInteractiveChatSource).toContain("key.rightArrow");
+    expect(cliTuiInteractiveChatSource).toContain("key.upArrow");
+    expect(cliTuiInteractiveChatSource).toContain("key.downArrow");
+    expect(cliTuiInteractiveChatSource).toContain("(key as { tab?: boolean }).tab");
+    expect(cliTuiInteractiveChatSource).toContain("process_activities");
+    expect(cliTuiInteractiveChatSource).toContain("tool_calls");
   });
 
   test("terminal chat exposes app-parity slash controls", () => {

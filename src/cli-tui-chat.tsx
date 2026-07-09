@@ -159,6 +159,9 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
   );
   const [selectedIndex, setSelectedIndex] = React.useState(0);
   const [openSession, setOpenSession] = React.useState<ChatSessionSummary | null>(null);
+  const [searchMode, setSearchMode] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState("");
+  const [showHelp, setShowHelp] = React.useState(false);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -171,7 +174,7 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
       const nextSessions = sessionsFromResponse(response)
         .slice()
         .sort((a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || sessionTimestamp(b) - sessionTimestamp(a));
-      setSessions(nextSessions.slice(0, 12));
+      setSessions(nextSessions.slice(0, 24));
       setAgentsById(new Map(agentsFromResponse(agentResponse).flatMap((agent) => (agent.id ? [[agent.id, agent]] : []))));
       setUpdatedAt(Date.now());
     } catch (cause) {
@@ -185,11 +188,62 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
     void load();
   }, [load]);
 
+  const visibleSessions = React.useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return sessions;
+    return sessions.filter((session) => {
+      const record = [
+        session.title,
+        session.id,
+        sessionWorkspace(session),
+        sessionModelLine(session, agentsById),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return record.includes(query);
+    });
+  }, [agentsById, searchQuery, sessions]);
+
+  React.useEffect(() => {
+    setSelectedIndex((previous) => Math.min(previous, Math.max(0, visibleSessions.length - 1)));
+  }, [visibleSessions.length]);
+
   useInput(
     (input, key) => {
       if (openSession) return;
+      if (searchMode) {
+        if ((key.ctrl && input === "c") || key.escape) {
+          setSearchMode(false);
+          return;
+        }
+        if (key.return) {
+          setSearchMode(false);
+          return;
+        }
+        if (key.backspace || key.delete) {
+          setSearchQuery((previous) => previous.slice(0, -1));
+          return;
+        }
+        if (input && !key.ctrl && !key.meta) {
+          setSearchQuery((previous) => previous + input);
+        }
+        return;
+      }
       if ((key.ctrl && input === "c") || key.escape || input === "q") {
         exit();
+        return;
+      }
+      if (input === "?") {
+        setShowHelp((value) => !value);
+        return;
+      }
+      if (input === "/") {
+        setSearchMode(true);
+        return;
+      }
+      if (input === "n") {
+        setOpenSession({ title: "New Chat" });
         return;
       }
       if (input === "r") {
@@ -201,23 +255,23 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
         return;
       }
       if (key.downArrow || input === "j") {
-        setSelectedIndex((previous) => Math.min(Math.max(0, sessions.length - 1), previous + 1));
+        setSelectedIndex((previous) => Math.min(Math.max(0, visibleSessions.length - 1), previous + 1));
         return;
       }
       if (key.return) {
-        const target = sessions[selectedIndex];
+        const target = visibleSessions[selectedIndex];
         if (target?.id) setOpenSession(target);
       }
     },
     TUI_INPUT_OPTIONS
   );
 
-  if (openSession?.id) {
+  if (openSession) {
     return (
       <InteractiveChatTUI
         fetchAPI={fetchAPI}
         sessionId={openSession.id}
-        title={compactText(openSession.title, openSession.id)}
+        title={compactText(openSession.title, openSession.id || "New Chat")}
         modelLine={sessionModelLine(openSession, agentsById)}
         onExit={() => {
           setOpenSession(null);
@@ -234,14 +288,22 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
     <Box flexDirection="column">
       <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
         <Box justifyContent="space-between">
-          <Text bold>Chat</Text>
-          <Text color="gray">↑↓ select · ↵ open · r refresh · q quit</Text>
+          <Text bold color="cyan">
+            Cybara Chat
+          </Text>
+          <Text color="gray">↑↓/j/k select · ↵ open · n new · / search · ? help</Text>
         </Box>
         <Text color="gray">
-          Recent sessions · {sessions.length} shown
+          Recent sessions · {visibleSessions.length}/{sessions.length} shown
           {activeCount > 0 ? ` · ${activeCount} running` : ""}
           {pendingCount > 0 ? ` · ${pendingCount} queued` : ""}
         </Text>
+        <Box marginTop={1}>
+          <Text color={searchMode ? "cyan" : searchQuery ? "yellow" : "gray"}>
+            Search: {searchQuery || (searchMode ? "type to filter" : "press /")}
+            {searchMode ? "▏" : ""}
+          </Text>
+        </Box>
         {loading && (
           <Text color="yellow">
             <Spinner type="dots" /> Loading sessions
@@ -251,13 +313,20 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
         {!loading && !error && sessions.length === 0 && <Text color="gray">No chat sessions yet.</Text>}
         {!loading &&
           !error &&
-          sessions.map((session, index) => {
+          visibleSessions.map((session, index) => {
             const pending = sessionPendingCount(session);
             const active = sessionIsActive(session);
             const workspace = sessionWorkspace(session);
             const selected = index === selectedIndex;
             return (
-              <Box key={session.id || session.title} flexDirection="column" marginTop={1}>
+              <Box
+                key={session.id || session.title}
+                flexDirection="column"
+                marginTop={1}
+                borderStyle={selected ? "single" : undefined}
+                borderColor={selected ? "cyan" : undefined}
+                paddingX={selected ? 1 : 0}
+              >
                 <Box justifyContent="space-between">
                   <Text
                     bold={selected}
@@ -274,22 +343,32 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
                 <Text color="gray">
                   {sessionRowMeta(session, agentsById)}
                 </Text>
-                <Text color="gray">{compactPath(workspace)}</Text>
+                <Text color="gray">
+                  {compactPath(workspace)}
+                  {pending > 0 ? ` · ${pending} queued` : ""}
+                </Text>
                 {session.id ? (
                   <Text color="gray">
-                    cybara chat --session {session.id}
-                    {pending > 0 ? ` · cybara chat steer ${session.id} #1` : ""}
+                    ↵ open · cybara chat --session {session.id}
                   </Text>
                 ) : null}
               </Box>
             );
           })}
       </Box>
+      {showHelp ? (
+        <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
+          <Text bold color="cyan">
+            Keys and chat actions
+          </Text>
+          <Text>n new chat · / search · r refresh · ? help · Esc/q quit</Text>
+          <Text>Inside chat: Enter send · Ctrl+J newline · Tab slash complete · ↑↓ history</Text>
+        </Box>
+      ) : null}
       <Box marginTop={1} flexDirection="column">
-        <Text color="gray">Start: cybara chat --agent &lt;id&gt; --workspace &lt;path&gt;</Text>
-        <Text color="gray">Queue: cybara chat queue &lt;session&gt; "follow-up"</Text>
-        <Text color="gray">Steer/Edit/Delete/Reorder: cybara chat steer|edit|delete|reorder &lt;session&gt; ...</Text>
-        <Text color="gray">Stop active run: cybara chat stop &lt;session&gt;</Text>
+        <Text color="gray">Start: n, or cybara chat --agent &lt;id&gt; --workspace &lt;path&gt;</Text>
+        <Text color="gray">Queue/steer: use /queue and /steer inside chat, or cybara chat queue|steer</Text>
+        <Text color="gray">Stop active run: /stop inside chat, or cybara chat stop &lt;session&gt;</Text>
         {updatedAt ? <Text color="gray">Updated {formatRelativeTime(updatedAt)} ago</Text> : null}
       </Box>
     </Box>

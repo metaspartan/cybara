@@ -351,6 +351,9 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain("MobileBranchPicker");
     expect(dashboardScreenSource).toContain("function ChatSettingsSheet(");
     expect(dashboardScreenSource).toContain("styles.chatSettingsInfoGroup");
+    expect(dashboardScreenSource).toContain("styles.chatSettingsDragHandle");
+    expect(dashboardStylesSource).toContain("chatSettingsSheetFrame");
+    expect(dashboardStylesSource).toContain("chatSettingsScroll");
     expect(dashboardScreenSource).toContain('label: "Change branch"');
     expect(dashboardScreenSource).toContain("api.checkoutGitBranch");
     expect(dashboardScreenSource).toContain("api.gitBranches");

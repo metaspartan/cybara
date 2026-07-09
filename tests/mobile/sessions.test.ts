@@ -152,6 +152,9 @@ describe("mobile: chat management", () => {
     expect(screen).toContain("useModelRouter,");
     expect(screen).toContain("const openToolApprovalSelector");
     expect(screen).toContain("function ChatSettingsSheet(");
+    expect(screen).toContain("PanResponder.create");
+    expect(screen).toContain("styles.chatSettingsDragHandle");
+    expect(screen).toContain("styles.chatSettingsScroll");
     expect(screen).toContain("const chatSettingsRows");
     expect(screen).toContain('label: "Tool approvals"');
     expect(screen).toContain("mobileContextUsageDetail(");

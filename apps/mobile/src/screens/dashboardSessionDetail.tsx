@@ -14,6 +14,7 @@ import {
   Image,
   Keyboard,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -287,6 +288,33 @@ function ChatSettingsSheet({
   title: string;
   visible: boolean;
 }) {
+  const insets = useSafeAreaInsets();
+  const [dragOffset, setDragOffset] = useState(0);
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_event, gesture) =>
+          gesture.dy > 7 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.15,
+        onPanResponderMove: (_event, gesture) => {
+          setDragOffset(Math.min(180, Math.max(0, gesture.dy)));
+        },
+        onPanResponderRelease: (_event, gesture) => {
+          if (gesture.dy > 72 || gesture.vy > 0.9) {
+            setDragOffset(0);
+            onClose();
+            return;
+          }
+          setDragOffset(0);
+        },
+        onPanResponderTerminate: () => setDragOffset(0),
+      }),
+    [onClose]
+  );
+
+  useEffect(() => {
+    if (visible) setDragOffset(0);
+  }, [visible]);
+
   return (
     <Modal animationType="fade" onRequestClose={onClose} transparent visible={visible}>
       <View style={styles.chatSettingsOverlay}>
@@ -295,47 +323,61 @@ function ChatSettingsSheet({
           style={styles.chatSettingsBackdrop}
           onPress={onClose}
         />
-        <LiquidGlass
-          intensity={76}
-          contentStyle={styles.chatSettingsSheetContent}
-          style={styles.chatSettingsSheet}
+        <View
+          style={[
+            styles.chatSettingsSheetFrame,
+            {
+              marginBottom: Math.max(spacing.sm, insets.bottom + spacing.sm),
+              transform: [{ translateY: dragOffset }],
+            },
+          ]}
         >
-          <View style={styles.chatSettingsGrabber} />
-          <View style={styles.chatSettingsHeader}>
-            <View style={styles.chatSettingsTitleWrap}>
-              <Text numberOfLines={2} style={styles.chatSettingsTitle}>
-                {title}
-              </Text>
-              <Text numberOfLines={1} style={styles.chatSettingsSubtitle}>
-                {subtitle}
-              </Text>
-            </View>
-            <Pressable
-              accessibilityLabel="Close chat settings"
-              accessibilityRole="button"
-              hitSlop={8}
-              onPress={onClose}
-              style={styles.chatSettingsCloseButton}
-            >
-              <X color={colors.textMuted} size={18} strokeWidth={2.4} />
-            </Pressable>
-          </View>
-          <ScrollView
-            contentContainerStyle={styles.chatSettingsScrollContent}
-            showsVerticalScrollIndicator={false}
+          <LiquidGlass
+            intensity={76}
+            contentStyle={styles.chatSettingsSheetContent}
+            style={styles.chatSettingsSheet}
           >
-            <View style={styles.chatSettingsInfoGroup}>
-              {rows.map((row) => (
-                <ChatSettingsInfoRow key={row.label} row={row} />
-              ))}
+            <View {...panResponder.panHandlers} style={styles.chatSettingsDragHandle}>
+              <View style={styles.chatSettingsGrabber} />
+              <View style={styles.chatSettingsHeader}>
+                <View style={styles.chatSettingsTitleWrap}>
+                  <Text numberOfLines={1} style={styles.chatSettingsTitle}>
+                    {title}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.chatSettingsSubtitle}>
+                    {subtitle}
+                  </Text>
+                </View>
+                <Pressable
+                  accessibilityLabel="Close chat settings"
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={onClose}
+                  style={styles.chatSettingsCloseButton}
+                >
+                  <X color={colors.textMuted} size={18} strokeWidth={2.4} />
+                </Pressable>
+              </View>
             </View>
-            <View style={styles.chatSettingsActionsGrid}>
-              {actions.map((action) => (
-                <ChatSettingsActionButton key={action.label} action={action} />
-              ))}
-            </View>
-          </ScrollView>
-        </LiquidGlass>
+            <ScrollView
+              contentContainerStyle={styles.chatSettingsScrollContent}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              style={styles.chatSettingsScroll}
+            >
+              <View style={styles.chatSettingsInfoGroup}>
+                {rows.map((row) => (
+                  <ChatSettingsInfoRow key={row.label} row={row} />
+                ))}
+              </View>
+              <View style={styles.chatSettingsActionsGrid}>
+                {actions.map((action) => (
+                  <ChatSettingsActionButton key={action.label} action={action} />
+                ))}
+              </View>
+            </ScrollView>
+          </LiquidGlass>
+        </View>
       </View>
     </Modal>
   );
