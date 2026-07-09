@@ -1484,6 +1484,56 @@ const makeStyles = () =>
       borderRadius: 4,
       height: "100%",
     },
+    providerPlanMetricsGrid: {
+      gap: spacing.sm,
+    },
+    providerPlanMetricsCard: {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      gap: spacing.sm,
+      padding: spacing.sm,
+    },
+    providerPlanMetricsHeader: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: spacing.md,
+      justifyContent: "space-between",
+    },
+    providerPlanMetricsStatus: {
+      color: colors.textMuted,
+      fontSize: typography.tiny,
+      fontWeight: "800",
+      textTransform: "capitalize",
+    },
+    providerPlanMetricsWindows: {
+      flexDirection: "row",
+      gap: spacing.xs,
+    },
+    providerPlanMetricsWindow: {
+      backgroundColor: colors.wash,
+      borderColor: colors.border,
+      borderRadius: 8,
+      borderWidth: 1,
+      flex: 1,
+      gap: 5,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    providerPlanMetricsWindowHeader: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: spacing.xs,
+      justifyContent: "space-between",
+    },
+    providerPlanMetricsReset: {
+      color: colors.textMuted,
+      fontSize: typography.tiny,
+    },
+    flexShrink: {
+      flexShrink: 1,
+    },
     routerSummaryBox: {
       gap: spacing.xs,
       paddingHorizontal: spacing.md,

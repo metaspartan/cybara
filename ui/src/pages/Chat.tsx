@@ -60,6 +60,7 @@ import type {
   ProviderPlanSnapshot,
   ProviderPlanStatusResponse,
   SessionContextUsage,
+  SessionTokenUsage,
 } from "@/types";
 import {
   MAX_CHAT_IMAGES,
@@ -1683,6 +1684,7 @@ export function Chat() {
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [pendingMessages, setPendingMessages] = useState<PendingChatMessage[]>([]);
   const [sessionContextUsage, setSessionContextUsage] = useState<SessionContextUsage | null>(null);
+  const [sessionTokenUsage, setSessionTokenUsage] = useState<SessionTokenUsage | null>(null);
   const [steeringMessageId, setSteeringMessageId] = useState<string | null>(null);
   const [pendingMessageMutationId, setPendingMessageMutationId] = useState<string | null>(null);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
@@ -1724,6 +1726,7 @@ export function Chat() {
   const wasLoadingRef = useRef(false);
   const optimisticPendingMessageCounterRef = useRef(0);
   const acceptEventsUntilRef = useRef(0);
+  const runStartSyncedSessionsRef = useRef<Set<string>>(new Set());
   const pendingProcessCaptureRef = useRef<PendingProcessCapture | null>(null);
   const runActivityBufferRef = useRef<LiveActivityItem[]>([]);
   const liveActivitiesRef = useRef<LiveActivityItem[]>([]);
@@ -1936,6 +1939,7 @@ export function Chat() {
         if (!modelRouterEnabled) return;
         setUseModelRouter(true);
         setSessionContextUsage(null);
+        setSessionTokenUsage(null);
         return;
       }
       const previousSelectedAgentId = selectedAgentId;
@@ -1953,12 +1957,14 @@ export function Chat() {
         }
         setSessionAgentId(null);
         setSessionContextUsage(null);
+        setSessionTokenUsage(null);
         return;
       }
 
       if (!sessionId) {
         setSessionAgentId(nextAgentId);
         setSessionContextUsage(null);
+        setSessionTokenUsage(null);
         return;
       }
 
@@ -1969,6 +1975,7 @@ export function Chat() {
         });
         syncSessionAgentSelection(updated.agentId);
         setSessionContextUsage(updated.contextUsage ?? null);
+        setSessionTokenUsage(updated.tokenUsage ?? null);
       } catch (error) {
         setSelectedAgentId(previousSelectedAgentId);
         setSessionAgentId(previousSessionAgentId);
@@ -2731,6 +2738,7 @@ export function Chat() {
       setStreamingContent("");
       setPendingMessages([]);
       setSessionContextUsage(null);
+      setSessionTokenUsage(null);
       persistSessionId(null);
       clearChat();
       if (options?.resetAgentSelection) {
@@ -2865,6 +2873,9 @@ export function Chat() {
           setSessionContextUsage(
             (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
           );
+          setSessionTokenUsage(
+            (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
+          );
         }
       } catch {
         // Keep whatever is on screen; the next explicit load will recover.
@@ -2936,6 +2947,7 @@ export function Chat() {
             runActivityBufferRef.current = [];
           }
           clearCachedLiveSessionState(payloadSessionId);
+          runStartSyncedSessionsRef.current.delete(payloadSessionId);
           return;
         }
         cacheLiveStatusEvent(payload);
@@ -2959,6 +2971,7 @@ export function Chat() {
           }
           if ((status === "idle" && !isSteeringHandoff) || status === "error") {
             setActiveSessionIds((previous) => previous.filter((id) => id !== payloadSessionId));
+            runStartSyncedSessionsRef.current.delete(payloadSessionId);
           }
         }
 
@@ -2975,6 +2988,17 @@ export function Chat() {
 
         if (activeSession && payload.sessionId && payload.sessionId !== activeSession) return;
         if (activeSession && !payload.sessionId) return;
+
+        if (
+          statusIsActive &&
+          activeSession &&
+          !loadingRef.current &&
+          Date.now() > acceptEventsUntilRef.current &&
+          !runStartSyncedSessionsRef.current.has(activeSession)
+        ) {
+          runStartSyncedSessionsRef.current.add(activeSession);
+          void refreshSessionMessagesRef.current(activeSession);
+        }
 
         if (status === "thinking") {
           if (!payload.toolName) {
@@ -3281,6 +3305,10 @@ export function Chat() {
         const usage = (response as { contextUsage?: SessionContextUsage }).contextUsage;
         setSessionContextUsage(usage ?? null);
       }
+      if (response && typeof response === "object" && "tokenUsage" in response) {
+        const usage = (response as { tokenUsage?: SessionTokenUsage }).tokenUsage;
+        setSessionTokenUsage(usage ?? null);
+      }
     } catch (error) {
       if (optimisticPendingMessageId) {
         setPendingMessages((previous) =>
@@ -3338,6 +3366,9 @@ export function Chat() {
               );
               setSessionContextUsage(
                 (refreshed as { contextUsage?: SessionContextUsage | null }).contextUsage || null
+              );
+              setSessionTokenUsage(
+                (refreshed as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
               );
             }
           } catch (error) {
@@ -3982,6 +4013,9 @@ export function Chat() {
         setSessionContextUsage(
           (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
         );
+        setSessionTokenUsage(
+          (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
+        );
         void hydrateSessionStatus(targetSessionId);
         if (options?.replaceRoute) {
           window.history.replaceState({}, "", "/chat");
@@ -4172,6 +4206,7 @@ export function Chat() {
           </button>
           <ChatEnvironmentOverview
             key={sessionId || "new-chat-environment"}
+            contextUsage={sessionContextUsage}
             currentPlan={currentSessionPlan}
             fileChanges={sessionFileChanges}
             gitBranch={environmentGit.currentBranch}
@@ -4186,6 +4221,7 @@ export function Chat() {
             onSwitchGitBranch={environmentGit.checkout}
             sessionId={sessionId}
             subagents={environmentSubagents}
+            tokenUsage={sessionTokenUsage}
             toolNames={environmentToolNames}
             workspaceDir={effectiveWorkspaceDir}
           />
@@ -4200,13 +4236,21 @@ export function Chat() {
             currentSessionId={sessionId}
             activeSessionIds={activeSessionIds}
             currentSessionLoading={isLoading}
-            onLoadSession={(id, msgs, loadedWorkspaceDir, loadedAgentId, loadedContextUsage) => {
+            onLoadSession={(
+              id,
+              msgs,
+              loadedWorkspaceDir,
+              loadedAgentId,
+              loadedContextUsage,
+              loadedTokenUsage
+            ) => {
               suppressAutoRestoreRef.current = false;
               activeSessionRef.current = id;
               setUseModelRouter(false);
               loadSession(id, msgs, loadedWorkspaceDir);
               syncSessionAgentSelection(loadedAgentId);
               setSessionContextUsage(loadedContextUsage ?? null);
+              setSessionTokenUsage(loadedTokenUsage ?? null);
             }}
             onNewSession={() => {
               resetChatSession({ resetAgentSelection: true });
@@ -4749,6 +4793,9 @@ export function Chat() {
                   );
                   setSessionContextUsage(
                     (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
+                  );
+                  setSessionTokenUsage(
+                    (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
                   );
                   setShowSubagentPanel(false);
                 }

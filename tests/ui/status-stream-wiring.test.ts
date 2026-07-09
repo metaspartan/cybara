@@ -6,8 +6,14 @@ const chatPath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.met
 const composerActionPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatComposerActionButton.tsx", import.meta.url)
 );
+const chatAgentControlsPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ChatAgentControls.tsx", import.meta.url)
+);
 const contextUsageRingPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ContextUsageRing.tsx", import.meta.url)
+);
+const environmentOverviewPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ChatEnvironmentOverview.tsx", import.meta.url)
 );
 const sidebarPath = fileURLToPath(
   new URL("../../ui/src/components/layout/Sidebar.tsx", import.meta.url)
@@ -28,8 +34,10 @@ describe("status stream websocket wiring", () => {
   test("chat page uses shared status websocket stream helper", () => {
     const source = [
       readSource(chatPath),
+      readSource(chatAgentControlsPath),
       readSource(composerActionPath),
       readSource(contextUsageRingPath),
+      readSource(environmentOverviewPath),
     ].join("\n");
     const displaySource = readSource(providerPlanDisplayPath);
     expect(source).toContain("connectStatusStream");
@@ -84,6 +92,11 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain('data-chat-composer-input="true"');
     expect(source).toContain("setSessionAgentId(nextAgentId ?? null)");
     expect(source).toContain("setSessionContextUsage(updated.contextUsage ?? null)");
+    expect(source).toContain("setSessionTokenUsage(updated.tokenUsage ?? null)");
+    expect(source).toContain("SessionTokenUsage");
+    expect(source).toContain("tokenUsage={sessionTokenUsage}");
+    expect(source).toContain("tokenUsage.totalTokens");
+    expect(source).toContain("tokenUsage.tokensPerSecond");
     expect(source).toContain("clientPendingId: optimisticPendingMessageId");
     expect(source).toContain("cacheLiveStatusSnapshot(snapshot)");
     expect(source).toContain("cacheLiveStatusEvent(payload)");

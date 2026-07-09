@@ -1149,6 +1149,10 @@ struct ChatScreen: View {
         activeSession?.contextUsage
     }
 
+    private var activeTokenUsage: GatewaySessionTokenUsage? {
+        activeSession?.tokenUsage
+    }
+
     private var contextUsageText: String {
         guard let usage = activeContextUsage else {
             return "Context usage is available after the session loads."
@@ -1161,6 +1165,10 @@ struct ChatScreen: View {
         }
         if let metadataTokens = usage.metadataTokens, metadataTokens > 0 {
             parts.append("\(formatNativeTokenCount(metadataTokens)) tool timeline tokens are not replayed.")
+        }
+        if let tokenUsage = activeTokenUsage, tokenUsage.totalTokens > 0 {
+            let speed = tokenUsage.tokensPerSecond.map { " at \(formatNativeDecimal($0)) tok/s" } ?? ""
+            parts.append("Session tokens: \(formatNativeTokenCount(tokenUsage.inputTokens)) input / \(formatNativeTokenCount(tokenUsage.outputTokens)) output across \(tokenUsage.callCount) call\(tokenUsage.callCount == 1 ? "" : "s")\(speed).")
         }
         if let detail = providerPlanText {
             parts.append(detail)
@@ -1576,6 +1584,10 @@ struct ChatScreen: View {
 
     private func formatNativePercent(_ value: Double) -> String {
         String(format: value.rounded() == value ? "%.0f%%" : "%.1f%%", value)
+    }
+
+    private func formatNativeDecimal(_ value: Double) -> String {
+        String(format: value.rounded() == value ? "%.0f" : "%.1f", value)
     }
 
     private func steerPending(_ message: GatewayPendingChatMessage) async {
@@ -2012,6 +2024,28 @@ struct ChatScreen: View {
                     .disabled(activeWorkspaceDir == nil)
                     .popover(isPresented: $showGitBranchPicker, arrowEdge: .trailing) {
                         gitBranchPicker
+                    }
+                }
+                NativeEnvironmentRow(icon: "gauge.with.dots.needle.bottom.50percent", label: "Tokens") {
+                    if let tokenUsage = activeTokenUsage, tokenUsage.totalTokens > 0 {
+                        Text("\(formatNativeTokenCount(tokenUsage.inputTokens)) in / \(formatNativeTokenCount(tokenUsage.outputTokens)) out")
+                            .font(.system(size: 11, design: .rounded))
+                    } else {
+                        Text("No usage recorded").foregroundStyle(.secondary)
+                    }
+                }
+                if let tokenUsage = activeTokenUsage, tokenUsage.totalTokens > 0 {
+                    NativeEnvironmentRow(icon: "speedometer", label: "Speed") {
+                        Text(tokenUsage.tokensPerSecond.map { "\(formatNativeDecimal($0)) tok/s · \(tokenUsage.callCount) calls" } ?? "\(tokenUsage.callCount) calls")
+                            .font(.system(size: 11, design: .rounded))
+                    }
+                }
+                if let usage = activeContextUsage, usage.compacted == true {
+                    NativeEnvironmentRow(icon: "rectangle.compress.vertical", label: "Compact") {
+                        let count = usage.compactionCount ?? 0
+                        let summarized = usage.compactedTokens ?? 0
+                        Text(summarized > 0 ? "\(count)x · \(formatNativeTokenCount(summarized)) summarized" : "\(count)x")
+                            .font(.system(size: 11, design: .rounded))
                     }
                 }
             }

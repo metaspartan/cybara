@@ -453,6 +453,18 @@ interface TokenRow {
   totalTokens: number;
 }
 
+interface TokenCallModelRow {
+  model: string;
+  provider: string | null;
+  totalTokens: number;
+  outputTokens: number;
+  durationTotalMs: number;
+  avgLatencyMs: number;
+  maxTps: number;
+  minTps: number;
+  callCount: number;
+}
+
 /**
  * Get model TPS (tokens per second) metrics
  */
@@ -513,25 +525,90 @@ export function getTokensByModel(): TokenRow[] {
     .all() as TokenRow[];
 }
 
+function getModelTokenCallMetrics(): TokenCallModelRow[] {
+  return db
+    .prepare(
+      `
+    SELECT
+      COALESCE(json_extract(metadata, '$.model'), 'unknown') as model,
+      COALESCE(json_extract(metadata, '$.provider'), 'unknown') as provider,
+      SUM(value) as totalTokens,
+      SUM(COALESCE(CAST(json_extract(metadata, '$.outputTokens') AS REAL), 0)) as outputTokens,
+      SUM(CASE
+        WHEN CAST(json_extract(metadata, '$.durationMs') AS REAL) > 0
+        THEN CAST(json_extract(metadata, '$.durationMs') AS REAL)
+        ELSE 0
+      END) as durationTotalMs,
+      AVG(CASE
+        WHEN CAST(json_extract(metadata, '$.durationMs') AS REAL) > 0
+        THEN CAST(json_extract(metadata, '$.durationMs') AS REAL)
+        ELSE NULL
+      END) as avgLatencyMs,
+      MAX(CASE
+        WHEN CAST(json_extract(metadata, '$.durationMs') AS REAL) > 0
+        THEN (COALESCE(CAST(json_extract(metadata, '$.outputTokens') AS REAL), 0) /
+          CAST(json_extract(metadata, '$.durationMs') AS REAL)) * 1000
+        ELSE NULL
+      END) as maxTps,
+      MIN(CASE
+        WHEN CAST(json_extract(metadata, '$.durationMs') AS REAL) > 0
+        THEN (COALESCE(CAST(json_extract(metadata, '$.outputTokens') AS REAL), 0) /
+          CAST(json_extract(metadata, '$.durationMs') AS REAL)) * 1000
+        ELSE NULL
+      END) as minTps,
+      COUNT(*) as callCount
+    FROM metrics
+    WHERE type = 'token_usage'
+      AND key = 'all'
+      AND metadata IS NOT NULL
+      AND json_extract(metadata, '$.model') IS NOT NULL
+    GROUP BY provider, model
+    ORDER BY
+      CASE WHEN durationTotalMs > 0 THEN outputTokens / durationTotalMs ELSE 0 END DESC
+  `
+    )
+    .all() as TokenCallModelRow[];
+}
+
 /**
  * Get aggregated model metrics (combines TPS, latency, and tokens)
  */
 export function getModelMetrics(): ModelMetrics[] {
+  const tokenCallData = getModelTokenCallMetrics();
+  const modernMetrics = tokenCallData.map((row) => ({
+    model: row.model,
+    provider: row.provider || "unknown",
+    avgTps:
+      row.durationTotalMs > 0
+        ? Number(((row.outputTokens / row.durationTotalMs) * 1000).toFixed(2))
+        : 0,
+    maxTps: Number(Number(row.maxTps || 0).toFixed(2)),
+    minTps: Number(Number(row.minTps || 0).toFixed(2)),
+    avgLatencyMs: Math.round(row.avgLatencyMs || 0),
+    totalTokens: Math.round(row.totalTokens || 0),
+    callCount: Math.round(row.callCount || 0),
+  }));
+
   const tpsData = getModelTpsMetrics();
   const latencyData = getModelLatencyMetrics();
   const tokenData = getTokensByModel();
+  const modernKeys = new Set(modernMetrics.map((metric) => `${metric.provider}:${metric.model}`));
 
   const latencyMap = new Map(latencyData.map((l) => [l.model, l.avgLatency]));
   const tokenMap = new Map(tokenData.map((t) => [t.model, t.totalTokens]));
 
-  return tpsData.map((t) => ({
-    model: t.model,
-    provider: t.provider || "unknown",
-    avgTps: Math.round(t.avgTps),
-    maxTps: t.maxTps,
-    minTps: t.minTps,
-    avgLatencyMs: Math.round(latencyMap.get(t.model) || 0),
-    totalTokens: tokenMap.get(t.model) || 0,
-    callCount: t.callCount,
-  }));
+  const legacyMetrics = tpsData
+    .map((t) => ({
+      model: t.model,
+      provider: t.provider || "unknown",
+      avgTps: Math.round(t.avgTps),
+      maxTps: t.maxTps,
+      minTps: t.minTps,
+      avgLatencyMs: Math.round(latencyMap.get(t.model) || 0),
+      totalTokens: tokenMap.get(t.model) || 0,
+      callCount: t.callCount,
+    }))
+    .filter((metric) => !modernKeys.has(`${metric.provider}:${metric.model}`));
+
+  return [...modernMetrics, ...legacyMetrics];
 }

@@ -107,7 +107,7 @@ import {
   updatePendingChatMessage,
   type ChatMessage,
 } from "../api/chat";
-import { estimateSessionContextUsage } from "../core/session-context";
+import { estimateSessionContextUsage, summarizeSessionTokenUsage } from "../core/session-context";
 import {
   getToolSchemasForLLM,
   getDangerousToolNames,
@@ -2253,6 +2253,7 @@ const routes: Record<string, RouteHandler> = {
             ? session.compactionCount
             : 0,
       }),
+      tokenUsage: summarizeSessionTokenUsage(session.id),
       plan: extractLatestSessionPlan(session.id, messages),
       messagesList: sanitizedMessages,
     };

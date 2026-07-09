@@ -50,6 +50,7 @@ export function NewChatPanel({
   );
   const [message, setMessage] = useState("");
   const messageRef = useRef(message);
+  const messageMeasuredHeightRef = useRef<number>(MOBILE_CHAT_COMPOSER.minHeight);
   const [messageHeight, setMessageHeight] = useState<number>(MOBILE_CHAT_COMPOSER.minHeight);
   const [workspaceDir, setWorkspaceDir] = useState("");
   const [approvalMode, setApprovalMode] = useState<"always_allow" | "ask">(
@@ -114,10 +115,10 @@ export function NewChatPanel({
     }
   };
 
-  const setMessageDraft = (value: string) => {
+  const updateMessageDraft = (value: string) => {
     messageRef.current = value;
     setMessage(value);
-    setMessageHeight(mobileComposerHeightForDraft(value));
+    setMessageHeight(mobileComposerHeightForDraft(value, messageMeasuredHeightRef.current));
   };
 
   const saveApprovalMode = async (nextMode: "always_allow" | "ask") => {
@@ -269,13 +270,13 @@ export function NewChatPanel({
         <TextInput
           editable={!creating}
           multiline
-          onChangeText={setMessageDraft}
+          onChangeText={updateMessageDraft}
           onContentSizeChange={(event) => {
+            messageMeasuredHeightRef.current = boundedMobileComposerHeight(
+              event.nativeEvent.contentSize.height
+            );
             setMessageHeight(
-              mobileComposerHeightForDraft(
-                messageRef.current,
-                boundedMobileComposerHeight(event.nativeEvent.contentSize.height)
-              )
+              mobileComposerHeightForDraft(messageRef.current, messageMeasuredHeightRef.current)
             );
           }}
           placeholder="Ask Cybara to start working..."

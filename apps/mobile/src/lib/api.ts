@@ -655,6 +655,16 @@ export interface SessionContextUsage {
   source?: "estimated";
 }
 
+export interface SessionTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  callCount: number;
+  durationMs: number;
+  tokensPerSecond: number | null;
+  source?: "metrics";
+}
+
 export type SessionPlanItemStatus = "pending" | "in_progress" | "completed";
 export type SessionPlanItemPriority = "high" | "medium" | "low";
 
@@ -692,6 +702,7 @@ export interface SessionDetailSummary {
   updatedAt?: string;
   pinned?: boolean;
   contextUsage?: SessionContextUsage;
+  tokenUsage?: SessionTokenUsage;
   plan?: SessionPlanSnapshot | null;
   messages: SessionMessageSummary[];
 }
@@ -1351,6 +1362,7 @@ function normalizeSessionDetail(value: unknown, fallbackId: string): SessionDeta
     updatedAt: readString(record, ["updated_at", "updatedAt", "created_at", "createdAt"]),
     pinned: record?.pinned === true,
     contextUsage: normalizeSessionContextUsage(record?.contextUsage ?? record?.context_usage),
+    tokenUsage: normalizeSessionTokenUsage(record?.tokenUsage ?? record?.token_usage),
     plan: normalizeSessionPlan(record?.plan),
     messages,
   };
@@ -1430,6 +1442,24 @@ function normalizeSessionContextUsage(value: unknown): SessionContextUsage | und
     compactionCount: readNumber(record, ["compactionCount", "compaction_count"]),
     compactedTokens: readNumber(record, ["compactedTokens", "compacted_tokens"]),
     source: readString(record, ["source"]) === "estimated" ? "estimated" : undefined,
+  };
+}
+
+function normalizeSessionTokenUsage(value: unknown): SessionTokenUsage | undefined {
+  const record = asRecord(value);
+  if (!record) return undefined;
+  const totalTokens = Math.max(0, readNumber(record, ["totalTokens", "total_tokens"]) ?? 0);
+  const inputTokens = Math.max(0, readNumber(record, ["inputTokens", "input_tokens"]) ?? 0);
+  const outputTokens = Math.max(0, readNumber(record, ["outputTokens", "output_tokens"]) ?? 0);
+  if (totalTokens <= 0 && inputTokens <= 0 && outputTokens <= 0) return undefined;
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens: Math.max(totalTokens, inputTokens + outputTokens),
+    callCount: Math.max(0, readNumber(record, ["callCount", "call_count"]) ?? 0),
+    durationMs: Math.max(0, readNumber(record, ["durationMs", "duration_ms"]) ?? 0),
+    tokensPerSecond: readNumber(record, ["tokensPerSecond", "tokens_per_second"]) ?? null,
+    source: readString(record, ["source"]) === "metrics" ? "metrics" : undefined,
   };
 }
 
@@ -2097,6 +2127,7 @@ export class CybaraMobileApi {
     message: SessionMessageSummary;
     workspaceDir?: string | null;
     contextUsage?: SessionContextUsage;
+    tokenUsage?: SessionTokenUsage;
     queued?: boolean;
     interrupted?: boolean;
     pendingMessage?: MobilePendingChatMessage;
@@ -2126,6 +2157,7 @@ export class CybaraMobileApi {
       sessionId: readString(record, ["sessionId"]) || input.sessionId || "",
       workspaceDir: readString(record, ["workspaceDir"]) || input.workspaceDir,
       contextUsage: normalizeSessionContextUsage(record?.contextUsage ?? record?.context_usage),
+      tokenUsage: normalizeSessionTokenUsage(record?.tokenUsage ?? record?.token_usage),
       queued: record?.queued === true,
       interrupted: record?.interrupted === true,
       pendingMessage: normalizePendingChatMessages(record?.pendingMessage)[0],
@@ -2282,6 +2314,7 @@ export class CybaraMobileApi {
     providerName?: string;
     model?: string;
     contextUsage?: SessionContextUsage;
+    tokenUsage?: SessionTokenUsage;
     error?: string;
   }> {
     const response = await this.request<unknown>(`/api/sessions/${encodeURIComponent(id)}/agent`, {
@@ -2299,6 +2332,7 @@ export class CybaraMobileApi {
       providerName: readString(record, ["providerName", "provider_name"]),
       model: readString(record, ["model"]),
       contextUsage: normalizeSessionContextUsage(record?.contextUsage ?? record?.context_usage),
+      tokenUsage: normalizeSessionTokenUsage(record?.tokenUsage ?? record?.token_usage),
       error: readString(record, ["error"]),
     };
   }

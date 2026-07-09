@@ -35,7 +35,7 @@ import { Button, Modal } from "@/components/ui";
 import { apiFetch } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { connectStatusStream } from "@/lib/status-stream";
-import type { SessionContextUsage } from "@/types";
+import type { SessionContextUsage, SessionTokenUsage } from "@/types";
 import type { ChatMessage } from "./chatModel";
 import { sessionDisplayTitle, sessionPreviewText, sessionRouteLabel } from "./chatModel";
 import {
@@ -55,7 +55,8 @@ interface SessionsPanelProps {
     messages: ChatMessage[],
     workspaceDir?: string | null,
     agentId?: string | null,
-    contextUsage?: SessionContextUsage | null
+    contextUsage?: SessionContextUsage | null,
+    tokenUsage?: SessionTokenUsage | null
   ) => void;
   onNewSession: () => void;
 }
@@ -291,7 +292,8 @@ export function SessionsPanel({
           result.messagesList as ChatMessage[],
           (result as { workspace_dir?: string | null }).workspace_dir || null,
           (result as { agent_id?: string | null }).agent_id || null,
-          (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
+          (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null,
+          (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
         );
       }
     } catch (error) {

@@ -299,7 +299,7 @@ struct MetricsScreen: View {
                         tint: .red
                     )
                 }
-                MetricsPlanWindowList(rows: snapshot.providerPlanRows)
+                MetricsPlanWindowList(cards: snapshot.providerPlanCards)
             }
 
             MetricsPanel(
@@ -503,12 +503,12 @@ private struct NativeMetricsSnapshot {
             .sorted { $0.bytes > $1.bytes }
     }
 
-    var providerPlanRows: [NativeProviderPlanWindowRow] {
+    var providerPlanCards: [NativeProviderPlanCard] {
         Array(
             (providerPlans?.providers ?? [])
                 .filter { $0.monitored || !$0.windows.isEmpty || $0.externalSourceAvailable }
-                .flatMap { plan in
-                    [
+                .compactMap { plan -> NativeProviderPlanCard? in
+                    let windows = [
                         ("5h", "rolling_5h"),
                         ("Weekly", "rolling_week"),
                     ].compactMap { label, kind -> NativeProviderPlanWindowRow? in
@@ -517,13 +517,9 @@ private struct NativeMetricsSnapshot {
                         }
                         return NativeProviderPlanWindowRow(
                             id: "\(plan.providerId)-\(kind)",
-                            providerName: plan.providerName,
                             windowLabel: label,
-                            planName: plan.planName ?? plan.automaticTrackingLabel ?? plan.status,
                             valueLabel: usage.valueLabel,
                             resetText: usage.resetText,
-                            sourceLabel: plan.sourceLabel ?? plan.externalSourceLabel ?? plan.automaticTrackingLabel,
-                            status: plan.status,
                             progress: usage.progress,
                             tint: nativeProviderPlanUsageTint(
                                 progress: usage.progress,
@@ -532,21 +528,39 @@ private struct NativeMetricsSnapshot {
                             unlimited: usage.unlimited
                         )
                     }
+                    guard !windows.isEmpty else { return nil }
+                    return NativeProviderPlanCard(
+                        id: plan.providerId,
+                        providerName: plan.providerName,
+                        planName: plan.planName ?? plan.automaticTrackingLabel ?? "Automatic plan",
+                        status: plan.status,
+                        sourceLabel: plan.sourceLabel ?? plan.externalSourceLabel ?? plan.automaticTrackingLabel,
+                        windows: windows
+                    )
                 }
-                .prefix(12)
+                .prefix(8)
         )
     }
+
+    var providerPlanWindowCount: Int {
+        providerPlanCards.reduce(0) { $0 + $1.windows.count }
+    }
+}
+
+private struct NativeProviderPlanCard: Identifiable {
+    let id: String
+    let providerName: String
+    let planName: String
+    let status: String
+    let sourceLabel: String?
+    let windows: [NativeProviderPlanWindowRow]
 }
 
 private struct NativeProviderPlanWindowRow: Identifiable {
     let id: String
-    let providerName: String
     let windowLabel: String
-    let planName: String
     let valueLabel: String
     let resetText: String?
-    let sourceLabel: String?
-    let status: String
     let progress: Double
     let tint: Color
     let unlimited: Bool
@@ -750,7 +764,7 @@ private struct MetricsInsightStrip: View {
         )
         MetricsInsightCard(
             title: "Plan Windows",
-            value: metricsFormatCount(snapshot.providerPlanRows.count),
+            value: metricsFormatCount(snapshot.providerPlanWindowCount),
             detail: "automatic provider limits",
             systemImage: "creditcard",
             tint: .cyan
@@ -1232,71 +1246,103 @@ private struct MetricsBarList: View {
 }
 
 private struct MetricsPlanWindowList: View {
-    let rows: [NativeProviderPlanWindowRow]
+    let cards: [NativeProviderPlanCard]
+
+    private let columns = [
+        GridItem(.adaptive(minimum: 190, maximum: 260), spacing: 10, alignment: .top),
+    ]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Automatic Plan Windows")
                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                 .foregroundStyle(.secondary)
-            if rows.isEmpty {
+            if cards.isEmpty {
                 MetricsEmptyState("No automatic provider plan data yet")
             } else {
-                ForEach(rows) { row in
-                    VStack(alignment: .leading, spacing: 7) {
-                        HStack(alignment: .firstTextBaseline) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(row.providerName)
-                                    .font(.system(size: 12, weight: .bold, design: .rounded))
-                                    .lineLimit(1)
-                                HStack(spacing: 6) {
-                                    Text(row.windowLabel)
-                                        .font(.system(size: 10.5, weight: .semibold, design: .rounded))
-                                        .foregroundStyle(row.tint)
-                                    Text(row.planName)
+                LazyVGrid(columns: columns, spacing: 10) {
+                    ForEach(cards) { card in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .firstTextBaseline) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(card.providerName)
+                                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                                        .lineLimit(1)
+                                    Text(card.planName)
                                         .font(.system(size: 10.5, design: .rounded))
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                 }
+                                Spacer(minLength: 8)
+                                Text(card.status.capitalized)
+                                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
                             }
-                            Spacer()
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text(row.valueLabel)
-                                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                                    .foregroundStyle(row.tint)
-                                if let resetText = row.resetText {
-                                    Text(resetText)
-                                        .font(.system(size: 10, design: .rounded))
-                                        .foregroundStyle(.secondary)
+                            HStack(spacing: 7) {
+                                ForEach(card.windows) { row in
+                                    MetricsPlanWindowPill(row: row)
                                 }
                             }
-                        }
-                        GeometryReader { proxy in
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(Color.primary.opacity(0.07))
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .fill(row.tint.opacity(row.unlimited ? 0.52 : 0.78))
-                                .frame(width: max(4, proxy.size.width * CGFloat(row.progress / 100)))
-                        }
-                        .frame(height: 7)
-                        HStack(spacing: 6) {
-                            Label(row.unlimited ? "Unlimited" : row.status.capitalized, systemImage: row.unlimited ? "infinity" : "gauge.with.dots.needle.50percent")
-                            if let sourceLabel = row.sourceLabel, !sourceLabel.isEmpty {
+                            if let sourceLabel = card.sourceLabel, !sourceLabel.isEmpty {
                                 Text(sourceLabel)
+                                    .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
                             }
                         }
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
+                        .padding(10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.primary.opacity(0.045))
+                        )
                     }
-                    .padding(11)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.primary.opacity(0.045))
-                    )
                 }
             }
         }
         .padding(.top, 2)
+    }
+}
+
+private struct MetricsPlanWindowPill: View {
+    let row: NativeProviderPlanWindowRow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(row.windowLabel)
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                Text(row.valueLabel)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(row.tint)
+                    .lineLimit(1)
+            }
+            GeometryReader { proxy in
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color.primary.opacity(0.07))
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(row.tint.opacity(row.unlimited ? 0.52 : 0.78))
+                    .frame(width: max(4, proxy.size.width * CGFloat(row.progress / 100)))
+            }
+            .frame(height: 6)
+            Text(row.resetText ?? (row.unlimited ? "unlimited" : ""))
+                .font(.system(size: 9.5, design: .rounded))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(row.tint.opacity(0.10))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .stroke(row.tint.opacity(0.18), lineWidth: 1)
+        )
     }
 }
 

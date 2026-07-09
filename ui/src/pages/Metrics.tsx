@@ -72,13 +72,15 @@ function providerPlanStatusTone(status: ProviderPlanSnapshot["status"]): string 
   return "text-gray-400";
 }
 
-interface ProviderPlanMetricRow {
+interface ProviderPlanMetricCard {
   id: string;
   providerName: string;
   planName?: string;
   status: ProviderPlanSnapshot["status"];
-  label: string;
-  usage: ProviderPlanWindowDisplay;
+  windows: Array<{
+    label: string;
+    usage: ProviderPlanWindowDisplay;
+  }>;
 }
 
 export function Metrics() {
@@ -388,26 +390,22 @@ export function Metrics() {
     [modelMetrics?.models, tokenAnalysisData?.modelThoughtProfiles]
   );
 
-  const providerPlanRows = useMemo<ProviderPlanMetricRow[]>(
+  const providerPlanCards = useMemo<ProviderPlanMetricCard[]>(
     () =>
       (providerPlanStatus?.providers || [])
         .filter((plan) => plan.monitored || plan.windows.length > 0 || plan.externalSourceAvailable)
-        .flatMap((plan) =>
-          [
+        .map((plan) => ({
+          id: plan.providerId,
+          providerName: plan.providerName,
+          planName: plan.planName,
+          status: plan.status,
+          windows: [
             { label: "5h", usage: providerPlanWindowDisplay(plan, "rolling_5h") },
             { label: "Weekly", usage: providerPlanWindowDisplay(plan, "rolling_week") },
-          ]
-            .filter(({ usage }) => usage.unlimited || usage.percent !== null)
-            .map(({ label, usage }) => ({
-              id: `${plan.providerId}:${label}`,
-              providerName: plan.providerName,
-              planName: plan.planName,
-              status: plan.status,
-              label,
-              usage,
-            }))
-        )
-        .slice(0, 12),
+          ].filter(({ usage }) => usage.unlimited || usage.percent !== null),
+        }))
+        .filter((plan) => plan.windows.length > 0)
+        .slice(0, 8),
     [providerPlanStatus?.providers]
   );
 
@@ -669,37 +667,62 @@ export function Metrics() {
             {providerPlansPending ? (
               <MetricRowsSkeleton />
             ) : (
-              <div className="space-y-3">
-                {providerPlanRows.map((row) => {
-                  const classes = providerPlanUsageClasses(row.usage);
-                  const width = row.usage.unlimited ? 100 : (row.usage.percent ?? 0);
-                  return (
-                    <div key={row.id} className="rounded-lg bg-white/5 p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="text-sm text-white truncate">{row.providerName}</p>
-                          <p className="text-xs text-gray-500 truncate">
-                            {row.label} limit{row.planName ? ` · ${row.planName}` : ""}
-                          </p>
-                        </div>
-                        <span className={`text-xs font-medium ${classes.textClass}`}>
-                          {row.usage.value}
-                        </span>
+              <div className="grid grid-cols-1 gap-2.5">
+                {providerPlanCards.map((plan) => (
+                  <div
+                    key={plan.id}
+                    className="rounded-lg border border-white/10 bg-white/[0.04] p-2.5"
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-white">
+                          {plan.providerName}
+                        </p>
+                        <p className="truncate text-[11px] text-gray-500">
+                          {plan.planName || "Automatic plan"}
+                        </p>
                       </div>
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/10">
-                        <div
-                          className={`h-full rounded-full ${classes.fillClass}`}
-                          style={{ width: `${Math.max(row.usage.unlimited ? 100 : 2, width)}%` }}
-                        />
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
-                        <span className={providerPlanStatusTone(row.status)}>{row.status}</span>
-                        {row.usage.resetLabel && <span>{row.usage.resetLabel}</span>}
-                      </div>
+                      <span
+                        className={`text-[11px] font-medium ${providerPlanStatusTone(plan.status)}`}
+                      >
+                        {plan.status}
+                      </span>
                     </div>
-                  );
-                })}
-                {providerPlanRows.length === 0 && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {plan.windows.map(({ label, usage }) => {
+                        const classes = providerPlanUsageClasses(usage);
+                        const width = usage.unlimited ? 100 : (usage.percent ?? 0);
+                        return (
+                          <div
+                            key={`${plan.id}:${label}`}
+                            className={`rounded-md border px-2.5 py-2 ${classes.borderClass} ${classes.bgClass}`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-medium text-gray-400">{label}</span>
+                              <span
+                                className={`text-xs font-semibold tabular-nums ${classes.textClass}`}
+                              >
+                                {usage.value}
+                              </span>
+                            </div>
+                            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/10">
+                              <div
+                                className={`h-full rounded-full ${classes.fillClass}`}
+                                style={{ width: `${Math.max(usage.unlimited ? 100 : 2, width)}%` }}
+                              />
+                            </div>
+                            {usage.resetLabel && (
+                              <p className="mt-1 truncate text-[10px] leading-none text-gray-500">
+                                {usage.resetLabel}
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                {providerPlanCards.length === 0 && (
                   <p className="text-sm text-gray-500">No provider plan data yet</p>
                 )}
               </div>

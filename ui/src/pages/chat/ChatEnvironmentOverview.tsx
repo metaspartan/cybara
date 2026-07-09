@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { FolderOpen, GitBranch, GitCompare, X } from "lucide-react";
+import { FolderOpen, GitBranch, GitCompare, Gauge, X } from "lucide-react";
 import type { Subagent } from "@/hooks/useApi";
+import type { SessionContextUsage, SessionTokenUsage } from "@/types";
 import { formatWorkspaceLabel, type FileChangeSummary, type SessionPlanView } from "./chatModel";
 import { GitBranchSelector, type GitBranchOption } from "./GitBranchSelector";
 import { PlanSummaryCard } from "./PlanSummaryCard";
@@ -33,7 +34,15 @@ function EnvironmentRow({
   );
 }
 
+function formatCompactNumber(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  if (Math.abs(value) >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (Math.abs(value) >= 1_000) return `${Math.round(value / 1_000)}k`;
+  return String(Math.max(0, Math.round(value)));
+}
+
 export function ChatEnvironmentOverview({
+  contextUsage,
   currentPlan,
   fileChanges,
   gitBranch,
@@ -48,9 +57,11 @@ export function ChatEnvironmentOverview({
   onSwitchGitBranch,
   sessionId,
   subagents,
+  tokenUsage,
   toolNames,
   workspaceDir,
 }: {
+  contextUsage: SessionContextUsage | null;
   currentPlan: SessionPlanView | null;
   fileChanges: FileChangeSummary | null;
   gitBranch: string | null;
@@ -65,6 +76,7 @@ export function ChatEnvironmentOverview({
   onSwitchGitBranch: (branch: string) => Promise<void> | void;
   sessionId: string | null;
   subagents: Subagent[];
+  tokenUsage: SessionTokenUsage | null;
   toolNames: string[];
   workspaceDir: string | null;
 }) {
@@ -131,6 +143,38 @@ export function ChatEnvironmentOverview({
                 onCreate={onCreateGitBranch}
                 onRefresh={onRefreshGitBranches}
               />
+            </EnvironmentRow>
+          )}
+          <EnvironmentRow icon={<Gauge className="h-3.5 w-3.5" />} label="Tokens">
+            {tokenUsage && tokenUsage.totalTokens > 0 ? (
+              <span className="text-gray-300">
+                {formatCompactNumber(tokenUsage.inputTokens)} in /{" "}
+                {formatCompactNumber(tokenUsage.outputTokens)} out
+              </span>
+            ) : (
+              <span className="text-gray-500">No usage recorded</span>
+            )}
+          </EnvironmentRow>
+          {tokenUsage && tokenUsage.totalTokens > 0 && (
+            <EnvironmentRow icon={<Gauge className="h-3.5 w-3.5" />} label="Speed">
+              <span className="text-gray-300">
+                {tokenUsage.tokensPerSecond !== null
+                  ? `${tokenUsage.tokensPerSecond} tok/s`
+                  : "No duration sample"}
+                <span className="ml-2 text-gray-500">{tokenUsage.callCount} calls</span>
+              </span>
+            </EnvironmentRow>
+          )}
+          {contextUsage?.compacted && (
+            <EnvironmentRow icon={<Gauge className="h-3.5 w-3.5" />} label="Compact">
+              <span className="text-gray-300">
+                {contextUsage.compactionCount || 0}x
+                {(contextUsage.compactedTokens || 0) > 0 && (
+                  <span className="ml-2 text-gray-500">
+                    {formatCompactNumber(contextUsage.compactedTokens || 0)} summarized
+                  </span>
+                )}
+              </span>
             </EnvironmentRow>
           )}
         </div>

@@ -181,6 +181,9 @@ describe("Chat + Logs + Metrics e2e smoke", () => {
     const sessionDetailRes = await api("GET", `/api/sessions/${sessionId}`);
     expect(sessionDetailRes.status).toBe(200);
     expect(sessionDetailRes.data.id).toBe(sessionId);
+    expect(typeof sessionDetailRes.data.tokenUsage?.totalTokens).toBe("number");
+    expect(typeof sessionDetailRes.data.tokenUsage?.inputTokens).toBe("number");
+    expect(typeof sessionDetailRes.data.tokenUsage?.outputTokens).toBe("number");
     expect(Array.isArray(sessionDetailRes.data.messagesList)).toBe(true);
     expect(sessionDetailRes.data.messagesList.length).toBeGreaterThan(0);
 

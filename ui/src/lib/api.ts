@@ -9,6 +9,7 @@ import type {
   ChatImageAttachment,
   ChatSession,
   SessionContextUsage,
+  SessionTokenUsage,
   SessionPlanSnapshot,
   ApiResponse,
   DashboardStats,
@@ -141,6 +142,7 @@ export const agentsApi = {
       sessionId: string;
       workspaceDir?: string | null;
       contextUsage?: SessionContextUsage;
+      tokenUsage?: SessionTokenUsage;
       plan?: SessionPlanSnapshot | null;
       queued?: boolean;
       interrupted?: boolean;
@@ -1224,6 +1226,7 @@ export const chatApi = {
       updated_at: string;
       workspace_dir?: string | null;
       contextUsage?: SessionContextUsage;
+      tokenUsage?: SessionTokenUsage;
       plan?: SessionPlanSnapshot | null;
       messagesList: ChatMessage[];
     }>("/sessions/" + id + (options?.includeFullToolCalls ? "?includeFullToolCalls=1" : "")),
@@ -1240,6 +1243,7 @@ export const chatApi = {
       providerName?: string;
       model?: string;
       contextUsage?: SessionContextUsage;
+      tokenUsage?: SessionTokenUsage;
       error?: string;
     }>("/sessions/" + id + "/agent", {
       method: "PUT",
@@ -1261,6 +1265,7 @@ export const chatApi = {
       removedCount: number;
       removedFromIndex: number;
       contextUsage?: SessionContextUsage;
+      tokenUsage?: SessionTokenUsage;
       messagesList: ChatMessage[];
       error?: string;
     }>("/sessions/" + id + "/revert", {

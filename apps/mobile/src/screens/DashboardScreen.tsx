@@ -140,6 +140,7 @@ import {
   type SessionContextUsage,
   type SessionDetailSummary,
   type SessionSummary,
+  type SessionTokenUsage,
   type SystemPromptFeatureKey,
   type SystemMonitorSnapshot,
   type ToolApprovalDecision,
@@ -1567,28 +1568,24 @@ function MetricsPanel({
   const providerPlanRows =
     metrics?.providerPlans?.providers
       .filter((plan) => plan.monitored || plan.windows.length > 0 || plan.externalSourceAvailable)
-      .flatMap((plan) =>
-        [
+      .map((plan) => ({
+        id: plan.providerId,
+        providerName: plan.providerName,
+        planName: plan.planName || "Automatic plan",
+        status: plan.status,
+        windows: [
           { label: "5h", kind: "rolling_5h" as const },
           { label: "Weekly", kind: "rolling_week" as const },
         ]
           .map(({ label, kind }) => {
             const usage = mobileProviderPlanWindowDisplay(plan, kind);
             if (!usage) return null;
-            return {
-              label: `${plan.providerName} · ${label}`,
-              value: usage.value,
-              detail: usage.reset
-                ? `${plan.planName || plan.status} · ${usage.reset}`
-                : plan.planName || plan.status,
-              amount: usage.progress,
-              progress: usage.progress,
-              tone: usage.tone,
-            };
+            return { label, ...usage };
           })
-          .filter((row): row is NonNullable<typeof row> => row !== null)
-      )
-      .slice(0, 12) ?? [];
+          .filter((row): row is NonNullable<typeof row> => row !== null),
+      }))
+      .filter((plan) => plan.windows.length > 0)
+      .slice(0, 8) ?? [];
 
   return (
     <StableDetailPanel>
@@ -1712,7 +1709,7 @@ function MetricsPanel({
           metrics?.providerPlans?.summary?.warnings ?? 0
         } warnings`}
       >
-        <MetricShareRows rows={providerPlanRows} tone={colors.green} />
+        <ProviderPlanMetricsGrid plans={providerPlanRows} />
       </MetricSection>
 
       <MetricSection title="Models" detail="Throughput, latency, and token share">
@@ -1867,6 +1864,77 @@ function MetricsPanel({
         <MetricEndpointGrid availability={metrics?.availability} />
       </MetricSection>
     </StableDetailPanel>
+  );
+}
+
+function ProviderPlanMetricsGrid({
+  plans,
+}: {
+  plans: Array<{
+    id: string;
+    providerName: string;
+    planName: string;
+    status: string;
+    windows: Array<{
+      label: string;
+      value: string;
+      progress: number;
+      tone: string;
+      reset: string | null;
+    }>;
+  }>;
+}) {
+  if (plans.length === 0) {
+    return <Text style={styles.settingsInfoText}>No provider plan data yet</Text>;
+  }
+  return (
+    <View style={styles.providerPlanMetricsGrid}>
+      {plans.map((plan) => (
+        <View key={plan.id} style={styles.providerPlanMetricsCard}>
+          <View style={styles.providerPlanMetricsHeader}>
+            <View style={styles.flexShrink}>
+              <Text numberOfLines={1} style={styles.settingsInfoTitle}>
+                {plan.providerName}
+              </Text>
+              <Text numberOfLines={1} style={styles.settingsInfoText}>
+                {plan.planName}
+              </Text>
+            </View>
+            <Text numberOfLines={1} style={styles.providerPlanMetricsStatus}>
+              {plan.status}
+            </Text>
+          </View>
+          <View style={styles.providerPlanMetricsWindows}>
+            {plan.windows.map((window) => (
+              <View key={`${plan.id}-${window.label}`} style={styles.providerPlanMetricsWindow}>
+                <View style={styles.providerPlanMetricsWindowHeader}>
+                  <Text style={styles.settingsInfoText}>{window.label}</Text>
+                  <Text style={[styles.routerSummaryValue, { color: window.tone }]}>
+                    {window.value}
+                  </Text>
+                </View>
+                <View style={styles.providerPlanUsageTrack}>
+                  <View
+                    style={[
+                      styles.providerPlanUsageFill,
+                      {
+                        backgroundColor: window.tone,
+                        width: `${Math.max(4, window.progress)}%`,
+                      },
+                    ]}
+                  />
+                </View>
+                {window.reset ? (
+                  <Text numberOfLines={1} style={styles.providerPlanMetricsReset}>
+                    {window.reset}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -2241,6 +2309,7 @@ function SessionDetailPanel({
     MOBILE_CHAT_CHROME.composerHeight
   );
   const draftRef = useRef("");
+  const composerMeasuredHeightRef = useRef<number>(MOBILE_CHAT_COMPOSER.minHeight);
   const [sending, setSending] = useState(false);
   const [pendingImages, setPendingImages] = useState<MobileMessageImage[]>([]);
   const [pendingMessages, setPendingMessages] = useState<MobilePendingChatMessage[]>([]);
@@ -2553,13 +2622,23 @@ function SessionDetailPanel({
   const setComposerDraft = (value: string) => {
     draftRef.current = value;
     setDraft(value);
-    setComposerHeight(mobileComposerHeightForDraft(value));
+    setComposerHeight(mobileComposerHeightForDraft(value, composerMeasuredHeightRef.current));
   };
 
   const resetComposerDraft = () => {
     draftRef.current = "";
+    composerMeasuredHeightRef.current = MOBILE_CHAT_COMPOSER.minHeight;
     setDraft("");
     setComposerHeight(MOBILE_CHAT_COMPOSER.minHeight);
+  };
+
+  const appendTextToComposer = (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const nextDraft = draftRef.current.trim()
+      ? `${draftRef.current.trimEnd()}\n\n${trimmed}`
+      : trimmed;
+    setComposerDraft(nextDraft);
   };
 
   const removePendingImage = (index: number) => {
@@ -2615,6 +2694,18 @@ function SessionDetailPanel({
     appendPendingImages([{ data: rawBase64, mimeType: "image/png" }]);
   };
 
+  const pasteText = async () => {
+    const text = (await Clipboard.getStringAsync().catch(() => "")).trim();
+    if (!text) {
+      Alert.alert(
+        "No text found",
+        "Copy text from a message first, then paste it into the composer."
+      );
+      return;
+    }
+    appendTextToComposer(text);
+  };
+
   const openAttachmentMenu = () => {
     if (pendingImages.length >= MOBILE_CHAT_MAX_ATTACHMENTS) {
       Alert.alert(
@@ -2628,12 +2719,13 @@ function SessionDetailPanel({
       ActionSheetIOS.showActionSheetWithOptions(
         {
           title: "Attach",
-          options: ["Photo library", "Paste image", "Cancel"],
-          cancelButtonIndex: 2,
+          options: ["Photo library", "Paste image", "Paste text", "Cancel"],
+          cancelButtonIndex: 3,
         },
         (index) => {
           if (index === 0) void pickImages();
           if (index === 1) void pasteImage();
+          if (index === 2) void pasteText();
         }
       );
       return;
@@ -2649,6 +2741,12 @@ function SessionDetailPanel({
         text: "Paste image",
         onPress: () => {
           void pasteImage();
+        },
+      },
+      {
+        text: "Paste text",
+        onPress: () => {
+          void pasteText();
         },
       },
       { text: "Cancel", style: "cancel" },
@@ -2764,6 +2862,7 @@ function SessionDetailPanel({
               ...current,
               workspaceDir: result.workspaceDir ?? current.workspaceDir,
               contextUsage: result.contextUsage ?? current.contextUsage,
+              tokenUsage: result.tokenUsage ?? current.tokenUsage,
               messages: [
                 ...current.messages.filter((entry) => entry.id !== liveAssistant?.id),
                 result.message,
@@ -3170,6 +3269,7 @@ function SessionDetailPanel({
               providerName: result.providerName ?? current.providerName,
               model: result.model ?? current.model,
               contextUsage: result.contextUsage ?? current.contextUsage,
+              tokenUsage: result.tokenUsage ?? current.tokenUsage,
             }
           : current
       );
@@ -3199,6 +3299,7 @@ function SessionDetailPanel({
           message: [
             `Agent: ${useModelRouter ? "Model Router" : (selectedAgent?.name ?? "Gateway default")}`,
             mobileContextUsageDetail(contextUsage),
+            mobileSessionTokenUsageDetail(detail?.tokenUsage),
             mobileProviderPlanDetail(activeProviderPlan),
           ]
             .filter(Boolean)
@@ -3243,6 +3344,7 @@ function SessionDetailPanel({
       [
         `Agent: ${useModelRouter ? "Model Router" : (selectedAgent?.name ?? "Gateway default")}`,
         mobileContextUsageDetail(contextUsage),
+        mobileSessionTokenUsageDetail(detail?.tokenUsage),
         mobileProviderPlanDetail(activeProviderPlan),
       ]
         .filter(Boolean)
@@ -3288,6 +3390,7 @@ function SessionDetailPanel({
           workspaceDir,
         }),
         `Context: ${mobileContextUsageDetail(contextUsage)}`,
+        mobileSessionTokenUsageDetail(detail?.tokenUsage),
         mobileProviderPlanDetail(activeProviderPlan),
         `Tool approvals: ${toolApprovalLabel}`,
       ]
@@ -3402,6 +3505,7 @@ function SessionDetailPanel({
                 message={message}
                 mediaUrl={(filePath) => api.mediaUrl(filePath)}
                 nowMs={message.id === liveAssistant?.id ? liveNowMs : undefined}
+                onAddToChat={appendTextToComposer}
                 onRevert={message.role === "user" ? confirmRevertToMessage : undefined}
               />
             ))}
@@ -3609,11 +3713,11 @@ function SessionDetailPanel({
               editable
               multiline
               onContentSizeChange={(event) => {
+                composerMeasuredHeightRef.current = boundedMobileComposerHeight(
+                  event.nativeEvent.contentSize.height
+                );
                 setComposerHeight(
-                  mobileComposerHeightForDraft(
-                    draftRef.current,
-                    boundedMobileComposerHeight(event.nativeEvent.contentSize.height)
-                  )
+                  mobileComposerHeightForDraft(draftRef.current, composerMeasuredHeightRef.current)
                 );
               }}
               value={draft}
@@ -3748,6 +3852,17 @@ function mobileContextUsageDetail(usage?: SessionContextUsage): string {
     );
   }
   return details.join(" ");
+}
+
+function mobileSessionTokenUsageDetail(usage?: SessionTokenUsage): string | null {
+  if (!usage || usage.totalTokens <= 0) return null;
+  const speed =
+    usage.tokensPerSecond !== null && Number.isFinite(usage.tokensPerSecond)
+      ? ` · ${usage.tokensPerSecond} tok/s`
+      : "";
+  return `Tokens: ${mobileFormatTokenCount(usage.inputTokens)} input / ${mobileFormatTokenCount(
+    usage.outputTokens
+  )} output · ${usage.callCount} calls${speed}`;
 }
 
 function mobileProviderPlanFor(

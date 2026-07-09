@@ -172,11 +172,13 @@ function MarkdownText({ content }: { content: string }) {
 function MessageActionsRow({
   alignEnd,
   content,
+  onAddToChat,
   timestampLabel,
   onRevert,
 }: {
   alignEnd?: boolean;
   content: string;
+  onAddToChat?: (content: string) => void;
   timestampLabel?: string | null;
   onRevert?: () => void;
 }) {
@@ -204,6 +206,17 @@ function MessageActionsRow({
           <Copy color={colors.textDim} size={13} strokeWidth={2.2} />
         )}
       </Pressable>
+      {onAddToChat && content.trim() ? (
+        <Pressable
+          accessibilityLabel="Add message to chat"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => onAddToChat(content)}
+          style={styles.messageActionButton}
+        >
+          <ListChecks color={colors.textDim} size={13} strokeWidth={2.2} />
+        </Pressable>
+      ) : null}
       {onRevert ? (
         <Pressable
           accessibilityLabel="Revert session to this message"
@@ -364,12 +377,14 @@ export function ChatMessageRow({
   accentColor,
   message,
   nowMs,
+  onAddToChat,
   onRevert,
   mediaUrl,
 }: {
   accentColor: string;
   message: SessionDetailSummary["messages"][number];
   nowMs?: number;
+  onAddToChat?: (content: string) => void;
   onRevert?: (message: SessionDetailSummary["messages"][number]) => void;
   mediaUrl?: (filePath: string) => string;
 }) {
@@ -407,6 +422,7 @@ export function ChatMessageRow({
         ) : null}
         <MessageActionsRow
           content={message.content || ""}
+          onAddToChat={onAddToChat}
           timestampLabel={message.timestamp ? relativeTimestamp(message.timestamp) : null}
         />
       </View>
@@ -431,6 +447,7 @@ export function ChatMessageRow({
         <MessageActionsRow
           alignEnd
           content={message.content || ""}
+          onAddToChat={onAddToChat}
           timestampLabel={message.timestamp ? relativeTimestamp(message.timestamp) : null}
           onRevert={onRevert ? () => onRevert(message) : undefined}
         />

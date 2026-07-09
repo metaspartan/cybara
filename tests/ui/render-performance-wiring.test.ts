@@ -75,4 +75,15 @@ describe("UI render performance wiring", () => {
     expect(source).toContain("value={treeFilterDraft}");
     expect(source).toContain("isTreeFilterPending &&");
   });
+
+  test("Metrics groups automatic provider plan windows into compact provider cards", () => {
+    const source = read("pages/Metrics.tsx");
+
+    expect(source).toContain("interface ProviderPlanMetricCard");
+    expect(source).toContain("const providerPlanCards = useMemo<ProviderPlanMetricCard[]>");
+    expect(source).toContain('providerPlanWindowDisplay(plan, "rolling_5h")');
+    expect(source).toContain('providerPlanWindowDisplay(plan, "rolling_week")');
+    expect(source).toContain("providerPlanCards.map((plan)");
+    expect(source).toContain("grid grid-cols-2 gap-2");
+  });
 });

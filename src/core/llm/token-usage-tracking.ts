@@ -13,7 +13,8 @@ export function trackTokenUsage(
   providerUrl: string,
   inputTokens: number,
   outputTokens: number,
-  durationMs?: number
+  durationMs?: number,
+  options?: { sessionId?: string }
 ) {
   try {
     // ── Feed the model router's usage tracking + circuit breaker ──
@@ -34,6 +35,10 @@ export function trackTokenUsage(
       outputTokens,
       totalTokens,
       durationMs: durationMs ?? null,
+      sessionId:
+        typeof options?.sessionId === "string" && options.sessionId.trim()
+          ? options.sessionId.trim()
+          : undefined,
       timestamp,
     };
 

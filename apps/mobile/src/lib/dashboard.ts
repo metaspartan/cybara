@@ -237,6 +237,7 @@ export function isMobileSettingsDetailFieldVisible(label: string): boolean {
 }
 
 export const MOBILE_CHAT_COMPOSER = {
+  estimatedCharsPerLine: 34,
   growsWithContent: true,
   lineHeight: 20,
   maxHeight: 184,
@@ -310,7 +311,14 @@ export function mobileComposerHeightForDraft(
   draft: string,
   measuredHeight: number = MOBILE_CHAT_COMPOSER.minHeight
 ): number {
-  const explicitLines = draft.length === 0 ? 1 : draft.split(/\r\n|\n|\r/).length;
+  const lines = draft.length === 0 ? [""] : draft.split(/\r\n|\n|\r/);
+  const explicitLines = lines.reduce((count, line) => {
+    const visualLines = Math.max(
+      1,
+      Math.ceil(line.length / MOBILE_CHAT_COMPOSER.estimatedCharsPerLine)
+    );
+    return count + visualLines;
+  }, 0);
   const explicitLineHeight =
     MOBILE_CHAT_COMPOSER.minHeight +
     Math.max(0, explicitLines - 1) * MOBILE_CHAT_COMPOSER.lineHeight;

@@ -378,6 +378,8 @@ describe("native macOS shell wiring", () => {
 
     expect(gatewayModels).toContain("struct GatewaySessionContextUsage");
     expect(gatewayModels).toContain("let contextUsage: GatewaySessionContextUsage?");
+    expect(gatewayModels).toContain("struct GatewaySessionTokenUsage");
+    expect(gatewayModels).toContain("let tokenUsage: GatewaySessionTokenUsage?");
     expect(gatewayModels).toContain("let manualPlanEditable: Bool");
     expect(gatewayModels).toContain("let automaticTrackingLabel: String?");
     expect(gatewayModels).toContain("let messagesList: [GatewaySessionMessage]?");
@@ -387,6 +389,9 @@ describe("native macOS shell wiring", () => {
     expect(gatewayClient).toContain('payload["useModelRouter"] = true');
     expect(gatewayClient).toContain('request("api/sessions/\\(id)/agent", method: "PUT"');
     expect(nativeScreens).toContain("private var composerControls: some View");
+    expect(nativeScreens).toContain("private var activeTokenUsage: GatewaySessionTokenUsage?");
+    expect(nativeScreens).toContain("Session tokens:");
+    expect(nativeScreens).toContain("No usage recorded");
     expect(nativeScreens).toContain("private var composerSecurityControls: some View");
     expect(nativeScreens).toContain('Label("Always Allow", systemImage: "exclamationmark.shield")');
     expect(nativeScreens).toContain('Label("Ask Me", systemImage: "questionmark.circle")');
@@ -458,10 +463,13 @@ describe("native macOS shell wiring", () => {
     expect(metricsScreen).toContain("nativeProviderPlanWindowMetric(plan: plan, kind: kind)");
     expect(metricsScreen).toContain('("5h", "rolling_5h")');
     expect(metricsScreen).toContain('("Weekly", "rolling_week")');
+    expect(metricsScreen).toContain("private struct NativeProviderPlanCard");
     expect(metricsScreen).toContain("private struct NativeProviderPlanWindowRow");
     expect(metricsScreen).toContain("private struct MetricsPlanWindowList");
+    expect(metricsScreen).toContain("private struct MetricsPlanWindowPill");
+    expect(metricsScreen).toContain("LazyVGrid(columns: columns");
+    expect(metricsScreen).toContain("let cards: [NativeProviderPlanCard]");
     expect(metricsScreen).toContain('Text("Automatic Plan Windows")');
-    expect(metricsScreen).toContain('Label(row.unlimited ? "Unlimited"');
     expect(metricsScreen).toContain("nativeProviderPlanUsageTint(progress:");
     expect(metricsScreen).toContain("let tint: Color?");
     expect(metricsScreen).toContain("let progress: Double?");

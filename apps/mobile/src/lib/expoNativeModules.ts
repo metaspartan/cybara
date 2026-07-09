@@ -18,6 +18,7 @@ export const CameraView = (() => null) as ComponentType<Record<string, unknown>>
 export const Clipboard = {
   hasImageAsync: async () => false,
   getImageAsync: async (_options?: Record<string, unknown>) => null as { data: string } | null,
+  getStringAsync: async () => "",
   setStringAsync: async (_value: string) => true,
 };
 

@@ -264,6 +264,76 @@ export interface SessionContextUsage {
   source: "estimated";
 }
 
+export interface SessionTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  callCount: number;
+  durationMs: number;
+  tokensPerSecond: number | null;
+  source: "metrics";
+}
+
+export function summarizeSessionTokenUsage(sessionId: string): SessionTokenUsage {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) {
+    return {
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      callCount: 0,
+      durationMs: 0,
+      tokensPerSecond: null,
+      source: "metrics",
+    };
+  }
+
+  const row = db
+    .prepare(
+      `SELECT
+         COALESCE(SUM(CASE WHEN key = 'input' THEN value ELSE 0 END), 0) as inputTokens,
+         COALESCE(SUM(CASE WHEN key = 'output' THEN value ELSE 0 END), 0) as outputTokens,
+         COALESCE(SUM(CASE WHEN key = 'all' THEN value ELSE 0 END), 0) as totalTokens,
+         COALESCE(SUM(CASE
+           WHEN key = 'all' AND CAST(json_extract(metadata, '$.durationMs') AS REAL) > 0
+           THEN CAST(json_extract(metadata, '$.durationMs') AS REAL)
+           ELSE 0
+         END), 0) as durationMs,
+         COALESCE(SUM(CASE WHEN key = 'all' THEN 1 ELSE 0 END), 0) as callCount
+       FROM metrics
+       WHERE type = 'token_usage'
+         AND metadata IS NOT NULL
+         AND json_extract(metadata, '$.sessionId') = ?`
+    )
+    .get(normalizedSessionId) as {
+    inputTokens?: number;
+    outputTokens?: number;
+    totalTokens?: number;
+    durationMs?: number;
+    callCount?: number;
+  } | null;
+
+  const inputTokens = Math.max(0, Math.round(Number(row?.inputTokens || 0)));
+  const outputTokens = Math.max(0, Math.round(Number(row?.outputTokens || 0)));
+  const totalTokens = Math.max(
+    inputTokens + outputTokens,
+    Math.round(Number(row?.totalTokens || 0))
+  );
+  const durationMs = Math.max(0, Number(row?.durationMs || 0));
+  const tokensPerSecond =
+    durationMs > 0 ? Number(((outputTokens / durationMs) * 1000).toFixed(2)) : null;
+
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    callCount: Math.max(0, Math.round(Number(row?.callCount || 0))),
+    durationMs: Math.round(durationMs),
+    tokensPerSecond,
+    source: "metrics",
+  };
+}
+
 export function estimateSessionContextUsage(
   messages: ChatMessage[],
   model?: string,

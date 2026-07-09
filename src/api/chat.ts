@@ -32,12 +32,14 @@ import {
   deletePersistedSession,
   estimateMessagesTokens,
   estimateSessionContextUsage,
+  summarizeSessionTokenUsage,
   getContextWindow,
   normalizeSessionWorkspaceDir,
   resolveSessionModelMetadata,
   type PersistedSessionListEntry,
   type SessionContextUsage,
   type SessionModelMetadata,
+  type SessionTokenUsage,
 } from "../core/session-context";
 import {
   deriveSessionTitleFromMessages,
@@ -141,6 +143,7 @@ export interface ChatResponse {
   message: ChatMessage;
   workspaceDir?: string | null;
   contextUsage?: SessionContextUsage;
+  tokenUsage?: SessionTokenUsage;
   queued?: boolean;
   interrupted?: boolean;
   stopped?: boolean;
@@ -219,6 +222,7 @@ export interface ChatSessionAgentUpdate {
   providerName?: string;
   model?: string;
   contextUsage: SessionContextUsage;
+  tokenUsage: SessionTokenUsage;
 }
 
 interface SessionLastMessagePreview {
@@ -2361,6 +2365,7 @@ async function handleChatTurn(
         compactionCount: session.compactionCount || 0,
       }
     ),
+    tokenUsage: summarizeSessionTokenUsage(session.id),
     plan: extractLatestSessionPlan(session.id, session.messages),
     message: assistantMessage,
     agent: agent
@@ -2512,6 +2517,7 @@ export async function updateSessionAgent(
       sessionId: session.id,
       compactionCount: session.compactionCount || 0,
     }),
+    tokenUsage: summarizeSessionTokenUsage(session.id),
   };
 }
 

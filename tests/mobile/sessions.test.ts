@@ -113,6 +113,9 @@ describe("mobile: chat management", () => {
     expect(chat).toContain("<Text selectable style={styles.workedForText}>");
     expect(chat).toContain("<Text selectable style={styles.messageActivityGroupLabel}>");
     expect(chat).toContain("selectable = true");
+    expect(chat).toContain('accessibilityLabel="Add message to chat"');
+    expect(chat).toContain("onAddToChat?: (content: string) => void");
+    expect(screen).toContain("onAddToChat={appendTextToComposer}");
     expect(styles).toContain("mobilePlanCard:");
     expect(styles).toContain("mobilePlanProgressFill:");
   });
@@ -122,6 +125,9 @@ describe("mobile: chat management", () => {
     const newChat = read("components/NewChatPanel.tsx");
     const styles = read("screens/dashboardStyles.ts");
     expect(api).toContain("interface SessionContextUsage");
+    expect(api).toContain("interface SessionTokenUsage");
+    expect(api).toContain("tokenUsage?: SessionTokenUsage");
+    expect(api).toContain("normalizeSessionTokenUsage(");
     expect(api).toContain("updateSessionAgent(");
     expect(api).toContain("useModelRouter?: boolean");
     expect(api).toContain("if (input.useModelRouter === true)");
@@ -138,6 +144,7 @@ describe("mobile: chat management", () => {
     expect(screen).toContain("const openToolApprovalSelector");
     expect(screen).toContain("Tool approvals: ${toolApprovalLabel}");
     expect(screen).toContain("mobileContextUsageDetail(");
+    expect(screen).toContain("mobileSessionTokenUsageDetail(");
     expect(screen).toContain("Context: ${mobileContextUsageDetail(contextUsage)}");
     expect(screen).toContain("mobileProviderPlanFor(providerPlanStatus");
     expect(screen).toContain("mobileProviderPlanDetail(activeProviderPlan)");

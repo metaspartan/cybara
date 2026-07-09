@@ -256,6 +256,7 @@ describe("mobile dashboard model", () => {
 
   test("keeps the chat composer compact, dynamic, and icon driven", () => {
     expect(MOBILE_CHAT_COMPOSER.sendButtonMode).toBe("icon");
+    expect(MOBILE_CHAT_COMPOSER.estimatedCharsPerLine).toBeGreaterThan(20);
     expect(MOBILE_CHAT_COMPOSER.growsWithContent).toBe(true);
     expect(MOBILE_CHAT_COMPOSER.resetAfterSend).toBe(true);
     expect(MOBILE_CHAT_COMPOSER.preserveDraftOnFailure).toBe(true);
@@ -270,6 +271,9 @@ describe("mobile dashboard model", () => {
     expect(mobileComposerHeightForDraft("one\ntwo")).toBe(
       MOBILE_CHAT_COMPOSER.minHeight + MOBILE_CHAT_COMPOSER.lineHeight
     );
+    expect(
+      mobileComposerHeightForDraft("x".repeat(MOBILE_CHAT_COMPOSER.estimatedCharsPerLine + 2))
+    ).toBe(MOBILE_CHAT_COMPOSER.minHeight + MOBILE_CHAT_COMPOSER.lineHeight);
     expect(mobileComposerHeightForDraft("one\ntwo\nthree", 300)).toBe(
       MOBILE_CHAT_COMPOSER.maxHeight
     );
@@ -278,7 +282,14 @@ describe("mobile dashboard model", () => {
     );
     expect(dashboardScreenSource).toContain('accessibilityLabel="Attach files or images"');
     expect(dashboardScreenSource).toContain("const openAttachmentMenu");
-    expect(dashboardScreenSource).toContain('options: ["Photo library", "Paste image", "Cancel"]');
+    expect(dashboardScreenSource).toContain(
+      'options: ["Photo library", "Paste image", "Paste text", "Cancel"]'
+    );
+    expect(dashboardScreenSource).toContain("const composerMeasuredHeightRef = useRef");
+    expect(dashboardScreenSource).toContain("composerMeasuredHeightRef.current");
+    expect(dashboardScreenSource).toContain("const pasteText = async () =>");
+    expect(dashboardScreenSource).toContain("Clipboard.getStringAsync()");
+    expect(dashboardScreenSource).toContain("appendTextToComposer");
     expect(dashboardScreenSource).toContain("<Paperclip color={colors.text}");
     expect(dashboardScreenSource).not.toContain('accessibilityLabel="Paste image from clipboard"');
     expect(dashboardScreenSource).not.toContain("ClipboardPaste");
@@ -376,10 +387,13 @@ describe("mobile dashboard model", () => {
     );
     expect(dashboardScreenSource).toContain("mobileProviderPlanWindowDisplay(plan, kind)");
     expect(dashboardScreenSource).toContain("mobilePlanUsageTone(progress, window.unlimited)");
-    expect(dashboardScreenSource).toContain("progress: usage.progress");
-    expect(dashboardScreenSource).toContain("tone: usage.tone");
+    expect(dashboardScreenSource).toContain("window.progress");
+    expect(dashboardScreenSource).toContain("window.tone");
     expect(dashboardScreenSource).toContain("providerPlanUsageRows(providerPlan)");
     expect(dashboardScreenSource).toContain("styles.providerPlanUsageGrid");
+    expect(dashboardScreenSource).toContain("function ProviderPlanMetricsGrid");
+    expect(dashboardScreenSource).toContain("styles.providerPlanMetricsGrid");
+    expect(dashboardScreenSource).toContain("styles.providerPlanMetricsWindows");
     expect(dashboardScreenSource).toContain("styles.providerPlanUsageTrack");
     expect(dashboardScreenSource).toContain('label: "5h"');
     expect(dashboardScreenSource).toContain('label: "Weekly"');

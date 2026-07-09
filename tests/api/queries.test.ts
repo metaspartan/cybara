@@ -116,7 +116,7 @@ results.pageClampMin = pClampMin.limit;
 
 results.stats = getLogStats(24);
 
-// Model metrics: seed metrics rows for TPS, latency, tokens.
+// Model metrics: seed legacy TPS rows and newer token-call rows.
 tables.metrics.add({ id: id("m"), type: "model_tps", key: "gpt", value: 10, metadata: JSON.stringify({ provider: "openai" }) });
 tables.metrics.add({ id: id("m"), type: "model_tps", key: "gpt", value: 20 });
 tables.metrics.add({ id: id("m"), type: "model_tps", key: "gpt", value: 30, metadata: JSON.stringify({ provider: "openai" }) });
@@ -125,6 +125,8 @@ tables.metrics.add({ id: id("m"), type: "model_latency", key: "gpt", value: 100 
 tables.metrics.add({ id: id("m"), type: "model_latency", key: "gpt", value: 300 });
 tables.metrics.add({ id: id("m"), type: "token_usage_by_model", key: "gpt", value: 111 });
 tables.metrics.add({ id: id("m"), type: "token_usage_by_model", key: "gpt", value: 222 });
+tables.metrics.add({ id: id("m"), type: "token_usage", key: "all", value: 170, metadata: JSON.stringify({ callId: "c1", model: "gpt", provider: "openai", inputTokens: 120, outputTokens: 50, durationMs: 1000 }) });
+tables.metrics.add({ id: id("m"), type: "token_usage", key: "all", value: 180, metadata: JSON.stringify({ callId: "c2", model: "gpt", provider: "openai", inputTokens: 80, outputTokens: 100, durationMs: 4000 }) });
 
 results.metrics = getModelMetrics();
 
@@ -509,7 +511,7 @@ describe("getModelMetrics aggregation", () => {
     expect(r("metricsEmpty")).toEqual([]);
   });
 
-  test("aggregates TPS/latency/tokens per model with rounding and defaults", () => {
+  test("aggregates model speed from output tokens over measured duration", () => {
     const metrics =
       r<
         Array<{
@@ -525,12 +527,12 @@ describe("getModelMetrics aggregation", () => {
       >("metrics");
     const gpt = metrics.find((m) => m.model === "gpt")!;
     expect(gpt.provider).toBe("openai");
-    expect(gpt.avgTps).toBe(20);
-    expect(gpt.maxTps).toBe(30);
-    expect(gpt.minTps).toBe(10);
-    expect(gpt.callCount).toBe(3);
-    expect(gpt.avgLatencyMs).toBe(200);
-    expect(gpt.totalTokens).toBe(333);
+    expect(gpt.avgTps).toBe(30);
+    expect(gpt.maxTps).toBe(50);
+    expect(gpt.minTps).toBe(25);
+    expect(gpt.callCount).toBe(2);
+    expect(gpt.avgLatencyMs).toBe(2500);
+    expect(gpt.totalTokens).toBe(350);
   });
 
   test("defaults provider to unknown, latency to 0, and tokens to 0 when unmatched", () => {

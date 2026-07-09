@@ -327,6 +327,16 @@ export interface SessionContextUsage {
   source?: "estimated";
 }
 
+export interface SessionTokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  callCount: number;
+  durationMs: number;
+  tokensPerSecond: number | null;
+  source?: "metrics";
+}
+
 export interface ChatSession {
   id: string;
   agentId: string;
