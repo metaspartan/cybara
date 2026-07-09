@@ -6,7 +6,7 @@ import {
   translate,
   type SupportedLocale,
   type TranslationKey,
-} from "../../../shared/i18n/catalog";
+} from "cybara-shared/i18n/catalog";
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 export type MobileLanguageMode = "system" | SupportedLocale;

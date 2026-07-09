@@ -6,6 +6,9 @@
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
+    "paths": {
+      "cybara-shared/*": ["../../shared/*"]
+    },
     "types": ["react", "react-native"]
   },
   "include": ["App.tsx", "src/**/*.ts", "src/**/*.tsx"]
