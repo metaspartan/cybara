@@ -70,6 +70,7 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
     setState((prev) => ({
       ...prev,
       sessionId: requestSessionId ?? prev.sessionId,
+      workspaceDir: requestedWorkspaceDir ?? prev.workspaceDir,
       messages: queuedSend ? prev.messages : [...prev.messages, userMessage],
       isLoading: queuedSend ? prev.isLoading : true,
     }));

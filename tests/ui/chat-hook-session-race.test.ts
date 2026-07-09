@@ -27,6 +27,14 @@ describe("useChat session race guards", () => {
     expect(source).toContain("options?.clientPendingId");
   });
 
+  test("keeps the requested workspace visible while a new session is starting", () => {
+    const source = readFileSync(hookPath, "utf8");
+    expect(source).toContain(
+      "options?.workspaceDir !== undefined ? options.workspaceDir : state.workspaceDir"
+    );
+    expect(source).toContain("workspaceDir: requestedWorkspaceDir ?? prev.workspaceDir");
+  });
+
   test("does not optimistically add queued follow-ups to the transcript", () => {
     const source = readFileSync(hookPath, "utf8");
     expect(source).toContain(
