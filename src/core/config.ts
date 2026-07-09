@@ -162,6 +162,10 @@ export interface ComputerUseSettings {
   driverCommand: string;
 }
 
+export interface TokenOptimizationSettings {
+  toonStructuredDataEnabled: boolean;
+}
+
 function normalizeDefaultWorkspaceDir(value: unknown): string {
   if (typeof value !== "string") return homeDir;
   const trimmed = value.trim().replace(/\0/g, "");
@@ -189,6 +193,10 @@ export const DEFAULT_SANDBOX_RUNTIME: SandboxRuntimeConfig = {
   enabled: false,
   provider: "auto",
   network: "deny",
+};
+
+export const DEFAULT_TOKEN_OPTIMIZATION_SETTINGS: TokenOptimizationSettings = {
+  toonStructuredDataEnabled: true,
 };
 
 export const DEFAULT_WORKSPACE_INDEXER_SETTINGS: WorkspaceIndexerSettings = {
@@ -630,6 +638,18 @@ function normalizeMemoryBehaviorSettings(value: unknown): MemoryBehaviorSettings
   };
 }
 
+export function normalizeTokenOptimizationSettings(value: unknown): TokenOptimizationSettings {
+  const parsed = asObject(value);
+  return {
+    toonStructuredDataEnabled:
+      typeof parsed?.toonStructuredDataEnabled === "boolean"
+        ? parsed.toonStructuredDataEnabled
+        : typeof parsed?.toon_structured_data_enabled === "boolean"
+          ? parsed.toon_structured_data_enabled
+          : DEFAULT_TOKEN_OPTIMIZATION_SETTINGS.toonStructuredDataEnabled,
+  };
+}
+
 function normalizeLegacyMemoryFlushSettings(value: unknown): Partial<MemoryBehaviorSettings> {
   const parsed = asObject(value);
   if (!parsed) return {};
@@ -680,6 +700,7 @@ class ConfigManager {
       workspace_indexer: { ...DEFAULT_WORKSPACE_INDEXER_SETTINGS },
       memory: { ...DEFAULT_MEMORY_BEHAVIOR_SETTINGS },
       memory_provider: { ...DEFAULT_MEMORY_PROVIDER_SETTINGS },
+      token_optimization: { ...DEFAULT_TOKEN_OPTIMIZATION_SETTINGS },
       speech: { ...DEFAULT_SPEECH_SETTINGS },
       computer_use: { ...DEFAULT_COMPUTER_USE_SETTINGS },
       default_workspace_dir: homeDir,
@@ -755,6 +776,16 @@ class ConfigManager {
   setSandboxRuntime(runtime: unknown): SandboxRuntimeConfig {
     const normalized = normalizeSandboxRuntime(runtime);
     this.set("sandbox_runtime", normalized);
+    return normalized;
+  }
+
+  getTokenOptimizationSettings(): TokenOptimizationSettings {
+    return normalizeTokenOptimizationSettings(this.get<unknown>("token_optimization"));
+  }
+
+  setTokenOptimizationSettings(settings: unknown): TokenOptimizationSettings {
+    const normalized = normalizeTokenOptimizationSettings(settings);
+    this.set("token_optimization", normalized);
     return normalized;
   }
 

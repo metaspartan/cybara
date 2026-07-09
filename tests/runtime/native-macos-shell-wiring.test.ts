@@ -373,6 +373,20 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain('"queued follow-up"');
   });
 
+  test("native chat includes live and persisted edit activities in file changes", () => {
+    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+
+    expect(nativeScreens).toContain(
+      "summarizeNativeChatFileChanges(messages, liveActivities: liveActivities)"
+    );
+    expect(nativeScreens).toContain("private func nativeActivityFileChange");
+    expect(nativeScreens).toContain('parts.first?.lowercased() == "edited"');
+    expect(nativeScreens).toContain(
+      "for activity in messages.flatMap({ $0.process_activities ?? [] })"
+    );
+    expect(nativeScreens).toContain("for activity in liveActivities");
+  });
+
   test("native chat composer exposes agent switching and context usage", () => {
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");

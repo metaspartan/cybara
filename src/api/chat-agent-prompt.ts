@@ -26,6 +26,10 @@ interface ChatAgentPromptSession {
   workspaceDir?: string | null;
 }
 
+interface ChatAgentPromptOptions {
+  useTools?: boolean;
+}
+
 function isGeneratedAgentPrompt(prompt: string): boolean {
   const trimmed = prompt.trim();
   if (!trimmed) return true;
@@ -42,8 +46,10 @@ function isGeneratedAgentPrompt(prompt: string): boolean {
 
 function chatAgentToolNames(
   agent: Pick<Agent, "tools">,
-  messages: ChatAgentPromptMessage[] = []
+  messages: ChatAgentPromptMessage[] = [],
+  options: ChatAgentPromptOptions = {}
 ): string[] {
+  if (options.useTools === false) return [];
   const selection = resolveAgentToolSelection(agent.tools);
   if (selection.kind === "malformed") return [];
   if (selection.kind === "explicit") {
@@ -68,7 +74,8 @@ function chatAgentToolNames(
 export async function activeAgentSystemPrompt(
   agent: AgentPromptData,
   workspaceDir?: string | null,
-  messages: ChatAgentPromptMessage[] = []
+  messages: ChatAgentPromptMessage[] = [],
+  options: ChatAgentPromptOptions = {}
 ): Promise<string> {
   const homeDir = workspaceDir || config.getDefaultWorkspaceDir();
   let skills: Awaited<ReturnType<typeof filterEligibleSkills>> = [];
@@ -89,7 +96,7 @@ export async function activeAgentSystemPrompt(
     agentData: { name: agent.name, config: agent.config as string | undefined },
     config: {},
     modelDisplay: agent.model || "MiniMax-M2.5",
-    tools: chatAgentToolNames(agent, messages),
+    tools: chatAgentToolNames(agent, messages, options),
     skills,
     sandboxInfo: getSandboxPromptInfo(homeDir),
     extraSystemPrompt:
@@ -100,13 +107,15 @@ export async function activeAgentSystemPrompt(
 export async function applyActiveAgentToSession(
   session: ChatAgentPromptSession,
   agent: AgentPromptData,
-  messages?: ChatAgentPromptMessage[]
+  messages?: ChatAgentPromptMessage[],
+  options: ChatAgentPromptOptions = {}
 ): Promise<void> {
   session.agentId = agent.id;
   const prompt = await activeAgentSystemPrompt(
     agent,
     session.workspaceDir,
-    messages || session.messages
+    messages || session.messages,
+    options
   );
   const firstMessage = session.messages[0];
   if (firstMessage?.role === "system") {
@@ -125,22 +134,24 @@ export async function applyActiveAgentToSession(
 export async function refreshSessionAgentSystemPromptIfNeeded(
   session: ChatAgentPromptSession,
   agent: AgentPromptData,
-  messages?: ChatAgentPromptMessage[]
+  messages?: ChatAgentPromptMessage[],
+  options: ChatAgentPromptOptions = {}
 ): Promise<void> {
   const firstMessage = session.messages[0];
   if (firstMessage?.role !== "system") {
-    await applyActiveAgentToSession(session, agent, messages);
+    await applyActiveAgentToSession(session, agent, messages, options);
     return;
   }
-  const toolNames = chatAgentToolNames(agent, messages || session.messages);
+  const toolNames = chatAgentToolNames(agent, messages || session.messages, options);
   const expectsWallet = toolNames.includes("wallet");
   const hasWalletPrompt = firstMessage.content.includes("### Wallet Tool");
   const isBuiltinSelection = resolveAgentToolSelection(agent.tools).kind === "builtins";
   if (
     isBuiltinSelection ||
+    options.useTools === false ||
     !firstMessage.content.includes("## Tooling") ||
     expectsWallet !== hasWalletPrompt
   ) {
-    await applyActiveAgentToSession(session, agent, messages);
+    await applyActiveAgentToSession(session, agent, messages, options);
   }
 }

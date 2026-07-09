@@ -16,6 +16,9 @@ const activityTimelinePath = fileURLToPath(
 const fileChangesCardPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/FileChangesCard.tsx", import.meta.url)
 );
+const contextUsageRingPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ContextUsageRing.tsx", import.meta.url)
+);
 const desktopHostPath = fileURLToPath(new URL("../../ui/src/lib/desktopHost.ts", import.meta.url));
 
 function readChatSource(): string {
@@ -94,6 +97,11 @@ describe("Chat revert and diff wiring", () => {
     expect(summary?.files.map((file) => file.path)).toEqual(["_path_keys.py", "src/persisted.ts"]);
     expect(summary?.totalAdded).toBe(185);
     expect(summary?.totalRemoved).toBe(1);
+  });
+
+  test("keeps context tooltip focused on concrete counts", () => {
+    const source = readFileSync(contextUsageRingPath, "utf8");
+    expect(source).not.toContain("Estimated from the active provider prompt");
   });
 
   test("renders full tool-call timeline inline without truncation controls", () => {

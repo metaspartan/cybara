@@ -68,6 +68,7 @@ import {
 } from "../core/status";
 import { emitAgentHook } from "../core/agent-hooks";
 import { createLogger } from "../core/logger";
+import { formatToolResultForModel } from "../core/llm/model-visible-format";
 import {
   buildToolExecutionFallbackMessage,
   shouldEnforceToolUseForMessage,
@@ -1678,9 +1679,14 @@ async function handleChatTurn(
       messages: [
         {
           role: "system",
-          content: await activeAgentSystemPrompt(agent, requestedWorkspaceDir, [
-            { role: "user", content: message },
-          ]),
+          content: await activeAgentSystemPrompt(
+            agent,
+            requestedWorkspaceDir,
+            [{ role: "user", content: message }],
+            {
+              useTools: tools,
+            }
+          ),
           timestamp: nowIso,
         },
       ],
@@ -1713,19 +1719,27 @@ async function handleChatTurn(
         },
       };
     }
-    await applyActiveAgentToSession(session, requestedAgent, [
-      ...session.messages,
-      { role: "user", content: message },
-    ]);
+    await applyActiveAgentToSession(
+      session,
+      requestedAgent,
+      [...session.messages, { role: "user", content: message }],
+      {
+        useTools: tools,
+      }
+    );
     await setPersistedSessionAgent(session.id, requestedAgent.id);
   }
 
   const agent = agentManager.get(session.agentId);
-  if (agent) {
-    await refreshSessionAgentSystemPromptIfNeeded(session, agent, [
-      ...session.messages,
-      { role: "user", content: message },
-    ]);
+  if (agent && !isNewSession) {
+    await refreshSessionAgentSystemPromptIfNeeded(
+      session,
+      agent,
+      [...session.messages, { role: "user", content: message }],
+      {
+        useTools: tools,
+      }
+    );
   }
   const hookContext = {
     agentId: agent?.id,
@@ -1826,7 +1840,7 @@ async function handleChatTurn(
     const currentTokens = estimateMessagesTokens(session.messages);
     const flushSettings = resolveMemoryFlushSettings();
 
-    trackSessionTokens(session.id, currentTokens, contextWindow, agent.model, {
+    trackSessionTokens(session.id, currentTokens, contextWindow, effectiveModel, {
       messageCount: session.messages.length,
     });
 
@@ -2034,6 +2048,8 @@ async function handleChatTurn(
       }
 
       if (toolResults.length > 0) {
+        const toonStructuredDataEnabled =
+          config.getTokenOptimizationSettings().toonStructuredDataEnabled;
         for (const tc of toolResults) {
           const timelineIndex = allToolCalls.length;
           allToolCalls.push({
@@ -2056,7 +2072,9 @@ async function handleChatTurn(
               `Tool: ${tc.name}\nResult: ${
                 typeof tc.result === "string"
                   ? tc.result.slice(0, 2000)
-                  : JSON.stringify(tc.result).slice(0, 2000)
+                  : formatToolResultForModel(tc.result, {
+                      toonEnabled: toonStructuredDataEnabled,
+                    }).slice(0, 2000)
               }`
           )
           .join("\n\n");
@@ -2133,7 +2151,13 @@ async function handleChatTurn(
                 const allToolResultsText = [...toolResults, ...summaryResult.tool_calls]
                   .map(
                     (tc) =>
-                      `Tool: ${tc.name}\nResult: ${typeof tc.result === "string" ? tc.result : JSON.stringify(tc.result).substring(0, 500)}`
+                      `Tool: ${tc.name}\nResult: ${
+                        typeof tc.result === "string"
+                          ? tc.result
+                          : formatToolResultForModel(tc.result, {
+                              toonEnabled: toonStructuredDataEnabled,
+                            }).substring(0, 500)
+                      }`
                   )
                   .join("\n\n");
 
