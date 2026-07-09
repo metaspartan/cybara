@@ -29,8 +29,29 @@ interface PendingMessage {
   createdAt?: number;
 }
 
+interface AgentSummary {
+  id?: string;
+  name?: string;
+  model?: string;
+  provider_id?: string;
+  providerId?: string;
+  status?: string;
+}
+
+interface RouterStatus {
+  enabled?: boolean;
+  strategy?: string;
+}
+
+interface ControlPlaneState {
+  agents: AgentSummary[];
+  approvalMode: string;
+  routerStatus: RouterStatus | null;
+}
+
 interface InteractiveChatProps {
   fetchAPI: TUIFetchAPI;
+  initialAgentId?: string;
   sessionId?: string;
   title?: string;
   modelLine?: string;
@@ -40,6 +61,10 @@ interface InteractiveChatProps {
 const COMMANDS = [
   { name: "/help", detail: "Show command reference" },
   { name: "/status", detail: "Show session, model, and queue state" },
+  { name: "/agents", detail: "List available agents" },
+  { name: "/agent", detail: "Switch the active chat agent" },
+  { name: "/router", detail: "Use or disable model router for new turns" },
+  { name: "/permissions", detail: "Show or change tool approval mode" },
   { name: "/pending", detail: "Refresh queued follow-ups" },
   { name: "/queue", detail: "Queue a follow-up while the run continues" },
   { name: "/steer", detail: "Inject a queued message into the active run" },
@@ -94,6 +119,45 @@ function pendingFrom(value: unknown): PendingMessage[] {
     }
     return [item as unknown as PendingMessage];
   });
+}
+
+function agentsFrom(value: unknown): AgentSummary[] {
+  const raw = Array.isArray(value)
+    ? value
+    : isRecord(value) && Array.isArray(value.agents)
+      ? value.agents
+      : [];
+  return raw.flatMap((item) => (isRecord(item) ? [item as AgentSummary] : []));
+}
+
+function agentLine(agent: AgentSummary): string {
+  const name = typeof agent.name === "string" && agent.name.trim() ? agent.name.trim() : agent.id;
+  const model = typeof agent.model === "string" && agent.model.trim() ? agent.model.trim() : "";
+  const status = typeof agent.status === "string" && agent.status.trim() ? agent.status.trim() : "";
+  return [name, model, status].filter(Boolean).join(" · ") || "Unnamed agent";
+}
+
+function compact(value: string, max = 52): string {
+  return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
+}
+
+function resolveAgentId(raw: string, agents: AgentSummary[]): string | null {
+  const needle = raw.trim().toLowerCase();
+  if (!needle) return null;
+  const exact = agents.find(
+    (agent) =>
+      agent.id?.toLowerCase() === needle ||
+      agent.name?.toLowerCase() === needle ||
+      agent.model?.toLowerCase() === needle
+  );
+  if (exact?.id) return exact.id;
+  const partial = agents.find(
+    (agent) =>
+      agent.name?.toLowerCase().includes(needle) ||
+      agent.model?.toLowerCase().includes(needle) ||
+      agent.id?.toLowerCase().startsWith(needle)
+  );
+  return partial?.id || null;
 }
 
 function messagesFromResponse(value: unknown): ChatMessage[] {
@@ -330,6 +394,7 @@ function HelpPanel(): React.ReactElement {
         Chat controls
       </Text>
       <Text>Enter send · Ctrl+J newline · ←/→ move · ↑/↓ history · Tab complete slash command</Text>
+      <Text>/agents lists · /agent name switches · /router on|off · /permissions ask|always_allow</Text>
       <Text>/queue queues · /steer injects · /edit, /delete, /reorder manage queue</Text>
       <Text>/stop interrupts · /pending refreshes queue</Text>
       <Text>/reload refetches · /new starts fresh · Esc returns to sessions · Ctrl+C quits</Text>
@@ -337,8 +402,50 @@ function HelpPanel(): React.ReactElement {
   );
 }
 
+function StatusRail({
+  agent,
+  approvalMode,
+  pendingCount,
+  routerStatus,
+  sessionId,
+  useModelRouter,
+}: {
+  agent?: AgentSummary;
+  approvalMode: string;
+  pendingCount: number;
+  routerStatus: RouterStatus | null;
+  sessionId: string;
+  useModelRouter: boolean;
+}): React.ReactElement {
+  const agentLabel = useModelRouter ? "Model Router" : agent ? agentLine(agent) : "Gateway default";
+  const routerLabel = useModelRouter
+    ? "selected"
+    : routerStatus?.enabled
+      ? routerStatus.strategy || "enabled"
+      : "off";
+  const shortSessionId = sessionId ? sessionId.slice(0, 8) : "new";
+  return (
+    <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
+      <Text>
+        <Text color="gray">Agent </Text>
+        <Text color="white">{compact(agentLabel)}</Text>
+      </Text>
+      <Text>
+        <Text color="gray">Tools </Text>
+        <Text color={approvalMode === "ask" ? "yellow" : "green"}>{approvalMode}</Text>
+        <Text color="gray"> · Router </Text>
+        <Text color={useModelRouter || routerStatus?.enabled ? "cyan" : "gray"}>{routerLabel}</Text>
+        <Text color="gray"> · Queue </Text>
+        <Text color={pendingCount > 0 ? "yellow" : "gray"}>{pendingCount}</Text>
+        <Text color="gray"> · Session {shortSessionId}</Text>
+      </Text>
+    </Box>
+  );
+}
+
 export function InteractiveChatTUI({
   fetchAPI,
+  initialAgentId,
   sessionId,
   title,
   modelLine,
@@ -357,6 +464,36 @@ export function InteractiveChatTUI({
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [showHelp, setShowHelp] = React.useState(false);
+  const [agents, setAgents] = React.useState<AgentSummary[]>([]);
+  const [selectedAgentId, setSelectedAgentId] = React.useState(initialAgentId || "");
+  const [useModelRouter, setUseModelRouter] = React.useState(false);
+  const [approvalMode, setApprovalMode] = React.useState("always_allow");
+  const [routerStatus, setRouterStatus] = React.useState<RouterStatus | null>(null);
+
+  const selectedAgent = React.useMemo(
+    () => agents.find((agent) => agent.id === selectedAgentId),
+    [agents, selectedAgentId]
+  );
+
+  const loadControlPlane = React.useCallback(async (): Promise<ControlPlaneState> => {
+    const [agentResponse, configResponse, routerResponse] = await Promise.all([
+      fetchAPI<unknown>("/api/agents"),
+      fetchAPI<unknown>("/api/config"),
+      fetchAPI<unknown>("/api/router/status"),
+    ]);
+    const nextAgents = agentsFrom(agentResponse);
+    const nextApprovalMode =
+      isRecord(configResponse) && typeof configResponse.tool_approval_mode === "string"
+        ? configResponse.tool_approval_mode
+        : approvalMode;
+    const nextRouterStatus = isRecord(routerResponse) ? (routerResponse as RouterStatus) : null;
+    setAgents(nextAgents);
+    if (isRecord(configResponse) && typeof configResponse.tool_approval_mode === "string") {
+      setApprovalMode(configResponse.tool_approval_mode);
+    }
+    setRouterStatus(nextRouterStatus);
+    return { agents: nextAgents, approvalMode: nextApprovalMode, routerStatus: nextRouterStatus };
+  }, [approvalMode, fetchAPI]);
 
   const loadPendingForSession = React.useCallback(
     async (targetSessionId: string) => {
@@ -408,6 +545,12 @@ export function InteractiveChatTUI({
     void loadMessages();
   }, [loadMessages]);
 
+  React.useEffect(() => {
+    void loadControlPlane().catch((cause) => {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    });
+  }, [loadControlPlane]);
+
   const resetInput = React.useCallback(() => {
     setInput("");
     setCursor(0);
@@ -425,10 +568,117 @@ export function InteractiveChatTUI({
       }
       if (command === "status") {
         setNotice(
-          `Session ${localSessionId || "new"} · ${modelLine || "gateway default"} · ${
-            pendingMessages.length
-          } queued`
+          [
+            `Session ${localSessionId || "new"}`,
+            useModelRouter ? "Model Router" : selectedAgent ? agentLine(selectedAgent) : modelLine || "gateway default",
+            `tools ${approvalMode}`,
+            `${pendingMessages.length} queued`,
+          ].join(" · ")
         );
+        return true;
+      }
+      if (command === "agents") {
+        const control = await loadControlPlane();
+        setNotice(
+          control.agents.length
+            ? control.agents
+                .slice(0, 8)
+                .map((agent) => `${agent.id === selectedAgentId ? "*" : "-"} ${agentLine(agent)}`)
+                .join("\n")
+            : "No agents returned by the gateway."
+        );
+        return true;
+      }
+      if (command === "agent") {
+        if (!argument) {
+          setNotice("Usage: /agent <id|name|default|router>");
+          return true;
+        }
+        const availableAgents = agents.length ? agents : (await loadControlPlane()).agents;
+        if (argument === "router") {
+          setUseModelRouter(true);
+          setNotice("Model router selected for future sends.");
+          return true;
+        }
+        if (argument === "default") {
+          setUseModelRouter(false);
+          setSelectedAgentId("");
+          setNotice("Gateway default selected for new sessions.");
+          return true;
+        }
+        const agentId = resolveAgentId(argument, availableAgents);
+        if (!agentId) {
+          setNotice("Agent not found. Use /agents to list available agents.");
+          return true;
+        }
+        setUseModelRouter(false);
+        setSelectedAgentId(agentId);
+        if (localSessionId) {
+          const response = await fetchAPI<unknown>(
+            `/api/sessions/${encodeURIComponent(localSessionId)}/agent`,
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ agentId }),
+            }
+          );
+          if (isRecord(response) && response.success === false) {
+            setNotice(typeof response.error === "string" ? response.error : "Failed to update session agent.");
+            return true;
+          }
+          await loadMessages();
+        }
+        const nextAgent = availableAgents.find((agent) => agent.id === agentId);
+        setNotice(`Agent selected: ${nextAgent ? agentLine(nextAgent) : agentId}`);
+        return true;
+      }
+      if (command === "router") {
+        const value = argument.trim().toLowerCase();
+        if (!value || value === "show") {
+          const control = await loadControlPlane();
+          const nextRouterStatus = control.routerStatus;
+          setNotice(
+            `Router ${nextRouterStatus?.enabled ? nextRouterStatus.strategy || "enabled" : "off"} · ${
+              useModelRouter ? "selected for this chat" : "not selected"
+            }`
+          );
+          return true;
+        }
+        if (value === "on" || value === "use") {
+          setUseModelRouter(true);
+          setNotice("Model router selected for future sends.");
+          return true;
+        }
+        if (value === "off" || value === "default") {
+          setUseModelRouter(false);
+          setNotice("Model router disabled for future sends.");
+          return true;
+        }
+        setNotice("Usage: /router on|off|show");
+        return true;
+      }
+      if (command === "permissions") {
+        const value = argument.trim().toLowerCase();
+        if (!value || value === "show") {
+          setNotice(`Tool approvals: ${approvalMode}`);
+          return true;
+        }
+        const nextMode = value === "ask" ? "ask" : value === "always_allow" || value === "always" ? "always_allow" : "";
+        if (!nextMode) {
+          setNotice("Usage: /permissions ask|always_allow|show");
+          return true;
+        }
+        const response = await fetchAPI<unknown>("/api/config", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tool_approval_mode: nextMode }),
+        });
+        if (isRecord(response) && response.success === false) {
+          setNotice(typeof response.error === "string" ? response.error : "Gateway rejected the approval setting.");
+          return true;
+        }
+        setApprovalMode(nextMode);
+        setNotice(`Tool approvals set to ${nextMode}.`);
         return true;
       }
       if (command === "clear") {
@@ -465,7 +715,13 @@ export function InteractiveChatTUI({
         const response = await fetchAPI<unknown>("/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: argument, sessionId: localSessionId, queueMode: "queue" }),
+          body: JSON.stringify({
+            agentId: selectedAgentId || undefined,
+            message: argument,
+            queueMode: "queue",
+            sessionId: localSessionId,
+            useModelRouter,
+          }),
         });
         setPendingMessages(pendingFrom(isRecord(response) ? response.pendingMessages : []));
         setNotice("Queued follow-up.");
@@ -561,7 +817,21 @@ export function InteractiveChatTUI({
       }
       return false;
     },
-    [fetchAPI, loadMessages, loadPending, localSessionId, modelLine, onExit, pendingMessages]
+    [
+      agents,
+      approvalMode,
+      fetchAPI,
+      loadControlPlane,
+      loadMessages,
+      loadPending,
+      localSessionId,
+      modelLine,
+      onExit,
+      pendingMessages,
+      selectedAgent,
+      selectedAgentId,
+      useModelRouter,
+    ]
   );
 
   const send = React.useCallback(
@@ -580,8 +850,10 @@ export function InteractiveChatTUI({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             message: trimmed,
+            agentId: selectedAgentId || undefined,
             sessionId: localSessionId || undefined,
             stream: false,
+            useModelRouter,
           }),
         });
         const nextSessionId =
@@ -598,7 +870,7 @@ export function InteractiveChatTUI({
         setSending(false);
       }
     },
-    [fetchAPI, loadMessagesForSession, localSessionId, runCommand, sending]
+    [fetchAPI, loadMessagesForSession, localSessionId, runCommand, selectedAgentId, sending, useModelRouter]
   );
 
   useInput((value, key) => {
@@ -694,6 +966,11 @@ export function InteractiveChatTUI({
 
   const visibleMessages = messages.filter((message) => message.role !== "system").slice(-18);
   const headerTitle = title || (localSessionId ? localSessionId.slice(0, 8) : "New chat");
+  const activeModelLine = useModelRouter
+    ? "Model Router"
+    : selectedAgent
+      ? agentLine(selectedAgent)
+      : modelLine || "Gateway default";
 
   return (
     <Box flexDirection="column">
@@ -705,8 +982,18 @@ export function InteractiveChatTUI({
           <Text color={sending ? "yellow" : "gray"}>{sending ? "working" : "ready"}</Text>
         </Box>
         <Text color="gray">
-          {modelLine || "Gateway default"} · {localSessionId || "session will be created on send"}
+          {activeModelLine} · {localSessionId || "session will be created on send"}
         </Text>
+      </Box>
+      <Box marginTop={1}>
+        <StatusRail
+          agent={selectedAgent}
+          approvalMode={approvalMode}
+          pendingCount={pendingMessages.length}
+          routerStatus={routerStatus}
+          sessionId={localSessionId}
+          useModelRouter={useModelRouter}
+        />
       </Box>
 
       {loading ? (

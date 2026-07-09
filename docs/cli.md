@@ -60,9 +60,11 @@ The dashboard TUI is optimized for normal terminals. The main menu supports grou
 single-key shortcuts, `j`/`k` or arrow navigation, `/` search, `?` help, direct panel launch, and a
 small detail pane for the selected destination. The chat panel supports session search, keyboard
 navigation, new-chat entry, editable prompt input, multiline prompts with `Ctrl+J`, slash command
-completion with `Tab`, pending follow-up queueing, steering, queue edit/delete/reorder, and
-active-run stop. Dashboard panels outside chat remain read-only; use raw CLI commands when you need
-to mutate providers, router settings, mobile pairings, wallet state, or channel configuration.
+completion with `Tab`, agent switching with `/agent`, available-agent lookup with `/agents`, model
+router selection with `/router`, tool approval switching with `/permissions`, pending follow-up
+queueing, steering, queue edit/delete/reorder, and active-run stop. Dashboard panels outside chat
+remain read-only; use raw CLI commands when you need to mutate providers, router settings, mobile
+pairings, wallet state, or channel configuration.
 
 ### System Status
 

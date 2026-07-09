@@ -89,10 +89,25 @@ describe("CLI TUI source wiring", () => {
   });
 
   test("interactive chat TUI has editable input, slash commands, and pending queue parity", () => {
-    for (const command of ["/queue", "/steer", "/edit", "/delete", "/reorder", "/stop"]) {
+    for (const command of [
+      "/agents",
+      "/agent",
+      "/router",
+      "/permissions",
+      "/queue",
+      "/steer",
+      "/edit",
+      "/delete",
+      "/reorder",
+      "/stop",
+    ]) {
       expect(cliTuiInteractiveChatSource).toContain(command);
     }
     for (const route of [
+      "/api/agents",
+      "/api/config",
+      "/api/router/status",
+      "/api/sessions/${encodeURIComponent(localSessionId)}/agent",
       "/api/chat/sessions/${encodeURIComponent(localSessionId)}/pending",
       "/pending/reorder",
       "/stop",
@@ -101,6 +116,10 @@ describe("CLI TUI source wiring", () => {
     }
     expect(cliTuiInteractiveChatSource).toContain("PendingQueue");
     expect(cliTuiInteractiveChatSource).toContain("CommandPalette");
+    expect(cliTuiInteractiveChatSource).toContain("StatusRail");
+    expect(cliTuiInteractiveChatSource).toContain("setUseModelRouter(true)");
+    expect(cliTuiInteractiveChatSource).toContain("tool_approval_mode");
+    expect(cliTuiInteractiveChatSource).toContain("agentId: selectedAgentId || undefined");
     expect(cliTuiInteractiveChatSource).toContain("Ctrl+J newline");
     expect(cliTuiInteractiveChatSource).toContain("key.leftArrow");
     expect(cliTuiInteractiveChatSource).toContain("key.rightArrow");

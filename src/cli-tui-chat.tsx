@@ -270,6 +270,7 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
     return (
       <InteractiveChatTUI
         fetchAPI={fetchAPI}
+        initialAgentId={openSession.agent_id || openSession.agentId}
         sessionId={openSession.id}
         title={compactText(openSession.title, openSession.id || "New Chat")}
         modelLine={sessionModelLine(openSession, agentsById)}
@@ -318,27 +319,37 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
             const active = sessionIsActive(session);
             const workspace = sessionWorkspace(session);
             const selected = index === selectedIndex;
+            const title = compactText(session.title, session.id || "Untitled chat", selected ? 56 : 60);
+            const age = active ? "running" : formatRelativeTime(sessionTimestamp(session));
+            if (!selected) {
+              return (
+                <Box key={session.id || session.title} justifyContent="space-between">
+                  <Text color={active ? "yellow" : session.pinned ? "cyan" : "white"}>
+                    {"  "}
+                    {session.pinned ? "★ " : ""}
+                    {title}
+                    {pending > 0 ? <Text color="yellow"> · {pending} queued</Text> : null}
+                  </Text>
+                  <Text color={active ? "yellow" : "gray"}>{age}</Text>
+                </Box>
+              );
+            }
             return (
               <Box
                 key={session.id || session.title}
                 flexDirection="column"
                 marginTop={1}
-                borderStyle={selected ? "single" : undefined}
-                borderColor={selected ? "cyan" : undefined}
-                paddingX={selected ? 1 : 0}
+                borderStyle="single"
+                borderColor="cyan"
+                paddingX={1}
               >
                 <Box justifyContent="space-between">
-                  <Text
-                    bold={selected}
-                    color={selected ? "cyan" : active ? "yellow" : session.pinned ? "cyan" : "white"}
-                  >
-                    {selected ? "❯ " : "  "}
+                  <Text bold color="cyan">
+                    ❯{" "}
                     {session.pinned ? "★ " : ""}
-                    {compactText(session.title, session.id || "Untitled chat")}
+                    {title}
                   </Text>
-                  <Text color={active ? "yellow" : "gray"}>
-                    {active ? "running" : formatRelativeTime(sessionTimestamp(session))}
-                  </Text>
+                  <Text color={active ? "yellow" : "gray"}>{age}</Text>
                 </Box>
                 <Text color="gray">
                   {sessionRowMeta(session, agentsById)}
