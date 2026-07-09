@@ -101,9 +101,7 @@ export function extractModelsDevProvider(apiJson: unknown, slug: string): Models
       cost?: { input?: number; output?: number; cache_read?: number; cache_write?: number };
     };
     const strings = (value: unknown): string[] | undefined =>
-      Array.isArray(value)
-        ? value.filter((x): x is string => typeof x === "string")
-        : undefined;
+      Array.isArray(value) ? value.filter((x): x is string => typeof x === "string") : undefined;
     const num = (value: unknown): number | undefined =>
       typeof value === "number" && Number.isFinite(value) ? value : undefined;
     out.push({

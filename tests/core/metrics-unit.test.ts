@@ -6,10 +6,13 @@ import { fileURLToPath } from "url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const METRICS_MODULE = join(ROOT_DIR, "src", "core", "metrics.ts").replace(/\\/g, "/");
-const TOKEN_TRACKING_MODULE = join(ROOT_DIR, "src", "core", "llm", "token-usage-tracking.ts").replace(
-  /\\/g,
-  "/"
-);
+const TOKEN_TRACKING_MODULE = join(
+  ROOT_DIR,
+  "src",
+  "core",
+  "llm",
+  "token-usage-tracking.ts"
+).replace(/\\/g, "/");
 const DB_MODULE = join(ROOT_DIR, "src", "core", "database.ts").replace(/\\/g, "/");
 
 // metrics.ts writes to the platform.db resolved from paths.ts (CYBARA_HOME),
@@ -39,13 +42,6 @@ out.tokenInput = tables.metrics.getTotal("token_usage", "input"); // 150
 out.tokenOutput = tables.metrics.getTotal("token_usage", "output"); // 50
 out.tokenByModel = tables.metrics.getTotal("token_usage", "gpt-x"); // 120+80=200
 out.tokenByProvider = tables.metrics.getTotal("token_usage", "prov-a"); // 200
-trackDetailedTokenUsage("gpt-y", "prov-b", "https://provider.test/v1", 120, 45, 1000, {
-  sessionId: "metric-redaction-session",
-});
-const tokenMetricRow = tables.metrics
-  .getByTypeRecent("token_usage", 10)
-  .find((row) => row.key === "all" && row.metadata);
-out.tokenMetricMetadata = tokenMetricRow?.metadata || "";
 
 // Tool call monotonic counters.
 metrics.trackToolCall("read", 12, true);
@@ -96,6 +92,14 @@ out.compactionReductionCount = tables.metrics.getTotal("compaction_reduction", "
 const summary = metrics.getMetricsSummary();
 out.summary = summary;
 out.summaryNoNaN = Object.values(summary).every((v) => typeof v === "number" && !Number.isNaN(v));
+
+trackDetailedTokenUsage("gpt-y", "prov-b", "https://provider.test/v1", 120, 45, 1000, {
+  sessionId: "metric-redaction-session",
+});
+const tokenMetricRow = tables.metrics
+  .getByTypeRecent("token_usage", 10)
+  .find((row) => row.key === "all" && row.metadata);
+out.tokenMetricMetadata = tokenMetricRow?.metadata || "";
 
 // trackMetric is resilient — a negative/odd value still records numerically.
 metrics.trackMetric("custom", "k", -5);
