@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { agentManager } from "../../src/core/agent";
 import { providerManager } from "../../src/core/providers";
+import {
+  getProviderAvailability,
+  recordRateLimit,
+  resetRouterForTests,
+} from "../../src/core/router";
 import type { ToolDefinition } from "../../src/core/database";
 import { getRun, resetSubagentRegistryForTests } from "../../src/core/subagent-registry";
 import {
@@ -45,6 +50,7 @@ afterEach(() => {
   }
   resetSubagentSessionsForTests();
   resetSubagentRegistryForTests();
+  resetRouterForTests();
 });
 
 describe("Subagent execution wiring", () => {
@@ -351,6 +357,86 @@ describe("Subagent execution wiring", () => {
     } finally {
       (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
     }
+  });
+
+  test("uses a safer default active child limit", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Default Limit Provider",
+      api_key: "subagent-default-limit-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const targetAgent = agentManager.create({
+      name: "Default Limit Agent",
+      type: "subagent",
+      provider_id: provider.id,
+      model: "model-limit",
+      tools: [],
+    });
+    createdAgentIds.push(targetAgent.id);
+
+    const originalExecute = agentManager.execute.bind(agentManager) as ExecuteShape;
+    (agentManager as unknown as { execute: ExecuteShape }).execute = async () =>
+      new Promise<{ content: string; tool_calls?: Array<{ name: string; result: unknown }> }>(
+        () => {}
+      );
+
+    try {
+      const accepted = [];
+      for (let index = 0; index < 3; index++) {
+        accepted.push(
+          await handleSessionsSpawn({
+            task: `child ${index}`,
+            agentId: targetAgent.id,
+            _requesterSessionKey: "main",
+          })
+        );
+      }
+
+      const fourth = await handleSessionsSpawn({
+        task: "child 4",
+        agentId: targetAgent.id,
+        _requesterSessionKey: "main",
+      });
+
+      expect(accepted.every((result) => result.status === "accepted")).toBe(true);
+      expect(fourth.status).toBe("forbidden");
+      expect(fourth.warning).toContain("active sub-agent limit (3)");
+    } finally {
+      (agentManager as unknown as { execute: ExecuteShape }).execute = originalExecute;
+    }
+  });
+
+  test("does not spawn subagents when target provider is cooling down", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Cooling Provider",
+      api_key: "subagent-cooldown-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const targetAgent = agentManager.create({
+      name: "Cooling Agent",
+      type: "subagent",
+      provider_id: provider.id,
+      model: "model-cooldown",
+      tools: [],
+    });
+    createdAgentIds.push(targetAgent.id);
+
+    recordRateLimit(provider.id, 60_000);
+    expect(getProviderAvailability(provider.id).inCooldown).toBe(true);
+
+    const result = await handleSessionsSpawn({
+      task: "should wait for provider",
+      agentId: targetAgent.id,
+      _requesterSessionKey: "main",
+    });
+
+    expect(result.status).toBe("forbidden");
+    expect(result.warning).toContain("temporarily unavailable");
+    expect(result.warning).toContain("Rate-limit cooldown");
   });
 
   test("propagates requester session/workspace from tool context when args omit them", async () => {

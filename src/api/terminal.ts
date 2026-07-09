@@ -1,8 +1,13 @@
 import { homedir } from "os";
+import { existsSync } from "fs";
+import { join } from "path";
+
+type TerminalMode = "pty" | "pipe";
 
 interface TerminalSession {
   id: string;
   proc: ReturnType<typeof Bun.spawn> | null;
+  mode: TerminalMode;
   createdAt: string;
   lastActivity: number;
 }
@@ -110,6 +115,8 @@ else:
             pass
 `;
 
+const RESIZE_SEQUENCE = /\x1b\[RESIZE:\d+,\d+\]/g;
+
 const TERMINAL_ENV_ALLOWED = new Set([
   "PATH",
   "USER",
@@ -125,7 +132,35 @@ const TERMINAL_ENV_ALLOWED = new Set([
 
 const TERMINAL_ENV_ALLOWED_PREFIX = /^(LC_)/;
 
-function buildTerminalEnv(shell: string, home: string): Record<string, string> {
+const WINDOWS_TERMINAL_ENV_ALLOWED = new Set([
+  "PATH",
+  "PATHEXT",
+  "SYSTEMROOT",
+  "SYSTEMDRIVE",
+  "COMSPEC",
+  "WINDIR",
+  "TEMP",
+  "TMP",
+  "USERPROFILE",
+  "USERNAME",
+  "USERDOMAIN",
+  "HOMEDRIVE",
+  "HOMEPATH",
+  "APPDATA",
+  "LOCALAPPDATA",
+  "PROGRAMDATA",
+  "PROGRAMFILES",
+  "PROGRAMFILES(X86)",
+  "COMMONPROGRAMFILES",
+  "PROCESSOR_ARCHITECTURE",
+  "NUMBER_OF_PROCESSORS",
+  "OS",
+  "PSMODULEPATH",
+  "PUBLIC",
+  "ALLUSERSPROFILE",
+]);
+
+function buildUnixTerminalEnv(shell: string, home: string): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
     if (value === undefined) continue;
@@ -143,21 +178,62 @@ function buildTerminalEnv(shell: string, home: string): Record<string, string> {
   };
 }
 
-export function createTerminalSession(sessionId: string): TerminalSession {
-  const shell = process.env.SHELL || "/bin/zsh";
-  const home = homedir();
+function buildWindowsTerminalEnv(home: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (value === undefined) continue;
+    if (WINDOWS_TERMINAL_ENV_ALLOWED.has(key.toUpperCase())) {
+      env[key] = value;
+    }
+  }
+  return {
+    ...env,
+    TERM: "xterm-256color",
+    COLORTERM: "truecolor",
+    USERPROFILE: home,
+  };
+}
 
-  const proc = Bun.spawn(["python3", "-u", "-c", PTY_SCRIPT], {
-    cwd: home,
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-    env: buildTerminalEnv(shell, home),
-  });
+function resolveWindowsShellArgv(): string[] {
+  const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || "C:\\Windows";
+  const powershell = join(
+    systemRoot,
+    "System32",
+    "WindowsPowerShell",
+    "v1.0",
+    "powershell.exe"
+  );
+  if (existsSync(powershell)) {
+    return [powershell, "-NoLogo"];
+  }
+  return [process.env.COMSPEC || process.env.ComSpec || "cmd.exe"];
+}
+
+export function createTerminalSession(sessionId: string): TerminalSession {
+  const home = homedir();
+  const isWindows = process.platform === "win32";
+
+  const mode: TerminalMode = isWindows ? "pipe" : "pty";
+  const proc = isWindows
+    ? Bun.spawn(resolveWindowsShellArgv(), {
+        cwd: home,
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+        env: buildWindowsTerminalEnv(home),
+      })
+    : Bun.spawn(["python3", "-u", "-c", PTY_SCRIPT], {
+        cwd: home,
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+        env: buildUnixTerminalEnv(process.env.SHELL || "/bin/zsh", home),
+      });
 
   const session: TerminalSession = {
     id: sessionId,
     proc,
+    mode,
     createdAt: new Date().toISOString(),
     lastActivity: Date.now(),
   };
@@ -167,15 +243,44 @@ export function createTerminalSession(sessionId: string): TerminalSession {
 }
 
 export function writeToTerminal(session: TerminalSession, data: string): void {
-  if (session.proc?.stdin) {
-    try {
-      const stdin = session.proc.stdin as unknown as TerminalInputSink;
-      stdin.write(data);
-      stdin.flush?.();
-    } catch {
-      /* stdin closed */
-    }
+  if (!session.proc?.stdin) return;
+  let payload = data;
+  if (session.mode === "pipe") {
+    payload = payload.replace(RESIZE_SEQUENCE, "");
+    if (!payload) return;
   }
+  try {
+    const stdin = session.proc.stdin as unknown as TerminalInputSink;
+    stdin.write(payload);
+    stdin.flush?.();
+  } catch {
+    /* stdin closed */
+  }
+}
+
+function pumpStream(
+  stream: ReadableStream<Uint8Array> | null | undefined,
+  decoder: TextDecoder,
+  onData: (data: string) => void,
+  onDone: () => void
+): void {
+  if (!stream) {
+    onDone();
+    return;
+  }
+  const reader = stream.getReader();
+  (async () => {
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) onData(decoder.decode(value, { stream: true }));
+      }
+    } catch {
+      /* stream closed */
+    }
+    onDone();
+  })();
 }
 
 export function startOutputReader(
@@ -183,26 +288,11 @@ export function startOutputReader(
   onData: (data: string) => void,
   onExit: () => void
 ): void {
-  const decoder = new TextDecoder();
+  const stdout = session.proc?.stdout as ReadableStream<Uint8Array> | undefined;
+  const stderr = session.proc?.stderr as ReadableStream<Uint8Array> | undefined;
 
-  if (session.proc?.stdout) {
-    const stdout = session.proc.stdout as ReadableStream<Uint8Array>;
-    const reader = stdout.getReader();
-    (async () => {
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (value) onData(decoder.decode(value, { stream: true }));
-        }
-      } catch {
-        /* stream closed */
-      }
-      onExit();
-    })();
-  } else {
-    onExit();
-  }
+  pumpStream(stdout, new TextDecoder(), onData, onExit);
+  pumpStream(stderr, new TextDecoder(), onData, () => {});
 
   if (session.proc?.exited) {
     session.proc.exited.then(() => onExit()).catch(() => onExit());

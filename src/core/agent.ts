@@ -295,6 +295,12 @@ interface RunningAgentState {
   lastActive: Date;
 }
 
+interface ProviderRateLimitContext {
+  providerId?: string;
+  providerType?: string;
+  defaultRetryAfterMs?: number;
+}
+
 class AgentManager {
   private runningAgents: Map<string, RunningAgentState> = new Map();
 
@@ -1390,6 +1396,40 @@ class AgentManager {
     return String(error || "Unknown error");
   }
 
+  private parseRetryAfterMs(headers: Headers, defaultRetryAfterMs = 60_000): number {
+    const raw = headers.get("retry-after") || headers.get("Retry-After");
+    if (!raw) return defaultRetryAfterMs;
+    const seconds = Number(raw);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.max(0, Math.floor(seconds * 1000));
+    }
+    const dateMs = Date.parse(raw);
+    if (Number.isFinite(dateMs)) {
+      return Math.max(0, dateMs - Date.now());
+    }
+    return defaultRetryAfterMs;
+  }
+
+  private recordHttpRateLimit(
+    status: number,
+    headers: Headers,
+    context?: ProviderRateLimitContext
+  ): void {
+    if (status !== 429) return;
+    const retryAfterMs = this.parseRetryAfterMs(headers, context?.defaultRetryAfterMs);
+    const keys = [context?.providerId?.trim(), context?.providerType?.trim()].filter(
+      (key): key is string => Boolean(key)
+    );
+    for (const key of keys) {
+      try {
+        recordRateLimit(key, headers);
+        recordRouterRateLimit(key, retryAfterMs);
+      } catch {
+        continue;
+      }
+    }
+  }
+
   private missingExecutableToolCallsMessage(): string {
     return "I stopped because the model produced tool calls without the required arguments.";
   }
@@ -1687,7 +1727,8 @@ class AgentManager {
         mergedHeaders,
         providerConfig,
         toolContext,
-        modelContextWindowTokens
+        modelContextWindowTokens,
+        providerInfo.id
       );
     }
 
@@ -1714,6 +1755,7 @@ class AgentManager {
           preferMaxCompletionTokens,
           maxOutputTokens: modelMaxOutputTokens,
           contextWindowTokens: modelContextWindowTokens,
+          providerId: providerInfo.id,
         }
       );
     }
@@ -1729,6 +1771,7 @@ class AgentManager {
         providerConfig,
         modelMaxOutputTokens,
         toolContext,
+        providerInfo.id,
         apiFamily === "google-vertex"
       );
     }
@@ -2141,7 +2184,8 @@ class AgentManager {
     headers: Record<string, string>,
     requestBody: Record<string, unknown>,
     errorPrefix: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    rateLimitContext?: ProviderRateLimitContext
   ): Promise<OpenAIResponse> {
     // Streaming with inactivity watchdogs (first-token + stall, no total cap
     // by default): a healthy hours-long run keeps emitting chunks; only a
@@ -2216,6 +2260,7 @@ class AgentManager {
       }
 
       const errorText = await response.text();
+      this.recordHttpRateLimit(response.status, response.headers, rateLimitContext);
       if (
         !attemptedNonStreamingRetry &&
         !streamingDisabled &&
@@ -2281,6 +2326,7 @@ class AgentManager {
       preferMaxCompletionTokens?: boolean;
       maxOutputTokens?: number;
       contextWindowTokens?: number;
+      providerId?: string;
     }
   ): Promise<{
     content: string;
@@ -2386,7 +2432,8 @@ class AgentManager {
         headers,
         requestBody,
         "API error",
-        toolContext?.abortSignal
+        toolContext?.abortSignal,
+        { providerId: options?.providerId, providerType: providerConfig }
       );
     } catch (error) {
       if (!isContextOverflowError(this.normalizeErrorMessage(error))) {
@@ -2411,7 +2458,8 @@ class AgentManager {
         headers,
         requestBody,
         "API error",
-        toolContext?.abortSignal
+        toolContext?.abortSignal,
+        { providerId: options?.providerId, providerType: providerConfig }
       );
     }
 
@@ -2606,7 +2654,8 @@ class AgentManager {
           headers,
           loopRequestBody,
           "API error in agentic loop",
-          toolContext?.abortSignal
+          toolContext?.abortSignal,
+          { providerId: options?.providerId, providerType: providerConfig }
         );
       } catch (error) {
         const errorMessage = this.normalizeErrorMessage(error);
@@ -2640,7 +2689,8 @@ class AgentManager {
           headers,
           retryLoopRequestBody,
           "API error in agentic loop",
-          toolContext?.abortSignal
+          toolContext?.abortSignal,
+          { providerId: options?.providerId, providerType: providerConfig }
         );
       }
       const loopChoice = loopData.choices?.[0];
@@ -2680,7 +2730,8 @@ class AgentManager {
           headers,
           nudgeBody,
           "API error in agentic loop closing response",
-          toolContext?.abortSignal
+          toolContext?.abortSignal,
+          { providerId: options?.providerId, providerType: providerConfig }
         );
         const nudgeContent = nudgeData.choices?.[0]?.message?.content;
         if (typeof nudgeContent === "string" && nudgeContent.trim()) finalContent = nudgeContent;
@@ -3073,7 +3124,8 @@ class AgentManager {
     requestedModel: string,
     sessionId?: string,
     agentId?: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    rateLimitContext?: ProviderRateLimitContext
   ): Promise<OpenAICodexTurnResult & { resolvedModel: string }> {
     const candidates = this.getOpenAICodexModelCandidates(requestedModel);
     let finalError = "OpenAI Codex request failed";
@@ -3105,6 +3157,7 @@ class AgentManager {
       if (!response.ok) {
         watchdog.dispose();
         const errorText = await response.text();
+        this.recordHttpRateLimit(response.status, response.headers, rateLimitContext);
         finalError = `API error: ${response.status} - ${errorText}`;
         if (
           index < candidates.length - 1 &&
@@ -3146,7 +3199,8 @@ class AgentManager {
     customHeaders?: Record<string, string>,
     providerConfig?: string,
     toolContext?: ToolContext,
-    contextWindowTokens?: number
+    contextWindowTokens?: number,
+    providerId?: string
   ): Promise<{
     content: string;
     thinking?: string;
@@ -3248,7 +3302,8 @@ class AgentManager {
           // Suppress token streaming for meta calls (no sessionId => no broadcast).
           toolContext?.suppressStreaming ? undefined : toolContext?.sessionId,
           toolContext?.agentId,
-          toolContext?.abortSignal
+          toolContext?.abortSignal,
+          { providerId, providerType: providerConfig }
         );
       let turn: OpenAICodexTurnResult & { resolvedModel: string };
       try {
@@ -3395,6 +3450,7 @@ class AgentManager {
     providerConfig: string,
     maxOutputTokens: number,
     toolContext?: ToolContext,
+    providerId?: string,
     vertex: boolean = false
   ): Promise<{
     content: string;
@@ -3488,6 +3544,10 @@ class AgentManager {
 
       if (!response.ok) {
         const errorText = await response.text();
+        this.recordHttpRateLimit(response.status, response.headers, {
+          providerId,
+          providerType: providerConfig,
+        });
         throw new Error(`API error: ${response.status} - ${errorText}`);
       }
 
@@ -3954,20 +4014,15 @@ class AgentManager {
 
       lastInitialError = await response.text();
 
-      // Capture rate-limit headers (per credential) for future scheduling decisions.
       if (activeCredential) recordRateLimit(activeCredential.label, response.headers);
+      this.recordHttpRateLimit(response.status, response.headers, {
+        providerId,
+        providerType: providerConfig,
+      });
 
       if (INITIAL_TRANSIENT_CODES.has(response.status) && attempt < INITIAL_MAX_RETRIES) {
-        // On rate-limit / auth-like failures, try rotating to another credential first.
         if (response.status === 429 && activeCredential) {
           markCredentialCooldown(poolName, activeCredential, "rate_limit");
-          // Also feed the model router's cooldown + circuit breaker.
-          const retryAfter = parseInt(response.headers.get("retry-after") || "60", 10) * 1000;
-          try {
-            recordRouterRateLimit("anthropic", retryAfter || 60_000);
-          } catch {
-            /* best-effort */
-          }
         }
         const rotated = !vertex && poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
         if (rotated) {
@@ -4234,7 +4289,7 @@ class AgentManager {
       if (loopCached.system !== undefined) loopRequestBody.system = loopCached.system;
       loopRequestBody.messages = loopCached.messages;
 
-      const TRANSIENT_STATUS_CODES = new Set([500, 502, 503, 520, 529]);
+      const TRANSIENT_STATUS_CODES = new Set([429, 500, 502, 503, 520, 529]);
       const MAX_RETRIES = 3;
       let loopResponse: Response | null = null;
       let lastLoopError = "";
@@ -4252,6 +4307,10 @@ class AgentManager {
           if (loopResponse.ok) break;
 
           lastLoopError = await loopResponse.text();
+          this.recordHttpRateLimit(loopResponse.status, loopResponse.headers, {
+            providerId,
+            providerType: providerConfig,
+          });
 
           // Context window exceeded — compact and retry immediately
           if (loopResponse.status === 400 && isContextOverflowError(lastLoopError)) {
@@ -4273,15 +4332,21 @@ class AgentManager {
             if (!retryResponse.ok) {
               loopFatalError = true;
               lastLoopError = await retryResponse.text();
+              this.recordHttpRateLimit(retryResponse.status, retryResponse.headers, {
+                providerId,
+                providerType: providerConfig,
+              });
               break;
             }
             loopResponse = retryResponse;
             break;
           }
 
-          // Transient server error — retry with exponential backoff
           if (TRANSIENT_STATUS_CODES.has(loopResponse.status) && attempt < MAX_RETRIES) {
-            const backoffMs = Math.min(1000 * Math.pow(2, attempt), 8000);
+            const backoffMs =
+              loopResponse.status === 429
+                ? Math.min(this.parseRetryAfterMs(loopResponse.headers), 120_000)
+                : Math.min(1000 * Math.pow(2, attempt), 8000);
             console.warn(
               `[Agent] Anthropic transient error ${loopResponse.status} on iteration ${iterations}, ` +
                 `retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})...`
@@ -4404,7 +4469,8 @@ class AgentManager {
       headers,
       requestBody,
       "API error",
-      toolContext?.abortSignal
+      toolContext?.abortSignal,
+      { providerType: "openai" }
     );
 
     const durationMs = Math.round(performance.now() - startTime);
@@ -4577,7 +4643,8 @@ class AgentManager {
           headers,
           loopRequestBody,
           "API error in agentic loop",
-          toolContext?.abortSignal
+          toolContext?.abortSignal,
+          { providerType: "openai" }
         );
       } catch (error) {
         const errorMessage = this.normalizeErrorMessage(error);
@@ -4600,7 +4667,8 @@ class AgentManager {
             messages: currentMessages,
           },
           "API error in agentic loop",
-          toolContext?.abortSignal
+          toolContext?.abortSignal,
+          { providerType: "openai" }
         );
       }
       const loopChoice = loopData.choices?.[0];

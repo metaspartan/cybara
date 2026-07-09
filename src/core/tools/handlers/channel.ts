@@ -22,6 +22,8 @@ import {
   synthesizeWithSystemVoice,
   type SpeechSynthesisResult,
 } from "../../speech";
+import { providerManager } from "../../providers";
+import { getProviderAvailability } from "../../router";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -42,7 +44,7 @@ interface SubagentSession {
 }
 
 const sessions = new Map<string, SubagentSession>();
-const DEFAULT_SUBAGENT_MAX_ACTIVE_CHILDREN = 5;
+const DEFAULT_SUBAGENT_MAX_ACTIVE_CHILDREN = 3;
 
 export function getSubagentSession(sessionKey: string): SubagentSession | undefined {
   return sessions.get(sessionKey);
@@ -82,6 +84,24 @@ function resolveMaxActiveChildren(args: Record<string, unknown>): number | undef
   return limit > 0 ? limit : undefined;
 }
 
+function resolveSubagentTargetAgent(requestedAgentId?: string) {
+  const availableAgents = agentManager.list();
+  return typeof requestedAgentId === "string" && requestedAgentId.trim().length > 0
+    ? availableAgents.find((agent) => agent.id === requestedAgentId)
+    : availableAgents.find((agent) => agent.status === "running") || availableAgents[0];
+}
+
+function getSubagentProviderBlockReason(requestedAgentId?: string): string | undefined {
+  const agent = resolveSubagentTargetAgent(requestedAgentId);
+  if (!agent?.provider_id) return undefined;
+  const provider = providerManager.get(agent.provider_id);
+  const availability = getProviderAvailability(agent.provider_id);
+  if (availability.available) return undefined;
+  if (!availability.inCooldown && !availability.circuitOpen) return undefined;
+  const label = provider?.name || provider?.provider || agent.provider_id;
+  return `${label} is temporarily unavailable: ${availability.reason || "provider cooldown"}`;
+}
+
 export async function handleSessionsSpawn(
   args: Record<string, unknown>,
   context?: ToolContext
@@ -108,6 +128,17 @@ export async function handleSessionsSpawn(
 
   if (!task) {
     throw new Error("task is required");
+  }
+
+  const providerBlockReason = getSubagentProviderBlockReason(requestedAgentId);
+  if (providerBlockReason) {
+    return {
+      status: "forbidden",
+      childSessionKey: "",
+      runId: "",
+      task,
+      warning: `sessions_spawn was not started because ${providerBlockReason}`,
+    };
   }
 
   if (subagentRegistry.isSubagentSessionKey(requesterSessionKey)) {

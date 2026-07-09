@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { agentManager } from "../../src/core/agent";
 import { providerManager } from "../../src/core/providers";
+import { getProviderAvailability, resetRouterForTests } from "../../src/core/router";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -14,6 +15,7 @@ afterEach(() => {
   for (const providerId of createdProviderIds.splice(0)) {
     providerManager.delete(providerId);
   }
+  resetRouterForTests();
 });
 
 describe("Agent provider API-family routing", () => {
@@ -1075,6 +1077,41 @@ describe("Agent provider API-family routing", () => {
     expect(result.content).toBe("fallback-ok");
     expect(callCount).toBe(2);
     expect(requestedModels).toEqual(["gpt-5.3-codex", "gpt-5.2-codex"]);
+  });
+
+  test("records provider cooldown when openai-codex returns 429", async () => {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ error: { message: "rate limit reached" } }), {
+        status: 429,
+        headers: { "Content-Type": "application/json", "Retry-After": "7" },
+      })) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "openai-codex",
+      name: "OpenAI Codex Rate Limited Provider",
+      access_token: "codex-oauth-token",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "OpenAI Codex Rate Limit Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-5.3-codex",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "trigger rate limit" }],
+      { useTools: false, sessionId: "openai-codex-429-session" }
+    );
+
+    expect(result.content.toLowerCase()).toContain("rate limit");
+    const availability = getProviderAvailability(provider.id);
+    expect(availability.inCooldown).toBe(true);
+    expect(availability.available).toBe(false);
   });
 
   test("routes ollama API family without forcing authorization header", async () => {
