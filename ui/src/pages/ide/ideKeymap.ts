@@ -18,9 +18,6 @@ export interface IdeActionDef {
   defaultBinding: string;
 }
 
-// Bindings are canonical strings: modifiers ("mod" = ⌘ on macOS / Ctrl elsewhere,
-// plus "shift"/"alt"/"ctrl") joined with "+", ending in a key token. Defaults
-// mirror the common Zed / VS Code shortcuts.
 export const IDE_ACTIONS: readonly IdeActionDef[] = [
   {
     id: "commandPalette",
@@ -125,6 +122,6 @@ export function persistKeymapOverrides(overrides: Record<string, string>): void 
   try {
     window.localStorage.setItem(KEYMAP_STORAGE_KEY, JSON.stringify(overrides));
   } catch {
-    /* ignore persistence errors */
+    void 0;
   }
 }

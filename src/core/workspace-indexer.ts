@@ -644,7 +644,7 @@ class WorkspaceIndexer {
   private updateIndexingProgress(settings: WorkspaceIndexerSettings): void {
     const target = Math.max(1, settings.maxFiles);
     const indexedRatio = target > 0 ? this.filesIndexed / target : 0;
-    this.progress = Math.min(99, Math.max(0, Math.floor(indexedRatio * 100)));
+    this.progress = Math.min(40, Math.max(0, Math.floor(indexedRatio * 40)));
   }
 
   private shouldSkipDirectory(name: string, settings: WorkspaceIndexerSettings): boolean {
@@ -785,7 +785,7 @@ class WorkspaceIndexer {
       this.indexedWorkspacePath = workspacePath;
       this.lastIndexedAt = new Date().toISOString();
       this.error = null;
-      this.progress = settings.semanticEnabled ? 96 : 100;
+      this.progress = settings.semanticEnabled ? 42 : 100;
 
       if (settings.semanticEnabled && this.indexedFiles.length > 0) {
         await this.indexSemanticWorkspace(workspacePath, token, settings, previousIndexedFiles);
@@ -897,8 +897,10 @@ class WorkspaceIndexer {
         }
 
         const ratio = (index + 1) / semanticCandidates.length;
-        this.progress = Math.max(this.progress, Math.min(99, Math.floor(96 + ratio * 3)));
-        if (index % 25 === 0) {
+        this.progress = Math.max(this.progress, Math.min(99, Math.floor(40 + ratio * 59)));
+        this.semanticIndexedFiles = indexedFileCount;
+        this.semanticIndexedChunks = indexedChunkCount;
+        if (index % 10 === 0) {
           await new Promise<void>((resolveYield) => setTimeout(resolveYield, 0));
         }
       }

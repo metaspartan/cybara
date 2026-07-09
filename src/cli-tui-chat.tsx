@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
+import { InteractiveChatTUI } from "./cli-tui-interactive-chat";
 
 const TUI_INPUT_OPTIONS = {
   isActive:
@@ -156,6 +157,8 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
   const [agentsById, setAgentsById] = React.useState<Map<string, ChatAgentSummary>>(
     () => new Map()
   );
+  const [selectedIndex, setSelectedIndex] = React.useState(0);
+  const [openSession, setOpenSession] = React.useState<ChatSessionSummary | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -184,14 +187,45 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
 
   useInput(
     (input, key) => {
-      if (input === "q" || key.escape || (key.ctrl && input === "c")) {
+      if (openSession) return;
+      if ((key.ctrl && input === "c") || key.escape || input === "q") {
         exit();
         return;
       }
-      if (input === "r") void load();
+      if (input === "r") {
+        void load();
+        return;
+      }
+      if (key.upArrow || input === "k") {
+        setSelectedIndex((previous) => Math.max(0, previous - 1));
+        return;
+      }
+      if (key.downArrow || input === "j") {
+        setSelectedIndex((previous) => Math.min(Math.max(0, sessions.length - 1), previous + 1));
+        return;
+      }
+      if (key.return) {
+        const target = sessions[selectedIndex];
+        if (target?.id) setOpenSession(target);
+      }
     },
     TUI_INPUT_OPTIONS
   );
+
+  if (openSession?.id) {
+    return (
+      <InteractiveChatTUI
+        fetchAPI={fetchAPI}
+        sessionId={openSession.id}
+        title={compactText(openSession.title, openSession.id)}
+        modelLine={sessionModelLine(openSession, agentsById)}
+        onExit={() => {
+          setOpenSession(null);
+          void load();
+        }}
+      />
+    );
+  }
 
   const activeCount = sessions.filter(sessionIsActive).length;
   const pendingCount = sessions.reduce((total, session) => total + sessionPendingCount(session), 0);
@@ -201,7 +235,7 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
       <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
         <Box justifyContent="space-between">
           <Text bold>Chat</Text>
-          <Text color="gray">r refresh</Text>
+          <Text color="gray">↑↓ select · ↵ open · r refresh · q quit</Text>
         </Box>
         <Text color="gray">
           Recent sessions · {sessions.length} shown
@@ -217,14 +251,19 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
         {!loading && !error && sessions.length === 0 && <Text color="gray">No chat sessions yet.</Text>}
         {!loading &&
           !error &&
-          sessions.map((session) => {
+          sessions.map((session, index) => {
             const pending = sessionPendingCount(session);
             const active = sessionIsActive(session);
             const workspace = sessionWorkspace(session);
+            const selected = index === selectedIndex;
             return (
               <Box key={session.id || session.title} flexDirection="column" marginTop={1}>
                 <Box justifyContent="space-between">
-                  <Text color={active ? "yellow" : session.pinned ? "cyan" : "white"}>
+                  <Text
+                    bold={selected}
+                    color={selected ? "cyan" : active ? "yellow" : session.pinned ? "cyan" : "white"}
+                  >
+                    {selected ? "❯ " : "  "}
                     {session.pinned ? "★ " : ""}
                     {compactText(session.title, session.id || "Untitled chat")}
                   </Text>

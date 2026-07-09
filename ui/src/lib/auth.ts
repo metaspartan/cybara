@@ -148,10 +148,6 @@ export function withApiAuthHeaders(headers?: HeadersInit, token = getApiAuthToke
   return resolved;
 }
 
-// WKWebView (Tauri) intermittently rejects bursts of concurrent requests with
-// a bare "TypeError: Failed to fetch" — common when the IDE opens a large tree
-// and reads several config files at once. Retry idempotent requests a couple of
-// times on genuine network rejections (never on aborts or non-GET writes).
 async function fetchWithNetworkRetry(
   target: RequestInfo | URL,
   init: RequestInit

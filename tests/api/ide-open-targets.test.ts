@@ -24,6 +24,9 @@ describe("IDE workspace open targets", () => {
     expect(result.success).toBe(true);
     expect(result.path).toBe(root);
     expect(result.targets.some((target) => target.id === "cybara_ide")).toBe(true);
+    expect(result.targets.find((target) => target.id === "cybara_ide")?.iconUrl).toBe(
+      "/cybara.png"
+    );
     expect(result.targets.every((target) => target.available)).toBe(true);
   });
 

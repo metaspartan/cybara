@@ -517,10 +517,6 @@ export function IDE() {
     return resolveEmbeddingRuntimeSelectionModel(activeSettings, embeddingRuntime);
   }, [embeddingRuntime, indexSettingsDraft, indexStatus?.settings]);
 
-  // Keep the fetch callback below stable: reading the selection through a ref
-  // avoids a feedback loop where each poll updates embeddingRuntime, which
-  // changes resolveEmbeddingRuntimeSelection's identity, which would re-fire
-  // the "on open" effect with a non-silent fetch and flicker the spinner.
   const resolveEmbeddingRuntimeSelectionRef = useRef(resolveEmbeddingRuntimeSelection);
   resolveEmbeddingRuntimeSelectionRef.current = resolveEmbeddingRuntimeSelection;
 

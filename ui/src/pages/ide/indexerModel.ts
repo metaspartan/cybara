@@ -9,8 +9,6 @@ export interface EmbeddingRuntimeSelection {
   model: string;
 }
 
-// Resolve the provider/model the runtime should report on, honoring an explicit
-// selection and falling back to whatever the runtime is actually using.
 export function resolveEmbeddingRuntimeSelection(
   settings: WorkspaceIndexerSettings,
   runtime: WorkspaceEmbeddingRuntimeResponse | null
@@ -37,7 +35,6 @@ export interface RuntimeModelStatus {
   tone: RuntimeModelTone;
 }
 
-// Human-readable "is the model loaded?" status for the settings UI.
 export function computeRuntimeModelStatus(
   runtimeTargetProvider: string,
   runtime: WorkspaceEmbeddingRuntimeResponse | null,
@@ -47,8 +44,7 @@ export function computeRuntimeModelStatus(
     const state = runtime?.transformers?.selectedState;
     if (state === "ready") return { label: "Loaded", tone: "loaded" };
     if (state === "loading") {
-      const pct = typeof entry?.loadProgress === "number" ? ` ${entry.loadProgress}%` : "…";
-      return { label: `Loading${pct}`, tone: "loading" };
+      return { label: "Loading model…", tone: "loading" };
     }
     if (state === "error") return { label: "Load failed", tone: "error" };
     return {

@@ -40,6 +40,7 @@ export interface WorkspaceOpenTarget {
   label: string;
   kind: "internal" | "file-manager" | "terminal" | "ide";
   icon: string;
+  iconUrl?: string;
   available: boolean;
   detail?: string;
 }

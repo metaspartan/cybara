@@ -2646,9 +2646,6 @@ export function CodeViewer({
   const showBlamePopover = (line: number) => {
     clearBlameHideTimer();
     clearBlameShowTimer();
-    // Zed-like: once a blame popover is already open, switching to an adjacent
-    // line is instant (warm). When none is open, wait ~1s so scrolling and
-    // moving the cursor through a file stays smooth and doesn't flash popovers.
     if (blamePopoverLine !== null) {
       setBlamePopoverLine(line);
       return;

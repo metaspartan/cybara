@@ -111,8 +111,6 @@ TMP_FILE="$(mktemp "${TMPDIR:-/tmp}/cybara-install.XXXXXX")"
 trap 'rm -f "$TMP_FILE"' EXIT
 
 echo "Downloading cybara${ASSET_SUFFIX} from ${REPO} (${VERSION})..."
-# Drop -s so curl prints its transfer meter (received / total bytes, %, speed, ETA)
-# to stderr while the binary downloads. -L follows the GitHub -> asset redirect.
 curl -fL "$DOWNLOAD_URL" -o "$TMP_FILE"
 echo
 

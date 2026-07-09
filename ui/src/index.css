@@ -39,6 +39,7 @@
   --chat-environment-panel-bg: #0d0f15;
   --chat-environment-panel-border: #343843;
   --chat-environment-panel-text: #e5e7eb;
+  --workspace-open-menu-bg: #202126;
 
   /* Theme accent color (set dynamically via JS) */
   --accent-primary: 99, 102, 241;
@@ -296,6 +297,16 @@ html[data-runtime="tauri"][data-platform="linux"] .shimmer {
   z-index: -1;
   border-radius: inherit;
   background: var(--chat-environment-panel-bg);
+}
+
+.workspace-open-menu-panel {
+  background: var(--workspace-open-menu-bg) !important;
+  background-color: var(--workspace-open-menu-bg) !important;
+  background-image: none !important;
+  opacity: 1 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  isolation: isolate;
 }
 
 /* ---- Utilities referenced by shared primitives ----
@@ -761,6 +772,7 @@ html.light {
   --chat-environment-panel-bg: #ffffff;
   --chat-environment-panel-border: rgba(15, 23, 42, 0.14);
   --chat-environment-panel-text: #1f2937;
+  --workspace-open-menu-bg: #ffffff;
 }
 
 html.light body {

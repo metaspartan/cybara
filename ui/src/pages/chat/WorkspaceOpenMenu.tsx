@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronDown,
   Code2,
@@ -22,6 +23,16 @@ interface WorkspaceOpenMenuProps {
 }
 
 function targetIcon(target: WorkspaceOpenTarget) {
+  if (target.iconUrl) {
+    return (
+      <img
+        src={target.iconUrl}
+        alt=""
+        className="h-4 w-4 shrink-0 rounded-[4px] object-contain"
+        loading="lazy"
+      />
+    );
+  }
   if (target.id === "cybara_ide") return <Monitor className="h-3.5 w-3.5 text-amber-300" />;
   if (target.kind === "terminal") return <Terminal className="h-3.5 w-3.5 text-slate-300" />;
   if (target.kind === "file-manager") return <FolderOpen className="h-3.5 w-3.5 text-blue-300" />;
@@ -36,7 +47,9 @@ export function WorkspaceOpenMenu({
   onOpenCybaraIde,
 }: WorkspaceOpenMenuProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const [targets, setTargets] = useState<WorkspaceOpenTarget[]>([]);
   const [loading, setLoading] = useState(false);
   const [openingTargetId, setOpeningTargetId] = useState<string | null>(null);
@@ -72,7 +85,9 @@ export function WorkspaceOpenMenu({
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
     window.addEventListener("pointerdown", onPointerDown);
     return () => window.removeEventListener("pointerdown", onPointerDown);
@@ -88,6 +103,32 @@ export function WorkspaceOpenMenu({
     [targets]
   );
 
+  const updateMenuPosition = useCallback(() => {
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const menuWidth = 224;
+    const padding = 8;
+    setMenuPosition({
+      left: Math.max(
+        padding,
+        Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - padding)
+      ),
+      top: Math.min(rect.bottom + 8, window.innerHeight - padding),
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    updateMenuPosition();
+    const onMove = () => updateMenuPosition();
+    window.addEventListener("resize", onMove);
+    window.addEventListener("scroll", onMove, true);
+    return () => {
+      window.removeEventListener("resize", onMove);
+      window.removeEventListener("scroll", onMove, true);
+    };
+  }, [open, updateMenuPosition]);
+
   const openTarget = async (target: WorkspaceOpenTarget) => {
     if (!trimmedWorkspace) return;
     setOpeningTargetId(target.id);
@@ -101,7 +142,10 @@ export function WorkspaceOpenMenu({
       if (!response.success || response.data?.success === false) {
         throw new Error(response.data?.error || response.error || `Unable to open ${target.label}`);
       }
-      addToast("success", `Opened ${formatWorkspaceLabel(trimmedWorkspace, 28)} in ${target.label}`);
+      addToast(
+        "success",
+        `Opened ${formatWorkspaceLabel(trimmedWorkspace, 28)} in ${target.label}`
+      );
       setOpen(false);
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : `Unable to open ${target.label}`);
@@ -109,6 +153,60 @@ export function WorkspaceOpenMenu({
       setOpeningTargetId(null);
     }
   };
+
+  const menu =
+    open &&
+    trimmedWorkspace &&
+    createPortal(
+      <div
+        ref={menuRef}
+        className="workspace-open-menu-panel fixed z-[1000] w-56 overflow-hidden rounded-xl border border-white/10 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.65)]"
+        style={{
+          left: menuPosition.left,
+          top: menuPosition.top,
+          backgroundColor: "var(--workspace-open-menu-bg)",
+        }}
+      >
+        <div className="px-2 pb-1 pt-1 text-[10px] uppercase tracking-[0.12em] text-gray-500">
+          {formatWorkspaceLabel(trimmedWorkspace, 30)}
+        </div>
+        {loading ? (
+          <div className="flex items-center gap-2 rounded-lg px-2 py-2 text-xs text-gray-400">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Detecting apps…
+          </div>
+        ) : (
+          sortedTargets.map((target) => (
+            <button
+              key={target.id}
+              type="button"
+              onClick={() => void openTarget(target)}
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-gray-100 transition-colors hover:bg-white/10"
+            >
+              {openingTargetId === target.id ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />
+              ) : (
+                targetIcon(target)
+              )}
+              <span className="min-w-0 flex-1 truncate">{target.label}</span>
+            </button>
+          ))
+        )}
+        <div className="my-1 h-px bg-white/10" />
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            onSelectWorkspace();
+          }}
+          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-100"
+        >
+          <FolderOpen className="h-3.5 w-3.5" />
+          Change workspace…
+        </button>
+      </div>,
+      document.body
+    );
 
   if (!trimmedWorkspace) {
     return (
@@ -131,7 +229,10 @@ export function WorkspaceOpenMenu({
   return (
     <div className="relative" ref={rootRef}>
       <button
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          updateMenuPosition();
+          setOpen((value) => !value);
+        }}
         disabled={workspaceSaving}
         className={cn(
           "inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1.5 text-[11px] text-gray-200 shadow-[0_8px_24px_rgba(0,0,0,0.22)] transition-colors hover:border-white/15 hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-60",
@@ -145,49 +246,11 @@ export function WorkspaceOpenMenu({
           <HardDrive className="h-3.5 w-3.5 text-gray-400" />
         )}
         <span className="hidden md:inline">Open in</span>
-        <ChevronDown className={cn("h-3 w-3 text-gray-500 transition-transform", open && "rotate-180")} />
+        <ChevronDown
+          className={cn("h-3 w-3 text-gray-500 transition-transform", open && "rotate-180")}
+        />
       </button>
-      {open && (
-        <div className="absolute right-0 top-full z-40 mt-2 w-56 overflow-hidden rounded-xl border border-white/10 bg-[#202126] p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.48)]">
-          <div className="px-2 pb-1 pt-1 text-[10px] uppercase tracking-[0.12em] text-gray-500">
-            {formatWorkspaceLabel(trimmedWorkspace, 30)}
-          </div>
-          {loading ? (
-            <div className="flex items-center gap-2 rounded-lg px-2 py-2 text-xs text-gray-400">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Detecting apps…
-            </div>
-          ) : (
-            sortedTargets.map((target) => (
-              <button
-                key={target.id}
-                type="button"
-                onClick={() => void openTarget(target)}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-gray-100 transition-colors hover:bg-white/10"
-              >
-                {openingTargetId === target.id ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />
-                ) : (
-                  targetIcon(target)
-                )}
-                <span className="min-w-0 flex-1 truncate">{target.label}</span>
-              </button>
-            ))
-          )}
-          <div className="my-1 h-px bg-white/10" />
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              onSelectWorkspace();
-            }}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs text-gray-400 transition-colors hover:bg-white/10 hover:text-gray-100"
-          >
-            <FolderOpen className="h-3.5 w-3.5" />
-            Change workspace…
-          </button>
-        </div>
-      )}
+      {menu}
     </div>
   );
 }

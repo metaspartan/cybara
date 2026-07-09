@@ -1,7 +1,7 @@
 import { readdir, readFile, stat, writeFile, mkdir, rename } from "fs/promises";
 import { join, basename, extname, dirname, resolve, relative, isAbsolute } from "path";
 import { homedir } from "os";
-import { existsSync, realpathSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync } from "fs";
 import { getGitStatus } from "./git-api";
 import { checkWritePath } from "../core/tools/path-policy";
 
@@ -204,6 +204,7 @@ export interface WorkspaceOpenTarget {
   label: string;
   kind: "internal" | "file-manager" | "terminal" | "ide";
   icon: string;
+  iconUrl?: string;
   available: boolean;
   detail?: string;
 }
@@ -1253,9 +1254,6 @@ interface BlameCommitMeta {
 function parseBlamePorcelain(output: string): IdeBlameLine[] {
   const rows = output.split("\n");
   const lines: IdeBlameLine[] = [];
-  // `git blame --porcelain` emits full commit metadata only the first time a
-  // commit is seen; later lines from the same commit carry just the header.
-  // Remember metadata per commit so every line still resolves author/summary.
   const commitMeta = new Map<string, BlameCommitMeta>();
   let index = 0;
 
@@ -1382,13 +1380,88 @@ function commandAvailable(command: string): boolean {
   return (result.exitCode ?? 1) === 0;
 }
 
-function macAppExists(appName: string): boolean {
-  return [`/Applications/${appName}.app`, join(HOME_DIR, "Applications", `${appName}.app`)].some(
-    existsSync
+function macAppBundlePath(appName: string): string | null {
+  return (
+    [
+      `/Applications/${appName}.app`,
+      join(HOME_DIR, "Applications", `${appName}.app`),
+      `/System/Applications/${appName}.app`,
+      `/System/Applications/Utilities/${appName}.app`,
+      `/System/Library/CoreServices/${appName}.app`,
+    ].find(existsSync) ?? null
   );
 }
 
-function validateWorkspaceOpenPath(inputPath: string): { success: true; path: string } | RevealResult {
+function macAppExists(appName: string): boolean {
+  return macAppBundlePath(appName) !== null;
+}
+
+const MAC_TARGET_APP_NAMES: Record<string, string[]> = {
+  finder: ["Finder"],
+  terminal: ["Terminal"],
+  ghostty: ["Ghostty"],
+  zed: ["Zed"],
+  code: ["Visual Studio Code"],
+  cursor: ["Cursor"],
+  windsurf: ["Windsurf"],
+  xcode: ["Xcode"],
+};
+
+function macAppIconSource(appPath: string): string | null {
+  const infoPlist = join(appPath, "Contents", "Info.plist");
+  const resourcesDir = join(appPath, "Contents", "Resources");
+  const proc = Bun.spawnSync(
+    ["plutil", "-extract", "CFBundleIconFile", "raw", "-o", "-", infoPlist],
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+    }
+  );
+  const rawName = proc.exitCode === 0 ? proc.stdout.toString().trim() : "";
+  const candidates = rawName
+    ? [`${rawName}.icns`, `${rawName}.png`, `${rawName}.tiff`, rawName]
+    : [];
+  for (const name of candidates) {
+    const path = join(resourcesDir, name);
+    if (existsSync(path)) return path;
+  }
+  const fallback = join(resourcesDir, "AppIcon.icns");
+  return existsSync(fallback) ? fallback : null;
+}
+
+function cachedMacAppIconDataUrl(targetId: string): string | undefined {
+  if (process.platform !== "darwin") return undefined;
+  const appPath = MAC_TARGET_APP_NAMES[targetId]
+    ?.map(macAppBundlePath)
+    .find((path): path is string => Boolean(path));
+  if (!appPath) return undefined;
+  const iconSource = macAppIconSource(appPath);
+  if (!iconSource) return undefined;
+
+  const cacheDir = join(HOME_DIR, ".cybara", "cache", "app-icons");
+  const cachePath = join(cacheDir, `${targetId}.png`);
+  try {
+    mkdirSync(cacheDir, { recursive: true });
+    if (!existsSync(cachePath)) {
+      const proc = Bun.spawnSync(
+        ["sips", "-Z", "64", "-s", "format", "png", iconSource, "--out", cachePath],
+        {
+          stdout: "pipe",
+          stderr: "pipe",
+        }
+      );
+      if ((proc.exitCode ?? 1) !== 0 || !existsSync(cachePath)) return undefined;
+    }
+    const bytes = readFileSync(cachePath);
+    return `data:image/png;base64,${bytes.toString("base64")}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function validateWorkspaceOpenPath(
+  inputPath: string
+): { success: true; path: string } | RevealResult {
   const targetPath = normalizePath(inputPath);
   if (!isPathAllowed(targetPath)) {
     return {
@@ -1573,7 +1646,12 @@ function availableTargetsForPlatform(): WorkspaceOpenTarget[] {
     );
   }
 
-  return targets.filter((target) => target.available);
+  return targets
+    .filter((target) => target.available)
+    .map((target) => ({
+      ...target,
+      iconUrl: target.id === "cybara_ide" ? "/cybara.png" : cachedMacAppIconDataUrl(target.id),
+    }));
 }
 
 function openWithCommand(targetPath: string, command: string, appName?: string): RevealResult {

@@ -4370,9 +4370,6 @@ async function rawUpdate(options: UpdateOptions = {}): Promise<void> {
 }
 
 async function main() {
-  // --help / -h are global: honor them anywhere in the args (e.g.
-  // `cybara start --help`) so a subcommand never runs instead of printing help.
-  // (--version is a value flag for `update`, so it stays command-position only.)
   if (command !== "chat" && hasFlag(args, "--help", "-h")) {
     rawHelp(getVersion(), API_BASE);
     return;

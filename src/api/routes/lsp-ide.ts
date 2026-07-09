@@ -46,6 +46,8 @@ export function trackIdeOperation(
     | "search"
     | "blame"
     | "reveal"
+    | "open_targets"
+    | "open_workspace"
     | "open_terminal"
     | "permalink"
     | "history_url"
