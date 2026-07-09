@@ -16,7 +16,7 @@ describe("model-visible structured data formatting", () => {
       ],
     };
 
-    const result = formatStructuredDataForModel(value, { toonEnabled: true, minSavingsRatio: 0.1 });
+    const result = formatStructuredDataForModel(value, { toonEnabled: true });
 
     expect(result.format).toBe("toon");
     expect(result.content).toContain("rows[3]{path,added,removed,status}:");
@@ -26,7 +26,7 @@ describe("model-visible structured data formatting", () => {
   test("keeps compact JSON when TOON would not save enough tokens", () => {
     const value = { a: "b", c: "d" };
 
-    const result = formatStructuredDataForModel(value, { toonEnabled: true });
+    const result = formatStructuredDataForModel(value, { toonEnabled: true, minSavingsRatio: 0.1 });
 
     expect(result.format).toBe("json");
     expect(result.content).toBe(JSON.stringify(value));

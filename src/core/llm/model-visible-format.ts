@@ -25,7 +25,42 @@ function safeJsonStringify(value: unknown): string {
 function canTryToon(value: unknown): boolean {
   if (value === null || value === undefined) return false;
   if (typeof value !== "object") return false;
-  return Array.isArray(value) || Object.keys(value as Record<string, unknown>).length > 0;
+  return hasUniformRecordArray(value);
+}
+
+function isPrimitive(value: unknown): boolean {
+  return value === null || ["string", "number", "boolean"].includes(typeof value);
+}
+
+function primitiveRecordKeys(value: unknown): string[] | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 0) return null;
+  if (!entries.every(([, entryValue]) => isPrimitive(entryValue))) return null;
+  return entries.map(([key]) => key).sort();
+}
+
+function sameKeys(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((key, index) => key === b[index]);
+}
+
+function hasUniformRecordArray(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    if (value.length < 2) return false;
+    const keys = primitiveRecordKeys(value[0]);
+    return Boolean(
+      keys &&
+        value.every((entry) => {
+          const entryKeys = primitiveRecordKeys(entry);
+          return entryKeys ? sameKeys(keys, entryKeys) : false;
+        })
+    );
+  }
+
+  if (!value || typeof value !== "object") return false;
+  return Object.values(value as Record<string, unknown>).some((entry) =>
+    hasUniformRecordArray(entry)
+  );
 }
 
 export function formatStructuredDataForModel(
