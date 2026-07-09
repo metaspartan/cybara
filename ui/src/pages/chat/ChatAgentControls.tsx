@@ -1,5 +1,5 @@
 import { ChevronDown, Loader2 } from "lucide-react";
-import type { Agent, ProviderPlanSnapshot, SessionContextUsage } from "@/types";
+import type { AgentSummary, ProviderPlanSnapshot, SessionContextUsage } from "@/types";
 import { ContextUsageRing } from "./ContextUsageRing";
 
 export const MODEL_ROUTER_SELECTOR_VALUE = "__model_router__";
@@ -14,7 +14,7 @@ export function ChatAgentControls({
   onSelectAgent,
   updating,
 }: {
-  agents: Agent[];
+  agents: AgentSummary[];
   selectedAgentId?: string;
   modelRouterEnabled?: boolean;
   useModelRouter?: boolean;

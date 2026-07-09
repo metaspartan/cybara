@@ -237,7 +237,7 @@ export function RouterSettings() {
 
   const fetchAgents = useCallback(async () => {
     try {
-      const res = await apiFetch("/api/agents");
+      const res = await apiFetch("/api/agents/summary");
       const data = await res.json();
       const list = Array.isArray(data) ? data : Array.isArray(data?.agents) ? data.agents : [];
       setAgents(

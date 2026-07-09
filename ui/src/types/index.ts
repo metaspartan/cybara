@@ -21,6 +21,16 @@ export interface Agent {
   updated_at?: string;
 }
 
+export interface AgentSummary {
+  id: string;
+  name: string;
+  model?: string;
+  provider?: string;
+  provider_id?: string;
+  fallback_provider_id?: string;
+  status?: Agent["status"];
+}
+
 export interface AgentMessage {
   role: "user" | "assistant" | "system" | "tool";
   content: string;

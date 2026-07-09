@@ -28,7 +28,7 @@ import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 import { Select, Textarea } from "../components/ui/Input";
 import {
   useTasks,
-  useAgents,
+  useAgentSummaries,
   useCreateTask,
   useDeleteTask,
   useStartTask,
@@ -37,7 +37,7 @@ import {
 } from "../hooks/useApi";
 import { useUIStore } from "../stores/uiStore";
 import { PageLayout } from "@/components/layout";
-import type { Task, Agent } from "../types";
+import type { Task, AgentSummary } from "../types";
 import { useTaskNotifications } from "../hooks/useNotifications";
 import { useQuery } from "@tanstack/react-query";
 import { tasksApi } from "@/lib/api";
@@ -73,7 +73,7 @@ export function Tasks() {
   const { permission, requestPermission, connected } = useTaskNotifications();
 
   const { data: tasks, isLoading } = useTasks();
-  const { data: agents } = useAgents();
+  const { data: agents } = useAgentSummaries();
   const { addToast } = useUIStore();
 
   const createTask = useCreateTask();
@@ -446,7 +446,7 @@ interface TaskModalProps {
   onClose: () => void;
   onSubmit: (formData: FormData) => void;
   title: string;
-  agents: Agent[];
+  agents: AgentSummary[];
   isLoading: boolean;
 }
 

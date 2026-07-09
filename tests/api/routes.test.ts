@@ -729,6 +729,20 @@ describe("Agents API", () => {
     expect(Array.isArray(data)).toBe(true);
   });
 
+  test("GET /api/agents/summary should return lightweight selector fields", async () => {
+    const { status, data } = await api("GET", "/api/agents/summary");
+    expect(status).toBe(200);
+    expect(Array.isArray(data)).toBe(true);
+    const first = data[0];
+    if (first) {
+      expect(typeof first.id).toBe("string");
+      expect(typeof first.name).toBe("string");
+      expect(first.system_prompt).toBeUndefined();
+      expect(first.config).toBeUndefined();
+      expect(first.tools).toBeUndefined();
+    }
+  });
+
   test("POST /api/agents should create a new agent", async () => {
     const newAgent = {
       name: `test-agent-${Date.now()}`,
@@ -902,6 +916,19 @@ describe("Agents API", () => {
     expect(typeof getAfterCancel.data.run.status).toBe("string");
 
     await api("DELETE", `/api/agents/${agentId}`);
+  });
+});
+
+describe("Provider Plan API", () => {
+  test("GET /api/provider-plans/availability returns cheap usage-nav metadata", async () => {
+    const { status, data } = await api("GET", "/api/provider-plans/availability");
+    expect(status).toBe(200);
+    expect(typeof data.available).toBe("boolean");
+    expect(typeof data.summary.total).toBe("number");
+    expect(typeof data.summary.configured).toBe("number");
+    expect(typeof data.summary.monitored).toBe("number");
+    expect(typeof data.summary.automatic).toBe("number");
+    expect(data.providers).toBeUndefined();
   });
 });
 

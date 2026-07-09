@@ -25,6 +25,9 @@ const gatewayIndexPath = fileURLToPath(new URL("../../src/index.ts", import.meta
 const providerPlanDisplayPath = fileURLToPath(
   new URL("../../ui/src/lib/providerPlanDisplay.ts", import.meta.url)
 );
+const statusStreamPath = fileURLToPath(
+  new URL("../../ui/src/lib/status-stream.ts", import.meta.url)
+);
 
 function readSource(path: string): string {
   return readFileSync(path, "utf8");
@@ -173,6 +176,26 @@ describe("status stream websocket wiring", () => {
     const source = readSource(sidebarPath);
     expect(source).toContain("connectStatusStream");
     expect(source).not.toContain("new EventSource(");
+  });
+
+  test("session sidebar keeps idle detail prefetch bounded", () => {
+    const source = readSource(
+      fileURLToPath(new URL("../../ui/src/pages/chat/SessionSidebar.tsx", import.meta.url))
+    );
+    expect(source).toContain("const SIDEBAR_IDLE_PREFETCH_LIMIT = 1");
+    expect(source).toContain("const SIDEBAR_IDLE_PREFETCH_TOTAL_LIMIT = 4");
+    expect(source).toContain("remainingWarmBudget <= 0");
+    expect(source).toContain("Math.min(SIDEBAR_IDLE_PREFETCH_LIMIT, remainingWarmBudget)");
+  });
+
+  test("status stream helper multiplexes subscribers through one websocket", () => {
+    const source = readSource(statusStreamPath);
+    expect(source).toContain("const statusStreamSubscribers = new Set");
+    expect(source).toContain("let statusStreamSocket: WebSocket | null = null");
+    expect(source).toContain("function ensureStatusStreamConnected()");
+    expect(source).toContain("notifyStatusStreamEvent(payload)");
+    expect(source).toContain("statusStreamSubscribers.size === 0");
+    expect(source.match(/new WebSocket/g)?.length).toBe(1);
   });
 
   test("chat idle status refresh is not blocked by pending process capture", () => {

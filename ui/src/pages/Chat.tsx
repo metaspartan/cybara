@@ -45,7 +45,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
 import {
-  useAgents,
+  useAgentSummaries,
   useInfo,
   useSubagents,
   useSpawnSubagent,
@@ -1583,7 +1583,7 @@ function PendingApprovalRow({
 
 export function Chat() {
   const navigate = useNavigate();
-  const { data: agents = [] } = useAgents();
+  const { data: agents = [] } = useAgentSummaries();
   const { data: environmentSubagents = [] } = useSubagents();
   const stopAgent = useStopAgent();
   const { data: info } = useInfo();

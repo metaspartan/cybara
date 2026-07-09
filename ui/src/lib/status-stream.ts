@@ -99,60 +99,96 @@ function toWebSocketUrl(path: string): string {
 }
 
 export function connectStatusStream(handlers: ConnectStatusStreamHandlers): () => void {
-  let socket: WebSocket | null = null;
-  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  let closedByUser = false;
+  sharedStatusStreamSubscribe(handlers);
+  return () => sharedStatusStreamUnsubscribe(handlers);
+}
 
-  const clearReconnect = () => {
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = null;
-    }
-  };
+const statusStreamSubscribers = new Set<ConnectStatusStreamHandlers>();
+let statusStreamSocket: WebSocket | null = null;
+let statusStreamReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let statusStreamClosedByClient = false;
 
-  const connect = () => {
-    clearReconnect();
-    socket = new WebSocket(toWebSocketUrl("/api/ws/status"));
+function clearStatusStreamReconnect() {
+  if (!statusStreamReconnectTimer) return;
+  clearTimeout(statusStreamReconnectTimer);
+  statusStreamReconnectTimer = null;
+}
 
-    socket.onopen = () => {
-      handlers.onOpen?.();
-    };
+function notifyStatusStreamOpen() {
+  for (const subscriber of statusStreamSubscribers) {
+    subscriber.onOpen?.();
+  }
+}
 
-    socket.onmessage = (event) => {
-      try {
-        const payload = JSON.parse(String(event.data)) as StatusStreamEvent;
-        if (!payload || typeof payload !== "object" || typeof payload.type !== "string") return;
-        handlers.onEvent(payload);
-      } catch {
-        // Ignore malformed payloads.
-      }
-    };
+function notifyStatusStreamClose() {
+  for (const subscriber of statusStreamSubscribers) {
+    subscriber.onClose?.();
+  }
+}
 
-    socket.onclose = () => {
-      handlers.onClose?.();
-      if (closedByUser) return;
-      reconnectTimer = setTimeout(connect, 2000);
-    };
+function notifyStatusStreamEvent(payload: StatusStreamEvent) {
+  for (const subscriber of statusStreamSubscribers) {
+    subscriber.onEvent(payload);
+  }
+}
 
-    socket.onerror = () => {
-      try {
-        socket?.close();
-      } catch {
-        // ignore
-      }
-    };
-  };
+function ensureStatusStreamConnected() {
+  if (
+    statusStreamSocket &&
+    (statusStreamSocket.readyState === WebSocket.OPEN ||
+      statusStreamSocket.readyState === WebSocket.CONNECTING)
+  ) {
+    return;
+  }
+  if (statusStreamSubscribers.size === 0) return;
 
-  connect();
+  clearStatusStreamReconnect();
+  statusStreamClosedByClient = false;
+  statusStreamSocket = new WebSocket(toWebSocketUrl("/api/ws/status"));
 
-  return () => {
-    closedByUser = true;
-    clearReconnect();
+  statusStreamSocket.onopen = notifyStatusStreamOpen;
+
+  statusStreamSocket.onmessage = (event) => {
     try {
-      socket?.close();
+      const payload = JSON.parse(String(event.data)) as StatusStreamEvent;
+      if (!payload || typeof payload !== "object" || typeof payload.type !== "string") return;
+      notifyStatusStreamEvent(payload);
     } catch {
-      // ignore
+      return;
     }
-    socket = null;
   };
+
+  statusStreamSocket.onclose = () => {
+    statusStreamSocket = null;
+    notifyStatusStreamClose();
+    if (statusStreamClosedByClient || statusStreamSubscribers.size === 0) return;
+    statusStreamReconnectTimer = setTimeout(ensureStatusStreamConnected, 2000);
+  };
+
+  statusStreamSocket.onerror = () => {
+    try {
+      statusStreamSocket?.close();
+    } catch {
+      return;
+    }
+  };
+}
+
+function sharedStatusStreamSubscribe(handlers: ConnectStatusStreamHandlers) {
+  statusStreamSubscribers.add(handlers);
+  ensureStatusStreamConnected();
+}
+
+function sharedStatusStreamUnsubscribe(handlers: ConnectStatusStreamHandlers) {
+  statusStreamSubscribers.delete(handlers);
+  if (statusStreamSubscribers.size > 0) return;
+  statusStreamClosedByClient = true;
+  clearStatusStreamReconnect();
+  try {
+    statusStreamSocket?.close();
+  } catch {
+    return;
+  } finally {
+    statusStreamSocket = null;
+  }
 }

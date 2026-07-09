@@ -30,6 +30,7 @@ export interface LiveUsageProviderInput {
 
 const CACHE_TTL_MS = 60_000;
 const cache = new Map<string, { value: LiveProviderUsage | null; at: number }>();
+const inFlight = new Map<string, Promise<LiveProviderUsage | null>>();
 
 function toNumber(value: unknown): number | undefined {
   const n = typeof value === "number" ? value : Number(value);
@@ -1248,42 +1249,55 @@ export async function fetchLiveProviderUsage(
   if (!looksLikeCredential(credential)) return null;
   const cached = cache.get(provider.id);
   if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.value;
+  const pending = inFlight.get(provider.id);
+  if (pending) return pending;
 
-  let value: LiveProviderUsage | null = null;
-  try {
-    if (provider.providerType === "openai-codex") {
-      value = looksLikeOAuthToken(provider.accessToken)
-        ? await fetchCodexUsage(provider.accessToken)
-        : null;
-    } else if (provider.providerType === "anthropic") {
-      value = looksLikeOAuthToken(provider.accessToken)
-        ? await fetchAnthropicUsage(provider.accessToken)
-        : null;
-    } else if (
-      provider.providerType === "antigravity" ||
-      provider.providerType === "google-gemini-cli"
-    ) {
-      value = looksLikeOAuthToken(provider.accessToken)
-        ? await fetchAntigravityUsage(provider.accessToken)
-        : null;
-    } else if (provider.providerType === "minimax" || provider.providerType === "minimax-portal") {
-      value = await fetchMiniMaxUsage(credential, provider.baseUrl);
-    } else if (provider.providerType === "z.ai" || provider.providerType === "z.ai-coding") {
-      value = await fetchZaiUsage(credential, provider.baseUrl);
-    } else if (provider.providerType === "kimi-code") {
-      value = await fetchKimiUsage(credential, provider.baseUrl);
-    } else if (provider.providerType === "xai-oauth") {
-      value = looksLikeOAuthToken(provider.accessToken)
-        ? ((await fetchGrokWebBillingUsage(provider.accessToken)) ?? (await fetchGrokCliUsage()))
-        : await fetchGrokCliUsage();
-    } else if (provider.providerType === "xai") {
-      value = await fetchGrokCliUsage();
+  const task = (async () => {
+    let value: LiveProviderUsage | null = null;
+    try {
+      if (provider.providerType === "openai-codex") {
+        value = looksLikeOAuthToken(provider.accessToken)
+          ? await fetchCodexUsage(provider.accessToken)
+          : null;
+      } else if (provider.providerType === "anthropic") {
+        value = looksLikeOAuthToken(provider.accessToken)
+          ? await fetchAnthropicUsage(provider.accessToken)
+          : null;
+      } else if (
+        provider.providerType === "antigravity" ||
+        provider.providerType === "google-gemini-cli"
+      ) {
+        value = looksLikeOAuthToken(provider.accessToken)
+          ? await fetchAntigravityUsage(provider.accessToken)
+          : null;
+      } else if (
+        provider.providerType === "minimax" ||
+        provider.providerType === "minimax-portal"
+      ) {
+        value = await fetchMiniMaxUsage(credential, provider.baseUrl);
+      } else if (provider.providerType === "z.ai" || provider.providerType === "z.ai-coding") {
+        value = await fetchZaiUsage(credential, provider.baseUrl);
+      } else if (provider.providerType === "kimi-code") {
+        value = await fetchKimiUsage(credential, provider.baseUrl);
+      } else if (provider.providerType === "xai-oauth") {
+        value = looksLikeOAuthToken(provider.accessToken)
+          ? ((await fetchGrokWebBillingUsage(provider.accessToken)) ?? (await fetchGrokCliUsage()))
+          : await fetchGrokCliUsage();
+      } else if (provider.providerType === "xai") {
+        value = await fetchGrokCliUsage();
+      }
+    } catch (error) {
+      log.debug(`live usage fetch failed for ${provider.providerType}: ${error}`);
+      value = null;
     }
-  } catch (error) {
-    log.debug(`live usage fetch failed for ${provider.providerType}: ${error}`);
-    value = null;
-  }
 
-  cache.set(provider.id, { value, at: Date.now() });
-  return value;
+    cache.set(provider.id, { value, at: Date.now() });
+    return value;
+  })();
+  inFlight.set(provider.id, task);
+  try {
+    return await task;
+  } finally {
+    inFlight.delete(provider.id);
+  }
 }

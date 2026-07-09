@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   Agent,
+  AgentSummary,
   AgentMessage,
   Provider,
   Channel,
@@ -47,6 +48,15 @@ export function useAgents() {
   return useQuery({
     queryKey: ["agents"],
     queryFn: () => fetchApi<Agent[]>("/agents"),
+    refetchInterval: LIST_POLL_INTERVAL_MS,
+  });
+}
+
+export function useAgentSummaries() {
+  return useQuery({
+    queryKey: ["agents", "summary"],
+    queryFn: () => fetchApi<AgentSummary[]>("/agents/summary"),
+    staleTime: 30_000,
     refetchInterval: LIST_POLL_INTERVAL_MS,
   });
 }

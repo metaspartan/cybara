@@ -256,17 +256,9 @@ export function Sidebar() {
     let mounted = true;
     const loadUsageAvailability = async () => {
       try {
-        const response = await providerPlansApi.status();
+        const response = await providerPlansApi.availability();
         if (!mounted || !response.success) return;
-        const available = (response.data?.providers ?? []).some(
-          (plan) =>
-            plan.managedAutomatically &&
-            (Boolean(plan.configuredProviderId) ||
-              plan.monitored ||
-              plan.externalSourceAvailable ||
-              plan.windows.some((window) => window.usageKnown))
-        );
-        setUsageAvailable(available);
+        setUsageAvailable(response.data?.available === true);
       } catch {
         if (mounted) setUsageAvailable(false);
       }

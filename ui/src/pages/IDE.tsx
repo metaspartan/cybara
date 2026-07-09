@@ -435,7 +435,7 @@ export function IDE() {
     let isCancelled = false;
     const loadAgents = async () => {
       try {
-        const response = await agentsApi.list();
+        const response = await agentsApi.summaries();
         if (!response.success || !response.data || isCancelled) return;
         const options = (response.data || [])
           .map((agent) => ({

@@ -114,8 +114,8 @@ describe("router, provider, and metrics UI wiring", () => {
     expect(app).toContain("element={<Usage />}");
     expect(sidebar).toContain('path: "/usage"');
     expect(sidebar).toContain("requiresUsage: true");
-    expect(sidebar).toContain("providerPlansApi.status()");
-    expect(sidebar).toContain("setUsageAvailable(available)");
+    expect(sidebar).toContain("providerPlansApi.availability()");
+    expect(sidebar).toContain("setUsageAvailable(response.data?.available === true)");
     expect(usage).toContain('providerPlanWindowDisplay(plan, "rolling_5h")');
     expect(usage).toContain('providerPlanWindowDisplay(plan, "rolling_week")');
     expect(usage).toContain("providerPlanUsageClasses(usage)");

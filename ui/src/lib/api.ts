@@ -1,5 +1,6 @@
 import type {
   Agent,
+  AgentSummary,
   Provider,
   Channel,
   Memory,
@@ -130,6 +131,7 @@ function normalizeProviderPlanStatusResponse(value: unknown): ProviderPlanStatus
 
 export const agentsApi = {
   list: () => fetchApi<Agent[]>("/agents"),
+  summaries: () => fetchApi<AgentSummary[]>("/agents/summary"),
   get: (id: string) => fetchApi<Agent>(`/agents/${id}`),
   create: (agent: Omit<Agent, "id" | "createdAt" | "updatedAt">) =>
     fetchApi<Agent>("/agents", { method: "POST", body: JSON.stringify(agent) }),
@@ -202,6 +204,10 @@ export const providerPlansApi = {
       data: normalizeProviderPlanStatusResponse(response.data),
     };
   },
+  availability: () =>
+    fetchApi<{ available: boolean; summary: ProviderPlanStatusResponse["summary"] }>(
+      "/provider-plans/availability"
+    ),
   updateConfig: async (
     payload: ProviderPlanMonitoringConfig
   ): Promise<ApiResponse<ProviderPlanMonitoringConfig>> => {

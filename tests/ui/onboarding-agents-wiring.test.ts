@@ -20,6 +20,16 @@ describe("onboarding boot: no shell flash + full-screen spinner", () => {
     expect(app).toContain("fixed inset-0");
     expect(app).toContain("animate-spin");
   });
+
+  test("app boot gates on lightweight setup status instead of full agents/providers", () => {
+    const guardBlock = app.slice(
+      app.indexOf("function SetupGuard"),
+      app.indexOf("function MainContent")
+    );
+    expect(guardBlock).toContain("setupApi.status()");
+    expect(guardBlock).not.toContain("useAgents()");
+    expect(guardBlock).not.toContain("useProviders()");
+  });
 });
 
 describe("Agents: auto-start on boot + default model", () => {

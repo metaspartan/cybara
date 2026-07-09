@@ -27,13 +27,13 @@ import { Wallet } from "@/pages/Wallet";
 import { Artifacts } from "@/pages/Artifacts";
 import { Mobile } from "@/pages/Mobile";
 import { Setup } from "@/pages/Setup";
-import { useProviders, useAgents } from "@/hooks/useApi";
-import { settingsApi } from "@/lib/api";
+import { settingsApi, setupApi } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolveSetupGate } from "@/lib/setupGate";
 import { useEffect } from "react";
 import { readThemeAccentFromConfig, readThemeModeFromIdentity, useUIStore } from "@/stores/uiStore";
+import { useQuery } from "@tanstack/react-query";
 
 const SETUP_COMPLETE_KEY = "cybara.setupComplete";
 
@@ -56,27 +56,31 @@ function writeSetupComplete(done: boolean): void {
 
 function SetupGuard({ children }: { children: React.ReactNode }) {
   const location = useLocation();
-  const providersQuery = useProviders();
-  const agentsQuery = useAgents();
-
-  const { data: providers, isSuccess: providersReady } = providersQuery;
-  const { data: agents, isSuccess: agentsReady } = agentsQuery;
-
-  const resolved = providersReady && agentsReady;
-  const hasSetup = resolved ? (providers?.length ?? 0) > 0 && (agents?.length ?? 0) > 0 : null;
+  const cachedSetupComplete = readSetupComplete();
+  const setupStatusQuery = useQuery({
+    queryKey: ["setup", "status"],
+    queryFn: async () => {
+      const response = await setupApi.status();
+      if (!response.success || !response.data) {
+        throw new Error(response.error || "Failed to load setup status");
+      }
+      return response.data;
+    },
+    staleTime: 30_000,
+    retry: false,
+  });
+  const setupReady = setupStatusQuery.isSuccess;
+  const setupComplete = setupStatusQuery.data?.complete === true;
 
   useEffect(() => {
-    if (hasSetup === true) writeSetupComplete(true);
-    else if (hasSetup === false) writeSetupComplete(false);
-  }, [hasSetup]);
+    if (setupReady) writeSetupComplete(setupComplete);
+  }, [setupComplete, setupReady]);
 
   const decision = resolveSetupGate({
     pathname: location.pathname,
-    providersReady,
-    agentsReady,
-    providerCount: providers?.length ?? 0,
-    agentCount: agents?.length ?? 0,
-    setupComplete: readSetupComplete(),
+    setupReady,
+    setupComplete,
+    cachedSetupComplete,
   });
 
   if (decision === "redirect") {

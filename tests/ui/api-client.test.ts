@@ -114,6 +114,14 @@ describe("UI API client wiring", () => {
     });
   });
 
+  test("agentsApi.summaries uses the lightweight agent summary endpoint", async () => {
+    await agentsApi.summaries();
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toBe("/api/agents/summary");
+    expect(calls[0].init?.method).toBeUndefined();
+  });
+
   test("channelsApi.setupTelegram uses botToken payload", async () => {
     await channelsApi.setupTelegram("123:abc", "https://example.com/webhook");
 
@@ -198,6 +206,7 @@ describe("UI API client wiring", () => {
   test("providerPlansApi uses provider plan endpoints", async () => {
     const config = await providerPlansApi.config();
     const status = await providerPlansApi.status();
+    const availability = await providerPlansApi.availability();
     await providerPlansApi.updateConfig({
       enabled: true,
       routerEnforcement: true,
@@ -211,7 +220,7 @@ describe("UI API client wiring", () => {
       },
     });
 
-    expect(calls).toHaveLength(3);
+    expect(calls).toHaveLength(4);
     expect(calls[0].url).toBe("/api/provider-plans/config");
     expect(calls[0].init?.method).toBeUndefined();
     expect(config.data?.providers).toEqual({});
@@ -219,9 +228,12 @@ describe("UI API client wiring", () => {
     expect(calls[1].init?.method).toBeUndefined();
     expect(status.data?.summary.configured).toBe(0);
     expect(status.data?.providers).toEqual([]);
-    expect(calls[2].url).toBe("/api/provider-plans/config");
-    expect(calls[2].init?.method).toBe("PUT");
-    expect(JSON.parse(String(calls[2].init?.body))).toEqual({
+    expect(calls[2].url).toBe("/api/provider-plans/availability");
+    expect(calls[2].init?.method).toBeUndefined();
+    expect(availability.success).toBe(true);
+    expect(calls[3].url).toBe("/api/provider-plans/config");
+    expect(calls[3].init?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[3].init?.body))).toEqual({
       enabled: true,
       routerEnforcement: true,
       warningThresholdPct: 80,

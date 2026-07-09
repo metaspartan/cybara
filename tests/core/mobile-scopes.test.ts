@@ -202,9 +202,11 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("GET", "/api/providers")).toBeNull();
     expect(routeRequiredScope("POST", "/api/providers")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/providers/provider-1/test")).toBe("manage");
+    expect(routeRequiredScope("GET", "/api/agents/summary")).toBeNull();
     expect(routeRequiredScope("GET", "/api/router/config")).toBeNull();
     expect(routeRequiredScope("PUT", "/api/router/config")).toBe("manage");
     expect(routeRequiredScope("GET", "/api/provider-plans/config")).toBeNull();
+    expect(routeRequiredScope("GET", "/api/provider-plans/availability")).toBeNull();
     expect(routeRequiredScope("GET", "/api/provider-plans/status")).toBeNull();
     expect(routeRequiredScope("PUT", "/api/provider-plans/config")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/agents")).toBe("manage");

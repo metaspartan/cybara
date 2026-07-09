@@ -2,7 +2,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Input";
 import { extractApiError, settingsApi } from "@/lib/api";
-import { useAgents } from "@/hooks/useApi";
+import { useAgentSummaries } from "@/hooks/useApi";
 import { useUIStore } from "@/stores/uiStore";
 import { AlertTriangle, RefreshCw, Server, Shield } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -39,7 +39,7 @@ export function FeatureSettings() {
   const [terminalEnabled, setTerminalEnabled] = useState(false);
   const [selfImprovingSkills, setSelfImprovingSkills] = useState(true);
   const [backgroundAgentId, setBackgroundAgentId] = useState("");
-  const { data: agentsForBackground } = useAgents();
+  const { data: agentsForBackground } = useAgentSummaries();
   const [dangerousToolPolicyEnabled, setDangerousToolPolicyEnabled] = useState(false);
   const [dangerousToolPolicyMode, setDangerousToolPolicyMode] = useState<"audit" | "block">(
     "audit"

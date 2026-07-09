@@ -126,6 +126,16 @@ export interface ProviderPlanStatusResponse {
   };
 }
 
+export interface ProviderPlanAvailabilityResponse {
+  available: boolean;
+  summary: {
+    total: number;
+    configured: number;
+    monitored: number;
+    automatic: number;
+  };
+}
+
 export interface ProviderPlanRouteConstraint {
   monitored: boolean;
   configured: boolean;
@@ -1064,6 +1074,37 @@ export function hasProviderPlanRouteConstraints(routeKeys: string[]): boolean {
     if (hasProviderPlanLimits(planConfigFor(cfg, providerId, providerType))) return true;
   }
   return false;
+}
+
+export function getProviderPlanAvailability(): ProviderPlanAvailabilityResponse {
+  const cfg = getProviderPlanMonitoringConfig();
+  const rows = tables.providers.all() as Provider[];
+  let configured = 0;
+  let monitored = 0;
+  let automatic = 0;
+
+  for (const provider of rows) {
+    const providerType = providerTypeOf(provider);
+    const staticInfo = providers[providerType as ProviderType];
+    const authType = staticInfo?.authType ?? "unknown";
+    const isMonitored = cfg.enabled && isPlanCapableProvider(providerType, authType);
+    const isAutomatic = AUTOMATIC_PLAN_PROVIDER_TYPES.has(providerType);
+    const providerConfig = planConfigFor(cfg, provider.id, providerType);
+
+    if (isMonitored) monitored += 1;
+    if (isAutomatic) automatic += 1;
+    if (hasProviderPlanLimits(providerConfig) || isAutomatic) configured += 1;
+  }
+
+  return {
+    available: cfg.enabled && automatic > 0,
+    summary: {
+      total: rows.length,
+      configured,
+      monitored,
+      automatic,
+    },
+  };
 }
 
 export function getProviderPlanSnapshot(

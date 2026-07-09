@@ -151,6 +151,7 @@ import {
 } from "../core/checkpoint";
 import {
   getProviderPlanMonitoringConfig,
+  getProviderPlanAvailability,
   getProviderPlanStatus,
   enrichProviderPlanStatusWithLiveUsage,
   setProviderPlanMonitoringConfig,
@@ -465,6 +466,16 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "GET /api/agents": () => agentManager.list(),
+  "GET /api/agents/summary": () =>
+    agentManager.list().map((agent) => ({
+      id: agent.id,
+      name: agent.name,
+      model: agent.model,
+      provider: agent.provider,
+      provider_id: agent.provider_id,
+      fallback_provider_id: agent.fallback_provider_id,
+      status: agent.status,
+    })),
   "POST /api/agents": (body) => {
     const data = body as Parameters<typeof agentManager.create>[0];
     return agentManager.create(data);
@@ -717,6 +728,7 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/provider-plans/config": () => getProviderPlanMonitoringConfig(),
   "PUT /api/provider-plans/config": (body) => setProviderPlanMonitoringConfig(body),
+  "GET /api/provider-plans/availability": () => getProviderPlanAvailability(),
   "GET /api/provider-plans/status": () =>
     enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus()),
   "POST /api/providers/:id/test": async (_body, params) => {

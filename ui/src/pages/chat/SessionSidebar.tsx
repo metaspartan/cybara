@@ -66,8 +66,9 @@ const PINNED_WORKSPACE_GROUPS_STORAGE_KEY = "cybara.chat.pinnedWorkspaceGroupIds
 const CHAT_SIDEBAR_WIDTH_STORAGE_KEY = "cybara.chat.sidebarWidth";
 const CHAT_SIDEBAR_MIN_WIDTH = 248;
 const CHAT_SIDEBAR_MAX_WIDTH = 420;
-const SIDEBAR_IDLE_PREFETCH_LIMIT = 4;
-const SIDEBAR_IDLE_PREFETCH_MAX_MESSAGES = 90;
+const SIDEBAR_IDLE_PREFETCH_LIMIT = 1;
+const SIDEBAR_IDLE_PREFETCH_TOTAL_LIMIT = 4;
+const SIDEBAR_IDLE_PREFETCH_MAX_MESSAGES = 60;
 
 interface SessionTooltipState {
   anchor: DOMRect;
@@ -264,6 +265,11 @@ export function SessionsPanel({
   }, [refetch]);
 
   useEffect(() => {
+    if (!isOpen) return;
+    const remainingWarmBudget =
+      SIDEBAR_IDLE_PREFETCH_TOTAL_LIMIT - warmedSessionIdsRef.current.size;
+    if (remainingWarmBudget <= 0) return;
+
     const candidates = sessionGroups
       .flatMap((group) => group.sessions)
       .filter((session) => {
@@ -272,7 +278,7 @@ export function SessionsPanel({
         const messageCount = Math.max(0, Number(session.message_count || 0));
         return messageCount <= SIDEBAR_IDLE_PREFETCH_MAX_MESSAGES;
       })
-      .slice(0, SIDEBAR_IDLE_PREFETCH_LIMIT);
+      .slice(0, Math.min(SIDEBAR_IDLE_PREFETCH_LIMIT, remainingWarmBudget));
 
     if (candidates.length === 0) return;
 
@@ -297,7 +303,7 @@ export function SessionsPanel({
 
     const timerId = globalThis.setTimeout(warm, 300);
     return () => globalThis.clearTimeout(timerId);
-  }, [loadSession, sessionGroups]);
+  }, [isOpen, loadSession, sessionGroups]);
 
   const beginResizeSidebar = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
