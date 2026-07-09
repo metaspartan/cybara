@@ -213,6 +213,52 @@ describe("mobile live chat cache", () => {
     expect(pruned).toBeNull();
   });
 
+  test("keeps newer live work when persisted assistant only has partial activity rows", () => {
+    const sessionId = `mobile-prune-partial-${Date.now()}`;
+    const live = {
+      ...liveAssistantMessage(sessionId, null, 1783015200000),
+      processActivities: [
+        {
+          id: "live-tool-1-result",
+          phase: "result" as const,
+          text: "Ran package manager install",
+          timestamp: 1783015200100,
+          toolName: "exec",
+          toolCallId: "tool-1",
+        },
+        {
+          id: "live-tool-2-start",
+          phase: "start" as const,
+          text: "Running tests",
+          timestamp: 1783015200200,
+          toolName: "exec",
+          toolCallId: "tool-2",
+        },
+      ],
+    };
+
+    const pruned = prunePersistedMobileLiveAssistant(live, [
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "",
+        timestamp: "2026-07-02T18:00:00.000Z",
+        processActivities: [
+          {
+            id: "persisted-tool-1",
+            phase: "result",
+            text: "Ran package manager install",
+            timestamp: 1783015204900,
+            toolName: "exec",
+            toolCallId: "tool-1",
+          },
+        ],
+      },
+    ]);
+
+    expect(pruned?.processActivities?.map((activity) => activity.text)).toEqual(["Running tests"]);
+  });
+
   test("keeps post-steer handoff rows while pruning duplicated pre-steer work", () => {
     const sessionId = `mobile-prune-live-steer-${Date.now()}`;
     const live = {

@@ -772,7 +772,7 @@ Use for tasks that may take longer or require separate context.`,
         maxActiveChildren: {
           type: "number",
           description:
-            "Maximum active child sub-agents allowed for this requester (0 = no cap, default 5)",
+            "Maximum active child sub-agents allowed for this requester (0 = no cap, default 3)",
         },
         cleanup: {
           type: "string",

@@ -45,6 +45,13 @@ describe("implicit builtin tool intent selection", () => {
     expect(names).not.toContain("wallet");
   });
 
+  test("selects subagent tools for plural subagent delegation requests", () => {
+    const names = namesFor("Use subagents in parallel to review the mobile chat and report back");
+    expect(names).toEqual(
+      expect.arrayContaining(["sessions_spawn", "sessions_list", "sessions_history", "todo"])
+    );
+  });
+
   test("shell command requests do not advertise the code evaluator as a competing tool", () => {
     const names = namesFor("Use the exec tool to run exactly: printf cybara");
     expect(names).toContain("exec");

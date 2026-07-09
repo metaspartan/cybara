@@ -20,6 +20,7 @@ import {
   ScrollView,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -289,17 +290,34 @@ function ChatSettingsSheet({
   visible: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
   const [dragOffset, setDragOffset] = useState(0);
+  const [expanded, setExpanded] = useState(true);
+  const availableHeight = Math.max(420, windowHeight - insets.top - insets.bottom - spacing.lg);
+  const expandedHeight = Math.min(availableHeight, Math.round(windowHeight * 0.84));
+  const collapsedHeight = Math.min(expandedHeight, Math.max(360, Math.round(windowHeight * 0.58)));
+  const sheetHeight = expanded ? expandedHeight : collapsedHeight;
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onMoveShouldSetPanResponder: (_event, gesture) =>
-          gesture.dy > 7 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.15,
+          Math.abs(gesture.dy) > 7 && Math.abs(gesture.dy) > Math.abs(gesture.dx) * 1.15,
         onPanResponderMove: (_event, gesture) => {
-          setDragOffset(Math.min(180, Math.max(0, gesture.dy)));
+          const lowerBound = expanded ? 0 : -90;
+          setDragOffset(Math.min(180, Math.max(lowerBound, gesture.dy)));
         },
         onPanResponderRelease: (_event, gesture) => {
-          if (gesture.dy > 72 || gesture.vy > 0.9) {
+          if (!expanded && (gesture.dy < -48 || gesture.vy < -0.7)) {
+            setExpanded(true);
+            setDragOffset(0);
+            return;
+          }
+          if (expanded && gesture.dy > 76 && gesture.vy < 1.2) {
+            setExpanded(false);
+            setDragOffset(0);
+            return;
+          }
+          if (gesture.dy > 118 || gesture.vy > 1.1) {
             setDragOffset(0);
             onClose();
             return;
@@ -308,11 +326,14 @@ function ChatSettingsSheet({
         },
         onPanResponderTerminate: () => setDragOffset(0),
       }),
-    [onClose]
+    [expanded, onClose]
   );
 
   useEffect(() => {
-    if (visible) setDragOffset(0);
+    if (visible) {
+      setExpanded(true);
+      setDragOffset(0);
+    }
   }, [visible]);
 
   return (
@@ -327,6 +348,7 @@ function ChatSettingsSheet({
           style={[
             styles.chatSettingsSheetFrame,
             {
+              height: sheetHeight,
               marginBottom: Math.max(spacing.sm, insets.bottom + spacing.sm),
               transform: [{ translateY: dragOffset }],
             },
@@ -341,7 +363,7 @@ function ChatSettingsSheet({
               <View style={styles.chatSettingsGrabber} />
               <View style={styles.chatSettingsHeader}>
                 <View style={styles.chatSettingsTitleWrap}>
-                  <Text numberOfLines={1} style={styles.chatSettingsTitle}>
+                  <Text numberOfLines={2} style={styles.chatSettingsTitle}>
                     {title}
                   </Text>
                   <Text numberOfLines={1} style={styles.chatSettingsSubtitle}>

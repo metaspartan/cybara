@@ -1329,12 +1329,13 @@ const makeStyles = () =>
     },
     chatSettingsSheet: {
       borderRadius: radius.xl,
+      height: "100%",
       maxHeight: "100%",
     },
     chatSettingsSheetContent: {
-      flexShrink: 1,
+      flex: 1,
       gap: spacing.sm,
-      paddingBottom: spacing.md,
+      paddingBottom: spacing.xl,
       paddingHorizontal: spacing.md,
       paddingTop: spacing.sm,
     },
@@ -1362,14 +1363,14 @@ const makeStyles = () =>
     },
     chatSettingsTitle: {
       color: colors.text,
-      fontSize: typography.heading,
+      fontSize: typography.body,
       fontWeight: "900",
-      lineHeight: 22,
+      lineHeight: 20,
     },
     chatSettingsSubtitle: {
       color: colors.textMuted,
-      fontSize: typography.label,
-      lineHeight: 18,
+      fontSize: typography.tiny,
+      lineHeight: 16,
     },
     chatSettingsCloseButton: {
       alignItems: "center",
@@ -1382,7 +1383,7 @@ const makeStyles = () =>
       width: 34,
     },
     chatSettingsScroll: {
-      flexShrink: 1,
+      flex: 1,
     },
     chatSettingsScrollContent: {
       gap: spacing.md,

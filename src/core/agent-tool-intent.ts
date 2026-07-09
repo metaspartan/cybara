@@ -137,7 +137,9 @@ export function selectBuiltinToolNamesForIntent(
     addTools(selected, [...baseTools, ...memoryTools]);
   }
 
-  if (includesAny(text, [/\b(subagent|agent|session|background|parallel|delegate|spawn)\b/])) {
+  if (
+    includesAny(text, [/\b(sub-?agents?|agents?|sessions?|background|parallel|delegate|spawn)\b/])
+  ) {
     addTools(selected, [...baseTools, ...sessionTools, ...codeReadTools]);
     if (includesAny(text, [/\b(fix|implement|write|edit|patch|change|update|modify)\b/])) {
       addTools(selected, codeWriteTools);

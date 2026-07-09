@@ -153,6 +153,11 @@ describe("mobile: chat management", () => {
     expect(screen).toContain("const openToolApprovalSelector");
     expect(screen).toContain("function ChatSettingsSheet(");
     expect(screen).toContain("PanResponder.create");
+    expect(screen).toContain("useWindowDimensions");
+    expect(screen).toContain("const [expanded, setExpanded] = useState(true)");
+    expect(screen).toContain("setExpanded(true)");
+    expect(screen).toContain("setExpanded(false)");
+    expect(screen).toContain("height: sheetHeight");
     expect(screen).toContain("styles.chatSettingsDragHandle");
     expect(screen).toContain("styles.chatSettingsScroll");
     expect(screen).toContain("const chatSettingsRows");
