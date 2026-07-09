@@ -172,6 +172,68 @@ describe("handleChat per-session serialization", () => {
     expect(persisted?.agentId).toBe(secondAgent.id);
   });
 
+  test("sessions get estimated token metrics when a provider omits usage", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Estimated Usage Provider",
+      api_key: "sk-estimated-usage",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Estimated Usage Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-estimated-usage",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    globalThis.fetch = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return new Response(
+        JSON.stringify({
+          id: "estimated-usage",
+          object: "chat.completion",
+          model: "gpt-estimated-usage",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: {
+                role: "assistant",
+                content: "Estimated usage should still be recorded for this chat session.",
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const sessionId = `estimated-usage-${Date.now()}`;
+    createdSessionIds.push(sessionId);
+
+    const response = await handleChat({
+      message: "record tokens without provider usage",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+    });
+
+    expect(response.tokenUsage.inputTokens).toBeGreaterThan(0);
+    expect(response.tokenUsage.outputTokens).toBeGreaterThan(0);
+    expect(response.tokenUsage.totalTokens).toBeGreaterThan(0);
+    expect(response.tokenUsage.callCount).toBe(1);
+    expect(response.tokenUsage.tokensPerSecond).toBeGreaterThan(0);
+
+    const updated = await updateSessionAgent(sessionId, agent.id);
+    expect(updated.tokenUsage?.inputTokens).toBeGreaterThan(0);
+    expect(updated.tokenUsage?.outputTokens).toBeGreaterThan(0);
+    expect(updated.tokenUsage?.tokensPerSecond).toBeGreaterThan(0);
+  });
+
   test("chat turns can override the active agent model for one turn", async () => {
     const provider = providerManager.create({
       provider: "openai",

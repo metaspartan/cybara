@@ -48,6 +48,10 @@ import {
   type StreamWatchdog,
 } from "./llm/stream-watchdog";
 import { consumeOpenAIChatStream } from "./llm/streaming-completions";
+import {
+  getSessionTokenUsageSnapshot,
+  trackEstimatedSessionTokenUsage,
+} from "./llm/session-token-usage";
 import { compactCodexInputItemsForContext, sanitizeCodexInputItems } from "./llm/codex-context";
 import {
   compactOpenAIChatTranscriptInPlace,
@@ -117,17 +121,10 @@ import {
   CONVERSATION_MAX_MESSAGES,
   CONVERSATION_SUMMARY_MAX_CHARS,
   CONVERSATION_SUMMARY_PREFIX,
-  DEFAULT_AGENTIC_MAX_ITERATIONS,
-  DEFAULT_AGENTIC_MAX_RUNTIME_MS,
   DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
   DEFAULT_MODEL_MAX_OUTPUT_TOKENS,
-  DEFAULT_TOOL_LOOP_CRITICAL_THRESHOLD,
-  DEFAULT_TOOL_LOOP_GLOBAL_CIRCUIT_BREAKER_THRESHOLD,
-  DEFAULT_TOOL_LOOP_WARNING_THRESHOLD,
   HARD_MAX_TOOL_RESULT_CHARS,
   LOOP_WARNING_BUCKET_SIZE,
-  MAX_AGENTIC_CONFIGURED_ITERATIONS,
-  MAX_AGENTIC_MAX_RUNTIME_MS,
   MAX_TOOL_RESULT_CONTEXT_SHARE,
   MIN_TOOL_RESULT_CHARS,
   OPENAI_CODEX_JWT_CLAIM_PATH,
@@ -174,6 +171,7 @@ import {
 } from "./agent-model-limits";
 import { coerceToolArguments } from "./tool-argument-coercion";
 import { isToolPolicyBlockedMessage, sanitizeToolErrorMessage } from "./tool-result-classification";
+import { resolveAgenticLoopPolicyFromConfig } from "./agent-loop-policy";
 import {
   BedrockRuntimeClient,
   ConverseCommand,
@@ -1153,202 +1151,16 @@ class AgentManager {
     return params;
   }
 
-  private parsePositiveInt(value: unknown): number | undefined {
-    if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-      return Math.floor(value);
-    }
-    if (typeof value === "string" && value.trim()) {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        return Math.floor(parsed);
-      }
-    }
-    return undefined;
-  }
-
-  private parseBoolean(value: unknown): boolean | undefined {
-    if (typeof value === "boolean") return value;
-    if (typeof value === "number") {
-      if (value === 1) return true;
-      if (value === 0) return false;
-      return undefined;
-    }
-    if (typeof value !== "string") return undefined;
-    const normalized = value.trim().toLowerCase();
-    if (!normalized) return undefined;
-    if (["1", "true", "yes", "on", "enabled"].includes(normalized)) return true;
-    if (["0", "false", "no", "off", "disabled"].includes(normalized)) return false;
-    return undefined;
-  }
-
-  private clampPositiveInt(value: number, max: number): number {
-    return Math.min(max, Math.max(1, value));
-  }
-
   private resolveAgenticLoopPolicy(toolContext?: ToolContext): AgenticLoopPolicy {
-    const clampIterations = (value: number) =>
-      this.clampPositiveInt(value, MAX_AGENTIC_CONFIGURED_ITERATIONS);
-    const clampRuntimeMs = (value: number) =>
-      this.clampPositiveInt(value, MAX_AGENTIC_MAX_RUNTIME_MS);
-    const clampThreshold = (value: number) => this.clampPositiveInt(value, 1000);
-
     const modelParams = this.resolveModelParams(toolContext);
-
     const agentId = toolContext?.agentId;
     const agent = agentId ? this.get(agentId) : undefined;
     const parsedConfig = agent ? parseAgentConfig(agent.config, agent.id) : {};
-    const toolsConfig =
-      parsedConfig.tools &&
-      typeof parsedConfig.tools === "object" &&
-      !Array.isArray(parsedConfig.tools)
-        ? (parsedConfig.tools as Record<string, unknown>)
-        : {};
-    const loopDetectionConfig =
-      toolsConfig.loopDetection &&
-      typeof toolsConfig.loopDetection === "object" &&
-      !Array.isArray(toolsConfig.loopDetection)
-        ? (toolsConfig.loopDetection as Record<string, unknown>)
-        : {};
-
-    const modelParamIterations = this.parsePositiveInt(
-      modelParams.max_tool_iterations ??
-        modelParams.maxToolIterations ??
-        modelParams.tool_loop_iterations ??
-        modelParams.toolLoopIterations ??
-        modelParams.max_iterations ??
-        modelParams.maxIterations
-    );
-    const configIterations = this.parsePositiveInt(
-      parsedConfig.max_tool_iterations ??
-        parsedConfig.maxToolIterations ??
-        parsedConfig.tool_loop_iterations ??
-        parsedConfig.toolLoopIterations ??
-        parsedConfig.max_agentic_iterations ??
-        parsedConfig.maxAgenticIterations
-    );
-    const envIterations = this.parsePositiveInt(process.env.CYBARA_AGENTIC_MAX_ITERATIONS);
-    const modelRuntimeMs = this.parsePositiveInt(
-      modelParams.max_tool_runtime_ms ??
-        modelParams.maxToolRuntimeMs ??
-        modelParams.max_agentic_runtime_ms ??
-        modelParams.maxAgenticRuntimeMs ??
-        modelParams.tool_loop_runtime_ms ??
-        modelParams.toolLoopRuntimeMs ??
-        modelParams.agentic_timeout_ms ??
-        modelParams.agenticTimeoutMs
-    );
-    const modelRuntimeSeconds = this.parsePositiveInt(
-      modelParams.max_tool_runtime_seconds ??
-        modelParams.maxToolRuntimeSeconds ??
-        modelParams.max_agentic_runtime_seconds ??
-        modelParams.maxAgenticRuntimeSeconds ??
-        modelParams.tool_loop_runtime_seconds ??
-        modelParams.toolLoopRuntimeSeconds ??
-        modelParams.agentic_timeout_seconds ??
-        modelParams.agenticTimeoutSeconds
-    );
-    const configRuntimeMs = this.parsePositiveInt(
-      parsedConfig.max_tool_runtime_ms ??
-        parsedConfig.maxToolRuntimeMs ??
-        parsedConfig.max_agentic_runtime_ms ??
-        parsedConfig.maxAgenticRuntimeMs ??
-        parsedConfig.tool_loop_runtime_ms ??
-        parsedConfig.toolLoopRuntimeMs ??
-        parsedConfig.agentic_timeout_ms ??
-        parsedConfig.agenticTimeoutMs
-    );
-    const configRuntimeSeconds = this.parsePositiveInt(
-      parsedConfig.max_tool_runtime_seconds ??
-        parsedConfig.maxToolRuntimeSeconds ??
-        parsedConfig.max_agentic_runtime_seconds ??
-        parsedConfig.maxAgenticRuntimeSeconds ??
-        parsedConfig.tool_loop_runtime_seconds ??
-        parsedConfig.toolLoopRuntimeSeconds ??
-        parsedConfig.agentic_timeout_seconds ??
-        parsedConfig.agenticTimeoutSeconds
-    );
-    const envRuntimeMs = this.parsePositiveInt(process.env.CYBARA_AGENTIC_MAX_RUNTIME_MS);
-    const envRuntimeSeconds = this.parsePositiveInt(process.env.CYBARA_AGENTIC_MAX_RUNTIME_SECONDS);
-
-    const warningThresholdValue = this.parsePositiveInt(
-      modelParams.tool_loop_warning_threshold ??
-        modelParams.toolLoopWarningThreshold ??
-        modelParams.loop_warning_threshold ??
-        modelParams.loopWarningThreshold ??
-        parsedConfig.tool_loop_warning_threshold ??
-        parsedConfig.toolLoopWarningThreshold ??
-        loopDetectionConfig.warningThreshold ??
-        process.env.CYBARA_TOOL_LOOP_WARNING_THRESHOLD
-    );
-    const criticalThresholdValue = this.parsePositiveInt(
-      modelParams.tool_loop_critical_threshold ??
-        modelParams.toolLoopCriticalThreshold ??
-        modelParams.loop_critical_threshold ??
-        modelParams.loopCriticalThreshold ??
-        parsedConfig.tool_loop_critical_threshold ??
-        parsedConfig.toolLoopCriticalThreshold ??
-        loopDetectionConfig.criticalThreshold ??
-        process.env.CYBARA_TOOL_LOOP_CRITICAL_THRESHOLD
-    );
-    const globalCircuitBreakerValue = this.parsePositiveInt(
-      modelParams.tool_loop_global_circuit_breaker_threshold ??
-        modelParams.toolLoopGlobalCircuitBreakerThreshold ??
-        modelParams.loop_global_circuit_breaker_threshold ??
-        modelParams.loopGlobalCircuitBreakerThreshold ??
-        parsedConfig.tool_loop_global_circuit_breaker_threshold ??
-        parsedConfig.toolLoopGlobalCircuitBreakerThreshold ??
-        loopDetectionConfig.globalCircuitBreakerThreshold ??
-        process.env.CYBARA_TOOL_LOOP_GLOBAL_CIRCUIT_BREAKER_THRESHOLD
-    );
-    const loopDetectionEnabled = this.parseBoolean(
-      modelParams.tool_loop_detection_enabled ??
-        modelParams.toolLoopDetectionEnabled ??
-        modelParams.loop_detection_enabled ??
-        modelParams.loopDetectionEnabled ??
-        parsedConfig.tool_loop_detection_enabled ??
-        parsedConfig.toolLoopDetectionEnabled ??
-        loopDetectionConfig.enabled ??
-        process.env.CYBARA_TOOL_LOOP_DETECTION_ENABLED
-    );
-
-    const warningThreshold = clampThreshold(
-      warningThresholdValue ?? DEFAULT_TOOL_LOOP_WARNING_THRESHOLD
-    );
-    let criticalThreshold = clampThreshold(
-      criticalThresholdValue ?? DEFAULT_TOOL_LOOP_CRITICAL_THRESHOLD
-    );
-    let globalCircuitBreakerThreshold = clampThreshold(
-      globalCircuitBreakerValue ?? DEFAULT_TOOL_LOOP_GLOBAL_CIRCUIT_BREAKER_THRESHOLD
-    );
-
-    if (criticalThreshold <= warningThreshold) {
-      criticalThreshold = warningThreshold + 1;
-    }
-    if (globalCircuitBreakerThreshold <= criticalThreshold) {
-      globalCircuitBreakerThreshold = criticalThreshold + 1;
-    }
-
-    const maxIterationsRaw = modelParamIterations ?? configIterations ?? envIterations;
-    // Fall back to a generous default cap instead of leaving the loop unbounded.
-    const maxIterations = clampIterations(maxIterationsRaw ?? DEFAULT_AGENTIC_MAX_ITERATIONS);
-
-    const maxRuntimeMsRaw =
-      modelRuntimeMs ??
-      (modelRuntimeSeconds ? modelRuntimeSeconds * 1000 : undefined) ??
-      configRuntimeMs ??
-      (configRuntimeSeconds ? configRuntimeSeconds * 1000 : undefined) ??
-      envRuntimeMs ??
-      (envRuntimeSeconds ? envRuntimeSeconds * 1000 : undefined);
-    const maxRuntimeMs = clampRuntimeMs(maxRuntimeMsRaw ?? DEFAULT_AGENTIC_MAX_RUNTIME_MS);
-
-    return {
-      maxIterations,
-      maxRuntimeMs,
-      loopDetectionEnabled: loopDetectionEnabled ?? true,
-      warningThreshold,
-      criticalThreshold,
-      globalCircuitBreakerThreshold,
-    };
+    return resolveAgenticLoopPolicyFromConfig({
+      agentConfig: parsedConfig,
+      env: process.env,
+      modelParams,
+    });
   }
 
   private updateNoProgressLoopState(
@@ -1749,18 +1561,33 @@ class AgentManager {
     });
 
     const startedAt = performance.now();
+    const sessionTokenUsageBefore = getSessionTokenUsageSnapshot(toolContext?.sessionId);
     try {
       const result = await this.callLLMInternal(provider, model, messages, tools, toolContext);
+      const durationMs = Math.round(performance.now() - startedAt);
       const sanitizedResult =
         typeof result.content === "string" && hasTextToolCallMarkup(result.content)
           ? { ...result, content: sanitizeAssistantContent(result.content) }
           : result;
+      trackEstimatedSessionTokenUsage({
+        before: sessionTokenUsageBefore,
+        durationMs,
+        messages,
+        model,
+        providerName,
+        providerUrl:
+          provider && typeof provider === "object" && "base_url" in provider
+            ? String((provider as { base_url?: unknown }).base_url || "")
+            : "",
+        result: sanitizedResult,
+        toolContext,
+      });
       await emitAgentHook({
         type: "llm_response",
         context: hookContext,
         content: sanitizedResult.content,
         toolNames: (sanitizedResult.tool_calls || []).map((toolCall) => toolCall.name),
-        durationMs: Math.round(performance.now() - startedAt),
+        durationMs,
       });
       return sanitizedResult;
     } catch (error) {
