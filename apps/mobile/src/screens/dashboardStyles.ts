@@ -1114,7 +1114,7 @@ const makeStyles = () =>
       paddingLeft: spacing.sm,
     },
     mobileFileChangesCard: {
-      backgroundColor: colors.surfaceMuted,
+      backgroundColor: colors.surfaceLift,
       borderColor: colors.border,
       borderRadius: radius.md,
       borderWidth: 1,
