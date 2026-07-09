@@ -115,7 +115,7 @@ else:
             pass
 `;
 
-const RESIZE_SEQUENCE = /\x1b\[RESIZE:\d+,\d+\]/g;
+const RESIZE_SEQUENCE = new RegExp(`${String.fromCharCode(27)}\\[RESIZE:\\d+,\\d+\\]`, "g");
 
 const TERMINAL_ENV_ALLOWED = new Set([
   "PATH",
@@ -196,13 +196,7 @@ function buildWindowsTerminalEnv(home: string): Record<string, string> {
 
 function resolveWindowsShellArgv(): string[] {
   const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || "C:\\Windows";
-  const powershell = join(
-    systemRoot,
-    "System32",
-    "WindowsPowerShell",
-    "v1.0",
-    "powershell.exe"
-  );
+  const powershell = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
   if (existsSync(powershell)) {
     return [powershell, "-NoLogo"];
   }
