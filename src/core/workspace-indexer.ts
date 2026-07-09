@@ -109,6 +109,7 @@ const HARD_IGNORE_DIRS = new Set([
   ".git",
   ".hg",
   ".svn",
+  ".build",
   ".research",
   ".cache",
   ".gradle",
@@ -123,6 +124,7 @@ const HARD_IGNORE_DIRS = new Set([
   "coverage",
   "__pycache__",
 ]);
+const HARD_IGNORE_FILES = new Set([".ds_store", "thumbs.db"]);
 
 function resolveCanonicalPath(pathValue: string): string {
   try {
@@ -688,6 +690,7 @@ class WorkspaceIndexer {
     settings: WorkspaceIndexerSettings
   ): boolean {
     if (!settings.includeHidden && fileName.startsWith(".")) return true;
+    if (HARD_IGNORE_FILES.has(fileName.trim().toLowerCase())) return true;
     if (fileSize > settings.maxFileSizeBytes) return true;
     const extension = extname(fileName).toLowerCase();
     if (BINARY_EXTENSIONS.has(extension)) return true;

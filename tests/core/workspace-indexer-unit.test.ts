@@ -98,12 +98,15 @@ const afterChange = await workspaceIndexer.search("delta-new");
 const removedGoneAfterReindex = await workspaceIndexer.search("alpha.ts");
 
 mkdirSync(join(ws, ".research", "hermes-agent"), { recursive: true });
+mkdirSync(join(ws, ".build", "debug"), { recursive: true });
 mkdirSync(join(ws, "coverage"), { recursive: true });
 mkdirSync(join(ws, "custom_ignored"), { recursive: true });
 writeFileSync(join(ws, ".research", "hermes-agent", "ignored.ts"), "export const hiddenResearch = 1;\\n");
+writeFileSync(join(ws, ".build", "debug", "ignored.swiftdeps"), "swiftdeps\\n");
 writeFileSync(join(ws, "coverage", "ignored.ts"), "export const ignoredCoverage = 1;\\n");
 writeFileSync(join(ws, "custom_ignored", "ignored.ts"), "export const ignoredCustom = 1;\\n");
 writeFileSync(join(ws, ".visible-hidden.ts"), "export const visibleHidden = 1;\\n");
+writeFileSync(join(ws, ".DS_Store"), "metadata\\n");
 workspaceIndexer.updateSettings({
   enabled: true,
   semanticEnabled: false,
@@ -270,8 +273,10 @@ describe("workspace indexer lexical indexing", () => {
     const paths = report.hardIgnoredWithHiddenEnabled.files.map((f) => f.relativePath);
     expect(paths).toContain(".visible-hidden.ts");
     expect(paths.some((p) => p.includes(".research"))).toBe(false);
+    expect(paths.some((p) => p.includes(".build"))).toBe(false);
     expect(paths.some((p) => p.includes("coverage"))).toBe(false);
     expect(paths.some((p) => p.includes("custom_ignored"))).toBe(false);
+    expect(paths).not.toContain(".DS_Store");
   });
 
   test("indexes files with null bytes and huge lines without crashing", () => {
