@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  type LoadedChatSession,
   useDeleteSession,
   useLoadSession,
   usePinSession,
@@ -65,6 +66,8 @@ const PINNED_WORKSPACE_GROUPS_STORAGE_KEY = "cybara.chat.pinnedWorkspaceGroupIds
 const CHAT_SIDEBAR_WIDTH_STORAGE_KEY = "cybara.chat.sidebarWidth";
 const CHAT_SIDEBAR_MIN_WIDTH = 248;
 const CHAT_SIDEBAR_MAX_WIDTH = 420;
+const SIDEBAR_IDLE_PREFETCH_LIMIT = 4;
+const SIDEBAR_IDLE_PREFETCH_MAX_MESSAGES = 90;
 
 interface SessionTooltipState {
   anchor: DOMRect;
@@ -207,6 +210,7 @@ export function SessionsPanel({
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const sessionsRefreshTimerRef = useRef<number | null>(null);
   const sessionLoadSequenceRef = useRef(0);
+  const warmedSessionIdsRef = useRef<Set<string>>(new Set());
   const sessionGroups = useMemo(() => {
     const groups = groupSessionsForSidebar(sessions, deferredSearchQuery);
     return [...groups].sort((a, b) => {
@@ -259,6 +263,42 @@ export function SessionsPanel({
     };
   }, [refetch]);
 
+  useEffect(() => {
+    const candidates = sessionGroups
+      .flatMap((group) => group.sessions)
+      .filter((session) => {
+        if (warmedSessionIdsRef.current.has(session.id)) return false;
+        if (loadSession.getCached(session.id)) return false;
+        const messageCount = Math.max(0, Number(session.message_count || 0));
+        return messageCount <= SIDEBAR_IDLE_PREFETCH_MAX_MESSAGES;
+      })
+      .slice(0, SIDEBAR_IDLE_PREFETCH_LIMIT);
+
+    if (candidates.length === 0) return;
+
+    const warm = () => {
+      for (const session of candidates) {
+        warmedSessionIdsRef.current.add(session.id);
+        void loadSession.prefetch(session.id).catch(() => {
+          warmedSessionIdsRef.current.delete(session.id);
+        });
+      }
+    };
+
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout?: number }) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+
+    if (typeof idleWindow.requestIdleCallback === "function") {
+      const idleId = idleWindow.requestIdleCallback(warm, { timeout: 2000 });
+      return () => idleWindow.cancelIdleCallback?.(idleId);
+    }
+
+    const timerId = globalThis.setTimeout(warm, 300);
+    return () => globalThis.clearTimeout(timerId);
+  }, [loadSession, sessionGroups]);
+
   const beginResizeSidebar = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     const startX = event.clientX;
@@ -285,22 +325,42 @@ export function SessionsPanel({
     window.addEventListener("mouseup", handleMouseUp);
   };
 
+  const applyLoadedSession = useCallback(
+    (sessionId: string, result: LoadedChatSession) => {
+      onLoadSession(
+        sessionId,
+        result.messagesList as ChatMessage[],
+        result.workspace_dir || null,
+        result.agent_id || null,
+        (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null,
+        (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
+      );
+    },
+    [onLoadSession]
+  );
+
+  const warmSessionDetail = useCallback(
+    (sessionId: string) => {
+      if (loadSession.getCached(sessionId)) return;
+      void loadSession.prefetch(sessionId).catch(() => {});
+    },
+    [loadSession]
+  );
+
   const handleLoadSession = async (sessionId: string) => {
     if (pendingSessionLoadId === sessionId) return;
     const loadSequence = sessionLoadSequenceRef.current + 1;
     sessionLoadSequenceRef.current = loadSequence;
-    setPendingSessionLoadId(sessionId);
+    const cached = loadSession.getCached(sessionId);
+    if (cached?.messagesList) {
+      applyLoadedSession(sessionId, cached);
+    } else {
+      setPendingSessionLoadId(sessionId);
+    }
     try {
       const result = await loadSession.mutateAsync(sessionId);
       if (sessionLoadSequenceRef.current === loadSequence && result?.messagesList) {
-        onLoadSession(
-          sessionId,
-          result.messagesList as ChatMessage[],
-          (result as { workspace_dir?: string | null }).workspace_dir || null,
-          (result as { agent_id?: string | null }).agent_id || null,
-          (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null,
-          (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
-        );
+        applyLoadedSession(sessionId, result as LoadedChatSession);
       }
     } catch (error) {
       if (sessionLoadSequenceRef.current === loadSequence) {
@@ -571,15 +631,17 @@ export function SessionsPanel({
                         aria-busy={isRowLoading}
                         data-loading={isRowLoading ? "true" : undefined}
                         onClick={() => void handleLoadSession(session.id)}
-                        onMouseEnter={(event) =>
+                        onFocus={() => warmSessionDetail(session.id)}
+                        onMouseEnter={(event) => {
+                          warmSessionDetail(session.id);
                           setHoveredSessionTooltip({
                             anchor: event.currentTarget.getBoundingClientRect(),
                             displayTitle,
                             previewText,
                             routeLabel,
                             session,
-                          })
-                        }
+                          });
+                        }}
                         onMouseLeave={() => setHoveredSessionTooltip(null)}
                       >
                         <div className="min-w-0 w-full">

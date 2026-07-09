@@ -18,13 +18,34 @@ interface RevertMessageInput {
 }
 
 const CHAT_SESSION_LIST_LIMIT = 150;
-const SESSION_DETAIL_QUERY_KEY = "session-detail";
+export const SESSION_DETAIL_QUERY_KEY = "session-detail";
+const SESSION_DETAIL_STALE_MS = 45_000;
+const SESSION_DETAIL_GC_MS = 10 * 60_000;
+
+export interface LoadedChatSession {
+  id: string;
+  agent_id: string;
+  provider?: string;
+  provider_id?: string;
+  provider_name?: string;
+  model?: string;
+  title?: string | null;
+  created_at: string;
+  updated_at: string;
+  workspace_dir?: string | null;
+  contextUsage?: unknown;
+  tokenUsage?: unknown;
+  plan?: unknown;
+  messagesList: ChatMessage[];
+}
+
+function sessionDetailQueryKey(sessionId: string) {
+  return [SESSION_DETAIL_QUERY_KEY, sessionId, "fullToolCalls"] as const;
+}
 
 function invalidateSessionDetail(queryClient: QueryClient, sessionId?: string | null) {
   return queryClient.invalidateQueries({
-    queryKey: sessionId
-      ? [SESSION_DETAIL_QUERY_KEY, sessionId, "fullToolCalls"]
-      : [SESSION_DETAIL_QUERY_KEY],
+    queryKey: sessionId ? sessionDetailQueryKey(sessionId) : [SESSION_DETAIL_QUERY_KEY],
   });
 }
 
@@ -407,20 +428,34 @@ export function useUpdateSessionAgent() {
 
 export function useLoadSession() {
   const queryClient = useQueryClient();
+  const loadSessionDetail = useCallback(async (sessionId: string): Promise<LoadedChatSession> => {
+    const response = await chatApi.getSession(sessionId, { includeFullToolCalls: true });
+    if (response.success && response.data) {
+      return response.data as LoadedChatSession;
+    }
+    throw new Error(response.error || "Failed to load session");
+  }, []);
 
-  return useMutation({
+  const mutation = useMutation({
     mutationFn: (sessionId: string) =>
       queryClient.fetchQuery({
-        queryKey: [SESSION_DETAIL_QUERY_KEY, sessionId, "fullToolCalls"],
-        staleTime: 0,
-        gcTime: 120_000,
-        queryFn: async () => {
-          const response = await chatApi.getSession(sessionId, { includeFullToolCalls: true });
-          if (response.success && response.data) {
-            return response.data;
-          }
-          throw new Error(response.error || "Failed to load session");
-        },
+        queryKey: sessionDetailQueryKey(sessionId),
+        staleTime: SESSION_DETAIL_STALE_MS,
+        gcTime: SESSION_DETAIL_GC_MS,
+        queryFn: () => loadSessionDetail(sessionId),
       }),
   });
+
+  return {
+    ...mutation,
+    getCached: (sessionId: string) =>
+      queryClient.getQueryData<LoadedChatSession>(sessionDetailQueryKey(sessionId)),
+    prefetch: (sessionId: string) =>
+      queryClient.prefetchQuery({
+        queryKey: sessionDetailQueryKey(sessionId),
+        staleTime: SESSION_DETAIL_STALE_MS,
+        gcTime: SESSION_DETAIL_GC_MS,
+        queryFn: () => loadSessionDetail(sessionId),
+      }),
+  };
 }
