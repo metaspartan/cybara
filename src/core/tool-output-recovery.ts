@@ -102,13 +102,13 @@ export function formatRecoverableToolOutputPreview(
   const recoveryHint = outputPath
     ? `Full output saved to: ${outputPath}\nTo recover omitted details, use the read tool with offset/limit on that file, or grep/search it first. Do not read the whole file unless the full output is needed.`
     : "Full output remains stored in the chat transcript, but Cybara could not write a recovery cache file.";
-  const marker = `\n[truncated: omitted ${normalized.length} chars from the middle]\n${recoveryHint}\n`;
+  const marker = `\n[truncated: output exceeded context limit]\n[omitted ${normalized.length} chars from the middle]\n${recoveryHint}\n`;
   const budget = Math.max(64, maxChars - marker.length);
   const headChars = Math.max(16, Math.floor(budget * 0.68));
   const tailChars = Math.max(16, budget - headChars);
   const omitted = Math.max(1, normalized.length - headChars - tailChars);
   return {
-    content: `${normalized.slice(0, headChars)}\n[truncated: omitted ${omitted} chars from the middle]\n${recoveryHint}\n${normalized.slice(-tailChars)}`,
+    content: `${normalized.slice(0, headChars)}\n[truncated: output exceeded context limit]\n[omitted ${omitted} chars from the middle]\n${recoveryHint}\n${normalized.slice(-tailChars)}`,
     truncated: true,
     outputPath,
   };

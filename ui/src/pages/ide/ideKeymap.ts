@@ -22,13 +22,28 @@ export interface IdeActionDef {
 // plus "shift"/"alt"/"ctrl") joined with "+", ending in a key token. Defaults
 // mirror the common Zed / VS Code shortcuts.
 export const IDE_ACTIONS: readonly IdeActionDef[] = [
-  { id: "commandPalette", label: "Command Palette", category: "General", defaultBinding: "mod+shift+p" },
+  {
+    id: "commandPalette",
+    label: "Command Palette",
+    category: "General",
+    defaultBinding: "mod+shift+p",
+  },
   { id: "quickOpen", label: "Go to File", category: "Navigation", defaultBinding: "mod+p" },
   { id: "openSettings", label: "Open IDE Settings", category: "General", defaultBinding: "mod+," },
   { id: "toggleTerminal", label: "Toggle Terminal", category: "Panels", defaultBinding: "mod+`" },
   { id: "newTerminal", label: "New Terminal", category: "Panels", defaultBinding: "mod+shift+`" },
-  { id: "searchInFiles", label: "Search in Files", category: "Navigation", defaultBinding: "mod+shift+f" },
-  { id: "focusExplorer", label: "Focus Explorer", category: "Panels", defaultBinding: "mod+shift+e" },
+  {
+    id: "searchInFiles",
+    label: "Search in Files",
+    category: "Navigation",
+    defaultBinding: "mod+shift+f",
+  },
+  {
+    id: "focusExplorer",
+    label: "Focus Explorer",
+    category: "Panels",
+    defaultBinding: "mod+shift+e",
+  },
   { id: "focusOutline", label: "Focus Outline", category: "Panels", defaultBinding: "mod+shift+o" },
   { id: "openWorkspace", label: "Open Workspace…", category: "General", defaultBinding: "mod+o" },
   { id: "newFile", label: "New File", category: "General", defaultBinding: "mod+n" },
@@ -78,7 +93,9 @@ export function formatBinding(binding: string, isMac: boolean): string {
         case "`":
           return "`";
         default:
-          return token.length === 1 ? token.toUpperCase() : token.replace(/^\w/, (c) => c.toUpperCase());
+          return token.length === 1
+            ? token.toUpperCase()
+            : token.replace(/^\w/, (c) => c.toUpperCase());
       }
     })
     .join(isMac ? "" : "+");

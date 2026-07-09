@@ -174,6 +174,15 @@ import {
   persistOpenTabs,
 } from "./ide/idePersistence";
 import {
+  IDE_ACTIONS,
+  type IdeActionId,
+  bindingFromEvent,
+  formatBinding,
+  loadKeymapOverrides,
+  persistKeymapOverrides,
+  resolveKeymap,
+} from "./ide/ideKeymap";
+import {
   getFileIcon,
   formatSize,
   formatDurationMs,
@@ -303,6 +312,10 @@ export function IDE() {
   const [quickOpenNotice, setQuickOpenNotice] = useState<string | null>(null);
   const [quickOpenSelectedIndex, setQuickOpenSelectedIndex] = useState(0);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [keymapOverrides, setKeymapOverrides] = useState<Record<string, string>>(() =>
+    loadKeymapOverrides()
+  );
+  const [recordingActionId, setRecordingActionId] = useState<IdeActionId | null>(null);
   const [commandQuery, setCommandQuery] = useState("");
   const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
   const [outlineSymbols, setOutlineSymbols] = useState<IdeOutlineSymbol[]>([]);
@@ -1731,61 +1744,38 @@ export function IDE() {
         return;
       }
 
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "p") {
+      const shellBinding = bindingFromEvent(event);
+      const activeKeymap = resolveKeymap(keymapOverrides);
+      const shellActions: Record<IdeActionId, () => void> = {
+        commandPalette: openCommandPalette,
+        quickOpen: openQuickOpenPalette,
+        openSettings: () => openIdeSettings("general"),
+        toggleTerminal: toggleTerminalPanel,
+        newTerminal: openNewTerminal,
+        searchInFiles: openGlobalSearchPanel,
+        focusExplorer: () => setSidebarMode("explorer"),
+        focusOutline: () => {
+          setSidebarMode("outline");
+          window.requestAnimationFrame(() => {
+            outlineInputRef.current?.focus();
+            outlineInputRef.current?.select();
+          });
+        },
+        openWorkspace: () => {
+          void handlePromptOpenWorkspace();
+        },
+        newFile: () => {
+          setCreateParentPath(rootInfo?.path || currentPath);
+          setCreateType("file");
+        },
+        toggleChat: () => setIsIdeChatOpen((previous) => !previous),
+      };
+      const matchedShellAction = (Object.keys(shellActions) as IdeActionId[]).find(
+        (action) => activeKeymap[action] === shellBinding
+      );
+      if (matchedShellAction) {
         event.preventDefault();
-        openCommandPalette();
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key === ",") {
-        event.preventDefault();
-        openIdeSettings("general");
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.code === "Backquote") {
-        event.preventDefault();
-        toggleTerminalPanel();
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.code === "Backquote") {
-        event.preventDefault();
-        openNewTerminal();
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "f") {
-        event.preventDefault();
-        openGlobalSearchPanel();
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "e") {
-        event.preventDefault();
-        setSidebarMode("explorer");
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "o") {
-        event.preventDefault();
-        setSidebarMode("outline");
-        window.requestAnimationFrame(() => {
-          outlineInputRef.current?.focus();
-          outlineInputRef.current?.select();
-        });
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "p") {
-        event.preventDefault();
-        openQuickOpenPalette();
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "o") {
-        event.preventDefault();
-        void handlePromptOpenWorkspace();
+        shellActions[matchedShellAction]();
         return;
       }
 
@@ -1796,19 +1786,6 @@ export function IDE() {
         } else {
           handleCycleTabs(1);
         }
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "n") {
-        event.preventDefault();
-        setCreateParentPath(rootInfo?.path || currentPath);
-        setCreateType("file");
-        return;
-      }
-
-      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key === "\\") {
-        event.preventDefault();
-        setIsIdeChatOpen((previous) => !previous);
         return;
       }
 
@@ -1853,6 +1830,7 @@ export function IDE() {
     openIdeSettings,
     openNewTerminal,
     openQuickOpenPalette,
+    keymapOverrides,
     rootInfo?.path,
     sidebarMode,
     showCommandPalette,
@@ -2342,6 +2320,7 @@ export function IDE() {
       { id: "general", label: "General", description: "Workspace and layout defaults" },
       { id: "editor", label: "Editor", description: "Font, line-height, minimap" },
       { id: "indexing", label: "Indexing", description: "Workspace index and semantic search" },
+      { id: "shortcuts", label: "Shortcuts", description: "Customize keyboard shortcuts" },
       { id: "terminal", label: "Terminal", description: "Integrated terminal behavior" },
     ];
   const visibleSettingsSectionIds = useMemo(() => {

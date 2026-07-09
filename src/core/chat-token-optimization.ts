@@ -68,15 +68,24 @@ export function buildMemoryFlushMessages(
 export function formatToolResultPromptBlock(
   toolName: string,
   result: unknown,
-  options: { toonEnabled?: boolean; maxChars?: number; sessionId?: string; toolCallId?: string } = {}
+  options: {
+    toonEnabled?: boolean;
+    maxChars?: number;
+    sessionId?: string;
+    toolCallId?: string;
+  } = {}
 ): string {
   const content =
     typeof result === "string"
       ? result
       : formatToolResultForModel(result, { toonEnabled: options.toonEnabled });
-  return `Tool: ${toolName}\nResult: ${truncateForPrompt(content, options.maxChars ?? TOOL_RESULT_PROMPT_MAX_CHARS, {
-    sessionId: options.sessionId,
-    toolName,
-    toolCallId: options.toolCallId,
-  })}`;
+  return `Tool: ${toolName}\nResult: ${truncateForPrompt(
+    content,
+    options.maxChars ?? TOOL_RESULT_PROMPT_MAX_CHARS,
+    {
+      sessionId: options.sessionId,
+      toolName,
+      toolCallId: options.toolCallId,
+    }
+  )}`;
 }

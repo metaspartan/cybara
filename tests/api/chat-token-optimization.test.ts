@@ -18,7 +18,8 @@ describe("chat token optimization", () => {
       toolCallId: "call-1",
     });
     expect(block).toContain("Tool: exec");
-    expect(block).toContain("[truncated: omitted ");
+    expect(block).toContain("[truncated: output exceeded context limit]");
+    expect(block).toContain("[omitted ");
     expect(block).toContain("Full output saved to:");
     expect(block.length).toBeLessThan(TOOL_RESULT_PROMPT_MAX_CHARS + 360);
     const savedPath = block.match(/Full output saved to: (.+)/)?.[1]?.trim();
