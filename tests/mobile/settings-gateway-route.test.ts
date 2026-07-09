@@ -6,7 +6,10 @@ const root = fileURLToPath(new URL("../../apps/mobile/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
 
 describe("mobile settings: Gateway runtime controls", () => {
-  const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardSettingsPanels.tsx");
+  const screen =
+    read("screens/DashboardScreen.tsx") +
+    read("screens/dashboardSettingsPanels.tsx") +
+    read("screens/dashboardGatewayPanel.tsx");
   const api = read("lib/api.ts");
   const app = read("../App.tsx");
 

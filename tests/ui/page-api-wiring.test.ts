@@ -208,7 +208,7 @@ describe("UI page API wiring", () => {
     const codeViewerSource = readPage("ide/CodeViewer.tsx");
 
     expect(ideSource).toContain('placeholder="Filter files"');
-    expect(ideSource).toContain('setTreeFilter("")');
+    expect(ideSource).toContain('updateTreeFilter("")');
     expect(ideSource).toContain("jumpToLineRequest={requestedJumpLine}");
     expect(codeViewerSource).toContain("const promptJumpToLine = useCallback(");
     expect(codeViewerSource).toContain('e.key.toLowerCase() === "g"');
