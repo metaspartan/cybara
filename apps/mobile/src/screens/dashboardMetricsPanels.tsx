@@ -1,6 +1,10 @@
 import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ArrowDown,
+  ArrowUp,
   CheckCircle2,
   ChevronRight,
   Cpu,
@@ -48,6 +52,56 @@ import { endpointStatusLabel, relativeTimestamp } from "./dashboardHelpers";
 import { styles } from "./dashboardStyles";
 import { EmptyState, LoadingState, SummaryTile, type IconGlyph } from "./dashboardPrimitives";
 import type { FeatureSummary } from "../lib/api";
+
+const USAGE_ORDER_KEY = "cybara.mobile.usageOrder";
+
+async function readUsageOrder(): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem(USAGE_ORDER_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeUsageOrder(ids: string[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(USAGE_ORDER_KEY, JSON.stringify(ids));
+  } catch {
+    void 0;
+  }
+}
+
+function statusRank(status: string): number {
+  if (status === "exhausted") return 0;
+  if (status === "warning") return 1;
+  if (status === "ok") return 2;
+  return 3;
+}
+
+function sortPlanRows(
+  rows: MobileProviderPlanRow[],
+  customOrder: string[]
+): MobileProviderPlanRow[] {
+  if (customOrder.length === 0) {
+    return [...rows].sort(
+      (a, b) =>
+        statusRank(a.status) - statusRank(b.status) ||
+        a.providerName.localeCompare(b.providerName, undefined, { sensitivity: "base" })
+    );
+  }
+  const rank = new Map(customOrder.map((id, index) => [id, index]));
+  return [...rows].sort((a, b) => {
+    const rankA = rank.has(a.id) ? rank.get(a.id)! : Number.MAX_SAFE_INTEGER;
+    const rankB = rank.has(b.id) ? rank.get(b.id)! : Number.MAX_SAFE_INTEGER;
+    if (rankA !== rankB) return rankA - rankB;
+    return statusRank(a.status) - statusRank(b.status);
+  });
+}
 
 export function MetricsPanel({
   accentColor,
@@ -389,6 +443,36 @@ export function UsagePanel({
   metrics: MetricsSnapshot | null;
   metricsError: string | null;
 }) {
+  const [customOrder, setCustomOrder] = useState<string[]>([]);
+
+  useEffect(() => {
+    void readUsageOrder().then(setCustomOrder);
+  }, []);
+
+  const movePlan = useCallback(
+    (providerId: string, direction: -1 | 1) => {
+      setCustomOrder((prevOrder) => {
+        const baseRows = mobileProviderPlanRows(metrics);
+        const ids = sortPlanRows(baseRows, prevOrder).map((row) => row.id);
+        const currentIndex = ids.indexOf(providerId);
+        const targetIndex = currentIndex + direction;
+        if (currentIndex < 0 || targetIndex < 0 || targetIndex >= ids.length) return prevOrder;
+        const next = [...ids];
+        const [moved] = next.splice(currentIndex, 1);
+        if (!moved) return prevOrder;
+        next.splice(targetIndex, 0, moved);
+        void writeUsageOrder(next);
+        return next;
+      });
+    },
+    [metrics]
+  );
+
+  const providerPlanRows = useMemo(
+    () => sortPlanRows(mobileProviderPlanRows(metrics), customOrder),
+    [metrics, customOrder]
+  );
+
   if (!metrics && !metricsError) {
     return (
       <StableDetailPanel>
@@ -397,7 +481,6 @@ export function UsagePanel({
     );
   }
 
-  const providerPlanRows = mobileProviderPlanRows(metrics);
   return (
     <StableDetailPanel>
       <View style={styles.summaryGrid}>
@@ -434,7 +517,11 @@ export function UsagePanel({
       {metricsError ? <EmptyState label="Usage unavailable" detail={metricsError} /> : null}
 
       <MetricSection title="Provider usage" detail="5-hour and weekly coding-plan windows">
-        <ProviderPlanMetricsGrid plans={providerPlanRows} />
+        <ProviderPlanMetricsGrid
+          plans={providerPlanRows}
+          onMoveUp={(id) => movePlan(id, -1)}
+          onMoveDown={(id) => movePlan(id, 1)}
+        />
       </MetricSection>
     </StableDetailPanel>
   );
@@ -482,13 +569,21 @@ function mobileProviderPlanRows(metrics: MetricsSnapshot | null): MobileProvider
   );
 }
 
-function ProviderPlanMetricsGrid({ plans }: { plans: MobileProviderPlanRow[] }) {
+function ProviderPlanMetricsGrid({
+  plans,
+  onMoveUp,
+  onMoveDown,
+}: {
+  plans: MobileProviderPlanRow[];
+  onMoveUp?: (id: string) => void;
+  onMoveDown?: (id: string) => void;
+}) {
   if (plans.length === 0) {
     return <Text style={styles.settingsInfoText}>No provider plan data yet</Text>;
   }
   return (
     <View style={styles.providerPlanMetricsGrid}>
-      {plans.map((plan) => (
+      {plans.map((plan, index) => (
         <View key={plan.id} style={styles.providerPlanMetricsCard}>
           <View style={styles.providerPlanMetricsHeader}>
             <View style={styles.flexShrink}>
@@ -499,6 +594,32 @@ function ProviderPlanMetricsGrid({ plans }: { plans: MobileProviderPlanRow[] }) 
                 {plan.planName}
               </Text>
             </View>
+            {onMoveUp && onMoveDown ? (
+              <View style={{ flexDirection: "row", gap: 2 }}>
+                <Pressable
+                  hitSlop={8}
+                  disabled={index === 0}
+                  onPress={() => onMoveUp(plan.id)}
+                  style={{
+                    opacity: index === 0 ? 0.3 : 1,
+                    padding: 4,
+                  }}
+                >
+                  <ArrowUp size={16} color={colors.textMuted} />
+                </Pressable>
+                <Pressable
+                  hitSlop={8}
+                  disabled={index === plans.length - 1}
+                  onPress={() => onMoveDown(plan.id)}
+                  style={{
+                    opacity: index === plans.length - 1 ? 0.3 : 1,
+                    padding: 4,
+                  }}
+                >
+                  <ArrowDown size={16} color={colors.textMuted} />
+                </Pressable>
+              </View>
+            ) : null}
             <Text numberOfLines={1} style={styles.providerPlanMetricsStatus}>
               {plan.status}
             </Text>

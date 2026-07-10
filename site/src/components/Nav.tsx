@@ -2,10 +2,12 @@ import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { NAV_LINKS, GITHUB_URL } from "../content";
 import { useSiteI18n } from "../i18n";
+import { useStarCount, formatStarCount } from "../hooks/useStarCount";
 
 export function Nav(): React.ReactElement {
   const [scrolled, setScrolled] = useState<boolean>(false);
   const { t } = useSiteI18n();
+  const starCount = useStarCount();
 
   useEffect(() => {
     const onScroll = (): void => setScrolled(window.scrollY > 12);
@@ -35,9 +37,13 @@ export function Nav(): React.ReactElement {
             </a>
           ))}
         </nav>
-        <a className="btn btn--ghost nav-cta" href={GITHUB_URL} target="_blank" rel="noreferrer">
-          <Icon name="github" className="btn-icon" />
-          <span>GitHub</span>
+        <a className="nav-star" href={GITHUB_URL} target="_blank" rel="noreferrer" aria-label="Star Cybara on GitHub">
+          <Icon name="github" className="nav-star-icon" />
+          <span className="nav-star-label">Star</span>
+          <span className="nav-star-count" aria-hidden="true">
+            <Icon name="star" className="nav-star-glyph" />
+            {formatStarCount(starCount) || "—"}
+          </span>
         </a>
       </div>
     </header>

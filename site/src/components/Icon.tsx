@@ -23,7 +23,8 @@ export type IconName =
   | "package"
   | "code"
   | "gauge"
-  | "plug";
+  | "plug"
+  | "star";
 
 interface IconProps {
   name: IconName;
@@ -171,6 +172,13 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M12 22v-5M9 8V2M15 8V2" />
       <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
     </>
+  ),
+  star: (
+    <path
+      fill="currentColor"
+      stroke="none"
+      d="M12 2.5l2.9 6.1 6.6.9-4.8 4.6 1.2 6.5L12 18.6l-5.9 3 1.2-6.5L2.5 9.5l6.6-.9z"
+    />
   ),
 };
 

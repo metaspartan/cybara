@@ -9,18 +9,50 @@ struct UsageScreen: View {
     @State private var loaded = false
     @State private var error: String?
     @State private var lastUpdated: Date?
+    @AppStorage("cybara.usage.customOrder") private var customOrderData: Data = Data()
 
-    private var plans: [ProviderPlanSnapshot] {
+    private var customOrder: [String] {
+        decodeUsageOrder(customOrderData)
+    }
+
+    private var basePlans: [ProviderPlanSnapshot] {
         (status?.providers ?? [])
             .filter { plan in
                 plan.managedAutomatically &&
                     (plan.monitored || plan.externalSourceAvailable || !plan.windows.isEmpty)
             }
-            .sorted { lhs, rhs in
+    }
+
+    private var plans: [ProviderPlanSnapshot] {
+        let order = customOrder
+        if order.isEmpty {
+            return basePlans.sorted { lhs, rhs in
                 nativeUsageStatusRank(lhs.status) == nativeUsageStatusRank(rhs.status)
                     ? lhs.providerName.localizedCaseInsensitiveCompare(rhs.providerName) == .orderedAscending
                     : nativeUsageStatusRank(lhs.status) < nativeUsageStatusRank(rhs.status)
             }
+        }
+        let rank = Dictionary(uniqueKeysWithValues: order.enumerated().map { ($0.element, $0.offset) })
+        return basePlans.sorted { lhs, rhs in
+            let rankLhs = rank[lhs.id] ?? Int.max
+            let rankRhs = rank[rhs.id] ?? Int.max
+            if rankLhs != rankRhs { return rankLhs < rankRhs }
+            return nativeUsageStatusRank(lhs.status) < nativeUsageStatusRank(rhs.status)
+        }
+    }
+
+    private func movePlan(_ providerId: String, direction: Int) {
+        let ids = plans.map(\.id)
+        guard let currentIndex = ids.firstIndex(of: providerId) else { return }
+        let targetIndex = currentIndex + direction
+        guard targetIndex >= 0 && targetIndex < ids.count else { return }
+        var next = ids
+        next.swapAt(currentIndex, targetIndex)
+        customOrderData = encodeUsageOrder(next)
+    }
+
+    private func resetOrder() {
+        customOrderData = Data()
     }
 
     var body: some View {
@@ -29,6 +61,16 @@ struct UsageScreen: View {
                 HStack(alignment: .center) {
                     ScreenHeader(title: "Usage", subtitle: "Coding-plan windows across providers")
                     Spacer()
+                    if !customOrder.isEmpty {
+                        Button {
+                            resetOrder()
+                        } label: {
+                            Label("Reset", systemImage: "arrow.uturn.backward")
+                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
                     if let lastUpdated {
                         Text("Updated \(lastUpdated.formatted(date: .omitted, time: .shortened))")
                             .font(.system(size: 11, weight: .medium, design: .rounded))
@@ -45,8 +87,14 @@ struct UsageScreen: View {
                 } else {
                     NativeUsageSummary(status: status, plans: plans, accent: accentTint)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 280), spacing: 12)], spacing: 12) {
-                        ForEach(plans) { plan in
-                            NativeUsageProviderCard(plan: plan)
+                        ForEach(Array(plans.enumerated()), id: \.element.id) { index, plan in
+                            NativeUsageProviderCard(
+                                plan: plan,
+                                canMoveUp: index > 0,
+                                canMoveDown: index < plans.count - 1,
+                                onMoveUp: { movePlan(plan.id, direction: -1) },
+                                onMoveDown: { movePlan(plan.id, direction: 1) }
+                            )
                         }
                     }
                 }
@@ -124,6 +172,10 @@ private struct NativeUsageStat: View {
 
 private struct NativeUsageProviderCard: View {
     let plan: ProviderPlanSnapshot
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+    let onMoveUp: () -> Void
+    let onMoveDown: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -138,6 +190,22 @@ private struct NativeUsageProviderCard: View {
                         .lineLimit(1)
                 }
                 Spacer()
+                VStack(spacing: 2) {
+                    Button(action: onMoveUp) {
+                        Image(systemName: "chevron.up")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(canMoveUp ? .secondary : .tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canMoveUp)
+                    Button(action: onMoveDown) {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(canMoveDown ? .secondary : .tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!canMoveDown)
+                }
                 Text(plan.status.capitalized)
                     .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .padding(.horizontal, 9)
@@ -310,4 +378,15 @@ private func nativeUsageStatusRank(_ status: String) -> Int {
     case "ok": return 2
     default: return 3
     }
+}
+
+private func encodeUsageOrder(_ ids: [String]) -> Data {
+    (try? JSONEncoder().encode(ids)) ?? Data()
+}
+
+private func decodeUsageOrder(_ data: Data) -> [String] {
+    guard !data.isEmpty,
+          let decoded = try? JSONDecoder().decode([String].self, from: data)
+    else { return [] }
+    return decoded
 }

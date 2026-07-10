@@ -106,6 +106,7 @@ import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgent
 import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
 import { ChatEnvironmentOverview } from "./chat/ChatEnvironmentOverview";
 import { ChatReasoningControl } from "./chat/ChatReasoningControl";
+import { isChatNearBottom } from "./chat/chatScroll";
 import { ChatWorkspaceBrowser } from "./chat/ChatWorkspaceBrowser";
 import { ChatWorkspaceFiles } from "./chat/ChatWorkspaceFiles";
 import { ChatWorkspacePanel, type ChatWorkspaceTab } from "./chat/ChatWorkspacePanel";
@@ -1451,7 +1452,9 @@ export function Chat() {
   const dictationStreamRef = useRef<MediaStream | null>(null);
   const dictationChunksRef = useRef<Blob[]>([]);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const keepScrolledToBottomRef = useRef(true);
+  const programmaticScrollUntilRef = useRef(0);
+  const programmaticScrollTimeoutRef = useRef<number | null>(null);
   const diffPanelResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
   const diffPanelResizeCleanupRef = useRef<(() => void) | null>(null);
   const dictationStatusTimerRef = useRef<number | null>(null);
@@ -1902,9 +1905,29 @@ export function Chat() {
     setSelectedDiffPath(sessionFileChanges.files[0]?.path || null);
   }, [selectedDiffPath, sessionFileChanges]);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    keepScrolledToBottomRef.current = true;
+    if (behavior === "smooth") {
+      programmaticScrollUntilRef.current = Number.POSITIVE_INFINITY;
+      if (programmaticScrollTimeoutRef.current !== null) {
+        window.clearTimeout(programmaticScrollTimeoutRef.current);
+      }
+      programmaticScrollTimeoutRef.current = window.setTimeout(() => {
+        programmaticScrollTimeoutRef.current = null;
+        programmaticScrollUntilRef.current = 0;
+        const latestContainer = messagesContainerRef.current;
+        if (!latestContainer || isChatNearBottom(latestContainer)) return;
+        keepScrolledToBottomRef.current = false;
+        setShowScrollToBottomButton(true);
+      }, 2500);
+    } else if (programmaticScrollUntilRef.current !== Number.POSITIVE_INFINITY) {
+      programmaticScrollUntilRef.current = performance.now() + 100;
+    }
+    container.scrollTo({ top: container.scrollHeight, behavior });
+    setShowScrollToBottomButton(false);
+  }, []);
 
   const refreshScrollToBottomVisibility = useCallback(() => {
     const container = messagesContainerRef.current;
@@ -1912,29 +1935,75 @@ export function Chat() {
       setShowScrollToBottomButton(false);
       return;
     }
-    const scrolledUp = container.scrollTop + container.clientHeight < container.scrollHeight - 1;
-    setShowScrollToBottomButton(scrolledUp);
+    const nearBottom = isChatNearBottom(container);
+    const programmaticScrollActive = performance.now() < programmaticScrollUntilRef.current;
+    if (nearBottom) {
+      keepScrolledToBottomRef.current = true;
+      programmaticScrollUntilRef.current = 0;
+      if (programmaticScrollTimeoutRef.current !== null) {
+        window.clearTimeout(programmaticScrollTimeoutRef.current);
+        programmaticScrollTimeoutRef.current = null;
+      }
+    } else if (!programmaticScrollActive) {
+      keepScrolledToBottomRef.current = false;
+    }
+    setShowScrollToBottomButton(!nearBottom && !programmaticScrollActive);
   }, [artifactViewerTarget]);
+
+  useEffect(
+    () => () => {
+      if (programmaticScrollTimeoutRef.current !== null) {
+        window.clearTimeout(programmaticScrollTimeoutRef.current);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     scrollToBottom();
-    setShowScrollToBottomButton(false);
-  }, [messages]);
+  }, [messages, scrollToBottom]);
 
-  // Stick to the bottom while a run streams (activities, tool calls, tokens),
-  // but never yank the view if the user scrolled up to read — the floating
-  // "scroll to latest" button covers that case.
   useEffect(() => {
     if (artifactViewerTarget) return;
     const container = messagesContainerRef.current;
     if (!container) return;
-    const nearBottom = container.scrollHeight - (container.scrollTop + container.clientHeight) < 96;
-    if (!nearBottom) return;
+    if (!keepScrolledToBottomRef.current && !isChatNearBottom(container, 96)) return;
     const rafId = window.requestAnimationFrame(() => {
-      messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+      scrollToBottom("auto");
     });
     return () => window.cancelAnimationFrame(rafId);
-  }, [liveActivities, streamingContent, liveCurrentStep, artifactViewerTarget]);
+  }, [liveActivities, streamingContent, liveCurrentStep, artifactViewerTarget, scrollToBottom]);
+
+  useEffect(() => {
+    if (artifactViewerTarget || typeof ResizeObserver === "undefined") return;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    let rafId: number | null = null;
+    const observer = new ResizeObserver(() => {
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        if (keepScrolledToBottomRef.current) {
+          scrollToBottom("auto");
+        } else {
+          refreshScrollToBottomVisibility();
+        }
+      });
+    });
+    observer.observe(container);
+    const observeChildren = () => {
+      for (const child of container.children) observer.observe(child);
+    };
+    observeChildren();
+    const mutationObserver = new MutationObserver(observeChildren);
+    mutationObserver.observe(container, { childList: true });
+    return () => {
+      observer.disconnect();
+      mutationObserver.disconnect();
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+    };
+  }, [artifactViewerTarget, refreshScrollToBottomVisibility, scrollToBottom]);
 
   useEffect(() => {
     const rafId = window.requestAnimationFrame(() => {
@@ -4259,16 +4328,12 @@ export function Chat() {
                     />
                   </div>
                 )}
-                <div ref={messagesEndRef} />
               </div>
 
               {showScrollToBottomButton && (
                 <button
                   type="button"
-                  onClick={() => {
-                    scrollToBottom();
-                    setShowScrollToBottomButton(false);
-                  }}
+                  onClick={() => scrollToBottom()}
                   className="absolute left-1/2 z-20 -translate-x-1/2 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-[#11131c]/95 text-white shadow-[0_10px_30px_rgba(0,0,0,0.45)] backdrop-blur-md transition-colors hover:bg-[#1a1e2b] cursor-pointer"
                   style={{ bottom: `${Math.max(70, composerHeight + 10)}px` }}
                   title="Scroll to latest"

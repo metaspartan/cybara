@@ -192,6 +192,12 @@ jobs:
         run: bash scripts/ci-install.sh --ignore-scripts
       - name: Run postinstall
         run: bun run scripts/postinstall.ts
+      - name: Install Windows browser preview runtime
+        if: matrix.platform == 'windows'
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: "0"
+          PLAYWRIGHT_SKIP_BROWSER_GC: "1"
+        run: bunx playwright install --only-shell chromium
       - name: Sync version metadata
         run: bun run version:sync
       - name: Build UI

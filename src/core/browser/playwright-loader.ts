@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -48,6 +48,36 @@ function candidateRoots(): string[] {
   return roots;
 }
 
+export function findHermeticPlaywrightBrowserPath(
+  roots: string[] = candidateRoots()
+): string | null {
+  const nodeModuleParents = ["", "bin", "resources", join("resources", "bin")];
+  for (const root of roots) {
+    for (const parent of nodeModuleParents) {
+      const browserRoot = join(root, parent, "node_modules", "playwright-core", ".local-browsers");
+      if (!existsSync(browserRoot)) continue;
+      try {
+        if (readdirSync(browserRoot).length === 0) continue;
+      } catch {
+        continue;
+      }
+      return browserRoot;
+    }
+  }
+  return null;
+}
+
+export function configureHermeticPlaywrightBrowserPath(
+  roots: string[] = candidateRoots(),
+  env: NodeJS.ProcessEnv = process.env
+): string | null {
+  if (env.PLAYWRIGHT_BROWSERS_PATH?.trim()) return null;
+  const browserRoot = findHermeticPlaywrightBrowserPath(roots);
+  if (!browserRoot) return null;
+  env.PLAYWRIGHT_BROWSERS_PATH = "0";
+  return browserRoot;
+}
+
 function playwrightEntryCandidates(): string[] {
   const files = ["index.mjs", "index.js"];
   const packages = ["playwright", "playwright-core"];
@@ -76,6 +106,8 @@ function resolveChromium(mod: Record<string, unknown>): ChromiumApi | undefined 
 
 export async function getChromium(): Promise<ChromiumApi> {
   if (cached) return cached;
+
+  configureHermeticPlaywrightBrowserPath();
 
   const failures: string[] = [];
 

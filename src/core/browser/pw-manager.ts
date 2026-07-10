@@ -1,15 +1,15 @@
 import { randomUUID } from "crypto";
 import type { Browser, BrowserContext, LaunchOptions, Locator, Page } from "playwright";
+import { systemLogger } from "../logging";
 import {
+  browserExecutableLabel,
   browserLaunchArgs,
   buildBrowserLaunchPlan,
   findBundledBrowserExecutable,
   findSystemBrowserExecutable,
   findSystemBrowserExecutables,
 } from "./browser-executable";
-import { systemLogger } from "../logging";
-import { getChromium } from "./playwright-loader";
-import { launchWindowsBrowserOverCdp } from "./windows-cdp-launch";
+import { findHermeticPlaywrightBrowserPath, getChromium } from "./playwright-loader";
 import {
   type BrowserProfile,
   type BrowserProfileConfig,
@@ -26,21 +26,23 @@ import {
   startBrowser,
   stopBrowser,
 } from "./profiles";
+import { launchWindowsBrowserOverCdp } from "./windows-cdp-launch";
 
 async function launchWithFallback(
   chromium: Awaited<ReturnType<typeof getChromium>>,
   headless: boolean,
   args: string[]
 ): Promise<Browser> {
-  const attempts: Array<{ label: string; options: LaunchOptions }> = [];
+  const attempts: Array<{ label: string; options: LaunchOptions }> = [
+    { label: "Playwright Chromium", options: { headless, args } },
+  ];
   const systemExecutables = findSystemBrowserExecutables();
-  const bundledExecutable = findBundledBrowserExecutable(chromium);
   const explicitExecutable =
     process.env.CYBARA_BROWSER_PATH?.trim() || process.env.CHROME_PATH?.trim();
   for (const target of buildBrowserLaunchPlan(
     process.platform,
     explicitExecutable,
-    bundledExecutable,
+    null,
     systemExecutables
   )) {
     attempts.push({
@@ -56,47 +58,27 @@ async function launchWithFallback(
 
   const failures: string[] = [];
   const startedAt = Date.now();
-  if (process.platform === "win32" && systemExecutables[0]) {
-    browserLaunchState = {
-      phase: "starting",
-      attempt: "Windows browser",
-      attempted: 1,
-      total: attempts.length + 1,
-    };
-    try {
-      const browser = await launchWindowsBrowserOverCdp(
-        chromium,
-        systemExecutables[0],
-        headless,
-        args,
-        BROWSER_LAUNCH_ATTEMPT_TIMEOUT_MS
-      );
-      browserLaunchState = {
-        phase: "running",
-        attempt: "Windows browser",
-        attempted: 1,
-        total: attempts.length + 1,
-      };
-      return browser;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      failures.push(`Windows browser: ${message}`);
-      void systemLogger.warn("Windows browser CDP launch failed", { error: message });
-    }
-  }
-  for (const attempt of attempts) {
+  const windowsCdpExecutables = process.platform === "win32" ? systemExecutables : [];
+  const total = attempts.length + windowsCdpExecutables.length;
+  let attempted = 0;
+
+  const launchAttempt = async (attempt: {
+    label: string;
+    options: LaunchOptions;
+  }): Promise<Browser | null> => {
     const remainingMs = BROWSER_LAUNCH_BUDGET_MS - (Date.now() - startedAt);
-    if (remainingMs <= 0) break;
+    if (remainingMs <= 0) return null;
+    attempted += 1;
     browserLaunchState = {
       phase: "starting",
       attempt: attempt.label,
-      attempted: attempts.indexOf(attempt) + 1 + (process.platform === "win32" ? 1 : 0),
-      total: attempts.length + (process.platform === "win32" ? 1 : 0),
+      attempted,
+      total,
     };
     void systemLogger.info("Starting browser preview", {
       attempt: attempt.label,
-      attempted: browserLaunchState.attempted,
-      total: browserLaunchState.total,
+      attempted,
+      total,
     });
     try {
       const browser = await chromium.launch({
@@ -106,28 +88,66 @@ async function launchWithFallback(
       browserLaunchState = {
         phase: "running",
         attempt: attempt.label,
-        attempted: browserLaunchState.attempted,
-        total: browserLaunchState.total,
+        attempted,
+        total,
       };
       return browser;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      failures.push(`${attempt.label}: ${message}`);
+      failures.push(attempt.label);
       void systemLogger.warn("Browser preview launch attempt failed", {
         attempt: attempt.label,
         error: message,
       });
+      return null;
     }
+  };
+
+  const managedBrowser = await launchAttempt(attempts[0]);
+  if (managedBrowser) return managedBrowser;
+
+  for (const executablePath of windowsCdpExecutables) {
+    const remainingMs = BROWSER_LAUNCH_BUDGET_MS - (Date.now() - startedAt);
+    if (remainingMs <= 0) break;
+    attempted += 1;
+    const label = `${browserExecutableLabel(executablePath)} CDP`;
+    browserLaunchState = { phase: "starting", attempt: label, attempted, total };
+    void systemLogger.info("Starting browser preview", { attempt: label, attempted, total });
+    try {
+      const browser = await launchWindowsBrowserOverCdp(
+        chromium,
+        executablePath,
+        headless,
+        args,
+        Math.min(BROWSER_LAUNCH_ATTEMPT_TIMEOUT_MS, remainingMs)
+      );
+      browserLaunchState = { phase: "running", attempt: label, attempted, total };
+      return browser;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(label);
+      void systemLogger.warn("Windows browser CDP launch failed", {
+        attempt: label,
+        error: message,
+      });
+    }
+  }
+
+  for (const attempt of attempts.slice(1)) {
+    const browser = await launchAttempt(attempt);
+    if (browser) return browser;
   }
   browserLaunchState = {
     phase: "failed",
-    attempted: Math.min(attempts.length, failures.length),
-    total: attempts.length,
+    attempted,
+    total,
     error: failures.length
       ? "Installed browsers could not be started. Open Logs for browser launch details."
       : "No compatible browser was detected.",
   };
-  throw new Error(`Unable to launch a browser (${failures.join(" | ")})`);
+  throw new Error(
+    `Unable to launch a browser after trying ${failures.join(", ")}. Open Logs for details.`
+  );
 }
 
 export interface BrowserLaunchState {
@@ -139,7 +159,7 @@ export interface BrowserLaunchState {
 }
 
 const BROWSER_LAUNCH_ATTEMPT_TIMEOUT_MS = 30_000;
-const BROWSER_LAUNCH_BUDGET_MS = 75_000;
+const BROWSER_LAUNCH_BUDGET_MS = 120_000;
 let browserLaunchState: BrowserLaunchState = { phase: "idle" };
 
 export interface BrowserSnapshotNode {
@@ -1099,12 +1119,13 @@ export async function getStatus(): Promise<BrowserStatus> {
   try {
     const chromium = await getChromium();
     const executablePath = findSystemBrowserExecutable() ?? findBundledBrowserExecutable(chromium);
+    const hermeticBrowserPath = findHermeticPlaywrightBrowserPath();
     const browsersMap = getBrowsersMap();
 
     return {
       running: legacyBrowser !== null || browsersMap.size > 0,
       pages: legacyPages.size + Array.from(getPagesMap().values()).length,
-      chromiumAvailable: !!executablePath,
+      chromiumAvailable: !!executablePath || !!hermeticBrowserPath,
       headless: process.env.BROWSER_HEADLESS !== "false",
       profiles: listBrowserProfiles(),
       launch: browserLaunchState,

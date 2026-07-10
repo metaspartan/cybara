@@ -17,6 +17,7 @@ import {
   BarChart3,
   Cloud,
   Gauge,
+  GripVertical,
   List,
   RotateCcw,
 } from "lucide-react";
@@ -107,6 +108,8 @@ export function Usage() {
 
   const [viewMode, setViewMode] = useState<UsageViewMode>("bars");
   const [customOrder, setCustomOrder] = useState<string[]>([]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   useEffect(() => {
     setViewMode(readUsageViewMode());
@@ -159,6 +162,22 @@ export function Usage() {
   );
 
   const resetOrder = useCallback(() => setCustomOrder([]), []);
+
+  const reorderTo = useCallback(
+    (sourceId: string, targetId: string) => {
+      if (!sourceId || sourceId === targetId) return;
+      const ids = plans.map((plan) => plan.providerId);
+      const sourceIndex = ids.indexOf(sourceId);
+      const targetIndex = ids.indexOf(targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return;
+      const next = [...ids];
+      const [moved] = next.splice(sourceIndex, 1);
+      if (!moved) return;
+      next.splice(targetIndex, 0, moved);
+      setCustomOrder(next);
+    },
+    [plans]
+  );
 
   const showSkeleton = isLoading && !status;
   const showError = isError && !status;
@@ -221,6 +240,19 @@ export function Usage() {
                   canMoveDown={index < plans.length - 1}
                   onMoveUp={() => movePlan(plan.providerId, -1)}
                   onMoveDown={() => movePlan(plan.providerId, 1)}
+                  isDragging={draggingId === plan.providerId}
+                  isDragOver={dragOverId === plan.providerId && draggingId !== plan.providerId}
+                  onDragStart={() => setDraggingId(plan.providerId)}
+                  onDragOver={() => setDragOverId(plan.providerId)}
+                  onDrop={() => {
+                    if (draggingId) reorderTo(draggingId, plan.providerId);
+                    setDraggingId(null);
+                    setDragOverId(null);
+                  }}
+                  onDragEnd={() => {
+                    setDraggingId(null);
+                    setDragOverId(null);
+                  }}
                 />
               ))}
             </div>
@@ -235,6 +267,19 @@ export function Usage() {
                   canMoveDown={index < plans.length - 1}
                   onMoveUp={() => movePlan(plan.providerId, -1)}
                   onMoveDown={() => movePlan(plan.providerId, 1)}
+                  isDragging={draggingId === plan.providerId}
+                  isDragOver={dragOverId === plan.providerId && draggingId !== plan.providerId}
+                  onDragStart={() => setDraggingId(plan.providerId)}
+                  onDragOver={() => setDragOverId(plan.providerId)}
+                  onDrop={() => {
+                    if (draggingId) reorderTo(draggingId, plan.providerId);
+                    setDraggingId(null);
+                    setDragOverId(null);
+                  }}
+                  onDragEnd={() => {
+                    setDraggingId(null);
+                    setDragOverId(null);
+                  }}
                 />
               ))}
             </div>
@@ -349,6 +394,12 @@ function UsageProviderCard({
   canMoveDown,
   onMoveUp,
   onMoveDown,
+  isDragging,
+  isDragOver,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: {
   plan: ProviderPlanSnapshot;
   mode: UsageViewMode;
@@ -356,14 +407,42 @@ function UsageProviderCard({
   canMoveDown: boolean;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  isDragging: boolean;
+  isDragOver: boolean;
+  onDragStart: () => void;
+  onDragOver: () => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
 }) {
   const fiveHour = providerPlanWindowDisplay(plan, "rolling_5h");
   const weekly = providerPlanWindowDisplay(plan, "rolling_week");
 
   return (
-    <section className="rounded-2xl border border-white/10 bg-[#101018] p-4 shadow-[0_18px_70px_rgba(0,0,0,0.25)]">
+    <section
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        onDragStart();
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        onDragOver();
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        onDrop();
+      }}
+      onDragEnd={onDragEnd}
+      className={cn(
+        "rounded-2xl border bg-[#101018] p-4 shadow-[0_18px_70px_rgba(0,0,0,0.25)] transition-opacity",
+        isDragging ? "opacity-50 border-white/30" : "border-white/10",
+        isDragOver && "border-t-2 border-t-emerald-400/60"
+      )}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
+          <GripVertical className="h-5 w-5 shrink-0 cursor-grab text-gray-600 hover:text-gray-400 active:cursor-grabbing" />
           <ProviderAvatar providerType={plan.providerType} />
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-white">{plan.providerName}</h2>
@@ -457,6 +536,12 @@ function CompactProviderRow({
   canMoveDown,
   onMoveUp,
   onMoveDown,
+  isDragging,
+  isDragOver,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: {
   plan: ProviderPlanSnapshot;
   isLast: boolean;
@@ -464,16 +549,40 @@ function CompactProviderRow({
   canMoveDown: boolean;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  isDragging: boolean;
+  isDragOver: boolean;
+  onDragStart: () => void;
+  onDragOver: () => void;
+  onDrop: () => void;
+  onDragEnd: () => void;
 }) {
   const fiveHour = providerPlanWindowDisplay(plan, "rolling_5h");
   const weekly = providerPlanWindowDisplay(plan, "rolling_week");
   return (
     <div
+      draggable
+      onDragStart={(event) => {
+        event.dataTransfer.effectAllowed = "move";
+        onDragStart();
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "move";
+        onDragOver();
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        onDrop();
+      }}
+      onDragEnd={onDragEnd}
       className={cn(
         "flex items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.02]",
-        !isLast && "border-b border-white/5"
+        !isLast && "border-b border-white/5",
+        isDragging && "opacity-50",
+        isDragOver && "bg-emerald-500/[0.06]"
       )}
     >
+      <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-gray-600 hover:text-gray-400 active:cursor-grabbing" />
       <div className="flex shrink-0 items-center gap-0.5">
         <ReorderButton direction="up" disabled={!canMoveUp} onClick={onMoveUp} compact />
         <ReorderButton direction="down" disabled={!canMoveDown} onClick={onMoveDown} compact />

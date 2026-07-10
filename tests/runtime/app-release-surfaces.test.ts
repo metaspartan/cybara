@@ -112,6 +112,9 @@ describe("app release surface wiring", () => {
     expect(workflow).toContain("Build Sidecar binary");
     expect(workflow).toContain("CYBARA_SIDECAR_BUN_TARGET: ${{ matrix.bun_target }}");
     expect(workflow).toContain("run: bun run scripts/build-sidecar.ts");
+    expect(workflow).toContain("name: Install Windows browser preview runtime");
+    expect(workflow).toContain('PLAYWRIGHT_BROWSERS_PATH: "0"');
+    expect(workflow).toContain("bunx playwright install --only-shell chromium");
     expect(workflow).toContain("Sign Tauri sidecar runtime resources (macOS)");
     expect(workflow).toContain("run: bun run scripts/codesign-tauri-sidecar-runtime.ts");
     expect(workflow).toContain("bun_target: bun-darwin-arm64");
@@ -134,8 +137,12 @@ describe("app release surface wiring", () => {
     expect(workflow.indexOf('args: "--bundles deb,rpm"')).toBeLessThan(
       workflow.indexOf("name: Build Linux AppImage (best-effort)")
     );
+    expect(tauriConfig).toContain('"bin/node_modules": "node_modules"');
     expect(tauriConfig).toContain('"bin/runtime": "runtime"');
     expect(sidecarBuilder).toContain("installBunRuntimeAt(packagedRuntimeDir, target.bunTarget)");
+    expect(sidecarBuilder).toContain(
+      'const playwrightPackages = ["playwright", "playwright-core"]'
+    );
   });
 
   test("release workflow runs native macOS unit tests when XCTest is available", () => {

@@ -1,11 +1,18 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   browserChannelNames,
   browserExecutableCandidates,
   browserLaunchArgs,
   buildBrowserLaunchPlan,
 } from "../../src/core/browser/browser-executable";
-import { stripWindowsLongPathPrefix } from "../../src/core/browser/playwright-loader";
+import {
+  configureHermeticPlaywrightBrowserPath,
+  findHermeticPlaywrightBrowserPath,
+  stripWindowsLongPathPrefix,
+} from "../../src/core/browser/playwright-loader";
 import { windowsBrowserCdpArgs } from "../../src/core/browser/windows-cdp-launch";
 
 describe("browser executable discovery", () => {
@@ -114,5 +121,29 @@ describe("stripWindowsLongPathPrefix", () => {
     expect(stripWindowsLongPathPrefix("/Applications/Cybara.app/Contents/Resources")).toBe(
       "/Applications/Cybara.app/Contents/Resources"
     );
+  });
+});
+
+describe("hermetic Playwright browser discovery", () => {
+  test("selects a packaged Playwright browser before loading the runtime", () => {
+    const root = mkdtempSync(join(tmpdir(), "cybara-playwright-runtime-"));
+    const browserRoot = join(root, "node_modules", "playwright-core", ".local-browsers");
+    const env: NodeJS.ProcessEnv = {};
+    try {
+      mkdirSync(join(browserRoot, "chromium_headless_shell-1"), { recursive: true });
+
+      expect(findHermeticPlaywrightBrowserPath([root])).toBe(browserRoot);
+      expect(configureHermeticPlaywrightBrowserPath([root], env)).toBe(browserRoot);
+      expect(env.PLAYWRIGHT_BROWSERS_PATH).toBe("0");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("does not replace an explicitly configured browser cache", () => {
+    const env: NodeJS.ProcessEnv = { PLAYWRIGHT_BROWSERS_PATH: "C:\\shared-browsers" };
+
+    expect(configureHermeticPlaywrightBrowserPath([], env)).toBeNull();
+    expect(env.PLAYWRIGHT_BROWSERS_PATH).toBe("C:\\shared-browsers");
   });
 });

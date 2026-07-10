@@ -62,27 +62,33 @@ export async function launchWindowsBrowserOverCdp(
   timeoutMs: number
 ): Promise<Browser> {
   const userDataDir = mkdtempSync(join(tmpdir(), "cybara-browser-"));
-  const process = Bun.spawn({
+  const child = Bun.spawn({
     cmd: [executablePath, ...windowsBrowserCdpArgs(userDataDir, headless, extraArgs)],
     stdin: "ignore",
     stdout: "ignore",
-    stderr: "ignore",
+    stderr: "pipe",
   });
+  const stderrPromise = new Response(child.stderr).text();
 
-  const cleanup = (): void => {
-    if (process.exitCode === null) process.kill();
-    rmSync(userDataDir, { recursive: true, force: true, maxRetries: 3 });
+  const cleanup = async (): Promise<void> => {
+    if (child.exitCode === null) child.kill();
+    await Promise.race([child.exited.then(() => undefined), Bun.sleep(2_000)]);
+    rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   };
 
   try {
-    const port = await waitForCdpPort(join(userDataDir, "DevToolsActivePort"), process, timeoutMs);
+    const startedAt = Date.now();
+    const port = await waitForCdpPort(join(userDataDir, "DevToolsActivePort"), child, timeoutMs);
+    const remainingMs = Math.max(1_000, timeoutMs - (Date.now() - startedAt));
     const browser = await chromium.connectOverCDP(`http://127.0.0.1:${port}`, {
-      timeout: timeoutMs,
+      timeout: remainingMs,
     });
-    browser.on("disconnected", cleanup);
+    browser.on("disconnected", () => void cleanup());
     return browser;
   } catch (error) {
-    cleanup();
-    throw error;
+    await cleanup();
+    const stderr = (await stderrPromise).trim();
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(stderr ? `${message}: ${stderr.slice(-2_000)}` : message);
   }
 }

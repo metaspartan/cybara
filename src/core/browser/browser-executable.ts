@@ -66,7 +66,7 @@ export function browserChannelNames(platform: RuntimePlatform): Array<"chrome" |
   return platform === "win32" ? ["msedge", "chrome"] : ["chrome", "msedge"];
 }
 
-function browserExecutableLabel(executablePath: string): string {
+export function browserExecutableLabel(executablePath: string): string {
   const normalized = executablePath.toLowerCase();
   if (normalized.includes("msedge")) return "Microsoft Edge executable";
   if (normalized.includes("chrome")) return "Google Chrome executable";

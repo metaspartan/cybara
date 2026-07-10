@@ -60,13 +60,13 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
 describe("chat live auto-scroll", () => {
   test("web: sticks to bottom on live content only when already near the bottom", () => {
     const source = read("ui/src/pages/Chat.tsx");
-    expect(source).toContain(
-      "const nearBottom = container.scrollHeight - (container.scrollTop + container.clientHeight) < 96;"
-    );
-    expect(source).toContain("if (!nearBottom) return;");
-    expect(source).toMatch(
-      /\}, \[liveActivities, streamingContent, liveCurrentStep, artifactViewerTarget\]\);/
-    );
+    expect(source).toContain("!isChatNearBottom(container, 96)");
+    expect(source).toContain("keepScrolledToBottomRef.current");
+    expect(source).toContain("programmaticScrollUntilRef.current = Number.POSITIVE_INFINITY");
+    expect(source).toContain("observer.observe(container)");
+    expect(source).toContain("for (const child of container.children) observer.observe(child)");
+    expect(source).toContain("mutationObserver.observe(container, { childList: true })");
+    expect(source).toContain('scrollToBottom("auto")');
   });
 
   test("macos: scrolls the live thinking bubble into view as it streams", () => {
