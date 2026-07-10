@@ -363,6 +363,18 @@ class AgentManager {
     return { provider: codexProvider, model };
   }
 
+  private resolveModelForRoutedProvider(
+    provider: NonNullable<ReturnType<typeof providerManager.getWithCredentials>>,
+    agentModel: string | undefined
+  ): string {
+    if (!agentModel || !agentModel.trim()) return getDefaultModel(provider.provider);
+    const models = providerManager.getModels(provider.id);
+    if (models.length === 0) return agentModel;
+    const target = agentModel.trim().toLowerCase();
+    const supported = models.some((model) => model.model_id.trim().toLowerCase() === target);
+    return supported ? agentModel : getDefaultModel(provider.provider);
+  }
+
   private resolveProviderForAgent(
     agent: Pick<Agent, "id" | "provider_id" | "config">,
     persistIfResolved = false
@@ -995,14 +1007,20 @@ class AgentManager {
 
     const toolContext = this.buildToolExecutionContext(agent, options);
 
-    const routedModel =
-      options?.useModelRouter && provider
-        ? (getRouterRouteModel(provider.id) ?? getRouterRouteModel(provider.provider))
+    const routerActive = options?.useModelRouter === true && !!provider;
+    const routedToDifferentProvider = routerActive && provider!.id !== agent.provider_id;
+    const routedModel = routerActive
+      ? (getRouterRouteModel(provider!.id) ?? getRouterRouteModel(provider!.provider))
+      : undefined;
+    const overrideModel =
+      typeof options?.modelOverride === "string" && options.modelOverride.trim().length > 0
+        ? options.modelOverride.trim()
         : undefined;
     const selectedModel =
       routedModel ||
-      (typeof options?.modelOverride === "string" && options.modelOverride.trim().length > 0
-        ? options.modelOverride.trim()
+      overrideModel ||
+      (routedToDifferentProvider
+        ? this.resolveModelForRoutedProvider(provider!, agent.model)
         : agent.model);
 
     const resolvedExecution = this.resolveProviderModelForExecution(provider, selectedModel);

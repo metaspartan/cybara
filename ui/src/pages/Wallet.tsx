@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Input, Textarea, Select } from "@/components/ui/Input";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { Switch } from "@/components/ui/Switch";
 import {
   walletApi,
   type WalletStatus,
@@ -1063,15 +1064,10 @@ export function Wallet() {
                           value={tokenIndexInput}
                           onChange={(e) => setTokenIndexInput(e.target.value)}
                         />
-                        <label className="flex items-center gap-2 text-sm text-gray-300 md:mb-3">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-white/20 bg-transparent"
-                            checked={tokenIncludeZero}
-                            onChange={(e) => setTokenIncludeZero(e.target.checked)}
-                          />
+                        <div className="flex items-center gap-2 text-sm text-gray-300 md:mb-3">
+                          <Switch checked={tokenIncludeZero} onChange={setTokenIncludeZero} />
                           Include zero balances
-                        </label>
+                        </div>
                       </div>
                     </div>
 

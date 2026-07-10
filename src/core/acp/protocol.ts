@@ -17,9 +17,9 @@ export interface JsonRpcResponse {
 export const AGENT_CAPABILITIES = {
   loadSession: false,
   promptCapabilities: {
-    image: true,
+    image: false,
     audio: false,
-    embeddedContext: true,
+    embeddedContext: false,
   },
 } as const;
 
@@ -70,11 +70,16 @@ export function isSupportedAuthMethod(methodId: string): boolean {
   return ACP_AUTH_METHODS.some((m) => m.id === methodId);
 }
 
-export function initializeResult() {
+export function initializeResult(agentVersion: string = "unknown") {
   return {
     protocolVersion: ACP_PROTOCOL_VERSION,
     agentCapabilities: AGENT_CAPABILITIES,
     authMethods: ACP_AUTH_METHODS,
+    agentInfo: {
+      name: "cybara",
+      title: "Cybara",
+      version: agentVersion,
+    },
   };
 }
 
@@ -97,11 +102,30 @@ export function promptResult(stopReason: string = "end_turn") {
 }
 
 export function extractPromptText(params: unknown): string {
-  const prompt = (params as { prompt?: Array<{ type?: string; text?: string }> })?.prompt;
+  const prompt = (
+    params as {
+      prompt?: Array<{
+        type?: string;
+        text?: string;
+        uri?: string;
+        name?: string;
+        title?: string;
+        description?: string;
+      }>;
+    }
+  )?.prompt;
   if (!Array.isArray(prompt)) return "";
   return prompt
-    .filter((b) => b?.type === "text" && typeof b.text === "string")
-    .map((b) => b.text as string)
+    .map((block) => {
+      if (block?.type === "text" && typeof block.text === "string") return block.text;
+      if (block?.type !== "resource_link" || typeof block.uri !== "string") return "";
+      const label = block.title || block.name || "resource";
+      const description = block.description?.trim();
+      return [`Referenced resource: ${label} (${block.uri})`, description]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .filter(Boolean)
     .join("\n")
     .trim();
 }

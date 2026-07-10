@@ -13,6 +13,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/Button";
+import { Switch } from "@/components/ui/Switch";
 import { Highlight, themes } from "prism-react-renderer";
 import {
   Folder,
@@ -3622,20 +3623,15 @@ export function IDE() {
                       </div>
                     )}
                     {matchesIdeSettingsSearch("chat", "panel", "startup") && (
-                      <label className="flex items-start gap-2 text-xs text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={isIdeChatOpen}
-                          onChange={(event) => setIsIdeChatOpen(event.target.checked)}
-                          className="mt-0.5 rounded border-white/20 bg-black/40"
-                        />
+                      <div className="flex items-start justify-between gap-3 text-xs text-gray-300">
                         <span>
                           <span className="text-gray-200 font-medium">Open IDE chat panel</span>
                           <span className="block text-gray-500 mt-0.5">
                             Persist this as your default chat panel state.
                           </span>
                         </span>
-                      </label>
+                        <Switch checked={isIdeChatOpen} onChange={setIsIdeChatOpen} />
+                      </div>
                     )}
                     {matchesIdeSettingsSearch("settings", "providers") && (
                       <div className="flex items-center gap-2">
@@ -3707,22 +3703,18 @@ export function IDE() {
                       </label>
                     )}
                     {matchesIdeSettingsSearch("minimap") && (
-                      <label className="flex items-start gap-2 text-xs text-gray-300">
-                        <input
-                          type="checkbox"
-                          checked={idePreferences.showMinimap}
-                          onChange={(event) =>
-                            updateIdePreferences({ showMinimap: event.target.checked })
-                          }
-                          className="mt-0.5 rounded border-white/20 bg-black/40"
-                        />
+                      <div className="flex items-start justify-between gap-3 text-xs text-gray-300">
                         <span>
                           <span className="text-gray-200 font-medium">Show minimap</span>
                           <span className="block text-gray-500 mt-0.5">
                             Display the minimap in the editor gutter.
                           </span>
                         </span>
-                      </label>
+                        <Switch
+                          checked={idePreferences.showMinimap}
+                          onChange={(next) => updateIdePreferences({ showMinimap: next })}
+                        />
+                      </div>
                     )}
                   </div>
                 )}
@@ -3866,16 +3858,7 @@ export function IDE() {
                         </div>
                       )}
                     </div>
-                    <label className="flex items-start gap-2 text-xs text-gray-300">
-                      <input
-                        type="checkbox"
-                        checked={idePreferences.openTerminalOnStartup}
-                        onChange={(event) => {
-                          updateIdePreferences({ openTerminalOnStartup: event.target.checked });
-                          setIsTerminalPanelOpen(event.target.checked);
-                        }}
-                        className="mt-0.5 rounded border-white/20 bg-black/40"
-                      />
+                    <div className="flex items-start justify-between gap-3 text-xs text-gray-300">
                       <span>
                         <span className="text-gray-200 font-medium">
                           Open terminal panel on IDE startup
@@ -3884,16 +3867,15 @@ export function IDE() {
                           Uses the stored terminal panel visibility at startup.
                         </span>
                       </span>
-                    </label>
-                    <label className="flex items-start gap-2 text-xs text-gray-300">
-                      <input
-                        type="checkbox"
-                        checked={idePreferences.autoCreateTerminalOnOpen}
-                        onChange={(event) =>
-                          updateIdePreferences({ autoCreateTerminalOnOpen: event.target.checked })
-                        }
-                        className="mt-0.5 rounded border-white/20 bg-black/40"
+                      <Switch
+                        checked={idePreferences.openTerminalOnStartup}
+                        onChange={(next) => {
+                          updateIdePreferences({ openTerminalOnStartup: next });
+                          setIsTerminalPanelOpen(next);
+                        }}
                       />
+                    </div>
+                    <div className="flex items-start justify-between gap-3 text-xs text-gray-300">
                       <span>
                         <span className="text-gray-200 font-medium">
                           Auto-create terminal when panel opens
@@ -3902,7 +3884,13 @@ export function IDE() {
                           Create one terminal tab automatically.
                         </span>
                       </span>
-                    </label>
+                      <Switch
+                        checked={idePreferences.autoCreateTerminalOnOpen}
+                        onChange={(next) =>
+                          updateIdePreferences({ autoCreateTerminalOnOpen: next })
+                        }
+                      />
+                    </div>
                     <label className="block text-xs text-gray-400 space-y-1.5">
                       <span>Terminal panel height (px)</span>
                       <input
@@ -4105,66 +4093,49 @@ export function IDE() {
               </div>
 
               <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 space-y-3">
-                <label className="flex items-center gap-2 text-xs text-gray-200">
-                  <input
-                    type="checkbox"
-                    checked={activeIndexSettings.enabled}
-                    onChange={(event) => {
-                      setIndexSettingsDraft({
-                        ...activeIndexSettings,
-                        enabled: event.target.checked,
-                      });
-                      setIndexSettingsDirty(true);
-                    }}
-                    className="rounded border-white/20 bg-black/40"
-                  />
+                <div className="flex items-center justify-between gap-3 text-xs text-gray-200">
                   Enable workspace indexer
-                </label>
-                <label className="flex items-center gap-2 text-xs text-gray-300">
-                  <input
-                    type="checkbox"
-                    checked={activeIndexSettings.autoReindexOnWorkspaceSet}
-                    onChange={(event) => {
-                      setIndexSettingsDraft({
-                        ...activeIndexSettings,
-                        autoReindexOnWorkspaceSet: event.target.checked,
-                      });
+                  <Switch
+                    checked={activeIndexSettings.enabled}
+                    onChange={(next) => {
+                      setIndexSettingsDraft({ ...activeIndexSettings, enabled: next });
                       setIndexSettingsDirty(true);
                     }}
-                    className="rounded border-white/20 bg-black/40"
                   />
+                </div>
+                <div className="flex items-center justify-between gap-3 text-xs text-gray-300">
                   Auto-reindex when workspace is set
-                </label>
-                <label className="flex items-center gap-2 text-xs text-gray-300">
-                  <input
-                    type="checkbox"
-                    checked={activeIndexSettings.includeHidden}
-                    onChange={(event) => {
+                  <Switch
+                    checked={activeIndexSettings.autoReindexOnWorkspaceSet}
+                    onChange={(next) => {
                       setIndexSettingsDraft({
                         ...activeIndexSettings,
-                        includeHidden: event.target.checked,
+                        autoReindexOnWorkspaceSet: next,
                       });
                       setIndexSettingsDirty(true);
                     }}
-                    className="rounded border-white/20 bg-black/40"
                   />
+                </div>
+                <div className="flex items-center justify-between gap-3 text-xs text-gray-300">
                   Include hidden files/folders
-                </label>
-                <label className="flex items-center gap-2 text-xs text-gray-300">
-                  <input
-                    type="checkbox"
-                    checked={activeIndexSettings.semanticEnabled}
-                    onChange={(event) => {
-                      setIndexSettingsDraft({
-                        ...activeIndexSettings,
-                        semanticEnabled: event.target.checked,
-                      });
+                  <Switch
+                    checked={activeIndexSettings.includeHidden}
+                    onChange={(next) => {
+                      setIndexSettingsDraft({ ...activeIndexSettings, includeHidden: next });
                       setIndexSettingsDirty(true);
                     }}
-                    className="rounded border-white/20 bg-black/40"
                   />
+                </div>
+                <div className="flex items-center justify-between gap-3 text-xs text-gray-300">
                   Enable semantic vector index (embeddings)
-                </label>
+                  <Switch
+                    checked={activeIndexSettings.semanticEnabled}
+                    onChange={(next) => {
+                      setIndexSettingsDraft({ ...activeIndexSettings, semanticEnabled: next });
+                      setIndexSettingsDirty(true);
+                    }}
+                  />
+                </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <label className="text-xs text-gray-400 space-y-1">

@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
+import { Switch } from "@/components/ui/Switch";
 import { settingsApi } from "@/lib/api";
 import { useProviders } from "@/hooks/useApi";
 import { useUIStore } from "@/stores/uiStore";
@@ -279,20 +280,18 @@ export function SpeechSettingsSection() {
                   }))
                 }
               />
-              <label className="flex items-center gap-3 rounded-xl bg-white/5 border border-white/10 px-4 py-3 mt-6">
-                <input
-                  type="checkbox"
+              <div className="flex items-center justify-between gap-3 rounded-xl bg-white/5 border border-white/10 px-4 py-3 mt-6">
+                <span className="text-sm text-gray-300">Fallback to macOS system voice</span>
+                <Switch
                   checked={speech.tts.fallbackToSystem}
-                  onChange={(event) =>
+                  onChange={(next) =>
                     setSpeech((current) => ({
                       ...current,
-                      tts: { ...current.tts, fallbackToSystem: event.target.checked },
+                      tts: { ...current.tts, fallbackToSystem: next },
                     }))
                   }
-                  className="w-4 h-4 rounded border-white/20 bg-white/5 text-indigo-500 focus:ring-indigo-500"
                 />
-                <span className="text-sm text-gray-300">Fallback to macOS system voice</span>
-              </label>
+              </div>
             </div>
           </div>
 

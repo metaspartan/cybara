@@ -20,6 +20,15 @@ function resolveCommand(value?: string): string | undefined {
   return value && !value.startsWith("-") ? value.toLowerCase() : undefined;
 }
 
+function redirectProtocolLogs(): void {
+  const redirect = (...values: unknown[]): void => {
+    process.stderr.write(`${values.map(String).join(" ")}\n`);
+  };
+  console.log = redirect;
+  console.info = redirect;
+  console.debug = redirect;
+}
+
 const command = resolveCommand(args[0]);
 
 const CLI_COMMANDS = [
@@ -58,6 +67,9 @@ const CLI_COMMANDS = [
   "tui",
   "wallet",
   "router",
+  "acp",
+  "artifacts",
+  "journey",
   "mobile",
   "help",
   "--help",
@@ -261,6 +273,11 @@ async function main() {
       logDaemon(`Failed to start server: ${err}`);
       throw err;
     }
+  } else if (command === "acp") {
+    redirectProtocolLogs();
+    const { runAcpCommand } = await import("./cli-acp");
+    await runAcpCommand(args.slice(1));
+    process.exit(0);
   } else if (isCliCommand) {
     await import("./cli");
   } else {

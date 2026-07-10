@@ -803,11 +803,16 @@ function RouteRow({
 }) {
   const [open, setOpen] = useState(false);
   const [manualPlanOpen, setManualPlanOpen] = useState(false);
-  const routeCfg = (config.routes[route.providerId] ?? {}) as Record<string, number | boolean>;
+  const routeCfg = (config.routes[route.providerId] ?? {}) as Record<
+    string,
+    number | boolean | string
+  >;
 
-  const update = (key: string, value: number | boolean) => {
+  const update = (key: string, value: number | boolean | string) => {
     const routes = { ...config.routes };
-    routes[route.providerId] = { ...routeCfg, [key]: value };
+    const nextRoute = { ...routeCfg, [key]: value };
+    if (value === "" || value === undefined) delete nextRoute[key];
+    routes[route.providerId] = nextRoute;
     void onSave({ ...config, routes });
   };
 
@@ -951,15 +956,35 @@ function RouteRow({
         </div>
       </div>
 
-      {models.length > 0 && (
-        <div className="flex items-center gap-1.5 rounded-lg bg-white/[0.025] px-2.5 py-2 text-[11px] text-gray-500">
-          <Cpu className="w-3 h-3" />
-          <span className="truncate">
-            {models.slice(0, 5).join(", ")}
-            {models.length > 5 ? ` +${models.length - 5} more` : ""}
-          </span>
-        </div>
-      )}
+      <div className="flex items-center gap-2 rounded-lg bg-white/[0.025] px-2.5 py-2 text-[11px] text-gray-500">
+        <Cpu className="w-3 h-3 flex-shrink-0" />
+        <label className="text-gray-500 flex-shrink-0" htmlFor={`route-model-${route.providerId}`}>
+          Model
+        </label>
+        {models.length > 0 ? (
+          <select
+            id={`route-model-${route.providerId}`}
+            value={typeof routeCfg.model === "string" ? routeCfg.model : ""}
+            onChange={(event) => update("model", event.target.value)}
+            className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          >
+            <option value="">Provider default</option>
+            {models.map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            id={`route-model-${route.providerId}`}
+            value={typeof routeCfg.model === "string" ? routeCfg.model : ""}
+            onChange={(event) => update("model", event.target.value)}
+            placeholder="Provider default"
+            className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-gray-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+        )}
+      </div>
 
       {plan && <PlanStatusPanel plan={plan} />}
 

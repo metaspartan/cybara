@@ -4,6 +4,7 @@ import { PageLayout } from "@/components/layout";
 import { GatewayPathSettingsSection } from "@/components/settings/GatewayPathSettingsSection";
 import { GatewayRemoteAccessSection } from "@/components/settings/GatewayRemoteAccessSection";
 import { SettingsNavigation } from "@/components/settings/SettingsNavigation";
+import { AiFeatureSettings } from "./settings/AiFeatureSettings";
 import { FeatureSettings } from "./settings/FeatureSettings";
 import { MemoryBehaviorSettings } from "./settings/MemoryBehaviorSettings";
 import { SpeechSettingsSection } from "./settings/SpeechSettingsSection";
@@ -2609,6 +2610,7 @@ export function Settings() {
 
           {activeSection === "ai" && (
             <>
+              <AiFeatureSettings />
               <SystemPromptSection />
               <LlmTimeoutSettingsSection />
             </>

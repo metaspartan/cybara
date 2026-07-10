@@ -23,6 +23,7 @@ import { Input } from "@/components/ui/Input";
 import { Badge } from "@/components/ui/Badge";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { FormSwitch } from "@/components/ui/FormSwitch";
 import { Select } from "@/components/ui/Input";
 import { PageLayout } from "@/components/layout";
 import {
@@ -1142,15 +1143,10 @@ function ProviderModal({
           </div>
         )}
 
-        <label className="flex items-center gap-3 p-3 rounded-xl bg-white/5 cursor-pointer">
-          <input
-            type="checkbox"
-            name="is_default"
-            defaultChecked={isProviderDefault(provider)}
-            className="w-4 h-4 rounded border-white/20 bg-white/5 text-indigo-500 focus:ring-indigo-500"
-          />
+        <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white/5">
           <span className="text-sm text-gray-300">Set as default provider</span>
-        </label>
+          <FormSwitch name="is_default" defaultChecked={isProviderDefault(provider)} />
+        </div>
 
         {isEdit && planConfigReady && !manualPlanEditable && (
           <div className="space-y-2 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.05] p-3">

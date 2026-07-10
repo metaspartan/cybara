@@ -1,5 +1,8 @@
 import { randomUUID } from "crypto";
+import { isAbsolute } from "path";
 import { agentManager } from "../agent";
+import type { AgentMessage } from "../agent";
+import { getAppVersion } from "../build-info";
 import {
   parseJsonRpc,
   isNotification,
@@ -10,6 +13,7 @@ import {
   promptResult,
   extractPromptText,
   isSupportedAuthMethod,
+  ACP_PROTOCOL_VERSION,
   type JsonRpcRequest,
   type JsonRpcResponse,
 } from "./protocol";
@@ -17,13 +21,63 @@ import {
 export interface AcpDeps {
   write: (message: JsonRpcRequest | JsonRpcResponse) => void;
   resolveAgentId: () => string | undefined;
-  sendMessage: (agentId: string, text: string) => Promise<string>;
+  sendMessage: (request: AcpPromptRequest) => Promise<string>;
   newSessionId?: () => string;
+  agentVersion?: string;
+}
+
+export interface AcpPromptRequest {
+  agentId: string;
+  sessionId: string;
+  text: string;
+  cwd: string;
+  messages: AgentMessage[];
+  signal: AbortSignal;
+}
+
+interface AcpSession {
+  agentId: string;
+  cwd: string;
+  messages: AgentMessage[];
+  activePrompt?: AbortController;
+}
+
+export interface AcpServerStatus {
+  ready: boolean;
+  protocolVersion: number;
+  agent: { id: string; name: string; model: string } | null;
+  transport: "stdio";
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+function resolveAcpAgent(agentId?: string) {
+  if (agentId) return agentManager.get(agentId);
+  const agents = agentManager.list();
+  return (
+    agents.find((agent) => agent.type === "main") ||
+    agents.find((agent) => agent.type !== "subagent" && agent.type !== "worker")
+  );
+}
+
+export function inspectAcpServer(opts?: { agentId?: string }): AcpServerStatus {
+  const agent = resolveAcpAgent(opts?.agentId);
+  return {
+    ready: !!agent,
+    protocolVersion: ACP_PROTOCOL_VERSION,
+    agent: agent
+      ? { id: agent.id, name: agent.name, model: agent.model || "gateway default" }
+      : null,
+    transport: "stdio",
+  };
 }
 
 export function createAcpDispatcher(deps: AcpDeps): (line: string) => Promise<void> {
-  const sessions = new Map<string, { agentId: string }>();
+  const sessions = new Map<string, AcpSession>();
   const newSessionId = deps.newSessionId ?? (() => randomUUID());
+  let initialized = false;
 
   return async function dispatch(line: string): Promise<void> {
     const req = parseJsonRpc(line);
@@ -33,7 +87,8 @@ export function createAcpDispatcher(deps: AcpDeps): (line: string) => Promise<vo
     try {
       switch (req.method) {
         case "initialize":
-          deps.write(jsonRpcResult(req.id, initializeResult()));
+          initialized = true;
+          deps.write(jsonRpcResult(req.id, initializeResult(deps.agentVersion)));
           return;
 
         case "authenticate": {
@@ -50,6 +105,16 @@ export function createAcpDispatcher(deps: AcpDeps): (line: string) => Promise<vo
         }
 
         case "session/new": {
+          if (!initialized) {
+            deps.write(jsonRpcError(req.id, -32002, "ACP connection is not initialized"));
+            return;
+          }
+          const params = req.params as { cwd?: string } | undefined;
+          const cwd = params?.cwd?.trim();
+          if (!cwd || !isAbsolute(cwd)) {
+            deps.write(jsonRpcError(req.id, -32602, "session/new requires an absolute cwd"));
+            return;
+          }
           const agentId = deps.resolveAgentId();
           if (!agentId) {
             deps.write(
@@ -58,12 +123,16 @@ export function createAcpDispatcher(deps: AcpDeps): (line: string) => Promise<vo
             return;
           }
           const sessionId = newSessionId();
-          sessions.set(sessionId, { agentId });
+          sessions.set(sessionId, { agentId, cwd, messages: [] });
           deps.write(jsonRpcResult(req.id, { sessionId }));
           return;
         }
 
         case "session/prompt": {
+          if (!initialized) {
+            deps.write(jsonRpcError(req.id, -32002, "ACP connection is not initialized"));
+            return;
+          }
           const params = req.params as { sessionId?: string } | undefined;
           const session = params?.sessionId ? sessions.get(params.sessionId) : undefined;
           if (!session || !params?.sessionId) {
@@ -75,16 +144,53 @@ export function createAcpDispatcher(deps: AcpDeps): (line: string) => Promise<vo
             deps.write(jsonRpcResult(req.id, promptResult("end_turn")));
             return;
           }
-          const response = await deps.sendMessage(session.agentId, text);
-          if (response) {
-            deps.write(agentMessageChunk(params.sessionId, response));
+          if (session.activePrompt) {
+            deps.write(
+              jsonRpcError(req.id, -32600, "A prompt is already running for this session")
+            );
+            return;
           }
-          deps.write(jsonRpcResult(req.id, promptResult("end_turn")));
+          const controller = new AbortController();
+          session.activePrompt = controller;
+          session.messages.push({ role: "user", content: text });
+          try {
+            const response = await deps.sendMessage({
+              agentId: session.agentId,
+              sessionId: params.sessionId,
+              text,
+              cwd: session.cwd,
+              messages: [...session.messages],
+              signal: controller.signal,
+            });
+            if (controller.signal.aborted) {
+              session.messages.pop();
+              deps.write(jsonRpcResult(req.id, promptResult("cancelled")));
+              return;
+            }
+            if (response) {
+              session.messages.push({ role: "assistant", content: response });
+              deps.write(agentMessageChunk(params.sessionId, response));
+            }
+            deps.write(jsonRpcResult(req.id, promptResult("end_turn")));
+          } catch (error) {
+            if (controller.signal.aborted || isAbortError(error)) {
+              session.messages.pop();
+              deps.write(jsonRpcResult(req.id, promptResult("cancelled")));
+              return;
+            }
+            throw error;
+          } finally {
+            session.activePrompt = undefined;
+          }
           return;
         }
 
-        case "session/cancel":
+        case "session/cancel": {
+          const params = req.params as { sessionId?: string } | undefined;
+          const session = params?.sessionId ? sessions.get(params.sessionId) : undefined;
+          session?.activePrompt?.abort(new DOMException("ACP prompt cancelled", "AbortError"));
           return;
+        }
 
         default:
           if (!notification) {
@@ -109,19 +215,24 @@ export function createAcpDispatcher(deps: AcpDeps): (line: string) => Promise<vo
 export async function runAcpServer(opts?: { agentId?: string }): Promise<void> {
   const dispatch = createAcpDispatcher({
     write: (message) => process.stdout.write(JSON.stringify(message) + "\n"),
-    resolveAgentId: () => {
-      if (opts?.agentId) return opts.agentId;
-      const all = agentManager.list();
-      const preferred = all.find((a) => a.type === "main") || all[0];
-      return preferred?.id;
-    },
-    sendMessage: async (agentId, text) => {
-      const result = await agentManager.message(agentId, text);
-      return result.response || "";
+    resolveAgentId: () => resolveAcpAgent(opts?.agentId)?.id,
+    agentVersion: getAppVersion(),
+    sendMessage: async ({ agentId, sessionId, messages, cwd, signal }) => {
+      const result = await agentManager.execute(agentId, messages, {
+        sessionId,
+        workspaceDir: cwd,
+        abortSignal: signal,
+      });
+      return result.content || "";
     },
   });
 
   let buffer = "";
+  const pending = new Set<Promise<void>>();
+  const dispatchLine = (line: string): void => {
+    const task = dispatch(line).finally(() => pending.delete(task));
+    pending.add(task);
+  };
   process.stdin.setEncoding("utf8");
   for await (const chunk of process.stdin) {
     buffer += chunk;
@@ -129,7 +240,9 @@ export async function runAcpServer(opts?: { agentId?: string }): Promise<void> {
     while ((idx = buffer.indexOf("\n")) >= 0) {
       const line = buffer.slice(0, idx);
       buffer = buffer.slice(idx + 1);
-      await dispatch(line);
+      dispatchLine(line);
     }
   }
+  if (buffer.trim()) dispatchLine(buffer);
+  await Promise.all(pending);
 }

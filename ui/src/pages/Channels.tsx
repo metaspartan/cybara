@@ -25,6 +25,7 @@ import { Input } from "../components/ui/Input";
 import { Badge } from "../components/ui/Badge";
 import { Modal } from "../components/ui/Modal";
 import { ConfirmDialog } from "../components/ui/ConfirmDialog";
+import { FormSwitch } from "../components/ui/FormSwitch";
 import { Select } from "../components/ui/Input";
 import {
   useChannels,
@@ -871,18 +872,13 @@ function ConfigField({ field, value }: { field: ChannelField; value?: unknown })
   if (field.type === "boolean") {
     const checked = value === true || value === "true" || value === 1 || value === "1";
     return (
-      <label className="flex items-center gap-3 p-3 rounded-xl bg-white/5 cursor-pointer">
-        <input
-          type="checkbox"
-          name={`config_${field.name}`}
-          defaultChecked={checked}
-          className="w-4 h-4 rounded border-white/20 bg-white/5 text-indigo-500 focus:ring-indigo-500"
-        />
+      <div className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white/5">
         <div>
           <span className="text-sm text-gray-300">{field.label}</span>
           {field.description && <p className="text-xs text-gray-500">{field.description}</p>}
         </div>
-      </label>
+        <FormSwitch name={`config_${field.name}`} defaultChecked={checked} />
+      </div>
     );
   }
 

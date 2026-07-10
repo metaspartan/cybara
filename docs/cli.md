@@ -347,9 +347,30 @@ cybara router set <id> <flags>       # Configure a route
 ### ACP (Agent Client Protocol)
 
 ```bash
-cybara acp                 # Serve the default agent to an ACP client (Zed, etc.) over stdio
+cybara acp                 # Serve the default agent to an ACP client over stdio
 cybara acp --agent <id>    # Serve a specific agent
+cybara acp --check         # Validate the default agent and transport setup
+cybara acp --help          # Show transport and option details
 ```
+
+ACP v1 lets a compatible editor create an isolated Cybara conversation rooted at the editor's
+absolute workspace directory. Each session keeps its own message history, uses the selected
+agent's providers and tools, confines tool execution to that workspace, and supports prompt
+cancellation. Text prompts and text responses are supported. Cybara sends JSON-RPC exclusively
+on stdout and routes diagnostics to stderr.
+
+Configure an ACP client to launch Cybara as a local subprocess:
+
+```json
+{
+  "command": "cybara",
+  "args": ["acp", "--agent", "agent-id"]
+}
+```
+
+The client performs `initialize`, opens a session with `session/new`, sends turns with
+`session/prompt`, receives response chunks through `session/update`, and can interrupt an active
+turn with `session/cancel`. Omit `--agent` to use the first configured main agent.
 
 ### Reasoning Effort
 

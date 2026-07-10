@@ -363,7 +363,7 @@ export function MainMenu({
 
   const selectedItem = menuItems[selected];
   const groups = ["Workflows", "Setup", "System"] as const;
-  const availableRows = Math.max(5, (process.stdout.rows || 30) - 18);
+  const availableRows = Math.max(5, (process.stdout.rows || 30) - 26);
   const visibleCount = Math.min(menuItems.length, availableRows);
   const visibleStart = Math.max(
     0,

@@ -51,7 +51,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - Model provider router with weighted / round-robin / lowest-cost / priority / mixture-of-agents strategies, circuit breaker, rate limits, spend caps, and coding-plan limit awareness
 - Mixture of Agents (MoA): fan a turn out to several proposer agents and synthesize one answer — available both as a `mixture_of_agents` tool and as a router strategy
 - Self-improving skills: agents can codify a verified multi-step procedure with `skill_save`, and the loader picks it up for future sessions
-- ACP (Agent Client Protocol) server so editors like Zed can drive an agent (`cybara acp`)
+- ACP (Agent Client Protocol) v1 server for connecting compatible editors to a workspace-confined Cybara agent over stdio (`cybara acp`)
 - A web UI with dashboard, chat, IDE, terminal, tools, MCP, mobile pairing, wallet, and settings surfaces
 - Bundled skills (`skills/`), including fal.ai media guidance and mactop hardware monitoring when available on macOS
 - Anthropic prompt caching, multi-key credential pools + rate-limit rotation, and a centralized LLM error taxonomy

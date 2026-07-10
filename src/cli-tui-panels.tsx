@@ -143,7 +143,21 @@ function usageColor(value: string): string {
   return "green";
 }
 
+function UsageMeter({ label, value }: { label: string; value: string }): React.ReactElement {
+  const percent = Number.parseInt(value, 10);
+  const filled = Number.isFinite(percent) ? Math.round(Math.max(0, Math.min(100, percent)) / 12.5) : 0;
+  const meter = value === "∞" ? "────────" : "■".repeat(filled) + "·".repeat(8 - filled);
+  return (
+    <Text>
+      <Text color="gray">{label} </Text>
+      <Text color={usageColor(value)}>{meter}</Text>
+      <Text color={usageColor(value)}> {value.padStart(3)}</Text>
+    </Text>
+  );
+}
+
 export function TUIUsageCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
+  const layout = useTerminalLayout();
   const loader = React.useCallback(() => fetchAPI<UsageResponse>("/api/provider-plans/status"), [fetchAPI]);
   const state = usePanelData(loader, "Failed to load provider usage");
   const providers = (state.data?.providers || []).filter(
@@ -164,21 +178,25 @@ export function TUIUsageCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
           const fiveHour = usageWindow(provider, "rolling_5h");
           const weekly = usageWindow(provider, "rolling_week");
           return (
-            <Box key={provider.providerId}>
-              <Box width={28}>
-                <Text bold>{compact(provider.providerName, 26)}</Text>
+            <Box
+              key={provider.providerId}
+              flexDirection={layout.narrow ? "column" : "row"}
+              marginBottom={layout.narrow ? 1 : 0}
+            >
+              <Box width={layout.narrow ? undefined : 28}>
+                <Text bold>{compact(provider.providerName, layout.narrow ? 38 : 26)}</Text>
               </Box>
-              <Box width={13}>
-                <Text color="gray">5h </Text>
-                <Text color={usageColor(fiveHour)}>{fiveHour}</Text>
+              <Box width={layout.narrow ? undefined : 19}>
+                <UsageMeter label="5h" value={fiveHour} />
               </Box>
-              <Box width={16}>
-                <Text color="gray">Weekly </Text>
-                <Text color={usageColor(weekly)}>{weekly}</Text>
+              <Box width={layout.narrow ? undefined : 23}>
+                <UsageMeter label="Week" value={weekly} />
               </Box>
-              <Text color={provider.status === "ok" ? "green" : "gray"}>
-                {provider.status || "unknown"}
-              </Text>
+              {!layout.narrow ? (
+                <Text color={provider.status === "ok" ? "green" : "gray"}>
+                  {provider.status || "unknown"}
+                </Text>
+              ) : null}
             </Box>
           );
         })

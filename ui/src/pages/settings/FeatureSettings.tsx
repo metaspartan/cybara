@@ -2,7 +2,6 @@ import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Input";
 import { extractApiError, settingsApi } from "@/lib/api";
-import { useAgentSummaries } from "@/hooks/useApi";
 import { useUIStore } from "@/stores/uiStore";
 import { AlertTriangle, RefreshCw, Server, Shield } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -37,9 +36,6 @@ interface SandboxStatusView {
 
 export function FeatureSettings() {
   const [terminalEnabled, setTerminalEnabled] = useState(false);
-  const [selfImprovingSkills, setSelfImprovingSkills] = useState(true);
-  const [backgroundAgentId, setBackgroundAgentId] = useState("");
-  const { data: agentsForBackground } = useAgentSummaries();
   const [dangerousToolPolicyEnabled, setDangerousToolPolicyEnabled] = useState(false);
   const [dangerousToolPolicyMode, setDangerousToolPolicyMode] = useState<"audit" | "block">(
     "audit"
@@ -49,10 +45,6 @@ export function FeatureSettings() {
   const [sandboxProvider, setSandboxProvider] = useState<SandboxProviderOption>("auto");
   const [sandboxNetwork, setSandboxNetwork] = useState<"allow" | "deny">("deny");
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
-  const [reasoningEffort, setReasoningEffort] = useState("");
-  const [savingReasoningEffort, setSavingReasoningEffort] = useState(false);
-  const [toonStructuredDataEnabled, setToonStructuredDataEnabled] = useState(true);
-  const [savingTokenOptimization, setSavingTokenOptimization] = useState(false);
   const [savingDangerousPolicy, setSavingDangerousPolicy] = useState(false);
   const [savingSandboxRuntime, setSavingSandboxRuntime] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -114,7 +106,6 @@ export function FeatureSettings() {
 
         const data = configResult.success ? configResult.data : undefined;
         setTerminalEnabled(data?.terminal_enabled === true);
-        setSelfImprovingSkills(data?.self_improving_skills_enabled !== false);
         const policy = data?.dangerous_tool_policy as
           | { enabled?: boolean; mode?: string }
           | undefined;
@@ -134,18 +125,6 @@ export function FeatureSettings() {
             : "auto"
         );
         setSandboxNetwork(sandboxRaw?.network === "allow" ? "allow" : "deny");
-        setReasoningEffort(typeof data?.reasoning_effort === "string" ? data.reasoning_effort : "");
-        const tokenOptimization = data?.token_optimization as
-          | { toonStructuredDataEnabled?: boolean; toon_structured_data_enabled?: boolean }
-          | undefined;
-        setToonStructuredDataEnabled(
-          tokenOptimization?.toonStructuredDataEnabled ??
-            tokenOptimization?.toon_structured_data_enabled ??
-            true
-        );
-        setBackgroundAgentId(
-          typeof data?.background_agent_id === "string" ? data.background_agent_id : ""
-        );
         if (sandboxResult.success && sandboxResult.data) {
           setSandboxStatus(sandboxResult.data as SandboxStatusView);
         }
@@ -174,41 +153,6 @@ export function FeatureSettings() {
       const message = error instanceof Error ? error.message : "Failed to update terminal setting";
       addToast("error", message);
       setTerminalEnabled(!enabled);
-    }
-  };
-
-  const saveBackgroundAgent = async (agentId: string) => {
-    const previous = backgroundAgentId;
-    setBackgroundAgentId(agentId);
-    try {
-      const result = await settingsApi.updateConfig({ background_agent_id: agentId });
-      if (!result.success || !result.data?.success) {
-        throw new Error(extractApiError(result, "Config update failed"));
-      }
-      addToast(
-        "success",
-        agentId ? "Background model updated" : "Background model reset to default"
-      );
-    } catch (error) {
-      addToast(
-        "error",
-        error instanceof Error ? error.message : "Failed to update background model"
-      );
-      setBackgroundAgentId(previous);
-    }
-  };
-
-  const toggleSelfImprovingSkills = async (enabled: boolean) => {
-    setSelfImprovingSkills(enabled);
-    try {
-      const result = await settingsApi.updateConfig({ self_improving_skills_enabled: enabled });
-      if (!result.success || !result.data?.success) {
-        throw new Error(result.error || "Config update failed");
-      }
-      addToast("success", `Self-improving skills ${enabled ? "enabled" : "disabled"}`);
-    } catch {
-      addToast("error", "Failed to update self-improving skills setting");
-      setSelfImprovingSkills(!enabled);
     }
   };
 
@@ -257,49 +201,6 @@ export function FeatureSettings() {
       addToast("error", "Failed to update tool approval mode");
     } finally {
       setSavingToolApprovalMode(false);
-    }
-  };
-
-  const updateReasoningEffort = async (next: string) => {
-    const previous = reasoningEffort;
-    setReasoningEffort(next);
-    setSavingReasoningEffort(true);
-    try {
-      const result = await settingsApi.updateConfig({ reasoning_effort: next });
-      if (!result.success || !result.data?.success) {
-        throw new Error(result.error || "Config update failed");
-      }
-      addToast(
-        "success",
-        next ? `Reasoning effort set to ${next}` : "Reasoning effort set to default"
-      );
-    } catch {
-      setReasoningEffort(previous);
-      addToast("error", "Failed to update reasoning effort");
-    } finally {
-      setSavingReasoningEffort(false);
-    }
-  };
-
-  const toggleToonStructuredData = async (enabled: boolean) => {
-    setToonStructuredDataEnabled(enabled);
-    setSavingTokenOptimization(true);
-    try {
-      const result = await settingsApi.updateConfig({
-        token_optimization: { toonStructuredDataEnabled: enabled },
-      });
-      if (!result.success || !result.data?.success) {
-        throw new Error(result.error || "Config update failed");
-      }
-      addToast(
-        "success",
-        enabled ? "Structured tool results use adaptive TOON" : "Structured tool results use JSON"
-      );
-    } catch {
-      setToonStructuredDataEnabled(!enabled);
-      addToast("error", "Failed to update token optimization");
-    } finally {
-      setSavingTokenOptimization(false);
     }
   };
 
@@ -378,55 +279,6 @@ export function FeatureSettings() {
           </button>
         </div>
 
-        <div className="flex items-center justify-between py-3 border-b border-white/10">
-          <div>
-            <p className="text-sm text-white font-medium">Self-Improving Skills</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Let agents save reusable skills with{" "}
-              <code className="text-indigo-400">skill_save</code> after completing complex tasks, so
-              future sessions can reuse the procedure. When off, the tool is withheld.
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={selfImprovingSkills}
-            disabled={loading}
-            onClick={() => toggleSelfImprovingSkills(!selfImprovingSkills)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              selfImprovingSkills ? "bg-indigo-500" : "bg-white/10"
-            } ${loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                selfImprovingSkills ? "translate-x-6" : "translate-x-1"
-              }`}
-            />
-          </button>
-        </div>
-
-        <div className="py-3 border-b border-white/10">
-          <p className="text-sm text-white font-medium">Background self-improvement model</p>
-          <p className="text-xs text-gray-400 mt-0.5 mb-2">
-            Memory and skill review run silently in the background after most turns. Point them at a
-            cheaper agent to cut cost over time. Defaults to the agent that handled the turn.
-          </p>
-          <select
-            value={backgroundAgentId}
-            disabled={loading}
-            onChange={(e) => void saveBackgroundAgent(e.target.value)}
-            className="w-full sm:w-72 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
-          >
-            <option value="">Same agent as the turn (default)</option>
-            {(agentsForBackground ?? []).map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-                {agent.model ? ` — ${agent.model}` : ""}
-              </option>
-            ))}
-          </select>
-        </div>
-
         <div className="py-3 border-b border-white/10">
           <div className="flex items-center justify-between">
             <div>
@@ -501,55 +353,6 @@ export function FeatureSettings() {
             Channel shortcut: <code className="text-indigo-400">/permissions ask</code> or{" "}
             <code className="text-indigo-400">/permissions allow</code>
           </p>
-        </div>
-
-        <div className="py-3 border-b border-white/10">
-          <p className="text-sm text-white font-medium">Reasoning Effort</p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            Default thinking depth for reasoning-capable models. Applied when an agent does not set
-            its own reasoning effort. Ignored by models without reasoning support.
-          </p>
-          <div className="mt-3 max-w-xs">
-            <Select
-              value={reasoningEffort}
-              onChange={(value) => void updateReasoningEffort(value)}
-              options={[
-                { value: "", label: "Default (provider setting)" },
-                { value: "minimal", label: "Minimal" },
-                { value: "low", label: "Low" },
-                { value: "medium", label: "Medium" },
-                { value: "high", label: "High" },
-                { value: "xhigh", label: "Extra High" },
-                { value: "max", label: "Max" },
-              ]}
-              disabled={loading || savingReasoningEffort}
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between py-3 border-b border-white/10">
-          <div>
-            <p className="text-sm text-white font-medium">Compact Structured Tool Results</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Use TOON for model-visible tool data when it is smaller than JSON.
-            </p>
-          </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={toonStructuredDataEnabled}
-            disabled={loading || savingTokenOptimization}
-            onClick={() => void toggleToonStructuredData(!toonStructuredDataEnabled)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              toonStructuredDataEnabled ? "bg-cyan-500" : "bg-white/10"
-            } ${loading || savingTokenOptimization ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                toonStructuredDataEnabled ? "translate-x-6" : "translate-x-1"
-              }`}
-            />
-          </button>
         </div>
 
         <div className="py-3">

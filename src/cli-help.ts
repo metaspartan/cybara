@@ -55,8 +55,8 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    models                 List configured providers");
   console.log("    models available       Show available provider types");
   console.log("    models <provider-id>   List models for a configured provider");
-  console.log("  acp         Run an ACP (Agent Client Protocol) server over stdio for editors");
-  console.log("    acp [--agent <id>]    Serve the default (or given) agent to an ACP client");
+  console.log("  acp         Run an ACP v1 server over stdio for compatible clients");
+  console.log("    acp [--agent <id>]    Serve the default or selected agent");
   console.log("  tasks       List scheduled tasks");
   console.log("  skills      List installed skills");
   console.log("  plugin      Plugin management commands");
