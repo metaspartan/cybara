@@ -14,13 +14,13 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
     const source = read("ui/src/pages/Chat.tsx");
     expect(source).toContain("refreshSessionMessagesRef");
     expect(source).toContain("const finalizeLiveState = () => {");
-    // Refresh first, clear in .finally so failures still clean up.
     expect(source).toContain(
-      "void refreshSessionMessagesRef.current(sessionToRefresh).finally(finalizeLiveState);"
+      "void refreshSessionMessagesRef.current(sessionToRefresh).then((refreshed) => {"
     );
-    // The refresher only applies results to the still-visible session.
+    expect(source).toContain("if (refreshed) finalizeLiveState();");
+    expect(source).toContain("loadPersistedCompletion");
+    expect(source).toContain("loadSessionMutation.loadFresh(sid)");
     expect(source).toContain("activeSessionRef.current === sid");
-    // Sessions that are not on screen skip the fetch and just clean up.
     expect(source).toContain("sessionToRefresh === activeSessionRef.current");
   });
 

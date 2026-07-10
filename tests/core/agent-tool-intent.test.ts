@@ -37,6 +37,20 @@ describe("implicit builtin tool intent selection", () => {
     }
   });
 
+  test("treats roadmap completion as workspace mutation work", () => {
+    const names = namesFor("Complete the roadmap");
+    expect(names).toEqual(
+      expect.arrayContaining(["read", "grep", "exec", "write", "edit", "apply_patch"])
+    );
+  });
+
+  test("treats vague test-and-fix requests as workspace mutation work", () => {
+    const names = namesFor("Run a c and b tests and then fix and improve any issues");
+    expect(names).toEqual(
+      expect.arrayContaining(["read", "grep", "exec", "write", "edit", "apply_patch"])
+    );
+  });
+
   test("keeps explanatory app-building questions read-only", () => {
     const names = namesFor("How would I build an app in this workspace?");
     expect(names).toContain("read");

@@ -73,9 +73,9 @@ function includesAny(text: string, patterns: RegExp[]): boolean {
 }
 
 const codeMutationActionPattern =
-  /\b(add|build|change|code|create|delete|develop|edit|fix|implement|make|modify|patch|refactor|remove|repair|scaffold|update|write)\b/;
+  /\b(add|build|change|code|complete|create|delete|develop|edit|finish|fix|implement|make|modify|patch|refactor|remove|repair|scaffold|update|write)\b/;
 const codeMutationTargetPattern =
-  /\b(api|app|application|code|component|directory|feature|file|files|folder|page|program|project|repo|repository|script|service|site|test|tests|webpage|website|workspace)\b/;
+  /\b(api|app|application|code|component|directory|feature|file|files|folder|page|program|project|repo|repository|roadmap|script|service|site|test|tests|webpage|website|workspace)\b/;
 const explanatoryCodePattern =
   /\b(explain|describe|estimate|what (?:is|are)|tell me how|how (?:do|can|could|would|should) (?:i|we|you))\b/;
 
@@ -124,7 +124,7 @@ export function selectBuiltinToolNamesForIntent(
   if (
     codeMutationIntent ||
     includesAny(text, [
-      /\b(code|repo|repository|file|files|folder|directory|source|bug|fix|implement|refactor|test|tests|ci|build|lint|typecheck|tsc|biome|knip|git|branch|commit|diff|pr|pull request|workspace|terminal|shell|command|exec|logs?)\b/,
+      /\b(code|repo|repository|roadmap|file|files|folder|directory|source|bug|fix|implement|refactor|test|tests|ci|build|lint|typecheck|tsc|biome|knip|git|branch|commit|diff|pr|pull request|workspace|terminal|shell|command|exec|logs?)\b/,
       /\b(read|write|edit|patch|grep|search)\b.*\b(file|code|repo|workspace)\b/,
       /\/users\/|src\/|apps\/|tests\/|package\.json|cargo\.toml|\.ts\b|\.tsx\b|\.swift\b|\.rs\b/,
     ])
@@ -133,7 +133,7 @@ export function selectBuiltinToolNamesForIntent(
     if (
       codeMutationIntent ||
       includesAny(text, [
-        /\b(fix|implement|refactor|write|edit|patch|apply patch|change|update|modify|create|delete|remove|add|repair)\b/,
+        /\b(fix|implement|complete|finish|refactor|write|edit|patch|apply patch|change|update|modify|create|delete|remove|add|repair)\b/,
         /\bcommit|pr|pull request\b/,
       ])
     ) {

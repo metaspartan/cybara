@@ -451,6 +451,14 @@ export function useLoadSession() {
     },
     []
   );
+  const loadFresh = useCallback(
+    async (sessionId: string): Promise<LoadedChatSession> => {
+      const result = await loadSessionDetail(sessionId);
+      queryClient.setQueryData(sessionDetailQueryKey(sessionId), result);
+      return result;
+    },
+    [loadSessionDetail, queryClient]
+  );
 
   const mutation = useMutation({
     mutationFn: (sessionId: string) =>
@@ -464,6 +472,7 @@ export function useLoadSession() {
 
   return {
     ...mutation,
+    loadFresh,
     getCached: (sessionId: string) =>
       queryClient.getQueryData<LoadedChatSession>(sessionDetailQueryKey(sessionId)),
   };

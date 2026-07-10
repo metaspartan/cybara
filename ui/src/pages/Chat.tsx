@@ -81,6 +81,7 @@ import {
   MAX_TEXT_FILES,
   mediaSummaryLabel,
 } from "@/lib/chatImages";
+import { loadPersistedCompletion } from "@/lib/chatCompletion";
 import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
 import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
 import {
@@ -1345,9 +1346,9 @@ export function Chat() {
   );
   const loadSessionMutation = useLoadSession();
   const updateSessionAgent = useUpdateSessionAgent();
-  // Always-fresh callback so the SSE effect can refresh the open session's
-  // persisted messages without re-subscribing on every render.
-  const refreshSessionMessagesRef = useRef<(sid: string) => Promise<void>>(() => Promise.resolve());
+  const refreshSessionMessagesRef = useRef<(sid: string) => Promise<boolean>>(() =>
+    Promise.resolve(false)
+  );
   const [input, setInput] = useState("");
   const [pendingImages, setPendingImages] = useState<ChatImageAttachment[]>([]);
   const [pendingFiles, setPendingFiles] = useState<ChatFileAttachment[]>([]);
@@ -2226,10 +2227,11 @@ export function Chat() {
       const statusDetail = typeof payload.detail === "string" ? payload.detail.trim() : "";
       const isSteeringHandoff =
         status === "idle" && statusDetail.toLowerCase() === "steering to follow-up...";
-      if ((status === "idle" && !isSteeringHandoff) || status === "error") {
+      if (status === "error") {
         clearCachedLiveSessionState(payloadSessionId);
         return;
       }
+      if (status === "idle" && !isSteeringHandoff) return;
 
       const cached = readCachedLiveSessionState(payloadSessionId);
       const eventTimestamp =
@@ -2591,7 +2593,7 @@ export function Chat() {
   useEffect(() => {
     refreshSessionMessagesRef.current = async (sid: string) => {
       try {
-        const result = await loadSessionMutation.mutateAsync(sid);
+        const result = await loadPersistedCompletion(() => loadSessionMutation.loadFresh(sid));
         if (result?.messagesList && activeSessionRef.current === sid) {
           loadSession(
             sid,
@@ -2604,10 +2606,12 @@ export function Chat() {
           setSessionTokenUsage(
             (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
           );
+          return true;
         }
       } catch {
-        // Keep whatever is on screen; the next explicit load will recover.
+        return false;
       }
+      return false;
     };
   });
 
@@ -2803,11 +2807,9 @@ export function Chat() {
               clearCachedLiveSessionState(sessionToRefresh);
             };
             if (sessionToRefresh && sessionToRefresh === activeSessionRef.current) {
-              // A run this client didn't drive just finished (started on
-              // another client, or we remounted mid-run). Fetch the persisted
-              // reply BEFORE dropping the live timeline/stream so the chat
-              // never goes blank at completion.
-              void refreshSessionMessagesRef.current(sessionToRefresh).finally(finalizeLiveState);
+              void refreshSessionMessagesRef.current(sessionToRefresh).then((refreshed) => {
+                if (refreshed) finalizeLiveState();
+              });
             } else {
               finalizeLiveState();
             }
@@ -3775,13 +3777,13 @@ export function Chat() {
       try {
         const response = await chatApi.getSessionStatus();
         if (!response.success || !response.data) return null;
-        if (restoreSessionGenerationRef.current !== restoreGeneration || activeSessionRef.current) {
-          return null;
-        }
         const payload = response.data as SessionStatusResponse;
         const activeSnapshots = Array.isArray(payload.activeSessions) ? payload.activeSessions : [];
         const activeIds = Array.isArray(payload.activeSessionIds) ? payload.activeSessionIds : [];
         setActiveSessionIds(activeIds.filter(isRestorableChatSessionId));
+        if (restoreSessionGenerationRef.current !== restoreGeneration || activeSessionRef.current) {
+          return null;
+        }
         return (
           activeSnapshots
             .filter((snapshot) => isRestorableChatSessionId(snapshot.sessionId))
@@ -3808,17 +3810,18 @@ export function Chat() {
       }
       if (suppressAutoRestoreRef.current) return;
       if (sessionId) return;
-      const freshestActiveSessionId = await resolveFreshestActiveSessionId();
-      const targetSessionId = freshestActiveSessionId || persistedSessionId;
-      if (!targetSessionId) return;
-      persistSessionId(targetSessionId);
-      const restored = await restoreSessionFromId(targetSessionId);
-      if (!restored && !freshestActiveSessionId && readPersistedSessionId() === targetSessionId) {
-        persistSessionId(null);
+      const activeSessionLookup = resolveFreshestActiveSessionId();
+      if (persistedSessionId) {
+        const restored = await restoreSessionFromId(persistedSessionId);
+        if (restored) return;
+        if (readPersistedSessionId() === persistedSessionId) {
+          persistSessionId(null);
+        }
       }
-      if (!restored && freshestActiveSessionId && persistedSessionId) {
-        await restoreSessionFromId(persistedSessionId);
-      }
+      const freshestActiveSessionId = await activeSessionLookup;
+      if (!freshestActiveSessionId) return;
+      persistSessionId(freshestActiveSessionId);
+      await restoreSessionFromId(freshestActiveSessionId);
     })();
   }, []); // Only run on mount
 

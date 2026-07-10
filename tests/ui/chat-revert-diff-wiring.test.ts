@@ -267,10 +267,9 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("readPersistedSessionId");
     expect(source).toContain("persistSessionId(sessionId)");
     expect(source).toContain("const resolveFreshestActiveSessionId = async () =>");
-    expect(source).toContain(
-      "const targetSessionId = freshestActiveSessionId || persistedSessionId"
-    );
-    expect(source).toContain("persistSessionId(targetSessionId)");
+    expect(source).toContain("const activeSessionLookup = resolveFreshestActiveSessionId()");
+    expect(source).toContain("restoreSessionFromId(persistedSessionId)");
+    expect(source).toContain("persistSessionId(freshestActiveSessionId)");
     expect(source).toContain("Failed to restore chat session:");
     expect(source).toContain("Failed to inspect active chat sessions:");
   });
