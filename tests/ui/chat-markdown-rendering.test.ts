@@ -49,7 +49,8 @@ describe("Chat markdown rendering behavior", () => {
     expect(source).toContain("<strong");
     expect(source).toContain("ActivityText text={displayCurrentStep}");
     expect(source).toContain("text-current opacity-70");
-    expect(source).toContain("bg-current opacity-70");
+    expect(source).toContain("leading-relaxed text-gray-300");
+    expect(source).not.toContain("bg-current opacity-70");
     expect(source).not.toContain("Sparkles");
     expect(source).not.toContain("text-indigo-300");
     expect(source).not.toContain("text-emerald-400 mt-0.5");

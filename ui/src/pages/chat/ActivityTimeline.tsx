@@ -16,16 +16,16 @@ import {
 import { SubagentIcon } from "./SubagentIcon";
 
 function ActivityRow({ activity }: { activity: LiveActivityItem }) {
+  if (activity.toolName === "__thought") {
+    return (
+      <div className="px-0.5 py-0.5 text-[12.5px] leading-relaxed text-gray-300">
+        <ActivityText text={activity.text} />
+      </div>
+    );
+  }
   return (
-    <div
-      className={cn(
-        "flex items-start gap-2 text-[12px] px-0.5",
-        activity.toolName === "__thought" ? "text-gray-300" : "text-gray-400"
-      )}
-    >
-      {activity.toolName === "__thought" ? (
-        <span className="mt-[7px] h-1.5 w-1.5 flex-shrink-0 rounded-full bg-current opacity-70" />
-      ) : activity.phase === "start" ? (
+    <div className="flex items-start gap-2 text-[12px] px-0.5 text-gray-400">
+      {activity.phase === "start" ? (
         <Loader2 className="w-3 h-3 animate-spin text-current opacity-70 mt-0.5 flex-shrink-0" />
       ) : activity.phase === "result" ? (
         <CheckCircle2 className="w-3 h-3 text-current opacity-70 mt-0.5 flex-shrink-0" />

@@ -4450,6 +4450,8 @@ export function Chat() {
                     />
                     <ChatReasoningControl
                       effort={activeAgentForPlan?.reasoning_effort}
+                      provider={activeAgentForPlan?.provider ?? activeAgentForPlan?.provider_id}
+                      model={activeAgentForPlan?.model}
                       disabled={useModelRouter || !activeAgentForPlan}
                       updating={updateAgentReasoning.isPending}
                       onChange={(effort) => {

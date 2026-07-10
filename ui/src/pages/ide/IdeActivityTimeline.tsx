@@ -2,7 +2,6 @@ import React from "react";
 import { Loader2, AlertTriangle, AlertCircle, CheckCircle2, Info } from "lucide-react";
 import { normalizeActivityTextForPhase, type LiveActivityItem } from "@/lib/chatActivities";
 import { cn } from "@/lib/utils";
-import { Sparkles } from "lucide-react";
 import {
   isGenericIdeStatusLabel,
   formatIdeStatusEventText,
@@ -50,35 +49,39 @@ export function IdeProcessActivityList({ activities }: { activities: LiveActivit
 
   return (
     <div className="space-y-1">
-      {visibleActivities.map((activity) => (
-        <div
-          key={activity.id}
-          className={cn(
-            "flex items-start gap-1.5 text-[12px] px-0.5",
-            activity.toolName === "__thought" ? "text-gray-200" : "text-gray-400"
-          )}
-        >
-          {activity.toolName === "__thought" ? (
-            <Sparkles className="h-3 w-3 text-indigo-300 mt-0.5 flex-shrink-0" />
-          ) : activity.phase === "start" ? (
-            <Loader2 className="h-3 w-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
-          ) : activity.phase === "result" ? (
-            <CheckCircle2 className="h-3 w-3 text-emerald-400 mt-0.5 flex-shrink-0" />
-          ) : activity.phase === "blocked" ? (
-            <AlertTriangle className="h-3 w-3 text-amber-300 mt-0.5 flex-shrink-0" />
-          ) : (
-            <AlertTriangle className="h-3 w-3 text-rose-400 mt-0.5 flex-shrink-0" />
-          )}
-          <div className="min-w-0 flex-1 flex items-center gap-2">
+      {visibleActivities.map((activity) =>
+        activity.toolName === "__thought" ? (
+          <div
+            key={activity.id}
+            className="px-0.5 py-0.5 text-[12.5px] leading-relaxed text-gray-200"
+          >
             <IdeActivityText text={activity.text} />
-            {activity.toolName !== "__thought" && activity.sandboxProvider && (
-              <span className="inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] leading-none text-sky-200">
-                {formatIdeSandboxProviderLabel(activity.sandboxProvider)}
-              </span>
-            )}
           </div>
-        </div>
-      ))}
+        ) : (
+          <div
+            key={activity.id}
+            className="flex items-start gap-1.5 text-[12px] px-0.5 text-gray-400"
+          >
+            {activity.phase === "start" ? (
+              <Loader2 className="h-3 w-3 animate-spin text-amber-400 mt-0.5 flex-shrink-0" />
+            ) : activity.phase === "result" ? (
+              <CheckCircle2 className="h-3 w-3 text-emerald-400 mt-0.5 flex-shrink-0" />
+            ) : activity.phase === "blocked" ? (
+              <AlertTriangle className="h-3 w-3 text-amber-300 mt-0.5 flex-shrink-0" />
+            ) : (
+              <AlertTriangle className="h-3 w-3 text-rose-400 mt-0.5 flex-shrink-0" />
+            )}
+            <div className="min-w-0 flex-1 flex items-center gap-2">
+              <IdeActivityText text={activity.text} />
+              {activity.sandboxProvider && (
+                <span className="inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] leading-none text-sky-200">
+                  {formatIdeSandboxProviderLabel(activity.sandboxProvider)}
+                </span>
+              )}
+            </div>
+          </div>
+        )
+      )}
     </div>
   );
 }

@@ -1,44 +1,80 @@
-import { useEffect, useRef, useState } from "react";
-import { BrainCircuit, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BrainCircuit, HelpCircle, Loader2 } from "lucide-react";
 import type { AgentReasoningEffort } from "@/types";
+import { cn } from "@/lib/utils";
 
-const reasoningOptions: Array<{
-  value: AgentReasoningEffort | null;
-  label: string;
-}> = [
-  { value: null, label: "Default" },
-  { value: "minimal", label: "Minimal" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "xhigh", label: "Max" },
-];
+const BINARY_THINKING_PROVIDERS = new Set(["z.ai", "z.ai-coding", "zai", "z-ai", "qwen-portal"]);
 
-function reasoningIndex(effort?: AgentReasoningEffort | null): number {
-  const index = reasoningOptions.findIndex((option) => option.value === (effort ?? null));
-  return index >= 0 ? index : 0;
+const LEVEL_LABELS: Record<AgentReasoningEffort, string> = {
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Max",
+};
+
+function supportsXHigh(provider?: string | null, model?: string | null): boolean {
+  const providerId = (provider || "").trim().toLowerCase();
+  const modelId = (model || "").trim().toLowerCase();
+  if (!modelId) return false;
+  if (modelId.includes("codex")) return true;
+  if (providerId === "anthropic" || providerId === "anthropic_vertex") return true;
+  const gpt = modelId.match(/^(?:openai\/)?gpt-5\.(\d+)/);
+  if (gpt) return Number(gpt[1]) >= 2;
+  return false;
 }
 
-function reasoningLabel(effort?: AgentReasoningEffort | null): string {
-  return reasoningOptions[reasoningIndex(effort)]?.label ?? "Default";
+interface ReasoningOption {
+  value: AgentReasoningEffort | null;
+  label: string;
+}
+
+function optionsFor(provider?: string | null, model?: string | null): ReasoningOption[] {
+  const providerId = (provider || "").trim().toLowerCase();
+  if (BINARY_THINKING_PROVIDERS.has(providerId)) {
+    return [
+      { value: null, label: "Default" },
+      { value: "medium", label: "Thinking" },
+    ];
+  }
+  const levels: AgentReasoningEffort[] = ["minimal", "low", "medium", "high"];
+  if (supportsXHigh(providerId, model)) levels.push("xhigh");
+  return [
+    { value: null, label: "Default" },
+    ...levels.map((level) => ({ value: level, label: LEVEL_LABELS[level] })),
+  ];
 }
 
 export function ChatReasoningControl({
   effort,
+  provider,
+  model,
   disabled,
   updating,
   onChange,
 }: {
   effort?: AgentReasoningEffort | null;
+  provider?: string | null;
+  model?: string | null;
   disabled?: boolean;
   updating?: boolean;
   onChange: (effort: AgentReasoningEffort | null) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [draftIndex, setDraftIndex] = useState(() => reasoningIndex(effort));
+  const [draftIndex, setDraftIndex] = useState(0);
+  const [scrubbing, setScrubbing] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const currentIndex = reasoningIndex(effort);
-  const label = reasoningLabel(effort);
+  const trackRef = useRef<HTMLDivElement>(null);
+
+  const options = useMemo(() => optionsFor(provider, model), [provider, model]);
+  const currentIndex = useMemo(() => {
+    const index = options.findIndex((option) => option.value === (effort ?? null));
+    return index >= 0 ? index : 0;
+  }, [effort, options]);
+  const label = options[currentIndex]?.label ?? "Default";
+  const draftLabel = options[draftIndex]?.label ?? label;
+  const maxIndex = options.length - 1;
+  const ratio = maxIndex > 0 ? draftIndex / maxIndex : 0;
 
   useEffect(() => {
     setDraftIndex(currentIndex);
@@ -54,14 +90,66 @@ export function ChatReasoningControl({
   }, [open]);
 
   useEffect(() => {
-    if (!open || draftIndex === currentIndex) return;
+    if (!open || scrubbing || draftIndex === currentIndex) return;
     const timer = window.setTimeout(() => {
-      onChange(reasoningOptions[draftIndex]?.value ?? null);
-    }, 180);
+      onChange(options[draftIndex]?.value ?? null);
+    }, 220);
     return () => window.clearTimeout(timer);
-  }, [currentIndex, draftIndex, onChange, open]);
+  }, [currentIndex, draftIndex, onChange, open, options, scrubbing]);
 
-  const title = disabled ? "Select an agent to set reasoning" : `Reasoning: ${label}`;
+  const indexFromPointer = useCallback(
+    (clientX: number) => {
+      const track = trackRef.current;
+      if (!track || maxIndex <= 0) return 0;
+      const rect = track.getBoundingClientRect();
+      const ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      return Math.round(ratio * maxIndex);
+    },
+    [maxIndex]
+  );
+
+  const onTrackPointerDown = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (updating) return;
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        void 0;
+      }
+      setScrubbing(true);
+      setDraftIndex(indexFromPointer(event.clientX));
+    },
+    [indexFromPointer, updating]
+  );
+
+  const onTrackPointerMove = useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!scrubbing) return;
+      setDraftIndex(indexFromPointer(event.clientX));
+    },
+    [indexFromPointer, scrubbing]
+  );
+
+  const onTrackPointerUp = useCallback(() => {
+    setScrubbing(false);
+  }, []);
+
+  const onKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setDraftIndex((index) => Math.min(maxIndex, index + 1));
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+        event.preventDefault();
+        setDraftIndex((index) => Math.max(0, index - 1));
+      } else if (event.key === "Escape") {
+        setOpen(false);
+      }
+    },
+    [maxIndex]
+  );
+
+  const title = disabled ? "Select an agent to set reasoning" : `Reasoning effort: ${label}`;
 
   return (
     <div ref={rootRef} className="relative shrink-0">
@@ -82,33 +170,69 @@ export function ChatReasoningControl({
         <span className="chat-reasoning-trigger-label text-[11px] font-medium">{label}</span>
       </button>
       {open ? (
-        <div className="chat-reasoning-popover absolute bottom-full right-0 z-[70] mb-3 w-[250px] max-w-[calc(100vw-32px)] rounded-lg border p-3 shadow-2xl">
+        <div className="chat-reasoning-popover absolute bottom-full right-0 z-[70] mb-3 w-[264px] max-w-[calc(100vw-32px)] rounded-xl border p-3.5 shadow-2xl">
           <div className="flex items-center justify-between gap-4">
-            <span className="text-xs font-medium">Reasoning</span>
-            <span className="text-xs font-semibold text-white">
-              {reasoningOptions[draftIndex]?.label}
+            <span className="text-xs text-gray-400">
+              Effort <span className="font-semibold text-white">{draftLabel}</span>
+            </span>
+            <span
+              title="How much thinking the model does before answering. Default follows the provider's own setting."
+              className="cursor-help text-gray-500"
+            >
+              <HelpCircle className="h-3.5 w-3.5" />
             </span>
           </div>
-          <input
-            type="range"
-            min={0}
-            max={reasoningOptions.length - 1}
-            step={1}
-            list="chat-reasoning-levels"
-            value={draftIndex}
-            disabled={updating}
-            onChange={(event) => setDraftIndex(Number(event.target.value))}
-            className="chat-reasoning-slider mt-3 w-full"
+          <div
+            ref={trackRef}
+            role="slider"
+            tabIndex={0}
             aria-label="Reasoning effort"
-            aria-valuetext={reasoningOptions[draftIndex]?.label}
-          />
-          <datalist id="chat-reasoning-levels">
-            {reasoningOptions.map((option, index) => (
-              <option key={option.label} value={index} label={option.label} />
+            aria-valuemin={0}
+            aria-valuemax={maxIndex}
+            aria-valuenow={draftIndex}
+            aria-valuetext={draftLabel}
+            onPointerDown={onTrackPointerDown}
+            onPointerMove={onTrackPointerMove}
+            onPointerUp={onTrackPointerUp}
+            onKeyDown={onKeyDown}
+            className={cn(
+              "relative mt-4 h-7 cursor-pointer touch-none select-none rounded-full bg-white/[0.07] outline-none ring-indigo-400/40 focus-visible:ring-2",
+              updating && "pointer-events-none opacity-60"
+            )}
+          >
+            <div
+              className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 shadow-[0_0_14px_rgba(99,102,241,0.45)] transition-[width] duration-150 ease-out"
+              style={{ width: `calc((100% - 28px) * ${ratio} + 16px)` }}
+            />
+            {options.map((option, index) => (
+              <span
+                key={option.label}
+                className={cn(
+                  "absolute top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors",
+                  index <= draftIndex ? "bg-white/60" : "bg-white/25"
+                )}
+                style={{ left: `calc((100% - 28px) * ${index / Math.max(1, maxIndex)} + 14px)` }}
+              />
             ))}
-          </datalist>
-          <div className="mt-1 flex justify-between text-[10px] text-gray-400">
-            <span>Default</span>
+            <div
+              className={cn(
+                "absolute top-1/2 h-6 w-6 -translate-y-1/2 rounded-full bg-white shadow-[0_2px_8px_rgba(0,0,0,0.45)] transition-[left,transform] duration-150 ease-out",
+                scrubbing && "scale-110"
+              )}
+              style={{ left: `calc((100% - 28px) * ${ratio} + 2px)` }}
+            >
+              <span
+                className={cn(
+                  "pointer-events-none absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-black/85 px-2 py-0.5 text-[11px] font-medium text-white shadow transition-opacity",
+                  scrubbing ? "opacity-100" : "opacity-0"
+                )}
+              >
+                {draftLabel}
+              </span>
+            </div>
+          </div>
+          <div className="mt-2 flex justify-between text-[10px] text-gray-500">
+            <span>Faster</span>
             <span>Smarter</span>
           </div>
         </div>

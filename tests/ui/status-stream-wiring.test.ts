@@ -93,7 +93,8 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("ChatApprovalControls");
     expect(source).toContain("ChatReasoningControl");
     expect(source).toContain("Reasoning effort");
-    expect(source).toContain("chat-reasoning-levels");
+    expect(source).toContain('role="slider"');
+    expect(source).toContain("supportsXHigh");
     expect(source).toContain("useUpdateAgentReasoning");
     expect(source).toContain('id="chat-tool-approval-mode"');
     expect(source).toContain(

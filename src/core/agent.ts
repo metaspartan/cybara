@@ -36,6 +36,7 @@ import {
 } from "./llm/image-blocks";
 import {
   normalizeReasoningEffort,
+  coerceReasoningEffort,
   openAICompatReasoningParams,
   anthropicThinkingBudget,
   googleThinkingBudget,
@@ -2376,7 +2377,13 @@ class AgentManager {
       this.resolveModelParams(toolContext).reasoning_effort
     );
     if (openaiEffort) {
-      Object.assign(requestBody, openAICompatReasoningParams(providerConfig || "", openaiEffort));
+      Object.assign(
+        requestBody,
+        openAICompatReasoningParams(
+          providerConfig || "",
+          coerceReasoningEffort(openaiEffort, providerConfig, modelId)
+        )
+      );
     }
 
     if (shouldUseMiniMaxReasoningSplit(providerConfig, modelId)) {
@@ -3472,7 +3479,9 @@ class AgentManager {
         this.resolveModelParams(toolContext).reasoning_effort
       );
       if (googleEffort) {
-        googleGenConfig.thinkingConfig = { thinkingBudget: googleThinkingBudget(googleEffort) };
+        googleGenConfig.thinkingConfig = {
+          thinkingBudget: googleThinkingBudget(coerceReasoningEffort(googleEffort, "google")),
+        };
       }
       const requestBody: Record<string, unknown> = {
         contents,

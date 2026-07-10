@@ -31,6 +31,8 @@ const DYNAMIC_IMPORT_ALLOWLIST = new Set([
   // Lazy-load the Tauri/desktop bridge modules, which only exist when running
   // inside the desktop app (not the server/CLI runtime).
   "ui/src/lib/desktopHost.ts",
+  "ui/src/lib/tauriPet.ts",
+  "ui/src/pages/PetOverlay.tsx",
   // Uses a top-level await import() to isolate the SQLite HOME before the
   // module under test initializes its DB connection.
   "tests/core/kanban.test.ts",
