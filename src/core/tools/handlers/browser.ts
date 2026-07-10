@@ -59,13 +59,26 @@ export function getBrowserPageIdForSession(sessionId: string): string | null {
   return null;
 }
 
+const sessionPageCreations = new Map<string, Promise<string>>();
+
 export async function getOrCreateBrowserPageForSession(sessionId: string): Promise<string> {
-  let pageId = sessionPages.get(sessionId);
-  if (!pageId || !pwManager.getPageById(pageId)) {
-    pageId = await pwManager.createPage();
-    sessionPages.set(sessionId, pageId);
-  }
-  return pageId;
+  const existing = sessionPages.get(sessionId);
+  if (existing && pwManager.getPageById(existing)) return existing;
+
+  const inFlight = sessionPageCreations.get(sessionId);
+  if (inFlight) return inFlight;
+
+  const creation = (async () => {
+    try {
+      const pageId = await pwManager.createPage();
+      sessionPages.set(sessionId, pageId);
+      return pageId;
+    } finally {
+      sessionPageCreations.delete(sessionId);
+    }
+  })();
+  sessionPageCreations.set(sessionId, creation);
+  return creation;
 }
 
 export function releaseBrowserPage(pageId: string): void {
@@ -674,8 +687,6 @@ export async function handleBrowser(
         snapshot = snapshot.slice(0, maxChars) + "\n\n[...TRUNCATED - page too large]";
       }
 
-      // CAPTCHA detection (OpenClaw browser field-test #6): surface a warning
-      // so the agent bails out gracefully instead of silently failing.
       let captchaLine = "";
       try {
         const vendor = (await page.evaluate(`(function(){

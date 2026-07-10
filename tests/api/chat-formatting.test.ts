@@ -27,7 +27,7 @@ describe("chat response formatting", () => {
     expect(result.thinking).toBe("I should inspect the code\nand then run tests");
   });
 
-  test("strips MiniMax and Hermes reasoning tags from visible content", () => {
+  test("strips provider reasoning tags from visible content", () => {
     const result = stripThinkingTags(
       "<mm:think>Search before answering.</mm:think>\nVisible answer.</think>"
     );

@@ -12,10 +12,6 @@ afterEach(() => {
   for (const providerId of createdProviderIds.splice(0)) providerManager.delete(providerId);
 });
 
-// A single malformed tool call (missing required args) must NOT terminate the
-// whole agentic run. The error is fed back so the model self-corrects on the
-// next turn — matching openclaw/opencode/hermes. Regression for runs that bailed
-// with "produced tool calls without the required arguments".
 describe("malformed tool-call recovery (Anthropic loop)", () => {
   test("feeds the missing-args error back and lets the model finish", async () => {
     let call = 0;

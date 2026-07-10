@@ -59,17 +59,26 @@ function eventMatches(hook: ShellHookConfig, type: string): boolean {
   return hook.events.some((e) => e === "*" || e === type);
 }
 
+function wrapForWindowsBatch(cmd: string, args: string[]): { cmd: string; args: string[] } {
+  const lowered = cmd.toLowerCase();
+  if (process.platform === "win32" && (lowered.endsWith(".cmd") || lowered.endsWith(".bat"))) {
+    return { cmd: "cmd.exe", args: ["/d", "/s", "/c", cmd, ...args] };
+  }
+  return { cmd, args };
+}
+
 function resolveCommand(command: string): { cmd: string; args: string[] } | null {
   // Support "cmd arg arg" strings as well as bare paths.
   const parts = command.split(/\s+/).filter(Boolean);
   if (parts.length === 0) return null;
   const [cmd, ...baseArgs] = parts;
-  if (!existsSync(cmd) && !cmd.includes("/")) {
+  const looksLikePath = cmd.includes("/") || cmd.includes("\\") || /^[A-Za-z]:/.test(cmd);
+  if (!existsSync(cmd) && !looksLikePath) {
     // Bare command on PATH — allow (spawn will resolve). We can't pre-verify.
-    return { cmd, args: baseArgs };
+    return wrapForWindowsBatch(cmd, baseArgs);
   }
   if (existsSync(cmd) && !statSync(cmd).isDirectory()) {
-    return { cmd, args: baseArgs };
+    return wrapForWindowsBatch(cmd, baseArgs);
   }
   return null;
 }

@@ -1539,7 +1539,7 @@ describe("CLI Commands", () => {
     expect(stdout).toContain("HEALTH CHECKS");
   });
 
-  test("OpenClaw/Hermes-compatible CLI aliases are wired", async () => {
+  test("legacy-compatible CLI aliases are wired", async () => {
     const health = await runCli(["health"]);
     expect(health.exitCode).toBe(0);
     expect(health.stdout).toContain("CYBARA STATUS");

@@ -419,9 +419,6 @@ async function initializeSession(): Promise<void> {
       }
     }
   } catch (error) {
-    // Discovery failure is non-fatal: with an empty set we optimistically try
-    // driver tools and let per-call errors surface (self-healing on any
-    // driver version, mirroring hermes-agent's backend behavior).
     console.warn(
       `[computer_use] tools/list failed: ${error instanceof Error ? error.message : error}`
     );

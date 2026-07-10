@@ -156,9 +156,9 @@ cybara sessions           # List active chat sessions
 ### Source Migration
 
 ```bash
-cybara migrate sources                         # Detect OpenClaw/Hermes sources
-cybara migrate --from openclaw                 # Preview import
-cybara migrate --from hermes --apply           # Apply default user-data preset
+cybara migrate sources                         # Detect supported legacy sources
+cybara migrate --from <source>                 # Preview import
+cybara migrate --from <source> --apply         # Apply default user-data preset
 cybara migrate --apply --preset full           # Include provider/speech categories
 cybara migrate --migrate-secrets --overwrite   # Opt into API-key import and conflicts
 ```
@@ -267,13 +267,12 @@ the React Native iOS/Android app. Plain `mobile connect` still emits the legacy
 per-device access, not the root gateway API key. Use a LAN-reachable URL or a trusted tunnel when
 pairing from a phone; `localhost` only works on the same machine.
 
-### OpenClaw/Hermes-Friendly Aliases
+### Compatibility Aliases
 
-Cybara accepts the common command names used by OpenClaw and Hermes where they map cleanly to the
-same gateway contract: `gateway`, `health`, `models`/`model`, `pairing`, `devices`, `configure`,
-`onboard`, `completion`, and `logs --follow`. Features that need separate data contracts, such as
-backup archives, profiles, and provider-auth pools, should use Cybara's existing settings and
-migration flows until those commands are explicitly added.
+Cybara accepts common legacy command names where they map cleanly to the same gateway contract:
+`gateway`, `health`, `models`/`model`, `pairing`, `devices`, `configure`,
+`onboard`, `completion`, and `logs --follow`. Backup archives, profiles, and provider-auth pools use
+Cybara's settings and migration flows.
 
 ### MCP Servers
 
@@ -285,8 +284,8 @@ cybara mcp popular        # Show popular servers
 cybara mcp serve          # Expose cybara's own tools as an MCP server (stdio)
 ```
 
-`cybara mcp serve` speaks the MCP JSON-RPC protocol over stdio so other MCP clients (Claude Desktop,
-IDEs, other agents) can call cybara's built-in tools. It reads newline-delimited JSON-RPC requests
+`cybara mcp serve` speaks the MCP JSON-RPC protocol over stdio so MCP clients, IDEs, and other agents
+can call cybara's built-in tools. It reads newline-delimited JSON-RPC requests
 on stdin and writes responses on stdout.
 
 ### Skills

@@ -67,7 +67,7 @@ Recommended near-term path:
   `cybara mobile list|revoke|remove` CLI commands
 - manage sessions, agents, providers, provider plan limits, metrics, speech settings, tools/approvals, wallet policy, channels, tasks, memory, terminal/log entrypoints, gateway controls, and settings summaries
 - keep API-first parity before attempting any local mobile runtime
-- use mobile push-notification settings for chat and task completion alerts, with deeper native share-sheet flows still future work
+- use mobile push-notification settings for chat and task completion alerts
 
 Release CI exports Expo bundles for iOS and Android on every release run, and tagged releases also run best-effort native Android/iOS builds. Signed Android AAB/APK, iOS IPA, Google Play internal-track upload, and TestFlight upload are enabled only when the relevant store signing/App Store Connect secrets are configured.
 

@@ -321,7 +321,7 @@ describe("provider plan monitoring", () => {
     );
   });
 
-  test("keeps Grok and OpenCode as explicit sources until CLI or account sessions are connected", () => {
+  test("keeps providers as explicit sources until CLI or account sessions are connected", () => {
     const grokProviderId = createProvider("xai", "xai-test-key", "https://api.x.ai/v1");
     const openCodeProviderId = createProvider(
       "opencode-go",

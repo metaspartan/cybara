@@ -3,6 +3,7 @@ import { join, dirname, basename, isAbsolute, resolve } from "path";
 import { homedir, hostname, platform, arch, release, cpus, totalmem, freemem, uptime } from "os";
 import { fileURLToPath } from "url";
 import type { CronJobCreate, CronJobPatch } from "../../cron/types";
+import { windowsOcrText } from "../../ocr-windows";
 import * as cron from "../../cron";
 import { agentManager } from "../../agent";
 import type { ToolContext } from "../index";
@@ -1521,33 +1522,10 @@ export async function handleImage(
         }
       }
     } else if (platform === "win32") {
-      try {
-        const psScript = `
-Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$null = [Windows.Media.Ocr.OcrEngine,Windows.Media.Ocr,ContentType=WindowsRuntime]
-$null = [Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics.Imaging,ContentType=WindowsRuntime]
-
-$path = '${resolvedImagePath.replace(/'/g, "''")}'
-$stream = [System.IO.File]::OpenRead($path)
-$decoder = [Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync([System.IO.WindowsRuntimeStreamExtensions]::AsRandomAccessStream($stream)).GetAwaiter().GetResult()
-$bitmap = $decoder.GetSoftwareBitmapAsync().GetAwaiter().GetResult()
-$engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
-$result = $engine.RecognizeAsync($bitmap).GetAwaiter().GetResult()
-Write-Output $result.Text
-$stream.Dispose()
-`;
-        const result = Bun.spawnSync(["powershell", "-NoProfile", "-Command", psScript], {
-          stdout: "pipe",
-          stderr: "pipe",
-          timeout: 30000,
-        });
-
-        if (result.exitCode === 0) {
-          extractedText = result.stdout.toString().trim();
-          console.log(`[Image] OCR extracted ${extractedText.length} characters via Windows OCR`);
-        }
-      } catch (err) {
-        console.error("[Image] Windows OCR failed:", err);
+      const text = windowsOcrText(resolvedImagePath);
+      if (text) {
+        extractedText = text;
+        console.log(`[Image] OCR extracted ${extractedText.length} characters via Windows OCR`);
       }
     }
 

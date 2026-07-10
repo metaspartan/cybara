@@ -1735,7 +1735,7 @@ ACTIONS:
 
   clipboard: {
     name: "clipboard",
-    description: "Read and write system clipboard (macOS)",
+    description: "Read and write the system clipboard (macOS, Windows, Linux)",
     category: "core",
     input_schema: {
       type: "object",

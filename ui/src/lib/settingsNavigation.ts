@@ -79,7 +79,7 @@ export const settingsSectionGroups: SettingsSectionGroup[] = [
       {
         id: "migration",
         labelKey: "settings.migration",
-        description: "Import from OpenClaw or Hermes",
+        description: "Import legacy agent data",
       },
       {
         id: "system",

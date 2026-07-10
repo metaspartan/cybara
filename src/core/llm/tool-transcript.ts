@@ -6,8 +6,7 @@
  * configs, Anthropic `tool_result` blocks) shares the same problem on long
  * multi-tool runs: the transcript grows until it overflows the context window.
  *
- * Following OpenClaw and Hermes, we handle this in ONE shared layer rather than
- * per provider, and we compact by ELIDING old tool-result *content in place*
+ * We compact by ELIDING old tool-result *content in place*
  * — never removing the structural item. This is pairing-safe by construction:
  * the tool call and its (now-elided) result stay together, so a provider can
  * never reject the request for an orphaned result. Recent turns are protected
@@ -254,8 +253,8 @@ export function assertResponsesToolPairing(items: Array<Record<string, unknown>>
 }
 
 /**
- * Shared context-overflow error matcher. Following OpenClaw, a single list of
- * provider error substrings (OpenAI, Anthropic, Bedrock, Gemini, Ollama,
+ * Shared context-overflow error matcher. A single list of provider error
+ * substrings (OpenAI, Anthropic, Bedrock, Gemini, Ollama,
  * OpenRouter, …) drives reactive compaction across every provider path.
  */
 export function isContextOverflowError(errorText: string): boolean {

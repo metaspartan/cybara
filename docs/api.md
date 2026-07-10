@@ -997,7 +997,7 @@ POST /api/migrations/preview
 POST /api/migrations/run
 ```
 
-Migration routes import OpenClaw or Hermes user data. `preview` always runs as a dry run; `run`
+Migration routes import supported legacy agent data. `preview` always runs as a dry run; `run`
 applies the selected preset. Request fields include `sourceKind`, `sourcePath`, `preset`,
 `migrateSecrets`, `overwrite`, `skillConflict`, and `workspaceTarget`.
 

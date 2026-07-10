@@ -1,3 +1,5 @@
+import { windowsOcrText } from "../ocr-windows";
+
 export async function handleOcr(args: Record<string, unknown>): Promise<unknown> {
   const path = args.path as string;
   const language = (args.language as string) || "eng";
@@ -28,6 +30,20 @@ export async function handleOcr(args: Record<string, unknown>): Promise<unknown>
     }
   } catch {
     void 0;
+  }
+
+  if (process.platform === "win32") {
+    const text = windowsOcrText(path);
+    if (text) {
+      return { text, method: "windows_ocr" };
+    }
+    throw new Error(
+      "OCR failed. Install tesseract (winget install tesseract-ocr.tesseract) or ensure a Windows OCR language pack is installed."
+    );
+  }
+
+  if (process.platform !== "darwin") {
+    throw new Error("OCR failed. Install tesseract (e.g. apt install tesseract-ocr).");
   }
 
   try {
@@ -123,29 +139,69 @@ export async function handleImageDescribe(args: Record<string, unknown>): Promis
     throw new Error(`File not found: ${path}`);
   }
 
-  try {
-    const result = Bun.spawnSync(
-      ["sips", "-g", "pixelWidth", "-g", "pixelHeight", "-g", "format", path],
-      {
-        stdout: "pipe",
+  if (process.platform === "darwin") {
+    try {
+      const result = Bun.spawnSync(
+        ["sips", "-g", "pixelWidth", "-g", "pixelHeight", "-g", "format", path],
+        {
+          stdout: "pipe",
+        }
+      );
+
+      if (result.exitCode === 0) {
+        const output = result.stdout.toString();
+        const width = output.match(/pixelWidth:\s*(\d+)/)?.[1];
+        const height = output.match(/pixelHeight:\s*(\d+)/)?.[1];
+        const format = output.match(/format:\s*(\w+)/)?.[1];
+
+        return {
+          width: width ? parseInt(width, 10) : null,
+          height: height ? parseInt(height, 10) : null,
+          format: format || null,
+          path,
+        };
       }
-    );
-
-    if (result.exitCode === 0) {
-      const output = result.stdout.toString();
-      const width = output.match(/pixelWidth:\s*(\d+)/)?.[1];
-      const height = output.match(/pixelHeight:\s*(\d+)/)?.[1];
-      const format = output.match(/format:\s*(\w+)/)?.[1];
-
-      return {
-        width: width ? parseInt(width, 10) : null,
-        height: height ? parseInt(height, 10) : null,
-        format: format || null,
-        path,
-      };
+    } catch {
+      void 0;
     }
-  } catch {
-    void 0;
+  } else if (process.platform === "win32") {
+    try {
+      const psScript = `Add-Type -AssemblyName System.Drawing; $img = [System.Drawing.Image]::FromFile('${path.replace(/'/g, "''")}'); Write-Output "$($img.Width) $($img.Height) $($img.RawFormat)"; $img.Dispose()`;
+      const result = Bun.spawnSync(["powershell", "-NoProfile", "-Command", psScript], {
+        stdout: "pipe",
+        stderr: "pipe",
+        timeout: 15000,
+      });
+      if (result.exitCode === 0) {
+        const [width, height, format] = result.stdout.toString().trim().split(/\s+/);
+        return {
+          width: width ? parseInt(width, 10) : null,
+          height: height ? parseInt(height, 10) : null,
+          format: format || null,
+          path,
+        };
+      }
+    } catch {
+      void 0;
+    }
+  } else {
+    try {
+      const result = Bun.spawnSync(["identify", "-format", "%w %h %m", path], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      if (result.exitCode === 0) {
+        const [width, height, format] = result.stdout.toString().trim().split(/\s+/);
+        return {
+          width: width ? parseInt(width, 10) : null,
+          height: height ? parseInt(height, 10) : null,
+          format: format || null,
+          path,
+        };
+      }
+    } catch {
+      void 0;
+    }
   }
 
   return {

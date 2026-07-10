@@ -17,7 +17,7 @@ Current platform shape in this repo:
 - Channel adapters for the major messaging platforms (`src/core/channels/adapters/`)
 - Tool handler modules (`src/core/tools/handlers/`)
 - Provider-plan-aware model routing (`src/core/router.ts`, `src/core/provider-plans.ts`)
-- Source migration from OpenClaw/Hermes (`src/core/source-migration.ts`)
+- Source migration from supported legacy agent installations (`src/core/source-migration.ts`)
 
 ## Runtime Topology
 
@@ -80,7 +80,9 @@ Transport model:
   - Tool execution loop with hooks/status updates.
   - Tool-call normalization across Anthropic-style and OpenAI-compatible flows.
 - `src/core/system-prompt.ts`
-  - Constructs system prompt sections from runtime context (workspace, tools, permissions, channel state, etc.).
+  - Constructs system prompt sections from effective runtime context: workspace instructions, filtered tools, eligible skills, memory, permissions, sandbox, channel state, and subagent metadata.
+- `src/core/bootstrap-files.ts`
+  - Loads root workspace instructions and persona context from `AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`, and `TOOLS.md`.
 - `src/core/session-context.ts`
   - Session persistence, context compaction, token budgeting.
 - `src/core/session-title.ts`
@@ -91,8 +93,12 @@ Transport model:
   - Provider/model routing strategies, fallback, cost/rate constraints, and provider-plan enforcement.
 - `src/core/provider-plans.ts`
   - Local usage windows, coding-plan presets, and provider plan status snapshots.
+
+Prompt text describes capabilities but does not grant them. Tool schemas are filtered before the
+model request, and execution still passes through agent permissions, approval policy, path policy,
+URL policy, hooks, and sandbox enforcement. See [Agent Runtime and Prompt Architecture](./agent-runtime.md).
 - `src/core/source-migration.ts`
-  - OpenClaw/Hermes import previews and apply runs for persona, memories, skills, providers, speech settings, and workspace instructions.
+  - Legacy import previews and apply runs for persona, memories, skills, providers, speech settings, and workspace instructions.
 
 ## Tools
 

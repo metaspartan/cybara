@@ -366,7 +366,7 @@ export function routeHeader(
     return { title: "Memory", detail: "Memory provider, learning, and indexing" };
   }
   if (route.kind === "migration") {
-    return { title: "Migration", detail: "Import OpenClaw or Hermes data" };
+    return { title: "Migration", detail: "Import legacy agent data" };
   }
   if (route.kind === "journey") {
     return { title: "Journey", detail: "Skills and memories learned over time" };

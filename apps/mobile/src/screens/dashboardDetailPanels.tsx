@@ -1163,7 +1163,7 @@ export function SettingsPanel({
                 <Folder color={accentColor} size={20} strokeWidth={2.1} />
               </View>
               <View style={styles.listText}>
-                <Text style={styles.listTitle}>OpenClaw or Hermes import</Text>
+                <Text style={styles.listTitle}>Legacy agent import</Text>
                 <Text style={styles.listDetail} numberOfLines={1}>
                   Preview settings, memories, skills, and optional provider keys
                 </Text>

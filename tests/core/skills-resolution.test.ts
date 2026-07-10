@@ -36,7 +36,7 @@ describe("Skills SKILL.md resolution", () => {
     });
   });
 
-  test("loads OpenClaw and Hermes inspired bundled skills", () => {
+  test("loads bundled skills", () => {
     const expected = [
       "code-wiki",
       "api-debug",

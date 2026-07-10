@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { extractTextToolCalls, stripTextToolCallMarkup } from "../../src/core/llm/text-tool-calls";
 
 describe("text-form tool call parsing", () => {
-  test("extracts OpenClaw-style invoke blocks from function_calls markup", () => {
+  test("extracts invoke blocks from function_calls markup", () => {
     const calls = extractTextToolCalls(
       [
         "Let me calculate that.",
@@ -19,7 +19,7 @@ describe("text-form tool call parsing", () => {
     expect(calls).toEqual([{ name: "calc", args: { expression: "2 + 2" } }]);
   });
 
-  test("extracts Hermes-style JSON tool_call blocks", () => {
+  test("extracts JSON tool_call blocks", () => {
     const calls = extractTextToolCalls(
       '<tool_call>{"name":"calc","arguments":{"expression":"sqrt(16)"}}</tool_call>',
       new Set(["calc"])
@@ -53,7 +53,7 @@ describe("text-form tool call parsing", () => {
     expect(calls).toEqual([]);
   });
 
-  test("keeps OpenClaw-style exact-name filtering for MiniMax-marked calls", () => {
+  test("keeps exact-name filtering for MiniMax-marked calls", () => {
     const raw = [
       "Let me search.",
       ']<]minimax[>[<tool_call> ]<]minimax[>[<invoke name="websearch"><query>metaspartan cybara</query></invoke></tool_call>',
@@ -79,7 +79,7 @@ describe("text-form tool call parsing", () => {
     expect(calls).toEqual([{ name: "web_search", args: { query: "metaspartan cybara" } }]);
   });
 
-  test("extracts OpenClaw plain text tool request formats", () => {
+  test("extracts supported plain text tool request formats", () => {
     expect(
       extractTextToolCalls('[calc]\n{"expression":"2 + 2"}\n[END_TOOL_REQUEST]', new Set(["calc"]))
     ).toEqual([{ name: "calc", args: { expression: "2 + 2" } }]);

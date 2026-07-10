@@ -287,7 +287,7 @@ describe("native macOS shell wiring", () => {
     expect(sidecarManager).toContain("Waiting for attached Cybara gateway to restart");
   });
 
-  test("native settings exposes OpenClaw and Hermes migration controls", () => {
+  test("native settings exposes supported migration controls", () => {
     const gatewayClient = readFileSync(
       join(MACOS_APP_DIR, "GatewayManagementClient.swift"),
       "utf8"

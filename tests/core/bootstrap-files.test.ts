@@ -26,16 +26,12 @@ interface WorkerResult {
 
 let tempHome = "";
 
-// bootstrap-files resolves its template dir from process.env.HOME (falling back
-// to a homedir() pinned at process startup), so the scenarios run in a child
-// process with HOME/CYBARA_HOME pointed at a throwaway directory that we seed
-// with template files. Each scenario writes into a fresh workspace subdir so
-// filesystem effects stay isolated. A seeded mulberry32 PRNG drives the fuzz
-// portion so failures reproduce deterministically.
 const WORKER_SOURCE = `
 import {
   BOOTSTRAP_FILENAMES,
   CONTEXT_FILES,
+  DEFAULT_CONTEXT_FILE_MAX_CHARS,
+  DEFAULT_CONTEXT_TOTAL_MAX_CHARS,
   completeBootstrap,
   createBootstrapFiles,
   getBootstrapContextFiles,
@@ -77,7 +73,12 @@ function freshWorkspace() {
   return mkdtempSync(join(tmpdir(), "cybara-bootstrap-ws-"));
 }
 
-scenario("constants", () => ({ BOOTSTRAP_FILENAMES, CONTEXT_FILES }));
+scenario("constants", () => ({
+  BOOTSTRAP_FILENAMES,
+  CONTEXT_FILES,
+  DEFAULT_CONTEXT_FILE_MAX_CHARS,
+  DEFAULT_CONTEXT_TOTAL_MAX_CHARS,
+}));
 
 scenario("isFirstRun-empty", () => {
   const ws = freshWorkspace();
@@ -191,6 +192,15 @@ scenario("contextFiles-no-truncate-at-limit", () => {
   return { body, files: getBootstrapContextFiles(ws, { maxChars: 50 }) };
 });
 
+scenario("contextFiles-total-budget", () => {
+  const ws = freshWorkspace();
+  writeFileSync(join(ws, "AGENTS.md"), "a".repeat(200), "utf-8");
+  writeFileSync(join(ws, "SOUL.md"), "b".repeat(200), "utf-8");
+  writeFileSync(join(ws, "IDENTITY.md"), "c".repeat(200), "utf-8");
+  const files = getBootstrapContextFiles(ws, { maxChars: 120, maxTotalChars: 200 });
+  return { files, total: files.reduce((sum, file) => sum + file.content.length, 0) };
+});
+
 scenario("roundtrip", () => {
   const ws = freshWorkspace();
   createBootstrapFiles(ws);
@@ -284,15 +294,26 @@ describe("bootstrap-files exported constants", () => {
     ]);
   });
 
-  test("CONTEXT_FILES is the documented subset without BOOTSTRAP/HEARTBEAT", () => {
-    const { CONTEXT_FILES, BOOTSTRAP_FILENAMES } = get("constants").value as {
+  test("CONTEXT_FILES includes native project context files", () => {
+    const {
+      CONTEXT_FILES,
+      BOOTSTRAP_FILENAMES,
+      DEFAULT_CONTEXT_FILE_MAX_CHARS,
+      DEFAULT_CONTEXT_TOTAL_MAX_CHARS,
+    } = get("constants").value as {
       CONTEXT_FILES: string[];
       BOOTSTRAP_FILENAMES: string[];
+      DEFAULT_CONTEXT_FILE_MAX_CHARS: number;
+      DEFAULT_CONTEXT_TOTAL_MAX_CHARS: number;
     };
     expect(CONTEXT_FILES).toEqual(["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md"]);
-    for (const name of CONTEXT_FILES) expect(BOOTSTRAP_FILENAMES).toContain(name);
+    for (const name of ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md"]) {
+      expect(BOOTSTRAP_FILENAMES).toContain(name);
+    }
     expect(CONTEXT_FILES).not.toContain("BOOTSTRAP.md");
     expect(CONTEXT_FILES).not.toContain("HEARTBEAT.md");
+    expect(DEFAULT_CONTEXT_FILE_MAX_CHARS).toBe(20_000);
+    expect(DEFAULT_CONTEXT_TOTAL_MAX_CHARS).toBe(60_000);
   });
 });
 
@@ -422,8 +443,9 @@ describe("getBootstrapContextFiles", () => {
       files: Array<{ name: string; content: string }>;
     };
     const tools = v.files.find((f) => f.name === "TOOLS.md")!;
-    expect(tools.content.startsWith("x".repeat(50))).toBe(true);
+    expect(tools.content.startsWith("x".repeat(20))).toBe(true);
     expect(tools.content.endsWith("[... truncated ...]")).toBe(true);
+    expect(tools.content.length).toBe(50);
     expect(tools.content.length).toBeLessThan(v.bigLen);
   });
 
@@ -434,6 +456,17 @@ describe("getBootstrapContextFiles", () => {
     };
     expect(v.files.find((f) => f.name === "TOOLS.md")!.content).toBe(v.body);
   });
+
+  test("enforces an aggregate context-file budget", () => {
+    const result = get("contextFiles-total-budget").value as {
+      files: Array<{ name: string; content: string }>;
+      total: number;
+    };
+    expect(result.total).toBeLessThanOrEqual(200);
+    expect(result.files.map((file) => file.name)).toEqual(["AGENTS.md", "SOUL.md"]);
+    expect(result.files[0].content.length).toBe(120);
+    expect(result.files[1].content.length).toBe(80);
+  });
 });
 
 describe("createBootstrapFiles + readBootstrapFiles round trip", () => {
@@ -443,9 +476,9 @@ describe("createBootstrapFiles + readBootstrapFiles round trip", () => {
       missing: boolean;
       matchesDisk: boolean;
     }>;
-    for (const f of files) {
-      expect(f.missing).toBe(false);
-      expect(f.matchesDisk).toBe(true);
+    for (const file of files) {
+      expect(file.missing).toBe(false);
+      expect(file.matchesDisk).toBe(true);
     }
   });
 });

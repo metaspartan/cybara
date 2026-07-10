@@ -1547,7 +1547,7 @@ function MigrationSettingsSection() {
   const pickSource = useCallback(async () => {
     const selected = await openDesktopDirectoryDialog({
       defaultPath: sourcePath,
-      title: "Choose OpenClaw or Hermes directory",
+      title: "Choose legacy agent directory",
     });
     if (selected) setSourcePath(selected);
   }, [sourcePath]);
@@ -1594,7 +1594,7 @@ function MigrationSettingsSection() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <FolderSync className="w-5 h-5 text-indigo-300" />
-            Import from OpenClaw or Hermes
+            Import legacy agent data
           </CardTitle>
           <CardDescription>
             Preview settings, memories, skills, workspace instructions, and optional provider keys
@@ -1648,7 +1648,7 @@ function MigrationSettingsSection() {
               label="Source directory"
               value={sourcePath}
               onChange={(event) => setSourcePath(event.target.value)}
-              placeholder="~/.openclaw or ~/.hermes"
+              placeholder="Path on the gateway host"
             />
             <div className="flex items-end">
               <Button variant="secondary" onClick={() => void pickSource()}>

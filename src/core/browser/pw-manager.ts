@@ -119,41 +119,70 @@ export interface BrowserStatus {
   profiles: BrowserProfile[];
 }
 
+function resetLegacyBrowserState(): void {
+  legacyBrowser = null;
+  legacyContext = null;
+  legacyBrowserPromise = null;
+  legacyContextPromise = null;
+  legacyPages.clear();
+  consoleLogs.clear();
+  pointerStates.clear();
+}
+
+let legacyBrowserPromise: Promise<Browser> | null = null;
+let legacyContextPromise: Promise<BrowserContext> | null = null;
+
 async function getLegacyBrowser(): Promise<Browser> {
   if (legacyBrowser) return legacyBrowser;
+  if (legacyBrowserPromise) return legacyBrowserPromise;
 
-  const chromium = await getChromium();
-  try {
+  legacyBrowserPromise = (async () => {
+    const chromium = await getChromium();
     try {
-      legacyBrowser = await chromium.connectOverCDP("http://127.0.0.1:9222", { timeout: 750 });
-      console.log("[Browser] Connected to existing Chrome instance via CDP");
-      return legacyBrowser;
-    } catch {
-      void 0;
+      let browser: Browser;
+      try {
+        browser = await chromium.connectOverCDP("http://127.0.0.1:9222", { timeout: 750 });
+        console.log("[Browser] Connected to existing Chrome instance via CDP");
+      } catch {
+        const launchArgs = browserLaunchArgs();
+        const headless = process.env.BROWSER_HEADLESS !== "false";
+        browser = await launchWithFallback(chromium, headless, launchArgs);
+        console.log("[Browser] Launched new browser instance");
+      }
+      browser.on("disconnected", () => {
+        console.warn("[Browser] Browser disconnected; clearing cached state");
+        resetLegacyBrowserState();
+      });
+      legacyBrowser = browser;
+      return browser;
+    } catch (error) {
+      legacyBrowserPromise = null;
+      console.error("[Browser] Failed to launch browser:", error);
+      const detail = error instanceof Error ? error.message : String(error);
+      throw new Error(`Failed to launch browser: ${detail}`);
     }
-
-    const launchArgs = browserLaunchArgs();
-    const headless = process.env.BROWSER_HEADLESS !== "false";
-    legacyBrowser = await launchWithFallback(chromium, headless, launchArgs);
-
-    console.log("[Browser] Launched new browser instance");
-    return legacyBrowser;
-  } catch (error) {
-    console.error("[Browser] Failed to launch browser:", error);
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new Error(`Failed to launch browser: ${detail}`);
-  }
+  })();
+  return legacyBrowserPromise;
 }
 
 async function getLegacyContext(): Promise<BrowserContext> {
   if (legacyContext) return legacyContext;
+  if (legacyContextPromise) return legacyContextPromise;
 
-  const bw = await getLegacyBrowser();
-  legacyContext = await bw.newContext({
-    viewport: { width: 1920, height: 1080 },
-  });
-
-  return legacyContext;
+  legacyContextPromise = (async () => {
+    try {
+      const bw = await getLegacyBrowser();
+      const context = await bw.newContext({
+        viewport: { width: 1920, height: 1080 },
+      });
+      legacyContext = context;
+      return context;
+    } catch (error) {
+      legacyContextPromise = null;
+      throw error;
+    }
+  })();
+  return legacyContextPromise;
 }
 
 export async function createBrowserProfile(config: BrowserProfileConfig): Promise<BrowserProfile> {
@@ -215,6 +244,7 @@ export async function createPage(): Promise<string> {
       text: msg.text(),
       location: msg.location()?.url,
     });
+    if (logs.length > 500) logs.splice(0, logs.length - 500);
     consoleLogs.set(id, logs);
   });
 
@@ -863,11 +893,6 @@ export async function evaluate<T = unknown>(pageId: string, script: string): Pro
   return await page.evaluate(script);
 }
 
-/**
- * Detect a CAPTCHA challenge on the page so the agent can bail out gracefully
- * instead of silently failing to interact (OpenClaw browser field-test #6).
- * Checks the DOM for the common vendors' iframe/script/widget signatures.
- */
 export async function detectCaptcha(
   pageId: string
 ): Promise<{ detected: boolean; vendor?: string }> {
@@ -977,13 +1002,12 @@ export async function closeAll(): Promise<void> {
 
   if (legacyContext) {
     await legacyContext.close().catch(() => {});
-    legacyContext = null;
   }
 
   if (legacyBrowser) {
     await legacyBrowser.close().catch(() => {});
-    legacyBrowser = null;
   }
+  resetLegacyBrowserState();
 
   console.log("[Browser] Closed all sessions");
 }

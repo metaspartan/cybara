@@ -19,6 +19,7 @@
   <a href="https://github.com/metaspartan/cybara/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/metaspartan/cybara/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
   <a href="https://github.com/metaspartan/cybara/releases"><img src="https://img.shields.io/github/v/release/metaspartan/cybara?include_prereleases&display_name=tag&sort=semver" alt="Release" /></a>
+  <a href="https://github.com/metaspartan/cybara/releases"><img src="https://img.shields.io/github/downloads/metaspartan/cybara/total?label=downloads" alt="Total Downloads" /></a>
   <img src="https://img.shields.io/badge/runtime-Bun-f9f1e1?logo=bun" alt="Bun" />
   <img src="https://img.shields.io/badge/language-TypeScript-blue?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/ui-React_19-61dafb?logo=react" alt="React" />
@@ -44,7 +45,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 
 ## Capability Snapshot
 
-- A large built-in tool library (`src/core/tools/index.ts`)
+- 77 canonical built-in tools and 95 runtime schemas including compatibility aliases (`src/core/tools/index.ts`), with intent-aware exposure so agents receive only the relevant allowed subset for a turn
 - A broad provider catalog with dynamic model discovery (`src/core/providers.ts`), including Azure OpenAI, Azure AI Foundry, Anthropic on Vertex AI, and Google Gemini on Vertex AI
 - Channel adapters for the major messaging platforms (`src/core/channels/adapters`)
 - Model provider router with weighted / round-robin / lowest-cost / priority / mixture-of-agents strategies, circuit breaker, rate limits, spend caps, and coding-plan limit awareness
@@ -55,11 +56,12 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - Bundled skills (`skills/`), including fal.ai media guidance and mactop hardware monitoring when available on macOS
 - Anthropic prompt caching, multi-key credential pools + rate-limit rotation, and a centralized LLM error taxonomy
 - Smart context compaction (token-aware chunking + structured summaries with identifier preservation)
+- Project instruction and context loading for `AGENTS.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`, and `TOOLS.md` at the selected workspace root
 - Interactive tool approval with per-session/persistent allowlists, filesystem checkpoint/snapshot+rollback, and transform hooks (tool_result/llm_output/terminal_output)
 - Token streaming to the UI (real-time assistant text deltas via WebSocket)
 - MCP host mode (expose cybara's tools to other MCP clients) + MCP client (consume external servers)
 - Local workspace indexing with lexical search plus optional local Transformers.js embeddings; packaged desktop sidecars bundle Transformers.js, ONNX Runtime native binaries when available, and ONNX Web/WASM fallback assets
-- Source migration from OpenClaw and Hermes with dry-run previews, conflict handling, skill/memory import, and opt-in secret import
+- Source migration from supported legacy agent installations with dry-run previews, conflict handling, skill/memory import, and opt-in secret import
 - Shared speech settings for TTS via system/ElevenLabs/OpenAI and STT via native dictation or OpenAI-compatible transcription
 - Gateway operator controls for localhost auth policy, API-key reveal/rotation, gateway restart, and log viewing
 - Media generation (image/video/music) via swappable provider registry, dynamic tool discovery, a tool-calling code sandbox, desktop control with safety hardening, and a multi-agent kanban orchestration tier
@@ -347,8 +349,12 @@ cybara chat
 cybara chat --agent agent-codex --workspace ~/Documents/GitHub/cybara
 cybara chat steer <session-id> <pending-id>
 cybara tui chat
+cybara tui usage
 cybara tui providers
 cybara tui router
+cybara tui channels
+cybara tui memory
+cybara tui tools
 cybara status
 cybara gateway logs --tail 100
 cybara models <provider-id>
@@ -365,7 +371,7 @@ cybara mcp list
 cybara mcp search <query>
 cybara mcp install <package>
 cybara migrate sources
-cybara migrate --from openclaw --apply --preset user-data
+cybara migrate --from <source> --apply --preset user-data
 ```
 
 The terminal chat supports the same session-oriented workflow as the app clients: history reload,
@@ -376,12 +382,29 @@ Full CLI reference: [docs/cli.md](docs/cli.md)
 
 ---
 
+## Agent Runtime Contract
+
+Cybara builds each model request from the effective runtime state rather than one static prompt:
+
+- the selected agent, provider/model, workspace, channel, sandbox, and approval mode
+- only tools that survive agent selection, intent routing, permission checks, and runtime availability
+- eligible skill descriptions with on-demand `SKILL.md` loading
+- bounded memory recall and workspace instruction files
+- session plans, subagent context, token budgets, and context-compaction state
+
+Tool policy and sandbox enforcement remain authoritative even if prompt text or untrusted content
+claims otherwise. See [Agent Runtime and Prompt Architecture](docs/agent-runtime.md) for the
+implemented contract.
+
+---
+
 ## Documentation
 
 | Guide | Description |
 |-------|-------------|
 | [Architecture](docs/architecture.md) | Platform design and data flow |
 | [API](docs/api.md) | REST and streaming API |
+| [Agent Runtime](docs/agent-runtime.md) | Prompt composition, tools, memory, planning, and subagents |
 | [CLI](docs/cli.md) | Command reference |
 | [Channels](docs/channels.md) | Channel setup and in-channel commands |
 | [Configuration](docs/configuration.md) | Runtime config and environment |

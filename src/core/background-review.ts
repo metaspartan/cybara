@@ -1,30 +1,8 @@
-/**
- * Background memory/skill review fork.
- *
- * After an agent turn completes, opportunistically fork a low-priority
- * subagent limited to `memory_*`/`skill_*` tools and ask: "should anything
- * from this turn be saved to long-term memory?" This lets the agent learn
- * user preferences and facts without polluting the main conversation loop or
- * its prompt cache.
- *
- * Key properties:
- *  - Non-blocking: failures are swallowed; never affects the main turn.
- *  - Throttled: at most once per `minIntervalMs` per session.
- *  - Isolated: uses sessions_spawn with a restricted toolset and a short prompt.
- */
 import { handleSessionsSpawn } from "./tools/handlers/channel";
 import type { ToolContext } from "./tools/index";
 import { config } from "./config";
 import { agentManager } from "./agent";
 
-/**
- * Resolve which agent runs background self-improvement (memory/skill review).
- * Prefer a configured cheaper "background_agent_id" so these frequent, silent
- * background operations run on an inexpensive model — mirroring how Hermes
- * offloads self-improvement to cheaper models for large cost savings over time.
- * Falls back to the requester's own agent when unset or invalid, preserving the
- * "run on a provider the user already has working" safety property.
- */
 export function resolveBackgroundAgentId(requesterAgentId?: string): string | undefined {
   const configured = config.get<string>("background_agent_id");
   if (configured && configured.trim() && agentManager.get(configured)) {
@@ -39,18 +17,11 @@ const DEFAULT_REVIEW_TIMEOUT_S = 90;
 const lastReviewAt = new Map<string, number>();
 
 export interface BackgroundReviewOptions {
-  /** Minimum interval between reviews for the same session. */
   minIntervalMs?: number;
-  /** Spawn timeout. */
   timeoutSeconds?: number;
-  /** Disable entirely (e.g. via config). */
   disabled?: boolean;
 }
 
-/**
- * Heuristic gate: only consider reviewing when the turn looks like it might
- * contain durable signal (enough content, not a trivial reply).
- */
 function looksReviewable(lastAssistantText: string): boolean {
   const trimmed = lastAssistantText.trim();
   if (trimmed.length < 200) return false;
@@ -77,25 +48,11 @@ function buildReviewPrompt(conversationExcerpt: string, _context?: ToolContext):
   ].join("\n");
 }
 
-/**
- * Fire-and-forget background review. Always resolves (never rejects) so callers
- * can invoke it without try/catch on the critical path.
- *
- * IMPORTANT: This spawns a subagent that makes its own LLM call. If the provider
- * has auth issues, the subagent will fail — but we must NOT let that failure
- * surface to the user's chat. The subagent is spawned with cleanup="delete" and
- * we swallow all errors. The review is also disabled entirely via env var
- * CYBARA_DISABLE_BACKGROUND_REVIEW=1.
- */
 export async function maybeRunBackgroundReview(
   context: ToolContext | undefined,
   lastAssistantText: string,
   options: BackgroundReviewOptions = {}
 ): Promise<void> {
-  // Enabled by default: the reviewer runs as a silent, fire-and-forget subagent
-  // (silent: true + swallowed errors below), throttled per session, so a failed
-  // LLM call never surfaces to the user's chat. Disable via
-  // CYBARA_DISABLE_BACKGROUND_REVIEW=1.
   if (process.env.CYBARA_DISABLE_BACKGROUND_REVIEW === "1") return;
   if (options.disabled) return;
   if (!context?.sessionId) return;
@@ -114,25 +71,14 @@ export async function maybeRunBackgroundReview(
       {
         task: prompt,
         label: "background-memory-review",
-        // Use the configured cheaper background agent when set (cost savings);
-        // otherwise reuse the requester's agent so the reviewer runs on the SAME
-        // provider the user already has working. Without a valid fallback,
-        // executeSubagent picks availableAgents[0] (often a different provider
-        // whose token may be expired), producing a spurious 401.
         agentId: resolveBackgroundAgentId(context.agentId),
-        // Restrict the reviewer to memory tools only.
         _requesterSessionKey: context.sessionId,
         workspaceDir: context.workspaceDir,
         runTimeoutSeconds: options.timeoutSeconds ?? DEFAULT_REVIEW_TIMEOUT_S,
         cleanup: "delete",
-        // Silent: don't announce results/errors back to the parent session.
-        // The background review is fire-and-forget; any errors (401, etc.)
-        // must NOT surface to the user's chat.
         silent: true,
       } as Record<string, unknown>,
       context
     );
-  } catch {
-    // Best-effort: swallow errors so the main loop is unaffected.
-  }
+  } catch {}
 }

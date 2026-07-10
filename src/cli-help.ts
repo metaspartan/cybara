@@ -39,9 +39,9 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log(
     "    config set reasoning_effort <minimal|low|medium|high|xhigh|max>  Default reasoning effort"
   );
-  console.log("  migrate     Import OpenClaw or Hermes user data");
+  console.log("  migrate     Import supported legacy agent data");
   console.log("    migrate sources                         Detect local sources");
-  console.log("    migrate --from openclaw|hermes          Preview import");
+  console.log("    migrate sources                         Detect import sources");
   console.log("    migrate --apply --preset full           Apply import");
   console.log("    migrate --migrate-secrets --overwrite   Opt into API key import/conflicts");
   console.log("  provider    Provider management commands");

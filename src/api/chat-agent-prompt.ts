@@ -6,6 +6,7 @@ import {
 import { selectBuiltinToolNamesForIntent } from "../core/agent-tool-intent";
 import { resolveAgentToolSelection } from "../core/agent-tool-selection";
 import { config } from "../core/config";
+import { getBootstrapContextFiles } from "../core/bootstrap-files";
 import { getSandboxPromptInfo } from "../core/sandbox";
 import { createEligibilityContext, filterEligibleSkills, loadAllSkills } from "../core/skills";
 import { buildSystemPrompt, AGENT_TYPE_PROMPTS } from "../core/system-prompt";
@@ -98,6 +99,7 @@ export async function activeAgentSystemPrompt(
     modelDisplay: agent.model || "MiniMax-M2.5",
     tools: chatAgentToolNames(agent, messages, options),
     skills,
+    contextFiles: getBootstrapContextFiles(homeDir),
     sandboxInfo: getSandboxPromptInfo(homeDir),
     extraSystemPrompt:
       storedPrompt && !isGeneratedAgentPrompt(storedPrompt) ? storedPrompt : undefined,

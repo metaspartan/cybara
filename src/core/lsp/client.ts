@@ -51,7 +51,13 @@ export class LSPClient extends EventEmitter {
   async start(): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.process = spawn(this.command, this.args, {
+        const lowered = this.command.toLowerCase();
+        const needsShell =
+          process.platform === "win32" && (lowered.endsWith(".cmd") || lowered.endsWith(".bat"));
+        const [spawnCommand, spawnArgs] = needsShell
+          ? ["cmd.exe", ["/d", "/s", "/c", this.command, ...this.args]]
+          : [this.command, this.args];
+        this.process = spawn(spawnCommand as string, spawnArgs as string[], {
           stdio: ["pipe", "pipe", "pipe"],
           cwd: this.rootUri.replace("file://", ""),
         });

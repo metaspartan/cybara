@@ -70,9 +70,9 @@ const LEGACY_BRACKET_TOOL_CALL_PATTERN =
   /\[\s*TOOL_CALL\s*\]([\s\S]*?)(?:\[\s*\/\s*TOOL_CALL\s*\]|$)/gi;
 const LEGACY_BRACKET_TOOL_RESULT_PATTERN =
   /\[\s*TOOL_RESULT\s*\][\s\S]*?(?:\[\s*\/\s*TOOL_RESULT\s*\]|$)/gi;
-const OPENCLAW_NAMED_REQUEST_PATTERN =
+const NAMED_TOOL_REQUEST_PATTERN =
   /(?:^|\n)\s*\[([A-Za-z_][A-Za-z0-9_.:-]{0,119})\]\s*\r?\n([\s\S]*?)\[\s*END_TOOL_REQUEST\s*\]/gi;
-const OPENCLAW_TOOL_JSON_PATTERN =
+const LABELED_TOOL_JSON_PATTERN =
   /(?:^|\n)\s*\[\s*tool\s*:\s*([A-Za-z_][A-Za-z0-9_.:-]{0,119})\s*\]\s*([\s\S]*?)(?=\r?\n|$)/gi;
 const HARMONY_TOOL_CALL_PATTERN =
   /(?:<[\uFF5C|]channel[\uFF5C|]>)?\s*commentary\s+to=([A-Za-z_][A-Za-z0-9_.:-]{0,119})\s+code(?:<[\uFF5C|]message[\uFF5C|]>)?\s*([\s\S]*?)(?:<[\uFF5C|]call[\uFF5C|]>|$)/gi;
@@ -457,18 +457,18 @@ function parseLegacyBracketToolCalls(raw: string): TextToolCall[] {
   return calls;
 }
 
-function parseOpenClawPlainTextToolCalls(raw: string): TextToolCall[] {
+function parsePlainTextToolCalls(raw: string): TextToolCall[] {
   const calls: TextToolCall[] = [];
 
-  OPENCLAW_NAMED_REQUEST_PATTERN.lastIndex = 0;
-  for (const match of raw.matchAll(OPENCLAW_NAMED_REQUEST_PATTERN)) {
+  NAMED_TOOL_REQUEST_PATTERN.lastIndex = 0;
+  for (const match of raw.matchAll(NAMED_TOOL_REQUEST_PATTERN)) {
     const name = match[1]?.trim();
     if (!name) continue;
     calls.push({ name, args: parseArgs(match[2]?.trim() || "") });
   }
 
-  OPENCLAW_TOOL_JSON_PATTERN.lastIndex = 0;
-  for (const match of raw.matchAll(OPENCLAW_TOOL_JSON_PATTERN)) {
+  LABELED_TOOL_JSON_PATTERN.lastIndex = 0;
+  for (const match of raw.matchAll(LABELED_TOOL_JSON_PATTERN)) {
     const name = match[1]?.trim();
     if (!name) continue;
     calls.push({ name, args: parseArgs(match[2]?.trim() || "") });
@@ -559,7 +559,7 @@ export function extractTextToolCalls(
     ...parseFunctionXmlToolCalls(normalizedContent),
     ...parseFunctionEqualsToolCalls(normalizedContent),
     ...parseLegacyBracketToolCalls(normalizedContent),
-    ...parseOpenClawPlainTextToolCalls(normalizedContent),
+    ...parsePlainTextToolCalls(normalizedContent),
     ...parseBareCommandJsonToolCalls(normalizedContent),
     ...parseTrailingJsonToolCalls(normalizedContent),
     ...parseDirectNamedXmlToolCall(normalizedContent, allowedToolNames)
@@ -592,8 +592,8 @@ export function stripTextToolCallMarkup(content: string): string {
     .replace(FUNCTION_EQUALS_BLOCK_PATTERN, "")
     .replace(FUNCTION_XML_BLOCK_PATTERN, "")
     .replace(INVOKE_BLOCK_PATTERN, "")
-    .replace(OPENCLAW_NAMED_REQUEST_PATTERN, "")
-    .replace(OPENCLAW_TOOL_JSON_PATTERN, "")
+    .replace(NAMED_TOOL_REQUEST_PATTERN, "")
+    .replace(LABELED_TOOL_JSON_PATTERN, "")
     .replace(HARMONY_TOOL_CALL_PATTERN, "")
     .replace(DANGLING_TOOL_CALL_LINE_PATTERN, "")
     .replace(TOOL_CALL_TAG_PATTERN, "");

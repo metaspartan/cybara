@@ -1,6 +1,5 @@
-import { spawn, type ChildProcess } from "child_process";
+import { spawn } from "child_process";
 import { createConnection, type Socket } from "net";
-import { existsSync } from "fs";
 import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
@@ -8,6 +7,8 @@ import { buildChannelSecurityConfig, securityManager } from "../security";
 import { handleChannelManagementCommand } from "../commands";
 
 export const signalSessions = new Map<string, string>();
+
+type SignalDaemonProcess = ReturnType<typeof spawn>;
 
 interface SignalEnvelope {
   source?: string;
@@ -58,7 +59,7 @@ export class SignalAdapter implements ChannelAdapter {
   type = "signal" as const;
   name = "Signal";
 
-  private connections = new Map<string, { socket: Socket; process?: ChildProcess }>();
+  private connections = new Map<string, { socket: Socket; process?: SignalDaemonProcess }>();
   private messageHandler: MessageHandler = async () => "No handler configured";
   private requestId = 0;
   private pendingRequests = new Map<
@@ -77,7 +78,13 @@ export class SignalAdapter implements ChannelAdapter {
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
     const signalCliPath = (config.signal_cli_path as string) || "signal-cli";
     const phoneNumber = config.phone_number as string;
+    const isWindows = process.platform === "win32";
+    const configuredTcp = typeof config.tcp_address === "string" ? config.tcp_address.trim() : "";
+    const tcpAddress = configuredTcp || (isWindows ? "127.0.0.1:7583" : "");
     const socketPath = (config.socket_path as string) || "/tmp/signal-cli.sock";
+    const useTcp = tcpAddress.length > 0;
+    const tcpHost = useTcp ? tcpAddress.split(":")[0] || "127.0.0.1" : "";
+    const tcpPort = useTcp ? Number(tcpAddress.split(":")[1] || tcpAddress) || 7583 : 0;
 
     if (!phoneNumber) {
       throw new Error("phone_number is required for Signal adapter");
@@ -92,54 +99,60 @@ export class SignalAdapter implements ChannelAdapter {
 
     console.log(`[Signal] Starting for channel ${channelId}...`);
 
-    let process: ChildProcess | undefined;
-    if (!existsSync(socketPath)) {
-      console.log(`[Signal] Starting signal-cli daemon...`);
-      process = spawn(signalCliPath, ["-a", phoneNumber, "daemon", "--socket", socketPath], {
-        stdio: ["pipe", "pipe", "pipe"],
-        detached: true,
+    const tryConnect = (): Promise<Socket | null> =>
+      new Promise((resolve) => {
+        const candidate = useTcp
+          ? createConnection({ host: tcpHost, port: tcpPort })
+          : createConnection(socketPath);
+        candidate.once("connect", () => resolve(candidate));
+        candidate.once("error", () => {
+          candidate.destroy();
+          resolve(null);
+        });
       });
 
-      process.stdout?.on("data", (data) => {
+    let daemonProcess: SignalDaemonProcess | undefined;
+    let socket = await tryConnect();
+    if (!socket) {
+      console.log(`[Signal] Starting signal-cli daemon...`);
+      const daemonArgs = useTcp
+        ? ["-a", phoneNumber, "daemon", "--tcp", tcpAddress]
+        : ["-a", phoneNumber, "daemon", "--socket", socketPath];
+      const lowered = signalCliPath.toLowerCase();
+      const needsShell = isWindows && (lowered.endsWith(".bat") || lowered.endsWith(".cmd"));
+      const [spawnCommand, spawnArgs] = needsShell
+        ? ["cmd.exe", ["/d", "/s", "/c", signalCliPath, ...daemonArgs]]
+        : [signalCliPath, daemonArgs];
+      daemonProcess = spawn(spawnCommand as string, spawnArgs as string[], {
+        stdio: ["pipe", "pipe", "pipe"],
+        detached: !isWindows,
+      });
+
+      daemonProcess.stdout?.on("data", (data) => {
         console.log(`[Signal] daemon stdout: ${data}`);
       });
 
-      process.stderr?.on("data", (data) => {
+      daemonProcess.stderr?.on("data", (data) => {
         console.error(`[Signal] daemon stderr: ${data}`);
       });
 
-      process.on("error", (err) => {
+      daemonProcess.on("error", (err) => {
         console.error(`[Signal] daemon error:`, err);
       });
 
-      await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          reject(new Error("Timeout waiting for signal-cli socket"));
-        }, 10000);
-
-        const check = () => {
-          if (existsSync(socketPath)) {
-            clearTimeout(timeout);
-            resolve();
-          } else {
-            setTimeout(check, 500);
-          }
-        };
-        check();
-      });
+      const deadline = Date.now() + 10000;
+      while (!socket && Date.now() < deadline) {
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 500));
+        socket = await tryConnect();
+      }
+      if (!socket) {
+        throw new Error(
+          `Timeout waiting for signal-cli daemon at ${useTcp ? tcpAddress : socketPath}`
+        );
+      }
     }
 
-    const socket = createConnection(socketPath);
-
-    await new Promise<void>((resolve, reject) => {
-      socket.once("connect", () => {
-        console.log(`[Signal] Connected to daemon socket`);
-        resolve();
-      });
-      socket.once("error", (err) => {
-        reject(err);
-      });
-    });
+    console.log(`[Signal] Connected to daemon ${useTcp ? `tcp ${tcpAddress}` : "socket"}`);
 
     let buffer = "";
     socket.on("data", (data) => {
@@ -168,7 +181,7 @@ export class SignalAdapter implements ChannelAdapter {
       this.connections.delete(channelId);
     });
 
-    this.connections.set(channelId, { socket, process });
+    this.connections.set(channelId, { socket, process: daemonProcess });
     console.log(`[Signal] Successfully started for channel ${channelId}`);
   }
 

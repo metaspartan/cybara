@@ -59,9 +59,9 @@ describe("groupActivitiesForDisplay", () => {
 
   test("web_fetch folds into the run", () => {
     const entries = groupActivitiesForDisplay([
-      activity({ id: "a", toolName: "web_search", text: "Searched openclaw reasoning" }),
+      activity({ id: "a", toolName: "web_search", text: "Searched reasoning behavior" }),
       activity({ id: "b", toolName: "web_fetch", text: "Fetched https://example.com" }),
-      activity({ id: "c", toolName: "web_search", text: "Searched hermes levels" }),
+      activity({ id: "c", toolName: "web_search", text: "Searched effort levels" }),
     ]);
     expect(entries).toHaveLength(1);
     const group = entries[0];

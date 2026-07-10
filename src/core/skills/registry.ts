@@ -8,6 +8,7 @@ import { existsSync } from "fs";
 import { join, dirname, resolve, sep } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
+import { extractZipArchive } from "../archive";
 
 /**
  * Registry provider interface
@@ -259,15 +260,7 @@ export class ClawdHubRegistry implements SkillRegistry {
       await mkdir(tempDir, { recursive: true });
       await writeFile(zipPath, Buffer.from(buffer));
 
-      // Unzip using bun/system
-      const unzipResult = Bun.spawnSync(["unzip", "-o", zipPath, "-d", tempDir], {
-        stdout: "ignore",
-        stderr: "pipe",
-      });
-      if ((unzipResult.exitCode ?? 1) !== 0) {
-        const unzipError = unzipResult.stderr.toString().trim();
-        throw new Error(unzipError || `Failed to extract ZIP for: ${slug}`);
-      }
+      extractZipArchive(zipPath, tempDir);
 
       // Find and read skill file (case-insensitive, also check for skill.json)
       const files = await readdir(tempDir, { recursive: true });

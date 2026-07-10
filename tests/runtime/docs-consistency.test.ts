@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "fs";
+import { existsSync, readFileSync, readdirSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import ts from "typescript";
@@ -9,11 +9,21 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const DOC_FILES = [
   "README.md",
   "docs/README.md",
+  "docs/agent-runtime.md",
   "docs/configuration.md",
   "docs/desktop.md",
   "docs/native-shells.md",
   "docs/production.md",
   "docs/testing.md",
+  "apps/macos/Cybara/README.md",
+  "apps/mobile/README.md",
+];
+
+const PUBLISHED_DOC_FILES = [
+  "README.md",
+  ...readdirSync(join(ROOT_DIR, "docs"))
+    .filter((name) => name.endsWith(".md"))
+    .map((name) => `docs/${name}`),
   "apps/macos/Cybara/README.md",
   "apps/mobile/README.md",
 ];
@@ -67,6 +77,14 @@ function countExportedObjectProperties(relativePath: string, exportName: string)
 }
 
 describe("documentation consistency", () => {
+  test("documentation avoids comparison and roadmap language", () => {
+    for (const relativePath of PUBLISHED_DOC_FILES) {
+      const content = readFileSync(join(ROOT_DIR, relativePath), "utf8");
+      expect(content).not.toMatch(/openclaw|hermes agent/i);
+      expect(content).not.toMatch(/remaining gaps?|remaining work|future work|roadmap/i);
+    }
+  });
+
   test("published metadata and docs reflect current tool/provider catalog counts", () => {
     const toolCount = countExportedObjectProperties("src/core/tools/index.ts", "toolSchemas");
     const providerCount = PROVIDER_CATALOG_EXPORTS.reduce(

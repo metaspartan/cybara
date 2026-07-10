@@ -2958,6 +2958,14 @@ export async function handleRequest(req: {
       userMessage = errorMessage;
       errorCode = "VALIDATION_ERROR";
       statusCode = 400;
+    } else if (
+      errorMessage.includes("Failed to launch browser") ||
+      errorMessage.includes("Unable to launch a browser") ||
+      errorMessage.includes("playwright chromium runtime is unavailable")
+    ) {
+      userMessage = errorMessage;
+      errorCode = "BROWSER_UNAVAILABLE";
+      statusCode = 503;
     } else {
       userMessage = "An error occurred while processing your request.";
     }

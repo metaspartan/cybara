@@ -1,4 +1,5 @@
 import { readFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { join, dirname, basename, extname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { listInstalledPlugins } from "../plugins";
@@ -388,7 +389,7 @@ builtinExecutors.video_frames = async (args: Record<string, unknown>) => {
   };
   const interval = toPosInt(args.interval, 10, 86_400);
   const count = toPosInt(args.count, 5, 10_000);
-  const output = (args.output as string) || "/tmp/frames";
+  const output = (args.output as string) || join(tmpdir(), "cybara-frames");
 
   if (!video) {
     throw new Error("Video path is required");

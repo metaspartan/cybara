@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import { activeAgentSystemPrompt } from "../../src/api/chat-agent-prompt";
 
 const explicitToolAgent = {
@@ -12,12 +15,14 @@ const explicitToolAgent = {
 
 describe("chat agent prompt tool mode", () => {
   test("uses a lean system prompt when a chat turn disables tools", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "cybara-chat-prompt-"));
     const prompt = await activeAgentSystemPrompt(
       explicitToolAgent,
-      "/Users/carsen/Documents/GitHub/cybara",
+      workspace,
       [{ role: "user", content: "Reply in one sentence." }],
       { useTools: false }
     );
+    rmSync(workspace, { recursive: true, force: true });
 
     expect(prompt).toContain("No platform tools are enabled for this turn");
     expect(prompt).not.toContain("- read:");
@@ -26,13 +31,28 @@ describe("chat agent prompt tool mode", () => {
   });
 
   test("keeps explicit tool guidance when tools are enabled", async () => {
-    const prompt = await activeAgentSystemPrompt(
-      explicitToolAgent,
-      "/Users/carsen/Documents/GitHub/cybara",
-      [{ role: "user", content: "Check wallet status." }]
-    );
+    const workspace = mkdtempSync(join(tmpdir(), "cybara-chat-prompt-"));
+    const prompt = await activeAgentSystemPrompt(explicitToolAgent, workspace, [
+      { role: "user", content: "Check wallet status." },
+    ]);
+    rmSync(workspace, { recursive: true, force: true });
 
     expect(prompt).toContain("- read:");
     expect(prompt).toContain("### Wallet Tool");
+  });
+
+  test("loads workspace instructions into active chat prompts", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "cybara-chat-prompt-"));
+    try {
+      writeFileSync(join(workspace, "AGENTS.md"), "Use focused tests.", "utf8");
+      const prompt = await activeAgentSystemPrompt(explicitToolAgent, workspace, [
+        { role: "user", content: "Inspect the project." },
+      ]);
+
+      expect(prompt).toContain(`## ${join(workspace, "AGENTS.md")}`);
+      expect(prompt).toContain("Use focused tests.");
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
   });
 });

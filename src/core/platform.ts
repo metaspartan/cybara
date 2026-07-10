@@ -82,6 +82,14 @@ export function getHostShellCommand(command: string): string[] {
   return isWindows() ? getWindowsShellCommand(command) : ["sh", "-c", command];
 }
 
+export function shellEscapeArg(value: string, platform: NodeJS.Platform = osPlatform()): string {
+  if (/^[a-zA-Z0-9_./:@%+=,-]+$/.test(value)) return value;
+  if (platform === "win32") {
+    return "'" + value.split("'").join("''") + "'";
+  }
+  return "'" + value.split("'").join("'\"'\"'") + "'";
+}
+
 export function getShell(): [string, string] {
   return isWindows() ? ["cmd", "/c"] : ["sh", "-c"];
 }

@@ -26,12 +26,19 @@ Place in your workspace root for auto-loading:
 
 | File | Purpose |
 |------|---------|
+| `AGENTS.md` | Primary project instructions |
 | `SOUL.md` | Agent personality and tone |
 | `IDENTITY.md` | Agent identity config |
 | `USER.md` | User preferences/context |
 | `TOOLS.md` | Custom tool guidance |
 | `BOOTSTRAP.md` | First-run ritual (auto-deleted) |
 | `MEMORY.md` | Persistent memory |
+
+These files are loaded from the selected workspace root. `AGENTS.md` is treated as project
+instructions; persona and user files provide lower-priority identity/context. Direct user
+instructions still take precedence. Place rules needed for the whole session at the workspace root.
+Injection is capped at 20,000 characters per file and 60,000 characters across all workspace
+context files to keep the stable prompt bounded.
 
 ### SOUL.md Example
 
@@ -231,16 +238,16 @@ POST /api/speech/dictate
 
 ## Source Migration
 
-Cybara can import user data from OpenClaw or Hermes from the CLI, Web/Tauri settings, native macOS
-settings, or the API. The default `user-data` preset imports persona files, memories, skills, and
+Cybara can import user data from supported legacy agent installations through the CLI, Web/Tauri
+settings, native macOS settings, or the API. The default `user-data` preset imports persona files, memories, skills, and
 workspace instructions while skipping secrets. The `full` preset can also import provider secrets
 and speech preferences when `migrateSecrets` is explicitly enabled.
 
 ```bash
 cybara migrate sources
-cybara migrate --from openclaw
-cybara migrate --from hermes --apply --preset user-data
-cybara migrate --from openclaw --apply --preset full --migrate-secrets --overwrite
+cybara migrate --from <source>
+cybara migrate --from <source> --apply --preset user-data
+cybara migrate --from <source> --apply --preset full --migrate-secrets --overwrite
 ```
 
 API routes:

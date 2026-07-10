@@ -21,6 +21,9 @@ export const BOOTSTRAP_FILENAMES = [
 
 export const CONTEXT_FILES = ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md"];
 
+export const DEFAULT_CONTEXT_FILE_MAX_CHARS = 20_000;
+export const DEFAULT_CONTEXT_TOTAL_MAX_CHARS = 60_000;
+
 function getTemplatesDir(): string {
   const home = process.env.HOME || process.env.USERPROFILE || homedir();
   return join(home, ".cybara", "templates");
@@ -97,29 +100,34 @@ export function readBootstrapFiles(workspaceDir: string): BootstrapFile[] {
 
 export function getBootstrapContextFiles(
   workspaceDir: string,
-  options: { maxChars?: number } = {}
+  options: { maxChars?: number; maxTotalChars?: number } = {}
 ): Array<{ name: string; path: string; content: string }> {
-  const maxChars = options.maxChars || 50000; // Default 50k chars per file
+  const maxChars = Math.max(1, Math.floor(options.maxChars ?? DEFAULT_CONTEXT_FILE_MAX_CHARS));
+  const maxTotalChars = Math.max(
+    1,
+    Math.floor(options.maxTotalChars ?? DEFAULT_CONTEXT_TOTAL_MAX_CHARS)
+  );
   const bootstrapFiles = readBootstrapFiles(workspaceDir);
+  const contextFiles: Array<{ name: string; path: string; content: string }> = [];
+  const marker = "\n\n[... truncated ...]";
+  let remainingChars = maxTotalChars;
 
-  return bootstrapFiles
-    .filter((file) => !file.missing && file.content.trim().length > 0)
-    .map((file) => {
-      let content = file.content;
+  for (const file of bootstrapFiles) {
+    if (file.missing || file.content.trim().length === 0 || remainingChars <= 0) continue;
+    const contentLimit = Math.min(maxChars, remainingChars);
+    let content = file.content;
+    if (content.length > contentLimit) {
+      const prefixLength = Math.max(0, contentLimit - marker.length);
+      content = `${content.slice(0, prefixLength)}${marker.slice(0, contentLimit - prefixLength)}`;
+      console.log(
+        `[Bootstrap] Truncated ${file.name} (${file.content.length} chars > ${contentLimit})`
+      );
+    }
+    contextFiles.push({ name: file.name, path: file.path, content });
+    remainingChars -= content.length;
+  }
 
-      if (content.length > maxChars) {
-        content = content.slice(0, maxChars) + "\n\n[... truncated ...]";
-        console.log(
-          `[Bootstrap] Truncated ${file.name} (${file.content.length} chars > ${maxChars})`
-        );
-      }
-
-      return {
-        name: file.name,
-        path: file.path,
-        content,
-      };
-    });
+  return contextFiles;
 }
 
 export function isFirstRun(workspaceDir: string): boolean {

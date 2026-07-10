@@ -86,7 +86,7 @@ Official Tauri release builds support:
 2. `Check Now`
 3. `Install And Restart`
 
-Native SwiftUI macOS bundles do not yet self-update in app. Update them by downloading the latest GitHub Release bundle.
+Update native SwiftUI macOS bundles by downloading the latest GitHub Release bundle.
 
 ## Backups
 

@@ -799,7 +799,13 @@ function createGrokRpcClient(): GrokRpcClient | null {
   const executable = resolveGrokExecutable();
   if (!executable) return null;
 
-  const child = spawn(executable, ["agent", "stdio"], {
+  const lowered = executable.toLowerCase();
+  const needsShell =
+    process.platform === "win32" && (lowered.endsWith(".cmd") || lowered.endsWith(".bat"));
+  const [spawnCommand, spawnArgs] = needsShell
+    ? ["cmd.exe", ["/d", "/s", "/c", executable, "agent", "stdio"]]
+    : [executable, ["agent", "stdio"]];
+  const child = spawn(spawnCommand as string, spawnArgs as string[], {
     stdio: ["pipe", "pipe", "pipe"],
     windowsHide: true,
     env: process.env,

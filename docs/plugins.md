@@ -68,7 +68,7 @@ DELETE /api/plugins/:id
 - skill contribution paths must stay inside the plugin root
 - absolute contribution paths are ignored
 - only existing skill directories are loaded
-- this pass is local-path based; GitHub/JavaScript package/plugin registry distribution is still future work
+- plugin installation uses local paths
 
 ## Security
 

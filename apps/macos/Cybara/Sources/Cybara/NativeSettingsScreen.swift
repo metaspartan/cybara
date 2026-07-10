@@ -1102,7 +1102,7 @@ struct NativeSettingsScreen: View {
                         HStack {
                             Image(systemName: "folder.badge.gearshape")
                                 .foregroundStyle(.secondary)
-                            Text("Import from OpenClaw or Hermes")
+                            Text("Import legacy agent data")
                                 .font(.system(size: 15, weight: .bold, design: .rounded))
                             Spacer()
                             Button {
@@ -1797,7 +1797,7 @@ struct NativeSettingsScreen: View {
     }
 
     private func chooseMigrationSourceDirectory() {
-        chooseMigrationDirectory(title: "Choose OpenClaw or Hermes Directory") { path in
+        chooseMigrationDirectory(title: "Choose Legacy Agent Directory") { path in
             migrationSourcePath = path
         }
     }

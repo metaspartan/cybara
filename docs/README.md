@@ -78,7 +78,7 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | `bun run ui:build` | Build UI for production |
 | `bun test` | Run Bun test suite |
 | `bun run test:smoke` | CI smoke suite |
-| `bun run check` | TypeScript + ESLint + Prettier |
+| `bun run check` | TypeScript + ESLint + Biome format check |
 | `bun run check:ci` | Release quality gate |
 | `bun run tauri:dev` | Tauri desktop dev mode |
 | `bun run tauri:build` | Tauri desktop production build |
@@ -97,9 +97,10 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | Guide | Description |
 |-------|-------------|
 | [Architecture](./architecture.md) | Platform design and data flow |
+| [Agent Runtime](./agent-runtime.md) | Prompt composition, tool policy, memory, planning, and subagents |
 | [CLI Reference](./cli.md) | Command-line interface |
 | [Plugins](./plugins.md) | Installable plugin runtime and manifests |
-| [Tools Reference](./tools.md) | 77 built-in tools |
+| [Tools Reference](./tools.md) | 77 built-in tools; 95 runtime schemas including aliases |
 | [Skills Guide](./skills.md) | Creating and managing skills |
 | [Channels](./channels.md) | Multi-platform messaging |
 | [Providers](./providers.md) | 67 provider definitions |
@@ -131,7 +132,7 @@ Conversation contexts with message history, token tracking, and adaptive context
 Modular capabilities loaded from SKILL.md files with eligibility gating (OS, env, binaries).
 
 ### Tools
-77 built-in tool definitions the agent can invoke, plus compatibility aliases for direct computer-control actions: file I/O, browser, exec, web search, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and more.
+77 built-in tools cover file I/O, browser automation, process execution, web research, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and channels. Compatibility aliases expand that catalog to 95 runtime schemas. The model receives the effective policy-filtered subset rather than the full catalog on every turn.
 
 ### Channels
 Communication interfaces across 26 platforms: Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, Web, Webhook, SMS, and Email.
@@ -146,7 +147,7 @@ Built-in provider integrations with dynamic model discovery, covering frontier A
 Router strategies include weighted, round-robin, lowest-cost, priority, and mixture-of-agents. Provider plan monitoring can track local usage against coding-plan presets, manual limits, rolling 5-hour/week windows, monthly budgets, and router enforcement.
 
 ### Source Migration
-OpenClaw and Hermes imports are available through `cybara migrate`, `/api/migrations/*`, Web/Tauri settings, and the native macOS settings surface. Dry runs preview memories, skills, providers, speech settings, and opt-in secret imports before writing.
+Legacy agent imports are available through `cybara migrate`, `/api/migrations/*`, Web/Tauri settings, and the native macOS settings surface. Dry runs preview memories, skills, providers, speech settings, and opt-in secret imports before writing.
 
 ### Speech
 Shared speech settings cover TTS providers (`system`, `elevenlabs`, `openai`) and STT providers (`native`, `openai`, `auto`) across the Web/Tauri chat input, mobile settings, native macOS settings, and the `tts`/`transcribe` tools.

@@ -124,7 +124,7 @@ describe("conversation windowing", () => {
   });
 });
 
-describe("model-aware compaction trigger ratio (Hermes PR #59814)", () => {
+describe("model-aware compaction trigger ratio", () => {
   test("large-context models run closer to full before compacting", () => {
     // 272K (gpt-5.4-class) should compact at 85%, not the old ~41%.
     expect(resolveCompactionTriggerRatio(272_000)).toBe(0.85);

@@ -2,7 +2,7 @@ import { existsSync } from "fs";
 import { homeDir } from "../../paths";
 import { buildSandboxedShellPlan } from "../../sandbox";
 import { createLogger } from "../../logger";
-import { getPathSeparator, isWindows } from "../../platform";
+import { getPathSeparator, isWindows, shellEscapeArg } from "../../platform";
 import type { ToolContext } from "../index";
 
 const log = createLogger("ProcessTool");
@@ -368,12 +368,7 @@ export async function handleGit(
     };
   }
 
-  const shellEscape = (value: string): string => {
-    if (/^[a-zA-Z0-9_./:@%+=,-]+$/.test(value)) return value;
-    return "'" + value.split("'").join("'\"'\"'") + "'";
-  };
-
-  const gitCommand = `git ${segments.map(shellEscape).join(" ")}`;
+  const gitCommand = `git ${segments.map((segment) => shellEscapeArg(segment)).join(" ")}`;
   let plan: ReturnType<typeof buildSandboxedShellPlan>;
   try {
     plan = buildSandboxedShellPlan({

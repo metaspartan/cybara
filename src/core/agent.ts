@@ -110,6 +110,7 @@ import {
   resolveModelAlias,
   getDefaultSystemPrompt,
 } from "./system-prompt";
+import { getBootstrapContextFiles } from "./bootstrap-files";
 import { getSandboxPromptInfo } from "./sandbox";
 import {
   broadcastStatus,
@@ -541,6 +542,7 @@ class AgentManager {
       modelDisplay: definition.model || typeConfig?.defaultModel || "MiniMax-M2.5",
       tools: (definition.tools ?? getBuiltinTools()).map((t) => t.name),
       skills: eligibleSkills,
+      contextFiles: getBootstrapContextFiles(homeDir),
       sandboxInfo: getSandboxPromptInfo(homeDir),
     });
 
@@ -614,6 +616,7 @@ class AgentManager {
       modelDisplay: agent.model || "MiniMax-M2.5",
       tools: this.getAgentTools(agent).map((t) => t.name),
       skills: eligibleSkills,
+      contextFiles: getBootstrapContextFiles(homeDir),
       sandboxInfo: getSandboxPromptInfo(homeDir),
     });
 
@@ -717,7 +720,6 @@ class AgentManager {
         providerId,
         activeModel || ""
       );
-      // Model-aware summarizing-compaction trigger (see Hermes PR #59814).
       const compactTokens = Math.max(1024, Math.floor(contextWindowTokens));
       const compactRatio = resolveCompactionTriggerRatio(
         compactTokens,
@@ -3300,8 +3302,6 @@ class AgentManager {
       try {
         turn = await runCodexTurn();
       } catch (error) {
-        // Reactive compaction (OpenClaw's second trigger): honor the
-        // provider's own overflow error by eliding hard and retrying once.
         if (!isContextOverflowError(this.normalizeErrorMessage(error))) throw error;
         compactCodexInputItemsForContext(inputItems, Math.max(4096, codexBudgetChars * 0.65), true);
         turn = await runCodexTurn();

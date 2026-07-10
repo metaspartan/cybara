@@ -2750,7 +2750,7 @@ export function MigrationSettingsPanel({
         });
       }
     } catch (loadError) {
-      setError(gatewayActionError(loadError, "Could not detect OpenClaw or Hermes sources."));
+      setError(gatewayActionError(loadError, "Could not detect legacy agent sources."));
     } finally {
       setLoading(false);
     }
@@ -2819,7 +2819,7 @@ export function MigrationSettingsPanel({
       <SettingsSection title="Migration">
         <View style={styles.settingsGroupHeader}>
           <Folder color={accentColor} size={18} strokeWidth={2.1} />
-          <Text style={styles.settingsInfoTitle}>Import from OpenClaw or Hermes</Text>
+          <Text style={styles.settingsInfoTitle}>Import legacy agent data</Text>
         </View>
         <Text style={styles.settingsInfoText}>
           Preview settings, memories, skills, workspace instructions, and optional provider keys
@@ -2858,7 +2858,7 @@ export function MigrationSettingsPanel({
         ) : (
           <EmptyState
             label="No local sources found"
-            detail="Paste the OpenClaw or Hermes directory from the gateway host below."
+            detail="Paste the legacy agent directory from the gateway host below."
           />
         )}
         <SettingSelector
@@ -2876,7 +2876,7 @@ export function MigrationSettingsPanel({
         <SettingsTextField
           label="Source directory"
           onChangeText={setSourcePath}
-          placeholder="~/.openclaw or ~/.hermes"
+          placeholder="Path on the gateway host"
           value={sourcePath}
         />
         <SettingSelector

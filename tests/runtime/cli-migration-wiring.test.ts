@@ -17,7 +17,7 @@ describe("CLI migration wiring", () => {
     expect(cli).toContain('case "migration":');
     expect(cli).toContain('hasFlag(args, "--apply", "--execute", "--yes", "-y")');
     expect(cli).toContain('hasFlag(args, "--migrate-secrets")');
-    expect(help).toContain("migrate     Import OpenClaw or Hermes user data");
+    expect(help).toContain("migrate     Import supported legacy agent data");
     expect(help).toContain("migrate sources");
     expect(help).toContain("migrate --migrate-secrets --overwrite");
   });

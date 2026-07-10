@@ -1,7 +1,59 @@
-import { existsSync, mkdirSync, unlinkSync, chmodSync, writeFileSync } from "fs";
+import {
+  chmodSync,
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  unlinkSync,
+  writeFileSync,
+} from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { gunzipSync } from "zlib";
+import { extractZipArchive } from "../archive";
+import { commandExists, isWindows } from "../platform";
+
+function findFileByName(rootDir: string, name: string): string | null {
+  const caseInsensitive = isWindows();
+  const targets = new Set(
+    caseInsensitive ? [name.toLowerCase(), `${name.toLowerCase()}.exe`] : [name]
+  );
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const dir = stack.pop() as string;
+    let entries: ReturnType<typeof readdirSync>;
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const fullPath = join(dir, entry.name as string);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+      } else if (targets.has(caseInsensitive ? String(entry.name).toLowerCase() : entry.name)) {
+        return fullPath;
+      }
+    }
+  }
+  return null;
+}
+
+function writeLauncher(lspDir: string, binaryName: string, targetPath: string): string {
+  if (isWindows()) {
+    const wrapperPath = join(lspDir, `${binaryName}.cmd`);
+    writeFileSync(wrapperPath, `@echo off\r\n"${targetPath}" %*\r\n`);
+    return wrapperPath;
+  }
+  const wrapperPath = join(lspDir, binaryName);
+  writeFileSync(wrapperPath, `#!/bin/bash\nexec "${targetPath}" "$@"\n`);
+  chmodSync(wrapperPath, 0o755);
+  return wrapperPath;
+}
+
+function markExecutable(path: string): void {
+  if (!isWindows()) chmodSync(path, 0o755);
+}
 
 export function getLSPDir(): string {
   const dir = join(homedir(), ".cybara", "lsp");
@@ -306,10 +358,12 @@ export function getLSPPath(language: string): string | null {
   if (!info || info.type === "bundled") return null;
 
   const lspDir = getLSPDir();
-  const binaryPath = join(lspDir, info.binaryName);
-
-  if (existsSync(binaryPath)) {
-    return binaryPath;
+  const candidates = [join(lspDir, info.binaryName)];
+  if (isWindows()) {
+    candidates.push(join(lspDir, `${info.binaryName}.exe`), join(lspDir, `${info.binaryName}.cmd`));
+  }
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
   }
 
   return null;
@@ -431,10 +485,11 @@ async function installBinary(info: LSPInfo, lspDir: string): Promise<InstallResu
   const buffer = await response.arrayBuffer();
   const binaryPath = join(lspDir, info.binaryName);
 
+  let installedPath = binaryPath;
   if (url.endsWith(".gz") && !url.endsWith(".tar.gz")) {
     const binary = gunzipSync(Buffer.from(buffer));
     writeFileSync(binaryPath, binary);
-    chmodSync(binaryPath, 0o755);
+    markExecutable(binaryPath);
   } else if (url.endsWith(".tar.gz") || url.endsWith(".tar.xz") || url.endsWith(".zip")) {
     const extractDir = join(lspDir, `${info.name}-extracted`);
     if (!existsSync(extractDir)) {
@@ -446,13 +501,7 @@ async function installBinary(info: LSPInfo, lspDir: string): Promise<InstallResu
 
     try {
       if (url.endsWith(".zip")) {
-        const result = Bun.spawnSync(["unzip", "-o", archivePath, "-d", extractDir], {
-          timeout: 60000,
-        });
-        if (result.exitCode !== 0) {
-          unlinkSync(archivePath);
-          return { success: false, error: "Failed to extract zip archive" };
-        }
+        extractZipArchive(archivePath, extractDir);
       } else if (url.endsWith(".tar.xz")) {
         const result = Bun.spawnSync(["tar", "-xJf", archivePath, "-C", extractDir], {
           timeout: 60000,
@@ -473,17 +522,16 @@ async function installBinary(info: LSPInfo, lspDir: string): Promise<InstallResu
 
       unlinkSync(archivePath);
 
-      const findBinary = Bun.spawnSync(
-        ["find", extractDir, "-name", info.binaryName, "-type", "f"],
-        { timeout: 30000 }
-      );
-      const foundPath = findBinary.stdout.toString().trim().split("\n")[0];
-
+      const foundPath = findFileByName(extractDir, info.binaryName);
       if (foundPath && existsSync(foundPath)) {
-        const wrapperContent = `#!/bin/bash\nexec "${foundPath}" "$@"\n`;
-        writeFileSync(binaryPath, wrapperContent);
-        chmodSync(binaryPath, 0o755);
-        chmodSync(foundPath, 0o755);
+        if (
+          foundPath.toLowerCase().endsWith(".exe") &&
+          !binaryPath.toLowerCase().endsWith(".exe")
+        ) {
+          installedPath = `${binaryPath}.exe`;
+        }
+        copyFileSync(foundPath, installedPath);
+        markExecutable(installedPath);
       } else {
         return { success: false, error: `Binary '${info.binaryName}' not found in archive` };
       }
@@ -493,16 +541,15 @@ async function installBinary(info: LSPInfo, lspDir: string): Promise<InstallResu
     }
   } else {
     writeFileSync(binaryPath, Buffer.from(buffer));
-    chmodSync(binaryPath, 0o755);
+    markExecutable(binaryPath);
   }
 
-  console.log(`[LSP Installer] Installed ${info.displayName} to ${binaryPath}`);
-  return { success: true, path: binaryPath };
+  console.log(`[LSP Installer] Installed ${info.displayName} to ${installedPath}`);
+  return { success: true, path: installedPath };
 }
 
 async function installGo(info: LSPInfo, lspDir: string): Promise<InstallResult> {
-  const goCheck = Bun.spawnSync(["which", "go"]);
-  if (goCheck.exitCode !== 0) {
+  if (!commandExists("go")) {
     return { success: false, error: "Go runtime not found. Install Go first: https://go.dev/dl/" };
   }
 
@@ -523,8 +570,8 @@ async function installGo(info: LSPInfo, lspDir: string): Promise<InstallResult> 
 }
 
 async function installPip(info: LSPInfo, lspDir: string): Promise<InstallResult> {
-  const pythonCheck = Bun.spawnSync(["which", "python3"]);
-  if (pythonCheck.exitCode !== 0) {
+  const python = commandExists("python3") ? "python3" : commandExists("python") ? "python" : null;
+  if (!python) {
     return { success: false, error: "Python 3 not found. Install Python first." };
   }
 
@@ -532,13 +579,14 @@ async function installPip(info: LSPInfo, lspDir: string): Promise<InstallResult>
 
   const venvDir = join(lspDir, "python-venv");
   if (!existsSync(venvDir)) {
-    const venvResult = Bun.spawnSync(["python3", "-m", "venv", venvDir], { timeout: 60000 });
+    const venvResult = Bun.spawnSync([python, "-m", "venv", venvDir], { timeout: 60000 });
     if (venvResult.exitCode !== 0) {
       return { success: false, error: "Failed to create Python virtual environment" };
     }
   }
 
-  const pipPath = join(venvDir, "bin", "pip");
+  const venvBinDir = join(venvDir, isWindows() ? "Scripts" : "bin");
+  const pipPath = join(venvBinDir, isWindows() ? "pip.exe" : "pip");
   const installResult = Bun.spawnSync([pipPath, "install", "python-lsp-server"], {
     timeout: 120000,
   });
@@ -547,22 +595,15 @@ async function installPip(info: LSPInfo, lspDir: string): Promise<InstallResult>
     return { success: false, error: installResult.stderr.toString() || "Pip install failed" };
   }
 
-  const pylspPath = join(venvDir, "bin", "pylsp");
-  const wrapperPath = join(lspDir, "pylsp");
-
-  const wrapperContent = `#!/bin/bash
-exec "${pylspPath}" "$@"
-`;
-  writeFileSync(wrapperPath, wrapperContent);
-  chmodSync(wrapperPath, 0o755);
+  const pylspPath = join(venvBinDir, isWindows() ? "pylsp.exe" : "pylsp");
+  const wrapperPath = writeLauncher(lspDir, "pylsp", pylspPath);
 
   console.log(`[LSP Installer] Installed ${info.displayName} to ${wrapperPath}`);
   return { success: true, path: wrapperPath };
 }
 
 async function installGem(info: LSPInfo, lspDir: string): Promise<InstallResult> {
-  const rubyCheck = Bun.spawnSync(["which", "gem"]);
-  if (rubyCheck.exitCode !== 0) {
+  if (!commandExists("gem")) {
     return { success: false, error: "Ruby gem not found. Install Ruby first." };
   }
 
@@ -584,7 +625,7 @@ async function installGem(info: LSPInfo, lspDir: string): Promise<InstallResult>
 
   const binaryPath = join(lspDir, info.binaryName);
   if (existsSync(binaryPath)) {
-    chmodSync(binaryPath, 0o755);
+    markExecutable(binaryPath);
   }
 
   console.log(`[LSP Installer] Installed ${info.displayName} to ${binaryPath}`);
@@ -592,8 +633,7 @@ async function installGem(info: LSPInfo, lspDir: string): Promise<InstallResult>
 }
 
 async function installBun(info: LSPInfo, lspDir: string): Promise<InstallResult> {
-  const bunCheck = Bun.spawnSync(["which", "bun"]);
-  if (bunCheck.exitCode !== 0) {
+  if (!Bun.which("bun")) {
     return { success: false, error: "Bun not found in PATH" };
   }
 
@@ -608,15 +648,9 @@ async function installBun(info: LSPInfo, lspDir: string): Promise<InstallResult>
     return { success: false, error: result.stderr.toString() || "Bun install failed" };
   }
 
-  const whichResult = Bun.spawnSync(["which", info.binaryName]);
-  const installedPath = whichResult.stdout.toString().trim();
-
+  const installedPath = Bun.which(info.binaryName);
   if (installedPath) {
-    const wrapperPath = join(lspDir, info.binaryName);
-    const wrapperContent = `#!/bin/bash\nexec "${installedPath}" "$@"\n`;
-    writeFileSync(wrapperPath, wrapperContent);
-    chmodSync(wrapperPath, 0o755);
-
+    const wrapperPath = writeLauncher(lspDir, info.binaryName, installedPath);
     console.log(`[LSP Installer] Installed ${info.displayName} to ${wrapperPath}`);
     return { success: true, path: wrapperPath };
   }
