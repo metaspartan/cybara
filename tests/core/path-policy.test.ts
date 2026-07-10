@@ -199,8 +199,8 @@ describe("checkWritePath", () => {
 
   test("assertWritablePath throws on denial and returns the path on success", () => {
     expect(() => assertWritablePath(`${homedir()}/.ssh/id_rsa`)).toThrow();
-    const ok = assertWritablePath("src/x.ts");
-    expect(typeof ok).toBe("string");
+    const ok = assertWritablePath("src/CaseSensitiveFile.ts");
+    expect(ok.endsWith("/src/CaseSensitiveFile.ts")).toBe(true);
   });
 
   test("agent's own memory and skills under ~/.cybara are readable", () => {

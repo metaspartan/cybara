@@ -2073,7 +2073,7 @@ ACTIONS:
   todo: {
     name: "todo",
     description:
-      "Create and update a task list for the current session. Send the FULL list each call (not a delta). Keep at most ONE item in_progress at a time. Use this for any non-trivial multi-step work to stay organized and avoid drift.",
+      "Create and update a task list for the current session. Use it for non-trivial multi-step work (3+ steps); skip it for trivial or single-step tasks. Send the FULL list each call (not a delta). Keep exactly ONE item in_progress at a time and mark items completed IMMEDIATELY as you finish them — don't batch completions. When the work is done, send a final update marking every finished item completed before answering.",
     category: "planning",
     input_schema: {
       type: "object",

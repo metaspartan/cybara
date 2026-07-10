@@ -131,7 +131,7 @@ function InlineCodeSnippet({
   );
 }
 
-export function DiffCodeBlock({ code }: { code: string }) {
+export function DiffCodeBlock({ code, fill = false }: { code: string; fill?: boolean }) {
   const lines = code.split(/\r?\n/);
 
   const lineMeta = lines.map((line) => {
@@ -182,39 +182,46 @@ export function DiffCodeBlock({ code }: { code: string }) {
   });
 
   return (
-    <div className="my-3 overflow-hidden rounded-xl border border-white/10 bg-slate-950/70">
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-[12px] uppercase tracking-[0.08em] text-gray-400">
+    <div
+      className={cn(
+        "flex min-h-0 min-w-0 flex-col overflow-hidden border border-white/10 bg-slate-950/70",
+        fill ? "h-full rounded-none border-0" : "my-3 rounded-xl"
+      )}
+    >
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-[12px] uppercase tracking-[0.08em] text-gray-400">
         <span>diff</span>
         <CopyCodeButton code={code} />
       </div>
-      <pre className="m-0 overflow-x-auto font-mono text-[12px] leading-6">
-        {lines.map((line, index) => (
-          <div
-            key={`diff-${index}`}
-            className={cn(
-              "grid grid-cols-[48px_20px_minmax(0,1fr)] items-start px-2",
-              lineMeta[index]?.rowClass
-            )}
-          >
-            <span
+      <div className="min-h-0 min-w-0 flex-1 touch-pan-x overflow-auto overscroll-contain">
+        <div className="min-w-max font-mono text-[11px] leading-6 sm:text-[12px]">
+          {lines.map((line, index) => (
+            <div
+              key={`diff-${index}`}
               className={cn(
-                "select-none pr-2 text-right text-[12px]",
-                lineMeta[index]?.numberClass
+                "grid w-max min-w-full grid-cols-[48px_20px_max-content] items-start px-2",
+                lineMeta[index]?.rowClass
               )}
             >
-              {index + 1}
-            </span>
-            <span
-              className={cn("select-none text-center text-[12px]", lineMeta[index]?.markerClass)}
-            >
-              {lineMeta[index]?.prefix}
-            </span>
-            <span className={cn("whitespace-pre", lineMeta[index]?.textClass)}>
-              {line || "\u00A0"}
-            </span>
-          </div>
-        ))}
-      </pre>
+              <span
+                className={cn(
+                  "select-none pr-2 text-right text-[12px]",
+                  lineMeta[index]?.numberClass
+                )}
+              >
+                {index + 1}
+              </span>
+              <span
+                className={cn("select-none text-center text-[12px]", lineMeta[index]?.markerClass)}
+              >
+                {lineMeta[index]?.prefix}
+              </span>
+              <span className={cn("whitespace-pre", lineMeta[index]?.textClass)}>
+                {line || "\u00A0"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

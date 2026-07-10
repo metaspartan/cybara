@@ -172,13 +172,6 @@ function computeLineDelta(
   };
 }
 
-function truncateDiff(diff: string, maxLines = 220): string {
-  const lines = diff.split(/\r?\n/);
-  if (lines.length <= maxLines) return diff;
-  const omitted = lines.length - maxLines;
-  return [...lines.slice(0, maxLines), `... [diff truncated, ${omitted} lines omitted]`].join("\n");
-}
-
 function buildLineDiffOperations(beforeLines: string[], afterLines: string[]): string[] {
   const matrixBudget = beforeLines.length * afterLines.length;
   if (matrixBudget > 160_000) {
@@ -264,7 +257,7 @@ export function buildUnifiedDiff(path: string, before: string, after: string): s
     `+++ b/${path}`,
     `@@ -1,${beforeLines.length} +1,${afterLines.length} @@`,
   ];
-  return truncateDiff([...header, ...operations].join("\n"));
+  return [...header, ...operations].join("\n");
 }
 
 export async function handleRead(
@@ -768,7 +761,7 @@ function buildPatchChangeMeta(filePatch: FilePatch): FileChangeMeta {
     type: filePatch.isNew ? "created" : filePatch.isDelete ? "deleted" : "updated",
     addedLines,
     removedLines,
-    diff: truncateDiff(diffLines.join("\n")),
+    diff: diffLines.join("\n"),
   };
 }
 

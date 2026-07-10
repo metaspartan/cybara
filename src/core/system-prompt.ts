@@ -533,10 +533,13 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
     if (availableTools.has("todo")) {
       lines.push(
         "### Task Planning (`todo`)",
-        "- For ANY non-trivial multi-step task, create a `todo` list FIRST before diving in.",
-        "- Send the COMPLETE list on every call (not a delta). Mark exactly one item `in_progress` at a time.",
-        "- Update statuses as you go: pending → in_progress → completed. Add new items when you discover more work.",
-        "- Prefer this over holding the plan in prose; it reduces drift and forgotten steps.",
+        "- For non-trivial multi-step work (3+ distinct steps, multiple files, or sequencing that matters), create a `todo` list FIRST before diving in.",
+        "- Skip it for trivial or single-step tasks and purely conversational requests; never make a single-step plan.",
+        "- Keep steps short and actionable (one sentence each). Send the COMPLETE list on every call (not a delta).",
+        "- Keep exactly ONE item `in_progress` until everything is done. Before starting the next step, mark the previous one `completed` — immediately, not batched at the end.",
+        "- Add new items when you discover more work; remove items that become irrelevant.",
+        "- The plan must be fully updated when the task finishes: before your final answer, send one last `todo` update marking every finished item completed. Never end a turn with finished work still shown as pending/in_progress.",
+        "- After a `todo` call, do not repeat the list in prose — the UI already displays it. Just continue, or note the next step in a few words.",
         ""
       );
     }

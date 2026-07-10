@@ -74,6 +74,10 @@ function normalize(p: string): string {
   return resolve(p).replace(/\\/g, "/").toLowerCase();
 }
 
+function resolvePath(p: string): string {
+  return resolve(p).replace(/\\/g, "/");
+}
+
 function realPolicyPath(p: string): string | undefined {
   const absolute = resolve(p);
   try {
@@ -141,7 +145,7 @@ export function checkWritePath(
   rawPath: string | undefined,
   options: PathPolicyOptions = {}
 ): PathPolicyDecision {
-  const resolved = normalize(rawPath ?? "");
+  const resolved = resolvePath(rawPath ?? "");
 
   if (!rawPath || !resolved) {
     return { allowed: false, reason: "empty-path", resolvedPath: resolved };

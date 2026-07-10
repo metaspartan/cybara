@@ -1,6 +1,58 @@
 import { describe, expect, test } from "bun:test";
-import { handleTodo } from "../../src/core/tools/handlers/todo";
+import { handleTodo, noteToolActivityForTodoReminder } from "../../src/core/tools/handlers/todo";
 import { handleClarify } from "../../src/core/tools/handlers/clarify";
+
+describe("todo stale-plan reminder", () => {
+  test("reminds after repeated tool calls with an incomplete list, then resets", async () => {
+    const context = { sessionId: "todo-reminder-session" };
+    await handleTodo(
+      {
+        items: [
+          { content: "step one", status: "in_progress", priority: "high" },
+          { content: "step two", status: "pending", priority: "medium" },
+        ],
+      },
+      context
+    );
+    for (let call = 0; call < 5; call += 1) {
+      expect(noteToolActivityForTodoReminder("exec", context)).toBeNull();
+    }
+    const reminder = noteToolActivityForTodoReminder("exec", context);
+    expect(reminder).toContain("2 items not marked completed");
+    expect(reminder).toContain("todo");
+    expect(noteToolActivityForTodoReminder("exec", context)).toBeNull();
+  });
+
+  test("todo calls and completed lists suppress the reminder", async () => {
+    const context = { sessionId: "todo-reminder-complete" };
+    await handleTodo(
+      {
+        items: [{ content: "only step", status: "in_progress", priority: "high" }],
+      },
+      context
+    );
+    for (let call = 0; call < 5; call += 1) {
+      noteToolActivityForTodoReminder("exec", context);
+    }
+    expect(noteToolActivityForTodoReminder("todo", context)).toBeNull();
+    await handleTodo(
+      {
+        items: [{ content: "only step", status: "completed", priority: "high" }],
+      },
+      context
+    );
+    for (let call = 0; call < 12; call += 1) {
+      expect(noteToolActivityForTodoReminder("exec", context)).toBeNull();
+    }
+  });
+
+  test("sessions without a todo list never get reminders", () => {
+    const context = { sessionId: "todo-reminder-empty" };
+    for (let call = 0; call < 12; call += 1) {
+      expect(noteToolActivityForTodoReminder("exec", context)).toBeNull();
+    }
+  });
+});
 
 describe("todo tool", () => {
   test("dedupes multiple in_progress items down to one", async () => {

@@ -103,6 +103,7 @@ import {
   getMissingRequiredToolArguments,
   hasTool,
 } from "./tools/handlers/index";
+import { noteToolActivityForTodoReminder } from "./tools/handlers/todo";
 import {
   buildSystemPrompt,
   AGENT_TYPE_PROMPTS,
@@ -1533,6 +1534,10 @@ class AgentManager {
         }
       );
       const result = await executeTool(toolName, args, toolContext);
+      const todoReminder = noteToolActivityForTodoReminder(toolName, toolContext);
+      if (todoReminder && result && typeof result === "object" && !Array.isArray(result)) {
+        (result as Record<string, unknown>).system_reminder = todoReminder;
+      }
       this.broadcastAgentStatus(
         "tool_completed",
         toolContext,

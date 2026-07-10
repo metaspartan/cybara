@@ -1399,13 +1399,6 @@ export function countLines(content: string): number {
   return content.split(/\r?\n/).length;
 }
 
-export function truncateDiff(diff: string, maxLines = 220): string {
-  const lines = diff.split(/\r?\n/);
-  if (lines.length <= maxLines) return diff;
-  const omitted = lines.length - maxLines;
-  return [...lines.slice(0, maxLines), `... [diff truncated, ${omitted} lines omitted]`].join("\n");
-}
-
 export function normalizeChangeType(raw: unknown): FileChangeItem["type"] {
   const type = typeof raw === "string" ? raw.toLowerCase() : "";
   if (type === "created" || type === "create" || type === "new") return "created";
@@ -1432,7 +1425,7 @@ export function buildSimpleDiff(path: string, before: string, after: string): st
   ];
   const removed = beforeLines.map((line) => `-${line}`);
   const added = afterLines.map((line) => `+${line}`);
-  return truncateDiff([...header, ...removed, ...added].join("\n"));
+  return [...header, ...removed, ...added].join("\n");
 }
 
 export function extractFirstTargetLine(diff?: string): number | undefined {
@@ -1474,7 +1467,7 @@ export function parsePatchFileChanges(patch: string): FileChangeItem[] {
 
   const pushCurrent = () => {
     if (!current) return;
-    current.diff = truncateDiff(diffLines.join("\n"));
+    current.diff = diffLines.join("\n");
     changes.push(current);
     current = null;
     diffLines = [];
@@ -1542,8 +1535,7 @@ export function parseChangeRecord(value: unknown): FileChangeItem | null {
     toFiniteNumber(value.removedLines) ||
     toFiniteNumber(value.minus) ||
     0;
-  const diff =
-    typeof value.diff === "string" && value.diff.trim() ? truncateDiff(value.diff) : undefined;
+  const diff = typeof value.diff === "string" && value.diff.trim() ? value.diff : undefined;
   return {
     path,
     type: normalizeChangeType(value.type || value.kind),
@@ -1647,21 +1639,82 @@ function parseActivityFileChange(
   };
 }
 
+function normalizeFileChangePath(path: string): string {
+  return path
+    .replace(/\\/g, "/")
+    .replace(/\/{2,}/g, "/")
+    .toLowerCase();
+}
+
+function extractSessionToolFileChanges(toolCalls: ToolCall[]): FileChangeItem[] {
+  const fileContents = new Map<string, string>();
+  const changes: FileChangeItem[] = [];
+
+  for (const tool of toolCalls) {
+    const args = tool.arguments || tool.args || {};
+    const resultValue = tryParseJsonRecord(tool.result);
+    const result = isRecord(resultValue) ? resultValue : null;
+    const path =
+      (typeof args.path === "string" && args.path) ||
+      (result && typeof result.path === "string" ? result.path : "");
+    const pathKey = path ? normalizeFileChangePath(path) : "";
+    const toolName = tool.name.toLowerCase();
+
+    if (toolName === "read" && pathKey && result && typeof result.content === "string") {
+      fileContents.set(pathKey, result.content);
+      continue;
+    }
+
+    const toolChanges = extractToolFileChanges(tool);
+    if (toolName === "write" && pathKey && typeof args.content === "string") {
+      const before = fileContents.get(pathKey);
+      if (before !== undefined) {
+        for (const change of toolChanges) {
+          if (change.diff?.includes("[diff truncated")) {
+            change.diff = buildSimpleDiff(path, before, args.content);
+            change.path = path;
+          }
+        }
+      }
+      fileContents.set(pathKey, args.content);
+    } else if (toolName === "edit" && pathKey) {
+      const before = fileContents.get(pathKey);
+      const oldText = typeof args.oldText === "string" ? args.oldText : null;
+      const newText = typeof args.newText === "string" ? args.newText : null;
+      if (
+        before !== undefined &&
+        oldText !== null &&
+        newText !== null &&
+        before.includes(oldText)
+      ) {
+        fileContents.set(pathKey, before.replace(oldText, newText));
+      }
+    }
+    changes.push(...toolChanges);
+  }
+
+  return changes;
+}
+
 function summarizeFileChanges(changes: FileChangeItem[]): FileChangeSummary | null {
   if (changes.length === 0) return null;
   const byPath = new Map<string, FileChangeItem>();
 
   for (const change of changes) {
     if (!change.path) continue;
-    const existing = byPath.get(change.path);
+    const pathKey = normalizeFileChangePath(change.path);
+    const existing = byPath.get(pathKey);
     if (!existing) {
-      byPath.set(change.path, { ...change });
+      byPath.set(pathKey, { ...change });
       continue;
     }
 
     existing.added += change.added;
     existing.removed += change.removed;
-    if (change.diff) existing.diff = change.diff;
+    if (change.diff && change.diff !== existing.diff) {
+      existing.diff = existing.diff ? `${existing.diff}\n\n${change.diff}` : change.diff;
+      existing.path = change.path;
+    }
     if (change.type === "deleted") existing.type = "deleted";
     if (existing.type !== "deleted" && change.type === "updated") existing.type = "updated";
   }
@@ -1684,7 +1737,7 @@ export function summarizeSessionFileChanges(
   liveActivities: LiveActivityItem[] = []
 ): FileChangeSummary | null {
   const toolCalls: ToolCall[] = [];
-  const changes: FileChangeItem[] = [];
+  const activities: FileChangeItem[] = [];
   for (const message of messages) {
     if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
       toolCalls.push(...getToolCallsInTimelineOrder(message.tool_calls));
@@ -1694,15 +1747,21 @@ export function summarizeSessionFileChanges(
         phase: activity.phase || "result",
         text: activity.text || "",
       });
-      if (parsed) changes.push(parsed);
+      if (parsed) activities.push(parsed);
     }
   }
   for (const activity of liveActivities) {
     const parsed = parseActivityFileChange(activity);
-    if (parsed) changes.push(parsed);
+    if (parsed) activities.push(parsed);
   }
-  changes.push(...toolCalls.flatMap((tool) => extractToolFileChanges(tool)));
-  return summarizeFileChanges(changes);
+  const toolChanges = extractSessionToolFileChanges(toolCalls);
+  const toolPaths = new Set(toolChanges.map((change) => normalizeFileChangePath(change.path)));
+  const unmatchedActivities = activities.filter((change) => {
+    const activityPath = normalizeFileChangePath(change.path);
+    if (toolPaths.has(activityPath)) return false;
+    return !Array.from(toolPaths).some((toolPath) => toolPath.endsWith(`/${activityPath}`));
+  });
+  return summarizeFileChanges([...toolChanges, ...unmatchedActivities]);
 }
 
 export function getToolCallsInTimelineOrder(toolCalls?: ToolCall[]): ToolCall[] {

@@ -20,4 +20,14 @@ describe("file handler unified diff builder", () => {
     expect(diff.indexOf("-old heading")).toBeLessThan(diff.indexOf("+new heading"));
     expect(diff.indexOf(" shared line")).toBeLessThan(diff.indexOf("-old footer"));
   });
+
+  test("preserves every line in large diffs", () => {
+    const before = Array.from({ length: 260 }, (_, index) => `before ${index}`).join("\n");
+    const after = Array.from({ length: 260 }, (_, index) => `after ${index}`).join("\n");
+    const diff = buildUnifiedDiff("large.txt", before, after);
+
+    expect(diff).toContain("-before 259");
+    expect(diff).toContain("+after 259");
+    expect(diff).not.toContain("[diff truncated");
+  });
 });

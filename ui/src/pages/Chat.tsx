@@ -161,7 +161,6 @@ import {
   type SpeechRecognitionLike,
   type SpeechRecognitionWindow,
   summarizeMessageFileChanges,
-  summarizeSessionFileChanges,
   type ToolCall,
   toLiveActivityItems,
   tryParseJsonRecord,
@@ -187,6 +186,7 @@ import { SessionsPanel } from "./chat/SessionSidebar";
 import { SubagentIcon } from "./chat/SubagentIcon";
 import { SubagentPanel } from "./chat/SubagentPanel";
 import { useEnvironmentGitBranches } from "./chat/useEnvironmentGitBranches";
+import { useSessionFileChanges } from "./chat/useSessionFileChanges";
 import { WorkspaceOpenMenu } from "./chat/WorkspaceOpenMenu";
 
 type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
@@ -943,6 +943,9 @@ function SessionDiffPanel({
   onResizeStart,
   onOpenInIDE,
   workspaceDir,
+  loading = false,
+  error = null,
+  onRetry,
 }: {
   embedded?: boolean;
   isOpen: boolean;
@@ -954,6 +957,9 @@ function SessionDiffPanel({
   onResizeStart: (event: React.MouseEvent<HTMLElement>) => void;
   onOpenInIDE: (file: FileChangeItem) => void;
   workspaceDir?: string | null;
+  loading?: boolean;
+  error?: string | null;
+  onRetry?: () => void;
 }) {
   if (!isOpen) return null;
 
@@ -963,7 +969,7 @@ function SessionDiffPanel({
   return (
     <div
       className={cn(
-        "relative flex flex-col",
+        "relative flex min-h-0 min-w-0 flex-col overflow-hidden",
         embedded ? "h-full w-full" : "glass-strong border-l border-white/5"
       )}
       style={embedded ? undefined : { width: `${width}px`, minWidth: `${DIFF_PANEL_MIN_WIDTH}px` }}
@@ -979,10 +985,16 @@ function SessionDiffPanel({
           <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/10 transition-colors group-hover:bg-indigo-400/70" />
         </button>
       )}
-      <div className="px-3 py-2 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+      <div className="flex min-w-0 items-center justify-between gap-2 border-b border-white/5 bg-white/[0.02] px-3 py-2">
         <div className="flex min-w-0 items-center gap-2">
           <FileText className="w-3.5 h-3.5 shrink-0 text-indigo-300" />
           <h3 className="text-sm font-medium text-white">File Diffs</h3>
+          {loading && (
+            <Loader2
+              className="h-3 w-3 shrink-0 animate-spin text-gray-500"
+              aria-label="Loading complete diffs"
+            />
+          )}
           {summary && summary.files.length > 0 && (
             <span className="truncate text-[11px] text-gray-500">
               <span className="text-green-300">+{summary.totalAdded}</span>
@@ -994,7 +1006,18 @@ function SessionDiffPanel({
             </span>
           )}
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex shrink-0 items-center gap-1">
+          {error && onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="rounded-lg p-1.5 text-amber-300 transition-colors hover:bg-white/5 hover:text-amber-200"
+              title={error}
+              aria-label="Retry loading complete file diffs"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+            </button>
+          )}
           {selectedFile && (
             <button
               type="button"
@@ -1026,7 +1049,7 @@ function SessionDiffPanel({
         </div>
       ) : (
         <>
-          <div className="max-h-52 overflow-y-auto py-1 border-b border-white/5">
+          <div className="max-h-52 shrink-0 overflow-y-auto border-b border-white/5 py-1">
             {summary.files.map((file) => {
               const isSelected = selectedFile?.path === file.path;
               const pathDisplay = formatFilePathForDisplay(file.path, workspaceDir);
@@ -1037,7 +1060,7 @@ function SessionDiffPanel({
                   onClick={() => onSelectPath(file.path)}
                   title={pathDisplay.fullPath}
                   className={cn(
-                    "flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors cursor-pointer",
+                    "grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 py-1.5 text-left transition-colors cursor-pointer",
                     isSelected ? "bg-[rgba(var(--accent-primary),0.12)]" : "hover:bg-white/[0.045]"
                   )}
                 >
@@ -1053,11 +1076,13 @@ function SessionDiffPanel({
                     )}
                     title={file.type}
                   />
-                  <span className="truncate text-[12px] font-medium text-gray-100">
-                    {pathDisplay.fileName}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-[10.5px] text-gray-500">
-                    {pathDisplay.parentPath || file.type}
+                  <span className="min-w-0">
+                    <span className="block truncate text-[12px] font-medium text-gray-100">
+                      {pathDisplay.fileName}
+                    </span>
+                    <span className="block truncate text-[10.5px] text-gray-500">
+                      {pathDisplay.parentPath || file.type}
+                    </span>
                   </span>
                   <span className="shrink-0 text-[10.5px] tabular-nums">
                     <span className="text-green-300">+{file.added}</span>
@@ -1068,9 +1093,9 @@ function SessionDiffPanel({
             })}
           </div>
 
-          <div className="flex-1 min-h-0 overflow-y-auto p-2.5">
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden p-2.5">
             {selectedFile ? (
-              <div className="overflow-hidden rounded-lg border border-white/10 bg-black/20">
+              <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-white/10 bg-black/20">
                 <div className="flex items-center gap-2 border-b border-white/10 px-2.5 py-2">
                   {(() => {
                     const pathDisplay = formatFilePathForDisplay(selectedFile.path, workspaceDir);
@@ -1096,7 +1121,9 @@ function SessionDiffPanel({
                   </button>
                 </div>
                 {selectedFile.diff ? (
-                  <DiffCodeBlock code={selectedFile.diff} />
+                  <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+                    <DiffCodeBlock code={selectedFile.diff} fill />
+                  </div>
                 ) : (
                   <div className="p-3 text-[12px] text-gray-500">
                     No line-by-line diff captured for this file change.
@@ -1467,9 +1494,16 @@ export function Chat() {
     }
     return true;
   }, []);
-  const sessionFileChanges = useMemo(
-    () => summarizeSessionFileChanges(typedMessages, liveActivities),
-    [liveActivities, typedMessages]
+  const {
+    summary: sessionFileChanges,
+    loading: sessionFileChangesLoading,
+    error: sessionFileChangesError,
+    refresh: refreshSessionFileChanges,
+  } = useSessionFileChanges(
+    sessionId,
+    typedMessages,
+    liveActivities,
+    showWorkspacePanel && activeWorkspaceTab === "review"
   );
   const openWorkspaceTab = useCallback((tab: ChatWorkspaceTab) => {
     setWorkspaceTabs((current) => (current.includes(tab) ? current : [...current, tab]));
@@ -4518,6 +4552,9 @@ export function Chat() {
                   onResizeStart={handleDiffPanelResizeStart}
                   onOpenInIDE={handleOpenDiffFileInIde}
                   workspaceDir={effectiveWorkspaceDir}
+                  loading={sessionFileChangesLoading}
+                  error={sessionFileChangesError}
+                  onRetry={refreshSessionFileChanges}
                 />
               </div>
             )}
