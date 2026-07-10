@@ -161,6 +161,9 @@ struct AgentsScreen: View {
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                Text("Reasoning · \(nativeReasoningEfforts.first { $0.value == agent.reasoningEffort }?.label ?? "Default")")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.tertiary)
             }
 
             Spacer()

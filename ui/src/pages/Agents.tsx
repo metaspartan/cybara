@@ -32,13 +32,24 @@ const agentTypes = [
 ];
 
 const reasoningEffortOptions = [
-  { value: "", label: "Default (provider setting)" },
+  { value: "", label: "Default" },
   { value: "minimal", label: "Minimal" },
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
   { value: "high", label: "High" },
   { value: "xhigh", label: "Max" },
 ];
+
+function agentReasoningLabel(agent: Agent): string {
+  const config = agent.config;
+  const modelParams =
+    config?.model_params && typeof config.model_params === "object"
+      ? (config.model_params as Record<string, unknown>)
+      : {};
+  const effort = modelParams.reasoning_effort;
+  const option = reasoningEffortOptions.find((item) => item.value === effort);
+  return option?.label ?? "Default";
+}
 
 function buildConfig(
   formData: FormData,
@@ -323,6 +334,10 @@ function AgentCard({
           <div className="flex justify-between">
             <span className="text-gray-500">Model</span>
             <span className="text-gray-300">{agent.model}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Reasoning</span>
+            <span className="text-gray-300">{agentReasoningLabel(agent)}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Created</span>

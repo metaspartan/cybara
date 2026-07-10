@@ -65,6 +65,13 @@ extension GatewayClient {
     }
 
     @discardableResult
+    func updateAgentReasoning(_ id: String, effort: String?) async throws -> Data {
+        let value: Any = effort ?? NSNull()
+        let body = try JSONSerialization.data(withJSONObject: ["reasoning_effort": value])
+        return try await request("api/agents/\(id)/reasoning", method: "PUT", body: body)
+    }
+
+    @discardableResult
     func deleteAgent(_ id: String) async throws -> Data {
         try await request("api/agents/\(id)", method: "DELETE")
     }

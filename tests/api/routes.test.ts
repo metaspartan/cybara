@@ -839,7 +839,11 @@ describe("Agents API", () => {
     expect(update.data).toEqual({ success: true, reasoning_effort: "high" });
 
     const fetched = await api("GET", `/api/agents/${agentId}`);
-    expect(fetched.data.config).toEqual({
+    const fetchedConfig =
+      typeof fetched.data.config === "string"
+        ? (JSON.parse(fetched.data.config) as Record<string, unknown>)
+        : fetched.data.config;
+    expect(fetchedConfig).toEqual({
       autostart: true,
       model_params: { temperature: 0.3, reasoning_effort: "high" },
     });

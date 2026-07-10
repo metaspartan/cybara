@@ -16,6 +16,13 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(nativeChatAgentLabel(name: "Research", model: nil, compact: true), "Research")
     }
 
+    func testNativeReasoningEffortSliderMapping() {
+        XCTAssertEqual(nativeReasoningEffortIndex(""), 0)
+        XCTAssertEqual(nativeReasoningEffortIndex("medium"), 3)
+        XCTAssertEqual(nativeReasoningEffortValue(4), "high")
+        XCTAssertEqual(nativeReasoningEffortValue(20), "xhigh")
+    }
+
     func testSessionDisplayTitleTrimsGatewayTitle() throws {
         let session = try decodeSession(#"{"id":"session-123456789","title":"  Release planning  "}"#)
 

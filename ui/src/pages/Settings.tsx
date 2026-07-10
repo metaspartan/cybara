@@ -73,6 +73,7 @@ import {
   type ThemeMode,
 } from "@/stores/uiStore";
 import { resolveSettingsSectionId, type SettingsSectionId } from "@/lib/settingsNavigation";
+import { persistPetEnabled, readPetEnabled } from "@/lib/petPreferences";
 import { languageOptions, useI18n } from "@/lib/i18n";
 import {
   cn,
@@ -135,6 +136,7 @@ function ThemeSettings() {
   const { accent, setAccent, mode, setMode, addToast } = useUIStore();
   const { locale, mode: languageMode, setMode: setLanguageMode, t } = useI18n();
   const [savingAccent, setSavingAccent] = useState<ThemeAccent | null>(null);
+  const [petEnabled, setPetEnabled] = useState(() => readPetEnabled());
   const { data: identity, isLoading: identityLoading } = useIdentity();
   const updateIdentity = useUpdateIdentity();
 
@@ -286,6 +288,37 @@ function ThemeSettings() {
                 label: option.label,
               }))}
             />
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="text-sm font-medium text-gray-200">Show Cybara pet</p>
+              <p className="text-xs text-gray-500">
+                A floating capybara that watches your running sessions. Drag it anywhere; click it
+                to jump into an active chat.
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={petEnabled}
+              onClick={() => {
+                const next = !petEnabled;
+                setPetEnabled(next);
+                persistPetEnabled(next);
+              }}
+              className={cn(
+                "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors",
+                petEnabled ? "bg-emerald-500" : "bg-white/15"
+              )}
+              aria-label={petEnabled ? "Hide pet" : "Show pet"}
+            >
+              <span
+                className={cn(
+                  "inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform",
+                  petEnabled ? "translate-x-[22px]" : "translate-x-0.5"
+                )}
+              />
+            </button>
           </div>
         </div>
         <div className="flex flex-wrap gap-3">

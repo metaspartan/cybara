@@ -1605,6 +1605,35 @@ describe("mobile API client", () => {
     }
   });
 
+  test("updates an agent reasoning override through the dedicated route", async () => {
+    const calls: Array<{ method: string; path: string; body?: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      const method = init?.method || "GET";
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      calls.push({ method, path: parsedUrl.pathname, body });
+      return Response.json({ success: true, reasoning_effort: "high" });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.updateAgentReasoning("agent-1", "high")).resolves.toEqual({
+        success: true,
+        reasoning_effort: "high",
+      });
+      expect(calls).toEqual([
+        {
+          method: "PUT",
+          path: "/api/agents/agent-1/reasoning",
+          body: { reasoning_effort: "high" },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("edits, tests, and deletes providers through gateway provider routes", async () => {
     const calls: Array<{ method: string; path: string; body?: unknown }> = [];
     const originalFetch = globalThis.fetch;

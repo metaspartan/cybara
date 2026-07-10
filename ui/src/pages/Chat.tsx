@@ -43,7 +43,13 @@ import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
-import { useAgentSummaries, useInfo, useSubagents, useStopAgent } from "@/hooks/useApi";
+import {
+  useAgentSummaries,
+  useInfo,
+  useSubagents,
+  useStopAgent,
+  useUpdateAgentReasoning,
+} from "@/hooks/useApi";
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
 import type {
   Agent,
@@ -172,6 +178,7 @@ import { LiveActivityTimeline, ProcessActivityList } from "./chat/ActivityTimeli
 import { DiffCodeBlock, MessageContent } from "./chat/MessageContent";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
 import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
+import { ChatReasoningControl } from "./chat/ChatReasoningControl";
 import { ChatEnvironmentOverview } from "./chat/ChatEnvironmentOverview";
 import { parseInitialChatRoute } from "./chat/chatRoute";
 import { WorkspaceOpenMenu } from "./chat/WorkspaceOpenMenu";
@@ -1265,6 +1272,7 @@ export function Chat() {
   const navigate = useNavigate();
   const { data: agents = [] } = useAgentSummaries();
   const stopAgent = useStopAgent();
+  const updateAgentReasoning = useUpdateAgentReasoning();
   const { data: info } = useInfo();
   const [initialChatRoute] = useState(() => parseInitialChatRoute(window.location.search));
   const [selectedAgentId, setSelectedAgentId] = useState<string | undefined>(
@@ -4439,6 +4447,24 @@ export function Chat() {
                       providerPlan={activeProviderPlan}
                       onSelectAgent={(agentId) => void handleSelectAgent(agentId)}
                       updating={updateSessionAgent.isPending}
+                    />
+                    <ChatReasoningControl
+                      effort={activeAgentForPlan?.reasoning_effort}
+                      disabled={useModelRouter || !activeAgentForPlan}
+                      updating={updateAgentReasoning.isPending}
+                      onChange={(effort) => {
+                        if (!activeAgentForPlan) return;
+                        updateAgentReasoning.mutate(
+                          { id: activeAgentForPlan.id, effort },
+                          {
+                            onError: (error) => {
+                              useUIStore
+                                .getState()
+                                .addToast("error", error.message || "Failed to update reasoning");
+                            },
+                          }
+                        );
+                      }}
                     />
                     <button
                       type="button"

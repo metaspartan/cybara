@@ -141,6 +141,7 @@ export interface AgentSummary {
   provider?: string;
   provider_id?: string;
   system_prompt?: string;
+  reasoning_effort?: "minimal" | "low" | "medium" | "high" | "xhigh" | null;
 }
 
 export interface ProviderSummary {
@@ -1744,10 +1745,22 @@ export function buildMobileStatusStreamUrl(profile: GatewayProfile): string {
   return url.toString();
 }
 
+function normalizeAgentConfig(value: unknown): Record<string, unknown> {
+  if (typeof value !== "string") return asRecord(value) ?? {};
+  try {
+    return asRecord(JSON.parse(value)) ?? {};
+  } catch {
+    return {};
+  }
+}
+
 function normalizeAgent(agent: unknown, index = 0): AgentSummary {
-  const record = asRecord(agent);
+  const record = asRecord(agent) ?? {};
   const id = readString(record, ["id", "name"]) || `agent-${index + 1}`;
   const providerId = readString(record, ["provider_id", "providerId", "provider"]);
+  const config = normalizeAgentConfig(record.config);
+  const modelParams = asRecord(config.model_params ?? config.modelParams) ?? {};
+  const reasoningEffort = readString(modelParams, ["reasoning_effort", "reasoningEffort"]);
   return {
     id,
     name: readString(record, ["name", "label", "id"]) || id,
@@ -1757,6 +1770,9 @@ function normalizeAgent(agent: unknown, index = 0): AgentSummary {
     provider: providerId,
     provider_id: providerId,
     system_prompt: readString(record, ["system_prompt", "systemPrompt"]),
+    reasoning_effort: ["minimal", "low", "medium", "high", "xhigh"].includes(reasoningEffort ?? "")
+      ? (reasoningEffort as AgentSummary["reasoning_effort"])
+      : null,
   };
 }
 
@@ -2484,6 +2500,20 @@ export class CybaraMobileApi {
       body: JSON.stringify(data),
     });
     return normalizeAgent(response);
+  }
+
+  async updateAgentReasoning(
+    id: string,
+    effort: AgentSummary["reasoning_effort"]
+  ): Promise<{
+    success: boolean;
+    reasoning_effort?: AgentSummary["reasoning_effort"];
+    error?: string;
+  }> {
+    return this.request(`/api/agents/${encodeURIComponent(id)}/reasoning`, {
+      method: "PUT",
+      body: JSON.stringify({ reasoning_effort: effort }),
+    });
   }
 
   startAgent(id: string): Promise<{ success: boolean }> {

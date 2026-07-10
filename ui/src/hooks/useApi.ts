@@ -65,13 +65,7 @@ export function useAgentSummaries() {
 export function useUpdateAgentReasoning() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      id,
-      effort,
-    }: {
-      id: string;
-      effort: AgentReasoningEffort | null;
-    }) => {
+    mutationFn: async ({ id, effort }: { id: string; effort: AgentReasoningEffort | null }) => {
       const result = await fetchApi<{
         success: boolean;
         reasoning_effort?: AgentReasoningEffort | null;
@@ -87,9 +81,7 @@ export function useUpdateAgentReasoning() {
       await queryClient.cancelQueries({ queryKey: ["agents", "summary"] });
       const previous = queryClient.getQueryData<AgentSummary[]>(["agents", "summary"]);
       queryClient.setQueryData<AgentSummary[]>(["agents", "summary"], (current = []) =>
-        current.map((agent) =>
-          agent.id === id ? { ...agent, reasoning_effort: effort } : agent
-        )
+        current.map((agent) => (agent.id === id ? { ...agent, reasoning_effort: effort } : agent))
       );
       return { previous };
     },

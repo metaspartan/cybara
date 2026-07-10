@@ -7,9 +7,7 @@ import {
 
 describe("agent reasoning settings", () => {
   test("reads snake and camel case model parameters", () => {
-    expect(readAgentReasoningSetting({ model_params: { reasoning_effort: "high" } })).toBe(
-      "high"
-    );
+    expect(readAgentReasoningSetting({ model_params: { reasoning_effort: "high" } })).toBe("high");
     expect(readAgentReasoningSetting({ modelParams: { reasoningEffort: "medium" } })).toBe(
       "medium"
     );

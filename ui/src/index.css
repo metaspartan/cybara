@@ -605,6 +605,29 @@ textarea[data-chat-composer-input="true"]:focus-visible {
   container-type: inline-size;
 }
 
+.chat-reasoning-popover {
+  background: var(--context-tooltip-bg);
+  border-color: var(--context-tooltip-border);
+  color: var(--context-tooltip-body);
+  box-shadow: var(--context-tooltip-shadow);
+}
+
+.chat-reasoning-slider {
+  accent-color: rgb(var(--accent-primary));
+}
+
+@container (max-width: 600px) {
+  .chat-reasoning-trigger {
+    width: 32px;
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .chat-reasoning-trigger-label {
+    display: none;
+  }
+}
+
 @container (max-width: 460px) {
   .chat-approval-control {
     width: 28px;
@@ -1106,4 +1129,18 @@ html.light .text-orange-300 { color: #ea580c; }
   background-size: 23rem 2.875rem;
   animation: cybara-thinking-sprite 1.05s steps(8) infinite;
   pointer-events: none;
+}
+
+@keyframes cybara-pet-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+.cybara-pet-idle {
+  animation: cybara-pet-float 3.2s ease-in-out infinite;
 }

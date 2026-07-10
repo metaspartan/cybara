@@ -181,6 +181,9 @@ describe("mobile: chat management", () => {
     expect(screen).toContain("styles.chatSettingsScroll");
     expect(screen).toContain("const chatSettingsRows");
     expect(screen).toContain('label: "Tool approvals"');
+    expect(screen).toContain('label: "Reasoning"');
+    expect(screen).toContain('label: "Reasoning effort"');
+    expect(screen).toContain("api.updateAgentReasoning(selectedAgent.id, effort)");
     expect(screen).toContain("mobileContextUsageDetail(");
     expect(screen).toContain("mobileSessionTokenUsageDetail(");
     expect(screen).toContain('label: "Context"');

@@ -82,6 +82,15 @@ func nativeChatAgentLabel(name: String, model: String?, compact: Bool) -> String
     return compact ? model : "\(name) - \(model)"
 }
 
+func nativeReasoningEffortIndex(_ effort: String) -> Double {
+    Double(nativeReasoningEfforts.firstIndex { $0.value == effort } ?? 0)
+}
+
+func nativeReasoningEffortValue(_ index: Double) -> String {
+    let bounded = min(max(Int(index.rounded()), 0), nativeReasoningEfforts.count - 1)
+    return nativeReasoningEfforts[bounded].value
+}
+
 private func parseGatewayDate(_ iso: String?) -> Date? {
     guard let iso else { return nil }
     let fractional = ISO8601DateFormatter()
@@ -504,6 +513,9 @@ struct ChatScreen: View {
     @State private var pendingApprovals: [GatewayPendingApproval] = []
     @State private var expandedApprovalID: String?
     @State private var showContextPopover = false
+    @State private var showReasoningPopover = false
+    @State private var reasoningDraftIndex = 0.0
+    @State private var reasoningSaving = false
     @State private var showEnvironmentPopover = false
     @State private var showSubagentsPopover = false
     @State private var showFileDiffsPopover = false
@@ -1264,6 +1276,14 @@ struct ChatScreen: View {
         )
     }
 
+    private var activeReasoningEffort: String {
+        selectedChatAgent?.reasoningEffort ?? ""
+    }
+
+    private var activeReasoningEffortLabel: String {
+        nativeReasoningEfforts.first { $0.value == activeReasoningEffort }?.label ?? "Default"
+    }
+
     private var agentSelectionBinding: Binding<String> {
         Binding(
             get: { selectedChatAgentID },
@@ -1952,6 +1972,27 @@ struct ChatScreen: View {
                     .frame(width: 116)
             }
 
+
+            Button {
+                reasoningDraftIndex = nativeReasoningEffortIndex(activeReasoningEffort)
+                showReasoningPopover.toggle()
+            } label: {
+                if reasoningSaving {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: 13, weight: .medium))
+                }
+            }
+            .buttonStyle(.plain)
+            .frame(width: 26, height: 26)
+            .background(Circle().fill(Color.white.opacity(0.05)))
+            .disabled(reasoningSaving || useModelRouter || selectedChatAgent == nil)
+            .help("Reasoning: \(activeReasoningEffortLabel)")
+            .popover(isPresented: $showReasoningPopover) {
+                reasoningEffortPopover
+            }
+
             if agentSaving {
                 ProgressView().controlSize(.small)
             }
@@ -1975,6 +2016,41 @@ struct ChatScreen: View {
         .controlSize(.small)
         .disabled(agentSaving || (!modelRouterEnabled && agents.isEmpty))
         .help(activeAgentRouteLabel)
+    }
+
+    private var reasoningEffortPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Reasoning")
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                Spacer()
+                Text(nativeReasoningEfforts[Int(reasoningDraftIndex.rounded())].label)
+                    .font(.system(size: 12, weight: .bold, design: .rounded))
+            }
+            Slider(
+                value: $reasoningDraftIndex,
+                in: 0 ... Double(nativeReasoningEfforts.count - 1),
+                step: 1,
+                onEditingChanged: { editing in
+                    if !editing {
+                        Task {
+                            await changeReasoningEffort(
+                                nativeReasoningEffortValue(reasoningDraftIndex)
+                            )
+                        }
+                    }
+                }
+            )
+            HStack {
+                Text("Provider default")
+                Spacer()
+                Text("Smarter")
+            }
+            .font(.system(size: 10, design: .rounded))
+            .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .frame(width: 250)
     }
 
     private var composerSecurityControls: some View {
@@ -2551,6 +2627,22 @@ struct ChatScreen: View {
             self.error = error.localizedDescription
         }
         approvalSaving = false
+    }
+
+    private func changeReasoningEffort(_ nextEffort: String) async {
+        guard let agent = selectedChatAgent, !reasoningSaving else { return }
+        guard nativeReasoningEfforts.contains(where: { $0.value == nextEffort }) else { return }
+        guard nextEffort != activeReasoningEffort else { return }
+        reasoningSaving = true
+        do {
+            try await client.updateAgentReasoning(agent.id, effort: nextEffort.isEmpty ? nil : nextEffort)
+            await loadSessions()
+            error = nil
+        } catch {
+            reasoningDraftIndex = nativeReasoningEffortIndex(activeReasoningEffort)
+            self.error = error.localizedDescription
+        }
+        reasoningSaving = false
     }
 
     private func updateSessionList(with session: GatewaySession) {

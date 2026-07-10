@@ -12,6 +12,9 @@ const chatAgentControlsPath = fileURLToPath(
 const contextUsageRingPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ContextUsageRing.tsx", import.meta.url)
 );
+const chatReasoningControlPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ChatReasoningControl.tsx", import.meta.url)
+);
 const environmentOverviewPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatEnvironmentOverview.tsx", import.meta.url)
 );
@@ -45,6 +48,7 @@ describe("status stream websocket wiring", () => {
       readSource(chatAgentControlsPath),
       readSource(composerActionPath),
       readSource(contextUsageRingPath),
+      readSource(chatReasoningControlPath),
       readSource(environmentOverviewPath),
     ].join("\n");
     const displaySource = readSource(providerPlanDisplayPath);
@@ -87,6 +91,10 @@ describe("status stream websocket wiring", () => {
     expect(source).not.toContain("bg-[#171820]");
     expect(source).not.toContain("rgba(255,255,255,0.18)");
     expect(source).toContain("ChatApprovalControls");
+    expect(source).toContain("ChatReasoningControl");
+    expect(source).toContain("Reasoning effort");
+    expect(source).toContain("chat-reasoning-levels");
+    expect(source).toContain("useUpdateAgentReasoning");
     expect(source).toContain('id="chat-tool-approval-mode"');
     expect(source).toContain(
       "const Icon = updating ? Loader2 : isAskMode ? CircleHelp : ShieldAlert"

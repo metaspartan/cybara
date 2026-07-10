@@ -28,6 +28,7 @@ import {
   ArrowDown,
   ArrowUp,
   Bot,
+  BrainCircuit,
   Clock3,
   Folder,
   Gauge,
@@ -476,6 +477,11 @@ export function SessionDetailPanel({
   const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
   const [pinning, setPinning] = useState(false);
   const [agentUpdating, setAgentUpdating] = useState(false);
+  const [reasoningUpdating, setReasoningUpdating] = useState(false);
+  const [reasoningOverride, setReasoningOverride] = useState<{
+    agentId: string;
+    effort: AgentSummary["reasoning_effort"];
+  } | null>(null);
   const [pendingSessionAgentId, setPendingSessionAgentId] = useState<string | null>(null);
   const [routerEnabled, setRouterEnabled] = useState(false);
   const [useModelRouter, setUseModelRouter] = useState(false);
@@ -1316,6 +1322,23 @@ export function SessionDetailPanel({
     mobileFirstNonEmptyString(detail?.agentId, sessionSummary?.agent_id) ||
     "";
   const selectedAgent = agents.find((agent) => agent.id === currentAgentId);
+  const reasoningEffort =
+    reasoningOverride && reasoningOverride.agentId === selectedAgent?.id
+      ? reasoningOverride.effort
+      : (selectedAgent?.reasoning_effort ?? null);
+  const reasoningOptions: Array<{
+    value: AgentSummary["reasoning_effort"];
+    label: string;
+  }> = [
+    { value: null, label: "Default" },
+    { value: "minimal", label: "Minimal" },
+    { value: "low", label: "Low" },
+    { value: "medium", label: "Medium" },
+    { value: "high", label: "High" },
+    { value: "xhigh", label: "Max" },
+  ];
+  const reasoningLabel =
+    reasoningOptions.find((option) => option.value === reasoningEffort)?.label ?? "Default";
   const activeProviderPlan = useModelRouter
     ? null
     : mobileProviderPlanFor(providerPlanStatus, {
@@ -1563,6 +1586,51 @@ export function SessionDetailPanel({
     );
   };
 
+  const changeReasoningEffort = async (effort: AgentSummary["reasoning_effort"]) => {
+    if (!selectedAgent || reasoningUpdating || effort === reasoningEffort) return;
+    setReasoningUpdating(true);
+    setReasoningOverride({ agentId: selectedAgent.id, effort });
+    haptics.select();
+    try {
+      const result = await api.updateAgentReasoning(selectedAgent.id, effort);
+      if (!result.success) throw new Error(result.error || "Failed to update reasoning effort.");
+      refreshSummary();
+    } catch (error) {
+      setReasoningOverride(null);
+      setLoadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReasoningUpdating(false);
+    }
+  };
+
+  const openReasoningSelector = () => {
+    if (!selectedAgent || useModelRouter || reasoningUpdating) return;
+    const labels = reasoningOptions.map((option) =>
+      option.value === reasoningEffort ? `${option.label} ✓` : option.label
+    );
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: "Reasoning effort",
+          options: [...labels, "Cancel"],
+          cancelButtonIndex: labels.length,
+        },
+        (index) => {
+          const option = reasoningOptions[index];
+          if (option) void changeReasoningEffort(option.value);
+        }
+      );
+      return;
+    }
+    Alert.alert("Reasoning effort", undefined, [
+      ...reasoningOptions.map((option) => ({
+        text: option.value === reasoningEffort ? `${option.label} ✓` : option.label,
+        onPress: () => void changeReasoningEffort(option.value),
+      })),
+      { text: "Cancel", style: "cancel" },
+    ]);
+  };
+
   const messageCount = detail?.messages.length ?? sessionSummary?.message_count ?? 0;
   const updatedAt =
     detail?.updatedAt ||
@@ -1643,6 +1711,12 @@ export function SessionDetailPanel({
       value: toolApprovalLabel,
     },
     {
+      icon: BrainCircuit,
+      label: "Reasoning",
+      value: reasoningLabel,
+      detail: selectedAgent ? "Agent setting" : "Select an agent",
+    },
+    {
       icon: Folder,
       label: "Workspace",
       value: compactWorkspace(chatWorkspaceDir),
@@ -1673,6 +1747,12 @@ export function SessionDetailPanel({
       label: "Tool approvals",
       disabled: toolApprovalUpdating,
       onPress: () => runFromChatSettings(openToolApprovalSelector),
+    },
+    {
+      icon: BrainCircuit,
+      label: "Reasoning effort",
+      disabled: reasoningUpdating || useModelRouter || !selectedAgent,
+      onPress: () => runFromChatSettings(openReasoningSelector),
     },
     ...(agents.length || routerEnabled
       ? [
@@ -1726,10 +1806,19 @@ export function SessionDetailPanel({
 
   useEffect(() => {
     setHeaderAction?.({
-      busy: pinning || agentUpdating || toolApprovalUpdating || gitBranchLoading,
+      busy:
+        pinning || agentUpdating || reasoningUpdating || toolApprovalUpdating || gitBranchLoading,
       onPress: () => headerActionRef.current(),
     });
-  }, [agentUpdating, gitBranchLoading, pinning, sessionId, setHeaderAction, toolApprovalUpdating]);
+  }, [
+    agentUpdating,
+    gitBranchLoading,
+    pinning,
+    reasoningUpdating,
+    sessionId,
+    setHeaderAction,
+    toolApprovalUpdating,
+  ]);
 
   const renderMessages = useMemo(() => {
     const messages = detail?.messages ?? [];
