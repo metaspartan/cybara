@@ -14,6 +14,19 @@ import { SubagentIcon } from "./SubagentIcon";
 
 export type ChatWorkspaceTab = "review" | "terminal" | "browser" | "files" | "subagents";
 
+export interface WorkspaceTabInstance {
+  id: string;
+  kind: ChatWorkspaceTab;
+  title?: string;
+  pageKey?: string;
+}
+
+export const WORKSPACE_SINGLETON_KINDS: ReadonlySet<ChatWorkspaceTab> = new Set([
+  "review",
+  "files",
+  "subagents",
+]);
+
 const TAB_DETAILS: Record<
   ChatWorkspaceTab,
   {
@@ -42,20 +55,18 @@ export function ChatWorkspacePanel({
   onOpenTab,
   onResizeStart,
   onSelectTab,
-  tabLabels,
   tabs,
   width,
 }: {
-  activeTab: ChatWorkspaceTab | null;
+  activeTab: string | null;
   children: ReactNode;
   isOpen: boolean;
   onClose: () => void;
-  onCloseTab: (tab: ChatWorkspaceTab) => void;
-  onOpenTab: (tab: ChatWorkspaceTab) => void;
+  onCloseTab: (id: string) => void;
+  onOpenTab: (kind: ChatWorkspaceTab) => void;
   onResizeStart: (event: MouseEvent<HTMLDivElement>) => void;
-  onSelectTab: (tab: ChatWorkspaceTab) => void;
-  tabLabels?: Partial<Record<ChatWorkspaceTab, string>>;
-  tabs: ChatWorkspaceTab[];
+  onSelectTab: (id: string) => void;
+  tabs: WorkspaceTabInstance[];
   width: number;
 }) {
   const { t } = useI18n();
@@ -85,15 +96,15 @@ export function ChatWorkspacePanel({
       <header className="flex h-11 shrink-0 items-center gap-1 border-b border-white/10 px-2">
         <div className="flex min-w-0 max-w-[calc(100%-68px)] items-center gap-1 overflow-x-auto">
           {tabs.map((tab) => {
-            const details = TAB_DETAILS[tab];
+            const details = TAB_DETAILS[tab.kind];
             const Icon = details.icon;
-            const label = tabLabels?.[tab]?.trim() || t(details.labelKey);
+            const label = tab.title?.trim() || t(details.labelKey);
             return (
               <div
-                key={tab}
+                key={tab.id}
                 className={cn(
                   "group flex h-8 shrink-0 items-center rounded-md text-[11px] transition-colors",
-                  activeTab === tab
+                  activeTab === tab.id
                     ? "bg-white/[0.08] text-gray-100"
                     : "text-gray-500 hover:bg-white/[0.04] hover:text-gray-300"
                 )}
@@ -101,7 +112,7 @@ export function ChatWorkspacePanel({
                 <button
                   type="button"
                   className="flex h-full items-center gap-1.5 pl-2 pr-1"
-                  onClick={() => onSelectTab(tab)}
+                  onClick={() => onSelectTab(tab.id)}
                 >
                   <Icon className="h-3.5 w-3.5" />
                   <span className="max-w-32 truncate">{label}</span>
@@ -109,7 +120,7 @@ export function ChatWorkspacePanel({
                 <button
                   type="button"
                   className="mr-1 rounded p-1 text-gray-600 opacity-0 transition-opacity hover:bg-white/10 hover:text-gray-300 group-hover:opacity-100 focus:opacity-100"
-                  onClick={() => onCloseTab(tab)}
+                  onClick={() => onCloseTab(tab.id)}
                   aria-label={`Close ${label}`}
                 >
                   <X className="h-3 w-3" />

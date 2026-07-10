@@ -354,8 +354,15 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
   );
 
   return (
-    <Box flexDirection="column">
-      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
+    <Box flexDirection="column" height={layout.rows} width="100%">
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor="cyan"
+        paddingX={layout.narrow ? 1 : 2}
+        paddingY={1}
+        flexGrow={1}
+      >
         <Box flexDirection={layout.narrow ? "column" : "row"} justifyContent="space-between">
           <Text bold color="cyan">
             Cybara Chat

@@ -132,6 +132,7 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("  pairing     Alias for pair");
   console.log("  mcp         MCP server commands");
   console.log("    mcp list     List installed MCP servers");
+  console.log("    mcp add      Add a remote HTTPS server");
   console.log("    mcp search   Search MCP registry");
   console.log("    mcp install  Install MCP server");
   console.log("    mcp popular  Show popular servers");

@@ -87,8 +87,16 @@ describe("browser executable discovery", () => {
     expect(browserLaunchArgs("win32", {})).not.toContain("--no-sandbox");
     expect(browserLaunchArgs("darwin", {})).not.toContain("--no-sandbox");
     expect(browserLaunchArgs("linux", {})).not.toContain("--no-sandbox");
-    expect(browserLaunchArgs("win32", {})).toEqual([]);
+    expect(browserLaunchArgs("darwin", {})).toEqual([]);
     expect(browserLaunchArgs("linux", {})).toContain("--disable-dev-shm-usage");
+  });
+
+  test("suppresses phantom windows and Edge first-run UI on Windows", () => {
+    const args = browserLaunchArgs("win32", {});
+    expect(args).toContain("--disable-gpu");
+    expect(args).toContain("--no-first-run");
+    expect(args).toContain("--no-default-browser-check");
+    expect(args).toContain("--window-position=-32000,-32000");
   });
 
   test("allows an explicit Linux container sandbox override", () => {

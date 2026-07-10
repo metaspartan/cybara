@@ -3,6 +3,7 @@ import {
   clipboardCandidates,
   composerWindow,
   resolveTerminalLayout,
+  transcriptWindow,
 } from "../../src/cli-tui-terminal";
 
 describe("CLI TUI terminal behavior", () => {
@@ -13,7 +14,7 @@ describe("CLI TUI terminal behavior", () => {
     expect(narrow.composerLines).toBe(3);
     expect(narrow.commandRows).toBe(4);
     expect(narrow.transcriptMessages).toBe(1);
-    expect(narrow.messageLines).toBe(4);
+    expect(narrow.messageLines).toBe(3);
     expect(wide.narrow).toBe(false);
     expect(wide.compact).toBe(false);
     expect(wide.composerLines).toBeGreaterThan(narrow.composerLines);
@@ -27,6 +28,23 @@ describe("CLI TUI terminal behavior", () => {
     expect(visible).toHaveLength(3);
     expect(visible.join("\n")).toContain("▏");
     expect(visible.join("\n").replace("▏", "")).toContain("four");
+  });
+
+  test("bounds transcript rows without leaking omitted code fences", () => {
+    const content = [
+      "Intro",
+      "```ts",
+      "const longValue = 'abcdefghijklmnopqrstuvwxyz';",
+      "```",
+      "**Result:** complete",
+      "Final",
+    ].join("\n");
+    const visible = transcriptWindow(content, 4, 24);
+    expect(visible).toHaveLength(4);
+    expect(visible.some((line) => line.hidden)).toBe(true);
+    expect(visible.at(-1)?.text).toBe("Final");
+    expect(visible.at(-1)?.code).toBe(false);
+    expect(visible.every((line) => line.text.length <= 24)).toBe(true);
   });
 
   test("selects native clipboard helpers without invoking a shell", () => {

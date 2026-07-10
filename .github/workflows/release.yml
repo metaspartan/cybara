@@ -130,14 +130,19 @@ jobs:
             rust_target: x86_64-unknown-linux-gnu
             bun_target: bun-linux-x64
             sidecar: "src-tauri/bin/cybara-x86_64-unknown-linux-gnu"
+            appimage: true
           # Linux arm64 — native GitHub-hosted ARM runner (Raspberry Pi, ARM servers).
-          # Native build on aarch64, so the sidecar and Rust target compile natively.
+          # Native build on aarch64, so the sidecar, Rust target, and AppImage
+          # tooling all run natively. linuxdeploy/appimagetool publish aarch64
+          # AppImages, and tauri-bundler selects them from the target triple, so
+          # the AppImage bundle builds natively on this runner.
           - platform: linux
             runner: ubuntu-24.04-arm
             args: "--bundles deb,rpm"
             rust_target: aarch64-unknown-linux-gnu
             bun_target: bun-linux-arm64
             sidecar: "src-tauri/bin/cybara-aarch64-unknown-linux-gnu"
+            appimage: true
 
     runs-on: ${{ matrix.runner }}
     env:
@@ -280,7 +285,7 @@ jobs:
       # Shim ldd so failures report "statically linked" and linuxdeploy skips
       # dependency deployment for that binary instead of crashing.
       - name: Shim ldd for Bun sidecar (AppImage)
-        if: matrix.platform == 'linux'
+        if: matrix.platform == 'linux' && matrix.appimage == true
         run: |
           mkdir -p "$RUNNER_TEMP/ldd-shim"
           cat > "$RUNNER_TEMP/ldd-shim/ldd" <<'EOF'
@@ -297,7 +302,7 @@ jobs:
           chmod +x "$RUNNER_TEMP/ldd-shim/ldd"
           echo "$RUNNER_TEMP/ldd-shim" >> "$GITHUB_PATH"
       - name: Build Linux AppImage (best-effort)
-        if: matrix.platform == 'linux'
+        if: matrix.platform == 'linux' && matrix.appimage == true
         continue-on-error: true
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
         env:

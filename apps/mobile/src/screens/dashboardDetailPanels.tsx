@@ -972,6 +972,33 @@ export function SettingsPanel({
         ) : null}
         {showAiSettings ? (
           <SettingsSection title="AI">
+            {configAvailable ? (
+              <SettingSelector
+                disabled={savingConfigKey !== null}
+                label="Default agent"
+                onSelect={(value) => {
+                  void saveConfigPatch(
+                    "default_agent_id",
+                    { default_agent_id: value },
+                    "Default agent setting failed"
+                  );
+                }}
+                options={[
+                  { label: "First available agent (default)", value: "" },
+                  ...(summary?.agents ?? []).map((agent) => ({
+                    label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
+                    value: agent.id,
+                  })),
+                ]}
+                selected={
+                  typeof summary?.config?.default_agent_id === "string"
+                    ? summary.config.default_agent_id
+                    : ""
+                }
+                tone={accentColor}
+                variant="menu"
+              />
+            ) : null}
             {configAvailable && MOBILE_SETTINGS_ROOT_CHROME.reasoningEffortSelector ? (
               <SettingSelector
                 disabled={savingConfigKey !== null}

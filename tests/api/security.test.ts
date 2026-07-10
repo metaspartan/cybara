@@ -231,6 +231,19 @@ describe("API security module", () => {
     expect(allowed.passed).toBe(true);
   });
 
+  test("MCP OAuth callback is public only at the exact callback path", () => {
+    const callback = security.securityCheck("GET", "/api/mcp/oauth/callback", {}, "203.0.113.10");
+    const lookalike = security.securityCheck(
+      "GET",
+      "/api/mcp/oauth/callback-evil",
+      {},
+      "203.0.113.10"
+    );
+    expect(callback.passed).toBe(true);
+    expect(lookalike.passed).toBe(false);
+    expect(lookalike.statusCode).toBe(401);
+  });
+
   test("checkRateLimit enforces max requests per window", () => {
     const key = `test-rate-limit-${Date.now()}`;
     const first = security.checkRateLimit(key, 10000, 2);

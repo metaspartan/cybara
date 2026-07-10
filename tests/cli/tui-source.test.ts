@@ -27,7 +27,11 @@ const tuiPanels = [
   { command: "status", component: "TUIStatusCommand", label: "Status" },
   { command: "metrics", component: "TUIMetricsCommand", label: "Metrics" },
   { command: "agents", component: "TUIAgentsCommand", label: "Agents" },
-  { command: "providers", component: "TUIProvidersCommand", label: "Providers" },
+  {
+    command: "providers",
+    component: "TUIProvidersCommand",
+    label: "Providers",
+  },
   { command: "router", component: "TUIRouterCommand", label: "Model Router" },
   { command: "usage", component: "TUIUsageCommand", label: "Usage" },
   { command: "channels", component: "TUIChannelsCommand", label: "Channels" },
@@ -41,8 +45,16 @@ const tuiPanels = [
   { command: "skills", component: "TUISkillsCommand", label: "Skills" },
   { command: "mcp", component: "TUIMcpCommand", label: "MCP Services" },
   { command: "lsp", component: "TUILspCommand", label: "Language Servers" },
-  { command: "subagents", component: "TUISubagentsCommand", label: "Subagents" },
-  { command: "artifacts", component: "TUIArtifactsCommand", label: "Artifacts" },
+  {
+    command: "subagents",
+    component: "TUISubagentsCommand",
+    label: "Subagents",
+  },
+  {
+    command: "artifacts",
+    component: "TUIArtifactsCommand",
+    label: "Artifacts",
+  },
   { command: "journey", component: "TUIJourneyCommand", label: "Journey" },
 ];
 
@@ -89,6 +101,7 @@ describe("CLI TUI source wiring", () => {
       "/api/memory",
       "/api/tools",
       "/api/mcp",
+      "/oauth/start",
       "/api/lsp/install-status",
       "/api/subagents",
       "/api/artifacts",
@@ -96,6 +109,16 @@ describe("CLI TUI source wiring", () => {
     ]) {
       expect(cliSource + cliTuiPanelsSource).toContain(route);
     }
+  });
+
+  test("terminal panels occupy a stable responsive viewport", () => {
+    expect(cliTuiPanelsSource).toContain("height={layout.rows}");
+    expect(cliTuiPanelsSource).toContain('width="100%"');
+    expect(cliTuiPanelsSource).toContain("panelListLimit");
+    expect(cliTuiPanelsSource).toContain("PanelRemainder");
+    expect(cliTuiChatSource).toContain('height={layout.rows} width="100%"');
+    expect(cliTuiInteractiveChatSource).toContain('height={layout.rows} width="100%"');
+    expect(cliTuiInteractiveChatSource).toContain("flexGrow={1}");
   });
 
   test("CLI docs list direct TUI panels", () => {
@@ -236,6 +259,8 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("(key as { tab?: boolean }).tab");
     expect(cliTuiInteractiveChatSource).toContain("process_activities");
     expect(cliTuiInteractiveChatSource).toContain("tool_calls");
+    expect(cliTuiInteractiveChatSource).toContain("ACTIVITY_HEADING_COLOR");
+    expect(cliTuiInteractiveChatSource).toContain("ACTIVITY_DETAIL_COLOR");
   });
 
   test("chat session picker supports pinning and guarded deletion", () => {

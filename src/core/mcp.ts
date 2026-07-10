@@ -1,6 +1,13 @@
 import { tables, type MCPServer } from "./database";
 import { spawn, ChildProcess } from "child_process";
-import { parseMcpHttpResponse, isHttpMcpUrl } from "./mcp-http";
+import {
+  decodeMcpOAuthEnvironment,
+  parseMcpHttpResponse,
+  isHttpMcpUrl,
+  normalizeRemoteMcpUrl,
+  refreshMcpOAuthCredential,
+  replaceMcpOAuthEnvironment,
+} from "./mcp-http";
 import { EventEmitter } from "events";
 
 /**
@@ -31,6 +38,13 @@ interface MCPServerInstance {
   /** Accumulates partial stdout so newline-delimited JSON-RPC messages that
    *  span multiple `data` chunks (responses > ~64KB) are reassembled. */
   stdoutBuffer?: string;
+}
+
+export interface MCPServerSummary extends Omit<MCPServer, "env"> {
+  status: string;
+  toolCount: number;
+  hasCredentials: boolean;
+  transport: "stdio" | "http";
 }
 
 /**
@@ -80,14 +94,17 @@ class MCPServerManager extends EventEmitter {
     }
   }
 
-  list(): (MCPServer & { status: string; toolCount: number })[] {
-    const result: (MCPServer & { status: string; toolCount: number })[] = [];
+  list(): MCPServerSummary[] {
+    const result: MCPServerSummary[] = [];
 
     for (const [, instance] of this.instances) {
+      const { env, ...server } = instance.server;
       result.push({
-        ...instance.server,
+        ...server,
         status: instance.status,
         toolCount: instance.tools.length,
+        hasCredentials: Boolean(env),
+        transport: isHttpMcpUrl(instance.server.url) ? "http" : "stdio",
       });
     }
 
@@ -111,18 +128,25 @@ class MCPServerManager extends EventEmitter {
 
   create(data: {
     name: string;
-    command: string;
+    command?: string;
     args?: string;
     env?: string;
+    url?: string;
     enabled?: boolean;
   }): MCPServer {
+    const name = data.name.trim();
+    if (!name) throw new Error("MCP server name is required");
+    const url = data.url ? normalizeRemoteMcpUrl(data.url) : undefined;
+    const command = data.command?.trim() || "";
+    if (!url && !command) throw new Error("MCP command is required for local servers");
     const id = crypto.randomUUID();
     const server: MCPServer = {
       id,
-      name: data.name,
-      command: data.command,
+      name,
+      command,
       args: data.args,
       env: data.env,
+      url,
       enabled: data.enabled !== false,
     };
 
@@ -313,7 +337,9 @@ class MCPServerManager extends EventEmitter {
   private async httpRpc(
     instance: MCPServerInstance,
     method: string,
-    params: Record<string, unknown>
+    params: Record<string, unknown>,
+    notification = false,
+    retryAuthorization = true
   ): Promise<unknown> {
     const url = instance.server.url as string;
     const headers: Record<string, string> = {
@@ -321,23 +347,45 @@ class MCPServerManager extends EventEmitter {
       Accept: "application/json, text/event-stream",
     };
     if (instance.httpSessionId) headers["Mcp-Session-Id"] = instance.httpSessionId;
+    if (method !== "initialize") headers["MCP-Protocol-Version"] = "2025-06-18";
+    let oauth = decodeMcpOAuthEnvironment(instance.server.env);
+    if (oauth?.expiresAt && oauth.expiresAt <= Date.now() && oauth.refreshToken) {
+      oauth = await refreshMcpOAuthCredential(oauth);
+      const env = replaceMcpOAuthEnvironment(instance.server.env, oauth);
+      this.update(instance.server.id, { env });
+    }
+    if (oauth?.accessToken) headers.Authorization = `Bearer ${oauth.accessToken}`;
     if (instance.server.env) {
       for (const pair of instance.server.env.split(",")) {
-        const [k, v] = pair.split("=");
-        if (k?.trim().toLowerCase() === "authorization" && v) headers.Authorization = v.trim();
+        const separator = pair.indexOf("=");
+        if (separator < 0) continue;
+        const key = pair.slice(0, separator).trim().toLowerCase();
+        const value = pair.slice(separator + 1).trim();
+        if (key === "authorization" && value) headers.Authorization = value;
       }
     }
 
+    const request = notification
+      ? { jsonrpc: "2.0", method, params }
+      : { jsonrpc: "2.0", id: nextMcpRequestId(), method, params };
     const response = await fetch(url, {
       method: "POST",
       headers,
-      body: JSON.stringify({ jsonrpc: "2.0", id: Date.now(), method, params }),
+      body: JSON.stringify(request),
+      signal: AbortSignal.timeout(30_000),
     });
     const sessionHeader = response.headers.get("mcp-session-id");
     if (sessionHeader) instance.httpSessionId = sessionHeader;
+    if (response.status === 401 && retryAuthorization && oauth?.refreshToken) {
+      const refreshed = await refreshMcpOAuthCredential(oauth);
+      const env = replaceMcpOAuthEnvironment(instance.server.env, refreshed);
+      this.update(instance.server.id, { env });
+      return this.httpRpc(instance, method, params, notification, false);
+    }
     if (!response.ok) {
       throw new Error(`MCP HTTP ${method} -> ${response.status} ${response.statusText}`);
     }
+    if (notification || response.status === 202 || response.status === 204) return undefined;
     const parsed = parseMcpHttpResponse(
       response.headers.get("content-type") || "",
       await response.text()
@@ -355,6 +403,7 @@ class MCPServerManager extends EventEmitter {
         capabilities: {},
         clientInfo: { name: "cybara", version: "1.0" },
       });
+      await this.httpRpc(instance, "notifications/initialized", {}, true);
       const listed = (await this.httpRpc(instance, "tools/list", {})) as {
         tools?: Array<{ name?: string; description?: string; inputSchema?: unknown }>;
       };

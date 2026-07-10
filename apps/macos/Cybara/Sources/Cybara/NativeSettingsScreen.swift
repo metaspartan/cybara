@@ -30,6 +30,7 @@ struct NativeSettingsScreen: View {
     @State private var config: [String: Any] = [:]
     @State private var providers: [GatewayProvider] = []
     @State private var agents: [GatewayAgent] = []
+    @State private var defaultAgentId = ""
     @State private var backgroundAgentId = ""
     @State private var gatewayLogs: [GatewayLogEntry] = []
     @State private var gatewayRestarting = false
@@ -680,6 +681,27 @@ struct NativeSettingsScreen: View {
             VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
+                        Text("Default Agent")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                        Text("Used when a channel or request does not specify one.")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Picker("Default agent", selection: $defaultAgentId) {
+                            Text("First available agent (default)").tag("")
+                            ForEach(agents) { agent in
+                                Text(agent.model.map { "\(agent.name) — \($0)" } ?? agent.name)
+                                    .tag(agent.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .onChange(of: defaultAgentId) { _, value in
+                            saveConfigPatch(["default_agent_id": value], key: "default_agent_id")
+                        }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
                         Text("Default Model")
                             .font(.system(size: 15, weight: .bold, design: .rounded))
                         if !availableModels.isEmpty {
@@ -770,6 +792,7 @@ struct NativeSettingsScreen: View {
                         .onChange(of: speechTTSFormat) { _, _ in saveSpeechSettings() }
 
                         Toggle("Fallback to macOS system voice", isOn: $speechTTSFallback)
+                            .toggleStyle(.switch)
                             .onChange(of: speechTTSFallback) { _, _ in saveSpeechSettings() }
                     }
                 }
@@ -1184,7 +1207,9 @@ struct NativeSettingsScreen: View {
                             .pickerStyle(.menu)
                         }
                         Toggle("Import provider keys", isOn: $migrationImportSecrets)
+                            .toggleStyle(.switch)
                         Toggle("Allow overwrite", isOn: $migrationOverwrite)
+                            .toggleStyle(.switch)
                         HStack(spacing: 8) {
                             TextField("Workspace target for AGENTS.md", text: $migrationWorkspaceTarget)
                                 .textFieldStyle(.roundedBorder)
@@ -1329,6 +1354,7 @@ struct NativeSettingsScreen: View {
                         Text("Sandbox Runtime")
                             .font(.system(size: 15, weight: .bold, design: .rounded))
                         Toggle("Enable sandbox runtime", isOn: $sandboxEnabled)
+                            .toggleStyle(.switch)
                             .onChange(of: sandboxEnabled) { _, _ in saveSandboxRuntime() }
                         Picker("Provider", selection: $sandboxProvider) {
                             Text("Auto").tag("auto")
@@ -1456,6 +1482,7 @@ struct NativeSettingsScreen: View {
                 Text(detail).font(.system(size: 11, design: .rounded)).foregroundStyle(.secondary)
             }
         }
+        .toggleStyle(.switch)
         .onChange(of: isOn.wrappedValue) { _, _ in onChange() }
     }
 
@@ -2003,6 +2030,7 @@ struct NativeSettingsScreen: View {
         cybaraDataDirOverrideFile = config["cybara_data_dir_override_file"] as? String ?? ""
         defaultCybaraDataDir = config["default_cybara_data_dir"] as? String ?? ""
         reasoningEffort = config["reasoning_effort"] as? String ?? ""
+        defaultAgentId = config["default_agent_id"] as? String ?? ""
         backgroundAgentId = config["background_agent_id"] as? String ?? ""
         terminalEnabled = config["terminal_enabled"] as? Bool ?? false
         selfImprovingSkills = (config["self_improving_skills_enabled"] as? Bool) ?? true

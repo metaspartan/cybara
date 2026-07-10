@@ -1084,6 +1084,7 @@ export function securityCheck(
   ip: string
 ): SecurityCheckResult {
   const publicPaths = ["/api/health", "/api/health/ready", "/api/health/live"];
+  if (path === "/api/mcp/oauth/callback") return { passed: true };
   if (publicPaths.some((p) => path.startsWith(p))) {
     return { passed: true };
   }

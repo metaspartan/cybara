@@ -185,5 +185,14 @@ export function browserLaunchArgs(
   ) {
     args.push("--no-sandbox", "--disable-setuid-sandbox");
   }
+  if (platform === "win32") {
+    args.push(
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+      "--no-first-run",
+      "--no-default-browser-check",
+      "--window-position=-32000,-32000"
+    );
+  }
   return args;
 }

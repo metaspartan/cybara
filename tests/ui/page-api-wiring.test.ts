@@ -311,13 +311,18 @@ describe("UI page API wiring", () => {
     expect(source).toContain("import { mcpApi");
     expect(source).toContain("mcpApi.list()");
     expect(source).toContain("mcpApi.popular()");
-    expect(source).toContain("mcpApi.search(searchQuery)");
+    expect(source).toContain("mcpApi.search(query.trim())");
     expect(source).toContain("confirm(`Install ${server.name}?");
     expect(source).toContain("mcpApi.install({ id: server.id, trustedAction: true })");
     expect(source).toContain("mcpApi.start(id)");
     expect(source).toContain("mcpApi.stop(id)");
     expect(source).toContain("mcpApi.delete(id)");
     expect(source).toContain("mcpApi.create({");
+    expect(source).toContain("mcpApi.startOAuth(id)");
+    expect(source).toContain("mcpApi.oauthStatus(state)");
+    expect(source).toContain("await openExternal(result.data.authUrl)");
+    expect(source).toContain('mode === "remote" ? url.trim()');
+    expect(source).toContain("registryRequest.current");
     expect(source).not.toContain("apiFetch(");
   });
 

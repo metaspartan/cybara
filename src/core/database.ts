@@ -911,7 +911,7 @@ export const tables = {
       stmts.mcpServers.create.run(
         s.id,
         s.name,
-        s.command,
+        s.command ?? "",
         s.args || null,
         s.env || null,
         s.url || null,
@@ -920,7 +920,7 @@ export const tables = {
     update: (id: string, s: Partial<MCPServer>) =>
       stmts.mcpServers.update.run(
         s.name || null,
-        s.command || null,
+        s.command ?? "",
         s.args || null,
         s.env || null,
         s.url ?? null,

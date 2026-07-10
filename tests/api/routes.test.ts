@@ -1500,6 +1500,35 @@ describe("MCP Servers API", () => {
     expect(deleteRes.status).toBe(200);
     expect(deleteRes.data.success).toBe(true);
   });
+
+  test("remote MCP creation persists HTTPS transport without exposing credentials", async () => {
+    const createRes = await api("POST", "/api/mcp", {
+      name: `routes-remote-mcp-${Date.now()}`,
+      url: "https://example.com/mcp",
+      authorization: "secret-token",
+      enabled: true,
+    });
+    expect(createRes.status).toBe(200);
+    expect(createRes.data.env).toBeUndefined();
+    expect(createRes.data.hasCredentials).toBe(true);
+    const id = createRes.data.id as string;
+
+    const listRes = await api("GET", "/api/mcp");
+    const listed = (listRes.data as Array<Record<string, unknown>>).find(
+      (server) => server.id === id
+    );
+    expect(listed?.url).toBe("https://example.com/mcp");
+    expect(listed?.transport).toBe("http");
+    expect(listed?.hasCredentials).toBe(true);
+    expect(listed?.env).toBeUndefined();
+
+    const detailRes = await api("GET", `/api/mcp/${id}`);
+    expect(detailRes.data.env).toBeUndefined();
+    expect(detailRes.data.hasCredentials).toBe(true);
+
+    const deleteRes = await api("DELETE", `/api/mcp/${id}`);
+    expect(deleteRes.data.success).toBe(true);
+  });
 });
 
 describe("MCP Registry API", () => {

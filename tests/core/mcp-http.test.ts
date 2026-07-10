@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { parseMcpHttpResponse, isHttpMcpUrl } from "../../src/core/mcp-http";
+import {
+  decodeMcpOAuthEnvironment,
+  encodeMcpOAuthEnvironment,
+  isHttpMcpUrl,
+  normalizeRemoteMcpUrl,
+  parseMcpHttpResponse,
+  refreshMcpOAuthCredential,
+  replaceMcpOAuthEnvironment,
+} from "../../src/core/mcp-http";
 
 describe("MCP HTTP response parsing", () => {
   test("parses a plain JSON response", () => {
@@ -35,5 +43,59 @@ describe("MCP HTTP response parsing", () => {
     expect(isHttpMcpUrl("http://localhost:9000")).toBe(true);
     expect(isHttpMcpUrl("npx -y some-mcp")).toBe(false);
     expect(isHttpMcpUrl(undefined)).toBe(false);
+  });
+
+  test("normalizes remote URLs and requires credential-free HTTPS", () => {
+    expect(normalizeRemoteMcpUrl(" https://service.example.com/mcp ")).toBe(
+      "https://service.example.com/mcp"
+    );
+    expect(() => normalizeRemoteMcpUrl("http://service.example.com/mcp")).toThrow("must use HTTPS");
+    expect(() => normalizeRemoteMcpUrl("https://user:pass@example.com/mcp")).toThrow(
+      "embedded credentials"
+    );
+    expect(() => normalizeRemoteMcpUrl("https://service.example.com/mcp#token")).toThrow(
+      "cannot contain fragments"
+    );
+  });
+
+  test("replaces stored OAuth credentials without dropping other environment entries", () => {
+    const first = encodeMcpOAuthEnvironment({
+      accessToken: "old",
+      tokenEndpoint: "https://auth.example.com/token",
+      clientId: "client",
+      resource: "https://mcp.example.com",
+    });
+    const replaced = replaceMcpOAuthEnvironment(`MODE=test,${first}`, {
+      accessToken: "new",
+      tokenEndpoint: "https://auth.example.com/token",
+      clientId: "client",
+      resource: "https://mcp.example.com",
+    });
+    expect(replaced.startsWith("MODE=test,")).toBe(true);
+    expect(decodeMcpOAuthEnvironment(replaced)?.accessToken).toBe("new");
+  });
+
+  test("refreshes OAuth credentials and retains a rotated refresh token", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      Response.json({
+        access_token: "next",
+        refresh_token: "rotated",
+        expires_in: 120,
+      })) as typeof fetch;
+    try {
+      const refreshed = await refreshMcpOAuthCredential({
+        accessToken: "old",
+        refreshToken: "refresh",
+        tokenEndpoint: "https://auth.example.com/token",
+        clientId: "client",
+        resource: "https://mcp.example.com",
+      });
+      expect(refreshed.accessToken).toBe("next");
+      expect(refreshed.refreshToken).toBe("rotated");
+      expect((refreshed.expiresAt || 0) > Date.now()).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

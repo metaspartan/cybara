@@ -539,6 +539,7 @@ private struct ProviderEditorSheet: View {
                 TextField("Base URL", text: $baseURL)
                 credentialSection
                 Toggle("Use as default provider", isOn: $isDefault)
+                    .toggleStyle(.switch)
                 if provider != nil, planConfig != nil, !planManualEditable {
                     Section("Provider plan") {
                         Text("Plan usage is automatic")

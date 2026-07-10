@@ -170,13 +170,16 @@ async function createSessionPage(sessionId: string): Promise<BrowserPage> {
 export function ChatWorkspaceBrowser({
   visible,
   sessionId,
+  pageKey,
   onTitleChange,
 }: {
   visible: boolean;
   sessionId?: string | null;
+  pageKey?: string;
   onTitleChange?: (title: string) => void;
 }) {
-  const browserSessionId = sessionId?.trim() || "preview-new-chat";
+  const baseSessionId = sessionId?.trim() || "preview-new-chat";
+  const browserSessionId = pageKey?.trim() ? `${baseSessionId}::${pageKey.trim()}` : baseSessionId;
   const [page, setPage] = useState<BrowserPage | null>(null);
   const [address, setAddress] = useState("");
   const [preview, setPreview] = useState<BrowserPreview | null>(null);

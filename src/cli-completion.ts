@@ -58,7 +58,7 @@ const SUBCOMMANDS: Record<string, string[]> = {
   devices: ["connect", "list", "revoke", "remove"],
   pair: ["list", "reject", "policy"],
   pairing: ["list", "reject", "policy"],
-  mcp: ["list", "search", "install", "popular", "serve"],
+  mcp: ["list", "add", "search", "install", "popular", "serve"],
   plugin: ["list", "validate", "install", "remove"],
   plugins: ["list", "validate", "install", "remove"],
   loop: ["list", "start", "show", "cancel"],

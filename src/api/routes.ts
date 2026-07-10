@@ -7,6 +7,7 @@ import { cacheMetricsRoutes, prewarmMetricsRoutes } from "./route-cache";
 import { mobileRoutes } from "./mobile";
 import { ideLspRoutes } from "./routes/ide-lsp-routes";
 import { runtimeRoutes } from "./routes/runtime-routes";
+import { mcpRoutes } from "./routes/mcp";
 import {
   parseJsonObject,
   normalizeOptionalString,
@@ -69,8 +70,6 @@ import {
   whatsappAdapter,
 } from "../core/channels";
 import { taskScheduler } from "../core/scheduler";
-import { mcpManager } from "../core/mcp";
-import { mcpRegistry } from "../core/mcp-registry";
 import * as subagentRegistry from "../core/subagent-registry";
 import {
   getSkills,
@@ -214,6 +213,7 @@ const routes: Record<string, RouteHandler> = {
   ...metricsRoutes,
   ...ideLspRoutes,
   ...runtimeRoutes,
+  ...mcpRoutes,
   "GET /api/health": () => {
     const now = new Date();
     const system = getSystemMonitorSnapshot();
@@ -1402,66 +1402,6 @@ const routes: Record<string, RouteHandler> = {
     }
     return result;
   },
-  "GET /api/mcp": () => mcpManager.list(),
-  "GET /api/mcp/servers": () => mcpManager.list(), // Legacy alias
-  "POST /api/mcp/servers": (body) =>
-    mcpManager.create(body as Parameters<typeof mcpManager.create>[0]), // Legacy alias
-  "GET /api/mcp/tools": () => mcpManager.getToolDefinitions(),
-  "POST /api/mcp": (body) => mcpManager.create(body as Parameters<typeof mcpManager.create>[0]),
-  "GET /api/mcp/:id": (_body, params) => {
-    const server = mcpManager.get(params!.id);
-    if (!server) return { error: "MCP server not found" };
-    const status = mcpManager.getStatus(params!.id);
-    return { ...server, ...status };
-  },
-  "PUT /api/mcp/:id": (body, params) => ({
-    success: mcpManager.update(params!.id, body as Parameters<typeof mcpManager.update>[1]),
-  }),
-  "DELETE /api/mcp/:id": (_body, params) => ({ success: mcpManager.delete(params!.id) }),
-  "POST /api/mcp/:id/start": async (_body, params) => await mcpManager.start(params!.id),
-  "POST /api/mcp/:id/stop": async (_body, params) => ({
-    success: await mcpManager.stop(params!.id),
-  }),
-  "POST /api/mcp/:id/restart": async (_body, params) => await mcpManager.restart(params!.id),
-  "POST /api/mcp/:id/call": async (body, params) => {
-    const data = body as { tool: string; args: Record<string, unknown> };
-    return await mcpManager.callTool(params!.id, data.tool, data.args);
-  },
-
-  "GET /api/mcp/registry/search": async (_body, params) => {
-    const query = params?.q || "";
-    const registry = params?.registry || undefined;
-    return await mcpRegistry.search(query, registry);
-  },
-  "GET /api/mcp/registry/popular": () => mcpRegistry.getPopular(20),
-  "GET /api/mcp/registry/categories": () => mcpRegistry.getCategories(),
-  "GET /api/mcp/registry/category/:cat": (_body, params) => mcpRegistry.getByCategory(params!.cat),
-  "GET /api/mcp/registry/servers/:id": (_body, params) => {
-    const server = mcpRegistry.getDetails(params!.id);
-    if (!server) return { error: "Server not found in registry" };
-    return server;
-  },
-  "GET /api/mcp/registry/registries": () => mcpRegistry.getRegistries(),
-  "POST /api/mcp/registry/install": async (body) => {
-    const data = body as { package?: string; id?: string; trustedAction?: boolean };
-    if (data.trustedAction !== true) {
-      return {
-        success: false,
-        error:
-          "MCP installs require trustedAction=true because they add executable third-party code.",
-      };
-    }
-    if (data.id) {
-      const server = mcpRegistry.getDetails(data.id);
-      if (!server) return { success: false, error: "Server not found in registry" };
-      return await mcpRegistry.installServer(server);
-    }
-    if (data.package) {
-      return await mcpRegistry.installByPackage(data.package);
-    }
-    return { success: false, error: "Must provide 'id' or 'package'" };
-  },
-
   "GET /api/channels": () => channelManager.list(),
   "GET /api/channels/available": () =>
     Object.entries(channels).map(([key, value]) => ({

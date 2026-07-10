@@ -68,12 +68,13 @@ describe("chat workspace panel", () => {
   test("environment preview opens active workspace tabs", () => {
     expect(environmentSource).toContain('EnvironmentSection title="Preview"');
     expect(environmentSource).toContain("onOpenWorkspaceTab(tab)");
-    expect(chatSource).toContain("previewTabs={workspaceTabs.filter");
+    expect(chatSource).toContain("previewTabs={Array.from(");
   });
 
   test("browser preview shares the chat session and fills the workspace panel", () => {
     expect(chatSource).toContain("sessionId={sessionId}");
-    expect(chatSource).toContain('key={sessionId || "new-chat-browser"}');
+    expect(chatSource).toContain('key={`${instance.id}:${sessionId || "new-chat"}`}');
+    expect(chatSource).toContain("pageKey={instance.pageKey}");
     expect(browserSource).toContain("viewportWidth");
     expect(browserSource).toContain("ResizeObserver");
     expect(browserSource).toContain("refreshSessionPreview");
@@ -97,7 +98,9 @@ describe("chat workspace panel", () => {
     expect(browserSource).not.toContain(">\n              Agent\n");
     expect(browserSource).toContain("absolute inset-0 h-full w-full");
     expect(browserSource).not.toContain("Close browser tab");
-    expect(chatSource).toContain("onTitleChange={setWorkspaceBrowserTitle}");
+    expect(chatSource).toContain(
+      "onTitleChange={(title) => updateWorkspaceTabTitle(instance.id, title)}"
+    );
     expect(browserManagerSource).toContain('button[aria-label^="Cybara pet"]');
     expect(nativeBrowserSource).toContain(
       ".animation(.easeOut(duration: 0.5), value: cursor.updatedAt ?? 0)"
@@ -106,12 +109,20 @@ describe("chat workspace panel", () => {
   });
 
   test("workspace tools remain mounted while switching tabs", () => {
-    expect(chatSource).toContain('workspaceTabs.includes("terminal")');
-    expect(chatSource).toContain('activeWorkspaceTab !== "terminal" && "hidden"');
+    expect(chatSource).toContain("workspaceTabs.map((instance)");
+    expect(chatSource).toContain('instance.kind === "terminal"');
+    expect(chatSource).toContain('cn("h-full", !active && "hidden")');
+    expect(chatSource).toContain("visible={showWorkspacePanel && active}");
+    expect(chatSource).toContain('instance.kind === "browser"');
+  });
+
+  test("browser and terminal support multiple instances in the workspace panel", () => {
+    expect(panelSource).toContain("WorkspaceTabInstance");
+    expect(panelSource).toContain("WORKSPACE_SINGLETON_KINDS");
+    expect(chatSource).toContain("workspaceTabIdRef");
     expect(chatSource).toContain(
-      'visible={showWorkspacePanel && activeWorkspaceTab === "terminal"}'
+      'kind === "browser" && current.some((instance) => instance.kind === "browser")'
     );
-    expect(chatSource).toContain('workspaceTabs.includes("browser")');
   });
 
   test("workspace tools remain mounted when the panel is hidden", () => {

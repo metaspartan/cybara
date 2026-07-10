@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Server,
   Search,
@@ -11,6 +11,9 @@ import {
   CheckCircle,
   XCircle,
   Download,
+  Globe2,
+  TerminalSquare,
+  KeyRound,
 } from "lucide-react";
 import { Card } from "../components/ui/Card";
 import { Button } from "../components/ui/Button";
@@ -20,6 +23,24 @@ import { Modal } from "../components/ui/Modal";
 import { PageLayout } from "@/components/layout";
 import { useUIStore } from "../stores/uiStore";
 import { mcpApi, type MCPRegistryServer, type MCPServer } from "@/lib/api";
+import { openExternal } from "@/utils/openExternal";
+
+function needsOAuth(error: string | undefined): boolean {
+  return /\b401\b|unauthori[sz]ed|authentication required/i.test(error || "");
+}
+
+async function waitForOAuth(state: string): Promise<void> {
+  const deadline = Date.now() + 10 * 60_000;
+  while (Date.now() < deadline) {
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
+    const result = await mcpApi.oauthStatus(state);
+    const status = result.data;
+    if (result.success && status?.status === "connected") return;
+    if (status?.status === "error") throw new Error(status.error || "Authorization failed");
+    if (status?.status === "not_found") throw new Error("Authorization request expired");
+  }
+  throw new Error("Authorization timed out");
+}
 
 export function MCPServers() {
   const [tab, setTab] = useState<"installed" | "registry">("installed");
@@ -28,6 +49,7 @@ export function MCPServers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const registryRequest = useRef(0);
   const { addToast } = useUIStore();
 
   const loadServers = async () => {
@@ -45,26 +67,27 @@ export function MCPServers() {
     }
   };
 
-  const loadRegistry = async () => {
+  const loadRegistry = async (query = searchQuery) => {
+    const request = ++registryRequest.current;
     setLoading(true);
     try {
-      if (searchQuery) {
-        const result = await mcpApi.search(searchQuery);
+      if (query.trim()) {
+        const result = await mcpApi.search(query.trim());
         if (!result.success || !Array.isArray(result.data)) {
           throw new Error(result.error || "Failed to load registry");
         }
-        setRegistryServers(result.data);
+        if (request === registryRequest.current) setRegistryServers(result.data);
       } else {
         const result = await mcpApi.popular();
         if (!result.success || !Array.isArray(result.data)) {
           throw new Error(result.error || "Failed to load registry");
         }
-        setRegistryServers(result.data);
+        if (request === registryRequest.current) setRegistryServers(result.data);
       }
     } catch {
-      addToast("error", "Failed to load registry");
+      if (request === registryRequest.current) addToast("error", "Failed to load registry");
     } finally {
-      setLoading(false);
+      if (request === registryRequest.current) setLoading(false);
     }
   };
 
@@ -83,10 +106,22 @@ export function MCPServers() {
 
   useEffect(() => {
     if (tab === "registry") {
-      const timeout = setTimeout(() => loadRegistry(), 300);
+      const timeout = setTimeout(() => loadRegistry(searchQuery), 300);
       return () => clearTimeout(timeout);
     }
   }, [searchQuery]);
+
+  const authorizeServer = async (id: string) => {
+    const result = await mcpApi.startOAuth(id);
+    if (!result.success || !result.data?.authUrl || !result.data.state) {
+      throw new Error(result.error || result.data?.error || "Authorization is unavailable");
+    }
+    await openExternal(result.data.authUrl);
+    addToast("info", "Complete authorization in your browser");
+    await waitForOAuth(result.data.state);
+    addToast("success", "Remote MCP server connected");
+    await loadServers();
+  };
 
   const handleStart = async (id: string) => {
     const result = await mcpApi.start(id);
@@ -94,7 +129,21 @@ export function MCPServers() {
       addToast("success", "Server started");
       loadServers();
     } else {
-      addToast("error", result.error || result.data?.error || "Failed to start");
+      const error = result.error || result.data?.error;
+      if (needsOAuth(error)) {
+        try {
+          await authorizeServer(id);
+        } catch (authorizationError) {
+          addToast(
+            "error",
+            authorizationError instanceof Error
+              ? authorizationError.message
+              : "Authorization failed"
+          );
+        }
+      } else {
+        addToast("error", error || "Failed to start");
+      }
     }
   };
 
@@ -247,17 +296,29 @@ export function MCPServers() {
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500/20 to-violet-500/20 flex items-center justify-center">
-                      <Server className="w-5 h-5 text-indigo-400" />
+                      {server.transport === "http" || server.url ? (
+                        <Globe2 className="w-5 h-5 text-indigo-400" />
+                      ) : (
+                        <Server className="w-5 h-5 text-indigo-400" />
+                      )}
                     </div>
                     <div className="min-w-0">
                       <h3 className="font-medium text-white truncate">{server.name}</h3>
-                      <p className="text-xs text-gray-500 truncate">{server.command}</p>
+                      <p className="text-xs text-gray-500 truncate">
+                        {server.url || server.command}
+                      </p>
                     </div>
                   </div>
                   {getStatusBadge(server.status)}
                 </div>
 
-                <div className="text-xs text-gray-500 mb-4">{server.toolCount} tools available</div>
+                <div className="text-xs text-gray-500 mb-4 flex items-center gap-2">
+                  <span>{server.toolCount} tools available</span>
+                  <span>·</span>
+                  <span>
+                    {server.transport === "http" || server.url ? "Remote HTTPS" : "Local process"}
+                  </span>
+                </div>
 
                 <div className="flex gap-2">
                   {server.status === "running" ? (
@@ -315,6 +376,9 @@ export function MCPServers() {
                 </div>
               </div>
               <p className="text-sm text-gray-400 mb-3 line-clamp-2">{server.description}</p>
+              {server.url ? (
+                <p className="text-xs text-gray-500 mb-3 truncate">{server.url}</p>
+              ) : null}
               {server.envVars && server.envVars.length > 0 && (
                 <div className="flex flex-wrap gap-1 mb-3">
                   {server.envVars.map((v) => (
@@ -345,6 +409,7 @@ export function MCPServers() {
       <AddServerModal
         isOpen={showAddModal}
         onClose={() => setShowAddModal(false)}
+        onAuthorize={authorizeServer}
         onSuccess={() => {
           setShowAddModal(false);
           loadServers();
@@ -357,13 +422,18 @@ export function MCPServers() {
 function AddServerModal({
   isOpen,
   onClose,
+  onAuthorize,
   onSuccess,
 }: {
   isOpen: boolean;
   onClose: () => void;
+  onAuthorize: (id: string) => Promise<void>;
   onSuccess: () => void;
 }) {
   const [name, setName] = useState("");
+  const [mode, setMode] = useState<"remote" | "local">("remote");
+  const [url, setUrl] = useState("");
+  const [authorization, setAuthorization] = useState("");
   const [command, setCommand] = useState("bunx");
   const [args, setArgs] = useState("");
   const [env, setEnv] = useState("");
@@ -371,31 +441,53 @@ function AddServerModal({
   const { addToast } = useUIStore();
 
   const handleSubmit = async () => {
-    if (!name || !command) {
-      addToast("error", "Name and command are required");
+    if (!name.trim() || (mode === "remote" ? !url.trim() : !command.trim())) {
+      addToast(
+        "error",
+        mode === "remote" ? "Name and HTTPS URL are required" : "Name and command are required"
+      );
       return;
     }
 
     setLoading(true);
     try {
       const result = await mcpApi.create({
-        name,
-        command,
-        args: args || undefined,
-        env: env || undefined,
+        name: name.trim(),
+        command: mode === "local" ? command.trim() : undefined,
+        args: mode === "local" ? args || undefined : undefined,
+        env: mode === "local" ? env || undefined : undefined,
+        url: mode === "remote" ? url.trim() : undefined,
+        authorization: mode === "remote" ? authorization.trim() || undefined : undefined,
         enabled: true,
       });
       if (result.success && result.data?.id) {
-        addToast("success", "Server added!");
+        if (mode === "remote") {
+          const started = await mcpApi.start(result.data.id);
+          if (started.success && started.data?.success) {
+            addToast("success", "Remote MCP server connected");
+          } else if (needsOAuth(started.error || started.data?.error)) {
+            onClose();
+            await onAuthorize(result.data.id);
+          } else {
+            addToast(
+              "info",
+              started.data?.error || "Remote MCP server saved. Start it after authentication."
+            );
+          }
+        } else {
+          addToast("success", "MCP server added");
+        }
         onSuccess();
         setName("");
+        setUrl("");
+        setAuthorization("");
         setArgs("");
         setEnv("");
       } else {
         throw new Error(result.error || "Failed to create");
       }
-    } catch {
-      addToast("error", "Failed to add server");
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Failed to add server");
     }
     setLoading(false);
   };
@@ -403,32 +495,88 @@ function AddServerModal({
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Add MCP Server">
       <div className="space-y-4">
+        <div className="grid grid-cols-2 rounded-md bg-white/5 p-1">
+          <button
+            type="button"
+            onClick={() => setMode("remote")}
+            className={`flex items-center justify-center gap-2 rounded px-3 py-2 text-sm transition-colors ${
+              mode === "remote" ? "bg-white/10 text-white" : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <Globe2 className="h-4 w-4" />
+            Remote HTTPS
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("local")}
+            className={`flex items-center justify-center gap-2 rounded px-3 py-2 text-sm transition-colors ${
+              mode === "local" ? "bg-white/10 text-white" : "text-gray-400 hover:text-white"
+            }`}
+          >
+            <TerminalSquare className="h-4 w-4" />
+            Local command
+          </button>
+        </div>
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-1">Name</label>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="My Server" />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">Command</label>
-          <Input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="bunx" />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">Arguments</label>
-          <Input
-            value={args}
-            onChange={(e) => setArgs(e.target.value)}
-            placeholder="--bun @modelcontextprotocol/server-github"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">
-            Environment Variables
-          </label>
-          <Input
-            value={env}
-            onChange={(e) => setEnv(e.target.value)}
-            placeholder="API_KEY=xxx,OTHER=yyy"
-          />
-        </div>
+        {mode === "remote" ? (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Server URL</label>
+              <Input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="https://service.example.com/mcp"
+                inputMode="url"
+              />
+            </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-gray-300 mb-1">
+                <KeyRound className="h-4 w-4" />
+                Bearer token
+                <span className="font-normal text-gray-500">Optional</span>
+              </label>
+              <Input
+                type="password"
+                value={authorization}
+                onChange={(e) => setAuthorization(e.target.value)}
+                placeholder="Token for servers without browser sign-in"
+                autoComplete="off"
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Command</label>
+              <Input
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                placeholder="bunx"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">Arguments</label>
+              <Input
+                value={args}
+                onChange={(e) => setArgs(e.target.value)}
+                placeholder="--bun package-name"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-1">
+                Environment Variables
+              </label>
+              <Input
+                value={env}
+                onChange={(e) => setEnv(e.target.value)}
+                placeholder="API_KEY=value"
+              />
+            </div>
+          </>
+        )}
         <div className="flex gap-2 pt-4">
           <Button variant="ghost" onClick={onClose} className="flex-1">
             Cancel

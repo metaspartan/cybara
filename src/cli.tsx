@@ -1007,6 +1007,66 @@ async function rawMcpInstall(pkg: string): Promise<void> {
   }
 }
 
+async function rawMcpAdd(name: string, url: string): Promise<void> {
+  const created = await fetchAPI<{ id: string; name: string; url?: string }>("/api/mcp", {
+    method: "POST",
+    body: JSON.stringify({ name, url, enabled: true }),
+  });
+  if (!created?.id) {
+    console.error("ERROR: Failed to add remote MCP server");
+    process.exit(1);
+  }
+  const started = await fetchAPI<{ success: boolean; error?: string }>(
+    `/api/mcp/${encodeURIComponent(created.id)}/start`,
+    { method: "POST" }
+  );
+  console.log(`Added remote MCP server: ${created.name}`);
+  console.log(`  id: ${created.id}`);
+  console.log(`  url: ${created.url || url}`);
+  if (started?.success) {
+    console.log("  status: connected");
+    return;
+  }
+  const error = started?.error || "not connected";
+  if (!/\b401\b|unauthori[sz]ed|authentication required/i.test(error)) {
+    console.log(`  status: saved (${error})`);
+    return;
+  }
+  const authorization = await fetchAPI<{
+    success: boolean;
+    authUrl?: string;
+    state?: string;
+    error?: string;
+  }>(`/api/mcp/${encodeURIComponent(created.id)}/oauth/start`, { method: "POST" });
+  if (!authorization?.success || !authorization.authUrl || !authorization.state) {
+    console.log(`  status: saved (${authorization?.error || "authorization unavailable"})`);
+    return;
+  }
+  console.log("  status: authorization required");
+  console.log(`  authorize: ${authorization.authUrl}`);
+  const { openUrlInBrowser } = await import("./core/runtime/open-url");
+  try {
+    await openUrlInBrowser(authorization.authUrl);
+  } catch {}
+  const deadline = Date.now() + 10 * 60_000;
+  while (Date.now() < deadline) {
+    await Bun.sleep(1000);
+    const status = await fetchAPI<{
+      status: "pending" | "connected" | "error" | "not_found";
+      error?: string;
+    }>(`/api/mcp/oauth/status?state=${encodeURIComponent(authorization.state)}`);
+    if (status?.status === "connected") {
+      console.log("  status: connected");
+      return;
+    }
+    if (status?.status === "error" || status?.status === "not_found") {
+      console.log(`  status: saved (${status.error || "authorization failed"})`);
+      return;
+    }
+  }
+  console.log("  status: saved (authorization timed out)");
+}
+
 async function rawMcpList(): Promise<void> {
   const data =
     await fetchAPI<
@@ -4675,6 +4735,15 @@ async function main() {
           }
           await rawMcpInstall(mcpArg);
           break;
+        case "add": {
+          const mcpUrl = args[3];
+          if (!mcpArg || !mcpUrl) {
+            console.error("Usage: cybara mcp add <name> <https-url>");
+            process.exit(1);
+          }
+          await rawMcpAdd(mcpArg, mcpUrl);
+          break;
+        }
         case "list":
           await rawMcpList();
           break;
@@ -4689,6 +4758,7 @@ async function main() {
         default:
           console.log("MCP Commands:");
           console.log("  cybara mcp list       - List installed servers");
+          console.log("  cybara mcp add <name> <https-url> - Add a remote server");
           console.log("  cybara mcp search <q> - Search registry");
           console.log("  cybara mcp install <p> - Install package");
           console.log("  cybara mcp popular    - Show popular servers");

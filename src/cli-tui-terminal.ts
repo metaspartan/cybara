@@ -11,6 +11,14 @@ export interface TerminalLayout {
   transcriptMessages: number;
 }
 
+export interface TranscriptLine {
+  text: string;
+  code: boolean;
+  fence?: "open" | "close";
+  language?: string;
+  hidden?: boolean;
+}
+
 export function resolveTerminalLayout(columns?: number, rows?: number): TerminalLayout {
   const width = Math.max(40, columns || 80);
   const height = Math.max(18, rows || 32);
@@ -23,9 +31,9 @@ export function resolveTerminalLayout(columns?: number, rows?: number): Terminal
     compact,
     composerLines: narrow ? 3 : Math.max(4, Math.min(8, Math.floor(height / 7))),
     commandRows: narrow ? 4 : 6,
-    messageLines: narrow ? (height < 28 ? 4 : 6) : 8,
+    messageLines: height < 24 ? 3 : narrow ? (height < 28 ? 4 : 6) : 8,
     transcriptMessages:
-      narrow && height < 28 ? 1 : Math.max(2, Math.min(8, Math.floor(height / (narrow ? 10 : 12)))),
+      height < 34 ? 1 : Math.max(2, Math.min(8, Math.floor(height / (narrow ? 10 : 12)))),
   };
 }
 
@@ -60,6 +68,47 @@ export function composerWindow(value: string, cursor: number, maxLines: number):
   const below = rendered.length - start - maxLines;
   if (below > 0) window[window.length - 1] = `… ${below} line${below === 1 ? "" : "s"} below`;
   return window;
+}
+
+export function transcriptWindow(
+  content: string,
+  maxLines: number,
+  maxColumns: number
+): TranscriptLine[] {
+  let inCode = false;
+  const sourceLines = content
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((text): TranscriptLine => {
+      const fence = text.match(/^\s*```(\w*)\s*$/);
+      if (!fence) return { text, code: inCode };
+      const opening = !inCode;
+      inCode = opening;
+      return {
+        text,
+        code: false,
+        fence: opening ? "open" : "close",
+        language: fence[1] || undefined,
+      };
+    });
+  const limit = Math.max(1, maxLines);
+  const selected =
+    sourceLines.length > limit
+      ? [
+          ...sourceLines.slice(0, Math.ceil((limit - 1) / 2)),
+          {
+            text: `… ${sourceLines.length - limit} lines hidden · /expand to show all`,
+            code: false,
+            hidden: true,
+          },
+          ...sourceLines.slice(-Math.floor((limit - 1) / 2)),
+        ]
+      : sourceLines;
+  const width = Math.max(12, maxColumns);
+  return selected.map((line) => ({
+    ...line,
+    text: line.text.length > width ? `${line.text.slice(0, width - 1)}…` : line.text,
+  }));
 }
 
 export function clipboardCandidates(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string[][] {

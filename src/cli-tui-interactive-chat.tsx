@@ -28,6 +28,7 @@ import { EnvironmentPanel } from "./cli-tui-chat-environment-view";
 import {
   composerWindow,
   copyTextToClipboard,
+  transcriptWindow,
   useTerminalLayout,
 } from "./cli-tui-terminal";
 import {
@@ -143,9 +144,12 @@ const COMMANDS = [
 
 const ROLE_META: Record<ChatMessage["role"], { label: string; color: string; marker: string }> = {
   user: { label: "You", color: "cyan", marker: ">" },
-  assistant: { label: "Cybara", color: "green", marker: "*" },
-  system: { label: "System", color: "gray", marker: "-" },
+  assistant: { label: "Cybara", color: "white", marker: "◆" },
+  system: { label: "System", color: "#9ca6b4", marker: "-" },
 };
+
+const ACTIVITY_HEADING_COLOR = "#aab3bf";
+const ACTIVITY_DETAIL_COLOR = "#c0c7d1";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -345,37 +349,37 @@ function InlineMarkdown({ line }: { line: string }): React.ReactElement {
   );
 }
 
-function MessageBody({ content, maxLines }: { content: string; maxLines?: number }): React.ReactElement {
-  const sourceLines = content.replace(/\r\n/g, "\n").split("\n");
-  const lines =
-    maxLines && sourceLines.length > maxLines
-      ? [
-          ...sourceLines.slice(0, Math.ceil(maxLines / 2)),
-          `… ${sourceLines.length - maxLines} lines hidden · /expand to show all`,
-          ...sourceLines.slice(-Math.floor(maxLines / 2)),
-        ]
-      : sourceLines;
-  let inCode = false;
+function MessageBody({
+  content,
+  maxLines,
+  maxColumns,
+}: {
+  content: string;
+  maxLines?: number;
+  maxColumns: number;
+}): React.ReactElement {
+  const lines = transcriptWindow(content, maxLines ?? Number.MAX_SAFE_INTEGER, maxColumns);
   return (
     <Box flexDirection="column">
       {lines.map((line, index) => {
-        const fence = line.match(/^\s*```(\w*)\s*$/);
-        if (fence) {
-          inCode = !inCode;
+        if (line.hidden) {
+          return <Text key={index} color="#9ca6b4">{line.text}</Text>;
+        }
+        if (line.fence) {
           return (
             <Text key={index} color="magenta">
-              {inCode ? `code${fence[1] ? ` · ${fence[1]}` : ""}` : "end code"}
+              {line.fence === "open" ? `code${line.language ? ` · ${line.language}` : ""}` : "end code"}
             </Text>
           );
         }
-        if (inCode) {
+        if (line.code) {
           return (
             <Text key={index} color="green">
-              {line || " "}
+              {line.text || " "}
             </Text>
           );
         }
-        const bullet = line.match(/^(\s*)[-*]\s+(.*)$/);
+        const bullet = line.text.match(/^(\s*)[-*]\s+(.*)$/);
         if (bullet) {
           return (
             <Text key={index}>
@@ -385,21 +389,21 @@ function MessageBody({ content, maxLines }: { content: string; maxLines?: number
             </Text>
           );
         }
-        if (/^#{1,6}\s/.test(line)) {
+        if (/^#{1,6}\s/.test(line.text)) {
           return (
             <Text key={index} bold>
-              {line.replace(/^#{1,6}\s/, "")}
+              {line.text.replace(/^#{1,6}\s/, "")}
             </Text>
           );
         }
-        if (/^\s*>\s?/.test(line)) {
+        if (/^\s*>\s?/.test(line.text)) {
           return (
             <Text key={index} color="gray">
-              ▏ {line.replace(/^\s*>\s?/, "")}
+              ▏ {line.text.replace(/^\s*>\s?/, "")}
             </Text>
           );
         }
-        return <InlineMarkdown key={index} line={line} />;
+        return <InlineMarkdown key={index} line={line.text} />;
       })}
     </Box>
   );
@@ -409,19 +413,23 @@ function ActivitySummary({ message }: { message: ChatMessage }): React.ReactElem
   const activities = message.process_activities || [];
   const tools = message.tool_calls || [];
   if (activities.length === 0 && tools.length === 0) return null;
-  const labels = [
-    ...activities.slice(-4).map((activity) => activity.text || activity.toolName || activity.phase),
-    ...tools.slice(-4).map((tool) => `${tool.name || "tool"}${tool.status ? ` ${tool.status}` : ""}`),
-  ]
-    .filter((label): label is string => typeof label === "string" && label.trim().length > 0)
-    .slice(-4);
+  const labels = Array.from(
+    new Set(
+      [
+        ...activities.slice(-5).map((activity) => activity.text || activity.toolName || activity.phase),
+        ...tools.slice(-5).map((tool) => `${tool.name || "tool"}${tool.status ? ` ${tool.status}` : ""}`),
+      ]
+        .filter((label): label is string => typeof label === "string" && label.trim().length > 0)
+        .map((label) => compact(label.replace(/\s+/g, " ").trim(), 96))
+    )
+  ).slice(-5);
   const count = activities.length + tools.length;
   return (
-    <Box paddingLeft={1} marginBottom={1} flexDirection="column">
-      <Text color="gray">Ran {count} {count === 1 ? "step" : "steps"}</Text>
+    <Box paddingLeft={2} marginBottom={1} flexDirection="column">
+      <Text color={ACTIVITY_HEADING_COLOR}>◇ Ran {count} {count === 1 ? "step" : "steps"}</Text>
       {labels.map((label, index) => (
-        <Text key={`${index}-${label}`} color="gray">
-          └ {compact(label.replace(/\s+/g, " ").trim(), 96)}
+        <Text key={`${index}-${label}`} color={ACTIVITY_DETAIL_COLOR}>
+          {index === labels.length - 1 ? "└" : "├"} {label}
         </Text>
       ))}
     </Box>
@@ -431,9 +439,11 @@ function ActivitySummary({ message }: { message: ChatMessage }): React.ReactElem
 function MessageView({
   message,
   maxLines,
+  maxColumns,
 }: {
   message: ChatMessage;
   maxLines?: number;
+  maxColumns: number;
 }): React.ReactElement {
   const meta = ROLE_META[message.role];
   return (
@@ -445,7 +455,7 @@ function MessageView({
       </Box>
       <ActivitySummary message={message} />
       <Box paddingLeft={2}>
-        <MessageBody content={message.content} maxLines={maxLines} />
+        <MessageBody content={message.content} maxLines={maxLines} maxColumns={maxColumns} />
       </Box>
     </Box>
   );
@@ -1552,7 +1562,7 @@ export function InteractiveChatTUI({
   const composerLines = composerWindow(input, cursor, layout.composerLines);
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={layout.rows} width="100%">
       <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="column">
         <Box flexDirection={layout.narrow ? "column" : "row"} justifyContent="space-between">
           <Text bold color="cyan">
@@ -1580,17 +1590,17 @@ export function InteractiveChatTUI({
       </Box>
 
       {narrowOverlayVisible ? null : loading ? (
-        <Box paddingX={1} paddingY={1}>
+        <Box paddingX={1} paddingY={1} flexGrow={1}>
           <Text color="yellow">
             <Spinner type="dots" /> Loading conversation
           </Text>
         </Box>
       ) : visibleMessages.length === 0 ? (
-        <Box paddingX={1} paddingY={1}>
+        <Box paddingX={1} paddingY={1} flexGrow={1}>
           <Text color="gray">No messages yet. Type a prompt or /help.</Text>
         </Box>
       ) : (
-        <Box flexDirection="column" paddingX={1} paddingTop={1}>
+        <Box flexDirection="column" paddingX={1} paddingTop={1} flexGrow={1}>
           {visibleMessageEnd < transcriptMessages.length ? (
             <Text color="gray">↓ {transcriptMessages.length - visibleMessageEnd} newer messages</Text>
           ) : null}
@@ -1599,6 +1609,7 @@ export function InteractiveChatTUI({
               key={`${index}-${message.role}-${message.content.slice(0, 12)}`}
               message={message}
               maxLines={expandedTranscript ? undefined : layout.messageLines}
+              maxColumns={Math.max(24, layout.columns - 8)}
             />
           ))}
           {visibleMessageEnd - visibleMessages.length > 0 ? (

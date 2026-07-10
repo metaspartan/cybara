@@ -4666,6 +4666,7 @@ private struct TaskEditorSheet: View {
                 }
 
                 Toggle("Enabled", isOn: $enabled)
+                    .toggleStyle(.switch)
             }
             .padding(16)
             .cybaraGlass(cornerRadius: 18)

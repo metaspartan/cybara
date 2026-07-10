@@ -322,9 +322,12 @@ export interface MCPServer {
   command: string;
   args?: string;
   env?: string;
+  url?: string;
   enabled: boolean;
   status: string;
   toolCount: number;
+  hasCredentials?: boolean;
+  transport?: "stdio" | "http";
 }
 
 export interface MCPRegistryServer {
@@ -335,6 +338,7 @@ export interface MCPRegistryServer {
   package: string;
   command: string;
   args?: string;
+  url?: string;
   envVars?: string[];
   categories?: string[];
   installType?: string;
@@ -352,9 +356,11 @@ export const mcpApi = {
     }),
   create: (server: {
     name: string;
-    command: string;
+    command?: string;
     args?: string;
     env?: string;
+    url?: string;
+    authorization?: string;
     enabled?: boolean;
   }) =>
     fetchApi<{
@@ -362,7 +368,7 @@ export const mcpApi = {
       name: string;
       command: string;
       args?: string;
-      env?: string;
+      url?: string;
       enabled: boolean;
     }>("/mcp", {
       method: "POST",
@@ -370,6 +376,17 @@ export const mcpApi = {
     }),
   start: (id: string) =>
     fetchApi<{ success: boolean; error?: string }>(`/mcp/${id}/start`, { method: "POST" }),
+  startOAuth: (id: string) =>
+    fetchApi<{ success: boolean; authUrl?: string; state?: string; error?: string }>(
+      `/mcp/${id}/oauth/start`,
+      { method: "POST" }
+    ),
+  oauthStatus: (state: string) =>
+    fetchApi<{
+      status: "pending" | "connected" | "error" | "not_found";
+      serverId?: string;
+      error?: string;
+    }>(`/mcp/oauth/status?state=${encodeURIComponent(state)}`),
   stop: (id: string) =>
     fetchApi<{ success: boolean; error?: string }>(`/mcp/${id}/stop`, { method: "POST" }),
   delete: (id: string) => fetchApi<{ success: boolean }>(`/mcp/${id}`, { method: "DELETE" }),

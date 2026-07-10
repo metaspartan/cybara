@@ -8,12 +8,13 @@ export interface MCPRegistryServer {
   package: string; // npm package or smithery package
   command: string; // Full command to run
   args?: string; // Additional args
+  url?: string;
   envVars?: string[]; // Required environment variables
   author?: string;
   stars?: number;
   categories?: string[];
   homepage?: string;
-  installType: "bunx" | "bun" | "smithery";
+  installType: "bunx" | "bun" | "smithery" | "remote";
 }
 
 interface RegistryConfig {
@@ -242,8 +243,9 @@ const POPULAR_SERVERS: MCPRegistryServer[] = [
 ];
 
 class MCPRegistryManager {
+  private searchCache = new Map<string, MCPRegistryServer>();
   private registries: Map<string, RegistryConfig> = new Map([
-    ["official", { name: "Official (Anthropic)", enabled: true }],
+    ["official", { name: "Official Registry", enabled: true }],
     ["smithery", { name: "Smithery.ai", enabled: true, baseUrl: "https://smithery.ai" }],
     ["mcp.so", { name: "MCP.so", enabled: true, baseUrl: "https://mcp.so" }],
     ["npm", { name: "npm", enabled: true, baseUrl: "https://www.npmjs.com" }],
@@ -263,20 +265,82 @@ class MCPRegistryManager {
       return matchesRegistry && matchesQuery;
     });
 
-    if ((!registry || registry === "npm") && q) {
-      try {
-        const npmResults = await this.searchNpm(q);
-        for (const pkg of npmResults) {
-          if (!results.find((r) => r.package === pkg.package)) {
-            results.push(pkg);
-          }
+    if (q) {
+      let external: MCPRegistryServer[] = [];
+      if (!registry || registry === "official") {
+        external = await this.searchOfficial(q).catch(() => []);
+      }
+      if (registry === "npm" || (!registry && external.length === 0)) {
+        external = [...external, ...(await this.searchNpm(q))];
+      }
+      for (const server of external) {
+        if (!results.find((entry) => entry.id === server.id || entry.package === server.package)) {
+          results.push(server);
         }
-      } catch (e) {
-        console.error("[MCP Registry] npm search error:", e);
       }
     }
 
+    results.sort((left, right) => {
+      const rank = (server: MCPRegistryServer): number => {
+        if (server.registry === "official" && server.installType === "remote") return 0;
+        if (server.registry === "official") return 1;
+        if (server.registry === "npm") return 3;
+        return 2;
+      };
+      return rank(left) - rank(right) || left.name.localeCompare(right.name);
+    });
+    for (const server of results) this.searchCache.set(server.id, server);
     return results;
+  }
+
+  private async searchOfficial(query: string): Promise<MCPRegistryServer[]> {
+    const url = new URL("https://registry.modelcontextprotocol.io/v0.1/servers");
+    url.searchParams.set("search", query);
+    url.searchParams.set("limit", "20");
+    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!response.ok) return [];
+    const payload = (await response.json()) as {
+      servers?: Array<{
+        server?: {
+          name?: string;
+          title?: string;
+          description?: string;
+          websiteUrl?: string;
+          repository?: { url?: string };
+          remotes?: Array<{ type?: string; url?: string }>;
+          packages?: Array<{
+            registryType?: string;
+            identifier?: string;
+            transport?: { type?: string };
+          }>;
+        };
+      }>;
+    };
+    return (payload.servers || []).flatMap((entry) => {
+      const server = entry.server;
+      if (!server?.name) return [];
+      const remote = server.remotes?.find(
+        (candidate) => candidate.type === "streamable-http" && candidate.url?.startsWith("https://")
+      );
+      const npmPackage = server.packages?.find(
+        (candidate) => candidate.registryType === "npm" && candidate.identifier
+      );
+      if (!remote?.url && !npmPackage?.identifier) return [];
+      return [
+        {
+          id: server.name,
+          name: server.title || server.name,
+          description: server.description || "",
+          registry: "official" as const,
+          package: npmPackage?.identifier || server.name,
+          command: remote?.url ? "" : "bunx",
+          args: npmPackage?.identifier ? `--bun ${npmPackage.identifier}` : undefined,
+          url: remote?.url,
+          homepage: server.websiteUrl || server.repository?.url,
+          installType: remote?.url ? ("remote" as const) : ("bunx" as const),
+        },
+      ];
+    });
   }
 
   private async searchNpm(query: string): Promise<MCPRegistryServer[]> {
@@ -342,7 +406,7 @@ class MCPRegistryManager {
   }
 
   getDetails(id: string): MCPRegistryServer | undefined {
-    return POPULAR_SERVERS.find((s) => s.id === id);
+    return POPULAR_SERVERS.find((s) => s.id === id) || this.searchCache.get(id);
   }
 
   getRegistries(): Array<{ id: string; name: string; enabled: boolean }> {
@@ -365,6 +429,7 @@ class MCPRegistryManager {
         command: fullCommand,
         args: fullArgs,
         env: server.envVars?.map((v) => `${v}=`).join(",") || undefined,
+        url: server.url,
         enabled: true,
       });
 

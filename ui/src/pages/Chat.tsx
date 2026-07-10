@@ -109,7 +109,12 @@ import { ChatReasoningControl } from "./chat/ChatReasoningControl";
 import { isChatNearBottom } from "./chat/chatScroll";
 import { ChatWorkspaceBrowser } from "./chat/ChatWorkspaceBrowser";
 import { ChatWorkspaceFiles } from "./chat/ChatWorkspaceFiles";
-import { ChatWorkspacePanel, type ChatWorkspaceTab } from "./chat/ChatWorkspacePanel";
+import {
+  ChatWorkspacePanel,
+  WORKSPACE_SINGLETON_KINDS,
+  type ChatWorkspaceTab,
+  type WorkspaceTabInstance,
+} from "./chat/ChatWorkspacePanel";
 import {
   type ArtifactSummaryView,
   applyLiveActivityEvent,
@@ -1394,9 +1399,13 @@ export function Chat() {
   const [reverting, setReverting] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(true);
   const [showWorkspacePanel, setShowWorkspacePanel] = useState(false);
-  const [workspaceTabs, setWorkspaceTabs] = useState<ChatWorkspaceTab[]>([]);
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ChatWorkspaceTab | null>(null);
-  const [workspaceBrowserTitle, setWorkspaceBrowserTitle] = useState("Browser");
+  const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTabInstance[]>([]);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<string | null>(null);
+  const workspaceTabIdRef = useRef(0);
+  const activeWorkspaceKind = useMemo(
+    () => workspaceTabs.find((instance) => instance.id === activeWorkspaceTab)?.kind ?? null,
+    [workspaceTabs, activeWorkspaceTab]
+  );
   const [showEnvironmentOverview, setShowEnvironmentOverview] = useState(false);
   const [hiddenComposerPlanKey, setHiddenComposerPlanKey] = useState<string | null>(null);
   const [diffPanelWidth, setDiffPanelWidth] = useState<number>(() => readPersistedDiffPanelWidth());
@@ -1516,37 +1525,55 @@ export function Chat() {
     sessionId,
     typedMessages,
     liveActivities,
-    showWorkspacePanel && activeWorkspaceTab === "review"
+    showWorkspacePanel && activeWorkspaceKind === "review"
   );
-  const openWorkspaceTab = useCallback((tab: ChatWorkspaceTab) => {
-    setWorkspaceTabs((current) => (current.includes(tab) ? current : [...current, tab]));
-    setActiveWorkspaceTab(tab);
+  const openWorkspaceTab = useCallback((kind: ChatWorkspaceTab) => {
     setShowWorkspacePanel(true);
     setShowEnvironmentOverview(false);
+    setWorkspaceTabs((current) => {
+      if (WORKSPACE_SINGLETON_KINDS.has(kind)) {
+        const existing = current.find((instance) => instance.kind === kind);
+        if (existing) {
+          setActiveWorkspaceTab(existing.id);
+          return current;
+        }
+      }
+      const id = `${kind}-${(workspaceTabIdRef.current += 1)}`;
+      const pageKey =
+        kind === "browser" && current.some((instance) => instance.kind === "browser")
+          ? id
+          : undefined;
+      setActiveWorkspaceTab(id);
+      return [...current, { id, kind, pageKey }];
+    });
   }, []);
   const toggleWorkspaceTab = useCallback(
-    (tab: ChatWorkspaceTab) => {
-      if (showWorkspacePanel && activeWorkspaceTab === tab) {
+    (kind: ChatWorkspaceTab) => {
+      const activeKind = workspaceTabs.find((instance) => instance.id === activeWorkspaceTab)?.kind;
+      if (showWorkspacePanel && activeKind === kind) {
         setShowWorkspacePanel(false);
         return;
       }
-      openWorkspaceTab(tab);
+      openWorkspaceTab(kind);
     },
-    [showWorkspacePanel, activeWorkspaceTab, openWorkspaceTab]
+    [showWorkspacePanel, activeWorkspaceTab, workspaceTabs, openWorkspaceTab]
   );
-  const closeWorkspaceTab = useCallback(
-    (tab: ChatWorkspaceTab) => {
-      setWorkspaceTabs((current) => {
-        const index = current.indexOf(tab);
-        const next = current.filter((candidate) => candidate !== tab);
-        if (activeWorkspaceTab === tab) {
-          setActiveWorkspaceTab(next[Math.min(index, next.length - 1)] ?? null);
-        }
-        return next;
-      });
-    },
-    [activeWorkspaceTab]
-  );
+  const closeWorkspaceTab = useCallback((id: string) => {
+    setWorkspaceTabs((current) => {
+      const index = current.findIndex((instance) => instance.id === id);
+      if (index === -1) return current;
+      const next = current.filter((instance) => instance.id !== id);
+      setActiveWorkspaceTab((prev) =>
+        prev === id ? (next[Math.min(index, next.length - 1)]?.id ?? null) : prev
+      );
+      return next;
+    });
+  }, []);
+  const updateWorkspaceTabTitle = useCallback((id: string, title: string) => {
+    setWorkspaceTabs((current) =>
+      current.map((instance) => (instance.id === id ? { ...instance, title } : instance))
+    );
+  }, []);
   const currentSessionPlan = useMemo(
     () => extractLatestPlanFromMessages(typedMessages, sessionId),
     [typedMessages, sessionId]
@@ -4014,7 +4041,7 @@ export function Chat() {
             }}
             className={cn(
               "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
-              showWorkspacePanel && activeWorkspaceTab === "review"
+              showWorkspacePanel && activeWorkspaceKind === "review"
                 ? "text-indigo-300 bg-white/[0.04]"
                 : "text-gray-500"
             )}
@@ -4041,7 +4068,7 @@ export function Chat() {
             }}
             className={cn(
               "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
-              showWorkspacePanel && activeWorkspaceTab === "subagents"
+              showWorkspacePanel && activeWorkspaceKind === "subagents"
                 ? "text-gray-200 bg-white/[0.04]"
                 : "text-gray-500"
             )}
@@ -4077,8 +4104,12 @@ export function Chat() {
             onRefreshGitBranches={environmentGit.refresh}
             onSwitchGitBranch={environmentGit.checkout}
             onOpenWorkspaceTab={openWorkspaceTab}
-            previewTabs={workspaceTabs.filter(
-              (tab) => tab === "browser" || tab === "terminal" || tab === "files"
+            previewTabs={Array.from(
+              new Set(
+                workspaceTabs
+                  .map((instance) => instance.kind)
+                  .filter((kind) => kind === "browser" || kind === "terminal" || kind === "files")
+              )
             )}
             agentUsingBrowser={agentUsingBrowser}
             timeToFirstTokenMs={timeToFirstTokenMs}
@@ -4656,95 +4687,105 @@ export function Chat() {
             onCloseTab={closeWorkspaceTab}
             onOpenTab={openWorkspaceTab}
             onResizeStart={handleDiffPanelResizeStart}
-            onSelectTab={(tab) => {
-              setActiveWorkspaceTab(tab);
-            }}
-            tabLabels={{ browser: workspaceBrowserTitle }}
+            onSelectTab={setActiveWorkspaceTab}
           >
-            {workspaceTabs.includes("review") && (
-              <div className={cn("h-full", activeWorkspaceTab !== "review" && "hidden")}>
-                <SessionDiffPanel
-                  embedded
-                  isOpen={activeWorkspaceTab === "review"}
-                  summary={sessionFileChanges}
-                  selectedPath={selectedDiffPath}
-                  onSelectPath={setSelectedDiffPath}
-                  onClose={() => closeWorkspaceTab("review")}
-                  width={diffPanelWidth}
-                  onResizeStart={handleDiffPanelResizeStart}
-                  onOpenInIDE={handleOpenDiffFileInIde}
-                  workspaceDir={effectiveWorkspaceDir}
-                  loading={sessionFileChangesLoading}
-                  error={sessionFileChangesError}
-                  onRetry={refreshSessionFileChanges}
-                />
-              </div>
-            )}
-            {workspaceTabs.includes("terminal") && (
-              <div className={cn("h-full", activeWorkspaceTab !== "terminal" && "hidden")}>
-                <EmbeddedTerminalPanel
-                  workspacePath={effectiveWorkspaceDir || "~"}
-                  visible={showWorkspacePanel && activeWorkspaceTab === "terminal"}
-                  createRequestToken={0}
-                  autoCreateOnVisible
-                  singleSession
-                />
-              </div>
-            )}
-            {workspaceTabs.includes("browser") && (
-              <div className={cn("h-full", activeWorkspaceTab !== "browser" && "hidden")}>
-                <ChatWorkspaceBrowser
-                  key={sessionId || "new-chat-browser"}
-                  visible={showWorkspacePanel && activeWorkspaceTab === "browser"}
-                  sessionId={sessionId}
-                  onTitleChange={setWorkspaceBrowserTitle}
-                />
-              </div>
-            )}
-            {workspaceTabs.includes("files") && (
-              <div className={cn("h-full", activeWorkspaceTab !== "files" && "hidden")}>
-                <ChatWorkspaceFiles workspaceDir={effectiveWorkspaceDir} />
-              </div>
-            )}
-            {workspaceTabs.includes("subagents") && (
-              <div className={cn("h-full", activeWorkspaceTab !== "subagents" && "hidden")}>
-                <SubagentPanel
-                  embedded
-                  agentId={selectedAgentId || sessionAgentId || undefined}
-                  isOpen={activeWorkspaceTab === "subagents"}
-                  onClose={() => closeWorkspaceTab("subagents")}
-                  sessionId={sessionId}
-                  workspaceDir={effectiveWorkspaceDir}
-                  onViewSession={async (sessionKey) => {
-                    try {
-                      const result = await loadSessionMutation.mutateAsync(sessionKey);
-                      if (result?.messagesList) {
-                        activeSessionRef.current = sessionKey;
-                        setUseModelRouter(false);
-                        loadSession(
-                          sessionKey,
-                          result.messagesList as ChatMessage[],
-                          (result as { workspace_dir?: string | null }).workspace_dir || null
-                        );
-                        syncSessionAgentSelection(
-                          (result as { agent_id?: string | null }).agent_id || null
-                        );
-                        setSessionContextUsage(
-                          (result as { contextUsage?: SessionContextUsage | null }).contextUsage ||
-                            null
-                        );
-                        setSessionTokenUsage(
-                          (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
-                        );
-                        setShowWorkspacePanel(false);
+            {workspaceTabs.map((instance) => {
+              const active = activeWorkspaceTab === instance.id;
+              const hiddenClass = cn("h-full", !active && "hidden");
+              if (instance.kind === "review") {
+                return (
+                  <div key={instance.id} className={hiddenClass}>
+                    <SessionDiffPanel
+                      embedded
+                      isOpen={active}
+                      summary={sessionFileChanges}
+                      selectedPath={selectedDiffPath}
+                      onSelectPath={setSelectedDiffPath}
+                      onClose={() => closeWorkspaceTab(instance.id)}
+                      width={diffPanelWidth}
+                      onResizeStart={handleDiffPanelResizeStart}
+                      onOpenInIDE={handleOpenDiffFileInIde}
+                      workspaceDir={effectiveWorkspaceDir}
+                      loading={sessionFileChangesLoading}
+                      error={sessionFileChangesError}
+                      onRetry={refreshSessionFileChanges}
+                    />
+                  </div>
+                );
+              }
+              if (instance.kind === "terminal") {
+                return (
+                  <div key={instance.id} className={hiddenClass}>
+                    <EmbeddedTerminalPanel
+                      workspacePath={effectiveWorkspaceDir || "~"}
+                      visible={showWorkspacePanel && active}
+                      createRequestToken={0}
+                      autoCreateOnVisible
+                      singleSession
+                    />
+                  </div>
+                );
+              }
+              if (instance.kind === "browser") {
+                return (
+                  <div key={instance.id} className={hiddenClass}>
+                    <ChatWorkspaceBrowser
+                      key={`${instance.id}:${sessionId || "new-chat"}`}
+                      visible={showWorkspacePanel && active}
+                      sessionId={sessionId}
+                      pageKey={instance.pageKey}
+                      onTitleChange={(title) => updateWorkspaceTabTitle(instance.id, title)}
+                    />
+                  </div>
+                );
+              }
+              if (instance.kind === "files") {
+                return (
+                  <div key={instance.id} className={hiddenClass}>
+                    <ChatWorkspaceFiles workspaceDir={effectiveWorkspaceDir} />
+                  </div>
+                );
+              }
+              return (
+                <div key={instance.id} className={hiddenClass}>
+                  <SubagentPanel
+                    embedded
+                    agentId={selectedAgentId || sessionAgentId || undefined}
+                    isOpen={active}
+                    onClose={() => closeWorkspaceTab(instance.id)}
+                    sessionId={sessionId}
+                    workspaceDir={effectiveWorkspaceDir}
+                    onViewSession={async (sessionKey) => {
+                      try {
+                        const result = await loadSessionMutation.mutateAsync(sessionKey);
+                        if (result?.messagesList) {
+                          activeSessionRef.current = sessionKey;
+                          setUseModelRouter(false);
+                          loadSession(
+                            sessionKey,
+                            result.messagesList as ChatMessage[],
+                            (result as { workspace_dir?: string | null }).workspace_dir || null
+                          );
+                          syncSessionAgentSelection(
+                            (result as { agent_id?: string | null }).agent_id || null
+                          );
+                          setSessionContextUsage(
+                            (result as { contextUsage?: SessionContextUsage | null })
+                              .contextUsage || null
+                          );
+                          setSessionTokenUsage(
+                            (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
+                          );
+                          setShowWorkspacePanel(false);
+                        }
+                      } catch (error) {
+                        console.error("Failed to load subagent session:", error);
                       }
-                    } catch (error) {
-                      console.error("Failed to load subagent session:", error);
-                    }
-                  }}
-                />
-              </div>
-            )}
+                    }}
+                  />
+                </div>
+              );
+            })}
           </ChatWorkspacePanel>
         )}
 
