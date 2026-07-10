@@ -898,10 +898,17 @@ img {
 
 .download-card {
   display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  transition: transform 0.25s ease, border-color 0.25s ease;
+}
+
+.download-main {
+  display: flex;
   align-items: center;
   gap: 18px;
   padding: 24px;
-  transition: transform 0.25s ease, border-color 0.25s ease;
 }
 
 .download-card:hover {
@@ -987,32 +994,40 @@ img {
 .download-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 8px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: auto;
+  padding: 12px 20px;
+  border-top: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .download-size {
+  flex-shrink: 0;
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--text-faint);
-  background: rgba(255, 255, 255, 0.06);
-  padding: 3px 8px;
-  border-radius: 6px;
-  border: 1px solid var(--glass-border);
+  font-variant-numeric: tabular-nums;
 }
 
 .download-sha {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  border: 1px solid rgba(52, 211, 153, 0.25);
-  background: rgba(52, 211, 153, 0.08);
+  gap: 6px;
+  min-width: 0;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(52, 211, 153, 0.22);
+  background: rgba(52, 211, 153, 0.07);
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
   text-decoration: none;
+}
+
+.download-sha--empty {
+  border-color: var(--glass-border);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: default;
 }
 
 .download-sha:hover {
@@ -1027,12 +1042,23 @@ img {
   flex-shrink: 0;
 }
 
+.download-sha--empty .download-sha-icon {
+  color: var(--text-faint);
+}
+
 .download-sha-value {
   font-family: var(--font-mono);
   font-size: 0.7rem;
   font-weight: 600;
   color: #6ee7b7;
   letter-spacing: 0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.download-sha--empty .download-sha-value {
+  color: var(--text-faint);
 }
 
 .download-btn {
@@ -1640,7 +1666,7 @@ img {
   .provider-grid {
     grid-template-columns: repeat(2, 1fr);
   }
-  .download-card {
+  .download-main {
     flex-wrap: wrap;
   }
   .update-note,

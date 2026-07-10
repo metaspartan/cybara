@@ -16,20 +16,36 @@ extension View {
     }
 }
 
-/// Grabs the hosting `NSWindow` once it exists so we can persist its frame
-/// across launches (window-state restoration) and apply window-level chrome.
+private final class WindowResolverView: NSView {
+    var onResolve: ((NSWindow) -> Void)?
+    private weak var resolvedWindow: NSWindow?
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        resolveWindow()
+    }
+
+    func resolveWindow() {
+        guard let window, window !== resolvedWindow else { return }
+        resolvedWindow = window
+        onResolve?(window)
+    }
+}
+
 struct WindowAccessor: NSViewRepresentable {
     let onResolve: (NSWindow) -> Void
 
     func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async { [weak view] in
-            if let window = view?.window { onResolve(window) }
-        }
+        let view = WindowResolverView()
+        view.onResolve = onResolve
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        guard let view = nsView as? WindowResolverView else { return }
+        view.onResolve = onResolve
+        view.resolveWindow()
+    }
 }
 
 /// Behind-window translucency (`NSVisualEffectView`) so the desktop shows through

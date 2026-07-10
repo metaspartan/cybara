@@ -13,7 +13,6 @@ import {
   findHermeticPlaywrightBrowserPath,
   stripWindowsLongPathPrefix,
 } from "../../src/core/browser/playwright-loader";
-import { windowsBrowserCdpArgs } from "../../src/core/browser/windows-cdp-launch";
 
 describe("browser executable discovery", () => {
   test("covers user and machine Chrome and Edge installs on Windows", () => {
@@ -44,18 +43,28 @@ describe("browser executable discovery", () => {
     expect(candidates).toContain("/snap/bin/chromium");
   });
 
-  test("uses supported Windows channels before executable-path fallbacks", () => {
+  test("uses one supported channel for an installed Windows browser", () => {
     const plan = buildBrowserLaunchPlan("win32", undefined, null, [
       "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
     ]);
 
-    expect(plan.map((target) => target.label)).toEqual([
-      "Microsoft Edge",
-      "Google Chrome",
-      "Microsoft Edge executable",
-    ]);
+    expect(plan.map((target) => target.label)).toEqual(["Microsoft Edge"]);
     expect(plan[0]?.channel).toBe("msedge");
-    expect(plan[2]?.executablePath).toContain("msedge.exe");
+  });
+
+  test("keeps unsupported Chromium browsers as executable fallbacks", () => {
+    const plan = buildBrowserLaunchPlan("win32", undefined, null, [
+      "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+      "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+    ]);
+
+    expect(plan).toEqual([
+      { label: "Google Chrome", channel: "chrome" },
+      {
+        label: "Brave executable",
+        executablePath: "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+      },
+    ]);
   });
 
   test("honors an explicit browser path first without duplicate fallback entries", () => {
@@ -86,20 +95,6 @@ describe("browser executable discovery", () => {
     expect(browserLaunchArgs("linux", { CYBARA_BROWSER_DISABLE_SANDBOX: "true" })).toContain(
       "--no-sandbox"
     );
-  });
-
-  test("builds an isolated Windows CDP launch without shell parsing", () => {
-    const args = windowsBrowserCdpArgs("C:\\Temp\\Cybara Profile", true);
-
-    expect(args).toContain("--remote-debugging-port=0");
-    expect(args).toContain("--remote-debugging-address=127.0.0.1");
-    expect(args).toContain("--user-data-dir=C:\\Temp\\Cybara Profile");
-    expect(args).toContain("--headless=new");
-    expect(args).not.toContain("--no-sandbox");
-  });
-
-  test("keeps headed Windows CDP launches visible", () => {
-    expect(windowsBrowserCdpArgs("C:\\Temp\\Cybara", false)).not.toContain("--headless=new");
   });
 });
 

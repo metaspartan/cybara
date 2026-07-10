@@ -28,8 +28,10 @@ describe("desktop updater wiring", () => {
 
     expect(cargoToml).toContain('tauri-plugin-updater = "2"');
     expect(cargoToml).toContain('tauri-plugin-process = "2"');
+    expect(cargoToml).toContain('tauri-plugin-window-state = "2"');
     expect(mainRs).toContain("tauri_plugin_updater::Builder::new().build()");
     expect(mainRs).toContain("tauri_plugin_process::init()");
+    expect(mainRs).toContain("tauri_plugin_window_state::Builder::default().build()");
     expect(capabilityJson).toContain('"updater:default"');
     expect(capabilityJson).toContain('"process:default"');
     expect(tauriConfig).toContain('"updater"');

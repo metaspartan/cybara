@@ -74,6 +74,21 @@ export function browserExecutableLabel(executablePath: string): string {
   return "Chromium executable";
 }
 
+function browserChannelForExecutable(executablePath: string): "chrome" | "msedge" | undefined {
+  const normalized = executablePath.toLowerCase().replaceAll("\\", "/");
+  if (normalized.includes("/microsoft/edge/") || normalized.includes("microsoft edge.app")) {
+    return "msedge";
+  }
+  if (
+    normalized.includes("/google/chrome/") ||
+    normalized.includes("google chrome.app") ||
+    /\/google-chrome(?:-stable)?$/.test(normalized)
+  ) {
+    return "chrome";
+  }
+  return undefined;
+}
+
 export function buildBrowserLaunchPlan(
   platform: RuntimePlatform,
   explicitExecutable: string | undefined,
@@ -94,13 +109,20 @@ export function buildBrowserLaunchPlan(
     : undefined;
   if (configured) addExecutable("configured browser", configured);
   if (bundledExecutable) addExecutable("bundled Chromium", bundledExecutable);
+  const detectedChannels = new Set(
+    systemExecutables
+      .map((executablePath) => browserChannelForExecutable(executablePath))
+      .filter((channel): channel is "chrome" | "msedge" => channel !== undefined)
+  );
   for (const channel of browserChannelNames(platform)) {
+    if (!detectedChannels.has(channel)) continue;
     targets.push({
       label: channel === "msedge" ? "Microsoft Edge" : "Google Chrome",
       channel,
     });
   }
   for (const executablePath of systemExecutables) {
+    if (browserChannelForExecutable(executablePath)) continue;
     addExecutable(browserExecutableLabel(executablePath), executablePath);
   }
   return targets;

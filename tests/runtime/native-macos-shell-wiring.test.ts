@@ -7,6 +7,22 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const MACOS_APP_DIR = join(ROOT_DIR, "apps", "macos", "Cybara", "Sources", "Cybara");
 
 describe("native macOS shell wiring", () => {
+  test("restores and persists the main window frame after AppKit attachment", () => {
+    const liquidGlass = readFileSync(
+      join(ROOT_DIR, "apps", "macos", "Cybara", "Sources", "Cybara", "LiquidGlass.swift"),
+      "utf8"
+    );
+    const contentView = readFileSync(
+      join(ROOT_DIR, "apps", "macos", "Cybara", "Sources", "Cybara", "ContentView.swift"),
+      "utf8"
+    );
+
+    expect(liquidGlass).toContain("override func viewDidMoveToWindow()");
+    expect(liquidGlass).toContain("window !== resolvedWindow");
+    expect(contentView).toContain('setFrameAutosaveName("CybaraMainWindow")');
+    expect(contentView).toContain('setFrameUsingName("CybaraMainWindow")');
+  });
+
   test("sidecar manager reuses gateway port 4269 and configures a managed local launch", () => {
     const sidecarManager = readFileSync(join(MACOS_APP_DIR, "SidecarManager.swift"), "utf8");
     const sidecarCore = readFileSync(join(MACOS_APP_DIR, "SidecarCore.swift"), "utf8");

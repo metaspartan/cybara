@@ -2,7 +2,6 @@ import { randomUUID } from "crypto";
 import type { Browser, BrowserContext, LaunchOptions, Locator, Page } from "playwright";
 import { systemLogger } from "../logging";
 import {
-  browserExecutableLabel,
   browserLaunchArgs,
   buildBrowserLaunchPlan,
   findBundledBrowserExecutable,
@@ -26,7 +25,6 @@ import {
   startBrowser,
   stopBrowser,
 } from "./profiles";
-import { launchWindowsBrowserOverCdp } from "./windows-cdp-launch";
 
 async function launchWithFallback(
   chromium: Awaited<ReturnType<typeof getChromium>>,
@@ -58,8 +56,7 @@ async function launchWithFallback(
 
   const failures: string[] = [];
   const startedAt = Date.now();
-  const windowsCdpExecutables = process.platform === "win32" ? systemExecutables : [];
-  const total = attempts.length + windowsCdpExecutables.length;
+  const total = attempts.length;
   let attempted = 0;
 
   const launchAttempt = async (attempt: {
@@ -106,33 +103,6 @@ async function launchWithFallback(
   const managedBrowser = await launchAttempt(attempts[0]);
   if (managedBrowser) return managedBrowser;
 
-  for (const executablePath of windowsCdpExecutables) {
-    const remainingMs = BROWSER_LAUNCH_BUDGET_MS - (Date.now() - startedAt);
-    if (remainingMs <= 0) break;
-    attempted += 1;
-    const label = `${browserExecutableLabel(executablePath)} CDP`;
-    browserLaunchState = { phase: "starting", attempt: label, attempted, total };
-    void systemLogger.info("Starting browser preview", { attempt: label, attempted, total });
-    try {
-      const browser = await launchWindowsBrowserOverCdp(
-        chromium,
-        executablePath,
-        headless,
-        args,
-        Math.min(BROWSER_LAUNCH_ATTEMPT_TIMEOUT_MS, remainingMs)
-      );
-      browserLaunchState = { phase: "running", attempt: label, attempted, total };
-      return browser;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      failures.push(label);
-      void systemLogger.warn("Windows browser CDP launch failed", {
-        attempt: label,
-        error: message,
-      });
-    }
-  }
-
   for (const attempt of attempts.slice(1)) {
     const browser = await launchAttempt(attempt);
     if (browser) return browser;
@@ -159,7 +129,7 @@ export interface BrowserLaunchState {
 }
 
 const BROWSER_LAUNCH_ATTEMPT_TIMEOUT_MS = 30_000;
-const BROWSER_LAUNCH_BUDGET_MS = 120_000;
+const BROWSER_LAUNCH_BUDGET_MS = 60_000;
 let browserLaunchState: BrowserLaunchState = { phase: "idle" };
 
 export interface BrowserSnapshotNode {

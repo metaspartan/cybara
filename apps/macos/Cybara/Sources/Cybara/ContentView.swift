@@ -207,6 +207,7 @@ struct ContentView: View {
         .background(
             WindowAccessor { window in
                 window.setFrameAutosaveName("CybaraMainWindow")
+                window.setFrameUsingName("CybaraMainWindow")
             }
         )
     }

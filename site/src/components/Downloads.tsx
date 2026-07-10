@@ -48,45 +48,54 @@ function DownloadCard({ client, release }: DownloadCardProps): React.ReactElemen
   const asset = resolveAsset(release, client.assetPattern);
   const fileSize = formatFileSize(asset?.size);
   const sha = asset?.sha256;
-  const showMeta = !client.command && (fileSize || sha);
+  const showMeta = !client.command;
 
   return (
     <article className="glass download-card">
-      <span className={`download-icon download-icon--${client.icon}`}>
-        <Icon name={client.icon as IconName} className="download-icon-svg" />
-      </span>
-      <div className="download-body">
-        <h3 className="download-name">{client.name}</h3>
-        <p className="download-platform">{client.platform}</p>
-        <p className="download-format">{client.format}</p>
-        {showMeta ? (
-          <div className="download-meta">
-            {fileSize ? <span className="download-size">{fileSize}</span> : null}
-            {sha ? (
-              <button
-                type="button"
-                className="download-sha"
-                onClick={() => void copySha(sha)}
-                title={`SHA256: ${sha}\nClick to copy`}
-              >
-                <Icon name="shield" className="download-sha-icon" />
-                <code className="download-sha-value">{copiedSha ? "Copied!" : shortSha(sha)}</code>
-              </button>
-            ) : null}
-          </div>
-        ) : null}
+      <div className="download-main">
+        <span className={`download-icon download-icon--${client.icon}`}>
+          <Icon name={client.icon as IconName} className="download-icon-svg" />
+        </span>
+        <div className="download-body">
+          <h3 className="download-name">{client.name}</h3>
+          <p className="download-platform">{client.platform}</p>
+          <p className="download-format">{client.format}</p>
+        </div>
+        {client.command ? (
+          <button type="button" className="download-btn" onClick={copyCommand}>
+            <Icon name="terminal" className="btn-icon" />
+            <span>{copied ? "Copied" : "Copy install"}</span>
+          </button>
+        ) : (
+          <a className="download-btn" href={href} target="_blank" rel="noreferrer">
+            <Icon name="download" className="btn-icon" />
+            <span>Download</span>
+          </a>
+        )}
       </div>
-      {client.command ? (
-        <button type="button" className="download-btn" onClick={copyCommand}>
-          <Icon name="terminal" className="btn-icon" />
-          <span>{copied ? "Copied" : "Copy install"}</span>
-        </button>
-      ) : (
-        <a className="download-btn" href={href} target="_blank" rel="noreferrer">
-          <Icon name="download" className="btn-icon" />
-          <span>Download</span>
-        </a>
-      )}
+      {showMeta ? (
+        <div className="download-meta">
+          {sha ? (
+            <button
+              type="button"
+              className="download-sha"
+              onClick={() => void copySha(sha)}
+              title={`SHA256: ${sha}\nClick to copy`}
+            >
+              <Icon name="shield" className="download-sha-icon" />
+              <code className="download-sha-value">
+                {copiedSha ? "Copied!" : `SHA256 ${shortSha(sha)}`}
+              </code>
+            </button>
+          ) : (
+            <span className="download-sha download-sha--empty">
+              <Icon name="shield" className="download-sha-icon" />
+              <code className="download-sha-value">SHA256 unavailable</code>
+            </span>
+          )}
+          {fileSize ? <span className="download-size">{fileSize}</span> : null}
+        </div>
+      ) : null}
     </article>
   );
 }
