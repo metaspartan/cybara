@@ -249,6 +249,8 @@ export function useProviderModels(providerId: string | null | undefined) {
         Array<{ id: string; model_id: string; model_name?: string; context_window?: number }>
       >(`/providers/${providerId}/models`),
     enabled: !!providerId,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 

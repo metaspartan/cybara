@@ -100,6 +100,7 @@ describe("built-in pricing DB", () => {
       cacheReadPerM: 0.5,
       cacheWritePerM: 6.25,
     });
+    expect(getPricing("openai", "gpt-5.6")).toEqual(sol);
 
     const codexLuna = getPricing("openai-codex", "gpt-5.6-luna");
     expect(codexLuna).toEqual({

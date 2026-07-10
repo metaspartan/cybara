@@ -1,9 +1,9 @@
 import { homedir } from "os";
 import { join } from "path";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { mkdir } from "fs/promises";
 
 const MODELS_DEV_URL = "https://models.dev/api.json";
-const CACHE_TTL_MS = 60 * 60 * 1000;
+const CACHE_TTL_MS = 5 * 60 * 1000;
 const CACHE_DIR = join(process.env.HOME || homedir(), ".cybara");
 const CACHE_FILE = join(CACHE_DIR, "models_dev_cache.json");
 
@@ -28,6 +28,7 @@ export interface ModelsDevModel {
 
 export const PROVIDER_TO_MODELS_DEV: Record<string, string> = {
   openai: "openai",
+  meta: "meta",
   anthropic: "anthropic",
   google: "google",
   "google-gemini-cli": "google",
@@ -72,6 +73,7 @@ export const PROVIDER_TO_MODELS_DEV: Record<string, string> = {
   chutes: "chutes",
   github_copilot: "github-copilot",
   opencode_zen: "opencode",
+  "opencode-go": "opencode-go",
   "vercel-ai-gateway": "vercel",
   llama: "llama",
   nous: "nous",
@@ -127,34 +129,61 @@ export function extractModelsDevProvider(apiJson: unknown, slug: string): Models
 }
 
 let memoryCache: { fetchedAt: number; data: unknown } | null = null;
+let catalogLoadInFlight: Promise<unknown> | null = null;
 
-async function loadCatalog(): Promise<unknown> {
-  if (memoryCache && Date.now() - memoryCache.fetchedAt < CACHE_TTL_MS) {
-    return memoryCache.data;
+async function readDiskCache(): Promise<{ fetchedAt: number; data: unknown } | null> {
+  const file = Bun.file(CACHE_FILE);
+  if (!(await file.exists())) return null;
+  try {
+    const parsed = (await file.json()) as { fetchedAt?: unknown; data?: unknown };
+    return typeof parsed.fetchedAt === "number" && "data" in parsed
+      ? { fetchedAt: parsed.fetchedAt, data: parsed.data }
+      : null;
+  } catch {
+    return null;
   }
-  if (existsSync(CACHE_FILE)) {
-    try {
-      const stat = readFileSync(CACHE_FILE, "utf8");
-      const parsed = JSON.parse(stat) as { fetchedAt: number; data: unknown };
-      if (parsed.fetchedAt && Date.now() - parsed.fetchedAt < CACHE_TTL_MS) {
-        memoryCache = parsed;
-        return parsed.data;
-      }
-    } catch {
-      /* refetch */
-    }
-  }
-  const res = await fetch(MODELS_DEV_URL, { signal: AbortSignal.timeout(15000) });
-  if (!res.ok) throw new Error(`models.dev returned ${res.status}`);
-  const data = await res.json();
+}
+
+async function fetchCatalog(): Promise<unknown> {
+  const response = await fetch(MODELS_DEV_URL, { signal: AbortSignal.timeout(15_000) });
+  if (!response.ok) throw new Error(`models.dev returned ${response.status}`);
+  const data = await response.json();
   memoryCache = { fetchedAt: Date.now(), data };
   try {
-    mkdirSync(CACHE_DIR, { recursive: true });
-    writeFileSync(CACHE_FILE, JSON.stringify(memoryCache), "utf8");
+    await mkdir(CACHE_DIR, { recursive: true });
+    await Bun.write(CACHE_FILE, JSON.stringify(memoryCache));
   } catch {
-    /* cache write best-effort */
+    return data;
   }
   return data;
+}
+
+async function loadCatalogFresh(): Promise<unknown> {
+  const diskCache = await readDiskCache();
+  if (diskCache && Date.now() - diskCache.fetchedAt < CACHE_TTL_MS) {
+    memoryCache = diskCache;
+    return diskCache.data;
+  }
+  try {
+    return await fetchCatalog();
+  } catch (error) {
+    if (diskCache) {
+      memoryCache = diskCache;
+      return diskCache.data;
+    }
+    throw error;
+  }
+}
+
+async function loadCatalog(): Promise<unknown> {
+  if (memoryCache && Date.now() - memoryCache.fetchedAt < CACHE_TTL_MS) return memoryCache.data;
+  if (catalogLoadInFlight) return catalogLoadInFlight;
+  catalogLoadInFlight = loadCatalogFresh();
+  try {
+    return await catalogLoadInFlight;
+  } finally {
+    catalogLoadInFlight = null;
+  }
 }
 
 export async function discoverModelsDev(providerId: string): Promise<ModelsDevModel[]> {

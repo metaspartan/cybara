@@ -33,4 +33,11 @@ describe("agent helper modules", () => {
       DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS
     );
   });
+
+  test("keeps GPT-5.6 API and Codex context limits provider-specific", () => {
+    expect(resolveModelContextWindowTokens("openai", undefined, "gpt-5.6-sol")).toBe(1050000);
+    expect(resolveModelContextWindowTokens("openai-codex", undefined, "gpt-5.6-sol")).toBe(372000);
+    expect(resolveModelMaxOutputTokens("openai", undefined, "gpt-5.6-luna")).toBe(128000);
+    expect(resolveModelMaxOutputTokens("openai-codex", undefined, "gpt-5.6-luna")).toBe(128000);
+  });
 });

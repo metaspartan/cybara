@@ -43,14 +43,15 @@ type PricingEntry = [
 const PROVIDER_PRICING: readonly PricingEntry[] = [
   // OpenAI (est. mid-2026)
   ["openai", "gpt-5.6-sol", 5.0, 30.0, 0.5, 6.25],
+  ["openai", "gpt-5.6", 5.0, 30.0, 0.5, 6.25],
   ["openai", "gpt-5.6-terra", 2.5, 15.0, 0.25, 3.125],
   ["openai", "gpt-5.6-luna", 1.0, 6.0, 0.1, 1.25],
   ["openai-codex", "gpt-5.6-sol", 5.0, 30.0, 0.5, 6.25],
   ["openai-codex", "gpt-5.6-terra", 2.5, 15.0, 0.25, 3.125],
   ["openai-codex", "gpt-5.6-luna", 1.0, 6.0, 0.1, 1.25],
-  ["openai", "gpt-5.5", 5.0, 20.0, 1.25],
+  ["openai", "gpt-5.5", 5.0, 30.0, 0.5, 6.25],
   ["openai", "gpt-5.5-pro", 8.0, 32.0, 2.0],
-  ["openai", "gpt-5.4", 2.5, 10.0, 1.25],
+  ["openai", "gpt-5.4", 2.5, 15.0, 0.25, 3.125],
   ["openai", "gpt-5.4-mini", 0.4, 1.6, 0.1],
   ["openai", "gpt-5.4-nano", 0.2, 0.8, 0.05],
   ["openai", "gpt-5.4-pro", 5.0, 20.0, 1.25],

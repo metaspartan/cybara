@@ -52,6 +52,8 @@ export function resolveProviderType(value: string | undefined): ProviderType | u
 }
 
 class ProviderManager {
+  private authoritativeModelIds = new Map<string, Set<string>>();
+
   private mergeWithStaticConfig(dbProvider: Provider): Provider {
     const staticConfig = providers[dbProvider.provider as ProviderType];
     if (!staticConfig) return dbProvider;
@@ -358,12 +360,19 @@ class ProviderManager {
     }
 
     tables.providers.update(id, { ...(existing as Provider), ...normalizedData });
+    this.authoritativeModelIds.delete(id);
     return true;
   }
 
   delete(id: string): boolean {
+    this.authoritativeModelIds.delete(id);
     const result = tables.providers.delete(id);
     return result.changes > 0;
+  }
+
+  setAuthoritativeModels(providerId: string, modelIds: readonly string[]): void {
+    const normalized = modelIds.map((id) => id.trim().toLowerCase()).filter(Boolean);
+    if (normalized.length > 0) this.authoritativeModelIds.set(providerId, new Set(normalized));
   }
 
   private mergeStaticCatalogModels(providerId: string, cached: ProviderModel[]): ProviderModel[] {
@@ -426,7 +435,11 @@ class ProviderManager {
 
   getModels(providerId: string): ProviderModel[] {
     const cached = tables.providerModels.byProvider(providerId) as ProviderModel[];
-    return this.mergeStaticCatalogModels(providerId, cached);
+    const merged = this.mergeStaticCatalogModels(providerId, cached);
+    const authoritative = this.authoritativeModelIds.get(providerId);
+    return authoritative
+      ? merged.filter((model) => authoritative.has(model.model_id.trim().toLowerCase()))
+      : merged;
   }
 
   async discoverOllamaModels(): Promise<ProviderModel[]> {
@@ -497,7 +510,8 @@ export function getProviderBaseUrl(providerType: string): string {
 
 export function getDefaultModel(providerType: string): string {
   const defaults: Record<string, string> = {
-    openai: "gpt-5.5",
+    openai: "gpt-5.6-sol",
+    meta: "muse-spark-1.1",
     elevenlabs: "eleven_multilingual_v2",
     anthropic: "claude-opus-4-8",
     minimax: "MiniMax-M3",
@@ -528,7 +542,7 @@ export function getDefaultModel(providerType: string): string {
     "kimi-coding": "kimi-for-coding",
     "qwen-portal": "coder-model",
     synthetic: "hf:zai-org/GLM-5",
-    "openai-codex": "gpt-5.5",
+    "openai-codex": "gpt-5.6-sol",
     chutes: "Qwen/Qwen3-32B-TEE",
     featherless: "Qwen/Qwen3-32B",
     longcat: "LongCat-2.0",
@@ -556,6 +570,8 @@ export function getDefaultModel(providerType: string): string {
     gmi: "zai-org/GLM-5.1-FP8",
     kilocode: "kilo/auto",
     "opencode-go": "deepseek-v4-pro",
+    ds4: "deepseek-v4-flash",
+    inferrs: "google/gemma-4-E2B-it",
   };
   const resolvedProviderType = resolveProviderType(providerType);
   if (resolvedProviderType) {

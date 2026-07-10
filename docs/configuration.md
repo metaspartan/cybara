@@ -123,7 +123,7 @@ curl -X POST http://localhost:4269/api/providers \
   -d '{"type": "openai", "apiKey": "sk-..."}'
 ```
 
-### Supported Providers (64)
+### Supported Providers (67)
 
 See `/docs/providers.md` for the provider matrix. Runtime model lists are discovered from each
 provider when supported, so use the UI, `GET /api/providers/available`, or

@@ -1044,9 +1044,15 @@ const routes: Record<string, RouteHandler> = {
     };
   },
   "DELETE /api/providers/:id": (_body, params) => ({ success: providerManager.delete(params!.id) }),
-  "GET /api/providers/:id/models": (_body, params) => providerManager.getModels(params!.id),
+  "GET /api/providers/:id/models": async (_body, params) => {
+    const provider = providerManager.get(params!.id);
+    const discovery = discoverProviderModels(params!.id);
+    const waitMs = provider?.provider === "openai-codex" ? 2500 : 600;
+    await Promise.race([discovery, Bun.sleep(waitMs)]);
+    return providerManager.getModels(params!.id);
+  },
   "POST /api/providers/:id/models/discover": async (_body, params) =>
-    await discoverProviderModels(params!.id),
+    await discoverProviderModels(params!.id, { force: true }),
   "POST /api/providers/discover/ollama": async () => await providerManager.discoverOllamaModels(),
 
   "GET /api/checkpoints": (_body, params) => {

@@ -1,6 +1,6 @@
 # Cybara AI Providers
 
-Cybara ships with 64 provider definitions in `src/core/providers.ts`. The registry covers hosted
+Cybara ships with 67 provider definitions in `src/core/providers.ts`. The registry covers hosted
 AI APIs, OAuth-backed coding providers, local OpenAI-compatible runtimes, proxy/gateway providers,
 and AWS Bedrock. Model names change frequently, so use the UI, `GET /api/providers/available`, or
 `cybara provider models <provider-id>` for the current model catalog exposed by a configured
@@ -76,6 +76,7 @@ sent.
 | Provider ID | Name | Auth |
 |-------------|------|------|
 | `openai` | OpenAI | API key |
+| `meta` | Meta AI | API key |
 | `elevenlabs` | ElevenLabs | API key |
 | `anthropic` | Anthropic | API key |
 | `google` | Google AI | API key |
@@ -100,6 +101,8 @@ sent.
 | `lmstudio` | LM Studio (Local) | None |
 | `sglang` | SGLang (Local) | None |
 | `llamacpp` | llama.cpp (Local) | None |
+| `ds4` | ds4 (Local) | None |
+| `inferrs` | Inferrs (Local) | None |
 | `perplexity` | Perplexity | API key |
 | `arcee` | Arcee | API key |
 | `nous` | Nous Research | API key |
@@ -163,6 +166,8 @@ curl -X POST http://localhost:4269/api/providers/oauth/start \
 
 - `ollama` (default `http://localhost:11434`)
 - `vllm`
+- `ds4` (default `http://127.0.0.1:18000/v1`)
+- `inferrs` (default `http://127.0.0.1:8080/v1`)
 - `litellm` (self-hosted gateway mode)
 
 For Ollama discovery:

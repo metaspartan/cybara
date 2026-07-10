@@ -102,7 +102,7 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | [Tools Reference](./tools.md) | 77 built-in tools |
 | [Skills Guide](./skills.md) | Creating and managing skills |
 | [Channels](./channels.md) | Multi-platform messaging |
-| [Providers](./providers.md) | 64 provider definitions |
+| [Providers](./providers.md) | 67 provider definitions |
 | [Configuration](./configuration.md) | Settings and environment |
 | [Production](./production.md) | Release installs, updates, backups, and operator guidance |
 | [API Reference](./api.md) | REST API endpoints |

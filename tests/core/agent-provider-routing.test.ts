@@ -1079,6 +1079,61 @@ describe("Agent provider API-family routing", () => {
     expect(requestedModels).toEqual(["gpt-5.3-codex", "gpt-5.2-codex"]);
   });
 
+  test("retries GPT-5.6 Codex rollout models after a 400 model-not-found response", async () => {
+    const requestedModels: string[] = [];
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      requestedModels.push(String(body.model || ""));
+      if (requestedModels.length === 1) {
+        return new Response(
+          JSON.stringify({ error: { message: "Model not found gpt-5.6-luna" } }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(
+        [
+          "data: " + JSON.stringify({ type: "response.output_text.delta", delta: "terra-ok" }),
+          "",
+          "data: " +
+            JSON.stringify({
+              type: "response.completed",
+              response: {
+                status: "completed",
+                usage: { input_tokens: 6, output_tokens: 2, total_tokens: 8 },
+              },
+            }),
+          "",
+        ].join("\n"),
+        { status: 200, headers: { "Content-Type": "text/event-stream" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "openai-codex",
+      name: "OpenAI Codex GPT-5.6 Rollout Provider",
+      access_token: "codex-oauth-token",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "OpenAI Codex GPT-5.6 Rollout Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-5.6-luna",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "use an available GPT-5.6 Codex model" }],
+      { useTools: false, sessionId: "openai-codex-56-rollout-session" }
+    );
+
+    expect(result.content).toBe("terra-ok");
+    expect(requestedModels).toEqual(["gpt-5.6-luna", "gpt-5.6-terra"]);
+  });
+
   test("records provider cooldown when openai-codex returns 429", async () => {
     globalThis.fetch = (async () =>
       new Response(JSON.stringify({ error: { message: "rate limit reached" } }), {

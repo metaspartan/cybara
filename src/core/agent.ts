@@ -129,7 +129,6 @@ import {
   LOOP_WARNING_BUCKET_SIZE,
   MAX_TOOL_RESULT_CONTEXT_SHARE,
   MIN_TOOL_RESULT_CHARS,
-  OPENAI_CODEX_JWT_CLAIM_PATH,
   OPENAI_CODEX_OAUTH_MODEL_PREFIXES,
   appendToolErrorSummary,
   buildToolIterationFingerprint,
@@ -160,6 +159,11 @@ import {
   type OpenAIResponse,
   type OpenAIUsage,
 } from "./agent-internals";
+import {
+  extractOpenAICodexAccountId,
+  getOpenAICodexModelCandidates,
+  shouldRetryOpenAICodexModel,
+} from "./openai-codex-models";
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
 import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
 import { resolveAgentToolSelection } from "./agent-tool-selection";
@@ -2784,64 +2788,6 @@ class AgentManager {
     return `${normalized}/codex/responses`;
   }
 
-  private getOpenAICodexModelCandidates(modelId: string): string[] {
-    const normalized = modelId.trim().toLowerCase();
-    const candidates: string[] = [modelId];
-
-    if (normalized === "gpt-5-codex") {
-      candidates.push("gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.2");
-    } else if (normalized === "gpt-5.3-codex-spark") {
-      candidates.push("gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.2");
-    } else if (normalized === "gpt-5.3-codex") {
-      candidates.push("gpt-5.2-codex", "gpt-5.2");
-    } else if (normalized === "gpt-5.2-codex") {
-      candidates.push("gpt-5.2");
-    }
-
-    const seen = new Set<string>();
-    return candidates.filter((candidate) => {
-      const key = candidate.trim().toLowerCase();
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }
-
-  private shouldRetryOpenAICodexModel(status: number, errorText: string): boolean {
-    if (status !== 404) return false;
-    const normalized = errorText.toLowerCase();
-    return (
-      normalized.includes("model_not_found") ||
-      normalized.includes("does not exist") ||
-      normalized.includes("no access to this model")
-    );
-  }
-
-  private extractOpenAICodexAccountId(token: string): string | undefined {
-    const trimmed = token.trim();
-    if (!trimmed) return undefined;
-    const parts = trimmed.split(".");
-    if (parts.length !== 3) return undefined;
-    try {
-      const payloadPart = parts[1]
-        .replace(/-/g, "+")
-        .replace(/_/g, "/")
-        .padEnd(Math.ceil(parts[1].length / 4) * 4, "=");
-      const payload = JSON.parse(Buffer.from(payloadPart, "base64").toString("utf8")) as Record<
-        string,
-        unknown
-      >;
-      const authClaim = payload[OPENAI_CODEX_JWT_CLAIM_PATH] as Record<string, unknown> | undefined;
-      const accountId = authClaim?.chatgpt_account_id;
-      if (typeof accountId === "string" && accountId.trim().length > 0) {
-        return accountId.trim();
-      }
-    } catch {
-      return undefined;
-    }
-    return undefined;
-  }
-
   private buildOpenAICodexInputFromMessages(messages: AgentMessage[]): {
     instructions?: string;
     input: Array<Record<string, unknown>>;
@@ -3142,7 +3088,7 @@ class AgentManager {
     signal?: AbortSignal,
     rateLimitContext?: ProviderRateLimitContext
   ): Promise<OpenAICodexTurnResult & { resolvedModel: string }> {
-    const candidates = this.getOpenAICodexModelCandidates(requestedModel);
+    const candidates = getOpenAICodexModelCandidates(requestedModel);
     let finalError = "OpenAI Codex request failed";
 
     for (let index = 0; index < candidates.length; index++) {
@@ -3176,7 +3122,7 @@ class AgentManager {
         finalError = `API error: ${response.status} - ${errorText}`;
         if (
           index < candidates.length - 1 &&
-          this.shouldRetryOpenAICodexModel(response.status, errorText)
+          shouldRetryOpenAICodexModel(response.status, errorText)
         ) {
           console.warn(
             `[Agent] OpenAI Codex model ${candidate} unavailable, retrying with ${candidates[index + 1]}`
@@ -3240,7 +3186,7 @@ class AgentManager {
     if (auth) {
       headers.Authorization = `Bearer ${auth}`;
     }
-    const accountId = this.extractOpenAICodexAccountId(auth);
+    const accountId = extractOpenAICodexAccountId(auth);
     if (accountId) {
       headers["chatgpt-account-id"] = accountId;
     }

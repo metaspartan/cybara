@@ -43,6 +43,7 @@ describe("models.dev extraction", () => {
   test("provider mapping covers major providers", () => {
     for (const id of [
       "openai",
+      "meta",
       "anthropic",
       "google",
       "xai",
@@ -51,6 +52,8 @@ describe("models.dev extraction", () => {
       "groq",
       "featherless",
       "longcat",
+      "opencode_zen",
+      "opencode-go",
     ]) {
       expect(PROVIDER_TO_MODELS_DEV[id]).toBeTruthy();
     }
