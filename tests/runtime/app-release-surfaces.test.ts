@@ -106,6 +106,8 @@ describe("app release surface wiring", () => {
 
   test("Tauri release matrix builds each platform sidecar with an explicit Bun target", () => {
     const workflow = read(".github/workflows/release.yml");
+    const tauriConfig = read("src-tauri/tauri.conf.json");
+    const sidecarBuilder = read("scripts/build-sidecar.ts");
 
     expect(workflow).toContain("Build Sidecar binary");
     expect(workflow).toContain("CYBARA_SIDECAR_BUN_TARGET: ${{ matrix.bun_target }}");
@@ -132,6 +134,8 @@ describe("app release surface wiring", () => {
     expect(workflow.indexOf('args: "--bundles deb,rpm"')).toBeLessThan(
       workflow.indexOf("name: Build Linux AppImage (best-effort)")
     );
+    expect(tauriConfig).toContain('"bin/runtime": "runtime"');
+    expect(sidecarBuilder).toContain("installBunRuntimeAt(packagedRuntimeDir, target.bunTarget)");
   });
 
   test("release workflow runs native macOS unit tests when XCTest is available", () => {

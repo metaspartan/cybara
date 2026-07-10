@@ -45,6 +45,15 @@ export function UsageGauge({
   const ringWidth = Math.max(8, size * 0.1);
   const inner = size - ringWidth * 2;
 
+  const ringStyle = unlimited
+    ? {
+        backgroundImage: `repeating-conic-gradient(${color} 0deg 18deg, ${track} 18deg 30deg)`,
+        boxShadow: `0 0 14px ${color}40`,
+      }
+    : {
+        background: `conic-gradient(${color} ${degrees}deg, ${track} 0deg)`,
+      };
+
   return (
     <div className={className} style={{ width: size, height: size }}>
       <div
@@ -53,7 +62,7 @@ export function UsageGauge({
           width: size,
           height: size,
           borderRadius: "50%",
-          background: `conic-gradient(${color} ${degrees}deg, ${track} 0deg)`,
+          ...ringStyle,
         }}
       >
         <div

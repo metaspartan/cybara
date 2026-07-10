@@ -1,4 +1,5 @@
-import { dirname, isAbsolute, resolve } from "path";
+import { existsSync, statSync } from "fs";
+import { dirname, isAbsolute, parse, resolve } from "path";
 import { getLSPManager, initLSPManager } from "../../core/lsp";
 import { trackMetric } from "../../core/metrics";
 import type { LspLocationLike, LspSymbolLike, NormalizedLspSymbol } from "./_shared";
@@ -11,8 +12,33 @@ export function resolveWorkspacePath(filePath?: string): string {
   const trimmed = filePath.trim();
   if (!trimmed) return process.cwd();
 
-  const absolute = isAbsolute(trimmed) ? trimmed : resolve(process.cwd(), trimmed);
-  return dirname(absolute);
+  const absolute = isAbsolute(trimmed) ? resolve(trimmed) : resolve(process.cwd(), trimmed);
+  let current = absolute;
+  try {
+    if (!statSync(absolute).isDirectory()) current = dirname(absolute);
+  } catch {
+    current = dirname(absolute);
+  }
+  const root = parse(current).root;
+  const markers = [
+    ".git",
+    "package.json",
+    "tsconfig.json",
+    "go.mod",
+    "Cargo.toml",
+    "pyproject.toml",
+    "pom.xml",
+    "build.gradle",
+    "build.gradle.kts",
+  ];
+  while (true) {
+    if (markers.some((marker) => existsSync(resolve(current, marker)))) return current;
+    if (current === root) break;
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return existsSync(absolute) && statSync(absolute).isDirectory() ? absolute : dirname(absolute);
 }
 
 export function getOrInitLspManager(workspacePath?: string) {

@@ -691,6 +691,30 @@ textarea[data-chat-composer-input="true"]:focus-visible {
   accent-color: rgb(var(--accent-primary));
 }
 
+.usage-fill-unlimited {
+  background-image: linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.18) 25%,
+    transparent 25%,
+    transparent 50%,
+    rgba(255, 255, 255, 0.18) 50%,
+    rgba(255, 255, 255, 0.18) 75%,
+    transparent 75%,
+    transparent
+  );
+  background-size: 12px 12px;
+  animation: usage-fill-shimmer 1.6s linear infinite;
+}
+
+@keyframes usage-fill-shimmer {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 12px 0;
+  }
+}
+
 @container (max-width: 600px) {
   .chat-reasoning-trigger {
     width: 32px;

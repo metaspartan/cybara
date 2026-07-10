@@ -190,7 +190,8 @@ export type RouterStrategy =
   | "round_robin"
   | "lowest_cost"
   | "priority"
-  | "mixture_of_agents";
+  | "mixture_of_agents"
+  | "usage_aware";
 
 export interface RouterConfig {
   enabled: boolean;
@@ -210,6 +211,7 @@ const ROUTER_STRATEGIES: readonly RouterStrategy[] = [
   "lowest_cost",
   "priority",
   "mixture_of_agents",
+  "usage_aware",
 ];
 
 export function normalizeRouterStrategy(value: unknown): RouterStrategy {
@@ -556,6 +558,18 @@ export function selectProvider(preferredProviderId?: string): string | null {
           ((b.avail.inputPerM ?? 0) + (b.avail.outputPerM ?? 0))
       );
       return pool[0].id;
+    }
+    case "usage_aware": {
+      const remainingFor = (c: { avail: ProviderAvailability }): number => {
+        if (c.avail.plan?.status === "exhausted") return -1;
+        const remaining = c.avail.plan?.primaryRemainingPercent;
+        if (typeof remaining === "number") return remaining;
+        return 100;
+      };
+      candidates.sort(
+        (a, b) => remainingFor(b) - remainingFor(a) || b.avail.weight - a.avail.weight
+      );
+      return candidates[0].id;
     }
     case "weighted":
     default: {

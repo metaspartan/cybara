@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { openExternal } from "@/utils/openExternal";
 import { ProviderIcon, hasProviderIcon } from "@/components/ProviderIcon";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -867,11 +868,21 @@ function ProviderModal({
     <Modal isOpen={isOpen} onClose={onClose} title={title} size="md">
       <form onSubmit={handleSubmit} className="space-y-4">
         {!isEdit && (
-          <Select
+          <SearchableSelect
             name="provider"
             label="Provider Type"
-            options={providerOptions}
+            options={providerOptions.map((option) => ({
+              value: option.value,
+              label: option.label,
+              icon: hasProviderIcon(option.value) ? (
+                <ProviderIcon provider={option.value} size={18} />
+              ) : (
+                <Cloud className="h-4 w-4 text-gray-400" />
+              ),
+            }))}
             defaultValue={provider?.provider}
+            placeholder="Search 50+ providers..."
+            searchPlaceholder="Search providers..."
             onChange={setSelectedProvider}
             required
           />

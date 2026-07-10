@@ -15,6 +15,7 @@ import type {
   Location,
   Hover,
 } from "./types";
+import { LspMessageBuffer } from "./message-buffer";
 
 interface JsonRpcMessage {
   jsonrpc: "2.0";
@@ -33,8 +34,7 @@ interface PendingRequest {
 
 export class LSPClient extends EventEmitter {
   private process: ChildProcess | null = null;
-  private buffer = "";
-  private contentLength = -1;
+  private messageBuffer = new LspMessageBuffer();
   private requestId = 0;
   private pendingRequests = new Map<number, PendingRequest>();
   private initialized = false;
@@ -63,7 +63,7 @@ export class LSPClient extends EventEmitter {
         });
 
         this.process.stdout?.on("data", (data: Buffer) => {
-          this.handleData(data.toString());
+          this.handleData(data);
         });
 
         this.process.stderr?.on("data", (data: Buffer) => {
@@ -243,32 +243,8 @@ export class LSPClient extends EventEmitter {
     this.process.stdin.write(header + content);
   }
 
-  private handleData(data: string): void {
-    this.buffer += data;
-
-    while (true) {
-      if (this.contentLength < 0) {
-        const headerEnd = this.buffer.indexOf("\r\n\r\n");
-        if (headerEnd < 0) return;
-
-        const headers = this.buffer.substring(0, headerEnd);
-        const match = headers.match(/Content-Length:\s*(\d+)/i);
-        if (!match) {
-          console.error("[LSP] Invalid header:", headers);
-          this.buffer = this.buffer.substring(headerEnd + 4);
-          continue;
-        }
-
-        this.contentLength = parseInt(match[1], 10);
-        this.buffer = this.buffer.substring(headerEnd + 4);
-      }
-
-      if (this.buffer.length < this.contentLength) return;
-
-      const content = this.buffer.substring(0, this.contentLength);
-      this.buffer = this.buffer.substring(this.contentLength);
-      this.contentLength = -1;
-
+  private handleData(data: Buffer): void {
+    for (const content of this.messageBuffer.push(data)) {
       try {
         const message = JSON.parse(content) as JsonRpcMessage;
         this.handleMessage(message);

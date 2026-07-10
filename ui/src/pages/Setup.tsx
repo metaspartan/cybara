@@ -11,6 +11,7 @@ import {
   Shield,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/Card";
+import { ProviderIcon, hasProviderIcon } from "@/components/ProviderIcon";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import {
@@ -271,9 +272,16 @@ export function Setup() {
                         <button
                           key={provider.id}
                           onClick={() => handleProviderSelect(provider)}
-                          className="px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all text-center group relative"
+                          className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 hover:border-indigo-500/50 hover:bg-indigo-500/10 transition-all text-left group relative"
                         >
-                          <span className="font-medium text-sm text-white group-hover:text-indigo-300 transition-colors">
+                          <span className="flex h-6 w-6 shrink-0 items-center justify-center text-white">
+                            {hasProviderIcon(provider.id) ? (
+                              <ProviderIcon provider={provider.id} size={20} />
+                            ) : (
+                              <Cloud className="h-4 w-4 text-gray-400" />
+                            )}
+                          </span>
+                          <span className="min-w-0 flex-1 truncate font-medium text-sm text-white group-hover:text-indigo-300 transition-colors">
                             {provider.name}
                           </span>
                           {authFlow === "none" && (

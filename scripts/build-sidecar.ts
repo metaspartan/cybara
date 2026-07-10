@@ -3,13 +3,14 @@ import { $ } from "bun";
 import { mkdirSync, existsSync, cpSync, rmSync, readdirSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { platform, arch } from "os";
+import { installBunRuntimeAt, type BunRuntimeTarget } from "../src/core/bun-runtime";
 
 const TAURI_BIN_DIR = join(import.meta.dirname, "..", "src-tauri", "bin");
 const RELEASE_DIR = join(import.meta.dirname, "..", "release");
 const NODE_MODULES_ROOT = join(import.meta.dirname, "..", "node_modules");
 
 export interface Target {
-  bunTarget: string;
+  bunTarget: BunRuntimeTarget;
   tauriSuffix: string;
 }
 
@@ -433,6 +434,13 @@ export default instance.exports;
 
   await copyFilePortable(releasePath, sidecarPath);
   await copyFilePortable(releasePath, tauriDebugSidecarPath);
+
+  const packagedRuntimeDir = join(TAURI_BIN_DIR, "runtime");
+  await installBunRuntimeAt(packagedRuntimeDir, target.bunTarget);
+  for (const dir of [RELEASE_DIR, tauriDebugDir]) {
+    removeAndCopyDirectory(packagedRuntimeDir, join(dir, "runtime"));
+  }
+  console.log(`  📦 Copied Bun runtime for portable language servers`);
 
   // Copy secp256k1.wasm alongside the binary
   if (existsSync(wasmSource)) {

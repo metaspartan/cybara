@@ -918,7 +918,7 @@ struct LSPScreen: View {
                                     if busyLanguage == language.name {
                                         ProgressView().controlSize(.small)
                                     } else {
-                                        Button(language.available ? "Uninstall" : "Install") {
+                                        Button(installed?.installed == true ? "Uninstall" : "Install") {
                                             Task { await toggle(language) }
                                         }
                                         .buttonStyle(.bordered)
@@ -964,7 +964,7 @@ struct LSPScreen: View {
     private func toggle(_ language: NativeLSPLanguage) async {
         busyLanguage = language.name
         do {
-            let result = language.available
+            let result = installStatus.first { $0.language == language.name }?.installed == true
                 ? try await client.uninstallLSP(language.name)
                 : try await client.installLSP(language.name)
             if result.success == false {

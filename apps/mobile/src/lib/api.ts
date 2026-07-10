@@ -483,7 +483,8 @@ export type RouterStrategy =
   | "round_robin"
   | "lowest_cost"
   | "priority"
-  | "mixture_of_agents";
+  | "mixture_of_agents"
+  | "usage_aware";
 
 export interface RouterRouteConfig {
   weight: number;
@@ -1878,6 +1879,7 @@ function normalizeRouterStrategy(value: unknown): RouterStrategy {
     value === "lowest_cost" ||
     value === "priority" ||
     value === "mixture_of_agents" ||
+    value === "usage_aware" ||
     value === "weighted"
     ? value
     : "weighted";

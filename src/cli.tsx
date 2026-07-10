@@ -2404,7 +2404,14 @@ async function rawRouter(args: string[]): Promise<void> {
   }
 
   if (subCmd === "strategy") {
-    const valid = ["weighted", "round_robin", "lowest_cost", "priority", "mixture_of_agents"];
+    const valid = [
+      "weighted",
+      "round_robin",
+      "lowest_cost",
+      "priority",
+      "usage_aware",
+      "mixture_of_agents",
+    ];
     const next = args[1];
     if (!next || !valid.includes(next)) {
       console.error(`ERROR: usage: cybara router strategy <${valid.join("|")}>`);
@@ -2482,7 +2489,7 @@ async function rawRouter(args: string[]): Promise<void> {
   console.log("  cybara router enable              Enable the router");
   console.log("  cybara router disable             Disable the router");
   console.log(
-    "  cybara router strategy <name>     Set strategy (weighted|round_robin|lowest_cost|priority|mixture_of_agents)"
+    "  cybara router strategy <name>     Set strategy (weighted|round_robin|lowest_cost|priority|usage_aware|mixture_of_agents)"
   );
   console.log("  cybara router set <id> <flags>    Configure a route");
   console.log("    Flags: weight=70 limit5h=100 limitWeekly=500 spendDaily=5 spendWeekly=20");

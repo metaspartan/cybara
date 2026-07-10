@@ -38,6 +38,7 @@
     ],
     "resources": {
       "bin/node_modules": "node_modules",
+      "bin/runtime": "runtime",
       "bin/ui/dist": "ui/dist",
       "bin/secp256k1.wasm": "secp256k1.wasm"
     },

@@ -43,6 +43,7 @@ describe("native macOS packaging helpers", () => {
     expect(layout.executableDir).toBe("/bundle/Cybara.app/Contents/MacOS/sidecar");
     expect(layout.resourceDir).toBe("/bundle/Cybara.app/Contents/Resources/sidecar");
     expect(layout.onnxRuntimeDir).toBe("/bundle/Cybara.app/Contents/Resources/sidecar/onnxruntime");
+    expect(layout.runtimeDir).toBe("/bundle/Cybara.app/Contents/Resources/sidecar/runtime");
     expect(layout.nodeModulesDir).toBe(
       "/bundle/Cybara.app/Contents/Resources/sidecar/node_modules"
     );

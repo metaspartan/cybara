@@ -13,6 +13,7 @@ import { Control } from "./components/Control";
 import { Faq } from "./components/Faq";
 import { CallToAction } from "./components/CallToAction";
 import { Footer } from "./components/Footer";
+import { ScrollToTop } from "./components/ScrollToTop";
 
 export function App(): React.ReactElement {
   return (
@@ -34,6 +35,7 @@ export function App(): React.ReactElement {
         <CallToAction />
       </main>
       <Footer />
+      <ScrollToTop />
     </>
   );
 }

@@ -13,6 +13,7 @@ const VALID_STRATEGIES = [
   "lowest_cost",
   "priority",
   "mixture_of_agents",
+  "usage_aware",
 ];
 
 function mulberry32(seed: number): () => number {

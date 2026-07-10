@@ -3,7 +3,9 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
+  rmSync,
   unlinkSync,
   writeFileSync,
 } from "fs";
@@ -11,6 +13,7 @@ import { join } from "path";
 import { homedir } from "os";
 import { gunzipSync } from "zlib";
 import { extractZipArchive } from "../archive";
+import { ensureBunRuntime, findBunRuntime } from "../bun-runtime";
 import { commandExists, isWindows } from "../platform";
 
 function findFileByName(rootDir: string, name: string): string | null {
@@ -49,6 +52,47 @@ function writeLauncher(lspDir: string, binaryName: string, targetPath: string): 
   writeFileSync(wrapperPath, `#!/bin/bash\nexec "${targetPath}" "$@"\n`);
   chmodSync(wrapperPath, 0o755);
   return wrapperPath;
+}
+
+function writeBunLauncher(
+  lspDir: string,
+  binaryName: string,
+  runtimePath: string,
+  scriptPath: string
+): string {
+  if (isWindows()) {
+    const wrapperPath = join(lspDir, `${binaryName}.cmd`);
+    writeFileSync(wrapperPath, `@echo off\r\n"${runtimePath}" "${scriptPath}" %*\r\n`);
+    return wrapperPath;
+  }
+  const wrapperPath = join(lspDir, binaryName);
+  writeFileSync(wrapperPath, `#!/bin/sh\nexec "${runtimePath}" "${scriptPath}" "$@"\n`);
+  chmodSync(wrapperPath, 0o755);
+  return wrapperPath;
+}
+
+interface PackageManifest {
+  bin?: string | Record<string, string>;
+}
+
+export function resolvePackageBinary(
+  packageDir: string,
+  packageName: string,
+  binaryName: string
+): string | null {
+  const packageRoot = join(packageDir, "node_modules", ...packageName.split("/"));
+  const manifestPath = join(packageRoot, "package.json");
+  if (!existsSync(manifestPath)) return null;
+  try {
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as PackageManifest;
+    const relativePath =
+      typeof manifest.bin === "string" ? manifest.bin : manifest.bin?.[binaryName];
+    if (!relativePath) return null;
+    const binaryPath = join(packageRoot, relativePath);
+    return existsSync(binaryPath) ? binaryPath : null;
+  } catch {
+    return null;
+  }
 }
 
 function markExecutable(path: string): void {
@@ -124,6 +168,56 @@ export const LSP_REGISTRY: Record<string, LSPInfo> = {
     requiresRuntime: "bun",
     fileExtensions: [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs"],
   },
+  vue: {
+    name: "vue",
+    displayName: "Vue",
+    description: "Vue language server",
+    type: "bun",
+    binaryName: "vue-language-server",
+    installPackage: "@vue/language-server",
+    installCommand: "bun add --exact @vue/language-server",
+    fileExtensions: [".vue"],
+  },
+  svelte: {
+    name: "svelte",
+    displayName: "Svelte",
+    description: "Svelte language server",
+    type: "bun",
+    binaryName: "svelteserver",
+    installPackage: "svelte-language-server",
+    installCommand: "bun add --exact svelte-language-server",
+    fileExtensions: [".svelte"],
+  },
+  yaml: {
+    name: "yaml",
+    displayName: "YAML",
+    description: "YAML language server",
+    type: "bun",
+    binaryName: "yaml-language-server",
+    installPackage: "yaml-language-server",
+    installCommand: "bun add --exact yaml-language-server",
+    fileExtensions: [".yaml", ".yml"],
+  },
+  shellscript: {
+    name: "shellscript",
+    displayName: "Shell",
+    description: "Bash language server",
+    type: "bun",
+    binaryName: "bash-language-server",
+    installPackage: "bash-language-server",
+    installCommand: "bun add --exact bash-language-server",
+    fileExtensions: [".sh", ".bash", ".zsh"],
+  },
+  dockerfile: {
+    name: "dockerfile",
+    displayName: "Dockerfile",
+    description: "Dockerfile language server",
+    type: "bun",
+    binaryName: "docker-langserver",
+    installPackage: "dockerfile-language-server-nodejs",
+    installCommand: "bun add --exact dockerfile-language-server-nodejs",
+    fileExtensions: ["Dockerfile", ".dockerfile"],
+  },
   tailwindcss: {
     name: "tailwindcss",
     displayName: "Tailwind CSS",
@@ -194,6 +288,10 @@ export const LSP_REGISTRY: Record<string, LSPInfo> = {
         "https://github.com/rust-lang/rust-analyzer/releases/latest/download/rust-analyzer-x86_64-unknown-linux-gnu.gz",
       linux_arm64:
         "https://github.com/rust-lang/rust-analyzer/releases/latest/download/rust-analyzer-aarch64-unknown-linux-gnu.gz",
+      win32_x64:
+        "https://github.com/rust-lang/rust-analyzer/releases/latest/download/rust-analyzer-x86_64-pc-windows-msvc.zip",
+      win32_arm64:
+        "https://github.com/rust-lang/rust-analyzer/releases/latest/download/rust-analyzer-aarch64-pc-windows-msvc.zip",
     },
     fileExtensions: [".rs"],
   },
@@ -231,6 +329,8 @@ export const LSP_REGISTRY: Record<string, LSPInfo> = {
         "https://github.com/clangd/clangd/releases/download/21.1.8/clangd-linux-21.1.8.zip",
       linux_arm64:
         "https://github.com/clangd/clangd/releases/download/21.1.8/clangd-linux-21.1.8.zip",
+      win32_x64:
+        "https://github.com/clangd/clangd/releases/download/21.1.8/clangd-windows-21.1.8.zip",
     },
     fileExtensions: [".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hxx"],
   },
@@ -265,6 +365,10 @@ export const LSP_REGISTRY: Record<string, LSPInfo> = {
         "https://github.com/OmniSharp/omnisharp-roslyn/releases/latest/download/omnisharp-linux-x64-net6.0.tar.gz",
       linux_arm64:
         "https://github.com/OmniSharp/omnisharp-roslyn/releases/latest/download/omnisharp-linux-arm64-net6.0.tar.gz",
+      win32_x64:
+        "https://github.com/OmniSharp/omnisharp-roslyn/releases/latest/download/omnisharp-win-x64-net6.0.zip",
+      win32_arm64:
+        "https://github.com/OmniSharp/omnisharp-roslyn/releases/latest/download/omnisharp-win-arm64-net6.0.zip",
     },
     fileExtensions: [".cs"],
   },
@@ -303,6 +407,8 @@ export const LSP_REGISTRY: Record<string, LSPInfo> = {
         "https://github.com/LuaLS/lua-language-server/releases/download/3.17.1/lua-language-server-3.17.1-linux-x64.tar.gz",
       linux_arm64:
         "https://github.com/LuaLS/lua-language-server/releases/download/3.17.1/lua-language-server-3.17.1-linux-arm64.tar.gz",
+      win32_x64:
+        "https://github.com/LuaLS/lua-language-server/releases/download/3.17.1/lua-language-server-3.17.1-win32-x64.zip",
     },
     fileExtensions: [".lua"],
   },
@@ -320,6 +426,9 @@ export const LSP_REGISTRY: Record<string, LSPInfo> = {
       linux_x64: "https://github.com/zigtools/zls/releases/latest/download/zls-x86_64-linux.tar.xz",
       linux_arm64:
         "https://github.com/zigtools/zls/releases/latest/download/zls-aarch64-linux.tar.xz",
+      win32_x64: "https://github.com/zigtools/zls/releases/latest/download/zls-x86_64-windows.zip",
+      win32_arm64:
+        "https://github.com/zigtools/zls/releases/latest/download/zls-aarch64-windows.zip",
     },
     fileExtensions: [".zig"],
   },
@@ -358,15 +467,40 @@ export function getLSPPath(language: string): string | null {
   if (!info || info.type === "bundled") return null;
 
   const lspDir = getLSPDir();
-  const candidates = [join(lspDir, info.binaryName)];
-  if (isWindows()) {
-    candidates.push(join(lspDir, `${info.binaryName}.exe`), join(lspDir, `${info.binaryName}.cmd`));
-  }
+  const candidates = managedLSPPaths(lspDir, info.binaryName);
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
   }
 
   return null;
+}
+
+export function managedLSPPaths(
+  lspDir: string,
+  binaryName: string,
+  platform: NodeJS.Platform = process.platform
+): string[] {
+  const candidates = [join(lspDir, binaryName)];
+  if (platform === "win32") {
+    candidates.push(
+      join(lspDir, `${binaryName}.exe`),
+      join(lspDir, `${binaryName}.cmd`),
+      join(lspDir, `${binaryName}.bat`)
+    );
+  }
+  return candidates;
+}
+
+export function resolveManagedLSPCommand(
+  command: string,
+  pathResolver: (language: string) => string | null = getLSPPath
+): string {
+  for (const [language, info] of Object.entries(LSP_REGISTRY)) {
+    if (language !== command && info.binaryName !== command) continue;
+    const managedPath = pathResolver(language);
+    if (managedPath) return managedPath;
+  }
+  return command;
 }
 
 export function isInstalled(language: string): boolean {
@@ -420,7 +554,7 @@ export async function getInstallStatus(): Promise<LSPInstallStatus[]> {
       installed,
       available,
       path,
-      requiresRuntime: info.requiresRuntime,
+      requiresRuntime: info.type === "bun" ? undefined : info.requiresRuntime,
     });
   }
 
@@ -633,30 +767,41 @@ async function installGem(info: LSPInfo, lspDir: string): Promise<InstallResult>
 }
 
 async function installBun(info: LSPInfo, lspDir: string): Promise<InstallResult> {
-  if (!Bun.which("bun")) {
-    return { success: false, error: "Bun not found in PATH" };
+  let runtimePath = findBunRuntime();
+  try {
+    runtimePath ||= await ensureBunRuntime();
+  } catch (error) {
+    return {
+      success: false,
+      error: `Portable Bun runtime unavailable: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 
-  console.log(`[LSP Installer] Installing ${info.displayName} via bun...`);
+  console.log(`[LSP Installer] Installing ${info.displayName} with managed Bun runtime...`);
 
   const packageName = info.installPackage || info.binaryName;
-  const result = Bun.spawnSync(["bun", "install", "-g", packageName], {
-    timeout: 120000,
+  const packageDir = join(lspDir, "packages", info.name);
+  mkdirSync(packageDir, { recursive: true });
+  const result = Bun.spawnSync([runtimePath, "add", "--cwd", packageDir, "--exact", packageName], {
+    timeout: 180000,
+    env: { ...process.env, CI: "true" },
   });
 
   if (result.exitCode !== 0) {
     return { success: false, error: result.stderr.toString() || "Bun install failed" };
   }
 
-  const installedPath = Bun.which(info.binaryName);
-  if (installedPath) {
-    const wrapperPath = writeLauncher(lspDir, info.binaryName, installedPath);
-    console.log(`[LSP Installer] Installed ${info.displayName} to ${wrapperPath}`);
-    return { success: true, path: wrapperPath };
+  const binaryPath = resolvePackageBinary(packageDir, packageName, info.binaryName);
+  if (!binaryPath) {
+    return {
+      success: false,
+      error: `Installed package '${packageName}' does not expose '${info.binaryName}'`,
+    };
   }
 
-  console.log(`[LSP Installer] Installed ${info.displayName} globally`);
-  return { success: true, path: "(global)" };
+  const wrapperPath = writeBunLauncher(lspDir, info.binaryName, runtimePath, binaryPath);
+  console.log(`[LSP Installer] Installed ${info.displayName} to ${wrapperPath}`);
+  return { success: true, path: wrapperPath };
 }
 
 export async function uninstall(language: string): Promise<{ success: boolean; error?: string }> {
@@ -670,13 +815,15 @@ export async function uninstall(language: string): Promise<{ success: boolean; e
   }
 
   const lspDir = getLSPDir();
-  const binaryPath = join(lspDir, info.binaryName);
+  const binaryPaths = managedLSPPaths(lspDir, info.binaryName, "win32");
 
   try {
-    if (existsSync(binaryPath)) {
-      unlinkSync(binaryPath);
-      console.log(`[LSP Installer] Uninstalled ${info.displayName}`);
+    for (const binaryPath of binaryPaths) {
+      if (existsSync(binaryPath)) unlinkSync(binaryPath);
     }
+    const packageDir = join(lspDir, "packages", info.name);
+    if (existsSync(packageDir)) rmSync(packageDir, { recursive: true, force: true });
+    console.log(`[LSP Installer] Uninstalled ${info.displayName}`);
 
     return { success: true };
   } catch (err) {

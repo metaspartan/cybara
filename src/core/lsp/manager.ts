@@ -32,6 +32,21 @@ export interface LSPConfig {
   lsp: Record<string, LSPServerConfig>;
 }
 
+export function resolveLspCommandCandidates(
+  configKey: string,
+  serverConfig: LSPServerConfig,
+  managedVtslsInstalled: boolean
+): string[] {
+  const configured = [serverConfig.command, ...(serverConfig.fallbackCommands || [])];
+  const legacyTypeScriptCommand = serverConfig.command === "typescript-language-server";
+  const prefersManagedVtsls =
+    (configKey === "typescript" || configKey === "javascript") &&
+    legacyTypeScriptCommand &&
+    managedVtslsInstalled;
+  const commands = prefersManagedVtsls ? ["vtsls", ...configured] : configured;
+  return commands.filter((value, index, self) => !!value && self.indexOf(value) === index);
+}
+
 const DEFAULT_LSP_CONFIG: LSPConfig = {
   lsp: {
     typescript: {
@@ -66,6 +81,26 @@ const DEFAULT_LSP_CONFIG: LSPConfig = {
       command: "vscode-eslint-language-server",
       args: ["--stdio"],
     },
+    vue: {
+      command: "vue-language-server",
+      args: ["--stdio"],
+    },
+    svelte: {
+      command: "svelteserver",
+      args: ["--stdio"],
+    },
+    yaml: {
+      command: "yaml-language-server",
+      args: ["--stdio"],
+    },
+    shellscript: {
+      command: "bash-language-server",
+      args: ["start"],
+    },
+    dockerfile: {
+      command: "docker-langserver",
+      args: ["--stdio"],
+    },
     python: {
       command: "pylsp",
     },
@@ -88,6 +123,11 @@ const LANGUAGE_TO_CONFIG: Record<string, string> = {
   scss: "css",
   json: "json",
   tailwindcss: "tailwindcss",
+  vue: "vue",
+  svelte: "svelte",
+  yaml: "yaml",
+  shellscript: "shellscript",
+  dockerfile: "dockerfile",
   python: "python",
   go: "go",
   rust: "rust",
@@ -129,6 +169,10 @@ export class LSPManager {
   private workspaceUri: string;
   private diagnosticsCache = new Map<string, Map<string, Diagnostic[]>>();
   private openDocuments = new Map<string, OpenDocumentState>();
+
+  private getCommandsForConfigKey(configKey: string, serverConfig: LSPServerConfig): string[] {
+    return resolveLspCommandCandidates(configKey, serverConfig, installer.isInstalled("vtsls"));
+  }
 
   constructor(workspacePath: string) {
     this.workspacePath = workspacePath;
@@ -185,12 +229,11 @@ export class LSPManager {
       }
     }
 
-    const commands = [serverConfig.command, ...(serverConfig.fallbackCommands || [])].filter(
-      (value, index, self) => !!value && self.indexOf(value) === index
-    );
+    const commands = this.getCommandsForConfigKey(configKey, serverConfig);
 
     let lastError: unknown = null;
-    for (const command of commands) {
+    for (const configuredCommand of commands) {
+      const command = installer.resolveManagedLSPCommand(configuredCommand);
       try {
         console.log(`[LSP Manager] Starting ${configKey} language server (${command})...`);
         const client = new LSPClient(command, serverConfig.args || [], this.workspaceUri);
@@ -612,7 +655,8 @@ export class LSPManager {
   }
 
   getServerCommand(language: string): string {
-    return this.config.lsp[language]?.command || language;
+    const config = this.config.lsp[language];
+    return config ? this.getCommandsForConfigKey(language, config)[0] || language : language;
   }
 
   getWorkspacePath(): string {
@@ -633,9 +677,11 @@ export class LSPManager {
 
     try {
       const checkCmd = process.platform === "win32" ? "where" : "which";
-      const commands = [config.command, ...(config.fallbackCommands || [])].filter(Boolean);
+      const commands = this.getCommandsForConfigKey(language, config);
       for (const command of commands) {
-        const result = Bun.spawnSync([checkCmd, command], {
+        const resolvedCommand = installer.resolveManagedLSPCommand(command);
+        if (resolvedCommand !== command) return true;
+        const result = Bun.spawnSync([checkCmd, resolvedCommand], {
           stdout: "ignore",
           stderr: "ignore",
         });
@@ -683,7 +729,7 @@ export class LSPManager {
       servers.push({
         id: key,
         name: key,
-        command: config.command,
+        command: this.getCommandsForConfigKey(key, config)[0] || config.command,
         args: config.args || [],
         available: await this.isAvailable(key),
         bundled: this.isBundled(key),

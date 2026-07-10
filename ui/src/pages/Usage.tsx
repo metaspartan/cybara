@@ -10,13 +10,23 @@ import {
 } from "@/lib/providerPlanDisplay";
 import { cn } from "@/lib/utils";
 import type { ProviderPlanSnapshot, ProviderPlanStatusResponse } from "@/types";
-import { AlertTriangle, BarChart3, Cloud, Gauge, List } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  ArrowDown,
+  ArrowUp,
+  BarChart3,
+  Cloud,
+  Gauge,
+  List,
+  RotateCcw,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 type UsageViewMode = "bars" | "gauges" | "compact";
 
 const USAGE_VIEW_STORAGE_KEY = "cybara-usage-view";
+const USAGE_ORDER_STORAGE_KEY = "cybara-usage-provider-order";
 const VALID_VIEW_MODES = new Set<UsageViewMode>(["bars", "gauges", "compact"]);
 
 function readUsageViewMode(): UsageViewMode {
@@ -25,6 +35,25 @@ function readUsageViewMode(): UsageViewMode {
   return stored && VALID_VIEW_MODES.has(stored as UsageViewMode)
     ? (stored as UsageViewMode)
     : "bars";
+}
+
+function readUsageOrder(): string[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = window.localStorage.getItem(USAGE_ORDER_STORAGE_KEY);
+    if (!stored) return [];
+    const parsed = JSON.parse(stored);
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is string => typeof item === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeUsageOrder(ids: string[]): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(USAGE_ORDER_STORAGE_KEY, JSON.stringify(ids));
 }
 
 function planHasUsage(plan: ProviderPlanSnapshot): boolean {
@@ -77,9 +106,11 @@ export function Usage() {
   });
 
   const [viewMode, setViewMode] = useState<UsageViewMode>("bars");
+  const [customOrder, setCustomOrder] = useState<string[]>([]);
 
   useEffect(() => {
     setViewMode(readUsageViewMode());
+    setCustomOrder(readUsageOrder());
   }, []);
 
   useEffect(() => {
@@ -88,10 +119,46 @@ export function Usage() {
     }
   }, [viewMode]);
 
-  const plans = useMemo(
-    () => (status?.providers ?? []).filter(planHasUsage).sort(sortPlans),
+  useEffect(() => {
+    writeUsageOrder(customOrder);
+  }, [customOrder]);
+
+  const basePlans = useMemo(
+    () => (status?.providers ?? []).filter(planHasUsage),
     [status?.providers]
   );
+
+  const plans = useMemo(() => {
+    if (customOrder.length === 0) return [...basePlans].sort(sortPlans);
+    const orderRank = new Map(customOrder.map((id, index) => [id, index]));
+    return [...basePlans].sort((a, b) => {
+      const rankA = orderRank.has(a.providerId)
+        ? orderRank.get(a.providerId)!
+        : Number.MAX_SAFE_INTEGER;
+      const rankB = orderRank.has(b.providerId)
+        ? orderRank.get(b.providerId)!
+        : Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) return rankA - rankB;
+      return sortPlans(a, b);
+    });
+  }, [basePlans, customOrder]);
+
+  const movePlan = useCallback(
+    (providerId: string, direction: -1 | 1) => {
+      const ids = plans.map((plan) => plan.providerId);
+      const currentIndex = ids.indexOf(providerId);
+      const targetIndex = currentIndex + direction;
+      if (currentIndex < 0 || targetIndex < 0 || targetIndex >= ids.length) return;
+      const next = [...ids];
+      const [moved] = next.splice(currentIndex, 1);
+      if (!moved) return;
+      next.splice(targetIndex, 0, moved);
+      setCustomOrder(next);
+    },
+    [plans]
+  );
+
+  const resetOrder = useCallback(() => setCustomOrder([]), []);
 
   const showSkeleton = isLoading && !status;
   const showError = isError && !status;
@@ -131,6 +198,18 @@ export function Usage() {
       ) : (
         <div className="space-y-5">
           <UsageSummary status={status} plans={plans} />
+          <div className="flex items-center justify-end">
+            <button
+              type="button"
+              onClick={resetOrder}
+              disabled={customOrder.length === 0}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium text-gray-500 transition-colors hover:bg-white/5 hover:text-gray-300 disabled:cursor-not-allowed disabled:opacity-40"
+              title="Reset to default sort"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Reset order</span>
+            </button>
+          </div>
           {viewMode === "compact" ? (
             <div className="overflow-hidden rounded-2xl border border-white/10 bg-[#101018] shadow-[0_18px_70px_rgba(0,0,0,0.25)]">
               {plans.map((plan, index) => (
@@ -138,13 +217,25 @@ export function Usage() {
                   key={plan.providerId}
                   plan={plan}
                   isLast={index === plans.length - 1}
+                  canMoveUp={index > 0}
+                  canMoveDown={index < plans.length - 1}
+                  onMoveUp={() => movePlan(plan.providerId, -1)}
+                  onMoveDown={() => movePlan(plan.providerId, 1)}
                 />
               ))}
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-              {plans.map((plan) => (
-                <UsageProviderCard key={plan.providerId} plan={plan} mode={viewMode} />
+              {plans.map((plan, index) => (
+                <UsageProviderCard
+                  key={plan.providerId}
+                  plan={plan}
+                  mode={viewMode}
+                  canMoveUp={index > 0}
+                  canMoveDown={index < plans.length - 1}
+                  onMoveUp={() => movePlan(plan.providerId, -1)}
+                  onMoveDown={() => movePlan(plan.providerId, 1)}
+                />
               ))}
             </div>
           )}
@@ -251,7 +342,21 @@ function ProviderAvatar({ providerType, size = 24 }: { providerType: string; siz
   );
 }
 
-function UsageProviderCard({ plan, mode }: { plan: ProviderPlanSnapshot; mode: UsageViewMode }) {
+function UsageProviderCard({
+  plan,
+  mode,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
+}: {
+  plan: ProviderPlanSnapshot;
+  mode: UsageViewMode;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+}) {
   const fiveHour = providerPlanWindowDisplay(plan, "rolling_5h");
   const weekly = providerPlanWindowDisplay(plan, "rolling_week");
 
@@ -267,14 +372,18 @@ function UsageProviderCard({ plan, mode }: { plan: ProviderPlanSnapshot; mode: U
             </p>
           </div>
         </div>
-        <span
-          className={cn(
-            "shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize",
-            statusToneClass(plan.status)
-          )}
-        >
-          {plan.status}
-        </span>
+        <div className="flex shrink-0 items-center gap-1">
+          <ReorderButton direction="up" disabled={!canMoveUp} onClick={onMoveUp} />
+          <ReorderButton direction="down" disabled={!canMoveDown} onClick={onMoveDown} />
+          <span
+            className={cn(
+              "ml-1 rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize",
+              statusToneClass(plan.status)
+            )}
+          >
+            {plan.status}
+          </span>
+        </div>
       </div>
       {mode === "gauges" ? (
         <div className="mt-5 flex items-center justify-around gap-3">
@@ -315,6 +424,7 @@ function UsageGaugeMode({ label, usage }: { label: string; usage: ProviderPlanWi
 function UsageBarMode({ label, usage }: { label: string; usage: ProviderPlanWindowDisplay }) {
   const tone = providerPlanUsageClasses(usage);
   const progress = usage.unlimited ? 100 : (usage.percent ?? 0);
+  const fillWidth = Math.max(usage.percent === null && !usage.unlimited ? 0 : 3, progress);
   return (
     <div className={cn("rounded-xl border p-3", tone.borderClass, tone.bgClass)}>
       <div className="flex items-center justify-between gap-3">
@@ -325,16 +435,36 @@ function UsageBarMode({ label, usage }: { label: string; usage: ProviderPlanWind
       </div>
       <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
         <div
-          className={cn("h-full rounded-full", tone.fillClass)}
-          style={{ width: `${Math.max(usage.percent === null ? 0 : 3, progress)}%` }}
+          className={cn(
+            "h-full rounded-full",
+            tone.fillClass,
+            usage.unlimited && "usage-fill-unlimited"
+          )}
+          style={{ width: `${fillWidth}%` }}
         />
       </div>
-      <div className="mt-2 h-4 text-[11px] text-gray-500">{usage.resetLabel || ""}</div>
+      <div className="mt-2 h-4 text-[11px] text-gray-500">
+        {usage.unlimited ? "No limit" : usage.resetLabel || ""}
+      </div>
     </div>
   );
 }
 
-function CompactProviderRow({ plan, isLast }: { plan: ProviderPlanSnapshot; isLast: boolean }) {
+function CompactProviderRow({
+  plan,
+  isLast,
+  canMoveUp,
+  canMoveDown,
+  onMoveUp,
+  onMoveDown,
+}: {
+  plan: ProviderPlanSnapshot;
+  isLast: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+}) {
   const fiveHour = providerPlanWindowDisplay(plan, "rolling_5h");
   const weekly = providerPlanWindowDisplay(plan, "rolling_week");
   return (
@@ -344,6 +474,10 @@ function CompactProviderRow({ plan, isLast }: { plan: ProviderPlanSnapshot; isLa
         !isLast && "border-b border-white/5"
       )}
     >
+      <div className="flex shrink-0 items-center gap-0.5">
+        <ReorderButton direction="up" disabled={!canMoveUp} onClick={onMoveUp} compact />
+        <ReorderButton direction="down" disabled={!canMoveDown} onClick={onMoveDown} compact />
+      </div>
       <ProviderAvatar providerType={plan.providerType} size={20} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -370,6 +504,7 @@ function CompactProviderRow({ plan, isLast }: { plan: ProviderPlanSnapshot; isLa
 function CompactUsagePill({ label, usage }: { label: string; usage: ProviderPlanWindowDisplay }) {
   const tone = providerPlanUsageClasses(usage);
   const progress = usage.unlimited ? 100 : (usage.percent ?? 0);
+  const fillWidth = Math.max(usage.percent === null && !usage.unlimited ? 0 : 3, progress);
   return (
     <div
       className={cn(
@@ -386,11 +521,44 @@ function CompactUsagePill({ label, usage }: { label: string; usage: ProviderPlan
       </div>
       <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/10">
         <div
-          className={cn("h-full rounded-full", tone.fillClass)}
-          style={{ width: `${Math.max(usage.percent === null ? 0 : 3, progress)}%` }}
+          className={cn(
+            "h-full rounded-full",
+            tone.fillClass,
+            usage.unlimited && "usage-fill-unlimited"
+          )}
+          style={{ width: `${fillWidth}%` }}
         />
       </div>
     </div>
+  );
+}
+
+function ReorderButton({
+  direction,
+  disabled,
+  onClick,
+  compact,
+}: {
+  direction: "up" | "down";
+  disabled: boolean;
+  onClick: () => void;
+  compact?: boolean;
+}) {
+  const Icon = direction === "up" ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-gray-500",
+        compact ? "h-6 w-6" : "h-7 w-7"
+      )}
+      title={`Move ${direction}`}
+      aria-label={`Move ${direction}`}
+    >
+      <Icon className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+    </button>
   );
 }
 

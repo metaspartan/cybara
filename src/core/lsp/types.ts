@@ -260,9 +260,14 @@ export const LANGUAGE_IDS: Record<string, string> = {
   ".scss": "scss",
   ".less": "scss",
   ".sql": "sql",
+  ".vue": "vue",
+  ".svelte": "svelte",
+  ".dockerfile": "dockerfile",
 };
 
 export function getLanguageId(filePath: string): string {
+  const fileName = filePath.split(/[\\/]/).pop()?.toLowerCase();
+  if (fileName === "dockerfile" || fileName?.startsWith("dockerfile.")) return "dockerfile";
   const ext = filePath.substring(filePath.lastIndexOf(".")).toLowerCase();
   return LANGUAGE_IDS[ext] || "plaintext";
 }

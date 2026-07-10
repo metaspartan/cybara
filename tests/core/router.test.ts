@@ -304,6 +304,48 @@ describe("provider selection", () => {
     });
     expect(selectProvider()).toBeNull();
   });
+
+  test("usage_aware selects provider with most remaining quota", () => {
+    setRouterConfig({
+      strategy: "usage_aware",
+      routes: {
+        minimax: { weight: 50 },
+        "z.ai": { weight: 50 },
+      },
+    });
+    config.set("provider_plan_monitoring", {
+      enabled: true,
+      routerEnforcement: true,
+      providers: {
+        minimax: { fiveHour: { tokenLimit: 1000 } },
+        "z.ai": { fiveHour: { tokenLimit: 1000 } },
+      },
+    });
+    const originalGetByTypeSince = tables.metrics.getByTypeSince;
+    tables.metrics.getByTypeSince = ((type: string) =>
+      type === "token_usage_by_provider"
+        ? [
+            {
+              created_at: new Date().toISOString(),
+              key: "minimax",
+              value: 900,
+              metadata: JSON.stringify({ provider: "minimax" }),
+            },
+            {
+              created_at: new Date().toISOString(),
+              key: "z.ai",
+              value: 100,
+              metadata: JSON.stringify({ provider: "z.ai" }),
+            },
+          ]
+        : []) as typeof tables.metrics.getByTypeSince;
+
+    try {
+      expect(selectProvider()).toBe("z.ai");
+    } finally {
+      tables.metrics.getByTypeSince = originalGetByTypeSince;
+    }
+  });
 });
 
 // ─── Input validation ───────────────────────────────────────────────────────

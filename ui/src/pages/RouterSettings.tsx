@@ -53,7 +53,13 @@ interface RouterStatus {
 
 interface RouterConfig {
   enabled: boolean;
-  strategy: "weighted" | "round_robin" | "lowest_cost" | "priority" | "mixture_of_agents";
+  strategy:
+    | "weighted"
+    | "round_robin"
+    | "lowest_cost"
+    | "priority"
+    | "mixture_of_agents"
+    | "usage_aware";
   globalSpendLimitDaily?: number;
   fallbackToAny: boolean;
   routes: Record<string, Record<string, unknown>>;
@@ -84,6 +90,8 @@ const STRATEGY_HELP: Record<RouterConfig["strategy"], string> = {
   priority: "Use the highest-priority provider first; fall back only when it is unavailable.",
   mixture_of_agents:
     "Fan each turn out to several proposer agents, then synthesize one answer with an aggregator agent.",
+  usage_aware:
+    "Route to the provider with the most remaining quota across 5h and weekly limits to maximize plan utilization.",
 };
 
 const STRATEGY_OPTIONS: Array<{
@@ -95,6 +103,11 @@ const STRATEGY_OPTIONS: Array<{
   { value: "round_robin", label: "Round robin", costHint: "Useful for even provider testing." },
   { value: "lowest_cost", label: "Lowest cost", costHint: "Uses your $/M token prices." },
   { value: "priority", label: "Priority", costHint: "Best for a primary subscription plan." },
+  {
+    value: "usage_aware",
+    label: "Usage aware",
+    costHint: "Maximizes remaining quota across providers.",
+  },
   {
     value: "mixture_of_agents",
     label: "Mixture of agents",
