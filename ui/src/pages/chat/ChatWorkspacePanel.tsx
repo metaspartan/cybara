@@ -54,11 +54,14 @@ export function ChatWorkspacePanel({
   width: number;
 }) {
   const [showToolMenu, setShowToolMenu] = useState(false);
-  if (!isOpen) return null;
 
   return (
     <aside
-      className="relative flex min-w-0 shrink-0 flex-col border-l border-white/10 bg-[var(--chat-environment-panel-bg)]"
+      aria-hidden={!isOpen}
+      className={cn(
+        "relative min-w-0 shrink-0 flex-col border-l border-white/10 bg-[var(--chat-environment-panel-bg)]",
+        isOpen ? "flex" : "hidden"
+      )}
       data-testid="chat-workspace-panel"
       style={{ width }}
     >

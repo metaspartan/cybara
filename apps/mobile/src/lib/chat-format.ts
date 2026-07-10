@@ -706,8 +706,7 @@ export function stripStreamingReasoningForDisplay(text: string): string {
   return result.replace(/^\s+/, "");
 }
 
-// ── Codex-style tool-call grouping (parity with the web/Tauri timeline) ──────
-export type MobileActivityGroupKind = "read" | "search" | "list";
+export type MobileActivityGroupKind = "read" | "search" | "list" | "edit" | "fetch" | "command";
 
 export interface MobileActivityGroup {
   type: "group";
@@ -724,7 +723,7 @@ export interface MobileActivitySingle {
 
 export type MobileActivityEntry = MobileActivityGroup | MobileActivitySingle;
 
-type MobileGroupableKind = MobileActivityGroupKind | "command";
+type MobileGroupableKind = MobileActivityGroupKind;
 
 const MOBILE_GROUPABLE_TOOL_KINDS: Record<string, MobileGroupableKind> = {
   read: "read",
@@ -734,6 +733,13 @@ const MOBILE_GROUPABLE_TOOL_KINDS: Record<string, MobileGroupableKind> = {
   web_search: "search",
   ls: "list",
   list: "list",
+  write: "edit",
+  edit: "edit",
+  apply_patch: "edit",
+  multi_edit: "edit",
+  web_fetch: "fetch",
+  fetch: "fetch",
+  http_request: "fetch",
 };
 
 const MOBILE_READ_ONLY_COMMAND_KINDS: Record<string, MobileGroupableKind> = {
@@ -774,35 +780,6 @@ const MOBILE_READ_ONLY_COMMAND_KINDS: Record<string, MobileGroupableKind> = {
   true: "command",
   ":": "command",
 };
-
-const MOBILE_READ_ONLY_GIT_SUBCOMMANDS = new Set([
-  "log",
-  "status",
-  "diff",
-  "show",
-  "branch",
-  "blame",
-  "remote",
-  "config",
-  "shortlog",
-  "rev-parse",
-  "rev-list",
-  "describe",
-  "ls-files",
-  "ls-tree",
-  "cat-file",
-  "reflog",
-  "whatchanged",
-  "show-ref",
-  "name-rev",
-  "count-objects",
-  "for-each-ref",
-  "symbolic-ref",
-  "merge-base",
-  "grep",
-  "tag",
-  "stash",
-]);
 
 const MOBILE_COMMAND_PREFIX_WRAPPERS = new Set([
   "sudo",
@@ -849,26 +826,21 @@ function mobileClassifyShellStage(stage: string): MobileGroupableKind | null {
   }
   const verb = tokens[index]?.split(/[\\/]/).pop()?.toLowerCase() || "";
   if (!verb) return null;
-  if (verb === "git") {
-    const sub = (tokens[index + 1] || "").toLowerCase();
-    return MOBILE_READ_ONLY_GIT_SUBCOMMANDS.has(sub) ? "command" : null;
-  }
-  return MOBILE_READ_ONLY_COMMAND_KINDS[verb] ?? null;
+  if (verb === "git") return "command";
+  return MOBILE_READ_ONLY_COMMAND_KINDS[verb] ?? "command";
 }
 
-function mobileClassifyShellCommand(command: string): MobileGroupableKind | null {
+function mobileClassifyShellCommand(command: string): MobileGroupableKind {
   const trimmed = command.trim().replace(/\s*\.\.\.$/, "");
-  if (!trimmed) return null;
+  if (!trimmed) return "command";
   const stages = trimmed
     .split(MOBILE_COMPOUND_STAGE_SPLIT)
     .map((stage) => stage.trim())
     .filter(Boolean);
-  if (stages.length === 0) return null;
+  if (stages.length === 0) return "command";
   const kinds: MobileGroupableKind[] = [];
   for (const stage of stages) {
-    const kind = mobileClassifyShellStage(stage);
-    if (kind === null) return null;
-    kinds.push(kind);
+    kinds.push(mobileClassifyShellStage(stage) ?? "command");
   }
   return kinds.find((kind) => kind !== "command") ?? "command";
 }
@@ -883,41 +855,63 @@ function mobileGroupKind(activity: MobileWorkActivity): MobileGroupableKind | nu
     if (!toolName) {
       if (/^Explored /.test(activity.text)) return "read";
       if (/^Searched /.test(activity.text)) return "search";
+      if (/^Listed /.test(activity.text)) return "list";
+      if (/^(?:Edited|Created|Updated|Wrote|Deleted) /.test(activity.text)) return "edit";
+      if (/^Fetched /.test(activity.text)) return "fetch";
     }
   }
-  return null;
+  return "command";
 }
 
-function mobileGroupLabel(kinds: MobileGroupableKind[], count: number): string {
-  const unique = new Set(kinds);
-  if (unique.size === 1) {
-    const [only] = unique;
-    if (only === "read") return `Read ${count} files`;
-    if (only === "search") return `Ran ${count} searches`;
-    if (only === "list") return `Listed ${count} locations`;
+const MOBILE_KIND_PHRASES: Record<
+  MobileGroupableKind,
+  { one: string; many: (n: number) => string }
+> = {
+  read: { one: "read a file", many: (n) => `read ${n} files` },
+  search: { one: "ran a search", many: (n) => `ran ${n} searches` },
+  list: { one: "listed a location", many: (n) => `listed ${n} locations` },
+  edit: { one: "edited a file", many: (n) => `edited ${n} files` },
+  fetch: { one: "fetched a page", many: (n) => `fetched ${n} pages` },
+  command: { one: "ran a command", many: (n) => `ran ${n} commands` },
+};
+
+function mobileGroupLabel(kinds: MobileGroupableKind[]): string {
+  const counts = new Map<MobileGroupableKind, number>();
+  for (const kind of kinds) {
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
-  return `Ran ${count} commands`;
+  const phrases = [...counts.entries()].map(([kind, count]) => {
+    const phrase = MOBILE_KIND_PHRASES[kind];
+    return count === 1 ? phrase.one : phrase.many(count);
+  });
+  const joined = phrases.join(", ");
+  return joined.charAt(0).toUpperCase() + joined.slice(1);
 }
 
 export function groupMobileActivities(activities: MobileWorkActivity[]): MobileActivityEntry[] {
   const entries: MobileActivityEntry[] = [];
-  let run: { kinds: MobileGroupableKind[]; items: MobileWorkActivity[] } | null = null;
+  let run: {
+    kinds: MobileGroupableKind[];
+    items: MobileWorkActivity[];
+    trailing: MobileWorkActivity[];
+  } | null = null;
 
   const flush = () => {
     if (!run) return;
     if (run.kinds.length >= 2) {
       const unique = new Set(run.kinds);
-      const specific = unique.size === 1 ? [...unique][0] : "command";
+      const dominant = unique.size === 1 ? [...unique][0] : "command";
       entries.push({
         type: "group",
         id: `group-${run.items[0].id}-${run.items.length}`,
-        kind: specific === "command" ? "list" : specific,
-        label: mobileGroupLabel(run.kinds, run.kinds.length),
+        kind: dominant,
+        label: mobileGroupLabel(run.kinds),
         items: run.items,
       });
     } else {
       for (const activity of run.items) entries.push({ type: "single", activity });
     }
+    for (const activity of run.trailing) entries.push({ type: "single", activity });
     run = null;
   };
 
@@ -929,6 +923,10 @@ export function groupMobileActivities(activities: MobileWorkActivity[]): MobileA
     }
     const kind = mobileGroupKind(activity);
     if (kind === null) {
+      if (run && activity.phase === "start") {
+        run.trailing.push(activity);
+        continue;
+      }
       flush();
       entries.push({ type: "single", activity });
       continue;
@@ -937,7 +935,7 @@ export function groupMobileActivities(activities: MobileWorkActivity[]): MobileA
       run.kinds.push(kind);
       run.items.push(activity);
     } else {
-      run = { kinds: [kind], items: [activity] };
+      run = { kinds: [kind], items: [activity], trailing: [] };
     }
   }
   flush();

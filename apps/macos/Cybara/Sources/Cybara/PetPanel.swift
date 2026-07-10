@@ -12,7 +12,7 @@ final class PetPanelController {
     private var panel: NSPanel?
 
     static var isEnabled: Bool {
-        UserDefaults.standard.object(forKey: "cybara.petEnabled") as? Bool ?? true
+        UserDefaults.standard.object(forKey: "cybara.petEnabled") as? Bool ?? false
     }
 
     func setVisible(_ visible: Bool) {

@@ -1,10 +1,11 @@
 // System Prompt Builder - Cybara compatible structure
-import { tables } from "./database";
-import { config } from "./config";
+
 import { homedir } from "os";
 import { getBootstrapContextFiles, isFirstRun } from "./bootstrap-files";
-import type { SkillEntry } from "./skills/types";
+import { config } from "./config";
+import { tables } from "./database";
 import { formatSkillsForPrompt } from "./skills/loader";
+import type { SkillEntry } from "./skills/types";
 
 // Cybara silent reply token
 export const SILENT_REPLY_TOKEN = "[SILENT]";
@@ -468,6 +469,8 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
     if (availableTools.has("browser")) {
       lines.push(
         "### Browser Tool (for web data)",
+        "Use the session-bound embedded browser for normal browsing, screenshots, and UI automation so the user can follow the work in chat.",
+        "Do not use openVisual, visual:true, or headless:false unless the user explicitly requests a separate browser window.",
         "Use browser for JavaScript-rendered or dynamic websites (React, Next.js, SPAs).",
         "",
         "**WORKFLOW for extracting data:**",
@@ -483,7 +486,7 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
         "- Scroll and snapshot multiple times to get complete lists/feeds",
         "- Accumulate data across snapshots - don't forget earlier items",
         "- Extract and present the data, don't just describe what you did",
-        "- **ALWAYS close the browser when done**: browser({action:'close'}) after finishing your browsing task to free resources",
+        "- Keep the embedded browser open on the final page so the user can inspect it; close it only when explicitly requested",
         ""
       );
     }
@@ -886,6 +889,12 @@ export function buildToolsSection(tools: string[]): string[] {
       "Use snapshot+act for UI automation. Snapshot returns page text with interactive refs [ref=eN]."
     );
     lines.push(
+      "Use the session-bound embedded browser by default so the user can follow the work in chat."
+    );
+    lines.push(
+      "Do not use openVisual, visual:true, or headless:false unless the user explicitly requests a separate browser window."
+    );
+    lines.push(
       "When using refs from snapshot, keep the same tab by passing targetId from snapshot into subsequent actions."
     );
     lines.push(
@@ -1158,6 +1167,8 @@ const TOOL_GUIDANCE = `
 Use available tools when they improve accuracy or unblock execution.
 - Default: do not narrate routine, low-risk tool calls.
 - For web data: browser({action:'open', url:'...'}) -> browser({action:'snapshot'}) -> extract and respond.
+- Prefer the session-bound embedded browser; use a separate visual browser only when explicitly requested.
+- Leave the embedded browser open on the final page unless the user asks to close it.
 - Do not invent unavailable tools or commands.`;
 
 export const AGENT_TYPE_PROMPTS: Record<string, string> = {

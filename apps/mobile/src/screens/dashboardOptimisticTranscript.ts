@@ -1,6 +1,53 @@
 import type { SessionMessageSummary } from "../lib/api";
+import {
+  MOBILE_CHAT_CACHE_KEYS,
+  readPersistedJson,
+  schedulePersistJson,
+} from "../lib/chatCachePersistence";
 
 const optimisticTranscriptCache = new Map<string, SessionMessageSummary[]>();
+const MAX_PERSISTED_TRANSCRIPT_SESSIONS = 12;
+const MAX_PERSISTED_TRANSCRIPT_MESSAGES = 40;
+const PERSISTED_TRANSCRIPT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+let transcriptHydration: Promise<void> | null = null;
+
+function persistTranscriptCache(): void {
+  schedulePersistJson(MOBILE_CHAT_CACHE_KEYS.optimisticTranscripts, () => {
+    if (optimisticTranscriptCache.size === 0) return null;
+    const entries = [...optimisticTranscriptCache.entries()].slice(
+      -MAX_PERSISTED_TRANSCRIPT_SESSIONS
+    );
+    return Object.fromEntries(
+      entries.map(([sessionId, messages]) => [
+        sessionId,
+        messages.slice(-MAX_PERSISTED_TRANSCRIPT_MESSAGES),
+      ])
+    );
+  });
+}
+
+export function hydrateMobileOptimisticTranscripts(): Promise<void> {
+  if (!transcriptHydration) {
+    transcriptHydration = (async () => {
+      const data = await readPersistedJson<Record<string, SessionMessageSummary[]>>(
+        MOBILE_CHAT_CACHE_KEYS.optimisticTranscripts
+      );
+      if (!data) return;
+      const cutoff = Date.now() - PERSISTED_TRANSCRIPT_MAX_AGE_MS;
+      for (const [sessionId, messages] of Object.entries(data)) {
+        if (optimisticTranscriptCache.has(sessionId) || !Array.isArray(messages)) continue;
+        const fresh = messages.filter((message) => {
+          const parsed = timestampMs(message);
+          return parsed === null || parsed >= cutoff;
+        });
+        if (fresh.length > 0) {
+          optimisticTranscriptCache.set(sessionId, fresh.map(cloneMessage));
+        }
+      }
+    })();
+  }
+  return transcriptHydration;
+}
 
 function normalizeSessionId(sessionId?: string | null): string | null {
   const value = typeof sessionId === "string" ? sessionId.trim() : "";
@@ -54,9 +101,10 @@ function acknowledgedByPersistedHistory(
 function writeCache(sessionId: string, messages: SessionMessageSummary[]): void {
   if (messages.length === 0) {
     optimisticTranscriptCache.delete(sessionId);
-    return;
+  } else {
+    optimisticTranscriptCache.set(sessionId, messages.map(cloneMessage));
   }
-  optimisticTranscriptCache.set(sessionId, messages.map(cloneMessage));
+  persistTranscriptCache();
 }
 
 export function readCachedMobileOptimisticTranscript(
@@ -88,6 +136,7 @@ export function clearCachedMobileOptimisticTranscript(
   const normalizedMessageId = typeof messageId === "string" ? messageId.trim() : "";
   if (!normalizedMessageId) {
     optimisticTranscriptCache.delete(key);
+    persistTranscriptCache();
     return;
   }
   const remaining = readCachedMobileOptimisticTranscript(key).filter(

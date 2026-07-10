@@ -329,7 +329,7 @@ export function finalizeCompletedActivities(activities: LiveActivityItem[]): Liv
 // collapse into one summary row ("Read 3 files") that expands to the full
 // list. Failures and in-flight steps are never grouped, so nothing is hidden.
 
-export type ActivityGroupKind = "read" | "search" | "list";
+export type ActivityGroupKind = "read" | "search" | "list" | "edit" | "fetch" | "command";
 
 export interface ActivityDisplayGroup {
   type: "group";
@@ -346,7 +346,7 @@ export interface ActivityDisplaySingle {
 
 export type ActivityDisplayEntry = ActivityDisplayGroup | ActivityDisplaySingle;
 
-type GroupableKind = ActivityGroupKind | "command";
+type GroupableKind = ActivityGroupKind;
 
 const GROUPABLE_TOOL_KINDS: Record<string, GroupableKind> = {
   read: "read",
@@ -356,6 +356,13 @@ const GROUPABLE_TOOL_KINDS: Record<string, GroupableKind> = {
   web_search: "search",
   ls: "list",
   list: "list",
+  write: "edit",
+  edit: "edit",
+  apply_patch: "edit",
+  multi_edit: "edit",
+  web_fetch: "fetch",
+  fetch: "fetch",
+  http_request: "fetch",
 };
 
 // Shell verbs that only read/inspect — safe to fold into an exploring group.
@@ -401,35 +408,6 @@ const READ_ONLY_COMMAND_KINDS: Record<string, GroupableKind> = {
   true: "command",
   ":": "command",
 };
-
-const READ_ONLY_GIT_SUBCOMMANDS = new Set([
-  "log",
-  "status",
-  "diff",
-  "show",
-  "branch",
-  "blame",
-  "remote",
-  "config",
-  "shortlog",
-  "rev-parse",
-  "rev-list",
-  "describe",
-  "ls-files",
-  "ls-tree",
-  "cat-file",
-  "reflog",
-  "whatchanged",
-  "show-ref",
-  "name-rev",
-  "count-objects",
-  "for-each-ref",
-  "symbolic-ref",
-  "merge-base",
-  "grep",
-  "tag",
-  "stash",
-]);
 
 // Command prefixes that wrap another command (git shortlog stays the verb).
 // `xargs`/`env` also take flags, which the stage classifier skips.
@@ -479,35 +457,23 @@ function classifyShellStage(stage: string): GroupableKind | null {
   }
   const verb = tokens[index]?.split(/[\\/]/).pop()?.toLowerCase() || "";
   if (!verb) return null;
-  if (verb === "git") {
-    const sub = (tokens[index + 1] || "").toLowerCase();
-    return READ_ONLY_GIT_SUBCOMMANDS.has(sub) ? "command" : null;
-  }
-  return READ_ONLY_COMMAND_KINDS[verb] ?? null;
+  if (verb === "git") return "command";
+  return READ_ONLY_COMMAND_KINDS[verb] ?? "command";
 }
 
-/**
- * Classify a (possibly compound) shell command. A command groups only when
- * EVERY stage is a known read-only operation, so `echo && find` folds in but
- * `echo && rm` stays visible. The label uses the most specific exploring kind.
- */
-function classifyShellCommand(command: string): GroupableKind | null {
-  // Drop a trailing truncation marker so the last stage still parses.
+function classifyShellCommand(command: string): GroupableKind {
   const trimmed = command.trim().replace(/\s*\.\.\.$/, "");
-  if (!trimmed) return null;
+  if (!trimmed) return "command";
   const stages = trimmed
     .split(COMPOUND_STAGE_SPLIT)
     .map((stage) => stage.trim())
     .filter(Boolean);
-  if (stages.length === 0) return null;
+  if (stages.length === 0) return "command";
 
   const kinds: GroupableKind[] = [];
   for (const stage of stages) {
-    const kind = classifyShellStage(stage);
-    if (kind === null) return null; // any non-read-only / unknown stage blocks grouping
-    kinds.push(kind);
+    kinds.push(classifyShellStage(stage) ?? "command");
   }
-  // Prefer a concrete exploring kind (read/list/search) over generic "command".
   return kinds.find((kind) => kind !== "command") ?? "command";
 }
 
@@ -516,61 +482,69 @@ function groupKindForActivity(activity: LiveActivityItem): GroupableKind | null 
   const toolName = activity.toolName?.toLowerCase() || "";
   if (toolName in GROUPABLE_TOOL_KINDS) return GROUPABLE_TOOL_KINDS[toolName];
 
-  // exec/process/git tools carry a "Ran <command>" summary; classify by the
-  // shell verb so read-only shell exploration folds into the group too.
   if (toolName === "exec" || toolName === "process" || toolName === "git" || !toolName) {
     const ranMatch = activity.text.match(/^Ran\s+(.+)$/s);
     if (ranMatch) return classifyShellCommand(ranMatch[1]);
-    // Persisted activities sometimes lack toolName; classify by canonical verb.
     if (!toolName) {
       if (/^Explored /.test(activity.text)) return "read";
       if (/^Searched /.test(activity.text)) return "search";
+      if (/^Listed /.test(activity.text)) return "list";
+      if (/^(?:Edited|Created|Updated|Wrote|Deleted) /.test(activity.text)) return "edit";
+      if (/^Fetched /.test(activity.text)) return "fetch";
     }
   }
-  return null;
+  return "command";
 }
 
-function groupLabel(kinds: GroupableKind[], count: number): string {
-  const unique = new Set(kinds);
-  if (unique.size === 1) {
-    const [only] = unique;
-    if (only === "read") return `Read ${count} files`;
-    if (only === "search") return `Ran ${count} searches`;
-    if (only === "list") return `Listed ${count} locations`;
+const KIND_PHRASES: Record<GroupableKind, { one: string; many: (n: number) => string }> = {
+  read: { one: "read a file", many: (n) => `read ${n} files` },
+  search: { one: "ran a search", many: (n) => `ran ${n} searches` },
+  list: { one: "listed a location", many: (n) => `listed ${n} locations` },
+  edit: { one: "edited a file", many: (n) => `edited ${n} files` },
+  fetch: { one: "fetched a page", many: (n) => `fetched ${n} pages` },
+  command: { one: "ran a command", many: (n) => `ran ${n} commands` },
+};
+
+function groupLabel(kinds: GroupableKind[]): string {
+  const counts = new Map<GroupableKind, number>();
+  for (const kind of kinds) {
+    counts.set(kind, (counts.get(kind) ?? 0) + 1);
   }
-  // Mixed exploration, or generic read-only commands.
-  return `Ran ${count} commands`;
+  const phrases = [...counts.entries()].map(([kind, count]) => {
+    const phrase = KIND_PHRASES[kind];
+    return count === 1 ? phrase.one : phrase.many(count);
+  });
+  const joined = phrases.join(", ");
+  return joined.charAt(0).toUpperCase() + joined.slice(1);
 }
 
-/**
- * Collapse consecutive completed exploring activities (reads / lists /
- * searches / read-only shell commands) into one summary group, matching the
- * Codex TUI's exploring cell. Different exploring kinds fold into the same run
- * (a group of ls + find + grep becomes "Ran 3 commands"); a group forms only
- * from 2+ consecutive entries. State-changing/unknown commands, thoughts,
- * failures, and in-flight steps are never grouped, so nothing actionable is
- * hidden.
- */
 export function groupActivitiesForDisplay(activities: LiveActivityItem[]): ActivityDisplayEntry[] {
   const entries: ActivityDisplayEntry[] = [];
-  let run: { kinds: GroupableKind[]; items: LiveActivityItem[] } | null = null;
+  let run: {
+    kinds: GroupableKind[];
+    items: LiveActivityItem[];
+    trailing: LiveActivityItem[];
+  } | null = null;
 
   const flushRun = () => {
     if (!run) return;
     if (run.kinds.length >= 2) {
       const uniqueKinds = new Set(run.kinds);
-      const specific = uniqueKinds.size === 1 ? [...uniqueKinds][0] : "command";
+      const dominant = uniqueKinds.size === 1 ? [...uniqueKinds][0] : "command";
       entries.push({
         type: "group",
         id: `group-${run.items[0].id}-${run.items.length}`,
-        kind: specific === "command" ? "list" : specific,
-        label: groupLabel(run.kinds, run.kinds.length),
+        kind: dominant,
+        label: groupLabel(run.kinds),
         items: run.items,
       });
     } else {
       for (const activity of run.items) {
         entries.push({ type: "single", activity });
       }
+    }
+    for (const activity of run.trailing) {
+      entries.push({ type: "single", activity });
     }
     run = null;
   };
@@ -583,6 +557,10 @@ export function groupActivitiesForDisplay(activities: LiveActivityItem[]): Activ
     }
     const kind = groupKindForActivity(activity);
     if (kind === null) {
+      if (run && activity.phase === "start") {
+        run.trailing.push(activity);
+        continue;
+      }
       flushRun();
       entries.push({ type: "single", activity });
       continue;
@@ -591,7 +569,7 @@ export function groupActivitiesForDisplay(activities: LiveActivityItem[]): Activ
       run.kinds.push(kind);
       run.items.push(activity);
     } else {
-      run = { kinds: [kind], items: [activity] };
+      run = { kinds: [kind], items: [activity], trailing: [] };
     }
   }
   flushRun();

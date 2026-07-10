@@ -1,4 +1,9 @@
 import type { MobilePendingChatMessage } from "../lib/api";
+import {
+  MOBILE_CHAT_CACHE_KEYS,
+  readPersistedJson,
+  schedulePersistJson,
+} from "../lib/chatCachePersistence";
 
 export type CachedMobileOptimisticPendingMessage = MobilePendingChatMessage & {
   updatedAt: number;
@@ -6,6 +11,36 @@ export type CachedMobileOptimisticPendingMessage = MobilePendingChatMessage & {
 
 const MOBILE_OPTIMISTIC_PENDING_QUEUE_STALE_MS = 15 * 60 * 1000;
 const mobileOptimisticPendingQueueCache = new Map<string, CachedMobileOptimisticPendingMessage[]>();
+let pendingQueueHydration: Promise<void> | null = null;
+
+function persistPendingQueueCache(): void {
+  schedulePersistJson(MOBILE_CHAT_CACHE_KEYS.optimisticPendingQueue, () => {
+    if (mobileOptimisticPendingQueueCache.size === 0) return null;
+    return Object.fromEntries(mobileOptimisticPendingQueueCache.entries());
+  });
+}
+
+export function hydrateMobileOptimisticPendingQueue(): Promise<void> {
+  if (!pendingQueueHydration) {
+    pendingQueueHydration = (async () => {
+      const data = await readPersistedJson<Record<string, CachedMobileOptimisticPendingMessage[]>>(
+        MOBILE_CHAT_CACHE_KEYS.optimisticPendingQueue
+      );
+      if (!data) return;
+      for (const [sessionId, messages] of Object.entries(data)) {
+        if (mobileOptimisticPendingQueueCache.has(sessionId) || !Array.isArray(messages)) continue;
+        const optimisticOnly = messages.filter(
+          (message) => message?.id && mobilePendingMessageIsOptimistic(message)
+        );
+        if (optimisticOnly.length > 0) {
+          mobileOptimisticPendingQueueCache.set(sessionId, optimisticOnly.map(cloneMessage));
+        }
+      }
+      pruneStaleEntries();
+    })();
+  }
+  return pendingQueueHydration;
+}
 
 export function mobilePendingMessageIsOptimistic(message: MobilePendingChatMessage): boolean {
   return message.id.startsWith("optimistic-");
@@ -86,13 +121,15 @@ export function writeCachedMobileOptimisticPendingMessages(
   const optimisticOnly = messages.filter(mobilePendingMessageIsOptimistic).map(cloneMessage);
   if (optimisticOnly.length === 0) {
     mobileOptimisticPendingQueueCache.delete(key);
-    return;
+  } else {
+    mobileOptimisticPendingQueueCache.set(key, optimisticOnly);
   }
-  mobileOptimisticPendingQueueCache.set(key, optimisticOnly);
+  persistPendingQueueCache();
 }
 
 export function clearCachedMobileOptimisticPendingMessages(sessionId?: string | null): void {
   const key = normalizeLiveSessionId(sessionId);
   if (!key) return;
   mobileOptimisticPendingQueueCache.delete(key);
+  persistPendingQueueCache();
 }

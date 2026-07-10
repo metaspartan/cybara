@@ -30,4 +30,16 @@ describe("system prompt identity", () => {
     });
     expect(prompt).toContain("MiniMax-M3");
   });
+
+  test("prefers the session-bound embedded browser when browser tools are enabled", () => {
+    const prompt = buildSystemPrompt({
+      modelDisplay: "MiniMax-M3",
+      tools: ["browser"],
+      workspaceDir: "/tmp",
+    });
+    expect(prompt).toContain("Use the session-bound embedded browser");
+    expect(prompt).toContain("Do not use openVisual, visual:true, or headless:false");
+    expect(prompt).toContain("close it only when explicitly requested");
+    expect(prompt).not.toContain("ALWAYS close the browser");
+  });
 });

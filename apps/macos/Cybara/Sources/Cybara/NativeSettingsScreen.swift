@@ -25,7 +25,7 @@ struct NativeSettingsScreen: View {
 
     @State private var selectedTab: SettingsTab = .general
     @State private var advancedSelection: SettingsAdvancedSection = .router
-    @AppStorage("cybara.petEnabled") private var petEnabled = true
+    @AppStorage("cybara.petEnabled") private var petEnabled = false
     @State private var health: GatewayHealth?
     @State private var config: [String: Any] = [:]
     @State private var providers: [GatewayProvider] = []

@@ -13,8 +13,6 @@ function activity(overrides: Partial<MobileWorkActivity> & { id: string }): Mobi
   };
 }
 
-// Mobile parity with the web/Tauri Codex-style grouping
-// (tests/ui/chat-activity-grouping.test.ts): same rules, same labels.
 describe("groupMobileActivities", () => {
   test("collapses consecutive reads into 'Read N files'", () => {
     const entries = groupMobileActivities([
@@ -38,7 +36,20 @@ describe("groupMobileActivities", () => {
     expect(entries).toHaveLength(1);
     const group = entries[0];
     if (group.type !== "group") throw new Error("expected group");
-    expect(group.label).toBe("Ran 4 commands");
+    expect(group.label).toBe("Listed 2 locations, ran a command, ran a search");
+  });
+
+  test("edits and state-changing commands fold into the run (Codex parity)", () => {
+    const entries = groupMobileActivities([
+      activity({ id: "a", toolName: "read", text: "Explored a.ts" }),
+      activity({ id: "b", toolName: "edit", text: "Edited a.ts +10 -2" }),
+      activity({ id: "c", toolName: "exec", text: "Ran bun test" }),
+      activity({ id: "d", toolName: "read", text: "Explored b.ts" }),
+    ]);
+    expect(entries).toHaveLength(1);
+    const group = entries[0];
+    if (group.type !== "group") throw new Error("expected group");
+    expect(group.label).toBe("Read 2 files, edited a file, ran a command");
   });
 
   test("interleaved thoughts stay visible between command groups", () => {
@@ -52,7 +63,7 @@ describe("groupMobileActivities", () => {
     expect(entries.map((entry) => entry.type)).toEqual(["group", "single", "group"]);
     const group = entries[0];
     if (group.type !== "group") throw new Error("expected group");
-    expect(group.label).toBe("Ran 2 commands");
+    expect(group.label).toBe("Listed a location, ran a search");
     expect(group.items.map((item) => item.id)).toEqual(["a", "b"]);
     const thought = entries[1];
     if (thought.type !== "single") throw new Error("expected thought");
@@ -63,12 +74,27 @@ describe("groupMobileActivities", () => {
     expect(finalGroup.label).toBe("Ran 2 commands");
   });
 
-  test("mutations and in-flight/failure steps never group", () => {
+  test("failures never group; start rows defer to after the run", () => {
     const entries = groupMobileActivities([
       activity({ id: "a", toolName: "exec", text: "Ran git commit -m x" }),
       activity({ id: "b", toolName: "read", phase: "start", text: "Exploring a.ts" }),
       activity({ id: "c", toolName: "read", phase: "error", text: "Read failed for b.ts" }),
     ]);
     expect(entries.map((entry) => entry.type)).toEqual(["single", "single", "single"]);
+  });
+
+  test("an in-flight start row does not break a run", () => {
+    const entries = groupMobileActivities([
+      activity({ id: "a", toolName: "read", text: "Explored a.ts" }),
+      activity({ id: "run", toolName: "read", phase: "start", text: "Exploring b.ts" }),
+      activity({ id: "c", toolName: "read", text: "Explored c.ts" }),
+    ]);
+    expect(entries.map((entry) => entry.type)).toEqual(["group", "single"]);
+    const group = entries[0];
+    if (group.type !== "group") throw new Error("expected group");
+    expect(group.label).toBe("Read 2 files");
+    const trailing = entries[1];
+    if (trailing.type !== "single") throw new Error("expected single");
+    expect(trailing.activity.id).toBe("run");
   });
 });

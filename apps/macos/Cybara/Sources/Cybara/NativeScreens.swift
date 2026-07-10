@@ -2181,19 +2181,17 @@ struct ChatScreen: View {
                 onClose: { showWorkspacePanel = false }
             )
             Divider()
-            Group {
-                switch activeWorkspaceTab {
-                case .review:
-                    ScrollView { fileDiffsPopover }
-                case .terminal:
-                    TerminalScreen(client: client)
-                case .browser:
-                    NativeChatBrowserPanel(client: client, sessionID: selectedSessionID)
-                case .files:
-                    NativeChatFilesPanel(client: client, workspacePath: activeWorkspaceDir)
-                case .subagents:
-                    subagentsPopover
-                }
+            ZStack {
+                ScrollView { fileDiffsPopover }
+                    .nativeWorkspacePanelVisibility(activeWorkspaceTab == .review)
+                TerminalScreen(client: client)
+                    .nativeWorkspacePanelVisibility(activeWorkspaceTab == .terminal)
+                NativeChatBrowserPanel(client: client, sessionID: selectedSessionID)
+                    .nativeWorkspacePanelVisibility(activeWorkspaceTab == .browser)
+                NativeChatFilesPanel(client: client, workspacePath: activeWorkspaceDir)
+                    .nativeWorkspacePanelVisibility(activeWorkspaceTab == .files)
+                subagentsPopover
+                    .nativeWorkspacePanelVisibility(activeWorkspaceTab == .subagents)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }

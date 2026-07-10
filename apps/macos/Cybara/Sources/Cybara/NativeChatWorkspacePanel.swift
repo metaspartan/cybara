@@ -1,6 +1,14 @@
 import AppKit
 import SwiftUI
 
+extension View {
+    func nativeWorkspacePanelVisibility(_ visible: Bool) -> some View {
+        opacity(visible ? 1 : 0)
+            .allowsHitTesting(visible)
+            .accessibilityHidden(!visible)
+    }
+}
+
 private func nativeChatPathSegment(_ value: String) -> String {
     var allowed = CharacterSet.urlPathAllowed
     allowed.remove(charactersIn: "/")

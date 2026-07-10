@@ -8,12 +8,16 @@ export interface PetPosition {
   y: number;
 }
 
+export function parsePetEnabled(value: string | null): boolean {
+  return value === "1";
+}
+
 export function readPetEnabled(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    return window.localStorage.getItem(PET_ENABLED_KEY) !== "0";
+    return parsePetEnabled(window.localStorage.getItem(PET_ENABLED_KEY));
   } catch {
-    return true;
+    return false;
   }
 }
 

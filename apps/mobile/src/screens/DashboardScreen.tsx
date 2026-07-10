@@ -39,6 +39,7 @@ import {
   ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  AppState,
   Image,
   Keyboard,
   Linking,
@@ -257,11 +258,14 @@ import {
 } from "./dashboardLiveChat";
 import {
   clearCachedMobileOptimisticPendingMessages,
+  hydrateMobileOptimisticPendingQueue,
   mergeMobilePendingMessages,
   mobilePendingMessageIsOptimistic,
   readCachedMobileOptimisticPendingMessages,
   writeCachedMobileOptimisticPendingMessages,
 } from "./dashboardPendingQueue";
+import { hydrateMobileOptimisticTranscripts } from "./dashboardOptimisticTranscript";
+import { persistLastOpenedSessionId, readLastOpenedSessionId } from "../lib/chatCachePersistence";
 import {
   EmptyState,
   GatewayDetailPill,
@@ -326,7 +330,15 @@ export function DashboardScreen({
 
   const closeDetailRoute = () => {
     setChatHeaderAction(null);
-    setDetailRoute((route) => mobileBackRouteForDetail(route));
+    setDetailRoute((route) => {
+      if (route?.kind === "session") void persistLastOpenedSessionId(null);
+      return mobileBackRouteForDetail(route);
+    });
+  };
+
+  const openSessionRoute = (id: string) => {
+    setDetailRoute({ kind: "session", id });
+    void persistLastOpenedSessionId(id);
   };
 
   const refresh = async (showRefreshing = true) => {
@@ -426,9 +438,39 @@ export function DashboardScreen({
     if (showRefreshing) setRefreshing(false);
   };
 
+  const refreshAllRef = useRef(refreshAll);
+  refreshAllRef.current = refreshAll;
+  const restoredSessionRef = useRef(false);
+
   useEffect(() => {
     void refreshAll();
   }, [profile.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      await Promise.all([
+        hydrateMobileOptimisticTranscripts(),
+        hydrateMobileOptimisticPendingQueue(),
+      ]);
+      if (cancelled || restoredSessionRef.current) return;
+      restoredSessionRef.current = true;
+      const lastSessionId = await readLastOpenedSessionId();
+      if (cancelled || !lastSessionId) return;
+      setActiveTab("sessions");
+      setDetailRoute((route) => route ?? { kind: "session", id: lastSessionId });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshAllRef.current(false);
+    });
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -721,7 +763,7 @@ export function DashboardScreen({
               accentColor={accentColor}
               closeDetail={closeDetailRoute}
               refreshSummary={() => refresh(false)}
-              openSession={(id) => setDetailRoute({ kind: "session", id })}
+              openSession={openSessionRoute}
               loadMoreLogs={loadMoreLogs}
               loadingMoreLogs={loadingMoreLogs}
               logPageError={logPageError}
@@ -735,14 +777,14 @@ export function DashboardScreen({
               systemMonitor={summary?.systemMonitor ?? null}
               selectTab={selectTab}
               openSurface={openSurface}
-              openSession={(id) => setDetailRoute({ kind: "session", id })}
+              openSession={openSessionRoute}
             />
           ) : null}
           {!detailRoute && activeTab === "sessions" ? (
             <SessionsPanel
               sessions={orderedSessions}
               summary={summary}
-              openSession={(id) => setDetailRoute({ kind: "session", id })}
+              openSession={openSessionRoute}
               createChat={() => setDetailRoute({ kind: "newChat" })}
               deleteSession={async (id) => {
                 await api.deleteSession(id);

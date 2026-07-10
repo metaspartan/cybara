@@ -28,8 +28,18 @@ const nativeBrowserSource = readFileSync(
   ),
   "utf8"
 );
+const nativeChatSource = readFileSync(
+  fileURLToPath(
+    new URL("../../apps/macos/Cybara/Sources/Cybara/NativeScreens.swift", import.meta.url)
+  ),
+  "utf8"
+);
 const styleSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/index.css", import.meta.url)),
+  "utf8"
+);
+const panelSource = readFileSync(
+  fileURLToPath(new URL("../../ui/src/pages/chat/ChatWorkspacePanel.tsx", import.meta.url)),
   "utf8"
 );
 
@@ -43,10 +53,6 @@ describe("chat workspace panel", () => {
   });
 
   test("reuses secured terminal, browser, IDE file, diff, and subagent surfaces", () => {
-    const panelSource = readFileSync(
-      fileURLToPath(new URL("../../ui/src/pages/chat/ChatWorkspacePanel.tsx", import.meta.url)),
-      "utf8"
-    );
     expect(chatSource).toContain("ChatWorkspacePanel");
     expect(chatSource).toContain("EmbeddedTerminalPanel");
     expect(chatSource).toContain("ChatWorkspaceBrowser");
@@ -100,6 +106,20 @@ describe("chat workspace panel", () => {
       'visible={showWorkspacePanel && activeWorkspaceTab === "terminal"}'
     );
     expect(chatSource).toContain('workspaceTabs.includes("browser")');
+  });
+
+  test("workspace tools remain mounted when the panel is hidden", () => {
+    expect(panelSource).not.toContain("if (!isOpen) return null");
+    expect(panelSource).toContain("aria-hidden={!isOpen}");
+    expect(panelSource).toContain('isOpen ? "flex" : "hidden"');
+  });
+
+  test("native workspace tools remain mounted while switching tabs", () => {
+    expect(nativeChatSource).toContain("ZStack {");
+    expect(nativeChatSource).toContain(
+      ".nativeWorkspacePanelVisibility(activeWorkspaceTab == .terminal)"
+    );
+    expect(nativeChatSource).not.toContain("switch activeWorkspaceTab");
   });
 
   test("composer selectors suppress native focus chrome", () => {
