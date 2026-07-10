@@ -31,6 +31,7 @@ import {
   buildMobileChatSettingsLines,
   buildMobileHeaderCopy,
   compactLastUpdatedLabel,
+  createMobileSessionId,
   sessionProviderModelLabel,
   formatMobileValue,
   formatUptime,
@@ -877,5 +878,20 @@ describe("mobile provider-aware reasoning gating", () => {
     expect(mobileReasoningLabel("high", "google", "gemini-2.5-pro")).toBe("High");
     expect(mobileReasoningLabel("xhigh", "openai", "gpt-5.2")).toBe("Extra High");
     expect(mobileReasoningLabel("medium", "z.ai", "glm-5.2")).toBe("Thinking");
+  });
+});
+
+describe("mobile session ids", () => {
+  test("creates deterministic collision-resistant ids without native crypto globals", () => {
+    let value = 0;
+    const first = createMobileSessionId(1_783_662_000_000, () => {
+      value += 0.1;
+      return value;
+    });
+    const second = createMobileSessionId(1_783_662_000_001, () => 0.5);
+
+    expect(first).toMatch(/^mobile-[a-z0-9]+-[a-f0-9]{32}$/);
+    expect(second).toMatch(/^mobile-[a-z0-9]+-[a-f0-9]{32}$/);
+    expect(first).not.toBe(second);
   });
 });

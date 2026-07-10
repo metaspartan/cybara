@@ -2007,7 +2007,7 @@ struct ChatScreen: View {
                 if reasoningSaving {
                     ProgressView().controlSize(.small)
                 } else {
-                    Image(systemName: "brain.head.profile")
+                    Image(systemName: "brain")
                         .font(.system(size: 13, weight: .medium))
                 }
             }

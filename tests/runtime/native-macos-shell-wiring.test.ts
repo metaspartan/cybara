@@ -436,7 +436,7 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("nativeChatAgentLabel(name: agent.name");
     expect(nativeScreens).toContain("private var reasoningEffortPopover: some View");
     expect(nativeScreens).toContain("client.updateAgentReasoning");
-    expect(nativeScreens).toContain('Image(systemName: "brain.head.profile")');
+    expect(nativeScreens).toContain('Image(systemName: "brain")');
     expect(nativeScreens).toContain("private var contextUsageText: String");
     expect(nativeScreens).toContain("private var contextUsagePopover: some View");
     expect(nativeScreens).toContain("providerPlanStatus: ProviderPlanStatusResponse?");

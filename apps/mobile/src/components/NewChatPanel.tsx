@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  ActionSheetIOS,
   ActivityIndicator,
+  Alert,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -8,14 +11,20 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { CircleHelp, Send, ShieldAlert } from "lucide-react-native";
+import { Brain, ChevronRight, CircleHelp, Send, ShieldAlert } from "lucide-react-native";
 import { GlassPanel } from "./Glass";
 import { CybaraMobileApi, type AgentSummary } from "../lib/api";
 import {
   MOBILE_CHAT_COMPOSER,
   boundedMobileComposerHeight,
+  createMobileSessionId,
   mobileComposerHeightForDraft,
+  mobileReasoningLabel,
+  mobileSupportedReasoningEfforts,
 } from "../lib/dashboard";
+import { haptics } from "../lib/haptics";
+import { liveAssistantMessage, writeCachedMobileLiveAssistant } from "../screens/dashboardLiveChat";
+import { writeCachedMobileOptimisticTranscriptMessage } from "../screens/dashboardOptimisticTranscript";
 import { colors, radius, spacing, subscribeColors, typography } from "../theme/liquidGlass";
 
 function normalizeApprovalMode(value?: string): "always_allow" | "ask" {
@@ -32,6 +41,7 @@ export function NewChatPanel({
   api,
   onConfigChanged,
   onCreated,
+  onSettled,
   toolApprovalMode,
 }: {
   accentColor: string;
@@ -39,6 +49,7 @@ export function NewChatPanel({
   api: CybaraMobileApi;
   onConfigChanged?: () => void;
   onCreated: (sessionId: string) => void;
+  onSettled?: () => void;
   toolApprovalMode?: string;
 }) {
   const defaultAgentId = agents.find((agent) => agent.status === "running")?.id || agents[0]?.id;
@@ -57,6 +68,11 @@ export function NewChatPanel({
     normalizeApprovalMode(toolApprovalMode)
   );
   const [savingApprovalMode, setSavingApprovalMode] = useState(false);
+  const [reasoningUpdating, setReasoningUpdating] = useState(false);
+  const [reasoningOverride, setReasoningOverride] = useState<{
+    agentId: string;
+    effort: AgentSummary["reasoning_effort"];
+  } | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -92,27 +108,120 @@ export function NewChatPanel({
     };
   }, [api]);
 
-  const createChat = async () => {
-    const trimmed = message.trim();
-    if (!trimmed || creating) return;
-    setCreating(true);
+  const selectedAgent = agents.find((agent) => agent.id === selectedAgentId);
+  const reasoningEffort =
+    reasoningOverride && reasoningOverride.agentId === selectedAgent?.id
+      ? reasoningOverride.effort
+      : (selectedAgent?.reasoning_effort ?? null);
+  const reasoningOptions = mobileSupportedReasoningEfforts(
+    selectedAgent?.provider_type ?? selectedAgent?.provider_id ?? selectedAgent?.provider,
+    selectedAgent?.model
+  ).map((option) => ({
+    label: option.label,
+    value: option.value === "" ? null : option.value,
+  }));
+  const reasoningLabel = mobileReasoningLabel(
+    reasoningEffort,
+    selectedAgent?.provider_type ?? selectedAgent?.provider_id ?? selectedAgent?.provider,
+    selectedAgent?.model
+  );
+
+  const saveReasoningEffort = async (effort: AgentSummary["reasoning_effort"]) => {
+    if (!selectedAgent || reasoningUpdating || effort === reasoningEffort) return;
+    const previous = reasoningEffort;
+    setReasoningOverride({ agentId: selectedAgent.id, effort });
+    setReasoningUpdating(true);
     setCreateError(null);
     try {
-      const result = await api.sendChat({
+      const result = await api.updateAgentReasoning(selectedAgent.id, effort);
+      if (!result.success) throw new Error(result.error || "Gateway rejected reasoning effort.");
+      onConfigChanged?.();
+    } catch (error) {
+      setReasoningOverride({ agentId: selectedAgent.id, effort: previous });
+      setCreateError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReasoningUpdating(false);
+    }
+  };
+
+  const openReasoningOptions = () => {
+    if (!selectedAgent || reasoningUpdating) return;
+    haptics.select();
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          title: `${selectedAgent.name} reasoning`,
+          message: "Choose how much thinking this agent uses before answering.",
+          options: [...reasoningOptions.map((option) => option.label), "Cancel"],
+          cancelButtonIndex: reasoningOptions.length,
+        },
+        (index) => {
+          const option = reasoningOptions[index];
+          if (option) void saveReasoningEffort(option.value);
+        }
+      );
+      return;
+    }
+    Alert.alert(
+      `${selectedAgent.name} reasoning`,
+      "Choose how much thinking this agent uses before answering.",
+      [
+        ...reasoningOptions.map((option) => ({
+          text: option.value === reasoningEffort ? `${option.label} ✓` : option.label,
+          onPress: () => {
+            void saveReasoningEffort(option.value);
+          },
+        })),
+        { text: "Cancel", style: "cancel" as const },
+      ]
+    );
+  };
+
+  const createChat = () => {
+    const trimmed = message.trim();
+    if (!trimmed || creating || reasoningUpdating) return;
+    const sessionId = createMobileSessionId();
+    const startedAt = Date.now();
+    writeCachedMobileOptimisticTranscriptMessage(sessionId, {
+      id: `local-${startedAt}`,
+      role: "user",
+      content: trimmed,
+      timestamp: new Date(startedAt).toISOString(),
+    });
+    writeCachedMobileLiveAssistant(
+      sessionId,
+      liveAssistantMessage(sessionId, null, startedAt),
+      startedAt
+    );
+    setCreating(true);
+    setCreateError(null);
+    onCreated(sessionId);
+    void api
+      .sendChat({
         message: trimmed,
+        sessionId,
         agentId: selectedAgentId,
         workspaceDir: workspaceDir.trim() || undefined,
         useModelRouter,
+      })
+      .catch((error) => {
+        const failedAt = Date.now();
+        const failed = liveAssistantMessage(sessionId, null, failedAt);
+        writeCachedMobileLiveAssistant(sessionId, {
+          ...failed,
+          processActivities: [
+            {
+              id: `new-chat-error-${failedAt}`,
+              phase: "error",
+              text: error instanceof Error ? error.message : String(error),
+              timestamp: failedAt,
+            },
+          ],
+        });
+      })
+      .finally(() => {
+        onSettled?.();
       });
-      if (!result.sessionId) {
-        throw new Error("Gateway did not return a session id.");
-      }
-      onCreated(result.sessionId);
-    } catch (error) {
-      setCreateError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setCreating(false);
-    }
   };
 
   const updateMessageDraft = (value: string) => {
@@ -211,6 +320,41 @@ export function NewChatPanel({
       </ScrollView>
 
       <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>Reasoning</Text>
+        {reasoningUpdating ? (
+          <ActivityIndicator color={colors.textMuted} size="small" />
+        ) : (
+          <Text style={styles.counterText}>{reasoningLabel}</Text>
+        )}
+      </View>
+      <Pressable
+        accessibilityLabel={`Reasoning effort: ${reasoningLabel}`}
+        accessibilityRole="button"
+        disabled={!selectedAgent || reasoningUpdating}
+        onPress={openReasoningOptions}
+        style={({ pressed }) => [
+          styles.reasoningRow,
+          pressed && styles.reasoningRowPressed,
+          (!selectedAgent || reasoningUpdating) && styles.reasoningRowDisabled,
+        ]}
+      >
+        <View style={[styles.reasoningIcon, { backgroundColor: `${accentColor}18` }]}>
+          <Brain color={selectedAgent ? accentColor : colors.textDim} size={18} />
+        </View>
+        <View style={styles.reasoningText}>
+          <Text style={styles.reasoningTitle}>Reasoning effort</Text>
+          <Text numberOfLines={1} style={styles.agentChipDetail}>
+            {selectedAgent
+              ? `Applied to ${selectedAgent.name}`
+              : useModelRouter
+                ? "Chosen automatically by the router"
+                : "Select an agent to customize"}
+          </Text>
+        </View>
+        <ChevronRight color={colors.textMuted} size={18} />
+      </Pressable>
+
+      <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>Permissions</Text>
         {savingApprovalMode ? (
           <ActivityIndicator color={colors.textMuted} size="small" />
@@ -291,7 +435,7 @@ export function NewChatPanel({
         <Pressable
           accessibilityLabel="Create chat"
           accessibilityRole="button"
-          disabled={!message.trim() || creating}
+          disabled={!message.trim() || creating || reasoningUpdating}
           onPress={createChat}
           style={[
             styles.sendButton,
@@ -387,6 +531,40 @@ const makeStyles = () =>
       alignItems: "center",
       flexDirection: "row",
       gap: 6,
+    },
+    reasoningRow: {
+      alignItems: "center",
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      flexDirection: "row",
+      gap: spacing.sm,
+      minHeight: 58,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    reasoningRowPressed: {
+      opacity: 0.78,
+    },
+    reasoningRowDisabled: {
+      opacity: 0.58,
+    },
+    reasoningIcon: {
+      alignItems: "center",
+      borderRadius: radius.md,
+      height: 36,
+      justifyContent: "center",
+      width: 36,
+    },
+    reasoningText: {
+      flex: 1,
+      gap: 2,
+    },
+    reasoningTitle: {
+      color: colors.text,
+      fontSize: typography.body,
+      fontWeight: "800",
     },
     composer: {
       alignItems: "flex-end",

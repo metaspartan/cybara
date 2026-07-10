@@ -7,10 +7,28 @@ import {
   mobilePreSteerProcessActivities,
   prunePersistedMobileLiveAssistant,
   readCachedMobileLiveAssistant,
+  subscribeCachedMobileLiveAssistant,
   writeCachedMobileLiveAssistant,
 } from "../../apps/mobile/src/screens/dashboardLiveChat";
 
 describe("mobile live chat cache", () => {
+  test("notifies mounted chat screens when background live state changes", () => {
+    const sessionId = `mobile-live-subscribe-${Date.now()}`;
+    const updates: Array<string | null> = [];
+    const unsubscribe = subscribeCachedMobileLiveAssistant(sessionId, (cached) => {
+      updates.push(cached?.message.id ?? null);
+    });
+    const live = liveAssistantMessage(sessionId, null, 1783015200000);
+
+    writeCachedMobileLiveAssistant(sessionId, live, 1783015200000);
+    clearCachedMobileLiveAssistant(sessionId);
+    unsubscribe();
+    writeCachedMobileLiveAssistant(sessionId, live, 1783015200001);
+
+    expect(updates).toEqual([live.id, null]);
+    clearCachedMobileLiveAssistant(sessionId);
+  });
+
   test("restores cached live assistant rows by session", () => {
     const sessionId = `mobile-live-${Date.now()}`;
     const live = liveAssistantMessage(sessionId, null, 1783015200000);

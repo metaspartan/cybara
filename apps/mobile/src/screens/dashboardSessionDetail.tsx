@@ -28,7 +28,7 @@ import {
   ArrowDown,
   ArrowUp,
   Bot,
-  BrainCircuit,
+  Brain,
   Clock3,
   Folder,
   Gauge,
@@ -96,6 +96,7 @@ import {
   mobilePreSteerProcessActivities,
   prunePersistedMobileLiveAssistant,
   readCachedMobileLiveAssistant,
+  subscribeCachedMobileLiveAssistant,
   writeCachedMobileLiveAssistant,
 } from "./dashboardLiveChat";
 import {
@@ -108,6 +109,7 @@ import {
 import {
   clearCachedMobileOptimisticTranscript,
   mergeCachedMobileOptimisticTranscript,
+  readCachedMobileOptimisticTranscript,
   writeCachedMobileOptimisticTranscriptMessage,
 } from "./dashboardOptimisticTranscript";
 
@@ -117,6 +119,28 @@ export interface ChatHeaderAction {
 }
 
 const MOBILE_MODEL_ROUTER_SELECTOR_VALUE = "__model_router__";
+
+function optimisticMobileSessionDetail(
+  sessionId: string,
+  sessionSummary?: SessionSummary | null
+): SessionDetailSummary | null {
+  const messages = readCachedMobileOptimisticTranscript(sessionId);
+  if (messages.length === 0 && !readCachedMobileLiveAssistant(sessionId)) return null;
+  return {
+    id: sessionId,
+    title: sessionSummary?.title ?? null,
+    agentId: sessionSummary?.agent_id,
+    provider: sessionSummary?.provider,
+    providerId: sessionSummary?.provider_id,
+    providerName: sessionSummary?.provider_name,
+    model: sessionSummary?.model,
+    workspaceDir: sessionSummary?.workspace_dir,
+    createdAt: sessionSummary?.created_at,
+    updatedAt: sessionSummary?.updated_at,
+    pinned: sessionSummary?.pinned,
+    messages,
+  };
+}
 
 function pendingMessagesFromResponse(result: {
   pendingMessage?: MobilePendingChatMessage;
@@ -451,7 +475,9 @@ export function SessionDetailPanel({
       hideSub.remove();
     };
   }, []);
-  const [detail, setDetail] = useState<SessionDetailSummary | null>(null);
+  const [detail, setDetail] = useState<SessionDetailSummary | null>(() =>
+    optimisticMobileSessionDetail(sessionId, sessionSummary)
+  );
   const [gitBranch, setGitBranch] = useState<string | null>(null);
   const [gitBranches, setGitBranches] = useState<GitBranchSummary[]>([]);
   const [gitBranchLoading, setGitBranchLoading] = useState(false);
@@ -581,7 +607,13 @@ export function SessionDetailPanel({
           applySessionDetail(nextDetail);
         } catch (error) {
           if (currentSessionIdRef.current === requestedSessionId) {
-            setLoadError(error instanceof Error ? error.message : String(error));
+            const optimistic = optimisticMobileSessionDetail(requestedSessionId);
+            if (optimistic) {
+              setDetail((current) => current ?? optimistic);
+              setLoadError(null);
+            } else {
+              setLoadError(error instanceof Error ? error.message : String(error));
+            }
           }
         } finally {
           if (sessionRefreshInFlight.current?.token === token) {
@@ -650,7 +682,9 @@ export function SessionDetailPanel({
         (current) => liveAssistantFromStatusSnapshot(sessionId, current, snapshot),
         snapshot.timestamp
       );
-    } catch {}
+    } catch {
+      /* best effort */
+    }
   }, [api, commitLiveAssistant, sessionId, shouldPreserveOptimisticPending]);
 
   const hydratePendingMessages = useCallback(async () => {
@@ -666,7 +700,9 @@ export function SessionDetailPanel({
           preserveOptimistic: preserveOptimisticPending,
         })
       );
-    } catch {}
+    } catch {
+      /* best effort */
+    }
   }, [api, sessionId, shouldPreserveOptimisticPending]);
 
   useEffect(() => {
@@ -698,15 +734,26 @@ export function SessionDetailPanel({
     void hydrateLiveAssistant();
   }, [hydrateLiveAssistant, hydratePendingMessages, sessionId]);
 
+  useEffect(
+    () =>
+      subscribeCachedMobileLiveAssistant(sessionId, (cached) => {
+        setLiveAssistant(cached?.message ?? null);
+        setLiveNowMs(cached?.nowMs ?? Date.now());
+      }),
+    [sessionId]
+  );
+
   useEffect(() => {
     if (!sessionId) return;
     writeCachedMobileOptimisticPendingMessages(sessionId, pendingMessages);
   }, [pendingMessages, sessionId]);
 
   useEffect(() => {
-    setDetail(null);
+    setDetail((current) =>
+      current?.id === sessionId ? current : optimisticMobileSessionDetail(sessionId, sessionSummary)
+    );
     void loadSession(true);
-  }, [loadSession]);
+  }, [loadSession, sessionId, sessionSummary]);
 
   useEffect(() => {
     const disconnect = api.connectStatusStream({
@@ -1715,7 +1762,7 @@ export function SessionDetailPanel({
       value: toolApprovalLabel,
     },
     {
-      icon: BrainCircuit,
+      icon: Brain,
       label: "Reasoning",
       value: reasoningLabel,
       detail: selectedAgent ? "Agent setting" : "Select an agent",
@@ -1753,7 +1800,7 @@ export function SessionDetailPanel({
       onPress: () => runFromChatSettings(openToolApprovalSelector),
     },
     {
-      icon: BrainCircuit,
+      icon: Brain,
       label: "Reasoning effort",
       disabled: reasoningUpdating || useModelRouter || !selectedAgent,
       onPress: () => runFromChatSettings(openReasoningSelector),

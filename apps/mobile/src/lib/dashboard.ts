@@ -313,6 +313,18 @@ export function mobileReasoningLabel(
   return options.find((option) => option.value === (effort ?? ""))?.label ?? "Default";
 }
 
+export function createMobileSessionId(
+  now = Date.now(),
+  random: () => number = Math.random
+): string {
+  const entropy = Array.from({ length: 4 }, () =>
+    Math.floor(random() * 0x1_0000_0000)
+      .toString(16)
+      .padStart(8, "0")
+  ).join("");
+  return `mobile-${now.toString(36)}-${entropy}`;
+}
+
 export const MOBILE_ROUTER_STRATEGY_OPTIONS = [
   { label: "Weighted", value: "weighted" },
   { label: "Round Robin", value: "round_robin" },

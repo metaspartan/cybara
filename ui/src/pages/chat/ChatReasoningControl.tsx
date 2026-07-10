@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { BrainCircuit, HelpCircle, Loader2 } from "lucide-react";
+import { Brain, HelpCircle, Loader2 } from "lucide-react";
 import type { AgentReasoningEffort } from "@/types";
 import { supportedReasoningOptions } from "@/lib/reasoning";
 import { cn } from "@/lib/utils";
@@ -8,6 +8,18 @@ interface ReasoningOption {
   value: AgentReasoningEffort | null;
   label: string;
 }
+
+const LEVEL_HINTS: Record<string, string> = {
+  default: "Follows the provider's own setting",
+  adaptive: "The model decides how much to think",
+  thinking: "Enables the model's thinking mode",
+  minimal: "Fastest, little to no thinking",
+  low: "Quick answers with light thinking",
+  medium: "Balanced speed and depth",
+  high: "Deeper reasoning for harder tasks",
+  "extra high": "Extensive reasoning, slower",
+  max: "Maximum thinking depth, slowest",
+};
 
 export function ChatReasoningControl({
   effort,
@@ -25,6 +37,7 @@ export function ChatReasoningControl({
   onChange: (effort: AgentReasoningEffort | null) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [draftIndex, setDraftIndex] = useState(0);
   const [scrubbing, setScrubbing] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -120,7 +133,7 @@ export function ChatReasoningControl({
     [maxIndex]
   );
 
-  const title = disabled ? "Select an agent to set reasoning" : `Reasoning effort: ${label}`;
+  const ariaLabel = disabled ? "Select an agent to set reasoning" : `Reasoning effort: ${label}`;
 
   return (
     <div ref={rootRef} className="relative shrink-0">
@@ -129,15 +142,10 @@ export function ChatReasoningControl({
         disabled={disabled || updating}
         onClick={() => setOpen((value) => !value)}
         className="chat-reasoning-trigger inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-transparent px-2 text-gray-400 transition-colors hover:bg-white/[0.07] hover:text-white disabled:opacity-50"
-        title={title}
-        aria-label={title}
+        aria-label={ariaLabel}
         aria-expanded={open}
       >
-        {updating ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <BrainCircuit className="h-4 w-4" />
-        )}
+        {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
         <span className="chat-reasoning-trigger-label text-[11px] font-medium">{label}</span>
       </button>
       {open ? (
@@ -147,10 +155,37 @@ export function ChatReasoningControl({
               Effort <span className="font-semibold text-white">{draftLabel}</span>
             </span>
             <span
-              title="How much thinking the model does before answering. Default follows the provider's own setting."
-              className="cursor-help text-gray-500"
+              className="relative cursor-help text-gray-500"
+              onMouseEnter={() => setHelpOpen(true)}
+              onMouseLeave={() => setHelpOpen(false)}
+              onFocus={() => setHelpOpen(true)}
+              onBlur={() => setHelpOpen(false)}
+              tabIndex={0}
+              aria-label="Reasoning level descriptions"
             >
               <HelpCircle className="h-3.5 w-3.5" />
+              {helpOpen ? (
+                <div
+                  role="tooltip"
+                  className="chat-reasoning-popover absolute bottom-full right-0 z-[80] mb-2 w-[264px] rounded-xl border p-3 text-[11px] shadow-xl"
+                >
+                  <div className="pb-2 text-[11px] font-medium leading-4 text-gray-300">
+                    How much thinking the model does before answering.
+                  </div>
+                  <div className="grid grid-cols-[72px_1fr] gap-x-2.5 gap-y-1.5 border-t border-white/[0.08] pt-2">
+                    {options.map((option) => (
+                      <div key={option.label} className="contents">
+                        <span className="whitespace-nowrap text-[10.5px] font-semibold uppercase tracking-wide text-white/90">
+                          {option.label}
+                        </span>
+                        <span className="leading-4 text-gray-400">
+                          {LEVEL_HINTS[option.label.toLowerCase()] ?? ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </span>
           </div>
           <div

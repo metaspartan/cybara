@@ -94,6 +94,12 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("ChatReasoningControl");
     expect(source).toContain("Reasoning effort");
     expect(source).toContain('role="slider"');
+    expect(source).toContain('role="tooltip"');
+    expect(source).toContain("onMouseEnter={() => setHelpOpen(true)}");
+    expect(source).toContain("How much thinking the model does before answering.");
+    expect(source).toContain("LEVEL_HINTS[option.label.toLowerCase()]");
+    expect(source).not.toContain("title={title}");
+    expect(source).not.toContain("setHovered");
     expect(source).toContain("supportedReasoningOptions");
     expect(source).toContain("useUpdateAgentReasoning");
     expect(source).toContain('id="chat-tool-approval-mode"');

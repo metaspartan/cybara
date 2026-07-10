@@ -15,6 +15,10 @@ interface CachedMobileLiveAssistant {
 
 const MOBILE_LIVE_ASSISTANT_STALE_MS = 15 * 60 * 1000;
 const mobileLiveAssistantCache = new Map<string, CachedMobileLiveAssistant>();
+const mobileLiveAssistantSubscribers = new Map<
+  string,
+  Set<(cached: CachedMobileLiveAssistant | null) => void>
+>();
 
 function normalizeLiveSessionId(sessionId?: string | null): string | null {
   const trimmed = typeof sessionId === "string" ? sessionId.trim() : "";
@@ -59,11 +63,34 @@ export function writeCachedMobileLiveAssistant(
     nowMs,
     updatedAt: Date.now(),
   });
+  const cached = readCachedMobileLiveAssistant(key);
+  for (const subscriber of mobileLiveAssistantSubscribers.get(key) ?? []) {
+    subscriber(cached);
+  }
 }
 
 export function clearCachedMobileLiveAssistant(sessionId?: string | null): void {
   const key = normalizeLiveSessionId(sessionId);
-  if (key) mobileLiveAssistantCache.delete(key);
+  if (!key) return;
+  mobileLiveAssistantCache.delete(key);
+  for (const subscriber of mobileLiveAssistantSubscribers.get(key) ?? []) {
+    subscriber(null);
+  }
+}
+
+export function subscribeCachedMobileLiveAssistant(
+  sessionId: string,
+  subscriber: (cached: CachedMobileLiveAssistant | null) => void
+): () => void {
+  const key = normalizeLiveSessionId(sessionId);
+  if (!key) return () => {};
+  const subscribers = mobileLiveAssistantSubscribers.get(key) ?? new Set();
+  subscribers.add(subscriber);
+  mobileLiveAssistantSubscribers.set(key, subscribers);
+  return () => {
+    subscribers.delete(subscriber);
+    if (subscribers.size === 0) mobileLiveAssistantSubscribers.delete(key);
+  };
 }
 
 function mobileActivityKey(activity: SessionProcessActivitySummary): string {

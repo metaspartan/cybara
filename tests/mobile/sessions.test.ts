@@ -164,6 +164,10 @@ describe("mobile: chat management", () => {
     expect(newChat).toContain("Model Router");
     expect(newChat).toContain(".routerConfig()");
     expect(newChat).toContain("useModelRouter");
+    expect(newChat).toContain("mobileSupportedReasoningEfforts(");
+    expect(newChat).toContain("api.updateAgentReasoning(selectedAgent.id, effort)");
+    expect(newChat).toContain("Reasoning effort:");
+    expect(newChat).toContain("ActionSheetIOS.showActionSheetWithOptions(");
     expect(screen).toContain("const changeSessionAgent");
     expect(screen).toContain("const openAgentSelector");
     expect(screen).toContain("MOBILE_MODEL_ROUTER_SELECTOR_VALUE");
@@ -209,5 +213,24 @@ describe("mobile: chat management", () => {
     expect(screen).toContain("<ShieldAlert color={colors.amber}");
     expect(styles).not.toContain("composerSettingsButton:");
     expect(styles).not.toContain("contextUsageDot:");
+  });
+
+  test("new chats navigate immediately and hydrate from optimistic state", () => {
+    const newChat = read("components/NewChatPanel.tsx");
+    const detail = read("screens/dashboardSessionDetail.tsx");
+    const dashboard = read("screens/DashboardScreen.tsx");
+    const startedIndex = newChat.indexOf("onCreated(sessionId)");
+    const requestIndex = newChat.indexOf(".sendChat({", startedIndex);
+
+    expect(startedIndex).toBeGreaterThan(0);
+    expect(requestIndex).toBeGreaterThan(startedIndex);
+    expect(newChat).toContain("const sessionId = createMobileSessionId()");
+    expect(newChat).toContain("writeCachedMobileOptimisticTranscriptMessage(sessionId");
+    expect(newChat).toContain("writeCachedMobileLiveAssistant(");
+    expect(newChat).toContain("sessionId,");
+    expect(dashboard).toContain("onSettled={refreshSummary}");
+    expect(detail).toContain("optimisticMobileSessionDetail(sessionId, sessionSummary)");
+    expect(detail).toContain("current?.id === sessionId ? current");
+    expect(detail).toContain("setLoadError(null)");
   });
 });

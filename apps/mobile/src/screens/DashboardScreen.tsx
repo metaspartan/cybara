@@ -1256,9 +1256,9 @@ function DetailContent({
         agents={summary?.agents ?? []}
         onConfigChanged={refreshSummary}
         onCreated={(sessionId) => {
-          refreshSummary();
           openSession(sessionId);
         }}
+        onSettled={refreshSummary}
         toolApprovalMode={readMobileToolApprovalMode(summary?.config)}
       />
     );
