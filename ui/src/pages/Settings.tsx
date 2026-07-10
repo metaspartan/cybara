@@ -280,7 +280,10 @@ function ThemeSettings() {
             </div>
             <Select
               value={languageMode}
-              onChange={(value) => setLanguageMode(value as typeof languageMode)}
+              onChange={(value) => {
+                setLanguageMode(value as typeof languageMode);
+                void settingsApi.updateConfig({ language: value }).catch(() => undefined);
+              }}
               options={languageOptions(locale).map((option) => ({
                 value: option.value,
                 label: option.label,

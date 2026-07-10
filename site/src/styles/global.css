@@ -740,6 +740,13 @@ img {
   animation: pulse 2.4s ease-in-out infinite;
 }
 
+.release-badge-downloads {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dim);
+}
+
 .download-groups {
   display: flex;
   flex-direction: column;

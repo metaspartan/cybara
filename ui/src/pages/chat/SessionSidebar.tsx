@@ -34,6 +34,7 @@ import {
 } from "@/hooks/useChat";
 import { Button, Modal } from "@/components/ui";
 import { apiFetch } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { connectStatusStream } from "@/lib/status-stream";
 import type { SessionContextUsage, SessionTokenUsage } from "@/types";
@@ -186,6 +187,7 @@ export function SessionsPanel({
   onLoadSession,
   onNewSession,
 }: SessionsPanelProps) {
+  const { t } = useI18n();
   const { data: sessions, isLoading, refetch } = useSessions();
   const deleteSession = useDeleteSession();
   const loadSession = useLoadSession();
@@ -427,7 +429,7 @@ export function SessionsPanel({
                   setSearchQuery("");
                 }
               }}
-              placeholder="Search chats..."
+              placeholder={t("chat.sidebar.search")}
               className="w-full rounded-lg border border-white/10 bg-black/30 pl-8 pr-7 py-1.5 text-[12px] text-white placeholder:text-gray-600 !outline-none focus:border-indigo-400/50"
             />
             {searchQuery && (
@@ -449,7 +451,7 @@ export function SessionsPanel({
             className="w-full p-2.5 rounded-lg bg-[rgba(var(--accent-primary),0.1)] border border-[rgba(var(--accent-primary),0.2)] hover:bg-[rgba(var(--accent-primary),0.15)] text-white text-[12px] font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            New Chat
+            {t("chat.sidebar.newChat")}
           </button>
 
           {isLoading ? (
@@ -499,7 +501,13 @@ export function SessionsPanel({
                       <ChevronDown className="h-3 w-3 shrink-0" />
                     )}
                     {group.kind === "workspace" && <Folder className="h-3 w-3 shrink-0" />}
-                    <span className="min-w-0 flex-1 truncate">{group.label}</span>
+                    <span className="min-w-0 flex-1 truncate">
+                      {group.kind === "pinned"
+                        ? t("chat.sidebar.pinned")
+                        : group.label === "No Workspace"
+                          ? t("chat.sidebar.noWorkspace")
+                          : group.label}
+                    </span>
                   </button>
                   {group.kind === "workspace" ? (
                     <div className="relative flex h-5 w-8 shrink-0 items-center justify-end">

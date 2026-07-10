@@ -8,6 +8,7 @@ import {
   SquareTerminal,
   X,
 } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { SubagentIcon } from "./SubagentIcon";
 
@@ -15,13 +16,17 @@ export type ChatWorkspaceTab = "review" | "terminal" | "browser" | "files" | "su
 
 const TAB_DETAILS: Record<
   ChatWorkspaceTab,
-  { label: string; icon: ComponentType<{ className?: string }> }
+  {
+    label: string;
+    labelKey: `chat.tabs.${ChatWorkspaceTab}`;
+    icon: ComponentType<{ className?: string }>;
+  }
 > = {
-  review: { label: "Review", icon: FileText },
-  terminal: { label: "Terminal", icon: SquareTerminal },
-  browser: { label: "Browser", icon: Globe2 },
-  files: { label: "Files", icon: FolderTree },
-  subagents: { label: "Side task", icon: SubagentIcon },
+  review: { label: "Review", labelKey: "chat.tabs.review", icon: FileText },
+  terminal: { label: "Terminal", labelKey: "chat.tabs.terminal", icon: SquareTerminal },
+  browser: { label: "Browser", labelKey: "chat.tabs.browser", icon: Globe2 },
+  files: { label: "Files", labelKey: "chat.tabs.files", icon: FolderTree },
+  subagents: { label: "Side task", labelKey: "chat.tabs.subagents", icon: SubagentIcon },
 };
 
 export function chatWorkspaceTabLabel(tab: ChatWorkspaceTab): string {
@@ -53,6 +58,7 @@ export function ChatWorkspacePanel({
   tabs: ChatWorkspaceTab[];
   width: number;
 }) {
+  const { t } = useI18n();
   const [showToolMenu, setShowToolMenu] = useState(false);
 
   return (
@@ -81,7 +87,7 @@ export function ChatWorkspacePanel({
           {tabs.map((tab) => {
             const details = TAB_DETAILS[tab];
             const Icon = details.icon;
-            const label = tabLabels?.[tab]?.trim() || details.label;
+            const label = tabLabels?.[tab]?.trim() || t(details.labelKey);
             return (
               <div
                 key={tab}
@@ -104,7 +110,7 @@ export function ChatWorkspacePanel({
                   type="button"
                   className="mr-1 rounded p-1 text-gray-600 opacity-0 transition-opacity hover:bg-white/10 hover:text-gray-300 group-hover:opacity-100 focus:opacity-100"
                   onClick={() => onCloseTab(tab)}
-                  aria-label={`Close ${details.label}`}
+                  aria-label={`Close ${label}`}
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -144,7 +150,7 @@ export function ChatWorkspacePanel({
                     }}
                   >
                     <Icon className="h-3.5 w-3.5 text-gray-500" />
-                    <span>{details.label}</span>
+                    <span>{t(details.labelKey)}</span>
                   </button>
                 );
               })}
@@ -179,7 +185,7 @@ export function ChatWorkspacePanel({
                     onClick={() => onOpenTab(tab)}
                   >
                     <Icon className="h-3.5 w-3.5 text-gray-500" />
-                    <span>{details.label}</span>
+                    <span>{t(details.labelKey)}</span>
                   </button>
                 );
               })}

@@ -76,7 +76,7 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain("workspaceDir={effectiveWorkspaceDir}");
     expect(source).toContain("title={pathDisplay.fullPath}");
     expect(source).toContain("<DiffCodeBlock code={selectedFile.diff} fill />");
-    expect(source).toContain("Worked for");
+    expect(source).toContain('t("chat.workedFor", {');
     expect(source).toContain('section="work"');
     expect(source).toContain('section="summary"');
     expect(source).toContain("function SessionDiffPanel");

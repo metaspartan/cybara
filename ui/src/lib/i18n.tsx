@@ -36,14 +36,14 @@ interface I18nContextValue {
   locale: SupportedLocale;
   mode: LanguageMode;
   setMode: (mode: LanguageMode) => void;
-  t: (key: TranslationKey) => string;
+  t: (key: TranslationKey, params?: Record<string, string | number>) => string;
 }
 
 const I18nContext = createContext<I18nContextValue>({
   locale: "en",
   mode: "system",
   setMode: () => {},
-  t: (key) => translate("en", key),
+  t: (key, params) => translate("en", key, params),
 });
 
 export function I18nProvider({ children }: { children: ReactNode }) {
@@ -73,7 +73,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       locale,
       mode,
       setMode,
-      t: (key) => translate(locale, key),
+      t: (key, params) => translate(locale, key, params),
     }),
     [locale, mode]
   );

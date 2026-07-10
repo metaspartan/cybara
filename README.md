@@ -45,7 +45,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 
 ## Capability Snapshot
 
-- 77 canonical built-in tools and 95 runtime schemas including compatibility aliases (`src/core/tools/index.ts`), with intent-aware exposure so agents receive only the relevant allowed subset for a turn
+- A broad built-in tool library with compatibility aliases and intent-aware exposure, so agents receive only the relevant allowed subset for a turn
 - A broad provider catalog with dynamic model discovery (`src/core/providers.ts`), including Azure OpenAI, Azure AI Foundry, Anthropic on Vertex AI, and Google Gemini on Vertex AI
 - Channel adapters for the major messaging platforms (`src/core/channels/adapters`)
 - Model provider router with weighted / round-robin / lowest-cost / priority / mixture-of-agents strategies, circuit breaker, rate limits, spend caps, and coding-plan limit awareness
@@ -256,9 +256,7 @@ DM policy modes:
 
 ### Provider Layer
 
-Cybara ships 67 provider definitions in `src/core/providers.ts`, spanning hosted frontier APIs, OAuth-backed coding providers, local runtimes, gateway/proxy providers, and AWS Bedrock. Model lists are discovered dynamically from each provider when supported.
-
-Provider definitions: OpenAI, ElevenLabs, Anthropic, Google, Antigravity, MiniMax (API + OAuth portal), Moonshot (Kimi), Qwen Portal, Z.AI + Z.AI Coding, DeepSeek, Alibaba DashScope + Coding Plan, xAI, NVIDIA, Qianfan, Together, Hugging Face, Synthetic, Venice, Xiaomi, Perplexity, Arcee, Nous, Cerebras, Cohere, Mistral, DeepInfra, Fireworks, Novita, StepFun, Tencent, Volcengine, BytePlus, GMI, Kilo Code, OpenCode Go, Ollama Cloud, Ollama, vLLM, LiteLLM, LM Studio, SGLang, llama.cpp, Cloudflare AI Gateway, GitHub Copilot, AWS Bedrock, Groq, OpenRouter, OpenCode Zen, Copilot Proxy, OpenAI Codex (ChatGPT OAuth), Chutes, Vercel AI Gateway, and Google Gemini CLI.
+Cybara supports popular providers including OpenAI, Anthropic, Google Gemini, xAI Grok, Z.AI, MiniMax, Kimi, Qwen, DeepSeek, and OpenRouter, plus local runtimes such as Ollama and vLLM. Model lists are discovered dynamically when supported.
 
 Provider plan monitoring tracks local usage against manual limits or provider-specific coding-plan presets. The router can enforce rolling 5-hour, rolling-week, and monthly windows for flat coding plans, while pay-as-you-go routes can use token pricing and monthly budgets for spend-aware routing.
 
@@ -271,7 +269,7 @@ See provider details: [docs/providers.md](docs/providers.md)
 Cybara both **consumes** external MCP servers (extending agent capabilities) and **exposes itself** as an MCP server so other clients can call cybara's tools:
 
 - **Consume** (client): register servers in Settings → MCP or via the CLI; tools are automatically exposed to agents
-- **Host** (server): run `cybara mcp serve` to expose all built-in tools over stdio JSON-RPC (compatible with Claude Desktop, IDEs, and other agents)
+- **Host** (server): run `cybara mcp serve` to expose built-in tools to MCP clients over stdio JSON-RPC
 
 MCP server management and registry integration:
 

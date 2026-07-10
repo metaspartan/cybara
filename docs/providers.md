@@ -1,8 +1,8 @@
 # Cybara AI Providers
 
-Cybara ships with 67 provider definitions in `src/core/providers.ts`. The registry covers hosted
-AI APIs, OAuth-backed coding providers, local OpenAI-compatible runtimes, proxy/gateway providers,
-and AWS Bedrock. Model names change frequently, so use the UI, `GET /api/providers/available`, or
+Cybara supports popular providers including OpenAI, Anthropic, Google Gemini, xAI Grok, Z.AI,
+MiniMax, Kimi, Qwen, DeepSeek, and OpenRouter, plus local runtimes such as Ollama and vLLM. Model
+names change frequently, so use the UI, `GET /api/providers/available`, or
 `cybara provider models <provider-id>` for the current model catalog exposed by a configured
 provider.
 

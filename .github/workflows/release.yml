@@ -261,6 +261,27 @@ jobs:
           releaseDraft: true
           includeUpdaterJson: false
           args: ${{ matrix.args }} --config src-tauri/tauri.release.conf.json
+      # linuxdeploy aborts when `ldd` exits non-zero on the Bun-compiled sidecar
+      # (bun --compile ELFs make ldd fail even though the binary runs fine).
+      # Shim ldd so failures report "statically linked" and linuxdeploy skips
+      # dependency deployment for that binary instead of crashing.
+      - name: Shim ldd for Bun sidecar (AppImage)
+        if: matrix.platform == 'linux'
+        run: |
+          mkdir -p "$RUNNER_TEMP/ldd-shim"
+          cat > "$RUNNER_TEMP/ldd-shim/ldd" <<'EOF'
+          #!/bin/bash
+          out=$(/usr/bin/ldd "$@" 2>&1)
+          code=$?
+          if [ $code -ne 0 ]; then
+            printf '\tstatically linked\n'
+            exit 0
+          fi
+          printf '%s\n' "$out"
+          exit $code
+          EOF
+          chmod +x "$RUNNER_TEMP/ldd-shim/ldd"
+          echo "$RUNNER_TEMP/ldd-shim" >> "$GITHUB_PATH"
       - name: Build Linux AppImage (best-effort)
         if: matrix.platform == 'linux'
         continue-on-error: true

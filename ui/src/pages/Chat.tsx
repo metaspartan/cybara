@@ -57,6 +57,7 @@ import {
 import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
 import { apiFetch, appendApiTokenParam } from "@/lib/auth";
+import { useI18n } from "@/lib/i18n";
 import {
   buildActivitiesFromToolCalls,
   finalizeCompletedActivities,
@@ -742,6 +743,7 @@ function AssistantMetaInline({
   section?: "work" | "summary";
   workspaceDir?: string | null;
 }) {
+  const { t } = useI18n();
   const isWorkSection = section === "work";
   const orderedToolCalls = getToolCallsInTimelineOrder(message.tool_calls);
   const fileChangeSummary = summarizeMessageFileChanges(orderedToolCalls);
@@ -812,8 +814,12 @@ function AssistantMetaInline({
       {isWorkSection && (
         <div className="text-[12px] text-gray-500 px-0.5">
           <span>
-            Worked for{" "}
-            {workedDurationMs !== undefined ? formatWorkedDuration(workedDurationMs) : "0h 00m 00s"}
+            {t("chat.workedFor", {
+              duration:
+                workedDurationMs !== undefined
+                  ? formatWorkedDuration(workedDurationMs)
+                  : "0h 00m 00s",
+            })}
           </span>
         </div>
       )}
@@ -1280,6 +1286,7 @@ function PendingApprovalRow({
 }
 
 export function Chat() {
+  const { t } = useI18n();
   const navigate = useNavigate();
   const { data: agents = [] } = useAgentSummaries();
   const stopAgent = useStopAgent();
@@ -4413,7 +4420,7 @@ export function Chat() {
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
                     onPaste={handleComposerPaste}
-                    placeholder="Type a message..."
+                    placeholder={t("chat.composer.placeholder")}
                     rows={1}
                     className="w-full min-h-[38px] max-h-[220px] overflow-y-auto resize-none bg-transparent px-0 py-1 text-[13px] leading-5 text-white placeholder-gray-500 !outline-none"
                   />

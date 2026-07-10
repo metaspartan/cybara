@@ -1,4 +1,5 @@
 import { CheckCircle2, ChevronDown, Circle, Clock3, ListChecks, X } from "lucide-react";
+import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { SessionPlanTimelineEntry, SessionPlanView } from "./chatModel";
 
@@ -37,7 +38,7 @@ export function PlanSummaryCard({
   expandable = false,
   onDismiss,
   plan,
-  title = "Latest plan update",
+  title,
 }: {
   compact?: boolean;
   defaultExpanded?: boolean;
@@ -47,6 +48,15 @@ export function PlanSummaryCard({
   plan: PlanSummaryCardPlan;
   title?: string;
 }) {
+  const { t } = useI18n();
+  const cardTitle = title ?? t("chat.plan.title");
+  const progressLabel =
+    plan.summary.total === 0
+      ? sessionPlanProgressLabel(plan)
+      : t("chat.plan.progress", {
+          completed: plan.summary.completed,
+          total: plan.summary.total,
+        });
   const progress = planProgress(plan);
   const currentTask = sessionPlanCurrentTask(plan);
   const canExpand = expandable && plan.items.length > 0;
@@ -95,10 +105,10 @@ export function PlanSummaryCard({
             <span className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left transition-colors hover:text-white">
               <ChevronDown className="h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform group-open:rotate-0" />
               <ListChecks className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-              <span className="truncate text-[12px] font-medium">{title}</span>
+              <span className="truncate text-[12px] font-medium">{cardTitle}</span>
             </span>
             <span className="flex shrink-0 items-center gap-2">
-              <span className="text-[11px] text-gray-500">{sessionPlanProgressLabel(plan)}</span>
+              <span className="text-[11px] text-gray-500">{progressLabel}</span>
               {dismissible && (
                 <button
                   type="button"
@@ -133,10 +143,10 @@ export function PlanSummaryCard({
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-2">
           <ListChecks className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-          <span className="truncate text-[12px] font-medium">{title}</span>
+          <span className="truncate text-[12px] font-medium">{cardTitle}</span>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <span className="text-[11px] text-gray-500">{sessionPlanProgressLabel(plan)}</span>
+          <span className="text-[11px] text-gray-500">{progressLabel}</span>
           {dismissible && (
             <button
               type="button"

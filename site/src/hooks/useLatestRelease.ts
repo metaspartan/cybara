@@ -79,3 +79,80 @@ export function resolveAssetUrl(
   const match = release.assets.find((asset) => pattern.test(asset.name));
   return match ? match.url : fallback;
 }
+
+const ALL_RELEASES_API = "https://api.github.com/repos/metaspartan/cybara/releases?per_page=100";
+const DOWNLOAD_TOTAL_CACHE_KEY = "cybara.site.downloadTotal";
+const DOWNLOAD_TOTAL_CACHE_TTL_MS = 30 * 60 * 1000;
+
+interface GithubReleasesListResponse {
+  assets?: Array<{ download_count?: number }>;
+}
+
+function readCachedDownloadTotal(): number | null {
+  try {
+    const raw = sessionStorage.getItem(DOWNLOAD_TOTAL_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { total: number; at: number };
+    if (Date.now() - parsed.at > DOWNLOAD_TOTAL_CACHE_TTL_MS) return null;
+    return typeof parsed.total === "number" ? parsed.total : null;
+  } catch {
+    return null;
+  }
+}
+
+export function useDownloadTotal(): number | null {
+  const [total, setTotal] = useState<number | null>(() => readCachedDownloadTotal());
+
+  useEffect(() => {
+    if (total !== null) return;
+    let active = true;
+    const controller = new AbortController();
+
+    fetch(ALL_RELEASES_API, {
+      headers: { Accept: "application/vnd.github+json" },
+      signal: controller.signal,
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
+        return response.json() as Promise<GithubReleasesListResponse[]>;
+      })
+      .then((releases) => {
+        if (!active || !Array.isArray(releases)) return;
+        const sum = releases.reduce(
+          (releaseSum, release) =>
+            releaseSum +
+            (release.assets ?? []).reduce(
+              (assetSum, asset) => assetSum + (asset.download_count ?? 0),
+              0
+            ),
+          0
+        );
+        setTotal(sum);
+        try {
+          sessionStorage.setItem(
+            DOWNLOAD_TOTAL_CACHE_KEY,
+            JSON.stringify({ total: sum, at: Date.now() })
+          );
+        } catch {
+          void 0;
+        }
+      })
+      .catch(() => {
+        if (active) setTotal(null);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [total]);
+
+  return total;
+}
+
+export function formatDownloadTotal(total: number): string {
+  if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(1)}M`;
+  if (total >= 10_000) return `${Math.round(total / 1000)}k`;
+  if (total >= 1_000) return `${(total / 1000).toFixed(1)}k`;
+  return `${total}`;
+}

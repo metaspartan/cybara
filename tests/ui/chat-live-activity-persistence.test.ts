@@ -125,9 +125,9 @@ describe("Chat live activity persistence", () => {
 
   test("renders worked duration when duration is defined", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
-    expect(source).toContain(
-      '{workedDurationMs !== undefined ? formatWorkedDuration(workedDurationMs) : "0h 00m 00s"}'
-    );
+    expect(source).toContain('t("chat.workedFor", {');
+    expect(source).toContain("formatWorkedDuration(workedDurationMs)");
+    expect(source).toContain('"0h 00m 00s"');
   });
 
   test("does not truncate activity timeline display lists", () => {

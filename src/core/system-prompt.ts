@@ -131,6 +131,42 @@ function loadSystemPromptConfig(): Record<string, unknown> {
   return parseJsonObject(config.value);
 }
 
+const LANGUAGE_NAMES: Record<string, string> = {
+  es: "Spanish",
+  "zh-cn": "Simplified Chinese",
+  "zh-tw": "Traditional Chinese",
+  ja: "Japanese",
+  fr: "French",
+  de: "German",
+  ko: "Korean",
+  "pt-br": "Brazilian Portuguese",
+  it: "Italian",
+  nl: "Dutch",
+  pl: "Polish",
+  tr: "Turkish",
+  vi: "Vietnamese",
+  id: "Indonesian",
+  th: "Thai",
+  hi: "Hindi",
+  ru: "Russian",
+  uk: "Ukrainian",
+  sv: "Swedish",
+  da: "Danish",
+  fi: "Finnish",
+  ar: "Arabic",
+};
+
+function readConfiguredLanguageName(): string | null {
+  try {
+    const stored = tables.config.get("language");
+    const value = typeof stored?.value === "string" ? stored.value.trim().toLowerCase() : "";
+    if (!value || value === "system" || value === "en") return null;
+    return LANGUAGE_NAMES[value] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function buildSystemPrompt(params: SystemPromptParams): string {
   const systemPromptConfig = loadSystemPromptConfig();
 
@@ -160,6 +196,14 @@ export function buildSystemPrompt(params: SystemPromptParams): string {
   const vibe = identity?.vibe || "";
 
   lines.push(...buildIdentitySection(agentName, emoji, creature, vibe, params.modelDisplay));
+
+  const preferredLanguage = readConfiguredLanguageName();
+  if (preferredLanguage) {
+    lines.push(
+      `The user's interface language is ${preferredLanguage}. Respond in ${preferredLanguage} unless the user writes in another language or the content is code, commands, or identifiers.`,
+      ""
+    );
+  }
 
   lines.push(...buildToolingSection(params.tools, isMinimal));
 

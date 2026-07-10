@@ -61,7 +61,7 @@ describe("chat plan and artifact UI wiring", () => {
     expect(source).toContain("ChatEnvironmentOverview");
     expect(source).toContain("function PlanSummaryCard");
     expect(source).toContain("Current chat only");
-    expect(source).toContain("Latest plan update");
+    expect(source).toContain('t("chat.plan.title")');
     expect(source).toContain("extractLatestPlanFromMessages(typedMessages, sessionId)");
     expect(chatPage).toContain("useEnvironmentGitBranches(effectiveWorkspaceDir)");
     expect(chatPage).toContain("gitBranch={environmentGit.currentBranch}");

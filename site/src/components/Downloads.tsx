@@ -2,7 +2,13 @@ import { useState } from "react";
 import { Icon, type IconName } from "./Icon";
 import { SectionHeading } from "./SectionHeading";
 import { DOWNLOAD_GROUPS, type DownloadClient } from "../content";
-import { useLatestRelease, resolveAssetUrl, type LatestRelease } from "../hooks/useLatestRelease";
+import {
+  formatDownloadTotal,
+  resolveAssetUrl,
+  useDownloadTotal,
+  useLatestRelease,
+  type LatestRelease,
+} from "../hooks/useLatestRelease";
 import { useSiteI18n } from "../i18n";
 
 interface DownloadCardProps {
@@ -53,6 +59,7 @@ function DownloadCard({ client, release }: DownloadCardProps): React.ReactElemen
 
 export function Downloads(): React.ReactElement {
   const { data: release } = useLatestRelease();
+  const downloadTotal = useDownloadTotal();
   const { t } = useSiteI18n();
 
   return (
@@ -66,6 +73,11 @@ export function Downloads(): React.ReactElement {
         <div className="release-badge">
           <span className="release-badge-dot" />
           Latest release <strong>{release.version}</strong>
+          {downloadTotal !== null && downloadTotal > 0 ? (
+            <span className="release-badge-downloads">
+              · <strong>{formatDownloadTotal(downloadTotal)}</strong> downloads
+            </span>
+          ) : null}
         </div>
       ) : null}
 

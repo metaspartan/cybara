@@ -1,7 +1,7 @@
 {
   "name": "cybara",
   "version": "1.0.1145",
-  "description": "Open-source multi-agent AI platform — CLI, web UI, desktop, and mobile apps with 77 tools, 67 provider definitions, 26 channels, MCP host/client, media generation, and multi-agent orchestration.",
+  "description": "Open-source multi-agent AI platform with CLI, web, desktop, and mobile apps, broad provider and channel support, MCP host/client, media generation, and multi-agent orchestration.",
   "type": "module",
   "bin": {
     "cybara": "./dist/main.js"
@@ -134,7 +134,7 @@
     "ws": "8.21.0"
   },
   "license": "MIT",
-  "author": "Carsen Klock",
+  "author": "Carsen Klock @metaspartan",
   "homepage": "https://github.com/metaspartan/cybara",
   "keywords": [
     "ai-agent",

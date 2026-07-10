@@ -100,10 +100,10 @@ See [Desktop Guide](./desktop.md) for platform-specific build info.
 | [Agent Runtime](./agent-runtime.md) | Prompt composition, tool policy, memory, planning, and subagents |
 | [CLI Reference](./cli.md) | Command-line interface |
 | [Plugins](./plugins.md) | Installable plugin runtime and manifests |
-| [Tools Reference](./tools.md) | 77 built-in tools; 95 runtime schemas including aliases |
+| [Tools Reference](./tools.md) | Built-in tools, compatibility aliases, and execution contracts |
 | [Skills Guide](./skills.md) | Creating and managing skills |
 | [Channels](./channels.md) | Multi-platform messaging |
-| [Providers](./providers.md) | 67 provider definitions |
+| [Providers](./providers.md) | Hosted, OAuth, local, gateway, and proxy providers |
 | [Configuration](./configuration.md) | Settings and environment |
 | [Production](./production.md) | Release installs, updates, backups, and operator guidance |
 | [API Reference](./api.md) | REST API endpoints |
@@ -132,16 +132,16 @@ Conversation contexts with message history, token tracking, and adaptive context
 Modular capabilities loaded from SKILL.md files with eligibility gating (OS, env, binaries).
 
 ### Tools
-77 built-in tools cover file I/O, browser automation, process execution, web research, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and channels. Compatibility aliases expand that catalog to 95 runtime schemas. The model receives the effective policy-filtered subset rather than the full catalog on every turn.
+Built-in tools cover file I/O, browser automation, process execution, web research, memory, artifacts, data processing, LSP, scheduling, media generation, planning, dynamic tool discovery, wallet operations, and channels. Compatibility aliases normalize common calling conventions. The model receives the effective policy-filtered subset rather than the full catalog on every turn.
 
 ### Channels
-Communication interfaces across 26 platforms: Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, Web, Webhook, SMS, and Email.
+Communication interfaces include Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Microsoft Teams, Feishu/Lark, DingTalk, WeCom, Zulip, LINE, Google Chat, IRC, ntfy, Twitch, Nextcloud, Synology, Zalo, Home Assistant, Web, Webhook, SMS, and Email.
 
 ### Memory
 Vector store with hybrid BM25 search, durable MEMORY.md, and daily logs.
 
 ### Providers
-Built-in provider integrations with dynamic model discovery, covering frontier APIs, OAuth-backed coding providers, local runtimes, gateway/proxy providers, and AWS Bedrock.
+Built-in integrations cover popular providers including OpenAI, Anthropic, Google Gemini, xAI Grok, Z.AI, MiniMax, Kimi, Qwen, DeepSeek, and OpenRouter, plus local runtimes such as Ollama and vLLM. Supported model lists are discovered dynamically when available.
 
 ### Router + Provider Plans
 Router strategies include weighted, round-robin, lowest-cost, priority, and mixture-of-agents. Provider plan monitoring can track local usage against coding-plan presets, manual limits, rolling 5-hour/week windows, monthly budgets, and router enforcement.

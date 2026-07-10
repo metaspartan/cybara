@@ -90,6 +90,9 @@ export function resolveUpdaterPlatformKeys(assetName: string): readonly string[]
   if (/\.rpm$/i.test(assetName)) {
     return ["linux-x86_64-rpm"];
   }
+  if (/\.AppImage$/i.test(assetName)) {
+    return ["linux-x86_64-appimage"];
+  }
   if (/\.app\.tar\.gz$/i.test(assetName)) {
     if (/_aarch64\.app\.tar\.gz$/i.test(assetName)) {
       return ["darwin-aarch64", "darwin-aarch64-app"];

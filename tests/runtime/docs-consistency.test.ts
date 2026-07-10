@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync, readdirSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
-import ts from "typescript";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -28,52 +27,8 @@ const PUBLISHED_DOC_FILES = [
   "apps/mobile/README.md",
 ];
 
-const PROVIDER_CATALOG_EXPORTS = [
-  ["src/core/providers/catalog-foundation.ts", "foundationProviderCatalog"],
-  ["src/core/providers/catalog-integrations.ts", "integrationProviderCatalog"],
-  ["src/core/providers/catalog-coding.ts", "codingProviderCatalog"],
-  ["src/core/providers/catalog-cloud.ts", "cloudProviderCatalog"],
-] as const;
-
 function read(relativePath: string): string {
   return readFileSync(join(ROOT_DIR, relativePath), "utf8");
-}
-
-function unwrapObjectExpression(expression: ts.Expression): ts.Expression {
-  if (ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) {
-    return unwrapObjectExpression(expression.expression);
-  }
-  if (ts.isSatisfiesExpression(expression)) {
-    return unwrapObjectExpression(expression.expression);
-  }
-  return expression;
-}
-
-function countExportedObjectProperties(relativePath: string, exportName: string): number {
-  const sourceText = read(relativePath);
-  const sourceFile = ts.createSourceFile(
-    relativePath,
-    sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS
-  );
-
-  for (const statement of sourceFile.statements) {
-    if (!ts.isVariableStatement(statement)) continue;
-    for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== exportName) continue;
-      const initializer = declaration.initializer
-        ? unwrapObjectExpression(declaration.initializer)
-        : undefined;
-      if (!initializer || !ts.isObjectLiteralExpression(initializer)) {
-        throw new Error(`${exportName} is not initialized with an object literal`);
-      }
-      return initializer.properties.filter(ts.isPropertyAssignment).length;
-    }
-  }
-
-  throw new Error(`Unable to find exported object ${exportName} in ${relativePath}`);
 }
 
 describe("documentation consistency", () => {
@@ -85,21 +40,21 @@ describe("documentation consistency", () => {
     }
   });
 
-  test("published metadata and docs reflect current tool/provider catalog counts", () => {
-    const toolCount = countExportedObjectProperties("src/core/tools/index.ts", "toolSchemas");
-    const providerCount = PROVIDER_CATALOG_EXPORTS.reduce(
-      (sum, [file, exportName]) => sum + countExportedObjectProperties(file, exportName),
-      0
-    );
+  test("published metadata uses durable capability descriptions", () => {
     const packageJson = JSON.parse(read("package.json")) as { description?: string };
+    const publicMetadata = [
+      packageJson.description ?? "",
+      read("README.md"),
+      read("docs/README.md"),
+      read("docs/providers.md"),
+      read("docs/configuration.md"),
+    ].join("\n");
 
-    expect(toolCount).toBe(77);
-    expect(providerCount).toBe(67);
-    expect(packageJson.description).toContain(`${toolCount} tools`);
-    expect(packageJson.description).toContain(`${providerCount} provider definitions`);
-    expect(read("docs/README.md")).toContain(`${toolCount} built-in tools`);
-    expect(read("docs/README.md")).toContain(`${providerCount} provider definitions`);
-    expect(read("docs/configuration.md")).toContain(`Supported Providers (${providerCount})`);
+    expect(packageJson.description).toContain("broad provider and channel support");
+    expect(publicMetadata).not.toMatch(/\b\d+\s+(?:canonical\s+)?(?:built-in\s+)?tools?\b/i);
+    expect(publicMetadata).not.toMatch(/\b\d+\s+provider definitions?\b/i);
+    expect(publicMetadata).not.toMatch(/\b\d+\s+runtime schemas?\b/i);
+    expect(publicMetadata).not.toMatch(/\b\d+\s+channels?\b/i);
   });
 
   test("release docs use the current signing secret contract", () => {

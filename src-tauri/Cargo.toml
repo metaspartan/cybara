@@ -2,7 +2,7 @@
 name = "cybara-desktop"
 version = "1.0.1145"
 description = "Cybara Desktop Client"
-authors = ["Carsen Klock"]
+authors = ["Carsen Klock @metaspartan"]
 edition = "2024"
 
 [lib]

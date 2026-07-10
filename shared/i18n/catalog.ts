@@ -124,7 +124,20 @@ export type TranslationKey =
   | "site.download.title"
   | "site.download.eyebrow"
   | "site.control.title"
-  | "site.control.eyebrow";
+  | "site.control.eyebrow"
+  | "chat.composer.placeholder"
+  | "chat.sidebar.search"
+  | "chat.sidebar.pinned"
+  | "chat.sidebar.noWorkspace"
+  | "chat.sidebar.newChat"
+  | "chat.workedFor"
+  | "chat.plan.title"
+  | "chat.plan.progress"
+  | "chat.tabs.review"
+  | "chat.tabs.terminal"
+  | "chat.tabs.browser"
+  | "chat.tabs.files"
+  | "chat.tabs.subagents";
 
 export type TranslationCatalog = Record<TranslationKey, string>;
 
@@ -277,9 +290,25 @@ const englishTranslations: TranslationCatalog = {
     "site.download.eyebrow": "Your platforms",
     "site.control.title": "Operator control by default",
     "site.control.eyebrow": "Your rules",
+  "chat.composer.placeholder": "Type a message...",
+  "chat.sidebar.search": "Search chats...",
+  "chat.sidebar.pinned": "Pinned",
+  "chat.sidebar.noWorkspace": "No Workspace",
+  "chat.sidebar.newChat": "New Chat",
+  "chat.workedFor": "Worked for {duration}",
+  "chat.plan.title": "Latest plan update",
+  "chat.plan.progress": "{completed}/{total} complete",
+  "chat.tabs.review": "Review",
+  "chat.tabs.terminal": "Terminal",
+  "chat.tabs.browser": "Browser",
+  "chat.tabs.files": "Files",
+  "chat.tabs.subagents": "Side task",
 };
 
-export const translations: Record<SupportedLocale, TranslationCatalog> = {
+export const translations: { en: TranslationCatalog } & Record<
+  SupportedLocale,
+  Partial<TranslationCatalog>
+> = {
   en: englishTranslations,
   es: {
     "app.name": "Cybara",
@@ -378,6 +407,19 @@ export const translations: Record<SupportedLocale, TranslationCatalog> = {
     "site.channels.eyebrow": "Tus canales",
     "site.download.eyebrow": "Tus plataformas",
     "site.control.eyebrow": "Tus reglas",
+    "chat.composer.placeholder": "Escribe un mensaje...",
+    "chat.sidebar.search": "Buscar chats...",
+    "chat.sidebar.pinned": "Fijados",
+    "chat.sidebar.noWorkspace": "Sin espacio de trabajo",
+    "chat.sidebar.newChat": "Nuevo chat",
+    "chat.workedFor": "Trabajó durante {duration}",
+    "chat.plan.title": "Última actualización del plan",
+    "chat.plan.progress": "{completed}/{total} completadas",
+    "chat.tabs.review": "Revisión",
+    "chat.tabs.terminal": "Terminal",
+    "chat.tabs.browser": "Navegador",
+    "chat.tabs.files": "Archivos",
+    "chat.tabs.subagents": "Tarea paralela",
   },
   "zh-CN": {
     "app.name": "Cybara",
@@ -476,6 +518,19 @@ export const translations: Record<SupportedLocale, TranslationCatalog> = {
     "site.channels.eyebrow": "你的频道",
     "site.download.eyebrow": "你的平台",
     "site.control.eyebrow": "你的规则",
+    "chat.composer.placeholder": "输入消息...",
+    "chat.sidebar.search": "搜索聊天...",
+    "chat.sidebar.pinned": "已置顶",
+    "chat.sidebar.noWorkspace": "无工作区",
+    "chat.sidebar.newChat": "新建聊天",
+    "chat.workedFor": "工作了 {duration}",
+    "chat.plan.title": "最新计划更新",
+    "chat.plan.progress": "已完成 {completed}/{total}",
+    "chat.tabs.review": "审查",
+    "chat.tabs.terminal": "终端",
+    "chat.tabs.browser": "浏览器",
+    "chat.tabs.files": "文件",
+    "chat.tabs.subagents": "并行任务",
   },
   ja: {
     "app.name": "Cybara",
@@ -574,6 +629,19 @@ export const translations: Record<SupportedLocale, TranslationCatalog> = {
     "site.channels.eyebrow": "あなたのチャンネル",
     "site.download.eyebrow": "あなたのプラットフォーム",
     "site.control.eyebrow": "あなたのルール",
+    "chat.composer.placeholder": "メッセージを入力...",
+    "chat.sidebar.search": "チャットを検索...",
+    "chat.sidebar.pinned": "ピン留め",
+    "chat.sidebar.noWorkspace": "ワークスペースなし",
+    "chat.sidebar.newChat": "新しいチャット",
+    "chat.workedFor": "{duration} 作業しました",
+    "chat.plan.title": "最新のプラン更新",
+    "chat.plan.progress": "{completed}/{total} 完了",
+    "chat.tabs.review": "レビュー",
+    "chat.tabs.terminal": "ターミナル",
+    "chat.tabs.browser": "ブラウザ",
+    "chat.tabs.files": "ファイル",
+    "chat.tabs.subagents": "サイドタスク",
   },
   fr: {
     "app.name": "Cybara",
@@ -672,9 +740,35 @@ export const translations: Record<SupportedLocale, TranslationCatalog> = {
     "site.channels.eyebrow": "Vos canaux",
     "site.download.eyebrow": "Vos plateformes",
     "site.control.eyebrow": "Vos règles",
+    "chat.composer.placeholder": "Écrivez un message...",
+    "chat.sidebar.search": "Rechercher des discussions...",
+    "chat.sidebar.pinned": "Épinglés",
+    "chat.sidebar.noWorkspace": "Sans espace de travail",
+    "chat.sidebar.newChat": "Nouvelle discussion",
+    "chat.workedFor": "A travaillé pendant {duration}",
+    "chat.plan.title": "Dernière mise à jour du plan",
+    "chat.plan.progress": "{completed}/{total} terminées",
+    "chat.tabs.review": "Révision",
+    "chat.tabs.terminal": "Terminal",
+    "chat.tabs.browser": "Navigateur",
+    "chat.tabs.files": "Fichiers",
+    "chat.tabs.subagents": "Tâche parallèle",
   },
   de: {
     ...englishTranslations,
+    "chat.composer.placeholder": "Nachricht eingeben...",
+    "chat.sidebar.search": "Chats durchsuchen...",
+    "chat.sidebar.pinned": "Angeheftet",
+    "chat.sidebar.noWorkspace": "Kein Arbeitsbereich",
+    "chat.sidebar.newChat": "Neuer Chat",
+    "chat.workedFor": "Hat {duration} gearbeitet",
+    "chat.plan.title": "Neueste Planaktualisierung",
+    "chat.plan.progress": "{completed}/{total} erledigt",
+    "chat.tabs.review": "Überprüfung",
+    "chat.tabs.terminal": "Terminal",
+    "chat.tabs.browser": "Browser",
+    "chat.tabs.files": "Dateien",
+    "chat.tabs.subagents": "Nebenaufgabe",
     "app.tagline": "Agentenplattform",
     "action.cancel": "Abbrechen",
     "action.connect": "Verbinden",
@@ -1854,8 +1948,16 @@ export function detectLocale(candidates: Array<string | null | undefined>): Supp
   return fallbackLocale;
 }
 
-export function translate(locale: SupportedLocale, key: TranslationKey): string {
-  return completeCatalog(locale)[key] || translations.en[key];
+export function translate(
+  locale: SupportedLocale,
+  key: TranslationKey,
+  params?: Record<string, string | number>
+): string {
+  const template = completeCatalog(locale)[key] || translations.en[key];
+  if (!params) return template;
+  return template.replace(/\{(\w+)\}/g, (match, name) =>
+    name in params ? String(params[name]) : match
+  );
 }
 
 export function catalogForLocale(locale: SupportedLocale): TranslationCatalog {
