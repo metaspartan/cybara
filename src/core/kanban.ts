@@ -58,10 +58,11 @@ export interface KanbanTask {
 }
 
 let db: Database | null = null;
+let dbPathOverride: string | null = null;
 
 function getDb(): Database {
   if (db) return db;
-  const dbPath = join(cybaraDir, "kanban.db");
+  const dbPath = dbPathOverride ?? join(cybaraDir, "kanban.db");
   db = new Database(dbPath, { create: true });
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA busy_timeout = 120000;");
@@ -483,4 +484,9 @@ export function resetKanbanForTests(): void {
     db.close();
     db = null;
   }
+}
+
+export function setKanbanDbPathForTests(path: string | null): void {
+  resetKanbanForTests();
+  dbPathOverride = path;
 }

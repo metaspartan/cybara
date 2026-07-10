@@ -3,17 +3,17 @@ import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-// Isolate the kanban SQLite DB in a throwaway HOME before importing the module.
 const tempHome = mkdtempSync(join(tmpdir(), "cybara-kanban-"));
-process.env.HOME = tempHome;
 
 const kanban = await import("../../src/core/kanban");
+kanban.setKanbanDbPathForTests(join(tempHome, "kanban.db"));
 
 afterEach(() => {
   kanban.resetKanbanForTests();
 });
 
 afterAll(() => {
+  kanban.setKanbanDbPathForTests(null);
   rmSync(tempHome, { recursive: true, force: true });
 });
 
