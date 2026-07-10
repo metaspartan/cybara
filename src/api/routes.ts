@@ -50,6 +50,11 @@ import { formatSkillInstallSpec } from "./routes/skill-formatting";
 import { tables } from "../core/database";
 import { agentManager, getBuiltinTools } from "../core/agent";
 import {
+  parseAgentReasoningSetting,
+  readAgentReasoningSetting,
+  withAgentReasoningSetting,
+} from "../core/agent-reasoning";
+import {
   providerManager,
   providers,
   resolveProviderType,
@@ -481,6 +486,7 @@ const routes: Record<string, RouteHandler> = {
       provider_id: agent.provider_id,
       fallback_provider_id: agent.fallback_provider_id,
       status: agent.status,
+      reasoning_effort: readAgentReasoningSetting(agent.config),
     })),
   "POST /api/agents": (body) => {
     const data = body as Parameters<typeof agentManager.create>[0];
@@ -501,6 +507,22 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/agents/:id": (_body, params) => agentManager.get(params!.id),
   "PUT /api/agents/:id": (body, params) =>
     agentManager.update(params!.id, body as Parameters<typeof agentManager.update>[1]),
+  "PUT /api/agents/:id/reasoning": (body, params) => {
+    const agent = agentManager.get(params!.id);
+    if (!agent) return { success: false, error: "Agent not found" };
+    const parsed = parseAgentReasoningSetting(
+      (body as { reasoning_effort?: unknown } | undefined)?.reasoning_effort
+    );
+    if (!parsed.valid) return { success: false, error: "Invalid reasoning effort" };
+    const updated = agentManager.update(params!.id, {
+      config: withAgentReasoningSetting(agent.config, parsed.effort),
+    });
+    if (!updated) return { success: false, error: "Agent not found" };
+    return {
+      success: true,
+      reasoning_effort: readAgentReasoningSetting(updated.config),
+    };
+  },
   "POST /api/agents/:id/start": async (_body, params) => ({
     success: await agentManager.start(params!.id),
   }),

@@ -431,7 +431,9 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain('Text("Model Router").tag(nativeModelRouterSelectorValue)');
     expect(nativeScreens).toContain("let router = try await client.routerConfig()");
     expect(nativeScreens).toContain("useModelRouter: useModelRouter");
-    expect(nativeScreens).toContain(".frame(width: 176)");
+    expect(nativeScreens).toContain("ViewThatFits(in: .horizontal)");
+    expect(nativeScreens).toContain("composerAgentPicker(compact: true)");
+    expect(nativeScreens).toContain("nativeChatAgentLabel(name: agent.name");
     expect(nativeScreens).toContain("private var contextUsageText: String");
     expect(nativeScreens).toContain("private var contextUsagePopover: some View");
     expect(nativeScreens).toContain("providerPlanStatus: ProviderPlanStatusResponse?");

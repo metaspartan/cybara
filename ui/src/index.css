@@ -601,6 +601,49 @@ textarea[data-chat-composer-input="true"]:focus-visible {
   box-shadow: none;
 }
 
+.chat-composer-responsive {
+  container-type: inline-size;
+}
+
+@container (max-width: 460px) {
+  .chat-approval-control {
+    width: 28px;
+    flex: 0 0 28px;
+  }
+
+  .chat-approval-select {
+    width: 28px;
+    padding-left: 0;
+    padding-right: 0;
+    color: transparent;
+  }
+
+  .chat-approval-select:hover,
+  .chat-approval-select:focus,
+  .chat-agent-selector:hover,
+  .chat-agent-selector:focus {
+    color: transparent;
+  }
+
+  .chat-approval-chevron {
+    display: none;
+  }
+
+  .chat-agent-selector-shell,
+  .chat-agent-selector {
+    width: min(132px, 38cqw);
+    min-width: 0;
+  }
+
+  .chat-agent-selector {
+    color: transparent;
+  }
+
+  .chat-agent-selector-compact-label {
+    display: flex;
+  }
+}
+
 /* ==================== RESPONSIVE LAYOUTS ==================== */
 
 @media (max-width: 768px) {

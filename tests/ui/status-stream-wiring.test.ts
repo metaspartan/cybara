@@ -32,6 +32,7 @@ const statusStreamPath = fileURLToPath(
   new URL("../../ui/src/lib/status-stream.ts", import.meta.url)
 );
 const useChatPath = fileURLToPath(new URL("../../ui/src/hooks/useChat.ts", import.meta.url));
+const indexCssPath = fileURLToPath(new URL("../../ui/src/index.css", import.meta.url));
 
 function readSource(path: string): string {
   return readFileSync(path, "utf8");
@@ -94,6 +95,9 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain('"text-amber-300"');
     expect(source).toContain("settingsApi.updateConfig({ tool_approval_mode: nextMode })");
     expect(source).toContain('id="chat-agent-selector"');
+    expect(source).toContain("chat-composer-responsive");
+    expect(source).toContain("chat-approval-select");
+    expect(source).toContain("chat-agent-selector-compact-label");
     expect(source).not.toContain('<Zap className="pointer-events-none absolute left-2');
     expect(source).not.toContain("focus-within:border-white/20");
     expect(source).toContain('data-chat-composer-input="true"');
@@ -174,6 +178,21 @@ describe("status stream websocket wiring", () => {
       "const sendQueuesFollowUp = showWorkingTimeline || pendingMessages.length > 0"
     );
     expect(source).not.toContain("new EventSource(");
+  });
+
+  test("chat composer controls collapse by available composer width", () => {
+    const chatSource = readSource(chatPath);
+    const controlsSource = readSource(chatAgentControlsPath);
+    const cssSource = readSource(indexCssPath);
+
+    expect(chatSource).toContain("chat-composer-responsive");
+    expect(chatSource).toContain("chat-approval-control");
+    expect(controlsSource).toContain("chat-agent-selector-compact-label");
+    expect(controlsSource).toContain("selectedAgent?.model || selectedAgent?.name");
+    expect(cssSource).toContain("container-type: inline-size");
+    expect(cssSource).toContain("@container (max-width: 460px)");
+    expect(cssSource).toContain(".chat-approval-chevron");
+    expect(cssSource).toContain("color: transparent");
   });
 
   test("sidebar status indicator uses websocket status stream", () => {

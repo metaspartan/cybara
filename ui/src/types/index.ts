@@ -29,7 +29,10 @@ export interface AgentSummary {
   provider_id?: string;
   fallback_provider_id?: string;
   status?: Agent["status"];
+  reasoning_effort?: AgentReasoningEffort | null;
 }
+
+export type AgentReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export interface AgentMessage {
   role: "user" | "assistant" | "system" | "tool";

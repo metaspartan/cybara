@@ -77,6 +77,11 @@ func gatewayTimestampNow() -> String {
     ISO8601DateFormatter().string(from: Date())
 }
 
+func nativeChatAgentLabel(name: String, model: String?, compact: Bool) -> String {
+    guard let model, !model.isEmpty else { return name }
+    return compact ? model : "\(name) - \(model)"
+}
+
 private func parseGatewayDate(_ iso: String?) -> Date? {
     guard let iso else { return nil }
     let fractional = ISO8601DateFormatter()
@@ -1249,6 +1254,16 @@ struct ChatScreen: View {
         agents.first { $0.id == selectedConcreteChatAgentID }
     }
 
+    private var activeAgentRouteLabel: String {
+        if useModelRouter { return "Model Router" }
+        guard let selectedChatAgent else { return "Gateway default" }
+        return nativeChatAgentLabel(
+            name: selectedChatAgent.name,
+            model: selectedChatAgent.model,
+            compact: false
+        )
+    }
+
     private var agentSelectionBinding: Binding<String> {
         Binding(
             get: { selectedChatAgentID },
@@ -1930,27 +1945,36 @@ struct ChatScreen: View {
                 contextUsagePopover
             }
 
-            Picker("Agent", selection: agentSelectionBinding) {
-                if modelRouterEnabled {
-                    Text("Model Router").tag(nativeModelRouterSelectorValue)
-                } else {
-                    Text("Gateway default").tag("")
-                }
-                ForEach(agents) { agent in
-                    Text(agent.model.map { "\(agent.name) - \($0)" } ?? agent.name).tag(agent.id)
-                }
+            ViewThatFits(in: .horizontal) {
+                composerAgentPicker(compact: false)
+                    .frame(width: 176)
+                composerAgentPicker(compact: true)
+                    .frame(width: 116)
             }
-            .labelsHidden()
-            .pickerStyle(.menu)
-            .controlSize(.small)
-            .frame(width: 176)
-            .disabled(agentSaving || (!modelRouterEnabled && agents.isEmpty))
 
             if agentSaving {
                 ProgressView().controlSize(.small)
             }
         }
-        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func composerAgentPicker(compact: Bool) -> some View {
+        Picker("Agent", selection: agentSelectionBinding) {
+            if modelRouterEnabled {
+                Text("Model Router").tag(nativeModelRouterSelectorValue)
+            } else {
+                Text("Gateway default").tag("")
+            }
+            ForEach(agents) { agent in
+                Text(nativeChatAgentLabel(name: agent.name, model: agent.model, compact: compact))
+                    .tag(agent.id)
+            }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .controlSize(.small)
+        .disabled(agentSaving || (!modelRouterEnabled && agents.isEmpty))
+        .help(activeAgentRouteLabel)
     }
 
     private var composerSecurityControls: some View {
@@ -1966,28 +1990,39 @@ struct ChatScreen: View {
                 Label("Ask Me", systemImage: "questionmark.circle")
             }
         } label: {
-            HStack(spacing: 5) {
-                if approvalSaving {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Image(systemName: toolApprovalIconName)
-                        .font(.system(size: 11, weight: .semibold))
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 5) {
+                    toolApprovalStatusIcon
+                    Text(toolApprovalLabel)
+                        .font(.system(size: 11, weight: .semibold, design: .rounded))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(.secondary)
                 }
-                Text(toolApprovalLabel)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                HStack(spacing: 0) {
+                    toolApprovalStatusIcon
+                }
+                .frame(width: 26)
             }
             .foregroundStyle(toolApprovalColor)
-            .padding(.horizontal, 8)
             .frame(height: 26)
             .background(Capsule().fill(toolApprovalColor.opacity(0.08)))
         }
         .buttonStyle(.plain)
         .disabled(approvalSaving)
         .help("Tool approvals: \(toolApprovalLabel)")
+    }
+
+    @ViewBuilder
+    private var toolApprovalStatusIcon: some View {
+        if approvalSaving {
+            ProgressView().controlSize(.small)
+        } else {
+            Image(systemName: toolApprovalIconName)
+                .font(.system(size: 11, weight: .semibold))
+        }
     }
 
     private var contextUsagePopover: some View {

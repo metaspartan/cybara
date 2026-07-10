@@ -4,6 +4,18 @@ import XCTest
 
 final class GatewayClientModelTests: XCTestCase {
 
+    func testNativeChatAgentLabelUsesModelOnlyInCompactLayout() {
+        XCTAssertEqual(
+            nativeChatAgentLabel(name: "Research", model: "gpt-5.4-mini", compact: false),
+            "Research - gpt-5.4-mini"
+        )
+        XCTAssertEqual(
+            nativeChatAgentLabel(name: "Research", model: "gpt-5.4-mini", compact: true),
+            "gpt-5.4-mini"
+        )
+        XCTAssertEqual(nativeChatAgentLabel(name: "Research", model: nil, compact: true), "Research")
+    }
+
     func testSessionDisplayTitleTrimsGatewayTitle() throws {
         let session = try decodeSession(#"{"id":"session-123456789","title":"  Release planning  "}"#)
 

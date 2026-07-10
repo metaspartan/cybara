@@ -1851,7 +1851,7 @@ export function IDEChatPanel({
       )}
 
       <div className="border-t border-white/10 p-3">
-        <div className="rounded-2xl border border-white/10 bg-[#111118] px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
+        <div className="chat-composer-responsive rounded-2xl border border-white/10 bg-[#111118] px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
           <textarea
             value={input}
             onChange={(event) => setInput(event.target.value)}

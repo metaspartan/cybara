@@ -216,7 +216,7 @@ function ChatApprovalControls({
   const isAskMode = mode === "ask";
   const Icon = updating ? Loader2 : isAskMode ? CircleHelp : ShieldAlert;
   return (
-    <div className="relative min-w-0">
+    <div className="chat-approval-control relative min-w-0">
       <Icon
         className={cn(
           "pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2",
@@ -233,7 +233,7 @@ function ChatApprovalControls({
         onChange={(event) => onChange(normalizeToolApprovalMode(event.target.value))}
         title={`Tool approvals: ${toolApprovalModeLabel(mode)}`}
         className={cn(
-          "h-7 max-w-[140px] appearance-none truncate rounded-full border border-transparent bg-transparent py-1 pl-7 pr-6 text-[11px] font-semibold outline-none transition-colors [color-scheme:dark] disabled:opacity-60",
+          "chat-approval-select h-7 max-w-[140px] appearance-none truncate rounded-full border border-transparent bg-transparent py-1 pl-7 pr-6 text-[11px] font-semibold outline-none transition-colors [color-scheme:dark] disabled:opacity-60",
           isAskMode
             ? "text-sky-300 hover:bg-sky-500/10 hover:text-sky-200 focus:bg-sky-500/10"
             : "text-amber-300 hover:bg-amber-500/10 hover:text-amber-200 focus:bg-amber-500/10"
@@ -248,7 +248,7 @@ function ChatApprovalControls({
       </select>
       <ChevronDown
         className={cn(
-          "pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2",
+          "chat-approval-chevron pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2",
           isAskMode ? "text-sky-300/70" : "text-amber-300/70"
         )}
       />
@@ -4276,7 +4276,7 @@ export function Chat() {
 
               <div
                 ref={composerRef}
-                className="flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl"
+                className="chat-composer-responsive flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl"
               >
                 {showComposerPlan && currentSessionPlan && currentSessionPlanKey && (
                   <PlanSummaryCard

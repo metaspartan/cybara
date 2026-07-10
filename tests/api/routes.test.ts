@@ -824,6 +824,46 @@ describe("Agents API", () => {
     await api("DELETE", `/api/agents/${agentId}`);
   });
 
+  test("PUT /api/agents/:id/reasoning preserves unrelated config and supports default", async () => {
+    const created = await api("POST", "/api/agents", {
+      name: `reasoning-agent-${Date.now()}`,
+      type: "main",
+      model: "gpt-5-mini",
+      config: { autostart: true, model_params: { temperature: 0.3 } },
+    });
+    const agentId = created.data.id as string;
+
+    const update = await api("PUT", `/api/agents/${agentId}/reasoning`, {
+      reasoning_effort: "high",
+    });
+    expect(update.data).toEqual({ success: true, reasoning_effort: "high" });
+
+    const fetched = await api("GET", `/api/agents/${agentId}`);
+    expect(fetched.data.config).toEqual({
+      autostart: true,
+      model_params: { temperature: 0.3, reasoning_effort: "high" },
+    });
+
+    const summary = await api("GET", "/api/agents/summary");
+    expect(
+      (summary.data as Array<{ id: string; reasoning_effort?: string }>).find(
+        (agent) => agent.id === agentId
+      )?.reasoning_effort
+    ).toBe("high");
+
+    const reset = await api("PUT", `/api/agents/${agentId}/reasoning`, {
+      reasoning_effort: null,
+    });
+    expect(reset.data).toEqual({ success: true, reasoning_effort: null });
+
+    const invalid = await api("PUT", `/api/agents/${agentId}/reasoning`, {
+      reasoning_effort: "extreme",
+    });
+    expect(invalid.data).toEqual({ success: false, error: "Invalid reasoning effort" });
+
+    await api("DELETE", `/api/agents/${agentId}`);
+  });
+
   test("POST /api/agents/:id/start tolerates malformed persisted config JSON", async () => {
     const agentId = `bad-agent-start-config-${Date.now()}`;
     insertRawAgent(agentId, `bad-agent-start-${Date.now()}`, "{bad-json");

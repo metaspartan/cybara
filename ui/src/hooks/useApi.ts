@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type {
   Agent,
   AgentSummary,
+  AgentReasoningEffort,
   AgentMessage,
   Provider,
   Channel,
@@ -58,6 +59,48 @@ export function useAgentSummaries() {
     queryFn: () => fetchApi<AgentSummary[]>("/agents/summary"),
     staleTime: 30_000,
     refetchInterval: LIST_POLL_INTERVAL_MS,
+  });
+}
+
+export function useUpdateAgentReasoning() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      effort,
+    }: {
+      id: string;
+      effort: AgentReasoningEffort | null;
+    }) => {
+      const result = await fetchApi<{
+        success: boolean;
+        reasoning_effort?: AgentReasoningEffort | null;
+        error?: string;
+      }>(`/agents/${id}/reasoning`, {
+        method: "PUT",
+        body: JSON.stringify({ reasoning_effort: effort }),
+      });
+      if (!result.success) throw new Error(result.error || "Failed to update reasoning effort");
+      return result.reasoning_effort ?? null;
+    },
+    onMutate: async ({ id, effort }) => {
+      await queryClient.cancelQueries({ queryKey: ["agents", "summary"] });
+      const previous = queryClient.getQueryData<AgentSummary[]>(["agents", "summary"]);
+      queryClient.setQueryData<AgentSummary[]>(["agents", "summary"], (current = []) =>
+        current.map((agent) =>
+          agent.id === id ? { ...agent, reasoning_effort: effort } : agent
+        )
+      );
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["agents", "summary"], context.previous);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+    },
   });
 }
 
