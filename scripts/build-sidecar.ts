@@ -207,13 +207,9 @@ export function findWindowsPlaywrightBrowserExecutable(browserRoot: string): str
   return null;
 }
 
-export function assertWindowsPlaywrightRuntime(targetRoot: string): string {
+export function findBundledWindowsPlaywrightRuntime(targetRoot: string): string | null {
   const browserRoot = join(targetRoot, "node_modules", "playwright-core", ".local-browsers");
-  const executable = findWindowsPlaywrightBrowserExecutable(browserRoot);
-  if (!executable) {
-    throw new Error(`Windows Playwright browser runtime is missing from ${browserRoot}`);
-  }
-  return executable;
+  return findWindowsPlaywrightBrowserExecutable(browserRoot);
 }
 
 export function getSharpRuntimePackageNames(runtimeTarget: RuntimeTarget): string[] {
@@ -512,9 +508,13 @@ export default instance.exports;
     }
   }
   if (runtimeTarget.platform === "win32") {
-    for (const dir of [TAURI_BIN_DIR, tauriDebugDir]) {
-      const executable = assertWindowsPlaywrightRuntime(dir);
-      console.log(`  📦 Verified Windows browser preview runtime at ${executable}`);
+    const executable = findBundledWindowsPlaywrightRuntime(TAURI_BIN_DIR);
+    if (executable) {
+      console.log(`  📦 Bundled Windows browser preview runtime at ${executable}`);
+    } else {
+      console.warn(
+        "  ⚠️ No bundled Playwright browser for Windows; the chat preview falls back to system Edge/Chrome via puppeteer-core."
+      );
     }
   }
   console.log(`  📦 Copied Playwright runtime to sidecar directories`);

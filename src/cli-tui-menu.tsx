@@ -26,6 +26,11 @@ export type MainMenuAction =
   | "mobile"
   | "tasks"
   | "skills"
+  | "mcp"
+  | "lsp"
+  | "subagents"
+  | "artifacts"
+  | "journey"
   | "ui"
   | "start"
   | "exit";
@@ -40,7 +45,7 @@ type MenuItem = {
 };
 
 export const DIRECT_TUI_PANEL_HINT =
-  "Direct panels: cybara tui status|metrics|usage|providers|router|channels|memory|tools|chat|sessions|logs";
+  "Direct panels: cybara tui chat|sessions|tasks|subagents|artifacts|journey|providers|router|usage|channels|skills|tools|mcp|lsp|memory|metrics|logs";
 
 export const MAIN_TUI_MENU_ITEMS: MenuItem[] = [
   {
@@ -130,6 +135,46 @@ export const MAIN_TUI_MENU_ITEMS: MenuItem[] = [
     group: "Setup",
     kind: "panel",
     detail: "Available tools, categories, and permissions",
+  },
+  {
+    label: "MCP Services",
+    action: "mcp",
+    shortcut: "b",
+    group: "Setup",
+    kind: "panel",
+    detail: "Connected MCP services, runtime state, and available tools",
+  },
+  {
+    label: "Language Servers",
+    action: "lsp",
+    shortcut: "z",
+    group: "Setup",
+    kind: "panel",
+    detail: "Bundled and installed language server availability",
+  },
+  {
+    label: "Subagents",
+    action: "subagents",
+    shortcut: "n",
+    group: "Workflows",
+    kind: "panel",
+    detail: "Active and completed delegated agent runs",
+  },
+  {
+    label: "Artifacts",
+    action: "artifacts",
+    shortcut: "f",
+    group: "Workflows",
+    kind: "panel",
+    detail: "Session deliverables, notes, walkthroughs, and implementation records",
+  },
+  {
+    label: "Journey",
+    action: "journey",
+    shortcut: "y",
+    group: "Workflows",
+    kind: "panel",
+    detail: "Recent learned skills and durable memory activity",
   },
   {
     label: "Status",

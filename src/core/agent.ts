@@ -2210,8 +2210,24 @@ class AgentManager {
     requestBody: Record<string, unknown>,
     errorPrefix: string,
     signal?: AbortSignal,
-    rateLimitContext?: ProviderRateLimitContext
+    rateLimitContext?: ProviderRateLimitContext,
+    streamContext?: { sessionId?: string | null; agentId?: string | null }
   ): Promise<OpenAIResponse> {
+    const streamSessionId = streamContext?.sessionId?.trim() || "";
+    const onTextDelta =
+      streamSessionId.length > 0
+        ? (delta: string) => {
+            try {
+              broadcastTokenDelta({
+                sessionId: streamSessionId,
+                agentId: streamContext?.agentId || undefined,
+                delta,
+              });
+            } catch {
+              /* streaming is best-effort */
+            }
+          }
+        : undefined;
     // Streaming with inactivity watchdogs (first-token + stall, no total cap
     // by default): a healthy hours-long run keeps emitting chunks; only a
     // silent provider gets cut off. Providers that reject `stream` fall back
@@ -2259,7 +2275,7 @@ class AgentManager {
           throw new Error(`${errorPrefix}: empty streaming response body`);
         }
         watchdog.touch();
-        const assembled = await consumeOpenAIChatStream(response.body, watchdog);
+        const assembled = await consumeOpenAIChatStream(response.body, watchdog, onTextDelta);
         watchdog.dispose();
         return assembled as unknown as OpenAIResponse;
       } catch (error) {
@@ -2465,7 +2481,8 @@ class AgentManager {
         requestBody,
         "API error",
         toolContext?.abortSignal,
-        { providerId: options?.providerId, providerType: providerConfig }
+        { providerId: options?.providerId, providerType: providerConfig },
+        { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
       );
     } catch (error) {
       if (!isContextOverflowError(this.normalizeErrorMessage(error))) {
@@ -2491,7 +2508,8 @@ class AgentManager {
         requestBody,
         "API error",
         toolContext?.abortSignal,
-        { providerId: options?.providerId, providerType: providerConfig }
+        { providerId: options?.providerId, providerType: providerConfig },
+        { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
       );
     }
 
@@ -2697,7 +2715,8 @@ class AgentManager {
           loopRequestBody,
           "API error in agentic loop",
           toolContext?.abortSignal,
-          { providerId: options?.providerId, providerType: providerConfig }
+          { providerId: options?.providerId, providerType: providerConfig },
+          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
         );
       } catch (error) {
         const errorMessage = this.normalizeErrorMessage(error);
@@ -2732,7 +2751,8 @@ class AgentManager {
           retryLoopRequestBody,
           "API error in agentic loop",
           toolContext?.abortSignal,
-          { providerId: options?.providerId, providerType: providerConfig }
+          { providerId: options?.providerId, providerType: providerConfig },
+          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
         );
       }
       const loopChoice = loopData.choices?.[0];
@@ -2773,7 +2793,8 @@ class AgentManager {
           nudgeBody,
           "API error in agentic loop closing response",
           toolContext?.abortSignal,
-          { providerId: options?.providerId, providerType: providerConfig }
+          { providerId: options?.providerId, providerType: providerConfig },
+          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
         );
         const nudgeContent = nudgeData.choices?.[0]?.message?.content;
         if (typeof nudgeContent === "string" && nudgeContent.trim()) finalContent = nudgeContent;
@@ -4484,7 +4505,8 @@ class AgentManager {
       requestBody,
       "API error",
       toolContext?.abortSignal,
-      { providerType: "openai" }
+      { providerType: "openai" },
+      { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
     );
 
     const durationMs = Math.round(performance.now() - startTime);
@@ -4668,7 +4690,8 @@ class AgentManager {
           loopRequestBody,
           "API error in agentic loop",
           toolContext?.abortSignal,
-          { providerType: "openai" }
+          { providerType: "openai" },
+          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
         );
       } catch (error) {
         const errorMessage = this.normalizeErrorMessage(error);
@@ -4692,7 +4715,8 @@ class AgentManager {
           },
           "API error in agentic loop",
           toolContext?.abortSignal,
-          { providerType: "openai" }
+          { providerType: "openai" },
+          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
         );
       }
       const loopChoice = loopData.choices?.[0];

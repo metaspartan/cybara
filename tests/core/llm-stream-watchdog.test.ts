@@ -181,6 +181,29 @@ async function fetchStreaming(
   }
 }
 
+describe("consumeOpenAIChatStream onTextDelta", () => {
+  test("invokes onTextDelta for each content delta in order (powers live streaming + TTFT)", async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode(contentDelta("Hel")));
+        controller.enqueue(encoder.encode(contentDelta("lo")));
+        controller.enqueue(
+          encoder.encode(sseChunk({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }))
+        );
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    });
+    const deltas: string[] = [];
+    const assembled = await consumeOpenAIChatStream(stream, undefined, (delta) =>
+      deltas.push(delta)
+    );
+    expect(deltas).toEqual(["Hel", "lo"]);
+    expect(assembled.choices[0]?.message.content).toBe("Hello");
+  });
+});
+
 describe("LLM stream watchdog (inactivity, not duration)", () => {
   test("assembles content, tool calls, and usage from a streamed completion", async () => {
     const result = await fetchStreaming("behave-normal", { firstChunkMs: 2000, stallMs: 2000 });

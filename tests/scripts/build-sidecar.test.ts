@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs"
 import { tmpdir } from "os";
 import { join } from "path";
 import {
-  assertWindowsPlaywrightRuntime,
+  findBundledWindowsPlaywrightRuntime,
   copyFilePortable,
   findWindowsPlaywrightBrowserExecutable,
   findOnnxRuntimeNativeDir,
@@ -158,18 +158,16 @@ describe("build-sidecar host target mapping", () => {
       mkdirSync(join(executable, ".."), { recursive: true });
       writeFileSync(executable, "browser");
       expect(findWindowsPlaywrightBrowserExecutable(join(dir, "node_modules"))).toBe(executable);
-      expect(assertWindowsPlaywrightRuntime(dir)).toBe(executable);
+      expect(findBundledWindowsPlaywrightRuntime(dir)).toBe(executable);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
-  test("rejects a Windows package without a Playwright browser executable", () => {
+  test("returns null (non-fatal) when no bundled Playwright browser is present", () => {
     const dir = mkdtempSync(join(tmpdir(), "cybara-playwright-package-test-"));
     try {
-      expect(() => assertWindowsPlaywrightRuntime(dir)).toThrow(
-        "Windows Playwright browser runtime is missing"
-      );
+      expect(findBundledWindowsPlaywrightRuntime(dir)).toBeNull();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

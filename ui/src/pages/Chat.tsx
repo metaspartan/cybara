@@ -2175,6 +2175,16 @@ export function Chat() {
     setLiveCurrentStep(null);
   }, [isLoading, liveActivities, sessionId, typedMessages, turnStartedAtMsByIndex]);
 
+  const markFirstTokenLatency = useCallback((forSessionId?: string | null) => {
+    if (ttftStartRef.current === null) return;
+    if (forSessionId && activeSessionRef.current && forSessionId !== activeSessionRef.current) {
+      return;
+    }
+    const elapsed = Math.round(performance.now() - ttftStartRef.current);
+    ttftStartRef.current = null;
+    setTimeToFirstTokenMs(elapsed);
+  }, []);
+
   const appendLiveActivity = useCallback(
     (
       phase: "start" | "result" | "error" | "blocked",
@@ -2184,11 +2194,7 @@ export function Chat() {
       toolCallId?: string,
       sandboxProvider?: string
     ) => {
-      if (ttftStartRef.current !== null) {
-        const elapsed = Math.round(performance.now() - ttftStartRef.current);
-        ttftStartRef.current = null;
-        setTimeToFirstTokenMs(elapsed);
-      }
+      markFirstTokenLatency();
 
       const applyEvent = (previous: LiveActivityItem[]): LiveActivityItem[] =>
         applyLiveActivityEvent(previous, {
@@ -2203,7 +2209,7 @@ export function Chat() {
       runActivityBufferRef.current = applyEvent(runActivityBufferRef.current);
       setLiveActivities((previous) => applyEvent(previous));
     },
-    []
+    [markFirstTokenLatency]
   );
 
   const snapshotLatestTimestamp = useCallback((snapshot: LiveStatusSnapshotLike): number => {
@@ -2303,6 +2309,7 @@ export function Chat() {
       const delta = typeof payload.delta === "string" ? payload.delta : "";
       if (!tokenSessionId || !delta) return;
       if (isSessionStopSuppressed(tokenSessionId)) return;
+      markFirstTokenLatency(tokenSessionId);
       const cached = readCachedLiveSessionState(tokenSessionId);
       writeCachedLiveSessionState(tokenSessionId, {
         status: "generating",
@@ -2311,7 +2318,7 @@ export function Chat() {
         streamingContent: `${cached?.streamingContent || ""}${delta}`,
       });
     },
-    [isSessionStopSuppressed]
+    [isSessionStopSuppressed, markFirstTokenLatency]
   );
 
   const cacheLiveStatusEvent = useCallback(

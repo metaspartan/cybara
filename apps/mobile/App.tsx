@@ -1,18 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { StatusBar, StyleSheet, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
-import { ConnectScreen } from "./src/screens/ConnectScreen";
-import { DashboardScreen } from "./src/screens/DashboardScreen";
-import type { GatewayProfile } from "./src/lib/connection";
+import { HapticsProvider } from "./src/haptics/HapticsContext";
+import { MobileI18nProvider } from "./src/i18n";
 import { CybaraMobileApi } from "./src/lib/api";
+import type { GatewayProfile } from "./src/lib/connection";
 import {
   configureMobileNotificationPresentation,
   registerMobilePushNotifications,
 } from "./src/lib/pushNotifications";
 import { clearActiveProfile, getActiveProfile, saveProfile } from "./src/lib/storage";
-import { spacing, type Palette } from "./src/theme/liquidGlass";
+import { ConnectScreen } from "./src/screens/ConnectScreen";
+import { DashboardScreen } from "./src/screens/DashboardScreen";
+import { type Palette, spacing } from "./src/theme/liquidGlass";
 import { ThemeProvider, useTheme, useThemeControls } from "./src/theme/ThemeContext";
-import { MobileI18nProvider } from "./src/i18n";
 
 function AppShell() {
   const colors = useTheme();
@@ -83,9 +84,11 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ThemeProvider>
-        <MobileI18nProvider>
-          <AppShell />
-        </MobileI18nProvider>
+        <HapticsProvider>
+          <MobileI18nProvider>
+            <AppShell />
+          </MobileI18nProvider>
+        </HapticsProvider>
       </ThemeProvider>
     </SafeAreaProvider>
   );

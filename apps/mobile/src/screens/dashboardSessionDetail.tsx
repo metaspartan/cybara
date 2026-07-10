@@ -1,30 +1,4 @@
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-} from "react";
-import {
-  ActionSheetIOS,
-  ActivityIndicator,
-  Alert,
-  Image,
-  Keyboard,
-  Modal,
-  PanResponder,
-  Platform,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  useWindowDimensions,
-  View,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
   ArrowDown,
   ArrowUp,
   Bot,
@@ -43,34 +17,34 @@ import {
   Trash2,
   X,
 } from "lucide-react-native";
-import { haptics } from "../lib/haptics";
-import { Clipboard, ImagePicker } from "../lib/expoNativeModules";
-import { colors, spacing } from "../theme/liquidGlass";
-import { styles } from "./dashboardStyles";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  ActionSheetIOS,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Keyboard,
+  Modal,
+  PanResponder,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LiquidGlass } from "../components/LiquidGlass";
 import { MobileBranchPicker } from "../components/MobileBranchPicker";
-import { ChatMessageRow, MobilePlanSummaryCard } from "./dashboardChat";
-import { MobileSubagentsSheet } from "./dashboardSubagents";
-import { EmptyState } from "./dashboardPrimitives";
-import {
-  latestVisibleChatMessages,
-  chatIsWaitingForAssistant,
-  mobileMediaSummaryLabel,
-  mobilePendingImageBytes,
-  formatBytes,
-} from "../lib/chat-format";
-import {
-  MOBILE_CHAT_CHROME,
-  MOBILE_CHAT_COMPOSER,
-  MOBILE_NAV_CHROME,
-  mobileComposerHeightForDraft,
-  boundedMobileComposerHeight,
-  mobileFirstNonEmptyString,
-  mobileSessionTitle,
-  mobileSupportedReasoningEfforts,
-  readMobileToolApprovalMode,
-  sessionProviderModelLabel,
-} from "../lib/dashboard";
 import type {
   AgentSummary,
   CybaraMobileApi,
@@ -85,8 +59,30 @@ import type {
   SessionTokenUsage,
   ToolApprovalDecision,
 } from "../lib/api";
+import {
+  chatIsWaitingForAssistant,
+  formatBytes,
+  latestVisibleChatMessages,
+  mobileMediaSummaryLabel,
+  mobilePendingImageBytes,
+} from "../lib/chat-format";
+import {
+  boundedMobileComposerHeight,
+  MOBILE_CHAT_CHROME,
+  MOBILE_CHAT_COMPOSER,
+  MOBILE_NAV_CHROME,
+  mobileComposerHeightForDraft,
+  mobileFirstNonEmptyString,
+  mobileSessionTitle,
+  mobileSupportedReasoningEfforts,
+  readMobileToolApprovalMode,
+  sessionProviderModelLabel,
+} from "../lib/dashboard";
+import { Clipboard, ImagePicker } from "../lib/expoNativeModules";
+import { haptics } from "../lib/haptics";
+import { colors, spacing } from "../theme/liquidGlass";
+import { ChatMessageRow, MobilePlanSummaryCard } from "./dashboardChat";
 import { absoluteTimestampLabel, relativeTimestamp } from "./dashboardHelpers";
-import { mobileProviderPlanDetail } from "./dashboardMetricsPanels";
 import {
   clearCachedMobileLiveAssistant,
   liveActivityFromStatusEvent,
@@ -99,6 +95,13 @@ import {
   subscribeCachedMobileLiveAssistant,
   writeCachedMobileLiveAssistant,
 } from "./dashboardLiveChat";
+import { mobileProviderPlanDetail } from "./dashboardMetricsPanels";
+import {
+  clearCachedMobileOptimisticTranscript,
+  mergeCachedMobileOptimisticTranscript,
+  readCachedMobileOptimisticTranscript,
+  writeCachedMobileOptimisticTranscriptMessage,
+} from "./dashboardOptimisticTranscript";
 import {
   clearCachedMobileOptimisticPendingMessages,
   mergeMobilePendingMessages,
@@ -106,12 +109,9 @@ import {
   readCachedMobileOptimisticPendingMessages,
   writeCachedMobileOptimisticPendingMessages,
 } from "./dashboardPendingQueue";
-import {
-  clearCachedMobileOptimisticTranscript,
-  mergeCachedMobileOptimisticTranscript,
-  readCachedMobileOptimisticTranscript,
-  writeCachedMobileOptimisticTranscriptMessage,
-} from "./dashboardOptimisticTranscript";
+import { EmptyState } from "./dashboardPrimitives";
+import { styles } from "./dashboardStyles";
+import { MobileSubagentsSheet } from "./dashboardSubagents";
 
 export interface ChatHeaderAction {
   busy: boolean;
@@ -526,6 +526,7 @@ export function SessionDetailPanel({
     promise: Promise<void>;
   } | null>(null);
   const sendingRef = useRef(false);
+  const responseHapticActiveRef = useRef(false);
   const optimisticPendingGraceUntilRef = useRef(0);
   const optimisticPendingCounterRef = useRef(0);
   const cachedLiveAssistant = readCachedMobileLiveAssistant(sessionId);
@@ -713,6 +714,7 @@ export function SessionDetailPanel({
 
   useEffect(() => {
     setPendingSessionAgentId(null);
+    responseHapticActiveRef.current = false;
   }, [sessionId]);
 
   useEffect(() => {
@@ -760,6 +762,11 @@ export function SessionDetailPanel({
       onEvent: (event) => {
         if (event.type === "assistant_token") {
           if (event.sessionId !== sessionId) return;
+          if (!responseHapticActiveRef.current) {
+            responseHapticActiveRef.current = true;
+            haptics.agentStarted();
+          }
+          haptics.agentProgress();
           commitLiveAssistant((current) => {
             const base = liveAssistantMessage(sessionId, current, event.timestamp);
             return {
@@ -803,6 +810,10 @@ export function SessionDetailPanel({
 
         if (event.type !== "status" || event.sessionId !== sessionId) return;
         if (event.status === "idle") {
+          if (responseHapticActiveRef.current) {
+            responseHapticActiveRef.current = false;
+            haptics.agentCompleted();
+          }
           if (!sendingRef.current) {
             void loadSession(false).finally(() => {
               void hydrateLiveAssistant();
@@ -812,6 +823,12 @@ export function SessionDetailPanel({
         }
         const activity = liveActivityFromStatusEvent(event);
         if (!activity) return;
+        if (!responseHapticActiveRef.current) {
+          responseHapticActiveRef.current = true;
+          haptics.agentStarted();
+        } else {
+          haptics.agentProgress();
+        }
         commitLiveAssistant((current) => {
           const base = liveAssistantMessage(sessionId, current, event.timestamp);
           return {
@@ -1006,6 +1023,7 @@ export function SessionDetailPanel({
     const attachments = pendingImages;
     const queuedSend = sending || !!liveAssistant || pendingMessages.length > 0;
     if (!message && attachments.length === 0) return;
+    haptics.messageSent();
     resetComposerDraft();
     setPendingImages([]);
     const liveStartedAt = Date.now();
@@ -1091,6 +1109,7 @@ export function SessionDetailPanel({
         return;
       }
       if (result.interrupted) {
+        responseHapticActiveRef.current = false;
         if (optimisticPendingMessageId) {
           setPendingMessages((current) =>
             current.filter((entry) => entry.id !== optimisticPendingMessageId)
@@ -1121,6 +1140,10 @@ export function SessionDetailPanel({
       );
       await loadSession(false);
       commitLiveAssistant(() => null);
+      if (responseHapticActiveRef.current) {
+        responseHapticActiveRef.current = false;
+        haptics.agentCompleted();
+      }
     } catch (error) {
       const messageText = error instanceof Error ? error.message : String(error);
       setComposerDraft(message);
@@ -1143,6 +1166,10 @@ export function SessionDetailPanel({
         );
       }
       const failedAt = Date.now();
+      if (responseHapticActiveRef.current) {
+        responseHapticActiveRef.current = false;
+        haptics.warning();
+      }
       commitLiveAssistant((current) => {
         const base = liveAssistantMessage(sessionId, current, failedAt);
         return {

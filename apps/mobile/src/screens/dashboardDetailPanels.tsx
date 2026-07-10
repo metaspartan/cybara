@@ -1,5 +1,3 @@
-import { useState } from "react";
-import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
 import {
   Brain,
   CalendarCheck,
@@ -12,10 +10,43 @@ import {
   Trash2,
   Volume2,
 } from "lucide-react-native";
+import { useState } from "react";
+import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
+import { useHapticsControls } from "../haptics/HapticsContext";
+import type {
+  ActivitySummary,
+  CybaraMobileApi,
+  FeatureSummary,
+  ProviderPlanStatusResponse,
+  RemoteItemSummary,
+} from "../lib/api";
+import type { GatewayProfile } from "../lib/connection";
+import {
+  compactHost,
+  formatMobileValue,
+  formatUptime,
+  MOBILE_ACCENT_KEYS,
+  MOBILE_LOGS_CHROME,
+  MOBILE_REASONING_EFFORT_OPTIONS,
+  MOBILE_ROUTER_STRATEGY_OPTIONS,
+  MOBILE_SETTINGS_DETAIL_CHROME,
+  MOBILE_SETTINGS_ROOT_CHROME,
+  MOBILE_SETTINGS_SURFACES,
+  MOBILE_SETTINGS_TABS,
+  type MobileSettingsTab,
+  type MobileSurfaceKey,
+  mobileGatewayAuthStatus,
+  mobileThemeConfigPayload,
+  readMobileAccent,
+  readMobileDangerousToolPolicy,
+  readMobileReasoningEffort,
+  readMobileSandboxRuntime,
+  readMobileToolApprovalMode,
+  summarizeFeatureCounts,
+} from "../lib/dashboard";
 import { haptics } from "../lib/haptics";
+import { type AccentKey, accentPalette, colors } from "../theme/liquidGlass";
 import { useThemeControls } from "../theme/ThemeContext";
-import { accentPalette, colors, type AccentKey } from "../theme/liquidGlass";
-import { styles } from "./dashboardStyles";
 import {
   DetailInfoSection,
   SettingSelector,
@@ -24,6 +55,17 @@ import {
   SettingToggle,
   StableDetailPanel,
 } from "./dashboardControls";
+import {
+  absoluteTimestampLabel,
+  booleanSetting,
+  cleanSettingsFields,
+  endpointErrorDetail,
+  endpointStatusLabel,
+  type MobileSpeechSettings,
+  mobileSpeechProviderOptions,
+  objectRecord,
+  readMobileSpeechSettings,
+} from "./dashboardHelpers";
 import { EmptyState, GatewayDetailPill, LoadingState, SettingsRow } from "./dashboardPrimitives";
 import {
   AgentSettingsPanel,
@@ -41,53 +83,12 @@ import {
   TaskSettingsPanel,
   WalletPolicyPanel,
 } from "./dashboardSettingsPanels";
+import { styles } from "./dashboardStyles";
 import {
-  absoluteTimestampLabel,
-  booleanSetting,
-  cleanSettingsFields,
-  endpointErrorDetail,
-  endpointStatusLabel,
-  mobileSpeechProviderOptions,
-  objectRecord,
-  readMobileSpeechSettings,
-  type MobileSpeechSettings,
-} from "./dashboardHelpers";
-import {
-  MOBILE_ACCENT_KEYS,
-  MOBILE_LOGS_CHROME,
-  MOBILE_REASONING_EFFORT_OPTIONS,
-  MOBILE_ROUTER_STRATEGY_OPTIONS,
-  MOBILE_SETTINGS_DETAIL_CHROME,
-  MOBILE_SETTINGS_ROOT_CHROME,
-  MOBILE_SETTINGS_SURFACES,
-  MOBILE_SETTINGS_TABS,
-  compactHost,
-  formatMobileValue,
-  formatUptime,
-  mobileGatewayAuthStatus,
-  mobileThemeConfigPayload,
-  readMobileAccent,
-  readMobileDangerousToolPolicy,
-  readMobileReasoningEffort,
-  readMobileSandboxRuntime,
-  readMobileToolApprovalMode,
-  summarizeFeatureCounts,
-  type MobileSettingsTab,
-  type MobileSurfaceKey,
-} from "../lib/dashboard";
-import type {
-  ActivitySummary,
-  CybaraMobileApi,
-  FeatureSummary,
-  ProviderPlanStatusResponse,
-  RemoteItemSummary,
-} from "../lib/api";
-import type { GatewayProfile } from "../lib/connection";
-import {
-  surfaceMeta,
-  surfaceMenuDetail,
-  surfaceRows,
   type DetailRoute,
+  surfaceMenuDetail,
+  surfaceMeta,
+  surfaceRows,
 } from "./dashboardSurfaceData";
 
 export function TasksPanel({
@@ -535,6 +536,7 @@ export function SettingsPanel({
 }) {
   const counts = summarizeFeatureCounts(summary);
   const { mode: appearanceMode, setMode: setAppearanceMode } = useThemeControls();
+  const { enabled: hapticsEnabled, setEnabled: setHapticsEnabled } = useHapticsControls();
   const [selectedSettingsTab, setSelectedSettingsTab] = useState<MobileSettingsTab>("general");
   const [savingAccent, setSavingAccent] = useState<AccentKey | null>(null);
   const [savingConfigKey, setSavingConfigKey] = useState<string | null>(null);
@@ -757,6 +759,15 @@ export function SettingsPanel({
                   );
                 })}
               </View>
+            </SettingsSection>
+            <SettingsSection title="Feedback">
+              <SettingToggle
+                detail="Use subtle feedback for navigation, agent activity, and completed responses."
+                label="Haptic feedback"
+                onPress={() => setHapticsEnabled(!hapticsEnabled)}
+                tone={accentColor}
+                value={hapticsEnabled}
+              />
             </SettingsSection>
           </>
         ) : null}

@@ -30,6 +30,13 @@ import {
   copyTextToClipboard,
   useTerminalLayout,
 } from "./cli-tui-terminal";
+import {
+  compactInspectionLines,
+  logLines,
+  mcpStatusLines,
+  memoryStatusLine,
+  skillStatusLines,
+} from "./cli-tui-chat-inspection";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -92,6 +99,10 @@ const COMMANDS = [
   { name: "/help", detail: "Show command reference" },
   { name: "/status", detail: "Show session, model, and queue state" },
   { name: "/agents", detail: "List available agents" },
+  { name: "/skills", detail: "Show installed and available skills" },
+  { name: "/mcp", detail: "Show connected MCP services" },
+  { name: "/memory", detail: "Show memory and indexing health" },
+  { name: "/logs", detail: "Show recent gateway logs" },
   { name: "/agent", detail: "Switch the active chat agent" },
   { name: "/model", detail: "Show or override the model for future turns" },
   { name: "/router", detail: "Use or disable model router for new turns" },
@@ -827,6 +838,38 @@ export function InteractiveChatTUI({
                 .map((agent) => `${agent.id === selectedAgentId ? "*" : "-"} ${agentLine(agent)}`)
                 .join("\n")
             : "No agents returned by the gateway."
+        );
+        return true;
+      }
+      if (normalizedCommand === "skills") {
+        const response = await fetchAPI<unknown>("/api/skills/status");
+        const lines = skillStatusLines(response);
+        setNotice(
+          lines.length ? compactInspectionLines(lines) : "No skills returned by the gateway."
+        );
+        return true;
+      }
+      if (normalizedCommand === "mcp") {
+        const response = await fetchAPI<unknown>("/api/mcp");
+        const lines = mcpStatusLines(response);
+        setNotice(lines.length ? compactInspectionLines(lines) : "No MCP services configured.");
+        return true;
+      }
+      if (normalizedCommand === "memory") {
+        const [status, memory] = await Promise.all([
+          fetchAPI<unknown>("/api/memory/status"),
+          fetchAPI<unknown>("/api/memory"),
+        ]);
+        setNotice(memoryStatusLine(status, memory));
+        return true;
+      }
+      if (normalizedCommand === "logs") {
+        const parsedCount = Number.parseInt(argument, 10);
+        const count = Number.isFinite(parsedCount) ? Math.max(1, Math.min(20, parsedCount)) : 8;
+        const response = await fetchAPI<unknown>(`/api/logs/system?limit=${count}`);
+        const lines = logLines(response);
+        setNotice(
+          lines.length ? compactInspectionLines(lines, count) : "No recent gateway logs."
         );
         return true;
       }
