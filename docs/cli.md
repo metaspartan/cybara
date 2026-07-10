@@ -57,21 +57,23 @@ mode changes, subagent spawning, markdown emphasis, and grouped tool/activity ou
 
 Inside `cybara chat`, use `/status` to show the active session, agent, model/router mode, workspace,
 and approval mode. `/agents`, `/agent <id|name|default>`, `/model <id|router|default>`,
-`/router on|off`, `/permissions ask|always_allow|show`, `/environment`, `/context`, `/usage`,
-`/plan`, `/diffs`, `/tasks`, `/subagents`, `/compact`, `/stop`, and `/subagent spawn <task>` mirror
-the same control-plane concepts used by the web/Tauri, mobile, and native macOS clients. The
-environment panel summarizes workspace, branch, context window, token usage, file changes, plan
-progress, tasks, and subagents without leaving the terminal.
+`/router on|off`, `/permissions ask|always_allow|show`, `/reasoning <level>`, `/title <name>`,
+`/workspace <path|default>`, `/environment`, `/context`, `/usage`, `/plan`, `/diffs`, `/tasks`,
+`/subagents`, `/compact`, `/stop`, and `/subagent spawn <task>` mirror the same control-plane
+concepts used by the other clients. The environment panel summarizes workspace, branch, context
+window, token usage, file changes, plan progress, tasks, and subagents without leaving the terminal.
 
 The dashboard TUI is optimized for normal terminals. The main menu supports grouped destinations,
 single-key shortcuts, `j`/`k` or arrow navigation, `/` search, `?` help, direct panel launch, and a
 small detail pane for the selected destination. The chat panel supports session search, keyboard
-navigation, new-chat entry, editable prompt input, multiline prompts with `Ctrl+J`, slash command
-completion with `Tab`, agent switching with `/agent`, available-agent lookup with `/agents`, model
-router selection with `/router`, tool approval switching with `/permissions`, pending follow-up
-queueing, steering, queue edit/delete/reorder, active-run stop, and app-parity session environment
-inspection. Dashboard panels outside chat remain read-only; use raw CLI commands when you need to
-mutate providers, router settings, mobile pairings, wallet state, or channel configuration.
+navigation, pinning, guarded deletion, new-chat entry, editable prompt input, multiline prompts with
+`Ctrl+J`, transcript paging with `PageUp`/`PageDown`, slash command completion with `Tab`, agent
+switching, reasoning effort controls, model router selection, and interactive dangerous-tool
+approvals. Approval prompts accept approve-once, approve-for-session, approve-always, or deny without
+leaving the chat. Long message bodies use bounded previews by default; `/expand` toggles the complete
+transcript. Pending follow-ups support queueing, steering, edit/delete/reorder, and active-run stop.
+Dashboard panels outside chat remain read-only; use raw CLI commands when you need to mutate
+providers, router settings, mobile pairings, wallet state, or channel configuration.
 
 ### System Status
 

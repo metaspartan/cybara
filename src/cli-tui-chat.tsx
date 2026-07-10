@@ -162,6 +162,7 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
   const [searchMode, setSearchMode] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
   const [showHelp, setShowHelp] = React.useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -209,9 +210,53 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
     setSelectedIndex((previous) => Math.min(previous, Math.max(0, visibleSessions.length - 1)));
   }, [visibleSessions.length]);
 
+  const toggleSelectedPin = React.useCallback(async () => {
+    const target = visibleSessions[selectedIndex];
+    if (!target?.id) return;
+    const pinned = !target.pinned;
+    const response = await fetchAPI<{ success?: boolean }>(
+      `/api/sessions/${encodeURIComponent(target.id)}/pin`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pinned }),
+      }
+    );
+    if (response?.success === false) return;
+    setSessions((current) =>
+      current
+        .map((session) => (session.id === target.id ? { ...session, pinned } : session))
+        .sort(
+          (a, b) =>
+            Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) ||
+            sessionTimestamp(b) - sessionTimestamp(a)
+        )
+    );
+  }, [fetchAPI, selectedIndex, visibleSessions]);
+
+  const deleteSelectedSession = React.useCallback(async () => {
+    const target = visibleSessions[selectedIndex];
+    if (!target?.id) return;
+    if (confirmDeleteId !== target.id) {
+      setConfirmDeleteId(target.id);
+      return;
+    }
+    await fetchAPI(`/api/sessions/${encodeURIComponent(target.id)}`, { method: "DELETE" });
+    setConfirmDeleteId(null);
+    setSessions((current) => current.filter((session) => session.id !== target.id));
+  }, [confirmDeleteId, fetchAPI, selectedIndex, visibleSessions]);
+
   useInput(
     (input, key) => {
       if (openSession) return;
+      if (confirmDeleteId) {
+        if (key.escape) {
+          setConfirmDeleteId(null);
+          return;
+        }
+        if (input === "x") void deleteSelectedSession();
+        return;
+      }
       if (searchMode) {
         if ((key.ctrl && input === "c") || key.escape) {
           setSearchMode(false);
@@ -250,6 +295,14 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
         void load();
         return;
       }
+      if (input === "p") {
+        void toggleSelectedPin();
+        return;
+      }
+      if (input === "x") {
+        void deleteSelectedSession();
+        return;
+      }
       if (key.upArrow || input === "k") {
         setSelectedIndex((previous) => Math.max(0, previous - 1));
         return;
@@ -284,6 +337,19 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
 
   const activeCount = sessions.filter(sessionIsActive).length;
   const pendingCount = sessions.reduce((total, session) => total + sessionPendingCount(session), 0);
+  const availableSessionRows = Math.max(5, (process.stdout.rows || 32) - 17);
+  const visibleSessionCount = Math.min(visibleSessions.length, availableSessionRows);
+  const visibleSessionStart = Math.max(
+    0,
+    Math.min(
+      visibleSessions.length - visibleSessionCount,
+      selectedIndex - Math.floor(visibleSessionCount / 2)
+    )
+  );
+  const renderedSessions = visibleSessions.slice(
+    visibleSessionStart,
+    visibleSessionStart + visibleSessionCount
+  );
 
   return (
     <Box flexDirection="column">
@@ -292,7 +358,7 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
           <Text bold color="cyan">
             Cybara Chat
           </Text>
-          <Text color="gray">↑↓/j/k select · ↵ open · n new · / search · ? help</Text>
+          <Text color="gray">↑↓ select · ↵ open · n new · / search · ? help</Text>
         </Box>
         <Text color="gray">
           Recent sessions · {visibleSessions.length}/{sessions.length} shown
@@ -312,9 +378,11 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
         )}
         {error && <Text color="red">Error: {error}</Text>}
         {!loading && !error && sessions.length === 0 && <Text color="gray">No chat sessions yet.</Text>}
+        {visibleSessionStart > 0 ? <Text color="gray">↑ {visibleSessionStart} earlier</Text> : null}
         {!loading &&
           !error &&
-          visibleSessions.map((session, index) => {
+          renderedSessions.map((session, localIndex) => {
+            const index = visibleSessionStart + localIndex;
             const pending = sessionPendingCount(session);
             const active = sessionIsActive(session);
             const workspace = sessionWorkspace(session);
@@ -366,14 +434,27 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
               </Box>
             );
           })}
+        {visibleSessionStart + renderedSessions.length < visibleSessions.length ? (
+          <Text color="gray">
+            ↓ {visibleSessions.length - visibleSessionStart - renderedSessions.length} more
+          </Text>
+        ) : null}
       </Box>
+      {confirmDeleteId ? (
+        <Box marginTop={1} borderStyle="round" borderColor="red" paddingX={1} flexDirection="column">
+          <Text bold color="red">
+            Delete selected session?
+          </Text>
+          <Text>Press x again to delete permanently · Esc cancels</Text>
+        </Box>
+      ) : null}
       {showHelp ? (
         <Box marginTop={1} flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1}>
           <Text bold color="cyan">
             Keys and chat actions
           </Text>
-          <Text>n new chat · / search · r refresh · ? help · Esc/q quit</Text>
-          <Text>Inside chat: Enter send · Ctrl+J newline · Tab slash complete · ↑↓ history</Text>
+          <Text>n new · p pin/unpin · x delete · / search · r refresh · Esc/q quit</Text>
+          <Text>Inside chat: Enter send · Ctrl+J newline · Tab complete · PgUp/PgDn transcript</Text>
         </Box>
       ) : null}
       <Box marginTop={1} flexDirection="column">

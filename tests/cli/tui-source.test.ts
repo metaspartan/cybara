@@ -20,6 +20,7 @@ const cliTuiChatEnvironmentViewSource = readFileSync(
   join(root, "src", "cli-tui-chat-environment-view.tsx"),
   "utf8"
 );
+const cliTuiApprovalsSource = readFileSync(join(root, "src", "cli-tui-approvals.tsx"), "utf8");
 const cliDocs = readFileSync(join(root, "docs", "cli.md"), "utf8");
 
 const tuiPanels = [
@@ -128,6 +129,9 @@ describe("CLI TUI source wiring", () => {
       "/model",
       "/router",
       "/permissions",
+      "/reasoning",
+      "/title",
+      "/workspace",
       "/context",
       "/usage",
       "/environment",
@@ -142,18 +146,23 @@ describe("CLI TUI source wiring", () => {
       "/delete",
       "/reorder",
       "/stop",
+      "/expand",
     ]) {
       expect(cliTuiInteractiveChatSource).toContain(command);
     }
     for (const route of [
       "/api/agents",
       "/api/config",
+      "/api/tools/approvals",
+      "/api/tools/approvals/resolve",
       "/api/router/status",
       "/api/tasks",
       "/api/subagents",
       "/api/subagents/spawn",
       "/api/sessions/${encodeURIComponent(targetSessionId)}",
       "/api/sessions/${encodeURIComponent(localSessionId)}/agent",
+      "/api/sessions/${encodeURIComponent(localSessionId)}/title",
+      "/api/sessions/${encodeURIComponent(localSessionId)}/workspace",
       "/api/chat/sessions/${encodeURIComponent(localSessionId)}/pending",
       "/pending/reorder",
       "/stop",
@@ -174,6 +183,13 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("tool_approval_mode");
     expect(cliTuiInteractiveChatSource).toContain("agentId: selectedAgentId || undefined");
     expect(cliTuiInteractiveChatSource).toContain("Ctrl+J newline");
+    expect(cliTuiInteractiveChatSource).toContain("pageUp");
+    expect(cliTuiInteractiveChatSource).toContain("pageDown");
+    expect(cliTuiInteractiveChatSource).toContain("maxLines={expandedTranscript ? undefined : 8}");
+    expect(cliTuiInteractiveChatSource).toContain("ToolApprovalPrompt");
+    expect(cliTuiApprovalsSource).toContain("approve_once");
+    expect(cliTuiApprovalsSource).toContain("approve_session");
+    expect(cliTuiApprovalsSource).toContain("approve_always");
     expect(cliTuiInteractiveChatSource).toContain("key.leftArrow");
     expect(cliTuiInteractiveChatSource).toContain("key.rightArrow");
     expect(cliTuiInteractiveChatSource).toContain("key.upArrow");
@@ -181,6 +197,14 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("(key as { tab?: boolean }).tab");
     expect(cliTuiInteractiveChatSource).toContain("process_activities");
     expect(cliTuiInteractiveChatSource).toContain("tool_calls");
+  });
+
+  test("chat session picker supports pinning and guarded deletion", () => {
+    expect(cliTuiChatSource).toContain("toggleSelectedPin");
+    expect(cliTuiChatSource).toContain("deleteSelectedSession");
+    expect(cliTuiChatSource).toContain("confirmDeleteId");
+    expect(cliTuiChatSource).toContain("/pin");
+    expect(cliTuiChatSource).toContain('method: "DELETE"');
   });
 
   test("terminal chat environment panel is backed by shared parsing helpers", () => {
