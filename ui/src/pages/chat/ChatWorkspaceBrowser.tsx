@@ -39,10 +39,54 @@ interface BrowserPreview {
 }
 
 const DEFAULT_BROWSER_VIEWPORT: BrowserViewport = { width: 960, height: 640 };
-const BROWSER_START_TIMEOUT_MS = 30_000;
+const BROWSER_START_TIMEOUT_MS = 90_000;
 const BROWSER_REQUEST_TIMEOUT_MS = 12_000;
 const BROWSER_PREVIEW_POLL_MS = 1_500;
 const BROWSER_STATE_POLL_MS = 500;
+
+interface BrowserLaunchStatus {
+  phase: "idle" | "starting" | "running" | "failed";
+  attempt?: string;
+  attempted?: number;
+  total?: number;
+  error?: string;
+}
+
+async function readBrowserLaunchStatus(): Promise<BrowserLaunchStatus | null> {
+  const response = await apiFetch("/api/browser/status", {
+    signal: AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS),
+  });
+  if (!response.ok) return null;
+  const data: unknown = await response.json();
+  if (!data || typeof data !== "object") return null;
+  const launch = (data as { launch?: unknown }).launch;
+  if (!launch || typeof launch !== "object") return null;
+  const record = launch as Record<string, unknown>;
+  if (
+    record.phase !== "idle" &&
+    record.phase !== "starting" &&
+    record.phase !== "running" &&
+    record.phase !== "failed"
+  ) {
+    return null;
+  }
+  return {
+    phase: record.phase,
+    attempt: typeof record.attempt === "string" ? record.attempt : undefined,
+    attempted: typeof record.attempted === "number" ? record.attempted : undefined,
+    total: typeof record.total === "number" ? record.total : undefined,
+    error: typeof record.error === "string" ? record.error : undefined,
+  };
+}
+
+function browserStartupLabel(status: BrowserLaunchStatus | null): string {
+  if (!status || status.phase === "idle") return "Checking installed browsers";
+  if (status.phase === "failed") return status.error || "Browser preview could not start";
+  if (status.phase === "running") return "Preparing browser preview";
+  const progress =
+    status.attempted && status.total ? ` (${status.attempted} of ${status.total})` : "";
+  return `Starting ${status.attempt || "browser"}${progress}`;
+}
 
 function parseBrowserPage(value: unknown): BrowserPage | null {
   if (!value || typeof value !== "object") return null;
@@ -138,6 +182,7 @@ export function ChatWorkspaceBrowser({
   const [preview, setPreview] = useState<BrowserPreview | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [startupLabel, setStartupLabel] = useState("Checking installed browsers");
   const addressRef = useRef<HTMLInputElement>(null);
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
   const requestInFlightRef = useRef(false);
@@ -300,6 +345,21 @@ export function ChatWorkspaceBrowser({
       cancelled = true;
     };
   }, [ensurePage, loadPreview, visible]);
+
+  useEffect(() => {
+    if (!visible || !loading || preview?.screenshot) return;
+    let cancelled = false;
+    const refresh = async () => {
+      const status = await readBrowserLaunchStatus().catch(() => null);
+      if (!cancelled) setStartupLabel(browserStartupLabel(status));
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 1_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [loading, preview?.screenshot, visible]);
 
   useEffect(() => {
     if (!visible) return;
@@ -509,7 +569,7 @@ export function ChatWorkspaceBrowser({
               ) : (
                 <Globe2 className="mx-auto mb-3 h-7 w-7 text-gray-700" />
               )}
-              <p className="text-xs text-gray-500">Starting browser preview</p>
+              <p className="text-xs text-gray-500">{startupLabel}</p>
             </div>
           </div>
         )}

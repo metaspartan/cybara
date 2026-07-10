@@ -10,6 +10,7 @@ import { isAbsolute, resolve } from "path";
 import { createLogger } from "./logger";
 import { createHash } from "crypto";
 import { compactChatContentForPrompt } from "./chat-token-optimization";
+import { capSessionMessageMetadata } from "./session-message-metadata";
 
 const log = createLogger("Session");
 
@@ -50,7 +51,9 @@ function serializeSessionMessageMetadata(
   if (Array.isArray(message.process_activities) && message.process_activities.length > 0) {
     metadata.process_activities = message.process_activities;
   }
-  return Object.keys(metadata).length > 0 ? JSON.stringify(metadata) : undefined;
+  return Object.keys(metadata).length > 0
+    ? capSessionMessageMetadata(JSON.stringify(metadata))
+    : undefined;
 }
 
 export async function upsertPersistedSessionMessage(

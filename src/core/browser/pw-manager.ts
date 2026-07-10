@@ -2,9 +2,12 @@ import { randomUUID } from "crypto";
 import type { Browser, BrowserContext, LaunchOptions, Locator, Page } from "playwright";
 import {
   browserLaunchArgs,
+  buildBrowserLaunchPlan,
   findBundledBrowserExecutable,
   findSystemBrowserExecutable,
+  findSystemBrowserExecutables,
 } from "./browser-executable";
+import { systemLogger } from "../logging";
 import { getChromium } from "./playwright-loader";
 import {
   type BrowserProfile,
@@ -29,39 +32,86 @@ async function launchWithFallback(
   args: string[]
 ): Promise<Browser> {
   const attempts: Array<{ label: string; options: LaunchOptions }> = [];
-  const systemExecutable = findSystemBrowserExecutable();
+  const systemExecutables = findSystemBrowserExecutables();
   const bundledExecutable = findBundledBrowserExecutable(chromium);
-  if (systemExecutable) {
+  const explicitExecutable =
+    process.env.CYBARA_BROWSER_PATH?.trim() || process.env.CHROME_PATH?.trim();
+  for (const target of buildBrowserLaunchPlan(
+    process.platform,
+    explicitExecutable,
+    bundledExecutable,
+    systemExecutables
+  )) {
     attempts.push({
-      label: `system:${systemExecutable}`,
-      options: { headless, args, executablePath: systemExecutable, timeout: 8_000 },
-    });
-  }
-  if (bundledExecutable && bundledExecutable !== systemExecutable) {
-    attempts.push({
-      label: "bundled-chromium",
-      options: { headless, args, executablePath: bundledExecutable, timeout: 8_000 },
-    });
-  }
-  for (const channel of process.platform === "win32"
-    ? ["msedge", "chrome"]
-    : ["chrome", "msedge"]) {
-    attempts.push({
-      label: `channel:${channel}`,
-      options: { headless, args, channel, timeout: 8_000 },
+      label: target.label,
+      options: {
+        headless,
+        args,
+        ...(target.channel ? { channel: target.channel } : {}),
+        ...(target.executablePath ? { executablePath: target.executablePath } : {}),
+      },
     });
   }
 
   const failures: string[] = [];
+  const startedAt = Date.now();
   for (const attempt of attempts) {
+    const remainingMs = BROWSER_LAUNCH_BUDGET_MS - (Date.now() - startedAt);
+    if (remainingMs <= 0) break;
+    browserLaunchState = {
+      phase: "starting",
+      attempt: attempt.label,
+      attempted: attempts.indexOf(attempt) + 1,
+      total: attempts.length,
+    };
+    void systemLogger.info("Starting browser preview", {
+      attempt: attempt.label,
+      attempted: browserLaunchState.attempted,
+      total: browserLaunchState.total,
+    });
     try {
-      return await chromium.launch(attempt.options);
+      const browser = await chromium.launch({
+        ...attempt.options,
+        timeout: Math.min(BROWSER_LAUNCH_ATTEMPT_TIMEOUT_MS, remainingMs),
+      });
+      browserLaunchState = {
+        phase: "running",
+        attempt: attempt.label,
+        attempted: browserLaunchState.attempted,
+        total: browserLaunchState.total,
+      };
+      return browser;
     } catch (error) {
-      failures.push(`${attempt.label}: ${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(`${attempt.label}: ${message}`);
+      void systemLogger.warn("Browser preview launch attempt failed", {
+        attempt: attempt.label,
+        error: message,
+      });
     }
   }
+  browserLaunchState = {
+    phase: "failed",
+    attempted: Math.min(attempts.length, failures.length),
+    total: attempts.length,
+    error: failures.length
+      ? "Installed browsers could not be started. Open Logs for browser launch details."
+      : "No compatible browser was detected.",
+  };
   throw new Error(`Unable to launch a browser (${failures.join(" | ")})`);
 }
+
+export interface BrowserLaunchState {
+  phase: "idle" | "starting" | "running" | "failed";
+  attempt?: string;
+  attempted?: number;
+  total?: number;
+  error?: string;
+}
+
+const BROWSER_LAUNCH_ATTEMPT_TIMEOUT_MS = 30_000;
+const BROWSER_LAUNCH_BUDGET_MS = 75_000;
+let browserLaunchState: BrowserLaunchState = { phase: "idle" };
 
 export interface BrowserSnapshotNode {
   ref: string;
@@ -117,6 +167,7 @@ export interface BrowserStatus {
   chromiumAvailable: boolean;
   headless: boolean;
   profiles: BrowserProfile[];
+  launch: BrowserLaunchState;
 }
 
 function resetLegacyBrowserState(): void {
@@ -127,6 +178,7 @@ function resetLegacyBrowserState(): void {
   legacyPages.clear();
   consoleLogs.clear();
   pointerStates.clear();
+  if (browserLaunchState.phase !== "failed") browserLaunchState = { phase: "idle" };
 }
 
 let legacyBrowserPromise: Promise<Browser> | null = null;
@@ -142,6 +194,7 @@ async function getLegacyBrowser(): Promise<Browser> {
       let browser: Browser;
       try {
         browser = await chromium.connectOverCDP("http://127.0.0.1:9222", { timeout: 750 });
+        browserLaunchState = { phase: "running", attempt: "existing browser" };
         console.log("[Browser] Connected to existing Chrome instance via CDP");
       } catch {
         const launchArgs = browserLaunchArgs();
@@ -157,8 +210,9 @@ async function getLegacyBrowser(): Promise<Browser> {
       return browser;
     } catch (error) {
       legacyBrowserPromise = null;
-      console.error("[Browser] Failed to launch browser:", error);
       const detail = error instanceof Error ? error.message : String(error);
+      console.error("[Browser] Failed to launch browser:", error);
+      void systemLogger.error("Failed to launch browser preview", { error: detail });
       throw new Error(`Failed to launch browser: ${detail}`);
     }
   })();
@@ -1024,6 +1078,7 @@ export async function getStatus(): Promise<BrowserStatus> {
       chromiumAvailable: !!executablePath,
       headless: process.env.BROWSER_HEADLESS !== "false",
       profiles: listBrowserProfiles(),
+      launch: browserLaunchState,
     };
   } catch {
     return {
@@ -1032,6 +1087,7 @@ export async function getStatus(): Promise<BrowserStatus> {
       chromiumAvailable: false,
       headless: true,
       profiles: [],
+      launch: browserLaunchState,
     };
   }
 }

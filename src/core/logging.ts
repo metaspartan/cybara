@@ -1,6 +1,7 @@
 import { tables } from "./database";
 import { randomUUID } from "crypto";
 import { redactSecretText, redactSecrets } from "./redaction";
+import { capSessionMessageMetadata } from "./session-message-metadata";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -65,15 +66,6 @@ function redactLogMetadata(
   metadata?: Record<string, unknown>
 ): Record<string, unknown> | undefined {
   return metadata ? (redactSecrets(metadata) as Record<string, unknown>) : undefined;
-}
-
-const SESSION_MESSAGE_METADATA_MAX_CHARS = 262_144;
-
-function capSessionMessageMetadata(metadataJson?: string): string | undefined {
-  if (!metadataJson || metadataJson.length <= SESSION_MESSAGE_METADATA_MAX_CHARS) {
-    return metadataJson;
-  }
-  return JSON.stringify({ elided: true, originalChars: metadataJson.length });
 }
 
 function normalizeCreatedAt(value?: string): string | undefined {

@@ -6,6 +6,12 @@ import type { chromium as ChromiumApi } from "playwright";
 type Chromium = typeof ChromiumApi;
 type RuntimePlatform = NodeJS.Platform;
 
+export interface BrowserLaunchTarget {
+  label: string;
+  channel?: "chrome" | "msedge";
+  executablePath?: string;
+}
+
 export function browserExecutableCandidates(
   platform: RuntimePlatform,
   env: NodeJS.ProcessEnv = process.env,
@@ -20,12 +26,12 @@ export function browserExecutableCandidates(
       env["ProgramFiles(x86)"] || env["PROGRAMFILES(X86)"] || "C:\\Program Files (x86)";
     const localAppData = env.LOCALAPPDATA;
     candidates.push(
-      windowsJoin(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
-      windowsJoin(programFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
-      localAppData && windowsJoin(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
       windowsJoin(programFiles, "Microsoft", "Edge", "Application", "msedge.exe"),
       windowsJoin(programFilesX86, "Microsoft", "Edge", "Application", "msedge.exe"),
       localAppData && windowsJoin(localAppData, "Microsoft", "Edge", "Application", "msedge.exe"),
+      windowsJoin(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
+      windowsJoin(programFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
+      localAppData && windowsJoin(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
       windowsJoin(programFiles, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
       localAppData &&
         windowsJoin(localAppData, "BraveSoftware", "Brave-Browser", "Application", "brave.exe"),
@@ -56,6 +62,50 @@ export function browserExecutableCandidates(
   return [...new Set(candidates.filter((value): value is string => Boolean(value)))];
 }
 
+export function browserChannelNames(platform: RuntimePlatform): Array<"chrome" | "msedge"> {
+  return platform === "win32" ? ["msedge", "chrome"] : ["chrome", "msedge"];
+}
+
+function browserExecutableLabel(executablePath: string): string {
+  const normalized = executablePath.toLowerCase();
+  if (normalized.includes("msedge")) return "Microsoft Edge executable";
+  if (normalized.includes("chrome")) return "Google Chrome executable";
+  if (normalized.includes("brave")) return "Brave executable";
+  return "Chromium executable";
+}
+
+export function buildBrowserLaunchPlan(
+  platform: RuntimePlatform,
+  explicitExecutable: string | undefined,
+  bundledExecutable: string | null,
+  systemExecutables: string[]
+): BrowserLaunchTarget[] {
+  const targets: BrowserLaunchTarget[] = [];
+  const seenExecutables = new Set<string>();
+  const pathKey = (value: string) => (platform === "win32" ? value.toLowerCase() : value);
+  const addExecutable = (label: string, executablePath: string) => {
+    const key = pathKey(executablePath);
+    if (seenExecutables.has(key)) return;
+    seenExecutables.add(key);
+    targets.push({ label, executablePath });
+  };
+  const configured = explicitExecutable
+    ? systemExecutables.find((candidate) => pathKey(candidate) === pathKey(explicitExecutable))
+    : undefined;
+  if (configured) addExecutable("configured browser", configured);
+  if (bundledExecutable) addExecutable("bundled Chromium", bundledExecutable);
+  for (const channel of browserChannelNames(platform)) {
+    targets.push({
+      label: channel === "msedge" ? "Microsoft Edge" : "Google Chrome",
+      channel,
+    });
+  }
+  for (const executablePath of systemExecutables) {
+    addExecutable(browserExecutableLabel(executablePath), executablePath);
+  }
+  return targets;
+}
+
 function browserCommandNames(platform: RuntimePlatform): string[] {
   if (platform === "win32") return ["chrome.exe", "msedge.exe", "brave.exe", "chromium.exe"];
   if (platform === "darwin") return [];
@@ -74,14 +124,23 @@ export function findSystemBrowserExecutable(
   env: NodeJS.ProcessEnv = process.env,
   home = homedir()
 ): string | null {
+  return findSystemBrowserExecutables(platform, env, home)[0] ?? null;
+}
+
+export function findSystemBrowserExecutables(
+  platform: RuntimePlatform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  home = homedir()
+): string[] {
+  const found: string[] = [];
   for (const candidate of browserExecutableCandidates(platform, env, home)) {
-    if (existsSync(candidate)) return candidate;
+    if (existsSync(candidate)) found.push(candidate);
   }
   for (const command of browserCommandNames(platform)) {
     const executable = Bun.which(command);
-    if (executable && existsSync(executable)) return executable;
+    if (executable && existsSync(executable)) found.push(executable);
   }
-  return null;
+  return [...new Set(found)];
 }
 
 export function findBundledBrowserExecutable(chromium: Chromium): string | null {
@@ -97,12 +156,7 @@ export function browserLaunchArgs(
   platform: RuntimePlatform = process.platform,
   env: NodeJS.ProcessEnv = process.env
 ): string[] {
-  const args = [
-    "--disable-dev-shm-usage",
-    "--disable-accelerated-2d-canvas",
-    "--disable-gpu",
-    "--window-size=1920,1080",
-  ];
+  const args = platform === "linux" ? ["--disable-dev-shm-usage"] : [];
   if (
     platform === "linux" &&
     (env.CI === "true" || env.DOCKER === "true" || env.CYBARA_BROWSER_DISABLE_SANDBOX === "true")

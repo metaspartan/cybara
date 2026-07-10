@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Input, Textarea } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ProviderIcon, hasProviderIcon } from "@/components/ProviderIcon";
 import { Select } from "@/components/ui/Input";
 import { PageLayout } from "@/components/layout";
 import {
@@ -304,8 +305,12 @@ function AgentCard({
           aria-label={`Open ${agent.name} in Chat`}
         >
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-500/20">
-              <Bot className="h-5 w-5 text-indigo-400" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/[0.06] border border-white/10 text-white">
+              {hasProviderIcon(agent.provider_type ?? agent.provider) ? (
+                <ProviderIcon provider={agent.provider_type ?? agent.provider} size={22} />
+              ) : (
+                <Bot className="h-5 w-5 text-indigo-400" />
+              )}
             </div>
             <div className="min-w-0">
               <h3 className="truncate font-medium text-white group-hover:text-indigo-200">

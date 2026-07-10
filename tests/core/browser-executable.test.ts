@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  browserChannelNames,
   browserExecutableCandidates,
   browserLaunchArgs,
+  buildBrowserLaunchPlan,
 } from "../../src/core/browser/browser-executable";
 import { stripWindowsLongPathPrefix } from "../../src/core/browser/playwright-loader";
 
@@ -22,6 +24,8 @@ describe("browser executable discovery", () => {
     expect(candidates).toContain(
       "C:\\Users\\Test\\AppData\\Local\\Microsoft\\Edge\\Application\\msedge.exe"
     );
+    expect(candidates[0]).toBe("C:\\Apps\\Microsoft\\Edge\\Application\\msedge.exe");
+    expect(browserChannelNames("win32")).toEqual(["msedge", "chrome"]);
   });
 
   test("covers common native and packaged Linux browser locations", () => {
@@ -30,6 +34,28 @@ describe("browser executable discovery", () => {
     expect(candidates).toContain("/usr/bin/google-chrome-stable");
     expect(candidates).toContain("/usr/bin/chromium");
     expect(candidates).toContain("/snap/bin/chromium");
+  });
+
+  test("uses supported Windows channels before executable-path fallbacks", () => {
+    const plan = buildBrowserLaunchPlan("win32", undefined, null, [
+      "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+    ]);
+
+    expect(plan.map((target) => target.label)).toEqual([
+      "Microsoft Edge",
+      "Google Chrome",
+      "Microsoft Edge executable",
+    ]);
+    expect(plan[0]?.channel).toBe("msedge");
+    expect(plan[2]?.executablePath).toContain("msedge.exe");
+  });
+
+  test("honors an explicit browser path first without duplicate fallback entries", () => {
+    const configured = "C:\\Browsers\\chrome.exe";
+    const plan = buildBrowserLaunchPlan("win32", "c:\\browsers\\CHROME.EXE", null, [configured]);
+
+    expect(plan[0]).toEqual({ label: "configured browser", executablePath: configured });
+    expect(plan.filter((target) => target.executablePath === configured)).toHaveLength(1);
   });
 
   test("puts an explicit Cybara browser path first", () => {
@@ -44,6 +70,8 @@ describe("browser executable discovery", () => {
     expect(browserLaunchArgs("win32", {})).not.toContain("--no-sandbox");
     expect(browserLaunchArgs("darwin", {})).not.toContain("--no-sandbox");
     expect(browserLaunchArgs("linux", {})).not.toContain("--no-sandbox");
+    expect(browserLaunchArgs("win32", {})).toEqual([]);
+    expect(browserLaunchArgs("linux", {})).toContain("--disable-dev-shm-usage");
   });
 
   test("allows an explicit Linux container sandbox override", () => {

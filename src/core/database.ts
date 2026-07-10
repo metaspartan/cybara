@@ -328,24 +328,6 @@ try {
   }
 
   try {
-    const repaired = db
-      .prepare(
-        `UPDATE session_messages SET
-           metadata = CASE
-             WHEN LENGTH(COALESCE(metadata, '')) > 262144
-             THEN json_object('elided', 1, 'originalChars', LENGTH(metadata))
-             ELSE metadata END
-         WHERE LENGTH(COALESCE(metadata, '')) > 262144`
-      )
-      .run();
-    if (repaired.changes > 0) {
-      console.log(`[Database] Migration: compacted ${repaired.changes} oversized metadata row(s)`);
-    }
-  } catch (error) {
-    console.warn("[Database] session_messages size repair failed:", error);
-  }
-
-  try {
     db.exec("ALTER TABLE agents ADD COLUMN fallback_provider_id TEXT");
     console.log("[Database] Migration: Added fallback_provider_id column");
   } catch {

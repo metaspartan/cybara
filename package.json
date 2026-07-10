@@ -66,6 +66,7 @@
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "3.1076.0",
     "@huggingface/transformers": "4.2.0",
+    "@lobehub/icons": "5.10.1",
     "@scure/bip39": "2.2.0",
     "@slack/bolt": "4.7.3",
     "@smithy/types": "4.15.0",

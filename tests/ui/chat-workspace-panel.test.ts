@@ -87,6 +87,9 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain('cursor.source !== "agent"');
     expect(browserSource).toContain("browser-agent-click");
     expect(browserSource).toContain('aria-label="Interactive browser preview"');
+    expect(browserSource).toContain("const BROWSER_START_TIMEOUT_MS = 90_000");
+    expect(browserSource).toContain('apiFetch("/api/browser/status"');
+    expect(browserSource).toContain("browserStartupLabel(status)");
     expect(browserSource).toContain('sendPageInput("pointer/click"');
     expect(browserSource).toContain('sendPageInput("scroll"');
     expect(browserSource).toContain('sendPageInput("keyboard"');

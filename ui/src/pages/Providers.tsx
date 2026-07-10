@@ -15,6 +15,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { openExternal } from "@/utils/openExternal";
+import { ProviderIcon, hasProviderIcon } from "@/components/ProviderIcon";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -394,8 +395,15 @@ export function Providers() {
                 <CardContent className="p-3 sm:p-4">
                   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div className="flex items-center gap-3 sm:gap-4 min-w-0">
-                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center flex-shrink-0">
-                        <Cloud className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                      <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-white/[0.06] border border-white/10 flex items-center justify-center flex-shrink-0">
+                        <ProviderIcon
+                          provider={provider.provider}
+                          className="text-white"
+                          size={24}
+                        />
+                        {!hasProviderIcon(provider.provider) ? (
+                          <Cloud className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                        ) : null}
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
