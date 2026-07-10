@@ -21,6 +21,13 @@ fn should_log_sidecar_output() -> bool {
         )
 }
 
+fn is_browser_diagnostic_line(value: &str) -> bool {
+    value.contains("Browser preview")
+        || value.contains("browser preview")
+        || value.contains("Windows browser CDP")
+        || value.contains("[Browser]")
+}
+
 fn is_server_running_at(addr: &str) -> bool {
     let Ok(mut stream) = TcpStream::connect(addr) else {
         return false;
@@ -117,6 +124,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_log::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -127,6 +135,7 @@ fn main() {
             // Check if server is already running (e.g., started by beforeDevCommand)
             if is_server_running() {
                 println!("[Cybara] Server already running on port 4269");
+                log::info!("Attached to existing Cybara gateway on port 4269");
 
                 // Navigate to the backend URL so relative /api/ paths work
                 if let Some(window) = app.get_webview_window("main") {
@@ -138,6 +147,7 @@ fn main() {
 
             // Spawn the Cybara backend sidecar (for production builds)
             println!("[Cybara] Starting sidecar...");
+            log::info!("Starting Cybara gateway sidecar");
             let mut sidecar = app.shell().sidecar("cybara").unwrap();
             if let Ok(resource_dir) = app.path().resource_dir() {
                 let resource_dir = resource_dir.to_string_lossy().to_string();
@@ -159,19 +169,26 @@ fn main() {
                 while let Some(event) = rx.recv().await {
                     match event {
                         CommandEvent::Stdout(line) => {
+                            let output = String::from_utf8_lossy(&line);
+                            if is_browser_diagnostic_line(&output) {
+                                log::info!(target: "cybara::browser", "{}", output.trim());
+                            }
                             if log_sidecar_output {
-                                let output = String::from_utf8_lossy(&line);
                                 println!("[Cybara] {}", output);
                             }
                         }
                         CommandEvent::Stderr(line) => {
+                            let output = String::from_utf8_lossy(&line);
+                            if is_browser_diagnostic_line(&output) {
+                                log::warn!(target: "cybara::browser", "{}", output.trim());
+                            }
                             if log_sidecar_output {
-                                let output = String::from_utf8_lossy(&line);
                                 eprintln!("[Cybara] {}", output);
                             }
                         }
                         CommandEvent::Terminated(payload) => {
                             println!("[Cybara] Sidecar terminated with code: {:?}", payload.code);
+                            log::warn!("Cybara gateway sidecar terminated with code {:?}", payload.code);
                             break;
                         }
                         _ => {}
@@ -195,6 +212,7 @@ fn main() {
                     }
                 } else {
                     eprintln!("[Cybara] Sidecar did not become ready within timeout");
+                    log::error!("Cybara gateway sidecar did not become ready within timeout");
                 }
             });
 

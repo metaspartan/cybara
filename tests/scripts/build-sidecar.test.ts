@@ -3,7 +3,9 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs"
 import { tmpdir } from "os";
 import { join } from "path";
 import {
+  assertWindowsPlaywrightRuntime,
   copyFilePortable,
+  findWindowsPlaywrightBrowserExecutable,
   findOnnxRuntimeNativeDir,
   getHostTargetFor,
   getRuntimeTargetFor,
@@ -135,6 +137,39 @@ describe("build-sidecar host target mapping", () => {
       writeFileSync(source, payload, "utf8");
       await copyFilePortable(source, target);
       expect(readFileSync(target, "utf8")).toBe(payload);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("verifies the packaged Windows Playwright executable", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-playwright-package-test-"));
+    const executable = join(
+      dir,
+      "node_modules",
+      "playwright-core",
+      ".local-browsers",
+      "chromium_headless_shell-1234",
+      "chrome-headless-shell-win64",
+      "headless_shell.exe"
+    );
+
+    try {
+      mkdirSync(join(executable, ".."), { recursive: true });
+      writeFileSync(executable, "browser");
+      expect(findWindowsPlaywrightBrowserExecutable(join(dir, "node_modules"))).toBe(executable);
+      expect(assertWindowsPlaywrightRuntime(dir)).toBe(executable);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a Windows package without a Playwright browser executable", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-playwright-package-test-"));
+    try {
+      expect(() => assertWindowsPlaywrightRuntime(dir)).toThrow(
+        "Windows Playwright browser runtime is missing"
+      );
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

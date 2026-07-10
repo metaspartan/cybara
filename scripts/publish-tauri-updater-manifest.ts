@@ -84,14 +84,18 @@ export function resolveUpdaterPlatformKeys(assetName: string): readonly string[]
   if (/\.exe$/i.test(assetName)) {
     return ["windows-x86_64-nsis"];
   }
+  // Linux arch is encoded in the bundle name: deb uses `_arm64`/`_amd64`,
+  // rpm/AppImage use `aarch64`/`x86_64`. Default to x86_64 when unlabelled.
+  const isLinuxArm64 = /(?:_arm64|aarch64)/i.test(assetName);
+  const linuxArch = isLinuxArm64 ? "aarch64" : "x86_64";
   if (/\.deb$/i.test(assetName)) {
-    return ["linux-x86_64", "linux-x86_64-deb"];
+    return [`linux-${linuxArch}`, `linux-${linuxArch}-deb`];
   }
   if (/\.rpm$/i.test(assetName)) {
-    return ["linux-x86_64-rpm"];
+    return [`linux-${linuxArch}-rpm`];
   }
   if (/\.AppImage$/i.test(assetName)) {
-    return ["linux-x86_64-appimage"];
+    return [`linux-${linuxArch}-appimage`];
   }
   if (/\.app\.tar\.gz$/i.test(assetName)) {
     if (/_aarch64\.app\.tar\.gz$/i.test(assetName)) {

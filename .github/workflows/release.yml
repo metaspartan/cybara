@@ -130,6 +130,14 @@ jobs:
             rust_target: x86_64-unknown-linux-gnu
             bun_target: bun-linux-x64
             sidecar: "src-tauri/bin/cybara-x86_64-unknown-linux-gnu"
+          # Linux arm64 — native GitHub-hosted ARM runner (Raspberry Pi, ARM servers).
+          # Native build on aarch64, so the sidecar and Rust target compile natively.
+          - platform: linux
+            runner: ubuntu-24.04-arm
+            args: "--bundles deb,rpm"
+            rust_target: aarch64-unknown-linux-gnu
+            bun_target: bun-linux-arm64
+            sidecar: "src-tauri/bin/cybara-aarch64-unknown-linux-gnu"
 
     runs-on: ${{ matrix.runner }}
     env:

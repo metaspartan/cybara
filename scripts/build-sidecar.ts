@@ -192,6 +192,30 @@ function copyOptionalPackage(packageName: string, targetNodeModulesDir: string):
   return true;
 }
 
+export function findWindowsPlaywrightBrowserExecutable(browserRoot: string): string | null {
+  if (!existsSync(browserRoot)) return null;
+  const pending = [browserRoot];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current) continue;
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const path = join(current, entry.name);
+      if (entry.isDirectory()) pending.push(path);
+      else if (["headless_shell.exe", "chrome.exe"].includes(entry.name.toLowerCase())) return path;
+    }
+  }
+  return null;
+}
+
+export function assertWindowsPlaywrightRuntime(targetRoot: string): string {
+  const browserRoot = join(targetRoot, "node_modules", "playwright-core", ".local-browsers");
+  const executable = findWindowsPlaywrightBrowserExecutable(browserRoot);
+  if (!executable) {
+    throw new Error(`Windows Playwright browser runtime is missing from ${browserRoot}`);
+  }
+  return executable;
+}
+
 export function getSharpRuntimePackageNames(runtimeTarget: RuntimeTarget): string[] {
   if (runtimeTarget.platform === "win32") {
     return [`@img/sharp-win32-${runtimeTarget.arch}`];
@@ -485,6 +509,12 @@ export default instance.exports;
       if (existsSync(targetDir)) rmSync(targetDir, { recursive: true, force: true });
       mkdirSync(join(dir, "node_modules"), { recursive: true });
       cpSync(source, targetDir, { recursive: true });
+    }
+  }
+  if (runtimeTarget.platform === "win32") {
+    for (const dir of [TAURI_BIN_DIR, tauriDebugDir]) {
+      const executable = assertWindowsPlaywrightRuntime(dir);
+      console.log(`  📦 Verified Windows browser preview runtime at ${executable}`);
     }
   }
   console.log(`  📦 Copied Playwright runtime to sidecar directories`);

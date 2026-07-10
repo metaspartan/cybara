@@ -69,6 +69,27 @@ describe("Tauri updater manifest publisher", () => {
     ]);
   });
 
+  test("distinguishes linux x64 and arm64 bundles by arch in the asset name", () => {
+    expect(resolveUpdaterPlatformKeys("Cybara_1.0.619_amd64.deb")).toEqual([
+      "linux-x86_64",
+      "linux-x86_64-deb",
+    ]);
+    expect(resolveUpdaterPlatformKeys("Cybara_1.0.619_arm64.deb")).toEqual([
+      "linux-aarch64",
+      "linux-aarch64-deb",
+    ]);
+    expect(resolveUpdaterPlatformKeys("Cybara-1.0.619-1.x86_64.rpm")).toEqual(["linux-x86_64-rpm"]);
+    expect(resolveUpdaterPlatformKeys("Cybara-1.0.619-1.aarch64.rpm")).toEqual([
+      "linux-aarch64-rpm",
+    ]);
+    expect(resolveUpdaterPlatformKeys("Cybara_1.0.619_amd64.AppImage")).toEqual([
+      "linux-x86_64-appimage",
+    ]);
+    expect(resolveUpdaterPlatformKeys("Cybara_1.0.619_aarch64.AppImage")).toEqual([
+      "linux-aarch64-appimage",
+    ]);
+  });
+
   test("builds a complete canonical latest.json from release assets and signatures", async () => {
     const assets = updaterAssets([
       "Cybara_1.0.619_x64_en-US.msi",

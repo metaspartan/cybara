@@ -1,13 +1,23 @@
 import { randomUUID } from "crypto";
-import type { Browser, BrowserContext, LaunchOptions, Locator, Page } from "playwright";
+import type { LaunchOptions } from "playwright";
 import { systemLogger } from "../logging";
 import {
+  browserExecutableLabel,
   browserLaunchArgs,
   buildBrowserLaunchPlan,
   findBundledBrowserExecutable,
   findSystemBrowserExecutable,
   findSystemBrowserExecutables,
 } from "./browser-executable";
+import {
+  type AutomationBrowser as Browser,
+  type AutomationContext as BrowserContext,
+  automationDriverForPlatform,
+  type AutomationLocator as Locator,
+  type AutomationPage as Page,
+  launchPuppeteerBrowser,
+  wrapPlaywrightBrowser,
+} from "./automation-driver";
 import { findHermeticPlaywrightBrowserPath, getChromium } from "./playwright-loader";
 import {
   type BrowserProfile,
@@ -31,27 +41,70 @@ async function launchWithFallback(
   headless: boolean,
   args: string[]
 ): Promise<Browser> {
-  const attempts: Array<{ label: string; options: LaunchOptions }> = [
-    { label: "Playwright Chromium", options: { headless, args } },
-  ];
   const systemExecutables = findSystemBrowserExecutables();
   const explicitExecutable =
     process.env.CYBARA_BROWSER_PATH?.trim() || process.env.CHROME_PATH?.trim();
-  for (const target of buildBrowserLaunchPlan(
-    process.platform,
-    explicitExecutable,
-    null,
-    systemExecutables
-  )) {
-    attempts.push({
-      label: target.label,
-      options: {
-        headless,
-        args,
-        ...(target.channel ? { channel: target.channel } : {}),
-        ...(target.executablePath ? { executablePath: target.executablePath } : {}),
-      },
-    });
+  const bundledExecutable = findBundledBrowserExecutable(chromium);
+  const attempts: Array<{
+    label: string;
+    executablePath?: string;
+    launch(timeout: number): Promise<Browser>;
+  }> = [];
+
+  if (automationDriverForPlatform(process.platform) === "puppeteer") {
+    const normalizePath = (value: string) => value.toLowerCase();
+    const explicitMatch = explicitExecutable
+      ? systemExecutables.find(
+          (candidate) => normalizePath(candidate) === normalizePath(explicitExecutable)
+        )
+      : undefined;
+    const executables = [explicitMatch, bundledExecutable, ...systemExecutables]
+      .filter((value): value is string => typeof value === "string")
+      .filter(
+        (value, index, values) =>
+          values.findIndex((candidate) => normalizePath(candidate) === normalizePath(value)) ===
+          index
+      );
+    for (const executablePath of executables) {
+      const label =
+        executablePath === bundledExecutable
+          ? "Packaged Chromium"
+          : browserExecutableLabel(executablePath);
+      attempts.push({
+        label,
+        executablePath,
+        launch: async (timeout) =>
+          await launchPuppeteerBrowser({ executablePath, headless, args, timeout }),
+      });
+    }
+  } else {
+    const playwrightAttempts: Array<{ label: string; options: LaunchOptions }> = [
+      { label: "Packaged Chromium", options: { headless, args } },
+    ];
+    for (const target of buildBrowserLaunchPlan(
+      process.platform,
+      explicitExecutable,
+      null,
+      systemExecutables
+    )) {
+      playwrightAttempts.push({
+        label: target.label,
+        options: {
+          headless,
+          args,
+          ...(target.channel ? { channel: target.channel } : {}),
+          ...(target.executablePath ? { executablePath: target.executablePath } : {}),
+        },
+      });
+    }
+    for (const attempt of playwrightAttempts) {
+      attempts.push({
+        label: attempt.label,
+        executablePath: attempt.options.executablePath,
+        launch: async (timeout) =>
+          wrapPlaywrightBrowser(await chromium.launch({ ...attempt.options, timeout })),
+      });
+    }
   }
 
   const failures: string[] = [];
@@ -59,10 +112,7 @@ async function launchWithFallback(
   const total = attempts.length;
   let attempted = 0;
 
-  const launchAttempt = async (attempt: {
-    label: string;
-    options: LaunchOptions;
-  }): Promise<Browser | null> => {
+  const launchAttempt = async (attempt: (typeof attempts)[number]): Promise<Browser | null> => {
     const remainingMs = BROWSER_LAUNCH_BUDGET_MS - (Date.now() - startedAt);
     if (remainingMs <= 0) return null;
     attempted += 1;
@@ -76,12 +126,16 @@ async function launchWithFallback(
       attempt: attempt.label,
       attempted,
       total,
+      driver: automationDriverForPlatform(process.platform),
+      runtime: `Bun ${Bun.version}`,
+      platform: process.platform,
+      arch: process.arch,
+      executablePath: attempt.executablePath,
     });
     try {
-      const browser = await chromium.launch({
-        ...attempt.options,
-        timeout: Math.min(BROWSER_LAUNCH_ATTEMPT_TIMEOUT_MS, remainingMs),
-      });
+      const browser = await attempt.launch(
+        Math.min(BROWSER_LAUNCH_ATTEMPT_TIMEOUT_MS, remainingMs)
+      );
       browserLaunchState = {
         phase: "running",
         attempt: attempt.label,
@@ -95,15 +149,13 @@ async function launchWithFallback(
       void systemLogger.warn("Browser preview launch attempt failed", {
         attempt: attempt.label,
         error: message,
+        executablePath: attempt.executablePath,
       });
       return null;
     }
   };
 
-  const managedBrowser = await launchAttempt(attempts[0]);
-  if (managedBrowser) return managedBrowser;
-
-  for (const attempt of attempts.slice(1)) {
+  for (const attempt of attempts) {
     const browser = await launchAttempt(attempt);
     if (browser) return browser;
   }
@@ -211,17 +263,26 @@ async function getLegacyBrowser(): Promise<Browser> {
     const chromium = await getChromium();
     try {
       let browser: Browser;
-      try {
-        browser = await chromium.connectOverCDP("http://127.0.0.1:9222", { timeout: 750 });
-        browserLaunchState = { phase: "running", attempt: "existing browser" };
-        console.log("[Browser] Connected to existing Chrome instance via CDP");
-      } catch {
+      if (automationDriverForPlatform(process.platform) === "puppeteer") {
         const launchArgs = browserLaunchArgs();
         const headless = process.env.BROWSER_HEADLESS !== "false";
         browser = await launchWithFallback(chromium, headless, launchArgs);
         console.log("[Browser] Launched new browser instance");
+      } else {
+        try {
+          browser = wrapPlaywrightBrowser(
+            await chromium.connectOverCDP("http://127.0.0.1:9222", { timeout: 750 })
+          );
+          browserLaunchState = { phase: "running", attempt: "existing browser" };
+          console.log("[Browser] Connected to existing Chrome instance via CDP");
+        } catch {
+          const launchArgs = browserLaunchArgs();
+          const headless = process.env.BROWSER_HEADLESS !== "false";
+          browser = await launchWithFallback(chromium, headless, launchArgs);
+          console.log("[Browser] Launched new browser instance");
+        }
       }
-      browser.on("disconnected", () => {
+      browser.onDisconnected(() => {
         console.warn("[Browser] Browser disconnected; clearing cached state");
         resetLegacyBrowserState();
       });
@@ -304,13 +365,13 @@ export async function createPage(): Promise<string> {
   legacyPages.set(id, page);
   consoleLogs.set(id, []);
 
-  page.on("close", () => {
+  page.onClose(() => {
     legacyPages.delete(id);
     consoleLogs.delete(id);
     pointerStates.delete(id);
   });
 
-  page.on("console", (msg) => {
+  page.onConsole((msg) => {
     const logs = consoleLogs.get(id) || [];
     logs.push({
       type: msg.type(),
@@ -921,7 +982,7 @@ export async function acceptDialog(pageId: string, promptText?: string): Promise
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  page.on("dialog", async (dialog) => {
+  page.onDialog(async (dialog) => {
     if (promptText) {
       await dialog.accept(promptText);
     } else {
@@ -934,7 +995,7 @@ export async function dismissDialog(pageId: string): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  page.on("dialog", async (dialog) => {
+  page.onDialog(async (dialog) => {
     await dialog.dismiss();
   });
 }
