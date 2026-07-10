@@ -6,6 +6,7 @@ import {
   buildBrowserLaunchPlan,
 } from "../../src/core/browser/browser-executable";
 import { stripWindowsLongPathPrefix } from "../../src/core/browser/playwright-loader";
+import { windowsBrowserCdpArgs } from "../../src/core/browser/windows-cdp-launch";
 
 describe("browser executable discovery", () => {
   test("covers user and machine Chrome and Edge installs on Windows", () => {
@@ -78,6 +79,20 @@ describe("browser executable discovery", () => {
     expect(browserLaunchArgs("linux", { CYBARA_BROWSER_DISABLE_SANDBOX: "true" })).toContain(
       "--no-sandbox"
     );
+  });
+
+  test("builds an isolated Windows CDP launch without shell parsing", () => {
+    const args = windowsBrowserCdpArgs("C:\\Temp\\Cybara Profile", true);
+
+    expect(args).toContain("--remote-debugging-port=0");
+    expect(args).toContain("--remote-debugging-address=127.0.0.1");
+    expect(args).toContain("--user-data-dir=C:\\Temp\\Cybara Profile");
+    expect(args).toContain("--headless=new");
+    expect(args).not.toContain("--no-sandbox");
+  });
+
+  test("keeps headed Windows CDP launches visible", () => {
+    expect(windowsBrowserCdpArgs("C:\\Temp\\Cybara", false)).not.toContain("--headless=new");
   });
 });
 

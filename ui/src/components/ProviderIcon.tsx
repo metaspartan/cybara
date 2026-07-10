@@ -89,7 +89,7 @@ const PROVIDER_ICONS: Record<string, IconType> = {
   "alibaba-coding-plan": Alibaba,
   "z.ai": ZAI,
   "z.ai-coding": ZAI,
-  "zai": ZAI,
+  zai: ZAI,
   cohere: Cohere,
   perplexity: Perplexity,
   fireworks: Fireworks,

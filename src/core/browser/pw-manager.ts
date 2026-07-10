@@ -9,6 +9,7 @@ import {
 } from "./browser-executable";
 import { systemLogger } from "../logging";
 import { getChromium } from "./playwright-loader";
+import { launchWindowsBrowserOverCdp } from "./windows-cdp-launch";
 import {
   type BrowserProfile,
   type BrowserProfileConfig,
@@ -55,14 +56,42 @@ async function launchWithFallback(
 
   const failures: string[] = [];
   const startedAt = Date.now();
+  if (process.platform === "win32" && systemExecutables[0]) {
+    browserLaunchState = {
+      phase: "starting",
+      attempt: "Windows browser",
+      attempted: 1,
+      total: attempts.length + 1,
+    };
+    try {
+      const browser = await launchWindowsBrowserOverCdp(
+        chromium,
+        systemExecutables[0],
+        headless,
+        args,
+        BROWSER_LAUNCH_ATTEMPT_TIMEOUT_MS
+      );
+      browserLaunchState = {
+        phase: "running",
+        attempt: "Windows browser",
+        attempted: 1,
+        total: attempts.length + 1,
+      };
+      return browser;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(`Windows browser: ${message}`);
+      void systemLogger.warn("Windows browser CDP launch failed", { error: message });
+    }
+  }
   for (const attempt of attempts) {
     const remainingMs = BROWSER_LAUNCH_BUDGET_MS - (Date.now() - startedAt);
     if (remainingMs <= 0) break;
     browserLaunchState = {
       phase: "starting",
       attempt: attempt.label,
-      attempted: attempts.indexOf(attempt) + 1,
-      total: attempts.length,
+      attempted: attempts.indexOf(attempt) + 1 + (process.platform === "win32" ? 1 : 0),
+      total: attempts.length + (process.platform === "win32" ? 1 : 0),
     };
     void systemLogger.info("Starting browser preview", {
       attempt: attempt.label,
