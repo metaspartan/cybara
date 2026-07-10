@@ -30,6 +30,18 @@ export function TerminalPage() {
     sessionsRef.current = sessions;
   }, [sessions]);
 
+  useEffect(() => {
+    if (typeof MutationObserver === "undefined") return;
+    const applyTheme = () => {
+      for (const session of sessionsRef.current) {
+        if (session.term) session.term.options.theme = buildXtermTheme("#0a0a0f");
+      }
+    };
+    const observer = new MutationObserver(applyTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme-mode"] });
+    return () => observer.disconnect();
+  }, []);
+
   // Close every socket and dispose every terminal when leaving the page.
   // Without this, navigating away from /terminal leaked one open WebSocket and
   // one undisposed xterm instance per session for the life of the tab.

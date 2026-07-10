@@ -74,9 +74,37 @@ export function themeConfigPayload(accent: ThemeAccent): Record<string, string> 
   };
 }
 
-export type ThemeMode = "system" | "dark" | "light";
+export type ThemeMode =
+  | "system"
+  | "dark"
+  | "icy-dark"
+  | "ash-grey"
+  | "sand-dune"
+  | "light"
+  | "cake";
 
-const themeModes = new Set<ThemeMode>(["system", "dark", "light"]);
+export interface ThemeModeOption {
+  value: ThemeMode;
+  label: string;
+  base: "system" | "dark" | "light";
+  swatch: string;
+}
+
+export const themeModeOptions: ThemeModeOption[] = [
+  { value: "system", label: "System", base: "system", swatch: "#6b7280" },
+  { value: "dark", label: "Dark", base: "dark", swatch: "#0d0d12" },
+  { value: "icy-dark", label: "Icy Dark", base: "dark", swatch: "#0c1420" },
+  { value: "ash-grey", label: "Ash Grey", base: "dark", swatch: "#1e2023" },
+  { value: "sand-dune", label: "Sand Dune", base: "dark", swatch: "#221c13" },
+  { value: "light", label: "Light", base: "light", swatch: "#eef0f4" },
+  { value: "cake", label: "Cake", base: "light", swatch: "#f9ecec" },
+];
+
+const themeModes = new Set<ThemeMode>(themeModeOptions.map((option) => option.value));
+
+export function themeModeBase(mode: ThemeMode): "system" | "dark" | "light" {
+  return themeModeOptions.find((option) => option.value === mode)?.base ?? "dark";
+}
 
 export function readThemeModeFromIdentity(
   identity: Record<string, unknown> | undefined
@@ -124,8 +152,10 @@ const prefersLightTheme = () =>
   typeof window.matchMedia === "function" &&
   window.matchMedia(systemThemeQuery).matches;
 
-const resolveThemeMode = (mode: ThemeMode): "dark" | "light" =>
-  mode === "system" ? (prefersLightTheme() ? "light" : "dark") : mode;
+const resolveThemeMode = (mode: ThemeMode): "dark" | "light" => {
+  const base = themeModeBase(mode);
+  return base === "system" ? (prefersLightTheme() ? "light" : "dark") : base;
+};
 
 const ensureSystemThemeListener = () => {
   if (
@@ -147,12 +177,15 @@ const ensureSystemThemeListener = () => {
   systemThemeListenerBound = true;
 };
 
+const TINTED_THEME_MODES = new Set<ThemeMode>(["icy-dark", "ash-grey", "sand-dune", "cake"]);
+
 function applyThemeMode(mode: ThemeMode) {
   if (typeof document === "undefined") return;
   activeThemeMode = mode;
   ensureSystemThemeListener();
   document.documentElement.dataset.themeMode = mode;
   document.documentElement.classList.toggle("light", resolveThemeMode(mode) === "light");
+  document.documentElement.classList.toggle("theme-tinted", TINTED_THEME_MODES.has(mode));
 }
 
 export const useUIStore = create<UIState>()(

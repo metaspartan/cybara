@@ -880,7 +880,11 @@ textarea[data-chat-composer-input="true"]:focus-visible {
 html.light {
   color-scheme: light;
   color: #1c2433;
-  background-color: #eef0f4;
+  background-color: var(--surface-backdrop, #eef0f4);
+  --surface-backdrop: #eef0f4;
+  --surface-panel: #ffffff;
+  --surface-raised: #e5e8ee;
+  --surface-hover: #e5e8ee;
   --glass-border: rgba(15, 23, 42, 0.1);
   --glass-surface: rgba(15, 23, 42, 0.03);
   --glass-highlight: rgba(15, 23, 42, 0.08);
@@ -902,7 +906,7 @@ html.light {
 }
 
 html.light body {
-  background: #eef0f4;
+  background: var(--surface-backdrop);
 }
 
 html.light body::before {
@@ -920,6 +924,16 @@ html.light select option,
 html.light select optgroup {
   background-color: #ffffff;
   color: #1c2433;
+}
+
+/* Selects authored transparent (composer pills) keep their parent surface. */
+html.light select.bg-transparent {
+  background-color: transparent;
+}
+
+html.light .chat-agent-selector,
+html.light .chat-approval-select {
+  color-scheme: light;
 }
 
 html.light select option:checked,
@@ -1106,7 +1120,7 @@ html.light .bg-\[\#050508\],
 html.light .bg-\[\#06060b\],
 html.light .bg-\[\#070811\],
 html.light .bg-\[\#080810\],
-html.light .bg-\[\#0a0a0f\] { background-color: #eef0f4; }
+html.light .bg-\[\#0a0a0f\] { background-color: var(--surface-backdrop); }
 html.light .bg-\[\#090b13\],
 html.light .bg-\[\#0a0a10\],
 html.light .bg-\[\#0a0a12\],
@@ -1118,8 +1132,8 @@ html.light .bg-\[\#10121a\],
 html.light .bg-\[\#11111a\],
 html.light .bg-\[\#11131c\],
 html.light .bg-\[\#121423\],
-html.light .bg-\[\#13131a\] { background-color: #ffffff; }
-html.light .bg-\[\#1a1e2b\] { background-color: #e5e8ee; }
+html.light .bg-\[\#13131a\] { background-color: var(--surface-panel); }
+html.light .bg-\[\#1a1e2b\] { background-color: var(--surface-raised); }
 html.light .via-\[\#0f1220\] { --tw-gradient-via: #eef1f6; }
 html.light .to-\[\#090c16\] { --tw-gradient-to: #e9ecf2; }
 
@@ -1130,12 +1144,15 @@ html.light .to-\[\#090c16\] { --tw-gradient-to: #e9ecf2; }
 }
 
 /* Alpha-modified dark hex surfaces (sticky headers, blurred panels). */
-html.light .bg-\[\#0a0a0f\]\/80 { background-color: rgba(238, 240, 244, 0.8); }
-html.light .bg-\[\#0a0a0f\]\/90 { background-color: rgba(238, 240, 244, 0.9); }
-html.light .bg-\[\#0a0a10\]\/95 { background-color: rgba(255, 255, 255, 0.95); }
-html.light .bg-\[\#0b0f19\]\/95 { background-color: rgba(255, 255, 255, 0.95); }
-html.light .bg-\[\#11111a\]\/90 { background-color: rgba(255, 255, 255, 0.9); }
-html.light .bg-\[\#11131c\]\/95 { background-color: rgba(255, 255, 255, 0.95); }
+html.light .bg-\[\#0a0a0f\]\/80 { background-color: color-mix(in srgb, var(--surface-backdrop) 80%, transparent); }
+html.light .bg-\[\#0a0a0f\]\/90 { background-color: color-mix(in srgb, var(--surface-backdrop) 90%, transparent); }
+html.light .bg-\[\#0a0a10\]\/95,
+html.light .bg-\[\#0b0f19\]\/95,
+html.light .bg-\[\#11131c\]\/95,
+html.light .bg-\[\#12121a\]\/95,
+html.light .bg-\[\#181820\]\/95 { background-color: color-mix(in srgb, var(--surface-panel) 95%, transparent); }
+html.light .bg-\[\#11111a\]\/90,
+html.light .bg-\[\#12121a\]\/90 { background-color: color-mix(in srgb, var(--surface-panel) 90%, transparent); }
 
 /* Pale accent tints (readable on dark) map to their strong shades on light. */
 html.light .text-indigo-100, html.light .text-indigo-200 { color: #4338ca; }
@@ -1167,6 +1184,65 @@ html.light .text-rose-200, html.light .text-rose-300 { color: #e11d48; }
 html.light .text-violet-300 { color: #7c3aed; }
 html.light .text-purple-300 { color: #9333ea; }
 html.light .text-orange-300 { color: #ea580c; }
+
+/* Opacity-modified white text becomes ink at matching strength. */
+html.light .text-white\/90 { color: rgba(17, 24, 39, 0.9); }
+html.light .text-white\/80 { color: rgba(17, 24, 39, 0.8); }
+html.light .text-white\/70 { color: rgba(17, 24, 39, 0.72); }
+html.light .text-white\/60 { color: rgba(17, 24, 39, 0.62); }
+
+/* Remaining translucent-white surfaces and gradient stops. */
+html.light .bg-white\/\[0\.045\] { background-color: rgba(15, 23, 42, 0.045); }
+html.light .bg-white\/\[0\.1\] { background-color: rgba(15, 23, 42, 0.08); }
+html.light .bg-white\/25 { background-color: rgba(15, 23, 42, 0.16); }
+html.light .bg-white\/60 { background-color: rgba(15, 23, 42, 0.35); }
+html.light .hover\:bg-white\/\[0\.04\]:hover { background-color: rgba(15, 23, 42, 0.045); }
+html.light .hover\:bg-white\/\[0\.05\]:hover { background-color: rgba(15, 23, 42, 0.05); }
+html.light .hover\:bg-white\/\[0\.09\]:hover { background-color: rgba(15, 23, 42, 0.08); }
+html.light .from-white\/10 { --tw-gradient-from: rgba(15, 23, 42, 0.08); }
+html.light .from-white\/20 { --tw-gradient-from: rgba(15, 23, 42, 0.14); }
+html.light .from-white\/\[0\.055\] { --tw-gradient-from: rgba(15, 23, 42, 0.05); }
+html.light .from-white\/\[0\.06\] { --tw-gradient-from: rgba(15, 23, 42, 0.055); }
+html.light .via-white\/20 { --tw-gradient-via: rgba(15, 23, 42, 0.14); }
+html.light .to-white\/5 { --tw-gradient-to: rgba(15, 23, 42, 0.04); }
+html.light .to-white\/10 { --tw-gradient-to: rgba(15, 23, 42, 0.08); }
+html.light .to-white\/\[0\.025\] { --tw-gradient-to: rgba(15, 23, 42, 0.025); }
+
+/* Remaining borders. */
+html.light .border-white\/8,
+html.light .border-white\/\[0\.08\] { border-color: rgba(15, 23, 42, 0.1); }
+html.light .border-\[\#343843\] { border-color: rgba(15, 23, 42, 0.14); }
+html.light .border-\[\#2b303b\] { border-color: rgba(15, 23, 42, 0.12); }
+html.light .hover\:border-\[\#3d4350\]:hover { border-color: rgba(15, 23, 42, 0.2); }
+html.light .hover\:border-\[\#4a5060\]:hover { border-color: rgba(15, 23, 42, 0.26); }
+
+/* Light shadows/rings instead of heavy black. */
+html.light .shadow-black\/20 { --tw-shadow-color: rgba(15, 23, 42, 0.12); }
+html.light .shadow-black\/30 { --tw-shadow-color: rgba(15, 23, 42, 0.16); }
+html.light .shadow-black\/45 { --tw-shadow-color: rgba(15, 23, 42, 0.2); }
+html.light .ring-black\/40 { --tw-ring-color: rgba(15, 23, 42, 0.18); }
+
+/* Subtle black tints under 50% become ink tints (true scrims stay dark). */
+html.light .bg-black\/10 { background-color: rgba(15, 23, 42, 0.04); }
+html.light .bg-black\/15 { background-color: rgba(15, 23, 42, 0.045); }
+
+/* Remaining hard-coded dark hex surfaces. */
+html.light .bg-\[\#050609\],
+html.light .bg-\[\#08090d\],
+html.light .bg-\[\#0a0c11\] { background-color: var(--surface-backdrop); }
+html.light .bg-\[\#0d0e12\],
+html.light .bg-\[\#101018\],
+html.light .bg-\[\#111118\],
+html.light .bg-\[\#111216\],
+html.light .bg-\[\#10131a\],
+html.light .bg-\[\#12151d\],
+html.light .bg-\[\#171a22\],
+html.light .bg-\[\#171b24\] { background-color: var(--surface-panel); }
+html.light .hover\:bg-\[\#1a1e2b\]:hover,
+html.light .hover\:bg-\[\#171b24\]:hover,
+html.light .hover\:bg-\[\#1c202a\]:hover,
+html.light .hover\:bg-\[\#202633\]:hover,
+html.light .hover\:bg-\[\#242733\]:hover { background-color: var(--surface-hover); }
 
 @keyframes cybara-thinking-sprite {
   from {
@@ -1203,4 +1279,151 @@ html.light .text-orange-300 { color: #ea580c; }
 
 .cybara-pet-idle {
   animation: cybara-pet-float 3.2s ease-in-out infinite;
+}
+
+/* ==================== THEME VARIANTS ====================
+   Tinted dark palettes remap the dark-authored hex surfaces through the same
+   --surface-* tokens the light theme uses. `html.theme-tinted` is set from
+   Settings > General > Theme alongside data-theme-mode. Cake rides on the
+   light theme and only overrides the tokens. */
+
+html.theme-tinted:not(.light) {
+  background-color: var(--surface-backdrop);
+}
+
+html.theme-tinted:not(.light) body {
+  background: var(--surface-backdrop);
+}
+
+html.theme-tinted:not(.light) .bg-\[\#050508\],
+html.theme-tinted:not(.light) .bg-\[\#06060b\],
+html.theme-tinted:not(.light) .bg-\[\#070811\],
+html.theme-tinted:not(.light) .bg-\[\#080810\],
+html.theme-tinted:not(.light) .bg-\[\#050609\],
+html.theme-tinted:not(.light) .bg-\[\#08090d\],
+html.theme-tinted:not(.light) .bg-\[\#0a0c11\],
+html.theme-tinted:not(.light) .bg-\[\#0a0a0f\] { background-color: var(--surface-backdrop); }
+html.theme-tinted:not(.light) .bg-\[\#090b13\],
+html.theme-tinted:not(.light) .bg-\[\#0a0a10\],
+html.theme-tinted:not(.light) .bg-\[\#0a0a12\],
+html.theme-tinted:not(.light) .bg-\[\#0b0b12\],
+html.theme-tinted:not(.light) .bg-\[\#0b0f19\],
+html.theme-tinted:not(.light) .bg-\[\#0d0d12\],
+html.theme-tinted:not(.light) .bg-\[\#0f0f16\],
+html.theme-tinted:not(.light) .bg-\[\#10121a\],
+html.theme-tinted:not(.light) .bg-\[\#11111a\],
+html.theme-tinted:not(.light) .bg-\[\#11131c\],
+html.theme-tinted:not(.light) .bg-\[\#121423\],
+html.theme-tinted:not(.light) .bg-\[\#13131a\],
+html.theme-tinted:not(.light) .bg-\[\#0d0e12\],
+html.theme-tinted:not(.light) .bg-\[\#101018\],
+html.theme-tinted:not(.light) .bg-\[\#111118\],
+html.theme-tinted:not(.light) .bg-\[\#111216\],
+html.theme-tinted:not(.light) .bg-\[\#10131a\],
+html.theme-tinted:not(.light) .bg-\[\#12151d\],
+html.theme-tinted:not(.light) .bg-\[\#171a22\],
+html.theme-tinted:not(.light) .bg-\[\#171b24\] { background-color: var(--surface-panel); }
+html.theme-tinted:not(.light) .bg-\[\#1a1e2b\] { background-color: var(--surface-raised); }
+html.theme-tinted:not(.light) .bg-\[\#0a0a0f\]\/80 { background-color: color-mix(in srgb, var(--surface-backdrop) 80%, transparent); }
+html.theme-tinted:not(.light) .bg-\[\#0a0a0f\]\/90 { background-color: color-mix(in srgb, var(--surface-backdrop) 90%, transparent); }
+html.theme-tinted:not(.light) .bg-\[\#0a0a10\]\/95,
+html.theme-tinted:not(.light) .bg-\[\#0b0f19\]\/95,
+html.theme-tinted:not(.light) .bg-\[\#11131c\]\/95,
+html.theme-tinted:not(.light) .bg-\[\#12121a\]\/95,
+html.theme-tinted:not(.light) .bg-\[\#181820\]\/95 { background-color: color-mix(in srgb, var(--surface-panel) 95%, transparent); }
+html.theme-tinted:not(.light) .bg-\[\#11111a\]\/90,
+html.theme-tinted:not(.light) .bg-\[\#12121a\]\/90 { background-color: color-mix(in srgb, var(--surface-panel) 90%, transparent); }
+html.theme-tinted:not(.light) .hover\:bg-\[\#1a1e2b\]:hover,
+html.theme-tinted:not(.light) .hover\:bg-\[\#171b24\]:hover,
+html.theme-tinted:not(.light) .hover\:bg-\[\#1c202a\]:hover,
+html.theme-tinted:not(.light) .hover\:bg-\[\#202633\]:hover,
+html.theme-tinted:not(.light) .hover\:bg-\[\#242733\]:hover { background-color: var(--surface-hover); }
+html.theme-tinted:not(.light) .border-\[\#343843\] { border-color: var(--surface-border); }
+html.theme-tinted:not(.light) .border-\[\#2b303b\] { border-color: var(--surface-border); }
+html.theme-tinted:not(.light) .via-\[\#0f1220\] { --tw-gradient-via: var(--surface-panel); }
+html.theme-tinted:not(.light) .to-\[\#090c16\] { --tw-gradient-to: var(--surface-backdrop); }
+
+html[data-theme-mode="icy-dark"] {
+  --surface-backdrop: #060b13;
+  --surface-panel: #0c141f;
+  --surface-raised: #13202f;
+  --surface-hover: #152438;
+  --surface-border: rgba(139, 180, 235, 0.16);
+  --glass-border: rgba(139, 180, 235, 0.12);
+  --glass-surface: rgba(139, 180, 235, 0.04);
+  --context-ring-inner: #0c141f;
+  --context-tooltip-bg: rgba(18, 30, 46, 0.97);
+  --chat-environment-panel-bg: #0c141f;
+  --chat-environment-panel-border: #1d3049;
+  --workspace-open-menu-bg: #13202f;
+}
+
+html[data-theme-mode="icy-dark"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(56, 130, 210, 0.12) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(45, 160, 220, 0.08) 0%, transparent 50%);
+}
+
+html[data-theme-mode="ash-grey"] {
+  --surface-backdrop: #121316;
+  --surface-panel: #191b1e;
+  --surface-raised: #212327;
+  --surface-hover: #26282d;
+  --surface-border: rgba(255, 255, 255, 0.12);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --glass-surface: rgba(255, 255, 255, 0.035);
+  --context-ring-inner: #191b1e;
+  --context-tooltip-bg: rgba(36, 38, 42, 0.97);
+  --chat-environment-panel-bg: #191b1e;
+  --chat-environment-panel-border: #33363c;
+  --workspace-open-menu-bg: #212327;
+}
+
+html[data-theme-mode="ash-grey"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(255, 255, 255, 0.04) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(255, 255, 255, 0.03) 0%, transparent 50%);
+}
+
+html[data-theme-mode="sand-dune"] {
+  --surface-backdrop: #131009;
+  --surface-panel: #1b1610;
+  --surface-raised: #241d13;
+  --surface-hover: #2b2317;
+  --surface-border: rgba(233, 196, 136, 0.16);
+  --glass-border: rgba(233, 196, 136, 0.12);
+  --glass-surface: rgba(233, 196, 136, 0.04);
+  --context-ring-inner: #1b1610;
+  --context-tooltip-bg: rgba(42, 35, 24, 0.97);
+  --chat-environment-panel-bg: #1b1610;
+  --chat-environment-panel-border: #3d3323;
+  --workspace-open-menu-bg: #241d13;
+}
+
+html[data-theme-mode="sand-dune"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(214, 158, 70, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(196, 132, 52, 0.07) 0%, transparent 50%);
+}
+
+html[data-theme-mode="cake"] {
+  background-color: #faf3ef;
+  --surface-backdrop: #faf3ef;
+  --surface-panel: #fffdfb;
+  --surface-raised: #f4e6e1;
+  --surface-hover: #f4e6e1;
+  --glass-border: rgba(112, 58, 74, 0.12);
+  --glass-surface: rgba(112, 58, 74, 0.035);
+  --context-ring-inner: #fffdfb;
+  --context-tooltip-bg: rgba(255, 253, 251, 0.97);
+  --context-tooltip-border: rgba(112, 58, 74, 0.16);
+  --chat-environment-panel-bg: #fffdfb;
+  --chat-environment-panel-border: rgba(112, 58, 74, 0.16);
+  --workspace-open-menu-bg: #fffdfb;
+}
+
+html.light[data-theme-mode="cake"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(240, 170, 180, 0.22) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(250, 205, 170, 0.18) 0%, transparent 50%);
 }

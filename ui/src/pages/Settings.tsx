@@ -68,6 +68,7 @@ import {
   themeAccentKeys,
   themeAccents,
   themeConfigPayload,
+  themeModeOptions,
   useUIStore,
   type ThemeAccent,
   type ThemeMode,
@@ -103,8 +104,6 @@ import {
   FolderSync,
   MonitorUp,
   Monitor,
-  Moon,
-  Sun,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -230,27 +229,18 @@ function ThemeSettings() {
             <div
               role="radiogroup"
               aria-label={t("settings.theme")}
-              className="grid grid-cols-3 gap-1 rounded-xl border border-white/10 bg-black/20 p-1"
+              className="grid grid-cols-3 gap-1 rounded-xl border border-white/10 bg-black/20 p-1 sm:grid-cols-4"
             >
-              {[
-                {
-                  value: "system" as const,
-                  label: t("settings.themeSystem"),
-                  icon: Monitor,
-                },
-                {
-                  value: "light" as const,
-                  label: t("settings.themeLight"),
-                  icon: Sun,
-                },
-                {
-                  value: "dark" as const,
-                  label: t("settings.themeDark"),
-                  icon: Moon,
-                },
-              ].map((option) => {
+              {themeModeOptions.map((option) => {
                 const selected = mode === option.value;
-                const Icon = option.icon;
+                const label =
+                  option.value === "system"
+                    ? t("settings.themeSystem")
+                    : option.value === "light"
+                      ? t("settings.themeLight")
+                      : option.value === "dark"
+                        ? t("settings.themeDark")
+                        : option.label;
                 return (
                   <button
                     key={option.value}
@@ -268,8 +258,16 @@ function ThemeSettings() {
                         "cursor-not-allowed opacity-60"
                     )}
                   >
-                    <Icon className="h-4 w-4" />
-                    {option.label}
+                    {option.value === "system" ? (
+                      <Monitor className="h-4 w-4" />
+                    ) : (
+                      <span
+                        aria-hidden
+                        className="h-3.5 w-3.5 shrink-0 rounded-full border border-white/25"
+                        style={{ backgroundColor: option.swatch }}
+                      />
+                    )}
+                    <span className="truncate">{label}</span>
                   </button>
                 );
               })}

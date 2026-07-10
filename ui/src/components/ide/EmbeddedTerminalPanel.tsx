@@ -57,6 +57,18 @@ export function EmbeddedTerminalPanel({
   }, [sessions]);
 
   useEffect(() => {
+    if (typeof MutationObserver === "undefined") return;
+    const applyTheme = () => {
+      for (const session of sessionsRef.current) {
+        if (session.term) session.term.options.theme = buildXtermTheme("#050508");
+      }
+    };
+    const observer = new MutationObserver(applyTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme-mode"] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     onStateChange?.({
       capability,
       sessionCount: sessions.length,
