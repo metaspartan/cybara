@@ -20,10 +20,16 @@ export async function ensurePetWindow(): Promise<void> {
   const existing = await WebviewWindow.getByLabel(PET_WINDOW_LABEL);
   if (existing) {
     await existing.show();
+    try {
+      await existing.setVisibleOnAllWorkspaces(true);
+      await existing.setAlwaysOnTop(true);
+    } catch {
+      void 0;
+    }
     return;
   }
   const saved = readPetPosition();
-  new WebviewWindow(PET_WINDOW_LABEL, {
+  const petWindow = new WebviewWindow(PET_WINDOW_LABEL, {
     url: `index.html?pet=1`,
     width: PET_WINDOW_SIZE,
     height: PET_WINDOW_SIZE,
@@ -31,10 +37,14 @@ export async function ensurePetWindow(): Promise<void> {
     transparent: true,
     decorations: false,
     alwaysOnTop: true,
+    visibleOnAllWorkspaces: true,
     skipTaskbar: true,
     resizable: false,
     shadow: false,
     title: "Cybara Pet",
+  });
+  petWindow.once("tauri://created", () => {
+    void petWindow.setVisibleOnAllWorkspaces(true).catch(() => undefined);
   });
 }
 

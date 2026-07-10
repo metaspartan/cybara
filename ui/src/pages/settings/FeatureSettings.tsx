@@ -36,6 +36,7 @@ interface SandboxStatusView {
 
 export function FeatureSettings() {
   const [terminalEnabled, setTerminalEnabled] = useState(false);
+  const [acpEnabled, setAcpEnabled] = useState(true);
   const [dangerousToolPolicyEnabled, setDangerousToolPolicyEnabled] = useState(false);
   const [dangerousToolPolicyMode, setDangerousToolPolicyMode] = useState<"audit" | "block">(
     "audit"
@@ -106,6 +107,7 @@ export function FeatureSettings() {
 
         const data = configResult.success ? configResult.data : undefined;
         setTerminalEnabled(data?.terminal_enabled === true);
+        setAcpEnabled(data?.acp_enabled !== false);
         const policy = data?.dangerous_tool_policy as
           | { enabled?: boolean; mode?: string }
           | undefined;
@@ -153,6 +155,21 @@ export function FeatureSettings() {
       const message = error instanceof Error ? error.message : "Failed to update terminal setting";
       addToast("error", message);
       setTerminalEnabled(!enabled);
+    }
+  };
+
+  const toggleAcp = async (enabled: boolean) => {
+    setAcpEnabled(enabled);
+    try {
+      const result = await settingsApi.updateConfig({ acp_enabled: enabled });
+      if (!result.success || !result.data?.success) {
+        throw new Error(extractApiError(result, "Config update failed"));
+      }
+      addToast("success", `ACP server ${enabled ? "enabled" : "disabled"}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to update ACP setting";
+      addToast("error", message);
+      setAcpEnabled(!enabled);
     }
   };
 
@@ -274,6 +291,33 @@ export function FeatureSettings() {
             <span
               className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
                 terminalEnabled ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-between py-3 border-b border-white/10">
+          <div>
+            <p className="text-sm text-white font-medium">ACP Server</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Let external editors drive this agent over the Agent Client Protocol (
+              <code className="text-indigo-400">cybara acp</code> on stdio). When off, the ACP
+              server refuses to start.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={acpEnabled}
+            disabled={loading}
+            onClick={() => toggleAcp(!acpEnabled)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              acpEnabled ? "bg-indigo-500" : "bg-white/10"
+            } ${loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                acpEnabled ? "translate-x-6" : "translate-x-1"
               }`}
             />
           </button>

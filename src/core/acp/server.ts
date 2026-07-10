@@ -214,6 +214,14 @@ export function createAcpDispatcher(deps: AcpDeps): (line: string) => Promise<vo
 
 export async function runAcpServer(opts?: { agentId?: string }): Promise<void> {
   const writeFrame = process.stdout.write.bind(process.stdout);
+  const flushes = new Set<Promise<void>>();
+  const emitFrame = (text: string): void => {
+    const flush = new Promise<void>((resolve) => {
+      writeFrame(text, () => resolve());
+    });
+    flushes.add(flush);
+    void flush.finally(() => flushes.delete(flush));
+  };
   const divertToStderr = ((chunk: unknown, ...rest: unknown[]): boolean => {
     const text =
       typeof chunk === "string"
@@ -231,7 +239,7 @@ export async function runAcpServer(opts?: { agentId?: string }): Promise<void> {
   process.stdout.write = divertToStderr;
 
   const dispatch = createAcpDispatcher({
-    write: (message) => writeFrame(JSON.stringify(message) + "\n"),
+    write: (message) => emitFrame(JSON.stringify(message) + "\n"),
     resolveAgentId: () => resolveAcpAgent(opts?.agentId)?.id,
     agentVersion: getAppVersion(),
     sendMessage: async ({ agentId, sessionId, messages, cwd, signal }) => {
@@ -262,4 +270,5 @@ export async function runAcpServer(opts?: { agentId?: string }): Promise<void> {
   }
   if (buffer.trim()) dispatchLine(buffer);
   await Promise.all(pending);
+  await Promise.all([...flushes]);
 }
