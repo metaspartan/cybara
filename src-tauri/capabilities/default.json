@@ -2,7 +2,8 @@
     "identifier": "default",
     "description": "Default capabilities for the Cybara desktop app",
     "windows": [
-        "main"
+        "main",
+        "pet"
     ],
     "remote": {
         "urls": [
@@ -12,6 +13,16 @@
     },
     "permissions": [
         "core:default",
+        "core:webview:allow-create-webview-window",
+        "core:window:allow-start-dragging",
+        "core:window:allow-set-always-on-top",
+        "core:window:allow-set-size",
+        "core:window:allow-set-position",
+        "core:window:allow-set-focus",
+        "core:window:allow-show",
+        "core:window:allow-hide",
+        "core:window:allow-close",
+        "core:window:allow-outer-position",
         "shell:default",
         "notification:default",
         "notification:allow-is-permission-granted",

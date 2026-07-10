@@ -25,6 +25,7 @@ struct NativeSettingsScreen: View {
 
     @State private var selectedTab: SettingsTab = .general
     @State private var advancedSelection: SettingsAdvancedSection = .router
+    @AppStorage("cybara.petEnabled") private var petEnabled = true
     @State private var health: GatewayHealth?
     @State private var config: [String: Any] = [:]
     @State private var providers: [GatewayProvider] = []
@@ -655,6 +656,20 @@ struct NativeSettingsScreen: View {
                     ForEach(CybaraAccent.orderedKeys, id: \.self) { key in
                         accentSwatch(key)
                     }
+                }
+                Divider()
+                Toggle(isOn: $petEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Show floating pet")
+                            .font(.system(size: 13, weight: .medium, design: .rounded))
+                        Text("A draggable Cybara that floats above every app. Click it to jump back into chat.")
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.switch)
+                .onChange(of: petEnabled) { _, enabled in
+                    PetPanelController.shared.setVisible(enabled)
                 }
             }
         }

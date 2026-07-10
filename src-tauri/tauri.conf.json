@@ -10,6 +10,7 @@
     "beforeBuildCommand": "cd ui && bun run build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "Cybara",

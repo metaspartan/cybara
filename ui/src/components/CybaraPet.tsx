@@ -10,6 +10,12 @@ import {
   type PetPosition,
 } from "@/lib/petPreferences";
 import { persistSessionId } from "@/pages/chat/chatModel";
+import {
+  closePetWindow,
+  ensurePetWindow,
+  isTauriRuntime,
+  listenForPetOpenSession,
+} from "@/lib/tauriPet";
 import { cn } from "@/lib/utils";
 
 const PET_SIZE = 64;
@@ -69,6 +75,8 @@ export function CybaraPet() {
   } | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
+  const tauri = isTauriRuntime();
+
   useEffect(() => {
     const onChange = () => setEnabled(readPetEnabled());
     window.addEventListener(PET_CHANGED_EVENT, onChange);
@@ -76,7 +84,30 @@ export function CybaraPet() {
   }, []);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!tauri) return;
+    if (enabled) {
+      void ensurePetWindow();
+    } else {
+      void closePetWindow();
+    }
+  }, [tauri, enabled]);
+
+  useEffect(() => {
+    if (!tauri) return;
+    let dispose: (() => void) | null = null;
+    void listenForPetOpenSession((sessionId) => {
+      if (sessionId) persistSessionId(sessionId);
+      navigate("/chat");
+    }).then((unlisten) => {
+      dispose = unlisten;
+    });
+    return () => {
+      if (dispose) dispose();
+    };
+  }, [tauri, navigate]);
+
+  useEffect(() => {
+    if (!enabled || tauri) return;
     const disconnect = connectStatusStream({
       onEvent: (event: StatusStreamEvent) => {
         if (event.type === "snapshot") {
@@ -221,7 +252,7 @@ export function CybaraPet() {
     [activeSessions]
   );
 
-  if (!enabled) return null;
+  if (!enabled || tauri) return null;
 
   return (
     <div

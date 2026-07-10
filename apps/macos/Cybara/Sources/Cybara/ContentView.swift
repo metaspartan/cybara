@@ -186,6 +186,12 @@ struct ContentView: View {
             guard let key = notification.object as? String else { return }
             accent = CybaraAccent.color(for: key)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .cybaraPetOpenChat)) { _ in
+            destination = .chat
+        }
+        .onAppear {
+            PetPanelController.shared.setVisible(PetPanelController.isEnabled)
+        }
         .onOpenURL { url in
             switch SidecarCore.parseDeepLink(url) {
             case .focus:

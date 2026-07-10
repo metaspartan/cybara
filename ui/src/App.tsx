@@ -3,6 +3,8 @@ import { Sidebar, SidebarProvider, useSidebar } from "@/components/layout/Sideba
 import { UpdateBanner } from "@/components/layout/UpdateBanner";
 import { ToastContainer } from "@/components/ui/Toast";
 import { CybaraPet } from "@/components/CybaraPet";
+import { PetOverlay } from "@/pages/PetOverlay";
+import { isPetWindow } from "@/lib/tauriPet";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Dashboard } from "@/pages/Dashboard";
 import { Agents } from "@/pages/Agents";
@@ -181,6 +183,10 @@ function ThemeConfigSync() {
 }
 
 function App() {
+  if (isPetWindow()) {
+    return <PetOverlay />;
+  }
+
   return (
     <ErrorBoundary>
       <SidebarProvider>
