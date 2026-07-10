@@ -16,11 +16,6 @@ export interface LatestRelease {
   assets: ReleaseAsset[];
 }
 
-interface GithubAssetDigest {
-  algorithm?: string;
-  value?: string;
-}
-
 interface GithubReleaseResponse {
   tag_name?: string;
   html_url?: string;
@@ -28,8 +23,14 @@ interface GithubReleaseResponse {
     name?: string;
     browser_download_url?: string;
     size?: number;
-    digest?: GithubAssetDigest;
+    digest?: string | null;
   }>;
+}
+
+function parseSha256Digest(digest?: string | null): string | undefined {
+  if (typeof digest !== "string") return undefined;
+  const match = digest.match(/^sha256:([0-9a-f]{64})$/i);
+  return match ? match[1].toLowerCase() : undefined;
 }
 
 export interface LatestReleaseState {
@@ -63,7 +64,7 @@ export function useLatestRelease(): LatestReleaseState {
               name: string;
               browser_download_url: string;
               size?: number;
-              digest?: GithubAssetDigest;
+              digest?: string | null;
             } =>
               typeof asset.name === "string" && typeof asset.browser_download_url === "string"
           )
@@ -71,10 +72,7 @@ export function useLatestRelease(): LatestReleaseState {
             name: asset.name,
             url: asset.browser_download_url,
             size: typeof asset.size === "number" ? asset.size : undefined,
-            sha256:
-              asset.digest?.algorithm === "sha256" && typeof asset.digest.value === "string"
-                ? asset.digest.value
-                : undefined,
+            sha256: parseSha256Digest(asset.digest),
           }));
         setData({
           version: json.tag_name ?? "",

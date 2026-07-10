@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Icon } from "./Icon";
-import { STATS, GITHUB_URL, INSTALL_COMMAND } from "../content";
+import { STATS, INSTALL_COMMAND } from "../content";
 import { useSiteI18n } from "../i18n";
 
 export function Hero(): React.ReactElement {
@@ -33,7 +33,7 @@ export function Hero(): React.ReactElement {
         <p className="hero-sub">{t("site.hero.subtitle")}</p>
 
         <div className="hero-actions">
-          <a className="btn btn--primary" href={GITHUB_URL} target="_blank" rel="noreferrer">
+          <a className="btn btn--primary" href="#download">
             <span>{t("site.hero.primary")}</span>
             <Icon name="arrow" className="btn-icon" />
           </a>

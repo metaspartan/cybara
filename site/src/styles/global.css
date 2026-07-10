@@ -289,15 +289,15 @@ img {
 }
 
 .nav-star-icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
-  margin-left: 4px;
+  margin-left: 12px;
 }
 
 .nav-star-label {
-  padding: 9px 10px 9px 8px;
-  color: var(--text-primary);
+  padding: 9px 12px 9px 8px;
+  color: var(--text);
 }
 
 .nav-star-count {
@@ -307,7 +307,7 @@ img {
   padding: 8px 14px;
   background: rgba(255, 255, 255, 0.08);
   border-left: 1px solid var(--glass-border);
-  color: var(--text-primary);
+  color: var(--text);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   min-width: 52px;
