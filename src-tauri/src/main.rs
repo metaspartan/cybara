@@ -119,8 +119,79 @@ fn read_cybara_api_key() -> Result<Option<String>, String> {
     }
 }
 
+fn file_path_from_args(args: &[String]) -> Option<String> {
+    for arg in args.iter().skip(1) {
+        if arg.starts_with('-') {
+            continue;
+        }
+        if std::path::Path::new(arg).exists() {
+            return Some(arg.clone());
+        }
+    }
+    None
+}
+
+fn ide_url_for_path(path: &str) -> Option<tauri::Url> {
+    let mut url = tauri::Url::parse(CYBARA_SERVER_URL).ok()?;
+    url.set_path("/ide");
+    url.query_pairs_mut().append_pair("path", path);
+    Some(url)
+}
+
+fn set_pending_open(app: &tauri::AppHandle, path: String) {
+    if let Some(state) = app.try_state::<PendingOpen>() {
+        if let Ok(mut guard) = state.0.lock() {
+            *guard = Some(path);
+        }
+    }
+}
+
+fn take_pending_open(app: &tauri::AppHandle) -> Option<String> {
+    app.try_state::<PendingOpen>()
+        .and_then(|state| state.0.lock().ok().and_then(|mut guard| guard.take()))
+}
+
+fn open_path_in_ide(app: &tauri::AppHandle, path: &str) {
+    if !is_server_running() {
+        set_pending_open(app, path.to_string());
+        return;
+    }
+    if let Some(window) = app.get_webview_window("main") {
+        if let Some(url) = ide_url_for_path(path) {
+            let _ = window.navigate(url);
+        }
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+fn navigate_after_ready(app: &tauri::AppHandle) {
+    let pending = take_pending_open(app);
+    if let Some(window) = app.get_webview_window("main") {
+        let url = pending
+            .as_deref()
+            .and_then(ide_url_for_path)
+            .unwrap_or_else(|| CYBARA_SERVER_URL.parse().unwrap());
+        let _ = window.navigate(url);
+    }
+}
+
 fn main() {
-    let app = tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(path) = file_path_from_args(&argv) {
+                open_path_in_ide(app, &path);
+            } else if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }));
+    }
+
+    let app = builder
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_dialog::init())
@@ -131,16 +202,17 @@ fn main() {
         .invoke_handler(tauri::generate_handler![read_cybara_api_key])
         .setup(|app| {
             app.manage(SidecarState(std::sync::Mutex::new(None)));
+            app.manage(PendingOpen(std::sync::Mutex::new(None)));
 
-            // Check if server is already running (e.g., started by beforeDevCommand)
+            if let Some(path) = file_path_from_args(&std::env::args().collect::<Vec<_>>()) {
+                set_pending_open(app.handle(), path);
+            }
+
             if is_server_running() {
                 println!("[Cybara] Server already running on port 4269");
                 log::info!("Attached to existing Cybara gateway on port 4269");
 
-                // Navigate to the backend URL so relative /api/ paths work
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.navigate(CYBARA_SERVER_URL.parse().unwrap());
-                }
+                navigate_after_ready(app.handle());
 
                 return Ok(());
             }
@@ -207,9 +279,7 @@ fn main() {
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if wait_for_server_ready(Duration::from_secs(25)) {
-                    if let Some(window) = app_handle.get_webview_window("main") {
-                        let _ = window.navigate(CYBARA_SERVER_URL.parse().unwrap());
-                    }
+                    navigate_after_ready(&app_handle);
                 } else {
                     eprintln!("[Cybara] Sidecar did not become ready within timeout");
                     log::error!("Cybara gateway sidecar did not become ready within timeout");
@@ -227,14 +297,27 @@ fn main() {
         .expect("error while building Cybara");
 
     app.run(|app_handle, event| {
-        if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
-            stop_sidecar(app_handle);
+        match &event {
+            RunEvent::ExitRequested { .. } | RunEvent::Exit => stop_sidecar(app_handle),
+            #[cfg(target_os = "macos")]
+            RunEvent::Opened { urls } => {
+                for url in urls {
+                    if let Ok(path) = url.to_file_path() {
+                        if let Some(path) = path.to_str() {
+                            open_path_in_ide(app_handle, path);
+                            break;
+                        }
+                    }
+                }
+            }
+            _ => {}
         }
     });
 }
 
-// State to hold the sidecar child process (None if server was already running)
 struct SidecarState(std::sync::Mutex<Option<tauri_plugin_shell::process::CommandChild>>);
+
+struct PendingOpen(std::sync::Mutex<Option<String>>);
 
 #[cfg(test)]
 mod tests {

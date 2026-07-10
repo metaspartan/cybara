@@ -248,8 +248,16 @@ describe("ACP stdio server", () => {
         stdout: "pipe",
         stderr: "pipe",
       });
-      const stdout = await new Response(child.stdout).text();
-      const exitCode = await child.exited;
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(child.stdout).text(),
+        new Response(child.stderr).text(),
+        child.exited,
+      ]);
+      if (exitCode !== 0 || !stdout.trim()) {
+        throw new Error(
+          `ACP stdio process failed with exit ${exitCode}: ${stderr.trim() || "no diagnostics"}`
+        );
+      }
       const lines = stdout.trim().split("\n");
 
       expect(exitCode).toBe(0);
@@ -262,5 +270,5 @@ describe("ACP stdio server", () => {
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
-  });
+  }, 15_000);
 });

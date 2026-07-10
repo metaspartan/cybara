@@ -154,7 +154,9 @@ export function parseSkillFile(
       )
     : undefined;
   const metadata: SkillMetadata | undefined =
-    (rawMetadata?.cybara as SkillMetadata | undefined) ?? firstMetadataValue;
+    (rawMetadata?.cybara as SkillMetadata | undefined) ??
+    (rawMetadata?.openclaw as SkillMetadata | undefined) ??
+    firstMetadataValue;
 
   const invocation: SkillInvocationPolicy = {
     userInvocable: frontmatter["user-invocable"] !== false,
@@ -244,11 +246,28 @@ export function getSkillDirectories(workspaceDir?: string): {
   };
 }
 
+const LOADED_SKILLS_CACHE_TTL_MS = 5_000;
+let loadedSkillsCache: { key: string; skills: SkillEntry[]; expires: number } | null = null;
+
+export function clearLoadedSkillsCache(): void {
+  loadedSkillsCache = null;
+}
+
 export async function loadAllSkills(options: {
   workspaceDir?: string;
   extraDirs?: string[];
   config?: SkillsConfig;
 }): Promise<SkillEntry[]> {
+  const cacheKey = JSON.stringify({
+    workspaceDir: options.workspaceDir ?? null,
+    extraDirs: options.extraDirs ?? options.config?.load?.extraDirs ?? null,
+    allowBundled: options.config?.allowBundled ?? null,
+  });
+  const now = Date.now();
+  if (loadedSkillsCache && loadedSkillsCache.key === cacheKey && loadedSkillsCache.expires > now) {
+    return loadedSkillsCache.skills;
+  }
+
   const dirs = getSkillDirectories(options.workspaceDir);
   const skillsByName = new Map<string, SkillEntry>();
   const plugins = listInstalledPlugins({ workspaceDir: options.workspaceDir });
@@ -332,7 +351,9 @@ export async function loadAllSkills(options: {
     }
   }
 
-  return Array.from(skillsByName.values());
+  const skills = Array.from(skillsByName.values());
+  loadedSkillsCache = { key: cacheKey, skills, expires: now + LOADED_SKILLS_CACHE_TTL_MS };
+  return skills;
 }
 
 export function isSkillEnabled(skillName: string, config?: SkillsConfig): boolean {
@@ -354,6 +375,7 @@ export async function watchSkillDirectories(options: {
   let debounceTimer: NodeJS.Timeout | null = null;
 
   const reload = async () => {
+    clearLoadedSkillsCache();
     const skills = await loadAllSkills({
       workspaceDir: options.workspaceDir,
       config: options.config,

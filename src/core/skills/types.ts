@@ -97,6 +97,10 @@ export type SkillFrontmatter = {
   description: string;
   metadata?: SkillMetadata;
   homepage?: string;
+  license?: string;
+  version?: string;
+  compatibility?: string;
+  "allowed-tools"?: string;
   "user-invocable"?: boolean;
   "disable-model-invocation"?: boolean;
   "command-dispatch"?: "tool";

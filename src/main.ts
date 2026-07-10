@@ -277,6 +277,7 @@ async function main() {
     redirectProtocolLogs();
     const { runAcpCommand } = await import("./cli-acp");
     await runAcpCommand(args.slice(1));
+    await new Promise<void>((resolve) => process.stdout.end(resolve));
     process.exit(0);
   } else if (isCliCommand) {
     await import("./cli");

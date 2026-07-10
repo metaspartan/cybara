@@ -6,7 +6,7 @@ import { listInstalledPlugins } from "../plugins";
 import { handleCalc, handleConvert } from "./calc";
 import { handlePdf } from "./pdf";
 import { handleOcr, handleImageDescribe } from "./ocr";
-import { parseSkillFile } from "./loader";
+import { clearLoadedSkillsCache, parseSkillFile } from "./loader";
 import { cybaraDir } from "../paths";
 import { hasMactopBinary, normalizeMactopSampleCount, runMactopJsonSamples } from "../tools/mactop";
 
@@ -234,6 +234,7 @@ export function getSkillCategories(): string[] {
 
 export function clearSkillsCache(): void {
   skillsCache = null;
+  clearLoadedSkillsCache();
 }
 
 function slugifySkillName(name: string): string {

@@ -474,14 +474,17 @@ export class SkillsShRegistry implements SkillRegistry {
       let tree = this.getCached<Array<{ path: string }>>(cacheKey);
 
       if (!tree) {
-        const treeUrl = `https://api.github.com/repos/${source}/git/trees/main?recursive=1`;
-        const treeRes = await fetch(treeUrl);
-        if (treeRes.ok) {
-          const treeData = (await treeRes.json()) as {
-            tree?: Array<{ path: string; type: string }>;
-          };
-          tree = (treeData.tree ?? []).filter((t) => t.type === "blob");
-          this.setCache(cacheKey, tree);
+        for (const branch of ["main", "master"]) {
+          const treeUrl = `https://api.github.com/repos/${source}/git/trees/${branch}?recursive=1`;
+          const treeRes = await fetch(treeUrl);
+          if (treeRes.ok) {
+            const treeData = (await treeRes.json()) as {
+              tree?: Array<{ path: string; type: string }>;
+            };
+            tree = (treeData.tree ?? []).filter((t) => t.type === "blob");
+            this.setCache(cacheKey, tree);
+            break;
+          }
         }
       }
 
@@ -497,15 +500,17 @@ export class SkillsShRegistry implements SkillRegistry {
           );
 
         if (skillFile) {
-          const contentUrl = `https://raw.githubusercontent.com/${source}/main/${skillFile.path}`;
-          const contentRes = await fetch(contentUrl);
-          if (contentRes.ok) {
-            const content = await contentRes.text();
-            return {
-              slug,
-              version: "latest",
-              files: [{ path: "SKILL.md", content }],
-            };
+          for (const branch of ["main", "master"]) {
+            const contentUrl = `https://raw.githubusercontent.com/${source}/${branch}/${skillFile.path}`;
+            const contentRes = await fetch(contentUrl);
+            if (contentRes.ok) {
+              const content = await contentRes.text();
+              return {
+                slug,
+                version: "latest",
+                files: [{ path: "SKILL.md", content }],
+              };
+            }
           }
         }
       }
@@ -526,21 +531,23 @@ export class SkillsShRegistry implements SkillRegistry {
     ];
 
     for (const path of pathsToTry) {
-      const githubUrl = `https://raw.githubusercontent.com/${source}/main/${path}`;
-      try {
-        const res = await fetch(githubUrl);
-        if (res.ok) {
-          const content = await res.text();
-          if (content.includes("---") || content.includes("# ")) {
-            return {
-              slug,
-              version: "latest",
-              files: [{ path: "SKILL.md", content }],
-            };
+      for (const branch of ["main", "master"]) {
+        const githubUrl = `https://raw.githubusercontent.com/${source}/${branch}/${path}`;
+        try {
+          const res = await fetch(githubUrl);
+          if (res.ok) {
+            const content = await res.text();
+            if (content.includes("---") || content.includes("# ")) {
+              return {
+                slug,
+                version: "latest",
+                files: [{ path: "SKILL.md", content }],
+              };
+            }
           }
+        } catch {
+          continue;
         }
-      } catch {
-        continue;
       }
     }
 

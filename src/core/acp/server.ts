@@ -213,7 +213,8 @@ export function createAcpDispatcher(deps: AcpDeps): (line: string) => Promise<vo
 }
 
 export async function runAcpServer(opts?: { agentId?: string }): Promise<void> {
-  const writeFrame = process.stdout.write.bind(process.stdout);
+  const originalWrite = process.stdout.write;
+  const writeFrame = originalWrite.bind(process.stdout);
   const flushes = new Set<Promise<void>>();
   const emitFrame = (text: string): void => {
     const flush = new Promise<void>((resolve) => {
@@ -271,4 +272,5 @@ export async function runAcpServer(opts?: { agentId?: string }): Promise<void> {
   if (buffer.trim()) dispatchLine(buffer);
   await Promise.all(pending);
   await Promise.all([...flushes]);
+  process.stdout.write = originalWrite;
 }
