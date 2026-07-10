@@ -3,14 +3,14 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   rmSync,
   unlinkSync,
   writeFileSync,
 } from "fs";
-import { join } from "path";
 import { homedir } from "os";
+import { join } from "path";
 import { gunzipSync } from "zlib";
 import { extractZipArchive } from "../archive";
 import { ensureBunRuntime, findBunRuntime } from "../bun-runtime";
@@ -518,13 +518,7 @@ export async function isAvailable(language: string): Promise<boolean> {
 
   if (isInstalled(language)) return true;
 
-  try {
-    const checkCmd = process.platform === "win32" ? "where" : "which";
-    const result = Bun.spawnSync([checkCmd, info.binaryName]);
-    return result.exitCode === 0;
-  } catch {
-    return false;
-  }
+  return Bun.which(info.binaryName) !== null;
 }
 
 export interface LSPInstallStatus {

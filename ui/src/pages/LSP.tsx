@@ -1,16 +1,25 @@
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
+import {
+  AlertCircle,
+  Check,
+  Code,
+  Download,
+  FolderCode,
+  LoaderCircle,
+  Package,
+  Trash2,
+} from "lucide-react";
+import { useState } from "react";
+import { PageLayout } from "@/components/layout";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { PageLayout } from "@/components/layout";
+import { Card, CardContent } from "@/components/ui/Card";
 import {
-  useLSPInstallStatus,
-  useInstallLSP,
-  useUninstallLSP,
   type LSPInstallStatus,
+  useInstallLSP,
+  useLSPInstallStatus,
+  useUninstallLSP,
 } from "@/hooks/useApi";
 import { useUIStore } from "@/stores/uiStore";
-import { Code, Download, Trash2, Check, Package, FolderCode, AlertCircle } from "lucide-react";
-import { useState } from "react";
 
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(" ");
@@ -62,7 +71,17 @@ function LSPCard({ lsp, onInstall, onUninstall, isInstalling, isUninstalling }: 
             </div>
           </div>
           <div className="flex flex-col items-end gap-2">
-            {isBundled ? (
+            {isInstalling ? (
+              <Badge variant="default" className="flex gap-1 items-center">
+                <LoaderCircle className="w-3 h-3 animate-spin" />
+                Installing
+              </Badge>
+            ) : isUninstalling ? (
+              <Badge variant="default" className="flex gap-1 items-center">
+                <LoaderCircle className="w-3 h-3 animate-spin" />
+                Removing
+              </Badge>
+            ) : isBundled ? (
               <Badge variant="success" className="flex gap-1 items-center">
                 <Package className="w-3 h-3" />
                 Bundled
@@ -84,11 +103,33 @@ function LSPCard({ lsp, onInstall, onUninstall, isInstalling, isUninstalling }: 
         </div>
 
         <div className="mt-4 flex items-center justify-between">
-          <div className="text-xs text-gray-500">
-            {isBundled ? (
+          <div className="min-w-0 flex-1 text-xs text-gray-500">
+            {isLoading ? (
+              <div className="space-y-2 pr-4" aria-live="polite">
+                <span>
+                  {isInstalling ? "Downloading and configuring" : "Removing installation"}
+                </span>
+                <div
+                  className="h-1.5 overflow-hidden rounded-full bg-white/10"
+                  role="progressbar"
+                  aria-label={
+                    isInstalling ? "Installing language server" : "Removing language server"
+                  }
+                >
+                  <div
+                    className={cn(
+                      "h-full w-1/3 animate-pulse rounded-full",
+                      isInstalling ? "bg-blue-400" : "bg-red-400"
+                    )}
+                  />
+                </div>
+              </div>
+            ) : isBundled ? (
               <span>Included in binary (no download needed)</span>
             ) : lsp.path ? (
-              <span className="font-mono">{lsp.path}</span>
+              <span className="block truncate font-mono" title={lsp.path}>
+                {lsp.path}
+              </span>
             ) : lsp.requiresRuntime ? (
               <span className="flex items-center gap-1">
                 <AlertCircle className="w-3 h-3 text-amber-400" />
@@ -111,7 +152,7 @@ function LSPCard({ lsp, onInstall, onUninstall, isInstalling, isUninstalling }: 
                 >
                   {isUninstalling ? (
                     <span className="flex items-center gap-1">
-                      <span className="animate-spin">⏳</span>
+                      <LoaderCircle className="w-4 h-4 animate-spin" />
                       Removing...
                     </span>
                   ) : (
@@ -125,7 +166,7 @@ function LSPCard({ lsp, onInstall, onUninstall, isInstalling, isUninstalling }: 
                 <Button size="sm" variant="primary" onClick={onInstall} disabled={isLoading}>
                   {isInstalling ? (
                     <span className="flex items-center gap-1">
-                      <span className="animate-spin">⏳</span>
+                      <LoaderCircle className="w-4 h-4 animate-spin" />
                       Installing...
                     </span>
                   ) : (
@@ -145,7 +186,7 @@ function LSPCard({ lsp, onInstall, onUninstall, isInstalling, isUninstalling }: 
 }
 
 export function LSP() {
-  const { data, isLoading, refetch } = useLSPInstallStatus();
+  const { data, isLoading } = useLSPInstallStatus();
   const installLSP = useInstallLSP();
   const uninstallLSP = useUninstallLSP();
   const { addToast } = useUIStore();
@@ -158,7 +199,6 @@ export function LSP() {
       const result = await installLSP.mutateAsync(language);
       if (result.success) {
         addToast("success", `Successfully installed ${language} language server`);
-        refetch();
       } else {
         addToast("error", result.error || "Installation failed");
       }
@@ -175,7 +215,6 @@ export function LSP() {
       const result = await uninstallLSP.mutateAsync(language);
       if (result.success) {
         addToast("success", `Successfully uninstalled ${language} language server`);
-        refetch();
       } else {
         addToast("error", result.error || "Uninstall failed");
       }

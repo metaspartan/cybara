@@ -106,15 +106,10 @@ export function Usage() {
     refetchOnMount: true,
   });
 
-  const [viewMode, setViewMode] = useState<UsageViewMode>("bars");
-  const [customOrder, setCustomOrder] = useState<string[]>([]);
+  const [viewMode, setViewMode] = useState<UsageViewMode>(readUsageViewMode);
+  const [customOrder, setCustomOrder] = useState<string[]>(readUsageOrder);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
-
-  useEffect(() => {
-    setViewMode(readUsageViewMode());
-    setCustomOrder(readUsageOrder());
-  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {

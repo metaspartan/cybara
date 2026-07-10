@@ -6,6 +6,8 @@ const LATEST_RELEASE_API = "https://api.github.com/repos/metaspartan/cybara/rele
 export interface ReleaseAsset {
   name: string;
   url: string;
+  size?: number;
+  sha256?: string;
 }
 
 export interface LatestRelease {
@@ -14,10 +16,20 @@ export interface LatestRelease {
   assets: ReleaseAsset[];
 }
 
+interface GithubAssetDigest {
+  algorithm?: string;
+  value?: string;
+}
+
 interface GithubReleaseResponse {
   tag_name?: string;
   html_url?: string;
-  assets?: Array<{ name?: string; browser_download_url?: string }>;
+  assets?: Array<{
+    name?: string;
+    browser_download_url?: string;
+    size?: number;
+    digest?: GithubAssetDigest;
+  }>;
 }
 
 export interface LatestReleaseState {
@@ -44,10 +56,26 @@ export function useLatestRelease(): LatestReleaseState {
       .then((json) => {
         if (!active) return;
         const assets: ReleaseAsset[] = (json.assets ?? [])
-          .filter((asset): asset is { name: string; browser_download_url: string } =>
-            typeof asset.name === "string" && typeof asset.browser_download_url === "string"
+          .filter(
+            (
+              asset
+            ): asset is {
+              name: string;
+              browser_download_url: string;
+              size?: number;
+              digest?: GithubAssetDigest;
+            } =>
+              typeof asset.name === "string" && typeof asset.browser_download_url === "string"
           )
-          .map((asset) => ({ name: asset.name, url: asset.browser_download_url }));
+          .map((asset) => ({
+            name: asset.name,
+            url: asset.browser_download_url,
+            size: typeof asset.size === "number" ? asset.size : undefined,
+            sha256:
+              asset.digest?.algorithm === "sha256" && typeof asset.digest.value === "string"
+                ? asset.digest.value
+                : undefined,
+          }));
         setData({
           version: json.tag_name ?? "",
           htmlUrl: json.html_url ?? RELEASES_URL,
@@ -78,6 +106,27 @@ export function resolveAssetUrl(
   if (!release || !pattern) return fallback;
   const match = release.assets.find((asset) => pattern.test(asset.name));
   return match ? match.url : fallback;
+}
+
+export function resolveAsset(
+  release: LatestRelease | null,
+  pattern: RegExp | undefined
+): ReleaseAsset | null {
+  if (!release || !pattern) return null;
+  return release.assets.find((asset) => pattern.test(asset.name)) ?? null;
+}
+
+export function formatFileSize(bytes?: number): string {
+  if (typeof bytes !== "number" || bytes <= 0) return "";
+  if (bytes >= 1_073_741_824) return `${(bytes / 1_073_741_824).toFixed(1)} GB`;
+  if (bytes >= 1_048_576) return `${(bytes / 1_048_576).toFixed(1)} MB`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${bytes} B`;
+}
+
+export function shortSha(sha256?: string): string {
+  if (!sha256) return "";
+  return sha256.length > 12 ? `${sha256.slice(0, 12)}…` : sha256;
 }
 
 const ALL_RELEASES_API = "https://api.github.com/repos/metaspartan/cybara/releases?per_page=100";

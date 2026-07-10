@@ -942,9 +942,7 @@ export function useInstallLSP() {
         method: "POST",
         body: JSON.stringify({ language }),
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["lsp"] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lsp"] }),
   });
 }
 
@@ -956,9 +954,7 @@ export function useUninstallLSP() {
         method: "POST",
         body: JSON.stringify({ language }),
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["lsp"] });
-    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lsp"] }),
   });
 }
 

@@ -133,6 +133,18 @@ describe("native macOS shell wiring", () => {
     expect(contentView).toContain('Section(NativeI18n.t("nav.system"))');
   });
 
+  test("native LSP operations expose an explicit progress label", () => {
+    const platformScreens = readFileSync(
+      join(MACOS_APP_DIR, "NativePlatformScreens.swift"),
+      "utf8"
+    );
+
+    expect(platformScreens).toContain(
+      'installed?.installed == true ? "Removing..." : "Installing..."'
+    );
+    expect(platformScreens).toContain("ProgressView().controlSize(.small)");
+  });
+
   test("native IDE screen provides browser editor and search replace controls", () => {
     const nativePlatformScreens = readFileSync(
       join(MACOS_APP_DIR, "NativePlatformScreens.swift"),

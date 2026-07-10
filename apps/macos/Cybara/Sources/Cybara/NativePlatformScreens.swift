@@ -916,7 +916,12 @@ struct LSPScreen: View {
                                         color: language.available ? .green : .orange
                                     )
                                     if busyLanguage == language.name {
-                                        ProgressView().controlSize(.small)
+                                        HStack(spacing: 5) {
+                                            ProgressView().controlSize(.small)
+                                            Text(installed?.installed == true ? "Removing..." : "Installing...")
+                                                .font(.system(size: 11, weight: .medium, design: .rounded))
+                                                .foregroundStyle(.secondary)
+                                        }
                                     } else {
                                         Button(installed?.installed == true ? "Uninstall" : "Install") {
                                             Task { await toggle(language) }
