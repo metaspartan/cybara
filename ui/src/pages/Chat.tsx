@@ -2871,6 +2871,7 @@ export function Chat() {
         }
 
         if (status === "thinking") {
+          markFirstTokenLatency(payloadSessionId);
           if (!payload.toolName) {
             const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
             const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
@@ -2889,6 +2890,7 @@ export function Chat() {
           return;
         }
         if (status === "generating") {
+          markFirstTokenLatency(payloadSessionId);
           if (!payload.toolName) {
             const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
             const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
@@ -3001,6 +3003,7 @@ export function Chat() {
     cacheLiveStatusSnapshot,
     hydrateSessionStatus,
     isSessionStopSuppressed,
+    markFirstTokenLatency,
   ]);
 
   useEffect(() => {
