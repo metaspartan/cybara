@@ -78,10 +78,9 @@ describe("chat plan and artifact UI wiring", () => {
     expect(chatPage).toContain("hiddenComposerPlanKey");
     expect(chatPage).toContain("showComposerPlan");
     expect(chatPage).toContain("!isSessionPlanComplete(currentSessionPlan)");
-    expect(chatPage).toContain("seenEnvironmentOverviewKey");
-    expect(chatPage).toContain("environmentOverviewSignalKey");
-    expect(chatPage).toContain("showEnvironmentOverviewDot");
-    expect(chatPage).toContain("setSeenEnvironmentOverviewKey(environmentOverviewSignalKey)");
+    expect(chatPage).not.toContain("seenEnvironmentOverviewKey");
+    expect(chatPage).not.toContain("environmentOverviewSignalKey");
+    expect(chatPage).not.toContain("showEnvironmentOverviewDot");
     expect(chatPage).toContain('aria-label="Environment overview"');
     expect(chatPage).toContain("<PlanSummaryCard");
     expect(chatPage).toContain("dismissible");

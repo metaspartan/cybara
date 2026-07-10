@@ -168,11 +168,6 @@ import {
 } from "./chat/chatModel";
 import { parseInitialChatRoute } from "./chat/chatRoute";
 import { FileChangesCard } from "./chat/FileChangesCard";
-import {
-  createFileDiffSignature,
-  persistSeenFileDiffSignature,
-  readSeenFileDiffSignature,
-} from "./chat/fileDiffNotifications";
 import { type GitBranchOption, GitBranchSelector } from "./chat/GitBranchSelector";
 import {
   clearCachedLiveSessionState,
@@ -984,13 +979,18 @@ function SessionDiffPanel({
           <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/10 transition-colors group-hover:bg-indigo-400/70" />
         </button>
       )}
-      <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
-        <div className="flex items-center gap-2">
-          <FileText className="w-3.5 h-3.5 text-indigo-300" />
+      <div className="px-3 py-2 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+        <div className="flex min-w-0 items-center gap-2">
+          <FileText className="w-3.5 h-3.5 shrink-0 text-indigo-300" />
           <h3 className="text-sm font-medium text-white">File Diffs</h3>
           {summary && summary.files.length > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/10 text-gray-400">
-              {summary.files.length}
+            <span className="truncate text-[11px] text-gray-500">
+              <span className="text-green-300">+{summary.totalAdded}</span>
+              <span className="mx-0.5">/</span>
+              <span className="text-red-300">-{summary.totalRemoved}</span>
+              <span className="ml-1.5">
+                {summary.files.length} file{summary.files.length === 1 ? "" : "s"}
+              </span>
             </span>
           )}
         </div>
@@ -1026,59 +1026,44 @@ function SessionDiffPanel({
         </div>
       ) : (
         <>
-          <div className="px-3 py-2 text-[12px] text-gray-400 border-b border-white/5 bg-black/10">
-            <span className="text-green-300">+{summary.totalAdded}</span>
-            <span className="mx-1 text-gray-500">/</span>
-            <span className="text-red-300">-{summary.totalRemoved}</span>
-            <span className="ml-2">across {summary.files.length} files</span>
-          </div>
-
-          <div className="max-h-56 overflow-y-auto p-2 space-y-1.5 border-b border-white/5">
+          <div className="max-h-52 overflow-y-auto py-1 border-b border-white/5">
             {summary.files.map((file) => {
               const isSelected = selectedFile?.path === file.path;
               const pathDisplay = formatFilePathForDisplay(file.path, workspaceDir);
               return (
-                <div key={`${file.path}-${file.type}`} className="flex items-stretch gap-1">
-                  <button
-                    type="button"
-                    onClick={() => onSelectPath(file.path)}
-                    title={pathDisplay.fullPath}
+                <button
+                  key={`${file.path}-${file.type}`}
+                  type="button"
+                  onClick={() => onSelectPath(file.path)}
+                  title={pathDisplay.fullPath}
+                  className={cn(
+                    "flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors cursor-pointer",
+                    isSelected ? "bg-[rgba(var(--accent-primary),0.12)]" : "hover:bg-white/[0.045]"
+                  )}
+                >
+                  <span
+                    aria-hidden
                     className={cn(
-                      "flex-1 text-left rounded-lg border px-2.5 py-2 transition-colors cursor-pointer",
-                      isSelected
-                        ? "bg-indigo-500/15 border-indigo-500/30"
-                        : "bg-white/[0.02] border-white/10 hover:bg-white/[0.06]"
+                      "h-1.5 w-1.5 shrink-0 rounded-full",
+                      file.type === "created"
+                        ? "bg-green-400"
+                        : file.type === "deleted"
+                          ? "bg-red-400"
+                          : "bg-amber-300"
                     )}
-                  >
-                    <p className="truncate text-[12px] font-medium text-gray-100">
-                      {pathDisplay.fileName}
-                    </p>
-                    <p className="mt-0.5 truncate text-[10px] text-gray-500">
-                      {pathDisplay.parentPath || file.type}
-                    </p>
-                    <div className="mt-1 flex items-center gap-2 text-[10px]">
-                      <span className="rounded-full bg-white/[0.04] px-1.5 py-0.5 uppercase tracking-[0.08em] text-gray-500">
-                        {file.type}
-                      </span>
-                      <span className="text-green-300">+{file.added}</span>
-                      <span className="text-red-300">-{file.removed}</span>
-                    </div>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => onOpenInIDE(file)}
-                    className={cn(
-                      "px-2 rounded-lg border transition-colors cursor-pointer",
-                      isSelected
-                        ? "border-indigo-500/30 text-indigo-300 bg-indigo-500/10"
-                        : "border-white/10 text-gray-500 bg-white/[0.02] hover:text-indigo-300 hover:bg-white/[0.06]"
-                    )}
-                    title="Open in IDE"
-                    aria-label={`Open ${file.path} in IDE`}
-                  >
-                    <FolderOpen className="w-3.5 h-3.5" />
-                  </button>
-                </div>
+                    title={file.type}
+                  />
+                  <span className="truncate text-[12px] font-medium text-gray-100">
+                    {pathDisplay.fileName}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-[10.5px] text-gray-500">
+                    {pathDisplay.parentPath || file.type}
+                  </span>
+                  <span className="shrink-0 text-[10.5px] tabular-nums">
+                    <span className="text-green-300">+{file.added}</span>
+                    <span className="ml-1 text-red-300">-{file.removed}</span>
+                  </span>
+                </button>
               );
             })}
           </div>
@@ -1376,11 +1361,7 @@ export function Chat() {
   const [workspaceTabs, setWorkspaceTabs] = useState<ChatWorkspaceTab[]>([]);
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ChatWorkspaceTab | null>(null);
   const [workspaceBrowserTitle, setWorkspaceBrowserTitle] = useState("Browser");
-  const [seenFileDiffSignature, setSeenFileDiffSignature] = useState<string | null>(() =>
-    readSeenFileDiffSignature(sessionId)
-  );
   const [showEnvironmentOverview, setShowEnvironmentOverview] = useState(false);
-  const [seenEnvironmentOverviewKey, setSeenEnvironmentOverviewKey] = useState<string | null>(null);
   const [hiddenComposerPlanKey, setHiddenComposerPlanKey] = useState<string | null>(null);
   const [diffPanelWidth, setDiffPanelWidth] = useState<number>(() => readPersistedDiffPanelWidth());
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
@@ -1490,27 +1471,12 @@ export function Chat() {
     () => summarizeSessionFileChanges(typedMessages, liveActivities),
     [liveActivities, typedMessages]
   );
-  const currentFileDiffSignature = useMemo(
-    () => createFileDiffSignature(sessionId, sessionFileChanges),
-    [sessionFileChanges, sessionId]
-  );
-  const hasUnreadFileDiffs =
-    !!currentFileDiffSignature && currentFileDiffSignature !== seenFileDiffSignature;
-  const markCurrentFileDiffsSeen = useCallback(() => {
-    if (!sessionId || !currentFileDiffSignature) return;
-    persistSeenFileDiffSignature(sessionId, currentFileDiffSignature);
-    setSeenFileDiffSignature(currentFileDiffSignature);
-  }, [currentFileDiffSignature, sessionId]);
-  const openWorkspaceTab = useCallback(
-    (tab: ChatWorkspaceTab) => {
-      setWorkspaceTabs((current) => (current.includes(tab) ? current : [...current, tab]));
-      setActiveWorkspaceTab(tab);
-      setShowWorkspacePanel(true);
-      setShowEnvironmentOverview(false);
-      if (tab === "review") markCurrentFileDiffsSeen();
-    },
-    [markCurrentFileDiffsSeen]
-  );
+  const openWorkspaceTab = useCallback((tab: ChatWorkspaceTab) => {
+    setWorkspaceTabs((current) => (current.includes(tab) ? current : [...current, tab]));
+    setActiveWorkspaceTab(tab);
+    setShowWorkspacePanel(true);
+    setShowEnvironmentOverview(false);
+  }, []);
   const closeWorkspaceTab = useCallback(
     (tab: ChatWorkspaceTab) => {
       setWorkspaceTabs((current) => {
@@ -1591,39 +1557,6 @@ export function Chat() {
     );
   }, [activeAgentForPlan, providerPlanStatus, useModelRouter]);
   const environmentGit = useEnvironmentGitBranches(effectiveWorkspaceDir);
-  const environmentOverviewSignalKey = useMemo(
-    () =>
-      [
-        sessionId || "new-chat",
-        currentSessionPlanKey || "no-plan",
-        sessionFileChanges?.files.length || 0,
-        sessionFileChanges?.totalAdded || 0,
-        sessionFileChanges?.totalRemoved || 0,
-        environmentGit.currentBranch || "no-branch",
-        environmentSubagents.map((subagent) => `${subagent.id}:${subagent.status}`).join("|"),
-        environmentToolNames.join("|"),
-        workspaceTabs.join("|"),
-      ].join("\u0000"),
-    [
-      currentSessionPlanKey,
-      environmentGit.currentBranch,
-      environmentSubagents,
-      environmentToolNames,
-      sessionFileChanges,
-      sessionId,
-      workspaceTabs,
-    ]
-  );
-  const hasEnvironmentOverviewSignal =
-    !!currentSessionPlan ||
-    (sessionFileChanges && sessionFileChanges.files.length > 0) ||
-    environmentSubagents.length > 0 ||
-    environmentToolNames.length > 0 ||
-    workspaceTabs.length > 0;
-  const showEnvironmentOverviewDot =
-    !!hasEnvironmentOverviewSignal &&
-    !showEnvironmentOverview &&
-    seenEnvironmentOverviewKey !== environmentOverviewSignalKey;
   const syncSessionAgentSelection = useCallback(
     (agentId?: string | null) => {
       const normalized = typeof agentId === "string" && agentId.trim() ? agentId.trim() : null;
@@ -1636,14 +1569,6 @@ export function Chat() {
   useEffect(() => {
     setLastWorkspaceDir(readPersistedWorkspaceDir());
   }, []);
-
-  useEffect(() => {
-    setSeenFileDiffSignature(readSeenFileDiffSignature(sessionId));
-  }, [sessionId]);
-
-  useEffect(() => {
-    if (showWorkspacePanel && activeWorkspaceTab === "review") markCurrentFileDiffsSeen();
-  }, [activeWorkspaceTab, markCurrentFileDiffsSeen, showWorkspacePanel]);
 
   useEffect(() => {
     if (!workspaceDir) return;
@@ -2525,12 +2450,6 @@ export function Chat() {
   useEffect(() => {
     setShowEnvironmentOverview(false);
   }, [sessionId]);
-
-  useEffect(() => {
-    if (showEnvironmentOverview && hasEnvironmentOverviewSignal) {
-      setSeenEnvironmentOverviewKey(environmentOverviewSignalKey);
-    }
-  }, [environmentOverviewSignalKey, hasEnvironmentOverviewSignal, showEnvironmentOverview]);
 
   useEffect(() => {
     const cached = readCachedLiveSessionState(sessionId);
@@ -3945,11 +3864,6 @@ export function Chat() {
             title="File diffs"
           >
             <FileText className="w-4 h-4" />
-            {hasUnreadFileDiffs && sessionFileChanges && sessionFileChanges.files.length > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[15px] h-[15px] rounded-full bg-indigo-500/80 px-1 text-[9px] leading-[15px] text-white text-center">
-                {sessionFileChanges.files.length}
-              </span>
-            )}
           </button>
           <button
             aria-label="Environment overview"
@@ -3963,9 +3877,6 @@ export function Chat() {
             title="Environment overview"
           >
             <SlidersHorizontal className="w-4 h-4" />
-            {showEnvironmentOverviewDot && (
-              <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-gray-300" />
-            )}
           </button>
           <button
             onClick={() => {
@@ -4591,7 +4502,6 @@ export function Chat() {
             onResizeStart={handleDiffPanelResizeStart}
             onSelectTab={(tab) => {
               setActiveWorkspaceTab(tab);
-              if (tab === "review") markCurrentFileDiffsSeen();
             }}
             tabLabels={{ browser: workspaceBrowserTitle }}
           >
@@ -4618,6 +4528,7 @@ export function Chat() {
                   visible={showWorkspacePanel && activeWorkspaceTab === "terminal"}
                   createRequestToken={0}
                   autoCreateOnVisible
+                  headerSlotSelector="[data-chat-workspace-header-slot]"
                 />
               </div>
             )}

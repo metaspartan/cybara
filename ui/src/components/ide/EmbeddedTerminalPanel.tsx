@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AlertTriangle, Loader2, Plus, SquareTerminal, Trash2 } from "lucide-react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XTerminal } from "@xterm/xterm";
@@ -31,12 +32,14 @@ export function EmbeddedTerminalPanel({
   createRequestToken,
   autoCreateOnVisible,
   onStateChange,
+  headerSlotSelector,
 }: {
   workspacePath: string;
   visible: boolean;
   createRequestToken: number;
   autoCreateOnVisible: boolean;
   onStateChange?: (state: IdeTerminalPanelState) => void;
+  headerSlotSelector?: string;
 }) {
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -303,55 +306,77 @@ export function EmbeddedTerminalPanel({
     return "Terminal";
   }, [checking, disabled]);
 
+  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!headerSlotSelector) {
+      setHeaderSlot(null);
+      return;
+    }
+    setHeaderSlot(document.querySelector<HTMLElement>(headerSlotSelector));
+  }, [headerSlotSelector, visible]);
+
+  const sessionTabs = (
+    <>
+      {sessions.map((session) => {
+        const isActive = activeSessionId === session.id;
+        return (
+          <div
+            key={`terminal-tab:${session.id}`}
+            className={cn(
+              "group/termtab flex h-8 shrink-0 items-center rounded-md text-[11px] transition-colors",
+              isActive
+                ? "bg-white/[0.08] text-gray-100"
+                : "text-gray-500 hover:bg-white/[0.04] hover:text-gray-300"
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => setActiveSessionId(session.id)}
+              className="flex h-full items-center gap-1.5 pl-2 pr-1"
+              title={`Terminal ${session.id}`}
+            >
+              <SquareTerminal className="h-3.5 w-3.5" />
+              <span className="max-w-[7rem] truncate font-mono">{session.id}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => removeSession(session.id)}
+              className="mr-1 rounded p-1 text-gray-600 opacity-0 transition-opacity hover:bg-white/10 hover:text-red-300 group-hover/termtab:opacity-100 focus:opacity-100"
+              aria-label={`Close terminal ${session.id}`}
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        );
+      })}
+      <button
+        type="button"
+        onClick={createSession}
+        disabled={disabled || checking}
+        className="rounded-md p-1.5 text-gray-500 hover:bg-white/[0.06] hover:text-gray-200 disabled:opacity-50"
+        title="New terminal"
+        aria-label="New terminal"
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </button>
+    </>
+  );
+
+  const useHeaderSlot = !!headerSlot && visible;
+
   return (
     <div className="h-full flex flex-col bg-[#050508]">
-      <div className="h-8 px-2 border-b border-white/10 bg-black/40 flex items-center gap-1.5">
-        <SquareTerminal className="w-3.5 h-3.5 text-gray-500" />
-        <span className="text-xs text-gray-400">{panelTitle}</span>
-        <div className="flex-1 min-w-0 overflow-x-auto flex items-center gap-1 pl-1">
-          {sessions.map((session) => {
-            const isActive = activeSessionId === session.id;
-            return (
-              <button
-                key={`terminal-tab:${session.id}`}
-                type="button"
-                onClick={() => setActiveSessionId(session.id)}
-                className={cn(
-                  "h-6 px-2 rounded text-[11px] border inline-flex items-center gap-1.5",
-                  isActive
-                    ? "border-indigo-500/40 bg-indigo-500/20 text-indigo-200"
-                    : "border-white/10 text-gray-400 hover:text-gray-200 hover:bg-white/5"
-                )}
-                title={`Terminal ${session.id}`}
-              >
-                <span className="truncate max-w-[8rem]">{session.id}</span>
-                <span
-                  role="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    removeSession(session.id);
-                  }}
-                  className="p-0.5 rounded hover:text-red-300"
-                  aria-label={`Close terminal ${session.id}`}
-                >
-                  <Trash2 className="w-3 h-3" />
-                </span>
-              </button>
-            );
-          })}
+      {useHeaderSlot ? (
+        createPortal(sessionTabs, headerSlot)
+      ) : (
+        <div className="h-9 px-2 border-b border-white/10 flex items-center gap-1.5">
+          <SquareTerminal className="w-3.5 h-3.5 text-gray-500" />
+          <span className="text-xs text-gray-400">{panelTitle}</span>
+          <div className="flex-1 min-w-0 overflow-x-auto flex items-center gap-1 pl-1">
+            {sessionTabs}
+          </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={createSession}
-          disabled={disabled || checking}
-          className="h-6 px-2 text-xs"
-          title="New Terminal"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          New
-        </Button>
-      </div>
+      )}
 
       <div className="flex-1 min-h-0 relative">
         {checking ? (

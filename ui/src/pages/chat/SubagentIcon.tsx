@@ -3,12 +3,15 @@ import { cn } from "@/lib/utils";
 
 export function SubagentIcon({ className }: { className?: string }) {
   return (
-    <span
-      aria-hidden="true"
-      className={cn("relative flex items-center justify-center shrink-0", className)}
-    >
-      <Diamond className="h-full w-1/2" strokeWidth={2} />
-      <Diamond className="h-full w-1/2 -ml-1/4" strokeWidth={2} />
+    <span aria-hidden="true" className={cn("relative block shrink-0", className)}>
+      <Diamond
+        className="absolute left-0 top-1/2 h-[72%] w-[72%] -translate-y-1/2"
+        strokeWidth={2}
+      />
+      <Diamond
+        className="absolute right-0 top-1/2 h-[72%] w-[72%] -translate-y-1/2"
+        strokeWidth={2}
+      />
     </span>
   );
 }
