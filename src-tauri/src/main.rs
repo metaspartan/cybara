@@ -139,7 +139,12 @@ fn main() {
             println!("[Cybara] Starting sidecar...");
             let mut sidecar = app.shell().sidecar("cybara").unwrap();
             if let Ok(resource_dir) = app.path().resource_dir() {
-                sidecar = sidecar.env("CYBARA_RESOURCE_DIR", resource_dir.to_string_lossy().to_string());
+                let resource_dir = resource_dir.to_string_lossy().to_string();
+                let resource_dir = resource_dir
+                    .strip_prefix(r"\\?\")
+                    .map(|stripped| stripped.to_string())
+                    .unwrap_or(resource_dir);
+                sidecar = sidecar.env("CYBARA_RESOURCE_DIR", resource_dir);
             }
             let (mut rx, child) = sidecar
                 .args(["start"])

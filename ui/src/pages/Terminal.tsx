@@ -22,6 +22,7 @@ export function TerminalPage() {
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [enablingTerminal, setEnablingTerminal] = useState(false);
   const termRef = useRef<HTMLDivElement>(null);
+  const openedSessionIdsRef = useRef(new Set<string>());
   const activeTermRef = useRef<{ term: XTerminal; fitAddon: FitAddon } | null>(null);
   // Mirror of `sessions` so the unmount cleanup can reach the latest set without
   // re-subscribing (a []-dep cleanup would otherwise capture an empty array).
@@ -147,21 +148,46 @@ export function TerminalPage() {
     setActiveSession((prev) => (prev === id ? null : prev));
   }, []);
 
+  const attachSessionContainer = useCallback(
+    (session: TermSession, element: HTMLDivElement | null) => {
+      if (!element || !session.term) return;
+      if (openedSessionIdsRef.current.has(session.id)) return;
+      openedSessionIdsRef.current.add(session.id);
+      session.term.open(element);
+    },
+    []
+  );
+
   useEffect(() => {
-    const container = termRef.current;
-    if (!container) return;
-
-    container.innerHTML = "";
     activeTermRef.current = null;
-
     const session = sessions.find((s) => s.id === activeSession);
     if (!session?.term || !session.fitAddon) return;
-
-    session.term.open(container);
     session.term.focus();
     activeTermRef.current = { term: session.term, fitAddon: session.fitAddon };
     terminalDimensionsRef.current = null;
+    requestAnimationFrame(() => {
+      const active = activeTermRef.current;
+      if (!active) return;
+      try {
+        terminalDimensionsRef.current = fitAndNotifyTerminal(
+          active.term,
+          active.fitAddon,
+          session.ws ?? null,
+          terminalDimensionsRef.current
+        );
+      } catch {
+        return;
+      }
+    });
   }, [activeSession, sessions]);
+
+  useEffect(() => {
+    const opened = openedSessionIdsRef.current;
+    const alive = new Set(sessions.map((session) => session.id));
+    for (const id of opened) {
+      if (!alive.has(id)) opened.delete(id);
+    }
+  }, [sessions]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -285,7 +311,15 @@ export function TerminalPage() {
         </button>
       </div>
 
-      <div ref={termRef} className="flex-1 p-1" style={{ minHeight: 0 }} />
+      <div ref={termRef} className="relative flex-1 p-1" style={{ minHeight: 0 }}>
+        {sessions.map((session) => (
+          <div
+            key={`terminal-viewport:${session.id}`}
+            ref={(element) => attachSessionContainer(session, element)}
+            className={`absolute inset-1 ${activeSession !== session.id ? "hidden" : ""}`}
+          />
+        ))}
+      </div>
     </div>
   );
 }

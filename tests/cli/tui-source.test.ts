@@ -6,6 +6,7 @@ const root = join(import.meta.dir, "..", "..");
 const cliSource = readFileSync(join(root, "src", "cli.tsx"), "utf8");
 const cliChatSource = readFileSync(join(root, "src", "cli-chat.ts"), "utf8");
 const cliTuiMenuSource = readFileSync(join(root, "src", "cli-tui-menu.tsx"), "utf8");
+const cliTuiPanelsSource = readFileSync(join(root, "src", "cli-tui-panels.tsx"), "utf8");
 const cliTuiChatSource = readFileSync(join(root, "src", "cli-tui-chat.tsx"), "utf8");
 const cliTuiInteractiveChatSource = readFileSync(
   join(root, "src", "cli-tui-interactive-chat.tsx"),
@@ -27,6 +28,10 @@ const tuiPanels = [
   { command: "agents", component: "TUIAgentsCommand", label: "Agents" },
   { command: "providers", component: "TUIProvidersCommand", label: "Providers" },
   { command: "router", component: "TUIRouterCommand", label: "Model Router" },
+  { command: "usage", component: "TUIUsageCommand", label: "Usage" },
+  { command: "channels", component: "TUIChannelsCommand", label: "Channels" },
+  { command: "memory", component: "TUIMemoryCommand", label: "Memory" },
+  { command: "tools", component: "TUIToolsCommand", label: "Tools" },
   { command: "chat", component: "TUIChatCommand", label: "Chat" },
   { command: "sessions", component: "TUISessionsCommand", label: "Sessions" },
   { command: "logs", component: "TUILogsCommand", label: "Logs" },
@@ -45,7 +50,7 @@ describe("CLI TUI source wiring", () => {
     }
     expect(cliSource).toContain("render(<TUIApp command={args[1]} />)");
     expect(cliTuiMenuSource).toContain(
-      "Direct panels: cybara tui status|metrics|providers|router|chat|sessions|logs"
+      "Direct panels: cybara tui status|metrics|usage|providers|router|channels|memory|tools|chat|sessions|logs"
     );
     expect(cliSource).toContain("<MainMenu");
     expect(cliSource).toContain("onOpenPanel");
@@ -58,6 +63,10 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiMenuSource).toContain("shortcut");
     expect(cliTuiMenuSource).toContain("j/k or arrows move");
     expect(cliTuiMenuSource).toContain("selectedIndexForShortcut");
+    expect(cliTuiMenuSource).toContain("visibleMenuItems");
+    expect(cliTuiMenuSource).toContain("const availableRows");
+    expect(cliTuiMenuSource).toContain('action: "router",\n    shortcut: "v"');
+    expect(cliTuiMenuSource).toContain('action: "skills",\n    shortcut: "i"');
     expect(cliTuiMenuSource).toContain("Workflows");
     expect(cliTuiMenuSource).toContain("Setup");
     expect(cliTuiMenuSource).toContain("System");
@@ -71,13 +80,28 @@ describe("CLI TUI source wiring", () => {
       "/api/sessions",
       "/api/logs/system?limit=12",
       "/api/mobile/devices",
+      "/api/channels",
+      "/api/memory/status",
+      "/api/memory",
+      "/api/tools",
     ]) {
-      expect(cliSource).toContain(route);
+      expect(cliSource + cliTuiPanelsSource).toContain(route);
     }
   });
 
   test("CLI docs list direct TUI panels", () => {
-    for (const command of ["providers", "router", "chat", "sessions", "logs", "mobile"]) {
+    for (const command of [
+      "providers",
+      "router",
+      "usage",
+      "channels",
+      "memory",
+      "tools",
+      "chat",
+      "sessions",
+      "logs",
+      "mobile",
+    ]) {
       expect(cliDocs).toContain(`cybara tui ${command}`);
     }
   });

@@ -3819,19 +3819,35 @@ private func summarizeNativeChatFileChanges(
     liveActivities: [NativeToolActivity] = []
 ) -> NativeChatFileChangeSummary {
     var files: [String: NativeChatFileChangeItem] = [:]
+    func pathKey(_ path: String) -> String {
+        path.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\\", with: "/")
+            .replacingOccurrences(of: "/+", with: "/", options: .regularExpression)
+            .lowercased()
+    }
+    func matchingKey(_ path: String) -> String? {
+        let candidate = pathKey(path)
+        return files.keys.first { key in
+            key == candidate || key.hasSuffix("/\(candidate)") || candidate.hasSuffix("/\(key)")
+        }
+    }
     func merge(_ item: NativeChatFileChangeItem) {
-        if let existing = files[item.path] {
+        let key = matchingKey(item.path) ?? pathKey(item.path)
+        if let existing = files[key] {
             let kind = item.kind == "deleted" || existing.kind == "deleted"
                 ? "deleted"
                 : (item.kind == "updated" || existing.kind == "updated" ? "updated" : item.kind)
-            files[item.path] = NativeChatFileChangeItem(
-                path: item.path,
+            let preferredPath = item.path.count >= existing.path.count ? item.path : existing.path
+            let preferredKey = pathKey(preferredPath)
+            files.removeValue(forKey: key)
+            files[preferredKey] = NativeChatFileChangeItem(
+                path: preferredPath,
                 kind: kind,
                 added: existing.added + item.added,
                 removed: existing.removed + item.removed
             )
         } else {
-            files[item.path] = item
+            files[key] = item
         }
     }
 
@@ -3841,7 +3857,12 @@ private func summarizeNativeChatFileChanges(
         guard relevant else { continue }
         let paths = nativeToolFilePaths(tool)
         for path in paths {
-            let diff = nativeJSONString(nativeJSONObject(tool.result), key: "diff") ?? nativeJSONString(tool.args, key: "diff") ?? ""
+            let resultObject = nativeJSONObject(tool.result)
+            let changeObject = resultObject?["change"].flatMap { nativeJSONObject($0) }
+            let diff = nativeJSONString(changeObject, key: "diff")
+                ?? nativeJSONString(resultObject, key: "diff")
+                ?? nativeJSONString(tool.args, key: "diff")
+                ?? ""
             let counts = nativeUnifiedDiffCounts(diff)
             merge(NativeChatFileChangeItem(
                 path: path,
@@ -3853,11 +3874,17 @@ private func summarizeNativeChatFileChanges(
     }
     for activity in messages.flatMap({ $0.process_activities ?? [] }) {
         if let item = nativeActivityFileChange(text: activity.text, phase: activity.phase) {
+            if let key = matchingKey(item.path), let existing = files[key], existing.added + existing.removed > 0 {
+                continue
+            }
             merge(item)
         }
     }
     for activity in liveActivities {
         if let item = nativeActivityFileChange(text: activity.text, phase: activity.phase.rawValue) {
+            if let key = matchingKey(item.path), let existing = files[key], existing.added + existing.removed > 0 {
+                continue
+            }
             merge(item)
         }
     }
@@ -3915,8 +3942,14 @@ private func nativeToolFilePaths(_ tool: GatewayToolCall) -> [String] {
             }
         }
     }
-    let unique = Array(NSOrderedSet(array: paths.compactMap { firstNonEmptyGatewayString($0) })) as? [String]
-    return unique?.isEmpty == false ? unique! : ["\(tool.name) change"]
+    var seen: Set<String> = []
+    let unique = paths.compactMap { rawPath -> String? in
+        guard let path = firstNonEmptyGatewayString(rawPath) else { return nil }
+        let key = path.replacingOccurrences(of: "\\", with: "/").lowercased()
+        guard seen.insert(key).inserted else { return nil }
+        return path
+    }
+    return unique.isEmpty ? ["\(tool.name) change"] : unique
 }
 
 private func nativeFileChangeKind(_ tool: GatewayToolCall) -> String {

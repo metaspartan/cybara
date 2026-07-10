@@ -10,6 +10,12 @@ async function importModule(specifier: string): Promise<Record<string, unknown>>
   return (await import(specifier)) as Record<string, unknown>;
 }
 
+export function stripWindowsLongPathPrefix(value: string): string {
+  if (value.startsWith("\\\\?\\UNC\\")) return `\\\\${value.slice(8)}`;
+  if (value.startsWith("\\\\?\\")) return value.slice(4);
+  return value;
+}
+
 function candidateRoots(): string[] {
   const seeds = [
     process.env.CYBARA_RESOURCE_DIR,
@@ -21,7 +27,9 @@ function candidateRoots(): string[] {
         return undefined;
       }
     })(),
-  ].filter((value): value is string => typeof value === "string" && value.length > 0);
+  ]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .map(stripWindowsLongPathPrefix);
 
   const roots: string[] = [];
   const seen = new Set<string>();
@@ -42,12 +50,15 @@ function candidateRoots(): string[] {
 
 function playwrightEntryCandidates(): string[] {
   const files = ["index.mjs", "index.js"];
+  const packages = ["playwright", "playwright-core"];
   const nodeModuleParents = ["", "bin", "resources", join("resources", "bin")];
   const candidates: string[] = [];
   for (const root of candidateRoots()) {
     for (const parent of nodeModuleParents) {
-      for (const file of files) {
-        candidates.push(join(root, parent, "node_modules", "playwright", file));
+      for (const pkg of packages) {
+        for (const file of files) {
+          candidates.push(join(root, parent, "node_modules", pkg, file));
+        }
       }
     }
   }

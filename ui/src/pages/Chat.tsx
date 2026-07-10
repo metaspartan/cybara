@@ -4565,7 +4565,7 @@ export function Chat() {
                   visible={showWorkspacePanel && activeWorkspaceTab === "terminal"}
                   createRequestToken={0}
                   autoCreateOnVisible
-                  headerSlotSelector="[data-chat-workspace-header-slot]"
+                  singleSession
                 />
               </div>
             )}

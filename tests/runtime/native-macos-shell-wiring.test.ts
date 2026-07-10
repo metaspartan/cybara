@@ -646,6 +646,16 @@ describe("native macOS shell wiring", () => {
     expect(gatewayModels).toContain("let branch: String?");
   });
 
+  test("native chat file changes dedupe activity and structured tool paths", () => {
+    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+
+    expect(nativeScreens).toContain("func pathKey(_ path: String) -> String");
+    expect(nativeScreens).toContain("func matchingKey(_ path: String) -> String?");
+    expect(nativeScreens).toContain('resultObject?["change"].flatMap');
+    expect(nativeScreens).toContain('key.hasSuffix("/\\(candidate)")');
+    expect(nativeScreens).toContain("existing.added + existing.removed > 0");
+  });
+
   test("gateway model labels trim blank titles before falling back", () => {
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
     const modelTests = readFileSync(

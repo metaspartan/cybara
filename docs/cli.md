@@ -38,8 +38,12 @@ cybara onboard            # Setup wizard alias
 cybara tui                # Searchable terminal dashboard menu
 cybara tui status         # Gateway health panel
 cybara tui metrics        # Token/tool/API metrics panel
+cybara tui usage          # Automatic provider coding-plan windows
 cybara tui providers      # Provider and coding-plan usage panel
 cybara tui router         # Model router state and route windows
+cybara tui channels       # Channel state, access policy, and default routing
+cybara tui memory         # Memory provider status and recent entries
+cybara tui tools          # Tool categories and permissions
 cybara tui chat           # Modern terminal chat with search, input, queueing, and steering
 cybara tui sessions       # Recent chat/session list
 cybara tui logs           # Recent gateway/app logs

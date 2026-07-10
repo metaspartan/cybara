@@ -16,6 +16,10 @@ export type MainMenuAction =
   | "agents"
   | "providers"
   | "router"
+  | "usage"
+  | "channels"
+  | "memory"
+  | "tools"
   | "chat"
   | "sessions"
   | "logs"
@@ -36,7 +40,7 @@ type MenuItem = {
 };
 
 export const DIRECT_TUI_PANEL_HINT =
-  "Direct panels: cybara tui status|metrics|providers|router|chat|sessions|logs";
+  "Direct panels: cybara tui status|metrics|usage|providers|router|channels|memory|tools|chat|sessions|logs";
 
 export const MAIN_TUI_MENU_ITEMS: MenuItem[] = [
   {
@@ -82,10 +86,26 @@ export const MAIN_TUI_MENU_ITEMS: MenuItem[] = [
   {
     label: "Model Router",
     action: "router",
-    shortcut: "r",
+    shortcut: "v",
     group: "Setup",
     kind: "panel",
     detail: "Routing strategy, fallback windows, and automatic provider limits",
+  },
+  {
+    label: "Usage",
+    action: "usage",
+    shortcut: "u",
+    group: "Setup",
+    kind: "panel",
+    detail: "Automatic 5-hour and weekly coding-plan usage",
+  },
+  {
+    label: "Channels",
+    action: "channels",
+    shortcut: "h",
+    group: "Setup",
+    kind: "panel",
+    detail: "Connection state, access policy, and default agent routing",
   },
   {
     label: "Mobile Pairing",
@@ -98,10 +118,18 @@ export const MAIN_TUI_MENU_ITEMS: MenuItem[] = [
   {
     label: "Skills",
     action: "skills",
-    shortcut: "k",
+    shortcut: "i",
     group: "Setup",
     kind: "panel",
     detail: "Installed skills and bundled capability packs",
+  },
+  {
+    label: "Tools",
+    action: "tools",
+    shortcut: "w",
+    group: "Setup",
+    kind: "panel",
+    detail: "Available tools, categories, and permissions",
   },
   {
     label: "Status",
@@ -118,6 +146,14 @@ export const MAIN_TUI_MENU_ITEMS: MenuItem[] = [
     group: "System",
     kind: "panel",
     detail: "Token, tool, API, and provider usage",
+  },
+  {
+    label: "Memory",
+    action: "memory",
+    shortcut: "e",
+    group: "System",
+    kind: "panel",
+    detail: "Memory provider status and recent durable entries",
   },
   {
     label: "Logs",
@@ -282,6 +318,13 @@ export function MainMenu({
 
   const selectedItem = menuItems[selected];
   const groups = ["Workflows", "Setup", "System"] as const;
+  const availableRows = Math.max(5, (process.stdout.rows || 30) - 18);
+  const visibleCount = Math.min(menuItems.length, availableRows);
+  const visibleStart = Math.max(
+    0,
+    Math.min(menuItems.length - visibleCount, selected - Math.floor(visibleCount / 2))
+  );
+  const visibleMenuItems = menuItems.slice(visibleStart, visibleStart + visibleCount);
 
   return (
     <Box flexDirection="column">
@@ -302,8 +345,9 @@ export function MainMenu({
           Search: {query || (searchMode ? "type to filter" : "press /")}
           {searchMode ? "▏" : ""}
         </Text>
+        {visibleStart > 0 && <Text color="gray">↑ {visibleStart} more</Text>}
         {groups.map((group) => {
-          const items = menuItems.filter((item) => item.group === group);
+          const items = visibleMenuItems.filter((item) => item.group === group);
           if (items.length === 0) return null;
           return (
             <Box key={group} flexDirection="column" marginTop={1}>
@@ -324,6 +368,11 @@ export function MainMenu({
             </Box>
           );
         })}
+        {visibleStart + visibleMenuItems.length < menuItems.length && (
+          <Text color="gray">
+            ↓ {menuItems.length - visibleStart - visibleMenuItems.length} more
+          </Text>
+        )}
       </Box>
       {selectedItem ? (
         <Box marginTop={1} flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>

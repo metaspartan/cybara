@@ -337,6 +337,8 @@ describe("mobile dashboard model", () => {
     expect(dashboardChatSource).toContain("collectMobileFileChanges");
     expect(dashboardChatSource).toContain("mobileActivityFileChange");
     expect(dashboardChatSource).toContain("mobileFilePathDisplay");
+    expect(dashboardChatSource).toContain("mobileFilePathKey");
+    expect(dashboardChatSource).toContain("toolPathKey.endsWith(`/${key}`)");
     expect(dashboardChatSource).toContain("MobileFileChangesCard");
     expect(dashboardChatSource).toContain("Edited\\s+(.+?)\\s+\\+(\\d+)\\s+-(\\d+)");
     expect(dashboardChatSource).toContain("<MobileFileChangesCard summary={fileChanges} />");

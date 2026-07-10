@@ -112,10 +112,6 @@ export function ChatWorkspacePanel({
             );
           })}
         </div>
-        <div
-          data-chat-workspace-header-slot=""
-          className="flex min-w-0 shrink items-center gap-1 overflow-x-auto empty:hidden"
-        />
         <div className="relative">
           <button
             type="button"

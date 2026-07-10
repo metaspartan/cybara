@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { AlertTriangle, Loader2, Plus, SquareTerminal, Trash2 } from "lucide-react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal as XTerminal } from "@xterm/xterm";
@@ -32,14 +31,14 @@ export function EmbeddedTerminalPanel({
   createRequestToken,
   autoCreateOnVisible,
   onStateChange,
-  headerSlotSelector,
+  singleSession,
 }: {
   workspacePath: string;
   visible: boolean;
   createRequestToken: number;
   autoCreateOnVisible: boolean;
   onStateChange?: (state: IdeTerminalPanelState) => void;
-  headerSlotSelector?: string;
+  singleSession?: boolean;
 }) {
   const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -47,6 +46,7 @@ export function EmbeddedTerminalPanel({
   const [terminalError, setTerminalError] = useState<string | null>(null);
   const [enablingTerminal, setEnablingTerminal] = useState(false);
   const viewportRef = useRef<HTMLDivElement | null>(null);
+  const openedSessionIdsRef = useRef(new Set<string>());
   const activeTermRef = useRef<{
     term: XTerminal;
     fitAddon: FitAddon;
@@ -146,6 +146,7 @@ export function EmbeddedTerminalPanel({
 
   const createSession = useCallback(() => {
     if (capability !== "enabled") return;
+    if (singleSession && sessionsRef.current.length > 0) return;
 
     const id = crypto.randomUUID().slice(0, 8);
     const term = new XTerminal({
@@ -245,24 +246,37 @@ export function EmbeddedTerminalPanel({
     createSession();
   }, [autoCreateOnVisible, capability, createSession, sessions.length, visible]);
 
-  useEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    viewport.innerHTML = "";
-    activeTermRef.current = null;
+  const attachSessionContainer = useCallback(
+    (session: TerminalSession, element: HTMLDivElement | null) => {
+      if (!element || !session.term) return;
+      if (openedSessionIdsRef.current.has(session.id)) return;
+      openedSessionIdsRef.current.add(session.id);
+      session.term.open(element);
+    },
+    []
+  );
 
+  useEffect(() => {
+    activeTermRef.current = null;
     const active = sessions.find((session) => session.id === activeSessionId);
     if (!active?.term || !active.fitAddon) return;
-    active.term.open(viewport);
-    active.term.focus();
     activeTermRef.current = {
       term: active.term,
       fitAddon: active.fitAddon,
       ws: active.ws,
     };
     terminalDimensionsRef.current = null;
+    active.term.focus();
     fitActiveTerminal();
   }, [activeSessionId, fitActiveTerminal, sessions]);
+
+  useEffect(() => {
+    const opened = openedSessionIdsRef.current;
+    const alive = new Set(sessions.map((session) => session.id));
+    for (const id of opened) {
+      if (!alive.has(id)) opened.delete(id);
+    }
+  }, [sessions]);
 
   useEffect(() => {
     if (!visible) return;
@@ -306,79 +320,59 @@ export function EmbeddedTerminalPanel({
     return "Terminal";
   }, [checking, disabled]);
 
-  const [headerSlot, setHeaderSlot] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    if (!headerSlotSelector) {
-      setHeaderSlot(null);
-      return;
-    }
-    setHeaderSlot(document.querySelector<HTMLElement>(headerSlotSelector));
-  }, [headerSlotSelector, visible]);
-
-  const sessionTabs = (
-    <>
-      {sessions.map((session) => {
-        const isActive = activeSessionId === session.id;
-        return (
-          <div
-            key={`terminal-tab:${session.id}`}
-            className={cn(
-              "group/termtab flex h-8 shrink-0 items-center rounded-md text-[11px] transition-colors",
-              isActive
-                ? "bg-white/[0.08] text-gray-100"
-                : "text-gray-500 hover:bg-white/[0.04] hover:text-gray-300"
-            )}
-          >
-            <button
-              type="button"
-              onClick={() => setActiveSessionId(session.id)}
-              className="flex h-full items-center gap-1.5 pl-2 pr-1"
-              title={`Terminal ${session.id}`}
-            >
-              <SquareTerminal className="h-3.5 w-3.5" />
-              <span className="max-w-[7rem] truncate font-mono">{session.id}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => removeSession(session.id)}
-              className="mr-1 rounded p-1 text-gray-600 opacity-0 transition-opacity hover:bg-white/10 hover:text-red-300 group-hover/termtab:opacity-100 focus:opacity-100"
-              aria-label={`Close terminal ${session.id}`}
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
-          </div>
-        );
-      })}
-      <button
-        type="button"
-        onClick={createSession}
-        disabled={disabled || checking}
-        className="rounded-md p-1.5 text-gray-500 hover:bg-white/[0.06] hover:text-gray-200 disabled:opacity-50"
-        title="New terminal"
-        aria-label="New terminal"
-      >
-        <Plus className="h-3.5 w-3.5" />
-      </button>
-    </>
-  );
-
-  const useHeaderSlot = !!headerSlot && visible;
-
   return (
     <div className="h-full flex flex-col bg-[#050508]">
-      {useHeaderSlot ? (
-        createPortal(sessionTabs, headerSlot)
-      ) : (
+      {!singleSession && (
         <div className="h-9 px-2 border-b border-white/10 flex items-center gap-1.5">
           <SquareTerminal className="w-3.5 h-3.5 text-gray-500" />
           <span className="text-xs text-gray-400">{panelTitle}</span>
           <div className="flex-1 min-w-0 overflow-x-auto flex items-center gap-1 pl-1">
-            {sessionTabs}
+            {sessions.map((session) => {
+              const isActive = activeSessionId === session.id;
+              return (
+                <div
+                  key={`terminal-tab:${session.id}`}
+                  className={cn(
+                    "group/termtab flex h-7 shrink-0 items-center rounded-md text-[11px] transition-colors",
+                    isActive
+                      ? "bg-white/[0.08] text-gray-100"
+                      : "text-gray-500 hover:bg-white/[0.04] hover:text-gray-300"
+                  )}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setActiveSessionId(session.id)}
+                    className="flex h-full items-center gap-1.5 pl-2 pr-1"
+                    title={`Terminal ${session.id}`}
+                  >
+                    <span className="max-w-[7rem] truncate font-mono">{session.id}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeSession(session.id)}
+                    className="mr-1 rounded p-1 text-gray-600 opacity-0 transition-opacity hover:bg-white/10 hover:text-red-300 group-hover/termtab:opacity-100 focus:opacity-100"
+                    aria-label={`Close terminal ${session.id}`}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
+                </div>
+              );
+            })}
           </div>
+          <button
+            type="button"
+            onClick={createSession}
+            disabled={disabled || checking}
+            className="rounded-md p-1.5 text-gray-500 hover:bg-white/[0.06] hover:text-gray-200 disabled:opacity-50"
+            title="New terminal"
+            aria-label="New terminal"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
         </div>
       )}
 
-      <div className="flex-1 min-h-0 relative">
+      <div ref={viewportRef} className="flex-1 min-h-0 relative">
         {checking ? (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-gray-500 gap-2">
             <Loader2 className="w-4 h-4 animate-spin" />
@@ -420,7 +414,16 @@ export function EmbeddedTerminalPanel({
             </button>
           </div>
         ) : (
-          <div ref={viewportRef} className="absolute inset-0 px-1 py-1 min-h-0" />
+          sessions.map((session) => (
+            <div
+              key={`terminal-viewport:${session.id}`}
+              ref={(element) => attachSessionContainer(session, element)}
+              className={cn(
+                "absolute inset-0 px-1 py-1 min-h-0",
+                activeSessionId !== session.id && "hidden"
+              )}
+            />
+          ))
         )}
       </div>
     </div>

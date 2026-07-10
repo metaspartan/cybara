@@ -3,6 +3,7 @@ import {
   browserExecutableCandidates,
   browserLaunchArgs,
 } from "../../src/core/browser/browser-executable";
+import { stripWindowsLongPathPrefix } from "../../src/core/browser/playwright-loader";
 
 describe("browser executable discovery", () => {
   test("covers user and machine Chrome and Edge installs on Windows", () => {
@@ -48,6 +49,27 @@ describe("browser executable discovery", () => {
   test("allows an explicit Linux container sandbox override", () => {
     expect(browserLaunchArgs("linux", { CYBARA_BROWSER_DISABLE_SANDBOX: "true" })).toContain(
       "--no-sandbox"
+    );
+  });
+});
+
+describe("stripWindowsLongPathPrefix", () => {
+  test("strips the \\\\?\\ long-path prefix from Windows resource dirs", () => {
+    expect(stripWindowsLongPathPrefix("\\\\?\\C:\\Program Files\\Cybara\\resources")).toBe(
+      "C:\\Program Files\\Cybara\\resources"
+    );
+  });
+
+  test("rewrites UNC long paths to standard UNC form", () => {
+    expect(stripWindowsLongPathPrefix("\\\\?\\UNC\\server\\share\\Cybara")).toBe(
+      "\\\\server\\share\\Cybara"
+    );
+  });
+
+  test("leaves normal paths untouched", () => {
+    expect(stripWindowsLongPathPrefix("C:\\Cybara\\resources")).toBe("C:\\Cybara\\resources");
+    expect(stripWindowsLongPathPrefix("/Applications/Cybara.app/Contents/Resources")).toBe(
+      "/Applications/Cybara.app/Contents/Resources"
     );
   });
 });

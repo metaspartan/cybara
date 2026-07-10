@@ -58,6 +58,10 @@ function mobileFilePathDisplay(path: string): { fileName: string; parentPath: st
   };
 }
 
+function mobileFilePathKey(path: string): string {
+  return path.trim().replace(/\\/g, "/").replace(/\/+/g, "/").toLowerCase();
+}
+
 function mobileActivityFileChange(text: string, phase: string): MobileFileChangeItem | null {
   if ((phase || "result").toLowerCase() !== "result") return null;
   const match = text.trim().match(/^Edited\s+(.+?)\s+\+(\d+)\s+-(\d+)$/i);
@@ -84,19 +88,36 @@ function collectMobileFileChanges(
   for (const activity of message.processActivities || []) {
     const parsed = mobileActivityFileChange(activity.text || "", activity.phase || "result");
     if (!parsed) continue;
-    const existing = byPath.get(parsed.path);
+    const key = mobileFilePathKey(parsed.path);
+    const existing = byPath.get(key);
     if (existing) {
       existing.added += parsed.added;
       existing.removed += parsed.removed;
     } else {
-      byPath.set(parsed.path, parsed);
+      byPath.set(key, parsed);
     }
   }
   for (const toolCall of message.toolCalls || []) {
     if (!toolCall.filePath) continue;
+    const toolPathKey = mobileFilePathKey(toolCall.filePath);
+    const matchingKey = Array.from(byPath.keys()).find(
+      (key) =>
+        key === toolPathKey || toolPathKey.endsWith(`/${key}`) || key.endsWith(`/${toolPathKey}`)
+    );
     const display = mobileFilePathDisplay(toolCall.filePath);
-    if (!byPath.has(toolCall.filePath)) {
-      byPath.set(toolCall.filePath, {
+    if (matchingKey) {
+      const existing = byPath.get(matchingKey);
+      if (existing && toolCall.filePath.length >= existing.path.length) {
+        byPath.delete(matchingKey);
+        byPath.set(toolPathKey, {
+          ...existing,
+          path: toolCall.filePath,
+          fileName: display.fileName,
+          parentPath: display.parentPath,
+        });
+      }
+    } else {
+      byPath.set(toolPathKey, {
         path: toolCall.filePath,
         fileName: display.fileName,
         parentPath: display.parentPath,

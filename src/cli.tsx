@@ -36,6 +36,12 @@ import { configureChatCli, rawAgent, rawChatCommand } from "./cli-chat";
 import { runSubagentCommand } from "./cli-subagents";
 import { TUIChatCommand } from "./cli-tui-chat";
 import { MainMenu, type MainMenuAction } from "./cli-tui-menu";
+import {
+  TUIChannelsCommand,
+  TUIMemoryCommand,
+  TUIToolsCommand,
+  TUIUsageCommand,
+} from "./cli-tui-panels";
 import { getFlagValue, hasFlag } from "./cli-args";
 import { commandExists } from "./core/platform";
 import {
@@ -3809,6 +3815,14 @@ const TUIApp = ({ command }: { command?: string }) => {
       return <TUIProvidersCommand />;
     case "router":
       return <TUIRouterCommand />;
+    case "usage":
+      return <TUIUsageCommand fetchAPI={fetchAPI} />;
+    case "channels":
+      return <TUIChannelsCommand fetchAPI={fetchAPI} />;
+    case "memory":
+      return <TUIMemoryCommand fetchAPI={fetchAPI} />;
+    case "tools":
+      return <TUIToolsCommand fetchAPI={fetchAPI} />;
     case "chat":
       return <TUIChatCommand fetchAPI={fetchAPI} />;
     case "sessions":
