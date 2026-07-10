@@ -41,6 +41,8 @@ interface BrowserPreview {
 const DEFAULT_BROWSER_VIEWPORT: BrowserViewport = { width: 960, height: 640 };
 const BROWSER_START_TIMEOUT_MS = 30_000;
 const BROWSER_REQUEST_TIMEOUT_MS = 12_000;
+const BROWSER_PREVIEW_POLL_MS = 1_500;
+const BROWSER_STATE_POLL_MS = 500;
 
 function parseBrowserPage(value: unknown): BrowserPage | null {
   if (!value || typeof value !== "object") return null;
@@ -221,7 +223,8 @@ export function ChatWorkspaceBrowser({
       stateRequestInFlightRef.current = true;
       try {
         const response = await apiFetch(
-          `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/state`
+          `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/state`,
+          { signal: AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS) }
         );
         if (!response.ok) return;
         const data: unknown = await response.json();
@@ -300,13 +303,13 @@ export function ChatWorkspaceBrowser({
 
   useEffect(() => {
     if (!visible) return;
-    const timer = window.setInterval(() => void refreshSessionPreview(), 700);
+    const timer = window.setInterval(() => void refreshSessionPreview(), BROWSER_PREVIEW_POLL_MS);
     return () => window.clearInterval(timer);
   }, [refreshSessionPreview, visible]);
 
   useEffect(() => {
     if (!visible || !page) return;
-    const timer = window.setInterval(() => void loadBrowserState(page), 180);
+    const timer = window.setInterval(() => void loadBrowserState(page), BROWSER_STATE_POLL_MS);
     return () => window.clearInterval(timer);
   }, [loadBrowserState, page, visible]);
 

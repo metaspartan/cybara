@@ -3972,9 +3972,9 @@ export function Chat() {
               openWorkspaceTab("subagents");
             }}
             className={cn(
-              "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
+              "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
               showWorkspacePanel && activeWorkspaceTab === "subagents"
-                ? "text-amber-400"
+                ? "text-gray-200 bg-white/[0.04]"
                 : "text-gray-500"
             )}
             title="Subagents"

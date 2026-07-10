@@ -263,7 +263,7 @@ function ThemeSettings() {
                     ) : (
                       <span
                         aria-hidden
-                        className="h-3.5 w-3.5 shrink-0 rounded-full border border-white/25"
+                        className="h-4 w-4 shrink-0 rounded-full border border-white/25"
                         style={{ backgroundColor: option.swatch }}
                       />
                     )}

@@ -81,8 +81,10 @@ export type ThemeMode =
   | "icy-dark"
   | "ash-grey"
   | "forest"
+  | "slate"
   | "sand-dune"
   | "light"
+  | "icy"
   | "paper"
   | "mint"
   | "lavender"
@@ -97,17 +99,19 @@ export interface ThemeModeOption {
 
 export const themeModeOptions: ThemeModeOption[] = [
   { value: "system", label: "System", base: "system", swatch: "#6b7280" },
-  { value: "dark", label: "Dark", base: "dark", swatch: "#0d0d12" },
-  { value: "midnight", label: "Midnight", base: "dark", swatch: "#15102a" },
-  { value: "icy-dark", label: "Icy Dark", base: "dark", swatch: "#081a2e" },
-  { value: "ash-grey", label: "Ash Grey", base: "dark", swatch: "#1e2023" },
-  { value: "forest", label: "Forest", base: "dark", swatch: "#0e1a12" },
-  { value: "sand-dune", label: "Sand Dune", base: "dark", swatch: "#221c13" },
-  { value: "light", label: "Light", base: "light", swatch: "#eef0f4" },
-  { value: "paper", label: "Paper", base: "light", swatch: "#f7f3ec" },
-  { value: "mint", label: "Mint", base: "light", swatch: "#edf7f2" },
-  { value: "lavender", label: "Lavender", base: "light", swatch: "#f3f0fa" },
-  { value: "cake", label: "Cake", base: "light", swatch: "#f9ecec" },
+  { value: "dark", label: "Dark", base: "dark", swatch: "#1f2937" },
+  { value: "midnight", label: "Midnight", base: "dark", swatch: "#8b5cf6" },
+  { value: "icy-dark", label: "Icy Dark", base: "dark", swatch: "#38bdf8" },
+  { value: "ash-grey", label: "Ash Grey", base: "dark", swatch: "#9ca3af" },
+  { value: "forest", label: "Forest", base: "dark", swatch: "#34d399" },
+  { value: "slate", label: "Slate", base: "dark", swatch: "#64748b" },
+  { value: "sand-dune", label: "Sand Dune", base: "dark", swatch: "#d69a46" },
+  { value: "light", label: "Light", base: "light", swatch: "#e2e8f0" },
+  { value: "icy", label: "Icy", base: "light", swatch: "#0ea5e9" },
+  { value: "paper", label: "Paper", base: "light", swatch: "#d9b882" },
+  { value: "mint", label: "Mint", base: "light", swatch: "#10b981" },
+  { value: "lavender", label: "Lavender", base: "light", swatch: "#a855f7" },
+  { value: "cake", label: "Cake", base: "light", swatch: "#f472b6" },
 ];
 
 const themeModes = new Set<ThemeMode>(themeModeOptions.map((option) => option.value));
@@ -192,7 +196,9 @@ const TINTED_THEME_MODES = new Set<ThemeMode>([
   "icy-dark",
   "ash-grey",
   "forest",
+  "slate",
   "sand-dune",
+  "icy",
   "paper",
   "mint",
   "lavender",

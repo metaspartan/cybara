@@ -1566,3 +1566,50 @@ html.light[data-theme-mode="lavender"] body::before {
     radial-gradient(circle at 15% 50%, rgba(168, 130, 255, 0.16) 0%, transparent 50%),
     radial-gradient(circle at 85% 30%, rgba(196, 160, 255, 0.12) 0%, transparent 50%);
 }
+
+html[data-theme-mode="slate"] {
+  --surface-backdrop: #0a0e1a;
+  --surface-panel: #0f1729;
+  --surface-raised: #1a2540;
+  --surface-hover: #20304f;
+  --surface-border: rgba(148, 163, 184, 0.16);
+  --glass-border: rgba(148, 163, 184, 0.12);
+  --glass-surface: rgba(148, 163, 184, 0.04);
+  --glass-bg: rgba(15, 23, 41, 0.72);
+  --glass-bg-strong: rgba(10, 14, 26, 0.95);
+  --context-ring-inner: #0f1729;
+  --context-tooltip-bg: rgba(26, 37, 64, 0.97);
+  --chat-environment-panel-bg: #0f1729;
+  --chat-environment-panel-border: #1e2d4a;
+  --workspace-open-menu-bg: #1a2540;
+}
+
+html[data-theme-mode="slate"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(100, 130, 200, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(120, 150, 220, 0.06) 0%, transparent 50%);
+}
+
+html[data-theme-mode="icy"] {
+  background-color: #e0f2fe;
+  --surface-backdrop: #e0f2fe;
+  --surface-panel: #f0f9ff;
+  --surface-raised: #dbeefe;
+  --surface-hover: #cfe9fc;
+  --glass-border: rgba(14, 116, 165, 0.12);
+  --glass-surface: rgba(14, 116, 165, 0.035);
+  --glass-bg: rgba(240, 249, 255, 0.8);
+  --glass-bg-strong: rgba(224, 242, 254, 0.95);
+  --context-ring-inner: #e0f2fe;
+  --context-tooltip-bg: rgba(240, 249, 255, 0.97);
+  --context-tooltip-border: rgba(14, 116, 165, 0.16);
+  --chat-environment-panel-bg: #f0f9ff;
+  --chat-environment-panel-border: rgba(14, 116, 165, 0.16);
+  --workspace-open-menu-bg: #f0f9ff;
+}
+
+html.light[data-theme-mode="icy"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(56, 160, 255, 0.2) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(34, 200, 240, 0.16) 0%, transparent 50%);
+}

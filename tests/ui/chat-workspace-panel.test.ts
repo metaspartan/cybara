@@ -77,6 +77,9 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("viewportWidth");
     expect(browserSource).toContain("ResizeObserver");
     expect(browserSource).toContain("refreshSessionPreview");
+    expect(browserSource).toContain("const BROWSER_PREVIEW_POLL_MS = 1_500");
+    expect(browserSource).toContain("const BROWSER_STATE_POLL_MS = 500");
+    expect(browserSource).toContain("AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS)");
     expect(browserSource).toContain("data-browser-session-id={browserSessionId}");
     expect(browserSource).toContain("getBoundingClientRect");
     expect(browserSource).toContain("/state`");
