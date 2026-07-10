@@ -78,9 +78,27 @@ describe("TypeScript import/type style guard", () => {
     for (const file of getAllTypeScriptFiles()) {
       if (allowsDynamicImport(file)) continue;
       const content = readFileSync(file, "utf-8");
-      if (/\bawait\s+import\s*\(/.test(content)) {
-        offenders.push(file);
-      }
+      const sourceFile = ts.createSourceFile(
+        file,
+        content,
+        ts.ScriptTarget.Latest,
+        true,
+        file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+      );
+
+      const visit = (node: ts.Node): void => {
+        if (
+          ts.isAwaitExpression(node) &&
+          ts.isCallExpression(node.expression) &&
+          node.expression.expression.kind === ts.SyntaxKind.ImportKeyword
+        ) {
+          offenders.push(file);
+          return;
+        }
+        ts.forEachChild(node, visit);
+      };
+
+      visit(sourceFile);
     }
 
     expect(offenders).toEqual([]);
