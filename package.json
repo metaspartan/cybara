@@ -47,7 +47,7 @@
     "check": "bun run typecheck && bun run lint && bun run format:check",
     "test:core": "bun test tests/core",
     "test:mobile": "bun test tests/mobile",
-    "test:smoke": "bun run test:core && bun test tests/runtime && bun test tests/mobile && bun test tests/ui && bun test tests/api/security.test.ts tests/api/browser-routes-mocked.test.ts tests/api/channel-security-routes-mocked.test.ts && bun test tests/e2e/security-auth-smoke.test.ts tests/e2e/chat-logs-metrics-smoke.test.ts",
+    "test:smoke": "bun run test:core && bun test tests/runtime && bun test tests/mobile && bun test tests/ui && bun test tests/api/security.test.ts tests/api/browser-routes-mocked.test.ts tests/api/channel-security-routes-mocked.test.ts && bun test tests/e2e/security-auth-smoke.test.ts tests/e2e/chat-logs-metrics-smoke.test.ts tests/e2e/terminal-smoke.test.ts",
     "test:smoke:full": "bun run test:core && bun test tests/runtime && bun test tests/api/security.test.ts tests/api/browser-routes-mocked.test.ts tests/api/channel-security-routes-mocked.test.ts && bun test tests/e2e",
     "test": "bun test tests/core tests/api tests/channels tests/cli tests/runtime tests/mobile tests/ui",
     "sexy": "bun run typecheck && bun run lint && bun run format:check",

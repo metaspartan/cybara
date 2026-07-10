@@ -12,7 +12,6 @@ let baseUrl = "";
 let baseWsUrl = "";
 let homeDir = "";
 let apiKey = "";
-const hasPython = Bun.spawnSync(["python3", "--version"]).exitCode === 0;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -77,8 +76,6 @@ function toText(data: unknown): string {
 
 describe("Terminal e2e smoke", () => {
   beforeAll(async () => {
-    if (!hasPython) return;
-
     homeDir = mkdtempSync(join(tmpdir(), "cybara-term-e2e-home-"));
     const port = await getFreePort();
     baseUrl = `http://127.0.0.1:${port}`;
@@ -115,25 +112,16 @@ describe("Terminal e2e smoke", () => {
   });
 
   test("terminal session endpoint is enabled", async () => {
-    if (!hasPython) {
-      expect(true).toBe(true);
-      return;
-    }
-
     const res = await fetch(`${baseUrl}/api/terminal/sessions`, { headers: authHeaders() });
     expect(res.status).toBe(200);
     const data = (await res.json()) as Array<{ id: string }>;
     expect(Array.isArray(data)).toBe(true);
   });
 
-  test("websocket creates session, executes command, and cleans up session", async () => {
-    if (!hasPython) {
-      expect(true).toBe(true);
-      return;
-    }
-
+  test("websocket supports editing, history, interrupts, resize, and cleanup", async () => {
     const sessionId = `term-e2e-${Date.now()}`;
-    const marker = `CYBARA_TERM_SMOKE_${Date.now()}`;
+    const editMarker = `CYBARA_TERM_EDIT_${Date.now()}`;
+    const interruptMarker = `CYBARA_TERM_INTERRUPT_${Date.now()}`;
     let ws: WebSocket | null = null;
     let output = "";
 
@@ -157,9 +145,23 @@ describe("Terminal e2e smoke", () => {
         output += toText(event.data);
       };
 
-      ws.send(`echo ${marker}\n`);
+      ws.send(`${String.fromCharCode(27)}[RESIZE:96,28]`);
+      ws.send(`echo ${editMarker}_BAD`);
+      ws.send(String.fromCharCode(127).repeat(3));
+      ws.send("OK\r");
 
-      await waitFor(() => output.includes(marker), 20000, 100);
+      await waitFor(() => output.includes(`${editMarker}_OK`), 20000, 100);
+
+      output = "";
+      ws.send(`${String.fromCharCode(27)}[A\r`);
+      await waitFor(() => output.includes(`${editMarker}_OK`), 20000, 100);
+
+      output = "";
+      ws.send(process.platform === "win32" ? "ping -n 30 127.0.0.1 >NUL\r" : "sleep 30\r");
+      await sleep(300);
+      ws.send(String.fromCharCode(3));
+      ws.send(`echo ${interruptMarker}\r`);
+      await waitFor(() => output.includes(interruptMarker), 20000, 100);
 
       const sessionsRes = await fetch(`${baseUrl}/api/terminal/sessions`, {
         headers: authHeaders(),

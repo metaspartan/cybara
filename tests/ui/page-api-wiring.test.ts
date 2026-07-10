@@ -228,6 +228,8 @@ describe("UI page API wiring", () => {
       "appendApiTokenParam(`/api/terminal/ws?session=${encodeURIComponent(id)}`)"
     );
     expect(source).toContain("new WebSocket(`${proto}//${window.location.host}${wsPath}`)");
+    expect(source).toContain("term.onData((data) => {");
+    expect(source).toContain("ws.send(data)");
     expect(source).toContain("Enable Web Terminal");
     expect(source).toContain("/settings?section=safety");
   });
@@ -241,6 +243,8 @@ describe("UI page API wiring", () => {
     expect(source).toContain("import { checkTerminalAccess, enableTerminalAccess }");
     expect(source).toContain("const access = await checkTerminalAccess()");
     expect(source).toContain("await enableTerminalAccess()");
+    expect(source).toContain("term.onData((chunk) => {");
+    expect(source).toContain("ws.send(chunk)");
     expect(source).toContain("Enable Web Terminal");
   });
 

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+  parseTerminalInput,
   resolveTerminalLaunch,
-  resolveUnixPtyCommand,
   resolveWindowsShellArgv,
 } from "../../src/api/terminal";
 
@@ -13,6 +13,15 @@ describe("cross-platform terminal shell selection", () => {
     );
 
     expect(argv).toEqual(["C:\\Tools\\pwsh.exe", "-NoLogo", "-NoProfile"]);
+  });
+
+  test("does not pass PowerShell flags to an explicit non-PowerShell shell", () => {
+    const argv = resolveWindowsShellArgv(
+      { CYBARA_TERMINAL_SHELL: "C:\\Windows\\System32\\cmd.exe" },
+      (value) => (value === "C:\\Windows\\System32\\cmd.exe" ? value : null)
+    );
+
+    expect(argv).toEqual(["C:\\Windows\\System32\\cmd.exe"]);
   });
 
   test("prefers PowerShell 7 and suppresses profile startup work", () => {
@@ -29,19 +38,27 @@ describe("cross-platform terminal shell selection", () => {
     expect(argv).toEqual(["C:\\Windows\\System32\\cmd.exe", "/D", "/Q"]);
   });
 
-  test("uses python when python3 is unavailable on Unix", () => {
-    const command = resolveUnixPtyCommand((value) =>
-      value === "python" ? "/usr/bin/python" : null
-    );
-
-    expect(command).toBe("/usr/bin/python");
-  });
-
-  test("does not require Python for Unix terminal startup", () => {
-    expect(resolveUnixPtyCommand(() => null)).toBeNull();
+  test("launches Unix shells directly without Python", () => {
     expect(resolveTerminalLaunch("linux", { SHELL: "/bin/bash" }, () => null)).toEqual({
       argv: ["/bin/bash", "-l"],
-      mode: "pipe",
     });
+  });
+
+  test("preserves interactive xterm input while extracting resize frames", () => {
+    const input = `abc${String.fromCharCode(127)}${String.fromCharCode(27)}[D${String.fromCharCode(3)}\r${String.fromCharCode(27)}[RESIZE:132,44]`;
+    const parsed = parseTerminalInput(input);
+
+    expect(parsed.payload).toBe(
+      `abc${String.fromCharCode(127)}${String.fromCharCode(27)}[D${String.fromCharCode(3)}\r`
+    );
+    expect(parsed.resizes).toEqual([{ cols: 132, rows: 44 }]);
+  });
+
+  test("rejects invalid resize frames and bounds oversized terminals", () => {
+    const escape = String.fromCharCode(27);
+    expect(parseTerminalInput(`${escape}[RESIZE:0,30]`)).toEqual({ payload: "", resizes: [] });
+    expect(parseTerminalInput(`${escape}[RESIZE:5000,3000]`).resizes).toEqual([
+      { cols: 1000, rows: 1000 },
+    ]);
   });
 });

@@ -1,25 +1,31 @@
 import { homedir } from "os";
 import { existsSync } from "fs";
-import { join } from "path";
-
-type TerminalMode = "pty" | "pipe";
+import { join, win32 } from "path";
 
 export interface TerminalLaunch {
   argv: string[];
-  mode: TerminalMode;
 }
 
 interface TerminalSession {
   id: string;
   proc: ReturnType<typeof Bun.spawn> | null;
-  mode: TerminalMode;
+  terminal: Bun.Terminal | null;
+  stream: TerminalStreamState;
   createdAt: string;
   lastActivity: number;
 }
 
-interface TerminalInputSink {
-  write: (chunk: string | Uint8Array) => void;
-  flush?: () => void;
+interface TerminalStreamState {
+  decoder: TextDecoder;
+  outputListeners: Set<(data: string) => void>;
+  exitListeners: Set<() => void>;
+  pendingOutput: string;
+  exited: boolean;
+}
+
+export interface TerminalResize {
+  cols: number;
+  rows: number;
 }
 
 const sessions = new Map<string, TerminalSession>();
@@ -38,6 +44,7 @@ setInterval(
 
 function killSession(id: string) {
   const session = sessions.get(id);
+  sessions.delete(id);
   if (session?.proc) {
     try {
       session.proc.kill();
@@ -45,82 +52,17 @@ function killSession(id: string) {
       console.debug("[Terminal] Failed to kill session process:", error);
     }
   }
-  sessions.delete(id);
+  if (session?.terminal && !session.terminal.closed) {
+    try {
+      session.terminal.close();
+    } catch (error) {
+      console.debug("[Terminal] Failed to close pseudoterminal:", error);
+    }
+  }
 }
 
-const PTY_SCRIPT = `
-import pty, os, sys, select, signal, struct, fcntl, termios
-
-def set_winsize(fd, rows, cols):
-    try:
-        fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', rows, cols, 0, 0))
-    except:
-        pass
-
-shell = os.environ.get('SHELL', '/bin/zsh')
-master_fd, slave_fd = pty.openpty()
-set_winsize(master_fd, 30, 120)
-
-pid = os.fork()
-if pid == 0:
-    # Child: become session leader, set controlling terminal
-    os.setsid()
-    fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
-    os.dup2(slave_fd, 0)
-    os.dup2(slave_fd, 1)
-    os.dup2(slave_fd, 2)
-    os.close(master_fd)
-    os.close(slave_fd)
-    os.execlp(shell, shell, '-l')
-else:
-    # Parent: copy between stdin/stdout and PTY master
-    os.close(slave_fd)
-    try:
-        while True:
-            try:
-                rfds, _, _ = select.select([sys.stdin.fileno(), master_fd], [], [], 1.0)
-            except (select.error, ValueError):
-                break
-            if sys.stdin.fileno() in rfds:
-                data = os.read(sys.stdin.fileno(), 4096)
-                if not data:
-                    break
-                # Check for resize escape sequence
-                text = data.decode('utf-8', errors='replace')
-                if '\\x1b[RESIZE:' in text:
-                    import re
-                    m = re.search(r'\\x1b\\[RESIZE:(\\d+),(\\d+)\\]', text)
-                    if m:
-                        cols, rows = int(m.group(1)), int(m.group(2))
-                        set_winsize(master_fd, rows, cols)
-                        os.kill(pid, signal.SIGWINCH)
-                        # Remove the resize sequence from data, send rest if any
-                        text = re.sub(r'\\x1b\\[RESIZE:\\d+,\\d+\\]', '', text)
-                        if text:
-                            os.write(master_fd, text.encode())
-                        continue
-                os.write(master_fd, data)
-            if master_fd in rfds:
-                try:
-                    data = os.read(master_fd, 4096)
-                except OSError:
-                    break
-                if not data:
-                    break
-                os.write(sys.stdout.fileno(), data)
-                sys.stdout.flush()
-    except OSError:
-        pass
-    finally:
-        os.close(master_fd)
-        try:
-            os.kill(pid, signal.SIGHUP)
-            os.waitpid(pid, 0)
-        except:
-            pass
-`;
-
-const RESIZE_SEQUENCE = new RegExp(`${String.fromCharCode(27)}\\[RESIZE:\\d+,\\d+\\]`, "g");
+const RESIZE_SEQUENCE = new RegExp(`${String.fromCharCode(27)}\\[RESIZE:(\\d+),(\\d+)\\]`, "g");
+const MAX_PENDING_OUTPUT = 64 * 1024;
 
 const TERMINAL_ENV_ALLOWED = new Set([
   "PATH",
@@ -179,7 +121,6 @@ function buildUnixTerminalEnv(shell: string, home: string): Record<string, strin
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
     HOME: home,
-    PYTHONUNBUFFERED: "1",
   };
 }
 
@@ -211,26 +152,30 @@ function resolveCommand(value: string | undefined): string | null {
   }
 }
 
+function windowsShellArgv(command: string): string[] {
+  const executable = win32.basename(command).toLowerCase();
+  return executable === "pwsh" ||
+    executable === "pwsh.exe" ||
+    executable === "powershell" ||
+    executable === "powershell.exe"
+    ? [command, "-NoLogo", "-NoProfile"]
+    : [command];
+}
+
 export function resolveWindowsShellArgv(
   env: NodeJS.ProcessEnv = process.env,
   commandResolver: (value: string | undefined) => string | null = resolveCommand
 ): string[] {
   const explicit = commandResolver(env.CYBARA_TERMINAL_SHELL);
-  if (explicit) return [explicit, "-NoLogo", "-NoProfile"];
+  if (explicit) return windowsShellArgv(explicit);
   const pwsh = commandResolver("pwsh");
-  if (pwsh) return [pwsh, "-NoLogo", "-NoProfile"];
+  if (pwsh) return windowsShellArgv(pwsh);
   const systemRoot = env.SystemRoot || env.SYSTEMROOT || "C:\\Windows";
   const powershell = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
   if (existsSync(powershell)) {
-    return [powershell, "-NoLogo", "-NoProfile"];
+    return windowsShellArgv(powershell);
   }
   return [env.COMSPEC || env.ComSpec || "cmd.exe", "/D", "/Q"];
-}
-
-export function resolveUnixPtyCommand(
-  commandResolver: (value: string | undefined) => string | null = resolveCommand
-): string | null {
-  return commandResolver("python3") ?? commandResolver("python");
 }
 
 export function resolveTerminalLaunch(
@@ -239,80 +184,103 @@ export function resolveTerminalLaunch(
   commandResolver: (value: string | undefined) => string | null = resolveCommand
 ): TerminalLaunch {
   if (platform === "win32") {
-    return { argv: resolveWindowsShellArgv(env, commandResolver), mode: "pipe" };
+    return { argv: resolveWindowsShellArgv(env, commandResolver) };
   }
-  const shell = env.SHELL || "/bin/sh";
-  const python = resolveUnixPtyCommand(commandResolver);
-  return python
-    ? { argv: [python, "-u", "-c", PTY_SCRIPT], mode: "pty" }
-    : { argv: [shell, "-l"], mode: "pipe" };
+  return { argv: [env.SHELL || "/bin/sh", "-l"] };
 }
 
 export function createTerminalSession(sessionId: string): TerminalSession {
   const home = homedir();
   const launch = resolveTerminalLaunch();
   const isWindows = process.platform === "win32";
-  const proc = Bun.spawn(launch.argv, {
-    cwd: home,
-    stdin: "pipe",
-    stdout: "pipe",
-    stderr: "pipe",
-    env: isWindows
-      ? buildWindowsTerminalEnv(home)
-      : buildUnixTerminalEnv(process.env.SHELL || "/bin/sh", home),
+  const stream: TerminalStreamState = {
+    decoder: new TextDecoder(),
+    outputListeners: new Set(),
+    exitListeners: new Set(),
+    pendingOutput: "",
+    exited: false,
+  };
+  const terminal = new Bun.Terminal({
+    cols: 120,
+    rows: 30,
+    name: "xterm-256color",
+    data(_terminal, data) {
+      emitTerminalOutput(stream, stream.decoder.decode(data, { stream: true }));
+    },
+    exit() {
+      emitTerminalExit(stream);
+    },
   });
+  let proc: ReturnType<typeof Bun.spawn>;
+  try {
+    proc = Bun.spawn(launch.argv, {
+      cwd: home,
+      terminal,
+      env: isWindows
+        ? buildWindowsTerminalEnv(home)
+        : buildUnixTerminalEnv(process.env.SHELL || "/bin/sh", home),
+    });
+  } catch (error) {
+    terminal.close();
+    throw error;
+  }
 
   const session: TerminalSession = {
     id: sessionId,
     proc,
-    mode: launch.mode,
+    terminal,
+    stream,
     createdAt: new Date().toISOString(),
     lastActivity: Date.now(),
   };
 
   sessions.set(sessionId, session);
+  proc.exited.then(() => emitTerminalExit(stream)).catch(() => emitTerminalExit(stream));
   return session;
 }
 
+export function parseTerminalInput(data: string): {
+  payload: string;
+  resizes: TerminalResize[];
+} {
+  const resizes: TerminalResize[] = [];
+  const payload = data.replace(RESIZE_SEQUENCE, (_match, colsValue: string, rowsValue: string) => {
+    const cols = Number.parseInt(colsValue, 10);
+    const rows = Number.parseInt(rowsValue, 10);
+    if (Number.isFinite(cols) && Number.isFinite(rows) && cols > 0 && rows > 0) {
+      resizes.push({ cols: Math.min(cols, 1000), rows: Math.min(rows, 1000) });
+    }
+    return "";
+  });
+  return { payload, resizes };
+}
+
 export function writeToTerminal(session: TerminalSession, data: string): void {
-  if (!session.proc?.stdin) return;
-  let payload = data;
-  if (session.mode === "pipe") {
-    payload = payload.replace(RESIZE_SEQUENCE, "");
-    if (!payload) return;
-  }
+  const terminal = session.terminal;
+  if (!terminal || terminal.closed) return;
+  const { payload, resizes } = parseTerminalInput(data);
   try {
-    const stdin = session.proc.stdin as unknown as TerminalInputSink;
-    stdin.write(payload);
-    stdin.flush?.();
-  } catch {
-    /* stdin closed */
+    for (const resize of resizes) terminal.resize(resize.cols, resize.rows);
+    if (payload) terminal.write(payload);
+  } catch (error) {
+    console.debug("[Terminal] Failed to write pseudoterminal input:", error);
   }
 }
 
-function pumpStream(
-  stream: ReadableStream<Uint8Array> | null | undefined,
-  decoder: TextDecoder,
-  onData: (data: string) => void,
-  onDone: () => void
-): void {
-  if (!stream) {
-    onDone();
+function emitTerminalOutput(stream: TerminalStreamState, data: string): void {
+  if (!data) return;
+  if (stream.outputListeners.size === 0) {
+    stream.pendingOutput = `${stream.pendingOutput}${data}`.slice(-MAX_PENDING_OUTPUT);
     return;
   }
-  const reader = stream.getReader();
-  (async () => {
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (value) onData(decoder.decode(value, { stream: true }));
-      }
-    } catch {
-      /* stream closed */
-    }
-    onDone();
-  })();
+  for (const listener of stream.outputListeners) listener(data);
+}
+
+function emitTerminalExit(stream: TerminalStreamState): void {
+  if (stream.exited) return;
+  emitTerminalOutput(stream, stream.decoder.decode());
+  stream.exited = true;
+  for (const listener of stream.exitListeners) listener();
 }
 
 export function startOutputReader(
@@ -320,15 +288,14 @@ export function startOutputReader(
   onData: (data: string) => void,
   onExit: () => void
 ): void {
-  const stdout = session.proc?.stdout as ReadableStream<Uint8Array> | undefined;
-  const stderr = session.proc?.stderr as ReadableStream<Uint8Array> | undefined;
-
-  pumpStream(stdout, new TextDecoder(), onData, onExit);
-  pumpStream(stderr, new TextDecoder(), onData, () => {});
-
-  if (session.proc?.exited) {
-    session.proc.exited.then(() => onExit()).catch(() => onExit());
+  session.stream.outputListeners.add(onData);
+  session.stream.exitListeners.add(onExit);
+  if (session.stream.pendingOutput) {
+    const pending = session.stream.pendingOutput;
+    session.stream.pendingOutput = "";
+    onData(pending);
   }
+  if (session.stream.exited) queueMicrotask(onExit);
 }
 
 export function getTerminalSession(sessionId: string): TerminalSession | undefined {
