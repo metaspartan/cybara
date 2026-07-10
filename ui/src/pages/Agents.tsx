@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { ArrowUpRight, Bot, Trash2, Edit2 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -19,6 +19,7 @@ import {
 } from "@/hooks/useApi";
 import { useUIStore } from "@/stores/uiStore";
 import { settingsApi } from "@/lib/api";
+import { supportedReasoningOptions, reasoningEffortLabel } from "@/lib/reasoning";
 import { buildAgentChatPath } from "./chat/chatRoute";
 import type { Agent } from "@/types";
 
@@ -31,15 +32,6 @@ const agentTypes = [
   { value: "worker", label: "Worker" },
 ];
 
-const reasoningEffortOptions = [
-  { value: "", label: "Default" },
-  { value: "minimal", label: "Minimal" },
-  { value: "low", label: "Low" },
-  { value: "medium", label: "Medium" },
-  { value: "high", label: "High" },
-  { value: "xhigh", label: "Max" },
-];
-
 function agentReasoningLabel(agent: Agent): string {
   const config = agent.config;
   const modelParams =
@@ -47,8 +39,11 @@ function agentReasoningLabel(agent: Agent): string {
       ? (config.model_params as Record<string, unknown>)
       : {};
   const effort = modelParams.reasoning_effort;
-  const option = reasoningEffortOptions.find((item) => item.value === effort);
-  return option?.label ?? "Default";
+  return reasoningEffortLabel(
+    typeof effort === "string" ? effort : null,
+    agent.provider,
+    agent.model
+  );
 }
 
 function buildConfig(
@@ -433,6 +428,12 @@ function AgentModal({
         ? `${m.model_name}${m.context_window ? ` (${Math.round(m.context_window / 1024)}K)` : ""}`
         : m.model_id,
     })) || [];
+
+  const activeFormModel = useCustomModel ? customModel : selectedModel;
+  const reasoningEffortOptions = useMemo(
+    () => supportedReasoningOptions(selectedProvider, activeFormModel),
+    [selectedProvider, activeFormModel]
+  );
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg">

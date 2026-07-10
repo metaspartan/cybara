@@ -1281,7 +1281,18 @@ struct ChatScreen: View {
     }
 
     private var activeReasoningEffortLabel: String {
-        nativeReasoningEfforts.first { $0.value == activeReasoningEffort }?.label ?? "Default"
+        nativeReasoningLabel(
+            effort: activeReasoningEffort,
+            provider: selectedChatAgent?.providerID,
+            model: selectedChatAgent?.model
+        )
+    }
+
+    private var composerReasoningEfforts: [(value: String, label: String)] {
+        nativeSupportedReasoningEfforts(
+            provider: selectedChatAgent?.providerID,
+            model: selectedChatAgent?.model
+        )
     }
 
     private var agentSelectionBinding: Binding<String> {
@@ -1974,7 +1985,7 @@ struct ChatScreen: View {
 
 
             Button {
-                reasoningDraftIndex = nativeReasoningEffortIndex(activeReasoningEffort)
+                reasoningDraftIndex = composerReasoningEfforts.firstIndex { $0.value == activeReasoningEffort }.map(Double.init) ?? 0
                 showReasoningPopover.toggle()
             } label: {
                 if reasoningSaving {
@@ -2019,30 +2030,32 @@ struct ChatScreen: View {
     }
 
     private var reasoningEffortPopover: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let efforts = composerReasoningEfforts
+        let clampedIndex = min(max(Int(reasoningDraftIndex.rounded()), 0), max(efforts.count - 1, 0))
+        let draftLabel = efforts.indices.contains(clampedIndex) ? efforts[clampedIndex].label : "Default"
+        return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("Reasoning")
+                Text("Effort")
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
-                Spacer()
-                Text(nativeReasoningEfforts[Int(reasoningDraftIndex.rounded())].label)
+                Text(draftLabel)
                     .font(.system(size: 12, weight: .bold, design: .rounded))
+                    .foregroundStyle(.tint)
+                Spacer()
             }
             Slider(
                 value: $reasoningDraftIndex,
-                in: 0 ... Double(nativeReasoningEfforts.count - 1),
+                in: 0 ... Double(max(efforts.count - 1, 0)),
                 step: 1,
                 onEditingChanged: { editing in
                     if !editing {
-                        Task {
-                            await changeReasoningEffort(
-                                nativeReasoningEffortValue(reasoningDraftIndex)
-                            )
-                        }
+                        let index = min(max(Int(reasoningDraftIndex.rounded()), 0), max(efforts.count - 1, 0))
+                        let value = efforts.indices.contains(index) ? efforts[index].value : ""
+                        Task { await changeReasoningEffort(value) }
                     }
                 }
             )
             HStack {
-                Text("Provider default")
+                Text("Faster")
                 Spacer()
                 Text("Smarter")
             }
@@ -2631,7 +2644,8 @@ struct ChatScreen: View {
 
     private func changeReasoningEffort(_ nextEffort: String) async {
         guard let agent = selectedChatAgent, !reasoningSaving else { return }
-        guard nativeReasoningEfforts.contains(where: { $0.value == nextEffort }) else { return }
+        let efforts = composerReasoningEfforts
+        guard efforts.contains(where: { $0.value == nextEffort }) else { return }
         guard nextEffort != activeReasoningEffort else { return }
         reasoningSaving = true
         do {
@@ -2639,7 +2653,7 @@ struct ChatScreen: View {
             await loadSessions()
             error = nil
         } catch {
-            reasoningDraftIndex = nativeReasoningEffortIndex(activeReasoningEffort)
+            reasoningDraftIndex = efforts.firstIndex { $0.value == activeReasoningEffort }.map(Double.init) ?? 0
             self.error = error.localizedDescription
         }
         reasoningSaving = false

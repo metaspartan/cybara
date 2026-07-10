@@ -67,6 +67,7 @@ import {
   boundedMobileComposerHeight,
   mobileFirstNonEmptyString,
   mobileSessionTitle,
+  mobileSupportedReasoningEfforts,
   readMobileToolApprovalMode,
   sessionProviderModelLabel,
 } from "../lib/dashboard";
@@ -1329,14 +1330,17 @@ export function SessionDetailPanel({
   const reasoningOptions: Array<{
     value: AgentSummary["reasoning_effort"];
     label: string;
-  }> = [
-    { value: null, label: "Default" },
-    { value: "minimal", label: "Minimal" },
-    { value: "low", label: "Low" },
-    { value: "medium", label: "Medium" },
-    { value: "high", label: "High" },
-    { value: "xhigh", label: "Max" },
-  ];
+  }> = useMemo(
+    () =>
+      mobileSupportedReasoningEfforts(
+        selectedAgent?.provider_id ?? selectedAgent?.provider,
+        selectedAgent?.model
+      ).map((option) => ({
+        value: option.value === "" ? null : option.value,
+        label: option.label,
+      })),
+    [selectedAgent?.provider_id, selectedAgent?.provider, selectedAgent?.model]
+  );
   const reasoningLabel =
     reasoningOptions.find((option) => option.value === reasoningEffort)?.label ?? "Default";
   const activeProviderPlan = useModelRouter

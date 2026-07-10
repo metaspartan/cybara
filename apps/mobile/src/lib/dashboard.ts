@@ -171,6 +171,114 @@ export const MOBILE_REASONING_EFFORT_OPTIONS = [
   { label: "Max", value: "xhigh" },
 ] as const;
 
+const MOBILE_EFFORT_LABELS: Record<string, string> = {
+  minimal: "Minimal",
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "Max",
+};
+
+const MOBILE_BINARY_THINKING_PROVIDERS = new Set([
+  "z.ai",
+  "z.ai-coding",
+  "zai",
+  "z-ai",
+  "qwen-portal",
+]);
+
+const MOBILE_GPT_5_EFFORTS = ["minimal", "low", "medium", "high"] as const;
+const MOBILE_GPT_51_EFFORTS = ["low", "medium", "high"] as const;
+const MOBILE_GPT_52_EFFORTS = ["low", "medium", "high", "xhigh"] as const;
+const MOBILE_GPT_CODEX_EFFORTS = ["low", "medium", "high", "xhigh"] as const;
+const MOBILE_GPT_CODEX_MINI_EFFORTS = ["medium"] as const;
+const MOBILE_GPT_CODEX_MAX_EFFORTS = ["medium", "high", "xhigh"] as const;
+const MOBILE_GPT_PRO_EFFORTS = ["medium", "high", "xhigh"] as const;
+const MOBILE_GPT_5_PRO_EFFORTS = ["high"] as const;
+const MOBILE_GENERIC_OPENAI_EFFORTS = ["low", "medium", "high"] as const;
+const MOBILE_ANTHROPIC_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as const;
+const MOBILE_GOOGLE_EFFORTS = ["minimal", "low", "medium", "high"] as const;
+
+function mobileNormalizeModelId(id: string | null | undefined): string {
+  return (id ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^(?:openai\/|anthropic\/|google\/)?/, "")
+    .replace(/-\d{4}-\d{2}-\d{2}$/, "");
+}
+
+function mobileResolveOpenAIModelEfforts(modelId: string): readonly string[] {
+  if (modelId === "gpt-5.1-codex-mini") return MOBILE_GPT_CODEX_MINI_EFFORTS;
+  if (modelId === "gpt-5.1-codex-max") return MOBILE_GPT_CODEX_MAX_EFFORTS;
+  if (/^gpt-5(?:\.\d+)?-codex(?:-|$)/.test(modelId)) return MOBILE_GPT_CODEX_EFFORTS;
+  if (modelId === "gpt-5-pro") return MOBILE_GPT_5_PRO_EFFORTS;
+  if (/^gpt-5\.[2-9](?:\.\d+)?-pro(?:-|$)/.test(modelId)) return MOBILE_GPT_PRO_EFFORTS;
+  if (/^gpt-5\.[2-9](?:\.\d+)?(?:-|$)/.test(modelId)) return MOBILE_GPT_52_EFFORTS;
+  if (/^gpt-5\.1(?:-|$)/.test(modelId)) return MOBILE_GPT_51_EFFORTS;
+  if (/^gpt-5(?:-|$)/.test(modelId)) return MOBILE_GPT_5_EFFORTS;
+  return MOBILE_GENERIC_OPENAI_EFFORTS;
+}
+
+function mobileSupportedEfforts(provider?: string | null, model?: string | null): readonly string[] {
+  const providerId = (provider ?? "").trim().toLowerCase();
+  if (MOBILE_BINARY_THINKING_PROVIDERS.has(providerId)) {
+    return ["medium"];
+  }
+  const modelId = mobileNormalizeModelId(model);
+  if (providerId === "anthropic" || providerId === "anthropic_vertex") {
+    return MOBILE_ANTHROPIC_EFFORTS;
+  }
+  if (providerId === "google" || providerId === "google_vertex") {
+    return MOBILE_GOOGLE_EFFORTS;
+  }
+  if (
+    providerId === "openai" ||
+    providerId === "openai-codex" ||
+    providerId === "openai-codex-responses" ||
+    providerId === "azure-openai" ||
+    !modelId
+  ) {
+    return mobileResolveOpenAIModelEfforts(modelId);
+  }
+  return MOBILE_GENERIC_OPENAI_EFFORTS;
+}
+
+export function mobileSupportsXHighReasoning(
+  provider?: string | null,
+  model?: string | null
+): boolean {
+  return mobileSupportedEfforts(provider, model).includes("xhigh");
+}
+
+export function mobileSupportedReasoningEfforts(
+  provider?: string | null,
+  model?: string | null
+): readonly { label: string; value: MobileReasoningEffort }[] {
+  const providerId = (provider ?? "").trim().toLowerCase();
+  if (MOBILE_BINARY_THINKING_PROVIDERS.has(providerId)) {
+    return [
+      { label: "Default", value: "" },
+      { label: "Thinking", value: "medium" },
+    ];
+  }
+  return [
+    { label: "Default", value: "" },
+    ...mobileSupportedEfforts(provider, model).map((level) => ({
+      label: MOBILE_EFFORT_LABELS[level] ?? level,
+      value: level as MobileReasoningEffort,
+    })),
+  ];
+}
+
+export function mobileReasoningLabel(
+  effort: string | null | undefined,
+  provider?: string | null,
+  model?: string | null
+): string {
+  const options = mobileSupportedReasoningEfforts(provider, model);
+  return options.find((option) => option.value === (effort ?? ""))?.label ?? "Default";
+}
+
 export const MOBILE_ROUTER_STRATEGY_OPTIONS = [
   { label: "Weighted", value: "weighted" },
   { label: "Round Robin", value: "round_robin" },

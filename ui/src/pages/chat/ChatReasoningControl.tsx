@@ -1,48 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BrainCircuit, HelpCircle, Loader2 } from "lucide-react";
 import type { AgentReasoningEffort } from "@/types";
+import { supportedReasoningOptions } from "@/lib/reasoning";
 import { cn } from "@/lib/utils";
-
-const BINARY_THINKING_PROVIDERS = new Set(["z.ai", "z.ai-coding", "zai", "z-ai", "qwen-portal"]);
-
-const LEVEL_LABELS: Record<AgentReasoningEffort, string> = {
-  minimal: "Minimal",
-  low: "Low",
-  medium: "Medium",
-  high: "High",
-  xhigh: "Max",
-};
-
-function supportsXHigh(provider?: string | null, model?: string | null): boolean {
-  const providerId = (provider || "").trim().toLowerCase();
-  const modelId = (model || "").trim().toLowerCase();
-  if (!modelId) return false;
-  if (modelId.includes("codex")) return true;
-  if (providerId === "anthropic" || providerId === "anthropic_vertex") return true;
-  const gpt = modelId.match(/^(?:openai\/)?gpt-5\.(\d+)/);
-  if (gpt) return Number(gpt[1]) >= 2;
-  return false;
-}
 
 interface ReasoningOption {
   value: AgentReasoningEffort | null;
   label: string;
-}
-
-function optionsFor(provider?: string | null, model?: string | null): ReasoningOption[] {
-  const providerId = (provider || "").trim().toLowerCase();
-  if (BINARY_THINKING_PROVIDERS.has(providerId)) {
-    return [
-      { value: null, label: "Default" },
-      { value: "medium", label: "Thinking" },
-    ];
-  }
-  const levels: AgentReasoningEffort[] = ["minimal", "low", "medium", "high"];
-  if (supportsXHigh(providerId, model)) levels.push("xhigh");
-  return [
-    { value: null, label: "Default" },
-    ...levels.map((level) => ({ value: level, label: LEVEL_LABELS[level] })),
-  ];
 }
 
 export function ChatReasoningControl({
@@ -66,7 +30,14 @@ export function ChatReasoningControl({
   const rootRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
 
-  const options = useMemo(() => optionsFor(provider, model), [provider, model]);
+  const options = useMemo<ReasoningOption[]>(
+    () =>
+      supportedReasoningOptions(provider, model).map((option) => ({
+        value: option.value === "" ? null : option.value,
+        label: option.label,
+      })),
+    [provider, model]
+  );
   const currentIndex = useMemo(() => {
     const index = options.findIndex((option) => option.value === (effort ?? null));
     return index >= 0 ? index : 0;
@@ -196,12 +167,12 @@ export function ChatReasoningControl({
             onPointerUp={onTrackPointerUp}
             onKeyDown={onKeyDown}
             className={cn(
-              "relative mt-4 h-7 cursor-pointer touch-none select-none rounded-full bg-white/[0.07] outline-none ring-indigo-400/40 focus-visible:ring-2",
+              "relative mt-4 h-7 cursor-pointer touch-none select-none rounded-full bg-white/[0.07] outline-none ring-[rgba(var(--accent-primary),0.45)] focus-visible:ring-2",
               updating && "pointer-events-none opacity-60"
             )}
           >
             <div
-              className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 shadow-[0_0_14px_rgba(99,102,241,0.45)] transition-[width] duration-150 ease-out"
+              className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[rgb(var(--accent-primary))] to-[rgba(var(--accent-primary),0.7)] shadow-[0_0_14px_rgba(var(--accent-primary),0.5)] transition-[width] duration-150 ease-out"
               style={{ width: `calc((100% - 28px) * ${ratio} + 16px)` }}
             />
             {options.map((option, index) => (

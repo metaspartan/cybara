@@ -18,6 +18,113 @@ let nativeReasoningEfforts: [(value: String, label: String)] = [
     ("xhigh", "Max"),
 ]
 
+private let nativeBinaryThinkingProviders: Set<String> = [
+    "z.ai", "z.ai-coding", "zai", "z-ai", "qwen-portal",
+]
+
+private let nativeEffortLabels: [String: String] = [
+    "minimal": "Minimal",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "xhigh": "Max",
+]
+
+private let nativeGPT5Efforts = ["minimal", "low", "medium", "high"]
+private let nativeGPT51Efforts = ["low", "medium", "high"]
+private let nativeGPT52Efforts = ["low", "medium", "high", "xhigh"]
+private let nativeGPTCodexEfforts = ["low", "medium", "high", "xhigh"]
+private let nativeGPTCodexMiniEfforts = ["medium"]
+private let nativeGPTCodexMaxEfforts = ["medium", "high", "xhigh"]
+private let nativeGPTProEfforts = ["medium", "high", "xhigh"]
+private let nativeGPT5ProEfforts = ["high"]
+private let nativeGenericOpenAIEfforts = ["low", "medium", "high"]
+private let nativeAnthropicEfforts = ["minimal", "low", "medium", "high", "xhigh"]
+private let nativeGoogleEfforts = ["minimal", "low", "medium", "high"]
+
+private func nativeNormalizeModelId(_ id: String?) -> String {
+    var model = (id ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    for prefix in ["openai/", "anthropic/", "google/"] where model.hasPrefix(prefix) {
+        model = String(model.dropFirst(prefix.count))
+    }
+    if let dateRange = model.range(of: #"-\d{4}-\d{2}-\d{2}$"#, options: .regularExpression) {
+        model = String(model[..<dateRange.lowerBound])
+    }
+    return model
+}
+
+private func nativeResolveOpenAIModelEfforts(_ modelId: String) -> [String] {
+    if modelId == "gpt-5.1-codex-mini" { return nativeGPTCodexMiniEfforts }
+    if modelId == "gpt-5.1-codex-max" { return nativeGPTCodexMaxEfforts }
+    if modelId.range(of: #"^gpt-5(?:\.\d+)?-codex(?:-|$)"#, options: .regularExpression) != nil {
+        return nativeGPTCodexEfforts
+    }
+    if modelId == "gpt-5-pro" { return nativeGPT5ProEfforts }
+    if modelId.range(of: #"^gpt-5\.[2-9](?:\.\d+)?-pro(?:-|$)"#, options: .regularExpression) != nil {
+        return nativeGPTProEfforts
+    }
+    if modelId.range(of: #"^gpt-5\.[2-9](?:\.\d+)?(?:-|$)"#, options: .regularExpression) != nil {
+        return nativeGPT52Efforts
+    }
+    if modelId.range(of: #"^gpt-5\.1(?:-|$)"#, options: .regularExpression) != nil {
+        return nativeGPT51Efforts
+    }
+    if modelId.range(of: #"^gpt-5(?:-|$)"#, options: .regularExpression) != nil {
+        return nativeGPT5Efforts
+    }
+    return nativeGenericOpenAIEfforts
+}
+
+private func nativeSupportedEfforts(provider: String?, model: String?) -> [String] {
+    let providerId = (provider ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if nativeBinaryThinkingProviders.contains(providerId) {
+        return ["medium"]
+    }
+    let modelId = nativeNormalizeModelId(model)
+    if providerId == "anthropic" || providerId == "anthropic_vertex" {
+        return nativeAnthropicEfforts
+    }
+    if providerId == "google" || providerId == "google_vertex" {
+        return nativeGoogleEfforts
+    }
+    if providerId == "openai" || providerId == "openai-codex"
+        || providerId == "openai-codex-responses" || providerId == "azure-openai" || modelId.isEmpty {
+        return nativeResolveOpenAIModelEfforts(modelId)
+    }
+    return nativeGenericOpenAIEfforts
+}
+
+func nativeSupportsXHighReasoning(provider: String?, model: String?) -> Bool {
+    nativeSupportedEfforts(provider: provider, model: model).contains("xhigh")
+}
+
+func nativeSupportedReasoningEfforts(provider: String?, model: String?) -> [(value: String, label: String)] {
+    let providerId = (provider ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    if nativeBinaryThinkingProviders.contains(providerId) {
+        return [("", "Default"), ("medium", "Thinking")]
+    }
+    var levels: [(value: String, label: String)] = [("", "Default")]
+    for effort in nativeSupportedEfforts(provider: provider, model: model) {
+        levels.append((effort, nativeEffortLabels[effort] ?? effort.capitalized))
+    }
+    return levels
+}
+
+func nativeCoerceReasoningEffort(_ effort: String, provider: String?, model: String?) -> String {
+    let supported = nativeSupportedReasoningEfforts(provider: provider, model: model)
+    if supported.contains(where: { $0.value == effort }) { return effort }
+    let supportedValues = supported.map(\.value).filter { !$0.isEmpty }
+    if effort == "xhigh", supportedValues.contains("high") { return "high" }
+    if effort == "minimal", supportedValues.contains("low") { return "low" }
+    if supportedValues.contains("medium") { return "medium" }
+    return supportedValues.first ?? ""
+}
+
+func nativeReasoningLabel(effort: String, provider: String?, model: String?) -> String {
+    let options = nativeSupportedReasoningEfforts(provider: provider, model: model)
+    return options.first { $0.value == effort }?.label ?? "Default"
+}
+
 struct AgentsScreen: View {
     let client: GatewayClient
 
@@ -161,7 +268,7 @@ struct AgentsScreen: View {
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Text("Reasoning · \(nativeReasoningEfforts.first { $0.value == agent.reasoningEffort }?.label ?? "Default")")
+                Text("Reasoning · \(nativeReasoningLabel(effort: agent.reasoningEffort, provider: agent.providerID, model: agent.model))")
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.tertiary)
             }
@@ -285,8 +392,20 @@ private struct AgentEditorSheet: View {
                 }
                 TextField("Model", text: $model)
                 Picker("Reasoning effort", selection: $reasoningEffort) {
-                    ForEach(nativeReasoningEfforts, id: \.value) { option in
+                    ForEach(nativeSupportedReasoningEfforts(provider: providerID, model: model), id: \.value) { option in
                         Text(option.label).tag(option.value)
+                    }
+                }
+                .onChange(of: providerID) { _, _ in
+                    if !nativeSupportedReasoningEfforts(provider: providerID, model: model)
+                        .contains(where: { $0.value == reasoningEffort }) {
+                        reasoningEffort = ""
+                    }
+                }
+                .onChange(of: model) { _, _ in
+                    if !nativeSupportedReasoningEfforts(provider: providerID, model: model)
+                        .contains(where: { $0.value == reasoningEffort }) {
+                        reasoningEffort = ""
                     }
                 }
             }

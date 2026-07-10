@@ -50,6 +50,9 @@ import {
   readMobileSandboxRuntime,
   readMobileAccent,
   readMobileToolApprovalMode,
+  mobileSupportsXHighReasoning,
+  mobileSupportedReasoningEfforts,
+  mobileReasoningLabel,
   summarizeFeatureCounts,
 } from "../../apps/mobile/src/lib/dashboard";
 import { readMobileTokenOptimizationSettings } from "../../apps/mobile/src/screens/dashboardHelpers";
@@ -802,5 +805,69 @@ describe("mobile dashboard model", () => {
       theme_accent: "emerald",
       ui_accent: "emerald",
     });
+  });
+});
+
+describe("mobile provider-aware reasoning gating", () => {
+  test("binary thinking providers collapse to Default/Thinking", () => {
+    expect(mobileSupportedReasoningEfforts("z.ai", "glm-5.2")).toEqual([
+      { label: "Default", value: "" },
+      { label: "Thinking", value: "medium" },
+    ]);
+    expect(mobileSupportedReasoningEfforts("qwen-portal", "qwen3").length).toBe(2);
+    expect(mobileSupportedReasoningEfforts("zai", "x").length).toBe(2);
+  });
+
+  test("google yields Minimal..High plus default", () => {
+    const options = mobileSupportedReasoningEfforts("google", "gemini-2.5-pro");
+    expect(options.map((o) => o.value)).toEqual(["", "minimal", "low", "medium", "high"]);
+  });
+
+  test("codex models exclude Minimal and add Max", () => {
+    expect(mobileSupportedReasoningEfforts("openai", "gpt-5.3-codex").map((o) => o.value)).toEqual([
+      "",
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+    ]);
+  });
+
+  test("gpt-5.1 excludes Minimal and Max", () => {
+    expect(mobileSupportedReasoningEfforts("openai", "gpt-5.1").map((o) => o.value)).toEqual([
+      "",
+      "low",
+      "medium",
+      "high",
+    ]);
+  });
+
+  test("codex-mini is Default/Medium only", () => {
+    expect(
+      mobileSupportedReasoningEfforts("openai", "gpt-5.1-codex-mini").map((o) => o.value)
+    ).toEqual(["", "medium"]);
+  });
+
+  test("gpt-5-pro is Default/High only", () => {
+    expect(mobileSupportedReasoningEfforts("openai", "gpt-5-pro").map((o) => o.value)).toEqual([
+      "",
+      "high",
+    ]);
+  });
+
+  test("xhigh-capable model detection", () => {
+    expect(mobileSupportsXHighReasoning("openai", "gpt-5.2")).toBe(true);
+    expect(mobileSupportsXHighReasoning("anthropic", "claude-opus-4")).toBe(true);
+    expect(mobileSupportsXHighReasoning("openai", "gpt-5.1")).toBe(false);
+    expect(mobileSupportsXHighReasoning("google", "gemini-2.5-pro")).toBe(false);
+    const openai = mobileSupportedReasoningEfforts("openai", "gpt-5.4");
+    expect(openai[openai.length - 1]).toEqual({ label: "Max", value: "xhigh" });
+  });
+
+  test("mobileReasoningLabel maps efforts to labels", () => {
+    expect(mobileReasoningLabel(null)).toBe("Default");
+    expect(mobileReasoningLabel("high", "google", "gemini-2.5-pro")).toBe("High");
+    expect(mobileReasoningLabel("xhigh", "openai", "gpt-5.2")).toBe("Max");
+    expect(mobileReasoningLabel("medium", "z.ai", "glm-5.2")).toBe("Thinking");
   });
 });
