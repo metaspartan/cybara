@@ -21,6 +21,16 @@ export function resolveCompactionTriggerRatio(
   return Math.max(modelDefault, user);
 }
 
+export function resolveMaxConversationMessages(contextWindowTokens: number): number {
+  const tokens = Math.max(1024, Math.floor(contextWindowTokens || 0));
+  return Math.min(4000, Math.max(60, Math.round(tokens / 400)));
+}
+
+export function resolveKeepRecentMessages(contextWindowTokens: number): number {
+  const tokens = Math.max(1024, Math.floor(contextWindowTokens || 0));
+  return Math.min(80, Math.max(16, Math.round(tokens / 4000)));
+}
+
 export function conversationNeedsCompaction(opts: {
   convoLength: number;
   convoChars: number;

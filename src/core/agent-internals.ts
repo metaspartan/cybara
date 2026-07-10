@@ -120,7 +120,7 @@ export const ANTHROPIC_CONTEXT_1M_BETA = "context-1m-2025-08-07";
 export const OPENAI_CODEX_JWT_CLAIM_PATH = "https://api.openai.com/auth";
 export const OPENAI_CODEX_OAUTH_MODEL_PREFIXES = ["gpt-5.3-codex", "gpt-5.2-codex"] as const;
 export const DEFAULT_MODEL_MAX_OUTPUT_TOKENS = 8192;
-export const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS = 65536;
+export const DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS = 131072;
 export const CONTEXT_CHARS_PER_TOKEN_ESTIMATE = 4;
 export const CONTEXT_INPUT_HEADROOM_RATIO = 0.75;
 export const MAX_TOOL_RESULT_CONTEXT_SHARE = 0.3;
@@ -129,7 +129,7 @@ export const MIN_TOOL_RESULT_CHARS = 2_000;
 export const CONTEXT_LIMIT_TRUNCATION_NOTICE = "[truncated: output exceeded context limit]";
 export const CONVERSATION_KEEP_RECENT_MESSAGES = 16;
 export const CONVERSATION_MAX_MESSAGES = 60;
-export const CONVERSATION_SUMMARY_MAX_CHARS = 4_000;
+export const CONVERSATION_SUMMARY_MAX_CHARS = 8_000;
 export const CONVERSATION_SUMMARY_PREFIX =
   "[Earlier conversation summary - prior turns condensed to save context]";
 export const MAX_AGENTIC_CONFIGURED_ITERATIONS = 10000;

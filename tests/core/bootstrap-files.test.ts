@@ -306,10 +306,19 @@ describe("bootstrap-files exported constants", () => {
       DEFAULT_CONTEXT_FILE_MAX_CHARS: number;
       DEFAULT_CONTEXT_TOTAL_MAX_CHARS: number;
     };
-    expect(CONTEXT_FILES).toEqual(["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md"]);
-    for (const name of ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md"]) {
+    expect(CONTEXT_FILES).toEqual([
+      "SOUL.md",
+      "AGENTS.md",
+      "CLAUDE.md",
+      "IDENTITY.md",
+      "USER.md",
+      "TOOLS.md",
+    ]);
+    for (const name of ["SOUL.md", "AGENTS.md", "IDENTITY.md", "USER.md", "TOOLS.md"]) {
       expect(BOOTSTRAP_FILENAMES).toContain(name);
     }
+    expect(CONTEXT_FILES).toContain("CLAUDE.md");
+    expect(BOOTSTRAP_FILENAMES).not.toContain("CLAUDE.md");
     expect(CONTEXT_FILES).not.toContain("BOOTSTRAP.md");
     expect(CONTEXT_FILES).not.toContain("HEARTBEAT.md");
     expect(DEFAULT_CONTEXT_FILE_MAX_CHARS).toBe(20_000);
@@ -393,8 +402,9 @@ describe("readBootstrapFiles", () => {
       content: string;
     }>;
     expect(files.map((f) => f.name)).toEqual([
-      "AGENTS.md",
       "SOUL.md",
+      "AGENTS.md",
+      "CLAUDE.md",
       "IDENTITY.md",
       "USER.md",
       "TOOLS.md",
@@ -463,7 +473,7 @@ describe("getBootstrapContextFiles", () => {
       total: number;
     };
     expect(result.total).toBeLessThanOrEqual(200);
-    expect(result.files.map((file) => file.name)).toEqual(["AGENTS.md", "SOUL.md"]);
+    expect(result.files.map((file) => file.name)).toEqual(["SOUL.md", "AGENTS.md"]);
     expect(result.files[0].content.length).toBe(120);
     expect(result.files[1].content.length).toBe(80);
   });
@@ -477,6 +487,10 @@ describe("createBootstrapFiles + readBootstrapFiles round trip", () => {
       matchesDisk: boolean;
     }>;
     for (const file of files) {
+      if (file.name === "CLAUDE.md") {
+        expect(file.missing).toBe(true);
+        continue;
+      }
       expect(file.missing).toBe(false);
       expect(file.matchesDisk).toBe(true);
     }

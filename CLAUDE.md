@@ -2,6 +2,10 @@
 
 This document contains coding standards and best practices for AI assistants working on this codebase.
 
+## No Code Comments (STRICT)
+
+Do NOT write comments in code. No `//`, `/* */`, `#`, JSDoc, or docstring comments — not for explaining "why", not for section headers, not for TODOs, not in TypeScript, tests, scripts, Swift, or config. Write self-explanatory code with clear names instead. Never reference competitors or other products in code or comments. This is a hard rule: if a change adds a comment, remove it before finishing. Existing comments may stay; do not add new ones.
+
 ## Runtime Environment
 
 - **Runtime**: Bun (not Node.js)

@@ -19,7 +19,14 @@ export const BOOTSTRAP_FILENAMES = [
   "HEARTBEAT.md",
 ];
 
-export const CONTEXT_FILES = ["AGENTS.md", "SOUL.md", "IDENTITY.md", "USER.md", "TOOLS.md"];
+export const CONTEXT_FILES = [
+  "SOUL.md",
+  "AGENTS.md",
+  "CLAUDE.md",
+  "IDENTITY.md",
+  "USER.md",
+  "TOOLS.md",
+];
 
 export const DEFAULT_CONTEXT_FILE_MAX_CHARS = 20_000;
 export const DEFAULT_CONTEXT_TOTAL_MAX_CHARS = 60_000;

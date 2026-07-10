@@ -81,6 +81,8 @@ import {
   buildCompactedConversation,
   conversationNeedsCompaction,
   resolveCompactionTriggerRatio,
+  resolveKeepRecentMessages,
+  resolveMaxConversationMessages,
   estimateConversationChars,
   planCompactionCut,
 } from "./conversation-window";
@@ -738,20 +740,22 @@ class AgentManager {
         Number(config.get<number>("compaction_trigger_ratio"))
       );
       const threshold = Math.floor(compactTokens * CONTEXT_CHARS_PER_TOKEN_ESTIMATE * compactRatio);
+      const maxMessages = resolveMaxConversationMessages(compactTokens);
+      const keepRecent = resolveKeepRecentMessages(compactTokens);
       const convoChars = estimateConversationChars(convo);
       if (
         !conversationNeedsCompaction({
           convoLength: convo.length,
           convoChars,
           threshold,
-          maxMessages: CONVERSATION_MAX_MESSAGES,
-          keepRecent: CONVERSATION_KEEP_RECENT_MESSAGES,
+          maxMessages,
+          keepRecent,
         })
       ) {
         return;
       }
 
-      const cut = planCompactionCut(convo, CONVERSATION_KEEP_RECENT_MESSAGES);
+      const cut = planCompactionCut(convo, keepRecent);
       if (cut <= 0) return;
 
       const older = convo.slice(0, cut);
