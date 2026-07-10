@@ -48,6 +48,11 @@ cybara tui chat           # Modern terminal chat with search, input, queueing, a
 cybara tui sessions       # Recent chat/session list
 cybara tui logs           # Recent gateway/app logs
 cybara tui mobile         # Paired mobile devices
+cybara tui mcp            # MCP service state and tool counts
+cybara tui lsp            # Language server availability
+cybara tui subagents      # Delegated agent runs
+cybara tui artifacts      # Persistent session deliverables
+cybara tui journey        # Learned skills and memory activity
 ```
 
 `cybara chat` is the terminal chat surface. It supports session history, queued follow-ups while a
@@ -84,6 +89,9 @@ edit/delete/reorder, and active-run stop.
 Dashboard panels outside chat remain read-only; use raw CLI commands when you need to mutate
 providers, router settings, mobile pairings, wallet state, or channel configuration.
 
+The MCP, language-server, subagent, artifact, and journey panels provide compact operational views
+without leaving the terminal. Every panel supports `r` to refresh and `q` or `Esc` to return.
+
 ### System Status
 
 ```bash
@@ -101,6 +109,10 @@ cybara logs --tail 100    # Show a bounded log tail
 cybara logs --follow      # Follow logs until interrupted
 cybara completion zsh     # Print zsh completion script
 cybara completion bash    # Print bash completion script
+cybara artifacts          # List persistent session deliverables
+cybara artifacts --json   # Emit artifact data for scripts
+cybara journey            # Show learned skills and memory activity
+cybara journey --json     # Emit journey data for scripts
 ```
 
 `cybara update` verifies the downloaded binary against its published SHA256 sidecar before

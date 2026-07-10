@@ -37,11 +37,17 @@ import { runSubagentCommand } from "./cli-subagents";
 import { TUIChatCommand } from "./cli-tui-chat";
 import { MainMenu, type MainMenuAction } from "./cli-tui-menu";
 import {
+  TUIArtifactsCommand,
   TUIChannelsCommand,
+  TUIJourneyCommand,
+  TUILspCommand,
+  TUIMcpCommand,
   TUIMemoryCommand,
+  TUISubagentsCommand,
   TUIToolsCommand,
   TUIUsageCommand,
 } from "./cli-tui-panels";
+import { printArtifacts, printJourney } from "./cli-resource-commands";
 import { getFlagValue, hasFlag } from "./cli-args";
 import { commandExists } from "./core/platform";
 import {
@@ -3838,6 +3844,17 @@ const TUIApp = ({ command }: { command?: string }) => {
       return <TUILogsCommand />;
     case "mobile":
       return <TUIMobileCommand />;
+    case "mcp":
+      return <TUIMcpCommand fetchAPI={fetchAPI} />;
+    case "lsp":
+      return <TUILspCommand fetchAPI={fetchAPI} />;
+    case "subagents":
+    case "subagent":
+      return <TUISubagentsCommand fetchAPI={fetchAPI} />;
+    case "artifacts":
+      return <TUIArtifactsCommand fetchAPI={fetchAPI} />;
+    case "journey":
+      return <TUIJourneyCommand fetchAPI={fetchAPI} />;
     default:
       return (
         <MainMenu
@@ -4382,6 +4399,12 @@ async function main() {
       break;
     case "memory":
       await rawMemory(args[1]);
+      break;
+    case "artifacts":
+      await printArtifacts(fetchAPI, hasFlag(args, "--json", "-j"));
+      break;
+    case "journey":
+      await printJourney(fetchAPI, hasFlag(args, "--json", "-j"));
       break;
     case "logs": {
       await rawLogsCommand(args.slice(1));

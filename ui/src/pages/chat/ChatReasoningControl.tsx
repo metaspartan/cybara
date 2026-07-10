@@ -202,7 +202,7 @@ export function ChatReasoningControl({
             onPointerUp={onTrackPointerUp}
             onKeyDown={onKeyDown}
             className={cn(
-              "relative mt-4 h-7 cursor-pointer touch-none select-none rounded-full bg-white/[0.07] outline-none ring-[rgba(var(--accent-primary),0.45)] focus-visible:ring-2",
+              "relative mt-4 h-5 cursor-pointer touch-none select-none rounded-full bg-white/[0.07] outline-none ring-[rgba(var(--accent-primary),0.45)] focus-visible:ring-2",
               updating && "pointer-events-none opacity-60"
             )}
           >

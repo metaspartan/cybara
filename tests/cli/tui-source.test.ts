@@ -39,6 +39,11 @@ const tuiPanels = [
   { command: "mobile", component: "TUIMobileCommand", label: "Mobile Pairing" },
   { command: "tasks", component: "TUITasksCommand", label: "Tasks" },
   { command: "skills", component: "TUISkillsCommand", label: "Skills" },
+  { command: "mcp", component: "TUIMcpCommand", label: "MCP Services" },
+  { command: "lsp", component: "TUILspCommand", label: "Language Servers" },
+  { command: "subagents", component: "TUISubagentsCommand", label: "Subagents" },
+  { command: "artifacts", component: "TUIArtifactsCommand", label: "Artifacts" },
+  { command: "journey", component: "TUIJourneyCommand", label: "Journey" },
 ];
 
 describe("CLI TUI source wiring", () => {
@@ -50,9 +55,7 @@ describe("CLI TUI source wiring", () => {
       expect(cliSource).toContain(panel.component);
     }
     expect(cliSource).toContain("render(<TUIApp command={args[1]} />)");
-    expect(cliTuiMenuSource).toContain(
-      "Direct panels: cybara tui status|metrics|usage|providers|router|channels|memory|tools|chat|sessions|logs"
-    );
+    expect(cliTuiMenuSource).toContain("Direct launch: cybara tui <panel> · Press ? for keys");
     expect(cliSource).toContain("<MainMenu");
     expect(cliSource).toContain("onOpenPanel");
   });
@@ -85,6 +88,11 @@ describe("CLI TUI source wiring", () => {
       "/api/memory/status",
       "/api/memory",
       "/api/tools",
+      "/api/mcp",
+      "/api/lsp/install-status",
+      "/api/subagents",
+      "/api/artifacts",
+      "/api/journey",
     ]) {
       expect(cliSource + cliTuiPanelsSource).toContain(route);
     }
@@ -102,6 +110,11 @@ describe("CLI TUI source wiring", () => {
       "sessions",
       "logs",
       "mobile",
+      "mcp",
+      "lsp",
+      "subagents",
+      "artifacts",
+      "journey",
     ]) {
       expect(cliDocs).toContain(`cybara tui ${command}`);
     }

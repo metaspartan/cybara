@@ -823,6 +823,36 @@ function route(method: string, url: URL, body: string): Response {
     });
   }
 
+  if (method === "GET" && pathname === "/api/artifacts") {
+    return json({
+      artifacts: [
+        {
+          sessionId: "session-1",
+          name: "implementation",
+          title: "Implementation Notes",
+          kind: "implementation",
+          size: 2048,
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/journey") {
+    return json({
+      counts: { skills: 1, memories: 1, total: 2 },
+      events: [
+        {
+          id: "skill:release",
+          kind: "skill",
+          title: "Release workflow",
+          category: "delivery",
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+  }
+
   if (method === "POST" && pathname === "/api/lsp/install") {
     const parsed = body ? (JSON.parse(body) as { language?: string }) : {};
     if (!parsed.language) return json({ success: false, error: "language required" }, 400);
@@ -1642,6 +1672,26 @@ describe("CLI Commands", () => {
     expect(logs.stdout).toContain("CYBARA LOGS");
     expect(logs.stdout).toContain("channel");
     expect(lastLogsLimit).toBe("1");
+  });
+
+  test("artifacts and journey commands support readable and JSON output", async () => {
+    const artifacts = await runCli(["artifacts"]);
+    expect(artifacts.exitCode).toBe(0);
+    expect(artifacts.stdout).toContain("ARTIFACTS (1)");
+    expect(artifacts.stdout).toContain("Implementation Notes");
+
+    const artifactJson = await runCli(["artifacts", "--json"]);
+    expect(artifactJson.exitCode).toBe(0);
+    expect(JSON.parse(artifactJson.stdout).artifacts).toHaveLength(1);
+
+    const journey = await runCli(["journey"]);
+    expect(journey.exitCode).toBe(0);
+    expect(journey.stdout).toContain("1 skills · 1 memories · 2 total");
+    expect(journey.stdout).toContain("Release workflow");
+
+    const journeyJson = await runCli(["journey", "-j"]);
+    expect(journeyJson.exitCode).toBe(0);
+    expect(JSON.parse(journeyJson.stdout).events).toHaveLength(1);
   });
 
   test("chat pending CLI commands cover queue, list, steer, edit, delete, reorder, and stop", async () => {

@@ -40,7 +40,6 @@ export function rawHelp(version: string, apiBase: string): void {
     "    config set reasoning_effort <minimal|low|medium|high|xhigh|max>  Default reasoning effort"
   );
   console.log("  migrate     Import supported legacy agent data");
-  console.log("    migrate sources                         Detect local sources");
   console.log("    migrate sources                         Detect import sources");
   console.log("    migrate --apply --preset full           Apply import");
   console.log("    migrate --migrate-secrets --overwrite   Opt into API key import/conflicts");
@@ -69,6 +68,8 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("  memory      Memory commands");
   console.log("    memory         List recent memories");
   console.log("    memory <query> Search memories");
+  console.log("  artifacts   List persistent session deliverables [--json]");
+  console.log("  journey     Show learned skills and memory activity [--json]");
   console.log("  logs        Show recent logs");
   console.log("    logs --tail N          Show N recent logs");
   console.log("    logs --follow          Follow logs until interrupted");

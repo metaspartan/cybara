@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
+import { useTerminalLayout } from "./cli-tui-terminal";
 
 export type TUIDataFetch = <T>(endpoint: string, options?: RequestInit) => Promise<T | null>;
 
@@ -354,6 +355,273 @@ export function TUIToolsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
           <Text wrap="wrap">{compact(tool.description, 110)}</Text>
         </Box>
       ))}
+    </PanelShell>
+  );
+}
+
+interface McpRow {
+  id: string;
+  name?: string;
+  status?: string;
+  toolCount?: number;
+  command?: string;
+}
+
+export function TUIMcpCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
+  const layout = useTerminalLayout();
+  const loader = React.useCallback(() => fetchAPI<McpRow[]>("/api/mcp"), [fetchAPI]);
+  const state = usePanelData(loader, "Failed to load MCP services");
+  const services = Array.isArray(state.data) ? state.data : [];
+  const running = services.filter((service) => service.status === "running").length;
+
+  return (
+    <PanelShell
+      title={`MCP Services (${services.length})`}
+      detail={`${running} running · ${services.reduce((total, service) => total + (service.toolCount || 0), 0)} tools`}
+      loading={state.loading}
+      error={state.error}
+    >
+      {services.length === 0 ? (
+        <Text color="gray">No MCP services configured.</Text>
+      ) : (
+        services.slice(0, 18).map((service) => (
+          <Box key={service.id} flexDirection="column" marginBottom={1}>
+            <Box flexDirection={layout.narrow ? "column" : "row"}>
+              <Box width={layout.narrow ? undefined : 28}>
+                <Text bold>{compact(service.name || service.id, 26)}</Text>
+              </Box>
+              <Box width={layout.narrow ? undefined : 12}>
+                <Text color={service.status === "running" ? "green" : "gray"}>
+                  {service.status || "stopped"}
+                </Text>
+              </Box>
+              <Text color="cyan">{service.toolCount || 0} tools</Text>
+            </Box>
+            {service.command ? <Text color="gray">{compact(service.command, 76)}</Text> : null}
+          </Box>
+        ))
+      )}
+    </PanelShell>
+  );
+}
+
+interface LspRow {
+  language: string;
+  displayName?: string;
+  type?: string;
+  installed?: boolean;
+  available?: boolean;
+  path?: string | null;
+  requiresRuntime?: string;
+}
+
+interface LspResponse {
+  status?: LspRow[];
+}
+
+export function TUILspCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
+  const layout = useTerminalLayout();
+  const loader = React.useCallback(
+    () => fetchAPI<LspResponse>("/api/lsp/install-status"),
+    [fetchAPI]
+  );
+  const state = usePanelData(loader, "Failed to load language servers");
+  const languages = state.data?.status || [];
+  const ready = languages.filter((language) => language.installed || language.available).length;
+
+  return (
+    <PanelShell
+      title={`Language Servers (${ready}/${languages.length} ready)`}
+      detail="Bundled servers and optional language tooling available to the IDE"
+      loading={state.loading}
+      error={state.error}
+    >
+      {languages.length === 0 ? (
+        <Text color="gray">No language server definitions returned.</Text>
+      ) : (
+        languages.slice(0, 20).map((language) => {
+          const available = language.installed || language.available;
+          return (
+            <Box key={language.language} flexDirection="column" marginBottom={1}>
+              <Box flexDirection={layout.narrow ? "column" : "row"}>
+                <Box width={layout.narrow ? undefined : 24}>
+                  <Text bold>{compact(language.displayName || language.language, 22)}</Text>
+                </Box>
+                <Box width={layout.narrow ? undefined : 14}>
+                  <Text color={available ? "green" : "yellow"}>
+                    {available ? "ready" : "not installed"}
+                  </Text>
+                </Box>
+                <Text color="gray">{language.type || "binary"}</Text>
+              </Box>
+              <Text color="gray">
+                {language.path
+                  ? compact(language.path, 76)
+                  : language.requiresRuntime
+                    ? `Requires ${language.requiresRuntime}`
+                    : `Install with cybara lsp install ${language.language}`}
+              </Text>
+            </Box>
+          );
+        })
+      )}
+    </PanelShell>
+  );
+}
+
+interface SubagentRow {
+  runId?: string;
+  id?: string;
+  label?: string;
+  task?: string;
+  model?: string;
+  status?: string;
+}
+
+export function TUISubagentsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
+  const layout = useTerminalLayout();
+  const loader = React.useCallback(() => fetchAPI<SubagentRow[]>("/api/subagents"), [fetchAPI]);
+  const state = usePanelData(loader, "Failed to load subagents");
+  const runs = Array.isArray(state.data) ? state.data : [];
+  const active = runs.filter((run) => run.status === "running").length;
+
+  return (
+    <PanelShell
+      title={`Subagents (${runs.length})`}
+      detail={`${active} active · delegated work across agent sessions`}
+      loading={state.loading}
+      error={state.error}
+    >
+      {runs.length === 0 ? (
+        <Text color="gray">No subagent runs recorded.</Text>
+      ) : (
+        runs.slice(0, 16).map((run, index) => (
+          <Box key={run.runId || run.id || index} flexDirection="column" marginBottom={1}>
+            <Box flexDirection={layout.narrow ? "column" : "row"}>
+              <Box width={layout.narrow ? undefined : 28}>
+                <Text bold>{compact(run.label || run.task || run.runId || run.id, 26)}</Text>
+              </Box>
+              <Box width={layout.narrow ? undefined : 12}>
+                <Text
+                  color={
+                    run.status === "running"
+                      ? "yellow"
+                      : run.status === "ok"
+                        ? "green"
+                        : "gray"
+                  }
+                >
+                  {run.status || "unknown"}
+                </Text>
+              </Box>
+              <Text color="gray">{compact(run.model, 24)}</Text>
+            </Box>
+            {run.task ? <Text color="gray">{compact(run.task, 88)}</Text> : null}
+          </Box>
+        ))
+      )}
+    </PanelShell>
+  );
+}
+
+interface ArtifactRow {
+  sessionId: string;
+  name: string;
+  title?: string;
+  kind?: string;
+  size?: number;
+}
+
+interface ArtifactResponse {
+  artifacts?: ArtifactRow[];
+}
+
+function formatBytes(value = 0): string {
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${value} B`;
+}
+
+export function TUIArtifactsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
+  const layout = useTerminalLayout();
+  const loader = React.useCallback(() => fetchAPI<ArtifactResponse>("/api/artifacts"), [fetchAPI]);
+  const state = usePanelData(loader, "Failed to load artifacts");
+  const artifacts = state.data?.artifacts || [];
+
+  return (
+    <PanelShell
+      title={`Artifacts (${artifacts.length})`}
+      detail="Persistent deliverables produced by agent sessions"
+      loading={state.loading}
+      error={state.error}
+    >
+      {artifacts.length === 0 ? (
+        <Text color="gray">No artifacts created yet.</Text>
+      ) : (
+        artifacts.slice(0, 18).map((artifact) => (
+          <Box
+            key={`${artifact.sessionId}:${artifact.name}`}
+            flexDirection={layout.narrow ? "column" : "row"}
+            marginBottom={layout.narrow ? 1 : 0}
+          >
+            <Box width={layout.narrow ? undefined : 30}>
+              <Text bold>{compact(artifact.title || artifact.name, 28)}</Text>
+            </Box>
+            <Box width={layout.narrow ? undefined : 16}>
+              <Text color="cyan">{artifact.kind || "custom"}</Text>
+            </Box>
+            <Box width={layout.narrow ? undefined : 12}>
+              <Text color="gray">{formatBytes(artifact.size)}</Text>
+            </Box>
+            <Text color="gray">{compact(artifact.sessionId, 18)}</Text>
+          </Box>
+        ))
+      )}
+    </PanelShell>
+  );
+}
+
+interface JourneyEvent {
+  id: string;
+  kind: "skill" | "memory";
+  title: string;
+  detail?: string;
+}
+
+interface JourneyResponse {
+  events?: JourneyEvent[];
+  counts?: { skills?: number; memories?: number; total?: number };
+}
+
+export function TUIJourneyCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
+  const layout = useTerminalLayout();
+  const loader = React.useCallback(() => fetchAPI<JourneyResponse>("/api/journey"), [fetchAPI]);
+  const state = usePanelData(loader, "Failed to load journey");
+  const events = state.data?.events || [];
+  const counts = state.data?.counts;
+
+  return (
+    <PanelShell
+      title="Journey"
+      detail={`${counts?.skills || 0} skills · ${counts?.memories || 0} memories · ${counts?.total || events.length} total`}
+      loading={state.loading}
+      error={state.error}
+    >
+      {events.length === 0 ? (
+        <Text color="gray">No learned skills or memories recorded yet.</Text>
+      ) : (
+        events.slice(0, 16).map((event) => (
+          <Box key={event.id} flexDirection="column" marginBottom={1}>
+            <Box flexDirection={layout.narrow ? "column" : "row"}>
+              <Box width={layout.narrow ? undefined : 12}>
+                <Text color={event.kind === "skill" ? "cyan" : "magenta"}>{event.kind}</Text>
+              </Box>
+              <Text bold>{compact(event.title, 64)}</Text>
+            </Box>
+            {event.detail ? <Text color="gray">{compact(event.detail, 92)}</Text> : null}
+          </Box>
+        ))
+      )}
     </PanelShell>
   );
 }
