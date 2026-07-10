@@ -1422,6 +1422,8 @@ export function Chat() {
   const [pendingMessages, setPendingMessages] = useState<PendingChatMessage[]>([]);
   const [sessionContextUsage, setSessionContextUsage] = useState<SessionContextUsage | null>(null);
   const [sessionTokenUsage, setSessionTokenUsage] = useState<SessionTokenUsage | null>(null);
+  const [timeToFirstTokenMs, setTimeToFirstTokenMs] = useState<number | null>(null);
+  const ttftStartRef = useRef<number | null>(null);
   const [steeringMessageId, setSteeringMessageId] = useState<string | null>(null);
   const [pendingMessageMutationId, setPendingMessageMutationId] = useState<string | null>(null);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
@@ -1522,6 +1524,16 @@ export function Chat() {
     setShowWorkspacePanel(true);
     setShowEnvironmentOverview(false);
   }, []);
+  const toggleWorkspaceTab = useCallback(
+    (tab: ChatWorkspaceTab) => {
+      if (showWorkspacePanel && activeWorkspaceTab === tab) {
+        setShowWorkspacePanel(false);
+        return;
+      }
+      openWorkspaceTab(tab);
+    },
+    [showWorkspacePanel, activeWorkspaceTab, openWorkspaceTab]
+  );
   const closeWorkspaceTab = useCallback(
     (tab: ChatWorkspaceTab) => {
       setWorkspaceTabs((current) => {
@@ -1555,6 +1567,16 @@ export function Chat() {
     !!currentSessionPlan &&
     !isSessionPlanComplete(currentSessionPlan) &&
     currentSessionPlanKey !== hiddenComposerPlanKey;
+  const [dismissedEnvironmentPlanKey, setDismissedEnvironmentPlanKey] = useState<string | null>(
+    null
+  );
+  const environmentPlan =
+    currentSessionPlanKey && currentSessionPlanKey === dismissedEnvironmentPlanKey
+      ? null
+      : currentSessionPlan;
+  const dismissEnvironmentPlan = useCallback(() => {
+    if (currentSessionPlanKey) setDismissedEnvironmentPlanKey(currentSessionPlanKey);
+  }, [currentSessionPlanKey]);
   const environmentToolNames = useMemo(() => {
     const names = new Set<string>();
     for (const message of typedMessages) {
@@ -1566,6 +1588,11 @@ export function Chat() {
     }
     return Array.from(names).slice(0, 24);
   }, [typedMessages]);
+  const agentUsingBrowser = useMemo(() => {
+    const isBrowserTool = (name?: string) => (name || "").toLowerCase().includes("browser");
+    if (environmentToolNames.some(isBrowserTool)) return true;
+    return liveActivities.some((activity) => isBrowserTool(activity.toolName));
+  }, [environmentToolNames, liveActivities]);
   const resolveSelectableSessionAgentId = useCallback(
     (agentId?: string | null): string | undefined => {
       if (typeof agentId !== "string") return undefined;
@@ -2157,6 +2184,12 @@ export function Chat() {
       toolCallId?: string,
       sandboxProvider?: string
     ) => {
+      if (ttftStartRef.current !== null) {
+        const elapsed = Math.round(performance.now() - ttftStartRef.current);
+        ttftStartRef.current = null;
+        setTimeToFirstTokenMs(elapsed);
+      }
+
       const applyEvent = (previous: LiveActivityItem[]): LiveActivityItem[] =>
         applyLiveActivityEvent(previous, {
           phase,
@@ -2544,6 +2577,8 @@ export function Chat() {
       setPendingMessages([]);
       setSessionContextUsage(null);
       setSessionTokenUsage(null);
+      setTimeToFirstTokenMs(null);
+      ttftStartRef.current = null;
       persistSessionId(null);
       clearChat();
       if (options?.resetAgentSelection) {
@@ -3068,6 +3103,8 @@ export function Chat() {
     } else if (!queueMode) {
       loadingRef.current = true;
       activeSessionRef.current = requestSessionId;
+      ttftStartRef.current = performance.now();
+      setTimeToFirstTokenMs(null);
       if (requestSessionId) {
         persistSessionId(requestSessionId);
       }
@@ -3966,7 +4003,7 @@ export function Chat() {
           <button
             aria-label="File diffs"
             onClick={() => {
-              openWorkspaceTab("review");
+              toggleWorkspaceTab("review");
             }}
             className={cn(
               "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
@@ -3993,7 +4030,7 @@ export function Chat() {
           </button>
           <button
             onClick={() => {
-              openWorkspaceTab("subagents");
+              toggleWorkspaceTab("subagents");
             }}
             className={cn(
               "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
@@ -4020,7 +4057,7 @@ export function Chat() {
           <ChatEnvironmentOverview
             key={sessionId || "new-chat-environment"}
             contextUsage={sessionContextUsage}
-            currentPlan={currentSessionPlan}
+            currentPlan={environmentPlan}
             fileChanges={sessionFileChanges}
             gitBranch={environmentGit.currentBranch}
             gitBranchChanging={environmentGit.changingBranch}
@@ -4036,6 +4073,9 @@ export function Chat() {
             previewTabs={workspaceTabs.filter(
               (tab) => tab === "browser" || tab === "terminal" || tab === "files"
             )}
+            agentUsingBrowser={agentUsingBrowser}
+            timeToFirstTokenMs={timeToFirstTokenMs}
+            onDismissPlan={dismissEnvironmentPlan}
             sessionId={sessionId}
             subagents={environmentSubagents}
             tokenUsage={sessionTokenUsage}

@@ -25,6 +25,11 @@ import {
   type TuiTaskSummary,
 } from "./cli-tui-chat-environment";
 import { EnvironmentPanel } from "./cli-tui-chat-environment-view";
+import {
+  composerWindow,
+  copyTextToClipboard,
+  useTerminalLayout,
+} from "./cli-tui-terminal";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -88,7 +93,7 @@ const COMMANDS = [
   { name: "/status", detail: "Show session, model, and queue state" },
   { name: "/agents", detail: "List available agents" },
   { name: "/agent", detail: "Switch the active chat agent" },
-  { name: "/model", detail: "Alias for /agent; supports router and default" },
+  { name: "/model", detail: "Show or override the model for future turns" },
   { name: "/router", detail: "Use or disable model router for new turns" },
   { name: "/permissions", detail: "Show or change tool approval mode" },
   { name: "/reasoning", detail: "Show or change reasoning effort for the active agent" },
@@ -98,6 +103,9 @@ const COMMANDS = [
   { name: "/usage", detail: "Show token usage for this session" },
   { name: "/environment", detail: "Toggle the environment panel" },
   { name: "/plan", detail: "Show the latest plan state" },
+  { name: "/goal", detail: "Start, inspect, pause, resume, or complete a session goal" },
+  { name: "/loop", detail: "Alias for session goal workflows" },
+  { name: "/diff", detail: "Show file changes detected in the session" },
   { name: "/diffs", detail: "Show file changes detected in the session" },
   { name: "/tasks", detail: "Show current tasks" },
   { name: "/subagents", detail: "List or spawn subagents" },
@@ -110,10 +118,16 @@ const COMMANDS = [
   { name: "/reorder", detail: "Reorder queued follow-ups" },
   { name: "/stop", detail: "Stop the active run" },
   { name: "/reload", detail: "Refetch session messages" },
+  { name: "/copy", detail: "Copy the latest assistant response" },
+  { name: "/raw", detail: "Toggle complete copy-friendly transcript messages" },
+  { name: "/review", detail: "Load a workspace review prompt" },
   { name: "/expand", detail: "Toggle full or compact transcript messages" },
   { name: "/clear", detail: "Clear the local view" },
   { name: "/new", detail: "Start a new session in this TUI" },
+  { name: "/resume", detail: "Return to the saved session picker" },
+  { name: "/sessions", detail: "Return to the saved session picker" },
   { name: "/quit", detail: "Return to the session list" },
+  { name: "/exit", detail: "Return to the session list" },
 ];
 
 const ROLE_META: Record<ChatMessage["role"], { label: string; color: string; marker: string }> = {
@@ -244,6 +258,10 @@ function commandMatches(input: string) {
   return COMMANDS.filter((command) => command.name.startsWith(trimmed.split(/\s+/)[0])).slice(0, 6);
 }
 
+function isTransientRuntimeCommand(input: string): boolean {
+  return /^\/(?:goal|loop)(?:\s|$)/i.test(input.trim());
+}
+
 function resolvePendingId(raw: string | undefined, pending: PendingMessage[]): string | null {
   if (!raw) return null;
   if (raw.startsWith("#")) {
@@ -276,11 +294,6 @@ function deleteBefore(value: string, cursor: number): [string, number] {
 function deleteAt(value: string, cursor: number): string {
   if (cursor >= value.length) return value;
   return value.slice(0, cursor) + value.slice(cursor + 1);
-}
-
-function withCursor(value: string, cursor: number): string {
-  const safeCursor = Math.max(0, Math.min(value.length, cursor));
-  return `${value.slice(0, safeCursor)}▏${value.slice(safeCursor) || " "}`;
 }
 
 function relativeTime(value?: number): string {
@@ -443,22 +456,42 @@ function PendingQueue({ messages }: { messages: PendingMessage[] }): React.React
   );
 }
 
-function CommandPalette({ input }: { input: string }): React.ReactElement | null {
-  const matches = commandMatches(input);
+function CommandPalette({
+  input,
+  compactMode,
+  maxRows,
+}: {
+  input: string;
+  compactMode: boolean;
+  maxRows: number;
+}): React.ReactElement | null {
+  const matches = commandMatches(input).slice(0, maxRows);
   if (matches.length === 0) return null;
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1} marginTop={1}>
       {matches.map((command) => (
         <Text key={command.name}>
           <Text color="cyan">{command.name}</Text>
-          <Text color="gray"> — {command.detail}</Text>
+          {compactMode ? null : <Text color="gray"> — {command.detail}</Text>}
         </Text>
       ))}
     </Box>
   );
 }
 
-function HelpPanel(): React.ReactElement {
+function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
+  if (narrow) {
+    return (
+      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginTop={1}>
+        <Text bold color="cyan">Chat controls</Text>
+        <Text>Enter send · ^J newline · Tab complete</Text>
+        <Text>PgUp/PgDn scroll · Esc sessions · ^C quit</Text>
+        <Text>/model · /agent · /permissions · /reasoning</Text>
+        <Text>/copy · /diff · /review · /environment</Text>
+        <Text>/goal or /loop for persistent work</Text>
+      </Box>
+    );
+  }
   return (
     <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginTop={1}>
       <Text bold color="cyan">
@@ -469,11 +502,13 @@ function HelpPanel(): React.ReactElement {
       <Text>/agents lists · /agent name switches · /router on|off · /permissions ask|always_allow</Text>
       <Text>/reasoning changes effort · /title renames · /workspace changes the working root</Text>
       <Text>/environment toggles context, plan, diffs, tasks, and subagents</Text>
+      <Text>/goal start &lt;objective&gt; creates persistent work · /loop is an alias</Text>
       <Text>/context, /usage, /plan, /diffs, /tasks, /subagents inspect session state</Text>
       <Text>/queue queues · /steer injects · /edit, /delete, /reorder manage queue</Text>
       <Text>/stop interrupts · /pending refreshes queue</Text>
-      <Text>/reload refetches · /new starts fresh · Esc returns to sessions · Ctrl+C quits</Text>
-      <Text>/expand toggles compact or full message bodies</Text>
+      <Text>/copy copies the latest answer · /diff shows changes · /review loads a review prompt</Text>
+      <Text>/reload refetches · /new starts fresh · /resume returns to sessions</Text>
+      <Text>/raw or /expand toggles compact and complete message bodies</Text>
     </Box>
   );
 }
@@ -485,6 +520,8 @@ function StatusRail({
   pendingCount,
   routerStatus,
   sessionId,
+  modelOverride,
+  narrow,
   useModelRouter,
 }: {
   agent?: AgentSummary;
@@ -493,6 +530,8 @@ function StatusRail({
   pendingCount: number;
   routerStatus: RouterStatus | null;
   sessionId: string;
+  modelOverride?: string;
+  narrow: boolean;
   useModelRouter: boolean;
 }): React.ReactElement {
   const agentLabel = useModelRouter ? "Model Router" : agent ? agentLine(agent) : "Gateway default";
@@ -502,6 +541,21 @@ function StatusRail({
       ? routerStatus.strategy || "enabled"
       : "off";
   const shortSessionId = sessionId ? sessionId.slice(0, 8) : "new";
+  if (narrow) {
+    return (
+      <Box borderStyle="single" borderColor="gray" paddingX={1}>
+        <Text>
+          <Text color="white">{compact(modelOverride || agentLabel, 28)}</Text>
+          <Text color="gray"> · </Text>
+          <Text color={approvalMode === "ask" ? "yellow" : "green"}>
+            {approvalMode === "always_allow" ? "allow" : approvalMode}
+          </Text>
+          <Text color={pendingCount > 0 ? "yellow" : "gray"}> · q{pendingCount}</Text>
+          <Text color="gray"> · {shortSessionId}</Text>
+        </Text>
+      </Box>
+    );
+  }
   return (
     <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
       <Text>
@@ -516,6 +570,7 @@ function StatusRail({
         {approvalCount > 0 ? <Text color="yellow"> · {approvalCount} waiting</Text> : null}
         <Text color="gray"> · Reasoning </Text>
         <Text color="white">{agentReasoningEffort(agent)}</Text>
+        {modelOverride ? <Text color="cyan"> · Model {compact(modelOverride, 28)}</Text> : null}
         {useModelRouter || routerStatus?.enabled ? (
           <>
             <Text color="gray"> · Router </Text>
@@ -542,6 +597,7 @@ export function InteractiveChatTUI({
   const [localSessionId, setLocalSessionId] = React.useState(sessionId || "");
   const [sessionTitle, setSessionTitle] = React.useState(title || "");
   const [workspaceDir, setWorkspaceDir] = React.useState("");
+  const [modelOverride, setModelOverride] = React.useState("");
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [pendingMessages, setPendingMessages] = React.useState<PendingMessage[]>([]);
   const [input, setInput] = React.useState("");
@@ -567,6 +623,7 @@ export function InteractiveChatTUI({
   const [transcriptOffset, setTranscriptOffset] = React.useState(0);
   const [approvalRequests, setApprovalRequests] = React.useState<ToolApprovalRequest[]>([]);
   const [resolvingApproval, setResolvingApproval] = React.useState(false);
+  const layout = useTerminalLayout();
 
   const selectedAgent = React.useMemo(
     () => agents.find((agent) => agent.id === selectedAgentId),
@@ -629,18 +686,21 @@ export function InteractiveChatTUI({
   }, [fetchAPI]);
 
   const loadMessagesForSession = React.useCallback(
-    async (targetSessionId: string) => {
+    async (targetSessionId: string): Promise<ChatMessage[]> => {
       const detail = await loadEnvironmentForSession(targetSessionId);
       const detailMessages = messagesFromDetail(detail);
+      let nextMessages: ChatMessage[];
       if (detailMessages.length > 0) {
-        setMessages(messagesFromResponse(detailMessages));
+        nextMessages = messagesFromResponse(detailMessages);
       } else {
         const response = await fetchAPI<unknown>(
           `/api/chat/sessions/${encodeURIComponent(targetSessionId)}/messages`
         );
-        setMessages(messagesFromResponse(response));
+        nextMessages = messagesFromResponse(response);
       }
+      setMessages(nextMessages);
       await loadPendingForSession(targetSessionId);
+      return nextMessages;
     },
     [fetchAPI, loadEnvironmentForSession, loadPendingForSession]
   );
@@ -738,7 +798,7 @@ export function InteractiveChatTUI({
   const runCommand = React.useCallback(
     async (text: string): Promise<boolean> => {
       const [command, ...rest] = text.slice(1).split(/\s+/);
-      const normalizedCommand = command === "model" ? "agent" : command;
+      const normalizedCommand = command;
       const argument = rest.join(" ").trim();
       if (normalizedCommand === "help") {
         setShowHelp((value) => !value);
@@ -749,7 +809,9 @@ export function InteractiveChatTUI({
         setNotice(
           [
             `Session ${localSessionId || "new"}`,
-            useModelRouter ? "Model Router" : selectedAgent ? agentLine(selectedAgent) : modelLine || "gateway default",
+            useModelRouter
+              ? "Model Router"
+              : modelOverride || (selectedAgent ? agentLine(selectedAgent) : modelLine || "gateway default"),
             `tools ${approvalMode}`,
             `${pendingMessages.length} queued`,
           ].join(" · ")
@@ -811,6 +873,30 @@ export function InteractiveChatTUI({
         setNotice(`Agent selected: ${nextAgent ? agentLine(nextAgent) : agentId}`);
         return true;
       }
+      if (normalizedCommand === "model") {
+        const value = argument.trim();
+        const normalized = value.toLowerCase();
+        if (!value || normalized === "show") {
+          setNotice(`Model: ${useModelRouter ? "router" : modelOverride || selectedAgent?.model || "agent default"}`);
+          return true;
+        }
+        if (normalized === "router" || normalized === "auto") {
+          setModelOverride("");
+          setUseModelRouter(true);
+          setNotice("Model Router selected for future sends.");
+          return true;
+        }
+        if (["default", "off", "reset"].includes(normalized)) {
+          setModelOverride("");
+          setUseModelRouter(false);
+          setNotice("Model reset to the active agent default.");
+          return true;
+        }
+        setModelOverride(value);
+        setUseModelRouter(false);
+        setNotice(`Model override set to ${value}.`);
+        return true;
+      }
       if (normalizedCommand === "router") {
         const value = argument.trim().toLowerCase();
         if (!value || value === "show") {
@@ -824,6 +910,7 @@ export function InteractiveChatTUI({
           return true;
         }
         if (value === "on" || value === "use") {
+          setModelOverride("");
           setUseModelRouter(true);
           setNotice("Model router selected for future sends.");
           return true;
@@ -836,7 +923,7 @@ export function InteractiveChatTUI({
         setNotice("Usage: /router on|off|show");
         return true;
       }
-      if (normalizedCommand === "permissions") {
+      if (["permissions", "approval", "approvals"].includes(normalizedCommand)) {
         const value = argument.trim().toLowerCase();
         if (!value || value === "show") {
           setNotice(`Tool approvals: ${approvalMode}`);
@@ -970,7 +1057,7 @@ export function InteractiveChatTUI({
         setNotice(formatPlanLine(snapshot.plan));
         return true;
       }
-      if (normalizedCommand === "diffs") {
+      if (normalizedCommand === "diff" || normalizedCommand === "diffs") {
         if (!localSessionId) {
           setNotice("No session diffs yet.");
           return true;
@@ -1001,6 +1088,7 @@ export function InteractiveChatTUI({
             body: JSON.stringify({
               task,
               agentId: selectedAgentId || undefined,
+              model: useModelRouter ? undefined : modelOverride || undefined,
               sessionId: localSessionId || undefined,
             }),
           });
@@ -1040,7 +1128,24 @@ export function InteractiveChatTUI({
         setNotice("Conversation reloaded.");
         return true;
       }
-      if (normalizedCommand === "expand") {
+      if (normalizedCommand === "copy") {
+        const response = [...messages].reverse().find((message) => message.role === "assistant")?.content;
+        if (!response) {
+          setNotice("No assistant response is available to copy.");
+          return true;
+        }
+        setNotice((await copyTextToClipboard(response)) ? "Latest response copied." : "No system clipboard helper is available.");
+        return true;
+      }
+      if (normalizedCommand === "review") {
+        const prompt =
+          "Review the current workspace changes for correctness, regressions, security risks, performance issues, and missing tests. Report findings first with file references.";
+        setInput(prompt);
+        setCursor(prompt.length);
+        setNotice("Review prompt loaded. Edit it or press Enter to send.");
+        return true;
+      }
+      if (normalizedCommand === "expand" || normalizedCommand === "raw") {
         setExpandedTranscript((value) => !value);
         setNotice(`Transcript messages ${expandedTranscript ? "compacted" : "expanded"}.`);
         return true;
@@ -1052,6 +1157,10 @@ export function InteractiveChatTUI({
         setPendingMessages([]);
         setEnvironmentSnapshot(null);
         setNotice("New session ready.");
+        return true;
+      }
+      if (["resume", "sessions", "quit", "exit"].includes(normalizedCommand)) {
+        onExit();
         return true;
       }
       if (normalizedCommand === "pending") {
@@ -1074,9 +1183,11 @@ export function InteractiveChatTUI({
           body: JSON.stringify({
             agentId: selectedAgentId || undefined,
             message: argument,
+            modelOverride: useModelRouter ? undefined : modelOverride || undefined,
             queueMode: "queue",
             sessionId: localSessionId,
             useModelRouter,
+            workspaceDir: workspaceDir || undefined,
           }),
         });
         setPendingMessages(pendingFrom(isRecord(response) ? response.pendingMessages : []));
@@ -1167,10 +1278,6 @@ export function InteractiveChatTUI({
         setNotice("Stop requested.");
         return true;
       }
-      if (normalizedCommand === "quit" || normalizedCommand === "exit") {
-        onExit();
-        return true;
-      }
       return false;
     },
     [
@@ -1185,7 +1292,9 @@ export function InteractiveChatTUI({
       loadSubagents,
       loadTasks,
       localSessionId,
+      messages,
       modelLine,
+      modelOverride,
       onExit,
       pendingMessages,
       selectedAgent,
@@ -1213,6 +1322,7 @@ export function InteractiveChatTUI({
           body: JSON.stringify({
             message: trimmed,
             agentId: selectedAgentId || undefined,
+            modelOverride: useModelRouter ? undefined : modelOverride || undefined,
             sessionId: localSessionId || undefined,
             stream: false,
             useModelRouter,
@@ -1223,9 +1333,25 @@ export function InteractiveChatTUI({
           isRecord(response) && typeof response.sessionId === "string"
             ? response.sessionId
             : localSessionId;
+        const responseMessage = isRecord(response)
+          ? messagesFromResponse([response.message])[0]
+          : undefined;
         if (nextSessionId) {
           setLocalSessionId(nextSessionId);
-          await loadMessagesForSession(nextSessionId);
+          if (isTransientRuntimeCommand(trimmed) && responseMessage) {
+            setMessages((previous) => [...previous.slice(0, -1), responseMessage]);
+            return;
+          }
+          const persistedMessages = await loadMessagesForSession(nextSessionId);
+          if (
+            responseMessage &&
+            !persistedMessages.some(
+              (message) =>
+                message.role === responseMessage.role && message.content === responseMessage.content
+            )
+          ) {
+            setMessages([...persistedMessages, responseMessage]);
+          }
           await loadSubagents().catch(() => undefined);
         }
       } catch (cause) {
@@ -1239,6 +1365,7 @@ export function InteractiveChatTUI({
       loadMessagesForSession,
       loadSubagents,
       localSessionId,
+      modelOverride,
       runCommand,
       selectedAgentId,
       sending,
@@ -1248,7 +1375,7 @@ export function InteractiveChatTUI({
   );
 
   const transcriptMessages = messages.filter((message) => message.role !== "system");
-  const visibleMessageLimit = Math.max(2, Math.min(8, Math.floor((process.stdout.rows || 36) / 12)));
+  const visibleMessageLimit = layout.transcriptMessages;
   const maximumTranscriptOffset = Math.max(0, transcriptMessages.length - visibleMessageLimit);
   const normalizedTranscriptOffset = Math.min(transcriptOffset, maximumTranscriptOffset);
   const visibleMessageEnd = transcriptMessages.length - normalizedTranscriptOffset;
@@ -1257,10 +1384,18 @@ export function InteractiveChatTUI({
     visibleMessageEnd
   );
   const activeApproval = approvalRequests[0];
+  const commandPaletteVisible = commandMatches(input).length > 0;
+  const narrowOverlayVisible =
+    layout.narrow && (commandPaletteVisible || showEnvironment || showHelp);
 
   useInput((value, key) => {
     if (key.ctrl && value === "c") {
       exit();
+      return;
+    }
+    if (key.ctrl && value === "l") {
+      setMessages([]);
+      setNotice("Cleared local view. Session history is unchanged.");
       return;
     }
     if (activeApproval) {
@@ -1366,21 +1501,25 @@ export function InteractiveChatTUI({
   const headerTitle = sessionTitle || (localSessionId ? localSessionId.slice(0, 8) : "New chat");
   const activeModelLine = useModelRouter
     ? "Model Router"
+    : modelOverride
+      ? modelOverride
     : selectedAgent
       ? agentLine(selectedAgent)
       : modelLine || "Gateway default";
+  const composerLines = composerWindow(input, cursor, layout.composerLines);
 
   return (
     <Box flexDirection="column">
       <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="column">
-        <Box justifyContent="space-between">
+        <Box flexDirection={layout.narrow ? "column" : "row"} justifyContent="space-between">
           <Text bold color="cyan">
-            Cybara Chat · {headerTitle}
+            Cybara Chat · {compact(headerTitle, layout.narrow ? 30 : 64)}
           </Text>
           <Text color={sending ? "yellow" : "gray"}>{sending ? "working" : "ready"}</Text>
         </Box>
         <Text color="gray">
-          {activeModelLine} · {localSessionId || "session will be created on send"}
+          {compact(activeModelLine, layout.narrow ? 38 : 72)}
+          {layout.narrow ? "" : ` · ${localSessionId || "session will be created on send"}`}
         </Text>
       </Box>
       <Box marginTop={1}>
@@ -1391,11 +1530,13 @@ export function InteractiveChatTUI({
           pendingCount={pendingMessages.length}
           routerStatus={routerStatus}
           sessionId={localSessionId}
+          modelOverride={modelOverride || undefined}
+          narrow={layout.narrow}
           useModelRouter={useModelRouter}
         />
       </Box>
 
-      {loading ? (
+      {narrowOverlayVisible ? null : loading ? (
         <Box paddingX={1} paddingY={1}>
           <Text color="yellow">
             <Spinner type="dots" /> Loading conversation
@@ -1414,7 +1555,7 @@ export function InteractiveChatTUI({
             <MessageView
               key={`${index}-${message.role}-${message.content.slice(0, 12)}`}
               message={message}
-              maxLines={expandedTranscript ? undefined : 8}
+              maxLines={expandedTranscript ? undefined : layout.messageLines}
             />
           ))}
           {visibleMessageEnd - visibleMessages.length > 0 ? (
@@ -1441,10 +1582,15 @@ export function InteractiveChatTUI({
       ) : null}
       <PendingQueue messages={pendingMessages} />
       {showEnvironment ? (
-        <EnvironmentPanel snapshot={environmentSnapshot} tasks={tasks} subagents={subagents} />
+        <EnvironmentPanel
+          snapshot={environmentSnapshot}
+          tasks={tasks}
+          subagents={subagents}
+          compact={layout.narrow}
+        />
       ) : null}
-      {showHelp ? <HelpPanel /> : null}
-      <CommandPalette input={input} />
+      {showHelp ? <HelpPanel narrow={layout.narrow} /> : null}
+      <CommandPalette input={input} compactMode={layout.compact} maxRows={layout.commandRows} />
       {error ? (
         <Box paddingX={1}>
           <Text color="red">Error: {error}</Text>
@@ -1458,9 +1604,7 @@ export function InteractiveChatTUI({
 
       <Box borderStyle="round" borderColor={sending ? "yellow" : "green"} paddingX={1} flexDirection="column">
         <Text color="gray">Ask Cybara</Text>
-        {withCursor(input, cursor)
-          .split("\n")
-          .map((line, index) => (
+        {composerLines.map((line, index) => (
             <Text key={index} color={sending ? "gray" : "white"}>
               {index === 0 ? "› " : "  "}
               {line}
@@ -1469,7 +1613,9 @@ export function InteractiveChatTUI({
       </Box>
       <Box paddingX={1}>
         <Text color="gray">
-          Enter send · ^J newline · ↑↓ history · PgUp/Dn scroll · Tab · Esc
+          {layout.narrow
+            ? "Enter send · ^J newline · Tab · Esc"
+            : "Enter send · ^J newline · ↑↓ history · PgUp/Dn scroll · Tab · Esc"}
         </Text>
       </Box>
     </Box>

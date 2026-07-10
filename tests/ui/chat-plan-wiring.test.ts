@@ -88,9 +88,11 @@ describe("chat plan and artifact UI wiring", () => {
     expect(chatPage).toContain("setHiddenComposerPlanKey(currentSessionPlanKey)");
     expect(chatPage).not.toContain("collectPlanFromToolCalls");
     expect(chatPage).not.toContain("<PlanSummaryCard plan={planSummary}");
-    expect(environmentOverview).not.toContain('label="Browser"');
     expect(environmentOverview).not.toContain("browserOrigin");
-    expect(environmentOverview).toContain("<PlanSummaryCard plan={currentPlan} expandable");
+    expect(environmentOverview).toContain("<PlanSummaryCard");
+    expect(environmentOverview).toContain("onDismiss={onDismissPlan}");
+    expect(environmentOverview).toContain('label="TTFT"');
+    expect(environmentOverview).toContain("agentUsingBrowser");
     expect(environmentOverview).toContain("chat-environment-panel");
     expect(environmentOverview).toContain("gitBranch: string | null");
     expect(environmentOverview).toContain("gitBranches: GitBranchOption[]");

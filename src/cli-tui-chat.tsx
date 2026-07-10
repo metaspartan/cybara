@@ -2,6 +2,7 @@ import React from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
 import { InteractiveChatTUI } from "./cli-tui-interactive-chat";
+import { useTerminalLayout } from "./cli-tui-terminal";
 
 const TUI_INPUT_OPTIONS = {
   isActive:
@@ -163,6 +164,7 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [showHelp, setShowHelp] = React.useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
+  const layout = useTerminalLayout();
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -337,7 +339,7 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
 
   const activeCount = sessions.filter(sessionIsActive).length;
   const pendingCount = sessions.reduce((total, session) => total + sessionPendingCount(session), 0);
-  const availableSessionRows = Math.max(5, (process.stdout.rows || 32) - 17);
+  const availableSessionRows = Math.max(4, layout.rows - (layout.narrow ? 13 : 17));
   const visibleSessionCount = Math.min(visibleSessions.length, availableSessionRows);
   const visibleSessionStart = Math.max(
     0,
@@ -354,16 +356,19 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
   return (
     <Box flexDirection="column">
       <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
-        <Box justifyContent="space-between">
+        <Box flexDirection={layout.narrow ? "column" : "row"} justifyContent="space-between">
           <Text bold color="cyan">
             Cybara Chat
           </Text>
-          <Text color="gray">↑↓ select · ↵ open · n new · / search · ? help</Text>
+          <Text color="gray">
+            {layout.narrow ? "↑↓ open · n new · / search" : "↑↓ select · ↵ open · n new · / search · ? help"}
+          </Text>
         </Box>
         <Text color="gray">
           Recent sessions · {visibleSessions.length}/{sessions.length} shown
           {activeCount > 0 ? ` · ${activeCount} running` : ""}
           {pendingCount > 0 ? ` · ${pendingCount} queued` : ""}
+          {loading && sessions.length > 0 ? " · refreshing" : ""}
         </Text>
         <Box marginTop={1}>
           <Text color={searchMode ? "cyan" : searchQuery ? "yellow" : "gray"}>
@@ -371,23 +376,26 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
             {searchMode ? "▏" : ""}
           </Text>
         </Box>
-        {loading && (
+        {loading && sessions.length === 0 && (
           <Text color="yellow">
             <Spinner type="dots" /> Loading sessions
           </Text>
         )}
         {error && <Text color="red">Error: {error}</Text>}
         {!loading && !error && sessions.length === 0 && <Text color="gray">No chat sessions yet.</Text>}
-        {visibleSessionStart > 0 ? <Text color="gray">↑ {visibleSessionStart} earlier</Text> : null}
-        {!loading &&
-          !error &&
+        {!error && visibleSessionStart > 0 ? <Text color="gray">↑ {visibleSessionStart} earlier</Text> : null}
+        {!error &&
           renderedSessions.map((session, localIndex) => {
             const index = visibleSessionStart + localIndex;
             const pending = sessionPendingCount(session);
             const active = sessionIsActive(session);
             const workspace = sessionWorkspace(session);
             const selected = index === selectedIndex;
-            const title = compactText(session.title, session.id || "Untitled chat", selected ? 56 : 60);
+            const title = compactText(
+              session.title,
+              session.id || "Untitled chat",
+              layout.narrow ? Math.max(18, layout.columns - 16) : selected ? 56 : 60
+            );
             const age = active ? "running" : formatRelativeTime(sessionTimestamp(session));
             if (!selected) {
               return (
@@ -419,14 +427,14 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
                   </Text>
                   <Text color={active ? "yellow" : "gray"}>{age}</Text>
                 </Box>
-                <Text color="gray">
-                  {sessionRowMeta(session, agentsById)}
-                </Text>
-                <Text color="gray">
-                  {compactPath(workspace)}
-                  {pending > 0 ? ` · ${pending} queued` : ""}
-                </Text>
-                {session.id ? (
+                {layout.narrow ? null : <Text color="gray">{sessionRowMeta(session, agentsById)}</Text>}
+                {layout.narrow ? null : (
+                  <Text color="gray">
+                    {compactPath(workspace)}
+                    {pending > 0 ? ` · ${pending} queued` : ""}
+                  </Text>
+                )}
+                {session.id && !layout.narrow ? (
                   <Text color="gray">
                     ↵ open · cybara chat --session {session.id}
                   </Text>
@@ -434,7 +442,7 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
               </Box>
             );
           })}
-        {visibleSessionStart + renderedSessions.length < visibleSessions.length ? (
+        {!error && visibleSessionStart + renderedSessions.length < visibleSessions.length ? (
           <Text color="gray">
             ↓ {visibleSessions.length - visibleSessionStart - renderedSessions.length} more
           </Text>
@@ -453,16 +461,18 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
           <Text bold color="cyan">
             Keys and chat actions
           </Text>
-          <Text>n new · p pin/unpin · x delete · / search · r refresh · Esc/q quit</Text>
-          <Text>Inside chat: Enter send · Ctrl+J newline · Tab complete · PgUp/PgDn transcript</Text>
+          <Text>{layout.narrow ? "n new · p pin · x delete · r refresh" : "n new · p pin/unpin · x delete · / search · r refresh · Esc/q quit"}</Text>
+          <Text>{layout.narrow ? "Enter send · ^J newline · PgUp/PgDn" : "Inside chat: Enter send · Ctrl+J newline · Tab complete · PgUp/PgDn transcript"}</Text>
         </Box>
       ) : null}
-      <Box marginTop={1} flexDirection="column">
-        <Text color="gray">Start: n, or cybara chat --agent &lt;id&gt; --workspace &lt;path&gt;</Text>
-        <Text color="gray">Queue/steer: use /queue and /steer inside chat, or cybara chat queue|steer</Text>
-        <Text color="gray">Stop active run: /stop inside chat, or cybara chat stop &lt;session&gt;</Text>
-        {updatedAt ? <Text color="gray">Updated {formatRelativeTime(updatedAt)} ago</Text> : null}
-      </Box>
+      {layout.narrow ? null : (
+        <Box marginTop={1} flexDirection="column">
+          <Text color="gray">Start: n, or cybara chat --agent &lt;id&gt; --workspace &lt;path&gt;</Text>
+          <Text color="gray">Queue/steer: use /queue and /steer inside chat, or cybara chat queue|steer</Text>
+          <Text color="gray">Stop active run: /stop inside chat, or cybara chat stop &lt;session&gt;</Text>
+          {updatedAt ? <Text color="gray">Updated {formatRelativeTime(updatedAt)} ago</Text> : null}
+        </Box>
+      )}
     </Box>
   );
 }

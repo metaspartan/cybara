@@ -62,6 +62,13 @@ and approval mode. `/agents`, `/agent <id|name|default>`, `/model <id|router|def
 `/subagents`, `/compact`, `/stop`, and `/subagent spawn <task>` mirror the same control-plane
 concepts used by the other clients. The environment panel summarizes workspace, branch, context
 window, token usage, file changes, plan progress, tasks, and subagents without leaving the terminal.
+`/goal start <objective>` creates persistent long-running work for the session, with `/loop` as an
+alias; goal status, pause, resume, completion, blocking, editing, and clearing use the shared chat
+runtime behavior.
+`/copy` copies the latest assistant response, `/raw` toggles complete message bodies, `/review`
+loads a focused workspace review prompt, and `/resume` or `/sessions` returns to the saved-session
+picker. Model overrides selected with `/model` remain distinct from agent selection and are carried
+through normal turns, queued follow-ups, and subagent launches.
 
 The dashboard TUI is optimized for normal terminals. The main menu supports grouped destinations,
 single-key shortcuts, `j`/`k` or arrow navigation, `/` search, `?` help, direct panel launch, and a
@@ -71,7 +78,9 @@ navigation, pinning, guarded deletion, new-chat entry, editable prompt input, mu
 switching, reasoning effort controls, model router selection, and interactive dangerous-tool
 approvals. Approval prompts accept approve-once, approve-for-session, approve-always, or deny without
 leaving the chat. Long message bodies use bounded previews by default; `/expand` toggles the complete
-transcript. Pending follow-ups support queueing, steering, edit/delete/reorder, and active-run stop.
+transcript. The session picker, command palette, help, status rail, transcript density, and multiline
+composer adapt to the current terminal dimensions. Pending follow-ups support queueing, steering,
+edit/delete/reorder, and active-run stop.
 Dashboard panels outside chat remain read-only; use raw CLI commands when you need to mutate
 providers, router settings, mobile pairings, wallet state, or channel configuration.
 

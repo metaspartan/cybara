@@ -136,6 +136,9 @@ describe("CLI TUI source wiring", () => {
       "/usage",
       "/environment",
       "/plan",
+      "/goal",
+      "/loop",
+      "/diff",
       "/diffs",
       "/tasks",
       "/subagents",
@@ -146,7 +149,12 @@ describe("CLI TUI source wiring", () => {
       "/delete",
       "/reorder",
       "/stop",
+      "/copy",
+      "/raw",
+      "/review",
       "/expand",
+      "/resume",
+      "/sessions",
     ]) {
       expect(cliTuiInteractiveChatSource).toContain(command);
     }
@@ -182,11 +190,20 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("setUseModelRouter(true)");
     expect(cliTuiInteractiveChatSource).toContain("tool_approval_mode");
     expect(cliTuiInteractiveChatSource).toContain("agentId: selectedAgentId || undefined");
+    expect(cliTuiInteractiveChatSource).toContain(
+      "modelOverride: useModelRouter ? undefined : modelOverride || undefined"
+    );
+    expect(cliTuiInteractiveChatSource).not.toContain('command === "model" ? "agent"');
     expect(cliTuiInteractiveChatSource).toContain("Ctrl+J newline");
     expect(cliTuiInteractiveChatSource).toContain("pageUp");
     expect(cliTuiInteractiveChatSource).toContain("pageDown");
-    expect(cliTuiInteractiveChatSource).toContain("maxLines={expandedTranscript ? undefined : 8}");
+    expect(cliTuiInteractiveChatSource).toContain(
+      "maxLines={expandedTranscript ? undefined : layout.messageLines}"
+    );
     expect(cliTuiInteractiveChatSource).toContain("ToolApprovalPrompt");
+    expect(cliTuiInteractiveChatSource).toContain("persistedMessages.some");
+    expect(cliTuiInteractiveChatSource).toContain("messagesFromResponse([response.message])");
+    expect(cliTuiInteractiveChatSource).toContain("isTransientRuntimeCommand(trimmed)");
     expect(cliTuiApprovalsSource).toContain("approve_once");
     expect(cliTuiApprovalsSource).toContain("approve_session");
     expect(cliTuiApprovalsSource).toContain("approve_always");

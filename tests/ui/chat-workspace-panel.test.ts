@@ -59,8 +59,8 @@ describe("chat workspace panel", () => {
     expect(chatSource).toContain("ChatWorkspaceFiles");
     expect(chatSource).toContain("<SessionDiffPanel");
     expect(chatSource).toContain("<SubagentPanel");
-    expect(chatSource).toContain('openWorkspaceTab("review")');
-    expect(chatSource).toContain('openWorkspaceTab("subagents")');
+    expect(chatSource).toContain('toggleWorkspaceTab("review")');
+    expect(chatSource).toContain('toggleWorkspaceTab("subagents")');
     expect(panelSource).toContain('aria-label="Add workspace tool"');
     expect(panelSource).toContain('role="menuitem"');
   });

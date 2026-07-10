@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { FolderOpen, GitBranch, GitCompare, Gauge, X } from "lucide-react";
+import { FolderOpen, GitBranch, GitCompare, Gauge, Globe2, Timer, X } from "lucide-react";
 import type { Subagent } from "@/hooks/useApi";
 import type { SessionContextUsage, SessionTokenUsage } from "@/types";
 import { formatWorkspaceLabel, type FileChangeSummary, type SessionPlanView } from "./chatModel";
@@ -42,6 +42,12 @@ function formatCompactNumber(value: number): string {
   return String(Math.max(0, Math.round(value)));
 }
 
+function formatLatency(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)}s`;
+}
+
 export function ChatEnvironmentOverview({
   contextUsage,
   currentPlan,
@@ -58,6 +64,9 @@ export function ChatEnvironmentOverview({
   onSwitchGitBranch,
   onOpenWorkspaceTab,
   previewTabs,
+  agentUsingBrowser,
+  timeToFirstTokenMs,
+  onDismissPlan,
   sessionId,
   subagents,
   tokenUsage,
@@ -79,6 +88,9 @@ export function ChatEnvironmentOverview({
   onSwitchGitBranch: (branch: string) => Promise<void> | void;
   onOpenWorkspaceTab: (tab: ChatWorkspaceTab) => void;
   previewTabs: ChatWorkspaceTab[];
+  agentUsingBrowser: boolean;
+  timeToFirstTokenMs: number | null;
+  onDismissPlan: () => void;
   sessionId: string | null;
   subagents: Subagent[];
   tokenUsage: SessionTokenUsage | null;
@@ -170,6 +182,13 @@ export function ChatEnvironmentOverview({
               </span>
             </EnvironmentRow>
           )}
+          {timeToFirstTokenMs !== null && (
+            <EnvironmentRow icon={<Timer className="h-3.5 w-3.5" />} label="TTFT">
+              <span className="text-gray-300" title="Time to first token in the latest turn">
+                {formatLatency(timeToFirstTokenMs)}
+              </span>
+            </EnvironmentRow>
+          )}
           {contextUsage?.compacted && (
             <EnvironmentRow icon={<Gauge className="h-3.5 w-3.5" />} label="Compact">
               <span className="text-gray-300">
@@ -186,7 +205,13 @@ export function ChatEnvironmentOverview({
 
         <EnvironmentSection title="Plans">
           {currentPlan ? (
-            <PlanSummaryCard plan={currentPlan} expandable title="Latest plan update" />
+            <PlanSummaryCard
+              plan={currentPlan}
+              expandable
+              dismissible
+              onDismiss={onDismissPlan}
+              title="Latest plan update"
+            />
           ) : (
             <div className="rounded-lg border border-[#343843] bg-[#171a22] p-2 text-[12px] text-gray-500">
               No plan has been recorded for this chat.
@@ -219,23 +244,39 @@ export function ChatEnvironmentOverview({
           )}
         </EnvironmentSection>
 
-        {previewTabs.length > 0 && (
+        {(previewTabs.length > 0 || agentUsingBrowser) && (
           <EnvironmentSection title="Preview">
-            <div className="grid grid-cols-2 gap-1.5">
-              {previewTabs.map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  className="rounded-md bg-white/[0.04] px-2 py-1.5 text-left text-[11px] text-gray-400 hover:bg-white/[0.08] hover:text-gray-200"
-                  onClick={() => {
-                    onOpenWorkspaceTab(tab);
-                    onClose();
-                  }}
-                >
-                  {chatWorkspaceTabLabel(tab)}
-                </button>
-              ))}
-            </div>
+            {agentUsingBrowser && (
+              <button
+                type="button"
+                className="mb-1.5 flex w-full items-center gap-2 rounded-md border border-[rgba(var(--accent-primary),0.3)] bg-[rgba(var(--accent-primary),0.1)] px-2.5 py-2 text-left text-[12px] text-gray-200 hover:bg-[rgba(var(--accent-primary),0.16)]"
+                onClick={() => {
+                  onOpenWorkspaceTab("browser");
+                  onClose();
+                }}
+              >
+                <Globe2 className="h-3.5 w-3.5 shrink-0 text-[rgb(var(--accent-primary))]" />
+                <span className="min-w-0 flex-1 truncate">Agent is browsing</span>
+                <span className="shrink-0 text-[10px] text-gray-500">Open browser</span>
+              </button>
+            )}
+            {previewTabs.length > 0 && (
+              <div className="grid grid-cols-2 gap-1.5">
+                {previewTabs.map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    className="rounded-md bg-white/[0.04] px-2 py-1.5 text-left text-[11px] text-gray-400 hover:bg-white/[0.08] hover:text-gray-200"
+                    onClick={() => {
+                      onOpenWorkspaceTab(tab);
+                      onClose();
+                    }}
+                  >
+                    {chatWorkspaceTabLabel(tab)}
+                  </button>
+                ))}
+              </div>
+            )}
           </EnvironmentSection>
         )}
 
