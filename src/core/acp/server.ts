@@ -213,8 +213,25 @@ export function createAcpDispatcher(deps: AcpDeps): (line: string) => Promise<vo
 }
 
 export async function runAcpServer(opts?: { agentId?: string }): Promise<void> {
+  const writeFrame = process.stdout.write.bind(process.stdout);
+  const divertToStderr = ((chunk: unknown, ...rest: unknown[]): boolean => {
+    const text =
+      typeof chunk === "string"
+        ? chunk
+        : chunk instanceof Uint8Array
+          ? Buffer.from(chunk).toString("utf8")
+          : String(chunk);
+    process.stderr.write(text);
+    const callback = rest.find((value) => typeof value === "function") as
+      | ((error?: Error | null) => void)
+      | undefined;
+    callback?.(null);
+    return true;
+  }) as typeof process.stdout.write;
+  process.stdout.write = divertToStderr;
+
   const dispatch = createAcpDispatcher({
-    write: (message) => process.stdout.write(JSON.stringify(message) + "\n"),
+    write: (message) => writeFrame(JSON.stringify(message) + "\n"),
     resolveAgentId: () => resolveAcpAgent(opts?.agentId)?.id,
     agentVersion: getAppVersion(),
     sendMessage: async ({ agentId, sessionId, messages, cwd, signal }) => {
