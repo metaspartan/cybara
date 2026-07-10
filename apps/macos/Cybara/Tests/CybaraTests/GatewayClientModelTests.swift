@@ -20,7 +20,26 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(nativeReasoningEffortIndex(""), 0)
         XCTAssertEqual(nativeReasoningEffortIndex("medium"), 3)
         XCTAssertEqual(nativeReasoningEffortValue(4), "high")
-        XCTAssertEqual(nativeReasoningEffortValue(20), "xhigh")
+        XCTAssertEqual(nativeReasoningEffortValue(20), "max")
+    }
+
+    func testNativeReasoningOptionsFollowProviderModelCapabilities() {
+        XCTAssertEqual(
+            nativeSupportedReasoningEfforts(provider: "openai", model: "gpt-5.6-sol").map(\.value),
+            ["", "low", "medium", "high", "xhigh", "max"]
+        )
+        XCTAssertEqual(
+            nativeSupportedReasoningEfforts(provider: "anthropic", model: "claude-sonnet-4-6").map(\.value),
+            ["", "low", "medium", "high", "max"]
+        )
+        XCTAssertEqual(
+            nativeSupportedReasoningEfforts(provider: "google", model: "gemini-3.1-pro-preview").map(\.value),
+            ["", "low", "high"]
+        )
+        XCTAssertEqual(
+            nativeSupportedReasoningEfforts(provider: "minimax", model: "MiniMax-M3").map(\.label),
+            ["Adaptive"]
+        )
     }
 
     func testSessionDisplayTitleTrimsGatewayTitle() throws {
@@ -463,6 +482,7 @@ final class GatewayClientModelTests: XCTestCase {
                   "model": "gpt-5-mini",
                   "provider": "provider-1",
                   "provider_id": "provider-1",
+                  "provider_type": "openai-codex",
                   "system_prompt": "Use tools carefully.",
                   "config": "{\"autostart\":true,\"model_params\":{\"reasoning_effort\":\"medium\"}}",
                   "status": "stopped",
@@ -475,6 +495,7 @@ final class GatewayClientModelTests: XCTestCase {
 
         XCTAssertEqual(agent.id, "agent-sqlite")
         XCTAssertEqual(agent.providerID, "provider-1")
+        XCTAssertEqual(agent.providerType, "openai-codex")
         XCTAssertTrue(agent.autostart)
         XCTAssertEqual(agent.reasoningEffort, "medium")
     }

@@ -14,12 +14,14 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
     let status: String?
     let provider: String?
     let provider_id: String?
+    let provider_type: String?
     let system_prompt: String?
     let created_at: String?
     let config: [String: JSONValue]?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, label, type, model, status, state, provider, provider_id, providerId
+        case provider_type, providerType
         case system_prompt, systemPrompt, created_at, createdAt, config
     }
 
@@ -33,6 +35,7 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
         status = try container.decodeFlexibleString(forKeys: [.status, .state])
         provider = try container.decodeFlexibleString(forKeys: [.provider, .provider_id, .providerId])
         provider_id = try container.decodeFlexibleString(forKeys: [.provider_id, .providerId, .provider])
+        provider_type = try container.decodeFlexibleString(forKeys: [.provider_type, .providerType])
         system_prompt = try container.decodeFlexibleString(forKeys: [.system_prompt, .systemPrompt])
         created_at = try container.decodeFlexibleString(forKeys: [.created_at, .createdAt])
         config = try container.decodeJSONDictionary(forKey: .config)
@@ -40,6 +43,7 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
 
     var isRunning: Bool { status?.lowercased() == "running" }
     var providerID: String? { firstNonEmptyGatewayString(provider_id, provider) }
+    var providerType: String? { firstNonEmptyGatewayString(provider_type) }
 
     var reasoningEffort: String {
         guard case .object(let modelParams)? = config?["model_params"],

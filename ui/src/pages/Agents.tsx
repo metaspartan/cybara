@@ -19,7 +19,12 @@ import {
 } from "@/hooks/useApi";
 import { useUIStore } from "@/stores/uiStore";
 import { settingsApi } from "@/lib/api";
-import { supportedReasoningOptions, reasoningEffortLabel } from "@/lib/reasoning";
+import {
+  parseAgentConfig,
+  readAgentReasoningEffort,
+  reasoningEffortLabel,
+  supportedReasoningOptions,
+} from "@/lib/reasoning";
 import { buildAgentChatPath } from "./chat/chatRoute";
 import type { Agent } from "@/types";
 
@@ -33,24 +38,15 @@ const agentTypes = [
 ];
 
 function agentReasoningLabel(agent: Agent): string {
-  const config = agent.config;
-  const modelParams =
-    config?.model_params && typeof config.model_params === "object"
-      ? (config.model_params as Record<string, unknown>)
-      : {};
-  const effort = modelParams.reasoning_effort;
   return reasoningEffortLabel(
-    typeof effort === "string" ? effort : null,
-    agent.provider,
+    readAgentReasoningEffort(agent.config),
+    agent.provider_type ?? agent.provider,
     agent.model
   );
 }
 
-function buildConfig(
-  formData: FormData,
-  existing?: Record<string, unknown>
-): Record<string, unknown> {
-  const config: Record<string, unknown> = { ...(existing || {}) };
+function buildConfig(formData: FormData, existing?: unknown): Record<string, unknown> {
+  const config: Record<string, unknown> = { ...parseAgentConfig(existing) };
   const modelParams: Record<string, unknown> = {
     ...((config.model_params as Record<string, unknown>) || {}),
   };
@@ -380,7 +376,7 @@ function AgentModal({
   onClose: () => void;
   onSubmit: (formData: FormData) => void;
   title: string;
-  providers: Array<{ id: string; name: string }>;
+  providers: Array<{ id: string; name: string; provider?: string }>;
   isLoading: boolean;
   initialData?: Agent;
 }) {
@@ -430,9 +426,11 @@ function AgentModal({
     })) || [];
 
   const activeFormModel = useCustomModel ? customModel : selectedModel;
+  const selectedProviderType =
+    providers.find((provider) => provider.id === selectedProvider)?.provider ?? selectedProvider;
   const reasoningEffortOptions = useMemo(
-    () => supportedReasoningOptions(selectedProvider, activeFormModel),
-    [selectedProvider, activeFormModel]
+    () => supportedReasoningOptions(selectedProviderType, activeFormModel),
+    [selectedProviderType, activeFormModel]
   );
 
   return (
@@ -517,10 +515,7 @@ function AgentModal({
           <Select
             label="Reasoning Effort"
             name="reasoning_effort"
-            defaultValue={
-              ((initialData?.config as { model_params?: { reasoning_effort?: string } })
-                ?.model_params?.reasoning_effort as string) || ""
-            }
+            defaultValue={readAgentReasoningEffort(initialData?.config) || ""}
             options={reasoningEffortOptions}
           />
 

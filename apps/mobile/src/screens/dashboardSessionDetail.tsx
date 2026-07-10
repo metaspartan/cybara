@@ -1333,7 +1333,7 @@ export function SessionDetailPanel({
   }> = useMemo(
     () =>
       mobileSupportedReasoningEfforts(
-        selectedAgent?.provider_id ?? selectedAgent?.provider,
+        selectedAgent?.provider_type ?? selectedAgent?.provider_id ?? selectedAgent?.provider,
         selectedAgent?.model
       ).map((option) => ({
         value: option.value === "" ? null : option.value,

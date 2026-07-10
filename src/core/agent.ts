@@ -39,7 +39,8 @@ import {
   coerceReasoningEffort,
   openAICompatReasoningParams,
   anthropicThinkingBudget,
-  googleThinkingBudget,
+  googleThinkingConfig,
+  usesAnthropicAdaptiveThinking,
 } from "./llm/reasoning";
 import { applyProviderApiKey } from "./llm/auth-headers";
 import { normalizeLlmTimeoutError, withLlmRequestTimeout } from "./llm/request-timeout";
@@ -420,6 +421,7 @@ class AgentManager {
 
   list(): (Agent & {
     provider?: string;
+    provider_type?: string;
     providerInfo?: { name: string };
     typeConfig?: typeof AGENT_TYPES.main;
   })[] {
@@ -432,6 +434,7 @@ class AgentManager {
         ...a,
         status,
         provider: a.provider_id,
+        provider_type: provider?.provider,
         providerInfo: provider ? { name: provider.name } : undefined,
         typeConfig,
       };
@@ -440,7 +443,9 @@ class AgentManager {
 
   get(
     id: string
-  ): (Agent & { provider?: string; typeConfig?: typeof AGENT_TYPES.main }) | undefined {
+  ):
+    | (Agent & { provider?: string; provider_type?: string; typeConfig?: typeof AGENT_TYPES.main })
+    | undefined {
     const agent = tables.agents.get(id) as Agent | undefined;
     if (!agent) return undefined;
     const typeConfig = agent.type ? AGENT_TYPES[agent.type as keyof typeof AGENT_TYPES] : undefined;
@@ -449,6 +454,9 @@ class AgentManager {
       ...agent,
       status,
       provider: agent.provider_id,
+      provider_type: agent.provider_id
+        ? providerManager.get(agent.provider_id)?.provider
+        : undefined,
       typeConfig,
     };
   }
@@ -2381,7 +2389,8 @@ class AgentManager {
         requestBody,
         openAICompatReasoningParams(
           providerConfig || "",
-          coerceReasoningEffort(openaiEffort, providerConfig, modelId)
+          coerceReasoningEffort(openaiEffort, providerConfig, modelId),
+          modelId
         )
       );
     }
@@ -3250,6 +3259,15 @@ class AgentManager {
         tool_choice: toolContext?.requireToolUse === true && iterations === 1 ? "required" : "auto",
         parallel_tool_calls: true,
       };
+      const codexEffort = normalizeReasoningEffort(
+        this.resolveModelParams(toolContext).reasoning_effort
+      );
+      if (codexEffort) {
+        requestBody.reasoning = {
+          effort: coerceReasoningEffort(codexEffort, providerConfig, activeModelId),
+          summary: "auto",
+        };
+      }
       if (instructions && instructions.trim().length > 0) {
         requestBody.instructions = instructions;
       }
@@ -3479,9 +3497,7 @@ class AgentManager {
         this.resolveModelParams(toolContext).reasoning_effort
       );
       if (googleEffort) {
-        googleGenConfig.thinkingConfig = {
-          thinkingBudget: googleThinkingBudget(coerceReasoningEffort(googleEffort, "google")),
-        };
+        googleGenConfig.thinkingConfig = googleThinkingConfig(googleEffort, normalizedModelId);
       }
       const requestBody: Record<string, unknown> = {
         contents,
@@ -3915,10 +3931,16 @@ class AgentManager {
 
     const anthropicEffort = normalizeReasoningEffort(modelParams?.reasoning_effort);
     if (anthropicEffort) {
-      requestBody.thinking = {
-        type: "enabled",
-        budget_tokens: anthropicThinkingBudget(anthropicEffort, maxOutputTokens),
-      };
+      const resolvedEffort = coerceReasoningEffort(anthropicEffort, providerConfig, modelId);
+      if (usesAnthropicAdaptiveThinking(modelId)) {
+        requestBody.thinking = { type: "adaptive", display: "summarized" };
+        requestBody.output_config = { effort: resolvedEffort };
+      } else {
+        requestBody.thinking = {
+          type: "enabled",
+          budget_tokens: anthropicThinkingBudget(resolvedEffort, maxOutputTokens),
+        };
+      }
       delete requestBody.temperature;
     }
 

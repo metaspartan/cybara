@@ -285,6 +285,19 @@ export function getMessageProcessActivities(
   return [];
 }
 
+export function isRawToolCallThought(
+  activity: Pick<LiveActivityItem, "text" | "toolName">
+): boolean {
+  if (activity.toolName !== "__thought") return false;
+  const text = activity.text.trim();
+  return (
+    /^<([A-Za-z_][A-Za-z0-9_.:-]{0,119})\b[^>]*>[\s\S]*<\/\1>$/i.test(text) ||
+    /<(?:function_calls?|tool_calls?|invoke)\b/i.test(text) ||
+    /\[\s*TOOL_CALL\s*\]/i.test(text) ||
+    /\]?<\]minimax\[>\[?/i.test(text)
+  );
+}
+
 function liveActivityCanonicalKey(activity: LiveActivityItem): string | null {
   const text = typeof activity.text === "string" ? activity.text.trim() : "";
   if (!text) return null;

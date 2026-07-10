@@ -33,6 +33,7 @@ import {
 
 interface SubagentPanelProps {
   agentId?: string;
+  embedded?: boolean;
   isOpen: boolean;
   onClose: () => void;
   onViewSession?: (sessionKey: string) => void;
@@ -195,6 +196,7 @@ function SubagentTimeline({ subagent }: { subagent: Subagent }) {
 
 export function SubagentPanel({
   agentId,
+  embedded = false,
   isOpen,
   onClose,
   onViewSession,
@@ -332,29 +334,35 @@ export function SubagentPanel({
   return (
     <>
       <aside
-        className="relative flex shrink-0 flex-col border-l border-white/5 bg-[var(--chat-environment-panel-bg)]"
-        style={{ width: panelWidth }}
+        className={
+          embedded
+            ? "relative flex h-full w-full flex-col bg-[var(--chat-environment-panel-bg)]"
+            : "relative flex shrink-0 flex-col border-l border-white/5 bg-[var(--chat-environment-panel-bg)]"
+        }
+        style={embedded ? undefined : { width: panelWidth }}
       >
-        <div
-          aria-label="Resize subagent panel"
-          aria-orientation="vertical"
-          className="group absolute left-[-3px] top-0 z-40 h-full w-1.5 cursor-col-resize touch-none bg-transparent"
-          onKeyDown={(event) => {
-            if (event.key === "ArrowLeft") {
-              event.preventDefault();
-              resizePanelBy(16);
-            } else if (event.key === "ArrowRight") {
-              event.preventDefault();
-              resizePanelBy(-16);
-            }
-          }}
-          onMouseDown={beginPanelResize}
-          role="separator"
-          tabIndex={0}
-          title="Resize subagent panel"
-        >
-          <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/10 transition-colors group-hover:bg-[rgba(var(--accent-primary),0.65)] group-focus-visible:bg-[rgba(var(--accent-primary),0.65)]" />
-        </div>
+        {!embedded && (
+          <div
+            aria-label="Resize subagent panel"
+            aria-orientation="vertical"
+            className="group absolute left-[-3px] top-0 z-40 h-full w-1.5 cursor-col-resize touch-none bg-transparent"
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") {
+                event.preventDefault();
+                resizePanelBy(16);
+              } else if (event.key === "ArrowRight") {
+                event.preventDefault();
+                resizePanelBy(-16);
+              }
+            }}
+            onMouseDown={beginPanelResize}
+            role="separator"
+            tabIndex={0}
+            title="Resize subagent panel"
+          >
+            <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/10 transition-colors group-hover:bg-[rgba(var(--accent-primary),0.65)] group-focus-visible:bg-[rgba(var(--accent-primary),0.65)]" />
+          </div>
+        )}
         <header className="flex items-center justify-between border-b border-white/5 px-3 py-2.5">
           <div className="flex items-center gap-2">
             <SubagentIcon className="h-3.5 w-3.5 text-gray-400" />
@@ -380,13 +388,15 @@ export function SubagentPanel({
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
-            <button
-              aria-label="Close subagents"
-              className="rounded-lg p-1.5 text-gray-500 hover:bg-white/5 hover:text-gray-200"
-              onClick={onClose}
-            >
-              <X className="h-3.5 w-3.5" />
-            </button>
+            {!embedded && (
+              <button
+                aria-label="Close subagents"
+                className="rounded-lg p-1.5 text-gray-500 hover:bg-white/5 hover:text-gray-200"
+                onClick={onClose}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
           </div>
         </header>
 

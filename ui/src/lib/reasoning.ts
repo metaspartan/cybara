@@ -1,4 +1,4 @@
-export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface ReasoningOption {
   value: ReasoningEffort | "";
@@ -6,18 +6,26 @@ export interface ReasoningOption {
 }
 
 const BINARY_THINKING_PROVIDERS = new Set(["z.ai", "z.ai-coding", "zai", "z-ai", "qwen-portal"]);
+const ADAPTIVE_THINKING_PROVIDERS = new Set([
+  "minimax",
+  "minimax-cn",
+  "minimax-portal",
+  "minimax-portal-cn",
+]);
 
 const LEVEL_LABELS: Record<ReasoningEffort, string> = {
   minimal: "Minimal",
   low: "Low",
   medium: "Medium",
   high: "High",
-  xhigh: "Max",
+  xhigh: "Extra High",
+  max: "Max",
 };
 
 const GPT_5_EFFORTS: ReasoningEffort[] = ["minimal", "low", "medium", "high"];
 const GPT_51_EFFORTS: ReasoningEffort[] = ["low", "medium", "high"];
 const GPT_52_EFFORTS: ReasoningEffort[] = ["low", "medium", "high", "xhigh"];
+const GPT_56_EFFORTS: ReasoningEffort[] = ["low", "medium", "high", "xhigh", "max"];
 const GPT_CODEX_EFFORTS: ReasoningEffort[] = ["low", "medium", "high", "xhigh"];
 const GPT_CODEX_MINI_EFFORTS: ReasoningEffort[] = ["medium"];
 const GPT_CODEX_MAX_EFFORTS: ReasoningEffort[] = ["medium", "high", "xhigh"];
@@ -34,6 +42,7 @@ function normalizeModelId(id: string | null | undefined): string {
 }
 
 function resolveOpenAIModelEfforts(modelId: string): ReasoningEffort[] {
+  if (/^gpt-5\.6(?:-|$)/.test(modelId)) return GPT_56_EFFORTS;
   if (modelId === "gpt-5.1-codex-mini") return GPT_CODEX_MINI_EFFORTS;
   if (modelId === "gpt-5.1-codex-max") return GPT_CODEX_MAX_EFFORTS;
   if (/^gpt-5(?:\.\d+)?-codex(?:-|$)/.test(modelId)) return GPT_CODEX_EFFORTS;
@@ -45,8 +54,20 @@ function resolveOpenAIModelEfforts(modelId: string): ReasoningEffort[] {
   return GENERIC_OPENAI_EFFORTS;
 }
 
-const ANTHROPIC_EFFORTS: ReasoningEffort[] = ["minimal", "low", "medium", "high", "xhigh"];
-const GOOGLE_EFFORTS: ReasoningEffort[] = ["minimal", "low", "medium", "high"];
+const ANTHROPIC_LEGACY_EFFORTS: ReasoningEffort[] = ["minimal", "low", "medium", "high"];
+const ANTHROPIC_46_EFFORTS: ReasoningEffort[] = ["low", "medium", "high", "max"];
+const ANTHROPIC_MODERN_EFFORTS: ReasoningEffort[] = ["low", "medium", "high", "xhigh", "max"];
+const GOOGLE_3_PRO_EFFORTS: ReasoningEffort[] = ["low", "high"];
+const GOOGLE_EFFORTS: ReasoningEffort[] = ["low", "medium", "high"];
+
+function resolveAnthropicModelEfforts(modelId: string): ReasoningEffort[] {
+  if (!modelId.includes("claude")) return [...ANTHROPIC_LEGACY_EFFORTS];
+  if (/claude-(?:opus|sonnet)-4[-.]6(?:-|$)/.test(modelId)) return [...ANTHROPIC_46_EFFORTS];
+  if (/claude-(?:3|opus-4[-.][0-5]|sonnet-4[-.][0-5]|haiku-4[-.]5)(?:-|$)/.test(modelId)) {
+    return [...ANTHROPIC_LEGACY_EFFORTS];
+  }
+  return [...ANTHROPIC_MODERN_EFFORTS];
+}
 
 function supportedEfforts(provider?: string | null, model?: string | null): ReasoningEffort[] {
   const providerId = (provider || "").trim().toLowerCase();
@@ -55,9 +76,10 @@ function supportedEfforts(provider?: string | null, model?: string | null): Reas
   }
   const modelId = normalizeModelId(model);
   if (providerId === "anthropic" || providerId === "anthropic_vertex") {
-    return [...ANTHROPIC_EFFORTS];
+    return resolveAnthropicModelEfforts(modelId);
   }
   if (providerId === "google" || providerId === "google_vertex") {
+    if (/^gemini-3(?:\.1)?-.*pro/.test(modelId)) return [...GOOGLE_3_PRO_EFFORTS];
     return [...GOOGLE_EFFORTS];
   }
   if (
@@ -80,10 +102,20 @@ function isBinaryThinkingProvider(provider?: string | null): boolean {
   return BINARY_THINKING_PROVIDERS.has((provider || "").trim().toLowerCase());
 }
 
+function isAdaptiveThinkingProvider(provider?: string | null, model?: string | null): boolean {
+  const providerId = (provider || "").trim().toLowerCase();
+  return (
+    ADAPTIVE_THINKING_PROVIDERS.has(providerId) && /(?:^|\/)minimax-m3(?:[.-]|$)/i.test(model ?? "")
+  );
+}
+
 export function supportedReasoningOptions(
   provider?: string | null,
   model?: string | null
 ): ReasoningOption[] {
+  if (isAdaptiveThinkingProvider(provider, model)) {
+    return [{ value: "", label: "Adaptive" }];
+  }
   if (isBinaryThinkingProvider(provider)) {
     return [
       { value: "", label: "Default" },
@@ -104,7 +136,35 @@ export function reasoningEffortLabel(
   provider?: string | null,
   model?: string | null
 ): string {
-  if (!effort) return "Default";
   const options = supportedReasoningOptions(provider, model);
+  if (!effort) return options[0]?.label ?? "Default";
   return options.find((option) => option.value === effort)?.label ?? "Default";
+}
+
+export function parseAgentConfig(config: unknown): Record<string, unknown> {
+  if (config && typeof config === "object" && !Array.isArray(config)) {
+    return config as Record<string, unknown>;
+  }
+  if (typeof config !== "string" || !config.trim()) return {};
+  try {
+    const parsed: unknown = JSON.parse(config);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+export function readAgentReasoningEffort(config: unknown): ReasoningEffort | null {
+  const parsed = parseAgentConfig(config);
+  const rawParams = parsed.model_params ?? parsed.modelParams;
+  if (!rawParams || typeof rawParams !== "object" || Array.isArray(rawParams)) return null;
+  const params = rawParams as Record<string, unknown>;
+  const effort = params.reasoning_effort ?? params.reasoningEffort;
+  if (typeof effort !== "string") return null;
+  const normalized = effort.trim().toLowerCase();
+  return ["minimal", "low", "medium", "high", "xhigh", "max"].includes(normalized)
+    ? (normalized as ReasoningEffort)
+    : null;
 }

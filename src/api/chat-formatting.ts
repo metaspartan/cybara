@@ -1,4 +1,4 @@
-import { stripTextToolCallMarkup } from "../core/llm/text-tool-calls";
+import { hasTextToolCallMarkup, stripTextToolCallMarkup } from "../core/llm/text-tool-calls";
 
 export interface StripThinkingTagsResult {
   content: string;
@@ -116,8 +116,13 @@ export function stripThinkingTags(content: string): StripThinkingTagsResult {
 
   return {
     content: stripDanglingAssistantMarkup(stripTextToolCallMarkup(visibleContent)).trim(),
-    thinking: thinkingMatches.join("\n\n"),
+    thinking: sanitizeProcessThoughtText(thinkingMatches.join("\n\n")),
   };
+}
+
+export function sanitizeProcessThoughtText(content: string): string {
+  const trimmed = content.trim();
+  return hasTextToolCallMarkup(trimmed) ? stripTextToolCallMarkup(trimmed).trim() : trimmed;
 }
 
 function stripDanglingAssistantMarkup(content: string): string {

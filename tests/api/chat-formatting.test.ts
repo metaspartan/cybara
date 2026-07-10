@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { stripThinkingTags } from "../../src/api/chat-formatting";
+import { sanitizeProcessThoughtText, stripThinkingTags } from "../../src/api/chat-formatting";
 import { sanitizeSessionMessages } from "../../src/api/routes/_shared";
 
 describe("chat response formatting", () => {
@@ -60,6 +60,15 @@ describe("chat response formatting", () => {
     expect(result.thinking).toBe("");
   });
 
+  test("removes direct XML tool requests from persisted thought activity", () => {
+    expect(
+      sanitizeProcessThoughtText("<read><file>/tmp/provider-tool-result.txt</file></read>")
+    ).toBe("");
+    expect(sanitizeProcessThoughtText("Inspecting the repository structure.")).toBe(
+      "Inspecting the repository structure."
+    );
+  });
+
   test("sanitizes stored assistant text tool-call envelopes on session reads", () => {
     const [message] = sanitizeSessionMessages([
       {
@@ -76,9 +85,28 @@ describe("chat response formatting", () => {
           ),
         ].join("\n"),
         timestamp: "2026-07-03T10:08:53.975Z",
+        process_activities: [
+          {
+            id: "thought-tool-envelope",
+            phase: "result",
+            text: "<read><file>/tmp/provider-tool-result.txt</file></read>",
+            timestamp: 1,
+            toolName: "__thought",
+          },
+          {
+            id: "thought-visible",
+            phase: "result",
+            text: "Inspecting the repository structure.",
+            timestamp: 2,
+            toolName: "__thought",
+          },
+        ],
       },
     ]);
 
     expect(message.content).toBe("I'll open the repository.");
+    expect(message.process_activities?.map((activity) => activity.text)).toEqual([
+      "Inspecting the repository structure.",
+    ]);
   });
 });

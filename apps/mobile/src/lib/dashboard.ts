@@ -168,7 +168,8 @@ export const MOBILE_REASONING_EFFORT_OPTIONS = [
   { label: "Low", value: "low" },
   { label: "Medium", value: "medium" },
   { label: "High", value: "high" },
-  { label: "Max", value: "xhigh" },
+  { label: "Extra High", value: "xhigh" },
+  { label: "Max", value: "max" },
 ] as const;
 
 const MOBILE_EFFORT_LABELS: Record<string, string> = {
@@ -176,7 +177,8 @@ const MOBILE_EFFORT_LABELS: Record<string, string> = {
   low: "Low",
   medium: "Medium",
   high: "High",
-  xhigh: "Max",
+  xhigh: "Extra High",
+  max: "Max",
 };
 
 const MOBILE_BINARY_THINKING_PROVIDERS = new Set([
@@ -186,18 +188,28 @@ const MOBILE_BINARY_THINKING_PROVIDERS = new Set([
   "z-ai",
   "qwen-portal",
 ]);
+const MOBILE_ADAPTIVE_THINKING_PROVIDERS = new Set([
+  "minimax",
+  "minimax-cn",
+  "minimax-portal",
+  "minimax-portal-cn",
+]);
 
 const MOBILE_GPT_5_EFFORTS = ["minimal", "low", "medium", "high"] as const;
 const MOBILE_GPT_51_EFFORTS = ["low", "medium", "high"] as const;
 const MOBILE_GPT_52_EFFORTS = ["low", "medium", "high", "xhigh"] as const;
+const MOBILE_GPT_56_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
 const MOBILE_GPT_CODEX_EFFORTS = ["low", "medium", "high", "xhigh"] as const;
 const MOBILE_GPT_CODEX_MINI_EFFORTS = ["medium"] as const;
 const MOBILE_GPT_CODEX_MAX_EFFORTS = ["medium", "high", "xhigh"] as const;
 const MOBILE_GPT_PRO_EFFORTS = ["medium", "high", "xhigh"] as const;
 const MOBILE_GPT_5_PRO_EFFORTS = ["high"] as const;
 const MOBILE_GENERIC_OPENAI_EFFORTS = ["low", "medium", "high"] as const;
-const MOBILE_ANTHROPIC_EFFORTS = ["minimal", "low", "medium", "high", "xhigh"] as const;
-const MOBILE_GOOGLE_EFFORTS = ["minimal", "low", "medium", "high"] as const;
+const MOBILE_ANTHROPIC_LEGACY_EFFORTS = ["minimal", "low", "medium", "high"] as const;
+const MOBILE_ANTHROPIC_46_EFFORTS = ["low", "medium", "high", "max"] as const;
+const MOBILE_ANTHROPIC_MODERN_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+const MOBILE_GOOGLE_EFFORTS = ["low", "medium", "high"] as const;
+const MOBILE_GOOGLE_PRO_EFFORTS = ["low", "high"] as const;
 
 function mobileNormalizeModelId(id: string | null | undefined): string {
   return (id ?? "")
@@ -208,6 +220,7 @@ function mobileNormalizeModelId(id: string | null | undefined): string {
 }
 
 function mobileResolveOpenAIModelEfforts(modelId: string): readonly string[] {
+  if (/^gpt-5\.6(?:-|$)/.test(modelId)) return MOBILE_GPT_56_EFFORTS;
   if (modelId === "gpt-5.1-codex-mini") return MOBILE_GPT_CODEX_MINI_EFFORTS;
   if (modelId === "gpt-5.1-codex-max") return MOBILE_GPT_CODEX_MAX_EFFORTS;
   if (/^gpt-5(?:\.\d+)?-codex(?:-|$)/.test(modelId)) return MOBILE_GPT_CODEX_EFFORTS;
@@ -219,16 +232,31 @@ function mobileResolveOpenAIModelEfforts(modelId: string): readonly string[] {
   return MOBILE_GENERIC_OPENAI_EFFORTS;
 }
 
-function mobileSupportedEfforts(provider?: string | null, model?: string | null): readonly string[] {
+function mobileResolveAnthropicEfforts(modelId: string): readonly string[] {
+  if (!modelId.includes("claude")) return MOBILE_ANTHROPIC_LEGACY_EFFORTS;
+  if (/claude-(?:opus|sonnet)-4[-.]6(?:-|$)/.test(modelId)) {
+    return MOBILE_ANTHROPIC_46_EFFORTS;
+  }
+  if (/claude-(?:3|opus-4[-.][0-5]|sonnet-4[-.][0-5]|haiku-4[-.]5)(?:-|$)/.test(modelId)) {
+    return MOBILE_ANTHROPIC_LEGACY_EFFORTS;
+  }
+  return MOBILE_ANTHROPIC_MODERN_EFFORTS;
+}
+
+function mobileSupportedEfforts(
+  provider?: string | null,
+  model?: string | null
+): readonly string[] {
   const providerId = (provider ?? "").trim().toLowerCase();
   if (MOBILE_BINARY_THINKING_PROVIDERS.has(providerId)) {
     return ["medium"];
   }
   const modelId = mobileNormalizeModelId(model);
   if (providerId === "anthropic" || providerId === "anthropic_vertex") {
-    return MOBILE_ANTHROPIC_EFFORTS;
+    return mobileResolveAnthropicEfforts(modelId);
   }
   if (providerId === "google" || providerId === "google_vertex") {
+    if (/^gemini-3(?:\.1)?-.*pro/.test(modelId)) return MOBILE_GOOGLE_PRO_EFFORTS;
     return MOBILE_GOOGLE_EFFORTS;
   }
   if (
@@ -255,6 +283,12 @@ export function mobileSupportedReasoningEfforts(
   model?: string | null
 ): readonly { label: string; value: MobileReasoningEffort }[] {
   const providerId = (provider ?? "").trim().toLowerCase();
+  if (
+    MOBILE_ADAPTIVE_THINKING_PROVIDERS.has(providerId) &&
+    /(?:^|\/)minimax-m3(?:[.-]|$)/i.test(model ?? "")
+  ) {
+    return [{ label: "Adaptive", value: "" }];
+  }
   if (MOBILE_BINARY_THINKING_PROVIDERS.has(providerId)) {
     return [
       { label: "Default", value: "" },
@@ -744,7 +778,8 @@ export function readMobileReasoningEffort(
     value === "low" ||
     value === "medium" ||
     value === "high" ||
-    value === "xhigh"
+    value === "xhigh" ||
+    value === "max"
     ? value
     : "";
 }

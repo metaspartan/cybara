@@ -7,6 +7,7 @@ import {
   formatSandboxProviderLabel,
   getLatestInFlightStep,
   isGenericStatusLabel,
+  isRawToolCallThought,
 } from "./chatModel";
 import {
   groupActivitiesForDisplay,
@@ -16,6 +17,7 @@ import {
 import { SubagentIcon } from "./SubagentIcon";
 
 function ActivityRow({ activity }: { activity: LiveActivityItem }) {
+  if (isRawToolCallThought(activity)) return null;
   if (activity.toolName === "__thought") {
     return (
       <div className="px-0.5 py-0.5 text-[12.5px] leading-relaxed text-gray-300">

@@ -82,6 +82,8 @@ const TOOL_CALL_TAG_PATTERN =
   /<\/?(?:function_calls?|tool_calls?|tool_result|function_response|function|invoke|parameter|param)\b[^>]*>/gi;
 const DANGLING_TOOL_CALL_LINE_PATTERN =
   /<(?:function_call|tool_call)\b[^>]*>\s*(?:[{[]|<invoke\b|["']?(?:name|tool_name|function)["']?\s*[:=])[^\r\n]*(?=\r?\n|$)/gi;
+const DIRECT_NAMED_XML_TOOL_PATTERN =
+  /^\s*<([A-Za-z_][A-Za-z0-9_.:-]{0,119})\b[^>]*>([\s\S]*?)<\/\1>\s*$/i;
 
 function decodeMarkupEntities(value: string): string {
   return value
@@ -322,6 +324,13 @@ function parseXmlInvokeToolCalls(raw: string): TextToolCall[] {
   return calls;
 }
 
+function parseDirectNamedXmlToolCall(raw: string, allowedToolNames: Set<string>): TextToolCall[] {
+  const match = raw.match(DIRECT_NAMED_XML_TOOL_PATTERN);
+  const name = match?.[1]?.trim();
+  if (!name || !allowedToolNames.has(name)) return [];
+  return [{ name, args: parseXmlFields(match?.[2] || "") }];
+}
+
 function findBalancedJsonEnd(text: string, start: number): number | undefined {
   const opening = text[start];
   const closing = opening === "{" ? "}" : opening === "[" ? "]" : undefined;
@@ -552,7 +561,8 @@ export function extractTextToolCalls(
     ...parseLegacyBracketToolCalls(normalizedContent),
     ...parseOpenClawPlainTextToolCalls(normalizedContent),
     ...parseBareCommandJsonToolCalls(normalizedContent),
-    ...parseTrailingJsonToolCalls(normalizedContent)
+    ...parseTrailingJsonToolCalls(normalizedContent),
+    ...parseDirectNamedXmlToolCall(normalizedContent, allowedToolNames)
   );
 
   return filterAllowedToolCalls(calls, allowedToolNames);
@@ -571,7 +581,9 @@ function stripLeadingBareCommandJsonMarkup(content: string): string {
 }
 
 export function stripTextToolCallMarkup(content: string): string {
-  const stripped = stripLeadingBareCommandJsonMarkup(normalizeProviderTextMarkers(content))
+  const normalized = normalizeProviderTextMarkers(content);
+  if (DIRECT_NAMED_XML_TOOL_PATTERN.test(normalized)) return "";
+  const stripped = stripLeadingBareCommandJsonMarkup(normalized)
     .replace(DSML_TOOL_BLOCK_PATTERN, "")
     .replace(TOOL_CALL_RESULT_BLOCK_PATTERN, "")
     .replace(TOOL_CALL_CONTAINER_PATTERN, "")
@@ -599,6 +611,7 @@ export function hasTextToolCallMarkup(content: string | null | undefined): boole
     /<tool_calls\b/i.test(content) ||
     /<tool_call\b/i.test(content) ||
     /<invoke\b/i.test(content) ||
+    DIRECT_NAMED_XML_TOOL_PATTERN.test(normalizeProviderTextMarkers(content)) ||
     /\[\s*TOOL_CALL\s*\]/i.test(content) ||
     /<[\uFF5C|]DSML[\uFF5C|](?:tool_calls|tool_call|function_calls)/i.test(content) ||
     MINIMAX_TEXT_SEGMENT_MARKER_QUICK_PATTERN.test(content) ||

@@ -1,17 +1,19 @@
+import { Check, Copy } from "lucide-react";
+import { Highlight, themes } from "prism-react-renderer";
 import {
+  type ComponentPropsWithoutRef,
   isValidElement,
   useCallback,
   useEffect,
   useMemo,
   useState,
-  type ComponentPropsWithoutRef,
 } from "react";
-import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Check, Copy } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { chatMarkdownImageSrc } from "@/lib/chatImages";
 import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
+import { cn } from "@/lib/utils";
+
 const CODE_LANGUAGE_ALIASES: Record<string, string> = {
   ts: "typescript",
   tsx: "tsx",
@@ -314,11 +316,17 @@ export function MessageContent({ content }: { content: string }) {
           ),
           img: ({ src, alt }) => {
             const source = typeof src === "string" ? src : "";
-            if (!/^(https?:|data:image\/)/i.test(source)) return <span>{alt || ""}</span>;
+            const imageSource = chatMarkdownImageSrc(source);
+            if (!imageSource) return <span>{alt || ""}</span>;
             return (
-              <a href={source} target="_blank" rel="noopener noreferrer" className="block my-2">
+              <a
+                href={imageSource}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block my-2"
+              >
                 <img
-                  src={source}
+                  src={imageSource}
                   alt={alt || "image"}
                   loading="lazy"
                   className="max-h-80 max-w-full rounded-lg border border-white/12 object-contain"

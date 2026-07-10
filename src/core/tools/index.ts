@@ -1,4 +1,4 @@
-import { telegramBot, channelManager } from "../channels";
+import { channelManager, telegramBot } from "../channels";
 import {
   COMPUTER_USE_ACTION_TOOL_ALIASES,
   COMPUTER_USE_COMPAT_TOOL_ALIASES,
@@ -8,27 +8,27 @@ import {
 } from "../computer-use";
 import { config } from "../config";
 import { getSkillExecutors } from "../skills/index";
+import { handleArtifacts } from "./handlers/artifacts";
 import { handleCanvas } from "./handlers/canvas";
 import { handleClipboard } from "./handlers/clipboard";
 import { handleData } from "./handlers/data";
 import { handleEnv } from "./handlers/env";
-import { handleRead, handleWrite, handleEdit, handleFileSearch, handleGrep } from "./handlers/file";
-import { handleWorkspaceIndexSearch } from "./handlers/workspace-index";
+import { handleEdit, handleFileSearch, handleGrep, handleRead, handleWrite } from "./handlers/file";
 import { handleHttp } from "./handlers/http";
 import {
-  handleLSPDiagnostics,
   handleLSPDefinition,
-  handleLSPReferences,
+  handleLSPDiagnostics,
   handleLSPHover,
   handleLSPLanguages,
+  handleLSPReferences,
 } from "./handlers/lsp";
 import {
-  handleMemorySearch,
   handleMemoryGet,
-  handleMemorySave,
   handleMemoryList,
+  handleMemorySave,
+  handleMemorySearch,
 } from "./handlers/memory";
-import { handleArtifacts } from "./handlers/artifacts";
+import { handleWorkspaceIndexSearch } from "./handlers/workspace-index";
 
 export interface ToolHandler {
   (args: Record<string, unknown>, context?: ToolContext): Promise<unknown>;
@@ -394,7 +394,9 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
     name: "browser",
     description: [
       "Control browser sessions via status/start/stop/profiles/tabs/open/snapshot/screenshot/actions.",
-      "Use snapshot for page text extraction and act/click/type for UI automation.",
+      "The embedded session browser is the default so users can follow actions in the chat preview panel.",
+      "Use open -> snapshot -> act for UI automation and use openVisual only when the user explicitly requests a separate visible browser window.",
+      "Keep the embedded browser open after completing the task so the user can inspect the final page; close it only when explicitly requested.",
       "When using refs from snapshot (e.g., e12), keep the same tab by passing targetId from snapshot into follow-up actions.",
       "For stable refs across calls, prefer snapshot with refs='aria'.",
       "Suggested flow: open -> snapshot -> extract data -> respond; for interactions: snapshot -> act.",
@@ -452,12 +454,13 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
         executablePath: { type: "string", description: "Chrome executable path for profile" },
         headless: {
           type: "boolean",
-          description: "Run in headless mode (default true). Set to false for visible browser.",
+          description:
+            "Use the embedded chat browser preview (default true). Set false only when the user explicitly requests a separate browser window.",
         },
         visual: {
           type: "boolean",
           description:
-            "Launch visible Chrome window with persistent profile (alternative to headless: false)",
+            "Launch a separate Chrome window with a persistent profile only when explicitly requested",
         },
         userDataDir: { type: "string", description: "Custom user data directory for profile" },
         pageId: { type: "string", description: "Page ID for closeProfileTab" },

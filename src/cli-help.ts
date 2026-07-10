@@ -37,7 +37,7 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    config get <key>  Get config value");
   console.log("    config set <k> <v> Set config value (for example: theme emerald)");
   console.log(
-    "    config set reasoning_effort <minimal|low|medium|high|xhigh>  Default reasoning effort"
+    "    config set reasoning_effort <minimal|low|medium|high|xhigh|max>  Default reasoning effort"
   );
   console.log("  migrate     Import OpenClaw or Hermes user data");
   console.log("    migrate sources                         Detect local sources");

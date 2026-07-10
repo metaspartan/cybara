@@ -73,7 +73,8 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain('section="summary"');
     expect(source).toContain("function SessionDiffPanel");
     expect(source).toContain("No file diffs in this session yet");
-    expect(source).toContain("showDiffPanel");
+    expect(source).toContain('openWorkspaceTab("review")');
+    expect(source).toContain('activeWorkspaceTab === "review"');
     expect(source).toContain('aria-label="File diffs"');
     expect(source).toContain("hasUnreadFileDiffs");
     expect(source).toContain("markCurrentFileDiffsSeen");

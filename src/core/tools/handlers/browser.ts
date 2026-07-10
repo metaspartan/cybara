@@ -1,22 +1,22 @@
-import * as pwManager from "../../browser/pw-manager";
-import * as profileManager from "../../browser/profiles";
-import { INTERACTIVE_ROLES, CONTENT_ROLES, STRUCTURAL_ROLES } from "../../browser/pw-role-snapshot";
+import { existsSync, mkdirSync, writeFileSync } from "fs";
+import { homedir } from "os";
+import { join } from "path";
+import { validateUrl } from "../../../api/security";
 import {
-  getFullAccessibilityTree,
+  fillField,
   getDomText,
-  scrollIntoView,
+  getFullAccessibilityTree,
   hoverElement,
+  type RefInfo,
+  scrollIntoView,
   selectOption,
   waitFor,
-  fillField,
-  type RefInfo,
 } from "../../browser/cdp-helpers";
-
-import { writeFileSync, mkdirSync, existsSync } from "fs";
-import { join } from "path";
-import { homedir } from "os";
+import * as profileManager from "../../browser/profiles";
+import * as pwManager from "../../browser/pw-manager";
+import { CONTENT_ROLES, INTERACTIVE_ROLES, STRUCTURAL_ROLES } from "../../browser/pw-role-snapshot";
+import type { ToolContext } from "../index";
 import { enforceWebFetchAllowlist } from "./web-policy";
-import { validateUrl } from "../../../api/security";
 
 const SCREENSHOTS_DIR = join(
   process.env.HOME || process.env.USERPROFILE || homedir(),
@@ -47,13 +47,76 @@ function clearSessionRefs(sessionId: string): void {
   sessionElementRefs.delete(sessionId);
 }
 
-async function getOrCreatePage(sessionId: string): Promise<string> {
+function resolveSessionSelector(sessionId: string, value: string): string {
+  return getSessionRefs(sessionId).get(value)?.selector || value;
+}
+
+export function getBrowserPageIdForSession(sessionId: string): string | null {
+  const pageId = sessionPages.get(sessionId);
+  if (!pageId) return null;
+  if (pwManager.getPageById(pageId)) return pageId;
+  sessionPages.delete(sessionId);
+  return null;
+}
+
+export async function getOrCreateBrowserPageForSession(sessionId: string): Promise<string> {
   let pageId = sessionPages.get(sessionId);
-  if (!pageId) {
+  if (!pageId || !pwManager.getPageById(pageId)) {
     pageId = await pwManager.createPage();
     sessionPages.set(sessionId, pageId);
   }
   return pageId;
+}
+
+export function releaseBrowserPage(pageId: string): void {
+  for (const [sessionId, sessionPageId] of sessionPages.entries()) {
+    if (sessionPageId === pageId) sessionPages.delete(sessionId);
+  }
+}
+
+function useEmbeddedBrowser(args: Record<string, unknown>): boolean {
+  return (
+    args.headless !== false &&
+    args.headless !== "false" &&
+    args.visual !== true &&
+    args.visual !== "true"
+  );
+}
+
+function normalizeBrowserNavigationUrl(url: string): string {
+  const input = url.trim();
+  if (!input) throw new Error("Invalid URL: URL is empty");
+  const hasProtocol = /^[a-z][a-z\d+.-]*:\/\//i.test(input);
+  const candidate = hasProtocol ? input : `https://${input}`;
+  let parsed: URL;
+  try {
+    parsed = new URL(candidate);
+  } catch {
+    throw new Error(`Invalid URL: ${url}`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`Invalid URL: unsupported protocol ${parsed.protocol}`);
+  }
+  if (!hasProtocol && isLocalBrowserHostname(parsed.hostname)) parsed.protocol = "http:";
+  return parsed.toString();
+}
+
+function isLocalBrowserHostname(value: string): boolean {
+  const hostname = value.toLowerCase().replace(/^\[|\]$/g, "");
+  if (hostname === "localhost" || hostname === "::1" || hostname.endsWith(".local")) return true;
+  if (
+    hostname.startsWith("127.") ||
+    hostname.startsWith("10.") ||
+    hostname.startsWith("192.168.") ||
+    hostname.startsWith("169.254.") ||
+    hostname.startsWith("fc") ||
+    hostname.startsWith("fd") ||
+    hostname.startsWith("fe80:")
+  ) {
+    return true;
+  }
+  const secondOctet = Number(hostname.split(".")[1]);
+  return hostname.startsWith("172.") && secondOctet >= 16 && secondOctet <= 31;
 }
 
 async function getVisualPage(
@@ -73,24 +136,25 @@ async function getVisualPage(
 export async function validateBrowserNavigationUrl(
   url: string,
   action: "Navigation" | "Request" = "Navigation"
-): Promise<void> {
-  try {
-    new URL(url);
-  } catch {
-    throw new Error(`Invalid URL: ${url}`);
-  }
+): Promise<string> {
+  const normalizedUrl = normalizeBrowserNavigationUrl(url);
+  if (action === "Navigation") return normalizedUrl;
 
-  const urlValidation = await validateUrl(url);
+  const urlValidation = await validateUrl(normalizedUrl);
   if (!urlValidation.valid) {
     throw new Error(`Validation error: ${action} blocked: ${urlValidation.error}`);
   }
 
-  enforceWebFetchAllowlist(url);
+  enforceWebFetchAllowlist(normalizedUrl);
+  return normalizedUrl;
 }
 
-export async function handleBrowser(args: Record<string, unknown>): Promise<unknown> {
+export async function handleBrowser(
+  args: Record<string, unknown>,
+  context?: ToolContext
+): Promise<unknown> {
   const action = args.action as string;
-  const sessionId = (args.sessionId as string) || "default";
+  const sessionId = context?.sessionId?.trim() || (args.sessionId as string) || "default";
 
   switch (action) {
     case "status": {
@@ -112,7 +176,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         throw new Error("Playwright not installed. Run: bun add playwright");
       }
 
-      const useHeadless = args.headless === true || args.headless === "true";
+      const useHeadless = useEmbeddedBrowser(args);
       const url = args.url as string | undefined;
       const profileName = (args.profile as string) || sessionId;
 
@@ -121,17 +185,17 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       );
 
       if (useHeadless) {
-        const pageId = await getOrCreatePage(sessionId);
+        const pageId = await getOrCreateBrowserPageForSession(sessionId);
 
         if (url) {
-          await validateBrowserNavigationUrl(url);
-          await pwManager.navigate(pageId, url, { waitUntil: "domcontentloaded" });
+          const navigationUrl = await validateBrowserNavigationUrl(url);
+          await pwManager.navigate(pageId, navigationUrl, { waitUntil: "domcontentloaded" });
         }
 
         return {
           success: true,
           mode: "headless",
-          message: "Browser started (headless mode)",
+          message: "Browser started in the embedded chat preview",
           pageId,
           url: url || undefined,
         };
@@ -142,8 +206,8 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const profile = profileManager.getProfile(profileName);
 
       if (url) {
-        await validateBrowserNavigationUrl(url);
-        await profileManager.createPage(profileName, url);
+        const navigationUrl = await validateBrowserNavigationUrl(url);
+        await profileManager.createPage(profileName, navigationUrl);
         console.log(`[Browser] Started browser and navigated to ${url}`);
         return {
           success: true,
@@ -292,15 +356,15 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const name = (args.profile as string) || sessionId;
       const url = args.url as string;
       if (!url) throw new Error("URL required for openProfileTab action");
-      await validateBrowserNavigationUrl(url);
+      const navigationUrl = await validateBrowserNavigationUrl(url);
 
-      const page = await profileManager.createPage(name, url);
+      const page = await profileManager.createPage(name, navigationUrl);
       return {
         success: true,
         profile: name,
         pageId: page,
-        url,
-        message: `Opened ${url} in profile "${name}"`,
+        url: navigationUrl,
+        message: `Opened ${navigationUrl} in profile "${name}"`,
       };
     }
 
@@ -321,7 +385,8 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     }
 
     case "tabs": {
-      const tabs = pwManager.getAllPages();
+      const pageId = getBrowserPageIdForSession(sessionId);
+      const tabs = (await pwManager.getAllPages()).filter((tab) => !pageId || tab.id === pageId);
       return {
         success: true,
         tabs,
@@ -331,13 +396,13 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     case "open": {
       const url = args.url as string;
       if (!url) throw new Error("URL required for open action");
-      await validateBrowserNavigationUrl(url);
+      const navigationUrl = await validateBrowserNavigationUrl(url);
 
-      const useHeadless = args.headless === true || args.headless === "true";
+      const useHeadless = useEmbeddedBrowser(args);
 
       if (useHeadless) {
-        const pageId = await getOrCreatePage(sessionId);
-        const result = await pwManager.navigate(pageId, url, {
+        const pageId = await getOrCreateBrowserPageForSession(sessionId);
+        const result = await pwManager.navigate(pageId, navigationUrl, {
           waitUntil:
             (args.waitUntil as "load" | "domcontentloaded" | "networkidle") || "domcontentloaded",
         });
@@ -350,7 +415,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       }
 
       const profileName = (args.profile as string) || sessionId;
-      console.log(`[Browser] Opening ${url} in visual mode (profile: ${profileName})`);
+      console.log(`[Browser] Opening ${navigationUrl} in visual mode (profile: ${profileName})`);
 
       let profile = profileManager.getProfile(profileName);
       if (!profile?.running) {
@@ -358,7 +423,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         profile = profileManager.getProfile(profileName);
       }
 
-      await profileManager.createPage(profileName, url);
+      await profileManager.createPage(profileName, navigationUrl);
 
       return {
         success: true,
@@ -366,18 +431,18 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         profile: profileName,
         cdpUrl: profile?.cdpUrl,
         userDataDir: profile?.userDataDir,
-        url,
-        message: `Opened ${url} in visible Chrome window (profile: ${profileName})`,
+        url: navigationUrl,
+        message: `Opened ${navigationUrl} in visible Chrome window (profile: ${profileName})`,
       };
     }
 
     case "openVisual": {
       const url = args.url as string;
       if (!url) throw new Error("URL required for openVisual action");
-      await validateBrowserNavigationUrl(url);
+      const navigationUrl = await validateBrowserNavigationUrl(url);
 
       const profileName = (args.profile as string) || sessionId;
-      console.log(`[Browser] openVisual: Opening ${url} (profile: ${profileName})`);
+      console.log(`[Browser] openVisual: Opening ${navigationUrl} (profile: ${profileName})`);
 
       let profile = profileManager.getProfile(profileName);
       if (!profile?.running) {
@@ -385,7 +450,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         profile = profileManager.getProfile(profileName);
       }
 
-      await profileManager.createPage(profileName, url);
+      await profileManager.createPage(profileName, navigationUrl);
 
       return {
         success: true,
@@ -393,8 +458,8 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         profile: profileName,
         cdpUrl: profile?.cdpUrl,
         userDataDir: profile?.userDataDir,
-        url,
-        message: `Opened ${url} in visible Chrome (profile: ${profileName})`,
+        url: navigationUrl,
+        message: `Opened ${navigationUrl} in visible Chrome (profile: ${profileName})`,
       };
     }
 
@@ -416,14 +481,14 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     case "navigate": {
       const url = args.url as string;
       if (!url) throw new Error("URL required for navigate action");
-      await validateBrowserNavigationUrl(url);
+      const navigationUrl = await validateBrowserNavigationUrl(url);
 
-      const useHeadless = args.headless === true || args.headless === "true";
+      const useHeadless = useEmbeddedBrowser(args);
       const profileName = (args.profile as string) || sessionId;
 
       if (useHeadless) {
-        const pageId = await getOrCreatePage(sessionId);
-        const result = await pwManager.navigate(pageId, url, {
+        const pageId = await getOrCreateBrowserPageForSession(sessionId);
+        const result = await pwManager.navigate(pageId, navigationUrl, {
           waitUntil:
             (args.waitUntil as "load" | "domcontentloaded" | "networkidle") || "domcontentloaded",
         });
@@ -434,7 +499,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         };
       }
 
-      console.log(`[Browser] Navigating to ${url} in visual mode (profile: ${profileName})`);
+      console.log(
+        `[Browser] Navigating to ${navigationUrl} in visual mode (profile: ${profileName})`
+      );
 
       let profile = profileManager.getProfile(profileName);
       if (!profile?.running) {
@@ -442,24 +509,25 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         profile = profileManager.getProfile(profileName);
       }
 
-      await profileManager.createPage(profileName, url);
+      await profileManager.createPage(profileName, navigationUrl);
 
       return {
         success: true,
         mode: "visual",
         profile: profileName,
-        url,
-        message: `Navigated to ${url} in visible Chrome (profile: ${profileName})`,
+        url: navigationUrl,
+        message: `Navigated to ${navigationUrl} in visible Chrome (profile: ${profileName})`,
       };
     }
 
     case "snapshot": {
-      const useHeadless = args.headless === true || args.headless === "true";
+      const useHeadless = useEmbeddedBrowser(args);
       const waitForContent = args.wait !== false; // Default: wait for content to load
 
       if (useHeadless) {
-        const pageId = await getOrCreatePage(sessionId);
-        const format = (args.snapshotFormat as "aria" | "ai") || "ai";
+        const pageId = await getOrCreateBrowserPageForSession(sessionId);
+        const format =
+          (args.snapshotFormat as "aria" | "ai") || (args.format as "aria" | "ai") || "ai";
         const result = await pwManager.getSnapshot(pageId, {
           format,
           maxChars: (args.maxChars as number) || 8000,
@@ -469,6 +537,17 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
           selector: (args.selector as string) || undefined,
           refs: (args.refs as "aria" | "role") || "role",
         });
+        clearSessionRefs(sessionId);
+        const refs = getSessionRefs(sessionId);
+        for (const node of result.nodes ?? []) {
+          if (node.selector) {
+            refs.set(node.ref, {
+              selector: node.selector,
+              role: node.role,
+              name: node.name || undefined,
+            });
+          }
+        }
 
         const captcha = await pwManager.detectCaptcha(pageId);
 
@@ -625,18 +704,24 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     }
 
     case "screenshot": {
-      const useHeadless = args.headless === true || args.headless === "true";
+      const useHeadless = useEmbeddedBrowser(args);
 
       if (useHeadless) {
-        const pageId = await getOrCreatePage(sessionId);
-        const screenshot = await pwManager.screenshot(pageId, {
+        const pageId = await getOrCreateBrowserPageForSession(sessionId);
+        const format = (args.type as "png" | "jpeg") || "png";
+        const screenshotOptions: {
+          fullPage: boolean;
+          selector?: string;
+          type: "png" | "jpeg";
+          quality?: number;
+        } = {
           fullPage: args.fullPage === true,
           selector: (args.selector as string) || undefined,
-          type: (args.type as "png" | "jpeg") || "png",
-          quality: (args.quality as number) || 92,
-        });
+          type: format,
+        };
+        if (format === "jpeg") screenshotOptions.quality = (args.quality as number) || 92;
+        const screenshot = await pwManager.screenshot(pageId, screenshotOptions);
 
-        const format = (args.type as "png" | "jpeg") || "png";
         const mimeType = format === "jpeg" ? "image/jpeg" : "image/png";
 
         const timestamp = Date.now();
@@ -712,7 +797,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     }
 
     case "pdf": {
-      const pageId = await getOrCreatePage(sessionId);
+      const pageId = await getOrCreateBrowserPageForSession(sessionId);
       const pdf = await pwManager.pdf(pageId, {
         format: (args.format as "letter" | "a4") || "a4",
         landscape: args.landscape === true,
@@ -729,7 +814,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     }
 
     case "console": {
-      const pageId = await getOrCreatePage(sessionId);
+      const pageId = await getOrCreateBrowserPageForSession(sessionId);
       const consoleLogs = await pwManager.getConsoleLogs(pageId, {
         type: (args.type as string) || undefined,
       });
@@ -746,7 +831,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       if (!paths || !Array.isArray(paths))
         throw new Error("paths array required for upload action");
 
-      const pageId = await getOrCreatePage(sessionId);
+      const pageId = await getOrCreateBrowserPageForSession(sessionId);
       const inputRef = args.inputRef as string;
       await pwManager.uploadFiles(pageId, paths, inputRef);
 
@@ -799,10 +884,10 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         }
       }
 
-      const useHeadless = args.headless === true || args.headless === "true";
+      const useHeadless = useEmbeddedBrowser(args);
 
       if (useHeadless) {
-        const pageId = await getOrCreatePage(sessionId);
+        const pageId = await getOrCreateBrowserPageForSession(sessionId);
 
         switch (kind) {
           case "click": {
@@ -1030,10 +1115,11 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     }
 
     case "click": {
-      const selector = args.selector as string;
-      if (!selector) throw new Error("Selector required for click action");
+      const rawSelector = (args.selector as string) || (args.ref as string);
+      if (!rawSelector) throw new Error("Selector required for click action");
+      const selector = resolveSessionSelector(sessionId, rawSelector);
 
-      const pageId = await getOrCreatePage(sessionId);
+      const pageId = await getOrCreateBrowserPageForSession(sessionId);
       await pwManager.click(pageId, selector, {
         button: (args.button as "left" | "right" | "middle") || "left",
         doubleClick: args.doubleClick === true,
@@ -1048,12 +1134,13 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     }
 
     case "type": {
-      const selector = args.selector as string;
+      const rawSelector = (args.selector as string) || (args.ref as string);
       const text = args.text as string;
-      if (!selector) throw new Error("Selector required for type action");
+      if (!rawSelector) throw new Error("Selector required for type action");
       if (typeof text !== "string") throw new Error("Text required for type action");
+      const selector = resolveSessionSelector(sessionId, rawSelector);
 
-      const pageId = await getOrCreatePage(sessionId);
+      const pageId = await getOrCreateBrowserPageForSession(sessionId);
       await pwManager.type(pageId, selector, text, {
         submit: args.submit === true,
         clear: args.clear !== false,
@@ -1072,7 +1159,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const key = args.key as string;
       if (!key) throw new Error("Key required for press action");
 
-      const pageId = await getOrCreatePage(sessionId);
+      const pageId = await getOrCreateBrowserPageForSession(sessionId);
       await pwManager.pressKey(pageId, key, (args.delayMs as number) || 0);
 
       return {
@@ -1083,11 +1170,13 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     }
 
     case "select": {
-      const selector = args.selector as string;
+      const rawSelector = (args.selector as string) || (args.ref as string);
       const values = args.values as string[];
-      if (!selector || !values) throw new Error("Selector and values required for select action");
+      if (!rawSelector || !values)
+        throw new Error("Selector and values required for select action");
+      const selector = resolveSessionSelector(sessionId, rawSelector);
 
-      const pageId = await getOrCreatePage(sessionId);
+      const pageId = await getOrCreateBrowserPageForSession(sessionId);
       await pwManager.selectMultiple(pageId, selector, values);
 
       return {
@@ -1099,10 +1188,11 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     }
 
     case "hover": {
-      const selector = args.selector as string;
-      if (!selector) throw new Error("Selector required for hover action");
+      const rawSelector = (args.selector as string) || (args.ref as string);
+      if (!rawSelector) throw new Error("Selector required for hover action");
+      const selector = resolveSessionSelector(sessionId, rawSelector);
 
-      const pageId = await getOrCreatePage(sessionId);
+      const pageId = await getOrCreateBrowserPageForSession(sessionId);
       await pwManager.hover(pageId, selector);
 
       return {
@@ -1113,14 +1203,15 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
     }
 
     case "scroll": {
-      const selector = args.selector as string;
+      const rawSelector = (args.selector as string) || (args.ref as string);
+      const selector = rawSelector ? resolveSessionSelector(sessionId, rawSelector) : undefined;
       const direction = (args.direction as string) || "down";
       const amount = (args.amount as number) || 500;
 
-      const useHeadless = args.headless === true || args.headless === "true";
+      const useHeadless = useEmbeddedBrowser(args);
 
       if (useHeadless) {
-        const pageId = await getOrCreatePage(sessionId);
+        const pageId = await getOrCreateBrowserPageForSession(sessionId);
         if (selector) {
           await pwManager.scrollIntoView(pageId, selector);
           return {
@@ -1167,8 +1258,12 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const endRef = args.endRef as string;
       if (!startRef || !endRef) throw new Error("startRef and endRef required for drag action");
 
-      const pageId = await getOrCreatePage(sessionId);
-      await pwManager.drag(pageId, startRef, endRef);
+      const pageId = await getOrCreateBrowserPageForSession(sessionId);
+      await pwManager.drag(
+        pageId,
+        resolveSessionSelector(sessionId, startRef),
+        resolveSessionSelector(sessionId, endRef)
+      );
 
       return {
         success: true,
@@ -1183,9 +1278,9 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       if (!fields || !Array.isArray(fields))
         throw new Error("fields array required for fill action");
 
-      const pageId = await getOrCreatePage(sessionId);
+      const pageId = await getOrCreateBrowserPageForSession(sessionId);
       for (const field of fields) {
-        await pwManager.fill(pageId, field.ref, field.value);
+        await pwManager.fill(pageId, resolveSessionSelector(sessionId, field.ref), field.value);
       }
 
       return {
@@ -1202,7 +1297,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
         throw new Error("width and height required for resize action");
       }
 
-      const pageId = await getOrCreatePage(sessionId);
+      const pageId = await getOrCreateBrowserPageForSession(sessionId);
       await pwManager.resize(pageId, width, height);
 
       return {
@@ -1215,14 +1310,15 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
 
     case "wait": {
       const timeMs = args.timeMs as number;
-      const selector = args.selector as string;
+      const rawSelector = (args.selector as string) || (args.ref as string);
+      const selector = rawSelector ? resolveSessionSelector(sessionId, rawSelector) : undefined;
       const text = args.text as string;
       const textGone = args.textGone as string;
       const url = args.url as string;
       const fn = args.fn as string;
       const loadState = args.loadState as "load" | "domcontentloaded" | "networkidle";
 
-      const pageId = await getOrCreatePage(sessionId);
+      const pageId = await getOrCreateBrowserPageForSession(sessionId);
 
       if (timeMs) {
         await pwManager.wait(pageId, timeMs);
@@ -1261,7 +1357,7 @@ export async function handleBrowser(args: Record<string, unknown>): Promise<unkn
       const script = args.script as string;
       if (!script) throw new Error("Script required for evaluate action");
 
-      const pageId = await getOrCreatePage(sessionId);
+      const pageId = await getOrCreateBrowserPageForSession(sessionId);
       const result = await pwManager.evaluate(pageId, script);
 
       return {
@@ -1295,7 +1391,7 @@ export async function handleWebFetch(
     let currentUrl = url;
     let response: Response | undefined;
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      await validateBrowserNavigationUrl(currentUrl, "Request");
+      currentUrl = await validateBrowserNavigationUrl(currentUrl, "Request");
       const hopResponse = await fetch(currentUrl, {
         redirect: "manual",
         headers: {
@@ -1399,11 +1495,13 @@ export async function handleOpenUrl(args: Record<string, unknown>): Promise<unkn
   if (!url) {
     throw new Error("url is required for open_url");
   }
-  await validateBrowserNavigationUrl(url);
+  const navigationUrl = await validateBrowserNavigationUrl(url);
 
   const profileName = (args.profile as string) || "default";
 
-  console.log(`[Browser] open_url: Opening ${url} in visual browser (profile: ${profileName})`);
+  console.log(
+    `[Browser] open_url: Opening ${navigationUrl} in visual browser (profile: ${profileName})`
+  );
 
   let profile = profileManager.getProfile(profileName);
   if (!profile?.running) {
@@ -1411,7 +1509,7 @@ export async function handleOpenUrl(args: Record<string, unknown>): Promise<unkn
     profile = profileManager.getProfile(profileName);
   }
 
-  const page = await profileManager.createPage(profileName, url);
+  const page = await profileManager.createPage(profileName, navigationUrl);
 
   await new Promise((resolve) => setTimeout(resolve, 500));
 
@@ -1425,6 +1523,6 @@ export async function handleOpenUrl(args: Record<string, unknown>): Promise<unkn
     url: currentUrl,
     title,
     profile: profileName,
-    message: `Opened ${url} in visible Chrome window`,
+    message: `Opened ${navigationUrl} in visible Chrome window`,
   };
 }

@@ -601,6 +601,66 @@ textarea[data-chat-composer-input="true"]:focus-visible {
   box-shadow: none;
 }
 
+.chat-approval-select,
+.chat-agent-selector,
+.chat-approval-select:hover,
+.chat-agent-selector:hover,
+.chat-approval-select:focus,
+.chat-agent-selector:focus,
+.chat-approval-select:focus-visible,
+.chat-agent-selector:focus-visible {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-color: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  outline: none;
+}
+
+.workspace-browser-nav-button {
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgb(107 114 128);
+}
+
+.workspace-browser-nav-button:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.06);
+  color: rgb(229 231 235);
+}
+
+.workspace-browser-nav-button:focus,
+.workspace-browser-nav-button:focus-visible {
+  box-shadow: none;
+  outline: none;
+}
+
+.workspace-browser-nav-button:disabled {
+  opacity: 0.35;
+}
+
+.browser-agent-click-pulse {
+  animation: browser-agent-click-pulse 420ms ease-out forwards;
+}
+
+@keyframes browser-agent-click-pulse {
+  from {
+    opacity: 0.9;
+    transform: scale(0.45);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.8);
+  }
+}
+
 .chat-composer-responsive {
   container-type: inline-size;
 }

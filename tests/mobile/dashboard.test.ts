@@ -615,6 +615,7 @@ describe("mobile dashboard model", () => {
       "medium",
       "high",
       "xhigh",
+      "max",
     ]);
     expect(MOBILE_ROUTER_STRATEGY_OPTIONS.map((option) => option.value)).toEqual([
       "weighted",
@@ -818,9 +819,16 @@ describe("mobile provider-aware reasoning gating", () => {
     expect(mobileSupportedReasoningEfforts("zai", "x").length).toBe(2);
   });
 
-  test("google yields Minimal..High plus default", () => {
+  test("MiniMax M3 uses provider-adaptive reasoning", () => {
+    expect(mobileSupportedReasoningEfforts("minimax", "MiniMax-M3")).toEqual([
+      { label: "Adaptive", value: "" },
+    ]);
+    expect(mobileReasoningLabel(null, "minimax-portal", "MiniMax-M3")).toBe("Adaptive");
+  });
+
+  test("google yields documented model effort levels plus default", () => {
     const options = mobileSupportedReasoningEfforts("google", "gemini-2.5-pro");
-    expect(options.map((o) => o.value)).toEqual(["", "minimal", "low", "medium", "high"]);
+    expect(options.map((o) => o.value)).toEqual(["", "low", "medium", "high"]);
   });
 
   test("codex models exclude Minimal and add Max", () => {
@@ -861,13 +869,13 @@ describe("mobile provider-aware reasoning gating", () => {
     expect(mobileSupportsXHighReasoning("openai", "gpt-5.1")).toBe(false);
     expect(mobileSupportsXHighReasoning("google", "gemini-2.5-pro")).toBe(false);
     const openai = mobileSupportedReasoningEfforts("openai", "gpt-5.4");
-    expect(openai[openai.length - 1]).toEqual({ label: "Max", value: "xhigh" });
+    expect(openai[openai.length - 1]).toEqual({ label: "Extra High", value: "xhigh" });
   });
 
   test("mobileReasoningLabel maps efforts to labels", () => {
     expect(mobileReasoningLabel(null)).toBe("Default");
     expect(mobileReasoningLabel("high", "google", "gemini-2.5-pro")).toBe("High");
-    expect(mobileReasoningLabel("xhigh", "openai", "gpt-5.2")).toBe("Max");
+    expect(mobileReasoningLabel("xhigh", "openai", "gpt-5.2")).toBe("Extra High");
     expect(mobileReasoningLabel("medium", "z.ai", "glm-5.2")).toBe("Thinking");
   });
 });

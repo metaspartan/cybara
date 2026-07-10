@@ -484,6 +484,7 @@ const routes: Record<string, RouteHandler> = {
       model: agent.model,
       provider: agent.provider,
       provider_id: agent.provider_id,
+      provider_type: agent.provider_type,
       fallback_provider_id: agent.fallback_provider_id,
       status: agent.status,
       reasoning_effort: readAgentReasoningSetting(agent.config),
@@ -2456,7 +2457,9 @@ const routes: Record<string, RouteHandler> = {
         messageContent,
         messageTimestamp,
       });
-      const sanitizedMessages = sanitizeSessionMessages(reverted.messages).map((m) => ({
+      const sanitizedMessages = sanitizeSessionMessages(
+        reverted.messages.filter((message) => message.role !== "system")
+      ).map((m) => ({
         ...m,
         timestamp: normalizeTimestamp(m.timestamp),
       }));

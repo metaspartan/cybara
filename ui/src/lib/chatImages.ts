@@ -1,5 +1,5 @@
-import type { ChatImageAttachment } from "@/types";
 import { appendApiTokenParam } from "@/lib/auth";
+import type { ChatImageAttachment } from "@/types";
 
 export const MAX_CHAT_IMAGES = 8;
 export const MAX_CHAT_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -36,6 +36,18 @@ export function screenshotMediaSrc(filePath: string): string {
   const base = filePath.split(/[\\/]/).pop() || "";
   if (!base) return "";
   return appendApiTokenParam(`/api/media?path=${encodeURIComponent(`screenshots/${base}`)}`);
+}
+
+export function chatMarkdownImageSrc(source: string): string | null {
+  if (/^(https?:|data:image\/)/i.test(source)) return source;
+  if (!source.toLowerCase().startsWith("file://")) return null;
+  try {
+    const path = decodeURIComponent(new URL(source).pathname);
+    if (!/\/screenshots\/[^/]+$/i.test(path) || !IMAGE_EXTENSION.test(path)) return null;
+    return screenshotMediaSrc(path);
+  } catch {
+    return null;
+  }
 }
 
 export const MAX_TEXT_FILE_BYTES = 256 * 1024;

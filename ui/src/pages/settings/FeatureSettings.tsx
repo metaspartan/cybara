@@ -519,7 +519,8 @@ export function FeatureSettings() {
                 { value: "low", label: "Low" },
                 { value: "medium", label: "Medium" },
                 { value: "high", label: "High" },
-                { value: "xhigh", label: "Max" },
+                { value: "xhigh", label: "Extra High" },
+                { value: "max", label: "Max" },
               ]}
               disabled={loading || savingReasoningEffort}
             />

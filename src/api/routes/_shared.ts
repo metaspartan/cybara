@@ -12,6 +12,7 @@ import { sanitizeTodoToolResult } from "../../core/session-plan";
 import type { ChatMessage } from "../chat";
 import type { WalletChain, WalletTokenChain } from "../../core/wallet";
 import { sanitizeAssistantContent } from "../../core/llm/text-tool-calls";
+import { sanitizeProcessThoughtText } from "../chat-formatting";
 import {
   providerManager,
   providers,
@@ -933,7 +934,8 @@ export function sanitizeProcessActivities(
       entry.phase === "blocked"
         ? entry.phase
         : "result";
-    const text = typeof entry.text === "string" ? entry.text.trim() : "";
+    const rawText = typeof entry.text === "string" ? entry.text.trim() : "";
+    const text = entry.toolName === "__thought" ? sanitizeProcessThoughtText(rawText) : rawText;
     if (!text) continue;
     const timestamp =
       typeof entry.timestamp === "number" && Number.isFinite(entry.timestamp)

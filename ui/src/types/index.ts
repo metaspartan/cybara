@@ -5,6 +5,7 @@ export interface Agent {
   model: string;
   provider: string;
   provider_id?: string;
+  provider_type?: string;
   fallback_provider_id?: string;
   type?: string;
   status?: "active" | "inactive" | "idle" | "running" | "stopped";
@@ -14,7 +15,7 @@ export interface Agent {
   maxTokens?: number;
   max_tokens?: number;
   tools?: string[];
-  config?: Record<string, unknown>;
+  config?: Record<string, unknown> | string;
   createdAt?: string;
   created_at?: string;
   updatedAt?: string;
@@ -27,12 +28,13 @@ export interface AgentSummary {
   model?: string;
   provider?: string;
   provider_id?: string;
+  provider_type?: string;
   fallback_provider_id?: string;
   status?: Agent["status"];
   reasoning_effort?: AgentReasoningEffort | null;
 }
 
-export type AgentReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+export type AgentReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface AgentMessage {
   role: "user" | "assistant" | "system" | "tool";

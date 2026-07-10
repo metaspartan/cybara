@@ -4,6 +4,7 @@ import { join } from "path";
 import {
   applyLiveActivityEvent,
   buildPreSteeringActivityMessage,
+  isRawToolCallThought,
   pruneCanonicalizedLiveActivities,
   resolveDictationRuntime,
   resolveStatusSnapshotActivities,
@@ -15,6 +16,21 @@ const chatSourcePath = join(process.cwd(), "ui", "src", "pages", "Chat.tsx");
 const chatModelPath = join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts");
 
 describe("Chat live activity persistence", () => {
+  test("hides provider tool-call envelopes that arrive as thought activity", () => {
+    expect(
+      isRawToolCallThought({
+        toolName: "__thought",
+        text: "<read><file>/tmp/provider-tool-result.txt</file></read>",
+      })
+    ).toBe(true);
+    expect(
+      isRawToolCallThought({
+        toolName: "__thought",
+        text: "Inspecting the repository structure.",
+      })
+    ).toBe(false);
+  });
+
   test("keeps a dedicated run activity buffer for post-completion rendering", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
     expect(source).toContain("const runActivityBufferRef = useRef<LiveActivityItem[]>([])");

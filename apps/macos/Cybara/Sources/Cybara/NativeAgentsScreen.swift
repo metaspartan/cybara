@@ -15,11 +15,15 @@ let nativeReasoningEfforts: [(value: String, label: String)] = [
     ("low", "Low"),
     ("medium", "Medium"),
     ("high", "High"),
-    ("xhigh", "Max"),
+    ("xhigh", "Extra High"),
+    ("max", "Max"),
 ]
 
 private let nativeBinaryThinkingProviders: Set<String> = [
     "z.ai", "z.ai-coding", "zai", "z-ai", "qwen-portal",
+]
+private let nativeAdaptiveThinkingProviders: Set<String> = [
+    "minimax", "minimax-cn", "minimax-portal", "minimax-portal-cn",
 ]
 
 private let nativeEffortLabels: [String: String] = [
@@ -27,20 +31,25 @@ private let nativeEffortLabels: [String: String] = [
     "low": "Low",
     "medium": "Medium",
     "high": "High",
-    "xhigh": "Max",
+    "xhigh": "Extra High",
+    "max": "Max",
 ]
 
 private let nativeGPT5Efforts = ["minimal", "low", "medium", "high"]
 private let nativeGPT51Efforts = ["low", "medium", "high"]
 private let nativeGPT52Efforts = ["low", "medium", "high", "xhigh"]
+private let nativeGPT56Efforts = ["low", "medium", "high", "xhigh", "max"]
 private let nativeGPTCodexEfforts = ["low", "medium", "high", "xhigh"]
 private let nativeGPTCodexMiniEfforts = ["medium"]
 private let nativeGPTCodexMaxEfforts = ["medium", "high", "xhigh"]
 private let nativeGPTProEfforts = ["medium", "high", "xhigh"]
 private let nativeGPT5ProEfforts = ["high"]
 private let nativeGenericOpenAIEfforts = ["low", "medium", "high"]
-private let nativeAnthropicEfforts = ["minimal", "low", "medium", "high", "xhigh"]
-private let nativeGoogleEfforts = ["minimal", "low", "medium", "high"]
+private let nativeAnthropicLegacyEfforts = ["minimal", "low", "medium", "high"]
+private let nativeAnthropic46Efforts = ["low", "medium", "high", "max"]
+private let nativeAnthropicModernEfforts = ["low", "medium", "high", "xhigh", "max"]
+private let nativeGoogleEfforts = ["low", "medium", "high"]
+private let nativeGoogleProEfforts = ["low", "high"]
 
 private func nativeNormalizeModelId(_ id: String?) -> String {
     var model = (id ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -54,6 +63,9 @@ private func nativeNormalizeModelId(_ id: String?) -> String {
 }
 
 private func nativeResolveOpenAIModelEfforts(_ modelId: String) -> [String] {
+    if modelId.range(of: #"^gpt-5\.6(?:-|$)"#, options: .regularExpression) != nil {
+        return nativeGPT56Efforts
+    }
     if modelId == "gpt-5.1-codex-mini" { return nativeGPTCodexMiniEfforts }
     if modelId == "gpt-5.1-codex-max" { return nativeGPTCodexMaxEfforts }
     if modelId.range(of: #"^gpt-5(?:\.\d+)?-codex(?:-|$)"#, options: .regularExpression) != nil {
@@ -75,6 +87,20 @@ private func nativeResolveOpenAIModelEfforts(_ modelId: String) -> [String] {
     return nativeGenericOpenAIEfforts
 }
 
+private func nativeResolveAnthropicEfforts(_ modelId: String) -> [String] {
+    if !modelId.contains("claude") { return nativeAnthropicLegacyEfforts }
+    if modelId.range(of: #"claude-(?:opus|sonnet)-4[-.]6(?:-|$)"#, options: .regularExpression) != nil {
+        return nativeAnthropic46Efforts
+    }
+    if modelId.range(
+        of: #"claude-(?:3|opus-4[-.][0-5]|sonnet-4[-.][0-5]|haiku-4[-.]5)(?:-|$)"#,
+        options: .regularExpression
+    ) != nil {
+        return nativeAnthropicLegacyEfforts
+    }
+    return nativeAnthropicModernEfforts
+}
+
 private func nativeSupportedEfforts(provider: String?, model: String?) -> [String] {
     let providerId = (provider ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     if nativeBinaryThinkingProviders.contains(providerId) {
@@ -82,9 +108,12 @@ private func nativeSupportedEfforts(provider: String?, model: String?) -> [Strin
     }
     let modelId = nativeNormalizeModelId(model)
     if providerId == "anthropic" || providerId == "anthropic_vertex" {
-        return nativeAnthropicEfforts
+        return nativeResolveAnthropicEfforts(modelId)
     }
     if providerId == "google" || providerId == "google_vertex" {
+        if modelId.range(of: #"^gemini-3(?:\.1)?-.*pro"#, options: .regularExpression) != nil {
+            return nativeGoogleProEfforts
+        }
         return nativeGoogleEfforts
     }
     if providerId == "openai" || providerId == "openai-codex"
@@ -100,6 +129,11 @@ func nativeSupportsXHighReasoning(provider: String?, model: String?) -> Bool {
 
 func nativeSupportedReasoningEfforts(provider: String?, model: String?) -> [(value: String, label: String)] {
     let providerId = (provider ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let modelId = nativeNormalizeModelId(model)
+    if nativeAdaptiveThinkingProviders.contains(providerId),
+       modelId.range(of: #"^minimax-m3(?:[.-]|$)"#, options: .regularExpression) != nil {
+        return [("", "Adaptive")]
+    }
     if nativeBinaryThinkingProviders.contains(providerId) {
         return [("", "Default"), ("medium", "Thinking")]
     }
@@ -268,7 +302,7 @@ struct AgentsScreen: View {
                     .font(.system(size: 12, design: .rounded))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                Text("Reasoning · \(nativeReasoningLabel(effort: agent.reasoningEffort, provider: agent.providerID, model: agent.model))")
+                Text("Reasoning · \(nativeReasoningLabel(effort: agent.reasoningEffort, provider: agent.providerType ?? agent.providerID, model: agent.model))")
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.tertiary)
             }
@@ -348,6 +382,10 @@ private struct AgentEditorSheet: View {
     @State private var saving = false
     @State private var error: String?
 
+    private var selectedProviderType: String {
+        providers.first { $0.id == providerID }?.provider ?? providerID
+    }
+
     init(
         client: GatewayClient,
         agent: GatewayAgent? = nil,
@@ -392,18 +430,18 @@ private struct AgentEditorSheet: View {
                 }
                 TextField("Model", text: $model)
                 Picker("Reasoning effort", selection: $reasoningEffort) {
-                    ForEach(nativeSupportedReasoningEfforts(provider: providerID, model: model), id: \.value) { option in
+                    ForEach(nativeSupportedReasoningEfforts(provider: selectedProviderType, model: model), id: \.value) { option in
                         Text(option.label).tag(option.value)
                     }
                 }
                 .onChange(of: providerID) { _, _ in
-                    if !nativeSupportedReasoningEfforts(provider: providerID, model: model)
+                    if !nativeSupportedReasoningEfforts(provider: selectedProviderType, model: model)
                         .contains(where: { $0.value == reasoningEffort }) {
                         reasoningEffort = ""
                     }
                 }
                 .onChange(of: model) { _, _ in
-                    if !nativeSupportedReasoningEfforts(provider: providerID, model: model)
+                    if !nativeSupportedReasoningEfforts(provider: selectedProviderType, model: model)
                         .contains(where: { $0.value == reasoningEffort }) {
                         reasoningEffort = ""
                     }

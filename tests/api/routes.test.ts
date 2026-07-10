@@ -778,6 +778,12 @@ describe("Agents API", () => {
     const fetched = await api("GET", `/api/agents/${created.data.id}`);
     expect(fetched.status).toBe(200);
     expect(fetched.data.provider).toBe(providerId);
+    expect(fetched.data.provider_type).toBe("openai");
+
+    const summary = await api("GET", "/api/agents/summary");
+    const summarized = summary.data.find((agent: { id: string }) => agent.id === created.data.id);
+    expect(summarized?.provider_id).toBe(providerId);
+    expect(summarized?.provider_type).toBe("openai");
 
     const missingProviderAgent = await api("POST", "/api/agents", {
       name: `missing-provider-agent-${Date.now()}`,

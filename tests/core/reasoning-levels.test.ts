@@ -22,7 +22,7 @@ describe("reasoning level support matrix", () => {
     expect(supportsXHighReasoning("openai", "gpt-5.1")).toBe(false);
   });
 
-  test("openai gpt-5.2+ supports xhigh and drops minimal", () => {
+  test("openai gpt-5.2 through 5.5 supports xhigh and drops minimal", () => {
     expect(supportedReasoningEfforts("openai", "gpt-5.2")).toEqual([
       "low",
       "medium",
@@ -31,6 +31,16 @@ describe("reasoning level support matrix", () => {
     ]);
     expect(supportsXHighReasoning("openai", "gpt-5.4")).toBe(true);
     expect(supportsXHighReasoning("openai", "gpt-5.6-sol")).toBe(true);
+  });
+
+  test("openai gpt-5.6 keeps xhigh and adds a distinct max tier", () => {
+    expect(supportedReasoningEfforts("openai", "gpt-5.6-sol")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "xhigh",
+      "max",
+    ]);
   });
 
   test("codex models expose low..xhigh and reject minimal", () => {
@@ -66,30 +76,40 @@ describe("reasoning level support matrix", () => {
     expect(supportedReasoningEfforts("openai", "gpt-5.2-pro")).toEqual(["medium", "high", "xhigh"]);
   });
 
-  test("anthropic supports the full ladder including xhigh", () => {
+  test("anthropic uses model-specific adaptive effort ladders", () => {
     expect(supportedReasoningEfforts("anthropic", "claude-opus-4-8")).toEqual([
-      "minimal",
       "low",
       "medium",
       "high",
       "xhigh",
+      "max",
     ]);
-    expect(supportedReasoningEfforts("anthropic_vertex", "claude-sonnet-4-6")).toContain("xhigh");
+    expect(supportedReasoningEfforts("anthropic_vertex", "claude-sonnet-4-6")).toEqual([
+      "low",
+      "medium",
+      "high",
+      "max",
+    ]);
   });
 
   test("google caps at high", () => {
     expect(supportedReasoningEfforts("google", "gemini-3-pro-preview")).not.toContain("xhigh");
     expect(supportedReasoningEfforts("google", "gemini-2.5-pro")).toEqual([
-      "minimal",
       "low",
       "medium",
       "high",
     ]);
+    expect(supportedReasoningEfforts("google", "gemini-3.1-pro-preview")).toEqual(["low", "high"]);
   });
 
   test("z.ai is binary thinking", () => {
     expect(supportedReasoningEfforts("z.ai", "glm-5.2")).toEqual(["medium"]);
     expect(supportedReasoningEfforts("z.ai-coding", "glm-5.2")).toEqual(["medium"]);
+  });
+
+  test("MiniMax M3 keeps provider-adaptive reasoning", () => {
+    expect(supportedReasoningEfforts("minimax", "MiniMax-M3")).toEqual([]);
+    expect(supportedReasoningEfforts("minimax-portal", "minimax-m3")).toEqual([]);
   });
 
   test("unknown openai model gets low/medium/high", () => {
@@ -148,18 +168,18 @@ describe("coerceReasoningEffort downgrades gracefully", () => {
 
   test("supported levels are untouched", () => {
     expect(coerceReasoningEffort("medium", "openai", "gpt-5.1")).toBe("medium");
-    expect(coerceReasoningEffort("minimal", "google", "gemini-2.5-flash")).toBe("minimal");
+    expect(coerceReasoningEffort("minimal", "google", "gemini-2.5-flash")).toBe("low");
   });
 });
 
 describe("normalizeReasoningEffort aliases", () => {
-  test("extra high, ultra, ultrathink, ultracode and max map to xhigh", () => {
+  test("extra high maps to xhigh while max aliases remain a distinct maximum", () => {
     expect(normalizeReasoningEffort("extra high")).toBe("xhigh");
     expect(normalizeReasoningEffort("Extra-High")).toBe("xhigh");
-    expect(normalizeReasoningEffort("ultra")).toBe("xhigh");
-    expect(normalizeReasoningEffort("ultrathink")).toBe("xhigh");
-    expect(normalizeReasoningEffort("ultracode")).toBe("xhigh");
-    expect(normalizeReasoningEffort("max")).toBe("xhigh");
+    expect(normalizeReasoningEffort("ultra")).toBe("max");
+    expect(normalizeReasoningEffort("ultrathink")).toBe("max");
+    expect(normalizeReasoningEffort("ultracode")).toBe("max");
+    expect(normalizeReasoningEffort("max")).toBe("max");
   });
 
   test("min maps to minimal and off maps to null", () => {

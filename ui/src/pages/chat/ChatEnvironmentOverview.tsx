@@ -6,6 +6,7 @@ import type { SessionContextUsage, SessionTokenUsage } from "@/types";
 import { formatWorkspaceLabel, type FileChangeSummary, type SessionPlanView } from "./chatModel";
 import { GitBranchSelector, type GitBranchOption } from "./GitBranchSelector";
 import { PlanSummaryCard } from "./PlanSummaryCard";
+import { chatWorkspaceTabLabel, type ChatWorkspaceTab } from "./ChatWorkspacePanel";
 
 function EnvironmentSection({ children, title }: { children: ReactNode; title: string }) {
   return (
@@ -55,6 +56,8 @@ export function ChatEnvironmentOverview({
   onCreateGitBranch,
   onRefreshGitBranches,
   onSwitchGitBranch,
+  onOpenWorkspaceTab,
+  previewTabs,
   sessionId,
   subagents,
   tokenUsage,
@@ -74,6 +77,8 @@ export function ChatEnvironmentOverview({
   onCreateGitBranch: (branch: string) => Promise<void> | void;
   onRefreshGitBranches: () => Promise<void> | void;
   onSwitchGitBranch: (branch: string) => Promise<void> | void;
+  onOpenWorkspaceTab: (tab: ChatWorkspaceTab) => void;
+  previewTabs: ChatWorkspaceTab[];
   sessionId: string | null;
   subagents: Subagent[];
   tokenUsage: SessionTokenUsage | null;
@@ -213,6 +218,26 @@ export function ChatEnvironmentOverview({
             <div className="text-[12px] text-gray-500">No active subagents</div>
           )}
         </EnvironmentSection>
+
+        {previewTabs.length > 0 && (
+          <EnvironmentSection title="Preview">
+            <div className="grid grid-cols-2 gap-1.5">
+              {previewTabs.map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  className="rounded-md bg-white/[0.04] px-2 py-1.5 text-left text-[11px] text-gray-400 hover:bg-white/[0.08] hover:text-gray-200"
+                  onClick={() => {
+                    onOpenWorkspaceTab(tab);
+                    onClose();
+                  }}
+                >
+                  {chatWorkspaceTabLabel(tab)}
+                </button>
+              ))}
+            </div>
+          </EnvironmentSection>
+        )}
 
         <EnvironmentSection title="Sources">
           {toolNames.length > 0 ? (

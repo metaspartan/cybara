@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { config } from "../../src/core/config";
 import {
-  handleBrowser,
   handleWebFetch,
   validateBrowserNavigationUrl,
 } from "../../src/core/tools/handlers/browser";
 import { handleWebSearch } from "../../src/core/tools/handlers/web-search";
-import { config } from "../../src/core/config";
 
 const originalFetch = globalThis.fetch;
 const originalBraveApiKey = process.env.BRAVE_API_KEY;
@@ -50,10 +49,16 @@ describe("Web tool URL allowlist policy", () => {
     expect(called).toBe(false);
   });
 
-  test("browser navigation uses the same private-host and allowlist policy", async () => {
-    await expect(validateBrowserNavigationUrl("http://localhost:4269/api/config")).rejects.toThrow(
-      "Navigation blocked"
+  test("browser navigation allows HTTP/S destinations but requests remain restricted", async () => {
+    await expect(validateBrowserNavigationUrl("localhost:4269/api/config")).resolves.toBe(
+      "http://localhost:4269/api/config"
     );
+    await expect(validateBrowserNavigationUrl("http://localhost:4269/api/config")).resolves.toBe(
+      "http://localhost:4269/api/config"
+    );
+    await expect(
+      validateBrowserNavigationUrl("http://localhost:4269/api/config", "Request")
+    ).rejects.toThrow("Request blocked");
 
     config.setWebToolUrlPolicy({
       enabled: true,
@@ -61,22 +66,24 @@ describe("Web tool URL allowlist policy", () => {
       search_result_allowlist: [],
     });
 
-    await expect(validateBrowserNavigationUrl("https://blocked.example/path")).rejects.toThrow(
-      "not allowlisted for web_fetch"
+    await expect(validateBrowserNavigationUrl("https://blocked.example/path")).resolves.toBe(
+      "https://blocked.example/path"
     );
     await expect(
-      validateBrowserNavigationUrl("https://allowed.example/path")
-    ).resolves.toBeUndefined();
+      validateBrowserNavigationUrl("https://blocked.example/path", "Request")
+    ).rejects.toThrow("not allowlisted for web_fetch");
+    await expect(
+      validateBrowserNavigationUrl("https://allowed.example/path", "Request")
+    ).resolves.toBe("https://allowed.example/path");
   });
 
-  test("browser openProfileTab blocks private hosts before opening a profile page", async () => {
+  test("browser navigation permits private LAN pages without weakening web requests", async () => {
+    await expect(validateBrowserNavigationUrl("192.168.1.73:4269/status")).resolves.toBe(
+      "http://192.168.1.73:4269/status"
+    );
     await expect(
-      handleBrowser({
-        action: "openProfileTab",
-        profile: "qa-profile",
-        url: "http://127.0.0.1:4269/api/config",
-      })
-    ).rejects.toThrow("Navigation blocked");
+      validateBrowserNavigationUrl("http://192.168.1.73:4269/status", "Request")
+    ).rejects.toThrow("Request blocked");
   });
 
   test("allows web_fetch for allowlisted hosts", async () => {

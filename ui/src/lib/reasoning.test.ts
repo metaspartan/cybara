@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+  parseAgentConfig,
+  readAgentReasoningEffort,
   supportedReasoningOptions,
   supportsXHighReasoning,
   reasoningEffortLabel,
@@ -46,10 +48,17 @@ describe("supportedReasoningOptions per-model matrix", () => {
     expect(supportedReasoningOptions("qwen-portal", "x").length).toBe(2);
   });
 
+  test("MiniMax M3 follows provider-adaptive reasoning", () => {
+    expect(supportedReasoningOptions("minimax", "MiniMax-M3")).toEqual([
+      { value: "", label: "Adaptive" },
+    ]);
+    expect(reasoningEffortLabel(null, "minimax-portal", "MiniMax-M3")).toBe("Adaptive");
+  });
+
   test("codex models expose Low..Max and exclude Minimal", () => {
     const codex = supportedReasoningOptions("openai", "gpt-5.3-codex");
     expect(codex.map((o) => o.value)).toEqual(["", "low", "medium", "high", "xhigh"]);
-    expect(codex[codex.length - 1]).toEqual({ value: "xhigh", label: "Max" });
+    expect(codex[codex.length - 1]).toEqual({ value: "xhigh", label: "Extra High" });
   });
 
   test("gpt-5.2+ excludes Minimal and adds Max", () => {
@@ -95,26 +104,18 @@ describe("supportedReasoningOptions per-model matrix", () => {
     ]);
   });
 
-  test("google yields Minimal..High plus default", () => {
+  test("google yields documented levels plus default", () => {
     expect(supportedReasoningOptions("google", "gemini-2.5-pro").map((o) => o.value)).toEqual([
       "",
-      "minimal",
       "low",
       "medium",
       "high",
     ]);
   });
 
-  test("anthropic yields the full ladder including Max", () => {
+  test("modern anthropic models expose Extra High and Max", () => {
     const anthropic = supportedReasoningOptions("anthropic", "claude-opus-4");
-    expect(anthropic.map((o) => o.value)).toEqual([
-      "",
-      "minimal",
-      "low",
-      "medium",
-      "high",
-      "xhigh",
-    ]);
+    expect(anthropic.map((o) => o.value)).toEqual(["", "low", "medium", "high", "xhigh", "max"]);
   });
 
   test("unknown provider gets Default/Low/Medium/High", () => {
@@ -134,9 +135,8 @@ describe("reasoningEffortLabel", () => {
   });
 
   test("maps known efforts to labels", () => {
-    expect(reasoningEffortLabel("minimal", "google", "gemini-2.5-pro")).toBe("Minimal");
     expect(reasoningEffortLabel("high", "google", "gemini-2.5-pro")).toBe("High");
-    expect(reasoningEffortLabel("xhigh", "openai", "gpt-5.2")).toBe("Max");
+    expect(reasoningEffortLabel("xhigh", "openai", "gpt-5.2")).toBe("Extra High");
   });
 
   test("unknown effort falls back to Default", () => {
@@ -145,5 +145,18 @@ describe("reasoningEffortLabel", () => {
 
   test("binary provider labels medium as Thinking", () => {
     expect(reasoningEffortLabel("medium", "z.ai", "glm-5.2")).toBe("Thinking");
+  });
+});
+
+describe("agent reasoning persistence", () => {
+  test("reads snake-case effort from serialized SQLite JSON", () => {
+    const config = JSON.stringify({ model_params: { reasoning_effort: "high" } });
+    expect(readAgentReasoningEffort(config)).toBe("high");
+    expect(parseAgentConfig(config)).toEqual({ model_params: { reasoning_effort: "high" } });
+  });
+
+  test("reads camel-case legacy values and rejects malformed JSON", () => {
+    expect(readAgentReasoningEffort({ modelParams: { reasoningEffort: "max" } })).toBe("max");
+    expect(readAgentReasoningEffort("{broken")).toBeNull();
   });
 });

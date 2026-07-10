@@ -90,8 +90,14 @@ export function useUpdateAgentReasoning() {
         queryClient.setQueryData(["agents", "summary"], context.previous);
       }
     },
+    onSuccess: (effort, { id }) => {
+      queryClient.setQueryData<AgentSummary[]>(["agents", "summary"], (current = []) =>
+        current.map((agent) => (agent.id === id ? { ...agent, reasoning_effort: effort } : agent))
+      );
+    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["agents"] });
+      queryClient.invalidateQueries({ queryKey: ["agents", "summary"] });
     },
   });
 }

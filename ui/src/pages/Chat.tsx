@@ -1,69 +1,70 @@
 import {
-  useState,
-  useRef,
-  useEffect,
-  useCallback,
-  useMemo,
-  isValidElement,
-  type ComponentPropsWithoutRef,
-  type KeyboardEvent,
-} from "react";
-import { useNavigate } from "react-router-dom";
-import {
-  User,
-  Trash2,
-  Sparkles,
+  AlertTriangle,
+  ArrowDown,
+  ArrowLeft,
+  Check,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Plus,
-  Square,
-  Loader2,
-  MessageSquare,
-  Pencil,
-  X,
-  CheckCircle2,
-  AlertTriangle,
+  CircleHelp,
   Copy,
-  Check,
-  RotateCcw,
   FileText,
   Folder,
   FolderOpen,
-  ArrowLeft,
-  ArrowDown,
+  GripVertical,
+  Loader2,
+  MessageSquare,
   Mic,
   MicOff,
-  CircleHelp,
-  ShieldAlert,
-  GripVertical,
+  PanelRightOpen,
   Paperclip,
+  Pencil,
+  Plus,
+  RotateCcw,
+  ShieldAlert,
   SlidersHorizontal,
+  Sparkles,
+  Square,
+  Trash2,
+  User,
+  X,
 } from "lucide-react";
 import { Highlight, themes } from "prism-react-renderer";
+import {
+  type ComponentPropsWithoutRef,
+  isValidElement,
+  type KeyboardEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import ReactMarkdown from "react-markdown";
+import { useNavigate } from "react-router-dom";
 import remarkGfm from "remark-gfm";
-import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
+import { EmbeddedTerminalPanel } from "@/components/ide/EmbeddedTerminalPanel";
+import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
+import { PageLayout } from "@/components/layout";
+import { Badge, Button, GlassCard, Input, Modal } from "@/components/ui";
 import {
   useAgentSummaries,
   useInfo,
-  useSubagents,
   useStopAgent,
+  useSubagents,
   useUpdateAgentReasoning,
 } from "@/hooks/useApi";
+import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
-import type {
-  Agent,
-  ChatImageAttachment,
-  ProviderPlanSnapshot,
-  ProviderPlanStatusResponse,
-  SessionContextUsage,
-  SessionTokenUsage,
-} from "@/types";
+import { apiFetch, appendApiTokenParam } from "@/lib/auth";
 import {
-  MAX_CHAT_IMAGES,
-  MAX_CHAT_IMAGE_BYTES,
-  MAX_TEXT_FILE_BYTES,
-  MAX_TEXT_FILES,
+  buildActivitiesFromToolCalls,
+  finalizeCompletedActivities,
+  type LiveActivityItem,
+  mergeActivityLists,
+} from "@/lib/chatActivities";
+import {
+  type ChatFileAttachment,
   chatImageSrc,
   fileToChatImage,
   fileToTextAttachment,
@@ -73,15 +74,14 @@ import {
   imageToolResultSrc,
   isSupportedImageType,
   isTextLikeFile,
+  MAX_CHAT_IMAGE_BYTES,
+  MAX_CHAT_IMAGES,
+  MAX_TEXT_FILE_BYTES,
+  MAX_TEXT_FILES,
   mediaSummaryLabel,
-  type ChatFileAttachment,
 } from "@/lib/chatImages";
-import { PageLayout } from "@/components/layout";
-import { GlassCard, Input, Badge, Modal, Button } from "@/components/ui";
-import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
-import { formatRelativeTime } from "@/lib/utils";
-import { useUIStore } from "@/stores/uiStore";
-import { appendApiTokenParam, apiFetch } from "@/lib/auth";
+import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
+import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
 import {
   connectStatusStream,
   type PendingChatMessage,
@@ -89,40 +89,38 @@ import {
   type StatusStreamStatusEvent,
   type StatusStreamTokenEvent,
 } from "@/lib/status-stream";
+import { formatRelativeTime } from "@/lib/utils";
+import { useUIStore } from "@/stores/uiStore";
+import type {
+  Agent,
+  ChatImageAttachment,
+  ProviderPlanSnapshot,
+  ProviderPlanStatusResponse,
+  SessionContextUsage,
+  SessionTokenUsage,
+} from "@/types";
+import { LiveActivityTimeline, ProcessActivityList } from "./chat/ActivityTimeline";
+import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
+import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
+import { ChatEnvironmentOverview } from "./chat/ChatEnvironmentOverview";
+import { ChatReasoningControl } from "./chat/ChatReasoningControl";
+import { ChatWorkspaceBrowser } from "./chat/ChatWorkspaceBrowser";
+import { ChatWorkspaceFiles } from "./chat/ChatWorkspaceFiles";
+import { ChatWorkspacePanel, type ChatWorkspaceTab } from "./chat/ChatWorkspacePanel";
 import {
-  buildActivitiesFromToolCalls,
-  finalizeCompletedActivities,
-  mergeActivityLists,
-  type LiveActivityItem,
-} from "@/lib/chatActivities";
-import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
-import {
-  clearCachedLiveSessionState,
-  readCachedLiveSessionState,
-  writeCachedLiveSessionState,
-} from "./chat/liveSessionState";
-import { writeCachedSessionMessages } from "./chat/messageCache";
-import {
-  createFileDiffSignature,
-  persistSeenFileDiffSignature,
-  readSeenFileDiffSignature,
-} from "./chat/fileDiffNotifications";
-import { SubagentPanel } from "./chat/SubagentPanel";
-import { SubagentIcon } from "./chat/SubagentIcon";
-import {
-  clearCachedOptimisticPendingMessages,
-  readCachedOptimisticPendingMessages,
-  writeCachedOptimisticPendingMessages,
-} from "./chat/pendingQueueCache";
-import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
-import {
-  getToolCallsInTimelineOrder,
-  DIFF_PANEL_MIN_WIDTH,
-  PENDING_CAPTURE_TIMEOUT_MS,
-  SESSION_ACTIVITY_STALE_MS,
+  type ArtifactSummaryView,
+  applyLiveActivityEvent,
+  buildPreSteeringActivityMessage,
+  type ChatMessage,
   clampDiffPanelWidth,
+  DIFF_PANEL_MIN_WIDTH,
+  type DictationMode,
+  type DictationRuntimeCapabilities,
   dedupeArtifactSummaries,
   extractFirstTargetLine,
+  extractLatestPlanFromMessages,
+  type FileChangeItem,
+  type FileChangeSummary,
   formatFilePathForDisplay,
   formatSandboxProviderLabel,
   formatToolIntent,
@@ -131,63 +129,70 @@ import {
   getLegacyMessageProcessKey,
   getMessageProcessActivities,
   getMessageProcessKey,
+  getToolCallsInTimelineOrder,
   inferArtifactSummaries,
   isGenericStatusLabel,
   isMeaningfulThoughtDetail,
-  isSessionPlanComplete,
   isRecord,
-  normalizeMessageProcessActivities,
+  isSessionPlanComplete,
   normalizeDictationMode,
+  normalizeMessageProcessActivities,
   normalizeSessionStatus,
   normalizeSnapshotActivities,
+  PENDING_CAPTURE_TIMEOUT_MS,
+  type PendingProcessCapture,
   persistDiffPanelWidth,
   persistMessageProcessMap,
   persistSessionId,
   persistWorkspaceDir,
   pruneCanonicalizedLiveActivities,
+  type RevertTarget,
   readPersistedDiffPanelWidth,
   readPersistedMessageProcessMap,
   readPersistedSessionId,
   readPersistedWorkspaceDir,
-  resolveStatusSnapshotActivities,
   resolveDictationRuntime,
   resolvePathForIde,
+  resolveStatusSnapshotActivities,
   resolveToolCallSandboxProvider,
-  extractLatestPlanFromMessages,
-  summarizeMessageFileChanges,
-  summarizeSessionFileChanges,
-  toLiveActivityItems,
-  tryParseJsonRecord,
-  applyLiveActivityEvent,
-  type ArtifactSummaryView,
-  buildPreSteeringActivityMessage,
-  type ChatMessage,
-  type DictationMode,
-  type DictationRuntimeCapabilities,
-  type FileChangeItem,
-  type FileChangeSummary,
-  type PendingProcessCapture,
-  type RevertTarget,
+  SESSION_ACTIVITY_STALE_MS,
   type SessionStatusResponse,
   type SessionStatusSnapshot,
   type SpeechRecognitionLike,
   type SpeechRecognitionWindow,
+  summarizeMessageFileChanges,
+  summarizeSessionFileChanges,
   type ToolCall,
+  toLiveActivityItems,
+  tryParseJsonRecord,
 } from "./chat/chatModel";
-import { LiveActivityTimeline, ProcessActivityList } from "./chat/ActivityTimeline";
-import { DiffCodeBlock, MessageContent } from "./chat/MessageContent";
-import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
-import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
-import { ChatReasoningControl } from "./chat/ChatReasoningControl";
-import { ChatEnvironmentOverview } from "./chat/ChatEnvironmentOverview";
 import { parseInitialChatRoute } from "./chat/chatRoute";
-import { WorkspaceOpenMenu } from "./chat/WorkspaceOpenMenu";
 import { FileChangesCard } from "./chat/FileChangesCard";
-import { GitBranchSelector, type GitBranchOption } from "./chat/GitBranchSelector";
+import {
+  createFileDiffSignature,
+  persistSeenFileDiffSignature,
+  readSeenFileDiffSignature,
+} from "./chat/fileDiffNotifications";
+import { type GitBranchOption, GitBranchSelector } from "./chat/GitBranchSelector";
+import {
+  clearCachedLiveSessionState,
+  readCachedLiveSessionState,
+  writeCachedLiveSessionState,
+} from "./chat/liveSessionState";
+import { DiffCodeBlock, MessageContent } from "./chat/MessageContent";
+import { writeCachedSessionMessages } from "./chat/messageCache";
 import { PlanSummaryCard } from "./chat/PlanSummaryCard";
+import {
+  clearCachedOptimisticPendingMessages,
+  readCachedOptimisticPendingMessages,
+  writeCachedOptimisticPendingMessages,
+} from "./chat/pendingQueueCache";
+import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
 import { SessionsPanel } from "./chat/SessionSidebar";
+import { SubagentIcon } from "./chat/SubagentIcon";
+import { SubagentPanel } from "./chat/SubagentPanel";
 import { useEnvironmentGitBranches } from "./chat/useEnvironmentGitBranches";
-import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
+import { WorkspaceOpenMenu } from "./chat/WorkspaceOpenMenu";
 
 type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
 
@@ -240,10 +245,8 @@ function ChatApprovalControls({
         onChange={(event) => onChange(normalizeToolApprovalMode(event.target.value))}
         title={`Tool approvals: ${toolApprovalModeLabel(mode)}`}
         className={cn(
-          "chat-approval-select h-7 max-w-[140px] appearance-none truncate rounded-full border border-transparent bg-transparent py-1 pl-7 pr-6 text-[11px] font-semibold outline-none transition-colors [color-scheme:dark] disabled:opacity-60",
-          isAskMode
-            ? "text-sky-300 hover:bg-sky-500/10 hover:text-sky-200 focus:bg-sky-500/10"
-            : "text-amber-300 hover:bg-amber-500/10 hover:text-amber-200 focus:bg-amber-500/10"
+          "chat-approval-select h-7 max-w-[140px] appearance-none truncate border-0 bg-transparent py-1 pl-7 pr-6 text-[11px] font-semibold outline-none ring-0 transition-colors [color-scheme:dark] focus:outline-none focus:ring-0 disabled:opacity-60",
+          isAskMode ? "text-sky-300 hover:text-sky-200" : "text-amber-300 hover:text-amber-200"
         )}
       >
         <option value="always_allow" className="bg-[#11131c] text-white">
@@ -948,6 +951,7 @@ function ArtifactViewerPanel({
 }
 
 function SessionDiffPanel({
+  embedded = false,
   isOpen,
   summary,
   selectedPath,
@@ -958,13 +962,14 @@ function SessionDiffPanel({
   onOpenInIDE,
   workspaceDir,
 }: {
+  embedded?: boolean;
   isOpen: boolean;
   summary: FileChangeSummary | null;
   selectedPath: string | null;
   onSelectPath: (path: string) => void;
   onClose: () => void;
   width: number;
-  onResizeStart: (event: React.MouseEvent<HTMLButtonElement>) => void;
+  onResizeStart: (event: React.MouseEvent<HTMLElement>) => void;
   onOpenInIDE: (file: FileChangeItem) => void;
   workspaceDir?: string | null;
 }) {
@@ -975,18 +980,23 @@ function SessionDiffPanel({
 
   return (
     <div
-      className="relative glass-strong border-l border-white/5 flex flex-col"
-      style={{ width: `${width}px`, minWidth: `${DIFF_PANEL_MIN_WIDTH}px` }}
+      className={cn(
+        "relative flex flex-col",
+        embedded ? "h-full w-full" : "glass-strong border-l border-white/5"
+      )}
+      style={embedded ? undefined : { width: `${width}px`, minWidth: `${DIFF_PANEL_MIN_WIDTH}px` }}
     >
-      <button
-        type="button"
-        onMouseDown={onResizeStart}
-        className="absolute left-0 top-0 h-full w-2 -translate-x-1/2 cursor-col-resize z-20 group"
-        title="Resize file diff panel"
-        aria-label="Resize file diff panel"
-      >
-        <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/10 transition-colors group-hover:bg-indigo-400/70" />
-      </button>
+      {!embedded && (
+        <button
+          type="button"
+          onMouseDown={onResizeStart}
+          className="absolute left-0 top-0 h-full w-2 -translate-x-1/2 cursor-col-resize z-20 group"
+          title="Resize file diff panel"
+          aria-label="Resize file diff panel"
+        >
+          <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/10 transition-colors group-hover:bg-indigo-400/70" />
+        </button>
+      )}
       <div className="px-3 py-2.5 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
         <div className="flex items-center gap-2">
           <FileText className="w-3.5 h-3.5 text-indigo-300" />
@@ -1008,13 +1018,15 @@ function SessionDiffPanel({
               <FolderOpen className="w-3.5 h-3.5" />
             </button>
           )}
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
-            title="Close file diff panel"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
+          {!embedded && (
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
+              title="Close file diff panel"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -1372,9 +1384,11 @@ export function Chat() {
     }, 1500);
   }, []);
   const [reverting, setReverting] = useState(false);
-  const [showSubagentPanel, setShowSubagentPanel] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(true);
-  const [showDiffPanel, setShowDiffPanel] = useState(false);
+  const [showWorkspacePanel, setShowWorkspacePanel] = useState(false);
+  const [workspaceTabs, setWorkspaceTabs] = useState<ChatWorkspaceTab[]>([]);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<ChatWorkspaceTab | null>(null);
+  const [workspaceBrowserTitle, setWorkspaceBrowserTitle] = useState("Browser");
   const [seenFileDiffSignature, setSeenFileDiffSignature] = useState<string | null>(() =>
     readSeenFileDiffSignature(sessionId)
   );
@@ -1500,6 +1514,29 @@ export function Chat() {
     persistSeenFileDiffSignature(sessionId, currentFileDiffSignature);
     setSeenFileDiffSignature(currentFileDiffSignature);
   }, [currentFileDiffSignature, sessionId]);
+  const openWorkspaceTab = useCallback(
+    (tab: ChatWorkspaceTab) => {
+      setWorkspaceTabs((current) => (current.includes(tab) ? current : [...current, tab]));
+      setActiveWorkspaceTab(tab);
+      setShowWorkspacePanel(true);
+      setShowEnvironmentOverview(false);
+      if (tab === "review") markCurrentFileDiffsSeen();
+    },
+    [markCurrentFileDiffsSeen]
+  );
+  const closeWorkspaceTab = useCallback(
+    (tab: ChatWorkspaceTab) => {
+      setWorkspaceTabs((current) => {
+        const index = current.indexOf(tab);
+        const next = current.filter((candidate) => candidate !== tab);
+        if (activeWorkspaceTab === tab) {
+          setActiveWorkspaceTab(next[Math.min(index, next.length - 1)] ?? null);
+        }
+        return next;
+      });
+    },
+    [activeWorkspaceTab]
+  );
   const currentSessionPlan = useMemo(
     () => extractLatestPlanFromMessages(typedMessages, sessionId),
     [typedMessages, sessionId]
@@ -1578,6 +1615,7 @@ export function Chat() {
         environmentGit.currentBranch || "no-branch",
         environmentSubagents.map((subagent) => `${subagent.id}:${subagent.status}`).join("|"),
         environmentToolNames.join("|"),
+        workspaceTabs.join("|"),
       ].join("\u0000"),
     [
       currentSessionPlanKey,
@@ -1586,13 +1624,15 @@ export function Chat() {
       environmentToolNames,
       sessionFileChanges,
       sessionId,
+      workspaceTabs,
     ]
   );
   const hasEnvironmentOverviewSignal =
     !!currentSessionPlan ||
     (sessionFileChanges && sessionFileChanges.files.length > 0) ||
     environmentSubagents.length > 0 ||
-    environmentToolNames.length > 0;
+    environmentToolNames.length > 0 ||
+    workspaceTabs.length > 0;
   const showEnvironmentOverviewDot =
     !!hasEnvironmentOverviewSignal &&
     !showEnvironmentOverview &&
@@ -1615,8 +1655,8 @@ export function Chat() {
   }, [sessionId]);
 
   useEffect(() => {
-    if (showDiffPanel) markCurrentFileDiffsSeen();
-  }, [markCurrentFileDiffsSeen, showDiffPanel]);
+    if (showWorkspacePanel && activeWorkspaceTab === "review") markCurrentFileDiffsSeen();
+  }, [activeWorkspaceTab, markCurrentFileDiffsSeen, showWorkspacePanel]);
 
   useEffect(() => {
     if (!workspaceDir) return;
@@ -3609,7 +3649,7 @@ export function Chat() {
   );
 
   const handleDiffPanelResizeStart = useCallback(
-    (event: React.MouseEvent<HTMLButtonElement>) => {
+    (event: React.MouseEvent<HTMLElement>) => {
       if (event.button !== 0) return;
       event.preventDefault();
       diffPanelResizeCleanupRef.current?.();
@@ -3907,14 +3947,13 @@ export function Chat() {
           <button
             aria-label="File diffs"
             onClick={() => {
-              const nextOpen = !showDiffPanel;
-              setShowDiffPanel(nextOpen);
-              setShowEnvironmentOverview(false);
-              if (nextOpen) markCurrentFileDiffsSeen();
+              openWorkspaceTab("review");
             }}
             className={cn(
               "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
-              showDiffPanel ? "text-indigo-300 bg-white/[0.04]" : "text-gray-500"
+              showWorkspacePanel && activeWorkspaceTab === "review"
+                ? "text-indigo-300 bg-white/[0.04]"
+                : "text-gray-500"
             )}
             title="File diffs"
           >
@@ -3929,8 +3968,6 @@ export function Chat() {
             aria-label="Environment overview"
             onClick={() => {
               setShowEnvironmentOverview((value) => !value);
-              setShowDiffPanel(false);
-              setShowSubagentPanel(false);
             }}
             className={cn(
               "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
@@ -3945,16 +3982,29 @@ export function Chat() {
           </button>
           <button
             onClick={() => {
-              setShowSubagentPanel(!showSubagentPanel);
-              setShowEnvironmentOverview(false);
+              openWorkspaceTab("subagents");
             }}
             className={cn(
               "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
-              showSubagentPanel ? "text-amber-400" : "text-gray-500"
+              showWorkspacePanel && activeWorkspaceTab === "subagents"
+                ? "text-amber-400"
+                : "text-gray-500"
             )}
             title="Subagents"
           >
             <SubagentIcon className="h-4 w-4" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowWorkspacePanel((value) => !value)}
+            className={cn(
+              "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
+              showWorkspacePanel ? "text-gray-200 bg-white/[0.04]" : "text-gray-500"
+            )}
+            title="Workspace panel"
+            aria-label="Workspace panel"
+          >
+            <PanelRightOpen className="h-4 w-4" />
           </button>
           <ChatEnvironmentOverview
             key={sessionId || "new-chat-environment"}
@@ -3971,6 +4021,10 @@ export function Chat() {
             onCreateGitBranch={environmentGit.createAndCheckout}
             onRefreshGitBranches={environmentGit.refresh}
             onSwitchGitBranch={environmentGit.checkout}
+            onOpenWorkspaceTab={openWorkspaceTab}
+            previewTabs={workspaceTabs.filter(
+              (tab) => tab === "browser" || tab === "terminal" || tab === "files"
+            )}
             sessionId={sessionId}
             subagents={environmentSubagents}
             tokenUsage={sessionTokenUsage}
@@ -4450,7 +4504,11 @@ export function Chat() {
                     />
                     <ChatReasoningControl
                       effort={activeAgentForPlan?.reasoning_effort}
-                      provider={activeAgentForPlan?.provider ?? activeAgentForPlan?.provider_id}
+                      provider={
+                        activeAgentForPlan?.provider_type ??
+                        activeAgentForPlan?.provider ??
+                        activeAgentForPlan?.provider_id
+                      }
                       model={activeAgentForPlan?.model}
                       disabled={useModelRouter || !activeAgentForPlan}
                       updating={updateAgentReasoning.isPending}
@@ -4534,54 +4592,103 @@ export function Chat() {
           )}
         </div>
 
-        {!artifactViewerTarget && showDiffPanel && (
-          <SessionDiffPanel
-            isOpen={showDiffPanel}
-            summary={sessionFileChanges}
-            selectedPath={selectedDiffPath}
-            onSelectPath={setSelectedDiffPath}
-            onClose={() => setShowDiffPanel(false)}
+        {!artifactViewerTarget && (
+          <ChatWorkspacePanel
+            activeTab={activeWorkspaceTab}
+            isOpen={showWorkspacePanel}
+            tabs={workspaceTabs}
             width={diffPanelWidth}
+            onClose={() => setShowWorkspacePanel(false)}
+            onCloseTab={closeWorkspaceTab}
+            onOpenTab={openWorkspaceTab}
             onResizeStart={handleDiffPanelResizeStart}
-            onOpenInIDE={handleOpenDiffFileInIde}
-            workspaceDir={effectiveWorkspaceDir}
-          />
-        )}
-
-        {!artifactViewerTarget && showSubagentPanel && (
-          <SubagentPanel
-            agentId={selectedAgentId || sessionAgentId || undefined}
-            isOpen={showSubagentPanel}
-            onClose={() => setShowSubagentPanel(false)}
-            sessionId={sessionId}
-            workspaceDir={effectiveWorkspaceDir}
-            onViewSession={async (sessionKey) => {
-              try {
-                const result = await loadSessionMutation.mutateAsync(sessionKey);
-                if (result?.messagesList) {
-                  activeSessionRef.current = sessionKey;
-                  setUseModelRouter(false);
-                  loadSession(
-                    sessionKey,
-                    result.messagesList as ChatMessage[],
-                    (result as { workspace_dir?: string | null }).workspace_dir || null
-                  );
-                  syncSessionAgentSelection(
-                    (result as { agent_id?: string | null }).agent_id || null
-                  );
-                  setSessionContextUsage(
-                    (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
-                  );
-                  setSessionTokenUsage(
-                    (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
-                  );
-                  setShowSubagentPanel(false);
-                }
-              } catch (error) {
-                console.error("Failed to load subagent session:", error);
-              }
+            onSelectTab={(tab) => {
+              setActiveWorkspaceTab(tab);
+              if (tab === "review") markCurrentFileDiffsSeen();
             }}
-          />
+            tabLabels={{ browser: workspaceBrowserTitle }}
+          >
+            {workspaceTabs.includes("review") && (
+              <div className={cn("h-full", activeWorkspaceTab !== "review" && "hidden")}>
+                <SessionDiffPanel
+                  embedded
+                  isOpen={activeWorkspaceTab === "review"}
+                  summary={sessionFileChanges}
+                  selectedPath={selectedDiffPath}
+                  onSelectPath={setSelectedDiffPath}
+                  onClose={() => closeWorkspaceTab("review")}
+                  width={diffPanelWidth}
+                  onResizeStart={handleDiffPanelResizeStart}
+                  onOpenInIDE={handleOpenDiffFileInIde}
+                  workspaceDir={effectiveWorkspaceDir}
+                />
+              </div>
+            )}
+            {workspaceTabs.includes("terminal") && (
+              <div className={cn("h-full", activeWorkspaceTab !== "terminal" && "hidden")}>
+                <EmbeddedTerminalPanel
+                  workspacePath={effectiveWorkspaceDir || "~"}
+                  visible={showWorkspacePanel && activeWorkspaceTab === "terminal"}
+                  createRequestToken={0}
+                  autoCreateOnVisible
+                />
+              </div>
+            )}
+            {workspaceTabs.includes("browser") && (
+              <div className={cn("h-full", activeWorkspaceTab !== "browser" && "hidden")}>
+                <ChatWorkspaceBrowser
+                  key={sessionId || "new-chat-browser"}
+                  visible={showWorkspacePanel && activeWorkspaceTab === "browser"}
+                  sessionId={sessionId}
+                  onTitleChange={setWorkspaceBrowserTitle}
+                />
+              </div>
+            )}
+            {workspaceTabs.includes("files") && (
+              <div className={cn("h-full", activeWorkspaceTab !== "files" && "hidden")}>
+                <ChatWorkspaceFiles workspaceDir={effectiveWorkspaceDir} />
+              </div>
+            )}
+            {workspaceTabs.includes("subagents") && (
+              <div className={cn("h-full", activeWorkspaceTab !== "subagents" && "hidden")}>
+                <SubagentPanel
+                  embedded
+                  agentId={selectedAgentId || sessionAgentId || undefined}
+                  isOpen={activeWorkspaceTab === "subagents"}
+                  onClose={() => closeWorkspaceTab("subagents")}
+                  sessionId={sessionId}
+                  workspaceDir={effectiveWorkspaceDir}
+                  onViewSession={async (sessionKey) => {
+                    try {
+                      const result = await loadSessionMutation.mutateAsync(sessionKey);
+                      if (result?.messagesList) {
+                        activeSessionRef.current = sessionKey;
+                        setUseModelRouter(false);
+                        loadSession(
+                          sessionKey,
+                          result.messagesList as ChatMessage[],
+                          (result as { workspace_dir?: string | null }).workspace_dir || null
+                        );
+                        syncSessionAgentSelection(
+                          (result as { agent_id?: string | null }).agent_id || null
+                        );
+                        setSessionContextUsage(
+                          (result as { contextUsage?: SessionContextUsage | null }).contextUsage ||
+                            null
+                        );
+                        setSessionTokenUsage(
+                          (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
+                        );
+                        setShowWorkspacePanel(false);
+                      }
+                    } catch (error) {
+                      console.error("Failed to load subagent session:", error);
+                    }
+                  }}
+                />
+              </div>
+            )}
+          </ChatWorkspacePanel>
         )}
 
         <Modal

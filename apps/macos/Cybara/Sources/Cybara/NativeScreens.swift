@@ -517,8 +517,8 @@ struct ChatScreen: View {
     @State private var reasoningDraftIndex = 0.0
     @State private var reasoningSaving = false
     @State private var showEnvironmentPopover = false
-    @State private var showSubagentsPopover = false
-    @State private var showFileDiffsPopover = false
+    @State private var showWorkspacePanel = false
+    @State private var activeWorkspaceTab = NativeChatWorkspaceTab.review
     @State private var subagents: [NativeSubagentSummary] = []
     @State private var subagentsLoading = false
     @State private var selectedSubagent: NativeSubagentSummary?
@@ -551,6 +551,10 @@ struct ChatScreen: View {
                 .frame(minWidth: 220, idealWidth: 260, maxWidth: 340)
             transcript
                 .frame(minWidth: 380, maxWidth: .infinity)
+            if showWorkspacePanel {
+                chatWorkspacePanel
+                    .frame(minWidth: 320, idealWidth: 460, maxWidth: 760)
+            }
         }
         .task {
             statusStream.start(baseURL: client.baseURL)
@@ -1022,14 +1026,12 @@ struct ChatScreen: View {
             workspaceOpenMenu
 
             Button {
-                showFileDiffsPopover.toggle()
+                activeWorkspaceTab = .review
+                showWorkspacePanel = true
             } label: {
                 Image(systemName: "doc.text.magnifyingglass")
             }
             .buttonStyle(.borderless)
-            .popover(isPresented: $showFileDiffsPopover, arrowEdge: .bottom) {
-                fileDiffsPopover
-            }
             .help("File changes")
 
             Button {
@@ -1053,16 +1055,30 @@ struct ChatScreen: View {
             .help("Environment overview")
 
             Button {
-                showSubagentsPopover.toggle()
+                activeWorkspaceTab = .subagents
+                showWorkspacePanel = true
                 Task { await loadSubagents() }
             } label: {
                 Image(systemName: "person.2.wave.2")
             }
             .buttonStyle(.borderless)
-            .popover(isPresented: $showSubagentsPopover, arrowEdge: .bottom) {
-                subagentsPopover
-            }
             .help("Subagents")
+
+            Menu {
+                ForEach(NativeChatWorkspaceTab.allCases) { tab in
+                    Button {
+                        activeWorkspaceTab = tab
+                        showWorkspacePanel = true
+                        if tab == .subagents { Task { await loadSubagents() } }
+                    } label: {
+                        Label(tab.label, systemImage: tab.systemImage)
+                    }
+                }
+            } label: {
+                Image(systemName: "sidebar.right")
+            }
+            .menuStyle(.borderlessButton)
+            .help("Workspace panel")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 13)
@@ -1283,14 +1299,14 @@ struct ChatScreen: View {
     private var activeReasoningEffortLabel: String {
         nativeReasoningLabel(
             effort: activeReasoningEffort,
-            provider: selectedChatAgent?.providerID,
+            provider: selectedChatAgent?.providerType ?? selectedChatAgent?.providerID,
             model: selectedChatAgent?.model
         )
     }
 
     private var composerReasoningEfforts: [(value: String, label: String)] {
         nativeSupportedReasoningEfforts(
-            provider: selectedChatAgent?.providerID,
+            provider: selectedChatAgent?.providerType ?? selectedChatAgent?.providerID,
             model: selectedChatAgent?.model
         )
     }
@@ -2158,6 +2174,32 @@ struct ChatScreen: View {
         .frame(width: 260, alignment: .center)
     }
 
+    private var chatWorkspacePanel: some View {
+        VStack(spacing: 0) {
+            NativeChatWorkspaceHeader(
+                selection: $activeWorkspaceTab,
+                onClose: { showWorkspacePanel = false }
+            )
+            Divider()
+            Group {
+                switch activeWorkspaceTab {
+                case .review:
+                    ScrollView { fileDiffsPopover }
+                case .terminal:
+                    TerminalScreen(client: client)
+                case .browser:
+                    NativeChatBrowserPanel(client: client, sessionID: selectedSessionID)
+                case .files:
+                    NativeChatFilesPanel(client: client, workspacePath: activeWorkspaceDir)
+                case .subagents:
+                    subagentsPopover
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(.regularMaterial)
+    }
+
     private var fileDiffsPopover: some View {
         let summary = activeFileChanges
         return VStack(alignment: .leading, spacing: 12) {
@@ -2333,6 +2375,18 @@ struct ChatScreen: View {
                             NativeSubagentCompactRow(subagent: subagent)
                         }
                     }
+                }
+            }
+
+            if showWorkspacePanel {
+                NativeEnvironmentSection(title: "Preview") {
+                    Button {
+                        showEnvironmentPopover = false
+                    } label: {
+                        Label(activeWorkspaceTab.label, systemImage: activeWorkspaceTab.systemImage)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
 

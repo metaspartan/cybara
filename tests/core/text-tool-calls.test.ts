@@ -28,6 +28,22 @@ describe("text-form tool call parsing", () => {
     expect(calls).toEqual([{ name: "calc", args: { expression: "sqrt(16)" } }]);
   });
 
+  test("extracts MiniMax direct XML tool blocks", () => {
+    const raw = [
+      "<read>",
+      "<file>/Users/carsen/.cybara/tool-results/session/snapshot.txt</file>",
+      "</read>",
+    ].join("\n");
+
+    expect(extractTextToolCalls(raw, new Set(["read"]))).toEqual([
+      {
+        name: "read",
+        args: { file: "/Users/carsen/.cybara/tool-results/session/snapshot.txt" },
+      },
+    ]);
+    expect(stripTextToolCallMarkup(raw)).toBe("");
+  });
+
   test("drops text-form calls for tools outside the allowed set", () => {
     const calls = extractTextToolCalls(
       '<function_calls><invoke name="browser"><parameter name="action">open</parameter></invoke></function_calls>',

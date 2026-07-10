@@ -4,6 +4,8 @@ import {
   openAICompatReasoningParams,
   anthropicThinkingBudget,
   googleThinkingBudget,
+  googleThinkingConfig,
+  usesAnthropicAdaptiveThinking,
 } from "../../src/core/llm/reasoning";
 
 describe("normalizeReasoningEffort", () => {
@@ -11,7 +13,7 @@ describe("normalizeReasoningEffort", () => {
     expect(normalizeReasoningEffort("high")).toBe("high");
     expect(normalizeReasoningEffort("LOW")).toBe("low");
     expect(normalizeReasoningEffort(" medium ")).toBe("medium");
-    expect(normalizeReasoningEffort("max")).toBe("xhigh");
+    expect(normalizeReasoningEffort("max")).toBe("max");
   });
 
   test("rejects off/none/garbage", () => {
@@ -27,6 +29,11 @@ describe("openAICompatReasoningParams (per-provider shapes)", () => {
   test("default OpenAI-style reasoning_effort", () => {
     expect(openAICompatReasoningParams("openai", "high")).toEqual({ reasoning_effort: "high" });
     expect(openAICompatReasoningParams("xai", "low")).toEqual({ reasoning_effort: "low" });
+  });
+
+  test("MiniMax M3 omits explicit reasoning effort", () => {
+    expect(openAICompatReasoningParams("minimax", "high", "MiniMax-M3")).toEqual({});
+    expect(openAICompatReasoningParams("minimax-portal", "medium", "MiniMax-M3")).toEqual({});
   });
 
   test("zai/qwen use enable_thinking", () => {
@@ -68,5 +75,24 @@ describe("thinking budgets", () => {
 
   test("google budget", () => {
     expect(googleThinkingBudget("medium")).toBe(8192);
+  });
+
+  test("google uses family-specific thinking levels", () => {
+    expect(googleThinkingConfig("medium", "gemini-3-flash-preview")).toEqual({
+      includeThoughts: true,
+      thinkingLevel: "medium",
+    });
+    expect(googleThinkingConfig("medium", "gemini-3.1-pro-preview")).toEqual({
+      includeThoughts: true,
+      thinkingLevel: "low",
+    });
+    expect(googleThinkingConfig("high", "gemini-2.5-pro")).toEqual({ includeThoughts: true });
+  });
+
+  test("anthropic adaptive mode follows model family", () => {
+    expect(usesAnthropicAdaptiveThinking("claude-sonnet-4-6")).toBe(true);
+    expect(usesAnthropicAdaptiveThinking("claude-opus-4-8")).toBe(true);
+    expect(usesAnthropicAdaptiveThinking("claude-sonnet-4-5")).toBe(false);
+    expect(usesAnthropicAdaptiveThinking("MiniMax-M2.7")).toBe(false);
   });
 });

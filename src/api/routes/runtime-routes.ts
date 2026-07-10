@@ -1,15 +1,20 @@
 import { agentManager } from "../../core/agent";
+import * as pwManager from "../../core/browser/pw-manager";
 import {
   getSandboxBrowserStatus,
   startSandboxBrowser,
   stopSandboxBrowser,
 } from "../../core/browser/sandbox-browser";
 import { tables } from "../../core/database";
-import { getSystemMonitorSnapshot } from "../../core/system-monitor";
-import { validateBrowserNavigationUrl } from "../../core/tools/handlers/browser";
-import * as pwManager from "../../core/browser/pw-manager";
-import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../../core/status";
 import { commandExists, isWindows } from "../../core/platform";
+import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../../core/status";
+import { getSystemMonitorSnapshot } from "../../core/system-monitor";
+import {
+  getBrowserPageIdForSession,
+  getOrCreateBrowserPageForSession,
+  releaseBrowserPage,
+  validateBrowserNavigationUrl,
+} from "../../core/tools/handlers/browser";
 import { isSessionStatusActive, type RouteHandler } from "./_shared";
 
 function quotePosix(value: string): string {
@@ -22,6 +27,15 @@ function quotePowerShell(value: string): string {
 
 function quoteCmd(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
+}
+
+function browserSessionId(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function browserViewportDimension(value: unknown, fallback: number, maximum: number): number {
+  const parsed = typeof value === "string" || typeof value === "number" ? Number(value) : NaN;
+  return Number.isFinite(parsed) ? Math.min(maximum, Math.max(320, Math.round(parsed))) : fallback;
 }
 
 function buildRestartCommand(argv: string[], cwd: string): string[] {
@@ -72,19 +86,29 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     await stopSandboxBrowser();
     return { success: true, status: getSandboxBrowserStatus() };
   },
-  "GET /api/browser/tabs": async () => {
+  "GET /api/browser/tabs": async (_body, params) => {
+    const sessionId = browserSessionId(params?.sessionId);
+    if (sessionId) {
+      const pageId = getBrowserPageIdForSession(sessionId);
+      if (!pageId) return { tabs: [] };
+      const tabs = await pwManager.getAllPages();
+      return { tabs: tabs.filter((tab) => tab.id === pageId) };
+    }
     const getAllPages = pwManager.getAllPages;
     return { tabs: await getAllPages() };
   },
-  "POST /api/browser/tabs": async () => {
-    const createPage = pwManager.createPage;
-    const id = await createPage();
+  "POST /api/browser/tabs": async (body) => {
+    const sessionId = browserSessionId((body as { sessionId?: unknown })?.sessionId);
+    const id = sessionId
+      ? await getOrCreateBrowserPageForSession(sessionId)
+      : await pwManager.createPage();
     return { success: true, data: { id } };
   },
   "DELETE /api/browser/tabs/:id": async (_body, params) => {
     const closePage = pwManager.closePage;
     const closed = await closePage(params!.id);
     if (!closed) return { error: "Page not found" };
+    releaseBrowserPage(params!.id);
     return { success: true, message: "Page closed" };
   },
   "POST /api/browser/tabs/:id/navigate": async (body, params) => {
@@ -94,23 +118,52 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
       waitUntil?: "load" | "domcontentloaded" | "networkidle";
     };
     if (!url) return { error: "URL is required" };
-    await validateBrowserNavigationUrl(url);
-    const result = await navigate(params!.id, url, { waitUntil });
+    const navigationUrl = await validateBrowserNavigationUrl(url);
+    const result = await navigate(params!.id, navigationUrl, { waitUntil });
     return { success: true, data: result };
   },
+  "POST /api/browser/tabs/:id/back": async (_body, params) => ({
+    success: true,
+    data: await pwManager.goBack(params!.id),
+  }),
+  "POST /api/browser/tabs/:id/forward": async (_body, params) => ({
+    success: true,
+    data: await pwManager.goForward(params!.id),
+  }),
+  "POST /api/browser/tabs/:id/reload": async (_body, params) => ({
+    success: true,
+    data: await pwManager.reload(params!.id),
+  }),
   "GET /api/browser/tabs/:id/snapshot": async (_body, params) => {
     const getSnapshot = pwManager.getSnapshot;
     const result = await getSnapshot(params!.id);
     return { success: true, data: result };
   },
+  "GET /api/browser/tabs/:id/state": async (_body, params) => ({
+    success: true,
+    data: {
+      viewport: pwManager.getViewportSize(params!.id),
+      cursor: pwManager.getPointerState(params!.id),
+      page: await pwManager.getPageSummary(params!.id),
+    },
+  }),
   "GET /api/browser/tabs/:id/screenshot": async (_body, params) => {
     const screenshot = pwManager.screenshot;
-    const screenshotBuffer = await screenshot(params!.id, { fullPage: true });
+    const width = browserViewportDimension(params?.viewportWidth, 1280, 2560);
+    const height = browserViewportDimension(params?.viewportHeight, 800, 1600);
+    await pwManager.resize(params!.id, width, height);
+    const screenshotBuffer = await screenshot(params!.id, {
+      fullPage: params?.fullPage !== "false",
+    });
+    const page = await pwManager.getPageSummary(params!.id);
     return {
       success: true,
       data: {
         screenshot: screenshotBuffer.toString("base64"),
         contentType: "image/png",
+        viewport: pwManager.getViewportSize(params!.id),
+        cursor: pwManager.getPointerState(params!.id),
+        page,
       },
     };
   },
@@ -124,6 +177,32 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     if (!selector) return { error: "Selector is required" };
     await click(params!.id, selector, { button, doubleClick });
     return { success: true, message: "Clicked element" };
+  },
+  "POST /api/browser/tabs/:id/pointer/click": async (body, params) => {
+    const { x, y } = body as { x?: unknown; y?: unknown };
+    if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x + y)) {
+      return { error: "Finite pointer coordinates are required" };
+    }
+    await pwManager.clickAt(params!.id, x, y);
+    return { success: true, message: "Clicked page" };
+  },
+  "POST /api/browser/tabs/:id/scroll": async (body, params) => {
+    const { deltaX, deltaY } = body as { deltaX?: unknown; deltaY?: unknown };
+    if (typeof deltaX !== "number" || typeof deltaY !== "number") {
+      return { error: "Scroll deltas are required" };
+    }
+    const boundedX = Math.min(4000, Math.max(-4000, deltaX));
+    const boundedY = Math.min(4000, Math.max(-4000, deltaY));
+    await pwManager.scrollPage(params!.id, boundedX, boundedY);
+    return { success: true, message: "Scrolled page" };
+  },
+  "POST /api/browser/tabs/:id/keyboard": async (body, params) => {
+    const { key } = body as { key?: unknown };
+    if (typeof key !== "string" || key.length === 0 || key.length > 32) {
+      return { error: "A valid key is required" };
+    }
+    await pwManager.sendKey(params!.id, key);
+    return { success: true, message: "Sent key" };
   },
   "POST /api/browser/tabs/:id/type": async (body, params) => {
     const type = pwManager.type;

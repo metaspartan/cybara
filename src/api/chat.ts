@@ -82,7 +82,7 @@ import {
   formatToolResultPromptBlock,
   TOOL_RESULT_FINAL_PROMPT_MAX_CHARS,
 } from "../core/chat-token-optimization";
-import { stripThinkingTags } from "./chat-formatting";
+import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
 import {
   activeAgentSystemPrompt,
   applyActiveAgentToSession,
@@ -628,7 +628,7 @@ function getSessionProcessActivities(
       toolCallId: activity.toolCallId,
       sandboxProvider: activity.sandboxProvider,
     }));
-  return activities.length > 0 ? activities : undefined;
+  return sanitizeObservedProcessActivities(activities);
 }
 
 function sanitizeObservedProcessActivities(activities: unknown): ProcessActivityInfo[] | undefined {
@@ -637,7 +637,8 @@ function sanitizeObservedProcessActivities(activities: unknown): ProcessActivity
   for (const entry of activities.slice(-200)) {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
     const record = entry as Record<string, unknown>;
-    const text = typeof record.text === "string" ? record.text.trim() : "";
+    const rawText = typeof record.text === "string" ? record.text.trim() : "";
+    const text = record.toolName === "__thought" ? sanitizeProcessThoughtText(rawText) : rawText;
     if (!text) continue;
     const timestamp =
       typeof record.timestamp === "number" && Number.isFinite(record.timestamp)
@@ -2246,7 +2247,7 @@ async function handleChatTurn(
   }
 
   const { content: cleanContent, thinking: extractedThinking } = stripThinkingTags(responseContent);
-  const finalThinking = thinkingContent || extractedThinking;
+  const finalThinking = sanitizeProcessThoughtText(thinkingContent || extractedThinking);
 
   const memoryPatterns = [
     /(?:remember|save to memory|store this|note this|don't forget)(?: that |: )?(.+)/i,
@@ -2785,7 +2786,14 @@ interface RevertSessionTarget {
 function resolveRevertMessageIndex(messages: ChatMessage[], target: RevertSessionTarget): number {
   const desiredRole: ChatMessage["role"] =
     target.messageRole === "assistant" ? "assistant" : "user";
-  const candidateIndex = Number.isInteger(target.messageIndex) ? Number(target.messageIndex) : -1;
+  const visibleIndexes = messages.reduce<number[]>((indexes, message, index) => {
+    if (message.role !== "system") indexes.push(index);
+    return indexes;
+  }, []);
+  const visibleCandidateIndex = Number.isInteger(target.messageIndex)
+    ? Number(target.messageIndex)
+    : -1;
+  const candidateIndex = visibleIndexes[visibleCandidateIndex] ?? -1;
   const content = typeof target.messageContent === "string" ? target.messageContent.trim() : "";
   const timestamp =
     typeof target.messageTimestamp === "string" ? target.messageTimestamp.trim() : "";
@@ -2813,6 +2821,16 @@ function resolveRevertMessageIndex(messages: ChatMessage[], target: RevertSessio
     }
   }
 
+  if (content) {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index];
+      if (!message || message.role !== desiredRole) continue;
+      if (message.content === target.messageContent) {
+        return index;
+      }
+    }
+  }
+
   if (isDesiredRole(candidateIndex)) {
     return candidateIndex;
   }
@@ -2823,16 +2841,6 @@ function resolveRevertMessageIndex(messages: ChatMessage[], target: RevertSessio
     }
     for (let index = candidateIndex + 1; index < messages.length; index += 1) {
       if (isDesiredRole(index)) return index;
-    }
-  }
-
-  if (content) {
-    for (let index = messages.length - 1; index >= 0; index -= 1) {
-      const message = messages[index];
-      if (!message || message.role !== desiredRole) continue;
-      if (message.content === target.messageContent) {
-        return index;
-      }
     }
   }
 
@@ -2871,7 +2879,11 @@ export async function revertSessionToMessage(
   }
 
   const keptMessages = session.messages.slice(0, targetIndex + 1);
-  const removedCount = session.messages.length - keptMessages.length;
+  const visibleMessageCount = session.messages.filter(
+    (message) => message.role !== "system"
+  ).length;
+  const keptCount = keptMessages.filter((message) => message.role !== "system").length;
+  const removedCount = visibleMessageCount - keptCount;
 
   const inMemorySession = chatSessions.get(sessionId);
   const agentId = inMemorySession?.agentId || session.agentId || "default";
@@ -2910,6 +2922,7 @@ export async function revertSessionToMessage(
     await deletePersistedSession(sessionId);
     await persistSession(sessionId, agentId, keptMessages, workspaceDir, sessionTitle);
     for (const message of keptMessages) {
+      if (message.role === "system") continue;
       await logSessionMessage(sessionId, message.role, message.content, {
         agentId,
         createdAt: message.timestamp,
@@ -2920,7 +2933,7 @@ export async function revertSessionToMessage(
       id: sessionId,
       agentId,
       title: sessionTitle,
-      messageCount: keptMessages.length,
+      messageCount: keptCount,
       createdAt,
       updatedAt: new Date().toISOString(),
       workspaceDir,
@@ -2931,9 +2944,9 @@ export async function revertSessionToMessage(
   return {
     sessionId,
     messages: keptMessages,
-    keptCount: keptMessages.length,
+    keptCount,
     removedCount,
-    removedFromIndex: targetIndex + 1,
+    removedFromIndex: keptCount,
   };
 }
 

@@ -96,6 +96,7 @@ export interface SessionSummary {
   agent_id?: string;
   provider?: string;
   provider_id?: string;
+  provider_type?: string;
   provider_name?: string;
   model?: string;
   message_count: number;
@@ -140,8 +141,9 @@ export interface AgentSummary {
   model?: string;
   provider?: string;
   provider_id?: string;
+  provider_type?: string;
   system_prompt?: string;
-  reasoning_effort?: "minimal" | "low" | "medium" | "high" | "xhigh" | null;
+  reasoning_effort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | null;
 }
 
 export interface ProviderSummary {
@@ -1758,6 +1760,7 @@ function normalizeAgent(agent: unknown, index = 0): AgentSummary {
   const record = asRecord(agent) ?? {};
   const id = readString(record, ["id", "name"]) || `agent-${index + 1}`;
   const providerId = readString(record, ["provider_id", "providerId", "provider"]);
+  const providerType = readString(record, ["provider_type", "providerType"]);
   const config = normalizeAgentConfig(record.config);
   const modelParams = asRecord(config.model_params ?? config.modelParams) ?? {};
   const reasoningEffort = readString(modelParams, ["reasoning_effort", "reasoningEffort"]);
@@ -1769,8 +1772,11 @@ function normalizeAgent(agent: unknown, index = 0): AgentSummary {
     model: readString(record, ["model"]),
     provider: providerId,
     provider_id: providerId,
+    provider_type: providerType,
     system_prompt: readString(record, ["system_prompt", "systemPrompt"]),
-    reasoning_effort: ["minimal", "low", "medium", "high", "xhigh"].includes(reasoningEffort ?? "")
+    reasoning_effort: ["minimal", "low", "medium", "high", "xhigh", "max"].includes(
+      reasoningEffort ?? ""
+    )
       ? (reasoningEffort as AgentSummary["reasoning_effort"])
       : null,
   };

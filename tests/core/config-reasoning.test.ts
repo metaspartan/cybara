@@ -11,8 +11,8 @@ describe("default reasoning effort config", () => {
   test("stores and normalizes valid levels", () => {
     expect(config.setDefaultReasoningEffort("high")).toBe("high");
     expect(config.getDefaultReasoningEffort()).toBe("high");
-    expect(config.setDefaultReasoningEffort("MAX")).toBe("xhigh");
-    expect(config.getDefaultReasoningEffort()).toBe("xhigh");
+    expect(config.setDefaultReasoningEffort("MAX")).toBe("max");
+    expect(config.getDefaultReasoningEffort()).toBe("max");
   });
 
   test("invalid or clearing values resolve to empty string", () => {

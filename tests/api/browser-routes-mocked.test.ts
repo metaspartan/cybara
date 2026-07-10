@@ -26,11 +26,16 @@ const browserMockState = {
   statusCalls: 0,
   tabsCalls: 0,
   createCalls: 0,
+  createdPageIds: [] as string[],
   closePageCalls: [] as string[],
   navigateCalls: [] as NavigateCall[],
   snapshotCalls: [] as string[],
   screenshotCalls: [] as string[],
+  resizeCalls: [] as Array<{ id: string; width: number; height: number }>,
   clickCalls: [] as ClickCall[],
+  coordinateClickCalls: [] as Array<{ id: string; x: number; y: number }>,
+  scrollCalls: [] as Array<{ id: string; deltaX: number; deltaY: number }>,
+  keyCalls: [] as Array<{ id: string; key: string }>,
   typeCalls: [] as TypeCall[],
   closeAllCalls: 0,
 };
@@ -42,12 +47,19 @@ mock.module("../../src/core/browser/pw-manager", () => ({
   },
   getAllPages: async () => {
     browserMockState.tabsCalls += 1;
-    return [{ id: "tab-1", url: "https://example.com", title: "Example Domain" }];
+    return [
+      { id: "tab-1", url: "https://example.com", title: "Example Domain" },
+      ...browserMockState.createdPageIds.map((id) => ({ id, url: "about:blank", title: "" })),
+    ];
   },
+  getPageSummary: async (id: string) =>
+    id === "missing" ? null : { id, url: "https://example.com", title: "Example Domain" },
   createPage: async () => {
     browserMockState.createCalls += 1;
+    browserMockState.createdPageIds.push("tab-created");
     return "tab-created";
   },
+  getPageById: (id: string) => (id === "tab-created" ? { id } : undefined),
   closePage: async (id: string) => {
     browserMockState.closePageCalls.push(id);
     return id !== "missing";
@@ -68,12 +80,36 @@ mock.module("../../src/core/browser/pw-manager", () => ({
     browserMockState.screenshotCalls.push(id);
     return Buffer.from("img");
   },
+  resize: async (id: string, width: number, height: number) => {
+    browserMockState.resizeCalls.push({ id, width, height });
+  },
+  getViewportSize: () => ({ width: 1280, height: 800 }),
+  getPointerState: () => ({
+    x: 64,
+    y: 72,
+    visible: true,
+    updatedAt: 1000,
+    action: "click",
+    source: "agent",
+  }),
+  goBack: async (id: string) => ({ id, url: "https://previous.example", title: "Previous" }),
+  goForward: async (id: string) => ({ id, url: "https://next.example", title: "Next" }),
+  reload: async (id: string) => ({ id, url: "https://example.com", title: "Example Domain" }),
   click: async (
     id: string,
     selector: string,
     opts?: { button?: "left" | "right" | "middle"; doubleClick?: boolean }
   ) => {
     browserMockState.clickCalls.push({ id, selector, opts });
+  },
+  clickAt: async (id: string, x: number, y: number) => {
+    browserMockState.coordinateClickCalls.push({ id, x, y });
+  },
+  scrollPage: async (id: string, deltaX: number, deltaY: number) => {
+    browserMockState.scrollCalls.push({ id, deltaX, deltaY });
+  },
+  sendKey: async (id: string, key: string) => {
+    browserMockState.keyCalls.push({ id, key });
   },
   type: async (
     id: string,
@@ -99,11 +135,16 @@ function resetState() {
   browserMockState.statusCalls = 0;
   browserMockState.tabsCalls = 0;
   browserMockState.createCalls = 0;
+  browserMockState.createdPageIds = [];
   browserMockState.closePageCalls = [];
   browserMockState.navigateCalls = [];
   browserMockState.snapshotCalls = [];
   browserMockState.screenshotCalls = [];
+  browserMockState.resizeCalls = [];
   browserMockState.clickCalls = [];
+  browserMockState.coordinateClickCalls = [];
+  browserMockState.scrollCalls = [];
+  browserMockState.keyCalls = [];
   browserMockState.typeCalls = [];
   browserMockState.closeAllCalls = 0;
 }
@@ -156,6 +197,16 @@ describe("Browser route contracts (mocked manager)", () => {
     expect(browserMockState.createCalls).toBe(1);
   });
 
+  test("browser tabs bind the preview page to one chat session", async () => {
+    const create = await api("POST", "/api/browser/tabs", { sessionId: "chat-session-1" });
+    expect(create.body).toEqual({ success: true, data: { id: "tab-created" } });
+
+    const list = await api("GET", "/api/browser/tabs?sessionId=chat-session-1");
+    expect(list.body).toEqual({
+      tabs: [{ id: "tab-created", url: "about:blank", title: "" }],
+    });
+  });
+
   test("DELETE /api/browser/tabs/:id returns not found when manager returns false", async () => {
     const res = await api("DELETE", "/api/browser/tabs/missing");
     expect(res.status).toBe(200);
@@ -171,27 +222,45 @@ describe("Browser route contracts (mocked manager)", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       success: true,
-      data: { id: "tab-9", url: "https://bun.sh", title: "Mock Page" },
+      data: { id: "tab-9", url: "https://bun.sh/", title: "Mock Page" },
     });
     expect(browserMockState.navigateCalls).toEqual([
       {
         id: "tab-9",
-        url: "https://bun.sh",
+        url: "https://bun.sh/",
         opts: { waitUntil: "domcontentloaded" },
       },
     ]);
   });
 
-  test("POST /api/browser/tabs/:id/navigate blocks private hosts before manager call", async () => {
+  test("POST /api/browser/tabs/:id/navigate allows loopback previews", async () => {
     const res = await api("POST", "/api/browser/tabs/tab-9/navigate", {
       url: "http://127.0.0.1:4269/api/config",
       waitUntil: "domcontentloaded",
     });
 
-    expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({ code: "VALIDATION_ERROR" });
-    expect(String((res.body as { error?: string }).error)).toContain("Navigation blocked");
-    expect(browserMockState.navigateCalls).toEqual([]);
+    expect(res.status).toBe(200);
+    expect(browserMockState.navigateCalls[0]?.url).toBe("http://127.0.0.1:4269/api/config");
+  });
+
+  test("POST /api/browser/tabs/:id/navigate normalizes host-only addresses", async () => {
+    const res = await api("POST", "/api/browser/tabs/tab-9/navigate", {
+      url: "google.com",
+      waitUntil: "domcontentloaded",
+    });
+
+    expect(res.status).toBe(200);
+    expect(browserMockState.navigateCalls[0]?.url).toBe("https://google.com/");
+  });
+
+  test("POST /api/browser/tabs/:id/navigate allows private LAN browser pages", async () => {
+    const res = await api("POST", "/api/browser/tabs/tab-9/navigate", {
+      url: "http://192.168.1.73:4269/api/config",
+      waitUntil: "domcontentloaded",
+    });
+
+    expect(res.status).toBe(200);
+    expect(browserMockState.navigateCalls[0]?.url).toBe("http://192.168.1.73:4269/api/config");
   });
 
   test("GET /api/browser/tabs/:id/snapshot forwards id", async () => {
@@ -204,17 +273,48 @@ describe("Browser route contracts (mocked manager)", () => {
     expect(browserMockState.snapshotCalls).toEqual(["tab-2"]);
   });
 
+  test("GET /api/browser/tabs/:id/state returns lightweight cursor telemetry", async () => {
+    const res = await api("GET", "/api/browser/tabs/tab-1/state");
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      success: true,
+      data: {
+        viewport: { width: 1280, height: 800 },
+        cursor: {
+          x: 64,
+          y: 72,
+          visible: true,
+          updatedAt: 1000,
+          action: "click",
+          source: "agent",
+        },
+        page: { id: "tab-1", url: "https://example.com", title: "Example Domain" },
+      },
+    });
+  });
+
   test("GET /api/browser/tabs/:id/screenshot base64 encodes buffer", async () => {
-    const res = await api("GET", "/api/browser/tabs/tab-3/screenshot");
+    const res = await api("GET", "/api/browser/tabs/tab-1/screenshot");
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       success: true,
       data: {
         screenshot: "aW1n",
         contentType: "image/png",
+        viewport: { width: 1280, height: 800 },
+        cursor: {
+          x: 64,
+          y: 72,
+          visible: true,
+          updatedAt: 1000,
+          action: "click",
+          source: "agent",
+        },
+        page: { id: "tab-1", url: "https://example.com", title: "Example Domain" },
       },
     });
-    expect(browserMockState.screenshotCalls).toEqual(["tab-3"]);
+    expect(browserMockState.screenshotCalls).toEqual(["tab-1"]);
+    expect(browserMockState.resizeCalls).toEqual([{ id: "tab-1", width: 1280, height: 800 }]);
   });
 
   test("POST /api/browser/tabs/:id/click validates selector and forwards options", async () => {
@@ -237,6 +337,21 @@ describe("Browser route contracts (mocked manager)", () => {
         opts: { button: "right", doubleClick: true },
       },
     ]);
+  });
+
+  test("browser preview pointer, wheel, and keyboard routes forward user input", async () => {
+    const click = await api("POST", "/api/browser/tabs/tab-1/pointer/click", { x: 80, y: 120 });
+    const scroll = await api("POST", "/api/browser/tabs/tab-1/scroll", {
+      deltaX: 0,
+      deltaY: 9000,
+    });
+    const key = await api("POST", "/api/browser/tabs/tab-1/keyboard", { key: "Enter" });
+    expect(click.body).toEqual({ success: true, message: "Clicked page" });
+    expect(scroll.body).toEqual({ success: true, message: "Scrolled page" });
+    expect(key.body).toEqual({ success: true, message: "Sent key" });
+    expect(browserMockState.coordinateClickCalls).toEqual([{ id: "tab-1", x: 80, y: 120 }]);
+    expect(browserMockState.scrollCalls).toEqual([{ id: "tab-1", deltaX: 0, deltaY: 4000 }]);
+    expect(browserMockState.keyCalls).toEqual([{ id: "tab-1", key: "Enter" }]);
   });
 
   test("POST /api/browser/tabs/:id/type validates input and forwards options", async () => {

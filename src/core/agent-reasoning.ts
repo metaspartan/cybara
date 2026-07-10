@@ -7,6 +7,7 @@ export const AGENT_REASONING_EFFORTS: readonly ReasoningEffort[] = [
   "medium",
   "high",
   "xhigh",
+  "max",
 ];
 
 export type AgentReasoningSetting = ReasoningEffort | null;

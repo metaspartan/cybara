@@ -1,22 +1,22 @@
-import type { Browser, BrowserContext, Page, LaunchOptions } from "playwright";
+import { randomUUID } from "crypto";
+import type { Browser, BrowserContext, LaunchOptions, Locator, Page } from "playwright";
 import { getChromium } from "./playwright-loader";
 import {
   type BrowserProfile,
   type BrowserProfileConfig,
+  closePage as closeProfilePage,
   createProfile,
-  getProfile,
-  listProfiles,
+  createPage as createProfilePage,
   deleteProfile,
+  getBrowsersMap,
+  getPagesMap,
+  getProfile,
+  getProfilePages,
+  listProfiles,
+  shutdownAll,
   startBrowser,
   stopBrowser,
-  createPage as createProfilePage,
-  getProfilePages,
-  closePage as closeProfilePage,
-  shutdownAll,
-  getPagesMap,
-  getBrowsersMap,
 } from "./profiles";
-import { randomUUID } from "crypto";
 
 async function launchWithFallback(
   chromium: Awaited<ReturnType<typeof getChromium>>,
@@ -52,12 +52,22 @@ async function launchWithFallback(
   throw new Error(`Unable to launch a browser (${failures.join(" | ")})`);
 }
 
-interface AXNode {
-  role?: string;
-  name?: string;
+export interface BrowserSnapshotNode {
+  ref: string;
+  role: string;
+  name: string;
   value?: string;
-  description?: string;
-  children?: AXNode[];
+  depth: number;
+  selector?: string;
+}
+
+interface BrowserDomElement {
+  tagName: string;
+  nodeType: number;
+  localName: string;
+  previousElementSibling: BrowserDomElement | null;
+  parentElement: BrowserDomElement | null;
+  scrollIntoView(options: { block: "center"; inline: "center" }): void;
 }
 
 type ClickModifier = "Alt" | "Control" | "ControlOrMeta" | "Meta" | "Shift";
@@ -70,6 +80,25 @@ let legacyBrowser: Browser | null = null;
 let legacyContext: BrowserContext | null = null;
 const legacyPages = new Map<string, Page>();
 const consoleLogs = new Map<string, Array<{ type: string; text: string; location?: string }>>();
+const pointerStates = new Map<string, BrowserPointerState>();
+const BROWSER_PREVIEW_STYLE = `
+:root { --cybara-agent-browser-preview: 1; }
+button[aria-label^="Cybara pet"] { display: none !important; }
+`;
+
+export interface BrowserPointerState {
+  x: number;
+  y: number;
+  visible: boolean;
+  updatedAt: number;
+  action: "move" | "click" | "type";
+  source: "agent" | "user";
+}
+
+export interface BrowserViewportSize {
+  width: number;
+  height: number;
+}
 
 export interface BrowserStatus {
   running: boolean;
@@ -175,6 +204,7 @@ export async function createPage(): Promise<string> {
   page.on("close", () => {
     legacyPages.delete(id);
     consoleLogs.delete(id);
+    pointerStates.delete(id);
   });
 
   page.on("console", (msg) => {
@@ -207,6 +237,14 @@ export async function getAllPages(): Promise<Array<{ id: string; url: string; ti
   return result;
 }
 
+export async function getPageSummary(
+  pageId: string
+): Promise<{ id: string; url: string; title: string } | null> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) return null;
+  return { id: pageId, url: page.url(), title: await page.title() };
+}
+
 export async function closePage(id: string): Promise<boolean> {
   const page = legacyPages.get(id);
   if (!page) return false;
@@ -214,6 +252,7 @@ export async function closePage(id: string): Promise<boolean> {
   await page.close();
   legacyPages.delete(id);
   consoleLogs.delete(id);
+  pointerStates.delete(id);
   return true;
 }
 
@@ -236,6 +275,27 @@ export async function navigate(
   };
 }
 
+export async function goBack(pageId: string): Promise<{ url: string; title: string }> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) throw new Error(`Page ${pageId} not found`);
+  await page.goBack({ waitUntil: "domcontentloaded", timeout: 30000 });
+  return { url: page.url(), title: await page.title() };
+}
+
+export async function goForward(pageId: string): Promise<{ url: string; title: string }> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) throw new Error(`Page ${pageId} not found`);
+  await page.goForward({ waitUntil: "domcontentloaded", timeout: 30000 });
+  return { url: page.url(), title: await page.title() };
+}
+
+export async function reload(pageId: string): Promise<{ url: string; title: string }> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) throw new Error(`Page ${pageId} not found`);
+  await page.reload({ waitUntil: "domcontentloaded", timeout: 30000 });
+  return { url: page.url(), title: await page.title() };
+}
+
 export async function screenshot(
   pageId: string,
   options?: {
@@ -247,6 +307,7 @@ export async function screenshot(
 ): Promise<Buffer> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
+  await prepareBrowserPreviewPage(page);
 
   if (options?.selector) {
     const element = await page.locator(options.selector).first();
@@ -315,69 +376,28 @@ export async function getSnapshot(
   url: string;
   title: string;
   snapshot?: string;
-  nodes?: Array<{ ref: string; role: string; name: string; value?: string; depth: number }>;
+  nodes?: BrowserSnapshotNode[];
   truncated?: boolean;
   stats?: { lines: number; chars: number; refs: number; interactive: number };
 }> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
+  await prepareBrowserPreviewPage(page);
 
   const format = options?.format || "ai";
   const maxChars = options?.maxChars || 8000;
+  const interactiveNodes = await getInteractiveSnapshotNodes(page);
 
   if (format === "aria") {
-    let ariaSnapshot: AXNode | null = null;
-    try {
-      const snapshotStr = await page.locator("body").ariaSnapshot();
-      ariaSnapshot = {
-        role: "document",
-        name: "document",
-        children: [{ role: "text", name: snapshotStr }],
-      };
-    } catch {
-      const text = (await page.textContent("body").catch(() => "")) || "";
-      ariaSnapshot = {
-        role: "document",
-        name: "Page Content",
-        children: [{ role: "text", name: text.slice(0, 5000) }],
-      };
-    }
-
-    const nodes: Array<{ ref: string; role: string; name: string; value?: string; depth: number }> =
-      [];
-    let refCounter = 0;
-
-    function processNode(node: AXNode, depth: number) {
-      if (node.role) {
-        const ref = `ref${++refCounter}`;
-        nodes.push({
-          ref,
-          role: node.role,
-          name: node.name || "",
-          value: node.value,
-          depth,
-        });
-      }
-      if (node.children) {
-        for (const child of node.children) {
-          processNode(child, depth + 1);
-        }
-      }
-    }
-
-    processNode(ariaSnapshot, 0);
-
     return {
       url: page.url(),
       title: await page.title(),
-      nodes,
+      nodes: interactiveNodes,
       stats: {
-        lines: nodes.length,
-        chars: nodes.reduce((acc, n) => acc + n.name.length + n.role.length, 0),
-        refs: nodes.length,
-        interactive: nodes.filter((n) =>
-          ["button", "link", "input", "checkbox", "radio", "combobox", "textbox"].includes(n.role)
-        ).length,
+        lines: interactiveNodes.length,
+        chars: interactiveNodes.reduce((acc, node) => acc + node.name.length + node.role.length, 0),
+        refs: interactiveNodes.length,
+        interactive: interactiveNodes.length,
       },
     };
   }
@@ -404,6 +424,12 @@ export async function getSnapshot(
     }
   }
 
+  const interactionText = interactiveNodes
+    .map((node) => `- ${node.role} "${node.name}" [ref=${node.ref}]`)
+    .join("\n");
+  if (interactionText) {
+    snapshotText = `${snapshotText}\n\nInteractive elements\n${interactionText}`;
+  }
   const truncated = snapshotText.length > maxChars;
   const truncatedText = truncated
     ? snapshotText.slice(0, maxChars) + "\n... [truncated]"
@@ -413,14 +439,87 @@ export async function getSnapshot(
     url: page.url(),
     title: await page.title(),
     snapshot: truncatedText,
+    nodes: interactiveNodes,
     truncated,
     stats: {
       lines: truncatedText.split("\n").length,
       chars: truncatedText.length,
-      refs: 0,
-      interactive: 0,
+      refs: interactiveNodes.length,
+      interactive: interactiveNodes.length,
     },
   };
+}
+
+async function getInteractiveSnapshotNodes(page: Page): Promise<BrowserSnapshotNode[]> {
+  const elements = page.locator(
+    'a, button, input, textarea, select, [role], [tabindex]:not([tabindex="-1"])'
+  );
+  const count = Math.min(await elements.count(), 200);
+  const nodes: BrowserSnapshotNode[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const element = elements.nth(index);
+    if (!(await element.isVisible().catch(() => false))) continue;
+    const tag = await element.evaluate((node) =>
+      (node as unknown as BrowserDomElement).tagName.toLowerCase()
+    );
+    const explicitRole = await element.getAttribute("role");
+    const role = explicitRole || elementRoleForTag(tag, await element.getAttribute("type"));
+    const name = firstNonEmptyBrowserValue(
+      await element.getAttribute("aria-label"),
+      await element.getAttribute("placeholder"),
+      await element.getAttribute("title"),
+      await element.getAttribute("alt"),
+      await element.innerText().catch(() => ""),
+      await element.getAttribute("value")
+    );
+    if (!role || !name) continue;
+    const selector = await element.evaluate((node) => {
+      const segments: string[] = [];
+      let current: BrowserDomElement | null = node as unknown as BrowserDomElement;
+      while (current && current.nodeType === 1) {
+        const name = current.localName;
+        let position = 1;
+        let sibling = current.previousElementSibling;
+        while (sibling) {
+          if (sibling.localName === name) position += 1;
+          sibling = sibling.previousElementSibling;
+        }
+        segments.unshift(name + "[" + position + "]");
+        current = current.parentElement;
+      }
+      return "xpath=/" + segments.join("/");
+    });
+    nodes.push({
+      ref: `e${nodes.length + 1}`,
+      role,
+      name: name.slice(0, 160),
+      depth: 0,
+      selector,
+    });
+  }
+  return nodes;
+}
+
+async function prepareBrowserPreviewPage(page: Page): Promise<void> {
+  const existing = page.locator("style").filter({ hasText: "--cybara-agent-browser-preview" });
+  if ((await existing.count()) > 0) return;
+  await page.addStyleTag({ content: BROWSER_PREVIEW_STYLE });
+}
+
+function firstNonEmptyBrowserValue(...values: Array<string | null>): string {
+  return values.find((value) => value?.trim())?.trim() ?? "";
+}
+
+function elementRoleForTag(tag: string, type: string | null): string {
+  if (tag === "a") return "link";
+  if (tag === "button") return "button";
+  if (tag === "textarea") return "textbox";
+  if (tag === "select") return "combobox";
+  if (tag !== "input") return tag;
+  if (type === "checkbox") return "checkbox";
+  if (type === "radio") return "radio";
+  if (type === "submit" || type === "button") return "button";
+  return "textbox";
 }
 
 export async function click(
@@ -435,14 +534,50 @@ export async function click(
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  const locator = page.locator(selector).first();
+  const locator = await resolveActionLocator(page, selector);
+  await movePointerToLocator(pageId, page, locator);
 
   if (options?.doubleClick) {
-    await locator.dblclick({ button: options.button });
+    await locator.dblclick({ button: options.button, timeout: 5000 });
   } else {
     const modifiers = options?.modifiers?.filter(isClickModifier);
-    await locator.click({ button: options?.button, modifiers });
+    try {
+      await locator.click({ button: options?.button, modifiers, timeout: 5000 });
+    } catch (error) {
+      if (!(await locator.isVisible())) throw error;
+      await locator.dispatchEvent("click");
+    }
   }
+  setPointerAction(pageId, "click");
+}
+
+export async function clickAt(pageId: string, x: number, y: number): Promise<void> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) throw new Error(`Page ${pageId} not found`);
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("Browser viewport is unavailable");
+  const targetX = Math.min(viewport.width - 1, Math.max(0, Math.round(x)));
+  const targetY = Math.min(viewport.height - 1, Math.max(0, Math.round(y)));
+  await movePointer(pageId, page, targetX, targetY, "user");
+  await page.mouse.click(targetX, targetY);
+  setPointerAction(pageId, "click", "user");
+}
+
+export async function scrollPage(pageId: string, deltaX: number, deltaY: number): Promise<void> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) throw new Error(`Page ${pageId} not found`);
+  await page.mouse.wheel(deltaX, deltaY);
+}
+
+export async function sendKey(pageId: string, key: string): Promise<void> {
+  const page = getPageById(pageId) || getPageById("default");
+  if (!page) throw new Error(`Page ${pageId} not found`);
+  if (key.length === 1) {
+    await page.keyboard.insertText(key);
+  } else {
+    await page.keyboard.press(key);
+  }
+  setPointerAction(pageId, "type", "user");
 }
 
 export async function type(
@@ -454,7 +589,8 @@ export async function type(
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  const locator = page.locator(selector).first();
+  const locator = await resolveActionLocator(page, selector);
+  await movePointerToLocator(pageId, page, locator);
 
   if (options?.slowly) {
     await locator.click();
@@ -466,6 +602,7 @@ export async function type(
   if (options?.submit) {
     await locator.press("Enter");
   }
+  setPointerAction(pageId, "type");
 }
 
 export async function pressKey(pageId: string, key: string, delayMs = 0): Promise<void> {
@@ -483,7 +620,9 @@ export async function select(pageId: string, selector: string, value: string): P
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  await page.locator(selector).first().selectOption(value);
+  const locator = await resolveActionLocator(page, selector);
+  await movePointerToLocator(pageId, page, locator);
+  await locator.selectOption(value);
 }
 
 export async function selectMultiple(
@@ -494,28 +633,33 @@ export async function selectMultiple(
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  await page.locator(selector).first().selectOption(values);
+  const locator = await resolveActionLocator(page, selector);
+  await movePointerToLocator(pageId, page, locator);
+  await locator.selectOption(values);
 }
 
 export async function fill(pageId: string, selector: string, value: string): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  await page.locator(selector).first().fill(value);
+  const locator = await resolveActionLocator(page, selector);
+  await movePointerToLocator(pageId, page, locator);
+  await locator.fill(value);
 }
 
 export async function hover(pageId: string, selector: string): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  await page.locator(selector).first().hover();
+  const locator = await resolveActionLocator(page, selector);
+  await movePointerToLocator(pageId, page, locator);
 }
 
 export async function scrollIntoView(pageId: string, selector: string): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  await page.locator(selector).first().scrollIntoViewIfNeeded();
+  await (await resolveActionLocator(page, selector)).scrollIntoViewIfNeeded();
 }
 
 export async function drag(
@@ -526,16 +670,129 @@ export async function drag(
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  const start = page.locator(startSelector).first();
-  const end = page.locator(endSelector).first();
+  const start = await resolveActionLocator(page, startSelector);
+  const end = await resolveActionLocator(page, endSelector);
 
+  await movePointerToLocator(pageId, page, start);
   await start.dragTo(end);
+  await recordPointerFromLocator(pageId, end);
+}
+
+async function recordPointerFromLocator(pageId: string, locator: Locator): Promise<void> {
+  const box = await locator.boundingBox();
+  if (!box) return;
+  pointerStates.set(pageId, {
+    x: Math.round(box.x + box.width / 2),
+    y: Math.round(box.y + box.height / 2),
+    visible: true,
+    updatedAt: Date.now(),
+    action: "move",
+    source: "agent",
+  });
+}
+
+async function resolveActionLocator(page: Page, selector: string): Promise<Locator> {
+  const matches = page.locator(selector);
+  const count = Math.min(await matches.count(), 100);
+  if (count === 0) {
+    const first = matches.first();
+    await first.waitFor({ state: "visible", timeout: 5000 });
+    return first;
+  }
+
+  let visible: Locator | null = null;
+  for (let index = 0; index < count; index += 1) {
+    const candidate = matches.nth(index);
+    if (!(await candidate.isVisible())) continue;
+    visible ??= candidate;
+    await candidate
+      .evaluate((element) =>
+        (element as unknown as BrowserDomElement).scrollIntoView({
+          block: "center",
+          inline: "center",
+        })
+      )
+      .catch(() => undefined);
+    const box = await candidate.boundingBox();
+    const viewport = page.viewportSize();
+    if (
+      box &&
+      viewport &&
+      box.x < viewport.width &&
+      box.y < viewport.height &&
+      box.x + box.width > 0 &&
+      box.y + box.height > 0
+    ) {
+      return candidate;
+    }
+  }
+
+  if (visible) return visible;
+  throw new Error(`No visible element matched selector: ${selector}`);
+}
+
+async function movePointerToLocator(pageId: string, page: Page, locator: Locator): Promise<void> {
+  await locator.scrollIntoViewIfNeeded().catch(() => undefined);
+  const box = await locator.boundingBox();
+  if (!box) return;
+  const x = Math.round(box.x + box.width / 2);
+  const y = Math.round(box.y + box.height / 2);
+  await movePointer(pageId, page, x, y, "agent");
+}
+
+async function movePointer(
+  pageId: string,
+  page: Page,
+  x: number,
+  y: number,
+  source: BrowserPointerState["source"]
+): Promise<void> {
+  const current = pointerStates.get(pageId);
+  const startX = current?.x ?? Math.round((page.viewportSize()?.width ?? x) / 2);
+  const startY = current?.y ?? Math.round((page.viewportSize()?.height ?? y) / 2);
+  const steps = 12;
+  for (let step = 1; step <= steps; step += 1) {
+    const progress = step / steps;
+    const nextX = Math.round(startX + (x - startX) * progress);
+    const nextY = Math.round(startY + (y - startY) * progress);
+    await page.mouse.move(nextX, nextY);
+    pointerStates.set(pageId, {
+      x: nextX,
+      y: nextY,
+      visible: true,
+      updatedAt: Date.now(),
+      action: "move",
+      source,
+    });
+    if (step < steps) await Bun.sleep(24);
+  }
+}
+
+function setPointerAction(
+  pageId: string,
+  action: BrowserPointerState["action"],
+  source: BrowserPointerState["source"] = "agent"
+): void {
+  const pointer = pointerStates.get(pageId);
+  if (!pointer) return;
+  pointerStates.set(pageId, { ...pointer, action, source, updatedAt: Date.now() });
+}
+
+export function getPointerState(pageId: string): BrowserPointerState | null {
+  return pointerStates.get(pageId) ?? null;
+}
+
+export function getViewportSize(pageId: string): BrowserViewportSize | null {
+  const page = getPageById(pageId) || getPageById("default");
+  return page?.viewportSize() ?? null;
 }
 
 export async function resize(pageId: string, width: number, height: number): Promise<void> {
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
+  const current = page.viewportSize();
+  if (current?.width === width && current.height === height) return;
   await page.setViewportSize({ width, height });
 }
 
