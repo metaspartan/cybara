@@ -77,10 +77,15 @@ export function themeConfigPayload(accent: ThemeAccent): Record<string, string> 
 export type ThemeMode =
   | "system"
   | "dark"
+  | "midnight"
   | "icy-dark"
   | "ash-grey"
+  | "forest"
   | "sand-dune"
   | "light"
+  | "paper"
+  | "mint"
+  | "lavender"
   | "cake";
 
 export interface ThemeModeOption {
@@ -93,10 +98,15 @@ export interface ThemeModeOption {
 export const themeModeOptions: ThemeModeOption[] = [
   { value: "system", label: "System", base: "system", swatch: "#6b7280" },
   { value: "dark", label: "Dark", base: "dark", swatch: "#0d0d12" },
-  { value: "icy-dark", label: "Icy Dark", base: "dark", swatch: "#0c1420" },
+  { value: "midnight", label: "Midnight", base: "dark", swatch: "#15102a" },
+  { value: "icy-dark", label: "Icy Dark", base: "dark", swatch: "#081a2e" },
   { value: "ash-grey", label: "Ash Grey", base: "dark", swatch: "#1e2023" },
+  { value: "forest", label: "Forest", base: "dark", swatch: "#0e1a12" },
   { value: "sand-dune", label: "Sand Dune", base: "dark", swatch: "#221c13" },
   { value: "light", label: "Light", base: "light", swatch: "#eef0f4" },
+  { value: "paper", label: "Paper", base: "light", swatch: "#f7f3ec" },
+  { value: "mint", label: "Mint", base: "light", swatch: "#edf7f2" },
+  { value: "lavender", label: "Lavender", base: "light", swatch: "#f3f0fa" },
   { value: "cake", label: "Cake", base: "light", swatch: "#f9ecec" },
 ];
 
@@ -177,7 +187,17 @@ const ensureSystemThemeListener = () => {
   systemThemeListenerBound = true;
 };
 
-const TINTED_THEME_MODES = new Set<ThemeMode>(["icy-dark", "ash-grey", "sand-dune", "cake"]);
+const TINTED_THEME_MODES = new Set<ThemeMode>([
+  "midnight",
+  "icy-dark",
+  "ash-grey",
+  "forest",
+  "sand-dune",
+  "paper",
+  "mint",
+  "lavender",
+  "cake",
+]);
 
 function applyThemeMode(mode: ThemeMode) {
   if (typeof document === "undefined") return;

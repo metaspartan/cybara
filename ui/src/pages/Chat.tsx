@@ -226,42 +226,29 @@ function ChatApprovalControls({
   updating?: boolean;
 }) {
   const isAskMode = mode === "ask";
+  const label = toolApprovalModeLabel(mode);
   const Icon = updating ? Loader2 : isAskMode ? CircleHelp : ShieldAlert;
+  const nextMode: ToolApprovalMode = isAskMode ? "always_allow" : "ask";
   return (
-    <div className="chat-approval-control relative min-w-0">
-      <Icon
-        className={cn(
-          "pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2",
-          updating ? "animate-spin text-gray-400" : isAskMode ? "text-sky-300" : "text-amber-300"
-        )}
-      />
-      <label className="sr-only" htmlFor="chat-tool-approval-mode">
-        Tool approval mode
-      </label>
-      <select
-        id="chat-tool-approval-mode"
-        value={mode}
+    <div className="chat-approval-control relative shrink-0">
+      <button
+        type="button"
         disabled={updating}
-        onChange={(event) => onChange(normalizeToolApprovalMode(event.target.value))}
-        title={`Tool approvals: ${toolApprovalModeLabel(mode)}`}
-        className={cn(
-          "chat-approval-select h-7 max-w-[140px] appearance-none truncate border-0 bg-transparent py-1 pl-7 pr-6 text-[11px] font-semibold outline-none ring-0 transition-colors [color-scheme:dark] focus:outline-none focus:ring-0 disabled:opacity-60",
-          isAskMode ? "text-sky-300 hover:text-sky-200" : "text-amber-300 hover:text-amber-200"
-        )}
+        onClick={() => onChange(nextMode)}
+        title={`Tool approvals: ${label} (click to switch)`}
+        aria-label={`Tool approvals: ${label}`}
+        className="composer-icon-btn chat-approval-toggle inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-transparent px-2 text-gray-400 hover:text-white disabled:opacity-50"
       >
-        <option value="always_allow" className="bg-[#11131c] text-white">
-          Always Allow
-        </option>
-        <option value="ask" className="bg-[#11131c] text-white">
-          Ask Me
-        </option>
-      </select>
-      <ChevronDown
-        className={cn(
-          "chat-approval-chevron pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2",
-          isAskMode ? "text-sky-300/70" : "text-amber-300/70"
-        )}
-      />
+        <Icon
+          className={cn(
+            "h-4 w-4 shrink-0",
+            updating ? "animate-spin text-gray-400" : isAskMode ? "text-sky-300" : "text-amber-300"
+          )}
+        />
+        <span className="chat-approval-label text-[11px] font-semibold whitespace-nowrap">
+          {label}
+        </span>
+      </button>
     </div>
   );
 }
@@ -4529,7 +4516,7 @@ export function Chat() {
                     <button
                       type="button"
                       onClick={() => imageInputRef.current?.click()}
-                      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-gray-400 transition-colors cursor-pointer hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                      className="composer-icon-btn inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-gray-400 cursor-pointer hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                       title="Attach image or file"
                       aria-label="Attach image or file"
                     >
@@ -4540,7 +4527,7 @@ export function Chat() {
                       onClick={() => void handleToggleDictation()}
                       disabled={showWorkingTimeline || dictationTranscribing}
                       className={cn(
-                        "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-gray-400 transition-colors cursor-pointer hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-50",
+                        "composer-icon-btn inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-gray-400 cursor-pointer hover:text-white disabled:cursor-not-allowed disabled:opacity-50",
                         dictating
                           ? "bg-red-500/20 text-red-300"
                           : !dictationRuntime.engine

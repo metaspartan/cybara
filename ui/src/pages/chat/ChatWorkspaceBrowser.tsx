@@ -39,6 +39,8 @@ interface BrowserPreview {
 }
 
 const DEFAULT_BROWSER_VIEWPORT: BrowserViewport = { width: 960, height: 640 };
+const BROWSER_START_TIMEOUT_MS = 30_000;
+const BROWSER_REQUEST_TIMEOUT_MS = 12_000;
 
 function parseBrowserPage(value: unknown): BrowserPage | null {
   if (!value || typeof value !== "object") return null;
@@ -92,7 +94,9 @@ async function responseError(response: Response, fallback: string): Promise<Erro
 }
 
 async function readSessionPage(sessionId: string): Promise<BrowserPage | null> {
-  const response = await apiFetch(`/api/browser/tabs?sessionId=${encodeURIComponent(sessionId)}`);
+  const response = await apiFetch(`/api/browser/tabs?sessionId=${encodeURIComponent(sessionId)}`, {
+    signal: AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS),
+  });
   if (!response.ok) throw await responseError(response, "Browser preview is unavailable");
   const data: unknown = await response.json();
   const tabs =
@@ -107,6 +111,7 @@ async function createSessionPage(sessionId: string): Promise<BrowserPage> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId }),
+    signal: AbortSignal.timeout(BROWSER_START_TIMEOUT_MS),
   });
   if (!response.ok) throw await responseError(response, "Failed to start browser preview");
   const data: unknown = await response.json();
@@ -175,7 +180,8 @@ export function ChatWorkspaceBrowser({
           viewportHeight: String(browserViewport.height),
         });
         const response = await apiFetch(
-          `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/screenshot?${query}`
+          `/api/browser/tabs/${encodeURIComponent(targetPage.id)}/screenshot?${query}`,
+          { signal: AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS) }
         );
         if (response.status === 404) {
           const replacement = await createSessionPage(browserSessionId);
@@ -522,8 +528,28 @@ export function ChatWorkspaceBrowser({
           </div>
         ) : null}
         {error ? (
-          <div className="absolute bottom-2 left-2 right-2 z-30 rounded-md border border-red-400/20 bg-red-950/95 px-3 py-2 text-[11px] text-red-200 shadow-xl">
-            {error}
+          <div className="absolute bottom-2 left-2 right-2 z-30 flex items-center gap-3 rounded-md border border-red-400/20 bg-red-950/95 px-3 py-2 text-[11px] text-red-200 shadow-xl">
+            <span className="min-w-0 flex-1">{error}</span>
+            <button
+              type="button"
+              className="shrink-0 rounded-md border border-red-300/20 px-2 py-1 font-medium hover:bg-red-300/10"
+              onClick={() => {
+                setError(null);
+                setPage(null);
+                setPreview(null);
+                setLoading(true);
+                void ensurePage()
+                  .then(loadPreview)
+                  .catch((reason: unknown) => {
+                    setError(
+                      reason instanceof Error ? reason.message : "Failed to start browser preview"
+                    );
+                  })
+                  .finally(() => setLoading(false));
+              }}
+            >
+              Retry
+            </button>
           </div>
         ) : null}
       </div>

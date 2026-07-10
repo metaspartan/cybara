@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "child_process";
+import { createHash } from "node:crypto";
 import { createInterface } from "readline";
 import { createLogger } from "./logger";
 
@@ -29,8 +30,14 @@ export interface LiveUsageProviderInput {
 }
 
 const CACHE_TTL_MS = 60_000;
+const NULL_CACHE_TTL_MS = 5_000;
 const cache = new Map<string, { value: LiveProviderUsage | null; at: number }>();
 const inFlight = new Map<string, Promise<LiveProviderUsage | null>>();
+
+function providerUsageCacheKey(provider: LiveUsageProviderInput, credential: string): string {
+  const credentialHash = createHash("sha256").update(credential).digest("hex").slice(0, 16);
+  return `${provider.id}:${credentialHash}:${provider.baseUrl ?? ""}`;
+}
 
 function toNumber(value: unknown): number | undefined {
   const n = typeof value === "number" ? value : Number(value);
@@ -1247,9 +1254,11 @@ export async function fetchLiveProviderUsage(
 ): Promise<LiveProviderUsage | null> {
   const credential = provider.apiKey || provider.accessToken;
   if (!looksLikeCredential(credential)) return null;
-  const cached = cache.get(provider.id);
-  if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.value;
-  const pending = inFlight.get(provider.id);
+  const cacheKey = providerUsageCacheKey(provider, credential);
+  const cached = cache.get(cacheKey);
+  const cacheTtl = cached?.value ? CACHE_TTL_MS : NULL_CACHE_TTL_MS;
+  if (cached && Date.now() - cached.at < cacheTtl) return cached.value;
+  const pending = inFlight.get(cacheKey);
   if (pending) return pending;
 
   const task = (async () => {
@@ -1291,13 +1300,13 @@ export async function fetchLiveProviderUsage(
       value = null;
     }
 
-    cache.set(provider.id, { value, at: Date.now() });
+    cache.set(cacheKey, { value, at: Date.now() });
     return value;
   })();
-  inFlight.set(provider.id, task);
+  inFlight.set(cacheKey, task);
   try {
     return await task;
   } finally {
-    inFlight.delete(provider.id);
+    inFlight.delete(cacheKey);
   }
 }

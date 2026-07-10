@@ -4,6 +4,11 @@ import { join } from "path";
 
 type TerminalMode = "pty" | "pipe";
 
+export interface TerminalLaunch {
+  argv: string[];
+  mode: TerminalMode;
+}
+
 interface TerminalSession {
   id: string;
   proc: ReturnType<typeof Bun.spawn> | null;
@@ -191,43 +196,76 @@ function buildWindowsTerminalEnv(home: string): Record<string, string> {
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
     USERPROFILE: home,
+    POWERSHELL_TELEMETRY_OPTOUT: "1",
   };
 }
 
-function resolveWindowsShellArgv(): string[] {
-  const systemRoot = process.env.SystemRoot || process.env.SYSTEMROOT || "C:\\Windows";
+function resolveCommand(value: string | undefined): string | null {
+  const command = value?.trim();
+  if (!command) return null;
+  if (existsSync(command)) return command;
+  try {
+    return Bun.which(command) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export function resolveWindowsShellArgv(
+  env: NodeJS.ProcessEnv = process.env,
+  commandResolver: (value: string | undefined) => string | null = resolveCommand
+): string[] {
+  const explicit = commandResolver(env.CYBARA_TERMINAL_SHELL);
+  if (explicit) return [explicit, "-NoLogo", "-NoProfile"];
+  const pwsh = commandResolver("pwsh");
+  if (pwsh) return [pwsh, "-NoLogo", "-NoProfile"];
+  const systemRoot = env.SystemRoot || env.SYSTEMROOT || "C:\\Windows";
   const powershell = join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
   if (existsSync(powershell)) {
-    return [powershell, "-NoLogo"];
+    return [powershell, "-NoLogo", "-NoProfile"];
   }
-  return [process.env.COMSPEC || process.env.ComSpec || "cmd.exe"];
+  return [env.COMSPEC || env.ComSpec || "cmd.exe", "/D", "/Q"];
+}
+
+export function resolveUnixPtyCommand(
+  commandResolver: (value: string | undefined) => string | null = resolveCommand
+): string | null {
+  return commandResolver("python3") ?? commandResolver("python");
+}
+
+export function resolveTerminalLaunch(
+  platform: NodeJS.Platform = process.platform,
+  env: NodeJS.ProcessEnv = process.env,
+  commandResolver: (value: string | undefined) => string | null = resolveCommand
+): TerminalLaunch {
+  if (platform === "win32") {
+    return { argv: resolveWindowsShellArgv(env, commandResolver), mode: "pipe" };
+  }
+  const shell = env.SHELL || "/bin/sh";
+  const python = resolveUnixPtyCommand(commandResolver);
+  return python
+    ? { argv: [python, "-u", "-c", PTY_SCRIPT], mode: "pty" }
+    : { argv: [shell, "-l"], mode: "pipe" };
 }
 
 export function createTerminalSession(sessionId: string): TerminalSession {
   const home = homedir();
+  const launch = resolveTerminalLaunch();
   const isWindows = process.platform === "win32";
-
-  const mode: TerminalMode = isWindows ? "pipe" : "pty";
-  const proc = isWindows
-    ? Bun.spawn(resolveWindowsShellArgv(), {
-        cwd: home,
-        stdin: "pipe",
-        stdout: "pipe",
-        stderr: "pipe",
-        env: buildWindowsTerminalEnv(home),
-      })
-    : Bun.spawn(["python3", "-u", "-c", PTY_SCRIPT], {
-        cwd: home,
-        stdin: "pipe",
-        stdout: "pipe",
-        stderr: "pipe",
-        env: buildUnixTerminalEnv(process.env.SHELL || "/bin/zsh", home),
-      });
+  const proc = Bun.spawn(launch.argv, {
+    cwd: home,
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: isWindows
+      ? buildWindowsTerminalEnv(home)
+      : buildUnixTerminalEnv(process.env.SHELL || "/bin/sh", home),
+  });
 
   const session: TerminalSession = {
     id: sessionId,
     proc,
-    mode,
+    mode: launch.mode,
     createdAt: new Date().toISOString(),
     lastActivity: Date.now(),
   };

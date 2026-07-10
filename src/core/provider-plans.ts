@@ -1391,7 +1391,10 @@ export async function enrichProviderPlanStatusWithLiveUsage(
     status.providers.map(async (snapshot) => {
       const row = byId.get(snapshot.configuredProviderId ?? snapshot.providerId);
       if (!row) return snapshot;
-      const withCreds = providerManager.getWithCredentials(row.id);
+      const storedCredentials = providerManager.getWithCredentials(row.id);
+      const refreshedCredentials =
+        await providerManager.refreshOAuthCredentialsIfNeeded(storedCredentials);
+      const withCreds = refreshedCredentials ?? storedCredentials;
       const live = await fetchLiveProviderUsage({
         id: row.id,
         providerType: providerTypeOf(row),

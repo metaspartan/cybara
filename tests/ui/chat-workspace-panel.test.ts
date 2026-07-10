@@ -123,7 +123,7 @@ describe("chat workspace panel", () => {
   });
 
   test("composer selectors suppress native focus chrome", () => {
-    expect(styleSource).toContain(".chat-approval-select:focus-visible");
+    expect(styleSource).toContain(".chat-approval-toggle:focus-visible");
     expect(styleSource).toContain(".chat-agent-selector:focus-visible");
     expect(styleSource).toContain("background: transparent");
     expect(styleSource).toContain("box-shadow: none");

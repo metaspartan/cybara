@@ -1,5 +1,10 @@
 import { randomUUID } from "crypto";
 import type { Browser, BrowserContext, LaunchOptions, Locator, Page } from "playwright";
+import {
+  browserLaunchArgs,
+  findBundledBrowserExecutable,
+  findSystemBrowserExecutable,
+} from "./browser-executable";
 import { getChromium } from "./playwright-loader";
 import {
   type BrowserProfile,
@@ -23,22 +28,28 @@ async function launchWithFallback(
   headless: boolean,
   args: string[]
 ): Promise<Browser> {
-  let bundledAvailable = false;
-  try {
-    bundledAvailable = Boolean(chromium.executablePath());
-  } catch {
-    bundledAvailable = false;
-  }
-
   const attempts: Array<{ label: string; options: LaunchOptions }> = [];
-  if (bundledAvailable) {
-    attempts.push({ label: "bundled-chromium", options: { headless, args } });
+  const systemExecutable = findSystemBrowserExecutable();
+  const bundledExecutable = findBundledBrowserExecutable(chromium);
+  if (systemExecutable) {
+    attempts.push({
+      label: `system:${systemExecutable}`,
+      options: { headless, args, executablePath: systemExecutable, timeout: 8_000 },
+    });
   }
-  for (const channel of ["chrome", "msedge"]) {
-    attempts.push({ label: `channel:${channel}`, options: { headless, args, channel } });
+  if (bundledExecutable && bundledExecutable !== systemExecutable) {
+    attempts.push({
+      label: "bundled-chromium",
+      options: { headless, args, executablePath: bundledExecutable, timeout: 8_000 },
+    });
   }
-  if (!bundledAvailable) {
-    attempts.push({ label: "bundled-chromium", options: { headless, args } });
+  for (const channel of process.platform === "win32"
+    ? ["msedge", "chrome"]
+    : ["chrome", "msedge"]) {
+    attempts.push({
+      label: `channel:${channel}`,
+      options: { headless, args, channel, timeout: 8_000 },
+    });
   }
 
   const failures: string[] = [];
@@ -114,21 +125,14 @@ async function getLegacyBrowser(): Promise<Browser> {
   const chromium = await getChromium();
   try {
     try {
-      legacyBrowser = await chromium.connectOverCDP("http://localhost:9222");
+      legacyBrowser = await chromium.connectOverCDP("http://127.0.0.1:9222", { timeout: 750 });
       console.log("[Browser] Connected to existing Chrome instance via CDP");
       return legacyBrowser;
     } catch {
       void 0;
     }
 
-    const launchArgs = [
-      "--no-sandbox",
-      "--disable-setuid-sandbox",
-      "--disable-dev-shm-usage",
-      "--disable-accelerated-2d-canvas",
-      "--disable-gpu",
-      "--window-size=1920,1080",
-    ];
+    const launchArgs = browserLaunchArgs();
     const headless = process.env.BROWSER_HEADLESS !== "false";
     legacyBrowser = await launchWithFallback(chromium, headless, launchArgs);
 
@@ -136,9 +140,8 @@ async function getLegacyBrowser(): Promise<Browser> {
     return legacyBrowser;
   } catch (error) {
     console.error("[Browser] Failed to launch browser:", error);
-    throw new Error(
-      "Failed to launch browser. Make sure Playwright is installed: bun add playwright"
-    );
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to launch browser: ${detail}`);
   }
 }
 
@@ -148,8 +151,6 @@ async function getLegacyContext(): Promise<BrowserContext> {
   const bw = await getLegacyBrowser();
   legacyContext = await bw.newContext({
     viewport: { width: 1920, height: 1080 },
-    userAgent:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
   });
 
   return legacyContext;
@@ -989,7 +990,8 @@ export async function closeAll(): Promise<void> {
 
 export async function getStatus(): Promise<BrowserStatus> {
   try {
-    const executablePath = (await getChromium()).executablePath();
+    const chromium = await getChromium();
+    const executablePath = findSystemBrowserExecutable() ?? findBundledBrowserExecutable(chromium);
     const browsersMap = getBrowsersMap();
 
     return {

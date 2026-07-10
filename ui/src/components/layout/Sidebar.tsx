@@ -410,7 +410,7 @@ export function Sidebar() {
             ))}
           </nav>
 
-          <div className="border-t border-white/5 bg-black/20 p-2 backdrop-blur-md">
+          <div className="sidebar-footer border-t border-white/5 p-2 backdrop-blur-md">
             <NavLink
               to="/settings"
               title={collapsed ? t("nav.settings") : undefined}

@@ -3,6 +3,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { findBundledBrowserExecutable, findSystemBrowserExecutable } from "./browser-executable";
 import { getChromium } from "./playwright-loader";
 
 const CDP_PORT_RANGE_START = 18800;
@@ -151,66 +152,11 @@ export async function deleteProfile(name: string): Promise<void> {
 }
 
 async function findChromeExecutable(): Promise<string | null> {
-  const platform = process.platform;
-
-  let chromePaths: (string | undefined)[] = [];
-
-  if (platform === "darwin") {
-    chromePaths = [
-      "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-      "/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary",
-      "/Applications/Chromium.app/Contents/MacOS/Chromium",
-      "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser",
-      "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-      os.homedir() + "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    ];
-  } else if (platform === "win32") {
-    const programFiles = process.env["ProgramFiles"] || "C:\\Program Files";
-    const programFilesX86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
-    const localAppData = process.env["LOCALAPPDATA"] || "";
-
-    chromePaths = [
-      `${programFiles}\\Google\\Chrome\\Application\\chrome.exe`,
-      `${programFilesX86}\\Google\\Chrome\\Application\\chrome.exe`,
-      `${localAppData}\\Google\\Chrome\\Application\\chrome.exe`,
-      `${programFiles}\\Microsoft\\Edge\\Application\\msedge.exe`,
-      `${programFilesX86}\\Microsoft\\Edge\\Application\\msedge.exe`,
-      `${programFiles}\\BraveSoftware\\Brave-Browser\\Application\\brave.exe`,
-      `${localAppData}\\BraveSoftware\\Brave-Browser\\Application\\brave.exe`,
-      `${programFiles}\\Chromium\\Application\\chrome.exe`,
-    ];
-  } else {
-    chromePaths = [
-      "/usr/bin/google-chrome",
-      "/usr/bin/google-chrome-stable",
-      "/usr/bin/chromium",
-      "/usr/bin/chromium-browser",
-      "/snap/bin/chromium",
-      "/usr/bin/brave-browser",
-      "/usr/bin/microsoft-edge",
-      "/usr/bin/microsoft-edge-stable",
-    ];
-  }
-
-  if (process.env.CHROME_PATH) {
-    chromePaths.unshift(process.env.CHROME_PATH);
-  }
-
-  for (const chromePath of chromePaths) {
-    if (chromePath && fs.existsSync(chromePath)) {
-      console.log(`[Browser] Using system browser: ${chromePath}`);
-      return chromePath;
-    }
-  }
-
+  const systemExecutable = findSystemBrowserExecutable();
+  if (systemExecutable) return systemExecutable;
   try {
-    const playwrightPath = (await getChromium()).executablePath();
-    console.log(`[Browser] Using Playwright Chromium: ${playwrightPath}`);
-    return playwrightPath;
+    return findBundledBrowserExecutable(await getChromium());
   } catch {
-    console.warn(
-      "[Browser] No Chrome/Chromium found. Install a browser or run: bunx playwright install chromium"
-    );
     return null;
   }
 }

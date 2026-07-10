@@ -6,6 +6,7 @@ import "@xterm/xterm/css/xterm.css";
 import { buildXtermTheme } from "../../pages/ide/xtermTheme";
 import { Button } from "@/components/ui/Button";
 import { appendApiTokenParam } from "@/lib/auth";
+import { fitAndNotifyTerminal, type TerminalDimensions } from "@/lib/terminal-runtime";
 import { checkTerminalAccess, enableTerminalAccess } from "@/lib/terminal-access";
 import { cn } from "@/lib/utils";
 
@@ -51,6 +52,8 @@ export function EmbeddedTerminalPanel({
   const previousCreateRequestRef = useRef<number>(createRequestToken);
   const hasAutoCreatedRef = useRef(false);
   const sessionsRef = useRef<TerminalSession[]>([]);
+  const terminalDimensionsRef = useRef<TerminalDimensions | null>(null);
+  const resizeFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     sessionsRef.current = sessions;
@@ -64,7 +67,10 @@ export function EmbeddedTerminalPanel({
       }
     };
     const observer = new MutationObserver(applyTheme);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme-mode"] });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "data-theme-mode"],
+    });
     return () => observer.disconnect();
   }, []);
 
@@ -119,16 +125,20 @@ export function EmbeddedTerminalPanel({
   const fitActiveTerminal = useCallback(() => {
     const active = activeTermRef.current;
     if (!active) return;
-    try {
-      active.fitAddon.fit();
-      const ws = active.ws;
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        const { cols, rows } = active.term;
-        ws.send(`\u001b[RESIZE:${cols},${rows}]`);
+    if (resizeFrameRef.current !== null) cancelAnimationFrame(resizeFrameRef.current);
+    resizeFrameRef.current = requestAnimationFrame(() => {
+      resizeFrameRef.current = null;
+      try {
+        terminalDimensionsRef.current = fitAndNotifyTerminal(
+          active.term,
+          active.fitAddon,
+          active.ws,
+          terminalDimensionsRef.current
+        );
+      } catch {
+        return;
       }
-    } catch {
-      // Ignore fit errors caused by transient hidden layout.
-    }
+    });
   }, []);
 
   const createSession = useCallback(() => {
@@ -137,6 +147,8 @@ export function EmbeddedTerminalPanel({
     const id = crypto.randomUUID().slice(0, 8);
     const term = new XTerminal({
       cursorBlink: true,
+      scrollback: 10_000,
+      smoothScrollDuration: 0,
       fontSize: 12.5,
       lineHeight: 1.2,
       letterSpacing: 0,
@@ -239,14 +251,15 @@ export function EmbeddedTerminalPanel({
     const active = sessions.find((session) => session.id === activeSessionId);
     if (!active?.term || !active.fitAddon) return;
     active.term.open(viewport);
-    active.fitAddon.fit();
     active.term.focus();
     activeTermRef.current = {
       term: active.term,
       fitAddon: active.fitAddon,
       ws: active.ws,
     };
-  }, [activeSessionId, sessions]);
+    terminalDimensionsRef.current = null;
+    fitActiveTerminal();
+  }, [activeSessionId, fitActiveTerminal, sessions]);
 
   useEffect(() => {
     if (!visible) return;
@@ -260,6 +273,7 @@ export function EmbeddedTerminalPanel({
     return () => {
       window.removeEventListener("resize", onResize);
       observer.disconnect();
+      if (resizeFrameRef.current !== null) cancelAnimationFrame(resizeFrameRef.current);
     };
   }, [fitActiveTerminal, visible]);
 

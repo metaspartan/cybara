@@ -141,12 +141,12 @@ export function ChatReasoningControl({
         type="button"
         disabled={disabled || updating}
         onClick={() => setOpen((value) => !value)}
-        className="chat-reasoning-trigger inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-transparent px-2 text-gray-400 transition-colors hover:bg-white/[0.07] hover:text-white disabled:opacity-50"
+        className="composer-icon-btn chat-reasoning-trigger inline-flex h-8 w-8 items-center justify-center rounded-full border border-transparent px-0 text-gray-400 hover:text-white disabled:opacity-50"
+        title={ariaLabel}
         aria-label={ariaLabel}
         aria-expanded={open}
       >
         {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Brain className="h-4 w-4" />}
-        <span className="chat-reasoning-trigger-label text-[11px] font-medium">{label}</span>
       </button>
       {open ? (
         <div className="chat-reasoning-popover absolute bottom-full right-0 z-[70] mb-3 w-[264px] max-w-[calc(100vw-32px)] rounded-xl border p-3.5 shadow-2xl">

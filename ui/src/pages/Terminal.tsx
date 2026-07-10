@@ -6,6 +6,7 @@ import { SquareTerminal, Plus, Trash2, AlertTriangle, Loader2 } from "lucide-rea
 import { buildXtermTheme } from "./ide/xtermTheme";
 import { appendApiTokenParam } from "@/lib/auth";
 import { checkTerminalAccess, enableTerminalAccess } from "@/lib/terminal-access";
+import { fitAndNotifyTerminal, type TerminalDimensions } from "@/lib/terminal-runtime";
 
 interface TermSession {
   id: string;
@@ -25,6 +26,8 @@ export function TerminalPage() {
   // Mirror of `sessions` so the unmount cleanup can reach the latest set without
   // re-subscribing (a []-dep cleanup would otherwise capture an empty array).
   const sessionsRef = useRef<TermSession[]>([]);
+  const terminalDimensionsRef = useRef<TerminalDimensions | null>(null);
+  const resizeFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     sessionsRef.current = sessions;
@@ -38,7 +41,10 @@ export function TerminalPage() {
       }
     };
     const observer = new MutationObserver(applyTheme);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-theme-mode"] });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class", "data-theme-mode"],
+    });
     return () => observer.disconnect();
   }, []);
 
@@ -90,6 +96,8 @@ export function TerminalPage() {
     const id = crypto.randomUUID().slice(0, 8);
     const term = new XTerminal({
       cursorBlink: true,
+      scrollback: 10_000,
+      smoothScrollDuration: 0,
       fontSize: 14,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
       theme: buildXtermTheme("#0a0a0f"),
@@ -150,23 +158,30 @@ export function TerminalPage() {
     if (!session?.term || !session.fitAddon) return;
 
     session.term.open(container);
-    session.fitAddon.fit();
     session.term.focus();
     activeTermRef.current = { term: session.term, fitAddon: session.fitAddon };
+    terminalDimensionsRef.current = null;
   }, [activeSession, sessions]);
 
   useEffect(() => {
     const handleResize = () => {
-      if (activeTermRef.current?.fitAddon) {
+      if (resizeFrameRef.current !== null) cancelAnimationFrame(resizeFrameRef.current);
+      resizeFrameRef.current = requestAnimationFrame(() => {
+        resizeFrameRef.current = null;
+        const active = activeTermRef.current;
+        const session = sessions.find((item) => item.id === activeSession);
+        if (!active) return;
         try {
-          activeTermRef.current.fitAddon.fit();
-          const session = sessions.find((s) => s.id === activeSession);
-          if (session?.ws?.readyState === WebSocket.OPEN && activeTermRef.current.term) {
-            const { cols, rows } = activeTermRef.current.term;
-            session.ws.send(`\x1b[RESIZE:${cols},${rows}]`);
-          }
-        } catch {}
-      }
+          terminalDimensionsRef.current = fitAndNotifyTerminal(
+            active.term,
+            active.fitAddon,
+            session?.ws ?? null,
+            terminalDimensionsRef.current
+          );
+        } catch {
+          return;
+        }
+      });
     };
 
     window.addEventListener("resize", handleResize);
@@ -176,6 +191,7 @@ export function TerminalPage() {
     return () => {
       window.removeEventListener("resize", handleResize);
       observer.disconnect();
+      if (resizeFrameRef.current !== null) cancelAnimationFrame(resizeFrameRef.current);
     };
   }, [activeSession, sessions]);
 

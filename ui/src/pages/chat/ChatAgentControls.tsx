@@ -45,19 +45,19 @@ export function ChatAgentControls({
           disabled={updating}
           onChange={(event) => onSelectAgent(event.target.value || undefined)}
           title={routeTitle}
-          className="chat-agent-selector h-7 min-w-[104px] max-w-[196px] appearance-none truncate border-0 bg-transparent py-1 pl-2 pr-6 text-[11px] font-medium text-gray-300 outline-none ring-0 transition-colors [color-scheme:dark] hover:text-white focus:outline-none focus:ring-0 disabled:opacity-60"
+          className="chat-agent-selector h-7 min-w-[104px] max-w-[196px] appearance-none truncate border-0 bg-transparent py-1 pl-2 pr-6 text-[11px] font-medium text-gray-300 outline-none ring-0 transition-colors hover:text-white focus:outline-none focus:ring-0 disabled:opacity-60"
         >
           {modelRouterEnabled ? (
-            <option value={MODEL_ROUTER_SELECTOR_VALUE} className="bg-[#11131c] text-white">
+            <option value={MODEL_ROUTER_SELECTOR_VALUE} className="chat-select-option">
               Model Router
             </option>
           ) : (
-            <option value="" className="bg-[#11131c] text-white">
+            <option value="" className="chat-select-option">
               Gateway default
             </option>
           )}
           {agents.map((agent) => (
-            <option key={agent.id} value={agent.id} className="bg-[#11131c] text-white">
+            <option key={agent.id} value={agent.id} className="chat-select-option">
               {agent.model ? `${agent.name} - ${agent.model}` : agent.name}
             </option>
           ))}

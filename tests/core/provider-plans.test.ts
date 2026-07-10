@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { tables } from "../../src/core/database";
+import { tables, type Provider } from "../../src/core/database";
 import { config } from "../../src/core/config";
 import {
   enrichProviderPlanStatusWithLiveUsage,
@@ -354,6 +354,49 @@ describe("provider plan monitoring", () => {
     expect(snapshot.automaticTrackingLabel).toBe("Grok Build usage");
     expect(snapshot.externalSourceMode).toBe("oauth_api");
     expect(snapshot.presetSuggestions.map((preset) => preset.id)).toContain("grok-build");
+  });
+
+  test("refreshes expired xAI OAuth before loading Grok Build usage", async () => {
+    const providerId = createProvider("xai-oauth", "o".repeat(64), "https://api.x.ai/v1");
+    const stored = tables.providers.get(providerId) as Provider;
+    tables.providers.update(providerId, { ...stored, expires_at: Date.now() - 1 });
+    const refreshedToken = "n".repeat(64);
+    const seenUrls: string[] = [];
+    const hex =
+      "0a3f0d7f6a9c3f12001a002206088097f3d0062a060880b191d2063a07080215a9389b3f3a07080115d6ea183c421208011206088097f3d0061a060880b191d206";
+    const billingBytes = Uint8Array.from(
+      hex.match(/../g)?.map((part) => Number.parseInt(part, 16)) ?? []
+    );
+    globalThis.fetch = (async (url, init) => {
+      seenUrls.push(String(url));
+      if (String(url) === "https://auth.x.ai/oauth2/token") {
+        return Response.json({ access_token: refreshedToken, expires_in: 3600 });
+      }
+      expect(String(url)).toBe(
+        "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig"
+      );
+      expect((init?.headers as Record<string, string>)?.Authorization).toBe(
+        `Bearer ${refreshedToken}`
+      );
+      return new Response(billingBytes);
+    }) as typeof fetch;
+    setProviderPlanMonitoringConfig({ enabled: true, providers: {} });
+
+    const status = await enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus());
+    const snapshot = status.providers.find(
+      (provider) => provider.configuredProviderId === providerId
+    );
+
+    expect(seenUrls).toEqual([
+      "https://auth.x.ai/oauth2/token",
+      "https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig",
+    ]);
+    expect(snapshot?.sourceMode).toBe("oauth_api");
+    expect(snapshot?.windows.find((window) => window.id === "5h")?.unlimited).toBe(true);
+    expect(snapshot?.windows.find((window) => window.id === "weekly")?.usedPercent).toBeCloseTo(
+      1.222,
+      3
+    );
   });
 
   test("enriches MiniMax token-plan quota from provider API", async () => {

@@ -102,7 +102,7 @@ describe("status stream websocket wiring", () => {
     expect(source).not.toContain("setHovered");
     expect(source).toContain("supportedReasoningOptions");
     expect(source).toContain("useUpdateAgentReasoning");
-    expect(source).toContain('id="chat-tool-approval-mode"');
+    expect(source).toContain("chat-approval-control");
     expect(source).toContain(
       "const Icon = updating ? Loader2 : isAskMode ? CircleHelp : ShieldAlert"
     );
@@ -111,7 +111,7 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("settingsApi.updateConfig({ tool_approval_mode: nextMode })");
     expect(source).toContain('id="chat-agent-selector"');
     expect(source).toContain("chat-composer-responsive");
-    expect(source).toContain("chat-approval-select");
+    expect(source).toContain("chat-approval-toggle");
     expect(source).toContain("chat-agent-selector-compact-label");
     expect(source).not.toContain('<Zap className="pointer-events-none absolute left-2');
     expect(source).not.toContain("focus-within:border-white/20");
@@ -206,7 +206,6 @@ describe("status stream websocket wiring", () => {
     expect(controlsSource).toContain("selectedAgent?.model || selectedAgent?.name");
     expect(cssSource).toContain("container-type: inline-size");
     expect(cssSource).toContain("@container (max-width: 460px)");
-    expect(cssSource).toContain(".chat-approval-chevron");
     expect(cssSource).toContain("color: transparent");
   });
 

@@ -25,6 +25,8 @@
   --glass-border: rgba(255, 255, 255, 0.08);
   --glass-surface: rgba(255, 255, 255, 0.03);
   --glass-highlight: rgba(255, 255, 255, 0.12);
+  --glass-bg: rgba(18, 18, 26, 0.7);
+  --glass-bg-strong: rgba(13, 13, 18, 0.95);
   --context-ring-ok: #34d399;
   --context-ring-warn: #fbbf24;
   --context-ring-danger: #f87171;
@@ -188,14 +190,27 @@ body::before {
 */
 
 .glass {
-  background: rgba(18, 18, 26, 0.7);
+  background: var(--glass-bg, rgba(18, 18, 26, 0.7));
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--glass-border);
 }
 
+.sidebar-footer {
+  background: color-mix(in srgb, var(--surface-hover, #1a1d24) 30%, transparent);
+}
+
+.composer-icon-btn {
+  background: transparent;
+  transition: background-color 0.15s ease;
+}
+
+.composer-icon-btn:hover {
+  background: color-mix(in srgb, var(--surface-hover, #1f2937) 60%, transparent);
+}
+
 .glass-strong {
-  background: rgba(13, 13, 18, 0.95);
+  background: var(--glass-bg-strong, rgba(13, 13, 18, 0.95));
   /* Darker, more opaque */
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -601,19 +616,19 @@ textarea[data-chat-composer-input="true"]:focus-visible {
   box-shadow: none;
 }
 
-.chat-approval-select,
+.chat-approval-toggle,
 .chat-agent-selector,
-.chat-approval-select:hover,
+.chat-approval-toggle:hover,
 .chat-agent-selector:hover,
-.chat-approval-select:focus,
+.chat-approval-toggle:focus,
 .chat-agent-selector:focus,
-.chat-approval-select:focus-visible,
+.chat-approval-toggle:focus-visible,
 .chat-agent-selector:focus-visible {
   appearance: none;
   background: transparent;
   border: 0;
   border-color: transparent;
-  border-radius: 0;
+  border-radius: 9999px;
   box-shadow: none;
   outline: none;
 }
@@ -682,34 +697,28 @@ textarea[data-chat-composer-input="true"]:focus-visible {
     padding-left: 0;
     padding-right: 0;
   }
-
-  .chat-reasoning-trigger-label {
-    display: none;
-  }
 }
 
 @container (max-width: 460px) {
   .chat-approval-control {
-    width: 28px;
-    flex: 0 0 28px;
+    width: 32px;
+    flex: 0 0 32px;
   }
 
-  .chat-approval-select {
-    width: 28px;
+  .chat-approval-toggle {
+    width: 32px;
     padding-left: 0;
     padding-right: 0;
-    color: transparent;
+    gap: 0;
   }
 
-  .chat-approval-select:hover,
-  .chat-approval-select:focus,
+  .chat-approval-label {
+    display: none;
+  }
+
   .chat-agent-selector:hover,
   .chat-agent-selector:focus {
     color: transparent;
-  }
-
-  .chat-approval-chevron {
-    display: none;
   }
 
   .chat-agent-selector-shell,
@@ -888,11 +897,13 @@ html.light {
   --glass-border: rgba(15, 23, 42, 0.1);
   --glass-surface: rgba(15, 23, 42, 0.03);
   --glass-highlight: rgba(15, 23, 42, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.78);
+  --glass-bg-strong: rgba(248, 250, 252, 0.95);
   --context-ring-ok: #059669;
   --context-ring-warn: #d97706;
   --context-ring-danger: #dc2626;
   --context-ring-track: rgba(15, 23, 42, 0.16);
-  --context-ring-inner: #f8fafc;
+  --context-ring-inner: #eef0f4;
   --context-tooltip-bg: rgba(255, 255, 255, 0.96);
   --context-tooltip-border: rgba(15, 23, 42, 0.14);
   --context-tooltip-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
@@ -931,9 +942,17 @@ html.light select.bg-transparent {
   background-color: transparent;
 }
 
-html.light .chat-agent-selector,
-html.light .chat-approval-select {
+html.light .chat-agent-selector {
   color-scheme: light;
+}
+
+.chat-select-option {
+  background: var(--surface-panel, #11131c);
+  color: var(--context-tooltip-body, #e5e7eb);
+}
+
+.chat-agent-selector {
+  color-scheme: dark;
 }
 
 html.light select option:checked,
@@ -958,14 +977,6 @@ html.light input:-webkit-autofill:focus {
 }
 
 /* Glass surfaces */
-html.light .glass {
-  background: rgba(255, 255, 255, 0.78);
-}
-
-html.light .glass-strong {
-  background: rgba(248, 249, 251, 0.95);
-}
-
 html.light .glass-card {
   background: rgba(15, 23, 42, 0.03);
   box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.06);
@@ -1344,24 +1355,27 @@ html.theme-tinted:not(.light) .via-\[\#0f1220\] { --tw-gradient-via: var(--surfa
 html.theme-tinted:not(.light) .to-\[\#090c16\] { --tw-gradient-to: var(--surface-backdrop); }
 
 html[data-theme-mode="icy-dark"] {
-  --surface-backdrop: #060b13;
-  --surface-panel: #0c141f;
-  --surface-raised: #13202f;
-  --surface-hover: #152438;
-  --surface-border: rgba(139, 180, 235, 0.16);
-  --glass-border: rgba(139, 180, 235, 0.12);
-  --glass-surface: rgba(139, 180, 235, 0.04);
-  --context-ring-inner: #0c141f;
-  --context-tooltip-bg: rgba(18, 30, 46, 0.97);
-  --chat-environment-panel-bg: #0c141f;
-  --chat-environment-panel-border: #1d3049;
-  --workspace-open-menu-bg: #13202f;
+  --surface-backdrop: #04101f;
+  --surface-panel: #081a2e;
+  --surface-raised: #0e2742;
+  --surface-hover: #143257;
+  --surface-border: rgba(125, 200, 255, 0.2);
+  --glass-border: rgba(125, 200, 255, 0.16);
+  --glass-surface: rgba(96, 180, 255, 0.06);
+  --glass-bg: rgba(8, 24, 44, 0.72);
+  --glass-bg-strong: rgba(6, 18, 36, 0.95);
+  --context-ring-inner: #081a2e;
+  --context-tooltip-bg: rgba(12, 32, 56, 0.97);
+  --chat-environment-panel-bg: #081a2e;
+  --chat-environment-panel-border: #1a3a5e;
+  --workspace-open-menu-bg: #0e2742;
 }
 
 html[data-theme-mode="icy-dark"] body::before {
   background:
-    radial-gradient(circle at 15% 50%, rgba(56, 130, 210, 0.12) 0%, transparent 50%),
-    radial-gradient(circle at 85% 30%, rgba(45, 160, 220, 0.08) 0%, transparent 50%);
+    radial-gradient(circle at 12% 40%, rgba(56, 160, 255, 0.18) 0%, transparent 45%),
+    radial-gradient(circle at 88% 25%, rgba(34, 211, 238, 0.13) 0%, transparent 50%),
+    radial-gradient(circle at 50% 90%, rgba(96, 180, 255, 0.08) 0%, transparent 55%);
 }
 
 html[data-theme-mode="ash-grey"] {
@@ -1372,6 +1386,8 @@ html[data-theme-mode="ash-grey"] {
   --surface-border: rgba(255, 255, 255, 0.12);
   --glass-border: rgba(255, 255, 255, 0.09);
   --glass-surface: rgba(255, 255, 255, 0.035);
+  --glass-bg: rgba(22, 24, 27, 0.72);
+  --glass-bg-strong: rgba(17, 18, 21, 0.95);
   --context-ring-inner: #191b1e;
   --context-tooltip-bg: rgba(36, 38, 42, 0.97);
   --chat-environment-panel-bg: #191b1e;
@@ -1393,6 +1409,8 @@ html[data-theme-mode="sand-dune"] {
   --surface-border: rgba(233, 196, 136, 0.16);
   --glass-border: rgba(233, 196, 136, 0.12);
   --glass-surface: rgba(233, 196, 136, 0.04);
+  --glass-bg: rgba(27, 22, 16, 0.72);
+  --glass-bg-strong: rgba(19, 16, 9, 0.95);
   --context-ring-inner: #1b1610;
   --context-tooltip-bg: rgba(42, 35, 24, 0.97);
   --chat-environment-panel-bg: #1b1610;
@@ -1414,6 +1432,8 @@ html[data-theme-mode="cake"] {
   --surface-hover: #f4e6e1;
   --glass-border: rgba(112, 58, 74, 0.12);
   --glass-surface: rgba(112, 58, 74, 0.035);
+  --glass-bg: rgba(255, 253, 251, 0.8);
+  --glass-bg-strong: rgba(255, 253, 251, 0.95);
   --context-ring-inner: #fffdfb;
   --context-tooltip-bg: rgba(255, 253, 251, 0.97);
   --context-tooltip-border: rgba(112, 58, 74, 0.16);
@@ -1426,4 +1446,123 @@ html.light[data-theme-mode="cake"] body::before {
   background:
     radial-gradient(circle at 15% 50%, rgba(240, 170, 180, 0.22) 0%, transparent 50%),
     radial-gradient(circle at 85% 30%, rgba(250, 205, 170, 0.18) 0%, transparent 50%);
+}
+
+html[data-theme-mode="midnight"] {
+  --surface-backdrop: #0c0818;
+  --surface-panel: #15102a;
+  --surface-raised: #1e1740;
+  --surface-hover: #251c52;
+  --surface-border: rgba(168, 130, 255, 0.18);
+  --glass-border: rgba(168, 130, 255, 0.14);
+  --glass-surface: rgba(168, 130, 255, 0.05);
+  --glass-bg: rgba(21, 16, 42, 0.72);
+  --glass-bg-strong: rgba(12, 8, 24, 0.95);
+  --context-ring-inner: #15102a;
+  --context-tooltip-bg: rgba(30, 23, 64, 0.97);
+  --chat-environment-panel-bg: #15102a;
+  --chat-environment-panel-border: #2e2360;
+  --workspace-open-menu-bg: #1e1740;
+}
+
+html[data-theme-mode="midnight"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(139, 92, 246, 0.16) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(168, 85, 247, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 50% 90%, rgba(124, 58, 237, 0.06) 0%, transparent 55%);
+}
+
+html[data-theme-mode="forest"] {
+  --surface-backdrop: #060f0a;
+  --surface-panel: #0e1a12;
+  --surface-raised: #14271b;
+  --surface-hover: #1a3324;
+  --surface-border: rgba(110, 200, 140, 0.16);
+  --glass-border: rgba(110, 200, 140, 0.12);
+  --glass-surface: rgba(110, 200, 140, 0.04);
+  --glass-bg: rgba(14, 26, 18, 0.72);
+  --glass-bg-strong: rgba(6, 15, 10, 0.95);
+  --context-ring-inner: #0e1a12;
+  --context-tooltip-bg: rgba(20, 39, 27, 0.97);
+  --chat-environment-panel-bg: #0e1a12;
+  --chat-environment-panel-border: #1d3a28;
+  --workspace-open-menu-bg: #14271b;
+}
+
+html[data-theme-mode="forest"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(52, 211, 153, 0.12) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(16, 185, 129, 0.08) 0%, transparent 50%);
+}
+
+html[data-theme-mode="paper"] {
+  background-color: #f7f3ec;
+  --surface-backdrop: #f7f3ec;
+  --surface-panel: #fffefa;
+  --surface-raised: #efe8db;
+  --surface-hover: #efe8db;
+  --glass-border: rgba(120, 95, 50, 0.12);
+  --glass-surface: rgba(120, 95, 50, 0.035);
+  --glass-bg: rgba(255, 254, 250, 0.8);
+  --glass-bg-strong: rgba(247, 243, 236, 0.95);
+  --context-ring-inner: #f7f3ec;
+  --context-tooltip-bg: rgba(255, 254, 250, 0.97);
+  --context-tooltip-border: rgba(120, 95, 50, 0.16);
+  --chat-environment-panel-bg: #fffefa;
+  --chat-environment-panel-border: rgba(120, 95, 50, 0.16);
+  --workspace-open-menu-bg: #fffefa;
+}
+
+html.light[data-theme-mode="paper"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(217, 184, 130, 0.18) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(240, 210, 160, 0.14) 0%, transparent 50%);
+}
+
+html[data-theme-mode="mint"] {
+  background-color: #edf7f2;
+  --surface-backdrop: #edf7f2;
+  --surface-panel: #f8fdfb;
+  --surface-raised: #dceee4;
+  --surface-hover: #dceee4;
+  --glass-border: rgba(20, 120, 80, 0.12);
+  --glass-surface: rgba(20, 120, 80, 0.035);
+  --glass-bg: rgba(248, 253, 251, 0.8);
+  --glass-bg-strong: rgba(237, 247, 242, 0.95);
+  --context-ring-inner: #edf7f2;
+  --context-tooltip-bg: rgba(248, 253, 251, 0.97);
+  --context-tooltip-border: rgba(20, 120, 80, 0.16);
+  --chat-environment-panel-bg: #f8fdfb;
+  --chat-environment-panel-border: rgba(20, 120, 80, 0.16);
+  --workspace-open-menu-bg: #f8fdfb;
+}
+
+html.light[data-theme-mode="mint"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(110, 200, 160, 0.18) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(140, 220, 180, 0.14) 0%, transparent 50%);
+}
+
+html[data-theme-mode="lavender"] {
+  background-color: #f3f0fa;
+  --surface-backdrop: #f3f0fa;
+  --surface-panel: #fcfaff;
+  --surface-raised: #e6def2;
+  --surface-hover: #e6def2;
+  --glass-border: rgba(110, 70, 180, 0.12);
+  --glass-surface: rgba(110, 70, 180, 0.035);
+  --glass-bg: rgba(252, 250, 255, 0.8);
+  --glass-bg-strong: rgba(243, 240, 250, 0.95);
+  --context-ring-inner: #f3f0fa;
+  --context-tooltip-bg: rgba(252, 250, 255, 0.97);
+  --context-tooltip-border: rgba(110, 70, 180, 0.16);
+  --chat-environment-panel-bg: #fcfaff;
+  --chat-environment-panel-border: rgba(110, 70, 180, 0.16);
+  --workspace-open-menu-bg: #fcfaff;
+}
+
+html.light[data-theme-mode="lavender"] body::before {
+  background:
+    radial-gradient(circle at 15% 50%, rgba(168, 130, 255, 0.16) 0%, transparent 50%),
+    radial-gradient(circle at 85% 30%, rgba(196, 160, 255, 0.12) 0%, transparent 50%);
 }
