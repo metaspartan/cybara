@@ -146,6 +146,43 @@ describe("mobile live chat cache", () => {
     ]);
   });
 
+  test("keeps long-running tool completion at its original timeline position", () => {
+    const baseTimestamp = 1_783_700_000_000;
+    const completed = mergeLiveActivity(
+      [
+        {
+          id: "long-command",
+          phase: "start",
+          text: "Running repository tests",
+          timestamp: baseTimestamp,
+          toolName: "exec",
+          toolCallId: "long-command",
+        },
+        {
+          id: "later-thought",
+          phase: "result",
+          text: "Reviewing another issue",
+          timestamp: baseTimestamp + 1,
+          toolName: "__thought",
+        },
+      ],
+      {
+        id: "long-command",
+        phase: "result",
+        text: "Ran repository tests",
+        timestamp: baseTimestamp + 25 * 60_000,
+        toolName: "exec",
+        toolCallId: "long-command",
+      }
+    );
+
+    expect(completed.map((activity) => activity.text)).toEqual([
+      "Ran repository tests",
+      "Reviewing another issue",
+    ]);
+    expect(completed[0]?.timestamp).toBe(baseTimestamp);
+  });
+
   test("does not discard older live activities during long runs", () => {
     let activities = [];
     for (let index = 0; index < 24; index += 1) {

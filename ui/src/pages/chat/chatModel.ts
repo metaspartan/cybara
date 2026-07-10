@@ -793,13 +793,11 @@ export function applyLiveActivityEvent(
         const candidate = previous[index];
         if (candidate.phase !== "start") continue;
         if ((candidate.toolCallId || "").trim().toLowerCase() !== normalizedToolCallId) continue;
-        if (nextTimestamp - candidate.timestamp > 60_000) continue;
         const updated = [...previous];
         updated[index] = {
           ...candidate,
           phase: event.phase,
           text: normalizedText,
-          timestamp: nextTimestamp,
           toolName: normalizedToolName || candidate.toolName,
           toolCallId: normalizedToolCallId,
           sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
@@ -813,13 +811,11 @@ export function applyLiveActivityEvent(
         const candidate = previous[index];
         if (candidate.phase !== "start") continue;
         if ((candidate.toolName || "").trim().toLowerCase() !== normalizedToolName) continue;
-        if (nextTimestamp - candidate.timestamp > 60_000) continue;
         const updated = [...previous];
         updated[index] = {
           ...candidate,
           phase: event.phase,
           text: normalizedText,
-          timestamp: nextTimestamp,
           toolName: normalizedToolName,
           toolCallId: normalizedToolCallId || candidate.toolCallId,
           sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,
@@ -831,14 +827,12 @@ export function applyLiveActivityEvent(
     for (let index = previous.length - 1; index >= 0; index -= 1) {
       const candidate = previous[index];
       if (candidate.phase !== "start") continue;
-      if (nextTimestamp - candidate.timestamp > 60_000) continue;
       if (normalizeActivityTextForPhase(candidate.text, event.phase) !== normalizedText) continue;
       const updated = [...previous];
       updated[index] = {
         ...candidate,
         phase: event.phase,
         text: normalizedText,
-        timestamp: nextTimestamp,
         toolName: normalizedToolName || candidate.toolName,
         toolCallId: normalizedToolCallId || candidate.toolCallId,
         sandboxProvider: normalizedSandboxProvider || candidate.sandboxProvider,

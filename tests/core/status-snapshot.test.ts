@@ -137,10 +137,53 @@ describe("session status snapshots", () => {
     expect(snapshot?.activities).toHaveLength(1);
     expect(snapshot?.activities[0]?.phase).toBe("result");
     expect(snapshot?.activities[0]?.text).toBe("Ran bun test");
+    expect(snapshot?.activities[0]?.timestamp).toBe(baseTimestamp);
 
     broadcastStatus({
       status: "idle",
       timestamp: baseTimestamp + 20,
+      sessionId,
+      detail: "idle",
+    });
+  });
+
+  test("keeps a completed tool before thoughts emitted later in the run", () => {
+    const sessionId = `status-tool-order-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const baseTimestamp = Date.now();
+
+    broadcastStatus({
+      status: "tool_executing",
+      timestamp: baseTimestamp,
+      sessionId,
+      toolName: "exec",
+      toolCallId: "long-command",
+      detail: "Running repository tests",
+    });
+    broadcastStatus({
+      status: "thinking",
+      timestamp: baseTimestamp + 1,
+      sessionId,
+      detail: "Reviewing the test output",
+    });
+    broadcastStatus({
+      status: "tool_completed",
+      timestamp: baseTimestamp + 25 * 60_000,
+      sessionId,
+      toolName: "exec",
+      toolCallId: "long-command",
+      detail: "Ran repository tests",
+    });
+
+    const snapshot = getSessionStatusSnapshot(sessionId);
+    expect(snapshot?.activities.map((activity) => activity.text)).toEqual([
+      "Ran repository tests",
+      "Reviewing the test output",
+    ]);
+    expect(snapshot?.activities[0]?.timestamp).toBe(baseTimestamp);
+
+    broadcastStatus({
+      status: "idle",
+      timestamp: baseTimestamp + 25 * 60_000 + 1,
       sessionId,
       detail: "idle",
     });

@@ -706,14 +706,13 @@ func nativeMergeLiveActivity(
         if let toolCallId = nativeFirstNonEmpty(incoming.toolCallId),
            let index = next.lastIndex(where: {
                $0.phase == .start &&
-               nativeFirstNonEmpty($0.toolCallId)?.lowercased() == toolCallId.lowercased() &&
-               incoming.timestamp - $0.timestamp < 60_000
+               nativeFirstNonEmpty($0.toolCallId)?.lowercased() == toolCallId.lowercased()
            }) {
             next[index] = NativeToolActivity(
                 id: next[index].id,
                 phase: incoming.phase,
                 text: incoming.text,
-                timestamp: incoming.timestamp,
+                timestamp: next[index].timestamp,
                 toolName: incoming.toolName ?? next[index].toolName,
                 toolCallId: toolCallId,
                 sandboxProvider: incoming.sandboxProvider ?? next[index].sandboxProvider
@@ -724,14 +723,13 @@ func nativeMergeLiveActivity(
         if let toolName = nativeFirstNonEmpty(incoming.toolName),
            let index = next.lastIndex(where: {
                $0.phase == .start &&
-               nativeFirstNonEmpty($0.toolName)?.lowercased() == toolName.lowercased() &&
-               incoming.timestamp - $0.timestamp < 60_000
+               nativeFirstNonEmpty($0.toolName)?.lowercased() == toolName.lowercased()
            }) {
             next[index] = NativeToolActivity(
                 id: next[index].id,
                 phase: incoming.phase,
                 text: incoming.text,
-                timestamp: incoming.timestamp,
+                timestamp: next[index].timestamp,
                 toolName: toolName,
                 toolCallId: incoming.toolCallId ?? next[index].toolCallId,
                 sandboxProvider: incoming.sandboxProvider ?? next[index].sandboxProvider

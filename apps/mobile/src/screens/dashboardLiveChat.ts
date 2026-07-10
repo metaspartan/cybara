@@ -228,7 +228,13 @@ export function mergeMobileLiveActivities(
     const activityKey = activity.toolCallId || activity.id;
     const index = indexes.get(activityKey);
     if (typeof index === "number") {
-      next[index] = { ...next[index], ...activity };
+      const existing = next[index];
+      const preserveStartTimestamp = existing.phase === "start" && activity.phase !== "start";
+      next[index] = {
+        ...existing,
+        ...activity,
+        timestamp: preserveStartTimestamp ? existing.timestamp : activity.timestamp,
+      };
     } else {
       indexes.set(activityKey, next.length);
       next.push({ ...activity });

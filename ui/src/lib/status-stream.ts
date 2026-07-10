@@ -106,12 +106,41 @@ export function connectStatusStream(handlers: ConnectStatusStreamHandlers): () =
 const statusStreamSubscribers = new Set<ConnectStatusStreamHandlers>();
 let statusStreamSocket: WebSocket | null = null;
 let statusStreamReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let statusStreamHeartbeatTimer: ReturnType<typeof setInterval> | null = null;
 let statusStreamClosedByClient = false;
+let statusStreamLastMessageAt = 0;
+
+const STATUS_STREAM_HEARTBEAT_MS = 15_000;
+const STATUS_STREAM_STALE_MS = 45_000;
 
 function clearStatusStreamReconnect() {
   if (!statusStreamReconnectTimer) return;
   clearTimeout(statusStreamReconnectTimer);
   statusStreamReconnectTimer = null;
+}
+
+function clearStatusStreamHeartbeat() {
+  if (!statusStreamHeartbeatTimer) return;
+  clearInterval(statusStreamHeartbeatTimer);
+  statusStreamHeartbeatTimer = null;
+}
+
+function startStatusStreamHeartbeat() {
+  clearStatusStreamHeartbeat();
+  statusStreamLastMessageAt = Date.now();
+  statusStreamHeartbeatTimer = setInterval(() => {
+    const socket = statusStreamSocket;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    if (Date.now() - statusStreamLastMessageAt > STATUS_STREAM_STALE_MS) {
+      socket.close();
+      return;
+    }
+    try {
+      socket.send("ping");
+    } catch {
+      socket.close();
+    }
+  }, STATUS_STREAM_HEARTBEAT_MS);
 }
 
 function notifyStatusStreamOpen() {
@@ -146,9 +175,14 @@ function ensureStatusStreamConnected() {
   statusStreamClosedByClient = false;
   statusStreamSocket = new WebSocket(toWebSocketUrl("/api/ws/status"));
 
-  statusStreamSocket.onopen = notifyStatusStreamOpen;
+  statusStreamSocket.onopen = () => {
+    startStatusStreamHeartbeat();
+    notifyStatusStreamOpen();
+  };
 
   statusStreamSocket.onmessage = (event) => {
+    statusStreamLastMessageAt = Date.now();
+    if (String(event.data) === "pong") return;
     try {
       const payload = JSON.parse(String(event.data)) as StatusStreamEvent;
       if (!payload || typeof payload !== "object" || typeof payload.type !== "string") return;
@@ -159,6 +193,7 @@ function ensureStatusStreamConnected() {
   };
 
   statusStreamSocket.onclose = () => {
+    clearStatusStreamHeartbeat();
     statusStreamSocket = null;
     notifyStatusStreamClose();
     if (statusStreamClosedByClient || statusStreamSubscribers.size === 0) return;
@@ -184,6 +219,7 @@ function sharedStatusStreamUnsubscribe(handlers: ConnectStatusStreamHandlers) {
   if (statusStreamSubscribers.size > 0) return;
   statusStreamClosedByClient = true;
   clearStatusStreamReconnect();
+  clearStatusStreamHeartbeat();
   try {
     statusStreamSocket?.close();
   } catch {

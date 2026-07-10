@@ -262,6 +262,10 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("function ensureStatusStreamConnected()");
     expect(source).toContain("notifyStatusStreamEvent(payload)");
     expect(source).toContain("statusStreamSubscribers.size === 0");
+    expect(source).toContain("STATUS_STREAM_HEARTBEAT_MS");
+    expect(source).toContain("STATUS_STREAM_STALE_MS");
+    expect(source).toContain('socket.send("ping")');
+    expect(source).toContain('if (String(event.data) === "pong") return;');
     expect(source.match(/new WebSocket/g)?.length).toBe(1);
   });
 

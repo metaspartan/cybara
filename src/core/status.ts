@@ -324,7 +324,7 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
           id: matched.id,
           phase,
           text: resolvedText,
-          timestamp: payload.timestamp,
+          timestamp: matched.timestamp,
           toolName: toolName || matched.toolName,
           toolCallId: toolCallId || matched.toolCallId,
           sandboxProvider: payload.sandboxProvider || matched.sandboxProvider,

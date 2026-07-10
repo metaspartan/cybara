@@ -826,6 +826,46 @@ final class GatewayClientModelTests: XCTestCase {
         }
     }
 
+    func testNativeLongRunningToolCompletionKeepsStartPosition() {
+        let baseTimestamp = 1_783_700_000_000.0
+        let existing = [
+            NativeToolActivity(
+                id: "long-command",
+                phase: .start,
+                text: "Running repository tests",
+                timestamp: baseTimestamp,
+                toolName: "exec",
+                toolCallId: "long-command",
+                sandboxProvider: nil
+            ),
+            NativeToolActivity(
+                id: "later-thought",
+                phase: .result,
+                text: "Reviewing another issue",
+                timestamp: baseTimestamp + 1,
+                toolName: "__thought",
+                toolCallId: nil,
+                sandboxProvider: nil
+            ),
+        ]
+        let completed = nativeMergeLiveActivity(
+            existing,
+            incoming: NativeToolActivity(
+                id: "long-command-result",
+                phase: .result,
+                text: "Ran repository tests",
+                timestamp: baseTimestamp + 25 * 60_000,
+                toolName: "exec",
+                toolCallId: "long-command",
+                sandboxProvider: nil
+            )
+        )
+
+        XCTAssertEqual(completed.map(\.text), ["Ran repository tests", "Reviewing another issue"])
+        XCTAssertEqual(completed.first?.timestamp, baseTimestamp)
+        XCTAssertFalse(completed.contains(where: { $0.phase == .start }))
+    }
+
     func testNativeCompactingStatusRendersVisibleThoughtActivity() throws {
         let event = try decodeStatusEvent(
             #"""

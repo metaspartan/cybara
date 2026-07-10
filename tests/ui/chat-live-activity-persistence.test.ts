@@ -67,6 +67,43 @@ describe("Chat live activity persistence", () => {
     );
   });
 
+  test("long-running tool completion keeps its original timeline position", () => {
+    const baseTimestamp = 1_783_700_000_000;
+    const activities: LiveActivityItem[] = [
+      {
+        id: "tool-start",
+        phase: "start",
+        text: "Running repository tests",
+        timestamp: baseTimestamp,
+        toolName: "exec",
+        toolCallId: "long-command",
+      },
+      {
+        id: "thought",
+        phase: "result",
+        text: "Reviewing another issue",
+        timestamp: baseTimestamp + 1,
+        toolName: "__thought",
+      },
+    ];
+
+    const completed = applyLiveActivityEvent(activities, {
+      phase: "result",
+      text: "Ran repository tests",
+      timestamp: baseTimestamp + 25 * 60_000,
+      toolName: "exec",
+      toolCallId: "long-command",
+    });
+
+    expect(completed).toHaveLength(2);
+    expect(completed.map((activity) => activity.text)).toEqual([
+      "Ran repository tests",
+      "Reviewing another issue",
+    ]);
+    expect(completed[0]?.timestamp).toBe(baseTimestamp);
+    expect(completed.some((activity) => activity.phase === "start")).toBe(false);
+  });
+
   test("ignores stale polling snapshots that arrive after newer SSE events", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
     expect(source).toContain("latestStatusTimestampBySessionRef");

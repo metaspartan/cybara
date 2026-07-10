@@ -362,6 +362,17 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).not.toContain("messages.append(response.message");
   });
 
+  test("native chat keeps long-running tool completions in their start position", () => {
+    const toolTimeline = readFileSync(join(MACOS_APP_DIR, "NativeToolTimeline.swift"), "utf8");
+    const mergeBlock = toolTimeline.slice(
+      toolTimeline.indexOf("func nativeMergeLiveActivity("),
+      toolTimeline.indexOf("func nativeMergeLiveActivities(")
+    );
+
+    expect(mergeBlock).not.toContain("60_000");
+    expect(mergeBlock).toContain("timestamp: next[index].timestamp");
+  });
+
   test("native chat keeps visible live work when queued snapshots are activity-empty", () => {
     const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
 

@@ -438,6 +438,17 @@ tests/                  # Bun test suites (unit/integration/e2e)
 
 ---
 
+## Sponsors
+
+If Cybara saves you time, consider supporting its development:
+
+<p align="center">
+  <a href="https://github.com/sponsors/metaspartan"><img src="https://img.shields.io/badge/Sponsor-on_GitHub-ea4aaa?logo=githubsponsors&logoColor=white" alt="Sponsor on GitHub" /></a>
+  <a href="https://www.buymeacoffee.com/carsenk"><img src="https://img.shields.io/badge/Buy_Me_a_Coffee-metaspartan-ffdd00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee" /></a>
+</p>
+
+---
+
 ## License
 
 MIT — [Carsen Klock](https://github.com/metaspartan)
