@@ -11,7 +11,6 @@ import { expandPromptCommand } from "../core/prompt-commands";
 import { getActiveGoalContextLine, handleSessionGoalCommand } from "../core/session-goals";
 import { extractLatestSessionPlan, type SessionPlanSnapshot } from "../core/session-plan";
 import {
-  getToolSchemasForLLM,
   checkCircuit,
   recordCircuitSuccess,
   recordCircuitFailure,
@@ -53,7 +52,7 @@ import {
   stripSessionTitleAgentPrefix,
 } from "../core/session-title";
 import { handleMemorySave } from "../core/tools/handlers/memory";
-import { selectBuiltinToolsForIntent } from "../core/agent-tool-intent";
+import { resolveAgentToolPolicy } from "../core/toolsets";
 import {
   trackSessionTokens,
   trackSessionEvent,
@@ -73,6 +72,7 @@ import { emitAgentHook } from "../core/agent-hooks";
 import { createLogger } from "../core/logger";
 import {
   buildToolExecutionFallbackMessage,
+  classifyToolCallResult,
   shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
 } from "./chat-tool-summary";
@@ -1425,7 +1425,11 @@ export function reorderPendingChatMessages(
   pendingMessageIds: string[]
 ):
   | { success: true; pendingMessages: PendingChatMessageSnapshot[] }
-  | { success: false; error: string; pendingMessages: PendingChatMessageSnapshot[] } {
+  | {
+      success: false;
+      error: string;
+      pendingMessages: PendingChatMessageSnapshot[];
+    } {
   const key = sessionId.trim();
   const queue = pendingChatQueues.get(key) || [];
   if (queue.length === 0) {
@@ -1475,7 +1479,11 @@ export function updatePendingChatMessage(
       pendingMessage: PendingChatMessageSnapshot;
       pendingMessages: PendingChatMessageSnapshot[];
     }
-  | { success: false; error: string; pendingMessages: PendingChatMessageSnapshot[] } {
+  | {
+      success: false;
+      error: string;
+      pendingMessages: PendingChatMessageSnapshot[];
+    } {
   const key = sessionId.trim();
   const nextContent = typeof content === "string" ? content.trim() : "";
   if (nextContent.length === 0) {
@@ -1510,7 +1518,11 @@ export function updatePendingChatMessage(
   queue[index] = item;
   pendingChatQueues.set(key, queue);
   const pendingMessages = syncPendingChatStatus(key);
-  return { success: true, pendingMessage: pendingChatSnapshot(item), pendingMessages };
+  return {
+    success: true,
+    pendingMessage: pendingChatSnapshot(item),
+    pendingMessages,
+  };
 }
 
 export function deletePendingChatMessage(
@@ -1518,7 +1530,11 @@ export function deletePendingChatMessage(
   pendingMessageId: string
 ):
   | { success: true; pendingMessages: PendingChatMessageSnapshot[] }
-  | { success: false; error: string; pendingMessages: PendingChatMessageSnapshot[] } {
+  | {
+      success: false;
+      error: string;
+      pendingMessages: PendingChatMessageSnapshot[];
+    } {
   const key = sessionId.trim();
   const queue = pendingChatQueues.get(key) || [];
   const visibleIndex = queue.findIndex(
@@ -1553,7 +1569,11 @@ export async function steerPendingChatMessage(
       interruptedMessage?: ChatMessage;
       pendingMessages: PendingChatMessageSnapshot[];
     }
-  | { success: false; error: string; pendingMessages: PendingChatMessageSnapshot[] }
+  | {
+      success: false;
+      error: string;
+      pendingMessages: PendingChatMessageSnapshot[];
+    }
 > {
   const key = sessionId.trim();
   const queue = pendingChatQueues.get(key) || [];
@@ -1711,7 +1731,10 @@ async function handleChatTurn(
     };
     chatSessions.set(newSessionId, session);
 
-    trackSessionEvent(newSessionId, "created", { agentId: agent.id, model: agent.model });
+    trackSessionEvent(newSessionId, "created", {
+      agentId: agent.id,
+      model: agent.model,
+    });
   }
 
   if (requestedWorkspaceDir !== undefined) {
@@ -1901,14 +1924,18 @@ async function handleChatTurn(
           compactionCount: session.compactionCount || 0,
           durationMs: Date.now() - flushStartTime,
         });
-        trackSessionEvent(session.id, "memory_flushed", { model: effectiveModel });
+        trackSessionEvent(session.id, "memory_flushed", {
+          model: effectiveModel,
+        });
 
         log.info("Memory flush completed", {
           sessionId: session.id,
           preview: flushResult.content.substring(0, 100),
         });
       } catch (flushError) {
-        log.exception("Memory flush failed", flushError, { sessionId: session.id });
+        log.exception("Memory flush failed", flushError, {
+          sessionId: session.id,
+        });
         trackMemoryFlush(session.id, false, {
           tokensBeforeFlush: currentTokens,
           compactionCount: session.compactionCount || 0,
@@ -2063,6 +2090,7 @@ async function handleChatTurn(
           config.getTokenOptimizationSettings().toonStructuredDataEnabled;
         for (const tc of toolResults) {
           const timelineIndex = allToolCalls.length;
+          const outcome = classifyToolCallResult(tc.result);
           allToolCalls.push({
             id: `call_${crypto.randomUUID().slice(0, 8)}`,
             name: tc.name,
@@ -2070,8 +2098,9 @@ async function handleChatTurn(
               tc.args && typeof tc.args === "object" && !Array.isArray(tc.args)
                 ? (tc.args as Record<string, unknown>)
                 : {},
-            status: "completed",
+            status: outcome.status,
             result: tc.result,
+            error: outcome.error,
             duration: 0,
             timeline_index: timelineIndex,
           });
@@ -2104,9 +2133,8 @@ async function handleChatTurn(
             : undefined;
 
           if (providerForSummary) {
-            const toolSchemaList = tools
-              ? selectBuiltinToolsForIntent(getToolSchemasForLLM(), summaryMessages)
-              : [];
+            const summaryToolPolicy = tools ? resolveAgentToolPolicy(agent) : undefined;
+            const toolSchemaList = summaryToolPolicy?.offeredTools ?? [];
 
             const summaryResult = await agentManager.callLLM(
               providerForSummary,
@@ -2124,6 +2152,8 @@ async function handleChatTurn(
                 userId,
                 workspaceDir: session.workspaceDir || undefined,
                 abortSignal: turnAbortController.signal,
+                allowedToolNames: summaryToolPolicy?.allowedToolNames,
+                allowDynamicTools: summaryToolPolicy?.allowDynamicTools,
               }
             );
             responseContent = summaryResult.content;
@@ -2131,6 +2161,7 @@ async function handleChatTurn(
             if (summaryResult.tool_calls && summaryResult.tool_calls.length > 0) {
               for (const tc of summaryResult.tool_calls) {
                 const timelineIndex = allToolCalls.length;
+                const outcome = classifyToolCallResult(tc.result);
                 allToolCalls.push({
                   id: `call_${crypto.randomUUID().slice(0, 8)}`,
                   name: tc.name,
@@ -2138,8 +2169,9 @@ async function handleChatTurn(
                     tc.args && typeof tc.args === "object" && !Array.isArray(tc.args)
                       ? (tc.args as Record<string, unknown>)
                       : {},
-                  status: "completed",
+                  status: outcome.status,
                   result: tc.result,
+                  error: outcome.error,
                   duration: 0,
                   timeline_index: timelineIndex,
                 });
@@ -3133,6 +3165,8 @@ export function sendToSession(sessionKey: string, message: ChatMessage): boolean
     injectSessionMessage(session, message);
     return true;
   }
-  log.debug("Session not in memory, skipping announcement", { sessionId: sessionKey });
+  log.debug("Session not in memory, skipping announcement", {
+    sessionId: sessionKey,
+  });
   return false;
 }

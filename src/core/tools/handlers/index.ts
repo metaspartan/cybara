@@ -476,6 +476,9 @@ export async function executeTool(
   args: Record<string, unknown>,
   context?: ToolContext
 ): Promise<unknown> {
+  if (context?.allowedToolNames && !context.allowedToolNames.includes(name)) {
+    throw new Error(`Validation error: Tool '${name}' is not enabled for this agent`);
+  }
   const handler = toolHandlers[name];
 
   if (!handler) {

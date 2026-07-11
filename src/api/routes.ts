@@ -323,6 +323,8 @@ const routes: Record<string, RouteHandler> = {
     memory: config.getMemoryBehaviorSettings(),
     llm_timeouts: config.getLlmTimeoutSettings(),
     memory_provider: redactMemoryProviderSettings(config.getMemoryProviderSettings()),
+    token_optimization: config.getTokenOptimizationSettings(),
+    acp_enabled: config.get<boolean>("acp_enabled") !== false,
     speech: config.getSpeechSettings(),
     computer_use: config.getComputerUseSettings(),
     default_workspace_dir: config.getDefaultWorkspaceDir(),

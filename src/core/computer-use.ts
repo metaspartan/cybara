@@ -691,6 +691,19 @@ const SCREENSHOTS_DIR = join(
   "screenshots"
 );
 
+function persistDriverScreenshot(screenshot: string, mime: string): string | undefined {
+  try {
+    mkdirSync(SCREENSHOTS_DIR, { recursive: true });
+    const extension = mime.includes("jpeg") || mime.includes("jpg") ? "jpg" : "png";
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const filePath = join(SCREENSHOTS_DIR, `computer_${stamp}.${extension}`);
+    writeFileSync(filePath, Buffer.from(screenshot, "base64"));
+    return filePath;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Native OS screenshot fallback for the `capture` action when cua-driver isn't
  * installed. Uses the platform's built-in screenshot tool, saves a PNG under
@@ -1091,15 +1104,19 @@ async function performDriverAction(typedArgs: ComputerUseArgs): Promise<DriverCa
 }
 
 export async function handleComputerUse(args: Record<string, unknown>): Promise<ComputerUseResult> {
-  const typedArgs = args as unknown as ComputerUseArgs;
-  if (!typedArgs.action) {
+  const requestedAction = typeof args.action === "string" ? args.action : "";
+  if (!requestedAction) {
     throw new Error("Validation error: 'action' is required.");
   }
-  if (!VALID_ACTIONS.has(typedArgs.action)) {
+  if (!VALID_ACTIONS.has(requestedAction as ComputerUseAction)) {
     throw new Error(
-      `Validation error: unknown action "${typedArgs.action}". Valid: ${[...VALID_ACTIONS].join(", ")}.`
+      `Validation error: unknown action "${requestedAction}". Valid: ${[...VALID_ACTIONS].join(", ")}.`
     );
   }
+  const typedArgs = normalizeComputerUseCompatToolArgs(
+    requestedAction as ComputerUseAction,
+    args
+  ) as unknown as ComputerUseArgs;
   // Safety gate: hard blocks + consent.
   assertActionAllowed(typedArgs.action, typedArgs);
 
@@ -1139,10 +1156,16 @@ export async function handleComputerUse(args: Record<string, unknown>): Promise<
       }
     }
 
+    const filePath = screenshot ? persistDriverScreenshot(screenshot, screenshotMime) : undefined;
+    const text = filePath
+      ? `${result.text || "Capture complete."} Screenshot saved to ${filePath}.`
+      : result.text;
+
     return {
       action: typedArgs.action,
       ok: true,
-      text: result.text,
+      text,
+      filePath,
       screenshot,
       screenshotMime: screenshot ? screenshotMime : undefined,
       capturedAfter,

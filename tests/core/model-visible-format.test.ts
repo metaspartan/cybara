@@ -43,6 +43,19 @@ describe("model-visible structured data formatting", () => {
     expect(formatToolResultForModel(value, { toonEnabled: false })).toBe(JSON.stringify(value));
   });
 
+  test("keeps screenshot paths while omitting large base64 payloads", () => {
+    const content = formatToolResultForModel({
+      ok: true,
+      filePath: "/tmp/capture.png",
+      screenshot: "a".repeat(10_000),
+      screenshotMime: "image/png",
+    });
+
+    expect(content).toContain("/tmp/capture.png");
+    expect(content).toContain("binary image omitted");
+    expect(content).not.toContain("a".repeat(1000));
+  });
+
   test("agent tool-result context formatter uses token optimization config", () => {
     const value = {
       files: [

@@ -32,8 +32,10 @@ const BLOCKED_TOOL_NAMES = new Set([
 
 function buildCybaraNamespace(context: ToolContext | undefined): Record<string, unknown> {
   const ns: Record<string, unknown> = {};
+  const allowed = context?.allowedToolNames ? new Set(context.allowedToolNames) : undefined;
   for (const name of Object.keys(toolSchemas)) {
     if (BLOCKED_TOOL_NAMES.has(name)) continue;
+    if (allowed && !allowed.has(name)) continue;
     // Each namespace method is `cybara.<name>(args)`.
     ns[name] = (args: unknown) => {
       const safeArgs =

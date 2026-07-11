@@ -1,8 +1,13 @@
-import { isCodeMutationIntent } from "../core/agent-tool-intent";
+import { isCodeMutationRequest } from "../core/message-action";
 
 export interface ToolCallResultLike {
   name: string;
   result: unknown;
+}
+
+export interface ToolCallOutcome {
+  status: "completed" | "failed";
+  error?: string;
 }
 
 const TOOL_RESULT_PREVIEW_LIMIT = 220;
@@ -19,6 +24,16 @@ function safeStringify(value: unknown): string {
   } catch {
     return String(value);
   }
+}
+
+export function classifyToolCallResult(result: unknown): ToolCallOutcome {
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return { status: "completed" };
+  }
+  const record = result as Record<string, unknown>;
+  const error = typeof record.error === "string" ? record.error.trim() : "";
+  if (!error) return { status: "completed" };
+  return { status: "failed", error };
 }
 
 function summarizeUnknownResult(value: unknown): string {
@@ -133,7 +148,7 @@ export function shouldEnforceToolUseForMessage(message: string): boolean {
   if (NON_ACTIONABLE_PATTERNS.some((pattern) => pattern.test(trimmed))) {
     return false;
   }
-  if (isCodeMutationIntent(trimmed)) return true;
+  if (isCodeMutationRequest(trimmed)) return true;
 
   const lower = trimmed.toLowerCase();
   const tokens = lower.split(/[^a-z0-9_.:/-]+/).filter(Boolean);

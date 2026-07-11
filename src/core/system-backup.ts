@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { randomBytes } from "crypto";
 import {
   chmodSync,
+  constants,
   copyFileSync,
   existsSync,
   lstatSync,
@@ -12,7 +13,7 @@ import {
   rmSync,
   writeFileSync,
 } from "fs";
-import { basename, dirname, join, resolve, sep } from "path";
+import { basename, dirname, join, relative, resolve, sep } from "path";
 import { cybaraDir } from "./paths";
 
 export interface SystemBackupManifest {
@@ -42,8 +43,11 @@ const pendingRestoreFileName = "restore-pending.json";
 const restoreStatusFileName = "restore-status.json";
 const excludedTopLevelNames = new Set([
   backupDirectoryName,
+  "browser",
   "cache",
+  "lsp",
   "logs",
+  "models_dev_cache.json",
   "temp",
   "tool-results",
   "cybara.pid",
@@ -53,6 +57,12 @@ const excludedTopLevelNames = new Set([
   restoreStatusFileName,
   ".DS_Store",
 ]);
+const managedSQLitePaths = new Set(["data/platform.db", "kanban.db", "memory/vectors.db"]);
+
+interface BackupCopyOptions {
+  root: string;
+  snapshotManagedDatabases: boolean;
+}
 
 function backupsDirectory(root: string): string {
   return join(root, backupDirectoryName);
@@ -90,13 +100,22 @@ function containedPath(root: string, child: string): string {
   return resolvedChild;
 }
 
-function sqliteSnapshot(source: string, destination: string): void {
+function sqliteSnapshot(source: string, destination: string, root: string): void {
   rmSync(destination, { force: true });
-  const database = new Database(source, { readonly: true });
+  const database = new Database(source);
   try {
     database.exec("PRAGMA busy_timeout = 5000");
-    const escapedDestination = destination.replaceAll("'", "''");
-    database.exec(`VACUUM INTO '${escapedDestination}'`);
+    database.query("PRAGMA wal_checkpoint(TRUNCATE)").get();
+    copyFileSync(source, destination, constants.COPYFILE_FICLONE);
+    const snapshot = new Database(destination);
+    try {
+      snapshot.exec("PRAGMA journal_mode = DELETE");
+    } finally {
+      snapshot.close();
+    }
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "SQLite snapshot failed";
+    throw new Error(`Unable to snapshot ${portableRelativePath(root, source)}: ${detail}`);
   } finally {
     database.close();
   }
@@ -105,25 +124,64 @@ function sqliteSnapshot(source: string, destination: string): void {
   } catch {}
 }
 
-function copyBackupEntry(source: string, destination: string): void {
+function portableRelativePath(root: string, path: string): string {
+  return relative(root, path).split(sep).join("/");
+}
+
+function isManagedSQLiteDatabase(source: string, options: BackupCopyOptions): boolean {
+  return managedSQLitePaths.has(portableRelativePath(options.root, source));
+}
+
+function skipSQLiteSidecar(source: string, options: BackupCopyOptions): boolean {
+  if (source.endsWith(".db-shm") || source.endsWith(".db-journal")) return true;
+  if (!source.endsWith(".db-wal")) return false;
+  return (
+    options.snapshotManagedDatabases &&
+    isManagedSQLiteDatabase(source.slice(0, -"-wal".length), options)
+  );
+}
+
+function excludedNestedPath(source: string, options: BackupCopyOptions): boolean {
+  if (!options.snapshotManagedDatabases) return false;
+  const path = portableRelativePath(options.root, source);
+  return path === "memory/transformers" || path.startsWith("memory/transformers/");
+}
+
+function copyBackupEntry(source: string, destination: string, options: BackupCopyOptions): void {
   const stats = lstatSync(source);
   if (stats.isSymbolicLink()) return;
   if (stats.isDirectory()) {
+    if (excludedNestedPath(source, options)) return;
     ensurePrivateDirectory(destination);
     for (const entry of readdirSync(source, { withFileTypes: true })) {
       if (entry.isSymbolicLink()) continue;
-      if (/\.(?:db-wal|db-shm|db-journal)$/.test(entry.name)) continue;
-      copyBackupEntry(join(source, entry.name), join(destination, entry.name));
+      const entrySource = join(source, entry.name);
+      if (skipSQLiteSidecar(entrySource, options) || excludedNestedPath(entrySource, options))
+        continue;
+      copyBackupEntry(entrySource, join(destination, entry.name), options);
     }
     return;
   }
   if (!stats.isFile()) return;
   ensurePrivateDirectory(dirname(destination));
-  if (source.endsWith(".db")) {
-    sqliteSnapshot(source, destination);
+  if (
+    source.endsWith(".db") &&
+    options.snapshotManagedDatabases &&
+    isManagedSQLiteDatabase(source, options)
+  ) {
+    sqliteSnapshot(source, destination, options.root);
     return;
   }
   copyFileSync(source, destination);
+}
+
+function removeManagedSQLiteSidecars(root: string): void {
+  for (const path of managedSQLitePaths) {
+    const databasePath = join(root, ...path.split("/"));
+    rmSync(`${databasePath}-wal`, { force: true });
+    rmSync(`${databasePath}-shm`, { force: true });
+    rmSync(`${databasePath}-journal`, { force: true });
+  }
 }
 
 function directoryBytes(path: string): number {
@@ -179,10 +237,16 @@ export function createSystemBackup(label = "Manual backup", root = cybaraDir): S
   const payloadPath = join(temporaryPath, payloadDirectoryName);
   ensurePrivateDirectory(payloadPath);
   const entries: string[] = [];
+  const copyOptions: BackupCopyOptions = {
+    root,
+    snapshotManagedDatabases: true,
+  };
   try {
     for (const entry of readdirSync(root, { withFileTypes: true })) {
       if (!safeTopLevelName(entry.name) || entry.isSymbolicLink()) continue;
-      copyBackupEntry(join(root, entry.name), join(payloadPath, entry.name));
+      const entrySource = join(root, entry.name);
+      if (skipSQLiteSidecar(entrySource, copyOptions)) continue;
+      copyBackupEntry(entrySource, join(payloadPath, entry.name), copyOptions);
       entries.push(entry.name);
     }
     const manifest: SystemBackupManifest = {
@@ -271,7 +335,9 @@ export function applyPendingSystemRestore(root = cybaraDir): SystemRestoreStatus
   const stagedTargets: string[] = [];
   const movedTargets: Array<{ target: string; rollback: string }> = [];
   try {
-    const pending = JSON.parse(readFileSync(pendingPath, "utf8")) as { backupId?: unknown };
+    const pending = JSON.parse(readFileSync(pendingPath, "utf8")) as {
+      backupId?: unknown;
+    };
     if (typeof pending.backupId !== "string" || !safeBackupId(pending.backupId)) {
       throw new Error("Pending restore has an invalid backup id");
     }
@@ -285,13 +351,17 @@ export function applyPendingSystemRestore(root = cybaraDir): SystemRestoreStatus
       if (!existsSync(source)) throw new Error(`Backup entry is missing: ${entry}`);
     }
     ensurePrivateDirectory(rollbackPath);
+    const copyOptions: BackupCopyOptions = {
+      root: payloadPath,
+      snapshotManagedDatabases: false,
+    };
     for (const entry of manifest.entries) {
       const source = containedPath(payloadPath, join(payloadPath, entry));
       const target = containedPath(root, join(root, entry));
       const staged = containedPath(root, join(root, `.restore-stage-${backupId}-${entry}`));
       const rollback = join(rollbackPath, entry);
       rmSync(staged, { recursive: true, force: true });
-      copyBackupEntry(source, staged);
+      copyBackupEntry(source, staged, copyOptions);
       stagedTargets.push(staged);
       if (existsSync(target)) {
         ensurePrivateDirectory(dirname(rollback));
@@ -302,8 +372,7 @@ export function applyPendingSystemRestore(root = cybaraDir): SystemRestoreStatus
       stagedTargets.splice(stagedTargets.indexOf(staged), 1);
       installedTargets.push(target);
     }
-    rmSync(join(root, "data", "platform.db-wal"), { force: true });
-    rmSync(join(root, "data", "platform.db-shm"), { force: true });
+    removeManagedSQLiteSidecars(root);
     rmSync(rollbackPath, { recursive: true, force: true });
     rmSync(pendingPath, { force: true });
     const status: SystemRestoreStatus = {

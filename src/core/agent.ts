@@ -7,12 +7,7 @@ import {
   providers as providerCatalog,
   type ProviderType,
 } from "./providers";
-import {
-  getToolSchemasForLLM,
-  isToolEnabledForAgent,
-  toolSchemas,
-  type ToolContext,
-} from "./tools/index";
+import { getToolSchemasForLLM, toolSchemas, type ToolContext } from "./tools/index";
 import {
   acquireCredential,
   markCredentialCooldown,
@@ -172,9 +167,7 @@ import {
 } from "./openai-codex-models";
 import { loadAllSkills, createEligibilityContext, filterEligibleSkills } from "./skills";
 import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
-import { resolveAgentToolSelection } from "./agent-tool-selection";
-import { isLegacyBuiltinSnapshot, normalizeExplicitAgentTools } from "./agent-tool-normalization";
-import { selectBuiltinToolsForIntent } from "./agent-tool-intent";
+import { resolveAgentToolPolicy } from "./toolsets";
 import { formatLlmFailure } from "./agent-error-format";
 import {
   resolveModelContextWindowTokens,
@@ -296,6 +289,7 @@ interface AgentExecutionOptions {
   abortSignal?: AbortSignal;
   consumeSteeringMessages?: () => Array<{ id: string; content: string; createdAt: number }>;
   useModelRouter?: boolean;
+  allowedToolNames?: string[];
 }
 
 interface RunningAgentState {
@@ -843,7 +837,7 @@ class AgentManager {
 
     let tools: ToolDefinition[] = [];
     if (supportsTools) {
-      tools = this.getAgentTools(agent, fullMessages);
+      tools = this.getAgentTools(agent);
     }
 
     const resolvedExecution = this.resolveProviderModelForExecution(provider, agent.model);
@@ -999,12 +993,12 @@ class AgentManager {
     let tools: ToolDefinition[] = [];
     if (needTools) {
       if (supportsTools) {
-        tools = this.getAgentTools(agent, workspaceAwareMessages);
+        tools = this.getAgentTools(agent, options?.allowedToolNames);
       } else if (agent.fallback_provider_id) {
         const fallbackProvider = providerManager.getWithCredentials(agent.fallback_provider_id);
         if (fallbackProvider) {
           provider = fallbackProvider;
-          tools = this.getAgentTools(agent, workspaceAwareMessages);
+          tools = this.getAgentTools(agent, options?.allowedToolNames);
         }
       }
     }
@@ -1070,25 +1064,12 @@ class AgentManager {
     }
   }
 
-  private getAgentTools(agent: Agent, messages?: AgentMessage[]): ToolDefinition[] {
-    const filterEnabledTools = (tools: ToolDefinition[]): ToolDefinition[] =>
-      tools.filter((tool) => isToolEnabledForAgent(tool.name));
-
-    const selection = resolveAgentToolSelection(agent.tools);
-    if (selection.kind === "malformed") {
-      // A malformed/corrupt restriction must NOT silently widen to every tool.
-      console.warn(
-        `[Agent] ${agent.id} has a ${selection.reason} tools config; restricting to no tools`
-      );
-      return [];
+  private getAgentTools(agent: Agent, inheritedAllowedToolNames?: string[]): ToolDefinition[] {
+    const policy = resolveAgentToolPolicy(agent, inheritedAllowedToolNames);
+    if (!policy.valid) {
+      console.warn(`[Agent] ${agent.id} has ${policy.reason}; restricting to no tools`);
     }
-    if (selection.kind === "explicit") {
-      if (isLegacyBuiltinSnapshot(selection.tools)) {
-        return selectBuiltinToolsForIntent(filterEnabledTools(getBuiltinTools()), messages);
-      }
-      return filterEnabledTools(normalizeExplicitAgentTools(selection.tools));
-    }
-    return selectBuiltinToolsForIntent(filterEnabledTools(getBuiltinTools()), messages);
+    return policy.offeredTools;
   }
 
   private getAgentToolPermissions(agent: Agent): {
@@ -1116,6 +1097,7 @@ class AgentManager {
 
   private buildToolExecutionContext(agent: Agent, options?: AgentExecutionOptions): ToolContext {
     const permissions = this.getAgentToolPermissions(agent);
+    const toolPolicy = resolveAgentToolPolicy(agent, options?.allowedToolNames);
     return {
       agentId: agent.id,
       sessionId: options?.sessionId,
@@ -1129,6 +1111,8 @@ class AgentManager {
         typeof options?.requiredToolName === "string" && options.requiredToolName.trim().length > 0
           ? options.requiredToolName.trim()
           : undefined,
+      allowedToolNames: toolPolicy.allowedToolNames,
+      allowDynamicTools: toolPolicy.allowDynamicTools,
       abortSignal: options?.abortSignal,
       confineToWorkspace:
         typeof options?.workspaceDir === "string" && options.workspaceDir.trim().length > 0,
@@ -2569,7 +2553,7 @@ class AgentManager {
     ];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
     const allToolCalls: AgentToolCallResult[] = [];
-    let finalContent = message.content || "";
+    let finalContent = "";
     let lastProgressThought = "";
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
     const loopState: AgenticLoopState = {
@@ -2588,6 +2572,7 @@ class AgentManager {
 
       const normalizedToolCalls = normalizeOpenAIToolCalls(message, iterations, allowedToolNames);
       if (normalizedToolCalls.length === 0) {
+        finalContent = typeof message.content === "string" ? message.content : "";
         break;
       }
 
@@ -2783,10 +2768,6 @@ class AgentManager {
       if (!message) {
         console.warn("[Agent] Agentic loop got an empty completion; stopping loop");
         break;
-      }
-
-      if (message.content) {
-        finalContent = message.content;
       }
     }
 
@@ -3270,6 +3251,7 @@ class AgentManager {
     let iterations = 0;
     let activeModelId = modelId;
     let finalContent = "";
+    let closingResponseRequested = false;
     let lastProgressThought = "";
     const allToolCalls: AgentToolCallResult[] = [];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
@@ -3306,7 +3288,11 @@ class AgentManager {
         input: inputItems,
         text: { verbosity: "medium" },
         include: ["reasoning.encrypted_content"],
-        tool_choice: toolContext?.requireToolUse === true && iterations === 1 ? "required" : "auto",
+        tool_choice: closingResponseRequested
+          ? "none"
+          : toolContext?.requireToolUse === true && iterations === 1
+            ? "required"
+            : "auto",
         parallel_tool_calls: true,
       };
       const codexEffort = normalizeReasoningEffort(
@@ -3321,7 +3307,7 @@ class AgentManager {
       if (instructions && instructions.trim().length > 0) {
         requestBody.instructions = instructions;
       }
-      if (toolDefinitions.length > 0) {
+      if (toolDefinitions.length > 0 && !closingResponseRequested) {
         requestBody.tools = toolDefinitions;
       }
       if (toolContext?.sessionId) {
@@ -3364,11 +3350,24 @@ class AgentManager {
         );
       }
 
-      if (turn.content.trim().length > 0) {
-        finalContent = turn.content.trim();
-      }
-
       if (turn.toolCalls.length === 0) {
+        if (turn.content.trim().length > 0) {
+          finalContent = turn.content.trim();
+          break;
+        }
+        if (allToolCalls.length > 0 && !closingResponseRequested) {
+          inputItems.push({
+            role: "user",
+            content: [
+              {
+                type: "input_text",
+                text: "Reply to the user now with your findings from the tool results above. Do not call any more tools.",
+              },
+            ],
+          });
+          closingResponseRequested = true;
+          continue;
+        }
         break;
       }
 

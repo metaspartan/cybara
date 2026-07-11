@@ -3113,6 +3113,8 @@ describe("Config API", () => {
     expect(typeof data.dangerous_tool_policy.enabled).toBe("boolean");
     expect(["audit", "block"]).toContain(data.dangerous_tool_policy.mode);
     expect(["always_allow", "ask"]).toContain(data.tool_approval_mode);
+    expect(typeof data.token_optimization.toonStructuredDataEnabled).toBe("boolean");
+    expect(typeof data.acp_enabled).toBe("boolean");
   });
 
   test("GET /api/config tolerates malformed stored JSON values", async () => {

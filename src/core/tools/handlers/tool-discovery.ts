@@ -26,10 +26,12 @@ export interface InventoryEntry {
 }
 
 /** Build the full searchable inventory (built-in + MCP + skills). */
-export async function buildToolInventory(): Promise<InventoryEntry[]> {
+export async function buildToolInventory(context?: ToolContext): Promise<InventoryEntry[]> {
   const entries: InventoryEntry[] = [];
+  const allowed = context?.allowedToolNames ? new Set(context.allowedToolNames) : undefined;
 
   for (const tool of getToolSchemasForLLM()) {
+    if (allowed && !allowed.has(tool.name)) continue;
     entries.push({
       name: tool.name,
       description: tool.description,
@@ -39,6 +41,7 @@ export async function buildToolInventory(): Promise<InventoryEntry[]> {
 
   // MCP server tools.
   try {
+    if (context?.allowDynamicTools === false) throw new Error("disabled");
     for (const tool of mcpManager.getAllTools()) {
       entries.push({
         name: `${tool.serverId}__${tool.name}`,
@@ -52,6 +55,7 @@ export async function buildToolInventory(): Promise<InventoryEntry[]> {
 
   // Skill-exposed tools (skills advertise themselves as callable capabilities).
   try {
+    if (context?.allowDynamicTools === false) throw new Error("disabled");
     for (const skill of getSkills()) {
       entries.push({
         name: `skill__${skill.name}`,
@@ -83,13 +87,16 @@ function score(entry: InventoryEntry, query: string): number {
   return s;
 }
 
-export async function handleToolSearch(args: Record<string, unknown>): Promise<{
+export async function handleToolSearch(
+  args: Record<string, unknown>,
+  context?: ToolContext
+): Promise<{
   query: string;
   matches: Array<{ name: string; description: string; source: InventoryEntry["source"] }>;
 }> {
   const query = typeof args.query === "string" ? args.query.trim() : "";
   const limit = clampInt(args.limit, 1, 50, 15);
-  const inventory = await buildToolInventory();
+  const inventory = await buildToolInventory(context);
 
   const ranked = inventory
     .map((entry) => ({ entry, s: score(entry, query) }))
@@ -105,7 +112,10 @@ export async function handleToolSearch(args: Record<string, unknown>): Promise<{
   return { query, matches: ranked };
 }
 
-export async function handleToolDescribe(args: Record<string, unknown>): Promise<{
+export async function handleToolDescribe(
+  args: Record<string, unknown>,
+  context?: ToolContext
+): Promise<{
   name: string;
   description: string;
   source: InventoryEntry["source"];
@@ -120,6 +130,9 @@ export async function handleToolDescribe(args: Record<string, unknown>): Promise
   // Built-in tool: return full schema.
   const builtin = toolSchemas[name as keyof typeof toolSchemas];
   if (builtin) {
+    if (context?.allowedToolNames && !context.allowedToolNames.includes(name)) {
+      return { name, description: "", source: "builtin", found: false };
+    }
     return {
       name: builtin.name,
       description: builtin.description,
@@ -130,7 +143,7 @@ export async function handleToolDescribe(args: Record<string, unknown>): Promise
   }
 
   // MCP tool: resolve server + tool, return its schema.
-  if (name.includes("__")) {
+  if (name.includes("__") && context?.allowDynamicTools !== false) {
     const [serverId, toolName] = name.split("__", 2);
     const status = mcpManager.getStatus(serverId);
     const tool = status?.tools.find((t) => t.name === toolName);
@@ -146,7 +159,7 @@ export async function handleToolDescribe(args: Record<string, unknown>): Promise
   }
 
   // Skill: describe from the catalog.
-  if (name.startsWith("skill__")) {
+  if (name.startsWith("skill__") && context?.allowDynamicTools !== false) {
     const skillName = name.slice("skill__".length);
     const skill = getSkills().find((s) => s.name === skillName);
     if (skill) {
@@ -184,6 +197,9 @@ export async function handleToolCall(
 
   // Skill (skill__<name>). Must be checked before the generic "__" MCP branch.
   if (name.startsWith("skill__")) {
+    if (context?.allowDynamicTools === false) {
+      throw new Error(`Tool "${name}" is not enabled for this agent.`);
+    }
     const skillName = name.slice("skill__".length);
     const result = await executeSkill(skillName, toolArgs);
     return { name, result };
@@ -191,6 +207,9 @@ export async function handleToolCall(
 
   // MCP tool.
   if (name.includes("__")) {
+    if (context?.allowDynamicTools === false) {
+      throw new Error(`Tool "${name}" is not enabled for this agent.`);
+    }
     const [serverId, toolName] = name.split("__", 2);
     const result = await mcpManager.callTool(serverId, toolName, toolArgs);
     return { name, result };

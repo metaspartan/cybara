@@ -33,6 +33,7 @@ import {
 import { printArtifacts, printJourney } from "./cli-resource-commands";
 import { getFlagValue, hasFlag } from "./cli-args";
 import { rawUpdate } from "./cli-update";
+import { runSystemBackupCommand, TUIBackupsCommand } from "./cli-system-backup";
 import { commandExists } from "./core/platform";
 import {
   configureWalletCli,
@@ -3899,6 +3900,9 @@ const TUIApp = ({ command }: { command?: string }) => {
       return <TUIArtifactsCommand fetchAPI={fetchAPI} />;
     case "journey":
       return <TUIJourneyCommand fetchAPI={fetchAPI} />;
+    case "backups":
+    case "backup":
+      return <TUIBackupsCommand fetchAPI={fetchAPI} />;
     default:
       return (
         <MainMenu
@@ -4075,6 +4079,10 @@ async function main() {
       break;
     case "gateway":
       await rawGateway(args.slice(1));
+      break;
+    case "backup":
+    case "backups":
+      await runSystemBackupCommand(args.slice(1), fetchAPI);
       break;
     case "doctor":
       await rawDoctor();

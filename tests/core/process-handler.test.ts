@@ -38,6 +38,44 @@ describe("handleExec", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  test("starts long-running commands in the background without blocking", async () => {
+    const startedAt = Date.now();
+    const result = await handleExec({
+      command: 'bun -e "setTimeout(() => {}, 30000)"',
+      background: true,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.pid).toBeGreaterThan(0);
+    expect(Date.now() - startedAt).toBeLessThan(2000);
+
+    const list = (await handleProcess({ action: "list" })) as ProcListEntry[];
+    expect(list.some((entry) => entry.sessionId === String(result.pid))).toBe(true);
+
+    const killed = (await handleProcess({
+      action: "kill",
+      sessionId: String(result.pid),
+    })) as { success: boolean };
+    expect(killed.success).toBe(true);
+  });
+
+  test("does not wait forever when a shell background child inherits output pipes", async () => {
+    if (process.platform === "win32") return;
+    const startedAt = Date.now();
+    const result = await handleExec({
+      command: 'bun -e "setTimeout(() => {}, 30000)" & echo parent-complete',
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.output).toContain("parent-complete");
+    expect(Date.now() - startedAt).toBeLessThan(3000);
+    if (result.pid) {
+      try {
+        process.kill(-result.pid, "SIGKILL");
+      } catch {}
+    }
+  });
+
   test("honors abort signals without blocking the process list", async () => {
     const controller = new AbortController();
     const running = handleExec(

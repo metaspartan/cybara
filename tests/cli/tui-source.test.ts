@@ -117,6 +117,11 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiPanelsSource).toContain("panelListLimit");
     expect(cliTuiPanelsSource).toContain("PanelRemainder");
     expect(cliTuiChatSource).toContain('height={layout.rows} width="100%"');
+    expect(cliTuiChatSource).toContain('flexDirection={layout.compact ? "column" : "row"}');
+    expect(cliTuiChatSource).toMatch(
+      /layout\.compact\s*\?\s*Math\.max\(18, layout\.columns - 26\)/
+    );
+    expect(cliTuiChatSource).toContain("layout.rows - (layout.compact ? 15 : 17)");
     expect(cliTuiInteractiveChatSource).toContain('height={layout.rows} width="100%"');
     expect(cliTuiInteractiveChatSource).toContain("flexGrow={1}");
   });
@@ -149,7 +154,7 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiChatSource).toContain("setSearchMode(true)");
     expect(cliTuiChatSource).toContain("InteractiveChatTUI");
     expect(cliTuiChatSource).toContain("Recent sessions");
-    expect(cliTuiChatSource).toContain("cybara chat queue");
+    expect(cliTuiChatSource).toMatch(/cybara chat\s+queue\|steer/);
     expect(cliTuiChatSource).toContain("queue|steer");
     expect(cliTuiChatSource).toContain("cybara chat stop");
     expect(cliTuiChatSource).toContain("pending");
@@ -169,6 +174,7 @@ describe("CLI TUI source wiring", () => {
       "/model",
       "/router",
       "/permissions",
+      "/tools",
       "/reasoning",
       "/title",
       "/workspace",
@@ -234,10 +240,10 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("formatSubagentLine");
     expect(cliTuiInteractiveChatSource).toContain("setUseModelRouter(true)");
     expect(cliTuiInteractiveChatSource).toContain("tool_approval_mode");
+    expect(cliTuiInteractiveChatSource).toContain("tool_profile: value");
+    expect(cliTuiInteractiveChatSource).toContain("full|coding|research|safe|show");
     expect(cliTuiInteractiveChatSource).toContain("agentId: selectedAgentId || undefined");
-    expect(cliTuiInteractiveChatSource).toContain(
-      "modelOverride: useModelRouter ? undefined : modelOverride || undefined"
-    );
+    expect(cliTuiInteractiveChatSource).toContain("modelOverride: useModelRouter");
     expect(cliTuiInteractiveChatSource).not.toContain('command === "model" ? "agent"');
     expect(cliTuiInteractiveChatSource).toContain("Ctrl+J newline");
     expect(cliTuiInteractiveChatSource).toContain("pageUp");

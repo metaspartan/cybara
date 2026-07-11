@@ -31,6 +31,7 @@ export type MainMenuAction =
   | "subagents"
   | "artifacts"
   | "journey"
+  | "backups"
   | "ui"
   | "start"
   | "exit";
@@ -199,6 +200,14 @@ export const MAIN_TUI_MENU_ITEMS: MenuItem[] = [
     group: "System",
     kind: "panel",
     detail: "Memory provider status and recent durable entries",
+  },
+  {
+    label: "Backups",
+    action: "backups",
+    shortcut: "k",
+    group: "System",
+    kind: "panel",
+    detail: "Create and inspect private gateway restore points",
   },
   {
     label: "Logs",

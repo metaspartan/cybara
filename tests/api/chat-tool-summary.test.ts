@@ -1,15 +1,29 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildToolExecutionFallbackMessage,
+  classifyToolCallResult,
   shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
 } from "../../src/api/chat-tool-summary";
 
 describe("chat tool summary utilities", () => {
+  test("classifies recoverable tool errors as failed calls", () => {
+    expect(classifyToolCallResult({ output: "ok" })).toEqual({
+      status: "completed",
+    });
+    expect(classifyToolCallResult({ error: "Text not found in file" })).toEqual({
+      status: "failed",
+      error: "Text not found in file",
+    });
+  });
+
   test("builds concise fallback message from tool results", () => {
     const message = buildToolExecutionFallbackMessage([
       { name: "exec", result: { output: "updated 3 files successfully" } },
-      { name: "read", result: { path: "/tmp/a.ts", content: "line1\nline2\nline3" } },
+      {
+        name: "read",
+        result: { path: "/tmp/a.ts", content: "line1\nline2\nline3" },
+      },
     ]);
 
     expect(message).toContain("Completed 2 tool calls:");

@@ -1,16 +1,12 @@
 import type { Agent } from "../core/database";
-import {
-  isLegacyBuiltinSnapshot,
-  normalizeExplicitAgentTools,
-} from "../core/agent-tool-normalization";
-import { selectBuiltinToolNamesForIntent } from "../core/agent-tool-intent";
-import { resolveAgentToolSelection } from "../core/agent-tool-selection";
 import { config } from "../core/config";
+import { resolveAgentToolSelection } from "../core/agent-tool-selection";
+import { isLegacyBuiltinSnapshot } from "../core/agent-tool-normalization";
 import { getBootstrapContextFiles } from "../core/bootstrap-files";
 import { getSandboxPromptInfo } from "../core/sandbox";
 import { createEligibilityContext, filterEligibleSkills, loadAllSkills } from "../core/skills";
 import { buildSystemPrompt, AGENT_TYPE_PROMPTS } from "../core/system-prompt";
-import { getToolSchemasForLLM, isToolEnabledForAgent } from "../core/tools/index";
+import { resolveAgentToolPolicy } from "../core/toolsets";
 
 type AgentPromptData = Pick<Agent, "id" | "name" | "model" | "tools" | "config" | "system_prompt">;
 
@@ -46,30 +42,12 @@ function isGeneratedAgentPrompt(prompt: string): boolean {
 }
 
 function chatAgentToolNames(
-  agent: Pick<Agent, "tools">,
-  messages: ChatAgentPromptMessage[] = [],
+  agent: Pick<Agent, "id" | "tools" | "config">,
+  _messages: ChatAgentPromptMessage[] = [],
   options: ChatAgentPromptOptions = {}
 ): string[] {
   if (options.useTools === false) return [];
-  const selection = resolveAgentToolSelection(agent.tools);
-  if (selection.kind === "malformed") return [];
-  if (selection.kind === "explicit") {
-    if (isLegacyBuiltinSnapshot(selection.tools)) {
-      const selected = selectBuiltinToolNamesForIntent(messages);
-      if (selected.size === 0) return [];
-      return getToolSchemasForLLM()
-        .map((tool) => tool.name)
-        .filter((name) => selected.has(name));
-    }
-    return normalizeExplicitAgentTools(selection.tools)
-      .filter((tool) => isToolEnabledForAgent(tool.name))
-      .map((tool) => tool.name);
-  }
-  const selected = selectBuiltinToolNamesForIntent(messages);
-  if (selected.size === 0) return [];
-  return getToolSchemasForLLM()
-    .map((tool) => tool.name)
-    .filter((name) => selected.has(name));
+  return resolveAgentToolPolicy(agent).offeredTools.map((tool) => tool.name);
 }
 
 export async function activeAgentSystemPrompt(
@@ -147,9 +125,12 @@ export async function refreshSessionAgentSystemPromptIfNeeded(
   const toolNames = chatAgentToolNames(agent, messages || session.messages, options);
   const expectsWallet = toolNames.includes("wallet");
   const hasWalletPrompt = firstMessage.content.includes("### Wallet Tool");
-  const isBuiltinSelection = resolveAgentToolSelection(agent.tools).kind === "builtins";
+  const selection = resolveAgentToolSelection(agent.tools);
+  const isProfileSelection =
+    selection.kind === "builtins" ||
+    (selection.kind === "explicit" && isLegacyBuiltinSnapshot(selection.tools));
   if (
-    isBuiltinSelection ||
+    isProfileSelection ||
     options.useTools === false ||
     !firstMessage.content.includes("## Tooling") ||
     expectsWallet !== hasWalletPrompt

@@ -6,6 +6,34 @@ import { getPathSeparator, isWindows, shellEscapeArg } from "../../platform";
 import type { ToolContext } from "../index";
 
 const log = createLogger("ProcessTool");
+const STREAM_DRAIN_GRACE_MS = 200;
+
+async function collectProcessOutput(
+  stream: ReadableStream<Uint8Array>,
+  exited: Promise<number>
+): Promise<string> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  let output = "";
+  const drainDeadline = exited.then(
+    () => new Promise<"stop">((resolve) => setTimeout(() => resolve("stop"), STREAM_DRAIN_GRACE_MS))
+  );
+
+  for (;;) {
+    const next = await Promise.race([
+      reader.read().then((result) => ({ kind: "read" as const, result })),
+      drainDeadline.then(() => ({ kind: "stop" as const })),
+    ]);
+    if (next.kind === "stop") {
+      await reader.cancel().catch(() => undefined);
+      break;
+    }
+    if (next.result.done) break;
+    output += decoder.decode(next.result.value, { stream: true });
+  }
+
+  return output + decoder.decode();
+}
 
 function expandTilde(path: string | undefined): string | undefined {
   if (!path) return path;
@@ -18,7 +46,13 @@ function expandTilde(path: string | undefined): string | undefined {
 export async function handleExec(
   args: Record<string, unknown>,
   context?: ToolContext
-): Promise<{ output: string; exitCode: number; cwd?: string; sandboxProvider?: string }> {
+): Promise<{
+  output: string;
+  exitCode: number;
+  pid?: number;
+  cwd?: string;
+  sandboxProvider?: string;
+}> {
   const command =
     typeof args.command === "string"
       ? (args.command as string).trim()
@@ -54,7 +88,7 @@ export async function handleExec(
     const timeoutSeconds =
       typeof timeout === "number" && Number.isFinite(timeout)
         ? Math.min(Math.max(timeout, 1), 300)
-        : undefined;
+        : 30;
 
     let plan: ReturnType<typeof buildSandboxedShellPlan>;
     try {
@@ -88,6 +122,27 @@ export async function handleExec(
       plan.provider === "podman" || plan.provider === "docker"
         ? { ...process.env, PATH: fullEnv.PATH }
         : fullEnv;
+    if (args.background === true) {
+      const proc = Bun.spawn(plan.command, {
+        cwd: plan.cwd,
+        env: spawnEnv,
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+        detached: process.platform !== "win32",
+      });
+      const key = String(proc.pid);
+      runningProcesses.set(key, { pid: proc.pid, command, startedAt: new Date(startedAt), proc });
+      proc.unref();
+      void proc.exited.finally(() => runningProcesses.delete(key));
+      return {
+        output: `Started background process ${proc.pid}.`,
+        exitCode: 0,
+        pid: proc.pid,
+        cwd: plan.cwd,
+        sandboxProvider: plan.provider || undefined,
+      };
+    }
     const proc = Bun.spawn(plan.command, {
       cwd: plan.cwd,
       env: spawnEnv,
@@ -125,10 +180,11 @@ export async function handleExec(
     let stderr = "";
     let exitCode = 0;
     try {
+      const exitedPromise = proc.exited;
       const [stdoutText, stderrText, exited] = await Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-        proc.exited,
+        collectProcessOutput(proc.stdout, exitedPromise),
+        collectProcessOutput(proc.stderr, exitedPromise),
+        exitedPromise,
       ]);
       stdout = stdoutText;
       stderr = stderrText;
@@ -157,6 +213,7 @@ export async function handleExec(
     return {
       output: stdout + (stderr ? "\n" + stderr : "") + statusOutput,
       exitCode: aborted ? 130 : timedOut ? 124 : exitCode,
+      pid: proc.pid,
       cwd: plan.cwd,
       sandboxProvider: plan.provider || undefined,
     };

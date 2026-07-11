@@ -67,6 +67,7 @@ import {
   readMobileSpeechSettings,
 } from "./dashboardHelpers";
 import { EmptyState, GatewayDetailPill, LoadingState, SettingsRow } from "./dashboardPrimitives";
+import { MobileWebPolicyPanel } from "./dashboardWebPolicyPanel";
 import {
   AgentSettingsPanel,
   ApprovalSettingsPanel,
@@ -569,6 +570,7 @@ export function SettingsPanel({
     : "pending";
   const gatewayUptime = formatUptime(health?.uptime);
   const terminalEnabled = summary?.config.terminal_enabled === true;
+  const acpEnabled = summary?.config.acp_enabled !== false;
   const selfImprovingSkillsEnabled = summary?.config.self_improving_skills_enabled !== false;
   const toolApprovalMode = readMobileToolApprovalMode(summary?.config);
   const reasoningEffort = readMobileReasoningEffort(summary?.config);
@@ -774,203 +776,215 @@ export function SettingsPanel({
           </>
         ) : null}
         {showSafetySettings ? (
-          <SettingsSection title="Safety controls">
-            {configAvailable ? (
-              <>
-                {MOBILE_SETTINGS_ROOT_CHROME.terminalToggle ? (
-                  <SettingToggle
-                    busy={savingConfigKey === "terminal_enabled"}
-                    detail="Enable browser-based terminal access on the gateway."
-                    disabled={savingConfigKey !== null}
-                    label="Web terminal"
-                    onPress={() => {
-                      void saveConfigPatch(
-                        "terminal_enabled",
-                        { terminal_enabled: !terminalEnabled },
-                        "Terminal setting failed"
-                      );
-                    }}
-                    tone={accentColor}
-                    value={terminalEnabled}
-                  />
-                ) : null}
-                <SettingToggle
-                  busy={savingConfigKey === "self_improving_skills_enabled"}
-                  detail="Let agents save reusable skills after complex tasks. When off, skill_save is withheld."
-                  disabled={savingConfigKey !== null}
-                  label="Self-improving skills"
-                  onPress={() => {
-                    void saveConfigPatch(
-                      "self_improving_skills_enabled",
-                      { self_improving_skills_enabled: !selfImprovingSkillsEnabled },
-                      "Self-improving skills setting failed"
-                    );
-                  }}
-                  tone={accentColor}
-                  value={selfImprovingSkillsEnabled}
-                />
-                {MOBILE_SETTINGS_ROOT_CHROME.toolApprovalModeSelector ? (
-                  <SettingSelector
-                    disabled={savingConfigKey !== null}
-                    label="Tool approvals"
-                    onSelect={(value) => {
-                      void saveConfigPatch(
-                        "tool_approval_mode",
-                        { tool_approval_mode: value === "ask" ? "ask" : "always_allow" },
-                        "Tool approval setting failed"
-                      );
-                    }}
-                    options={[
-                      { label: "Always Allow", value: "always_allow" },
-                      { label: "Ask Me", value: "ask" },
-                    ]}
-                    selected={toolApprovalMode}
-                    tone={accentColor}
-                    variant="menu"
-                  />
-                ) : null}
-                {MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle ? (
-                  <>
+          <>
+            <SettingsSection title="Safety controls">
+              {configAvailable ? (
+                <>
+                  {MOBILE_SETTINGS_ROOT_CHROME.terminalToggle ? (
                     <SettingToggle
-                      busy={savingConfigKey === "dangerous_tool_policy"}
-                      detail="Guardrails for shell, wallet, and other high-impact tools."
+                      busy={savingConfigKey === "terminal_enabled"}
+                      detail="Enable browser-based terminal access on the gateway."
                       disabled={savingConfigKey !== null}
-                      label="Dangerous tool policy"
+                      label="Web terminal"
                       onPress={() => {
                         void saveConfigPatch(
-                          "dangerous_tool_policy",
-                          {
-                            dangerous_tool_policy: {
-                              enabled: !dangerousPolicy.enabled,
-                              mode: dangerousPolicy.mode,
-                            },
-                          },
-                          "Dangerous tool policy failed"
+                          "terminal_enabled",
+                          { terminal_enabled: !terminalEnabled },
+                          "Terminal setting failed"
                         );
                       }}
                       tone={accentColor}
-                      value={dangerousPolicy.enabled}
+                      value={terminalEnabled}
                     />
-                    {dangerousPolicy.enabled ? (
-                      <SettingSelector
+                  ) : null}
+                  <SettingToggle
+                    busy={savingConfigKey === "acp_enabled"}
+                    detail="Allow compatible editors to connect through the gateway's ACP server."
+                    disabled={savingConfigKey !== null}
+                    label="ACP server"
+                    onPress={() => {
+                      void saveConfigPatch(
+                        "acp_enabled",
+                        { acp_enabled: !acpEnabled },
+                        "ACP setting failed"
+                      );
+                    }}
+                    tone={accentColor}
+                    value={acpEnabled}
+                  />
+                  {MOBILE_SETTINGS_ROOT_CHROME.toolApprovalModeSelector ? (
+                    <SettingSelector
+                      disabled={savingConfigKey !== null}
+                      label="Tool approvals"
+                      onSelect={(value) => {
+                        void saveConfigPatch(
+                          "tool_approval_mode",
+                          { tool_approval_mode: value === "ask" ? "ask" : "always_allow" },
+                          "Tool approval setting failed"
+                        );
+                      }}
+                      options={[
+                        { label: "Always Allow", value: "always_allow" },
+                        { label: "Ask Me", value: "ask" },
+                      ]}
+                      selected={toolApprovalMode}
+                      tone={accentColor}
+                      variant="menu"
+                    />
+                  ) : null}
+                  {MOBILE_SETTINGS_ROOT_CHROME.dangerousToolPolicyToggle ? (
+                    <>
+                      <SettingToggle
+                        busy={savingConfigKey === "dangerous_tool_policy"}
+                        detail="Guardrails for shell, wallet, and other high-impact tools."
                         disabled={savingConfigKey !== null}
-                        label="Dangerous policy mode"
-                        onSelect={(value) => {
+                        label="Dangerous tool policy"
+                        onPress={() => {
                           void saveConfigPatch(
                             "dangerous_tool_policy",
                             {
                               dangerous_tool_policy: {
-                                enabled: true,
-                                mode: value === "block" ? "block" : "audit",
+                                enabled: !dangerousPolicy.enabled,
+                                mode: dangerousPolicy.mode,
                               },
                             },
                             "Dangerous tool policy failed"
                           );
                         }}
-                        options={[
-                          { label: "Audit", value: "audit" },
-                          { label: "Block", value: "block" },
-                        ]}
-                        selected={dangerousPolicy.mode}
                         tone={accentColor}
-                        variant="segmented"
+                        value={dangerousPolicy.enabled}
                       />
-                    ) : null}
-                  </>
-                ) : null}
-                {MOBILE_SETTINGS_ROOT_CHROME.sandboxRuntimeControls ? (
-                  <>
-                    <SettingToggle
-                      busy={savingConfigKey === "sandbox_runtime"}
-                      detail="Run supported command tools in an isolated runtime."
-                      disabled={savingConfigKey !== null}
-                      label="Command sandbox"
-                      onPress={() => {
-                        void saveConfigPatch(
-                          "sandbox_runtime",
-                          {
-                            sandbox_runtime: {
-                              ...sandboxRuntime,
-                              enabled: !sandboxRuntime.enabled,
+                      {dangerousPolicy.enabled ? (
+                        <SettingSelector
+                          disabled={savingConfigKey !== null}
+                          label="Dangerous policy mode"
+                          onSelect={(value) => {
+                            void saveConfigPatch(
+                              "dangerous_tool_policy",
+                              {
+                                dangerous_tool_policy: {
+                                  enabled: true,
+                                  mode: value === "block" ? "block" : "audit",
+                                },
+                              },
+                              "Dangerous tool policy failed"
+                            );
+                          }}
+                          options={[
+                            { label: "Audit", value: "audit" },
+                            { label: "Block", value: "block" },
+                          ]}
+                          selected={dangerousPolicy.mode}
+                          tone={accentColor}
+                          variant="segmented"
+                        />
+                      ) : null}
+                    </>
+                  ) : null}
+                  {MOBILE_SETTINGS_ROOT_CHROME.sandboxRuntimeControls ? (
+                    <>
+                      <SettingToggle
+                        busy={savingConfigKey === "sandbox_runtime"}
+                        detail="Run supported command tools in an isolated runtime."
+                        disabled={savingConfigKey !== null}
+                        label="Command sandbox"
+                        onPress={() => {
+                          void saveConfigPatch(
+                            "sandbox_runtime",
+                            {
+                              sandbox_runtime: {
+                                ...sandboxRuntime,
+                                enabled: !sandboxRuntime.enabled,
+                              },
                             },
-                          },
-                          "Sandbox setting failed"
-                        );
-                      }}
-                      tone={accentColor}
-                      value={sandboxRuntime.enabled}
-                    />
-                    {sandboxRuntime.enabled ? (
-                      <>
-                        <SettingSelector
-                          disabled={savingConfigKey !== null}
-                          label="Sandbox provider"
-                          onSelect={(value) => {
-                            const provider =
-                              value === "apple_sandbox" || value === "podman" || value === "docker"
-                                ? value
-                                : "auto";
-                            void saveConfigPatch(
-                              "sandbox_runtime",
-                              {
-                                sandbox_runtime: {
-                                  ...sandboxRuntime,
-                                  provider,
+                            "Sandbox setting failed"
+                          );
+                        }}
+                        tone={accentColor}
+                        value={sandboxRuntime.enabled}
+                      />
+                      {sandboxRuntime.enabled ? (
+                        <>
+                          <SettingSelector
+                            disabled={savingConfigKey !== null}
+                            label="Sandbox provider"
+                            onSelect={(value) => {
+                              const provider =
+                                value === "apple_sandbox" ||
+                                value === "podman" ||
+                                value === "docker"
+                                  ? value
+                                  : "auto";
+                              void saveConfigPatch(
+                                "sandbox_runtime",
+                                {
+                                  sandbox_runtime: {
+                                    ...sandboxRuntime,
+                                    provider,
+                                  },
                                 },
-                              },
-                              "Sandbox setting failed"
-                            );
-                          }}
-                          options={[
-                            { label: "Auto", value: "auto" },
-                            { label: "Apple", value: "apple_sandbox" },
-                            { label: "Podman", value: "podman" },
-                            { label: "Docker", value: "docker" },
-                          ]}
-                          selected={sandboxRuntime.provider}
-                          tone={accentColor}
-                          variant="segmented"
-                        />
-                        <SettingSelector
-                          disabled={savingConfigKey !== null}
-                          label="Sandbox network"
-                          onSelect={(value) => {
-                            void saveConfigPatch(
-                              "sandbox_runtime",
-                              {
-                                sandbox_runtime: {
-                                  ...sandboxRuntime,
-                                  network: value === "allow" ? "allow" : "deny",
+                                "Sandbox setting failed"
+                              );
+                            }}
+                            options={[
+                              { label: "Auto", value: "auto" },
+                              { label: "Apple", value: "apple_sandbox" },
+                              { label: "Podman", value: "podman" },
+                              { label: "Docker", value: "docker" },
+                            ]}
+                            selected={sandboxRuntime.provider}
+                            tone={accentColor}
+                            variant="segmented"
+                          />
+                          <SettingSelector
+                            disabled={savingConfigKey !== null}
+                            label="Sandbox network"
+                            onSelect={(value) => {
+                              void saveConfigPatch(
+                                "sandbox_runtime",
+                                {
+                                  sandbox_runtime: {
+                                    ...sandboxRuntime,
+                                    network: value === "allow" ? "allow" : "deny",
+                                  },
                                 },
-                              },
-                              "Sandbox setting failed"
-                            );
-                          }}
-                          options={[
-                            { label: "Deny", value: "deny" },
-                            { label: "Allow", value: "allow" },
-                          ]}
-                          selected={sandboxRuntime.network}
-                          tone={accentColor}
-                          variant="segmented"
-                        />
-                      </>
-                    ) : null}
-                  </>
-                ) : null}
-              </>
-            ) : !summary ? (
-              <LoadingState label="Loading settings" detail="Fetching config from the gateway." />
-            ) : (
-              <EmptyState
-                label="Config unavailable"
-                detail={endpointErrorDetail(
-                  summary?.availability.config,
-                  "The gateway did not return editable settings."
-                )}
+                                "Sandbox setting failed"
+                              );
+                            }}
+                            options={[
+                              { label: "Deny", value: "deny" },
+                              { label: "Allow", value: "allow" },
+                            ]}
+                            selected={sandboxRuntime.network}
+                            tone={accentColor}
+                            variant="segmented"
+                          />
+                        </>
+                      ) : null}
+                    </>
+                  ) : null}
+                </>
+              ) : !summary ? (
+                <LoadingState label="Loading settings" detail="Fetching config from the gateway." />
+              ) : (
+                <EmptyState
+                  label="Config unavailable"
+                  detail={endpointErrorDetail(
+                    summary?.availability.config,
+                    "The gateway did not return editable settings."
+                  )}
+                />
+              )}
+            </SettingsSection>
+            {configAvailable ? (
+              <MobileWebPolicyPanel
+                accentColor={accentColor}
+                api={api}
+                config={(summary?.config ?? {}) as Record<string, unknown>}
+                refreshSummary={refreshSummary}
               />
-            )}
-          </SettingsSection>
+            ) : null}
+          </>
         ) : null}
         {showMcpSettings ? <MobileMcpSettingsPanel accentColor={accentColor} api={api} /> : null}
         {showAiSettings ? (
@@ -1020,6 +1034,23 @@ export function SettingsPanel({
                 selected={reasoningEffort}
                 tone={accentColor}
                 variant="menu"
+              />
+            ) : null}
+            {configAvailable ? (
+              <SettingToggle
+                busy={savingConfigKey === "self_improving_skills_enabled"}
+                detail="Let agents save reusable skills after complex tasks."
+                disabled={savingConfigKey !== null}
+                label="Self-improving skills"
+                onPress={() => {
+                  void saveConfigPatch(
+                    "self_improving_skills_enabled",
+                    { self_improving_skills_enabled: !selfImprovingSkillsEnabled },
+                    "Self-improving skills setting failed"
+                  );
+                }}
+                tone={accentColor}
+                value={selfImprovingSkillsEnabled}
               />
             ) : null}
             <Pressable

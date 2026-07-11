@@ -955,6 +955,72 @@ describe("Agent provider API-family routing", () => {
     expect("max_completion_tokens" in requestBody).toBe(false);
   });
 
+  test("openai codex tool-call narration cannot replace an empty final answer", async () => {
+    config.set("tool_approval_mode", "always_allow");
+    const requestBodies: Array<Record<string, unknown>> = [];
+    const turns = [
+      [
+        { type: "response.output_text.delta", delta: "I'll check that." },
+        {
+          type: "response.output_item.added",
+          item: {
+            type: "function_call",
+            id: "item_calc",
+            call_id: "call_calc",
+            name: "calc",
+            arguments: '{"expression":"2+2"}',
+          },
+        },
+        { type: "response.completed", response: { status: "completed" } },
+      ],
+      [{ type: "response.completed", response: { status: "completed" } }],
+      [
+        { type: "response.output_text.delta", delta: "The checked result is 4." },
+        { type: "response.completed", response: { status: "completed" } },
+      ],
+    ];
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};
+      requestBodies.push(body);
+      const events = turns[requestBodies.length - 1] ?? turns[turns.length - 1];
+      const payload = `${events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join("")}data: [DONE]\n\n`;
+      return new Response(payload, {
+        status: 200,
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "openai-codex",
+      name: "OpenAI Codex Closing Response Provider",
+      access_token: "codex-test-token",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "OpenAI Codex Closing Response Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-5.3-codex",
+      tools: ["calc"],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "can you check what 2+2 is?" }],
+      { useTools: true, sessionId: "openai-codex-closing-response-session" }
+    );
+
+    expect(result.content).toBe("The checked result is 4.");
+    expect(result.content).not.toBe("I'll check that.");
+    expect(result.tool_calls?.map((call) => call.name)).toContain("calc");
+    expect(requestBodies).toHaveLength(3);
+    expect(requestBodies[2]?.tool_choice).toBe("none");
+    expect(requestBodies[2]?.tools).toBeUndefined();
+    expect(JSON.stringify(requestBodies[2]?.input)).toContain("Do not call any more tools");
+  });
+
   test("normalizes openai gpt-5.3-codex model selection to openai-codex provider", async () => {
     const seenAuthHeaders: string[] = [];
     const seenUrls: string[] = [];

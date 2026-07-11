@@ -22,6 +22,18 @@ function safeJsonStringify(value: unknown): string {
   }
 }
 
+function compactBinaryFields(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  if (typeof record.screenshot !== "string" || record.screenshot.length < 4096) return value;
+  return {
+    ...record,
+    screenshot: record.filePath
+      ? `[binary image omitted; read ${String(record.filePath)} if visual analysis is needed]`
+      : "[binary image omitted from model context]",
+  };
+}
+
 function canTryToon(value: unknown): boolean {
   if (value === null || value === undefined) return false;
   if (typeof value !== "object") return false;
@@ -93,5 +105,5 @@ export function formatToolResultForModel(
   options: ModelVisibleStructuredOptions = {}
 ): string {
   if (typeof value === "string") return value;
-  return formatStructuredDataForModel(value, options).content;
+  return formatStructuredDataForModel(compactBinaryFields(value), options).content;
 }

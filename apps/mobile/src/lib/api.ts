@@ -144,6 +144,7 @@ export interface AgentSummary {
   provider_type?: string;
   system_prompt?: string;
   reasoning_effort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | null;
+  config?: Record<string, unknown>;
 }
 
 export interface ProviderSummary {
@@ -168,6 +169,7 @@ export interface AgentUpdatePayload {
   model?: string;
   provider_id?: string;
   system_prompt?: string;
+  config?: Record<string, unknown>;
 }
 
 export interface ProviderUpdatePayload {
@@ -1793,6 +1795,7 @@ function normalizeAgent(agent: unknown, index = 0): AgentSummary {
     )
       ? (reasoningEffort as AgentSummary["reasoning_effort"])
       : null,
+    config,
   };
 }
 

@@ -113,7 +113,7 @@ describe("normalizeExplicitAgentTools", () => {
 });
 
 describe("legacy broad builtin snapshots", () => {
-  test("are narrowed by intent at execution time", async () => {
+  test("use the same compact profile for every prompt", async () => {
     const provider = providerManager.create({
       provider: "openai",
       name: "Intent Provider",
@@ -156,15 +156,15 @@ describe("legacy broad builtin snapshots", () => {
       (agentManager as unknown as { callLLM: CallLLMShape }).callLLM = originalCallLLM;
     }
 
-    expect(captured[0]).toEqual([]);
-    expect(captured[1]).toEqual(expect.arrayContaining(["read", "grep", "exec", "git"]));
-    expect(captured[1].length).toBeLessThan(getToolSchemasForLLM().length / 2);
-    expect(captured[2]).toEqual(
-      expect.arrayContaining(["read", "write", "edit", "apply_patch", "exec"])
+    expect(captured[0]).toEqual(captured[1]);
+    expect(captured[1]).toEqual(captured[2]);
+    expect(captured[0]).toEqual(
+      expect.arrayContaining(["read", "write", "grep", "exec", "git", "tool_search"])
     );
+    expect(captured[0].length).toBeLessThan(getToolSchemasForLLM().length / 2);
   });
 
-  test("partial broad builtin snapshots are narrowed by intent at execution time", async () => {
+  test("partial broad builtin snapshots migrate to the compact profile", async () => {
     const provider = providerManager.create({
       provider: "openai",
       name: "Partial Intent Provider",

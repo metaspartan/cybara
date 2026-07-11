@@ -9,6 +9,7 @@ import { AiFeatureSettings } from "./settings/AiFeatureSettings";
 import { FeatureSettings } from "./settings/FeatureSettings";
 import { MemoryBehaviorSettings } from "./settings/MemoryBehaviorSettings";
 import { SpeechSettingsSection } from "./settings/SpeechSettingsSection";
+import { WebToolPolicySettings } from "./settings/WebToolPolicySettings";
 import { SystemPromptSection } from "./settings/SystemPromptSection";
 import { asSettingsRecord, readIntegerSetting } from "./settings/settingsValueReaders";
 import {
@@ -2624,6 +2625,7 @@ export function Settings() {
           {activeSection === "safety" && (
             <>
               <FeatureSettings />
+              <WebToolPolicySettings />
               <SandboxBrowserSettings />
               <ComputerUseSettings />
             </>

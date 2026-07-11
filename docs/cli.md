@@ -62,7 +62,7 @@ mode changes, subagent spawning, markdown emphasis, and grouped tool/activity ou
 
 Inside `cybara chat`, use `/status` to show the active session, agent, model/router mode, workspace,
 and approval mode. `/agents`, `/agent <id|name|default>`, `/model <id|router|default>`,
-`/router on|off`, `/permissions ask|always_allow|show`, `/reasoning <level>`, `/title <name>`,
+`/router on|off`, `/permissions ask|always_allow|show`, `/tools full|coding|research|safe|show`, `/reasoning <level>`, `/title <name>`,
 `/workspace <path|default>`, `/environment`, `/context`, `/usage`, `/plan`, `/diffs`, `/tasks`,
 `/subagents`, `/compact`, `/stop`, and `/subagent spawn <task>` mirror the same control-plane
 concepts used by the other clients. The environment panel summarizes workspace, branch, context
@@ -150,6 +150,7 @@ cybara model provider <id>   # Explicit model-provider form
 ```
 
 **Example:**
+
 ```bash
 # See all available provider types
 cybara provider available

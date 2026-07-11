@@ -451,6 +451,13 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
       ""
     );
 
+    if (availableTools.has("exec")) {
+      lines.push(
+        "For development servers and other long-running commands, call exec with background:true and a workdir. Do not append shell '&'. Use process to list or stop background processes.",
+        ""
+      );
+    }
+
     if (availableTools.has("browser")) {
       lines.push(
         "### Browser Tool (for web data)",

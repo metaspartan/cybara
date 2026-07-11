@@ -108,14 +108,21 @@ const COMMANDS = [
   { name: "/model", detail: "Show or override the model for future turns" },
   { name: "/router", detail: "Use or disable model router for new turns" },
   { name: "/permissions", detail: "Show or change tool approval mode" },
-  { name: "/reasoning", detail: "Show or change reasoning effort for the active agent" },
+  { name: "/tools", detail: "Show or change the active agent tool profile" },
+  {
+    name: "/reasoning",
+    detail: "Show or change reasoning effort for the active agent",
+  },
   { name: "/title", detail: "Rename the current session" },
   { name: "/workspace", detail: "Show or change the current workspace" },
   { name: "/context", detail: "Show context, compaction, and token usage" },
   { name: "/usage", detail: "Show token usage for this session" },
   { name: "/environment", detail: "Toggle the environment panel" },
   { name: "/plan", detail: "Show the latest plan state" },
-  { name: "/goal", detail: "Start, inspect, pause, resume, or complete a session goal" },
+  {
+    name: "/goal",
+    detail: "Start, inspect, pause, resume, or complete a session goal",
+  },
   { name: "/loop", detail: "Alias for session goal workflows" },
   { name: "/diff", detail: "Show file changes detected in the session" },
   { name: "/diffs", detail: "Show file changes detected in the session" },
@@ -142,7 +149,10 @@ const COMMANDS = [
   { name: "/exit", detail: "Return to the session list" },
 ];
 
-const ROLE_META: Record<ChatMessage["role"], { label: string; color: string; marker: string }> = {
+const ROLE_META: Record<
+  ChatMessage["role"],
+  { label: string; color: string; marker: string }
+> = {
   user: { label: "You", color: "cyan", marker: ">" },
   assistant: { label: "Cybara", color: "white", marker: "◆" },
   system: { label: "System", color: "#9ca6b4", marker: "-" },
@@ -161,7 +171,9 @@ function contentText(content: unknown): string {
   return content
     .map((block) => {
       if (!isRecord(block)) return "";
-      return block.type === "text" && typeof block.text === "string" ? block.text : "";
+      return block.type === "text" && typeof block.text === "string"
+        ? block.text
+        : "";
     })
     .filter(Boolean)
     .join("\n")
@@ -170,18 +182,26 @@ function contentText(content: unknown): string {
 
 function activitiesFrom(value: unknown): ActivityItem[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => (isRecord(item) ? [item as ActivityItem] : []));
+  return value.flatMap((item) =>
+    isRecord(item) ? [item as ActivityItem] : [],
+  );
 }
 
 function toolCallsFrom(value: unknown): ToolCallItem[] {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => (isRecord(item) ? [item as ToolCallItem] : []));
+  return value.flatMap((item) =>
+    isRecord(item) ? [item as ToolCallItem] : [],
+  );
 }
 
 function pendingFrom(value: unknown): PendingMessage[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
-    if (!isRecord(item) || typeof item.id !== "string" || typeof item.content !== "string") {
+    if (
+      !isRecord(item) ||
+      typeof item.id !== "string" ||
+      typeof item.content !== "string"
+    ) {
       return [];
     }
     return [item as unknown as PendingMessage];
@@ -198,25 +218,54 @@ function agentsFrom(value: unknown): AgentSummary[] {
 }
 
 function agentLine(agent: AgentSummary): string {
-  const name = typeof agent.name === "string" && agent.name.trim() ? agent.name.trim() : agent.id;
-  const model = typeof agent.model === "string" && agent.model.trim() ? agent.model.trim() : "";
-  const status = typeof agent.status === "string" && agent.status.trim() ? agent.status.trim() : "";
+  const name =
+    typeof agent.name === "string" && agent.name.trim()
+      ? agent.name.trim()
+      : agent.id;
+  const model =
+    typeof agent.model === "string" && agent.model.trim()
+      ? agent.model.trim()
+      : "";
+  const status =
+    typeof agent.status === "string" && agent.status.trim()
+      ? agent.status.trim()
+      : "";
   return [name, model, status].filter(Boolean).join(" · ") || "Unnamed agent";
 }
 
 function agentReasoningEffort(agent: AgentSummary | undefined): string {
   if (!agent) return "default";
-  if (typeof agent.reasoning_effort === "string" && agent.reasoning_effort.trim()) {
+  if (
+    typeof agent.reasoning_effort === "string" &&
+    agent.reasoning_effort.trim()
+  ) {
     return agent.reasoning_effort.trim();
   }
-  if (!isRecord(agent.config)) return "default";
-  const params = isRecord(agent.config.model_params)
-    ? agent.config.model_params
-    : isRecord(agent.config.modelParams)
-      ? agent.config.modelParams
+  const config = agentConfig(agent);
+  const params = isRecord(config.model_params)
+    ? config.model_params
+    : isRecord(config.modelParams)
+      ? config.modelParams
       : null;
   const value = params?.reasoning_effort ?? params?.reasoningEffort;
   return typeof value === "string" && value.trim() ? value.trim() : "default";
+}
+
+function agentConfig(agent: AgentSummary | undefined): Record<string, unknown> {
+  if (!agent) return {};
+  if (isRecord(agent.config)) return agent.config;
+  if (typeof agent.config !== "string") return {};
+  try {
+    const parsed: unknown = JSON.parse(agent.config);
+    return isRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function agentToolProfile(agent: AgentSummary | undefined): string {
+  const value = agentConfig(agent).tool_profile;
+  return typeof value === "string" && value.trim() ? value.trim() : "full";
 }
 
 function compact(value: string, max = 52): string {
@@ -230,14 +279,14 @@ function resolveAgentId(raw: string, agents: AgentSummary[]): string | null {
     (agent) =>
       agent.id?.toLowerCase() === needle ||
       agent.name?.toLowerCase() === needle ||
-      agent.model?.toLowerCase() === needle
+      agent.model?.toLowerCase() === needle,
   );
   if (exact?.id) return exact.id;
   const partial = agents.find(
     (agent) =>
       agent.name?.toLowerCase().includes(needle) ||
       agent.model?.toLowerCase().includes(needle) ||
-      agent.id?.toLowerCase().startsWith(needle)
+      agent.id?.toLowerCase().startsWith(needle),
   );
   return partial?.id || null;
 }
@@ -255,7 +304,10 @@ function messagesFromResponse(value: unknown): ChatMessage[] {
     if (!isRecord(item)) continue;
     const role = item.role;
     const content = contentText(item.content);
-    if ((role === "user" || role === "assistant" || role === "system") && content) {
+    if (
+      (role === "user" || role === "assistant" || role === "system") &&
+      content
+    ) {
       out.push({
         role,
         content,
@@ -270,14 +322,19 @@ function messagesFromResponse(value: unknown): ChatMessage[] {
 function commandMatches(input: string) {
   const trimmed = input.trim();
   if (!trimmed.startsWith("/")) return [];
-  return COMMANDS.filter((command) => command.name.startsWith(trimmed.split(/\s+/)[0])).slice(0, 6);
+  return COMMANDS.filter((command) =>
+    command.name.startsWith(trimmed.split(/\s+/)[0]),
+  ).slice(0, 6);
 }
 
 function isTransientRuntimeCommand(input: string): boolean {
   return /^\/(?:goal|loop)(?:\s|$)/i.test(input.trim());
 }
 
-function resolvePendingId(raw: string | undefined, pending: PendingMessage[]): string | null {
+function resolvePendingId(
+  raw: string | undefined,
+  pending: PendingMessage[],
+): string | null {
   if (!raw) return null;
   if (raw.startsWith("#")) {
     const sequence = Number(raw.slice(1));
@@ -297,8 +354,15 @@ function resolvePendingIds(raw: string[], pending: PendingMessage[]): string[] {
   });
 }
 
-function insertAt(value: string, cursor: number, insert: string): [string, number] {
-  return [value.slice(0, cursor) + insert + value.slice(cursor), cursor + insert.length];
+function insertAt(
+  value: string,
+  cursor: number,
+  insert: string,
+): [string, number] {
+  return [
+    value.slice(0, cursor) + insert + value.slice(cursor),
+    cursor + insert.length,
+  ];
 }
 
 function deleteBefore(value: string, cursor: number): [string, number] {
@@ -321,15 +385,19 @@ function relativeTime(value?: number): string {
   return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
 }
 
-function splitInline(line: string): Array<{ text: string; bold?: boolean; code?: boolean }> {
+function splitInline(
+  line: string,
+): Array<{ text: string; bold?: boolean; code?: boolean }> {
   const parts: Array<{ text: string; bold?: boolean; code?: boolean }> = [];
   const pattern = /(\*\*[^*]+\*\*|`[^`]+`)/g;
   let offset = 0;
   for (const match of line.matchAll(pattern)) {
     if (match.index === undefined) continue;
-    if (match.index > offset) parts.push({ text: line.slice(offset, match.index) });
+    if (match.index > offset)
+      parts.push({ text: line.slice(offset, match.index) });
     const token = match[0];
-    if (token.startsWith("**")) parts.push({ text: token.slice(2, -2), bold: true });
+    if (token.startsWith("**"))
+      parts.push({ text: token.slice(2, -2), bold: true });
     else parts.push({ text: token.slice(1, -1), code: true });
     offset = match.index + token.length;
   }
@@ -341,7 +409,11 @@ function InlineMarkdown({ line }: { line: string }): React.ReactElement {
   return (
     <Text>
       {splitInline(line).map((part, index) => (
-        <Text key={index} bold={part.bold} color={part.code ? "magenta" : undefined}>
+        <Text
+          key={index}
+          bold={part.bold}
+          color={part.code ? "magenta" : undefined}
+        >
           {part.text}
         </Text>
       ))}
@@ -358,17 +430,27 @@ function MessageBody({
   maxLines?: number;
   maxColumns: number;
 }): React.ReactElement {
-  const lines = transcriptWindow(content, maxLines ?? Number.MAX_SAFE_INTEGER, maxColumns);
+  const lines = transcriptWindow(
+    content,
+    maxLines ?? Number.MAX_SAFE_INTEGER,
+    maxColumns,
+  );
   return (
     <Box flexDirection="column">
       {lines.map((line, index) => {
         if (line.hidden) {
-          return <Text key={index} color="#9ca6b4">{line.text}</Text>;
+          return (
+            <Text key={index} color="#9ca6b4">
+              {line.text}
+            </Text>
+          );
         }
         if (line.fence) {
           return (
             <Text key={index} color="magenta">
-              {line.fence === "open" ? `code${line.language ? ` · ${line.language}` : ""}` : "end code"}
+              {line.fence === "open"
+                ? `code${line.language ? ` · ${line.language}` : ""}`
+                : "end code"}
             </Text>
           );
         }
@@ -409,24 +491,42 @@ function MessageBody({
   );
 }
 
-function ActivitySummary({ message }: { message: ChatMessage }): React.ReactElement | null {
+function ActivitySummary({
+  message,
+}: {
+  message: ChatMessage;
+}): React.ReactElement | null {
   const activities = message.process_activities || [];
   const tools = message.tool_calls || [];
   if (activities.length === 0 && tools.length === 0) return null;
   const labels = Array.from(
     new Set(
       [
-        ...activities.slice(-5).map((activity) => activity.text || activity.toolName || activity.phase),
-        ...tools.slice(-5).map((tool) => `${tool.name || "tool"}${tool.status ? ` ${tool.status}` : ""}`),
+        ...activities
+          .slice(-5)
+          .map(
+            (activity) => activity.text || activity.toolName || activity.phase,
+          ),
+        ...tools
+          .slice(-5)
+          .map(
+            (tool) =>
+              `${tool.name || "tool"}${tool.status ? ` ${tool.status}` : ""}`,
+          ),
       ]
-        .filter((label): label is string => typeof label === "string" && label.trim().length > 0)
-        .map((label) => compact(label.replace(/\s+/g, " ").trim(), 96))
-    )
+        .filter(
+          (label): label is string =>
+            typeof label === "string" && label.trim().length > 0,
+        )
+        .map((label) => compact(label.replace(/\s+/g, " ").trim(), 96)),
+    ),
   ).slice(-5);
   const count = activities.length + tools.length;
   return (
     <Box paddingLeft={2} marginBottom={1} flexDirection="column">
-      <Text color={ACTIVITY_HEADING_COLOR}>◇ Ran {count} {count === 1 ? "step" : "steps"}</Text>
+      <Text color={ACTIVITY_HEADING_COLOR}>
+        ◇ Ran {count} {count === 1 ? "step" : "steps"}
+      </Text>
       {labels.map((label, index) => (
         <Text key={`${index}-${label}`} color={ACTIVITY_DETAIL_COLOR}>
           {index === labels.length - 1 ? "└" : "├"} {label}
@@ -455,24 +555,43 @@ function MessageView({
       </Box>
       <ActivitySummary message={message} />
       <Box paddingLeft={2}>
-        <MessageBody content={message.content} maxLines={maxLines} maxColumns={maxColumns} />
+        <MessageBody
+          content={message.content}
+          maxLines={maxLines}
+          maxColumns={maxColumns}
+        />
       </Box>
     </Box>
   );
 }
 
-function PendingQueue({ messages }: { messages: PendingMessage[] }): React.ReactElement | null {
+function PendingQueue({
+  messages,
+}: {
+  messages: PendingMessage[];
+}): React.ReactElement | null {
   if (messages.length === 0) return null;
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="gray" paddingX={1} marginTop={1}>
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="gray"
+      paddingX={1}
+      marginTop={1}
+    >
       <Text color="gray">Queued follow-ups</Text>
       {messages.slice(0, 4).map((message, index) => (
-        <Text key={message.id} color={message.mode === "steering" ? "yellow" : "white"}>
+        <Text
+          key={message.id}
+          color={message.mode === "steering" ? "yellow" : "white"}
+        >
           #{message.sequence || index + 1} {message.content.slice(0, 72)}
           <Text color="gray"> · {relativeTime(message.createdAt)}</Text>
         </Text>
       ))}
-      <Text color="gray">/steer #1 · /edit #1 ... · /delete #1 · /reorder #2 #1</Text>
+      <Text color="gray">
+        /steer #1 · /edit #1 ... · /delete #1 · /reorder #2 #1
+      </Text>
     </Box>
   );
 }
@@ -489,7 +608,13 @@ function CommandPalette({
   const matches = commandMatches(input).slice(0, maxRows);
   if (matches.length === 0) return null;
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1} marginTop={1}>
+    <Box
+      flexDirection="column"
+      borderStyle="single"
+      borderColor="gray"
+      paddingX={1}
+      marginTop={1}
+    >
       {matches.map((command) => (
         <Text key={command.name}>
           <Text color="cyan">{command.name}</Text>
@@ -503,8 +628,16 @@ function CommandPalette({
 function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
   if (narrow) {
     return (
-      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginTop={1}>
-        <Text bold color="cyan">Chat controls</Text>
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor="cyan"
+        paddingX={1}
+        marginTop={1}
+      >
+        <Text bold color="cyan">
+          Chat controls
+        </Text>
         <Text>Enter send · ^J newline · Tab complete</Text>
         <Text>PgUp/PgDn scroll · Esc sessions · ^C quit</Text>
         <Text>/model · /agent · /permissions · /reasoning</Text>
@@ -514,21 +647,53 @@ function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
     );
   }
   return (
-    <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={1} marginTop={1}>
+    <Box
+      flexDirection="column"
+      borderStyle="round"
+      borderColor="cyan"
+      paddingX={1}
+      marginTop={1}
+    >
       <Text bold color="cyan">
         Chat controls
       </Text>
-      <Text>Enter send · Ctrl+J newline · ←/→ move · ↑/↓ history · PgUp/PgDn transcript</Text>
-      <Text>Tab completes slash commands · approval prompts use 1/2/3/4 or y/s/a/n</Text>
-      <Text>/agents lists · /agent name switches · /router on|off · /permissions ask|always_allow</Text>
-      <Text>/reasoning changes effort · /title renames · /workspace changes the working root</Text>
-      <Text>/environment toggles context, plan, diffs, tasks, and subagents</Text>
-      <Text>/goal start &lt;objective&gt; creates persistent work · /loop is an alias</Text>
-      <Text>/context, /usage, /plan, /diffs, /tasks, /subagents inspect session state</Text>
-      <Text>/queue queues · /steer injects · /edit, /delete, /reorder manage queue</Text>
+      <Text>
+        Enter send · Ctrl+J newline · ←/→ move · ↑/↓ history · PgUp/PgDn
+        transcript
+      </Text>
+      <Text>
+        Tab completes slash commands · approval prompts use 1/2/3/4 or y/s/a/n
+      </Text>
+      <Text>
+        /agents lists · /agent name switches · /router on|off · /permissions
+        ask|always_allow
+      </Text>
+      <Text>
+        /reasoning changes effort · /title renames · /workspace changes the
+        working root
+      </Text>
+      <Text>
+        /environment toggles context, plan, diffs, tasks, and subagents
+      </Text>
+      <Text>
+        /goal start &lt;objective&gt; creates persistent work · /loop is an
+        alias
+      </Text>
+      <Text>
+        /context, /usage, /plan, /diffs, /tasks, /subagents inspect session
+        state
+      </Text>
+      <Text>
+        /queue queues · /steer injects · /edit, /delete, /reorder manage queue
+      </Text>
       <Text>/stop interrupts · /pending refreshes queue</Text>
-      <Text>/copy copies the latest answer · /diff shows changes · /review loads a review prompt</Text>
-      <Text>/reload refetches · /new starts fresh · /resume returns to sessions</Text>
+      <Text>
+        /copy copies the latest answer · /diff shows changes · /review loads a
+        review prompt
+      </Text>
+      <Text>
+        /reload refetches · /new starts fresh · /resume returns to sessions
+      </Text>
       <Text>/raw or /expand toggles compact and complete message bodies</Text>
     </Box>
   );
@@ -555,7 +720,11 @@ function StatusRail({
   narrow: boolean;
   useModelRouter: boolean;
 }): React.ReactElement {
-  const agentLabel = useModelRouter ? "Model Router" : agent ? agentLine(agent) : "Gateway default";
+  const agentLabel = useModelRouter
+    ? "Model Router"
+    : agent
+      ? agentLine(agent)
+      : "Gateway default";
   const routerLabel = useModelRouter
     ? "selected"
     : routerStatus?.enabled
@@ -571,14 +740,22 @@ function StatusRail({
           <Text color={approvalMode === "ask" ? "yellow" : "green"}>
             {approvalMode === "always_allow" ? "allow" : approvalMode}
           </Text>
-          <Text color={pendingCount > 0 ? "yellow" : "gray"}> · q{pendingCount}</Text>
+          <Text color={pendingCount > 0 ? "yellow" : "gray"}>
+            {" "}
+            · q{pendingCount}
+          </Text>
           <Text color="gray"> · {shortSessionId}</Text>
         </Text>
       </Box>
     );
   }
   return (
-    <Box flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
+    <Box
+      flexDirection="column"
+      borderStyle="single"
+      borderColor="gray"
+      paddingX={1}
+    >
       <Text>
         <Text color="gray">Agent </Text>
         <Text color="white">{compact(agentLabel)}</Text>
@@ -588,10 +765,16 @@ function StatusRail({
         <Text color={approvalMode === "ask" ? "yellow" : "green"}>
           {approvalMode === "always_allow" ? "allow" : approvalMode}
         </Text>
-        {approvalCount > 0 ? <Text color="yellow"> · {approvalCount} waiting</Text> : null}
+        {approvalCount > 0 ? (
+          <Text color="yellow"> · {approvalCount} waiting</Text>
+        ) : null}
         <Text color="gray"> · Reasoning </Text>
         <Text color="white">{agentReasoningEffort(agent)}</Text>
-        {modelOverride ? <Text color="cyan"> · Model {compact(modelOverride, 28)}</Text> : null}
+        <Text color="gray"> · Profile </Text>
+        <Text color="white">{agentToolProfile(agent)}</Text>
+        {modelOverride ? (
+          <Text color="cyan"> · Model {compact(modelOverride, 28)}</Text>
+        ) : null}
         {useModelRouter || routerStatus?.enabled ? (
           <>
             <Text color="gray"> · Router </Text>
@@ -620,7 +803,9 @@ export function InteractiveChatTUI({
   const [workspaceDir, setWorkspaceDir] = React.useState("");
   const [modelOverride, setModelOverride] = React.useState("");
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
-  const [pendingMessages, setPendingMessages] = React.useState<PendingMessage[]>([]);
+  const [pendingMessages, setPendingMessages] = React.useState<
+    PendingMessage[]
+  >([]);
   const [input, setInput] = React.useState("");
   const [cursor, setCursor] = React.useState(0);
   const [history, setHistory] = React.useState<string[]>([]);
@@ -631,10 +816,14 @@ export function InteractiveChatTUI({
   const [notice, setNotice] = React.useState<string | null>(null);
   const [showHelp, setShowHelp] = React.useState(false);
   const [agents, setAgents] = React.useState<AgentSummary[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = React.useState(initialAgentId || "");
+  const [selectedAgentId, setSelectedAgentId] = React.useState(
+    initialAgentId || "",
+  );
   const [useModelRouter, setUseModelRouter] = React.useState(false);
   const [approvalMode, setApprovalMode] = React.useState("always_allow");
-  const [routerStatus, setRouterStatus] = React.useState<RouterStatus | null>(null);
+  const [routerStatus, setRouterStatus] = React.useState<RouterStatus | null>(
+    null,
+  );
   const [environmentSnapshot, setEnvironmentSnapshot] =
     React.useState<TuiEnvironmentSnapshot | null>(null);
   const [tasks, setTasks] = React.useState<TuiTaskSummary[]>([]);
@@ -642,54 +831,73 @@ export function InteractiveChatTUI({
   const [showEnvironment, setShowEnvironment] = React.useState(false);
   const [expandedTranscript, setExpandedTranscript] = React.useState(false);
   const [transcriptOffset, setTranscriptOffset] = React.useState(0);
-  const [approvalRequests, setApprovalRequests] = React.useState<ToolApprovalRequest[]>([]);
+  const [approvalRequests, setApprovalRequests] = React.useState<
+    ToolApprovalRequest[]
+  >([]);
   const [resolvingApproval, setResolvingApproval] = React.useState(false);
   const layout = useTerminalLayout();
 
   const selectedAgent = React.useMemo(
     () => agents.find((agent) => agent.id === selectedAgentId),
-    [agents, selectedAgentId]
+    [agents, selectedAgentId],
   );
 
-  const loadControlPlane = React.useCallback(async (): Promise<ControlPlaneState> => {
-    const [agentResponse, configResponse, routerResponse] = await Promise.all([
-      fetchAPI<unknown>("/api/agents"),
-      fetchAPI<unknown>("/api/config"),
-      fetchAPI<unknown>("/api/router/status"),
-    ]);
-    const nextAgents = agentsFrom(agentResponse);
-    const nextApprovalMode =
-      isRecord(configResponse) && typeof configResponse.tool_approval_mode === "string"
-        ? configResponse.tool_approval_mode
-        : approvalMode;
-    const nextRouterStatus = isRecord(routerResponse) ? (routerResponse as RouterStatus) : null;
-    setAgents(nextAgents);
-    if (isRecord(configResponse) && typeof configResponse.tool_approval_mode === "string") {
-      setApprovalMode(configResponse.tool_approval_mode);
-    }
-    setRouterStatus(nextRouterStatus);
-    return { agents: nextAgents, approvalMode: nextApprovalMode, routerStatus: nextRouterStatus };
-  }, [approvalMode, fetchAPI]);
+  const loadControlPlane =
+    React.useCallback(async (): Promise<ControlPlaneState> => {
+      const [agentResponse, configResponse, routerResponse] = await Promise.all(
+        [
+          fetchAPI<unknown>("/api/agents"),
+          fetchAPI<unknown>("/api/config"),
+          fetchAPI<unknown>("/api/router/status"),
+        ],
+      );
+      const nextAgents = agentsFrom(agentResponse);
+      const nextApprovalMode =
+        isRecord(configResponse) &&
+        typeof configResponse.tool_approval_mode === "string"
+          ? configResponse.tool_approval_mode
+          : approvalMode;
+      const nextRouterStatus = isRecord(routerResponse)
+        ? (routerResponse as RouterStatus)
+        : null;
+      setAgents(nextAgents);
+      if (
+        isRecord(configResponse) &&
+        typeof configResponse.tool_approval_mode === "string"
+      ) {
+        setApprovalMode(configResponse.tool_approval_mode);
+      }
+      setRouterStatus(nextRouterStatus);
+      return {
+        agents: nextAgents,
+        approvalMode: nextApprovalMode,
+        routerStatus: nextRouterStatus,
+      };
+    }, [approvalMode, fetchAPI]);
 
   const loadPendingForSession = React.useCallback(
     async (targetSessionId: string) => {
       const response = await fetchAPI<unknown>(
-        `/api/chat/sessions/${encodeURIComponent(targetSessionId)}/pending`
+        `/api/chat/sessions/${encodeURIComponent(targetSessionId)}/pending`,
       );
-      setPendingMessages(pendingFrom(isRecord(response) ? response.pendingMessages : []));
+      setPendingMessages(
+        pendingFrom(isRecord(response) ? response.pendingMessages : []),
+      );
     },
-    [fetchAPI]
+    [fetchAPI],
   );
 
   const loadEnvironmentForSession = React.useCallback(
     async (targetSessionId: string): Promise<unknown | null> => {
-      const response = await fetchAPI<unknown>(`/api/sessions/${encodeURIComponent(targetSessionId)}`);
+      const response = await fetchAPI<unknown>(
+        `/api/sessions/${encodeURIComponent(targetSessionId)}`,
+      );
       const snapshot = environmentSnapshotFromDetail(response);
       setEnvironmentSnapshot(snapshot);
       if (snapshot.workspaceDir) setWorkspaceDir(snapshot.workspaceDir);
       return response;
     },
-    [fetchAPI]
+    [fetchAPI],
   );
 
   const loadTasks = React.useCallback(async () => {
@@ -715,7 +923,7 @@ export function InteractiveChatTUI({
         nextMessages = messagesFromResponse(detailMessages);
       } else {
         const response = await fetchAPI<unknown>(
-          `/api/chat/sessions/${encodeURIComponent(targetSessionId)}/messages`
+          `/api/chat/sessions/${encodeURIComponent(targetSessionId)}/messages`,
         );
         nextMessages = messagesFromResponse(response);
       }
@@ -723,7 +931,7 @@ export function InteractiveChatTUI({
       await loadPendingForSession(targetSessionId);
       return nextMessages;
     },
-    [fetchAPI, loadEnvironmentForSession, loadPendingForSession]
+    [fetchAPI, loadEnvironmentForSession, loadPendingForSession],
   );
 
   const loadPending = React.useCallback(async () => {
@@ -769,7 +977,7 @@ export function InteractiveChatTUI({
         ? pending.filter((request) => request.sessionId === localSessionId)
         : sending
           ? pending
-          : []
+          : [],
     );
   }, [fetchAPI, localSessionId, sending]);
 
@@ -788,26 +996,35 @@ export function InteractiveChatTUI({
       if (resolvingApproval) return;
       setResolvingApproval(true);
       try {
-        const response = await fetchAPI<unknown>("/api/tools/approvals/resolve", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ requestId: request.id, decision }),
-        });
+        const response = await fetchAPI<unknown>(
+          "/api/tools/approvals/resolve",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ requestId: request.id, decision }),
+          },
+        );
         if (isRecord(response) && response.success === false) {
-          setError(typeof response.error === "string" ? response.error : "Approval could not be resolved.");
+          setError(
+            typeof response.error === "string"
+              ? response.error
+              : "Approval could not be resolved.",
+          );
           return;
         }
-        setApprovalRequests((current) => current.filter((item) => item.id !== request.id));
+        setApprovalRequests((current) =>
+          current.filter((item) => item.id !== request.id),
+        );
         setNotice(
           decision === "deny"
             ? `Denied ${request.toolName}.`
-            : `Approved ${request.toolName} (${decision.replace("approve_", "")}).`
+            : `Approved ${request.toolName} (${decision.replace("approve_", "")}).`,
         );
       } finally {
         setResolvingApproval(false);
       }
     },
-    [fetchAPI, resolvingApproval]
+    [fetchAPI, resolvingApproval],
   );
 
   const resetInput = React.useCallback(() => {
@@ -832,10 +1049,13 @@ export function InteractiveChatTUI({
             `Session ${localSessionId || "new"}`,
             useModelRouter
               ? "Model Router"
-              : modelOverride || (selectedAgent ? agentLine(selectedAgent) : modelLine || "gateway default"),
+              : modelOverride ||
+                (selectedAgent
+                  ? agentLine(selectedAgent)
+                  : modelLine || "gateway default"),
             `tools ${approvalMode}`,
             `${pendingMessages.length} queued`,
-          ].join(" · ")
+          ].join(" · "),
         );
         return true;
       }
@@ -845,9 +1065,12 @@ export function InteractiveChatTUI({
           control.agents.length
             ? control.agents
                 .slice(0, 8)
-                .map((agent) => `${agent.id === selectedAgentId ? "*" : "-"} ${agentLine(agent)}`)
+                .map(
+                  (agent) =>
+                    `${agent.id === selectedAgentId ? "*" : "-"} ${agentLine(agent)}`,
+                )
                 .join("\n")
-            : "No agents returned by the gateway."
+            : "No agents returned by the gateway.",
         );
         return true;
       }
@@ -855,14 +1078,20 @@ export function InteractiveChatTUI({
         const response = await fetchAPI<unknown>("/api/skills/status");
         const lines = skillStatusLines(response);
         setNotice(
-          lines.length ? compactInspectionLines(lines) : "No skills returned by the gateway."
+          lines.length
+            ? compactInspectionLines(lines)
+            : "No skills returned by the gateway.",
         );
         return true;
       }
       if (normalizedCommand === "mcp") {
         const response = await fetchAPI<unknown>("/api/mcp");
         const lines = mcpStatusLines(response);
-        setNotice(lines.length ? compactInspectionLines(lines) : "No MCP services configured.");
+        setNotice(
+          lines.length
+            ? compactInspectionLines(lines)
+            : "No MCP services configured.",
+        );
         return true;
       }
       if (normalizedCommand === "memory") {
@@ -875,11 +1104,17 @@ export function InteractiveChatTUI({
       }
       if (normalizedCommand === "logs") {
         const parsedCount = Number.parseInt(argument, 10);
-        const count = Number.isFinite(parsedCount) ? Math.max(1, Math.min(20, parsedCount)) : 8;
-        const response = await fetchAPI<unknown>(`/api/logs/system?limit=${count}`);
+        const count = Number.isFinite(parsedCount)
+          ? Math.max(1, Math.min(20, parsedCount))
+          : 8;
+        const response = await fetchAPI<unknown>(
+          `/api/logs/system?limit=${count}`,
+        );
         const lines = logLines(response);
         setNotice(
-          lines.length ? compactInspectionLines(lines, count) : "No recent gateway logs."
+          lines.length
+            ? compactInspectionLines(lines, count)
+            : "No recent gateway logs.",
         );
         return true;
       }
@@ -888,7 +1123,9 @@ export function InteractiveChatTUI({
           setNotice("Usage: /agent <id|name|default|router>");
           return true;
         }
-        const availableAgents = agents.length ? agents : (await loadControlPlane()).agents;
+        const availableAgents = agents.length
+          ? agents
+          : (await loadControlPlane()).agents;
         if (argument === "router") {
           setUseModelRouter(true);
           setNotice("Model router selected for future sends.");
@@ -914,23 +1151,31 @@ export function InteractiveChatTUI({
               method: "PUT",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ agentId }),
-            }
+            },
           );
           if (isRecord(response) && response.success === false) {
-            setNotice(typeof response.error === "string" ? response.error : "Failed to update session agent.");
+            setNotice(
+              typeof response.error === "string"
+                ? response.error
+                : "Failed to update session agent.",
+            );
             return true;
           }
           await loadMessages();
         }
         const nextAgent = availableAgents.find((agent) => agent.id === agentId);
-        setNotice(`Agent selected: ${nextAgent ? agentLine(nextAgent) : agentId}`);
+        setNotice(
+          `Agent selected: ${nextAgent ? agentLine(nextAgent) : agentId}`,
+        );
         return true;
       }
       if (normalizedCommand === "model") {
         const value = argument.trim();
         const normalized = value.toLowerCase();
         if (!value || normalized === "show") {
-          setNotice(`Model: ${useModelRouter ? "router" : modelOverride || selectedAgent?.model || "agent default"}`);
+          setNotice(
+            `Model: ${useModelRouter ? "router" : modelOverride || selectedAgent?.model || "agent default"}`,
+          );
           return true;
         }
         if (normalized === "router" || normalized === "auto") {
@@ -958,7 +1203,7 @@ export function InteractiveChatTUI({
           setNotice(
             `Router ${nextRouterStatus?.enabled ? nextRouterStatus.strategy || "enabled" : "off"} · ${
               useModelRouter ? "selected for this chat" : "not selected"
-            }`
+            }`,
           );
           return true;
         }
@@ -976,13 +1221,20 @@ export function InteractiveChatTUI({
         setNotice("Usage: /router on|off|show");
         return true;
       }
-      if (["permissions", "approval", "approvals"].includes(normalizedCommand)) {
+      if (
+        ["permissions", "approval", "approvals"].includes(normalizedCommand)
+      ) {
         const value = argument.trim().toLowerCase();
         if (!value || value === "show") {
           setNotice(`Tool approvals: ${approvalMode}`);
           return true;
         }
-        const nextMode = value === "ask" ? "ask" : value === "always_allow" || value === "always" ? "always_allow" : "";
+        const nextMode =
+          value === "ask"
+            ? "ask"
+            : value === "always_allow" || value === "always"
+              ? "always_allow"
+              : "";
         if (!nextMode) {
           setNotice("Usage: /permissions ask|always_allow|show");
           return true;
@@ -993,11 +1245,54 @@ export function InteractiveChatTUI({
           body: JSON.stringify({ tool_approval_mode: nextMode }),
         });
         if (isRecord(response) && response.success === false) {
-          setNotice(typeof response.error === "string" ? response.error : "Gateway rejected the approval setting.");
+          setNotice(
+            typeof response.error === "string"
+              ? response.error
+              : "Gateway rejected the approval setting.",
+          );
           return true;
         }
         setApprovalMode(nextMode);
         setNotice(`Tool approvals set to ${nextMode}.`);
+        return true;
+      }
+      if (["tools", "toolset", "toolsets"].includes(normalizedCommand)) {
+        const value = argument.trim().toLowerCase();
+        if (!value || value === "show") {
+          setNotice(`Tool profile: ${agentToolProfile(selectedAgent)}`);
+          return true;
+        }
+        if (!selectedAgentId) {
+          setNotice(
+            "Select an agent with /agent before changing its tool profile.",
+          );
+          return true;
+        }
+        const valid = ["full", "coding", "research", "safe"];
+        if (!valid.includes(value)) {
+          setNotice("Usage: /tools full|coding|research|safe|show");
+          return true;
+        }
+        const response = await fetchAPI<unknown>(
+          `/api/agents/${encodeURIComponent(selectedAgentId)}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              config: { ...agentConfig(selectedAgent), tool_profile: value },
+            }),
+          },
+        );
+        if (!response || (isRecord(response) && response.success === false)) {
+          setNotice(
+            isRecord(response) && typeof response.error === "string"
+              ? response.error
+              : "Tool profile update failed.",
+          );
+          return true;
+        }
+        await loadControlPlane();
+        setNotice(`Tool profile set to ${value}.`);
         return true;
       }
       if (normalizedCommand === "reasoning") {
@@ -1007,12 +1302,24 @@ export function InteractiveChatTUI({
           return true;
         }
         if (!selectedAgentId) {
-          setNotice("Select an agent with /agent before changing reasoning effort.");
+          setNotice(
+            "Select an agent with /agent before changing reasoning effort.",
+          );
           return true;
         }
-        const valid = ["default", "minimal", "low", "medium", "high", "xhigh", "max"];
+        const valid = [
+          "default",
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh",
+          "max",
+        ];
         if (!valid.includes(value)) {
-          setNotice("Usage: /reasoning default|minimal|low|medium|high|xhigh|max");
+          setNotice(
+            "Usage: /reasoning default|minimal|low|medium|high|xhigh|max",
+          );
           return true;
         }
         const response = await fetchAPI<unknown>(
@@ -1020,11 +1327,17 @@ export function InteractiveChatTUI({
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ reasoning_effort: value === "default" ? null : value }),
-          }
+            body: JSON.stringify({
+              reasoning_effort: value === "default" ? null : value,
+            }),
+          },
         );
         if (isRecord(response) && response.success === false) {
-          setNotice(typeof response.error === "string" ? response.error : "Reasoning effort was rejected.");
+          setNotice(
+            typeof response.error === "string"
+              ? response.error
+              : "Reasoning effort was rejected.",
+          );
           return true;
         }
         await loadControlPlane();
@@ -1042,10 +1355,14 @@ export function InteractiveChatTUI({
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ title: argument }),
-          }
+          },
         );
         if (isRecord(response) && response.success === false) {
-          setNotice(typeof response.error === "string" ? response.error : "Session title was rejected.");
+          setNotice(
+            typeof response.error === "string"
+              ? response.error
+              : "Session title was rejected.",
+          );
           return true;
         }
         setSessionTitle(argument);
@@ -1057,7 +1374,8 @@ export function InteractiveChatTUI({
           setNotice(`Workspace: ${workspaceDir || "gateway default"}`);
           return true;
         }
-        const nextWorkspace = argument === "none" || argument === "default" ? "" : argument;
+        const nextWorkspace =
+          argument === "none" || argument === "default" ? "" : argument;
         if (localSessionId) {
           const response = await fetchAPI<unknown>(
             `/api/sessions/${encodeURIComponent(localSessionId)}/workspace`,
@@ -1065,10 +1383,14 @@ export function InteractiveChatTUI({
               method: "PUT",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ workspaceDir: nextWorkspace || null }),
-            }
+            },
           );
           if (isRecord(response) && response.success === false) {
-            setNotice(typeof response.error === "string" ? response.error : "Workspace was rejected.");
+            setNotice(
+              typeof response.error === "string"
+                ? response.error
+                : "Workspace was rejected.",
+            );
             return true;
           }
         }
@@ -1089,7 +1411,7 @@ export function InteractiveChatTUI({
             formatContextUsageLine(snapshot.contextUsage),
             formatTokenUsageLine(snapshot.tokenUsage),
             formatPlanLine(snapshot.plan),
-          ].join("\n")
+          ].join("\n"),
         );
         return true;
       }
@@ -1118,16 +1440,28 @@ export function InteractiveChatTUI({
         const detail = await loadEnvironmentForSession(localSessionId);
         const snapshot = environmentSnapshotFromDetail(detail);
         const fileLines =
-          snapshot.fileChanges?.files.slice(0, 8).map((file) => `${file.path} +${file.added} -${file.removed}`) || [];
-        setNotice([formatFileChangeLine(snapshot.fileChanges), ...fileLines].join("\n"));
+          snapshot.fileChanges?.files
+            .slice(0, 8)
+            .map((file) => `${file.path} +${file.added} -${file.removed}`) ||
+          [];
+        setNotice(
+          [formatFileChangeLine(snapshot.fileChanges), ...fileLines].join("\n"),
+        );
         return true;
       }
       if (normalizedCommand === "tasks") {
         const nextTasks = await loadTasks();
-        setNotice(nextTasks.length ? nextTasks.slice(0, 8).map(formatTaskLine).join("\n") : "No tasks.");
+        setNotice(
+          nextTasks.length
+            ? nextTasks.slice(0, 8).map(formatTaskLine).join("\n")
+            : "No tasks.",
+        );
         return true;
       }
-      if (normalizedCommand === "subagents" || normalizedCommand === "subagent") {
+      if (
+        normalizedCommand === "subagents" ||
+        normalizedCommand === "subagent"
+      ) {
         const action = rest[0]?.toLowerCase();
         if (action === "spawn") {
           const task = rest.slice(1).join(" ").trim();
@@ -1146,18 +1480,24 @@ export function InteractiveChatTUI({
             }),
           });
           const spawnedId =
-            isRecord(response) && (typeof response.subagentId === "string" || typeof response.id === "string")
+            isRecord(response) &&
+            (typeof response.subagentId === "string" ||
+              typeof response.id === "string")
               ? String(response.subagentId || response.id)
               : "";
           await loadSubagents();
-          setNotice(spawnedId ? `Spawned subagent ${spawnedId}.` : "Subagent spawn requested.");
+          setNotice(
+            spawnedId
+              ? `Spawned subagent ${spawnedId}.`
+              : "Subagent spawn requested.",
+          );
           return true;
         }
         const nextSubagents = await loadSubagents();
         setNotice(
           nextSubagents.length
             ? nextSubagents.slice(0, 8).map(formatSubagentLine).join("\n")
-            : "No subagents."
+            : "No subagents.",
         );
         return true;
       }
@@ -1182,12 +1522,18 @@ export function InteractiveChatTUI({
         return true;
       }
       if (normalizedCommand === "copy") {
-        const response = [...messages].reverse().find((message) => message.role === "assistant")?.content;
+        const response = [...messages]
+          .reverse()
+          .find((message) => message.role === "assistant")?.content;
         if (!response) {
           setNotice("No assistant response is available to copy.");
           return true;
         }
-        setNotice((await copyTextToClipboard(response)) ? "Latest response copied." : "No system clipboard helper is available.");
+        setNotice(
+          (await copyTextToClipboard(response))
+            ? "Latest response copied."
+            : "No system clipboard helper is available.",
+        );
         return true;
       }
       if (normalizedCommand === "review") {
@@ -1200,7 +1546,9 @@ export function InteractiveChatTUI({
       }
       if (normalizedCommand === "expand" || normalizedCommand === "raw") {
         setExpandedTranscript((value) => !value);
-        setNotice(`Transcript messages ${expandedTranscript ? "compacted" : "expanded"}.`);
+        setNotice(
+          `Transcript messages ${expandedTranscript ? "compacted" : "expanded"}.`,
+        );
         return true;
       }
       if (normalizedCommand === "new") {
@@ -1236,14 +1584,18 @@ export function InteractiveChatTUI({
           body: JSON.stringify({
             agentId: selectedAgentId || undefined,
             message: argument,
-            modelOverride: useModelRouter ? undefined : modelOverride || undefined,
+            modelOverride: useModelRouter
+              ? undefined
+              : modelOverride || undefined,
             queueMode: "queue",
             sessionId: localSessionId,
             useModelRouter,
             workspaceDir: workspaceDir || undefined,
           }),
         });
-        setPendingMessages(pendingFrom(isRecord(response) ? response.pendingMessages : []));
+        setPendingMessages(
+          pendingFrom(isRecord(response) ? response.pendingMessages : []),
+        );
         setNotice("Queued follow-up.");
         return true;
       }
@@ -1255,11 +1607,13 @@ export function InteractiveChatTUI({
         }
         const response = await fetchAPI<unknown>(
           `/api/chat/sessions/${encodeURIComponent(localSessionId)}/pending/${encodeURIComponent(
-            pendingId
+            pendingId,
           )}/steer`,
-          { method: "POST", headers: { "Content-Type": "application/json" } }
+          { method: "POST", headers: { "Content-Type": "application/json" } },
         );
-        setPendingMessages(pendingFrom(isRecord(response) ? response.pendingMessages : []));
+        setPendingMessages(
+          pendingFrom(isRecord(response) ? response.pendingMessages : []),
+        );
         await loadMessages();
         setNotice("Steered queued message.");
         return true;
@@ -1273,15 +1627,17 @@ export function InteractiveChatTUI({
         }
         const response = await fetchAPI<unknown>(
           `/api/chat/sessions/${encodeURIComponent(localSessionId)}/pending/${encodeURIComponent(
-            pendingId
+            pendingId,
           )}`,
           {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ content }),
-          }
+          },
         );
-        setPendingMessages(pendingFrom(isRecord(response) ? response.pendingMessages : []));
+        setPendingMessages(
+          pendingFrom(isRecord(response) ? response.pendingMessages : []),
+        );
         setNotice("Edited queued follow-up.");
         return true;
       }
@@ -1293,11 +1649,13 @@ export function InteractiveChatTUI({
         }
         const response = await fetchAPI<unknown>(
           `/api/chat/sessions/${encodeURIComponent(localSessionId)}/pending/${encodeURIComponent(
-            pendingId
+            pendingId,
           )}`,
-          { method: "DELETE" }
+          { method: "DELETE" },
         );
-        setPendingMessages(pendingFrom(isRecord(response) ? response.pendingMessages : []));
+        setPendingMessages(
+          pendingFrom(isRecord(response) ? response.pendingMessages : []),
+        );
         setNotice("Deleted queued follow-up.");
         return true;
       }
@@ -1313,9 +1671,11 @@ export function InteractiveChatTUI({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ pendingMessageIds }),
-          }
+          },
         );
-        setPendingMessages(pendingFrom(isRecord(response) ? response.pendingMessages : []));
+        setPendingMessages(
+          pendingFrom(isRecord(response) ? response.pendingMessages : []),
+        );
         setNotice("Reordered queued follow-ups.");
         return true;
       }
@@ -1324,9 +1684,12 @@ export function InteractiveChatTUI({
           setNotice("No active session to stop.");
           return true;
         }
-        await fetchAPI(`/api/chat/sessions/${encodeURIComponent(localSessionId)}/stop`, {
-          method: "POST",
-        });
+        await fetchAPI(
+          `/api/chat/sessions/${encodeURIComponent(localSessionId)}/stop`,
+          {
+            method: "POST",
+          },
+        );
         setSending(false);
         setNotice("Stop requested.");
         return true;
@@ -1354,19 +1717,24 @@ export function InteractiveChatTUI({
       selectedAgentId,
       useModelRouter,
       workspaceDir,
-    ]
+    ],
   );
 
   const send = React.useCallback(
     async (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || sending) return;
-      setHistory((previous) => [...previous.filter((item) => item !== trimmed), trimmed].slice(-50));
+      setHistory((previous) =>
+        [...previous.filter((item) => item !== trimmed), trimmed].slice(-50),
+      );
       if (trimmed.startsWith("/") && (await runCommand(trimmed))) return;
 
       setNotice(null);
       setTranscriptOffset(0);
-      setMessages((previous) => [...previous, { role: "user", content: trimmed }]);
+      setMessages((previous) => [
+        ...previous,
+        { role: "user", content: trimmed },
+      ]);
       setSending(true);
       try {
         const response = await fetchAPI<unknown>("/api/chat", {
@@ -1375,7 +1743,9 @@ export function InteractiveChatTUI({
           body: JSON.stringify({
             message: trimmed,
             agentId: selectedAgentId || undefined,
-            modelOverride: useModelRouter ? undefined : modelOverride || undefined,
+            modelOverride: useModelRouter
+              ? undefined
+              : modelOverride || undefined,
             sessionId: localSessionId || undefined,
             stream: false,
             useModelRouter,
@@ -1392,7 +1762,10 @@ export function InteractiveChatTUI({
         if (nextSessionId) {
           setLocalSessionId(nextSessionId);
           if (isTransientRuntimeCommand(trimmed) && responseMessage) {
-            setMessages((previous) => [...previous.slice(0, -1), responseMessage]);
+            setMessages((previous) => [
+              ...previous.slice(0, -1),
+              responseMessage,
+            ]);
             return;
           }
           const persistedMessages = await loadMessagesForSession(nextSessionId);
@@ -1400,7 +1773,8 @@ export function InteractiveChatTUI({
             responseMessage &&
             !persistedMessages.some(
               (message) =>
-                message.role === responseMessage.role && message.content === responseMessage.content
+                message.role === responseMessage.role &&
+                message.content === responseMessage.content,
             )
           ) {
             setMessages([...persistedMessages, responseMessage]);
@@ -1424,17 +1798,26 @@ export function InteractiveChatTUI({
       sending,
       useModelRouter,
       workspaceDir,
-    ]
+    ],
   );
 
-  const transcriptMessages = messages.filter((message) => message.role !== "system");
+  const transcriptMessages = messages.filter(
+    (message) => message.role !== "system",
+  );
   const visibleMessageLimit = layout.transcriptMessages;
-  const maximumTranscriptOffset = Math.max(0, transcriptMessages.length - visibleMessageLimit);
-  const normalizedTranscriptOffset = Math.min(transcriptOffset, maximumTranscriptOffset);
-  const visibleMessageEnd = transcriptMessages.length - normalizedTranscriptOffset;
+  const maximumTranscriptOffset = Math.max(
+    0,
+    transcriptMessages.length - visibleMessageLimit,
+  );
+  const normalizedTranscriptOffset = Math.min(
+    transcriptOffset,
+    maximumTranscriptOffset,
+  );
+  const visibleMessageEnd =
+    transcriptMessages.length - normalizedTranscriptOffset;
   const visibleMessages = transcriptMessages.slice(
     Math.max(0, visibleMessageEnd - visibleMessageLimit),
-    visibleMessageEnd
+    visibleMessageEnd,
   );
   const activeApproval = approvalRequests[0];
   const commandPaletteVisible = commandMatches(input).length > 0;
@@ -1462,11 +1845,15 @@ export function InteractiveChatTUI({
     }
     const pagingKey = key as { pageUp?: boolean; pageDown?: boolean };
     if (pagingKey.pageUp) {
-      setTranscriptOffset((current) => Math.min(maximumTranscriptOffset, current + visibleMessageLimit));
+      setTranscriptOffset((current) =>
+        Math.min(maximumTranscriptOffset, current + visibleMessageLimit),
+      );
       return;
     }
     if (pagingKey.pageDown) {
-      setTranscriptOffset((current) => Math.max(0, current - visibleMessageLimit));
+      setTranscriptOffset((current) =>
+        Math.max(0, current - visibleMessageLimit),
+      );
       return;
     }
     if (key.ctrl && value === "j") {
@@ -1491,7 +1878,9 @@ export function InteractiveChatTUI({
     }
     if (key.upArrow && history.length > 0) {
       const nextIndex =
-        historyIndex === null ? history.length - 1 : Math.max(0, historyIndex - 1);
+        historyIndex === null
+          ? history.length - 1
+          : Math.max(0, historyIndex - 1);
       setHistoryIndex(nextIndex);
       setInput(history[nextIndex] || "");
       setCursor((history[nextIndex] || "").length);
@@ -1551,28 +1940,41 @@ export function InteractiveChatTUI({
     }
   });
 
-  const headerTitle = sessionTitle || (localSessionId ? localSessionId.slice(0, 8) : "New chat");
+  const headerTitle =
+    sessionTitle || (localSessionId ? localSessionId.slice(0, 8) : "New chat");
   const activeModelLine = useModelRouter
     ? "Model Router"
     : modelOverride
       ? modelOverride
-    : selectedAgent
-      ? agentLine(selectedAgent)
-      : modelLine || "Gateway default";
+      : selectedAgent
+        ? agentLine(selectedAgent)
+        : modelLine || "Gateway default";
   const composerLines = composerWindow(input, cursor, layout.composerLines);
 
   return (
     <Box flexDirection="column" height={layout.rows} width="100%">
-      <Box borderStyle="round" borderColor="cyan" paddingX={1} flexDirection="column">
-        <Box flexDirection={layout.narrow ? "column" : "row"} justifyContent="space-between">
+      <Box
+        borderStyle="round"
+        borderColor="cyan"
+        paddingX={1}
+        flexDirection="column"
+      >
+        <Box
+          flexDirection={layout.narrow ? "column" : "row"}
+          justifyContent="space-between"
+        >
           <Text bold color="cyan">
             Cybara Chat · {compact(headerTitle, layout.narrow ? 30 : 64)}
           </Text>
-          <Text color={sending ? "yellow" : "gray"}>{sending ? "working" : "ready"}</Text>
+          <Text color={sending ? "yellow" : "gray"}>
+            {sending ? "working" : "ready"}
+          </Text>
         </Box>
         <Text color="gray">
           {compact(activeModelLine, layout.narrow ? 38 : 72)}
-          {layout.narrow ? "" : ` · ${localSessionId || "session will be created on send"}`}
+          {layout.narrow
+            ? ""
+            : ` · ${localSessionId || "session will be created on send"}`}
         </Text>
       </Box>
       <Box marginTop={1}>
@@ -1602,7 +2004,9 @@ export function InteractiveChatTUI({
       ) : (
         <Box flexDirection="column" paddingX={1} paddingTop={1} flexGrow={1}>
           {visibleMessageEnd < transcriptMessages.length ? (
-            <Text color="gray">↓ {transcriptMessages.length - visibleMessageEnd} newer messages</Text>
+            <Text color="gray">
+              ↓ {transcriptMessages.length - visibleMessageEnd} newer messages
+            </Text>
           ) : null}
           {visibleMessages.map((message, index) => (
             <MessageView
@@ -1614,7 +2018,8 @@ export function InteractiveChatTUI({
           ))}
           {visibleMessageEnd - visibleMessages.length > 0 ? (
             <Text color="gray">
-              ↑ {visibleMessageEnd - visibleMessages.length} earlier messages · PageUp/PageDown
+              ↑ {visibleMessageEnd - visibleMessages.length} earlier messages ·
+              PageUp/PageDown
             </Text>
           ) : null}
         </Box>
@@ -1623,7 +2028,8 @@ export function InteractiveChatTUI({
       {sending ? (
         <Box paddingX={1}>
           <Text color="yellow">
-            <Spinner type="dots" /> Working. Type /queue &lt;message&gt; or /stop.
+            <Spinner type="dots" /> Working. Type /queue &lt;message&gt; or
+            /stop.
           </Text>
         </Box>
       ) : null}
@@ -1644,7 +2050,11 @@ export function InteractiveChatTUI({
         />
       ) : null}
       {showHelp ? <HelpPanel narrow={layout.narrow} /> : null}
-      <CommandPalette input={input} compactMode={layout.compact} maxRows={layout.commandRows} />
+      <CommandPalette
+        input={input}
+        compactMode={layout.compact}
+        maxRows={layout.commandRows}
+      />
       {error ? (
         <Box paddingX={1}>
           <Text color="red">Error: {error}</Text>
@@ -1656,14 +2066,19 @@ export function InteractiveChatTUI({
         </Box>
       ) : null}
 
-      <Box borderStyle="round" borderColor={sending ? "yellow" : "green"} paddingX={1} flexDirection="column">
+      <Box
+        borderStyle="round"
+        borderColor={sending ? "yellow" : "green"}
+        paddingX={1}
+        flexDirection="column"
+      >
         <Text color="gray">Ask Cybara</Text>
         {composerLines.map((line, index) => (
-            <Text key={index} color={sending ? "gray" : "white"}>
-              {index === 0 ? "› " : "  "}
-              {line}
-            </Text>
-          ))}
+          <Text key={index} color={sending ? "gray" : "white"}>
+            {index === 0 ? "› " : "  "}
+            {line}
+          </Text>
+        ))}
       </Box>
       <Box paddingX={1}>
         <Text color="gray">

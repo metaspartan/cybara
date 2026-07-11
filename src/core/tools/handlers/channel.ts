@@ -36,6 +36,7 @@ interface SubagentSession {
   agentId?: string;
   parentSessionId?: string;
   workspaceDir?: string;
+  allowedToolNames?: string[];
   task: string;
   model?: string;
   timeout?: number;
@@ -283,6 +284,7 @@ export async function handleSessionsSpawn(
     ],
     createdAt: new Date().toISOString(),
     workspaceDir: requestedWorkspaceDir,
+    allowedToolNames: context?.allowedToolNames,
   };
 
   sessions.set(childSessionKey, session);
@@ -557,6 +559,7 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
       userId: "subagent",
       modelOverride: session.model,
       abortSignal: abortController.signal,
+      allowedToolNames: session.allowedToolNames,
     });
 
     session.messages.push({

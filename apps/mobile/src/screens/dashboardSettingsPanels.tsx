@@ -348,6 +348,9 @@ export function AgentSettingsPanel({
   const [providerId, setProviderId] = useState(agentProviderId(agent));
   const [model, setModel] = useState(agent.model || "");
   const [systemPrompt, setSystemPrompt] = useState(agent.system_prompt || "");
+  const [toolProfile, setToolProfile] = useState(
+    typeof agent.config?.tool_profile === "string" ? agent.config.tool_profile : "full"
+  );
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const providerOptions = summary?.providers ?? [];
@@ -358,6 +361,9 @@ export function AgentSettingsPanel({
     setProviderId(agentProviderId(agent));
     setModel(agent.model || "");
     setSystemPrompt(agent.system_prompt || "");
+    setToolProfile(
+      typeof agent.config?.tool_profile === "string" ? agent.config.tool_profile : "full"
+    );
   }, [
     agent.id,
     agent.model,
@@ -366,6 +372,7 @@ export function AgentSettingsPanel({
     agent.provider_id,
     agent.system_prompt,
     agent.type,
+    agent.config,
   ]);
 
   const saveAgent = async () => {
@@ -382,6 +389,7 @@ export function AgentSettingsPanel({
         provider_id: providerId || undefined,
         model: model.trim() || undefined,
         system_prompt: systemPrompt,
+        config: { ...(agent.config ?? {}), tool_profile: toolProfile },
       });
       await refreshSummary();
       Alert.alert("Agent saved", `${trimmedName} was updated.`);
@@ -465,6 +473,18 @@ export function AgentSettingsPanel({
           onChangeText={setModel}
           placeholder="Model name"
           value={model}
+        />
+        <SettingSelector
+          label="Tool profile"
+          variant="menu"
+          options={[
+            { label: "Full", value: "full" },
+            { label: "Coding", value: "coding" },
+            { label: "Research", value: "research" },
+            { label: "Read only", value: "safe" },
+          ]}
+          selected={toolProfile}
+          onSelect={setToolProfile}
         />
         <SettingsTextField
           help="Used as this agent's operating instructions."

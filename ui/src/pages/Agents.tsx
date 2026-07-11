@@ -38,6 +38,18 @@ const agentTypes = [
   { value: "worker", label: "Worker" },
 ];
 
+const toolProfiles = [
+  { value: "full", label: "Full" },
+  { value: "coding", label: "Coding" },
+  { value: "research", label: "Research" },
+  { value: "safe", label: "Read only" },
+];
+
+function agentToolProfile(agent: Pick<Agent, "config">): string {
+  const value = parseAgentConfig(agent.config).tool_profile;
+  return typeof value === "string" && value ? value : "full";
+}
+
 function agentReasoningLabel(agent: Agent): string {
   return reasoningEffortLabel(
     readAgentReasoningEffort(agent.config),
@@ -62,6 +74,7 @@ function buildConfig(formData: FormData, existing?: unknown): Record<string, unk
   } else {
     delete config.model_params;
   }
+  config.tool_profile = (formData.get("tool_profile") as string) || "full";
   return config;
 }
 
@@ -336,6 +349,10 @@ function AgentCard({
             <span className="text-gray-300">{agentReasoningLabel(agent)}</span>
           </div>
           <div className="flex justify-between">
+            <span className="text-gray-500">Tools</span>
+            <span className="text-gray-300 capitalize">{agentToolProfile(agent)}</span>
+          </div>
+          <div className="flex justify-between">
             <span className="text-gray-500">Created</span>
             <span className="text-gray-300">
               {agent.created_at ? new Date(agent.created_at).toLocaleDateString() : "Unknown"}
@@ -522,6 +539,13 @@ function AgentModal({
             name="reasoning_effort"
             defaultValue={readAgentReasoningEffort(initialData?.config) || ""}
             options={reasoningEffortOptions}
+          />
+
+          <Select
+            label="Tool Profile"
+            name="tool_profile"
+            defaultValue={initialData ? agentToolProfile(initialData) : "full"}
+            options={toolProfiles}
           />
 
           <Textarea

@@ -290,10 +290,11 @@ describe("agentic loop stability against a real streaming provider", () => {
     return agent;
   }
 
-  function streamedToolCallTurn(): Response {
+  function streamedToolCallTurn(preamble = ""): Response {
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
+        if (preamble) controller.enqueue(encoder.encode(contentDelta(preamble)));
         controller.enqueue(
           encoder.encode(
             sseChunk({
@@ -358,6 +359,26 @@ describe("agentic loop stability against a real streaming provider", () => {
     expect(observedBodies.length).toBe(3);
     const nudgeBody = observedBodies[2]!;
     expect(JSON.stringify(nudgeBody.messages)).toContain("Do not call any more tools");
+  });
+
+  test("tool-call narration cannot replace an empty final answer", async () => {
+    const agent = createLoopAgent("behave-scripted");
+    scriptedTurns = [
+      () => streamedToolCallTurn("I'll check that."),
+      () => streamedTextTurn(""),
+      () => streamedTextTurn("The checked result is 4."),
+    ];
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "can you check what 2+2 is?" }],
+      { useTools: true, sessionId: "watchdog-preamble-nudge-session" }
+    );
+
+    expect(result.content).toBe("The checked result is 4.");
+    expect(result.content).not.toBe("I'll check that.");
+    expect(result.tool_calls?.map((call) => call.name)).toContain("calc");
+    expect(observedBodies.length).toBe(3);
   });
 
   test("provider that rejects streaming falls back to a plain request", async () => {

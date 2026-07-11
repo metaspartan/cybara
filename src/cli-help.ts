@@ -14,6 +14,11 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    chat --router                      Chat through the model router");
   console.log("  status      Show system status");
   console.log("  health      Alias for status");
+  console.log("  backup      Backup and restore durable gateway state");
+  console.log("    backup list                         List local backups");
+  console.log("    backup create [--label NAME]        Create a backup");
+  console.log("    backup restore <id> --yes            Restore and restart the gateway");
+  console.log("    backup delete <id> --yes             Delete a backup");
   console.log("  gateway     Gateway lifecycle commands");
   console.log("    gateway status          Show gateway health");
   console.log("    gateway logs [--tail N] Show recent gateway logs");

@@ -377,6 +377,7 @@ private struct AgentEditorSheet: View {
     @State private var providerID: String
     @State private var model: String
     @State private var reasoningEffort: String
+    @State private var toolProfile: String
     @State private var systemPrompt: String
     @State private var providerModels: [GatewayProviderModel] = []
     @State private var saving = false
@@ -401,6 +402,7 @@ private struct AgentEditorSheet: View {
         _providerID = State(initialValue: agent?.providerID ?? providers.first?.id ?? "")
         _model = State(initialValue: agent?.model ?? "")
         _reasoningEffort = State(initialValue: agent?.reasoningEffort ?? "")
+        _toolProfile = State(initialValue: agent?.toolProfile ?? "full")
         _systemPrompt = State(initialValue: agent?.system_prompt ?? "")
     }
 
@@ -433,6 +435,12 @@ private struct AgentEditorSheet: View {
                     ForEach(nativeSupportedReasoningEfforts(provider: selectedProviderType, model: model), id: \.value) { option in
                         Text(option.label).tag(option.value)
                     }
+                }
+                Picker("Tool profile", selection: $toolProfile) {
+                    Text("Full").tag("full")
+                    Text("Coding").tag("coding")
+                    Text("Research").tag("research")
+                    Text("Read only").tag("safe")
                 }
                 .onChange(of: providerID) { _, _ in
                     if !nativeSupportedReasoningEfforts(provider: selectedProviderType, model: model)
@@ -524,6 +532,7 @@ private struct AgentEditorSheet: View {
         } else {
             config["model_params"] = modelParams
         }
+        config["tool_profile"] = toolProfile
 
         var payload: [String: Any] = [
             "name": name,

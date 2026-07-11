@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/Badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Input";
+import { Switch } from "@/components/ui/Switch";
 import { extractApiError, settingsApi } from "@/lib/api";
 import { useUIStore } from "@/stores/uiStore";
 import { AlertTriangle, RefreshCw, Server, Shield } from "lucide-react";
@@ -278,22 +279,11 @@ export function FeatureSettings() {
               available via the <code className="text-indigo-400">--enable-terminal</code> flag.
             </p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={terminalEnabled}
+          <Switch
+            checked={terminalEnabled}
             disabled={loading}
-            onClick={() => toggleTerminal(!terminalEnabled)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              terminalEnabled ? "bg-indigo-500" : "bg-white/10"
-            } ${loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                terminalEnabled ? "translate-x-6" : "translate-x-1"
-              }`}
-            />
-          </button>
+            onChange={(value) => void toggleTerminal(value)}
+          />
         </div>
 
         <div className="flex items-center justify-between py-3 border-b border-white/10">
@@ -305,22 +295,11 @@ export function FeatureSettings() {
               server refuses to start.
             </p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={acpEnabled}
+          <Switch
+            checked={acpEnabled}
             disabled={loading}
-            onClick={() => toggleAcp(!acpEnabled)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              acpEnabled ? "bg-indigo-500" : "bg-white/10"
-            } ${loading ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                acpEnabled ? "translate-x-6" : "translate-x-1"
-              }`}
-            />
-          </button>
+            onChange={(value) => void toggleAcp(value)}
+          />
         </div>
 
         <div className="py-3 border-b border-white/10">
@@ -332,27 +311,16 @@ export function FeatureSettings() {
                 actions.
               </p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={dangerousToolPolicyEnabled}
+            <Switch
+              checked={dangerousToolPolicyEnabled}
               disabled={loading || savingDangerousPolicy}
-              onClick={() =>
-                updateDangerousPolicy({
-                  enabled: !dangerousToolPolicyEnabled,
+              onChange={(value) =>
+                void updateDangerousPolicy({
+                  enabled: value,
                   mode: dangerousToolPolicyMode,
                 })
               }
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                dangerousToolPolicyEnabled ? "bg-amber-500" : "bg-white/10"
-              } ${loading || savingDangerousPolicy ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  dangerousToolPolicyEnabled ? "translate-x-6" : "translate-x-1"
-                }`}
-              />
-            </button>
+            />
           </div>
           {dangerousToolPolicyEnabled && (
             <div className="mt-3 max-w-xs">
@@ -407,28 +375,17 @@ export function FeatureSettings() {
                 Isolate `exec` and `git` tools with host/container sandboxing.
               </p>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={sandboxEnabled}
+            <Switch
+              checked={sandboxEnabled}
               disabled={loading || savingSandboxRuntime}
-              onClick={() =>
-                updateSandboxRuntime({
-                  enabled: !sandboxEnabled,
+              onChange={(value) =>
+                void updateSandboxRuntime({
+                  enabled: value,
                   provider: sandboxProvider,
                   network: sandboxNetwork,
                 })
               }
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                sandboxEnabled ? "bg-emerald-500" : "bg-white/10"
-              } ${loading || savingSandboxRuntime ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                  sandboxEnabled ? "translate-x-6" : "translate-x-1"
-                }`}
-              />
-            </button>
+            />
           </div>
           {sandboxEnabled && (
             <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3 max-w-xl">

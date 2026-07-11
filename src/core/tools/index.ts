@@ -45,6 +45,8 @@ export interface ToolContext {
   allowDangerousTools?: boolean;
   requireToolUse?: boolean;
   requiredToolName?: string;
+  allowedToolNames?: string[];
+  allowDynamicTools?: boolean;
   abortSignal?: AbortSignal;
   /**
    * Suppress live status + token-delta broadcasts for this call. Set for meta
@@ -356,13 +358,17 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
   exec: {
     name: "exec",
     description:
-      "Execute shell commands. Use workdir parameter for directory context (don't use 'cd' in command). Commands run from workspace root if workdir not specified.",
+      "Execute shell commands. Use workdir for directory context. For servers or long-running commands, set background=true instead of adding shell '&'; use process to list or stop them.",
     category: "process",
     input_schema: {
       type: "object",
       properties: {
         command: { type: "string", description: "Shell command to execute" },
         timeout: { type: "number", description: "Timeout in seconds (default 30)" },
+        background: {
+          type: "boolean",
+          description: "Start a long-running process and return its pid immediately",
+        },
         elevated: { type: "boolean", description: "Run with elevated permissions" },
         workdir: { type: "string", description: "Working directory" },
         env: { type: "object", description: "Additional environment variables" },

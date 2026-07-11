@@ -52,6 +52,13 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
         return effort
     }
 
+    var toolProfile: String {
+        guard case .string(let value)? = config?["tool_profile"], !value.isEmpty else {
+            return "full"
+        }
+        return value
+    }
+
     var autostart: Bool {
         guard case .bool(let value)? = config?["autostart"] else { return false }
         return value

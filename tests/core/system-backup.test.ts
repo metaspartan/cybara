@@ -42,7 +42,11 @@ function writeDatabase(path: string, value: string): void {
 function readDatabase(path: string): string {
   const database = new Database(path, { readonly: true });
   try {
-    return (database.query("SELECT value FROM state LIMIT 1").get() as { value: string }).value;
+    return (
+      database.query("SELECT value FROM state LIMIT 1").get() as {
+        value: string;
+      }
+    ).value;
   } finally {
     database.close();
   }
@@ -74,6 +78,51 @@ describe("system backups", () => {
     expect(listSystemBackups(root).map((entry) => entry.id)).toEqual([backup.id]);
   });
 
+  test("backs up an active gateway while ignoring locked browser databases", () => {
+    const root = createRoot();
+    const platformPath = join(root, "data", "platform.db");
+    const channelDirectory = join(root, "channels", "auth");
+    const channelPath = join(channelDirectory, "session.db");
+    const browserDirectory = join(root, "browser", "profile");
+    const browserPath = join(browserDirectory, "profile.db");
+    mkdirSync(channelDirectory, { recursive: true });
+    mkdirSync(browserDirectory, { recursive: true });
+    mkdirSync(join(root, "lsp", "bin"), { recursive: true });
+    mkdirSync(join(root, "memory", "transformers", "models"), {
+      recursive: true,
+    });
+    writeFileSync(join(root, "lsp", "bin", "server"), "downloaded runtime");
+    writeFileSync(join(root, "memory", "transformers", "models", "model.onnx"), "model");
+    writeFileSync(join(root, "models_dev_cache.json"), "{}");
+    writeDatabase(platformPath, "platform");
+    writeDatabase(channelPath, "channel");
+    writeDatabase(browserPath, "browser");
+    const platform = new Database(platformPath);
+    const channel = new Database(channelPath);
+    const browser = new Database(browserPath);
+    platform.exec("PRAGMA journal_mode = WAL");
+    channel.exec("BEGIN EXCLUSIVE");
+    browser.exec("BEGIN EXCLUSIVE");
+
+    try {
+      const backup = createSystemBackup("Live gateway", root);
+      const payload = join(root, "backups", backup.id, "payload");
+      expect(readDatabase(join(payload, "data", "platform.db"))).toBe("platform");
+      expect(existsSync(join(payload, "channels", "auth", "session.db"))).toBe(true);
+      expect(existsSync(join(payload, "browser"))).toBe(false);
+      expect(existsSync(join(payload, "lsp"))).toBe(false);
+      expect(existsSync(join(payload, "memory", "transformers"))).toBe(false);
+      expect(existsSync(join(payload, "models_dev_cache.json"))).toBe(false);
+      expect(existsSync(join(payload, "kanban.db-shm"))).toBe(false);
+    } finally {
+      browser.exec("ROLLBACK");
+      channel.exec("ROLLBACK");
+      browser.close();
+      channel.close();
+      platform.close();
+    }
+  });
+
   test("restores durable state on the next startup while preserving excluded logs", () => {
     const root = createRoot();
     const databasePath = join(root, "data", "platform.db");
@@ -86,6 +135,9 @@ describe("system backups", () => {
     writeDatabase(databasePath, "after");
     writeFileSync(memoryPath, "after");
     writeFileSync(logPath, "new log");
+    writeFileSync(`${databasePath}-wal`, "stale platform wal");
+    writeFileSync(join(root, "memory", "vectors.db-wal"), "stale vector wal");
+    writeFileSync(join(root, "kanban.db-wal"), "stale kanban wal");
 
     const pending = scheduleSystemRestore(backup.id, root);
     expect(pending.state).toBe("pending");
@@ -96,6 +148,9 @@ describe("system backups", () => {
     expect(readDatabase(databasePath)).toBe("before");
     expect(readFileSync(memoryPath, "utf8")).toBe("before");
     expect(readFileSync(logPath, "utf8")).toBe("new log");
+    expect(existsSync(`${databasePath}-wal`)).toBe(false);
+    expect(existsSync(join(root, "memory", "vectors.db-wal"))).toBe(false);
+    expect(existsSync(join(root, "kanban.db-wal"))).toBe(false);
     expect(readSystemRestoreStatus(root).state).toBe("completed");
   });
 

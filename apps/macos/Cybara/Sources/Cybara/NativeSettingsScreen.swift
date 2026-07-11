@@ -38,7 +38,11 @@ struct NativeSettingsScreen: View {
     @State private var defaultModel = ""
     @State private var reasoningEffort = ""
     @State private var terminalEnabled = false
+    @State private var acpEnabled = true
     @State private var selfImprovingSkills = true
+    @State private var webPolicyEnabled = false
+    @State private var webFetchHosts = ""
+    @State private var webSearchHosts = ""
     @State private var dangerousPolicyEnabled = false
     @State private var dangerousPolicyMode = "audit"
     @State private var toolApprovalMode = "always_allow"
@@ -516,6 +520,7 @@ struct NativeSettingsScreen: View {
                         )
                     }
                 }
+
             }
             .nativeSettingsContentLayout()
         }
@@ -736,6 +741,23 @@ struct NativeSettingsScreen: View {
                         .pickerStyle(.segmented)
                         .onChange(of: reasoningEffort) { _, value in
                             saveConfigPatch(["reasoning_effort": value], key: "reasoning_effort")
+                        }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Agent Learning")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                        toggleRow(
+                            "Self-improving skills",
+                            detail: "Let agents save reusable skills after complex tasks.",
+                            isOn: $selfImprovingSkills
+                        ) {
+                            saveConfigPatch(
+                                ["self_improving_skills_enabled": selfImprovingSkills],
+                                key: "self_improving_skills_enabled"
+                            )
                         }
                     }
                 }
@@ -1311,8 +1333,8 @@ struct NativeSettingsScreen: View {
                         toggleRow("Web Terminal", detail: "Enable browser-based terminal access.", isOn: $terminalEnabled) {
                             saveConfigPatch(["terminal_enabled": terminalEnabled], key: "terminal_enabled")
                         }
-                        toggleRow("Self-improving skills", detail: "Allow agents to save reusable skills.", isOn: $selfImprovingSkills) {
-                            saveConfigPatch(["self_improving_skills_enabled": selfImprovingSkills], key: "self_improving_skills_enabled")
+                        toggleRow("ACP Server", detail: "Allow compatible editors to connect through the gateway.", isOn: $acpEnabled) {
+                            saveConfigPatch(["acp_enabled": acpEnabled], key: "acp_enabled")
                         }
                         if !agents.isEmpty {
                             Picker("Background model", selection: $backgroundAgentId) {
@@ -1372,6 +1394,32 @@ struct NativeSettingsScreen: View {
                         .pickerStyle(.segmented)
                         .disabled(!sandboxEnabled)
                         .onChange(of: sandboxNetwork) { _, _ in saveSandboxRuntime() }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Web Access Policy")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                        toggleRow(
+                            "Enforce host allowlists",
+                            detail: "Empty enabled lists block that category.",
+                            isOn: $webPolicyEnabled
+                        ) {
+                            saveWebToolPolicy()
+                        }
+                        TextField("Direct fetch hosts, comma separated", text: $webFetchHosts)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { saveWebToolPolicy() }
+                        TextField("Search result hosts, comma separated", text: $webSearchHosts)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { saveWebToolPolicy() }
+                        HStack {
+                            Spacer()
+                            Button("Save Policy") { saveWebToolPolicy() }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(savingKey == "web_tool_url_policy")
+                        }
                     }
                 }
             }
@@ -1545,6 +1593,27 @@ struct NativeSettingsScreen: View {
                 ],
             ],
             key: "sandbox_runtime"
+        )
+    }
+
+    private func saveWebToolPolicy() {
+        let fetchHosts = webFetchHosts
+            .split(whereSeparator: { $0 == "," || $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+        let searchHosts = webSearchHosts
+            .split(whereSeparator: { $0 == "," || $0.isNewline })
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+            .filter { !$0.isEmpty }
+        saveConfigPatch(
+            [
+                "web_tool_url_policy": [
+                    "enabled": webPolicyEnabled,
+                    "fetch_allowlist": Array(Set(fetchHosts)).sorted(),
+                    "search_result_allowlist": Array(Set(searchHosts)).sorted(),
+                ],
+            ],
+            key: "web_tool_url_policy"
         )
     }
 
@@ -2036,7 +2105,12 @@ struct NativeSettingsScreen: View {
         defaultAgentId = config["default_agent_id"] as? String ?? ""
         backgroundAgentId = config["background_agent_id"] as? String ?? ""
         terminalEnabled = config["terminal_enabled"] as? Bool ?? false
+        acpEnabled = config["acp_enabled"] as? Bool ?? true
         selfImprovingSkills = (config["self_improving_skills_enabled"] as? Bool) ?? true
+        let webPolicy = config["web_tool_url_policy"] as? [String: Any] ?? [:]
+        webPolicyEnabled = webPolicy["enabled"] as? Bool ?? false
+        webFetchHosts = (webPolicy["fetch_allowlist"] as? [String] ?? []).joined(separator: ", ")
+        webSearchHosts = (webPolicy["search_result_allowlist"] as? [String] ?? []).joined(separator: ", ")
         let policy = config["dangerous_tool_policy"] as? [String: Any] ?? [:]
         dangerousPolicyEnabled = policy["enabled"] as? Bool ?? false
         dangerousPolicyMode = policy["mode"] as? String == "block" ? "block" : "audit"
