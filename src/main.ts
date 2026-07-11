@@ -17,7 +17,11 @@ try {
 const args = process.argv.slice(2);
 
 function resolveCommand(value?: string): string | undefined {
-  return value && !value.startsWith("-") ? value.toLowerCase() : undefined;
+  if (!value) return undefined;
+  const lower = value.toLowerCase();
+  if (lower === "--version" || lower === "-v") return "version";
+  if (lower === "--help" || lower === "-h") return "help";
+  return lower.startsWith("-") ? undefined : lower;
 }
 
 function redirectProtocolLogs(): void {
