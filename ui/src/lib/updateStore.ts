@@ -69,8 +69,8 @@ export function subscribeUpdateState(listener: () => void): () => void {
 async function notifyTray(available: boolean, version: string | null): Promise<void> {
   try {
     await invoke("set_update_available", { available, version });
-  } catch {
-    /* command absent in older builds */
+  } catch (error) {
+    console.warn("[updates] tray notify failed:", error);
   }
 }
 

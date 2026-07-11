@@ -5,10 +5,71 @@ use std::time::Duration;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
 use tauri::{App, AppHandle, Emitter, Manager};
+use tauri_plugin_updater::UpdaterExt;
 
 use crate::{CYBARA_SERVER_ADDR, CYBARA_SERVER_URL, cybara_api_key};
 
 pub struct UpdateMenu(pub std::sync::Mutex<MenuItem<tauri::Wry>>);
+
+const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(300);
+const UPDATE_FIRST_CHECK_DELAY: Duration = Duration::from_secs(15);
+
+pub fn apply_update_state(app: &AppHandle, available: bool, version: Option<String>) {
+    if let Some(state) = app.try_state::<UpdateMenu>() {
+        if let Ok(item) = state.0.lock() {
+            let text = if available {
+                match &version {
+                    Some(value) => format!("Install Update {value}"),
+                    None => "Install Update".to_string(),
+                }
+            } else {
+                "No updates available".to_string()
+            };
+            let _ = item.set_text(text);
+            let _ = item.set_enabled(available);
+        }
+    }
+    if let Some(tray) = app.tray_by_id("cybara-tray") {
+        let tooltip = if available {
+            match &version {
+                Some(value) => format!("Cybara · Update {value} available"),
+                None => "Cybara · Update available".to_string(),
+            }
+        } else {
+            "Cybara".to_string()
+        };
+        let _ = tray.set_tooltip(Some(tooltip));
+        if let Some(base) = app.default_window_icon().cloned() {
+            if available {
+                let _ = tray.set_icon(Some(crate::badge_icon(&base)));
+            } else {
+                let _ = tray.set_icon(Some(base));
+            }
+            let _ = tray.set_icon_as_template(cfg!(target_os = "macos"));
+        }
+    }
+}
+
+fn start_update_check(app: &AppHandle) {
+    let handle = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(UPDATE_FIRST_CHECK_DELAY);
+        loop {
+            let update = handle
+                .updater()
+                .ok()
+                .and_then(|updater| tauri::async_runtime::block_on(updater.check()).ok())
+                .flatten();
+            let available = update.is_some();
+            let version = update.map(|value| value.version.clone());
+            let apply = handle.clone();
+            let _ = handle.run_on_main_thread(move || {
+                apply_update_state(&apply, available, version);
+            });
+            std::thread::sleep(UPDATE_CHECK_INTERVAL);
+        }
+    });
+}
 
 const USAGE_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const USAGE_RETRY_INTERVAL: Duration = Duration::from_secs(10);
@@ -317,6 +378,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         })
         .build(app)?;
     app.manage(UpdateMenu(std::sync::Mutex::new(update.clone())));
+    start_update_check(app.handle());
     let app_handle = app.handle().clone();
     std::thread::spawn(move || {
         loop {

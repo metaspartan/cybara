@@ -103,7 +103,7 @@ fn read_cybara_api_key() -> Result<Option<String>, String> {
     cybara_api_key()
 }
 
-fn badge_icon(base: &tauri::image::Image) -> tauri::image::Image<'static> {
+pub(crate) fn badge_icon(base: &tauri::image::Image) -> tauri::image::Image<'static> {
     let width = base.width();
     let height = base.height();
     let mut rgba = base.rgba().to_vec();
@@ -134,39 +134,7 @@ fn badge_icon(base: &tauri::image::Image) -> tauri::image::Image<'static> {
 fn set_update_available(app: tauri::AppHandle, available: bool, version: Option<String>) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
-        if let Some(state) = handle.try_state::<tray::UpdateMenu>() {
-            if let Ok(item) = state.0.lock() {
-                let text = if available {
-                    match &version {
-                        Some(value) => format!("Install Update {value}"),
-                        None => "Install Update".to_string(),
-                    }
-                } else {
-                    "No updates available".to_string()
-                };
-                let _ = item.set_text(text);
-                let _ = item.set_enabled(available);
-            }
-        }
-        if let Some(tray) = handle.tray_by_id("cybara-tray") {
-            let tooltip = if available {
-                match &version {
-                    Some(value) => format!("Cybara · Update {value} available"),
-                    None => "Cybara · Update available".to_string(),
-                }
-            } else {
-                "Cybara".to_string()
-            };
-            let _ = tray.set_tooltip(Some(tooltip));
-            if let Some(base) = handle.default_window_icon().cloned() {
-                if available {
-                    let _ = tray.set_icon(Some(badge_icon(&base)));
-                } else {
-                    let _ = tray.set_icon(Some(base));
-                }
-                let _ = tray.set_icon_as_template(cfg!(target_os = "macos"));
-            }
-        }
+        tray::apply_update_state(&handle, available, version);
     });
 }
 
