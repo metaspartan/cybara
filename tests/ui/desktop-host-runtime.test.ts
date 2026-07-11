@@ -73,27 +73,25 @@ describe("desktop host runtime wiring", () => {
     expect(gatewayPaths).toContain("isDesktopHostRuntime()");
   });
 
-  test("desktop updater is bundled with the main UI chunk, not lazy-loaded on click", () => {
+  test("desktop updater remains packaged after route-level code splitting", () => {
     const distAssetsDir = join(ROOT_DIR, "ui", "dist", "assets");
     if (!existsSync(distAssetsDir)) return;
 
     const assetFiles = readdirSync(distAssetsDir).filter((file) => file.endsWith(".js"));
-    const lazyChunks = assetFiles.filter((file) => file.startsWith("dist-js-"));
     const mainChunks = assetFiles.filter((file) => file.startsWith("index-"));
+    const routeChunks = assetFiles.filter((file) => !file.startsWith("index-"));
 
-    const lazyChunkSources = lazyChunks.map((file) =>
-      readFileSync(join(distAssetsDir, file), "utf8")
-    );
     const mainChunkSource = mainChunks
       .map((file) => readFileSync(join(distAssetsDir, file), "utf8"))
       .join("\n");
+    const routeChunkSource = routeChunks
+      .map((file) => readFileSync(join(distAssetsDir, file), "utf8"))
+      .join("\n");
 
-    for (const source of lazyChunkSources) {
-      expect(source).not.toContain("plugin:updater");
-      expect(source).not.toContain("plugin:process");
-      expect(source).not.toContain("downloadAndInstall");
-    }
-    expect(mainChunkSource).toContain("plugin:updater");
-    expect(mainChunkSource).toContain("plugin:process");
+    expect(mainChunkSource).not.toContain("plugin:updater");
+    expect(mainChunkSource).not.toContain("plugin:process");
+    expect(routeChunkSource).toContain("plugin:updater");
+    expect(routeChunkSource).toContain("plugin:process");
+    expect(routeChunkSource).toContain("downloadAndInstall");
   });
 });

@@ -659,6 +659,7 @@ describe("mobile dashboard model", () => {
       "AI",
       "Memory",
       "Voice",
+      "MCP",
       "Safety",
       "Wallet",
       "Migration",

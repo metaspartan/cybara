@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Icon } from "./Icon";
 import { STATS, INSTALL_COMMAND } from "../content";
 import { useSiteI18n } from "../i18n";
+import { A } from "../lib/router";
 
 export function Hero(): React.ReactElement {
   const [copied, setCopied] = useState<boolean>(false);
@@ -33,10 +34,10 @@ export function Hero(): React.ReactElement {
         <p className="hero-sub">{t("site.hero.subtitle")}</p>
 
         <div className="hero-actions">
-          <a className="btn btn--primary" href="#download">
+          <A className="btn btn--primary" href="/download">
             <span>{t("site.hero.primary")}</span>
             <Icon name="arrow" className="btn-icon" />
-          </a>
+          </A>
           <button
             type="button"
             className="code-copy"

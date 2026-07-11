@@ -36,7 +36,7 @@ export const NAV_LINKS: readonly NavLink[] = [
   { label: "Features", labelKey: "site.nav.features", href: "#features" },
   { label: "Providers", labelKey: "site.nav.providers", href: "#providers" },
   { label: "Channels", labelKey: "site.nav.channels", href: "#channels" },
-  { label: "Download", labelKey: "site.nav.download", href: "#download" },
+  { label: "Download", labelKey: "site.nav.download", href: "/download" },
   { label: "Control", labelKey: "site.nav.control", href: "#control" },
 ];
 

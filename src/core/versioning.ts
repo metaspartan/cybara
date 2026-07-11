@@ -122,7 +122,7 @@ export function buildReleaseChecksumUrl(
 ): string {
   const normalizedRepository = repository.trim() || DEFAULT_RELEASE_REPOSITORY;
   const normalizedTag = tagName ? normalizeReleaseTag(tagName) : "latest";
-  const tagSegment = normalizedTag === "latest" ? "latest" : `tags/v${normalizedTag}`;
+  const tagSegment = normalizedTag === "latest" ? "latest" : `v${normalizedTag}`;
   return `https://github.com/${normalizedRepository}/releases/download/${tagSegment}/${assetName}.sha256`;
 }
 

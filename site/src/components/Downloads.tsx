@@ -1,116 +1,28 @@
-import { useState } from "react";
 import { Icon, type IconName } from "./Icon";
 import { SectionHeading } from "./SectionHeading";
-import { DOWNLOAD_GROUPS, type DownloadClient } from "../content";
-import {
-  formatDownloadTotal,
-  formatFileSize,
-  resolveAsset,
-  resolveAssetUrl,
-  shortSha,
-  useDownloadTotal,
-  useLatestRelease,
-  type LatestRelease,
-} from "../hooks/useLatestRelease";
+import { DownloadCard } from "./DownloadCard";
+import { A } from "../lib/router";
+import { DOWNLOAD_GROUPS } from "../content";
+import { formatDownloadTotal, useDownloadTotal, useLatestRelease } from "../hooks/useLatestRelease";
+import { clientMatchesOS, osLabel, useDetectedOS } from "../lib/os";
 import { useSiteI18n } from "../i18n";
-
-interface DownloadCardProps {
-  client: DownloadClient;
-  release: LatestRelease | null;
-}
-
-function DownloadCard({ client, release }: DownloadCardProps): React.ReactElement {
-  const [copied, setCopied] = useState<boolean>(false);
-  const [copiedSha, setCopiedSha] = useState<boolean>(false);
-
-  const copyCommand = async (): Promise<void> => {
-    if (!client.command) return;
-    try {
-      await navigator.clipboard.writeText(client.command);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      setCopied(false);
-    }
-  };
-
-  const copySha = async (sha: string): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(sha);
-      setCopiedSha(true);
-      window.setTimeout(() => setCopiedSha(false), 1800);
-    } catch {
-      setCopiedSha(false);
-    }
-  };
-
-  const href = resolveAssetUrl(release, client.assetPattern, client.href);
-  const asset = resolveAsset(release, client.assetPattern);
-  const fileSize = formatFileSize(asset?.size);
-  const sha = asset?.sha256;
-  const showMeta = !client.command;
-
-  return (
-    <article className="glass download-card">
-      <div className="download-main">
-        <span className={`download-icon download-icon--${client.icon}`}>
-          <Icon name={client.icon as IconName} className="download-icon-svg" />
-        </span>
-        <div className="download-body">
-          <h3 className="download-name">{client.name}</h3>
-          <p className="download-platform">{client.platform}</p>
-          <p className="download-format">{client.format}</p>
-        </div>
-        {client.command ? (
-          <button type="button" className="download-btn" onClick={copyCommand}>
-            <Icon name="terminal" className="btn-icon" />
-            <span>{copied ? "Copied" : "Copy install"}</span>
-          </button>
-        ) : (
-          <a className="download-btn" href={href} target="_blank" rel="noreferrer">
-            <Icon name="download" className="btn-icon" />
-            <span>Download</span>
-          </a>
-        )}
-      </div>
-      {showMeta ? (
-        <div className="download-meta">
-          {sha ? (
-            <button
-              type="button"
-              className="download-sha"
-              onClick={() => void copySha(sha)}
-              title={`SHA256: ${sha}\nClick to copy`}
-            >
-              <Icon name="shield" className="download-sha-icon" />
-              <code className="download-sha-value">
-                {copiedSha ? "Copied!" : `SHA256 ${shortSha(sha)}`}
-              </code>
-            </button>
-          ) : (
-            <span className="download-sha download-sha--empty">
-              <Icon name="shield" className="download-sha-icon" />
-              <code className="download-sha-value">SHA256 unavailable</code>
-            </span>
-          )}
-          {fileSize ? <span className="download-size">{fileSize}</span> : null}
-        </div>
-      ) : null}
-    </article>
-  );
-}
 
 export function Downloads(): React.ReactElement {
   const { data: release } = useLatestRelease();
   const downloadTotal = useDownloadTotal();
+  const os = useDetectedOS();
   const { t } = useSiteI18n();
+
+  const allClients = DOWNLOAD_GROUPS.flatMap((group) => group.clients);
+  const recommended =
+    os === "unknown" ? [] : allClients.filter((client) => clientMatchesOS(client, os));
 
   return (
     <section className="section" id="download">
       <SectionHeading
         eyebrow={t("site.download.eyebrow")}
         title={t("site.download.title")}
-        description="Direct downloads of the latest signed binaries — desktop, mobile, and CLI — resolved straight from GitHub Releases."
+        description="Signed binaries for every platform, resolved straight from GitHub Releases — desktop, mobile, and CLI."
       />
       {release && release.version ? (
         <div className="release-badge">
@@ -124,36 +36,32 @@ export function Downloads(): React.ReactElement {
         </div>
       ) : null}
 
-      <div className="download-groups">
-        {DOWNLOAD_GROUPS.map((group) => (
-          <div className="download-group" key={group.label}>
-            <div className="download-group-head">
-              <span className="download-group-icon">
-                <Icon name={group.icon as IconName} className="download-group-icon-svg" />
-              </span>
-              <h3 className="download-group-label">{group.label}</h3>
-            </div>
-            <div className="download-grid">
-              {group.clients.map((client) => (
-                <DownloadCard
-                  client={client}
-                  release={release}
-                  key={`${client.name}-${client.platform}`}
-                />
-              ))}
-            </div>
+      {recommended.length > 0 ? (
+        <div className="download-recommended-block">
+          <p className="download-recommended-lead">
+            Detected <strong>{osLabel(os)}</strong> — grab the build for your machine, or see every
+            option below.
+          </p>
+          <div className="download-grid download-grid--recommended">
+            {recommended.map((client, index) => (
+              <DownloadCard
+                client={client}
+                release={release}
+                recommended={index === 0}
+                key={`${client.name}-${client.platform}`}
+              />
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      ) : null}
 
-      <div className="glass update-note">
-        <span className="update-note-icon">
-          <Icon name="refresh" className="update-note-svg" />
-        </span>
-        <p className="update-note-text">
-          <strong>Stays current automatically.</strong> Every button links to the newest asset on
-          GitHub Releases. Installed desktop apps then self-update through a signed updater channel,
-          and the CLI verifies a published SHA256 on every <code>cybara update</code>.
+      <div className="download-all-cta">
+        <A className="btn btn--primary download-all-btn" href="/download">
+          <Icon name={"download" as IconName} className="btn-icon" />
+          <span>All platforms &amp; options</span>
+        </A>
+        <p className="download-all-note">
+          macOS, Windows, Linux, iOS, Android, and CLI — with checksums for every asset.
         </p>
       </div>
     </section>

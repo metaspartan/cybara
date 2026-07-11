@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Background } from "./components/Background";
 import { Nav } from "./components/Nav";
 import { Hero } from "./components/Hero";
@@ -14,8 +15,25 @@ import { Faq } from "./components/Faq";
 import { CallToAction } from "./components/CallToAction";
 import { Footer } from "./components/Footer";
 import { ScrollToTop } from "./components/ScrollToTop";
+import { DownloadPage } from "./components/DownloadPage";
+import { usePath } from "./lib/router";
+import { useDocumentHead } from "./lib/head";
 
-export function App(): React.ReactElement {
+function LandingPage(): React.ReactElement {
+  useDocumentHead({
+    title: "Cybara — Self-Hosted Open-Source AI Agent Platform",
+    description:
+      "Your agents. Your tools. Your runtime. Cybara is a self-hosted, open-source AI agent platform. Run agents that code, automate browsers, drive 25+ messaging channels, and execute on-chain operations — with full operator control.",
+    canonical: "https://cybara.ai/",
+  });
+
+  useEffect(() => {
+    if (window.location.hash) {
+      const target = document.getElementById(window.location.hash.slice(1));
+      if (target) target.scrollIntoView();
+    }
+  }, []);
+
   return (
     <>
       <Background />
@@ -38,4 +56,10 @@ export function App(): React.ReactElement {
       <ScrollToTop />
     </>
   );
+}
+
+export function App(): React.ReactElement {
+  const path = usePath();
+  if (path === "/download") return <DownloadPage />;
+  return <LandingPage />;
 }

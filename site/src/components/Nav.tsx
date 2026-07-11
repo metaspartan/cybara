@@ -3,6 +3,7 @@ import { Icon } from "./Icon";
 import { NAV_LINKS, GITHUB_URL } from "../content";
 import { useSiteI18n } from "../i18n";
 import { useStarCount, formatStarCount } from "../hooks/useStarCount";
+import { A } from "../lib/router";
 
 export function Nav(): React.ReactElement {
   const [scrolled, setScrolled] = useState<boolean>(false);
@@ -19,7 +20,7 @@ export function Nav(): React.ReactElement {
   return (
     <header className={scrolled ? "nav nav--scrolled" : "nav"}>
       <div className="nav-inner">
-        <a className="nav-brand" href="#top" aria-label="Cybara home">
+        <A className="nav-brand" href="/" aria-label="Cybara home">
           <img
             src="/cybara-128.webp"
             alt=""
@@ -29,15 +30,24 @@ export function Nav(): React.ReactElement {
             decoding="async"
           />
           <span className="nav-wordmark">Cybara</span>
-        </a>
+        </A>
         <nav className="nav-links" aria-label="Primary">
-          {NAV_LINKS.map((link) => (
-            <a key={link.href} href={link.href} className="nav-link">
-              {t(link.labelKey)}
-            </a>
-          ))}
+          {NAV_LINKS.map((link) => {
+            const href = link.href.startsWith("#") ? `/${link.href}` : link.href;
+            return (
+              <A key={link.href} href={href} className="nav-link">
+                {t(link.labelKey)}
+              </A>
+            );
+          })}
         </nav>
-        <a className="nav-star" href={GITHUB_URL} target="_blank" rel="noreferrer" aria-label="Star Cybara on GitHub">
+        <a
+          className="nav-star"
+          href={GITHUB_URL}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="Star Cybara on GitHub"
+        >
           <Icon name="github" className="nav-star-icon" />
           <span className="nav-star-label">Star</span>
           <span className="nav-star-count" aria-hidden="true">

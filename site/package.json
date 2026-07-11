@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 3399 --strictPort",
-    "build": "tsc --noEmit && vite build && bun run scripts/precompress.ts",
+    "build": "tsc --noEmit && vite build && bun run scripts/generate-pages.ts && bun run scripts/precompress.ts",
     "preview": "vite preview --port 3399 --strictPort",
     "typecheck": "tsc --noEmit"
   },
