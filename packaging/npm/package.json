@@ -1,6 +1,6 @@
 {
   "name": "cybara",
-  "version": "0.0.0",
+  "version": "1.0.1226",
   "description": "Self-hosted, open-source AI agent platform — CLI",
   "bin": {
     "cybara": "bin/cybara.cjs"
