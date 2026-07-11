@@ -3,6 +3,7 @@ import {
   enrichProviderPlanStatusWithLiveUsage,
   getProviderPlanStatus,
 } from "../../core/provider-plans";
+import { providers, resolveProviderType } from "../../core/providers";
 import { redactSecrets } from "../../core/redaction";
 import {
   buildAssistantOutputCloud,
@@ -131,7 +132,7 @@ function buildMetricsOverview() {
 function buildMetricsTokens() {
   const metrics = tables.metrics;
   const topModels = metrics.getTopKeys("token_usage_by_model") as MetricTopKey[];
-  const topProviders = metrics.getTopKeys("token_usage_by_provider") as MetricTopKey[];
+  const topProviders = providerMetricTotals();
   const recentTokens = metrics.getByTypeRecent("token_usage", 50) as MetricsEntry[];
   const inputTokens = metrics.getTotal("token_usage", "input") || 0;
   const outputTokens = metrics.getTotal("token_usage", "output") || 0;
@@ -210,17 +211,35 @@ function metadataUrl(metadata: string | null): string {
   return typeof parsed?.url === "string" ? parsed.url : "unknown";
 }
 
+function providerMetricKeys(): Set<string> {
+  const keys = new Set<string>(Object.keys(providers));
+  for (const provider of tables.providers.all() as Array<{ id: string; provider: string }>) {
+    keys.add(provider.id);
+    keys.add(provider.provider);
+  }
+  return keys;
+}
+
+function isProviderMetricKey(key: string, configuredKeys: Set<string>): boolean {
+  return configuredKeys.has(key) || resolveProviderType(key) !== undefined;
+}
+
+function providerMetricTotals(): MetricTopKey[] {
+  const configuredKeys = providerMetricKeys();
+  return tables.metrics
+    .getKeyTotalsWithLatestMetadata("token_usage_by_provider")
+    .filter((row) => isProviderMetricKey(row.key, configuredKeys))
+    .filter((row) => row.key !== "all" && row.key !== "input" && row.key !== "output")
+    .map((row) => ({ key: row.key, total: row.total || 0 }))
+    .sort((left, right) => right.total - left.total);
+}
+
 function buildMetricsProviders() {
   const providerMap = new Map<string, ProviderMetricSummary>();
-  const topProviderKeys = new Set(
-    tables.metrics
-      .getTopKeys("token_usage_by_provider")
-      .map((row) => row.key)
-      .filter((key) => key !== "all" && key !== "input" && key !== "output")
-  );
+  const configuredKeys = providerMetricKeys();
 
   for (const row of tables.metrics.getKeyTotalsWithLatestMetadata("token_usage_by_provider")) {
-    if (!topProviderKeys.has(row.key)) continue;
+    if (!isProviderMetricKey(row.key, configuredKeys)) continue;
     if (row.key === "all" || row.key === "input" || row.key === "output") continue;
     providerMap.set(row.key, {
       provider: row.key,
@@ -369,16 +388,11 @@ function buildMetricsInsights(modelMetrics = getModelMetrics()) {
   const topModelSharePct =
     topModel && totalTokens > 0 ? Number(((topModel.total / totalTokens) * 100).toFixed(2)) : 0;
   const providerMap = new Map<string, { provider: string; tokens: number; calls: number }>();
-  const topProviderKeys = new Set(
-    metrics
-      .getTopKeys("token_usage_by_provider")
-      .map((row) => row.key)
-      .filter((key) => key !== "all" && key !== "input" && key !== "output")
-  );
+  const configuredKeys = providerMetricKeys();
 
   for (const row of metrics.getKeyAggregates("token_usage_by_provider")) {
     const provider = row.key;
-    if (!topProviderKeys.has(provider)) continue;
+    if (!isProviderMetricKey(provider, configuredKeys)) continue;
     if (!provider || provider === "all" || provider === "input" || provider === "output") continue;
     providerMap.set(provider, {
       provider,
@@ -633,9 +647,7 @@ function buildTokenCloud(
       sharePct: 0,
     })
   );
-  const providerCloudEntries = (
-    metrics.getTopKeys("token_usage_by_provider") as MetricTopKey[]
-  ).map((entry) => ({
+  const providerCloudEntries = providerMetricTotals().map((entry) => ({
     token: entry.key,
     category: "provider" as const,
     weight: Number((entry.total * 0.8).toFixed(2)),

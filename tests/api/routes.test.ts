@@ -2946,6 +2946,8 @@ describe("Metrics API", () => {
     const uniqueTool = `tool_${suffix}`;
     const apiOnlyKey = `api_only_${suffix}`;
 
+    insertRawProvider(malformedProvider, "custom", "Malformed Metrics Provider");
+    insertRawProvider(providerWithUrl, "custom", "URL Metrics Provider");
     insertRawMetric("token_usage_by_provider", malformedProvider, 11, "{bad-json");
     insertRawMetric("api_call", malformedProvider, 5, "{still-bad");
     insertRawMetric("token_usage_by_provider", providerWithUrl, 22, "{bad-json");
@@ -3016,6 +3018,7 @@ describe("Metrics API", () => {
     const tool = `insight_tool_${suffix}`;
     const tokenTotal = 9_000_000;
 
+    insertRawProvider(provider, "custom", "Insights Metrics Provider");
     insertRawMetric("token_usage", "all", tokenTotal);
     insertRawMetric("token_usage", "input", 3_000_000);
     insertRawMetric("token_usage", "output", 6_000_000);
@@ -3066,6 +3069,37 @@ describe("Metrics API", () => {
     expect(
       insightsRes.data.modelInsights.some((entry: { model: string }) => entry.model === model)
     ).toBe(true);
+  });
+
+  test("provider metrics return every configured provider without synthetic stale keys", async () => {
+    const suffix = Date.now().toString();
+    const providerIds = Array.from(
+      { length: 25 },
+      (_, index) => `uncapped_provider_${suffix}_${index}`
+    );
+    const staleKey = `stale_provider_${suffix}`;
+
+    for (const [index, providerId] of providerIds.entries()) {
+      insertRawProvider(providerId, "custom", `Configured Provider ${index + 1}`);
+      insertRawMetric("token_usage_by_provider", providerId, index + 1);
+    }
+    insertRawMetric("token_usage_by_provider", staleKey, 1_000_000_000);
+
+    const providersRes = await api("GET", "/api/metrics/providers");
+    expect(providersRes.status).toBe(200);
+    const returnedProviders = new Set(
+      (providersRes.data.providers || []).map((entry: { provider: string }) => entry.provider)
+    );
+    for (const providerId of providerIds) expect(returnedProviders.has(providerId)).toBe(true);
+    expect(returnedProviders.has(staleKey)).toBe(false);
+
+    const tokensRes = await api("GET", "/api/metrics/tokens");
+    expect(tokensRes.status).toBe(200);
+    const returnedTokenProviders = new Set(
+      (tokensRes.data.topProviders || []).map((entry: { provider: string }) => entry.provider)
+    );
+    for (const providerId of providerIds) expect(returnedTokenProviders.has(providerId)).toBe(true);
+    expect(returnedTokenProviders.has(staleKey)).toBe(false);
   });
 });
 

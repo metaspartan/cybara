@@ -676,6 +676,10 @@ jobs:
       # exist. Install pods explicitly against the generated project.
       - name: Install CocoaPods
         run: cd apps/mobile/ios && pod install --repo-update
+      - name: Reclaim iOS build space
+        run: |
+          rm -rf "$HOME/.bun/install/cache" "$HOME/Library/Caches/CocoaPods"
+          df -h
       # Signed App Store archive → TestFlight when Apple signing secrets are
       # present; otherwise an unsigned archive packaged as a .ipa for inspection.
       - name: Build iOS artifact
@@ -690,6 +694,25 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           cd apps/mobile/ios
           SCHEME="$(xcodebuild -list -json | bun -e 'const d=await Bun.stdin.json();console.log(d.project.schemes[0])')"
+          archive_ios() {
+            local log="$RUNNER_TEMP/cybara-xcode-archive.log"
+            local status=0
+            set +e
+            xcodebuild -workspace *.xcworkspace -scheme "$SCHEME" -configuration Release \
+              -sdk iphoneos -archivePath build/Cybara.xcarchive "$@" archive 2>&1 | tee "$log"
+            status="${PIPESTATUS[0]}"
+            set -e
+            if [ "$status" -eq 0 ]; then
+              return 0
+            fi
+            if ! grep -Eq 'Input/output error|No space left on device' "$log"; then
+              return "$status"
+            fi
+            rm -rf "$HOME/Library/Developer/Xcode/DerivedData"/* build/Cybara.xcarchive
+            df -h
+            xcodebuild -workspace *.xcworkspace -scheme "$SCHEME" -configuration Release \
+              -sdk iphoneos -archivePath build/Cybara.xcarchive "$@" archive
+          }
           if [ -n "${APPLE_CERTIFICATE_BASE64:-}" ] && [ -n "${APPLE_PROVISIONING_PROFILE_BASE64:-}" ]; then
             KEYCHAIN="$RUNNER_TEMP/cybara.keychain-db"
             KPW="$(openssl rand -hex 16)"
@@ -728,21 +751,18 @@ jobs:
               echo '</dict>'
               echo '</dict></plist>'
             } > exportOptions.plist
-            xcodebuild -workspace *.xcworkspace -scheme "$SCHEME" -configuration Release \
-              -sdk iphoneos -archivePath build/Cybara.xcarchive \
+            archive_ios \
               DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
               CODE_SIGN_STYLE=Manual \
               CODE_SIGN_IDENTITY="Apple Distribution" \
               PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
-              PRODUCT_BUNDLE_IDENTIFIER=com.ck.cybara \
-              archive
+              PRODUCT_BUNDLE_IDENTIFIER=com.ck.cybara
             xcodebuild -exportArchive -archivePath build/Cybara.xcarchive \
               -exportOptionsPlist exportOptions.plist -exportPath build/export
             IPA="$(find build/export -name '*.ipa' | head -1)"
             echo "signed=true" >> "$GITHUB_OUTPUT"
           else
-            xcodebuild -workspace *.xcworkspace -scheme "$SCHEME" -configuration Release \
-              -sdk iphoneos -archivePath build/Cybara.xcarchive CODE_SIGNING_ALLOWED=NO archive
+            archive_ios CODE_SIGNING_ALLOWED=NO
             APP="$(find build/Cybara.xcarchive/Products/Applications -maxdepth 1 -name '*.app' | head -1)"
             mkdir -p Payload && cp -R "$APP" Payload/
             IPA="unsigned.ipa"; zip -qr "$IPA" Payload
