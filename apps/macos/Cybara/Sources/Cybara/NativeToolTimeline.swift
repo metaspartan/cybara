@@ -1258,7 +1258,7 @@ private func nativeCompactDuration(_ durationMs: Double) -> String {
 
 // ── Codex-style tool-call grouping (parity with the web + mobile timeline) ───
 
-enum NativeActivityGroupKind {
+enum NativeActivityGroupKind: Hashable {
     case read
     case search
     case list
@@ -1383,18 +1383,26 @@ private func nativeGroupKind(_ activity: NativeToolActivity) -> NativeActivityGr
 }
 
 private func nativeGroupLabel(_ kinds: [NativeActivityGroupKind], _ count: Int) -> String {
-    let unique = Set(kinds)
-    if unique.count == 1, let only = unique.first {
-        switch only {
-        case .read: return "Read \(count) files"
-        case .search: return "Ran \(count) searches"
-        case .list: return "Listed \(count) locations"
-        case .edit: return "Edited \(count) files"
-        case .fetch: return "Fetched \(count) pages"
-        case .command: break
-        }
+    var ordered: [NativeActivityGroupKind] = []
+    var counts: [NativeActivityGroupKind: Int] = [:]
+    for kind in kinds {
+        if counts[kind] == nil { ordered.append(kind) }
+        counts[kind, default: 0] += 1
     }
-    return "Ran \(count) commands"
+    let joined = ordered.map { nativeGroupPhrase($0, counts[$0] ?? count) }.joined(separator: ", ")
+    guard let first = joined.first else { return "Ran \(count) commands" }
+    return String(first).uppercased() + String(joined.dropFirst())
+}
+
+private func nativeGroupPhrase(_ kind: NativeActivityGroupKind, _ count: Int) -> String {
+    switch kind {
+    case .read: return count == 1 ? "read a file" : "read \(count) files"
+    case .search: return count == 1 ? "ran a search" : "ran \(count) searches"
+    case .list: return count == 1 ? "listed a location" : "listed \(count) locations"
+    case .edit: return count == 1 ? "edited a file" : "edited \(count) files"
+    case .fetch: return count == 1 ? "fetched a page" : "fetched \(count) pages"
+    case .command: return count == 1 ? "ran a command" : "ran \(count) commands"
+    }
 }
 
 private func nativeGroupIcon(_ items: [NativeToolActivity]) -> String {

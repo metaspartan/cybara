@@ -21,6 +21,7 @@ describe("groupActivitiesForDisplay", () => {
     const group = entries[0];
     if (group.type !== "group") throw new Error("expected group");
     expect(group.label).toBe("Read 3 files");
+    expect(group.kind).toBe("read");
     expect(group.items.map((item) => item.id)).toEqual(["a", "b", "c"]);
   });
 
@@ -42,6 +43,7 @@ describe("groupActivitiesForDisplay", () => {
     const group = entries[0];
     if (group.type !== "group") throw new Error("expected group");
     expect(group.label).toBe("Edited 3 files");
+    expect(group.kind).toBe("edit");
   });
 
   test("edits between reads fold into one mixed group (Codex parity)", () => {
@@ -55,6 +57,7 @@ describe("groupActivitiesForDisplay", () => {
     const group = entries[0];
     if (group.type !== "group") throw new Error("expected group");
     expect(group.label).toBe("Read 3 files, edited a file");
+    expect(group.kind).toBe("edit");
   });
 
   test("web_fetch folds into the run", () => {
@@ -67,6 +70,7 @@ describe("groupActivitiesForDisplay", () => {
     const group = entries[0];
     if (group.type !== "group") throw new Error("expected group");
     expect(group.label).toBe("Ran 2 searches, fetched a page");
+    expect(group.kind).toBe("fetch");
   });
 
   test("an in-flight start row no longer breaks the run; it renders after the group", () => {

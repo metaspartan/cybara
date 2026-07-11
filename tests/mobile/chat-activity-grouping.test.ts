@@ -24,6 +24,7 @@ describe("groupMobileActivities", () => {
     const group = entries[0];
     if (group.type !== "group") throw new Error("expected group");
     expect(group.label).toBe("Read 3 files");
+    expect(group.kind).toBe("read");
   });
 
   test("read-only shell commands (incl. git shortlog, cd/xargs) group", () => {
@@ -50,6 +51,7 @@ describe("groupMobileActivities", () => {
     const group = entries[0];
     if (group.type !== "group") throw new Error("expected group");
     expect(group.label).toBe("Read 2 files, edited a file, ran a command");
+    expect(group.kind).toBe("edit");
   });
 
   test("interleaved thoughts stay visible between command groups", () => {

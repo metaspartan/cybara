@@ -91,5 +91,10 @@ describe("Chat markdown rendering behavior", () => {
     expect(source).not.toContain("Sparkles");
     expect(source).not.toContain("text-indigo-300");
     expect(source).not.toContain("text-emerald-400 mt-0.5");
+    expect(source).toContain("edit: Pencil");
+    expect(source).toContain("read: FileText");
+    expect(source).toContain("search: Search");
+    expect(source).toContain("command: SquareTerminal");
+    expect(source).toContain("const GroupIcon = GROUP_ICONS[entry.kind]");
   });
 });

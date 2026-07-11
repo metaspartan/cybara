@@ -808,7 +808,7 @@ final class GatewayClientModelTests: XCTestCase {
 
         XCTAssertEqual(entries.count, 3)
         if case .group(_, let label, let items) = entries[0] {
-            XCTAssertEqual(label, "Ran 2 commands")
+            XCTAssertEqual(label, "Listed a location, ran a search")
             XCTAssertEqual(items.map(\.id), ["a", "b"])
         } else {
             XCTFail("expected first command group")

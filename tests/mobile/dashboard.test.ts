@@ -340,6 +340,11 @@ describe("mobile dashboard model", () => {
     expect(dashboardChatSource).toContain("CheckCircle2 color={colors.textMuted}");
     expect(dashboardChatSource).toContain("Loader2 color={colors.textMuted}");
     expect(dashboardChatSource).not.toContain("Sparkles");
+    expect(dashboardChatSource).toContain("edit: Pencil");
+    expect(dashboardChatSource).toContain("read: FileText");
+    expect(dashboardChatSource).toContain("search: Search");
+    expect(dashboardChatSource).toContain("command: SquareTerminal");
+    expect(dashboardChatSource).toContain("MOBILE_GROUP_ICONS[entry.kind]");
     expect(dashboardStylesSource).toContain("messageActivityDot");
     expect(dashboardStylesSource).toContain("backgroundColor: colors.textMuted");
     expect(dashboardStylesSource).toContain("messageThoughtText");

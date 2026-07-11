@@ -766,6 +766,11 @@ describe("native macOS shell wiring", () => {
     expect(toolTimeline).toContain(".foregroundStyle(.secondary)");
     expect(toolTimeline).not.toContain('if activity.toolName == "__thought" { return "sparkles" }');
     expect(toolTimeline).not.toContain(".foregroundStyle(.green)");
+    expect(toolTimeline).toContain('return "pencil"');
+    expect(toolTimeline).toContain('return "doc.text"');
+    expect(toolTimeline).toContain('return "magnifyingglass"');
+    expect(toolTimeline).toContain('return "terminal"');
+    expect(toolTimeline).toContain("Image(systemName: nativeGroupIcon(items))");
   });
 
   test("native chat strips assistant reasoning markup without altering user messages", () => {
