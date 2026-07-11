@@ -59,7 +59,7 @@ export type {
 export {
   ClawdHubRegistry,
   SkillsShRegistry,
-  CybaraHubRegistry,
+  GitHubSkillsRegistry,
   SkillRegistryManager,
   registryManager,
 } from "./registry";

@@ -61,8 +61,12 @@ function getLocationLeaf(location: string): string {
 }
 
 function formatRegistryName(registry: string): string {
-  if (registry === "clawhub") return "ClawHub";
-  return registry;
+  const labels: Record<string, string> = {
+    clawhub: "ClawHub",
+    "skills.sh": "Skills.sh",
+    github: "GitHub",
+  };
+  return labels[registry] ?? registry;
 }
 
 function formatSourceLabel(source: SkillStatusInfo["source"]): string {

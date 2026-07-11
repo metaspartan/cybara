@@ -1,6 +1,6 @@
 /**
  * Skills Registry
- * Multi-registry compatible skill install/sync (ClawdHub, skills.sh, CybaraHub)
+ * Multi-registry compatible skill install/sync (ClawdHub, skills.sh, GitHub)
  */
 
 import { mkdir, writeFile, readFile, rm, readdir } from "fs/promises";
@@ -9,10 +9,11 @@ import { join, dirname, resolve, sep } from "path";
 import { homedir } from "os";
 import { fileURLToPath } from "url";
 import { extractZipArchive } from "../archive";
+import { parseFrontmatter } from "./loader";
 
 /**
  * Registry provider interface
- * Implement this for each registry (ClawdHub, skills.sh, CybaraHub)
+ * Implement this for each registry (ClawdHub, skills.sh, GitHub)
  */
 export interface SkillRegistry {
   name: string;
@@ -595,35 +596,150 @@ export class SkillsShRegistry implements SkillRegistry {
   }
 }
 
-/**
- * CybaraHub Registry Implementation (Future)
- * Our own registry
- */
-export class CybaraHubRegistry implements SkillRegistry {
-  name = "cybarahub";
-  baseUrl = "https://hub.cybara.ai/api";
+const DEFAULT_GITHUB_SKILL_REPOS = ["anthropics/skills"];
+
+export class GitHubSkillsRegistry implements SkillRegistry {
+  name = "github";
+  baseUrl = "https://github.com";
+
+  private repos: string[];
+  private cache = new Map<string, { data: unknown; expires: number }>();
+  private CACHE_TTL = 5 * 60 * 1000;
+  private locations = new Map<string, { repo: string; branch: string; path: string }>();
+
+  constructor(repos: string[] = DEFAULT_GITHUB_SKILL_REPOS) {
+    this.repos = repos;
+  }
+
+  private getCached<T>(key: string): T | null {
+    const entry = this.cache.get(key);
+    if (entry && entry.expires > Date.now()) {
+      return entry.data as T;
+    }
+    this.cache.delete(key);
+    return null;
+  }
+
+  private setCache(key: string, data: unknown): void {
+    this.cache.set(key, { data, expires: Date.now() + this.CACHE_TTL });
+  }
+
+  private async fetchSkillPaths(repo: string): Promise<{ branch: string; paths: string[] } | null> {
+    for (const branch of ["main", "master"]) {
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${repo}/git/trees/${branch}?recursive=1`,
+          { headers: { Accept: "application/vnd.github+json" } }
+        );
+        if (!res.ok) continue;
+        const data = (await res.json()) as { tree?: Array<{ path: string; type: string }> };
+        const paths = (data.tree ?? [])
+          .filter((entry) => entry.type === "blob" && /(^|\/)SKILL\.md$/i.test(entry.path))
+          .map((entry) => entry.path);
+        return { branch, paths };
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  private async listRepoSkills(repo: string): Promise<RegistrySkill[]> {
+    const cacheKey = `list:${repo}`;
+    const cached = this.getCached<RegistrySkill[]>(cacheKey);
+    if (cached) return cached;
+
+    const tree = await this.fetchSkillPaths(repo);
+    if (!tree) return [];
+
+    const [owner, name] = repo.split("/");
+    const capped = tree.paths.slice(0, 50);
+    const skills = await Promise.all(
+      capped.map(async (path): Promise<RegistrySkill> => {
+        const dir = path.replace(/\/?SKILL\.md$/i, "");
+        const slug = dir.split("/").pop() || name || repo;
+        this.locations.set(slug, { repo, branch: tree.branch, path });
+        let skillName = slug;
+        let description = `${repo} · ${dir || "root"}`;
+        try {
+          const raw = await fetch(
+            `https://raw.githubusercontent.com/${repo}/${tree.branch}/${path}`
+          );
+          if (raw.ok) {
+            const { frontmatter } = parseFrontmatter(await raw.text());
+            const fmName = frontmatter.name;
+            const fmDesc = frontmatter.description;
+            if (typeof fmName === "string" && fmName.trim()) skillName = fmName.trim();
+            if (typeof fmDesc === "string" && fmDesc.trim()) description = fmDesc.trim();
+          }
+        } catch {
+          void 0;
+        }
+        return {
+          slug,
+          name: skillName,
+          description,
+          author: owner,
+          version: "latest",
+          tags: name ? [name] : undefined,
+        };
+      })
+    );
+    this.setCache(cacheKey, skills);
+    return skills;
+  }
+
+  async list(options?: RegistryBrowseOptions): Promise<RegistrySkill[]> {
+    const limit = sanitizeLimit(options?.limit, REGISTRY_DEFAULT_LIMIT);
+    const all = (
+      await Promise.all(this.repos.map((repo) => this.listRepoSkills(repo).catch(() => [])))
+    ).flat();
+    return all.slice(0, limit);
+  }
 
   async search(query: string, options?: RegistrySearchOptions): Promise<RegistrySkill[]> {
     const limit = sanitizeLimit(options?.limit, 50);
-    const url = `${this.baseUrl}/skills/search?q=${encodeURIComponent(query)}&limit=${limit}`;
-    const res = await fetch(url);
-    if (!res.ok) return [];
-    const data = (await res.json()) as { skills?: RegistrySkill[] };
-    return data.skills ?? [];
+    const all = await this.list({ limit: REGISTRY_MAX_LIMIT });
+    const q = query.trim().toLowerCase();
+    if (!q) return all.slice(0, limit);
+    return all
+      .filter(
+        (skill) =>
+          skill.name.toLowerCase().includes(q) ||
+          skill.slug.toLowerCase().includes(q) ||
+          skill.description.toLowerCase().includes(q)
+      )
+      .slice(0, limit);
   }
 
   async get(slug: string): Promise<RegistrySkillDetails | null> {
-    const url = `${this.baseUrl}/skills/${encodeURIComponent(slug)}`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    return res.json() as Promise<RegistrySkillDetails>;
+    const all = await this.list({ limit: REGISTRY_MAX_LIMIT });
+    const match = all.find((skill) => skill.slug === slug);
+    if (!match) return null;
+    const loc = this.locations.get(slug);
+    return {
+      ...match,
+      version: match.version || "latest",
+      repository: loc ? `https://github.com/${loc.repo}` : undefined,
+    };
   }
 
   async download(slug: string): Promise<SkillDownload> {
-    const url = `${this.baseUrl}/skills/${encodeURIComponent(slug)}/download`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Failed to download skill: ${slug}`);
-    return res.json() as Promise<SkillDownload>;
+    if (!this.locations.has(slug)) {
+      await this.list({ limit: REGISTRY_MAX_LIMIT });
+    }
+    const loc = this.locations.get(slug);
+    if (!loc) {
+      throw new Error(`Cannot find skill "${slug}" in the GitHub registry`);
+    }
+    const res = await fetch(
+      `https://raw.githubusercontent.com/${loc.repo}/${loc.branch}/${loc.path}`
+    );
+    if (!res.ok) {
+      throw new Error(`Failed to download "${slug}" from ${loc.repo}`);
+    }
+    const content = await res.text();
+    return { slug, version: "latest", files: [{ path: "SKILL.md", content }] };
   }
 }
 
@@ -649,7 +765,7 @@ export class SkillRegistryManager {
     // Register default providers (only working ones)
     this.register(new ClawdHubRegistry());
     this.register(new SkillsShRegistry());
-    // CybaraHub not registered - doesn't exist yet
+    this.register(new GitHubSkillsRegistry());
   }
 
   register(registry: SkillRegistry): void {

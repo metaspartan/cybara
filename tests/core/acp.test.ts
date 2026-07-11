@@ -244,10 +244,12 @@ describe("ACP stdio server", () => {
         cmd: [process.execPath, "run", "src/main.ts", "acp"],
         cwd: process.cwd(),
         env: { ...process.env, CYBARA_HOME: home },
-        stdin: new Blob([input]),
+        stdin: "pipe",
         stdout: "pipe",
         stderr: "pipe",
       });
+      child.stdin.write(input);
+      child.stdin.end();
       const [stdout, stderr, exitCode] = await Promise.all([
         new Response(child.stdout).text(),
         new Response(child.stderr).text(),

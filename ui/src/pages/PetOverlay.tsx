@@ -191,7 +191,7 @@ export function PetOverlay() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         className={cn(
-          "relative h-16 w-16 flex-shrink-0 select-none rounded-full border bg-[#12121a]/90 shadow-xl backdrop-blur cursor-grab transition-transform duration-150 hover:scale-105 active:scale-95 active:cursor-grabbing",
+          "relative h-16 w-16 flex-shrink-0 select-none rounded-full border bg-[#12121a] shadow-xl cursor-grab transition-transform duration-150 hover:scale-105 active:scale-95 active:cursor-grabbing",
           activeCount > 0
             ? "border-indigo-400/50 ring-2 ring-indigo-400/40 shadow-[0_0_20px_rgba(99,102,241,0.35)]"
             : "border-white/15",
@@ -216,7 +216,7 @@ export function PetOverlay() {
         )}
       </button>
       {open && (
-        <div className="mt-2 w-full flex-1 overflow-y-auto rounded-xl border border-white/10 bg-[#12121a]/95 p-2 shadow-2xl backdrop-blur">
+        <div className="mt-2 w-full flex-1 overflow-y-auto rounded-xl border border-white/10 bg-[#12121a] p-2 shadow-2xl">
           <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-500">
             {activeCount > 0 ? `Running sessions (${activeCount})` : "No active sessions"}
           </div>
