@@ -298,7 +298,10 @@ describe("native macOS shell wiring", () => {
     expect(settings).toContain("await sidecar.waitForAttachedGatewayRestart()");
     expect(settings).toContain("Gateway Auth");
     expect(settings).toContain("Gateway Password");
-    expect(settings).toContain(
+    expect(settings).toContain("try GatewayPasswordStore.validateWrite(password)");
+    expect(settings).toContain("try GatewayPasswordStore.save(password)");
+    expect(settings).toContain("try GatewayPasswordStore.clear()");
+    expect(settings).not.toContain(
       'UserDefaults.standard.set(password, forKey: "cybara_gateway_password")'
     );
     expect(settings).toContain("Rotate Key");

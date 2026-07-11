@@ -83,6 +83,7 @@ import {
   TaskSettingsPanel,
   WalletPolicyPanel,
 } from "./dashboardSettingsPanels";
+import { MobileMcpSettingsPanel } from "./dashboardMcpPanel";
 import { styles } from "./dashboardStyles";
 import {
   type DetailRoute,
@@ -581,6 +582,7 @@ export function SettingsPanel({
   const showAiSettings = selectedSettingsTab === "ai";
   const showMemorySettings = selectedSettingsTab === "memory";
   const showVoiceSettings = selectedSettingsTab === "voice";
+  const showMcpSettings = selectedSettingsTab === "mcp";
   const showSafetySettings = selectedSettingsTab === "safety";
   const showWalletSettings = selectedSettingsTab === "wallet";
   const showMigrationSettings = selectedSettingsTab === "migration";
@@ -970,6 +972,7 @@ export function SettingsPanel({
             )}
           </SettingsSection>
         ) : null}
+        {showMcpSettings ? <MobileMcpSettingsPanel accentColor={accentColor} api={api} /> : null}
         {showAiSettings ? (
           <SettingsSection title="AI">
             {configAvailable ? (

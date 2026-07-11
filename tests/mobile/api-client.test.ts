@@ -42,6 +42,76 @@ const systemPromptFixture: SystemPromptConfig = {
 };
 
 describe("mobile API client", () => {
+  test("manages MCP servers through scoped gateway routes", async () => {
+    const calls: Array<{ method: string; path: string; body: unknown }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input, init) => {
+      const url = new URL(String(input));
+      calls.push({
+        method: init?.method || "GET",
+        path: url.pathname,
+        body: init?.body ? JSON.parse(String(init.body)) : null,
+      });
+      if ((init?.method || "GET") === "GET") {
+        return Response.json([
+          {
+            id: "remote-one",
+            name: "Remote One",
+            command: "",
+            url: "https://mcp.example.com",
+            enabled: true,
+            status: "running",
+            toolCount: 3,
+          },
+        ]);
+      }
+      if (url.pathname === "/api/mcp" && init?.method === "POST") {
+        return Response.json({
+          id: "remote-two",
+          name: "Remote Two",
+          command: "",
+          url: "https://mcp-two.example.com",
+          enabled: true,
+          status: "stopped",
+          toolCount: 0,
+        });
+      }
+      return Response.json({ success: true });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.listMcpServers()).resolves.toHaveLength(1);
+      await api.createMcpServer({
+        name: "Remote Two",
+        url: "https://mcp-two.example.com",
+        authorization: "Bearer secret",
+      });
+      await api.startMcpServer("remote/two");
+      await api.stopMcpServer("remote/two");
+      await api.deleteMcpServer("remote/two");
+
+      expect(calls).toEqual([
+        { method: "GET", path: "/api/mcp", body: null },
+        {
+          method: "POST",
+          path: "/api/mcp",
+          body: {
+            name: "Remote Two",
+            url: "https://mcp-two.example.com",
+            authorization: "Bearer secret",
+            enabled: true,
+          },
+        },
+        { method: "POST", path: "/api/mcp/remote%2Ftwo/start", body: null },
+        { method: "POST", path: "/api/mcp/remote%2Ftwo/stop", body: null },
+        { method: "DELETE", path: "/api/mcp/remote%2Ftwo", body: null },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("scopes subagent details and history to the active chat", async () => {
     const calls: Array<{ method: string; path: string; sessionId: string | null }> = [];
     let spawnPayload: Record<string, unknown> | undefined;

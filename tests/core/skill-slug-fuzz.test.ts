@@ -100,7 +100,12 @@ beforeAll(() => {
 
   const result = Bun.spawnSync([process.execPath, "run", workerPath], {
     cwd: ROOT_DIR,
-    env: { ...process.env, HOME: tempHome, USERPROFILE: tempHome },
+    env: {
+      ...process.env,
+      HOME: tempHome,
+      USERPROFILE: tempHome,
+      CYBARA_HOME: join(tempHome, ".cybara"),
+    },
   });
   const stdout = result.stdout.toString();
   if (result.exitCode !== 0) {

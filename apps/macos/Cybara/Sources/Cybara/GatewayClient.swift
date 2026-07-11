@@ -67,9 +67,7 @@ struct GatewayClient: Sendable {
     }
 
     static func loadGatewayPassword() -> String? {
-        let trimmed = UserDefaults.standard.string(forKey: "cybara_gateway_password")?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmed.isEmpty ? nil : trimmed
+        GatewayPasswordStore.load()
     }
 
     func request(

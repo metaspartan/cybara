@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { agentManager } from "../../src/core/agent";
+import { config } from "../../src/core/config";
 import { providerManager } from "../../src/core/providers";
 import { getProviderAvailability, resetRouterForTests } from "../../src/core/router";
 
@@ -8,6 +9,7 @@ const createdProviderIds: string[] = [];
 const originalFetch = globalThis.fetch;
 
 afterEach(() => {
+  config.set("tool_approval_mode", "ask");
   globalThis.fetch = originalFetch;
   for (const agentId of createdAgentIds.splice(0)) {
     agentManager.delete(agentId);
@@ -242,6 +244,7 @@ describe("Agent provider API-family routing", () => {
   });
 
   test("anthropic loop truncates oversized tool results and retries with compaction on context overflow", async () => {
+    config.set("tool_approval_mode", "always_allow");
     const requestBodies: Array<Record<string, unknown>> = [];
     let requestCount = 0;
     let sawTruncatedMarker = false;

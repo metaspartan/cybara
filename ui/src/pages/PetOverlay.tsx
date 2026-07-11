@@ -191,10 +191,8 @@ export function PetOverlay() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         className={cn(
-          "relative h-16 w-16 flex-shrink-0 select-none rounded-full border bg-[#12121a] shadow-xl cursor-grab transition-transform duration-150 hover:scale-105 active:scale-95 active:cursor-grabbing",
-          activeCount > 0
-            ? "border-indigo-400/50 ring-2 ring-indigo-400/40 shadow-[0_0_20px_rgba(99,102,241,0.35)]"
-            : "border-white/15",
+          "relative h-16 w-16 flex-shrink-0 select-none rounded-full bg-[#12121a] cursor-grab transition-transform duration-150 hover:scale-105 active:scale-95 active:cursor-grabbing",
+          activeCount > 0 ? "border-2 border-indigo-400/70" : "border border-white/20",
           activeCount === 0 && "cybara-pet-idle"
         )}
         style={{ touchAction: "none" }}
@@ -210,13 +208,13 @@ export function PetOverlay() {
           />
         )}
         {activeCount > 0 && (
-          <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-indigo-500 px-1 text-[11px] font-semibold text-white shadow">
+          <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-indigo-500 px-1 text-[11px] font-semibold text-white">
             {activeCount}
           </span>
         )}
       </button>
       {open && (
-        <div className="mt-2 w-full flex-1 overflow-y-auto rounded-xl border border-white/10 bg-[#12121a] p-2 shadow-2xl">
+        <div className="mt-2 w-full flex-1 overflow-y-auto rounded-xl border border-white/15 bg-[#12121a] p-2">
           <div className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-gray-500">
             {activeCount > 0 ? `Running sessions (${activeCount})` : "No active sessions"}
           </div>

@@ -6,39 +6,70 @@ import { CybaraPet } from "@/components/CybaraPet";
 import { PetOverlay } from "@/pages/PetOverlay";
 import { isPetWindow } from "@/lib/tauriPet";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { Dashboard } from "@/pages/Dashboard";
-import { Agents } from "@/pages/Agents";
-import { Providers } from "@/pages/Providers";
-import { RouterSettings } from "@/pages/RouterSettings";
-import { Channels } from "@/pages/Channels";
-import { Tasks } from "@/pages/Tasks";
-import { Skills } from "@/pages/Skills";
-import { Journey } from "@/pages/Journey";
-import { Tools } from "@/pages/Tools";
-import { Memory } from "@/pages/Memory";
-import { Settings } from "@/pages/Settings";
-import { Chat } from "@/pages/Chat";
-import { Logs } from "@/pages/Logs";
-import { Sessions } from "@/pages/Sessions";
-import { Metrics } from "@/pages/Metrics";
-import { Usage } from "@/pages/Usage";
-import { MCPServers } from "@/pages/MCPServers";
-import { LSP } from "@/pages/LSP";
-import { IDE } from "@/pages/IDE";
-import { TerminalPage } from "@/pages/Terminal";
-import { Wallet } from "@/pages/Wallet";
-import { Artifacts } from "@/pages/Artifacts";
-import { Mobile } from "@/pages/Mobile";
-import { Setup } from "@/pages/Setup";
 import { settingsApi, setupApi } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { resolveSetupGate } from "@/lib/setupGate";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { readThemeAccentFromConfig, readThemeModeFromIdentity, useUIStore } from "@/stores/uiStore";
 import { useQuery } from "@tanstack/react-query";
 
 const SETUP_COMPLETE_KEY = "cybara.setupComplete";
+
+const Dashboard = lazy(() =>
+  import("@/pages/Dashboard").then((module) => ({ default: module.Dashboard }))
+);
+const Agents = lazy(() => import("@/pages/Agents").then((module) => ({ default: module.Agents })));
+const Providers = lazy(() =>
+  import("@/pages/Providers").then((module) => ({ default: module.Providers }))
+);
+const RouterSettings = lazy(() =>
+  import("@/pages/RouterSettings").then((module) => ({ default: module.RouterSettings }))
+);
+const Channels = lazy(() =>
+  import("@/pages/Channels").then((module) => ({ default: module.Channels }))
+);
+const Tasks = lazy(() => import("@/pages/Tasks").then((module) => ({ default: module.Tasks })));
+const Skills = lazy(() => import("@/pages/Skills").then((module) => ({ default: module.Skills })));
+const Journey = lazy(() =>
+  import("@/pages/Journey").then((module) => ({ default: module.Journey }))
+);
+const Tools = lazy(() => import("@/pages/Tools").then((module) => ({ default: module.Tools })));
+const Memory = lazy(() => import("@/pages/Memory").then((module) => ({ default: module.Memory })));
+const Settings = lazy(() =>
+  import("@/pages/Settings").then((module) => ({ default: module.Settings }))
+);
+const Chat = lazy(() => import("@/pages/Chat").then((module) => ({ default: module.Chat })));
+const Logs = lazy(() => import("@/pages/Logs").then((module) => ({ default: module.Logs })));
+const Sessions = lazy(() =>
+  import("@/pages/Sessions").then((module) => ({ default: module.Sessions }))
+);
+const Metrics = lazy(() =>
+  import("@/pages/Metrics").then((module) => ({ default: module.Metrics }))
+);
+const Usage = lazy(() => import("@/pages/Usage").then((module) => ({ default: module.Usage })));
+const MCPServers = lazy(() =>
+  import("@/pages/MCPServers").then((module) => ({ default: module.MCPServers }))
+);
+const LSP = lazy(() => import("@/pages/LSP").then((module) => ({ default: module.LSP })));
+const IDE = lazy(() => import("@/pages/IDE").then((module) => ({ default: module.IDE })));
+const TerminalPage = lazy(() =>
+  import("@/pages/Terminal").then((module) => ({ default: module.TerminalPage }))
+);
+const Wallet = lazy(() => import("@/pages/Wallet").then((module) => ({ default: module.Wallet })));
+const Artifacts = lazy(() =>
+  import("@/pages/Artifacts").then((module) => ({ default: module.Artifacts }))
+);
+const Mobile = lazy(() => import("@/pages/Mobile").then((module) => ({ default: module.Mobile })));
+const Setup = lazy(() => import("@/pages/Setup").then((module) => ({ default: module.Setup })));
+
+function PageLoader() {
+  return (
+    <div className="flex min-h-[45vh] items-center justify-center">
+      <Loader2 className="h-7 w-7 animate-spin text-indigo-500" />
+    </div>
+  );
+}
 
 function readSetupComplete(): boolean {
   try {
@@ -120,32 +151,34 @@ function MainContent({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/" element={<Dashboard />} />
-      <Route path="/dashboard" element={<Dashboard />} />
-      <Route path="/agents" element={<Agents />} />
-      <Route path="/providers" element={<Providers />} />
-      <Route path="/router" element={<RouterSettings />} />
-      <Route path="/mcp" element={<MCPServers />} />
-      <Route path="/channels" element={<Channels />} />
-      <Route path="/mobile" element={<Mobile />} />
-      <Route path="/tasks" element={<Tasks />} />
-      <Route path="/skills" element={<Skills />} />
-      <Route path="/journey" element={<Journey />} />
-      <Route path="/lsp" element={<LSP />} />
-      <Route path="/ide" element={<IDE />} />
-      <Route path="/terminal" element={<TerminalPage />} />
-      <Route path="/tools" element={<Tools />} />
-      <Route path="/memory" element={<Memory />} />
-      <Route path="/metrics" element={<Metrics />} />
-      <Route path="/usage" element={<Usage />} />
-      <Route path="/settings" element={<Settings />} />
-      <Route path="/chat" element={<Chat />} />
-      <Route path="/logs" element={<Logs />} />
-      <Route path="/sessions" element={<Sessions />} />
-      <Route path="/wallet" element={<Wallet />} />
-      <Route path="/artifacts" element={<Artifacts />} />
-    </Routes>
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/agents" element={<Agents />} />
+        <Route path="/providers" element={<Providers />} />
+        <Route path="/router" element={<RouterSettings />} />
+        <Route path="/mcp" element={<MCPServers />} />
+        <Route path="/channels" element={<Channels />} />
+        <Route path="/mobile" element={<Mobile />} />
+        <Route path="/tasks" element={<Tasks />} />
+        <Route path="/skills" element={<Skills />} />
+        <Route path="/journey" element={<Journey />} />
+        <Route path="/lsp" element={<LSP />} />
+        <Route path="/ide" element={<IDE />} />
+        <Route path="/terminal" element={<TerminalPage />} />
+        <Route path="/tools" element={<Tools />} />
+        <Route path="/memory" element={<Memory />} />
+        <Route path="/metrics" element={<Metrics />} />
+        <Route path="/usage" element={<Usage />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/chat" element={<Chat />} />
+        <Route path="/logs" element={<Logs />} />
+        <Route path="/sessions" element={<Sessions />} />
+        <Route path="/wallet" element={<Wallet />} />
+        <Route path="/artifacts" element={<Artifacts />} />
+      </Routes>
+    </Suspense>
   );
 }
 
@@ -192,22 +225,24 @@ function App() {
       <SidebarProvider>
         <div className="flex min-h-screen bg-[#0a0a0f] overflow-hidden">
           <ThemeConfigSync />
-          <Routes>
-            <Route path="/setup" element={<Setup />} />
+          <Suspense fallback={<PageLoader />}>
+            <Routes>
+              <Route path="/setup" element={<Setup />} />
 
-            <Route
-              path="*"
-              element={
-                <SetupGuard>
-                  <Sidebar />
-                  <MainContent>
-                    <AppRoutes />
-                  </MainContent>
-                  <CybaraPet />
-                </SetupGuard>
-              }
-            />
-          </Routes>
+              <Route
+                path="*"
+                element={
+                  <SetupGuard>
+                    <Sidebar />
+                    <MainContent>
+                      <AppRoutes />
+                    </MainContent>
+                    <CybaraPet />
+                  </SetupGuard>
+                }
+              />
+            </Routes>
+          </Suspense>
           <ToastContainer />
         </div>
       </SidebarProvider>

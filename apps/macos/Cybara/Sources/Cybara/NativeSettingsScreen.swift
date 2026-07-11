@@ -1986,8 +1986,9 @@ struct NativeSettingsScreen: View {
         authBusy = true
         defer { authBusy = false }
         do {
+            try GatewayPasswordStore.validateWrite(password)
             let auth = try await client.updateAuthSettings(gatewayPassword: password)
-            UserDefaults.standard.set(password, forKey: "cybara_gateway_password")
+            try GatewayPasswordStore.save(password)
             gatewayPasswordDraft = ""
             gatewayPasswordConfirm = ""
             readAuthSettings(auth)
@@ -2004,7 +2005,7 @@ struct NativeSettingsScreen: View {
         defer { authBusy = false }
         do {
             let auth = try await client.updateAuthSettings(clearGatewayPassword: true)
-            UserDefaults.standard.removeObject(forKey: "cybara_gateway_password")
+            try GatewayPasswordStore.clear()
             readAuthSettings(auth)
         } catch {
             self.error = error.localizedDescription

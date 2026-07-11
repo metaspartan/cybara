@@ -389,6 +389,19 @@ export interface CurrentMobileDeviceResponse {
   };
 }
 
+export interface MobileMcpServer {
+  id: string;
+  name: string;
+  command: string;
+  args?: string;
+  url?: string;
+  enabled: boolean;
+  status: string;
+  toolCount: number;
+  hasCredentials?: boolean;
+  transport?: "stdio" | "http";
+}
+
 export interface MobilePushRegistrationResponse {
   success: boolean;
   device?: {
@@ -2064,6 +2077,41 @@ export class CybaraMobileApi {
 
   health(): Promise<HealthResponse> {
     return this.request<HealthResponse>("/api/health");
+  }
+
+  listMcpServers(): Promise<MobileMcpServer[]> {
+    return this.request<MobileMcpServer[]>("/api/mcp");
+  }
+
+  createMcpServer(input: {
+    name: string;
+    url: string;
+    authorization?: string;
+  }): Promise<MobileMcpServer> {
+    return this.request<MobileMcpServer>("/api/mcp", {
+      method: "POST",
+      body: JSON.stringify({ ...input, enabled: true }),
+    });
+  }
+
+  startMcpServer(id: string): Promise<{ success: boolean; error?: string }> {
+    return this.request<{ success: boolean; error?: string }>(
+      `/api/mcp/${encodeURIComponent(id)}/start`,
+      { method: "POST" }
+    );
+  }
+
+  stopMcpServer(id: string): Promise<{ success: boolean; error?: string }> {
+    return this.request<{ success: boolean; error?: string }>(
+      `/api/mcp/${encodeURIComponent(id)}/stop`,
+      { method: "POST" }
+    );
+  }
+
+  deleteMcpServer(id: string): Promise<{ success: boolean }> {
+    return this.request<{ success: boolean }>(`/api/mcp/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
   }
 
   registerPushToken(input: {

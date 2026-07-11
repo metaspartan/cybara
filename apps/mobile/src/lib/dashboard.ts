@@ -14,6 +14,7 @@ export type MobileSettingsTab =
   | "ai"
   | "memory"
   | "voice"
+  | "mcp"
   | "safety"
   | "wallet"
   | "migration"
@@ -70,6 +71,7 @@ export const MOBILE_SETTINGS_TABS: Array<{ label: string; value: MobileSettingsT
   { label: "AI", value: "ai" },
   { label: "Memory", value: "memory" },
   { label: "Voice", value: "voice" },
+  { label: "MCP", value: "mcp" },
   { label: "Safety", value: "safety" },
   { label: "Wallet", value: "wallet" },
   { label: "Migration", value: "migration" },

@@ -39,8 +39,8 @@ describe("package.json script wiring", () => {
     expect(pkg.scripts?.["mobile:android"]).toBe("cd apps/mobile && bun run android");
     expect(pkg.scripts?.["mobile:expo-check"]).toBe("cd apps/mobile && bunx expo install --check");
     expect(pkg.scripts?.["mobile:typecheck"]).toBe("cd apps/mobile && bun run typecheck");
-    expect(pkg.scripts?.["test:mobile"]).toBe("bun test tests/mobile");
-    expect(pkg.scripts?.["test:smoke"]).toContain("bun test tests/mobile");
+    expect(pkg.scripts?.["test:mobile"]).toBe("bun run test:isolated tests/mobile");
+    expect(pkg.scripts?.["test:smoke"]).toContain("bun run test:isolated tests/mobile");
     expect(pkg.scripts?.["check:ci"]).toContain("bun run mobile:expo-check");
     expect(pkg.scripts?.["check:ci"]).toContain("bun run mobile:typecheck");
     expect(pkg.scripts?.["format"]).toBe("biome format --write");
