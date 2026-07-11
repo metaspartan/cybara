@@ -1,0 +1,57 @@
+{
+  "name": "cybara-vscode",
+  "displayName": "Cybara",
+  "description": "Open the Cybara self-hosted AI agent dashboard, chat, and IDE for the current workspace.",
+  "version": "0.1.0",
+  "publisher": "metaspartan",
+  "license": "MIT",
+  "homepage": "https://cybara.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/metaspartan/cybara.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": ["AI", "Chat", "Other"],
+  "keywords": ["ai", "agent", "cybara", "self-hosted"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "cybara.openDashboard",
+        "title": "Cybara: Open Dashboard",
+        "category": "Cybara"
+      },
+      {
+        "command": "cybara.openChat",
+        "title": "Cybara: Open Chat for Workspace",
+        "category": "Cybara"
+      },
+      {
+        "command": "cybara.openIde",
+        "title": "Cybara: Open IDE for Workspace",
+        "category": "Cybara"
+      }
+    ],
+    "configuration": {
+      "title": "Cybara",
+      "properties": {
+        "cybara.gatewayUrl": {
+          "type": "string",
+          "default": "http://localhost:4269",
+          "description": "Base URL of your running Cybara gateway."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --platform=node --external:vscode --format=cjs --outfile=dist/extension.js",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.90.0",
+    "esbuild": "^0.24.0"
+  }
+}

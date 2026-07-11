@@ -1,0 +1,5 @@
+src/**
+tsconfig.json
+.vscodeignore
+node_modules/**
+!dist/extension.js
