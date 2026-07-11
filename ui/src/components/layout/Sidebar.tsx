@@ -35,6 +35,7 @@ import type { TranslationKey } from "../../../../shared/i18n/catalog";
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { connectStatusStream } from "@/lib/status-stream";
 import { providerPlansApi } from "@/lib/api";
+import { UpdateButton } from "./UpdateButton";
 
 interface SidebarContextType {
   collapsed: boolean;
@@ -411,6 +412,7 @@ export function Sidebar() {
           </nav>
 
           <div className="sidebar-footer border-t border-white/5 p-2 backdrop-blur-md">
+            <UpdateButton collapsed={collapsed} />
             <NavLink
               to="/settings"
               title={collapsed ? t("nav.settings") : undefined}

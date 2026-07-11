@@ -103,6 +103,38 @@ fn read_cybara_api_key() -> Result<Option<String>, String> {
     cybara_api_key()
 }
 
+#[tauri::command]
+fn set_update_available(app: tauri::AppHandle, available: bool, version: Option<String>) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(state) = handle.try_state::<tray::UpdateMenu>() {
+            if let Ok(item) = state.0.lock() {
+                let text = if available {
+                    match &version {
+                        Some(value) => format!("Install Update {value}"),
+                        None => "Install Update".to_string(),
+                    }
+                } else {
+                    "No updates available".to_string()
+                };
+                let _ = item.set_text(text);
+                let _ = item.set_enabled(available);
+            }
+        }
+        if let Some(tray) = handle.tray_by_id("cybara-tray") {
+            let tooltip = if available {
+                match &version {
+                    Some(value) => format!("Cybara · Update {value} available"),
+                    None => "Cybara · Update available".to_string(),
+                }
+            } else {
+                "Cybara".to_string()
+            };
+            let _ = tray.set_tooltip(Some(tooltip));
+        }
+    });
+}
+
 fn cybara_api_key() -> Result<Option<String>, String> {
     if let Ok(key) = std::env::var("CYBARA_API_KEY") {
         let trimmed = key.trim();
@@ -205,7 +237,7 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![read_cybara_api_key])
+        .invoke_handler(tauri::generate_handler![read_cybara_api_key, set_update_available])
         .setup(|app| {
             app.manage(SidecarState(std::sync::Mutex::new(None)));
             app.manage(PendingOpen(std::sync::Mutex::new(None)));

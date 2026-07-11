@@ -1,0 +1,87 @@
+import { Download, Check } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { useDesktopUpdate } from "@/hooks/useDesktopUpdate";
+
+function ProgressDonut({ progress }: { progress: number }) {
+  const radius = 7;
+  const circumference = 2 * Math.PI * radius;
+  const clamped = Math.max(0, Math.min(1, progress));
+  const indeterminate = clamped <= 0;
+  return (
+    <svg viewBox="0 0 18 18" className={cn("h-4 w-4 -rotate-90", indeterminate && "update-spin")}>
+      <circle
+        cx="9"
+        cy="9"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeOpacity={0.25}
+        strokeWidth={2}
+      />
+      <circle
+        cx="9"
+        cy="9"
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeDasharray={circumference}
+        strokeDashoffset={indeterminate ? circumference * 0.75 : circumference * (1 - clamped)}
+        style={{ transition: "stroke-dashoffset 0.3s ease" }}
+      />
+    </svg>
+  );
+}
+
+export function UpdateButton({ collapsed }: { collapsed?: boolean }) {
+  const { phase, available, progress, startUpdate } = useDesktopUpdate();
+
+  if (phase === "idle" || phase === "checking") return null;
+
+  const busy = phase === "downloading" || phase === "installing";
+  const done = phase === "done";
+
+  const label = done ? "Updated" : busy ? `${Math.round(progress * 100)}%` : "Update";
+
+  return (
+    <button
+      type="button"
+      onClick={() => phase === "available" && void startUpdate()}
+      disabled={busy || done}
+      aria-label={available ? `Update to ${available.version}` : "Update"}
+      title={collapsed ? (available ? `Update to ${available.version}` : "Update") : undefined}
+      className={cn(
+        "update-pill group mb-2 flex items-center overflow-hidden rounded-lg border text-[13px] font-medium transition-all duration-300",
+        done ? "update-pop-shell" : "",
+        done
+          ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
+          : "border-[rgba(var(--accent-primary),0.35)] bg-[rgba(var(--accent-primary),0.12)] text-white hover:bg-[rgba(var(--accent-primary),0.2)]",
+        collapsed ? "w-full justify-center px-3 py-2.5" : "px-3.5 py-2.5",
+        busy && "cursor-default"
+      )}
+    >
+      <span className="relative flex h-4 w-4 flex-shrink-0 items-center justify-center">
+        {busy ? (
+          <ProgressDonut progress={progress} />
+        ) : done ? (
+          <Check className="update-pop h-4 w-4" />
+        ) : (
+          <Download className="h-4 w-4" />
+        )}
+      </span>
+      {!collapsed && (
+        <span
+          className={cn(
+            "whitespace-nowrap transition-all duration-300",
+            phase === "available"
+              ? "max-w-0 opacity-0 group-hover:ml-2 group-hover:max-w-[140px] group-hover:opacity-100"
+              : "ml-2 max-w-[160px] opacity-100"
+          )}
+        >
+          {label}
+        </span>
+      )}
+    </button>
+  );
+}

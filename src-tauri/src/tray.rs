@@ -4,9 +4,11 @@ use std::net::TcpStream;
 use std::time::Duration;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
-use tauri::{App, AppHandle, Manager};
+use tauri::{App, AppHandle, Emitter, Manager};
 
 use crate::{CYBARA_SERVER_ADDR, CYBARA_SERVER_URL, cybara_api_key};
+
+pub struct UpdateMenu(pub std::sync::Mutex<MenuItem<tauri::Wry>>);
 
 const USAGE_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 const USAGE_RETRY_INTERVAL: Duration = Duration::from_secs(10);
@@ -245,6 +247,13 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         false,
         None::<&str>,
     )?;
+    let update = MenuItem::with_id(
+        app,
+        "install-update",
+        "No updates available",
+        false,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "quit", "Quit Cybara", true, None::<&str>)?;
     let usage_menu = Submenu::with_id(app, "usage", "Usage", true)?;
     usage_menu.append(&MenuItem::with_id(
@@ -270,6 +279,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
             &PredefinedMenuItem::separator(app)?,
             &usage_menu,
             &gateway,
+            &update,
             &PredefinedMenuItem::separator(app)?,
             &settings,
             &PredefinedMenuItem::separator(app)?,
@@ -292,10 +302,15 @@ pub fn setup(app: &App) -> tauri::Result<()> {
             "new-chat" => show_route(app, "/chat?fresh=1"),
             "open-usage" => show_route(app, "/usage"),
             "settings" => show_route(app, "/settings"),
+            "install-update" => {
+                let _ = app.emit("cybara://install-update", ());
+                show_main_window(app);
+            }
             "quit" => app.exit(0),
             _ => {}
         })
         .build(app)?;
+    app.manage(UpdateMenu(std::sync::Mutex::new(update.clone())));
     let app_handle = app.handle().clone();
     std::thread::spawn(move || {
         loop {
