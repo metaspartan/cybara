@@ -28,6 +28,27 @@ describe("expandPromptCommand", () => {
   });
 
   test("lists supported commands", () => {
-    expect(listPromptCommands()).toContain("learn");
+    const commands = listPromptCommands();
+    expect(commands).toContain("learn");
+    expect(commands).toContain("plan");
+    expect(commands).toContain("review");
+    expect(commands).toContain("test");
+    expect(commands).toContain("summarize");
+  });
+
+  test("/review targets uncommitted changes by default and accepts a target", () => {
+    expect(expandPromptCommand("/review")).toContain("uncommitted changes");
+    expect(expandPromptCommand("/review src/core/agent.ts")).toContain("src/core/agent.ts");
+  });
+
+  test("/plan asks for a plan before acting", () => {
+    const expanded = expandPromptCommand("/plan add rate limiting");
+    expect(expanded).toContain("Plan before acting");
+    expect(expanded).toContain("add rate limiting");
+  });
+
+  test("/test and /summarize expand to guided prompts", () => {
+    expect(expandPromptCommand("/test")).toContain("Run the project's tests");
+    expect(expandPromptCommand("/summarize")).toContain("Summarize");
   });
 });

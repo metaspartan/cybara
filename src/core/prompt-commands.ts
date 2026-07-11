@@ -28,6 +28,51 @@ interface PromptCommand {
   expand: (args: string) => string;
 }
 
+const PLAN_TEMPLATE = (task: string) =>
+  [
+    "Plan before acting. Do not edit files or run commands yet.",
+    "",
+    `Task: ${task}`,
+    "",
+    "Produce a concise plan:",
+    "1. Restate the goal and any constraints in one or two sentences.",
+    "2. List the concrete steps in order, noting the files/tools each touches.",
+    "3. Call out risks, unknowns, and how you'll verify success.",
+    "Then ask me to confirm before you start, unless the task is trivial.",
+  ].join("\n");
+
+const REVIEW_TEMPLATE = (target: string) =>
+  [
+    "Do a focused code review.",
+    target.trim()
+      ? `Target: ${target}`
+      : "Target: the current uncommitted changes (use git to inspect the diff).",
+    "",
+    "Report only real issues, most severe first: correctness bugs, security problems,",
+    "missing error handling, and clear performance traps. For each, give the file:line,",
+    "a one-line description, and the concrete failure scenario. Skip style nits. If",
+    "nothing meaningful is wrong, say so plainly.",
+  ].join("\n");
+
+const TEST_TEMPLATE = (args: string) =>
+  [
+    "Run the project's tests and fix what's broken.",
+    args.trim() ? `Scope: ${args}` : "Scope: the most relevant tests for recent changes.",
+    "",
+    "1. Find and run the appropriate test command for this project.",
+    "2. If tests fail, diagnose the root cause and fix it (code or test, whichever is wrong).",
+    "3. Re-run until green, then report what failed and what you changed. Do not weaken",
+    "   assertions just to pass.",
+  ].join("\n");
+
+const SUMMARIZE_TEMPLATE = (args: string) =>
+  [
+    args.trim() ? `Summarize: ${args}` : "Summarize our conversation and the work done so far.",
+    "",
+    "Give a tight summary: what was accomplished, key decisions and why, current state,",
+    "and any open questions or next steps. Be specific and skip filler.",
+  ].join("\n");
+
 const COMMANDS: Record<string, PromptCommand> = {
   learn: {
     name: "learn",
@@ -35,6 +80,22 @@ const COMMANDS: Record<string, PromptCommand> = {
       LEARN_TEMPLATE(
         args.trim() || "the most useful reusable technique from our recent conversation"
       ),
+  },
+  plan: {
+    name: "plan",
+    expand: (args) => PLAN_TEMPLATE(args.trim() || "the request I just described"),
+  },
+  review: {
+    name: "review",
+    expand: (args) => REVIEW_TEMPLATE(args),
+  },
+  test: {
+    name: "test",
+    expand: (args) => TEST_TEMPLATE(args),
+  },
+  summarize: {
+    name: "summarize",
+    expand: (args) => SUMMARIZE_TEMPLATE(args),
   },
 };
 
