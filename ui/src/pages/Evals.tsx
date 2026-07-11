@@ -115,9 +115,11 @@ function GoldenRow({
             <FlaskConical className="h-4 w-4 shrink-0 text-indigo-300" />
             <h2 className="truncate text-sm font-semibold text-white">{golden.name}</h2>
           </div>
-          <p className="mt-1.5 line-clamp-2 text-[12px] leading-5 text-gray-400">
-            {golden.description || golden.baseline.request.userMessage.content}
-          </p>
+          {golden.description && (
+            <p className="mt-1.5 line-clamp-2 text-[12px] leading-5 text-gray-400">
+              {golden.description}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -146,10 +148,30 @@ function GoldenRow({
         </div>
       </div>
 
+      <div className="mt-3 rounded-md border border-white/10 bg-black/20 px-3 py-2">
+        <p className="text-[10px] uppercase tracking-wide text-gray-500">Saved from this request</p>
+        <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-gray-300">
+          {golden.baseline.request.userMessage.content || "(empty prompt)"}
+        </p>
+      </div>
+
       <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
         <span>{golden.baseline.model || "Current model"}</span>
+        {golden.baseline.provider && (
+          <>
+            <span>·</span>
+            <span>{golden.baseline.provider}</span>
+          </>
+        )}
         <span>·</span>
         <span>{golden.baseline.structure.tools.length} expected tools</span>
+        <span>·</span>
+        <Link
+          to={`/chat?session=${encodeURIComponent(golden.baseline.sessionId)}`}
+          className="text-indigo-300 hover:text-indigo-200"
+        >
+          View source chat (turn {golden.baseline.turnIndex + 1})
+        </Link>
         {golden.tags.map((tag) => (
           <span key={tag} className="rounded bg-white/[0.05] px-1.5 py-0.5 text-gray-400">
             {tag}
@@ -264,6 +286,18 @@ export function Evals() {
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["agent-evals"] }),
   });
   const goldens = query.data?.goldens ?? [];
+  const insights = useMemo(() => {
+    let passing = 0;
+    let failing = 0;
+    let notRun = 0;
+    for (const golden of goldens) {
+      const run = latestRuns.get(golden.id);
+      if (!run || run.status === "running") notRun += 1;
+      else if (run.status === "passed") passing += 1;
+      else failing += 1;
+    }
+    return { total: goldens.length, passing, failing, notRun };
+  }, [goldens, latestRuns]);
 
   return (
     <PageLayout
@@ -286,6 +320,24 @@ export function Evals() {
       }
     >
       <EvalsExplainer />
+      {goldens.length > 0 && (
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {[
+            { label: "Golden tests", value: insights.total, tone: "text-white" },
+            { label: "Passing", value: insights.passing, tone: "text-emerald-300" },
+            { label: "Failing", value: insights.failing, tone: "text-red-300" },
+            { label: "Not run", value: insights.notRun, tone: "text-gray-300" },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5"
+            >
+              <p className={cn("text-lg font-semibold tabular-nums", stat.tone)}>{stat.value}</p>
+              <p className="text-[11px] text-gray-500">{stat.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
       {query.isLoading ? (
         <div className="grid gap-3 md:grid-cols-2">
           {[0, 1, 2, 3].map((item) => (
