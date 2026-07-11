@@ -610,6 +610,14 @@ img {
   gap: 20px;
 }
 
+a:focus-visible,
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid rgba(139, 92, 246, 0.65);
+  outline-offset: 2px;
+}
+
 .feature-card {
   padding: 30px;
   transition: transform 0.25s ease, border-color 0.25s ease;
@@ -1738,17 +1746,6 @@ img {
   color: var(--text);
 }
 
-.footer-bun {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.footer-bun-logo {
-  width: 16px;
-  height: 14px;
-  vertical-align: -2px;
-}
 
 @keyframes rise {
   from {
@@ -2234,6 +2231,12 @@ img {
 .principle-card {
   padding: 22px 20px;
   border-radius: var(--radius);
+  transition: transform 0.25s ease, border-color 0.25s ease;
+}
+
+.principle-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--glass-border-strong);
 }
 
 .principle-icon {

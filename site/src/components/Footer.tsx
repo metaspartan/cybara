@@ -53,13 +53,7 @@ export function Footer(): React.ReactElement {
       </div>
       <p className="footer-note">
         Self-hosted AI agent platform · MIT licensed · Built on{" "}
-        <a
-          href="https://bun.sh"
-          target="_blank"
-          rel="noreferrer"
-          className="footer-note-link footer-bun"
-        >
-          <img src="/bun.svg" alt="" className="footer-bun-logo" width={16} height={14} />
+        <a href="https://bun.sh" target="_blank" rel="noreferrer" className="footer-note-link">
           Bun
         </a>{" "}
         · Created by{" "}
