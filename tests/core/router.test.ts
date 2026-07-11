@@ -388,12 +388,12 @@ describe("status + spend tracking", () => {
       providers: {},
     });
 
-    const originalGetByTypeSince = tables.metrics.getByTypeSince;
+    const originalGetKeyTotalsForWindows = tables.metrics.getKeyTotalsForWindows;
     const queriedTypes: string[] = [];
-    tables.metrics.getByTypeSince = ((type: string, sinceSql: string) => {
+    tables.metrics.getKeyTotalsForWindows = ((type: string, startsSql: string[]) => {
       queriedTypes.push(type);
-      return originalGetByTypeSince(type, sinceSql);
-    }) as typeof tables.metrics.getByTypeSince;
+      return originalGetKeyTotalsForWindows(type, startsSql);
+    }) as typeof tables.metrics.getKeyTotalsForWindows;
 
     try {
       const status = getRouterStatus();
@@ -401,7 +401,7 @@ describe("status + spend tracking", () => {
       expect(status.routes).toHaveLength(2);
       expect(queriedTypes).toHaveLength(0);
     } finally {
-      tables.metrics.getByTypeSince = originalGetByTypeSince;
+      tables.metrics.getKeyTotalsForWindows = originalGetKeyTotalsForWindows;
     }
   });
 
@@ -423,12 +423,12 @@ describe("status + spend tracking", () => {
       },
     });
 
-    const originalGetByTypeSince = tables.metrics.getByTypeSince;
+    const originalGetKeyTotalsForWindows = tables.metrics.getKeyTotalsForWindows;
     const queriedTypes: string[] = [];
-    tables.metrics.getByTypeSince = ((type: string, sinceSql: string) => {
+    tables.metrics.getKeyTotalsForWindows = ((type: string, startsSql: string[]) => {
       queriedTypes.push(type);
-      return originalGetByTypeSince(type, sinceSql);
-    }) as typeof tables.metrics.getByTypeSince;
+      return originalGetKeyTotalsForWindows(type, startsSql);
+    }) as typeof tables.metrics.getKeyTotalsForWindows;
 
     try {
       const status = getRouterStatus();
@@ -436,7 +436,7 @@ describe("status + spend tracking", () => {
       expect(status.routes).toHaveLength(3);
       expect(queriedTypes.sort()).toEqual(["router_usage", "token_usage_by_provider"]);
     } finally {
-      tables.metrics.getByTypeSince = originalGetByTypeSince;
+      tables.metrics.getKeyTotalsForWindows = originalGetKeyTotalsForWindows;
     }
   });
 });

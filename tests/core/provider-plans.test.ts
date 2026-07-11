@@ -190,12 +190,12 @@ describe("provider plan monitoring", () => {
       },
     });
 
-    const originalGetByTypeSince = tables.metrics.getByTypeSince;
+    const originalGetKeyTotalsForWindows = tables.metrics.getKeyTotalsForWindows;
     const queriedTypes: string[] = [];
-    tables.metrics.getByTypeSince = ((type: string, sinceSql: string) => {
+    tables.metrics.getKeyTotalsForWindows = ((type: string, startsSql: string[]) => {
       queriedTypes.push(type);
-      return originalGetByTypeSince(type, sinceSql);
-    }) as typeof tables.metrics.getByTypeSince;
+      return originalGetKeyTotalsForWindows(type, startsSql);
+    }) as typeof tables.metrics.getKeyTotalsForWindows;
 
     try {
       const status = getProviderPlanStatus();
@@ -207,9 +207,10 @@ describe("provider plan monitoring", () => {
           )
         )
       ).toHaveLength(3);
-      expect(queriedTypes.sort()).toEqual(["router_usage", "token_usage_by_provider"]);
+      expect(new Set(queriedTypes)).toEqual(new Set(["router_usage", "token_usage_by_provider"]));
+      expect(queriedTypes).toHaveLength(2);
     } finally {
-      tables.metrics.getByTypeSince = originalGetByTypeSince;
+      tables.metrics.getKeyTotalsForWindows = originalGetKeyTotalsForWindows;
     }
   });
 

@@ -194,6 +194,7 @@ jobs:
             patchelf \
             pkg-config \
             wget \
+            xdg-utils \
             zsync \
             "$FUSE_PACKAGE"
       # Split into two steps (no '&&') so it runs under each OS's native shell

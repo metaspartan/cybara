@@ -1,4 +1,3 @@
-import { execFileSync } from "child_process";
 import { readFileSync, statfsSync } from "fs";
 import { arch, cpus, freemem, loadavg, platform, release, totalmem } from "os";
 
@@ -62,6 +61,21 @@ const SYSTEM_MONITOR_CACHE_MS = 1000;
 let lastSample: MonitorSample | null = null;
 let cachedSnapshot: SystemMonitorSnapshot | null = null;
 let cachedUntilMs = 0;
+
+function runSystemCommand(command: string, args: string[], timeout: number): string | null {
+  try {
+    const result = Bun.spawnSync([command, ...args], {
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "ignore",
+      timeout,
+    });
+    if (result.exitCode !== 0) return null;
+    return new TextDecoder().decode(result.stdout);
+  } catch {
+    return null;
+  }
+}
 
 function roundPct(value: number): number {
   if (!Number.isFinite(value)) return 0;
@@ -228,17 +242,8 @@ function readSwapUsage(): SystemByteUsage | null {
   const osPlatform = platform();
 
   if (osPlatform === "darwin") {
-    try {
-      const output = execFileSync("/usr/sbin/sysctl", ["vm.swapusage"], {
-        encoding: "utf8",
-        maxBuffer: 16 * 1024,
-        stdio: ["ignore", "pipe", "ignore"],
-        timeout: 500,
-      });
-      return parseDarwinSwapUsage(output);
-    } catch {
-      return null;
-    }
+    const output = runSystemCommand("/usr/sbin/sysctl", ["vm.swapusage"], 500);
+    return output ? parseDarwinSwapUsage(output) : null;
   }
 
   if (osPlatform === "linux") {
@@ -260,18 +265,10 @@ function readGenericMemoryUsage(): SystemMonitorSnapshot["memory"] {
 function readMemoryUsage(): SystemMonitorSnapshot["memory"] {
   if (platform() !== "darwin") return readGenericMemoryUsage();
 
-  try {
-    const output = execFileSync("/usr/bin/vm_stat", [], {
-      encoding: "utf8",
-      maxBuffer: 64 * 1024,
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 750,
-    });
-    const memory = parseDarwinVmStatMemory(output);
-    return memory ? { ...memory, swap: readSwapUsage() } : readGenericMemoryUsage();
-  } catch {
-    return readGenericMemoryUsage();
-  }
+  const output = runSystemCommand("/usr/bin/vm_stat", [], 750);
+  if (!output) return readGenericMemoryUsage();
+  const memory = parseDarwinVmStatMemory(output);
+  return memory ? { ...memory, swap: readSwapUsage() } : readGenericMemoryUsage();
 }
 
 export function getSystemMonitorSnapshot(): SystemMonitorSnapshot {

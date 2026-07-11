@@ -20,7 +20,6 @@ import {
   statSync,
 } from "fs";
 import { join } from "path";
-import { spawn, spawnSync } from "child_process";
 
 const CHECKPOINT_DIR = ".cybara";
 const CHECKPOINT_STORE = "checkpoints";
@@ -43,29 +42,31 @@ function checkpointStoreDir(workspaceDir: string): string {
   return dir;
 }
 
-function execGit(args: string[], cwd: string, env?: Record<string, string>): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn("git", args, {
-      cwd,
-      stdio: ["pipe", "pipe", "pipe"],
-      env: env ? { ...process.env, ...env } : process.env,
-    });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (c: Buffer) => (stdout += c.toString()));
-    proc.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
-    proc.on("exit", (code) => {
-      if (code === 0) resolve(stdout.trim());
-      else reject(new Error(`git ${args.join(" ")} failed (${code}): ${stderr.trim()}`));
-    });
-    proc.on("error", reject);
+async function execGit(args: string[], cwd: string, env?: Record<string, string>): Promise<string> {
+  const proc = Bun.spawn(["git", ...args], {
+    cwd,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: env ? { ...process.env, ...env } : process.env,
   });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  if (exitCode === 0) return stdout.trim();
+  throw new Error(`git ${args.join(" ")} failed (${exitCode}): ${stderr.trim()}`);
 }
 
 function isGitAvailable(): boolean {
   try {
-    const result = spawnSync("git", ["--version"], { stdio: ["ignore", "ignore", "ignore"] });
-    return result.status === 0;
+    const result = Bun.spawnSync(["git", "--version"], {
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    return result.exitCode === 0;
   } catch {
     return false;
   }

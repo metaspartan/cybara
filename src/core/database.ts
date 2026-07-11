@@ -741,23 +741,7 @@ const stmts = {
     getTotalRaw: prepare("SELECT SUM(value) as total FROM metrics WHERE type = ? AND key = ?"),
     getCountRaw: prepare("SELECT COUNT(*) as count FROM metrics WHERE type = ? AND key = ?"),
     getTotalByType: prepare("SELECT SUM(total) as total FROM metrics_totals WHERE type = ?"),
-    getTotalByTypeRawMissing: prepare(
-      `SELECT SUM(m.value) as total
-       FROM metrics m
-       WHERE m.type = ?
-         AND NOT EXISTS (
-           SELECT 1 FROM metrics_totals mt WHERE mt.type = m.type AND mt.key = m.key
-         )`
-    ),
     countByType: prepare("SELECT SUM(count) as count FROM metrics_totals WHERE type = ?"),
-    countByTypeRawMissing: prepare(
-      `SELECT COUNT(*) as count
-       FROM metrics m
-       WHERE m.type = ?
-         AND NOT EXISTS (
-           SELECT 1 FROM metrics_totals mt WHERE mt.type = m.type AND mt.key = m.key
-         )`
-    ),
     countByTypeMetadataLike: prepare(
       "SELECT COUNT(*) as count FROM metrics WHERE type = ? AND metadata LIKE ?"
     ),
@@ -770,34 +754,7 @@ const stmts = {
     getKeyTotalsWithLatestMetadata: prepare(
       "SELECT key, total, metadata, updated_at as created_at FROM metrics_totals WHERE type = ?"
     ),
-    getKeyTotalsWithLatestMetadataRawMissing: prepare(
-      `SELECT
-         m.key,
-         SUM(m.value) as total,
-         (
-           SELECT m2.metadata
-           FROM metrics m2
-           WHERE m2.type = m.type AND m2.key = m.key
-           ORDER BY m2.created_at DESC, m2.id DESC
-           LIMIT 1
-         ) as metadata
-       FROM metrics m
-       WHERE m.type = ?
-         AND NOT EXISTS (
-           SELECT 1 FROM metrics_totals mt WHERE mt.type = m.type AND mt.key = m.key
-         )
-       GROUP BY m.key`
-    ),
     getKeyAggregates: prepare("SELECT key, total, count FROM metrics_totals WHERE type = ?"),
-    getKeyAggregatesRawMissing: prepare(
-      `SELECT key, SUM(value) as total, COUNT(*) as count
-       FROM metrics m
-       WHERE m.type = ?
-         AND NOT EXISTS (
-           SELECT 1 FROM metrics_totals mt WHERE mt.type = m.type AND mt.key = m.key
-         )
-       GROUP BY key`
-    ),
     getKeyTotalsSince: prepare(
       "SELECT key, SUM(value) as total FROM metrics WHERE type = ? AND created_at >= ? GROUP BY key"
     ),
@@ -809,15 +766,6 @@ const stmts = {
     ),
     getTopKeys: prepare(
       "SELECT key, total FROM metrics_totals WHERE type = ? ORDER BY total DESC LIMIT 20"
-    ),
-    getTopKeysRawMissing: prepare(
-      `SELECT key, SUM(value) as total
-       FROM metrics m
-       WHERE m.type = ?
-         AND NOT EXISTS (
-           SELECT 1 FROM metrics_totals mt WHERE mt.type = m.type AND mt.key = m.key
-         )
-       GROUP BY key`
     ),
     getByDate: prepare(
       "SELECT * FROM metrics WHERE type = ? AND date(created_at) = ? ORDER BY created_at DESC"
@@ -1202,21 +1150,10 @@ export const tables = {
       if (rolledUp?.count !== undefined && rolledUp.count !== null) return rolledUp.count || 0;
       return (stmts.metrics?.getCountRaw.get(type, key) as { count?: number } | null)?.count || 0;
     },
-    getTotalByType: (type: string) => {
-      const rolledUp =
-        (stmts.metrics?.getTotalByType.get(type) as { total?: number } | null)?.total || 0;
-      const rawMissing =
-        (stmts.metrics?.getTotalByTypeRawMissing.get(type) as { total?: number } | null)?.total ||
-        0;
-      return rolledUp + rawMissing;
-    },
-    countByType: (type: string) => {
-      const rolledUp =
-        (stmts.metrics?.countByType.get(type) as { count?: number } | null)?.count || 0;
-      const rawMissing =
-        (stmts.metrics?.countByTypeRawMissing.get(type) as { count?: number } | null)?.count || 0;
-      return rolledUp + rawMissing;
-    },
+    getTotalByType: (type: string) =>
+      (stmts.metrics?.getTotalByType.get(type) as { total?: number } | null)?.total || 0,
+    countByType: (type: string) =>
+      (stmts.metrics?.countByType.get(type) as { count?: number } | null)?.count || 0,
     countByTypeMetadataLike: (type: string, pattern: string) =>
       (stmts.metrics?.countByTypeMetadataLike.get(type, pattern) as { count?: number } | null)
         ?.count || 0,
@@ -1229,23 +1166,38 @@ export const tables = {
           count?: number;
         } | null
       )?.count || 0,
-    getKeyAggregates: (type: string): Array<{ key: string; total: number; count: number }> => [
-      ...((stmts.metrics?.getKeyAggregates.all(type) || []) as Array<{
+    getKeyAggregates: (type: string): Array<{ key: string; total: number; count: number }> =>
+      (stmts.metrics?.getKeyAggregates.all(type) || []) as Array<{
         key: string;
         total: number;
         count: number;
-      }>),
-      ...((stmts.metrics?.getKeyAggregatesRawMissing.all(type) || []) as Array<{
-        key: string;
-        total: number;
-        count: number;
-      }>),
-    ],
+      }>,
     getKeyTotalsSince: (type: string, sinceSql: string): Array<{ key: string; total: number }> =>
       (stmts.metrics?.getKeyTotalsSince.all(type, sinceSql) || []) as Array<{
         key: string;
         total: number;
       }>,
+    getKeyTotalsForWindows: (
+      type: string,
+      startsSql: string[]
+    ): Array<{ key: string; totals: number[] }> => {
+      if (startsSql.length === 0) return [];
+      const columns = startsSql
+        .map(
+          (_, index) => `SUM(CASE WHEN created_at >= ? THEN value ELSE 0 END) AS window_${index}`
+        )
+        .join(", ");
+      const earliest = [...startsSql].sort()[0];
+      const rows = db
+        .query(
+          `SELECT key, ${columns} FROM metrics WHERE type = ? AND created_at >= ? GROUP BY key`
+        )
+        .all(...startsSql, type, earliest) as Array<Record<string, unknown>>;
+      return rows.map((row) => ({
+        key: typeof row.key === "string" ? row.key : "",
+        totals: startsSql.map((_, index) => Number(row[`window_${index}`]) || 0),
+      }));
+    },
     getTotalSince: (type: string, key: string, startSql: string, endSql: string) =>
       (stmts.metrics?.getTotalSince.get(type, key, startSql, endSql) as { total?: number } | null)
         ?.total || 0,
@@ -1253,31 +1205,14 @@ export const tables = {
       (stmts.metrics?.getLatestValue.get(type, key) as { value?: number } | null)?.value ?? null,
     getKeyTotalsWithLatestMetadata: (
       type: string
-    ): Array<{ key: string; total: number; metadata: string | null }> => [
-      ...((stmts.metrics?.getKeyTotalsWithLatestMetadata.all(type) || []) as Array<{
+    ): Array<{ key: string; total: number; metadata: string | null }> =>
+      (stmts.metrics?.getKeyTotalsWithLatestMetadata.all(type) || []) as Array<{
         key: string;
         total: number;
         metadata: string | null;
-      }>),
-      ...((stmts.metrics?.getKeyTotalsWithLatestMetadataRawMissing.all(type) || []) as Array<{
-        key: string;
-        total: number;
-        metadata: string | null;
-      }>),
-    ],
+      }>,
     getTopKeys: (type: string) =>
-      [
-        ...((stmts.metrics?.getTopKeys.all(type) || []) as Array<{
-          key: string;
-          total: number;
-        }>),
-        ...((stmts.metrics?.getTopKeysRawMissing.all(type) || []) as Array<{
-          key: string;
-          total: number;
-        }>),
-      ]
-        .sort((a, b) => b.total - a.total)
-        .slice(0, 20),
+      (stmts.metrics?.getTopKeys.all(type) || []) as Array<{ key: string; total: number }>,
     getByDate: (type: string, date: string) => stmts.metrics?.getByDate.all(type, date) || [],
     getDailyTotalsFromRaw: (date: string): Array<{ type: string; total: number }> =>
       (stmts.metrics?.getDailyTotalsFromRaw.all(date) || []) as Array<{

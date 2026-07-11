@@ -194,14 +194,8 @@ interface ExternalPlanSourceInfo {
   hint: string;
 }
 
-interface MetricIndexRow {
-  createdAtMs: number;
-  value: number;
-  keys: Set<string>;
-}
-
 interface ProviderPlanMetricIndex {
-  byType: Map<string, MetricIndexRow[]>;
+  byStart: Map<number, Map<string, Map<string, number>>>;
 }
 
 export interface ProviderPlanEvaluationContext {
@@ -786,23 +780,23 @@ function matchesProviderMetric(row: Record<string, unknown>, keys: Set<string>):
   return false;
 }
 
-function buildMetricIndex(types: string[], startMs: number): ProviderPlanMetricIndex {
-  const byType = new Map<string, MetricIndexRow[]>();
-  const sinceSql = sqlTimestamp(new Date(startMs));
-  for (const type of types) {
-    const rows = tables.metrics.getByTypeSince(type, sinceSql) as Array<Record<string, unknown>>;
-    byType.set(
-      type,
-      rows
-        .map((row) => ({
-          createdAtMs: createdAtMs(row.created_at),
-          value: metricValue(row.value),
-          keys: metricKeysForRow(row),
-        }))
-        .filter((row) => row.createdAtMs >= startMs && row.keys.size > 0)
-    );
+function buildMetricIndex(types: string[], starts: number[]): ProviderPlanMetricIndex {
+  const byStart = new Map<number, Map<string, Map<string, number>>>();
+  for (const startMs of starts) {
+    byStart.set(startMs, new Map());
   }
-  return { byType };
+  const startsSql = starts.map((startMs) => sqlTimestamp(new Date(startMs)));
+  for (const type of types) {
+    const rows = tables.metrics.getKeyTotalsForWindows(type, startsSql);
+    for (const [index, startMs] of starts.entries()) {
+      const totals = new Map<string, number>();
+      for (const row of rows) {
+        totals.set(row.key, metricValue(row.totals[index]));
+      }
+      byStart.get(startMs)?.set(type, totals);
+    }
+  }
+  return { byStart };
 }
 
 function sumMetricWindow(
@@ -811,17 +805,11 @@ function sumMetricWindow(
   startMs: number,
   metricIndex?: ProviderPlanMetricIndex
 ): number {
-  const indexed = metricIndex?.byType.get(type);
+  const indexed = metricIndex?.byStart.get(startMs)?.get(type);
   if (indexed) {
     let sum = 0;
-    for (const row of indexed) {
-      if (row.createdAtMs < startMs) continue;
-      for (const key of keys) {
-        if (row.keys.has(key)) {
-          sum += row.value;
-          break;
-        }
-      }
+    for (const key of keys) {
+      sum += indexed.get(key) ?? 0;
     }
     return sum;
   }
@@ -1011,18 +999,21 @@ function buildProviderPlanEvaluationContext(
   const fiveHourStart = nowMs - 5 * 60 * 60 * 1000;
   const weeklyStart = nowMs - 7 * 24 * 60 * 60 * 1000;
   const thirtyDayStart = nowMs - 30 * 24 * 60 * 60 * 1000;
-  let earliestStart = Math.min(fiveHourStart, weeklyStart, thirtyDayStart);
+  const metricStarts = new Set([fiveHourStart, weeklyStart, thirtyDayStart]);
   for (const provider of rows) {
     const providerType = providerTypeOf(provider);
     const providerConfig = planConfigFor(cfg, provider.id, providerType);
     const month = monthWindow(now, providerConfig?.billingCycleAnchorDay ?? 1);
-    earliestStart = Math.min(earliestStart, month.startMs);
+    metricStarts.add(month.startMs);
   }
   return {
     cfg,
     providerById,
     firstProviderByType,
-    metricIndex: buildMetricIndex(["token_usage_by_provider", "router_usage"], earliestStart),
+    metricIndex: buildMetricIndex(
+      ["token_usage_by_provider", "router_usage"],
+      Array.from(metricStarts)
+    ),
     now,
     nowMs,
     fiveHourStart,

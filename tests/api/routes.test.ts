@@ -8,7 +8,9 @@ import { fileURLToPath } from "url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const PACKAGE_VERSION = (
-  JSON.parse(readFileSync(join(ROOT_DIR, "package.json"), "utf8")) as { version: string }
+  JSON.parse(readFileSync(join(ROOT_DIR, "package.json"), "utf8")) as {
+    version: string;
+  }
 ).version;
 let BASE_URL = "";
 let serverProc: ReturnType<typeof Bun.spawn> | null = null;
@@ -109,6 +111,14 @@ function insertRawMetric(type: string, key: string, value: number, metadata?: st
       value,
       metadata ?? null
     );
+    db.query(
+      `INSERT INTO metrics_totals (type, key, total, count, metadata) VALUES (?, ?, ?, 1, ?)
+       ON CONFLICT(type, key) DO UPDATE SET
+         total = total + excluded.total,
+         count = count + 1,
+         metadata = COALESCE(excluded.metadata, metadata),
+         updated_at = CURRENT_TIMESTAMP`
+    ).run(type, key, value, metadata ?? null);
   } finally {
     db.close();
   }
@@ -251,7 +261,11 @@ function upsertRawConfig(key: string, value: string): void {
 function insertRawSession(
   sessionId: string,
   agentId: string,
-  messages: Array<{ role: string; content: string; metadata?: string | Record<string, unknown> }>
+  messages: Array<{
+    role: string;
+    content: string;
+    metadata?: string | Record<string, unknown>;
+  }>
 ): void {
   const dbPath = join(testHome, ".cybara", "data", "platform.db");
   const db = new Database(dbPath);
@@ -387,7 +401,9 @@ describe("Setup & Info API", () => {
 
   test("default workspace setting is normalized and reflected in info", async () => {
     const workspaceDir = join(testHome, "workspaces", "primary");
-    const update = await api("PUT", "/api/config", { default_workspace_dir: workspaceDir });
+    const update = await api("PUT", "/api/config", {
+      default_workspace_dir: workspaceDir,
+    });
     expect(update.status).toBe(200);
     expect(update.data.success).toBe(true);
 
@@ -405,7 +421,9 @@ describe("Setup & Info API", () => {
   test("cybara data directory setting records configured path until restart", async () => {
     const activeDir = join(testHome, ".cybara");
     const nextDir = join(testHome, "cybara-data-alt");
-    const update = await api("PUT", "/api/config", { cybara_data_dir: nextDir });
+    const update = await api("PUT", "/api/config", {
+      cybara_data_dir: nextDir,
+    });
     expect(update.status).toBe(200);
     expect(update.data.success).toBe(true);
     expect(update.data.restartRequired).toBe(true);
@@ -426,7 +444,9 @@ describe("Setup & Info API", () => {
     expect(info.data.configuredCybaraDataDir).toBe(nextDir);
     expect(info.data.cybaraDataDirRestartRequired).toBe(true);
 
-    const reset = await api("PUT", "/api/config", { cybara_data_dir: activeDir });
+    const reset = await api("PUT", "/api/config", {
+      cybara_data_dir: activeDir,
+    });
     expect(reset.status).toBe(200);
     expect(reset.data.success).toBe(true);
     expect(reset.data.configured_cybara_data_dir).toBe(activeDir);
@@ -582,7 +602,10 @@ describe("Mobile API", () => {
     const rootApiKey = readFileSync(join(testHome, ".cybara", "api_key"), "utf8").trim();
     expect(created.data.payload.apiKey).not.toBe(rootApiKey);
 
-    const encoded = JSON.parse(created.data.encoded) as { apiKey?: string; deviceId?: string };
+    const encoded = JSON.parse(created.data.encoded) as {
+      apiKey?: string;
+      deviceId?: string;
+    };
     expect(encoded.apiKey).toBe(created.data.payload.apiKey);
     expect(encoded.deviceId).toBe(created.data.device.id);
 
@@ -647,7 +670,9 @@ describe("Wallet API", () => {
     expect(statusBefore.status).toBe(200);
     expect(statusBefore.data.exists).toBe(false);
 
-    const create = await api("POST", "/api/wallet/create", { password: "integration-pass-123" });
+    const create = await api("POST", "/api/wallet/create", {
+      password: "integration-pass-123",
+    });
     expect(create.status).toBe(200);
     expect(create.data.success).toBe(true);
     expect(typeof create.data.mnemonic).toBe("string");
@@ -707,12 +732,16 @@ describe("Wallet API", () => {
     expect(lockedStatus.status).toBe(200);
     expect(lockedStatus.data.unlocked).toBe(false);
 
-    const unlock = await api("POST", "/api/wallet/unlock", { password: "integration-pass-123" });
+    const unlock = await api("POST", "/api/wallet/unlock", {
+      password: "integration-pass-123",
+    });
     expect(unlock.status).toBe(200);
     expect(unlock.data.success).toBe(true);
     expect(unlock.data.address).toBe(create.data.address);
 
-    const deleteRes = await api("DELETE", "/api/wallet", { password: "integration-pass-123" });
+    const deleteRes = await api("DELETE", "/api/wallet", {
+      password: "integration-pass-123",
+    });
     expect(deleteRes.status).toBe(200);
     expect(deleteRes.data.success).toBe(true);
 
@@ -869,7 +898,10 @@ describe("Agents API", () => {
     const invalid = await api("PUT", `/api/agents/${agentId}/reasoning`, {
       reasoning_effort: "extreme",
     });
-    expect(invalid.data).toEqual({ success: false, error: "Invalid reasoning effort" });
+    expect(invalid.data).toEqual({
+      success: false,
+      error: "Invalid reasoning effort",
+    });
 
     await api("DELETE", `/api/agents/${agentId}`);
   });
@@ -1444,7 +1476,9 @@ describe("Skills API", () => {
   });
 
   test("POST /api/skills/:name/execute should run builtin calc skill", async () => {
-    const { status, data } = await api("POST", "/api/skills/calc/execute", { expression: "2+2*5" });
+    const { status, data } = await api("POST", "/api/skills/calc/execute", {
+      expression: "2+2*5",
+    });
     expect(status).toBe(200);
     expect(data.expression).toBe("2+2*5");
     expect(data.result).toBe(12);
@@ -1576,12 +1610,16 @@ describe("MCP Registry API", () => {
   });
 
   test("install endpoint should validate missing id/package", async () => {
-    const untrusted = await api("POST", "/api/mcp/registry/install", { id: "mcp-filesystem" });
+    const untrusted = await api("POST", "/api/mcp/registry/install", {
+      id: "mcp-filesystem",
+    });
     expect(untrusted.status).toBe(200);
     expect(untrusted.data.success).toBe(false);
     expect(String(untrusted.data.error)).toContain("trustedAction=true");
 
-    const res = await api("POST", "/api/mcp/registry/install", { trustedAction: true });
+    const res = await api("POST", "/api/mcp/registry/install", {
+      trustedAction: true,
+    });
     expect(res.status).toBe(200);
     expect(res.data.success).toBe(false);
     expect(typeof res.data.error).toBe("string");
@@ -1709,7 +1747,10 @@ describe("Tools API", () => {
 
       const parentLinkWrite = await api("POST", "/api/tools/execute", {
         name: "write",
-        args: { path: join(outsideDirLink, "new-file.txt"), content: "escape through parent" },
+        args: {
+          path: join(outsideDirLink, "new-file.txt"),
+          content: "escape through parent",
+        },
         context: { agentId: "api-tools-symlink", workspaceDir },
       });
       expect(parentLinkWrite.status).toBe(400);
@@ -1785,7 +1826,10 @@ describe("Tools API", () => {
     const overrideIgnored = await api("POST", "/api/tools/execute", {
       name: "exec",
       args: { command: "echo approval-override" },
-      context: { agentId: "dangerous-approval-test", allowDangerousTools: true },
+      context: {
+        agentId: "dangerous-approval-test",
+        allowDangerousTools: true,
+      },
     });
     expect(overrideIgnored.status).toBe(400);
     expect(String(overrideIgnored.data.error || "")).toContain("requires approval");
@@ -1851,7 +1895,9 @@ describe("LSP API", () => {
     expect(missingInstall.data.success).toBe(false);
     expect(typeof missingInstall.data.error).toBe("string");
 
-    const unknownInstall = await api("POST", "/api/lsp/install", { language: "unknown_lang_123" });
+    const unknownInstall = await api("POST", "/api/lsp/install", {
+      language: "unknown_lang_123",
+    });
     expect(unknownInstall.status).toBe(200);
     expect(unknownInstall.data.success).toBe(false);
     expect(typeof unknownInstall.data.error).toBe("string");
@@ -2211,7 +2257,13 @@ describe("Session API", () => {
                 name: "todo",
                 status: "completed",
                 result: {
-                  items: [{ content: "old item", status: "completed", priority: "low" }],
+                  items: [
+                    {
+                      content: "old item",
+                      status: "completed",
+                      priority: "low",
+                    },
+                  ],
                 },
               },
             ],
@@ -2229,9 +2281,21 @@ describe("Session API", () => {
                 status: "completed",
                 result: {
                   items: [
-                    { content: "review auth", status: "completed", priority: "high" },
-                    { content: "add fuzz test", status: "in_progress", priority: "medium" },
-                    { content: "run CI", status: "pending", priority: "medium" },
+                    {
+                      content: "review auth",
+                      status: "completed",
+                      priority: "high",
+                    },
+                    {
+                      content: "add fuzz test",
+                      status: "in_progress",
+                      priority: "medium",
+                    },
+                    {
+                      content: "run CI",
+                      status: "pending",
+                      priority: "medium",
+                    },
                   ],
                   note: "ready",
                 },
@@ -2492,14 +2556,24 @@ describe("Session API", () => {
 
     const createA = await api("POST", "/api/tools/execute", {
       name: "artifacts",
-      args: { action: "create", kind: "notes", name: "notes", content: "# A\n" },
+      args: {
+        action: "create",
+        kind: "notes",
+        name: "notes",
+        content: "# A\n",
+      },
       context: { sessionId: sessionA },
     });
     expect(createA.status).toBe(200);
 
     const createB = await api("POST", "/api/tools/execute", {
       name: "artifacts",
-      args: { action: "create", kind: "notes", name: "notes", content: "# B\n" },
+      args: {
+        action: "create",
+        kind: "notes",
+        name: "notes",
+        content: "# B\n",
+      },
       context: { sessionId: sessionB },
     });
     expect(createB.status).toBe(200);
@@ -2594,7 +2668,10 @@ describe("Session API", () => {
     const allArtifacts = await api("GET", "/api/artifacts");
     expect(allArtifacts.status).toBe(200);
     expect(Array.isArray(allArtifacts.data.artifacts)).toBe(true);
-    const summaries = allArtifacts.data.artifacts as Array<{ sessionId: string; fileName: string }>;
+    const summaries = allArtifacts.data.artifacts as Array<{
+      sessionId: string;
+      fileName: string;
+    }>;
     expect(
       summaries.some(
         (summary) => summary.sessionId === sessionA && summary.fileName === "global-a.md.resolved"
@@ -2867,6 +2944,7 @@ describe("Metrics API", () => {
     const uniqueTokenValue = 987_654_321;
     const uniqueFileOp = `file_op_${suffix}`;
     const uniqueTool = `tool_${suffix}`;
+    const apiOnlyKey = `api_only_${suffix}`;
 
     insertRawMetric("token_usage_by_provider", malformedProvider, 11, "{bad-json");
     insertRawMetric("api_call", malformedProvider, 5, "{still-bad");
@@ -2881,6 +2959,7 @@ describe("Metrics API", () => {
     insertRawMetric("token_usage", `token_${suffix}`, uniqueTokenValue, "{bad-json");
     insertRawMetric("file_operation", uniqueFileOp, 13, "{bad-json");
     insertRawMetric("tool_call", uniqueTool, 17, "{bad-json");
+    insertRawMetric("api_call", apiOnlyKey, 19, JSON.stringify({ url: "https://example.com" }));
 
     const providersRes = await api("GET", "/api/metrics/providers");
     expect(providersRes.status).toBe(200);
@@ -2903,6 +2982,7 @@ describe("Metrics API", () => {
       tokens: 22,
       url: `https://metrics.${suffix}.example/v1`,
     });
+    expect(providerMap.has(apiOnlyKey)).toBe(false);
 
     const tokensRes = await api("GET", "/api/metrics/tokens");
     expect(tokensRes.status).toBe(200);
@@ -2963,7 +3043,14 @@ describe("Metrics API", () => {
 
     const providerRow = (insightsRes.data.providerEfficiency || []).find(
       (row: { provider: string }) => row.provider === provider
-    ) as { provider: string; tokens: number; calls: number; tokensPerCall: number } | undefined;
+    ) as
+      | {
+          provider: string;
+          tokens: number;
+          calls: number;
+          tokensPerCall: number;
+        }
+      | undefined;
     expect(providerRow).toBeDefined();
     expect(providerRow?.tokens).toBeGreaterThanOrEqual(tokenTotal);
     expect(providerRow?.calls).toBeGreaterThan(0);
@@ -3225,7 +3312,9 @@ describe("Browser API", () => {
 
 describe("Open URL API", () => {
   test("POST /api/open-url should reject invalid URLs as validation errors", async () => {
-    const { status, data } = await api("POST", "/api/open-url", { url: "not-a-valid-url" });
+    const { status, data } = await api("POST", "/api/open-url", {
+      url: "not-a-valid-url",
+    });
     expect(status).toBe(400);
     expect(data.code).toBe("VALIDATION_ERROR");
   });
@@ -3237,13 +3326,17 @@ describe("Open URL API", () => {
   });
 
   test("POST /api/open-url should reject non-http protocols", async () => {
-    const { status, data } = await api("POST", "/api/open-url", { url: "javascript:alert(1)" });
+    const { status, data } = await api("POST", "/api/open-url", {
+      url: "javascript:alert(1)",
+    });
     expect(status).toBe(400);
     expect(data.code).toBe("VALIDATION_ERROR");
   });
 
   test("POST /api/open-url should reject localhost/private targets", async () => {
-    const { status, data } = await api("POST", "/api/open-url", { url: "http://localhost:3000" });
+    const { status, data } = await api("POST", "/api/open-url", {
+      url: "http://localhost:3000",
+    });
     expect(status).toBe(400);
     expect(data.code).toBe("VALIDATION_ERROR");
   });
@@ -3427,7 +3520,9 @@ describe("Memory API", () => {
       expect(editRes.status).toBe(200);
       expect(editRes.data.success).toBe(true);
 
-      const deleteEntryRes = await api("DELETE", `/api/memory/${file}`, { index: 0 });
+      const deleteEntryRes = await api("DELETE", `/api/memory/${file}`, {
+        index: 0,
+      });
       expect(deleteEntryRes.status).toBe(200);
       expect(deleteEntryRes.data.success).toBe(true);
 
@@ -3669,7 +3764,10 @@ describe("IDE & Git API", () => {
       branch: "feature/ui",
     });
     expect(checkoutRes.status).toBe(200);
-    expect(checkoutRes.data).toMatchObject({ success: true, branch: "feature/ui" });
+    expect(checkoutRes.data).toMatchObject({
+      success: true,
+      branch: "feature/ui",
+    });
 
     const createRes = await api("POST", "/api/git/branch", {
       path: repoDir,
@@ -3677,7 +3775,10 @@ describe("IDE & Git API", () => {
       create: true,
     });
     expect(createRes.status).toBe(200);
-    expect(createRes.data).toMatchObject({ success: true, branch: "feature/new-local" });
+    expect(createRes.data).toMatchObject({
+      success: true,
+      branch: "feature/new-local",
+    });
 
     const invalidRes = await api("POST", "/api/git/branch", {
       path: repoDir,

@@ -3,7 +3,8 @@
  * Pure functions (parsing, metrics, storage, LSP normalization, session
  * sanitization) used across multiple route domains.
  */
-import { existsSync, statSync, readdirSync } from "fs";
+import { existsSync, statSync } from "fs";
+import { readdir, stat } from "fs/promises";
 import { join } from "path";
 import type { MetricsEntry } from "../queries";
 import { cybaraDir, dataDir, memoryDir, logsDir, secureDir, userSkillsDir } from "../../core/paths";
@@ -237,7 +238,7 @@ export function safeFileSizeBytes(path: string): number {
   }
 }
 
-export function safeDirSizeBytes(path: string): number {
+export async function safeDirSizeBytes(path: string): Promise<number> {
   try {
     if (!existsSync(path)) return 0;
     const stack = [path];
@@ -247,7 +248,7 @@ export function safeDirSizeBytes(path: string): number {
       if (!current) continue;
       let entries;
       try {
-        entries = readdirSync(current, { withFileTypes: true });
+        entries = await readdir(current, { withFileTypes: true });
       } catch {
         continue;
       }
@@ -259,7 +260,7 @@ export function safeDirSizeBytes(path: string): number {
             continue;
           }
           if (entry.isFile()) {
-            total += statSync(fullPath).size;
+            total += (await stat(fullPath)).size;
           }
         } catch {
           continue;
@@ -279,67 +280,66 @@ export type StorageTopLevelEntry = {
   type: "directory" | "file";
 };
 
-export function collectTopLevelStorageEntries(rootDir: string): StorageTopLevelEntry[] {
+export async function collectTopLevelStorageEntries(
+  rootDir: string
+): Promise<StorageTopLevelEntry[]> {
   try {
     if (!existsSync(rootDir)) return [];
-    const entries = readdirSync(rootDir, { withFileTypes: true });
-    const topLevelEntries: StorageTopLevelEntry[] = [];
-    for (const entry of entries) {
-      const fullPath = join(rootDir, entry.name);
-      if (entry.isDirectory()) {
-        topLevelEntries.push({
-          name: entry.name,
-          path: fullPath,
-          bytes: safeDirSizeBytes(fullPath),
-          type: "directory",
-        });
-        continue;
-      }
-      if (entry.isFile()) {
-        topLevelEntries.push({
-          name: entry.name,
-          path: fullPath,
-          bytes: safeFileSizeBytes(fullPath),
-          type: "file",
-        });
-      }
-    }
-    return topLevelEntries.sort((a, b) => b.bytes - a.bytes);
+    const entries = await readdir(rootDir, { withFileTypes: true });
+    const topLevelEntries = await Promise.all(
+      entries.map(async (entry): Promise<StorageTopLevelEntry | null> => {
+        const fullPath = join(rootDir, entry.name);
+        if (entry.isDirectory()) {
+          return {
+            name: entry.name,
+            path: fullPath,
+            bytes: await safeDirSizeBytes(fullPath),
+            type: "directory",
+          };
+        }
+        if (entry.isFile()) {
+          return {
+            name: entry.name,
+            path: fullPath,
+            bytes: safeFileSizeBytes(fullPath),
+            type: "file",
+          };
+        }
+        return null;
+      })
+    );
+    return topLevelEntries
+      .filter((entry): entry is StorageTopLevelEntry => entry !== null)
+      .sort((a, b) => b.bytes - a.bytes);
   } catch {
     return [];
   }
 }
 
-// The storage walk stats every file under ~/.cybara (browser profiles, caches)
-// synchronously, which took seconds and blocked the event loop for every other
-// request. Disk usage changes slowly: serve the cached snapshot and refresh it
-// off the request path when it goes stale (only the very first call computes
-// inline).
 const STORAGE_METRICS_TTL_MS = 5 * 60_000;
-let storageMetricsCache: { at: number; value: ReturnType<typeof computeStorageMetrics> } | null =
-  null;
-let storageMetricsRefreshing = false;
+type StorageMetrics = Awaited<ReturnType<typeof computeStorageMetrics>>;
+let storageMetricsCache: { at: number; value: StorageMetrics } | null = null;
+let storageMetricsInFlight: Promise<StorageMetrics> | null = null;
 
-export function buildStorageMetrics() {
+export function buildStorageMetrics(): Promise<StorageMetrics> {
   const now = Date.now();
-  if (!storageMetricsCache) {
-    storageMetricsCache = { at: now, value: computeStorageMetrics() };
-    return storageMetricsCache.value;
+  if (storageMetricsCache && now - storageMetricsCache.at < STORAGE_METRICS_TTL_MS) {
+    return Promise.resolve(storageMetricsCache.value);
   }
-  if (now - storageMetricsCache.at >= STORAGE_METRICS_TTL_MS && !storageMetricsRefreshing) {
-    storageMetricsRefreshing = true;
-    setTimeout(() => {
-      try {
-        storageMetricsCache = { at: Date.now(), value: computeStorageMetrics() };
-      } finally {
-        storageMetricsRefreshing = false;
-      }
-    }, 0);
-  }
-  return storageMetricsCache.value;
+  if (storageMetricsInFlight) return storageMetricsInFlight;
+  const task = computeStorageMetrics()
+    .then((value) => {
+      storageMetricsCache = { at: Date.now(), value };
+      return value;
+    })
+    .finally(() => {
+      if (storageMetricsInFlight === task) storageMetricsInFlight = null;
+    });
+  storageMetricsInFlight = task;
+  return task;
 }
 
-function computeStorageMetrics() {
+async function computeStorageMetrics() {
   const dbMainPath = join(dataDir, "platform.db");
   const dbWalPath = join(dataDir, "platform.db-wal");
   const dbShmPath = join(dataDir, "platform.db-shm");
@@ -347,7 +347,7 @@ function computeStorageMetrics() {
   const sessionsDir = join(cybaraDir, "sessions");
   const mediaDir = join(cybaraDir, "media");
   const channelsDir = join(cybaraDir, "channels");
-  const topLevelEntries = collectTopLevelStorageEntries(cybaraDir);
+  const topLevelEntries = await collectTopLevelStorageEntries(cybaraDir);
   const topLevelBytesByName = new Map(topLevelEntries.map((entry) => [entry.name, entry.bytes]));
   const topLevelTotalBytes = topLevelEntries.reduce((sum, entry) => sum + entry.bytes, 0);
 
@@ -355,15 +355,18 @@ function computeStorageMetrics() {
   const databaseWalBytes = safeFileSizeBytes(dbWalPath);
   const databaseShmBytes = safeFileSizeBytes(dbShmPath);
   const databaseBytes = databaseMainBytes + databaseWalBytes + databaseShmBytes;
-  const dataBytes = topLevelBytesByName.get("data") ?? safeDirSizeBytes(dataDir);
-  const artifactsBytes = topLevelBytesByName.get("artifacts") ?? safeDirSizeBytes(artifactsDir);
-  const logsBytes = topLevelBytesByName.get("logs") ?? safeDirSizeBytes(logsDir);
-  const memoryBytes = topLevelBytesByName.get("memory") ?? safeDirSizeBytes(memoryDir);
-  const secureBytes = topLevelBytesByName.get("secure") ?? safeDirSizeBytes(secureDir);
-  const skillsBytes = topLevelBytesByName.get("skills") ?? safeDirSizeBytes(userSkillsDir);
-  const sessionsBytes = topLevelBytesByName.get("sessions") ?? safeDirSizeBytes(sessionsDir);
-  const mediaBytes = topLevelBytesByName.get("media") ?? safeDirSizeBytes(mediaDir);
-  const channelsBytes = topLevelBytesByName.get("channels") ?? safeDirSizeBytes(channelsDir);
+  const dataBytes = topLevelBytesByName.get("data") ?? (await safeDirSizeBytes(dataDir));
+  const artifactsBytes =
+    topLevelBytesByName.get("artifacts") ?? (await safeDirSizeBytes(artifactsDir));
+  const logsBytes = topLevelBytesByName.get("logs") ?? (await safeDirSizeBytes(logsDir));
+  const memoryBytes = topLevelBytesByName.get("memory") ?? (await safeDirSizeBytes(memoryDir));
+  const secureBytes = topLevelBytesByName.get("secure") ?? (await safeDirSizeBytes(secureDir));
+  const skillsBytes = topLevelBytesByName.get("skills") ?? (await safeDirSizeBytes(userSkillsDir));
+  const sessionsBytes =
+    topLevelBytesByName.get("sessions") ?? (await safeDirSizeBytes(sessionsDir));
+  const mediaBytes = topLevelBytesByName.get("media") ?? (await safeDirSizeBytes(mediaDir));
+  const channelsBytes =
+    topLevelBytesByName.get("channels") ?? (await safeDirSizeBytes(channelsDir));
 
   const categorizedBytes =
     dataBytes +

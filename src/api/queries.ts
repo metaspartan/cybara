@@ -514,12 +514,11 @@ export function getTokensByModel(): TokenRow[] {
   return db
     .prepare(
       `
-    SELECT 
+    SELECT
       key as model,
-      SUM(value) as totalTokens
-    FROM metrics 
+      total as totalTokens
+    FROM metrics_totals
     WHERE type = 'token_usage_by_model'
-    GROUP BY key
   `
     )
     .all() as TokenRow[];
@@ -557,11 +556,16 @@ function getModelTokenCallMetrics(): TokenCallModelRow[] {
         ELSE NULL
       END) as minTps,
       COUNT(*) as callCount
-    FROM metrics
-    WHERE type = 'token_usage'
-      AND key = 'all'
-      AND metadata IS NOT NULL
-      AND json_extract(metadata, '$.model') IS NOT NULL
+    FROM (
+      SELECT value, metadata
+      FROM metrics
+      WHERE type = 'token_usage'
+        AND key = 'all'
+        AND metadata IS NOT NULL
+      ORDER BY created_at DESC
+      LIMIT 6000
+    ) recent_calls
+    WHERE json_extract(metadata, '$.model') IS NOT NULL
     GROUP BY provider, model
     ORDER BY
       CASE WHEN durationTotalMs > 0 THEN outputTokens / durationTotalMs ELSE 0 END DESC

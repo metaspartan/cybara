@@ -164,8 +164,14 @@ function buildMetricsFiles() {
 
   return {
     mostRead: topRead.map((entry) => ({ path: entry.key, count: entry.total })),
-    mostWritten: topWritten.map((entry) => ({ path: entry.key, count: entry.total })),
-    mostEdited: topEdited.map((entry) => ({ path: entry.key, count: entry.total })),
+    mostWritten: topWritten.map((entry) => ({
+      path: entry.key,
+      count: entry.total,
+    })),
+    mostEdited: topEdited.map((entry) => ({
+      path: entry.key,
+      count: entry.total,
+    })),
     recentOperations: recentOperations.slice(0, 50).map((operation) => ({
       timestamp: operation.created_at,
       type: operation.key,
@@ -182,8 +188,14 @@ function buildMetricsTools() {
   const recentCalls = metrics.getByTypeRecent("tool_call", 50) as MetricsEntry[];
 
   return {
-    mostUsed: topTools.map((entry) => ({ tool: entry.key, calls: entry.total })),
-    mostErrors: toolErrors.map((entry) => ({ tool: entry.key, errors: entry.total })),
+    mostUsed: topTools.map((entry) => ({
+      tool: entry.key,
+      calls: entry.total,
+    })),
+    mostErrors: toolErrors.map((entry) => ({
+      tool: entry.key,
+      errors: entry.total,
+    })),
     recentCalls: recentCalls.slice(0, 50).map((call) => ({
       timestamp: call.created_at,
       tool: call.key,
@@ -200,8 +212,15 @@ function metadataUrl(metadata: string | null): string {
 
 function buildMetricsProviders() {
   const providerMap = new Map<string, ProviderMetricSummary>();
+  const topProviderKeys = new Set(
+    tables.metrics
+      .getTopKeys("token_usage_by_provider")
+      .map((row) => row.key)
+      .filter((key) => key !== "all" && key !== "input" && key !== "output")
+  );
 
   for (const row of tables.metrics.getKeyTotalsWithLatestMetadata("token_usage_by_provider")) {
+    if (!topProviderKeys.has(row.key)) continue;
     if (row.key === "all" || row.key === "input" || row.key === "output") continue;
     providerMap.set(row.key, {
       provider: row.key,
@@ -215,17 +234,9 @@ function buildMetricsProviders() {
     if (row.key === "all" || row.key === "success" || row.key === "error") continue;
     const url = metadataUrl(row.metadata);
     const existing = providerMap.get(row.key);
-    if (!existing) {
-      providerMap.set(row.key, {
-        provider: row.key,
-        hits: row.total || 0,
-        tokens: 0,
-        url,
-      });
-    } else {
-      existing.hits += row.total || 0;
-      if (url !== "unknown") existing.url = url;
-    }
+    if (!existing) continue;
+    existing.hits += row.total || 0;
+    if (url !== "unknown") existing.url = url;
   }
 
   return {
@@ -331,7 +342,7 @@ function buildMetricsTimeSeries() {
   return { days: dateKeys.map((date) => daysByDate.get(date) || { date }) };
 }
 
-function buildMetricsInsights() {
+function buildMetricsInsights(modelMetrics = getModelMetrics()) {
   const metrics = tables.metrics;
   const now = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
@@ -358,9 +369,16 @@ function buildMetricsInsights() {
   const topModelSharePct =
     topModel && totalTokens > 0 ? Number(((topModel.total / totalTokens) * 100).toFixed(2)) : 0;
   const providerMap = new Map<string, { provider: string; tokens: number; calls: number }>();
+  const topProviderKeys = new Set(
+    metrics
+      .getTopKeys("token_usage_by_provider")
+      .map((row) => row.key)
+      .filter((key) => key !== "all" && key !== "input" && key !== "output")
+  );
 
   for (const row of metrics.getKeyAggregates("token_usage_by_provider")) {
     const provider = row.key;
+    if (!topProviderKeys.has(provider)) continue;
     if (!provider || provider === "all" || provider === "input" || provider === "output") continue;
     providerMap.set(provider, {
       provider,
@@ -372,9 +390,9 @@ function buildMetricsInsights() {
   for (const row of metrics.getKeyAggregates("api_call")) {
     const provider = row.key;
     if (!provider || provider === "all" || provider === "success" || provider === "error") continue;
-    const current = providerMap.get(provider) || { provider, tokens: 0, calls: 0 };
+    const current = providerMap.get(provider);
+    if (!current) continue;
     current.calls += row.total || 0;
-    providerMap.set(provider, current);
   }
 
   const providerEfficiency = Array.from(providerMap.values())
@@ -414,7 +432,7 @@ function buildMetricsInsights() {
     }
   >();
 
-  for (const modelMetric of getModelMetrics()) {
+  for (const modelMetric of modelMetrics) {
     modelInsightMap.set(modelMetric.model, { ...modelMetric });
   }
 
@@ -490,7 +508,12 @@ function buildMetricsInsights() {
 
 function buildRatioBands() {
   return [
-    { band: "very_input_heavy", min: 4, max: Number.POSITIVE_INFINITY, calls: 0 },
+    {
+      band: "very_input_heavy",
+      min: 4,
+      max: Number.POSITIVE_INFINITY,
+      calls: 0,
+    },
     { band: "input_heavy", min: 2, max: 4, calls: 0 },
     { band: "balanced", min: 0.75, max: 2, calls: 0 },
     { band: "output_heavy", min: 0.35, max: 0.75, calls: 0 },
@@ -840,6 +863,7 @@ function buildMetricsTokenAnalysis() {
 
 async function buildMetricsSnapshot() {
   const availability = emptyMetricsAvailability();
+  const modelMetricsTask = metricsSnapshotValue(availability, "models", [], getModelMetrics);
   const [
     overview,
     tokens,
@@ -859,8 +883,10 @@ async function buildMetricsSnapshot() {
     metricsSnapshotValue(availability, "tools", null, buildMetricsTools),
     metricsSnapshotValue(availability, "providers", null, buildMetricsProviders),
     metricsSnapshotValue(availability, "timeSeries", null, buildMetricsTimeSeries),
-    metricsSnapshotValue(availability, "models", null, () => ({ models: getModelMetrics() })),
-    metricsSnapshotValue(availability, "insights", null, buildMetricsInsights),
+    modelMetricsTask.then((models) => ({ models })),
+    metricsSnapshotValue(availability, "insights", null, async () =>
+      buildMetricsInsights(await modelMetricsTask)
+    ),
     metricsSnapshotValue(availability, "tokenAnalysis", null, buildMetricsTokenAnalysis),
     metricsSnapshotValue(availability, "storage", null, buildStorageMetrics),
     metricsSnapshotValue(availability, "providerPlans", null, () =>
@@ -884,8 +910,36 @@ async function buildMetricsSnapshot() {
   };
 }
 
+type MetricsSnapshot = Awaited<ReturnType<typeof buildMetricsSnapshot>>;
+
+const METRICS_SNAPSHOT_CACHE_MS = 5_000;
+let metricsSnapshotCache: { value: MetricsSnapshot; expiresAt: number } | null = null;
+let metricsSnapshotInFlight: Promise<MetricsSnapshot> | null = null;
+
+function getMetricsSnapshot(): Promise<MetricsSnapshot> {
+  const now = Date.now();
+  if (metricsSnapshotCache && metricsSnapshotCache.expiresAt > now) {
+    return Promise.resolve(metricsSnapshotCache.value);
+  }
+  if (metricsSnapshotInFlight) return metricsSnapshotInFlight;
+
+  const task = buildMetricsSnapshot()
+    .then((value) => {
+      metricsSnapshotCache = {
+        value,
+        expiresAt: Date.now() + METRICS_SNAPSHOT_CACHE_MS,
+      };
+      return value;
+    })
+    .finally(() => {
+      if (metricsSnapshotInFlight === task) metricsSnapshotInFlight = null;
+    });
+  metricsSnapshotInFlight = task;
+  return task;
+}
+
 export const metricsRoutes: Record<string, RouteHandler> = {
-  "GET /api/metrics/snapshot": () => buildMetricsSnapshot(),
+  "GET /api/metrics/snapshot": () => getMetricsSnapshot(),
   "GET /api/metrics/overview": () => buildMetricsOverview(),
   "GET /api/metrics/storage": () => buildStorageMetrics(),
   "GET /api/metrics/tokens": () => buildMetricsTokens(),

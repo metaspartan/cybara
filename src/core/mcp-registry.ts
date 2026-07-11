@@ -270,6 +270,9 @@ class MCPRegistryManager {
       if (!registry || registry === "official") {
         external = await this.searchOfficial(q).catch(() => []);
       }
+      if ((!registry || registry === "smithery") && process.env.SMITHERY_API_KEY) {
+        external = [...external, ...(await this.searchSmithery(q).catch(() => []))];
+      }
       if (registry === "npm" || (!registry && external.length === 0)) {
         external = [...external, ...(await this.searchNpm(q))];
       }
@@ -341,6 +344,51 @@ class MCPRegistryManager {
         },
       ];
     });
+  }
+
+  private async searchSmithery(query: string): Promise<MCPRegistryServer[]> {
+    const apiKey = process.env.SMITHERY_API_KEY?.trim();
+    if (!apiKey) return [];
+    const safeQualifiedName = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._/-]*$/i;
+    try {
+      const url = new URL("https://api.smithery.ai/servers");
+      url.searchParams.set("q", query);
+      url.searchParams.set("pageSize", "20");
+      const res = await fetch(url, {
+        headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) return [];
+      const data = (await res.json()) as {
+        servers?: Array<{
+          qualifiedName?: string;
+          displayName?: string;
+          description?: string;
+          homepage?: string;
+          useCount?: number;
+        }>;
+      };
+      return (data.servers ?? []).flatMap((server) => {
+        const qualifiedName = server.qualifiedName?.trim();
+        if (!qualifiedName || !safeQualifiedName.test(qualifiedName)) return [];
+        return [
+          {
+            id: `smithery-${qualifiedName}`,
+            name: server.displayName || qualifiedName,
+            description: server.description || "",
+            registry: "smithery" as const,
+            package: qualifiedName,
+            command: "bunx",
+            args: `--bun @smithery/cli run ${qualifiedName}`,
+            homepage: server.homepage,
+            stars: server.useCount,
+            installType: "smithery" as const,
+          },
+        ];
+      });
+    } catch {
+      return [];
+    }
   }
 
   private async searchNpm(query: string): Promise<MCPRegistryServer[]> {
