@@ -431,7 +431,15 @@ export const DOWNLOAD_GROUPS: readonly DownloadGroup[] = [
         command: "brew install --cask metaspartan/cybara/cybara",
       },
       {
-        name: "Docker",
+        name: "Docker Hub",
+        platform: "amd64 & arm64",
+        format: "self-hosted gateway",
+        icon: "docker",
+        href: "https://hub.docker.com/r/carsenk/cybara",
+        command: "docker run -d -p 4269:4269 -v cybara:/data carsenk/cybara:latest",
+      },
+      {
+        name: "GitHub Container Registry",
         platform: "GHCR · amd64 & arm64",
         format: "self-hosted gateway",
         icon: "docker",
