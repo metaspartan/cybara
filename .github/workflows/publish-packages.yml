@@ -92,10 +92,12 @@ jobs:
     runs-on: ${{ matrix.runner }}
     env:
       HAS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
-      CYBARA_VERSION: ${{ needs.resolve.outputs.version }}
     steps:
       - if: env.HAS == 'true'
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - name: Set snap version
+        if: env.HAS == 'true'
+        run: sed -i "s/__VERSION__/${{ needs.resolve.outputs.version }}/g" snap/snapcraft.yaml
       - name: Build snap
         id: build
         if: env.HAS == 'true'

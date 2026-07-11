@@ -1,6 +1,6 @@
 name: cybara
 base: core24
-adopt-info: cybara
+version: "__VERSION__"
 summary: Self-hosted, open-source AI agent platform
 description: |
   Cybara is a self-hosted, open-source AI agent platform. It pairs a Bun agent
@@ -36,13 +36,7 @@ parts:
         arm64) asset="linux-arm64" ;;
         *) echo "Unsupported arch: $CRAFT_ARCH_BUILD_FOR" >&2; exit 1 ;;
       esac
-      ver="${CYBARA_VERSION:-}"
-      if [ -z "$ver" ]; then
-        ver="$(curl -fsSL https://api.github.com/repos/metaspartan/cybara/releases/latest \
-          | grep -m1 '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')"
-      fi
-      craftctl set version="$ver"
       mkdir -p "$CRAFT_PART_INSTALL/bin"
-      curl -fL "https://github.com/metaspartan/cybara/releases/download/v${ver}/cybara-v${ver}-${asset}-cli" \
+      curl -fL "https://github.com/metaspartan/cybara/releases/download/v__VERSION__/cybara-v__VERSION__-${asset}-cli" \
         -o "$CRAFT_PART_INSTALL/bin/cybara"
       chmod +x "$CRAFT_PART_INSTALL/bin/cybara"
