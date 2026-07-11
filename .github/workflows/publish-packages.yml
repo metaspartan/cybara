@@ -193,6 +193,7 @@ jobs:
     env:
       VER: ${{ needs.resolve.outputs.version }}
       IMAGE: ghcr.io/${{ github.repository }}
+      HAS_DOCKERHUB: ${{ secrets.DOCKERHUB_TOKEN != '' && vars.DOCKERHUB_USERNAME != '' }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
@@ -202,17 +203,36 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Lowercase image name
-        id: img
-        run: echo "name=$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+      - name: Log in to Docker Hub
+        if: env.HAS_DOCKERHUB == 'true'
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Compute tags
+        id: tags
+        run: |
+          set -euo pipefail
+          ghcr="$(echo "$IMAGE" | tr '[:upper:]' '[:lower:]')"
+          {
+            echo "list<<EOF"
+            echo "${ghcr}:${VER}"
+            echo "${ghcr}:latest"
+            if [ "$HAS_DOCKERHUB" = "true" ]; then
+              dh="$(echo "${{ vars.DOCKERHUB_USERNAME }}/cybara" | tr '[:upper:]' '[:lower:]')"
+              echo "${dh}:${VER}"
+              echo "${dh}:latest"
+            fi
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: packaging/docker
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
+          sbom: false
           build-args: |
             VERSION=${{ env.VER }}
             REPO=${{ github.repository }}
-          tags: |
-            ${{ steps.img.outputs.name }}:${{ env.VER }}
-            ${{ steps.img.outputs.name }}:latest
+          tags: ${{ steps.tags.outputs.list }}
