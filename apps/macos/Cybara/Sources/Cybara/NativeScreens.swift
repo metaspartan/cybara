@@ -1448,6 +1448,13 @@ struct ChatScreen: View {
         subagents
     }
 
+    private var agentUsingBrowser: Bool {
+        nativeAgentUsingBrowser(
+            liveActivities,
+            sessionActive: selectedSessionID.map(activeSessionIDs.contains) ?? false
+        )
+    }
+
     private var hasEnvironmentSignal: Bool {
         activeFileChanges.files.isEmpty == false ||
             activeWorkspaceDir != nil ||
@@ -2385,15 +2392,30 @@ struct ChatScreen: View {
                 }
             }
 
-            if showWorkspacePanel {
+            if showWorkspacePanel || agentUsingBrowser {
                 NativeEnvironmentSection(title: "Preview") {
-                    Button {
-                        showEnvironmentPopover = false
-                    } label: {
-                        Label(activeWorkspaceTab.label, systemImage: activeWorkspaceTab.systemImage)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 8) {
+                        if agentUsingBrowser {
+                            Button {
+                                activeWorkspaceTab = .browser
+                                showWorkspacePanel = true
+                                showEnvironmentPopover = false
+                            } label: {
+                                Label("Agent is browsing", systemImage: "globe")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        if showWorkspacePanel && (!agentUsingBrowser || activeWorkspaceTab != .browser) {
+                            Button {
+                                showEnvironmentPopover = false
+                            } label: {
+                                Label(activeWorkspaceTab.label, systemImage: activeWorkspaceTab.systemImage)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .buttonStyle(.plain)
                 }
             }
 

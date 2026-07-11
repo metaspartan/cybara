@@ -4,6 +4,7 @@ import {
   liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
   mergeLiveActivity,
+  mobileAgentUsingBrowser,
   mobilePreSteerProcessActivities,
   prunePersistedMobileLiveAssistant,
   readCachedMobileLiveAssistant,
@@ -12,6 +13,38 @@ import {
 } from "../../apps/mobile/src/screens/dashboardLiveChat";
 
 describe("mobile live chat cache", () => {
+  test("reports browser use only for active in-flight browser activities", () => {
+    const sessionId = `mobile-browser-${Date.now()}`;
+    const live = {
+      ...liveAssistantMessage(sessionId, null, 1783015200000),
+      processActivities: [
+        {
+          id: "browser-1",
+          phase: "start" as const,
+          text: "Opening browser",
+          timestamp: 1783015200100,
+          toolName: "browser",
+          toolCallId: "browser-1",
+        },
+      ],
+    };
+
+    expect(mobileAgentUsingBrowser(live, true)).toBe(true);
+    expect(mobileAgentUsingBrowser(live, false)).toBe(false);
+    expect(
+      mobileAgentUsingBrowser(
+        {
+          ...live,
+          processActivities: live.processActivities.map((activity) => ({
+            ...activity,
+            phase: "result" as const,
+          })),
+        },
+        true
+      )
+    ).toBe(false);
+  });
+
   test("notifies mounted chat screens when background live state changes", () => {
     const sessionId = `mobile-live-subscribe-${Date.now()}`;
     const updates: Array<string | null> = [];

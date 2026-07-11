@@ -7,6 +7,7 @@ import {
   Folder,
   Gauge,
   GitBranch,
+  Globe2,
   MessageSquareText,
   Paperclip,
   Pencil,
@@ -89,6 +90,7 @@ import {
   liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
   mergeLiveActivity,
+  mobileAgentUsingBrowser,
   mobilePreSteerProcessActivities,
   prunePersistedMobileLiveAssistant,
   readCachedMobileLiveAssistant,
@@ -513,6 +515,7 @@ export function SessionDetailPanel({
   const [routerEnabled, setRouterEnabled] = useState(false);
   const [useModelRouter, setUseModelRouter] = useState(false);
   const [chatSettingsVisible, setChatSettingsVisible] = useState(false);
+  const [sessionActive, setSessionActive] = useState(false);
   const [subagentsVisible, setSubagentsVisible] = useState(false);
   const [toolApprovalUpdating, setToolApprovalUpdating] = useState(false);
   const [pendingToolApprovalMode, setPendingToolApprovalMode] = useState<string | null>(null);
@@ -654,6 +657,7 @@ export function SessionDetailPanel({
           snapshotStatus === "generating" ||
           snapshotStatus === "tool_executing" ||
           snapshotStatus === "compacting");
+      setSessionActive(active);
       const snapshotPendingMessages = snapshot?.pendingMessages ?? [];
       const preserveOptimisticPending = shouldPreserveOptimisticPending();
       if (!preserveOptimisticPending && snapshotPendingMessages.length === 0) {
@@ -714,6 +718,7 @@ export function SessionDetailPanel({
 
   useEffect(() => {
     setPendingSessionAgentId(null);
+    setSessionActive(false);
     responseHapticActiveRef.current = false;
   }, [sessionId]);
 
@@ -779,6 +784,7 @@ export function SessionDetailPanel({
 
         if (event.type === "snapshot") {
           const snapshot = event.activeSessions.find((entry) => entry.sessionId === sessionId);
+          setSessionActive(Boolean(snapshot));
           if (!snapshot) {
             const preserveOptimisticPending = shouldPreserveOptimisticPending();
             if (!preserveOptimisticPending) {
@@ -810,6 +816,7 @@ export function SessionDetailPanel({
 
         if (event.type !== "status" || event.sessionId !== sessionId) return;
         if (event.status === "idle") {
+          setSessionActive(false);
           if (responseHapticActiveRef.current) {
             responseHapticActiveRef.current = false;
             haptics.agentCompleted();
@@ -821,6 +828,7 @@ export function SessionDetailPanel({
           }
           return;
         }
+        setSessionActive(event.status !== "error");
         const activity = liveActivityFromStatusEvent(event);
         if (!activity) return;
         if (!responseHapticActiveRef.current) {
@@ -1749,6 +1757,7 @@ export function SessionDetailPanel({
         )} out`
       : "No token usage recorded";
   const planDetail = mobileProviderPlanDetail(activeProviderPlan);
+  const browserActive = mobileAgentUsingBrowser(liveAssistant, sessionActive);
   const chatSettingsRows: ChatSettingsRow[] = [
     {
       icon: Bot,
@@ -1780,6 +1789,15 @@ export function SessionDetailPanel({
             icon: Gauge,
             label: "Plan usage",
             value: planDetail.replace(/^Plan usage:\s*/, ""),
+          } satisfies ChatSettingsRow,
+        ]
+      : []),
+    ...(browserActive
+      ? [
+          {
+            icon: Globe2,
+            label: "Browser",
+            value: "Agent is browsing",
           } satisfies ChatSettingsRow,
         ]
       : []),

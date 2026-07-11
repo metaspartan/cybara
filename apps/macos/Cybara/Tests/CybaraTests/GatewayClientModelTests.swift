@@ -836,6 +836,31 @@ final class GatewayClientModelTests: XCTestCase {
         }
     }
 
+    func testNativeBrowserActivityRequiresActiveInFlightTool() {
+        let start = NativeToolActivity(
+            id: "browser-start",
+            phase: .start,
+            text: "Opening browser",
+            timestamp: 1,
+            toolName: "browser",
+            toolCallId: "browser-1",
+            sandboxProvider: nil
+        )
+        let result = NativeToolActivity(
+            id: "browser-result",
+            phase: .result,
+            text: "Opened browser",
+            timestamp: 2,
+            toolName: "browser",
+            toolCallId: "browser-1",
+            sandboxProvider: nil
+        )
+
+        XCTAssertTrue(nativeAgentUsingBrowser([start], sessionActive: true))
+        XCTAssertFalse(nativeAgentUsingBrowser([start], sessionActive: false))
+        XCTAssertFalse(nativeAgentUsingBrowser([result], sessionActive: true))
+    }
+
     func testNativeLongRunningToolCompletionKeepsStartPosition() {
         let baseTimestamp = 1_783_700_000_000.0
         let existing = [

@@ -130,6 +130,7 @@ import {
   getMessageProcessKey,
   getToolCallsInTimelineOrder,
   inferArtifactSummaries,
+  isAgentUsingBrowser,
   isGenericStatusLabel,
   isMeaningfulThoughtDetail,
   isRecord,
@@ -1489,10 +1490,9 @@ export function Chat() {
     return Array.from(names).slice(0, 24);
   }, [typedMessages]);
   const agentUsingBrowser = useMemo(() => {
-    const isBrowserTool = (name?: string) => (name || "").toLowerCase().includes("browser");
-    if (environmentToolNames.some(isBrowserTool)) return true;
-    return liveActivities.some((activity) => isBrowserTool(activity.toolName));
-  }, [environmentToolNames, liveActivities]);
+    const sessionActive = !!sessionId && activeSessionIds.includes(sessionId);
+    return isAgentUsingBrowser(liveActivities, sessionActive);
+  }, [activeSessionIds, liveActivities, sessionId]);
   const resolveSelectableSessionAgentId = useCallback(
     (agentId?: string | null): string | undefined => {
       if (typeof agentId !== "string") return undefined;

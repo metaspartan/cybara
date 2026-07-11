@@ -4,6 +4,7 @@ import { join } from "path";
 import {
   applyLiveActivityEvent,
   buildPreSteeringActivityMessage,
+  isAgentUsingBrowser,
   isRawToolCallThought,
   pruneCanonicalizedLiveActivities,
   resolveDictationRuntime,
@@ -16,6 +17,28 @@ const chatSourcePath = join(process.cwd(), "ui", "src", "pages", "Chat.tsx");
 const chatModelPath = join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts");
 
 describe("Chat live activity persistence", () => {
+  test("shows browser activity only while a browser tool is in flight for the active session", () => {
+    const browserStart: LiveActivityItem = {
+      id: "browser-start",
+      phase: "start",
+      text: "Opening browser",
+      timestamp: 1783300001000,
+      toolName: "browser",
+      toolCallId: "browser-1",
+    };
+    const browserResult = { ...browserStart, phase: "result" as const, text: "Opened browser" };
+
+    expect(isAgentUsingBrowser([browserStart], true)).toBe(true);
+    expect(isAgentUsingBrowser([browserStart], false)).toBe(false);
+    expect(isAgentUsingBrowser([browserResult], true)).toBe(false);
+    expect(
+      isAgentUsingBrowser(
+        [{ ...browserStart, toolName: "web_search", text: "Searching the web" }],
+        true
+      )
+    ).toBe(false);
+  });
+
   test("hides provider tool-call envelopes that arrive as thought activity", () => {
     expect(
       isRawToolCallThought({

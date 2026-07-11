@@ -78,6 +78,17 @@ export function clearCachedMobileLiveAssistant(sessionId?: string | null): void 
   }
 }
 
+export function mobileAgentUsingBrowser(
+  message: SessionDetailSummary["messages"][number] | null,
+  sessionActive: boolean
+): boolean {
+  if (!sessionActive) return false;
+  return (message?.processActivities ?? []).some(
+    (activity) =>
+      activity.phase === "start" && (activity.toolName || "").toLowerCase().includes("browser")
+  );
+}
+
 export function subscribeCachedMobileLiveAssistant(
   sessionId: string,
   subscriber: (cached: CachedMobileLiveAssistant | null) => void

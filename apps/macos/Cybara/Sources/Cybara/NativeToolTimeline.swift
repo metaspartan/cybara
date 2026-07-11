@@ -18,6 +18,13 @@ struct NativeToolActivity: Identifiable, Hashable {
     let sandboxProvider: String?
 }
 
+func nativeAgentUsingBrowser(_ activities: [NativeToolActivity], sessionActive: Bool) -> Bool {
+    guard sessionActive else { return false }
+    return activities.contains { activity in
+        activity.phase == .start && (activity.toolName ?? "").localizedCaseInsensitiveContains("browser")
+    }
+}
+
 struct NativeToolTimelineView: View {
     let message: GatewaySessionMessage
     let mediaBaseURL: URL
