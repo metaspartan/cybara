@@ -40,6 +40,7 @@ import { handleTodo } from "./todo";
 import { handleClarify } from "./clarify";
 import { handleToolSearch, handleToolDescribe, handleToolCall } from "./tool-discovery";
 import { handleExecuteCode } from "./execute-code";
+import { handleSandboxRun } from "./sandbox";
 import { handleImageGenerate, handleVideoGenerate, handleMusicGenerate } from "./media-generation";
 import {
   COMPUTER_USE_ACTION_TOOL_ALIASES,
@@ -250,6 +251,7 @@ const toolHandlers: Record<
   tool_call: handleToolCall,
 
   execute_code: handleExecuteCode,
+  sandbox_run: handleSandboxRun,
 
   image_generate: handleImageGenerate,
   video_generate: handleVideoGenerate,

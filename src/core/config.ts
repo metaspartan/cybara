@@ -108,6 +108,8 @@ export interface SandboxRuntimeConfig {
   enabled: boolean;
   provider: SandboxProvider;
   network: SandboxNetworkMode;
+  remoteUrl?: string;
+  remoteApiKey?: string;
 }
 
 export interface WorkspaceIndexerSettings {
@@ -355,13 +357,24 @@ function normalizeSandboxNetwork(value: unknown): SandboxNetworkMode {
   return normalized === "allow" ? "allow" : "deny";
 }
 
+function normalizeSandboxString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 function normalizeSandboxRuntime(value: unknown): SandboxRuntimeConfig {
   const parsed = asObject(value);
-  return {
+  const runtime: SandboxRuntimeConfig = {
     enabled: parsed?.enabled === true,
     provider: normalizeSandboxProvider(parsed?.provider),
     network: normalizeSandboxNetwork(parsed?.network),
   };
+  const remoteUrl = normalizeSandboxString(parsed?.remoteUrl ?? parsed?.remote_url);
+  const remoteApiKey = normalizeSandboxString(parsed?.remoteApiKey ?? parsed?.remote_api_key);
+  if (remoteUrl) runtime.remoteUrl = remoteUrl;
+  if (remoteApiKey) runtime.remoteApiKey = remoteApiKey;
+  return runtime;
 }
 
 function normalizePositiveInteger(

@@ -115,6 +115,7 @@ const dangerousToolNames = new Set([
   "http",
   "computer_use",
   "execute_code",
+  "sandbox_run",
   // camera_snap / screen_record capture the user's camera and screen — gate
   // them behind the dangerous-tool approval flow (privacy-sensitive).
   "nodes",
@@ -2264,6 +2265,29 @@ ACTIONS:
       required: ["code"],
     },
     permissions: [],
+  },
+  sandbox_run: {
+    name: "sandbox_run",
+    description:
+      "Run a shell command inside an isolated remote microVM sandbox (CubeSandbox or any E2B-compatible endpoint). Use for untrusted or throwaway execution that must not touch the host — the sandbox has its own filesystem, not your workspace. Returns stdout, stderr, and exit code. Requires a remote sandbox URL configured in settings.",
+    category: "process",
+    input_schema: {
+      type: "object",
+      properties: {
+        command: { type: "string", description: "Shell command to run in the sandbox" },
+        cwd: { type: "string", description: "Working directory inside the sandbox" },
+        timeoutMs: {
+          type: "number",
+          description: "Timeout in ms (default 120000, max 600000)",
+        },
+        envs: {
+          type: "object",
+          description: "Environment variables for the command",
+        },
+      },
+      required: ["command"],
+    },
+    permissions: ["process:execute"],
   },
   image_generate: {
     name: "image_generate",

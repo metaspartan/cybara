@@ -46,6 +46,8 @@ export function FeatureSettings() {
   const [sandboxEnabled, setSandboxEnabled] = useState(false);
   const [sandboxProvider, setSandboxProvider] = useState<SandboxProviderOption>("auto");
   const [sandboxNetwork, setSandboxNetwork] = useState<"allow" | "deny">("deny");
+  const [sandboxRemoteUrl, setSandboxRemoteUrl] = useState("");
+  const [sandboxRemoteApiKey, setSandboxRemoteApiKey] = useState("");
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
   const [savingDangerousPolicy, setSavingDangerousPolicy] = useState(false);
   const [savingSandboxRuntime, setSavingSandboxRuntime] = useState(false);
@@ -114,7 +116,13 @@ export function FeatureSettings() {
           | undefined;
         const modeRaw = typeof data?.tool_approval_mode === "string" ? data.tool_approval_mode : "";
         const sandboxRaw = data?.sandbox_runtime as
-          | { enabled?: boolean; provider?: string; network?: string }
+          | {
+              enabled?: boolean;
+              provider?: string;
+              network?: string;
+              remoteUrl?: string;
+              remoteApiKey?: string;
+            }
           | undefined;
         setDangerousToolPolicyEnabled(policy?.enabled === true);
         setDangerousToolPolicyMode(policy?.mode === "block" ? "block" : "audit");
@@ -128,6 +136,10 @@ export function FeatureSettings() {
             : "auto"
         );
         setSandboxNetwork(sandboxRaw?.network === "allow" ? "allow" : "deny");
+        setSandboxRemoteUrl(typeof sandboxRaw?.remoteUrl === "string" ? sandboxRaw.remoteUrl : "");
+        setSandboxRemoteApiKey(
+          typeof sandboxRaw?.remoteApiKey === "string" ? sandboxRaw.remoteApiKey : ""
+        );
         if (sandboxResult.success && sandboxResult.data) {
           setSandboxStatus(sandboxResult.data as SandboxStatusView);
         }
@@ -226,19 +238,33 @@ export function FeatureSettings() {
     enabled: boolean;
     provider: SandboxProviderOption;
     network: "allow" | "deny";
+    remoteUrl?: string;
+    remoteApiKey?: string;
   }) => {
     const previous = {
       enabled: sandboxEnabled,
       provider: sandboxProvider,
       network: sandboxNetwork,
+      remoteUrl: sandboxRemoteUrl,
+      remoteApiKey: sandboxRemoteApiKey,
+    };
+
+    const payload = {
+      enabled: next.enabled,
+      provider: next.provider,
+      network: next.network,
+      remoteUrl: next.remoteUrl ?? sandboxRemoteUrl,
+      remoteApiKey: next.remoteApiKey ?? sandboxRemoteApiKey,
     };
 
     setSandboxEnabled(next.enabled);
     setSandboxProvider(next.provider);
     setSandboxNetwork(next.network);
+    if (next.remoteUrl !== undefined) setSandboxRemoteUrl(next.remoteUrl);
+    if (next.remoteApiKey !== undefined) setSandboxRemoteApiKey(next.remoteApiKey);
     setSavingSandboxRuntime(true);
     try {
-      const result = await settingsApi.updateConfig({ sandbox_runtime: next });
+      const result = await settingsApi.updateConfig({ sandbox_runtime: payload });
       if (!result.success || !result.data?.success) {
         throw new Error(result.error || "Config update failed");
       }
@@ -255,10 +281,22 @@ export function FeatureSettings() {
       setSandboxEnabled(previous.enabled);
       setSandboxProvider(previous.provider);
       setSandboxNetwork(previous.network);
+      setSandboxRemoteUrl(previous.remoteUrl);
+      setSandboxRemoteApiKey(previous.remoteApiKey);
       addToast("error", "Failed to update sandbox runtime");
     } finally {
       setSavingSandboxRuntime(false);
     }
+  };
+
+  const saveRemoteSandbox = async (): Promise<void> => {
+    await updateSandboxRuntime({
+      enabled: sandboxEnabled,
+      provider: sandboxProvider,
+      network: sandboxNetwork,
+      remoteUrl: sandboxRemoteUrl.trim(),
+      remoteApiKey: sandboxRemoteApiKey.trim(),
+    });
   };
 
   return (
@@ -432,6 +470,40 @@ export function FeatureSettings() {
               </div>
             </div>
           )}
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
+            <p className="text-xs font-semibold text-white">Remote sandbox (CubeSandbox / E2B)</p>
+            <p className="text-[11px] text-gray-400 mt-1">
+              Point the <code className="text-indigo-400">sandbox_run</code> tool at an
+              E2B-compatible microVM endpoint (e.g. self-hosted CubeSandbox) to run untrusted
+              commands off-host. Leave blank to disable. The URL is the CubeAPI / E2B domain.
+            </p>
+            <div className="mt-3 space-y-2">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Sandbox URL</label>
+                <input
+                  type="text"
+                  value={sandboxRemoteUrl}
+                  onChange={(e) => setSandboxRemoteUrl(e.target.value)}
+                  onBlur={() => void saveRemoteSandbox()}
+                  placeholder="https://cube.example.com:12088"
+                  disabled={savingSandboxRuntime}
+                  className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">API key (optional)</label>
+                <input
+                  type="password"
+                  value={sandboxRemoteApiKey}
+                  onChange={(e) => setSandboxRemoteApiKey(e.target.value)}
+                  onBlur={() => void saveRemoteSandbox()}
+                  placeholder="Leave blank if the endpoint needs no key"
+                  disabled={savingSandboxRuntime}
+                  className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
+              </div>
+            </div>
+          </div>
           <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
