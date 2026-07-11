@@ -111,7 +111,22 @@ func nativeUsageMenuLabel(_ plan: ProviderPlanSnapshot) -> String {
     let name = nativeUsageMenuProviderName(plan.providerName)
     let fiveHour = nativeUsageWindowValue(plan, kind: "rolling_5h").text
     let weekly = nativeUsageWindowValue(plan, kind: "rolling_week").text
-    return "\(name)  5h \(fiveHour) · Week \(weekly)"
+    var label = "\(name)  5h \(fiveHour) · 7d \(weekly)"
+    if let reset = nativeUsagePlanResetText(plan) {
+        label += "   ↻ \(reset)"
+    }
+    return label
+}
+
+func nativeUsagePlanResetText(_ plan: ProviderPlanSnapshot) -> String? {
+    for kind in ["rolling_5h", "rolling_week"] {
+        if let window = plan.windows.first(where: { $0.kind == kind }),
+            let reset = nativeUsageResetText(window.resetsAt)
+        {
+            return reset
+        }
+    }
+    return nil
 }
 
 func nativeUsageMenuProviderName(_ value: String) -> String {

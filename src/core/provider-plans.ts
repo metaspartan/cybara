@@ -1288,6 +1288,22 @@ export function getProviderPlanStatus(): ProviderPlanStatusResponse {
   };
 }
 
+export function formatUsageReset(resetsAt: string | undefined, nowMs: number = Date.now()): string {
+  if (!resetsAt) return "";
+  const target = Date.parse(resetsAt);
+  if (!Number.isFinite(target)) return "";
+  const diffMs = target - nowMs;
+  if (diffMs <= 0) return "resets now";
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes < 60) return `resets in ${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  if (hours < 24) return mins ? `resets in ${hours}h ${mins}m` : `resets in ${hours}h`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours ? `resets in ${days}d ${remHours}h` : `resets in ${days}d`;
+}
+
 function liveUsageWindow(
   base: ProviderPlanUsageWindow | undefined,
   id: string,
@@ -1297,6 +1313,7 @@ function liveUsageWindow(
   resetDescription: string
 ): ProviderPlanUsageWindow | null {
   if (!live) return base ?? null;
+  const resetsAt = live.resetsAt ?? base?.resetsAt;
   return {
     id,
     title,
@@ -1307,8 +1324,8 @@ function liveUsageWindow(
     spendLimit: base?.spendLimit,
     usedPercent: live.usedPercent,
     remainingPercent: Math.max(0, 100 - live.usedPercent),
-    resetsAt: live.resetsAt ?? base?.resetsAt,
-    resetDescription: base?.resetDescription ?? resetDescription,
+    resetsAt,
+    resetDescription: formatUsageReset(resetsAt) || base?.resetDescription || resetDescription,
     usageKnown: true,
     unlimited: live.unlimited,
   };

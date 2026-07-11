@@ -112,14 +112,20 @@ fn usage_window_text(plan: &ProviderUsagePlan, kind: &str) -> String {
     format!("{}%", percent.clamp(0.0, 100.0).ceil() as u32)
 }
 
+fn meaningful_reset(description: &str) -> bool {
+    !description.is_empty() && !description.starts_with("Rolling")
+}
+
 fn usage_reset_text(plan: &ProviderUsagePlan) -> Option<String> {
     plan.windows
         .iter()
-        .find(|window| window.kind == "rolling_5h" && !window.reset_description.is_empty())
+        .find(|window| window.kind == "rolling_5h" && meaningful_reset(&window.reset_description))
         .or_else(|| {
-            plan.windows.iter().find(|window| {
-                window.kind == "rolling_week" && !window.reset_description.is_empty()
-            })
+            plan.windows
+                .iter()
+                .find(|window| {
+                    window.kind == "rolling_week" && meaningful_reset(&window.reset_description)
+                })
         })
         .map(|window| window.reset_description.clone())
 }
@@ -158,9 +164,9 @@ fn provider_usage_rows() -> Result<Vec<String>, String> {
             let five_hour = usage_window_text(plan, "rolling_5h");
             let weekly = usage_window_text(plan, "rolling_week");
             let reset = usage_reset_text(plan)
-                .map(|value| format!(" · {}", truncate_label(&value, 18)))
+                .map(|value| format!("   ↻ {}", truncate_label(&value, 22)))
                 .unwrap_or_default();
-            format!("{provider}  5h {five_hour} · Week {weekly}{reset}")
+            format!("{provider}   5h {five_hour} · 7d {weekly}{reset}")
         })
         .collect())
 }
