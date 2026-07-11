@@ -21,9 +21,12 @@ import {
   Mic,
   MicOff,
   MoreHorizontal,
+  ExternalLink,
   PanelRightOpen,
   Paperclip,
   Pencil,
+  Pin,
+  PinOff,
   Plus,
   RotateCcw,
   ShieldAlert,
@@ -51,6 +54,7 @@ import {
   useChat,
   useDeleteSession,
   useLoadSession,
+  usePinSession,
   useRenameSession,
   useSessions,
   useUpdateSessionAgent,
@@ -1220,6 +1224,7 @@ export function Chat() {
   const updateSessionAgent = useUpdateSessionAgent();
   const { data: sessionsList } = useSessions();
   const renameSession = useRenameSession();
+  const pinSessionMutation = usePinSession();
   const deleteSessionMutation = useDeleteSession();
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
   const [renamingHeader, setRenamingHeader] = useState(false);
@@ -2722,6 +2727,25 @@ export function Chat() {
     }
   }, [headerTitleDraft, sessionId, currentSessionSummary, renameSession]);
 
+  const handleTogglePinCurrentSession = useCallback(async () => {
+    if (!sessionId) return;
+    setHeaderMenuOpen(false);
+    try {
+      await pinSessionMutation.mutateAsync({
+        sessionId,
+        pinned: !currentSessionSummary?.pinned,
+      });
+    } catch (error) {
+      console.error("Failed to pin session:", error);
+    }
+  }, [sessionId, currentSessionSummary, pinSessionMutation]);
+
+  const handleOpenSessionInNewWindow = useCallback(() => {
+    if (!sessionId) return;
+    setHeaderMenuOpen(false);
+    window.open(`/chat?session=${encodeURIComponent(sessionId)}`, "_blank", "noopener");
+  }, [sessionId]);
+
   const handleDeleteCurrentSession = useCallback(async () => {
     if (!sessionId) return;
     setHeaderMenuOpen(false);
@@ -4191,21 +4215,6 @@ export function Chat() {
                 {headerTitle}
               </button>
             )}
-            {sessionId && (
-              <button
-                type="button"
-                onClick={() => void handleCopySessionId()}
-                title="Copy session ID"
-                className="hidden sm:flex items-center gap-1 text-[10px] text-gray-500 hover:text-emerald-300 transition-colors font-mono cursor-pointer w-fit"
-              >
-                {copiedSessionId ? (
-                  <Check className="w-2.5 h-2.5 text-emerald-400" />
-                ) : (
-                  <Hash className="w-2.5 h-2.5" />
-                )}
-                <span>{copiedSessionId ? "Copied" : sessionId.slice(0, 12)}</span>
-              </button>
-            )}
           </div>
           {sessionId && (
             <div className="relative" ref={headerMenuRef}>
@@ -4222,11 +4231,42 @@ export function Chat() {
                 <MoreHorizontal className="w-4 h-4" />
               </button>
               {headerMenuOpen && (
-                <div className="absolute left-0 top-full mt-1 z-50 w-56 rounded-lg border border-white/10 bg-[#0f0f16] shadow-xl py-1 text-sm">
+                <div className="workspace-open-menu-panel absolute left-0 top-full mt-1 z-[1000] w-64 overflow-hidden rounded-xl border border-white/10 p-1.5 text-sm shadow-[0_18px_60px_rgba(0,0,0,0.65)]">
+                  <button
+                    type="button"
+                    onClick={() => void handleCopySessionId()}
+                    title="Copy session ID"
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/10"
+                  >
+                    {copiedSessionId ? (
+                      <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                    ) : (
+                      <Hash className="w-3.5 h-3.5 shrink-0 text-gray-400" />
+                    )}
+                    <span className="flex min-w-0 flex-col">
+                      <span className="text-[10px] uppercase tracking-wide text-gray-500">
+                        {copiedSessionId ? "Copied to clipboard" : "Session ID"}
+                      </span>
+                      <span className="truncate font-mono text-xs text-gray-200">{sessionId}</span>
+                    </span>
+                  </button>
+                  <div className="my-1 h-px bg-white/10" />
+                  <button
+                    type="button"
+                    onClick={() => void handleTogglePinCurrentSession()}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
+                  >
+                    {currentSessionSummary?.pinned ? (
+                      <PinOff className="w-3.5 h-3.5 text-gray-400" />
+                    ) : (
+                      <Pin className="w-3.5 h-3.5 text-gray-400" />
+                    )}
+                    {currentSessionSummary?.pinned ? "Unpin" : "Pin"}
+                  </button>
                   <button
                     type="button"
                     onClick={beginHeaderRename}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-gray-200 hover:bg-white/5 transition-colors cursor-pointer"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
                   >
                     <Pencil className="w-3.5 h-3.5 text-gray-400" />
                     Rename
@@ -4237,7 +4277,7 @@ export function Chat() {
                       void handleCopySessionId();
                       setHeaderMenuOpen(false);
                     }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-gray-200 hover:bg-white/5 transition-colors cursor-pointer"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
                   >
                     <Copy className="w-3.5 h-3.5 text-gray-400" />
                     Copy session ID
@@ -4245,7 +4285,7 @@ export function Chat() {
                   <button
                     type="button"
                     onClick={() => void handleCopyDebugInfo()}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-gray-200 hover:bg-white/5 transition-colors cursor-pointer"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
                   >
                     {copiedDebugInfo ? (
                       <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -4254,11 +4294,19 @@ export function Chat() {
                     )}
                     {copiedDebugInfo ? "Debug info copied" : "Copy debug info (JSON)"}
                   </button>
-                  <div className="my-1 h-px bg-white/5" />
+                  <button
+                    type="button"
+                    onClick={handleOpenSessionInNewWindow}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
+                    Open in new window
+                  </button>
+                  <div className="my-1 h-px bg-white/10" />
                   <button
                     type="button"
                     onClick={() => void handleDeleteCurrentSession()}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-red-400 transition-colors hover:bg-red-500/10"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     Delete chat
