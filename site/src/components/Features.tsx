@@ -14,7 +14,7 @@ export function Features(): React.ReactElement {
         description="Everything an operator needs to run agents that actually do the work — not just answer questions."
       />
       <div className="feature-grid">
-        {FEATURES.map((feature) => (
+        {FEATURES.slice(0, 12).map((feature) => (
           <article className="glass feature-card" key={feature.title}>
             <span className="feature-icon">
               <Icon name={feature.icon as IconName} className="feature-icon-svg" />

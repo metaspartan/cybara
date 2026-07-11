@@ -1810,8 +1810,21 @@ img {
 
 .download-grid--recommended {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 340px));
+  justify-content: center;
   gap: 14px;
+}
+
+@media (max-width: 820px) {
+  .download-grid--recommended {
+    grid-template-columns: repeat(2, minmax(0, 340px));
+  }
+}
+
+@media (max-width: 560px) {
+  .download-grid--recommended {
+    grid-template-columns: minmax(0, 380px);
+  }
 }
 
 .download-card--recommended {

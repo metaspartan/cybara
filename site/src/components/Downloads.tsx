@@ -43,7 +43,7 @@ export function Downloads(): React.ReactElement {
             option below.
           </p>
           <div className="download-grid download-grid--recommended">
-            {recommended.map((client, index) => (
+            {recommended.slice(0, 3).map((client, index) => (
               <DownloadCard
                 client={client}
                 release={release}
