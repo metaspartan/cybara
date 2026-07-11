@@ -439,6 +439,14 @@ export const DOWNLOAD_GROUPS: readonly DownloadGroup[] = [
         assetPattern: /-windows-x64-cli\.exe$/i,
       },
       {
+        name: "Windows CLI",
+        platform: "ARM64 binary",
+        format: "standalone · .exe",
+        icon: "terminal",
+        href: RELEASES_URL,
+        assetPattern: /-windows-arm64-cli\.exe$/i,
+      },
+      {
         name: "Linux CLI",
         platform: "x64 binary",
         format: "standalone · x64",

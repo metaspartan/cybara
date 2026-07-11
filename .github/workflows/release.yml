@@ -62,6 +62,8 @@ jobs:
             artifact: cybara-darwin-arm64
           - target: windows-x64
             artifact: cybara-windows-x64.exe
+          - target: windows-arm64
+            artifact: cybara-windows-arm64.exe
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -826,7 +828,10 @@ jobs:
           for f in cybara-linux-x64 cybara-linux-arm64 cybara-darwin-x64 cybara-darwin-arm64; do
             [ -f "$f" ] && mv "$f" "cybara-v${VERSION}-${f#cybara-}-cli"
           done
-          [ -f cybara-windows-x64.exe ] && mv cybara-windows-x64.exe "cybara-v${VERSION}-windows-x64-cli.exe"
+          for f in cybara-windows-x64.exe cybara-windows-arm64.exe; do
+            stem="${f#cybara-}"
+            [ -f "$f" ] && mv "$f" "cybara-v${VERSION}-${stem%.exe}-cli.exe"
+          done
           echo "Bundled assets:"
           ls -1
           : > checksums.txt
