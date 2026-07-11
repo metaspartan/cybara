@@ -631,6 +631,24 @@ img {
   color: #c4b5fd;
 }
 
+.feature-card:nth-child(4n + 2) .feature-icon {
+  background: rgba(34, 211, 238, 0.12);
+  border-color: rgba(34, 211, 238, 0.28);
+  color: #67e8f9;
+}
+
+.feature-card:nth-child(4n + 3) .feature-icon {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.28);
+  color: #fcd34d;
+}
+
+.feature-card:nth-child(4n) .feature-icon {
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.28);
+  color: #6ee7b7;
+}
+
 .feature-icon-svg {
   width: 26px;
   height: 26px;
@@ -777,6 +795,24 @@ img {
   color: #c4b5fd;
 }
 
+.usecase-card:nth-child(2) .usecase-icon {
+  background: rgba(34, 211, 238, 0.12);
+  border-color: rgba(34, 211, 238, 0.28);
+  color: #67e8f9;
+}
+
+.usecase-card:nth-child(3) .usecase-icon {
+  background: rgba(251, 191, 36, 0.12);
+  border-color: rgba(251, 191, 36, 0.28);
+  color: #fcd34d;
+}
+
+.usecase-card:nth-child(4) .usecase-icon {
+  background: rgba(52, 211, 153, 0.12);
+  border-color: rgba(52, 211, 153, 0.28);
+  color: #6ee7b7;
+}
+
 .usecase-title {
   font-size: 1.14rem;
   font-weight: 600;
@@ -812,6 +848,18 @@ img {
   background: var(--glass-surface-strong);
   border: 1px solid var(--glass-border);
   color: #c4b5fd;
+}
+
+.platform-card:nth-child(2) .platform-icon {
+  color: #67e8f9;
+}
+
+.platform-card:nth-child(3) .platform-icon {
+  color: #fcd34d;
+}
+
+.platform-card:nth-child(4) .platform-icon {
+  color: #6ee7b7;
 }
 
 .platform-icon-svg {
@@ -1690,6 +1738,18 @@ img {
   color: var(--text);
 }
 
+.footer-bun {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.footer-bun-logo {
+  width: 16px;
+  height: 14px;
+  vertical-align: -2px;
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -2185,6 +2245,30 @@ img {
   border-radius: 11px;
   background: var(--accent-soft);
   margin-bottom: 14px;
+}
+
+.principle-card:nth-child(2) .principle-icon {
+  background: rgba(34, 211, 238, 0.12);
+}
+
+.principle-card:nth-child(2) .principle-icon-svg {
+  color: #67e8f9;
+}
+
+.principle-card:nth-child(3) .principle-icon {
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.principle-card:nth-child(3) .principle-icon-svg {
+  color: #fcd34d;
+}
+
+.principle-card:nth-child(4) .principle-icon {
+  background: rgba(52, 211, 153, 0.12);
+}
+
+.principle-card:nth-child(4) .principle-icon-svg {
+  color: #6ee7b7;
 }
 
 .principle-icon-svg {
