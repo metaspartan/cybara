@@ -82,6 +82,7 @@ const cachedMetricsRouteTtls: Record<string, number> = {
   "GET /api/metrics/overview": 30_000,
   "GET /api/metrics/tokens": 30_000,
   "GET /api/metrics/token-analysis": 60_000,
+  "GET /api/metrics/sessions": 15_000,
   "GET /api/metrics/files": 30_000,
   "GET /api/metrics/tools": 30_000,
   "GET /api/metrics/time-series": 120_000,

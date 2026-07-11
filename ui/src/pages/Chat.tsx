@@ -9,9 +9,11 @@ import {
   CircleHelp,
   Copy,
   FileText,
+  FlaskConical,
   Folder,
   FolderOpen,
   GripVertical,
+  GitFork,
   Loader2,
   MessageSquare,
   Mic,
@@ -1222,6 +1224,8 @@ export function Chat() {
   const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
   const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
+  const [forkingMessageIndex, setForkingMessageIndex] = useState<number | null>(null);
+  const [savingGoldenMessageIndex, setSavingGoldenMessageIndex] = useState<number | null>(null);
   const copiedMessageTimerRef = useRef<number | null>(null);
   const handleCopyMessage = useCallback(async (index: number, content: string) => {
     let copied = false;
@@ -1306,6 +1310,7 @@ export function Chat() {
   const [dictationStatus, setDictationStatus] = useState<string | null>(null);
   const [dictationError, setDictationError] = useState<string | null>(null);
   const [toolApprovalMode, setToolApprovalMode] = useState<ToolApprovalMode>("always_allow");
+  const [followUpBehaviorEnabled, setFollowUpBehaviorEnabled] = useState(true);
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
   const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
     null
@@ -1538,6 +1543,63 @@ export function Chat() {
     [resolveSelectableSessionAgentId]
   );
 
+  const handleForkSession = useCallback(
+    async (messageIndex: number) => {
+      if (!sessionId || forkingMessageIndex !== null) return;
+      setForkingMessageIndex(messageIndex);
+      try {
+        const response = await chatApi.forkSession(sessionId, {
+          throughMessageIndex: messageIndex,
+        });
+        if (!response.success || !response.data?.fork) {
+          throw new Error(response.error || "Failed to fork chat");
+        }
+        const fork = response.data.fork;
+        const detail = await loadSessionMutation.loadFresh(fork.sessionId);
+        if (!detail?.messagesList) throw new Error("Forked chat could not be loaded");
+        loadSession(fork.sessionId, detail.messagesList as ChatMessage[], fork.workspaceDir);
+        syncSessionAgentSelection(fork.agentId);
+        navigate(`/chat?session=${encodeURIComponent(fork.sessionId)}`, { replace: true });
+        useUIStore.getState().addToast("success", "Forked chat from this point");
+      } catch (error) {
+        useUIStore
+          .getState()
+          .addToast("error", error instanceof Error ? error.message : "Failed to fork chat");
+      } finally {
+        setForkingMessageIndex(null);
+      }
+    },
+    [
+      forkingMessageIndex,
+      loadSession,
+      loadSessionMutation,
+      navigate,
+      sessionId,
+      syncSessionAgentSelection,
+    ]
+  );
+
+  const handleSaveGolden = useCallback(
+    async (messageIndex: number) => {
+      if (!sessionId || savingGoldenMessageIndex !== null) return;
+      setSavingGoldenMessageIndex(messageIndex);
+      try {
+        const response = await chatApi.saveGolden(sessionId, { messageIndex });
+        if (!response.success || !response.data?.golden) {
+          throw new Error(response.error || "Failed to save golden test");
+        }
+        useUIStore.getState().addToast("success", "Saved turn as a golden test");
+      } catch (error) {
+        useUIStore
+          .getState()
+          .addToast("error", error instanceof Error ? error.message : "Failed to save golden test");
+      } finally {
+        setSavingGoldenMessageIndex(null);
+      }
+    },
+    [savingGoldenMessageIndex, sessionId]
+  );
+
   useEffect(() => {
     setLastWorkspaceDir(readPersistedWorkspaceDir());
   }, []);
@@ -1725,6 +1787,7 @@ export function Chat() {
             ? (speech.stt as Record<string, unknown>)
             : {};
         setToolApprovalMode(normalizeToolApprovalMode(result.data?.tool_approval_mode));
+        setFollowUpBehaviorEnabled(result.data?.follow_up_behavior_enabled !== false);
         setDictationMode(normalizeDictationMode(stt.provider));
         setDictationLanguage(
           typeof stt.language === "string" && stt.language.trim() ? stt.language.trim() : "en-US"
@@ -2977,14 +3040,20 @@ export function Chat() {
 
   const handleSend = async () => {
     suppressAutoRestoreRef.current = false;
+    const currentMessageWouldQueue = canQueueCurrentMessage() || pendingMessages.length > 0;
     const requestedQueueMode =
-      canQueueCurrentMessage() || pendingMessages.length > 0 ? "queue" : undefined;
+      followUpBehaviorEnabled && currentMessageWouldQueue ? "queue" : undefined;
     const requestSessionId = requestedQueueMode
       ? sessionId || activeSessionRef.current
       : sessionId || activeSessionRef.current || crypto.randomUUID();
     const queueMode = requestedQueueMode && requestSessionId ? "queue" : undefined;
     const hasAttachments = pendingImages.length > 0 || pendingFiles.length > 0;
-    if ((!input.trim() && !hasAttachments) || (isLoading && !queueMode)) return;
+    if (
+      (!input.trim() && !hasAttachments) ||
+      (currentMessageWouldQueue && !queueMode) ||
+      (isLoading && !queueMode)
+    )
+      return;
     const message = formatAttachedFiles(input, pendingFiles);
     const images = pendingImages;
     setInput("");
@@ -3861,8 +3930,9 @@ export function Chat() {
     liveActivities.length > 0;
   const composerHasDraft =
     input.trim().length > 0 || pendingImages.length > 0 || pendingFiles.length > 0;
-  const showStopComposerButton = showWorkingTimeline && !composerHasDraft;
-  const sendQueuesFollowUp = showWorkingTimeline || pendingMessages.length > 0;
+  const sendQueuesFollowUp =
+    followUpBehaviorEnabled && (showWorkingTimeline || pendingMessages.length > 0);
+  const showStopComposerButton = showWorkingTimeline && (!composerHasDraft || !sendQueuesFollowUp);
   const timelineActivities =
     liveActivities.length > 0
       ? liveActivities
@@ -4255,6 +4325,38 @@ export function Chat() {
                                 <Copy className="w-3 h-3" />
                               )}
                             </button>
+                            {sessionId && (
+                              <button
+                                type="button"
+                                onClick={() => void handleForkSession(originalIndex)}
+                                disabled={forkingMessageIndex !== null}
+                                className="p-1 rounded-md text-gray-600 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer disabled:opacity-50"
+                                title="Fork chat from this message"
+                                aria-label="Fork chat from this message"
+                              >
+                                {forkingMessageIndex === originalIndex ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <GitFork className="h-3 w-3" />
+                                )}
+                              </button>
+                            )}
+                            {message.role === "assistant" && sessionId && (
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveGolden(originalIndex)}
+                                disabled={savingGoldenMessageIndex !== null}
+                                className="p-1 rounded-md text-gray-600 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer disabled:opacity-50"
+                                title="Save turn as golden test"
+                                aria-label="Save turn as golden test"
+                              >
+                                {savingGoldenMessageIndex === originalIndex ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <FlaskConical className="h-3 w-3" />
+                                )}
+                              </button>
+                            )}
                             {message.role === "user" && sessionId && (
                               <button
                                 type="button"
@@ -4551,7 +4653,11 @@ export function Chat() {
                       )}
                     </button>
                     <ChatComposerActionButton
-                      disabled={!composerHasDraft || (isLoading && !sendQueuesFollowUp)}
+                      disabled={
+                        !composerHasDraft ||
+                        (showWorkingTimeline && !followUpBehaviorEnabled) ||
+                        (isLoading && !sendQueuesFollowUp)
+                      }
                       isStopping={stopAgent.isPending}
                       onSend={handleSend}
                       onStop={() => void handleStopActive()}

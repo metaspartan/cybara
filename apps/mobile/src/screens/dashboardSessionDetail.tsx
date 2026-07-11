@@ -5,8 +5,10 @@ import {
   Brain,
   Clock3,
   Folder,
+  FlaskConical,
   Gauge,
   GitBranch,
+  GitFork,
   Globe2,
   MessageSquareText,
   Paperclip,
@@ -76,6 +78,7 @@ import {
   mobileFirstNonEmptyString,
   mobileSessionTitle,
   mobileSupportedReasoningEfforts,
+  readMobileFollowUpBehaviorEnabled,
   readMobileToolApprovalMode,
   sessionProviderModelLabel,
 } from "../lib/dashboard";
@@ -444,6 +447,7 @@ export function SessionDetailPanel({
   api,
   agents,
   closeDetail,
+  openSession,
   config,
   providerPlanStatus,
   refreshSummary,
@@ -455,6 +459,7 @@ export function SessionDetailPanel({
   api: CybaraMobileApi;
   agents: AgentSummary[];
   closeDetail: () => void;
+  openSession?: (sessionId: string) => void;
   config?: Record<string, unknown>;
   providerPlanStatus?: ProviderPlanStatusResponse | null;
   refreshSummary: () => void;
@@ -505,6 +510,7 @@ export function SessionDetailPanel({
   const [editingPendingDraft, setEditingPendingDraft] = useState("");
   const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
   const [pinning, setPinning] = useState(false);
+  const [reliabilityAction, setReliabilityAction] = useState<"fork" | "golden" | null>(null);
   const [agentUpdating, setAgentUpdating] = useState(false);
   const [reasoningUpdating, setReasoningUpdating] = useState(false);
   const [reasoningOverride, setReasoningOverride] = useState<{
@@ -1029,8 +1035,10 @@ export function SessionDetailPanel({
   const sendMessage = async () => {
     const message = draft.trim();
     const attachments = pendingImages;
-    const queuedSend = sending || !!liveAssistant || pendingMessages.length > 0;
+    const chatBusy = sending || !!liveAssistant || pendingMessages.length > 0;
+    const queuedSend = followUpBehaviorEnabled && chatBusy;
     if (!message && attachments.length === 0) return;
+    if (chatBusy && !followUpBehaviorEnabled) return;
     haptics.messageSent();
     resetComposerDraft();
     setPendingImages([]);
@@ -1400,6 +1408,42 @@ export function SessionDetailPanel({
     }
   };
 
+  const forkChat = async () => {
+    if (reliabilityAction) return;
+    setReliabilityAction("fork");
+    haptics.select();
+    try {
+      const result = await api.forkSession(sessionId);
+      if (!result.success || !result.fork) {
+        throw new Error(result.error || "Failed to fork chat.");
+      }
+      refreshSummary();
+      haptics.success();
+      if (openSession) openSession(result.fork.sessionId);
+      else Alert.alert("Chat forked", "The fork is available in your chat list.");
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReliabilityAction(null);
+    }
+  };
+
+  const saveGoldenRun = async () => {
+    if (reliabilityAction) return;
+    setReliabilityAction("golden");
+    haptics.select();
+    try {
+      const result = await api.saveSessionGolden(sessionId);
+      if (!result.success) throw new Error(result.error || "Failed to save golden run.");
+      haptics.success();
+      Alert.alert("Golden run saved", "This chat can now be replayed from the Evals page.");
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setReliabilityAction(null);
+    }
+  };
+
   const currentAgentId =
     pendingSessionAgentId ||
     mobileFirstNonEmptyString(detail?.agentId, sessionSummary?.agent_id) ||
@@ -1451,6 +1495,8 @@ export function SessionDetailPanel({
   );
   const toolApprovalMode = pendingToolApprovalMode || readMobileToolApprovalMode(config);
   const toolApprovalLabel = toolApprovalMode === "ask" ? "Ask Me" : "Always Allow";
+  const followUpBehaviorEnabled = readMobileFollowUpBehaviorEnabled(config);
+  const chatBusy = sending || !!liveAssistant || pendingMessages.length > 0;
 
   const refreshMobileGitBranches = useCallback(async () => {
     const workspace = chatWorkspaceDir?.trim();
@@ -1881,6 +1927,20 @@ export function SessionDetailPanel({
       onPress: () => runFromChatSettings(() => void togglePinned()),
     },
     {
+      icon: GitFork,
+      label: "Fork chat",
+      disabled: reliabilityAction !== null,
+      onPress: () => runFromChatSettings(() => void forkChat()),
+    },
+    {
+      icon: FlaskConical,
+      label: "Save golden run",
+      disabled:
+        reliabilityAction !== null ||
+        !detail?.messages.some((message) => message.role === "assistant"),
+      onPress: () => runFromChatSettings(() => void saveGoldenRun()),
+    },
+    {
       icon: Trash2,
       label: "Delete chat",
       destructive: true,
@@ -1903,7 +1963,12 @@ export function SessionDetailPanel({
   useEffect(() => {
     setHeaderAction?.({
       busy:
-        pinning || agentUpdating || reasoningUpdating || toolApprovalUpdating || gitBranchLoading,
+        pinning ||
+        agentUpdating ||
+        reasoningUpdating ||
+        toolApprovalUpdating ||
+        gitBranchLoading ||
+        reliabilityAction !== null,
       onPress: () => headerActionRef.current(),
     });
   }, [
@@ -1911,6 +1976,7 @@ export function SessionDetailPanel({
     gitBranchLoading,
     pinning,
     reasoningUpdating,
+    reliabilityAction,
     sessionId,
     setHeaderAction,
     toolApprovalUpdating,
@@ -2102,7 +2168,7 @@ export function SessionDetailPanel({
                             </Pressable>
                           </View>
                         ) : null}
-                        {!steering ? (
+                        {!steering && followUpBehaviorEnabled ? (
                           <Pressable
                             accessibilityLabel="Steer pending message"
                             accessibilityRole="button"
@@ -2236,7 +2302,10 @@ export function SessionDetailPanel({
             <Pressable
               accessibilityLabel="Send message"
               accessibilityRole="button"
-              disabled={!draft.trim() && pendingImages.length === 0}
+              disabled={
+                (!draft.trim() && pendingImages.length === 0) ||
+                (chatBusy && !followUpBehaviorEnabled)
+              }
               onPress={sendMessage}
               style={[
                 styles.sendButton,

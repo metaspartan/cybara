@@ -212,6 +212,45 @@ try {
     FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
   );
 
+  CREATE TABLE IF NOT EXISTS agent_trajectories (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    turn_index INTEGER NOT NULL,
+    agent_id TEXT NOT NULL,
+    provider TEXT,
+    model TEXT,
+    request_json TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    structure_json TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(session_id, turn_index)
+  );
+
+  CREATE TABLE IF NOT EXISTS agent_goldens (
+    id TEXT PRIMARY KEY,
+    trajectory_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    tags_json TEXT NOT NULL DEFAULT '[]',
+    baseline_json TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (trajectory_id) REFERENCES agent_trajectories(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS agent_eval_runs (
+    id TEXT PRIMARY KEY,
+    golden_id TEXT NOT NULL,
+    replay_session_id TEXT,
+    status TEXT NOT NULL,
+    score REAL,
+    diff_json TEXT,
+    error TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME,
+    FOREIGN KEY (golden_id) REFERENCES agent_goldens(id) ON DELETE CASCADE
+  );
+
   -- System logs
   CREATE TABLE IF NOT EXISTS system_logs (
     id TEXT PRIMARY KEY,
@@ -522,6 +561,9 @@ db.exec(`
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_chat_sessions_agent ON chat_sessions(agent_id);
   CREATE INDEX IF NOT EXISTS idx_chat_memory_session ON chat_memory(session_id);
+  CREATE INDEX IF NOT EXISTS idx_agent_trajectories_session ON agent_trajectories(session_id, turn_index);
+  CREATE INDEX IF NOT EXISTS idx_agent_goldens_updated ON agent_goldens(updated_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_agent_eval_runs_golden ON agent_eval_runs(golden_id, created_at DESC);
 `);
 
 const prepare = (sql: string) => db.prepare(sql);

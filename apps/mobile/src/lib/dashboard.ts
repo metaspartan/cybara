@@ -157,6 +157,7 @@ export const MOBILE_SETTINGS_ROOT_CHROME = {
 export const MOBILE_PLATFORM_SETTING_KEYS = [
   "terminal_enabled",
   "tool_approval_mode",
+  "follow_up_behavior_enabled",
   "reasoning_effort",
   "dangerous_tool_policy",
   "sandbox_runtime",
@@ -783,6 +784,12 @@ function asObjectRecord(value: unknown): Record<string, unknown> | null {
 
 export function readMobileToolApprovalMode(config: Record<string, unknown> | undefined): string {
   return config?.tool_approval_mode === "ask" ? "ask" : "always_allow";
+}
+
+export function readMobileFollowUpBehaviorEnabled(
+  config: Record<string, unknown> | undefined
+): boolean {
+  return config?.follow_up_behavior_enabled !== false;
 }
 
 export function readMobileReasoningEffort(

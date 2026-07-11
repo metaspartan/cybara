@@ -11,7 +11,8 @@ export type MetricsEndpointKey =
   | "insights"
   | "tokenAnalysis"
   | "storage"
-  | "providerPlans";
+  | "providerPlans"
+  | "sessions";
 
 export interface MetricsEndpointState {
   ok: boolean;
@@ -237,7 +238,38 @@ export interface MetricsSnapshot {
   tokenAnalysis: TokenAnalysisMetrics | null;
   storage: MetricsStorage | null;
   providerPlans: ProviderPlanStatusResponse | null;
+  sessions: SessionRuntimeMetrics | null;
   availability: MetricsAvailability;
+}
+
+export interface SessionRuntimeMetrics {
+  totals: SessionRuntimeMetricsTotals;
+  sessions: SessionRuntimeMetricsRow[];
+}
+
+export interface SessionRuntimeMetricsTotals {
+  sessions: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  callCount: number;
+  durationMs: number;
+  tokensPerSecond: number | null;
+  firstTokenMs: number | null;
+  compactionCount: number;
+  compactedTokens: number;
+}
+
+export interface SessionRuntimeMetricsRow extends Omit<SessionRuntimeMetricsTotals, "sessions"> {
+  sessionId: string;
+  title: string;
+  agentId: string;
+  workspaceDir: string | null;
+  updatedAt: string;
+  provider: string | null;
+  model: string | null;
 }
 
 export function emptyMetricsAvailability(): MetricsAvailability {
@@ -253,6 +285,7 @@ export function emptyMetricsAvailability(): MetricsAvailability {
     tokenAnalysis: { ok: false },
     storage: { ok: false },
     providerPlans: { ok: false },
+    sessions: { ok: false },
   };
 }
 

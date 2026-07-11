@@ -73,6 +73,7 @@ import {
 } from "../core/status";
 import { emitAgentHook } from "../core/agent-hooks";
 import { createLogger } from "../core/logger";
+import { recordCompletedTrajectory } from "../core/agent-eval";
 import {
   buildToolExecutionFallbackMessage,
   classifyToolCallResult,
@@ -119,6 +120,13 @@ export interface ChatMessage {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp?: string;
+  provider?: string;
+  provider_id?: string;
+  provider_name?: string;
+  model?: string;
+  agent_id?: string;
+  agent_name?: string;
+  agent_type?: string;
   thinking?: string;
   tool_calls?: ToolCallInfo[];
   process_activities?: ProcessActivityInfo[];
@@ -1406,6 +1414,9 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   const shouldQueue =
     !!request.sessionId && (sessionLocked || sessionHasPendingMessages || sessionStatusActive);
   if (shouldQueue) {
+    if (!config.getFollowUpBehaviorEnabled()) {
+      throw new Error("Queue and steer follow-ups are disabled while this chat is active");
+    }
     const response = enqueuePendingChatMessage(
       request,
       effectiveSessionId,
@@ -1579,6 +1590,13 @@ export async function steerPendingChatMessage(
     }
 > {
   const key = sessionId.trim();
+  if (!config.getFollowUpBehaviorEnabled()) {
+    return {
+      success: false,
+      error: "Queue and steer follow-ups are disabled",
+      pendingMessages: pendingChatSnapshots(key),
+    };
+  }
   const queue = pendingChatQueues.get(key) || [];
   const index = queue.findIndex((item) => item.id === pendingMessageId);
   if (index < 0) {
@@ -2300,6 +2318,16 @@ async function handleChatTurn(
     session.workspaceDir,
     session.title
   );
+  if (session.persisted) {
+    recordCompletedTrajectory({
+      sessionId: session.id,
+      agentId: session.agentId,
+      messages: session.messages,
+      workspaceDir: session.workspaceDir,
+      provider: modelMetadata?.provider,
+      model: modelMetadata?.model,
+    });
+  }
   upsertPersistedSessionIndex({
     id: session.id,
     agentId: session.agentId,

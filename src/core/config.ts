@@ -718,6 +718,7 @@ class ConfigManager {
       port: 4269,
       dangerous_tool_policy: { ...DEFAULT_DANGEROUS_TOOL_POLICY },
       tool_approval_mode: DEFAULT_TOOL_APPROVAL_MODE,
+      follow_up_behavior_enabled: true,
       web_tool_url_policy: { ...DEFAULT_WEB_TOOL_URL_POLICY },
       sandbox_runtime: { ...DEFAULT_SANDBOX_RUNTIME },
       workspace_indexer: { ...DEFAULT_WORKSPACE_INDEXER_SETTINGS },
@@ -746,6 +747,18 @@ class ConfigManager {
     const normalized = normalizeReasoningEffort(value) || "";
     this.set("reasoning_effort", normalized);
     return normalized;
+  }
+
+  getFollowUpBehaviorEnabled(): boolean {
+    return this.get<unknown>("follow_up_behavior_enabled") !== false;
+  }
+
+  setFollowUpBehaviorEnabled(value: unknown): boolean {
+    if (typeof value !== "boolean") {
+      throw new Error("follow_up_behavior_enabled must be a boolean");
+    }
+    this.set("follow_up_behavior_enabled", value);
+    return value;
   }
 
   getDefaultWorkspaceDir(): string {

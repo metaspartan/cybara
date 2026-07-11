@@ -55,6 +55,11 @@ import type { FeatureSummary } from "../lib/api";
 
 const USAGE_ORDER_KEY = "cybara.mobile.usageOrder";
 
+function mobileMetricLatency(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "--";
+  return value < 1000 ? `${Math.round(value)}ms` : `${(value / 1000).toFixed(1)}s`;
+}
+
 async function readUsageOrder(): Promise<string[]> {
   try {
     const raw = await AsyncStorage.getItem(USAGE_ORDER_KEY);
@@ -139,6 +144,7 @@ export function MetricsPanel({
   const availableMetrics = metrics
     ? Object.values(metrics.availability).filter((endpoint) => endpoint.ok).length
     : 0;
+  const metricFeedCount = metrics ? Object.keys(metrics.availability).length : 0;
   const activitySeries = timeSeriesTotals(metrics?.timeSeries ?? null, [
     "token_usage",
     "tool_call",
@@ -153,6 +159,7 @@ export function MetricsPanel({
   const modelRows = modelTokenShareRows(metrics);
   const storageRows = storageCategoryEntries(metrics?.storage ?? null).slice(0, 8);
   const providerPlanRows = mobileProviderPlanRows(metrics).slice(0, 8);
+  const sessionMetrics = metrics?.sessions;
 
   return (
     <StableDetailPanel>
@@ -182,7 +189,7 @@ export function MetricsPanel({
           Icon={Database}
           label="Storage"
           value={formatMetricBytes(metrics?.storage?.totalBytes)}
-          detail={`${availableMetrics}/11 feeds`}
+          detail={`${availableMetrics}/${metricFeedCount} feeds`}
           tone={colors.green}
         />
       </View>
@@ -281,6 +288,40 @@ export function MetricsPanel({
 
       <MetricSection title="Models" detail="Throughput, latency, and token share">
         <MetricShareRows rows={modelRows} tone={colors.amber} />
+      </MetricSection>
+
+      <MetricSection
+        title="Chat runtime"
+        detail={`${formatMetricNumber(sessionMetrics?.totals.callCount)} provider calls across ${formatMetricNumber(sessionMetrics?.totals.sessions)} chats`}
+      >
+        <View style={styles.metricMicroGrid}>
+          <MetricMicro
+            label="Output speed"
+            value={
+              sessionMetrics?.totals.tokensPerSecond === null ||
+              sessionMetrics?.totals.tokensPerSecond === undefined
+                ? "--"
+                : `${sessionMetrics.totals.tokensPerSecond} tok/s`
+            }
+          />
+          <MetricMicro
+            label="Average TTFT"
+            value={mobileMetricLatency(sessionMetrics?.totals.firstTokenMs)}
+          />
+          <MetricMicro
+            label="Compactions"
+            value={formatMetricNumber(sessionMetrics?.totals.compactionCount)}
+          />
+        </View>
+        <MetricShareRows
+          rows={(sessionMetrics?.sessions || []).slice(0, 10).map((session) => ({
+            label: session.title,
+            value: `${formatMetricNumber(session.inputTokens)} in · ${formatMetricNumber(session.outputTokens)} out`,
+            detail: `${session.model || "Unknown model"} · ${session.tokensPerSecond === null ? "--" : `${session.tokensPerSecond} tok/s`} · ${mobileMetricLatency(session.firstTokenMs)}`,
+            amount: session.totalTokens,
+          }))}
+          tone={colors.cyan}
+        />
       </MetricSection>
 
       <MetricSection
@@ -427,7 +468,10 @@ export function MetricsPanel({
         />
       )}
 
-      <MetricSection title="Metric feeds" detail={`${availableMetrics}/11 endpoints online`}>
+      <MetricSection
+        title="Metric feeds"
+        detail={`${availableMetrics}/${metricFeedCount} endpoints online`}
+      >
         <MetricEndpointGrid availability={metrics?.availability} />
       </MetricSection>
     </StableDetailPanel>

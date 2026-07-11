@@ -1,5 +1,43 @@
 import SwiftUI
 
+struct NativeSessionRuntimeMetrics: Decodable, Sendable {
+    let totals: NativeSessionRuntimeTotals
+    let sessions: [NativeSessionRuntimeRow]
+}
+
+struct NativeSessionRuntimeTotals: Decodable, Sendable {
+    let sessions: Int
+    let totalTokens: Int
+    let callCount: Int
+    let tokensPerSecond: Double?
+    let firstTokenMs: Double?
+    let compactionCount: Int
+}
+
+struct NativeSessionRuntimeRow: Decodable, Identifiable, Sendable {
+    let sessionId: String
+    let title: String
+    let provider: String?
+    let model: String?
+    let inputTokens: Int
+    let outputTokens: Int
+    let cachedInputTokens: Int
+    let totalTokens: Int
+    let callCount: Int
+    let tokensPerSecond: Double?
+    let firstTokenMs: Double?
+    let compactionCount: Int
+
+    var id: String { sessionId }
+}
+
+extension GatewayClient {
+    func metricsSessions() async throws -> NativeSessionRuntimeMetrics {
+        let data = try await request("api/metrics/sessions")
+        return try JSONDecoder().decode(NativeSessionRuntimeMetrics.self, from: data)
+    }
+}
+
 struct MetricsScreen: View {
     let client: GatewayClient
     @Environment(\.cybaraAccent) private var accentTint
@@ -97,6 +135,8 @@ struct MetricsScreen: View {
         }
 
         MetricsInsightStrip(snapshot: snapshot, accent: accentTint)
+
+        NativeSessionRuntimeTable(metrics: snapshot.sessionRuntime, accent: accentTint)
 
         MetricsResponsiveColumns {
             MetricsPanel(
@@ -400,6 +440,9 @@ struct MetricsScreen: View {
             async let providerPlansFetch: ProviderPlanStatusResponse? = loadOptional {
                 try await client.providerPlanStatus()
             }
+            async let sessionRuntimeFetch: NativeSessionRuntimeMetrics? = loadOptional {
+                try await client.metricsSessions()
+            }
             let overview = try await overviewFetch
 
             snapshot = NativeMetricsSnapshot(
@@ -413,7 +456,8 @@ struct MetricsScreen: View {
                 providers: await providersFetch,
                 modelMetrics: await modelsFetch,
                 insights: await insightsFetch,
-                providerPlans: await providerPlansFetch
+                providerPlans: await providerPlansFetch,
+                sessionRuntime: await sessionRuntimeFetch
             )
             lastUpdated = Date()
             error = nil
@@ -439,6 +483,7 @@ private struct NativeMetricsSnapshot {
     let modelMetrics: ModelMetrics?
     let insights: MetricsInsights?
     let providerPlans: ProviderPlanStatusResponse?
+    let sessionRuntime: NativeSessionRuntimeMetrics?
 
     var totalTokens: Int { overview.tokenUsage?.total ?? 0 }
     var inputTokens: Int { overview.tokenUsage?.input ?? 0 }
@@ -545,6 +590,125 @@ private struct NativeMetricsSnapshot {
     var providerPlanWindowCount: Int {
         providerPlanCards.reduce(0) { $0 + $1.windows.count }
     }
+}
+
+private struct NativeSessionRuntimeTable: View {
+    let metrics: NativeSessionRuntimeMetrics?
+    let accent: Color
+
+    var body: some View {
+        MetricsPanel(
+            title: "Chat Runtime",
+            subtitle: "Per-chat tokens, cache activity, speed, latency, and compaction",
+            systemImage: "clock.arrow.circlepath"
+        ) {
+            if let metrics {
+                HStack(spacing: 10) {
+                    MetricsMiniStat(
+                        label: "Chats",
+                        value: metricsFormatCount(metrics.totals.sessions),
+                        tint: accent
+                    )
+                    MetricsMiniStat(
+                        label: "Calls",
+                        value: metricsFormatCount(metrics.totals.callCount),
+                        tint: .blue
+                    )
+                    MetricsMiniStat(
+                        label: "Output speed",
+                        value: metrics.totals.tokensPerSecond.map { "\(metricsFormatDouble($0)) tok/s" } ?? "--",
+                        tint: .cyan
+                    )
+                    MetricsMiniStat(
+                        label: "Average TTFT",
+                        value: nativeMetricLatency(metrics.totals.firstTokenMs),
+                        tint: .orange
+                    )
+                }
+                ScrollView(.horizontal, showsIndicators: true) {
+                    LazyVStack(spacing: 0) {
+                        NativeSessionRuntimeHeader()
+                        ForEach(metrics.sessions.prefix(100)) { session in
+                            NativeSessionRuntimeRowView(session: session)
+                        }
+                    }
+                    .frame(minWidth: 920)
+                }
+                .frame(maxHeight: 380)
+            } else {
+                MetricsEmptyState("No chat runtime metrics available")
+            }
+        }
+    }
+}
+
+private struct NativeSessionRuntimeHeader: View {
+    var body: some View {
+        HStack(spacing: 12) {
+            Text("Chat").frame(width: 230, alignment: .leading)
+            Text("Provider / model").frame(width: 190, alignment: .leading)
+            Text("Input").frame(width: 72, alignment: .trailing)
+            Text("Output").frame(width: 72, alignment: .trailing)
+            Text("Cache").frame(width: 72, alignment: .trailing)
+            Text("Speed").frame(width: 88, alignment: .trailing)
+            Text("TTFT").frame(width: 72, alignment: .trailing)
+            Text("Compact").frame(width: 72, alignment: .trailing)
+        }
+        .font(.system(size: 10, weight: .semibold, design: .rounded))
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.primary.opacity(0.035))
+    }
+}
+
+private struct NativeSessionRuntimeRowView: View {
+    let session: NativeSessionRuntimeRow
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.title).lineLimit(1)
+                Text("\(session.callCount) call\(session.callCount == 1 ? "" : "s")")
+                    .font(.system(size: 10, design: .rounded))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(width: 230, alignment: .leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.model ?? "Unknown model").lineLimit(1)
+                Text(session.provider ?? "Unknown provider")
+                    .font(.system(size: 10, design: .rounded))
+                    .foregroundStyle(.tertiary)
+            }
+            .frame(width: 190, alignment: .leading)
+            metric(metricsFormatCount(session.inputTokens), width: 72)
+            metric(metricsFormatCount(session.outputTokens), width: 72)
+            metric(metricsFormatCount(session.cachedInputTokens), width: 72)
+            metric(session.tokensPerSecond.map { "\(metricsFormatDouble($0)) tok/s" } ?? "--", width: 88)
+            metric(nativeMetricLatency(session.firstTokenMs), width: 72)
+            metric(session.compactionCount > 0 ? "\(session.compactionCount)" : "--", width: 72)
+        }
+        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .overlay(alignment: .bottom) {
+            Divider().opacity(0.45)
+        }
+    }
+
+    private func metric(_ value: String, width: CGFloat) -> some View {
+        Text(value)
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .frame(width: width, alignment: .trailing)
+    }
+}
+
+private func nativeMetricLatency(_ value: Double?) -> String {
+    guard let value, value.isFinite else { return "--" }
+    return value < 1_000
+        ? "\(Int(value.rounded()))ms"
+        : String(format: "%.1fs", value / 1_000)
 }
 
 private struct NativeProviderPlanCard: Identifiable {

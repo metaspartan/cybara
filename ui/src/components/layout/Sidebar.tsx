@@ -28,6 +28,7 @@ import {
   FileText,
   TabletSmartphone,
   Gauge,
+  FlaskConical,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useI18n } from "@/lib/i18n";
@@ -181,7 +182,8 @@ function useAgentStatus() {
 type SidebarNavItem = {
   path: string;
   icon: React.ComponentType<{ className?: string }>;
-  labelKey: TranslationKey;
+  label?: string;
+  labelKey?: TranslationKey;
   requiresUsage?: boolean;
 };
 
@@ -213,6 +215,7 @@ const navCategories: SidebarNavCategory[] = [
       { path: "/ide", icon: FolderOpen, labelKey: "nav.ide" },
       { path: "/sessions", icon: MessagesSquare, labelKey: "nav.sessions" },
       { path: "/usage", icon: Gauge, labelKey: "nav.usage", requiresUsage: true },
+      { path: "/evals", icon: FlaskConical, label: "Evals" },
       { path: "/skills", icon: LibraryBig, labelKey: "nav.skills" },
       { path: "/tools", icon: Wrench, labelKey: "nav.tools" },
       { path: "/terminal", icon: SquareTerminal, labelKey: "nav.terminal" },
@@ -281,7 +284,7 @@ export function Sidebar() {
 
   const renderNavItem = (item: SidebarNavItem) => {
     const Icon = item.icon;
-    const label = t(item.labelKey);
+    const label = item.label ?? (item.labelKey ? t(item.labelKey) : "");
     const isActive =
       location.pathname === item.path ||
       (item.path !== "/" && location.pathname.startsWith(item.path));

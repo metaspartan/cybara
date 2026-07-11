@@ -2161,6 +2161,43 @@ ACTIONS:
     },
     permissions: [],
   },
+  eval_save: {
+    name: "eval_save",
+    description:
+      "Save a completed session turn as a golden regression test using structural tool and response equivalence.",
+    category: "planning",
+    input_schema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string", description: "Session id. Defaults to the current session." },
+        messageIndex: {
+          type: "number",
+          description:
+            "Assistant or user message index for the completed turn. Defaults to the latest turn.",
+        },
+        name: { type: "string", description: "Golden test name." },
+        description: { type: "string", description: "Optional expected behavior description." },
+        tags: { type: "array", items: { type: "string" }, description: "Optional test tags." },
+      },
+    },
+    permissions: [],
+  },
+  eval_replay: {
+    name: "eval_replay",
+    description:
+      "Replay a golden test through the current agent configuration and compare structural tool behavior.",
+    category: "planning",
+    input_schema: {
+      type: "object",
+      properties: {
+        goldenId: { type: "string", description: "Golden test id." },
+        agentId: { type: "string", description: "Optional agent override." },
+        modelOverride: { type: "string", description: "Optional model override." },
+      },
+      required: ["goldenId"],
+    },
+    permissions: [],
+  },
   clarify: {
     name: "clarify",
     description:

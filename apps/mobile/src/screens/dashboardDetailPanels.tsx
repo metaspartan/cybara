@@ -39,6 +39,7 @@ import {
   mobileThemeConfigPayload,
   readMobileAccent,
   readMobileDangerousToolPolicy,
+  readMobileFollowUpBehaviorEnabled,
   readMobileReasoningEffort,
   readMobileSandboxRuntime,
   readMobileToolApprovalMode,
@@ -574,6 +575,7 @@ export function SettingsPanel({
   const acpEnabled = summary?.config.acp_enabled !== false;
   const selfImprovingSkillsEnabled = summary?.config.self_improving_skills_enabled !== false;
   const toolApprovalMode = readMobileToolApprovalMode(summary?.config);
+  const followUpBehaviorEnabled = readMobileFollowUpBehaviorEnabled(summary?.config);
   const reasoningEffort = readMobileReasoningEffort(summary?.config);
   const dangerousPolicy = readMobileDangerousToolPolicy(summary?.config);
   const sandboxRuntime = readMobileSandboxRuntime(summary?.config);
@@ -1038,6 +1040,23 @@ export function SettingsPanel({
                 selected={reasoningEffort}
                 tone={accentColor}
                 variant="menu"
+              />
+            ) : null}
+            {configAvailable ? (
+              <SettingToggle
+                busy={savingConfigKey === "follow_up_behavior_enabled"}
+                detail="Allow messages sent during an active response to queue or steer the current run."
+                disabled={savingConfigKey !== null}
+                label="Queue / Steer follow-ups"
+                onPress={() => {
+                  void saveConfigPatch(
+                    "follow_up_behavior_enabled",
+                    { follow_up_behavior_enabled: !followUpBehaviorEnabled },
+                    "Follow-up behavior setting failed"
+                  );
+                }}
+                tone={accentColor}
+                value={followUpBehaviorEnabled}
               />
             ) : null}
             {configAvailable ? (

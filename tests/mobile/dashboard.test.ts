@@ -46,6 +46,7 @@ import {
   mobileThemeConfigPayload,
   recentSessionStateLabel,
   readMobileDangerousToolPolicy,
+  readMobileFollowUpBehaviorEnabled,
   readMobileReasoningEffort,
   readMobileRouterStrategy,
   readMobileSandboxRuntime,
@@ -622,12 +623,17 @@ describe("mobile dashboard model", () => {
     expect(MOBILE_PLATFORM_SETTING_KEYS).toEqual([
       "terminal_enabled",
       "tool_approval_mode",
+      "follow_up_behavior_enabled",
       "reasoning_effort",
       "dangerous_tool_policy",
       "sandbox_runtime",
       "router",
       "speech",
     ]);
+    expect(readMobileFollowUpBehaviorEnabled({})).toBe(true);
+    expect(readMobileFollowUpBehaviorEnabled({ follow_up_behavior_enabled: false })).toBe(false);
+    expect(dashboardScreenSource).toContain('label="Queue / Steer follow-ups"');
+    expect(dashboardScreenSource).toContain("chatBusy && !followUpBehaviorEnabled");
     expect(MOBILE_REASONING_EFFORT_OPTIONS.map((option) => option.value)).toEqual([
       "",
       "minimal",

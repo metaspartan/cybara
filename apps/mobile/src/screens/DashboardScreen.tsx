@@ -719,6 +719,7 @@ export function DashboardScreen({
           api={api}
           agents={summary?.agents ?? []}
           closeDetail={closeDetailRoute}
+          openSession={openSessionRoute}
           providerPlanStatus={providerPlanStatus}
           refreshSummary={() => refresh(false)}
           sessionSummary={
@@ -1239,6 +1240,7 @@ function DetailContent({
         api={api}
         agents={summary?.agents ?? []}
         closeDetail={closeDetail}
+        openSession={openSession}
         config={summary?.config}
         providerPlanStatus={providerPlanStatus}
         refreshSummary={refreshSummary}

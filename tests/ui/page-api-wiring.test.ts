@@ -76,6 +76,8 @@ describe("UI page API wiring", () => {
     expect(source).toContain("settingsApi.updateConfig({ terminal_enabled: enabled })");
     expect(source).toContain("settingsApi.updateConfig({ dangerous_tool_policy: next })");
     expect(source).toContain("settingsApi.updateConfig({ tool_approval_mode: nextMode })");
+    expect(source).toContain("settingsApi.updateConfig({ follow_up_behavior_enabled: enabled })");
+    expect(source).toContain("Queue / Steer Follow-ups");
     expect(source).toContain("token_optimization: { toonStructuredDataEnabled: enabled }");
     expect(source).toContain("function SpeechSettingsSection()");
     expect(source).toContain("setGatewayAccessPassword(password)");

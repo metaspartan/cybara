@@ -985,6 +985,22 @@ struct GatewayClient: Sendable {
         return try await request("api/sessions/\(id)/revert", method: "POST", body: body)
     }
 
+    func forkSession(_ id: String, throughMessageIndex: Int?) async throws -> GatewaySessionForkResponse {
+        var payload: [String: Any] = [:]
+        if let throughMessageIndex { payload["throughMessageIndex"] = throughMessageIndex }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let data = try await request("api/sessions/\(id)/fork", method: "POST", body: body)
+        return try JSONDecoder().decode(GatewaySessionForkResponse.self, from: data)
+    }
+
+    func saveSessionGolden(_ id: String, messageIndex: Int?) async throws -> GatewayGoldenSaveResponse {
+        var payload: [String: Any] = [:]
+        if let messageIndex { payload["messageIndex"] = messageIndex }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        let data = try await request("api/sessions/\(id)/golden", method: "POST", body: body)
+        return try JSONDecoder().decode(GatewayGoldenSaveResponse.self, from: data)
+    }
+
     func updateSessionWorkspace(
         _ id: String,
         workspaceDir: String?

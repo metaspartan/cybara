@@ -4,6 +4,24 @@ import XCTest
 
 final class GatewayClientModelTests: XCTestCase {
 
+    func testSessionForkAndRuntimeMetricsDecodeGatewayResponses() throws {
+        let forkData = Data(
+            #"{"success":true,"fork":{"sessionId":"fork-1","sourceSessionId":"source-1","agentId":"agent-1","messageCount":3,"workspaceDir":"/tmp/project","title":"Forked chat"}}"#.utf8
+        )
+        let fork = try JSONDecoder().decode(GatewaySessionForkResponse.self, from: forkData)
+        XCTAssertTrue(fork.success)
+        XCTAssertEqual(fork.fork?.sessionId, "fork-1")
+        XCTAssertEqual(fork.fork?.messageCount, 3)
+
+        let metricsData = Data(
+            #"{"totals":{"sessions":1,"totalTokens":300,"callCount":2,"tokensPerSecond":25.5,"firstTokenMs":420,"compactionCount":1},"sessions":[{"sessionId":"source-1","title":"Runtime test","provider":"minimax","model":"MiniMax-M3","inputTokens":200,"outputTokens":100,"cachedInputTokens":50,"totalTokens":300,"callCount":2,"tokensPerSecond":25.5,"firstTokenMs":420,"compactionCount":1}]}"#.utf8
+        )
+        let metrics = try JSONDecoder().decode(NativeSessionRuntimeMetrics.self, from: metricsData)
+        XCTAssertEqual(metrics.totals.firstTokenMs, 420)
+        XCTAssertEqual(metrics.sessions.first?.cachedInputTokens, 50)
+        XCTAssertEqual(metrics.sessions.first?.model, "MiniMax-M3")
+    }
+
     func testNativeChatAgentLabelUsesModelOnlyInCompactLayout() {
         XCTAssertEqual(
             nativeChatAgentLabel(name: "Research", model: "gpt-5.4-mini", compact: false),

@@ -38,6 +38,7 @@ import { handleHomeAssistant } from "./home-assistant";
 import { handleMixtureOfAgents } from "./mixture-of-agents";
 import { handleTodo } from "./todo";
 import { handleClarify } from "./clarify";
+import { handleEvalReplay, handleEvalSave } from "./eval";
 import { handleToolSearch, handleToolDescribe, handleToolCall } from "./tool-discovery";
 import { handleExecuteCode } from "./execute-code";
 import { handleSandboxRun } from "./sandbox";
@@ -245,6 +246,8 @@ const toolHandlers: Record<
 
   todo: handleTodo,
   clarify: handleClarify,
+  eval_save: handleEvalSave,
+  eval_replay: handleEvalReplay,
 
   tool_search: handleToolSearch,
   tool_describe: handleToolDescribe,

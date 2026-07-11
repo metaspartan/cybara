@@ -14,6 +14,7 @@ import {
   updateSessionAgent,
 } from "../../src/api/chat";
 import { broadcastStatus, onStatusStream } from "../../src/core/status";
+import { config } from "../../src/core/config";
 import {
   loadPersistedSession,
   upsertPersistedSessionMessage,
@@ -36,6 +37,7 @@ async function waitForVisibleSessionMessages(sessionId: string, expectedCount: n
 }
 
 afterEach(async () => {
+  config.setFollowUpBehaviorEnabled(true);
   globalThis.fetch = originalFetch;
   for (const sessionId of createdSessionIds.splice(0)) await deleteSession(sessionId);
   for (const agentId of createdAgentIds.splice(0)) agentManager.delete(agentId);
@@ -43,6 +45,66 @@ afterEach(async () => {
 });
 
 describe("handleChat per-session serialization", () => {
+  test("rejects concurrent follow-ups when queue and steer behavior is disabled", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Disabled Follow-up Provider",
+      api_key: "sk-disabled-follow-up",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Disabled Follow-up Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-disabled-follow-up",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+    globalThis.fetch = (async () => {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      return new Response(
+        JSON.stringify({
+          id: "disabled-follow-up",
+          object: "chat.completion",
+          model: "gpt-disabled-follow-up",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: "first complete" },
+            },
+          ],
+          usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    config.setFollowUpBehaviorEnabled(false);
+    const sessionId = `disabled-follow-up-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const firstTurn = handleChat({
+      message: "start",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    await expect(
+      handleChat({
+        message: "follow up",
+        agentId: agent.id,
+        sessionId,
+        tools: false,
+        queueMode: "queue",
+      })
+    ).rejects.toThrow("Queue and steer follow-ups are disabled");
+    expect(listPendingChatMessages(sessionId)).toEqual([]);
+    await firstTurn;
+  });
+
   test("sanitizes provider reply directives when persisted chats are loaded", async () => {
     const sessionId = `persisted-reply-directive-${crypto.randomUUID()}`;
     createdSessionIds.push(sessionId);

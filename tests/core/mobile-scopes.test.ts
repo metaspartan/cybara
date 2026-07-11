@@ -162,6 +162,12 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("GET", "/api/sessions/session-1")).toBe("read");
     expect(routeRequiredScope("GET", "/api/sessions/session-1/plan")).toBe("read");
     expect(routeRequiredScope("GET", "/api/sessions/session-1/artifacts")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/sessions/session-1/trajectories")).toBe("read");
+    expect(routeRequiredScope("POST", "/api/sessions/session-1/fork")).toBe("chat");
+    expect(routeRequiredScope("POST", "/api/sessions/session-1/golden")).toBe("chat");
+    expect(routeRequiredScope("GET", "/api/evals")).toBe("read");
+    expect(routeRequiredScope("POST", "/api/evals/run")).toBe("chat");
+    expect(routeRequiredScope("GET", "/api/metrics/sessions")).toBeNull();
     expect(routeRequiredScope("DELETE", "/api/sessions/session-1/artifacts/file.md")).toBe("chat");
     expect(routeRequiredScope("GET", "/api/artifacts")).toBe("read");
     expect(routeRequiredScope("POST", "/api/artifacts")).toBe("chat");

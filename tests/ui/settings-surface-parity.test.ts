@@ -63,8 +63,11 @@ describe("settings surface parity", () => {
     expect(mobileApi).toContain('"/api/computer-use/permissions/grant"');
   });
 
-  test("native macOS keeps learning under AI and network controls under safety", () => {
-    expect(nativeSettings).toContain('Text("Agent Learning")');
+  test("native macOS keeps chat behavior under AI and network controls under safety", () => {
+    expect(nativeSettings).toContain('Text("Chat and Agent Behavior")');
+    expect(nativeSettings).toContain('"Queue / Steer follow-ups"');
+    expect(nativeSettings).toContain('"follow_up_behavior_enabled"');
+    expect(nativeSettings).toContain('"Self-improving skills"');
     expect(nativeSettings).toContain('toggleRow("ACP Server"');
     expect(nativeSettings).toContain('Text("Web Access Policy")');
     expect(nativeSettings).toContain('"web_tool_url_policy"');

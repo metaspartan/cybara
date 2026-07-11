@@ -37,6 +37,7 @@ struct NativeSettingsScreen: View {
     @State private var selectedAccent = "indigo"
     @State private var defaultModel = ""
     @State private var reasoningEffort = ""
+    @State private var followUpBehaviorEnabled = true
     @State private var terminalEnabled = false
     @State private var acpEnabled = true
     @State private var selfImprovingSkills = true
@@ -750,8 +751,19 @@ struct NativeSettingsScreen: View {
 
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("Agent Learning")
+                        Text("Chat and Agent Behavior")
                             .font(.system(size: 15, weight: .bold, design: .rounded))
+                        toggleRow(
+                            "Queue / Steer follow-ups",
+                            detail: "Allow messages sent during an active response to queue or steer the current run.",
+                            isOn: $followUpBehaviorEnabled
+                        ) {
+                            saveConfigPatch(
+                                ["follow_up_behavior_enabled": followUpBehaviorEnabled],
+                                key: "follow_up_behavior_enabled"
+                            )
+                        }
+                        Divider()
                         toggleRow(
                             "Self-improving skills",
                             detail: "Let agents save reusable skills after complex tasks.",
@@ -2196,6 +2208,7 @@ struct NativeSettingsScreen: View {
         cybaraDataDirOverrideFile = config["cybara_data_dir_override_file"] as? String ?? ""
         defaultCybaraDataDir = config["default_cybara_data_dir"] as? String ?? ""
         reasoningEffort = config["reasoning_effort"] as? String ?? ""
+        followUpBehaviorEnabled = config["follow_up_behavior_enabled"] as? Bool ?? true
         defaultAgentId = config["default_agent_id"] as? String ?? ""
         backgroundAgentId = config["background_agent_id"] as? String ?? ""
         terminalEnabled = config["terminal_enabled"] as? Bool ?? false

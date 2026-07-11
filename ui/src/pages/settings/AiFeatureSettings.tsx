@@ -13,6 +13,7 @@ export function AiFeatureSettings() {
   const [selfImprovingSkills, setSelfImprovingSkills] = useState(true);
   const [skillLearningNudge, setSkillLearningNudge] = useState(false);
   const [reasoningEffort, setReasoningEffort] = useState("");
+  const [followUpBehaviorEnabled, setFollowUpBehaviorEnabled] = useState(true);
   const [toonStructuredDataEnabled, setToonStructuredDataEnabled] = useState(true);
   const [savingReasoningEffort, setSavingReasoningEffort] = useState(false);
   const [savingTokenOptimization, setSavingTokenOptimization] = useState(false);
@@ -34,6 +35,7 @@ export function AiFeatureSettings() {
         setSelfImprovingSkills(data?.self_improving_skills_enabled !== false);
         setSkillLearningNudge(data?.skill_learning_nudge_enabled === true);
         setReasoningEffort(typeof data?.reasoning_effort === "string" ? data.reasoning_effort : "");
+        setFollowUpBehaviorEnabled(data?.follow_up_behavior_enabled !== false);
         const tokenOptimization = data?.token_optimization as
           | { toonStructuredDataEnabled?: boolean; toon_structured_data_enabled?: boolean }
           | undefined;
@@ -159,6 +161,20 @@ export function AiFeatureSettings() {
     }
   };
 
+  const toggleFollowUpBehavior = async (enabled: boolean) => {
+    setFollowUpBehaviorEnabled(enabled);
+    try {
+      const result = await settingsApi.updateConfig({ follow_up_behavior_enabled: enabled });
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || "Config update failed");
+      }
+      addToast("success", `Queue and steer follow-ups ${enabled ? "enabled" : "disabled"}`);
+    } catch {
+      setFollowUpBehaviorEnabled(!enabled);
+      addToast("error", "Failed to update follow-up behavior");
+    }
+  };
+
   return (
     <Card variant="liquid">
       <CardHeader>
@@ -235,6 +251,20 @@ export function AiFeatureSettings() {
               disabled={loading || savingReasoningEffort}
             />
           </div>
+        </div>
+
+        <div className="flex items-center justify-between py-3 border-b border-white/10">
+          <div className="min-w-0 pr-3">
+            <p className="text-sm text-white font-medium">Queue / Steer Follow-ups</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Allow messages sent during an active response to queue or steer the current run.
+            </p>
+          </div>
+          <Switch
+            checked={followUpBehaviorEnabled}
+            disabled={loading}
+            onChange={(next) => void toggleFollowUpBehavior(next)}
+          />
         </div>
 
         <div className="flex items-center justify-between py-3 border-b border-white/10">

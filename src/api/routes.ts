@@ -64,6 +64,24 @@ import { tables } from "../core/database";
 import { resolveGeminiCliOAuthClientConfig } from "../core/gemini-cli-oauth";
 import { createLogger } from "../core/logger";
 import {
+  buildTrajectoryStructure,
+  compareTrajectoryStructures,
+  createEvalRun,
+  deleteGolden,
+  ensureSessionTrajectory,
+  finishEvalRun,
+  forkSession,
+  forkSessionFromMessages,
+  getGolden,
+  listEvalRuns,
+  listGoldens,
+  listSessionTrajectories,
+  registerEvalReplayExecutor,
+  saveGolden,
+  type AgentEvalRun,
+  type EvalReplayOptions,
+} from "../core/agent-eval";
+import {
   getAgentLogs,
   getSessionMessages as getLogSessionMessages,
   getRecentActivity,
@@ -219,6 +237,47 @@ import { serializeSubagentDetail, serializeSubagentSummary } from "./subagents";
 
 const log = createLogger("API");
 
+async function runGoldenReplay(
+  goldenId: string,
+  options?: EvalReplayOptions
+): Promise<AgentEvalRun> {
+  const golden = getGolden(goldenId);
+  if (!golden) throw new Error("Golden test not found");
+  const run = createEvalRun(golden.id);
+  try {
+    const baseline = golden.baseline;
+    const replayAgentId = options?.agentId?.trim() || baseline.agentId;
+    const fork = await forkSessionFromMessages({
+      sourceSessionId: baseline.sessionId,
+      messages: baseline.request.messages.slice(0, -1),
+      workspaceDir: baseline.request.workspaceDir,
+      agentId: replayAgentId,
+      title: `${golden.name} replay`,
+    });
+    const response = await handleChat({
+      sessionId: fork.sessionId,
+      agentId: replayAgentId,
+      message: baseline.request.userMessage.content,
+      workspaceDir: baseline.request.workspaceDir ?? undefined,
+      modelOverride: options?.modelOverride,
+      source: "eval_replay",
+      tools: true,
+    });
+    const actual = buildTrajectoryStructure(response.message);
+    const comparison = compareTrajectoryStructures(baseline.structure, actual);
+    return finishEvalRun(run.id, {
+      replaySessionId: fork.sessionId,
+      comparison,
+    });
+  } catch (error) {
+    return finishEvalRun(run.id, {
+      error: error instanceof Error ? error.message : "Replay failed",
+    });
+  }
+}
+
+registerEvalReplayExecutor(runGoldenReplay);
+
 const routes: Record<string, RouteHandler> = {
   ...walletRoutes,
   ...mobileRoutes,
@@ -319,6 +378,53 @@ const routes: Record<string, RouteHandler> = {
     runSourceMigration({ ...((body || {}) as SourceMigrationRequest), dryRun: true }),
   "POST /api/migrations/run": async (body) =>
     runSourceMigration({ ...((body || {}) as SourceMigrationRequest), dryRun: false }),
+  "GET /api/evals": () => ({ goldens: listGoldens(), runs: listEvalRuns() }),
+  "GET /api/evals/runs": (_body, params) => ({
+    runs: listEvalRuns(parseBoundedQueryNumber(params?.limit, 1, 500) ?? 100),
+  }),
+  "POST /api/evals/goldens": async (body) => {
+    const data = (body || {}) as {
+      sessionId?: string;
+      messageIndex?: number;
+      name?: string;
+      description?: string;
+      tags?: string[];
+    };
+    if (!data.sessionId?.trim()) return { success: false, error: "sessionId is required" };
+    const trajectory = await ensureSessionTrajectory(data.sessionId.trim(), data.messageIndex);
+    const golden = saveGolden({
+      trajectory,
+      name:
+        data.name?.trim() || trajectory.request.userMessage.content.slice(0, 80) || "Golden run",
+      description: data.description,
+      tags: Array.isArray(data.tags) ? data.tags : [],
+    });
+    return { success: true, golden };
+  },
+  "DELETE /api/evals/goldens/:id": (_body, params) => ({
+    success: deleteGolden(params!.id),
+  }),
+  "POST /api/evals/goldens/:id/replay": async (body, params) => {
+    const data = (body || {}) as { agentId?: string; modelOverride?: string };
+    return {
+      success: true,
+      run: await runGoldenReplay(params!.id, {
+        agentId: data.agentId,
+        modelOverride: data.modelOverride,
+      }),
+    };
+  },
+  "POST /api/evals/run": async (body) => {
+    const data = (body || {}) as { goldenIds?: string[] };
+    const selected = Array.isArray(data.goldenIds)
+      ? listGoldens().filter((golden) => data.goldenIds?.includes(golden.id))
+      : listGoldens();
+    const runs: AgentEvalRun[] = [];
+    for (const golden of selected) {
+      runs.push(await runGoldenReplay(golden.id));
+    }
+    return { success: true, runs };
+  },
   "GET /api/config": () => ({
     ...redactSecretConfig(config.getAll()),
     dangerous_tool_policy: config.getDangerousToolPolicy(),
@@ -336,6 +442,7 @@ const routes: Record<string, RouteHandler> = {
     default_workspace_dir: config.getDefaultWorkspaceDir(),
     ...getCybaraDataDirConfigInfo(),
     reasoning_effort: config.getDefaultReasoningEffort(),
+    follow_up_behavior_enabled: config.getFollowUpBehaviorEnabled(),
     self_improving_skills_enabled: config.get<boolean>("self_improving_skills_enabled") !== false,
   }),
   "GET /api/auth/settings": () => gatewayAuthSettingsResponse(),
@@ -481,6 +588,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "reasoning_effort") {
         config.setDefaultReasoningEffort(value);
+        continue;
+      }
+      if (key === "follow_up_behavior_enabled") {
+        config.setFollowUpBehaviorEnabled(value);
         continue;
       }
       config.set(key, value);
@@ -2310,6 +2421,45 @@ const routes: Record<string, RouteHandler> = {
     return {
       sessionId,
       plan: extractLatestSessionPlan(sessionId, messages),
+    };
+  },
+  "GET /api/sessions/:sessionId/trajectories": (_body, params) => ({
+    sessionId: params!.sessionId,
+    trajectories: listSessionTrajectories(params!.sessionId),
+  }),
+  "POST /api/sessions/:sessionId/golden": async (body, params) => {
+    const data = (body || {}) as {
+      messageIndex?: number;
+      name?: string;
+      description?: string;
+      tags?: string[];
+    };
+    const trajectory = await ensureSessionTrajectory(params!.sessionId, data.messageIndex);
+    return {
+      success: true,
+      golden: saveGolden({
+        trajectory,
+        name:
+          data.name?.trim() || trajectory.request.userMessage.content.slice(0, 80) || "Golden run",
+        description: data.description,
+        tags: Array.isArray(data.tags) ? data.tags : [],
+      }),
+    };
+  },
+  "POST /api/sessions/:sessionId/fork": async (body, params) => {
+    const data = (body || {}) as {
+      throughMessageIndex?: number;
+      agentId?: string;
+      title?: string;
+    };
+    return {
+      success: true,
+      fork: await forkSession({
+        sourceSessionId: params!.sessionId,
+        throughMessageIndex: data.throughMessageIndex,
+        agentId: data.agentId,
+        title: data.title,
+      }),
     };
   },
   "PUT /api/sessions/:sessionId/agent": async (body, params) => {

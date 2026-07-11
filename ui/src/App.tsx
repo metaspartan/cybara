@@ -48,6 +48,7 @@ const Metrics = lazy(() =>
   import("@/pages/Metrics").then((module) => ({ default: module.Metrics }))
 );
 const Usage = lazy(() => import("@/pages/Usage").then((module) => ({ default: module.Usage })));
+const Evals = lazy(() => import("@/pages/Evals").then((module) => ({ default: module.Evals })));
 const MCPServers = lazy(() =>
   import("@/pages/MCPServers").then((module) => ({ default: module.MCPServers }))
 );
@@ -171,6 +172,7 @@ function AppRoutes() {
         <Route path="/memory" element={<Memory />} />
         <Route path="/metrics" element={<Metrics />} />
         <Route path="/usage" element={<Usage />} />
+        <Route path="/evals" element={<Evals />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/logs" element={<Logs />} />

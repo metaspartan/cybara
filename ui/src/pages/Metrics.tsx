@@ -25,6 +25,7 @@ import {
   useMetricsModels,
   useMetricsInsights,
   useMetricsTokenAnalysis,
+  useMetricsSessions,
   useMetricsStorage,
   type MetricsOverview,
   type TokenMetrics,
@@ -36,6 +37,7 @@ import {
   type ModelMetrics,
   type MetricsInsights,
   type MetricsStorage,
+  type SessionRuntimeMetrics,
 } from "@/hooks/useApi";
 import { providerPlansApi } from "@/lib/api";
 import {
@@ -100,6 +102,8 @@ export function Metrics() {
   const { data: insights, isLoading: loadingInsights } = useMetricsInsights(detailQueryOptions);
   const { data: tokenAnalysis, isLoading: loadingTokenAnalysis } =
     useMetricsTokenAnalysis(detailQueryOptions);
+  const { data: sessionMetrics, isLoading: loadingSessionMetrics } =
+    useMetricsSessions(detailQueryOptions);
   const { data: storage, isLoading: loadingStorage } = useMetricsStorage(detailQueryOptions);
   const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
     null
@@ -163,6 +167,7 @@ export function Metrics() {
   const tokenAnalysisPending =
     !tokenAnalysisData && (!detailMetricsEnabled || loadingTokenAnalysis);
   const storagePending = !storageData && (!detailMetricsEnabled || loadingStorage);
+  const sessionMetricsPending = !sessionMetrics && (!detailMetricsEnabled || loadingSessionMetrics);
   const providerPlansPending =
     !providerPlanStatus && (!detailMetricsEnabled || loadingProviderPlans);
 
@@ -466,6 +471,8 @@ export function Metrics() {
           loading={storagePending}
         />
       </div>
+
+      <SessionRuntimeTable metrics={sessionMetrics} loading={sessionMetricsPending} />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
         <Card className="xl:col-span-2">
@@ -1686,6 +1693,121 @@ function MetricRankedRows({
         </div>
       ))}
     </div>
+  );
+}
+
+function formatLatency(value: number | null): string {
+  if (value === null) return "--";
+  return value < 1000 ? `${Math.round(value)}ms` : `${(value / 1000).toFixed(1)}s`;
+}
+
+function SessionRuntimeTable({
+  metrics,
+  loading,
+}: {
+  metrics?: SessionRuntimeMetrics;
+  loading: boolean;
+}) {
+  const totals = metrics?.totals;
+  return (
+    <Card className="mb-8 overflow-hidden">
+      <CardHeader className="border-b border-white/10">
+        <CardTitle className="flex items-center gap-2">
+          <Clock className="h-5 w-5 text-cyan-400" />
+          Chat Runtime
+        </CardTitle>
+        <CardDescription>
+          Per-chat tokens, cache activity, generation speed, latency, and compaction
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        {loading ? (
+          <div className="p-5">
+            <MetricPanelSkeleton rows={5} />
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-2 gap-px border-b border-white/10 bg-white/10 md:grid-cols-4">
+              {[
+                ["Tracked chats", formatNumber(totals?.sessions || 0)],
+                ["Provider calls", formatNumber(totals?.callCount || 0)],
+                [
+                  "Output speed",
+                  totals?.tokensPerSecond ? `${totals.tokensPerSecond} tok/s` : "--",
+                ],
+                ["Average TTFT", formatLatency(totals?.firstTokenMs ?? null)],
+              ].map(([label, value]) => (
+                <div key={label} className="bg-black/10 px-5 py-4">
+                  <p className="text-xs text-gray-500">{label}</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-white">{value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-[1040px] w-full text-left text-sm">
+                <thead className="bg-white/[0.03] text-[11px] uppercase text-gray-500">
+                  <tr>
+                    <th className="px-5 py-3 font-medium">Chat</th>
+                    <th className="px-4 py-3 font-medium">Provider / model</th>
+                    <th className="px-4 py-3 text-right font-medium">Input</th>
+                    <th className="px-4 py-3 text-right font-medium">Output</th>
+                    <th className="px-4 py-3 text-right font-medium">Cache</th>
+                    <th className="px-4 py-3 text-right font-medium">Speed</th>
+                    <th className="px-4 py-3 text-right font-medium">TTFT</th>
+                    <th className="px-5 py-3 text-right font-medium">Compaction</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.07]">
+                  {(metrics?.sessions || []).map((session) => (
+                    <tr key={session.sessionId} className="transition-colors hover:bg-white/[0.03]">
+                      <td className="max-w-[280px] px-5 py-3">
+                        <p className="truncate font-medium text-gray-100">{session.title}</p>
+                        <p className="mt-0.5 truncate text-xs text-gray-500">
+                          {session.callCount} call{session.callCount === 1 ? "" : "s"}
+                        </p>
+                      </td>
+                      <td className="max-w-[220px] px-4 py-3">
+                        <p className="truncate text-gray-300">{session.model || "Unknown model"}</p>
+                        <p className="truncate text-xs text-gray-500">
+                          {session.provider || "Unknown provider"}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-300">
+                        {formatNumber(session.inputTokens)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-300">
+                        {formatNumber(session.outputTokens)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-cyan-300">
+                        {formatNumber(session.cachedInputTokens)}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-300">
+                        {session.tokensPerSecond === null
+                          ? "--"
+                          : `${session.tokensPerSecond} tok/s`}
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums text-gray-300">
+                        {formatLatency(session.firstTokenMs)}
+                      </td>
+                      <td className="px-5 py-3 text-right tabular-nums text-gray-300">
+                        {session.compactionCount > 0
+                          ? `${session.compactionCount} · ${formatNumber(session.compactedTokens)}`
+                          : "--"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {metrics?.sessions.length === 0 ? (
+                <p className="px-5 py-10 text-center text-sm text-gray-500">
+                  Runtime metrics appear after an agent completes a provider call.
+                </p>
+              ) : null}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

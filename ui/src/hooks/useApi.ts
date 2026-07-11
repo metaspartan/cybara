@@ -1465,6 +1465,52 @@ export function useMetricsTokenAnalysis(options: MetricsQueryControlOptions = {}
   });
 }
 
+export interface SessionRuntimeMetrics {
+  totals: {
+    sessions: number;
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens: number;
+    cacheWriteTokens: number;
+    totalTokens: number;
+    callCount: number;
+    durationMs: number;
+    tokensPerSecond: number | null;
+    firstTokenMs: number | null;
+    compactionCount: number;
+    compactedTokens: number;
+  };
+  sessions: Array<{
+    sessionId: string;
+    title: string;
+    agentId: string;
+    workspaceDir: string | null;
+    updatedAt: string;
+    provider: string | null;
+    model: string | null;
+    inputTokens: number;
+    outputTokens: number;
+    cachedInputTokens: number;
+    cacheWriteTokens: number;
+    totalTokens: number;
+    callCount: number;
+    durationMs: number;
+    tokensPerSecond: number | null;
+    firstTokenMs: number | null;
+    compactionCount: number;
+    compactedTokens: number;
+  }>;
+}
+
+export function useMetricsSessions(options: MetricsQueryControlOptions = {}) {
+  return useQuery({
+    queryKey: ["metrics", "sessions"],
+    queryFn: () => fetchApi<SessionRuntimeMetrics>("/metrics/sessions"),
+    ...METRICS_QUERY_OPTIONS,
+    ...options,
+  });
+}
+
 export function useMetricsFiles(options: MetricsQueryControlOptions = {}) {
   return useQuery({
     queryKey: ["metrics", "files"],

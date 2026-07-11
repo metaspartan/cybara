@@ -3060,6 +3060,25 @@ describe("mobile API client", () => {
           components: {},
         });
       }
+      if (path === "/api/metrics/sessions") {
+        return Response.json({
+          totals: {
+            sessions: 0,
+            inputTokens: 0,
+            outputTokens: 0,
+            cachedInputTokens: 0,
+            cacheWriteTokens: 0,
+            totalTokens: 0,
+            callCount: 0,
+            durationMs: 0,
+            tokensPerSecond: null,
+            firstTokenMs: null,
+            compactionCount: 0,
+            compactedTokens: 0,
+          },
+          sessions: [],
+        });
+      }
       if (path === "/api/provider-plans/status") {
         return Response.json({
           enabled: true,
@@ -3077,6 +3096,7 @@ describe("mobile API client", () => {
       expect(snapshot.overview?.tokenUsage.total).toBe(10);
       expect(snapshot.storage?.totalBytes).toBe(2048);
       expect(snapshot.providerPlans?.enabled).toBe(true);
+      expect(snapshot.sessions?.totals.sessions).toBe(0);
       expect(Object.values(snapshot.availability).every((endpoint) => endpoint.ok)).toBe(true);
       expect(paths.sort()).toEqual(
         [
@@ -3086,6 +3106,7 @@ describe("mobile API client", () => {
           "/api/metrics/models",
           "/api/metrics/overview",
           "/api/metrics/providers",
+          "/api/metrics/sessions",
           "/api/metrics/storage",
           "/api/metrics/time-series",
           "/api/metrics/token-analysis",

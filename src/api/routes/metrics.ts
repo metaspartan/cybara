@@ -19,6 +19,7 @@ import {
   type TokenCloudEntry,
 } from "./_shared";
 import { getDailyLogCounts, getModelMetrics, type MetricsEntry } from "../queries";
+import { listSessionRuntimeMetrics } from "../../core/session-runtime-metrics";
 
 const TOKEN_ANALYSIS_ROW_LIMIT = 6000;
 
@@ -34,7 +35,8 @@ type MetricsEndpointKey =
   | "insights"
   | "tokenAnalysis"
   | "storage"
-  | "providerPlans";
+  | "providerPlans"
+  | "sessions";
 
 function emptyMetricsAvailability(): Record<MetricsEndpointKey, { ok: boolean; error?: string }> {
   return {
@@ -49,6 +51,7 @@ function emptyMetricsAvailability(): Record<MetricsEndpointKey, { ok: boolean; e
     tokenAnalysis: { ok: false },
     storage: { ok: false },
     providerPlans: { ok: false },
+    sessions: { ok: false },
   };
 }
 
@@ -888,6 +891,7 @@ async function buildMetricsSnapshot() {
     tokenAnalysis,
     storage,
     providerPlans,
+    sessions,
   ] = await Promise.all([
     metricsSnapshotValue(availability, "overview", null, buildMetricsOverview),
     metricsSnapshotValue(availability, "tokens", null, buildMetricsTokens),
@@ -904,6 +908,7 @@ async function buildMetricsSnapshot() {
     metricsSnapshotValue(availability, "providerPlans", null, () =>
       enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus())
     ),
+    metricsSnapshotValue(availability, "sessions", null, () => listSessionRuntimeMetrics()),
   ]);
 
   return {
@@ -918,6 +923,7 @@ async function buildMetricsSnapshot() {
     tokenAnalysis,
     storage,
     providerPlans,
+    sessions,
     availability,
   };
 }
@@ -962,6 +968,8 @@ export const metricsRoutes: Record<string, RouteHandler> = {
   "GET /api/metrics/models": () => ({ models: getModelMetrics() }),
   "GET /api/metrics/insights": () => buildMetricsInsights(),
   "GET /api/metrics/token-analysis": () => buildMetricsTokenAnalysis(),
+  "GET /api/metrics/sessions": (_body, params) =>
+    listSessionRuntimeMetrics(Number(params?.limit) || 200),
   "POST /api/metrics/track": (body) => {
     const data = body as {
       type: string;

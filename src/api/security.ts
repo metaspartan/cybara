@@ -832,6 +832,10 @@ export function routeRequiredScope(method: string, path: string): string | null 
   if (path.startsWith("/api/migrations")) {
     return "manage";
   }
+  if (path.startsWith("/api/evals")) {
+    if (method === "GET") return "read";
+    return "chat";
+  }
   if (path.startsWith("/api/wallet")) {
     if (method === "GET") return null;
     return "wallet";

@@ -1424,6 +1424,36 @@ export const chatApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  forkSession: (
+    id: string,
+    payload: { throughMessageIndex?: number; agentId?: string; title?: string }
+  ) =>
+    fetchApi<{
+      success: boolean;
+      fork: {
+        sessionId: string;
+        sourceSessionId: string;
+        agentId: string;
+        messageCount: number;
+        workspaceDir: string | null;
+        title: string | null;
+      };
+      error?: string;
+    }>("/sessions/" + id + "/fork", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  saveGolden: (
+    id: string,
+    payload: { messageIndex?: number; name?: string; description?: string; tags?: string[] }
+  ) =>
+    fetchApi<{ success: boolean; golden: AgentGolden; error?: string }>(
+      "/sessions/" + id + "/golden",
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }
+    ),
   updateSessionTitle: (id: string, title: string) =>
     fetchApi<{ success: boolean; sessionId: string; title: string; error?: string }>(
       "/sessions/" + id + "/title",
@@ -1526,6 +1556,78 @@ export const chatApi = {
       method: "DELETE",
     }),
   deleteSession: (id: string) => fetchApi<void>("/sessions/" + id, { method: "DELETE" }),
+};
+
+export interface AgentTrajectoryStructure {
+  tools: Array<{
+    name: string;
+    status: string;
+    argumentKeys: string[];
+    resultKeys: string[];
+  }>;
+  response: {
+    hasContent: boolean;
+    hasThinking: boolean;
+    contentKind: "empty" | "text" | "structured";
+  };
+}
+
+export interface AgentGolden {
+  id: string;
+  trajectoryId: string;
+  name: string;
+  description: string | null;
+  tags: string[];
+  baseline: {
+    id: string;
+    sessionId: string;
+    turnIndex: number;
+    agentId: string;
+    provider: string | null;
+    model: string | null;
+    request: { userMessage: ChatMessage; userMessageIndex: number; workspaceDir: string | null };
+    structure: AgentTrajectoryStructure;
+    createdAt: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentEvalRun {
+  id: string;
+  goldenId: string;
+  replaySessionId: string | null;
+  status: "running" | "passed" | "failed" | "error";
+  score: number | null;
+  comparison: {
+    equivalent: boolean;
+    score: number;
+    differences: Array<{
+      path: string;
+      expected: unknown;
+      actual: unknown;
+      severity: "error" | "warning";
+    }>;
+  } | null;
+  error: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export const evalsApi = {
+  list: () => fetchApi<{ goldens: AgentGolden[]; runs: AgentEvalRun[] }>("/evals"),
+  replay: (goldenId: string, payload?: { agentId?: string; modelOverride?: string }) =>
+    fetchApi<{ success: boolean; run: AgentEvalRun; error?: string }>(
+      `/evals/goldens/${goldenId}/replay`,
+      { method: "POST", body: JSON.stringify(payload ?? {}) }
+    ),
+  runSuite: (goldenIds?: string[]) =>
+    fetchApi<{ success: boolean; runs: AgentEvalRun[]; error?: string }>("/evals/run", {
+      method: "POST",
+      body: JSON.stringify(goldenIds ? { goldenIds } : {}),
+    }),
+  deleteGolden: (goldenId: string) =>
+    fetchApi<{ success: boolean }>(`/evals/goldens/${goldenId}`, { method: "DELETE" }),
 };
 
 export const workspaceOpenApi = {

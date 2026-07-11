@@ -2579,6 +2579,37 @@ export class CybaraMobileApi {
     });
   }
 
+  forkSession(
+    id: string,
+    payload: { throughMessageIndex?: number; agentId?: string; title?: string } = {}
+  ): Promise<{
+    success: boolean;
+    fork?: {
+      sessionId: string;
+      sourceSessionId: string;
+      agentId: string;
+      messageCount: number;
+      workspaceDir: string | null;
+      title: string | null;
+    };
+    error?: string;
+  }> {
+    return this.request(`/api/sessions/${encodeURIComponent(id)}/fork`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  saveSessionGolden(
+    id: string,
+    payload: { messageIndex?: number; name?: string } = {}
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.request(`/api/sessions/${encodeURIComponent(id)}/golden`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
   async agents(): Promise<AgentSummary[]> {
     return normalizeAgents(await this.request<unknown>("/api/agents/summary"));
   }
@@ -3189,6 +3220,7 @@ export class CybaraMobileApi {
       tokenAnalysis,
       storage,
       providerPlans,
+      sessions,
     ] = await Promise.all([
       safe("overview", null, () =>
         this.request<MetricsSnapshot["overview"]>("/api/metrics/overview")
@@ -3211,6 +3243,9 @@ export class CybaraMobileApi {
       ),
       safe("storage", null, () => this.request<MetricsSnapshot["storage"]>("/api/metrics/storage")),
       safe("providerPlans", null, () => this.providerPlanStatus()),
+      safe("sessions", null, () =>
+        this.request<MetricsSnapshot["sessions"]>("/api/metrics/sessions")
+      ),
     ]);
 
     return {
@@ -3225,6 +3260,7 @@ export class CybaraMobileApi {
       tokenAnalysis,
       storage,
       providerPlans,
+      sessions,
       availability,
     };
   }

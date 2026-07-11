@@ -476,6 +476,7 @@ describe("native macOS shell wiring", () => {
     const gatewayModels = readFileSync(join(MACOS_APP_DIR, "GatewayModels.swift"), "utf8");
     const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
     const configScreens = readFileSync(join(MACOS_APP_DIR, "NativeConfigScreens.swift"), "utf8");
+    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
 
     expect(gatewayModels).toContain("struct GatewaySessionContextUsage");
     expect(gatewayModels).toContain("let contextUsage: GatewaySessionContextUsage?");
@@ -496,6 +497,10 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("private var composerSecurityControls: some View");
     expect(nativeScreens).toContain('Label("Always Allow", systemImage: "exclamationmark.shield")');
     expect(nativeScreens).toContain('Label("Ask Me", systemImage: "questionmark.circle")');
+    expect(settings).toContain('"follow_up_behavior_enabled": followUpBehaviorEnabled');
+    expect(settings).toContain('"Queue / Steer follow-ups"');
+    expect(nativeScreens).toContain("guard !chatBusy || followUpBehaviorEnabled else { return }");
+    expect(nativeScreens).toContain('config["follow_up_behavior_enabled"] as? Bool ?? true');
     expect(nativeScreens).toContain("private var toolApprovalIconName: String");
     expect(nativeScreens).toContain("private var toolApprovalColor: Color");
     expect(nativeScreens).toContain("try await client.updateAppConfig(body)");

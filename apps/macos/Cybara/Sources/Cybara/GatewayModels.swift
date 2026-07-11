@@ -973,6 +973,26 @@ struct GatewaySessionAgentUpdateResponse: Decodable, Hashable {
     }
 }
 
+struct GatewaySessionForkResponse: Decodable, Hashable {
+    struct Fork: Decodable, Hashable {
+        let sessionId: String
+        let sourceSessionId: String
+        let agentId: String
+        let messageCount: Int
+        let workspaceDir: String?
+        let title: String?
+    }
+
+    let success: Bool
+    let fork: Fork?
+    let error: String?
+}
+
+struct GatewayGoldenSaveResponse: Decodable, Hashable {
+    let success: Bool
+    let error: String?
+}
+
 struct GatewaySuccessResponse: Decodable, Hashable {
     let success: Bool
     let error: String?

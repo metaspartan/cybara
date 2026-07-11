@@ -28,7 +28,19 @@ interface PersistedSessionMessage {
 }
 
 type SessionMessageMetadata = Partial<
-  Pick<ChatMessage, "thinking" | "tool_calls" | "process_activities">
+  Pick<
+    ChatMessage,
+    | "provider"
+    | "provider_id"
+    | "provider_name"
+    | "model"
+    | "agent_id"
+    | "agent_name"
+    | "agent_type"
+    | "thinking"
+    | "tool_calls"
+    | "process_activities"
+  >
 >;
 
 function sessionMessageStableId(parts: unknown[]): string {
@@ -47,6 +59,18 @@ function serializeSessionMessageMetadata(
   extra?: Record<string, unknown>
 ): string | undefined {
   const metadata: Record<string, unknown> = { ...(extra || {}) };
+  for (const key of [
+    "provider",
+    "provider_id",
+    "provider_name",
+    "model",
+    "agent_id",
+    "agent_name",
+    "agent_type",
+  ] as const) {
+    const value = message[key];
+    if (typeof value === "string" && value.trim()) metadata[key] = value.trim();
+  }
   if (typeof message.thinking === "string" && message.thinking.trim()) {
     metadata.thinking = message.thinking;
   }
@@ -354,6 +378,7 @@ export function summarizeSessionTokenUsage(sessionId: string): SessionTokenUsage
        WHERE type = 'token_usage_by_session'
          AND key = ?
          AND json_type(metadata, '$.firstTokenMs') IN ('integer', 'real')
+         AND CAST(json_extract(metadata, '$.firstTokenMs') AS REAL) > 0
        ORDER BY rowid DESC
        LIMIT 1`
     )

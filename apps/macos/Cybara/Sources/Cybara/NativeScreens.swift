@@ -110,6 +110,8 @@ struct NativeMessageActions: View {
     let content: String
     let timestampLabel: String
     let onRevert: (() -> Void)?
+    let onFork: (() -> Void)?
+    let onSaveGolden: (() -> Void)?
     @State private var copied = false
 
     var body: some View {
@@ -139,6 +141,24 @@ struct NativeMessageActions: View {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .help("Revert session to this message")
+            }
+            if let onFork {
+                Button(action: onFork) {
+                    Image(systemName: "arrow.triangle.branch")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Fork chat from this message")
+            }
+            if let onSaveGolden {
+                Button(action: onSaveGolden) {
+                    Image(systemName: "flask")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Save this turn as a golden run")
             }
         }
     }
@@ -510,6 +530,7 @@ struct ChatScreen: View {
     @State private var agentSaving = false
     @State private var approvalSaving = false
     @State private var toolApprovalMode = "always_allow"
+    @State private var followUpBehaviorEnabled = true
     @State private var pendingApprovals: [GatewayPendingApproval] = []
     @State private var expandedApprovalID: String?
     @State private var showContextPopover = false
@@ -1683,7 +1704,11 @@ struct ChatScreen: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
-                        .disabled(steeringPendingID == message.id || pendingMutationID == message.id)
+                        .disabled(
+                            !followUpBehaviorEnabled ||
+                                steeringPendingID == message.id ||
+                                pendingMutationID == message.id
+                        )
                     }
                 }
                 .padding(10)
@@ -1738,7 +1763,15 @@ struct ChatScreen: View {
                             revertCandidate = message
                             showRevertConfirm = true
                         }
-                        : nil
+                        : nil,
+                    onFork: {
+                        performFork(message)
+                    },
+                    onSaveGolden: isUser
+                        ? nil
+                        : {
+                            performSaveGolden(message)
+                        }
                 )
             }
         }
@@ -1894,6 +1927,46 @@ struct ChatScreen: View {
         }
     }
 
+    private func messageIndex(_ message: GatewaySessionMessage) -> Int? {
+        messages.firstIndex { $0.id == message.id }
+    }
+
+    private func performFork(_ message: GatewaySessionMessage) {
+        guard let sessionID = selectedSessionID else { return }
+        Task {
+            do {
+                let response = try await client.forkSession(
+                    sessionID,
+                    throughMessageIndex: messageIndex(message)
+                )
+                guard response.success, let fork = response.fork else {
+                    throw GatewayClientError.badStatus(400, response.error ?? "Failed to fork chat")
+                }
+                await loadSessions()
+                selectedSessionID = fork.sessionId
+            } catch {
+                self.error = "Failed to fork: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func performSaveGolden(_ message: GatewaySessionMessage) {
+        guard let sessionID = selectedSessionID else { return }
+        Task {
+            do {
+                let response = try await client.saveSessionGolden(
+                    sessionID,
+                    messageIndex: messageIndex(message)
+                )
+                if !response.success {
+                    throw GatewayClientError.badStatus(400, response.error ?? "Failed to save golden run")
+                }
+            } catch {
+                self.error = "Failed to save golden run: \(error.localizedDescription)"
+            }
+        }
+    }
+
     private var composer: some View {
         VStack(spacing: 8) {
             if let error {
@@ -1958,9 +2031,10 @@ struct ChatScreen: View {
                     }
                     .buttonStyle(.borderless)
                     .disabled(
-                        draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             && pendingAttachments.isEmpty
-                            && pendingFiles.isEmpty
+                            && pendingFiles.isEmpty) ||
+                            ((showWorkingTimeline || !pendingMessages.isEmpty) && !followUpBehaviorEnabled)
                     )
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -2693,8 +2767,10 @@ struct ChatScreen: View {
         do {
             let config = try await client.appConfig()
             toolApprovalMode = config["tool_approval_mode"] as? String == "ask" ? "ask" : "always_allow"
+            followUpBehaviorEnabled = config["follow_up_behavior_enabled"] as? Bool ?? true
         } catch {
             toolApprovalMode = "always_allow"
+            followUpBehaviorEnabled = true
         }
         do {
             let router = try await client.routerConfig()
@@ -3182,8 +3258,10 @@ struct ChatScreen: View {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         let attachments = pendingAttachments
         let files = pendingFiles
-        let queuedSend = sending || showWorkingTimeline || !pendingMessages.isEmpty
+        let chatBusy = sending || showWorkingTimeline || !pendingMessages.isEmpty
+        let queuedSend = followUpBehaviorEnabled && chatBusy
         guard !text.isEmpty || !attachments.isEmpty || !files.isEmpty else { return }
+        guard !chatBusy || followUpBehaviorEnabled else { return }
         let outgoing = nativeComposedMessage(text: text, files: files)
         if !queuedSend {
             sending = true

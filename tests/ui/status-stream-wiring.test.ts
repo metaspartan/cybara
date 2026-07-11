@@ -184,10 +184,10 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain('"Queueing..."');
     expect(source).toContain("const composerHasDraft =");
     expect(source).toContain(
-      "const showStopComposerButton = showWorkingTimeline && !composerHasDraft"
+      "const showStopComposerButton = showWorkingTimeline && (!composerHasDraft || !sendQueuesFollowUp)"
     );
     expect(source).toContain(
-      "const sendQueuesFollowUp = showWorkingTimeline || pendingMessages.length > 0"
+      "followUpBehaviorEnabled && (showWorkingTimeline || pendingMessages.length > 0)"
     );
     expect(source).not.toContain("new EventSource(");
   });
