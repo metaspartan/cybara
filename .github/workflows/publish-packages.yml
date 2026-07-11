@@ -3,9 +3,6 @@ name: Publish Packages
 on:
   release:
     types: [released]
-  workflow_run:
-    workflows: ["Release"]
-    types: [completed]
   workflow_dispatch:
     inputs:
       version:
@@ -17,7 +14,6 @@ permissions:
 
 jobs:
   resolve:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}

@@ -852,6 +852,9 @@ jobs:
     needs: [release, build-tauri, build-native-macos, build-android, build-ios]
     runs-on: ubuntu-latest
     if: ${{ always() && needs.release.result == 'success' }}
+    permissions:
+      contents: write
+      actions: write
     steps:
       - name: Checkout
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
@@ -907,3 +910,14 @@ jobs:
           else
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false --latest
           fi
+      - name: Trigger package publishing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.name }}
+        run: |
+          set -euo pipefail
+          test -n "$TAG"
+          gh workflow run publish-packages.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f version="${TAG#v}"
