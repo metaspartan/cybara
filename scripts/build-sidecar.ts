@@ -538,6 +538,22 @@ export default instance.exports;
     );
   }
 
+  // Stage the sandbox-browser Docker context so the packaged app can build the
+  // isolated browser image at runtime (tauri.conf.json bundles bin/docker/sandbox-browser).
+  const dockerSandboxSource = join(import.meta.dirname, "..", "docker", "sandbox-browser");
+  if (existsSync(join(dockerSandboxSource, "Dockerfile"))) {
+    for (const targetBase of [TAURI_BIN_DIR, tauriDebugDir]) {
+      const target = join(targetBase, "docker", "sandbox-browser");
+      if (existsSync(target)) rmSync(target, { recursive: true });
+      mkdirSync(join(targetBase, "docker"), { recursive: true });
+      cpSync(dockerSandboxSource, target, { recursive: true });
+    }
+  } else {
+    console.warn(
+      `[build-sidecar] Sandbox browser Docker context not found at ${dockerSandboxSource}.`
+    );
+  }
+
   console.log(`\n✅ Sidecar built: ${sidecarPath}\n`);
 }
 
