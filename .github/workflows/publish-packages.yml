@@ -91,7 +91,7 @@ jobs:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{ matrix.runner }}
     env:
-      HAS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' }}
+      HAS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS != '' && vars.SNAP_ENABLED == 'true' }}
     steps:
       - if: env.HAS == 'true'
         uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
