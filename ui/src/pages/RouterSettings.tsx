@@ -445,7 +445,8 @@ export function RouterSettings() {
                 <Circle className="mt-0.5 w-4 h-4 flex-shrink-0 text-gray-600" />
               )}
               <span className={hasEnoughRoutes ? "text-gray-500 line-through" : "text-gray-200"}>
-                Add at least two of them to the rotation below ({routedTypes.length} of 2 added)
+                Add at least two of them to the rotation below ({routedTypes.length} of 2 added) —
+                the router turns on automatically
               </span>
             </li>
             <li className="flex items-start gap-2">
@@ -455,7 +456,7 @@ export function RouterSettings() {
                 <Circle className="mt-0.5 w-4 h-4 flex-shrink-0 text-gray-600" />
               )}
               <span className={config.enabled ? "text-gray-500 line-through" : "text-gray-200"}>
-                Turn the router on and pick a strategy — Weighted is a good default
+                Pick a strategy — Weighted is a good default
               </span>
             </li>
           </ol>
@@ -478,7 +479,7 @@ export function RouterSettings() {
                   ? "Requests are being routed across your configured providers."
                   : hasEnoughRoutes
                     ? "Turn on to start routing. Off means each agent uses only its own provider."
-                    : "Add at least two providers to the rotation below before turning this on."}
+                    : "Add two providers to the rotation below and the router turns on automatically."}
               </p>
             </div>
             <button
@@ -828,7 +829,8 @@ function RouteRow({
   const remove = () => {
     const routes = { ...config.routes };
     delete routes[route.providerId];
-    void onSave({ ...config, routes });
+    const enabled = config.enabled && Object.keys(routes).length >= 2;
+    void onSave({ ...config, routes, enabled });
   };
 
   const updatePlan = (
@@ -1392,7 +1394,8 @@ function AddRouteForm({
     if (!type) return;
     const routes = { ...config.routes };
     routes[type] = { weight: 50, enabled: true };
-    void onSave({ ...config, routes });
+    const enabled = config.enabled || Object.keys(routes).length >= 2;
+    void onSave({ ...config, routes, enabled });
     setSelected("");
   };
 
