@@ -3,6 +3,9 @@ name: Publish Packages
 on:
   release:
     types: [released]
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       version:
@@ -14,14 +17,27 @@ permissions:
 
 jobs:
   resolve:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
       - id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           VER="${{ github.event.inputs.version }}"
-          [ -z "$VER" ] && VER="${GITHUB_REF_NAME#v}"
+          if [ -z "$VER" ] && [ "${{ github.event_name }}" = "release" ]; then
+            VER="${GITHUB_REF_NAME#v}"
+          fi
+          if [ -z "$VER" ]; then
+            TAG="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+            VER="${TAG#v}"
+          fi
+          if [ -z "$VER" ]; then
+            echo "Could not resolve a version to publish" >&2
+            exit 1
+          fi
           echo "version=$VER" >> "$GITHUB_OUTPUT"
           echo "Publishing version $VER"
 
