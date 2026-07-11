@@ -4,16 +4,81 @@ import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
+  Bookmark,
   CheckCircle2,
   FlaskConical,
   GitFork,
   Loader2,
   Play,
+  RotateCcw,
+  ShieldCheck,
   Trash2,
+  X,
   XCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+
+function EvalsExplainer() {
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem("evals-explainer") === "1");
+  if (dismissed) return null;
+  const steps = [
+    {
+      icon: Bookmark,
+      title: "Save a good run",
+      body: "In any chat you're happy with, use the message menu to save that turn as a golden — a snapshot of what the agent did.",
+    },
+    {
+      icon: RotateCcw,
+      title: "Replay after changes",
+      body: "Switched model, edited a prompt, or added a tool? Replay the golden to re-run the same request against your new setup.",
+    },
+    {
+      icon: ShieldCheck,
+      title: "Catch regressions",
+      body: "Cybara checks the agent still calls the same tools in the same order and reaches the same result — so you catch breakage before your users do.",
+    },
+  ];
+  return (
+    <div className="mb-4 rounded-xl border border-indigo-400/20 bg-indigo-400/[0.06] p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-white">What are evals?</p>
+          <p className="mt-1 max-w-3xl text-[13px] leading-6 text-gray-300">
+            Agents aren't deterministic, so a change that looks safe can quietly break behavior.
+            Evals let you lock in a known-good run and re-check it whenever you change models,
+            prompts, or tools.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            localStorage.setItem("evals-explainer", "1");
+            setDismissed(true);
+          }}
+          aria-label="Dismiss"
+          className="rounded-md p-1 text-gray-500 hover:bg-white/5 hover:text-white"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+        {steps.map((step, index) => (
+          <div key={step.title} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-indigo-400/15 text-[11px] font-semibold text-indigo-200">
+                {index + 1}
+              </span>
+              <step.icon className="h-4 w-4 text-indigo-300" />
+              <span className="text-[13px] font-medium text-white">{step.title}</span>
+            </div>
+            <p className="mt-1.5 text-[12px] leading-5 text-gray-400">{step.body}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function statusIcon(status: AgentEvalRun["status"]) {
   if (status === "passed") return <CheckCircle2 className="h-4 w-4 text-emerald-400" />;
@@ -102,7 +167,7 @@ function GoldenRow({
           </span>
         ))}
         {golden.baseline.structure.tools.length === 0 && (
-          <span className="text-[11px] text-gray-600">Response-only baseline</span>
+          <span className="text-[11px] text-gray-600">No tools used — text-only response</span>
         )}
       </div>
 
@@ -119,7 +184,11 @@ function GoldenRow({
                     ? "Replay error"
                     : "Running"}
             </span>
-            {latestRun.score !== null && <span className="text-gray-400">{latestRun.score}%</span>}
+            {latestRun.score !== null && (
+              <span className="text-gray-400" title="How closely the replay matched the saved run">
+                {latestRun.score}% match
+              </span>
+            )}
           </div>
           {latestRun.error && (
             <p className="mt-1 text-[11px] text-amber-200/80">{latestRun.error}</p>
@@ -216,6 +285,7 @@ export function Evals() {
         </button>
       }
     >
+      <EvalsExplainer />
       {query.isLoading ? (
         <div className="grid gap-3 md:grid-cols-2">
           {[0, 1, 2, 3].map((item) => (
@@ -231,11 +301,17 @@ export function Evals() {
         </div>
       ) : goldens.length === 0 ? (
         <div className="flex min-h-[360px] items-center justify-center text-center">
-          <div className="max-w-sm">
+          <div className="max-w-md">
             <FlaskConical className="mx-auto h-9 w-9 text-gray-600" />
             <h2 className="mt-4 text-base font-semibold text-white">No golden tests yet</h2>
             <p className="mt-2 text-sm leading-6 text-gray-400">
-              Open a completed chat and save a turn as a golden test from its message actions.
+              Golden tests are saved from real chats. Open a{" "}
+              <Link to="/chat" className="text-indigo-300 hover:text-indigo-200">
+                chat
+              </Link>{" "}
+              you're happy with, hover a completed assistant turn, and choose{" "}
+              <span className="font-medium text-gray-200">Save as golden</span>. It'll show up here,
+              ready to replay whenever you change your model, prompt, or tools.
             </p>
           </div>
         </div>
