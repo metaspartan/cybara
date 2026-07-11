@@ -427,7 +427,7 @@ img {
   flex-direction: column;
   gap: 8px;
   min-width: 0;
-  max-width: 100%;
+  width: min(560px, 100%);
 }
 
 .install-tabs-row {
@@ -461,12 +461,15 @@ img {
 }
 
 .install-tabs-cmd {
-  max-width: 100%;
+  display: flex;
+  width: 100%;
   min-width: 0;
 }
 
 .install-tabs-cmd code {
+  flex: 1;
   min-width: 0;
+  text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

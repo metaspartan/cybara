@@ -49,9 +49,10 @@ export const INSTALL_COMMAND =
 export const INSTALL_COMMAND_WINDOWS =
   'powershell -c "irm https://cybara.ai/install.ps1 | iex"';
 export const INSTALL_COMMAND_NPM = "npx cybara";
+export const INSTALL_COMMAND_BUN = "bunx cybara";
 
 export interface InstallTab {
-  key: "shell" | "windows" | "npm";
+  key: "shell" | "windows" | "npm" | "bun";
   label: string;
   prompt: string;
   command: string;
@@ -78,7 +79,14 @@ export const INSTALL_TABS: readonly InstallTab[] = [
     label: "npm",
     prompt: "$",
     command: INSTALL_COMMAND_NPM,
-    hint: "Runs instantly via npx or bunx — any OS with Node or Bun.",
+    hint: "Runs instantly with npx — any OS with Node.js installed.",
+  },
+  {
+    key: "bun",
+    label: "Bun",
+    prompt: "$",
+    command: INSTALL_COMMAND_BUN,
+    hint: "Runs instantly with bunx — the same runtime Cybara is built on.",
   },
 ];
 
