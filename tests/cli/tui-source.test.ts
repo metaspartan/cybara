@@ -152,6 +152,7 @@ describe("CLI TUI source wiring", () => {
 
   test("chat TUI surfaces terminal chat queue and steering controls", () => {
     expect(cliTuiChatSource).toContain("/api/sessions");
+    expect(cliTuiChatSource).toContain("/api/agents/summary");
     expect(cliTuiChatSource).toContain('input === "n"');
     expect(cliTuiChatSource).toContain("setSearchMode(true)");
     expect(cliTuiChatSource).toContain("InteractiveChatTUI");

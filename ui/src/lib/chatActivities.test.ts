@@ -4,6 +4,7 @@ import {
   mergeActivityLists,
   finalizeCompletedActivities,
   normalizeActivityTextForPhase,
+  suppressRecoveredWebFailureActivities,
   type LiveActivityItem,
   type ToolCallLike,
 } from "./chatActivities";
@@ -222,5 +223,43 @@ describe("finalizeCompletedActivities", () => {
 
   test("empty input yields empty output", () => {
     expect(finalizeCompletedActivities([])).toEqual([]);
+  });
+});
+
+describe("suppressRecoveredWebFailureActivities", () => {
+  test("removes stale failed fetch rows when another source succeeded", () => {
+    const activities = [
+      activity({
+        id: "failed",
+        phase: "error",
+        toolName: "web_fetch",
+        text: "Fetch failed",
+      }),
+      activity({
+        id: "fetched",
+        toolName: "web_fetch",
+        text: "Fetched source",
+      }),
+    ];
+    const toolCalls: ToolCallLike[] = [
+      { name: "web_fetch", result: { error: "HTTP 404" } },
+      { name: "web_fetch", result: { content: "Manufacturer specification" } },
+    ];
+
+    expect(suppressRecoveredWebFailureActivities(activities, toolCalls)).toEqual([activities[1]]);
+  });
+
+  test("keeps the failure when no source succeeded", () => {
+    const activities = [
+      activity({
+        id: "failed",
+        phase: "error",
+        toolName: "web_fetch",
+        text: "Fetch failed",
+      }),
+    ];
+    const toolCalls: ToolCallLike[] = [{ name: "web_fetch", result: { error: "HTTP 404" } }];
+
+    expect(suppressRecoveredWebFailureActivities(activities, toolCalls)).toEqual(activities);
   });
 });

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  parseDuckDuckGoSearchResults,
   resolveSearchBackends,
   selectSearchBackends,
 } from "../../src/core/tools/handlers/web-search";
@@ -58,5 +59,45 @@ describe("web search backend selection", () => {
         BRAVE_API_KEY: "b",
       })
     ).toEqual(["exa", "tavily", "brave", "duckduckgo"]);
+  });
+
+  test("parses nested title and snippet markup from DuckDuckGo HTML", async () => {
+    const html = `
+      <div class="result">
+        <a class="result__a" href="https://example.com/spec.pdf">
+          <span class="result__type">PDF</span> NVMe <b>thermal</b> specification
+        </a>
+        <a class="result__snippet" href="https://example.com/spec.pdf">
+          The controller throttles at <b>85 C</b> under sustained load.
+        </a>
+      </div>
+    `;
+
+    expect(await parseDuckDuckGoSearchResults(html, 5)).toEqual([
+      {
+        title: "PDF NVMe thermal specification",
+        url: "https://example.com/spec.pdf",
+        description: "The controller throttles at 85 C under sustained load.",
+        siteName: "example.com",
+      },
+    ]);
+  });
+
+  test("decodes redirect URLs and respects the requested result count", async () => {
+    const html = `
+      <a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fone.example%2Fa">One</a>
+      <a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fone.example%2Fa">First</a>
+      <a class="result__a" href="https://two.example/b">Two</a>
+      <a class="result__snippet" href="https://two.example/b">Second</a>
+    `;
+
+    expect(await parseDuckDuckGoSearchResults(html, 1)).toEqual([
+      {
+        title: "One",
+        url: "https://one.example/a",
+        description: "First",
+        siteName: "one.example",
+      },
+    ]);
   });
 });

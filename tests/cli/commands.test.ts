@@ -252,6 +252,17 @@ function route(method: string, url: URL, body: string): Response {
     ]);
   }
 
+  if (method === "GET" && pathname === "/api/agents/summary") {
+    return json([
+      {
+        id: "agent-1",
+        name: "Primary Agent",
+        status: "running",
+        model: "claude-sonnet",
+      },
+    ]);
+  }
+
   if (method === "GET" && pathname === "/api/providers") {
     return json([
       {

@@ -238,7 +238,7 @@ function matchAgent(agent: CliAgentSummary, query: string): boolean {
 }
 
 async function fetchChatAgents(): Promise<CliAgentSummary[]> {
-  const agents = await chatContext().fetchAPI<CliAgentSummary[]>("/api/agents");
+  const agents = await chatContext().fetchAPI<CliAgentSummary[]>("/api/agents/summary");
   return Array.isArray(agents) ? agents : [];
 }
 

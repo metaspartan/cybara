@@ -3,7 +3,7 @@ import { cybaraDir, homeDir as runtimeHomeDir } from "../core/paths";
 import { resolveCybaraHome, setCybaraHomeOverride } from "../core/cybara-home";
 import { getCybaraDataDirConfigInfo, getCybaraDataDirInfo } from "./data-dir-info";
 import { pollProviderDeviceCodeOAuth, startProviderDeviceCodeOAuth } from "./provider-oauth-device";
-import { cacheMetricsRoutes, prewarmMetricsRoutes } from "./route-cache";
+import { cacheMetricsRoutes, invalidateCachedRoute, prewarmMetricsRoutes } from "./route-cache";
 import { mobileRoutes } from "./mobile";
 import { ideLspRoutes } from "./routes/ide-lsp-routes";
 import { runtimeRoutes } from "./routes/runtime-routes";
@@ -767,7 +767,11 @@ const routes: Record<string, RouteHandler> = {
     };
   },
   "GET /api/provider-plans/config": () => getProviderPlanMonitoringConfig(),
-  "PUT /api/provider-plans/config": (body) => setProviderPlanMonitoringConfig(body),
+  "PUT /api/provider-plans/config": (body) => {
+    const result = setProviderPlanMonitoringConfig(body);
+    invalidateCachedRoute("GET /api/provider-plans/status");
+    return result;
+  },
   "GET /api/provider-plans/availability": () => getProviderPlanAvailability(),
   "GET /api/provider-plans/status": () =>
     enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus()),
@@ -1004,7 +1008,7 @@ const routes: Record<string, RouteHandler> = {
     }
     validateProviderCredentialShape(resolvedProviderType, { apiKey, accessToken });
 
-    return providerManager.create({
+    const created = providerManager.create({
       provider: resolvedProviderType as Parameters<typeof providerManager.create>[0]["provider"],
       name: normalizeOptionalString(data.name) || data.name,
       api_key: apiKey,
@@ -1014,6 +1018,8 @@ const routes: Record<string, RouteHandler> = {
       base_url: normalizedBaseUrl,
       is_default: data.is_default,
     });
+    invalidateCachedRoute("GET /api/provider-plans/status");
+    return created;
   },
   "PUT /api/providers/:id": (body, params) => {
     const existing = providerManager.getWithCredentials(params!.id);
@@ -1073,11 +1079,15 @@ const routes: Record<string, RouteHandler> = {
       accessToken: updates.access_token,
     });
 
-    return {
-      success: providerManager.update(params!.id, updates),
-    };
+    const success = providerManager.update(params!.id, updates);
+    if (success) invalidateCachedRoute("GET /api/provider-plans/status");
+    return { success };
   },
-  "DELETE /api/providers/:id": (_body, params) => ({ success: providerManager.delete(params!.id) }),
+  "DELETE /api/providers/:id": (_body, params) => {
+    const success = providerManager.delete(params!.id);
+    if (success) invalidateCachedRoute("GET /api/provider-plans/status");
+    return { success };
+  },
   "GET /api/providers/:id/models": async (_body, params) => {
     const provider = providerManager.get(params!.id);
     const discovery = discoverProviderModels(params!.id);

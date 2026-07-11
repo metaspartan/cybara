@@ -30,6 +30,34 @@ function isObjectRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function hasUsableWebToolResult(call: ToolCallLike): boolean {
+  if (call.name !== "web_search" && call.name !== "web_fetch") return false;
+  if (isObjectRecord(call.result) && typeof call.result.error === "string") return false;
+  if (typeof call.result === "string") return call.result.trim().length > 0;
+  if (!isObjectRecord(call.result)) return false;
+  if (call.name === "web_search") {
+    return (
+      (Array.isArray(call.result.results) && call.result.results.length > 0) ||
+      (typeof call.result.count === "number" && call.result.count > 0)
+    );
+  }
+  return [call.result.content, call.result.text, call.result.markdown, call.result.output].some(
+    (value) => typeof value === "string" && value.trim().length > 0
+  );
+}
+
+export function suppressRecoveredWebFailureActivities(
+  activities: LiveActivityItem[],
+  toolCalls?: ToolCallLike[]
+): LiveActivityItem[] {
+  if (!toolCalls?.some(hasUsableWebToolResult)) return activities;
+  return activities.filter(
+    (activity) =>
+      activity.phase !== "error" ||
+      (activity.toolName !== "web_search" && activity.toolName !== "web_fetch")
+  );
+}
+
 function toDisplayPath(path: string): string {
   const normalized = path.replace(/\\/g, "/").trim();
   if (!normalized) return "file";

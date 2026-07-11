@@ -30,6 +30,11 @@ interface SearchResponse {
   error?: string;
 }
 
+interface DuckDuckGoAnchor {
+  href: string;
+  text: string;
+}
+
 function getCacheKey(query: string, count: number): string {
   return `${query.toLowerCase().trim()}:${count}`;
 }
@@ -116,50 +121,7 @@ async function searchWithDDG(query: string, count: number): Promise<SearchRespon
     throw new Error(`DuckDuckGo search error: ${response.status}`);
   }
 
-  const html = await response.text();
-
-  const results: SearchResult[] = [];
-  const resultPattern =
-    /<a rel="nofollow" class="result__a" href="([^"]*)"[^>]*>([^<]*)<\/a>[\s\S]*?<a class="result__snippet"[^>]*>([^<]*)<\/a>/g;
-
-  let match;
-  while ((match = resultPattern.exec(html)) !== null && results.length < count) {
-    const url = match[1];
-    const title = match[2].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
-    const description = match[3].replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
-
-    if (url && title) {
-      let cleanUrl = url;
-      const uddgMatch = url.match(/uddg=([^&]+)/);
-      if (uddgMatch) {
-        cleanUrl = decodeURIComponent(uddgMatch[1]);
-      }
-
-      results.push({
-        title,
-        url: cleanUrl,
-        description,
-        siteName: cleanUrl ? new URL(cleanUrl).hostname : undefined,
-      });
-    }
-  }
-
-  if (results.length === 0) {
-    const linkPattern = /href="(https?:\/\/[^"]+)"[^>]*>([^<]+)/g;
-    while ((match = linkPattern.exec(html)) !== null && results.length < count) {
-      const url = match[1];
-      const title = match[2];
-      if (url && !url.includes("duckduckgo.com") && title.length > 5) {
-        results.push({
-          title: title.trim(),
-          url,
-          description: "",
-          siteName: new URL(url).hostname,
-        });
-      }
-    }
-  }
-
+  const results = await parseDuckDuckGoSearchResults(await response.text(), count);
   return {
     query,
     provider: "duckduckgo",
@@ -167,6 +129,64 @@ async function searchWithDDG(query: string, count: number): Promise<SearchRespon
     tookMs: Date.now() - start,
     results,
   };
+}
+
+function decodeDuckDuckGoUrl(rawUrl: string): string {
+  try {
+    const parsed = new URL(rawUrl, "https://html.duckduckgo.com");
+    return parsed.searchParams.get("uddg") || parsed.toString();
+  } catch {
+    return rawUrl;
+  }
+}
+
+function createDuckDuckGoAnchorCollector(
+  anchors: DuckDuckGoAnchor[]
+): HTMLRewriterTypes.HTMLRewriterElementContentHandlers {
+  let current: DuckDuckGoAnchor | null = null;
+  return {
+    element(element): void {
+      current = { href: element.getAttribute("href") || "", text: "" };
+      element.onEndTag(() => {
+        if (current) anchors.push(current);
+        current = null;
+      });
+    },
+    text(chunk): void {
+      if (current) current.text += chunk.text;
+    },
+  };
+}
+
+export async function parseDuckDuckGoSearchResults(
+  html: string,
+  count: number
+): Promise<SearchResult[]> {
+  const titles: DuckDuckGoAnchor[] = [];
+  const snippets: DuckDuckGoAnchor[] = [];
+  const transformed = new HTMLRewriter()
+    .on("a.result__a", createDuckDuckGoAnchorCollector(titles))
+    .on("a.result__snippet", createDuckDuckGoAnchorCollector(snippets))
+    .transform(new Response(html));
+  await transformed.text();
+
+  const snippetsByUrl = new Map(
+    snippets.map((entry) => [decodeDuckDuckGoUrl(entry.href), entry.text.trim()])
+  );
+  const results: SearchResult[] = [];
+  for (const entry of titles) {
+    const url = decodeDuckDuckGoUrl(entry.href);
+    const title = entry.text.replace(/\s+/g, " ").trim();
+    if (!url.startsWith("http") || !title || url.includes("duckduckgo.com")) continue;
+    results.push({
+      title,
+      url,
+      description: (snippetsByUrl.get(url) || "").replace(/\s+/g, " ").trim(),
+      siteName: safeHostname(url),
+    });
+    if (results.length >= count) break;
+  }
+  return results;
 }
 
 async function searchWithTavily(

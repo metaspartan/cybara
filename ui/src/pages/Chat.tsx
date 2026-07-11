@@ -63,6 +63,7 @@ import {
   finalizeCompletedActivities,
   type LiveActivityItem,
   mergeActivityLists,
+  suppressRecoveredWebFailureActivities,
 } from "@/lib/chatActivities";
 import {
   type ChatFileAttachment,
@@ -2189,9 +2190,12 @@ export function Chat() {
       target.message.process_activities,
       parseTimestampMs(target.message.timestamp) ?? targetTurnStartedAtMs
     );
-    const captureActivities = mergeActivityLists(
-      mergeActivityLists(pending.activities, runActivityBufferRef.current),
-      liveActivities
+    const captureActivities = suppressRecoveredWebFailureActivities(
+      mergeActivityLists(
+        mergeActivityLists(pending.activities, runActivityBufferRef.current),
+        liveActivities
+      ),
+      target.message.tool_calls
     );
     const fallbackToolActivities =
       embeddedActivities.length === 0
@@ -2970,9 +2974,7 @@ export function Chat() {
               clearCachedLiveSessionState(sessionToRefresh);
             };
             if (sessionToRefresh && sessionToRefresh === activeSessionRef.current) {
-              void refreshSessionMessagesRef.current(sessionToRefresh).then((refreshed) => {
-                if (refreshed) finalizeLiveState();
-              });
+              void refreshSessionMessagesRef.current(sessionToRefresh).finally(finalizeLiveState);
             } else {
               finalizeLiveState();
             }
@@ -4253,9 +4255,9 @@ export function Chat() {
                               parseTimestampMs(message.timestamp) ?? turnStartedAtMs ?? 0,
                           })
                         : [];
-                    const mergedActivities = mergeActivityLists(
-                      restoredProcessActivities,
-                      fallbackToolActivities
+                    const mergedActivities = suppressRecoveredWebFailureActivities(
+                      mergeActivityLists(restoredProcessActivities, fallbackToolActivities),
+                      message.tool_calls
                     );
                     const processActivities =
                       mergedActivities.length > 0

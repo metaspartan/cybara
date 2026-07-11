@@ -15,9 +15,8 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
     expect(source).toContain("refreshSessionMessagesRef");
     expect(source).toContain("const finalizeLiveState = () => {");
     expect(source).toContain(
-      "void refreshSessionMessagesRef.current(sessionToRefresh).then((refreshed) => {"
+      "void refreshSessionMessagesRef.current(sessionToRefresh).finally(finalizeLiveState);"
     );
-    expect(source).toContain("if (refreshed) finalizeLiveState();");
     expect(source).toContain("loadPersistedCompletion");
     expect(source).toContain("loadSessionMutation.loadFresh(sid)");
     expect(source).toContain("activeSessionRef.current === sid");

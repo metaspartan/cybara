@@ -198,7 +198,7 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
     try {
       const [response, agentResponse] = await Promise.all([
         fetchAPI<unknown>("/api/sessions"),
-        fetchAPI<unknown>("/api/agents"),
+        fetchAPI<unknown>("/api/agents/summary"),
       ]);
       const nextSessions = sessionsFromResponse(response)
         .slice()
