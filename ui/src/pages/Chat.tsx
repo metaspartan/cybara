@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowLeft,
+  Bug,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -14,10 +15,12 @@ import {
   FolderOpen,
   GripVertical,
   GitFork,
+  Hash,
   Loader2,
   MessageSquare,
   Mic,
   MicOff,
+  MoreHorizontal,
   PanelRightOpen,
   Paperclip,
   Pencil,
@@ -44,7 +47,14 @@ import {
   useSubagents,
   useUpdateAgentReasoning,
 } from "@/hooks/useApi";
-import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
+import {
+  useChat,
+  useDeleteSession,
+  useLoadSession,
+  useRenameSession,
+  useSessions,
+  useUpdateSessionAgent,
+} from "@/hooks/useChat";
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
 import { apiFetch, appendApiTokenParam } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -1208,6 +1218,16 @@ export function Chat() {
   );
   const loadSessionMutation = useLoadSession();
   const updateSessionAgent = useUpdateSessionAgent();
+  const { data: sessionsList } = useSessions();
+  const renameSession = useRenameSession();
+  const deleteSessionMutation = useDeleteSession();
+  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [renamingHeader, setRenamingHeader] = useState(false);
+  const [headerTitleDraft, setHeaderTitleDraft] = useState("");
+  const [copiedSessionId, setCopiedSessionId] = useState(false);
+  const [copiedDebugInfo, setCopiedDebugInfo] = useState(false);
+  const headerMenuRef = useRef<HTMLDivElement>(null);
+  const headerCopyTimerRef = useRef<number | null>(null);
   const refreshSessionMessagesRef = useRef<(sid: string) => Promise<boolean>>(() =>
     Promise.resolve(false)
   );
@@ -2562,6 +2582,180 @@ export function Chat() {
     },
     [clearChat]
   );
+
+  const currentSessionSummary = useMemo(
+    () => (sessionId ? sessionsList?.find((session) => session.id === sessionId) ?? null : null),
+    [sessionsList, sessionId]
+  );
+
+  const derivedSessionTitle = useMemo(() => {
+    const explicitTitle = currentSessionSummary?.title?.trim();
+    if (explicitTitle) return explicitTitle;
+    const firstUserMessage = typedMessages.find(
+      (message) => message.role === "user" && message.content.trim()
+    );
+    const snippet = firstUserMessage?.content.trim().replace(/\s+/g, " ");
+    if (snippet) return snippet.length > 80 ? `${snippet.slice(0, 80)}…` : snippet;
+    return null;
+  }, [currentSessionSummary, typedMessages]);
+
+  const headerTitle = sessionId ? derivedSessionTitle ?? "Untitled chat" : "New chat";
+
+  const writeToClipboard = useCallback(async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      try {
+        const textarea = document.createElement("textarea");
+        textarea.value = value;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(textarea);
+        return ok;
+      } catch (error) {
+        console.error("Failed to copy to clipboard:", error);
+        return false;
+      }
+    }
+  }, []);
+
+  const flashHeaderCopy = useCallback((target: "id" | "debug") => {
+    if (headerCopyTimerRef.current !== null) {
+      window.clearTimeout(headerCopyTimerRef.current);
+    }
+    if (target === "id") {
+      setCopiedSessionId(true);
+      setCopiedDebugInfo(false);
+    } else {
+      setCopiedDebugInfo(true);
+      setCopiedSessionId(false);
+    }
+    headerCopyTimerRef.current = window.setTimeout(() => {
+      setCopiedSessionId(false);
+      setCopiedDebugInfo(false);
+      headerCopyTimerRef.current = null;
+    }, 1500);
+  }, []);
+
+  const handleCopySessionId = useCallback(async () => {
+    if (!sessionId) return;
+    if (await writeToClipboard(sessionId)) flashHeaderCopy("id");
+  }, [sessionId, writeToClipboard, flashHeaderCopy]);
+
+  const handleCopyDebugInfo = useCallback(async () => {
+    if (!sessionId) return;
+    const debugPayload = {
+      exportedAt: new Date().toISOString(),
+      app: {
+        version: info?.version ?? null,
+        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
+      },
+      session: {
+        id: sessionId,
+        title: currentSessionSummary?.title ?? derivedSessionTitle ?? null,
+        agentId: chatAgentId ?? selectedAgentId ?? sessionAgentId ?? null,
+        modelRouterEnabled: useModelRouter,
+        workspaceDir: effectiveWorkspaceDir,
+        pinned: currentSessionSummary?.pinned ?? null,
+        createdAt: currentSessionSummary?.created_at ?? null,
+        updatedAt: currentSessionSummary?.updated_at ?? null,
+        messageCount: typedMessages.length,
+      },
+      context: sessionContextUsage ?? null,
+      tokenUsage: sessionTokenUsage ?? null,
+      messages: typedMessages.map((message) => ({
+        role: message.role,
+        content: message.content,
+        timestamp: message.timestamp ?? null,
+        thinking: message.thinking ?? null,
+        imageCount: message.images?.length ?? 0,
+        toolCalls: (message.tool_calls ?? []).map((call) => ({
+          name: call.name,
+          arguments: call.arguments,
+          result: call.result,
+          status: call.status,
+        })),
+      })),
+    };
+    const serialized = JSON.stringify(debugPayload, null, 2);
+    if (await writeToClipboard(serialized)) {
+      flashHeaderCopy("debug");
+      setHeaderMenuOpen(false);
+    }
+  }, [
+    sessionId,
+    info,
+    currentSessionSummary,
+    derivedSessionTitle,
+    chatAgentId,
+    selectedAgentId,
+    sessionAgentId,
+    useModelRouter,
+    effectiveWorkspaceDir,
+    sessionContextUsage,
+    sessionTokenUsage,
+    typedMessages,
+    writeToClipboard,
+    flashHeaderCopy,
+  ]);
+
+  const beginHeaderRename = useCallback(() => {
+    setHeaderTitleDraft(currentSessionSummary?.title?.trim() || derivedSessionTitle || "");
+    setRenamingHeader(true);
+    setHeaderMenuOpen(false);
+  }, [currentSessionSummary, derivedSessionTitle]);
+
+  const submitHeaderRename = useCallback(async () => {
+    const nextTitle = headerTitleDraft.trim();
+    setRenamingHeader(false);
+    if (!sessionId || !nextTitle || nextTitle === (currentSessionSummary?.title?.trim() || "")) {
+      return;
+    }
+    try {
+      await renameSession.mutateAsync({ sessionId, title: nextTitle });
+    } catch (error) {
+      console.error("Failed to rename session:", error);
+    }
+  }, [headerTitleDraft, sessionId, currentSessionSummary, renameSession]);
+
+  const handleDeleteCurrentSession = useCallback(async () => {
+    if (!sessionId) return;
+    setHeaderMenuOpen(false);
+    if (!window.confirm("Delete this chat? This cannot be undone.")) return;
+    try {
+      await deleteSessionMutation.mutateAsync(sessionId);
+      resetChatSession({ resetAgentSelection: false });
+    } catch (error) {
+      console.error("Failed to delete session:", error);
+    }
+  }, [sessionId, deleteSessionMutation, resetChatSession]);
+
+  useEffect(() => {
+    if (!headerMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      if (headerMenuRef.current && !headerMenuRef.current.contains(event.target as Node)) {
+        setHeaderMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") setHeaderMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [headerMenuOpen]);
+
+  useEffect(() => {
+    setHeaderMenuOpen(false);
+    setRenamingHeader(false);
+  }, [sessionId]);
 
   useEffect(() => {
     activeSessionRef.current = sessionId;
@@ -3964,13 +4158,113 @@ export function Chat() {
           >
             <MessageSquare className="w-4 h-4" />
           </button>
-          <h1 className="text-sm sm:text-base font-semibold text-white">Chat</h1>
+          <div className="flex flex-col min-w-0">
+            {renamingHeader ? (
+              <input
+                autoFocus
+                value={headerTitleDraft}
+                onChange={(event) => setHeaderTitleDraft(event.target.value)}
+                onBlur={() => void submitHeaderRename()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void submitHeaderRename();
+                  } else if (event.key === "Escape") {
+                    event.preventDefault();
+                    setRenamingHeader(false);
+                  }
+                }}
+                className="w-40 sm:w-64 bg-white/5 border border-white/15 rounded-md px-2 py-1 text-sm font-semibold text-white outline-none focus:border-white/30"
+                placeholder="Chat title"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => sessionId && beginHeaderRename()}
+                disabled={!sessionId}
+                title={sessionId ? "Rename chat" : undefined}
+                className={cn(
+                  "text-sm sm:text-base font-semibold text-white truncate max-w-[9rem] sm:max-w-sm text-left",
+                  sessionId ? "cursor-pointer hover:text-white/80 transition-colors" : "cursor-default"
+                )}
+              >
+                {headerTitle}
+              </button>
+            )}
+            {sessionId && (
+              <button
+                type="button"
+                onClick={() => void handleCopySessionId()}
+                title="Copy session ID"
+                className="hidden sm:flex items-center gap-1 text-[10px] text-gray-500 hover:text-emerald-300 transition-colors font-mono cursor-pointer w-fit"
+              >
+                {copiedSessionId ? (
+                  <Check className="w-2.5 h-2.5 text-emerald-400" />
+                ) : (
+                  <Hash className="w-2.5 h-2.5" />
+                )}
+                <span>{copiedSessionId ? "Copied" : sessionId.slice(0, 12)}</span>
+              </button>
+            )}
+          </div>
           {sessionId && (
-            <div className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 border border-emerald-500/30">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              <span className="text-[10px] text-emerald-400 font-mono">
-                {sessionId.slice(0, 6)}...
-              </span>
+            <div className="relative" ref={headerMenuRef}>
+              <button
+                type="button"
+                onClick={() => setHeaderMenuOpen((open) => !open)}
+                aria-label="Chat options"
+                aria-expanded={headerMenuOpen}
+                className={cn(
+                  "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
+                  headerMenuOpen ? "text-white bg-white/5" : "text-gray-500"
+                )}
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+              {headerMenuOpen && (
+                <div className="absolute left-0 top-full mt-1 z-50 w-56 rounded-lg border border-white/10 bg-[#0f0f16] shadow-xl py-1 text-sm">
+                  <button
+                    type="button"
+                    onClick={beginHeaderRename}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-gray-200 hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-gray-400" />
+                    Rename
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleCopySessionId();
+                      setHeaderMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-gray-200 hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5 text-gray-400" />
+                    Copy session ID
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleCopyDebugInfo()}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-gray-200 hover:bg-white/5 transition-colors cursor-pointer"
+                  >
+                    {copiedDebugInfo ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    ) : (
+                      <Bug className="w-3.5 h-3.5 text-gray-400" />
+                    )}
+                    {copiedDebugInfo ? "Debug info copied" : "Copy debug info (JSON)"}
+                  </button>
+                  <div className="my-1 h-px bg-white/5" />
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteCurrentSession()}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Delete chat
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
