@@ -2589,7 +2589,7 @@ export function Chat() {
   );
 
   const currentSessionSummary = useMemo(
-    () => (sessionId ? sessionsList?.find((session) => session.id === sessionId) ?? null : null),
+    () => (sessionId ? (sessionsList?.find((session) => session.id === sessionId) ?? null) : null),
     [sessionsList, sessionId]
   );
 
@@ -2604,7 +2604,7 @@ export function Chat() {
     return null;
   }, [currentSessionSummary, typedMessages]);
 
-  const headerTitle = sessionId ? derivedSessionTitle ?? "Untitled chat" : "New chat";
+  const headerTitle = sessionId ? (derivedSessionTitle ?? "Untitled chat") : "New chat";
 
   const writeToClipboard = useCallback(async (value: string) => {
     try {
@@ -4209,7 +4209,9 @@ export function Chat() {
                 title={sessionId ? "Rename chat" : undefined}
                 className={cn(
                   "text-sm sm:text-base font-semibold text-white truncate max-w-[9rem] sm:max-w-sm text-left",
-                  sessionId ? "cursor-pointer hover:text-white/80 transition-colors" : "cursor-default"
+                  sessionId
+                    ? "cursor-pointer hover:text-white/80 transition-colors"
+                    : "cursor-default"
                 )}
               >
                 {headerTitle}
