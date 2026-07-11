@@ -10,7 +10,9 @@
   },
   "files": [
     "bin/cybara.cjs",
-    "scripts/postinstall.cjs"
+    "scripts/download.cjs",
+    "scripts/postinstall.cjs",
+    "README.md"
   ],
   "keywords": [
     "ai",
@@ -20,10 +22,14 @@
     "mcp",
     "cybara"
   ],
+  "author": "Carsen Klock",
   "homepage": "https://cybara.ai",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/metaspartan/cybara.git"
+  },
+  "bugs": {
+    "url": "https://github.com/metaspartan/cybara/issues"
   },
   "license": "MIT",
   "os": [
@@ -37,5 +43,9 @@
   ],
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

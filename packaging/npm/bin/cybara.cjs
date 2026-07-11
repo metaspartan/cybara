@@ -2,21 +2,24 @@
 "use strict";
 const { spawnSync } = require("child_process");
 const { existsSync } = require("fs");
-const { join } = require("path");
+const { download, binaryPath } = require("../scripts/download.cjs");
 
-const binaryName = process.platform === "win32" ? "cybara-bin.exe" : "cybara-bin";
-const binary = join(__dirname, binaryName);
-
-if (!existsSync(binary)) {
-  console.error(
-    "[cybara] Native binary not found. Reinstall to fetch it: npm install -g cybara"
-  );
-  process.exit(1);
+async function main() {
+  const binary = binaryPath();
+  if (!existsSync(binary)) {
+    try {
+      await download({ silent: true });
+    } catch (error) {
+      console.error(`[cybara] Could not obtain the native binary: ${error.message}`);
+      process.exit(1);
+    }
+  }
+  const result = spawnSync(binary, process.argv.slice(2), { stdio: "inherit" });
+  if (result.error) {
+    console.error(`[cybara] ${result.error.message}`);
+    process.exit(1);
+  }
+  process.exit(result.status === null ? 1 : result.status);
 }
 
-const result = spawnSync(binary, process.argv.slice(2), { stdio: "inherit" });
-if (result.error) {
-  console.error(`[cybara] ${result.error.message}`);
-  process.exit(1);
-}
-process.exit(result.status === null ? 1 : result.status);
+main();
