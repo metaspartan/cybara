@@ -969,6 +969,18 @@ img {
   border-color: rgba(148, 163, 184, 0.2);
 }
 
+.download-icon--homebrew {
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.1);
+  border-color: rgba(251, 191, 36, 0.22);
+}
+
+.download-icon--docker {
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.1);
+  border-color: rgba(56, 189, 248, 0.22);
+}
+
 .download-body {
   flex: 1;
   min-width: 0;

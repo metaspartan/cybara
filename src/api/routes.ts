@@ -160,6 +160,14 @@ import {
   restoreCheckpoint,
 } from "../core/checkpoint";
 import {
+  createSystemBackup,
+  deleteSystemBackup,
+  listSystemBackups,
+  readSystemRestoreStatus,
+  scheduleSystemRestore,
+  systemBackupDirectory,
+} from "../core/system-backup";
+import {
   getProviderPlanMonitoringConfig,
   getProviderPlanAvailability,
   getProviderPlanStatus,
@@ -1105,6 +1113,27 @@ const routes: Record<string, RouteHandler> = {
     if (!workspaceDir || !id) return { success: false, error: "workspace and id are required" };
     return { success: deleteCheckpoint(workspaceDir, id) };
   },
+
+  "GET /api/system/backups": () => ({
+    backups: listSystemBackups(),
+    backupDirectory: systemBackupDirectory(),
+    restore: readSystemRestoreStatus(),
+  }),
+  "POST /api/system/backups": (body) => {
+    const label =
+      typeof (body as { label?: unknown })?.label === "string"
+        ? (body as { label: string }).label
+        : "Manual backup";
+    return { success: true, backup: createSystemBackup(label) };
+  },
+  "POST /api/system/backups/:id/restore": (_body, params) => ({
+    success: true,
+    restore: scheduleSystemRestore(params?.id || ""),
+    restartRequired: true,
+  }),
+  "DELETE /api/system/backups/:id": (_body, params) => ({
+    success: deleteSystemBackup(params?.id || ""),
+  }),
 
   "GET /api/router/status": () => getRouterStatus(),
   "GET /api/router/pricing": () => ({ pricing: getAllPricing() }),

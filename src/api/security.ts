@@ -813,6 +813,12 @@ export function routeRequiredScope(method: string, path: string): string | null 
   if (path.startsWith("/api/auth")) {
     return "root";
   }
+  if (path.startsWith("/api/system/backups")) {
+    return "root";
+  }
+  if (path.startsWith("/api/checkpoints")) {
+    return "root";
+  }
   if (path === "/api/system/restart") {
     return "manage";
   }
@@ -865,7 +871,6 @@ export function routeRequiredScope(method: string, path: string): string | null 
     path.startsWith("/api/subagents") ||
     path.startsWith("/api/tasks") ||
     path.startsWith("/api/channels") ||
-    path.startsWith("/api/checkpoints") ||
     path === "/api/setup/complete"
   ) {
     if (method === "GET") return null;

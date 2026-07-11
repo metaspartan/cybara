@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.cybara.desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Cybara</name>
+  <summary>Self-hosted, open-source AI agent platform</summary>
+  <description>
+    <p>
+      Cybara is a self-hosted, open-source AI agent platform. It pairs a Bun
+      agent runtime with a web UI, desktop and mobile apps, a CLI, a broad tool
+      layer, 25+ messaging-channel adapters, MCP support, and encrypted wallet
+      controls — so agents can code, automate browsers, run messaging workflows,
+      and execute on-chain operations under full operator control.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.cybara.desktop.desktop</launchable>
+  <url type="homepage">https://cybara.ai/</url>
+  <url type="bugtracker">https://github.com/metaspartan/cybara/issues</url>
+  <developer id="ai.cybara">
+    <name>Carsen Klock</name>
+  </developer>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.0.0" date="2026-07-11" />
+  </releases>
+</component>

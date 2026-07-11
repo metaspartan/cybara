@@ -1,0 +1,19 @@
+# Maintainer: Carsen Klock <carsen@wombo.ai>
+pkgname=cybara-bin
+pkgver=0.0.0
+pkgrel=1
+pkgdesc="Self-hosted, open-source AI agent platform (CLI, prebuilt binary)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/metaspartan/cybara"
+license=('MIT')
+provides=('cybara')
+conflicts=('cybara')
+options=('!strip')
+source_x86_64=("cybara-${pkgver}-x86_64::https://github.com/metaspartan/cybara/releases/download/v${pkgver}/cybara-v${pkgver}-linux-x64-cli")
+source_aarch64=("cybara-${pkgver}-aarch64::https://github.com/metaspartan/cybara/releases/download/v${pkgver}/cybara-v${pkgver}-linux-arm64-cli")
+sha256sums_x86_64=('SKIP')
+sha256sums_aarch64=('SKIP')
+
+package() {
+  install -Dm755 "cybara-${pkgver}-${CARCH}" "${pkgdir}/usr/bin/cybara"
+}

@@ -24,6 +24,8 @@ export type IconName =
   | "code"
   | "gauge"
   | "plug"
+  | "docker"
+  | "homebrew"
   | "star";
 
 interface IconProps {
@@ -171,6 +173,23 @@ const PATHS: Record<IconName, React.ReactNode> = {
     <>
       <path d="M12 22v-5M9 8V2M15 8V2" />
       <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z" />
+    </>
+  ),
+  docker: (
+    <>
+      <rect x="4" y="10" width="3" height="3" />
+      <rect x="8" y="10" width="3" height="3" />
+      <rect x="12" y="10" width="3" height="3" />
+      <rect x="8" y="6" width="3" height="3" />
+      <path d="M3 13h14v1.5a3.5 3.5 0 0 1-3.5 3.5H6.5A3.5 3.5 0 0 1 3 14.5z" />
+      <path d="M17 12.5c1.3-.8 2.6-.4 3 0-.4.8-1.7 1.2-3 .6" />
+    </>
+  ),
+  homebrew: (
+    <>
+      <path d="M6 8h9v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2z" />
+      <path d="M15 10.5h2.2a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2H15" />
+      <path d="M8.5 4.5c0 1.2 1 1.2 1 2.4M11.5 4.5c0 1.2 1 1.2 1 2.4" />
     </>
   ),
   star: (

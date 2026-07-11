@@ -205,6 +205,17 @@ describe("native macOS shell wiring", () => {
     expect(settings).not.toContain(".frame(maxWidth: .infinity, alignment: .topLeading)");
   });
 
+  test("system settings expose native backup and restore controls", () => {
+    const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
+    const backups = readFileSync(join(MACOS_APP_DIR, "NativeBackupsScreen.swift"), "utf8");
+
+    expect(settings).toContain("case .backups:");
+    expect(settings).toContain("NativeBackupsScreen(client: client)");
+    expect(backups).toContain('Text("Backup & Restore")');
+    expect(backups).toContain('Label("Create Backup", systemImage: "plus.circle")');
+    expect(backups).toContain('Button("Restore & Restart", role: .destructive)');
+  });
+
   test("native settings has a Memory tab with provider picker and indexing split", () => {
     const settings = readFileSync(join(MACOS_APP_DIR, "NativeSettingsScreen.swift"), "utf8");
     const gatewayClient = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");

@@ -114,6 +114,9 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("PUT", "/api/auth/settings")).toBe("root");
     expect(routeRequiredScope("GET", "/api/auth/key")).toBe("root");
     expect(routeRequiredScope("POST", "/api/auth/rotate-key")).toBe("root");
+    expect(routeRequiredScope("GET", "/api/system/backups")).toBe("root");
+    expect(routeRequiredScope("POST", "/api/system/backups")).toBe("root");
+    expect(routeRequiredScope("POST", "/api/system/backups/backup_12345678/restore")).toBe("root");
     expect(normalizeMobileScopes(["root"])).not.toContain("root");
   });
 
@@ -212,7 +215,8 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("POST", "/api/agents")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/tasks")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/channels")).toBe("manage");
-    expect(routeRequiredScope("POST", "/api/checkpoints")).toBe("manage");
+    expect(routeRequiredScope("GET", "/api/checkpoints")).toBe("root");
+    expect(routeRequiredScope("POST", "/api/checkpoints")).toBe("root");
     expect(routeRequiredScope("POST", "/api/setup/complete")).toBe("manage");
   });
 });

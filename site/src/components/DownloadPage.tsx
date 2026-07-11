@@ -9,7 +9,7 @@ import { clientMatchesOS, osLabel, useDetectedOS, type DetectedOS } from "../lib
 import { DOWNLOAD_GROUPS, INSTALL_COMMAND, type DownloadClient } from "../content";
 import { formatDownloadTotal, useDownloadTotal, useLatestRelease } from "../hooks/useLatestRelease";
 
-type SectionKey = "mac" | "windows" | "linux" | "mobile" | "cli";
+type SectionKey = "mac" | "windows" | "linux" | "mobile" | "packages" | "cli";
 
 interface DownloadSection {
   key: SectionKey;
@@ -23,16 +23,20 @@ const SECTION_META: Array<{ key: SectionKey; label: string; icon: IconName }> = 
   { key: "windows", label: "Windows", icon: "windows" },
   { key: "linux", label: "Linux", icon: "linux" },
   { key: "mobile", label: "Mobile", icon: "mobile" },
+  { key: "packages", label: "Package managers", icon: "package" },
   { key: "cli", label: "Command line", icon: "terminal" },
 ];
 
 function sectionForClient(client: DownloadClient): SectionKey {
-  if (client.command) return "cli";
+  if (client.icon === "homebrew" || client.icon === "docker") return "packages";
+  if (client.command || client.icon === "terminal" || client.icon === "package") return "cli";
   const name = client.name.toLowerCase();
+  if (name.includes("cli")) return "cli";
   if (name.includes("ios") || name.includes("android")) return "mobile";
   if (client.icon === "windows") return "windows";
   if (client.icon === "linux") return "linux";
-  return "mac";
+  if (client.icon === "apple") return "mac";
+  return "cli";
 }
 
 function orderSections(sections: DownloadSection[], os: DetectedOS): DownloadSection[] {
@@ -41,6 +45,7 @@ function orderSections(sections: DownloadSection[], os: DetectedOS): DownloadSec
     windows: 5,
     linux: 5,
     mobile: 3,
+    packages: 4,
     cli: 2,
   };
   if (os === "mac") priority.mac = 10;

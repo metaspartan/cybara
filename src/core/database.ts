@@ -2,6 +2,15 @@ import { Database } from "bun:sqlite";
 import { join } from "path";
 import { mkdirSync, existsSync, chmodSync } from "fs";
 import { dataDir } from "./paths";
+import { applyPendingSystemRestore } from "./system-backup";
+
+const restoreStatus = applyPendingSystemRestore();
+if (restoreStatus.state === "completed") {
+  console.log(`[Database] Restored system backup ${restoreStatus.backupId || ""}`.trim());
+}
+if (restoreStatus.state === "failed") {
+  console.error(`[Database] Backup restore failed: ${restoreStatus.error || "unknown error"}`);
+}
 
 const dbPath = join(dataDir, "platform.db");
 

@@ -1433,6 +1433,8 @@ struct NativeSettingsScreen: View {
             ChannelsScreen(client: client)
         case .skills:
             NativeSkillsScreen(client: client)
+        case .backups:
+            NativeBackupsScreen(client: client)
         case .logs:
             LogsScreen(client: client)
         }
@@ -2119,6 +2121,7 @@ struct NativeSettingsScreen: View {
         case memory
         case channels
         case skills
+        case backups
         case logs
 
         var id: String { rawValue }
@@ -2130,6 +2133,7 @@ struct NativeSettingsScreen: View {
             case .memory: return "Memory"
             case .channels: return "Channels"
             case .skills: return "Skills"
+            case .backups: return "Backups"
             case .logs: return "Logs"
             }
         }
@@ -2141,6 +2145,7 @@ struct NativeSettingsScreen: View {
             case .memory: return "brain"
             case .channels: return "link"
             case .skills: return "wand.and.stars"
+            case .backups: return "externaldrive.badge.timemachine"
             case .logs: return "list.bullet.rectangle"
             }
         }

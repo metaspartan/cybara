@@ -440,12 +440,50 @@ export interface GatewayFirewallResult {
   error?: string;
 }
 
+export interface SystemBackupSummary {
+  version: 1;
+  id: string;
+  label: string;
+  createdAt: string;
+  entries: string[];
+  includesCredentials: true;
+  bytes: number;
+}
+
+export interface SystemRestoreStatus {
+  state: "idle" | "pending" | "completed" | "failed";
+  backupId?: string;
+  updatedAt?: string;
+  error?: string;
+}
+
+export interface SystemBackupsResponse {
+  backups: SystemBackupSummary[];
+  backupDirectory: string;
+  restore: SystemRestoreStatus;
+}
+
 export const systemApi = {
   restart: () =>
     fetchApi<{ success: boolean; supervised: boolean; message: string }>("/system/restart", {
       method: "POST",
     }),
   health: () => fetchApi<{ status?: string; uptime?: number }>("/health"),
+  backups: () => fetchApi<SystemBackupsResponse>("/system/backups"),
+  createBackup: (label: string) =>
+    fetchApi<{ success: boolean; backup: SystemBackupSummary }>("/system/backups", {
+      method: "POST",
+      body: JSON.stringify({ label }),
+    }),
+  restoreBackup: (backupId: string) =>
+    fetchApi<{ success: boolean; restore: SystemRestoreStatus; restartRequired: boolean }>(
+      `/system/backups/${encodeURIComponent(backupId)}/restore`,
+      { method: "POST" }
+    ),
+  deleteBackup: (backupId: string) =>
+    fetchApi<{ success: boolean }>(`/system/backups/${encodeURIComponent(backupId)}`, {
+      method: "DELETE",
+    }),
 };
 
 export const authApi = {

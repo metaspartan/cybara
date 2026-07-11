@@ -410,6 +410,36 @@ export const DOWNLOAD_GROUPS: readonly DownloadGroup[] = [
       },
     ],
   },
+  {
+    label: "Package managers",
+    icon: "package",
+    clients: [
+      {
+        name: "Homebrew",
+        platform: "macOS & Linux · CLI",
+        format: "brew · formula",
+        icon: "homebrew",
+        href: "https://github.com/metaspartan/homebrew-cybara",
+        command: "brew install metaspartan/cybara/cybara",
+      },
+      {
+        name: "Homebrew Cask",
+        platform: "macOS · desktop app",
+        format: "brew · cask",
+        icon: "homebrew",
+        href: "https://github.com/metaspartan/homebrew-cybara",
+        command: "brew install --cask metaspartan/cybara/cybara",
+      },
+      {
+        name: "Docker",
+        platform: "GHCR · amd64 & arm64",
+        format: "self-hosted gateway",
+        icon: "docker",
+        href: "https://github.com/metaspartan/cybara/pkgs/container/cybara",
+        command: "docker run -d -p 4269:4269 -v cybara:/data ghcr.io/metaspartan/cybara:latest",
+      },
+    ],
+  },
 ];
 
 export interface Step {

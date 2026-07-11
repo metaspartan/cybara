@@ -1,0 +1,45 @@
+app-id: com.cybara.desktop
+runtime: org.gnome.Platform
+runtime-version: "47"
+sdk: org.gnome.Sdk
+command: cybara-desktop
+
+finish-args:
+  - --share=network
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --talk-name=org.freedesktop.Notifications
+  # Agents read/write the workspaces you point them at. Broad home access is
+  # required for the file, git, and exec tools to be useful; tighten per policy.
+  - --filesystem=home
+  # The gateway binds 127.0.0.1:4269 for the local web UI/API.
+  - --env=CYBARA_GATEWAY_HOST=127.0.0.1
+
+modules:
+  - name: cybara
+    buildsystem: simple
+    build-commands:
+      # Unpack the prebuilt Tauri .deb and stage it under /app.
+      - ar x cybara.deb
+      - tar -xf data.tar.* -C .
+      - cp -a usr/bin/* /app/bin/ 2>/dev/null || true
+      - cp -a usr/lib/* /app/lib/ 2>/dev/null || true
+      - install -Dm644 usr/share/applications/*.desktop /app/share/applications/com.cybara.desktop.desktop
+      - desktop-file-edit --set-key=Exec --set-value="cybara-desktop %U" /app/share/applications/com.cybara.desktop.desktop
+      - for s in 32 128 256 512; do
+          f="usr/share/icons/hicolor/${s}x${s}/apps/Cybara.png";
+          [ -f "$f" ] && install -Dm644 "$f" "/app/share/icons/hicolor/${s}x${s}/apps/com.cybara.desktop.png" || true;
+        done
+    sources:
+      - type: file
+        only-arches: [x86_64]
+        url: https://github.com/metaspartan/cybara/releases/download/vVERSION/Cybara_VERSION_amd64.deb
+        sha256: REPLACE_WITH_AMD64_DEB_SHA256
+        dest-filename: cybara.deb
+      - type: file
+        only-arches: [aarch64]
+        url: https://github.com/metaspartan/cybara/releases/download/vVERSION/Cybara_VERSION_arm64.deb
+        sha256: REPLACE_WITH_ARM64_DEB_SHA256
+        dest-filename: cybara.deb

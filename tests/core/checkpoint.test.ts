@@ -1,5 +1,13 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync } from "fs";
+import {
+  mkdtempSync,
+  rmSync,
+  existsSync,
+  writeFileSync,
+  readFileSync,
+  mkdirSync,
+  symlinkSync,
+} from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { spawnSync } from "child_process";
@@ -50,6 +58,23 @@ describe("filesystem checkpoint", () => {
 
   test("deleteCheckpoint returns false for nonexistent", () => {
     expect(deleteCheckpoint(tempDir, "cp_nonexistent")).toBe(false);
+  });
+
+  test("rejects checkpoint id traversal", async () => {
+    expect(deleteCheckpoint(tempDir, "../../outside")).toBe(false);
+    const result = await restoreCheckpoint(tempDir, "../../outside");
+    expect(result).toEqual({ success: false, error: "invalid checkpoint" });
+  });
+
+  test("does not follow a symlinked checkpoint store", async () => {
+    const workspace = mkdtempSync(join(tmpdir(), "cybara-cp-symlink-"));
+    const outside = mkdtempSync(join(tmpdir(), "cybara-cp-outside-"));
+    mkdirSync(join(workspace, ".cybara"));
+    symlinkSync(outside, join(workspace, ".cybara", "checkpoints"));
+    expect(await createCheckpoint(workspace, "unsafe")).toBeNull();
+    expect(listCheckpoints(workspace)).toEqual([]);
+    rmSync(workspace, { recursive: true, force: true });
+    rmSync(outside, { recursive: true, force: true });
   });
 });
 

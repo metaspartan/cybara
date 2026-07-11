@@ -4,6 +4,7 @@ import { PageLayout } from "@/components/layout";
 import { GatewayPathSettingsSection } from "@/components/settings/GatewayPathSettingsSection";
 import { GatewayRemoteAccessSection } from "@/components/settings/GatewayRemoteAccessSection";
 import { SettingsNavigation } from "@/components/settings/SettingsNavigation";
+import { SystemBackupSettingsSection } from "@/components/settings/SystemBackupSettingsSection";
 import { AiFeatureSettings } from "./settings/AiFeatureSettings";
 import { FeatureSettings } from "./settings/FeatureSettings";
 import { MemoryBehaviorSettings } from "./settings/MemoryBehaviorSettings";
@@ -2634,6 +2635,7 @@ export function Settings() {
 
           {activeSection === "system" && (
             <>
+              <SystemBackupSettingsSection />
               <DesktopUpdateSettings
                 currentVersion={String(infoData.version || "unknown")}
                 releaseRepositoryUrl={infoData.releaseRepositoryUrl}

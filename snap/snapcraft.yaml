@@ -1,0 +1,48 @@
+name: cybara
+base: core24
+adopt-info: cybara
+summary: Self-hosted, open-source AI agent platform
+description: |
+  Cybara is a self-hosted, open-source AI agent platform. It pairs a Bun agent
+  runtime with a web UI, desktop and mobile apps, a CLI, a broad tool layer,
+  25+ messaging-channel adapters, MCP support, and encrypted wallet controls —
+  so agents can code, automate browsers, run messaging workflows, and execute
+  on-chain operations under full operator control.
+
+  This snap ships the `cybara` command-line binary. It uses classic confinement
+  because agents execute arbitrary tools and read/write files across the
+  workspaces you point them at.
+license: MIT
+grade: stable
+confinement: classic
+
+platforms:
+  amd64:
+  arm64:
+
+apps:
+  cybara:
+    command: bin/cybara
+
+parts:
+  cybara:
+    plugin: nil
+    build-packages:
+      - curl
+    override-build: |
+      set -eu
+      case "$CRAFT_ARCH_BUILD_FOR" in
+        amd64) asset="linux-x64" ;;
+        arm64) asset="linux-arm64" ;;
+        *) echo "Unsupported arch: $CRAFT_ARCH_BUILD_FOR" >&2; exit 1 ;;
+      esac
+      ver="${CYBARA_VERSION:-}"
+      if [ -z "$ver" ]; then
+        ver="$(curl -fsSL https://api.github.com/repos/metaspartan/cybara/releases/latest \
+          | grep -m1 '"tag_name"' | sed -E 's/.*"v?([^"]+)".*/\1/')"
+      fi
+      craftctl set version="$ver"
+      mkdir -p "$CRAFT_PART_INSTALL/bin"
+      curl -fL "https://github.com/metaspartan/cybara/releases/download/v${ver}/cybara-v${ver}-${asset}-cli" \
+        -o "$CRAFT_PART_INSTALL/bin/cybara"
+      chmod +x "$CRAFT_PART_INSTALL/bin/cybara"
