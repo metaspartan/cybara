@@ -1,5 +1,5 @@
 import { createLogger } from "../core/logger";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import { chmodSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { lookup } from "dns/promises";
@@ -94,9 +94,12 @@ function writePersistedSecuritySettings(settings: PersistedSecuritySettings): vo
     return;
   }
   if (!existsSync(cybaraDir)) {
-    mkdirSync(cybaraDir, { recursive: true });
+    mkdirSync(cybaraDir, { recursive: true, mode: 0o700 });
   }
   writeFileSync(SECURITY_SETTINGS_FILE, JSON.stringify(settings, null, 2), { mode: 0o600 });
+  try {
+    chmodSync(SECURITY_SETTINGS_FILE, 0o600);
+  } catch {}
   cachedSecuritySettings = settings;
 }
 
@@ -149,6 +152,7 @@ function readPersistedRemoteAccessSettings(
 function getOrCreateApiKey(): string | null {
   if (existsSync(API_KEY_FILE)) {
     try {
+      chmodSync(API_KEY_FILE, 0o600);
       const key = readFileSync(API_KEY_FILE, "utf-8").trim();
       if (key.length >= 32) {
         return key;
@@ -162,7 +166,7 @@ function getOrCreateApiKey(): string | null {
 
   const dir = cybaraDir;
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
 
   try {

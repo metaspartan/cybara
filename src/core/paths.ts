@@ -1,6 +1,6 @@
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
-import { existsSync, mkdirSync } from "fs";
+import { chmodSync, existsSync, mkdirSync } from "fs";
 import {
   cybaraHomeOverrideFile,
   resolveCybaraHome,
@@ -37,8 +37,11 @@ export function ensureCybaraDirs() {
   const dirs = [cybaraDir, dataDir, memoryDir, logsDir, secureDir, userSkillsDir];
   for (const dir of dirs) {
     if (!existsSync(dir)) {
-      mkdirSync(dir, { recursive: true });
+      mkdirSync(dir, { recursive: true, mode: 0o700 });
     }
+    try {
+      chmodSync(dir, 0o700);
+    } catch {}
   }
 }
 

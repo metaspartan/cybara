@@ -38,6 +38,7 @@ import {
   memoryStatusLine,
   skillStatusLines,
 } from "./cli-tui-chat-inspection";
+import { parseTerminalListItem, splitTerminalInline } from "./cli-tui-markdown";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -385,33 +386,16 @@ function relativeTime(value?: number): string {
   return hours < 24 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
 }
 
-function splitInline(
-  line: string,
-): Array<{ text: string; bold?: boolean; code?: boolean }> {
-  const parts: Array<{ text: string; bold?: boolean; code?: boolean }> = [];
-  const pattern = /(\*\*[^*]+\*\*|`[^`]+`)/g;
-  let offset = 0;
-  for (const match of line.matchAll(pattern)) {
-    if (match.index === undefined) continue;
-    if (match.index > offset)
-      parts.push({ text: line.slice(offset, match.index) });
-    const token = match[0];
-    if (token.startsWith("**"))
-      parts.push({ text: token.slice(2, -2), bold: true });
-    else parts.push({ text: token.slice(1, -1), code: true });
-    offset = match.index + token.length;
-  }
-  if (offset < line.length) parts.push({ text: line.slice(offset) });
-  return parts.length ? parts : [{ text: line || " " }];
-}
-
 function InlineMarkdown({ line }: { line: string }): React.ReactElement {
   return (
     <Text>
-      {splitInline(line).map((part, index) => (
+      {splitTerminalInline(line).map((part, index) => (
         <Text
           key={index}
           bold={part.bold}
+          dimColor={part.dim}
+          italic={part.italic}
+          strikethrough={part.strikethrough}
           color={part.code ? "magenta" : undefined}
         >
           {part.text}
@@ -461,13 +445,33 @@ function MessageBody({
             </Text>
           );
         }
-        const bullet = line.text.match(/^(\s*)[-*]\s+(.*)$/);
-        if (bullet) {
+        const listItem = parseTerminalListItem(line.text);
+        if (listItem?.kind === "task") {
           return (
             <Text key={index}>
-              {bullet[1]}
+              {listItem.indent}
+              <Text color={listItem.checked ? "green" : "gray"}>
+                {listItem.checked ? "☑ " : "☐ "}
+              </Text>
+              <InlineMarkdown line={listItem.content} />
+            </Text>
+          );
+        }
+        if (listItem?.kind === "bullet") {
+          return (
+            <Text key={index}>
+              {listItem.indent}
               <Text color="cyan">• </Text>
-              <InlineMarkdown line={bullet[2]} />
+              <InlineMarkdown line={listItem.content} />
+            </Text>
+          );
+        }
+        if (listItem?.kind === "ordered") {
+          return (
+            <Text key={index}>
+              {listItem.indent}
+              <Text color="cyan">{listItem.number}. </Text>
+              <InlineMarkdown line={listItem.content} />
             </Text>
           );
         }

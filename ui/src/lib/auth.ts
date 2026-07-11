@@ -27,6 +27,17 @@ export function withGatewayBasePath(path: string): string {
 }
 
 let desktopTokenHydration: Promise<string | null> | null = null;
+let desktopToken: string | null = null;
+const volatileCredentials = new WeakMap<object, { token?: string; password?: string }>();
+
+function currentVolatileCredentials(): { token?: string; password?: string } | null {
+  if (typeof window === "undefined" || typeof window !== "object") return null;
+  const existing = volatileCredentials.get(window);
+  if (existing) return existing;
+  const created: { token?: string; password?: string } = {};
+  volatileCredentials.set(window, created);
+  return created;
+}
 
 function getQueryToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -40,43 +51,81 @@ function getWindowToken(): string | null {
     return null;
   }
 
-  const storage = window.localStorage;
-  if (!storage) {
-    return null;
+  if (isTauriDesktopRuntime()) {
+    window.localStorage?.removeItem("cybara_api_key");
+    window.localStorage?.removeItem("CYBARA_API_KEY");
+    return desktopToken;
   }
-
-  return storage.getItem("cybara_api_key") || storage.getItem("CYBARA_API_KEY");
+  const volatile = currentVolatileCredentials();
+  if (volatile?.token) return volatile.token;
+  const storage = window.sessionStorage;
+  const stored = storage?.getItem("cybara_api_key") || storage?.getItem("CYBARA_API_KEY");
+  if (stored) return stored;
+  const legacy =
+    window.localStorage?.getItem("cybara_api_key") ||
+    window.localStorage?.getItem("CYBARA_API_KEY");
+  if (!legacy) return null;
+  if (volatile) volatile.token = legacy;
+  storage?.setItem("cybara_api_key", legacy);
+  window.localStorage.removeItem("cybara_api_key");
+  window.localStorage.removeItem("CYBARA_API_KEY");
+  return legacy;
 }
 
 export function getGatewayAccessPassword(): string | null {
-  if (typeof window === "undefined" || !window.localStorage) {
+  if (typeof window === "undefined") {
     return null;
   }
-  return window.localStorage.getItem("cybara_gateway_password");
+  const volatile = currentVolatileCredentials();
+  if (volatile?.password) return volatile.password;
+  const stored = window.sessionStorage?.getItem("cybara_gateway_password");
+  if (stored) return stored;
+  const legacy = window.localStorage?.getItem("cybara_gateway_password");
+  if (!legacy) return null;
+  if (volatile) volatile.password = legacy;
+  window.sessionStorage?.setItem("cybara_gateway_password", legacy);
+  window.localStorage.removeItem("cybara_gateway_password");
+  return legacy;
 }
 
 export function setGatewayAccessPassword(password: string): void {
-  if (typeof window === "undefined" || !window.localStorage) {
+  if (typeof window === "undefined") {
     return;
   }
   const trimmed = password.trim();
   if (trimmed) {
-    window.localStorage.setItem("cybara_gateway_password", trimmed);
+    const volatile = currentVolatileCredentials();
+    if (volatile) volatile.password = trimmed;
+    window.sessionStorage?.setItem("cybara_gateway_password", trimmed);
+    window.localStorage?.removeItem("cybara_gateway_password");
   }
 }
 
 export function clearGatewayAccessPassword(): void {
-  if (typeof window === "undefined" || !window.localStorage) {
+  if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.removeItem("cybara_gateway_password");
+  window.sessionStorage?.removeItem("cybara_gateway_password");
+  window.localStorage?.removeItem("cybara_gateway_password");
+  const volatile = currentVolatileCredentials();
+  if (volatile) delete volatile.password;
 }
 
 function persistWindowToken(token: string): void {
-  if (typeof window === "undefined" || !window.localStorage) {
+  if (typeof window === "undefined") {
     return;
   }
-  window.localStorage.setItem("cybara_api_key", token);
+  if (isTauriDesktopRuntime()) {
+    desktopToken = token;
+    window.localStorage?.removeItem("cybara_api_key");
+    window.localStorage?.removeItem("CYBARA_API_KEY");
+    return;
+  }
+  const volatile = currentVolatileCredentials();
+  if (volatile) volatile.token = token;
+  window.sessionStorage?.setItem("cybara_api_key", token);
+  window.localStorage?.removeItem("cybara_api_key");
+  window.localStorage?.removeItem("CYBARA_API_KEY");
 }
 
 async function hydrateTauriDesktopToken(force = false): Promise<string | null> {

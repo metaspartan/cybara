@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { getApiAuthToken, appendApiTokenParam, withApiAuthHeaders } from "./auth";
+import {
+  appendApiTokenParam,
+  clearGatewayAccessPassword,
+  getApiAuthToken,
+  getGatewayAccessPassword,
+  setGatewayAccessPassword,
+  withApiAuthHeaders,
+} from "./auth";
 
 const g = globalThis as { window?: unknown };
 let hadWindow: boolean;
@@ -19,6 +26,7 @@ function setWindow(search: string, storage?: ReturnType<typeof makeStorage> | nu
   g.window = {
     location: { search },
     localStorage: storage === undefined ? makeStorage() : storage,
+    sessionStorage: makeStorage(),
   };
 }
 
@@ -52,8 +60,10 @@ describe("getApiAuthToken", () => {
   });
 
   test("falls back to localStorage cybara_api_key", () => {
-    setWindow("", makeStorage({ cybara_api_key: "lsk" }));
+    const local = makeStorage({ cybara_api_key: "lsk" });
+    setWindow("", local);
     expect(getApiAuthToken()).toBe("lsk");
+    expect(local.getItem("cybara_api_key")).toBeNull();
   });
 
   test("falls back to uppercase localStorage key", () => {
@@ -115,5 +125,27 @@ describe("withApiAuthHeaders", () => {
     const headers = withApiAuthHeaders({ "Content-Type": "application/json" }, "tok");
     expect(headers.get("Content-Type")).toBe("application/json");
     expect(headers.get("Authorization")).toBe("Bearer tok");
+  });
+});
+
+describe("gateway access password", () => {
+  test("keeps the password in session storage instead of persistent local storage", () => {
+    const local = makeStorage();
+    setWindow("", local);
+
+    setGatewayAccessPassword(" remote-secret ");
+
+    expect(getGatewayAccessPassword()).toBe("remote-secret");
+    expect(local.getItem("cybara_gateway_password")).toBeNull();
+  });
+
+  test("migrates and removes a legacy local-storage password", () => {
+    const local = makeStorage({ cybara_gateway_password: "legacy-secret" });
+    setWindow("", local);
+
+    expect(getGatewayAccessPassword()).toBe("legacy-secret");
+    expect(local.getItem("cybara_gateway_password")).toBeNull();
+    clearGatewayAccessPassword();
+    expect(getGatewayAccessPassword()).toBeNull();
   });
 });

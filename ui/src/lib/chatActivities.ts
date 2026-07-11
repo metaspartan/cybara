@@ -518,6 +518,13 @@ function groupLabel(kinds: GroupableKind[]): string {
   return joined.charAt(0).toUpperCase() + joined.slice(1);
 }
 
+function dominantGroupKind(kinds: GroupableKind[]): GroupableKind {
+  for (const kind of ["edit", "fetch", "search", "read", "list", "command"] as const) {
+    if (kinds.includes(kind)) return kind;
+  }
+  return "command";
+}
+
 export function groupActivitiesForDisplay(activities: LiveActivityItem[]): ActivityDisplayEntry[] {
   const entries: ActivityDisplayEntry[] = [];
   let run: {
@@ -529,12 +536,10 @@ export function groupActivitiesForDisplay(activities: LiveActivityItem[]): Activ
   const flushRun = () => {
     if (!run) return;
     if (run.kinds.length >= 2) {
-      const uniqueKinds = new Set(run.kinds);
-      const dominant = uniqueKinds.size === 1 ? [...uniqueKinds][0] : "command";
       entries.push({
         type: "group",
         id: `group-${run.items[0].id}-${run.items.length}`,
-        kind: dominant,
+        kind: dominantGroupKind(run.kinds),
         label: groupLabel(run.kinds),
         items: run.items,
       });

@@ -3,6 +3,7 @@ import { join } from "path";
 import { mkdirSync, existsSync, chmodSync } from "fs";
 import { dataDir } from "./paths";
 import { applyPendingSystemRestore } from "./system-backup";
+import { isSealedSecret, openSecret, sealSecret } from "./secret-storage";
 
 const restoreStatus = applyPendingSystemRestore();
 if (restoreStatus.state === "completed") {
@@ -558,6 +559,9 @@ const stmts = {
       "UPDATE providers SET name=?, base_url=?, api_key=?, access_token=?, refresh_token=?, expires_at=?, is_default=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
     ),
     delete: prepare("DELETE FROM providers WHERE id = ?"),
+    migrateSecrets: prepare(
+      "UPDATE providers SET api_key=?, access_token=?, refresh_token=? WHERE id=?"
+    ),
   },
   providerModels: {
     all: prepare("SELECT * FROM provider_models"),
@@ -577,6 +581,7 @@ const stmts = {
       "UPDATE mcp_servers SET name=?, command=?, args=?, env=?, url=COALESCE(?, url), enabled=? WHERE id=?"
     ),
     delete: prepare("DELETE FROM mcp_servers WHERE id = ?"),
+    migrateEnv: prepare("UPDATE mcp_servers SET env=? WHERE id=?"),
   },
   agents: {
     all: prepare("SELECT * FROM agents ORDER BY created_at DESC"),
@@ -600,6 +605,7 @@ const stmts = {
       "UPDATE channels SET name=COALESCE(?, name), config=COALESCE(?, config), enabled=COALESCE(?, enabled) WHERE id=?"
     ),
     delete: prepare("DELETE FROM channels WHERE id = ?"),
+    migrateConfig: prepare("UPDATE channels SET config=? WHERE id=?"),
   },
   tasks: {
     all: prepare("SELECT * FROM tasks ORDER BY created_at DESC"),
@@ -804,6 +810,81 @@ const stmts = {
   },
 };
 
+type StoredRow = Record<string, unknown>;
+
+function storedString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function providerSecretContext(id: string, field: string): string {
+  return `provider:${id}:${field}`;
+}
+
+function openProviderRow(row: unknown): Provider | undefined {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return undefined;
+  const result = { ...(row as StoredRow) };
+  const id = storedString(result.id) ?? "";
+  for (const field of ["api_key", "access_token", "refresh_token"] as const) {
+    const value = storedString(result[field]);
+    if (value) result[field] = openSecret(value, providerSecretContext(id, field));
+  }
+  return result as unknown as Provider;
+}
+
+function sealProviderValue(id: string, field: string, value: string | undefined): string | null {
+  return value ? sealSecret(value, providerSecretContext(id, field)) : null;
+}
+
+function openChannelRow(row: unknown): Channel | undefined {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return undefined;
+  const result = { ...(row as StoredRow) };
+  const id = storedString(result.id) ?? "";
+  const config = storedString(result.config);
+  if (config) result.config = openSecret(config, `channel:${id}:config`);
+  return result as unknown as Channel;
+}
+
+function openMcpServerRow(row: unknown): MCPServer | undefined {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return undefined;
+  const result = { ...(row as StoredRow) };
+  const id = storedString(result.id) ?? "";
+  const env = storedString(result.env);
+  if (env) result.env = openSecret(env, `mcp:${id}:env`);
+  return result as unknown as MCPServer;
+}
+
+function migrateStoredCredentials(): void {
+  const providers = stmts.providers.all.all() as StoredRow[];
+  for (const provider of providers) {
+    const id = storedString(provider.id);
+    if (!id) continue;
+    const values = (["api_key", "access_token", "refresh_token"] as const).map((field) => {
+      const value = storedString(provider[field]);
+      return value ? sealSecret(value, providerSecretContext(id, field)) : null;
+    });
+    const originalValues = [provider.api_key, provider.access_token, provider.refresh_token];
+    if (values.some((value, index) => value !== originalValues[index])) {
+      stmts.providers.migrateSecrets.run(values[0], values[1], values[2], id);
+    }
+  }
+  const channels = stmts.channels.all.all() as StoredRow[];
+  for (const channel of channels) {
+    const id = storedString(channel.id);
+    const config = storedString(channel.config);
+    if (!id || !config || isSealedSecret(config)) continue;
+    stmts.channels.migrateConfig.run(sealSecret(config, `channel:${id}:config`), id);
+  }
+  const servers = stmts.mcpServers.all.all() as StoredRow[];
+  for (const server of servers) {
+    const id = storedString(server.id);
+    const env = storedString(server.env);
+    if (!id || !env || isSealedSecret(env)) continue;
+    stmts.mcpServers.migrateEnv.run(sealSecret(env, `mcp:${id}:env`), id);
+  }
+}
+
+migrateStoredCredentials();
+
 export const tables = {
   config: {
     get: (key: string): { value: string } | null =>
@@ -813,17 +894,20 @@ export const tables = {
       stmts.config.all.all() as { key: string; value: string }[],
   },
   providers: {
-    all: () => stmts.providers.all.all(),
-    get: (id: string) => stmts.providers.get.get(id),
+    all: (): Provider[] =>
+      (stmts.providers.all.all() as StoredRow[])
+        .map(openProviderRow)
+        .filter((row): row is Provider => row !== undefined),
+    get: (id: string) => openProviderRow(stmts.providers.get.get(id)),
     create: (p: Provider) =>
       stmts.providers.create.run(
         p.id,
         p.provider,
         p.name,
         p.base_url || null,
-        p.api_key || null,
-        p.access_token || null,
-        p.refresh_token || null,
+        sealProviderValue(p.id, "api_key", p.api_key),
+        sealProviderValue(p.id, "access_token", p.access_token),
+        sealProviderValue(p.id, "refresh_token", p.refresh_token),
         p.expires_at || null,
         p.is_default ? 1 : 0
       ),
@@ -831,9 +915,9 @@ export const tables = {
       stmts.providers.update.run(
         p.name || null,
         p.base_url || null,
-        p.api_key || null,
-        p.access_token || null,
-        p.refresh_token || null,
+        sealProviderValue(id, "api_key", p.api_key),
+        sealProviderValue(id, "access_token", p.access_token),
+        sealProviderValue(id, "refresh_token", p.refresh_token),
         p.expires_at || null,
         p.is_default ? 1 : 0,
         id
@@ -862,15 +946,18 @@ export const tables = {
       ),
   },
   mcpServers: {
-    all: () => stmts.mcpServers.all.all(),
-    get: (id: string) => stmts.mcpServers.get.get(id),
+    all: (): MCPServer[] =>
+      (stmts.mcpServers.all.all() as StoredRow[])
+        .map(openMcpServerRow)
+        .filter((row): row is MCPServer => row !== undefined),
+    get: (id: string) => openMcpServerRow(stmts.mcpServers.get.get(id)),
     create: (s: MCPServer) =>
       stmts.mcpServers.create.run(
         s.id,
         s.name,
         s.command ?? "",
         s.args || null,
-        s.env || null,
+        s.env ? sealSecret(s.env, `mcp:${s.id}:env`) : null,
         s.url || null,
         s.enabled ? 1 : 0
       ),
@@ -879,7 +966,7 @@ export const tables = {
         s.name || null,
         s.command ?? "",
         s.args || null,
-        s.env || null,
+        s.env ? sealSecret(s.env, `mcp:${id}:env`) : null,
         s.url ?? null,
         s.enabled ? 1 : 0,
         id
@@ -921,14 +1008,23 @@ export const tables = {
     delete: (id: string) => stmts.agents.delete.run(id),
   },
   channels: {
-    all: () => stmts.channels.all.all(),
-    get: (id: string) => stmts.channels.get.get(id),
+    all: (): Channel[] =>
+      (stmts.channels.all.all() as StoredRow[])
+        .map(openChannelRow)
+        .filter((row): row is Channel => row !== undefined),
+    get: (id: string) => openChannelRow(stmts.channels.get.get(id)),
     create: (c: Channel) =>
-      stmts.channels.create.run(c.id, c.type, c.name, JSON.stringify(c.config), c.enabled ? 1 : 0),
+      stmts.channels.create.run(
+        c.id,
+        c.type,
+        c.name,
+        sealSecret(JSON.stringify(c.config), `channel:${c.id}:config`),
+        c.enabled ? 1 : 0
+      ),
     update: (id: string, c: Partial<Channel>) =>
       stmts.channels.update.run(
         c.name ?? null,
-        c.config ? JSON.stringify(c.config) : null,
+        c.config ? sealSecret(JSON.stringify(c.config), `channel:${id}:config`) : null,
         c.enabled !== undefined ? (c.enabled ? 1 : 0) : null,
         id
       ),

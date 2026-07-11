@@ -1,5 +1,18 @@
 import { useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, Loader2 } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  Folder,
+  Globe2,
+  Loader2,
+  Pencil,
+  Search,
+  SquareTerminal,
+  type LucideIcon,
+} from "lucide-react";
 import { Badge } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import type { Subagent } from "@/hooks/useApi";
@@ -11,10 +24,20 @@ import {
 } from "./chatModel";
 import {
   groupActivitiesForDisplay,
+  type ActivityGroupKind,
   mergeActivityLists,
   type LiveActivityItem,
 } from "@/lib/chatActivities";
 import { SubagentIcon } from "./SubagentIcon";
+
+const GROUP_ICONS: Record<ActivityGroupKind, LucideIcon> = {
+  read: FileText,
+  search: Search,
+  list: Folder,
+  edit: Pencil,
+  fetch: Globe2,
+  command: SquareTerminal,
+};
 
 function ActivityRow({ activity }: { activity: LiveActivityItem }) {
   if (isRawToolCallThought(activity)) return null;
@@ -76,6 +99,7 @@ export function GroupedActivityRows({ activities }: { activities: LiveActivityIt
           return <ActivityRow key={entry.activity.id} activity={entry.activity} />;
         }
         const expanded = expandedGroups.has(entry.id);
+        const GroupIcon = GROUP_ICONS[entry.kind];
         return (
           <div key={entry.id}>
             <button
@@ -85,7 +109,7 @@ export function GroupedActivityRows({ activities }: { activities: LiveActivityIt
               aria-expanded={expanded}
               title={expanded ? "Collapse" : "Show each call"}
             >
-              <CheckCircle2 className="w-3 h-3 text-current opacity-70 flex-shrink-0" />
+              <GroupIcon className="w-3 h-3 text-current opacity-70 flex-shrink-0" />
               <span className="min-w-0 truncate">{entry.label}</span>
               {expanded ? (
                 <ChevronUp className="w-3 h-3 text-gray-600 flex-shrink-0" />

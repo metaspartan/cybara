@@ -202,6 +202,6 @@ describe("UI auth token helpers", () => {
     expect(capturedInits).toHaveLength(2);
     expect(new Headers(capturedInits[0].headers).get("Authorization")).toBeNull();
     expect(new Headers(capturedInits[1].headers).get("Authorization")).toBe("Bearer desktop-token");
-    expect(window.localStorage.getItem("cybara_api_key")).toBe("desktop-token");
+    expect(window.localStorage.getItem("cybara_api_key")).toBeNull();
   });
 });

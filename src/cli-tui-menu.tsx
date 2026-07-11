@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
+import { useTerminalLayout } from "./cli-tui-terminal";
 
 const TUI_INPUT_OPTIONS = {
   isActive:
@@ -273,6 +274,7 @@ export function MainMenu({
   onStartServer,
 }: MainMenuProps): React.ReactElement {
   const { exit } = useApp();
+  const layout = useTerminalLayout();
   const [selected, setSelected] = React.useState(0);
   const [searchMode, setSearchMode] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -372,7 +374,7 @@ export function MainMenu({
 
   const selectedItem = menuItems[selected];
   const groups = ["Workflows", "Setup", "System"] as const;
-  const availableRows = Math.max(5, (process.stdout.rows || 30) - 26);
+  const availableRows = Math.max(4, layout.rows - (layout.narrow ? 21 : 24));
   const visibleCount = Math.min(menuItems.length, availableRows);
   const visibleStart = Math.max(
     0,
@@ -381,19 +383,34 @@ export function MainMenu({
   const visibleMenuItems = menuItems.slice(visibleStart, visibleStart + visibleCount);
 
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" height={layout.rows} width="100%">
       {header}
       {updateBanner}
-      <Box marginBottom={1} flexDirection="column">
+      <Box marginBottom={1} flexDirection="column" flexShrink={0}>
         <Text color="gray">Gateway: {apiBase}</Text>
         <Text color="gray">{DIRECT_TUI_PANEL_HINT}</Text>
       </Box>
-      <Box flexDirection="column" borderStyle="round" borderColor="cyan" paddingX={2} paddingY={1}>
-        <Box justifyContent="space-between">
+      <Box
+        flexDirection="column"
+        borderStyle="round"
+        borderColor="cyan"
+        paddingX={layout.narrow ? 1 : 2}
+        paddingY={1}
+        flexGrow={1}
+      >
+        <Box
+          flexDirection={layout.narrow ? "column" : "row"}
+          justifyContent="space-between"
+          flexShrink={0}
+        >
           <Text bold color="cyan">
             Cybara TUI
           </Text>
-          <Text color="gray">↑↓/j/k · ↵ open · / search · ? help · q quit</Text>
+          <Text color="gray">
+            {layout.narrow
+              ? "j/k move · ↵ open · / search"
+              : "↑↓/j/k · ↵ open · / search · ? help · q quit"}
+          </Text>
         </Box>
         <Text color={searchMode ? "cyan" : query ? "yellow" : "gray"}>
           Search: {query || (searchMode ? "type to filter" : "press /")}
@@ -415,7 +432,11 @@ export function MainMenu({
                       {active ? "❯ " : "  "}
                       [{item.shortcut}] {item.label}
                     </Text>
-                    <Text color={active ? "cyan" : "gray"}>{item.kind === "panel" ? "panel" : "action"}</Text>
+                    {layout.narrow ? null : (
+                      <Text color={active ? "cyan" : "gray"}>
+                        {item.kind === "panel" ? "panel" : "action"}
+                      </Text>
+                    )}
                   </Box>
                 );
               })}
@@ -428,8 +449,15 @@ export function MainMenu({
           </Text>
         )}
       </Box>
-      {selectedItem ? (
-        <Box marginTop={1} flexDirection="column" borderStyle="single" borderColor="gray" paddingX={1}>
+      {selectedItem && !layout.narrow ? (
+        <Box
+          marginTop={1}
+          flexDirection="column"
+          borderStyle="single"
+          borderColor="gray"
+          paddingX={1}
+          flexShrink={0}
+        >
           <Text bold>{selectedItem.label}</Text>
           <Text color="gray">{selectedItem.detail}</Text>
           <Text color="gray">Shortcut: {selectedItem.shortcut} · Command: cybara tui {selectedItem.action}</Text>

@@ -81,6 +81,8 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiMenuSource).toContain("selectedIndexForShortcut");
     expect(cliTuiMenuSource).toContain("visibleMenuItems");
     expect(cliTuiMenuSource).toContain("const availableRows");
+    expect(cliTuiMenuSource).toContain('height={layout.rows} width="100%"');
+    expect(cliTuiMenuSource).toContain("layout.rows - (layout.narrow ? 21 : 24)");
     expect(cliTuiMenuSource).toContain('action: "router",\n    shortcut: "v"');
     expect(cliTuiMenuSource).toContain('action: "skills",\n    shortcut: "i"');
     expect(cliTuiMenuSource).toContain("Workflows");
@@ -121,7 +123,7 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiChatSource).toMatch(
       /layout\.compact\s*\?\s*Math\.max\(18, layout\.columns - 26\)/
     );
-    expect(cliTuiChatSource).toContain("layout.rows - (layout.compact ? 15 : 17)");
+    expect(cliTuiChatSource).toContain("layout.rows - (layout.compact ? 18 : 22)");
     expect(cliTuiInteractiveChatSource).toContain('height={layout.rows} width="100%"');
     expect(cliTuiInteractiveChatSource).toContain("flexGrow={1}");
   });
@@ -267,6 +269,9 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("tool_calls");
     expect(cliTuiInteractiveChatSource).toContain("ACTIVITY_HEADING_COLOR");
     expect(cliTuiInteractiveChatSource).toContain("ACTIVITY_DETAIL_COLOR");
+    expect(cliTuiInteractiveChatSource).toContain("strikethrough={part.strikethrough}");
+    expect(cliTuiInteractiveChatSource).toContain("splitTerminalInline(line)");
+    expect(cliTuiInteractiveChatSource).toContain("parseTerminalListItem(line.text)");
   });
 
   test("chat session picker supports pinning and guarded deletion", () => {

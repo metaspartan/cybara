@@ -1262,6 +1262,8 @@ enum NativeActivityGroupKind {
     case read
     case search
     case list
+    case edit
+    case fetch
     case command
 }
 
@@ -1280,6 +1282,8 @@ enum NativeTimelineEntry: Identifiable {
 private let nativeGroupableToolKinds: [String: NativeActivityGroupKind] = [
     "read": .read, "grep": .search, "file_search": .search, "glob": .search,
     "web_search": .search, "ls": .list, "list": .list,
+    "write": .edit, "edit": .edit, "apply_patch": .edit, "multi_edit": .edit,
+    "web_fetch": .fetch, "fetch": .fetch, "http_request": .fetch,
 ]
 
 private let nativeReadOnlyCommandKinds: [String: NativeActivityGroupKind] = [
@@ -1370,6 +1374,9 @@ private func nativeGroupKind(_ activity: NativeToolActivity) -> NativeActivityGr
         if toolName.isEmpty {
             if activity.text.hasPrefix("Explored ") { return .read }
             if activity.text.hasPrefix("Searched ") { return .search }
+            if activity.text.hasPrefix("Listed ") { return .list }
+            if activity.text.range(of: "^(Edited|Created|Updated|Wrote|Deleted) ", options: .regularExpression) != nil { return .edit }
+            if activity.text.hasPrefix("Fetched ") { return .fetch }
         }
     }
     return nil
@@ -1382,10 +1389,22 @@ private func nativeGroupLabel(_ kinds: [NativeActivityGroupKind], _ count: Int) 
         case .read: return "Read \(count) files"
         case .search: return "Ran \(count) searches"
         case .list: return "Listed \(count) locations"
+        case .edit: return "Edited \(count) files"
+        case .fetch: return "Fetched \(count) pages"
         case .command: break
         }
     }
     return "Ran \(count) commands"
+}
+
+private func nativeGroupIcon(_ items: [NativeToolActivity]) -> String {
+    let kinds = items.compactMap(nativeGroupKind)
+    if kinds.contains(where: { $0 == .edit }) { return "pencil" }
+    if kinds.contains(where: { $0 == .fetch }) { return "globe" }
+    if kinds.contains(where: { $0 == .search }) { return "magnifyingglass" }
+    if kinds.contains(where: { $0 == .read }) { return "doc.text" }
+    if kinds.contains(where: { $0 == .list }) { return "folder" }
+    return "terminal"
 }
 
 func nativeGroupActivities(_ activities: [NativeToolActivity]) -> [NativeTimelineEntry] {
@@ -1441,7 +1460,7 @@ struct NativeGroupedActivities: View {
                         if isExpanded { expanded.remove(id) } else { expanded.insert(id) }
                     } label: {
                         HStack(alignment: .top, spacing: 7) {
-                            Image(systemName: "checkmark.circle.fill")
+                            Image(systemName: nativeGroupIcon(items))
                                 .font(.system(size: 11.5, weight: .semibold))
                                 .foregroundStyle(.secondary)
                                 .frame(width: 13, alignment: .center)

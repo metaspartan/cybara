@@ -11,11 +11,22 @@ export interface KeyValueStorage {
   removeItem(key: string): Promise<void>;
 }
 
-type SecureStoreLike = {
-  getItemAsync(key: string): Promise<string | null>;
-  setItemAsync(key: string, value: string): Promise<void>;
+export type SecureStoreLike = {
+  AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY?: number;
+  getItemAsync(key: string, options?: SecureStoreOptions): Promise<string | null>;
+  setItemAsync(key: string, value: string, options?: SecureStoreOptions): Promise<void>;
   deleteItemAsync(key: string): Promise<void>;
 };
+
+type SecureStoreOptions = {
+  keychainAccessible?: number;
+};
+
+function secureStoreOptions(store: SecureStoreLike): SecureStoreOptions | undefined {
+  return typeof store.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY === "number"
+    ? { keychainAccessible: store.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY }
+    : undefined;
+}
 
 let secureStoreProbe: Promise<SecureStoreLike | null> | null = null;
 function loadSecureStore(): Promise<SecureStoreLike | null> {
@@ -40,67 +51,47 @@ function loadSecureStore(): Promise<SecureStoreLike | null> {
   return secureStoreProbe;
 }
 
-const secureStorage: KeyValueStorage = {
-  async getItem(key) {
-    const store = await loadSecureStore();
-    if (store) {
+export function createSecureProfileStorage(
+  storeLoader: () => Promise<SecureStoreLike | null> = loadSecureStore,
+  legacyStorage: KeyValueStorage = AsyncStorage
+): KeyValueStorage {
+  return {
+    async getItem(key) {
+      const store = await storeLoader();
+      if (!store) throw new Error("Secure credential storage is unavailable on this device.");
+      const secure = await store.getItemAsync(key, secureStoreOptions(store));
+      if (secure !== null) return secure;
+      const legacy = await legacyStorage.getItem(key);
+      if (legacy === null) return null;
+      await store.setItemAsync(key, legacy, secureStoreOptions(store));
+      await legacyStorage.removeItem(key);
+      return legacy;
+    },
+    async setItem(key, value) {
+      const store = await storeLoader();
+      if (!store) throw new Error("Secure credential storage is unavailable on this device.");
       try {
-        const secure = await store.getItemAsync(key);
-        if (secure !== null) return secure;
+        await store.setItemAsync(key, value, secureStoreOptions(store));
+        await legacyStorage.removeItem(key);
       } catch {
-        /* fall through */
+        throw new Error("Could not save the gateway profile on this device.");
       }
-    }
-    let legacy: string | null = null;
-    try {
-      legacy = await AsyncStorage.getItem(key);
-    } catch {
-      return null;
-    }
-    if (legacy !== null && store) {
+    },
+    async removeItem(key) {
+      const store = await storeLoader();
+      if (store) {
+        try {
+          await store.deleteItemAsync(key);
+        } catch {}
+      }
       try {
-        await store.setItemAsync(key, legacy);
-        await AsyncStorage.removeItem(key);
-      } catch {
-        /* keep legacy copy */
-      }
-    }
-    return legacy;
-  },
-  async setItem(key, value) {
-    const store = await loadSecureStore();
-    if (store) {
-      try {
-        await store.setItemAsync(key, value);
-        return;
-      } catch {
-        /* fall through */
-      }
-    }
-    try {
-      await AsyncStorage.setItem(key, value);
-    } catch {
-      throw new Error("Could not save the gateway profile on this device.");
-    }
-  },
-  async removeItem(key) {
-    const store = await loadSecureStore();
-    if (store) {
-      try {
-        await store.deleteItemAsync(key);
-      } catch {
-        /* ignore */
-      }
-    }
-    try {
-      await AsyncStorage.removeItem(key);
-    } catch {
-      /* ignore */
-    }
-  },
-};
+        await legacyStorage.removeItem(key);
+      } catch {}
+    },
+  };
+}
 
-const defaultStorage: KeyValueStorage = secureStorage;
+const defaultStorage: KeyValueStorage = createSecureProfileStorage();
 
 export async function loadProfiles(
   storage: KeyValueStorage = defaultStorage

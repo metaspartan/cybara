@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   clearActiveProfile,
+  createSecureProfileStorage,
   getActiveProfile,
   loadProfiles,
   saveProfile,
@@ -70,5 +71,42 @@ describe("mobile profile storage", () => {
 
     await expect(loadProfiles(storage)).resolves.toEqual([]);
     await expect(getActiveProfile(storage)).resolves.toBeNull();
+  });
+
+  test("never writes gateway credentials to plaintext storage when secure storage is unavailable", async () => {
+    const legacy = memoryStorage();
+    const storage = createSecureProfileStorage(async () => null, legacy);
+
+    await expect(saveProfile(profile, storage)).rejects.toThrow(
+      "Secure credential storage is unavailable"
+    );
+    expect(await legacy.getItem("cybara.mobile.gatewayProfiles")).toBeNull();
+  });
+
+  test("migrates legacy profiles into device-only secure storage", async () => {
+    const legacy = memoryStorage();
+    const secureValues = new Map<string, string>();
+    const options: Array<{ keychainAccessible?: number } | undefined> = [];
+    await legacy.setItem("cybara.mobile.gatewayProfiles", JSON.stringify([profile]));
+    const storage = createSecureProfileStorage(
+      async () => ({
+        AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 7,
+        async getItemAsync(key) {
+          return secureValues.get(key) ?? null;
+        },
+        async setItemAsync(key, value, secureOptions) {
+          secureValues.set(key, value);
+          options.push(secureOptions);
+        },
+        async deleteItemAsync(key) {
+          secureValues.delete(key);
+        },
+      }),
+      legacy
+    );
+
+    expect(await loadProfiles(storage)).toEqual([profile]);
+    expect(await legacy.getItem("cybara.mobile.gatewayProfiles")).toBeNull();
+    expect(options).toEqual([{ keychainAccessible: 7 }]);
   });
 });

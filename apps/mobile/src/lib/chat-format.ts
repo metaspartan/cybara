@@ -888,6 +888,13 @@ function mobileGroupLabel(kinds: MobileGroupableKind[]): string {
   return joined.charAt(0).toUpperCase() + joined.slice(1);
 }
 
+function mobileDominantGroupKind(kinds: MobileGroupableKind[]): MobileGroupableKind {
+  for (const kind of ["edit", "fetch", "search", "read", "list", "command"] as const) {
+    if (kinds.includes(kind)) return kind;
+  }
+  return "command";
+}
+
 export function groupMobileActivities(activities: MobileWorkActivity[]): MobileActivityEntry[] {
   const entries: MobileActivityEntry[] = [];
   let run: {
@@ -899,12 +906,10 @@ export function groupMobileActivities(activities: MobileWorkActivity[]): MobileA
   const flush = () => {
     if (!run) return;
     if (run.kinds.length >= 2) {
-      const unique = new Set(run.kinds);
-      const dominant = unique.size === 1 ? [...unique][0] : "command";
       entries.push({
         type: "group",
         id: `group-${run.items[0].id}-${run.items.length}`,
-        kind: dominant,
+        kind: mobileDominantGroupKind(run.kinds),
         label: mobileGroupLabel(run.kinds),
         items: run.items,
       });

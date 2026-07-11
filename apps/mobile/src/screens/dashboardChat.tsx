@@ -17,9 +17,14 @@ import {
   ChevronUp,
   Copy,
   FileText,
+  Folder,
+  Globe2,
   ListChecks,
   Loader2,
+  Pencil,
   RotateCcw,
+  Search,
+  SquareTerminal,
   User,
 } from "lucide-react-native";
 import { colors } from "../theme/liquidGlass";
@@ -29,6 +34,7 @@ import {
   buildMobileWorkTimeline,
   groupMobileActivities,
   type MobileWorkActivity,
+  type MobileActivityGroupKind,
   hasUnicodeTextFallback,
   parseMarkdownBlocks,
   parseInlineMarkdown,
@@ -37,6 +43,15 @@ import {
 } from "../lib/chat-format";
 import type { SessionDetailSummary, SessionMessageSummary, SessionPlanSnapshot } from "../lib/api";
 import { Clipboard } from "../lib/expoNativeModules";
+
+const MOBILE_GROUP_ICONS: Record<MobileActivityGroupKind, typeof FileText> = {
+  read: FileText,
+  search: Search,
+  list: Folder,
+  edit: Pencil,
+  fetch: Globe2,
+  command: SquareTerminal,
+};
 
 interface MobileFileChangeItem {
   path: string;
@@ -668,6 +683,7 @@ export function WorkTimeline({
             return <MobileActivityRow key={entry.activity.id} activity={entry.activity} />;
           }
           const expanded = expandedGroups[entry.id] === true;
+          const GroupIcon = MOBILE_GROUP_ICONS[entry.kind];
           return (
             <View key={entry.id}>
               <Pressable
@@ -678,7 +694,7 @@ export function WorkTimeline({
                 style={styles.messageActivityRow}
               >
                 <View style={styles.messageActivityIcon}>
-                  <CheckCircle2 color={colors.textMuted} size={13} strokeWidth={2.2} />
+                  <GroupIcon color={colors.textMuted} size={13} strokeWidth={2.2} />
                 </View>
                 <Text selectable style={styles.messageActivityGroupLabel}>
                   {entry.label} {expanded ? "▾" : "▸"}

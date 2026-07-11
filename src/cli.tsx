@@ -2549,13 +2549,11 @@ async function rawRouter(args: string[]): Promise<void> {
 }
 
 const Logo = ({ compact = false }: { compact?: boolean }) => (
-  <Box flexDirection="column" alignItems="center" marginBottom={compact ? 0 : 1}>
-    {!compact && (
-      <Gradient name="rainbow">
-        <Text bold>{"█▀▀ █▄█ █▄▄ █▀█ █▀█ █▀█\n█▄▄  █  █▄█ █▀█ █▀▄ █▀█  CYBARA"}</Text>
-      </Gradient>
-    )}
-    <Text color="gray">Cybara TUI</Text>
+  <Box justifyContent="center" marginBottom={compact ? 0 : 1} flexShrink={0}>
+    <Gradient name="rainbow">
+      <Text bold>CYBARA</Text>
+    </Gradient>
+    <Text color="gray"> · {compact ? "TUI" : "Agent Platform · Terminal"}</Text>
   </Box>
 );
 

@@ -387,7 +387,7 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
   );
   const availableSessionRows = Math.max(
     4,
-    layout.rows - (layout.compact ? 15 : 17),
+    layout.rows - (layout.compact ? 18 : 22),
   );
   const visibleSessionCount = Math.min(
     visibleSessions.length,
