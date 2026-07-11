@@ -1,7 +1,9 @@
 import { mcpManager } from "../mcp";
 import { createEligibilityContext, filterEligibleSkills, loadAllSkills } from "../skills";
+import { tables } from "../database";
+import { toolSchemas } from "../tools";
 
-export type ChatCapabilityKind = "skill" | "mcp";
+export type ChatCapabilityKind = "skill" | "mcp_server" | "mcp" | "agent" | "tool";
 
 export interface ChatCapabilityOption {
   kind: ChatCapabilityKind;
@@ -41,6 +43,62 @@ async function skillCapabilities(workspaceDir?: string): Promise<ResolvedChatCap
   });
 }
 
+function mcpServerCapabilities(): ResolvedChatCapability[] {
+  const byServer = new Map<string, { name: string; toolCount: number }>();
+  for (const tool of mcpManager.getAllTools()) {
+    const existing = byServer.get(tool.serverName);
+    if (existing) existing.toolCount += 1;
+    else byServer.set(tool.serverName, { name: tool.serverName, toolCount: 1 });
+  }
+  return [...byServer.values()].map((server) => {
+    const token = `@${normalizeCapabilityAlias(server.name)}`;
+    return {
+      kind: "mcp_server",
+      token,
+      name: server.name,
+      description: `MCP server · ${server.toolCount} tool${server.toolCount === 1 ? "" : "s"}`,
+      source: "MCP server",
+      instruction: `For ${token}, prefer tools from the ${JSON.stringify(server.name)} MCP server for this turn: use tool_search to find its tools, then tool_describe and tool_call to invoke them.`,
+    };
+  });
+}
+
+function agentCapabilities(): ResolvedChatCapability[] {
+  try {
+    const agents = tables.agents.all() as Array<{ name?: string; type?: string }>;
+    return agents
+      .filter((agent) => typeof agent.name === "string" && agent.name.trim().length > 0)
+      .map((agent) => {
+        const name = agent.name as string;
+        const token = `@${normalizeCapabilityAlias(name)}`;
+        return {
+          kind: "agent" as const,
+          token,
+          name,
+          description: `Delegate to the ${name} agent`,
+          source: "Agent",
+          instruction: `For ${token}, delegate the relevant part of this task to the ${JSON.stringify(name)} agent using the sessions_spawn or subagents tool, then incorporate its result.`,
+        };
+      });
+  } catch {
+    return [];
+  }
+}
+
+function toolCapabilities(): ResolvedChatCapability[] {
+  return Object.values(toolSchemas).map((tool) => {
+    const token = `@${normalizeCapabilityAlias(tool.name)}`;
+    return {
+      kind: "tool",
+      token,
+      name: tool.name,
+      description: tool.description.slice(0, 140),
+      source: "Tool",
+      instruction: `For ${token}, use the ${JSON.stringify(tool.name)} built-in tool when relevant to this turn.`,
+    };
+  });
+}
+
 function mcpCapabilities(): ResolvedChatCapability[] {
   return mcpManager.getAllTools().map((tool) => {
     const serverAlias = normalizeCapabilityAlias(tool.serverName);
@@ -60,7 +118,13 @@ function mcpCapabilities(): ResolvedChatCapability[] {
 
 async function resolvedCapabilities(workspaceDir?: string): Promise<ResolvedChatCapability[]> {
   const unique = new Map<string, ResolvedChatCapability>();
-  for (const capability of [...(await skillCapabilities(workspaceDir)), ...mcpCapabilities()]) {
+  for (const capability of [
+    ...(await skillCapabilities(workspaceDir)),
+    ...mcpServerCapabilities(),
+    ...mcpCapabilities(),
+    ...agentCapabilities(),
+    ...toolCapabilities(),
+  ]) {
     if (!unique.has(capability.token)) unique.set(capability.token, capability);
   }
   return [...unique.values()].sort((left, right) =>

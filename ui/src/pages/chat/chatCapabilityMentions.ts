@@ -30,10 +30,15 @@ export function filterChatCapabilities(
       const name = option.name.toLowerCase();
       const source = option.source.toLowerCase();
       const description = option.description.toLowerCase();
+      const kindRank: Record<string, number> = {
+        skill: 50,
+        mcp_server: 40,
+        mcp: 30,
+        agent: 20,
+        tool: 10,
+      };
       const score = !normalized
-        ? option.kind === "skill"
-          ? 20
-          : 10
+        ? (kindRank[option.kind] ?? 5)
         : token === normalized
           ? 100
           : token.startsWith(normalized)

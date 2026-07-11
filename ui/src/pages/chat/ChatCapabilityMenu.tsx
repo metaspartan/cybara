@@ -1,6 +1,22 @@
-import { Puzzle, Wrench } from "lucide-react";
+import { Puzzle, Wrench, Plug, Server, Bot } from "lucide-react";
 import type { ChatCapabilityOption } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+const KIND_ICON: Record<string, typeof Wrench> = {
+  skill: Puzzle,
+  mcp_server: Server,
+  mcp: Plug,
+  agent: Bot,
+  tool: Wrench,
+};
+
+const KIND_LABEL: Record<string, string> = {
+  skill: "Skill",
+  mcp_server: "MCP server",
+  mcp: "MCP tool",
+  agent: "Agent",
+  tool: "Tool",
+};
 
 interface ChatCapabilityMenuProps {
   options: ChatCapabilityOption[];
@@ -24,10 +40,12 @@ export function ChatCapabilityMenu({
       {loading ? (
         <div className="px-3 py-3 text-xs text-gray-400">Loading capabilities...</div>
       ) : options.length === 0 ? (
-        <div className="px-3 py-3 text-xs text-gray-400">No matching skills or MCP tools</div>
+        <div className="px-3 py-3 text-xs text-gray-400">
+          No matching skills, MCP servers, agents, or tools
+        </div>
       ) : (
         options.map((option, index) => {
-          const Icon = option.kind === "skill" ? Puzzle : Wrench;
+          const Icon = KIND_ICON[option.kind] ?? Wrench;
           return (
             <button
               key={`${option.kind}:${option.token}`}
@@ -46,7 +64,7 @@ export function ChatCapabilityMenu({
                 <span className="flex min-w-0 items-center gap-2">
                   <span className="truncate text-xs font-medium text-gray-100">{option.token}</span>
                   <span className="shrink-0 text-[10px] uppercase tracking-wide text-gray-500">
-                    {option.kind === "skill" ? "Skill" : option.source}
+                    {KIND_LABEL[option.kind] ?? option.source}
                   </span>
                 </span>
                 <span className="mt-0.5 block truncate text-[11px] text-gray-400">

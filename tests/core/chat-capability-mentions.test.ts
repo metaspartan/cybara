@@ -21,6 +21,23 @@ describe("chat capability mentions", () => {
     expect(capabilities.every((capability) => capability.token.startsWith("@"))).toBe(true);
   });
 
+  test("includes built-in tool and agent capabilities alongside skills", async () => {
+    const capabilities = await listChatCapabilities(process.cwd());
+    const kinds = new Set(capabilities.map((capability) => capability.kind));
+    expect(kinds.has("tool")).toBe(true);
+    const execTool = capabilities.find(
+      (capability) => capability.kind === "tool" && capability.token === "@exec"
+    );
+    expect(execTool).toBeDefined();
+    expect(execTool?.source).toBe("Tool");
+  });
+
+  test("resolves a built-in tool mention to its instruction", async () => {
+    const resolved = await resolveChatCapabilityMentions("Please @exec the tests", process.cwd());
+    expect(resolved.mentions.map((mention) => mention.token)).toContain("@exec");
+    expect(resolved.instruction).toContain("exec");
+  });
+
   test("resolves exact mentions without matching email addresses or unknown names", async () => {
     const skill = (await listChatCapabilities(process.cwd())).find(
       (capability) => capability.kind === "skill"

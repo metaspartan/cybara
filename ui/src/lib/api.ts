@@ -1223,7 +1223,7 @@ export const skillsApi = {
 };
 
 export interface ChatCapabilityOption {
-  kind: "skill" | "mcp";
+  kind: "skill" | "mcp_server" | "mcp" | "agent" | "tool";
   token: string;
   name: string;
   description: string;
