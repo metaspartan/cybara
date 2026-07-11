@@ -50,12 +50,8 @@ import { clearGatewayAccessPassword, setApiAuthToken, setGatewayAccessPassword }
 import { Modal } from "@/components/ui/Modal";
 import { Switch } from "@/components/ui/Switch";
 import { openExternal } from "@/utils/openExternal";
-import {
-  checkForDesktopUpdate,
-  describeDesktopUpdaterError,
-  installDesktopUpdate,
-  relaunchDesktopApp,
-} from "@/lib/desktopUpdater";
+import { checkForUpdate, getUpdateState, startUpdateInstall } from "@/lib/updateStore";
+import { useDesktopUpdate } from "@/hooks/useDesktopUpdate";
 import {
   getDesktopHostRuntime,
   getDesktopRuntimeLabel,
@@ -110,7 +106,6 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
-import type { Update, DownloadEvent } from "@tauri-apps/plugin-updater";
 
 function getCheckStatus(value: unknown): {
   status: "healthy" | "warning" | "error";
@@ -364,109 +359,58 @@ function DesktopUpdateSettings({
   const isDesktopRuntime = desktopRuntime !== null;
   const supportsUpdater = isDesktopUpdaterSupported();
   const runtimeLabel = getDesktopRuntimeLabel(desktopRuntime);
-  const [status, setStatus] = useState<
-    "idle" | "checking" | "current" | "available" | "installing" | "error"
-  >("idle");
-  const [statusMessage, setStatusMessage] = useState(
-    "Check for signed Cybara desktop updates published to GitHub Releases."
-  );
-  const [availableUpdate, setAvailableUpdate] = useState<Update | null>(null);
-  const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
-  const [downloadedBytes, setDownloadedBytes] = useState(0);
-  const [totalBytes, setTotalBytes] = useState<number | null>(null);
-  const checkedOnMountRef = useRef(false);
+  const {
+    phase,
+    available: availableUpdate,
+    downloadedBytes,
+    totalBytes,
+    lastCheckedAt,
+    error: updateError,
+  } = useDesktopUpdate();
 
-  const handleCheck = useCallback(
-    async (silent = false) => {
-      if (!isDesktopRuntime) return;
-      if (!supportsUpdater) {
-        setStatus("current");
-        setAvailableUpdate(null);
-        setLastCheckedAt(new Date().toISOString());
-        setStatusMessage(
-          "This native Cybara macOS app uses the same local gateway on http://127.0.0.1:4269, but in-app signed updater installs are not wired for this host yet. Use GitHub Releases or rebuild from source."
-        );
-        return;
-      }
+  const status: "idle" | "checking" | "current" | "available" | "installing" | "error" =
+    !supportsUpdater
+      ? "current"
+      : phase === "downloading" || phase === "installing" || phase === "done"
+        ? "installing"
+        : phase;
 
-      setStatus("checking");
-      setDownloadedBytes(0);
-      setTotalBytes(null);
-      if (!silent) {
-        setStatusMessage("Checking GitHub Releases for a newer desktop build...");
-      }
+  const statusMessage = !supportsUpdater
+    ? "This native Cybara macOS app uses the same local gateway on http://127.0.0.1:4269, but in-app signed updater installs are not wired for this host yet. Use GitHub Releases or rebuild from source."
+    : phase === "done"
+      ? `Installed ${availableUpdate?.version ?? "update"}. Restarting Cybara...`
+      : phase === "downloading" || phase === "installing"
+        ? `Downloading and installing ${availableUpdate?.version ?? "update"}...`
+        : phase === "available"
+          ? (updateError ?? `Version ${availableUpdate?.version} is available to install.`)
+          : phase === "error"
+            ? (updateError ?? "Desktop update check failed.")
+            : phase === "current"
+              ? "This desktop build is already on the latest published release."
+              : phase === "checking"
+                ? "Checking GitHub Releases for a newer desktop build..."
+                : "Check for signed Cybara desktop updates published to GitHub Releases.";
 
-      try {
-        const update = await checkForDesktopUpdate();
-        setLastCheckedAt(new Date().toISOString());
-
-        if (update) {
-          setAvailableUpdate(update);
-          setStatus("available");
-          setStatusMessage(`Version ${update.version} is available to install.`);
-          if (!silent) {
-            addToast("success", `Desktop update ${update.version} is ready to install`);
-          }
-          return;
-        }
-
-        setAvailableUpdate(null);
-        setStatus("current");
-        setStatusMessage("This desktop build is already on the latest published release.");
-        if (!silent) {
-          addToast("success", "Cybara desktop is already up to date");
-        }
-      } catch (error) {
-        const message = describeDesktopUpdaterError(error);
-        setAvailableUpdate(null);
-        setStatus("error");
-        setStatusMessage(message);
-        if (!silent) {
-          addToast("error", message);
-        }
-      }
-    },
-    [addToast, isDesktopRuntime, supportsUpdater]
-  );
+  const handleCheck = useCallback(async () => {
+    if (!isDesktopRuntime || !supportsUpdater) return;
+    await checkForUpdate();
+    const latest = getUpdateState();
+    if (latest.phase === "available" && latest.available) {
+      addToast("success", `Desktop update ${latest.available.version} is ready to install`);
+    } else if (latest.phase === "current") {
+      addToast("success", "Cybara desktop is already up to date");
+    } else if (latest.error) {
+      addToast("error", latest.error);
+    }
+  }, [addToast, isDesktopRuntime, supportsUpdater]);
 
   const handleInstall = useCallback(async () => {
-    if (!availableUpdate) return;
-
-    setStatus("installing");
-    setDownloadedBytes(0);
-    setTotalBytes(null);
-    setStatusMessage(`Downloading and installing ${availableUpdate.version}...`);
-
-    try {
-      await installDesktopUpdate(availableUpdate, (event: DownloadEvent) => {
-        if (event.event === "Started") {
-          setDownloadedBytes(0);
-          setTotalBytes(event.data.contentLength || null);
-          return;
-        }
-        if (event.event === "Progress") {
-          setDownloadedBytes((previous) => previous + event.data.chunkLength);
-          return;
-        }
-        if (event.event === "Finished") {
-          setStatusMessage(`Installed ${availableUpdate.version}. Restarting Cybara...`);
-        }
-      });
-      addToast("success", `Installed ${availableUpdate.version}. Restarting Cybara...`);
-      await relaunchDesktopApp();
-    } catch (error) {
-      const message = describeDesktopUpdaterError(error);
-      setStatus("available");
-      setStatusMessage(message);
-      addToast("error", message);
+    await startUpdateInstall();
+    const latest = getUpdateState();
+    if (latest.error && latest.phase === "available") {
+      addToast("error", latest.error);
     }
-  }, [addToast, availableUpdate]);
-
-  useEffect(() => {
-    if (!isDesktopRuntime || checkedOnMountRef.current) return;
-    checkedOnMountRef.current = true;
-    void handleCheck(true);
-  }, [handleCheck, isDesktopRuntime]);
+  }, [addToast]);
 
   if (!isDesktopRuntime) {
     return null;

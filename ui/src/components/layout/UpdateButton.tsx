@@ -37,10 +37,10 @@ function ProgressDonut({ progress }: { progress: number }) {
 export function UpdateButton({ collapsed }: { collapsed?: boolean }) {
   const { phase, available, progress, startUpdate } = useDesktopUpdate();
 
-  if (phase === "idle" || phase === "checking") return null;
-
   const busy = phase === "downloading" || phase === "installing";
   const done = phase === "done";
+
+  if (phase !== "available" && !busy && !done) return null;
 
   const label = done ? "Updated" : busy ? `${Math.round(progress * 100)}%` : "Update";
 
