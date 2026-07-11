@@ -10,6 +10,10 @@ extension Notification.Name {
     static let cybaraCopyURL = Notification.Name("cybara.copyURL")
     static let cybaraCheckForUpdates = Notification.Name("cybara.checkForUpdates")
     static let cybaraThemeAccentChanged = Notification.Name("cybara.themeAccentChanged")
+    static let cybaraShowMainWindow = Notification.Name("cybara.showMainWindow")
+    static let cybaraOpenChat = Notification.Name("cybara.openChat")
+    static let cybaraOpenUsage = Notification.Name("cybara.openUsage")
+    static let cybaraOpenSettings = Notification.Name("cybara.openSettings")
 }
 
 @MainActor
@@ -19,14 +23,28 @@ final class CybaraAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(showMainWindow),
+            name: .cybaraShowMainWindow,
+            object: nil
+        )
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         sidecar?.stop()
+    }
+
+    @objc private func showMainWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        for window in NSApp.windows where window.identifier?.rawValue == "CybaraMainWindow" {
+            window.deminiaturize(nil)
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 }
 
@@ -35,6 +53,7 @@ struct CybaraApp: App {
     @NSApplicationDelegateAdaptor(CybaraAppDelegate.self) private var appDelegate
     @StateObject private var sidecar = SidecarManager()
     @StateObject private var updateChecker = UpdateChecker()
+    @StateObject private var menuBarModel = CybaraMenuBarModel()
 
     var body: some Scene {
         WindowGroup {
@@ -87,5 +106,13 @@ struct CybaraApp: App {
                 .environmentObject(sidecar)
                 .frame(width: 760, height: 680)
         }
+
+        MenuBarExtra {
+            CybaraMenuBarContent(model: menuBarModel)
+                .environmentObject(sidecar)
+        } label: {
+            CybaraMenuBarLabel()
+        }
+        .menuBarExtraStyle(.menu)
     }
 }

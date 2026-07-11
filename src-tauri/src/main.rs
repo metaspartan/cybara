@@ -9,6 +9,8 @@ use tauri::Manager;
 use tauri::RunEvent;
 use tauri_plugin_shell::ShellExt;
 
+mod tray;
+
 const CYBARA_SERVER_ADDR: &str = "127.0.0.1:4269";
 const CYBARA_SERVER_URL: &str = "http://127.0.0.1:4269";
 const HEALTH_PROBE_TIMEOUT: Duration = Duration::from_millis(750);
@@ -98,6 +100,10 @@ fn cybara_home_dir() -> Option<PathBuf> {
 
 #[tauri::command]
 fn read_cybara_api_key() -> Result<Option<String>, String> {
+    cybara_api_key()
+}
+
+fn cybara_api_key() -> Result<Option<String>, String> {
     if let Ok(key) = std::env::var("CYBARA_API_KEY") {
         let trimmed = key.trim();
         if !trimmed.is_empty() {
@@ -203,6 +209,7 @@ fn main() {
         .setup(|app| {
             app.manage(SidecarState(std::sync::Mutex::new(None)));
             app.manage(PendingOpen(std::sync::Mutex::new(None)));
+            tray::setup(app)?;
 
             if let Some(path) = file_path_from_args(&std::env::args().collect::<Vec<_>>()) {
                 set_pending_open(app.handle(), path);
@@ -260,7 +267,10 @@ fn main() {
                         }
                         CommandEvent::Terminated(payload) => {
                             println!("[Cybara] Sidecar terminated with code: {:?}", payload.code);
-                            log::warn!("Cybara gateway sidecar terminated with code {:?}", payload.code);
+                            log::warn!(
+                                "Cybara gateway sidecar terminated with code {:?}",
+                                payload.code
+                            );
                             break;
                         }
                         _ => {}
@@ -289,29 +299,30 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                stop_sidecar(&window.app_handle());
+            if window.label() == "main"
+                && let tauri::WindowEvent::CloseRequested { api, .. } = event
+            {
+                api.prevent_close();
+                let _ = window.hide();
             }
         })
         .build(tauri::generate_context!())
         .expect("error while building Cybara");
 
-    app.run(|app_handle, event| {
-        match &event {
-            RunEvent::ExitRequested { .. } | RunEvent::Exit => stop_sidecar(app_handle),
-            #[cfg(target_os = "macos")]
-            RunEvent::Opened { urls } => {
-                for url in urls {
-                    if let Ok(path) = url.to_file_path() {
-                        if let Some(path) = path.to_str() {
-                            open_path_in_ide(app_handle, path);
-                            break;
-                        }
+    app.run(|app_handle, event| match &event {
+        RunEvent::ExitRequested { .. } | RunEvent::Exit => stop_sidecar(app_handle),
+        #[cfg(target_os = "macos")]
+        RunEvent::Opened { urls } => {
+            for url in urls {
+                if let Ok(path) = url.to_file_path() {
+                    if let Some(path) = path.to_str() {
+                        open_path_in_ide(app_handle, path);
+                        break;
                     }
                 }
             }
-            _ => {}
         }
+        _ => {}
     });
 }
 

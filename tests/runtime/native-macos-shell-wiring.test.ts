@@ -53,6 +53,21 @@ describe("native macOS shell wiring", () => {
     expect(contentView).not.toContain("Web UI");
   });
 
+  test("native app exposes a template menu bar icon with usage and lifecycle controls", () => {
+    const app = readFileSync(join(MACOS_APP_DIR, "CybaraApp.swift"), "utf8");
+    const menu = readFileSync(join(MACOS_APP_DIR, "CybaraMenuBar.swift"), "utf8");
+
+    expect(app).toContain("MenuBarExtra");
+    expect(app).toContain("applicationShouldTerminateAfterLastWindowClosed");
+    expect(app).toContain("-> Bool {\n        false");
+    expect(menu).toContain("image.isTemplate = true");
+    expect(menu).toContain('Button("Show Cybara")');
+    expect(menu).toContain('Button("New Chat")');
+    expect(menu).toContain('Menu("Usage")');
+    expect(menu).toContain('Button("Quit Cybara")');
+    expect(menu).toContain("model.refresh(baseURL: sidecar.serverURL)");
+  });
+
   test("native logo loading does not call SwiftPM Bundle.module at app startup", () => {
     const brand = readFileSync(join(MACOS_APP_DIR, "CybaraBrand.swift"), "utf8");
 
@@ -569,6 +584,10 @@ describe("native macOS shell wiring", () => {
 
   test("native usage screen is a native provider plan surface", () => {
     const usageScreen = readFileSync(join(MACOS_APP_DIR, "NativeUsageScreen.swift"), "utf8");
+    const presentation = readFileSync(
+      join(MACOS_APP_DIR, "ProviderUsagePresentation.swift"),
+      "utf8"
+    );
     const contentView = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
 
     expect(contentView).toContain("case usage");
@@ -578,7 +597,7 @@ describe("native macOS shell wiring", () => {
     expect(usageScreen).toContain("NativeUsageProviderCard");
     expect(usageScreen).toContain('NativeUsageWindow(label: "5h"');
     expect(usageScreen).toContain('NativeUsageWindow(label: "Weekly"');
-    expect(usageScreen).toContain('NativeUsageWindowValue(text: "∞"');
+    expect(presentation).toContain('NativeUsageWindowValue(text: "∞"');
     expect(usageScreen).toContain("if percent < 65 { return .blue }");
     expect(usageScreen).not.toContain("WebView");
   });

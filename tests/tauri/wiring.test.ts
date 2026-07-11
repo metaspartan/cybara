@@ -34,7 +34,7 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain('.args(["start"])');
     expect(mainRs).not.toContain('.args(["start", "--enable-terminal"])');
     expect(mainRs).toContain('const CYBARA_SERVER_URL: &str = "http://127.0.0.1:4269"');
-    expect(mainRs).toContain("window.navigate(CYBARA_SERVER_URL.parse().unwrap())");
+    expect(mainRs).toContain("unwrap_or_else(|| CYBARA_SERVER_URL.parse().unwrap())");
     expect(mainRs).not.toContain('.env("CYBARA_HOST", "127.0.0.1")');
     expect(mainRs).toContain("child.kill()");
   });
@@ -63,9 +63,27 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("SidecarState(std::sync::Mutex::new(None))");
     expect(mainRs).toContain("*guard = Some(child)");
     expect(mainRs).toContain("wait_for_server_ready(Duration::from_secs(25))");
-    expect(mainRs).toContain("if let tauri::WindowEvent::CloseRequested");
+    expect(mainRs).toContain("tauri::WindowEvent::CloseRequested { api, .. }");
+    expect(mainRs).toContain("api.prevent_close()");
+    expect(mainRs).toContain("window.hide()");
     expect(mainRs).toContain("if let Some(state) = app.try_state::<SidecarState>()");
     expect(mainRs).toContain("if let Some(child) = guard.take()");
+  });
+
+  test("desktop shells expose a cross-platform tray with live provider usage", () => {
+    const cargo = readFileSync(join(ROOT_DIR, "src-tauri", "Cargo.toml"), "utf8");
+    const mainRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "main.rs"), "utf8");
+    const trayRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "tray.rs"), "utf8");
+
+    expect(cargo).toContain('"tray-icon"');
+    expect(mainRs).toContain("tray::setup(app)?");
+    expect(trayRs).toContain('TrayIconBuilder::with_id("cybara-tray")');
+    expect(trayRs).toContain('.icon_as_template(cfg!(target_os = "macos"))');
+    expect(trayRs).toContain('"Show Cybara"');
+    expect(trayRs).toContain('"New Chat"');
+    expect(trayRs).toContain('"Quit Cybara"');
+    expect(trayRs).toContain('read_http_body("/api/provider-plans/status")');
+    expect(trayRs).toContain('show_route(app, "/usage")');
   });
 
   test("desktop capability narrows webview origins and shell permissions", () => {

@@ -189,6 +189,16 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .cybaraPetOpenChat)) { _ in
             destination = .chat
         }
+        .onReceive(NotificationCenter.default.publisher(for: .cybaraOpenChat)) { _ in
+            destination = .chat
+            selectedChatSessionID = nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cybaraOpenUsage)) { _ in
+            destination = .usage
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cybaraOpenSettings)) { _ in
+            destination = .settings
+        }
         .onAppear {
             PetPanelController.shared.setVisible(PetPanelController.isEnabled)
         }
@@ -206,6 +216,7 @@ struct ContentView: View {
         }
         .background(
             WindowAccessor { window in
+                window.identifier = NSUserInterfaceItemIdentifier("CybaraMainWindow")
                 window.setFrameAutosaveName("CybaraMainWindow")
                 window.setFrameUsingName("CybaraMainWindow")
             }
