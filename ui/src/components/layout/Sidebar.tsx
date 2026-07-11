@@ -412,32 +412,34 @@ export function Sidebar() {
           </nav>
 
           <div className="sidebar-footer border-t border-white/5 p-2 backdrop-blur-md">
-            <UpdateButton collapsed={collapsed} />
-            <NavLink
-              to="/settings"
-              title={collapsed ? t("nav.settings") : undefined}
-              className={cn(
-                "flex items-center gap-2.5 rounded-lg text-[13px] font-medium transition-all duration-200 mb-2",
-                "!ring-0 !border-transparent",
-                collapsed ? "px-3 py-2.5 justify-center" : "px-3.5 py-2.5",
-                location.pathname === "/settings"
-                  ? "bg-[rgba(var(--accent-primary),0.15)] text-white border border-[rgba(var(--accent-primary),0.3)] shadow-lg"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-              )}
-              style={
-                location.pathname === "/settings"
-                  ? { boxShadow: "inset 0 1px 8px rgba(var(--accent-primary), 0.15)" }
-                  : undefined
-              }
-            >
-              <Settings
+            <div className={cn("mb-2 flex items-center gap-2", collapsed && "flex-col")}>
+              <NavLink
+                to="/settings"
+                title={collapsed ? t("nav.settings") : undefined}
                 className={cn(
-                  "w-4 h-4 flex-shrink-0 transition-colors",
-                  location.pathname === "/settings" ? "accent-text" : "text-gray-500"
+                  "flex items-center gap-2.5 rounded-lg text-[13px] font-medium transition-all duration-200",
+                  "!ring-0 !border-transparent",
+                  collapsed ? "px-3 py-2.5 justify-center" : "min-w-0 flex-1 px-3.5 py-2.5",
+                  location.pathname === "/settings"
+                    ? "bg-[rgba(var(--accent-primary),0.15)] text-white border border-[rgba(var(--accent-primary),0.3)] shadow-lg"
+                    : "text-gray-400 hover:text-white hover:bg-white/5"
                 )}
-              />
-              {!collapsed && <span>{t("nav.settings")}</span>}
-            </NavLink>
+                style={
+                  location.pathname === "/settings"
+                    ? { boxShadow: "inset 0 1px 8px rgba(var(--accent-primary), 0.15)" }
+                    : undefined
+                }
+              >
+                <Settings
+                  className={cn(
+                    "w-4 h-4 flex-shrink-0 transition-colors",
+                    location.pathname === "/settings" ? "accent-text" : "text-gray-500"
+                  )}
+                />
+                {!collapsed && <span className="truncate">{t("nav.settings")}</span>}
+              </NavLink>
+              <UpdateButton collapsed={collapsed} />
+            </div>
 
             <button
               onClick={() => setCollapsed(!collapsed)}

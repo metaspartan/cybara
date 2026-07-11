@@ -103,6 +103,33 @@ fn read_cybara_api_key() -> Result<Option<String>, String> {
     cybara_api_key()
 }
 
+fn badge_icon(base: &tauri::image::Image) -> tauri::image::Image<'static> {
+    let width = base.width();
+    let height = base.height();
+    let mut rgba = base.rgba().to_vec();
+    let w = width as i64;
+    let h = height as i64;
+    let radius = ((w.min(h) as f64) * 0.28).max(3.0);
+    let cx = w as f64 - radius - 1.0;
+    let cy = h as f64 - radius - 1.0;
+    for y in 0..h {
+        for x in 0..w {
+            let dx = x as f64 - cx;
+            let dy = y as f64 - cy;
+            if dx * dx + dy * dy <= radius * radius {
+                let idx = ((y * w + x) * 4) as usize;
+                if idx + 3 < rgba.len() {
+                    rgba[idx] = 124;
+                    rgba[idx + 1] = 92;
+                    rgba[idx + 2] = 255;
+                    rgba[idx + 3] = 255;
+                }
+            }
+        }
+    }
+    tauri::image::Image::new_owned(rgba, width, height)
+}
+
 #[tauri::command]
 fn set_update_available(app: tauri::AppHandle, available: bool, version: Option<String>) {
     let handle = app.clone();
@@ -131,6 +158,14 @@ fn set_update_available(app: tauri::AppHandle, available: bool, version: Option<
                 "Cybara".to_string()
             };
             let _ = tray.set_tooltip(Some(tooltip));
+            if let Some(base) = handle.default_window_icon().cloned() {
+                if available {
+                    let _ = tray.set_icon(Some(badge_icon(&base)));
+                } else {
+                    let _ = tray.set_icon(Some(base));
+                }
+                let _ = tray.set_icon_as_template(cfg!(target_os = "macos"));
+            }
         }
     });
 }

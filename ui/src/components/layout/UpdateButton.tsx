@@ -52,12 +52,12 @@ export function UpdateButton({ collapsed }: { collapsed?: boolean }) {
       aria-label={available ? `Update to ${available.version}` : "Update"}
       title={collapsed ? (available ? `Update to ${available.version}` : "Update") : undefined}
       className={cn(
-        "update-pill group mb-2 flex items-center overflow-hidden rounded-lg border text-[13px] font-medium transition-all duration-300",
+        "update-pill group flex h-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-lg border text-xs font-medium transition-all duration-300",
         done ? "update-pop-shell" : "",
         done
           ? "border-emerald-500/40 bg-emerald-500/15 text-emerald-300"
-          : "border-[rgba(var(--accent-primary),0.35)] bg-[rgba(var(--accent-primary),0.12)] text-white hover:bg-[rgba(var(--accent-primary),0.2)]",
-        collapsed ? "w-full justify-center px-3 py-2.5" : "px-3.5 py-2.5",
+          : "border-[rgba(var(--accent-primary),0.4)] bg-[rgba(var(--accent-primary),0.14)] text-white hover:bg-[rgba(var(--accent-primary),0.22)]",
+        collapsed ? "w-9" : "px-2.5",
         busy && "cursor-default"
       )}
     >

@@ -18,7 +18,7 @@ export type UpdatePhase =
   | "done"
   | "error";
 
-const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const CHECK_INTERVAL_MS = 60 * 1000;
 
 async function notifyTray(available: boolean, version: string | null): Promise<void> {
   if (!isTauriDesktopRuntime()) return;
