@@ -1372,7 +1372,8 @@ export async function handleBrowser(
     }
 
     case "evaluate": {
-      const script = args.script as string;
+      const script =
+        typeof args.script === "string" ? args.script : typeof args.fn === "string" ? args.fn : "";
       if (!script) throw new Error("Script required for evaluate action");
 
       const pageId = await getOrCreateBrowserPageForSession(sessionId);

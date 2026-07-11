@@ -11,8 +11,13 @@ import { createLogger } from "./logger";
 import { createHash } from "crypto";
 import { compactChatContentForPrompt } from "./chat-token-optimization";
 import { capSessionMessageMetadata } from "./session-message-metadata";
+import { sanitizeAssistantContent } from "./llm/text-tool-calls";
 
 const log = createLogger("Session");
+
+function sanitizePersistedMessageContent(role: string, content: string): string {
+  return role === "assistant" ? sanitizeAssistantContent(content) : content;
+}
 
 interface PersistedSessionMessage {
   role: string;
@@ -804,7 +809,7 @@ export async function loadPersistedSession(sessionId: string): Promise<{
       const images = attachmentsToImages((parsed as Record<string, unknown>).attachments);
       return {
         role: m.role as ChatMessage["role"],
-        content: m.content,
+        content: sanitizePersistedMessageContent(m.role, m.content),
         timestamp: m.created_at,
         ...parsed,
         ...(images.length ? { images } : {}),
@@ -875,6 +880,10 @@ function normalizePersistedSessionListRow(
 ): PersistedSessionListEntry {
   return {
     ...session,
+    lastMessageContent:
+      typeof session.lastMessageContent === "string" && session.lastMessageRole === "assistant"
+        ? sanitizeAssistantContent(session.lastMessageContent)
+        : session.lastMessageContent,
     pinned: !!session.pinned,
     modelMetadata: mergeSessionModelMetadata(
       resolveSessionModelMetadata(session.agentId),

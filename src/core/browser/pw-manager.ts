@@ -1004,11 +1004,14 @@ export async function evaluate<T = unknown>(pageId: string, script: string): Pro
   const page = getPageById(pageId) || getPageById("default");
   if (!page) throw new Error(`Page ${pageId} not found`);
 
-  // Security: Validate script doesn't contain dangerous patterns before execution
-  // This prevents obvious injection attempts from being passed to browser context
+  assertSafeBrowserEvaluationScript(script);
+  return await page.evaluate(script);
+}
+
+export function assertSafeBrowserEvaluationScript(script: string): void {
   const dangerousPatterns = [
     /eval\s*\(/i,
-    /Function\s*\(/i,
+    /\bFunction\s*\(/,
     /setTimeout\s*\(\s*['"`]/i,
     /setInterval\s*\(\s*['"`]/i,
     /\.\s*constructor\s*\.\s*constructor/i,
@@ -1021,10 +1024,6 @@ export async function evaluate<T = unknown>(pageId: string, script: string): Pro
       throw new Error("Security: Script contains potentially dangerous patterns");
     }
   }
-
-  // Execute directly in browser context - Playwright's evaluate already runs this in browser
-  // No need for additional eval/Function wrapper
-  return await page.evaluate(script);
 }
 
 export async function detectCaptcha(

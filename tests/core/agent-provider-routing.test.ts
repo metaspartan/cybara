@@ -3,6 +3,7 @@ import { agentManager } from "../../src/core/agent";
 import { config } from "../../src/core/config";
 import { providerManager } from "../../src/core/providers";
 import { getProviderAvailability, resetRouterForTests } from "../../src/core/router";
+import { summarizeSessionTokenUsage } from "../../src/core/session-context";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -778,6 +779,101 @@ describe("Agent provider API-family routing", () => {
     expect("reasoning_effort" in requestBody).toBe(false);
     expect("max_tokens" in requestBody).toBe(false);
     expect(typeof requestBody.max_completion_tokens).toBe("number");
+  });
+
+  test("tracks every z.ai tool-loop completion in session usage", async () => {
+    config.set("tool_approval_mode", "always_allow");
+    const sessionId = `zai-loop-usage-${crypto.randomUUID()}`;
+    let requestCount = 0;
+
+    globalThis.fetch = (async () => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return new Response(
+          JSON.stringify({
+            id: "resp-zai-tool-1",
+            object: "chat.completion",
+            model: "glm-5.2",
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  content: "I will calculate that.",
+                  tool_calls: [
+                    {
+                      id: "call-calc-1",
+                      type: "function",
+                      function: { name: "calc", arguments: '{"expression":"21*2"}' },
+                    },
+                  ],
+                },
+              },
+            ],
+            usage: { prompt_tokens: 10, completion_tokens: 3, total_tokens: 13 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          id: "resp-zai-tool-2",
+          object: "chat.completion",
+          model: "glm-5.2",
+          choices: [
+            {
+              index: 0,
+              finish_reason: "stop",
+              message: { role: "assistant", content: "The result is 42." },
+            },
+          ],
+          usage: { prompt_tokens: 20, completion_tokens: 5, total_tokens: 25 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "z.ai-coding",
+      name: "Zai Loop Usage Provider",
+      api_key: "zai-loop-usage-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Zai Loop Usage Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "glm-5.2",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate 21 times 2" }],
+      { useTools: true, sessionId }
+    );
+
+    const usage = summarizeSessionTokenUsage(sessionId);
+    expect(result.content).toBe("The result is 42.");
+    expect(requestCount).toBe(2);
+    expect(usage.callCount).toBe(2);
+    expect(usage.inputTokens).toBe(30);
+    expect(usage.outputTokens).toBe(8);
+    expect(usage.totalTokens).toBe(38);
   });
 
   test("routes google providers through generateContent with x-goog-api-key and model normalization", async () => {

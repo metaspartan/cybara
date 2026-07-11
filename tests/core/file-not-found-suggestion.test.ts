@@ -53,4 +53,16 @@ describe("read file-not-found suggestion", () => {
     const result = (await handleRead({ path: realFile })) as { content?: string };
     expect(result.content).toContain("export const x = 1;");
   });
+
+  test("lists directory entries in stable order", async () => {
+    const directory = join(root, "directory");
+    mkdirSync(join(directory, "nested"), { recursive: true });
+    writeFileSync(join(directory, "beta.txt"), "beta");
+    writeFileSync(join(directory, "alpha.txt"), "alpha");
+
+    const result = await handleRead({ path: directory });
+
+    expect(result.content).toBe("alpha.txt\nbeta.txt\nnested/");
+    expect(result.path).toBe(directory);
+  });
 });

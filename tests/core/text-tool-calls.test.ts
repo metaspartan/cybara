@@ -1,8 +1,19 @@
 import { describe, expect, test } from "bun:test";
 
-import { extractTextToolCalls, stripTextToolCallMarkup } from "../../src/core/llm/text-tool-calls";
+import {
+  extractTextToolCalls,
+  sanitizeAssistantContent,
+  stripTextToolCallMarkup,
+} from "../../src/core/llm/text-tool-calls";
 
 describe("text-form tool call parsing", () => {
+  test("removes provider reply directives from final assistant text", () => {
+    expect(sanitizeAssistantContent("Done.\n\n[[reply_to_current]]")).toBe("Done.");
+    expect(sanitizeAssistantContent("Done.\n[[reply_to:message-42]]\nMore detail.")).toBe(
+      "Done.\nMore detail."
+    );
+  });
+
   test("extracts invoke blocks from function_calls markup", () => {
     const calls = extractTextToolCalls(
       [

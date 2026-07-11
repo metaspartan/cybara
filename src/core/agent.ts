@@ -4436,6 +4436,7 @@ class AgentManager {
       let loopResponse: Response | null = null;
       let lastLoopError = "";
       let loopFatalError = false;
+      const loopRequestStartedAt = performance.now();
 
       try {
         for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -4530,6 +4531,17 @@ class AgentManager {
 
       // Parse successful response
       const responseData = (await loopResponse.json()) as AnthropicResponse;
+      if (responseData.usage) {
+        trackTokenUsage(
+          modelId,
+          providerConfig,
+          baseUrl,
+          responseData.usage.input_tokens || 0,
+          responseData.usage.output_tokens || 0,
+          Math.round(performance.now() - loopRequestStartedAt),
+          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
+        );
+      }
       const latestText = responseData.content?.find((c3) => c3.type === "text")?.text;
       if (latestText) {
         finalContent = latestText;
@@ -4621,13 +4633,13 @@ class AgentManager {
     const choice = data.choices?.[0];
     let message = choice?.message;
 
-    if (data.usage) {
-      const inputTokens = data.usage.prompt_tokens || 0;
-      const outputTokens = data.usage.completion_tokens || 0;
-      trackTokenUsage(modelId, "openai", baseUrl, inputTokens, outputTokens, durationMs, {
-        sessionId: sessionIdForVisibleTokenUsage(toolContext),
-      });
-    }
+    trackOpenAIResponseUsage(data, {
+      model: modelId,
+      provider: "openai",
+      providerUrl: baseUrl,
+      durationMs,
+      sessionId: sessionIdForVisibleTokenUsage(toolContext),
+    });
 
     if (!message) {
       throw new Error("No response from API");
@@ -4641,6 +4653,7 @@ class AgentManager {
     const allToolCalls: AgentToolCallResult[] = [];
     let finalContent = message.content || "";
     let lastProgressThought = "";
+    let webResearchToolCalls = 0;
     const hookContext = this.buildHookContext("openai", modelId, toolContext);
     const loopState: AgenticLoopState = {
       previousFingerprint: undefined,
@@ -4745,6 +4758,11 @@ class AgentManager {
         break;
       }
 
+      webResearchToolCalls += countWebResearchCalls(
+        iterationToolCalls.map((toolCall) => toolCall.name)
+      );
+      const forceResearchSynthesis = webResearchBudgetReached(webResearchToolCalls);
+
       const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
       const loopEvaluation = this.evaluateNoProgressLoop(
         "openai",
@@ -4765,6 +4783,9 @@ class AgentManager {
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
       }
+      if (forceResearchSynthesis) {
+        currentMessages.push({ role: "user", content: WEB_RESEARCH_SYNTHESIS_INSTRUCTION });
+      }
       const steeringText = this.consumeSteeringText(toolContext);
       if (steeringText) {
         currentMessages.push({ role: "user", content: steeringText });
@@ -4777,7 +4798,7 @@ class AgentManager {
         max_tokens: maxOutputTokens,
       };
 
-      if (tools && Array.isArray(tools) && tools.length > 0) {
+      if (!forceResearchSynthesis && tools && Array.isArray(tools) && tools.length > 0) {
         loopRequestBody.tools = tools.map((t) => ({
           type: "function",
           function: {
@@ -4790,6 +4811,7 @@ class AgentManager {
       }
 
       let loopData: OpenAIResponse;
+      const loopRequestStartedAt = performance.now();
       try {
         loopData = await this.postOpenAIChatCompletions(
           baseUrl,
@@ -4826,6 +4848,13 @@ class AgentManager {
           { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
         );
       }
+      trackOpenAIResponseUsage(loopData, {
+        model: modelId,
+        provider: "openai",
+        providerUrl: baseUrl,
+        durationMs: Math.round(performance.now() - loopRequestStartedAt),
+        sessionId: sessionIdForVisibleTokenUsage(toolContext),
+      });
       const loopChoice = loopData.choices?.[0];
       message = loopChoice?.message as OpenAIMessage;
 

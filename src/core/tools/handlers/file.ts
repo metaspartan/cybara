@@ -4,6 +4,7 @@ import {
   writeFileSync,
   mkdirSync,
   readdirSync,
+  statSync,
   promises as fs,
 } from "fs";
 import { join, dirname, isAbsolute, sep } from "path";
@@ -284,7 +285,12 @@ export async function handleRead(
     throw fileNotFoundError(path);
   }
 
-  const content = readFileSync(path, "utf-8");
+  const content = statSync(path).isDirectory()
+    ? readdirSync(path, { withFileTypes: true })
+        .sort((left, right) => left.name.localeCompare(right.name))
+        .map((entry) => `${entry.name}${entry.isDirectory() ? "/" : ""}`)
+        .join("\n")
+    : readFileSync(path, "utf-8");
   let lines = content.split("\n");
 
   const offset = args.offset as number | undefined;

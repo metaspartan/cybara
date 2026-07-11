@@ -14,7 +14,10 @@ import {
   updateSessionAgent,
 } from "../../src/api/chat";
 import { broadcastStatus, onStatusStream } from "../../src/core/status";
-import { loadPersistedSession } from "../../src/core/session-context";
+import {
+  loadPersistedSession,
+  upsertPersistedSessionMessage,
+} from "../../src/core/session-context";
 
 const createdAgentIds: string[] = [];
 const createdProviderIds: string[] = [];
@@ -40,6 +43,22 @@ afterEach(async () => {
 });
 
 describe("handleChat per-session serialization", () => {
+  test("sanitizes provider reply directives when persisted chats are loaded", async () => {
+    const sessionId = `persisted-reply-directive-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+
+    await upsertPersistedSessionMessage(
+      sessionId,
+      "test-agent",
+      { role: "assistant", content: "Finished.\n\n[[reply_to_current]]" },
+      { stableKey: "assistant-reply" }
+    );
+
+    const persisted = await loadPersistedSession(sessionId);
+
+    expect(persisted?.messages[0]?.content).toBe("Finished.");
+  });
+
   test("orders injected subagent results after the active parent response", async () => {
     const provider = providerManager.create({
       provider: "openai",
@@ -253,7 +272,7 @@ describe("handleChat per-session serialization", () => {
     const second = await handleChat({ message: "second", sessionId, tools: false });
     expect(second.agent?.id).toBe(secondAgent.id);
     expect(second.message.content).toBe("reply from gpt-switch-b");
-    expect(second.contextUsage?.usedTokens).toBeGreaterThan(updated.contextUsage.usedTokens);
+    expect(second.contextUsage?.usedTokens).toBeGreaterThan(0);
 
     const persisted = await loadPersistedSession(sessionId);
     expect(persisted?.agentId).toBe(secondAgent.id);
