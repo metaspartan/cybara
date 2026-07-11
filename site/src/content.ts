@@ -41,6 +41,8 @@ export const NAV_LINKS: readonly NavLink[] = [
 ];
 
 export const GITHUB_URL = "https://github.com/metaspartan/cybara";
+export const X_URL = "https://x.com/cybaraAI";
+export const CREATOR_X_URL = "https://x.com/carsenklock";
 export const RELEASES_URL = "https://github.com/metaspartan/cybara/releases/latest";
 export const INSTALL_COMMAND =
   "curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash";

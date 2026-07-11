@@ -25,6 +25,8 @@
   <img src="https://img.shields.io/badge/ui-React_19-61dafb?logo=react" alt="React" />
   <img src="https://img.shields.io/badge/desktop-Tauri-orange?logo=tauri" alt="Tauri Desktop" />
   <img src="https://img.shields.io/badge/mobile-React_Native-61dafb?logo=react" alt="React Native Mobile" />
+  <a href="https://cybara.ai"><img src="https://img.shields.io/badge/website-cybara.ai-6d5efc" alt="Website" /></a>
+  <a href="https://x.com/cybaraAI"><img src="https://img.shields.io/badge/X-@cybaraAI-000000?logo=x&logoColor=white" alt="Cybara on X" /></a>
 </p>
 
 ---
@@ -448,6 +450,12 @@ If Cybara saves you time, consider supporting its development:
 </p>
 
 ---
+
+## Community
+
+- Website: [cybara.ai](https://cybara.ai)
+- X: [@cybaraAI](https://x.com/cybaraAI)
+- Creator: [Carsen Klock](https://x.com/carsenklock)
 
 ## License
 

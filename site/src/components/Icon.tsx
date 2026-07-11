@@ -28,6 +28,7 @@ export type IconName =
   | "homebrew"
   | "npm"
   | "nix"
+  | "x"
   | "star";
 
 interface IconProps {
@@ -211,6 +212,13 @@ const PATHS: Record<IconName, React.ReactNode> = {
       fill="currentColor"
       stroke="none"
       d="M12 2.5l2.9 6.1 6.6.9-4.8 4.6 1.2 6.5L12 18.6l-5.9 3 1.2-6.5L2.5 9.5l6.6-.9z"
+    />
+  ),
+  x: (
+    <path
+      fill="currentColor"
+      stroke="none"
+      d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
     />
   ),
 };

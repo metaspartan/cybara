@@ -1,5 +1,5 @@
 import { Icon } from "./Icon";
-import { GITHUB_URL, NAV_LINKS } from "../content";
+import { GITHUB_URL, X_URL, CREATOR_X_URL, NAV_LINKS } from "../content";
 import { useSiteI18n } from "../i18n";
 
 export function Footer(): React.ReactElement {
@@ -29,19 +29,36 @@ export function Footer(): React.ReactElement {
           <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="footer-link">
             GitHub
           </a>
+          <a href={X_URL} target="_blank" rel="noreferrer" className="footer-link">
+            X
+          </a>
         </nav>
-        <a
-          className="footer-github"
-          href={GITHUB_URL}
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Cybara on GitHub"
-        >
-          <Icon name="github" className="footer-github-svg" />
-        </a>
+        <div className="footer-social">
+          <a
+            className="footer-github"
+            href={X_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Cybara on X"
+          >
+            <Icon name="x" className="footer-github-svg" />
+          </a>
+          <a
+            className="footer-github"
+            href={GITHUB_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Cybara on GitHub"
+          >
+            <Icon name="github" className="footer-github-svg" />
+          </a>
+        </div>
       </div>
       <p className="footer-note">
-        Self-hosted AI agent platform · MIT licensed · Built on Bun · Created by Carsen Klock
+        Self-hosted AI agent platform · MIT licensed · Built on Bun · Created by{" "}
+        <a href={CREATOR_X_URL} target="_blank" rel="noreferrer" className="footer-note-link">
+          Carsen Klock
+        </a>
       </p>
     </footer>
   );

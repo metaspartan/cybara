@@ -1571,6 +1571,12 @@ img {
   color: var(--text);
 }
 
+.footer-social {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .footer-github {
   display: grid;
   place-items: center;
@@ -1599,6 +1605,17 @@ img {
   padding: 12px 24px 36px;
   color: var(--text-faint);
   font-size: 0.86rem;
+}
+
+.footer-note-link {
+  color: var(--text-dim);
+  text-decoration: none;
+  border-bottom: 1px solid var(--glass-border);
+  transition: color 0.2s ease;
+}
+
+.footer-note-link:hover {
+  color: var(--text);
 }
 
 @keyframes rise {
