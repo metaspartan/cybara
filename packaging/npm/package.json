@@ -1,0 +1,41 @@
+{
+  "name": "cybara",
+  "version": "0.0.0",
+  "description": "Self-hosted, open-source AI agent platform — CLI",
+  "bin": {
+    "cybara": "bin/cybara.cjs"
+  },
+  "scripts": {
+    "postinstall": "node scripts/postinstall.cjs"
+  },
+  "files": [
+    "bin/cybara.cjs",
+    "scripts/postinstall.cjs"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "cli",
+    "self-hosted",
+    "mcp",
+    "cybara"
+  ],
+  "homepage": "https://cybara.ai",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/metaspartan/cybara.git"
+  },
+  "license": "MIT",
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

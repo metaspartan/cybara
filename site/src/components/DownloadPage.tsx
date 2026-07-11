@@ -28,7 +28,13 @@ const SECTION_META: Array<{ key: SectionKey; label: string; icon: IconName }> = 
 ];
 
 function sectionForClient(client: DownloadClient): SectionKey {
-  if (client.icon === "homebrew" || client.icon === "docker") return "packages";
+  if (
+    client.icon === "homebrew" ||
+    client.icon === "docker" ||
+    client.icon === "npm" ||
+    client.icon === "nix"
+  )
+    return "packages";
   if (client.command || client.icon === "terminal" || client.icon === "package") return "cli";
   const name = client.name.toLowerCase();
   if (name.includes("cli")) return "cli";

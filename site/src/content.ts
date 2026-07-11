@@ -431,6 +431,22 @@ export const DOWNLOAD_GROUPS: readonly DownloadGroup[] = [
         command: "brew install --cask metaspartan/cybara/cybara",
       },
       {
+        name: "npm / npx",
+        platform: "Node & Bun · any OS",
+        format: "npx · bunx · global",
+        icon: "npm",
+        href: "https://www.npmjs.com/package/cybara",
+        command: "npx cybara",
+      },
+      {
+        name: "Nix",
+        platform: "flake · Linux & macOS",
+        format: "reproducible",
+        icon: "nix",
+        href: "https://github.com/metaspartan/cybara",
+        command: "nix run github:metaspartan/cybara",
+      },
+      {
         name: "Docker Hub",
         platform: "amd64 & arm64",
         format: "self-hosted gateway",

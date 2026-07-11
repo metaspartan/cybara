@@ -981,6 +981,18 @@ img {
   border-color: rgba(56, 189, 248, 0.22);
 }
 
+.download-icon--npm {
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.22);
+}
+
+.download-icon--nix {
+  color: #93c5fd;
+  background: rgba(96, 165, 250, 0.1);
+  border-color: rgba(96, 165, 250, 0.22);
+}
+
 .download-body {
   flex: 1;
   min-width: 0;

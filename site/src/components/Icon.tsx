@@ -26,6 +26,8 @@ export type IconName =
   | "plug"
   | "docker"
   | "homebrew"
+  | "npm"
+  | "nix"
   | "star";
 
 interface IconProps {
@@ -190,6 +192,18 @@ const PATHS: Record<IconName, React.ReactNode> = {
       <path d="M6 8h9v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2z" />
       <path d="M15 10.5h2.2a2 2 0 0 1 2 2v1a2 2 0 0 1-2 2H15" />
       <path d="M8.5 4.5c0 1.2 1 1.2 1 2.4M11.5 4.5c0 1.2 1 1.2 1 2.4" />
+    </>
+  ),
+  npm: (
+    <>
+      <rect x="3" y="6" width="18" height="12" rx="2" />
+      <path d="M8 16v-6M8 10c2 0 3 1 3 3v3M14 16v-6h3v6M16 10v8" />
+    </>
+  ),
+  nix: (
+    <>
+      <path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9" />
+      <path d="M12 3l-2.2 1.3M12 3l2.2 1.3M4.2 7.5l.1 2.6M4.2 7.5l2.5-.7M19.8 16.5l-.1-2.6M19.8 16.5l-2.5.7M4.2 16.5l2.5.7M4.2 16.5l.1-2.6M19.8 7.5l-2.5-.7M19.8 7.5l-.1 2.6M12 21l-2.2-1.3M12 21l2.2-1.3" />
     </>
   ),
   star: (
