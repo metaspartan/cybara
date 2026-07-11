@@ -1260,6 +1260,7 @@ img {
 
 .migrate-command code {
   flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1718,6 +1719,20 @@ img {
   }
   .migrate-sources-list {
     justify-content: center;
+  }
+  .migrate-panel {
+    padding: 20px;
+    gap: 20px;
+  }
+  .migrate-command {
+    flex-wrap: wrap;
+  }
+  .migrate-command code {
+    flex: 1 1 100%;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
   }
   .hero-stats {
     gap: 28px;

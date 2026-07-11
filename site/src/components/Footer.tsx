@@ -29,9 +29,6 @@ export function Footer(): React.ReactElement {
           <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="footer-link">
             GitHub
           </a>
-          <a href={X_URL} target="_blank" rel="noreferrer" className="footer-link">
-            X
-          </a>
         </nav>
         <div className="footer-social">
           <a
