@@ -1,28 +1,28 @@
+import { apiFetch } from "@/lib/auth";
+import type { PendingChatMessage } from "@/lib/status-stream";
 import type {
   Agent,
   AgentSummary,
-  Provider,
-  Channel,
-  Memory,
-  Task,
-  Skill,
-  ChatMessage,
-  ChatImageAttachment,
-  ChatSession,
-  SessionContextUsage,
-  SessionTokenUsage,
-  SessionPlanSnapshot,
   ApiResponse,
+  Channel,
+  ChatImageAttachment,
+  ChatMessage,
+  ChatSession,
   DashboardStats,
+  Memory,
+  MobileConnectInfo,
   MobileDevice,
   MobileDevicePairing,
-  MobileConnectInfo,
   MobilePairing,
+  Provider,
   ProviderPlanMonitoringConfig,
   ProviderPlanStatusResponse,
+  SessionContextUsage,
+  SessionPlanSnapshot,
+  SessionTokenUsage,
+  Skill,
+  Task,
 } from "@/types";
-import { apiFetch } from "@/lib/auth";
-import type { PendingChatMessage } from "@/lib/status-stream";
 
 const API_BASE = "/api";
 
@@ -542,6 +542,64 @@ export const settingsApi = {
     fetchApi<{ success: boolean; restartRequired?: boolean } & Record<string, unknown>>("/config", {
       method: "PUT",
       body: JSON.stringify(data),
+    }),
+};
+
+export type WebResearchCredentialId = "firecrawl" | "parallel" | "tavily" | "exa" | "brave";
+export type WebResearchSettingSource = "env" | "stored" | "none";
+
+export interface WebResearchSettingsStatus {
+  credentials: Array<{
+    id: WebResearchCredentialId;
+    label: string;
+    envVar: string;
+    configured: boolean;
+    source: WebResearchSettingSource;
+  }>;
+  firecrawlApiUrl: {
+    value: string;
+    source: WebResearchSettingSource;
+    envVar: string;
+  };
+  searxngUrl: {
+    value: string;
+    source: WebResearchSettingSource;
+    envVar: string;
+  };
+}
+
+export const webResearchApi = {
+  settings: () => fetchApi<WebResearchSettingsStatus>("/web-research/settings"),
+  updateSettings: (data: {
+    credentials?: Partial<Record<WebResearchCredentialId, string | null>>;
+    firecrawlApiUrl?: string | null;
+    searxngUrl?: string | null;
+  }) =>
+    fetchApi<WebResearchSettingsStatus>("/web-research/settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+};
+
+export type IntegrationCredentialId = "smithery" | "voyage";
+export type IntegrationCredentialSource = "env" | "stored" | "none";
+
+export interface IntegrationCredentialsStatus {
+  credentials: Array<{
+    id: IntegrationCredentialId;
+    label: string;
+    envVar: string;
+    configured: boolean;
+    source: IntegrationCredentialSource;
+  }>;
+}
+
+export const integrationCredentialsApi = {
+  status: () => fetchApi<IntegrationCredentialsStatus>("/integration-credentials"),
+  update: (credentials: Partial<Record<IntegrationCredentialId, string | null>>) =>
+    fetchApi<IntegrationCredentialsStatus>("/integration-credentials", {
+      method: "PUT",
+      body: JSON.stringify({ credentials }),
     }),
 };
 

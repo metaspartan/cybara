@@ -1,25 +1,25 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { routeRequiredScope, securityCheck } from "../../src/api/security";
 import {
+  authenticateMobileDeviceToken,
+  buildMobileConnectInfo,
   createMobileDevice,
   createPairingCode,
-  buildMobileConnectInfo,
-  redeemPairingCode,
-  authenticateMobileDeviceToken,
+  DEFAULT_MOBILE_SCOPES,
   getMobileDeviceStorePath,
   isLoopbackMobileGatewayUrl,
   listMobileDevices,
   listMobilePushTargets,
   normalizeMobilePushToken,
-  scopesForRole,
-  validateMobilePairingBaseUrl,
-  DEFAULT_MOBILE_SCOPES,
   normalizeMobileScopes,
   recordMobilePushSendResult,
+  redeemPairingCode,
   resetMobileDeviceStoreForTests,
+  scopesForRole,
   updateMobileDevicePushToken,
+  validateMobilePairingBaseUrl,
 } from "../../src/core/mobile-devices";
 import { secureDir } from "../../src/core/paths";
-import { routeRequiredScope, securityCheck } from "../../src/api/security";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -200,6 +200,10 @@ describe("route scope requirements", () => {
   test("mutating management surfaces require the manage scope", () => {
     expect(routeRequiredScope("GET", "/api/config")).toBeNull();
     expect(routeRequiredScope("PUT", "/api/config")).toBe("manage");
+    expect(routeRequiredScope("GET", "/api/web-research/settings")).toBeNull();
+    expect(routeRequiredScope("PUT", "/api/web-research/settings")).toBe("manage");
+    expect(routeRequiredScope("GET", "/api/integration-credentials")).toBeNull();
+    expect(routeRequiredScope("PUT", "/api/integration-credentials")).toBe("manage");
     expect(routeRequiredScope("GET", "/api/migrations/sources")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/migrations/preview")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/migrations/run")).toBe("manage");

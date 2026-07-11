@@ -10,6 +10,7 @@ import { FeatureSettings } from "./settings/FeatureSettings";
 import { MemoryBehaviorSettings } from "./settings/MemoryBehaviorSettings";
 import { SpeechSettingsSection } from "./settings/SpeechSettingsSection";
 import { WebToolPolicySettings } from "./settings/WebToolPolicySettings";
+import { WebResearchSettings } from "./settings/WebResearchSettings";
 import { SystemPromptSection } from "./settings/SystemPromptSection";
 import { asSettingsRecord, readIntegerSetting } from "./settings/settingsValueReaders";
 import {
@@ -2695,6 +2696,7 @@ export function Settings() {
           {activeSection === "safety" && (
             <>
               <FeatureSettings />
+              <WebResearchSettings />
               <WebToolPolicySettings />
               <SandboxBrowserSettings />
               <ComputerUseSettings />

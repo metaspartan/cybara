@@ -1,17 +1,17 @@
-import { createLogger } from "../core/logger";
-import { chmodSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
-import { join } from "path";
 import { randomBytes, scryptSync, timingSafeEqual } from "crypto";
-import { lookup } from "dns/promises";
 import type { LookupAddress } from "dns";
+import { lookup } from "dns/promises";
+import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { isIP } from "net";
-import { cybaraDir } from "../core/paths";
+import { join } from "path";
+import { createLogger } from "../core/logger";
 import {
   authenticateMobileDeviceToken,
   isLoopbackMobileGatewayUrl,
-  normalizeMobileGatewayUrl,
   type MobileDeviceView,
+  normalizeMobileGatewayUrl,
 } from "../core/mobile-devices";
+import { cybaraDir } from "../core/paths";
 
 const log = createLogger("Security");
 
@@ -858,6 +858,14 @@ export function routeRequiredScope(method: string, path: string): string | null 
     return "mcp";
   }
   if (path === "/api/config") {
+    if (method === "GET") return null;
+    return "manage";
+  }
+  if (path === "/api/web-research/settings") {
+    if (method === "GET") return null;
+    return "manage";
+  }
+  if (path === "/api/integration-credentials") {
     if (method === "GET") return null;
     return "manage";
   }

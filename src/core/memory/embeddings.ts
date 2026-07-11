@@ -2,6 +2,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, statSync } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";
 import { pathToFileURL } from "url";
+import { getIntegrationCredential } from "../integration-credentials";
 
 export type EmbeddingProviderPreference =
   | "auto"
@@ -1346,12 +1347,12 @@ async function tryCreateProvider(
   }
 
   if (provider === "voyage") {
-    const apiKey = process.env.VOYAGE_API_KEY?.trim();
+    const apiKey = getIntegrationCredential("voyage");
     if (!apiKey) {
       return {
         provider: createNullProvider(),
         source: "none",
-        fallbackReason: "VOYAGE_API_KEY is not set",
+        fallbackReason: "Voyage AI credential is not configured",
       };
     }
     const embeddingProvider = createVoyageProvider(apiKey, model);
@@ -1513,7 +1514,7 @@ export async function getEmbeddingProviderCatalog(
 ): Promise<EmbeddingProviderCatalog> {
   const normalized = normalizeSelection(selection);
   const openaiAvailable = Boolean(process.env.OPENAI_API_KEY?.trim());
-  const voyageAvailable = Boolean(process.env.VOYAGE_API_KEY?.trim());
+  const voyageAvailable = Boolean(getIntegrationCredential("voyage"));
   const geminiAvailable = Boolean(
     process.env.GEMINI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim()
   );
@@ -1552,7 +1553,7 @@ export async function getEmbeddingProviderCatalog(
         label: "Voyage AI",
         local: false,
         available: voyageAvailable,
-        reason: voyageAvailable ? undefined : "VOYAGE_API_KEY is not set",
+        reason: voyageAvailable ? undefined : "Voyage AI credential is not configured",
         defaultModel: VOYAGE_DEFAULT_MODEL,
         models: Object.keys(VOYAGE_MODELS),
       },

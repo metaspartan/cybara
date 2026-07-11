@@ -1,31 +1,182 @@
-import { config } from "../core/config";
-import { cybaraDir, homeDir as runtimeHomeDir } from "../core/paths";
-import { resolveCybaraHome, setCybaraHomeOverride } from "../core/cybara-home";
-import { getCybaraDataDirConfigInfo, getCybaraDataDirInfo } from "./data-dir-info";
-import { pollProviderDeviceCodeOAuth, startProviderDeviceCodeOAuth } from "./provider-oauth-device";
-import { cacheMetricsRoutes, invalidateCachedRoute, prewarmMetricsRoutes } from "./route-cache";
-import { mobileRoutes } from "./mobile";
-import { ideLspRoutes } from "./routes/ide-lsp-routes";
-import { runtimeRoutes } from "./routes/runtime-routes";
-import { mcpRoutes } from "./routes/mcp";
+import { createHash, randomBytes } from "crypto";
+import { dirname, isAbsolute, resolve } from "path";
 import {
-  parseJsonObject,
+  type ChatMessage,
+  deletePendingChatMessage,
+  deleteSession,
+  getChatRateLimitStatus,
+  getSession,
+  getSessionMessages,
+  getSessionPinned,
+  handleChat,
+  listPendingChatMessages,
+  listSessionPage,
+  listSessions,
+  reorderPendingChatMessages,
+  revertSessionToMessage,
+  setSessionPinned,
+  steerPendingChatMessage,
+  stopActiveChatTurn,
+  updatePendingChatMessage,
+  updateSessionAgent,
+  updateSessionTitle,
+  updateSessionWorkspace,
+} from "../api/chat";
+import {
+  handleMemoryCreate,
+  handleMemoryDelete,
+  handleMemoryEdit,
+  handleMemoryList,
+  handleMemorySearch,
+} from "../api/memory/memory-api";
+import { agentManager, getBuiltinTools } from "../core/agent";
+import {
+  cancelAgentLoopRun,
+  getAgentLoopRun,
+  listAgentLoopRuns,
+  startAgentLoop,
+} from "../core/agent-loop";
+import {
+  parseAgentReasoningSetting,
+  readAgentReasoningSetting,
+  withAgentReasoningSetting,
+} from "../core/agent-reasoning";
+import { deleteArtifact, listAllArtifacts, listArtifacts, readArtifact } from "../core/artifacts";
+import { getAppVersion, getReleaseRepositoryUrl } from "../core/build-info";
+import {
+  channelManager,
+  channels,
+  processTelegramWebhook,
+  securityManager,
+  whatsappAdapter,
+} from "../core/channels";
+import { listChatCapabilities } from "../core/chat/capability-mentions";
+import {
+  createCheckpoint,
+  deleteCheckpoint,
+  listCheckpoints,
+  restoreCheckpoint,
+} from "../core/checkpoint";
+import { config } from "../core/config";
+import { resolveCybaraHome, setCybaraHomeOverride } from "../core/cybara-home";
+import { tables } from "../core/database";
+import { resolveGeminiCliOAuthClientConfig } from "../core/gemini-cli-oauth";
+import { createLogger } from "../core/logger";
+import {
+  getAgentLogs,
+  getSessionMessages as getLogSessionMessages,
+  getRecentActivity,
+  searchAllLogs,
+} from "../core/logging";
+import {
+  getMemoryProviderCatalog,
+  mergeMemoryProviderSettingsUpdate,
+  normalizeMemoryProviderId,
+  redactMemoryProviderSettings,
+  testMemoryProvider,
+} from "../core/memory/providers";
+import { getVectorStore } from "../core/memory/vector-store";
+import { discoverProviderModels } from "../core/model-discovery";
+import { cybaraDir, homeDir as runtimeHomeDir } from "../core/paths";
+import {
+  installLocalPluginFromPath,
+  listInstalledPlugins,
+  uninstallLocalPlugin,
+  validatePluginAtPath,
+} from "../core/plugins";
+import {
+  enrichProviderPlanStatusWithLiveUsage,
+  getProviderPlanAvailability,
+  getProviderPlanMonitoringConfig,
+  getProviderPlanStatus,
+  setProviderPlanMonitoringConfig,
+} from "../core/provider-plans";
+import {
+  type ProviderType,
+  providerManager,
+  providers,
+  resolveProviderType,
+} from "../core/providers";
+import { getAllPricing, getRouterStatus, type RouterConfig, selectProvider } from "../core/router";
+import { openUrlInBrowser } from "../core/runtime/open-url";
+import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbox";
+import { taskScheduler } from "../core/scheduler";
+import { estimateSessionContextUsage, summarizeSessionTokenUsage } from "../core/session-context";
+import { extractLatestSessionPlan } from "../core/session-plan";
+import {
+  clearSkillsCache,
+  createEligibilityContext,
+  createLocalSkill,
+  executeSkill,
+  getSkill,
+  getSkillCategories,
+  getSkills,
+  getSkillsStatusReport,
+  loadAllSkills,
+  registryManager,
+} from "../core/skills/index";
+import {
+  detectMigrationSources,
+  runSourceMigration,
+  type SourceMigrationRequest,
+} from "../core/source-migration";
+import * as subagentRegistry from "../core/subagent-registry";
+import {
+  createSystemBackup,
+  deleteSystemBackup,
+  listSystemBackups,
+  readSystemRestoreStatus,
+  scheduleSystemRestore,
+  systemBackupDirectory,
+} from "../core/system-backup";
+import { getSystemMonitorSnapshot } from "../core/system-monitor";
+import { buildSystemPrompt } from "../core/system-prompt";
+import { getAlwaysAllowlist, getPendingApprovals, resolveApproval } from "../core/tool-approval";
+import {
+  clearSubagentSession,
+  handleSessionsSpawn,
+  handleSessionsWait,
+  killSubagentSession,
+} from "../core/tools/handlers/channel";
+import { executeTool, hasTool } from "../core/tools/handlers/index";
+import {
+  getCircuitState,
+  getDangerousToolNames,
+  getToolSchemasForLLM,
+  isToolEnabledForAgent,
+  type ToolContext,
+} from "../core/tools/index";
+import { checkForUpdate, isUpdateCheckDisabled } from "../core/update-check";
+import { workspaceIndexer } from "../core/workspace-indexer";
+import { getCybaraDataDirConfigInfo, getCybaraDataDirInfo } from "./data-dir-info";
+import { gatewayAuthSettingsResponse, updateGatewayHostSetting } from "./gateway-network";
+import { escapeHtml } from "./html-escape";
+import { buildJourney } from "./journey";
+import { mobileRoutes } from "./mobile";
+import { consumeOAuthCallback, deleteOAuthCallback, setOAuthCallback } from "./oauth-callbacks";
+import { pollProviderDeviceCodeOAuth, startProviderDeviceCodeOAuth } from "./provider-oauth-device";
+import { getCombinedLogs, getCombinedLogsPage, getLogStats, normalizeTimestamp } from "./queries";
+import { cacheMetricsRoutes, invalidateCachedRoute, prewarmMetricsRoutes } from "./route-cache";
+import {
+  buildGoogleAuthHeaders,
+  decodeDictationAudioBase64,
+  formatChannelTestError,
+  isLikelyGoogleApiKey,
+  normalizeIdentityConfig,
   normalizeOptionalString,
   normalizeSecretString,
-  buildGoogleAuthHeaders,
-  isLikelyGoogleApiKey,
-  formatChannelTestError,
   normalizeSystemPromptConfig,
-  normalizeIdentityConfig,
-  sanitizeSessionMessages,
-  decodeDictationAudioBase64,
+  parseJsonObject,
   pickDictationProvider,
-  transcribeWithOpenAICompatibleProvider,
   type RouteContext,
   type RouteHandler,
   type SessionMessageView,
+  sanitizeSessionMessages,
+  transcribeWithOpenAICompatibleProvider,
 } from "./routes/_shared";
-import { walletRoutes } from "./routes/wallet";
+import { ideLspRoutes } from "./routes/ide-lsp-routes";
+import { integrationCredentialRoutes } from "./routes/integration-credential-routes";
+import { mcpRoutes } from "./routes/mcp";
 import { metricsRoutes } from "./routes/metrics";
 import {
   validateProviderBaseUrlShape,
@@ -40,153 +191,20 @@ import {
   requestLogs,
   securityHeaders,
 } from "./routes/request-runtime";
+import { runtimeRoutes } from "./routes/runtime-routes";
 import {
   latestSessionModelMetadata,
+  type SessionModelMetadata,
   sessionModelMetadata,
   sessionModelMetadataSnapshot,
-  type SessionModelMetadata,
 } from "./routes/session-model-metadata";
-import { extractLatestSessionPlan } from "../core/session-plan";
-import { listChatCapabilities } from "../core/chat/capability-mentions";
 import { formatSkillInstallSpec } from "./routes/skill-formatting";
-import { tables } from "../core/database";
-import { agentManager, getBuiltinTools } from "../core/agent";
+import { walletRoutes } from "./routes/wallet";
+import { webResearchRoutes } from "./routes/web-research-routes";
 import {
-  parseAgentReasoningSetting,
-  readAgentReasoningSetting,
-  withAgentReasoningSetting,
-} from "../core/agent-reasoning";
-import {
-  providerManager,
-  providers,
-  resolveProviderType,
-  type ProviderType,
-} from "../core/providers";
-import { resolveGeminiCliOAuthClientConfig } from "../core/gemini-cli-oauth";
-import {
-  channelManager,
-  channels,
-  processTelegramWebhook,
-  securityManager,
-  whatsappAdapter,
-} from "../core/channels";
-import { taskScheduler } from "../core/scheduler";
-import * as subagentRegistry from "../core/subagent-registry";
-import {
-  getSkills,
-  getSkill,
-  getSkillCategories,
-  executeSkill,
-  loadAllSkills,
-  createEligibilityContext,
-  getSkillsStatusReport,
-  registryManager,
-  clearSkillsCache,
-  createLocalSkill,
-} from "../core/skills/index";
-import {
-  installLocalPluginFromPath,
-  listInstalledPlugins,
-  uninstallLocalPlugin,
-  validatePluginAtPath,
-} from "../core/plugins";
-import {
-  handleChat,
-  getSession,
-  getSessionPinned,
-  getSessionMessages,
-  listSessions,
-  listSessionPage,
-  deleteSession,
-  setSessionPinned,
-  updateSessionAgent,
-  revertSessionToMessage,
-  updateSessionWorkspace,
-  updateSessionTitle,
-  getChatRateLimitStatus,
-  listPendingChatMessages,
-  deletePendingChatMessage,
-  reorderPendingChatMessages,
-  steerPendingChatMessage,
-  stopActiveChatTurn,
-  updatePendingChatMessage,
-  type ChatMessage,
-} from "../api/chat";
-import { estimateSessionContextUsage, summarizeSessionTokenUsage } from "../core/session-context";
-import {
-  getToolSchemasForLLM,
-  getDangerousToolNames,
-  getCircuitState,
-  isToolEnabledForAgent,
-  type ToolContext,
-} from "../core/tools/index";
-import { executeTool, hasTool } from "../core/tools/handlers/index";
-import {
-  clearSubagentSession,
-  handleSessionsSpawn,
-  handleSessionsWait,
-  killSubagentSession,
-} from "../core/tools/handlers/channel";
-import { serializeSubagentDetail, serializeSubagentSummary } from "./subagents";
-import {
-  handleMemoryList,
-  handleMemorySearch,
-  handleMemoryDelete,
-  handleMemoryEdit,
-  handleMemoryCreate,
-} from "../api/memory/memory-api";
-import { getVectorStore } from "../core/memory/vector-store";
-import {
-  getMemoryProviderCatalog,
-  mergeMemoryProviderSettingsUpdate,
-  normalizeMemoryProviderId,
-  redactMemoryProviderSettings,
-  testMemoryProvider,
-} from "../core/memory/providers";
-import {
-  searchAllLogs,
-  getRecentActivity,
-  getSessionMessages as getLogSessionMessages,
-  getAgentLogs,
-} from "../core/logging";
-import { buildSystemPrompt } from "../core/system-prompt";
-import { getAppVersion, getReleaseRepositoryUrl } from "../core/build-info";
-import { checkForUpdate, isUpdateCheckDisabled } from "../core/update-check";
-import { getPendingApprovals, getAlwaysAllowlist, resolveApproval } from "../core/tool-approval";
-import { discoverProviderModels } from "../core/model-discovery";
-import {
-  listCheckpoints,
-  deleteCheckpoint,
-  createCheckpoint,
-  restoreCheckpoint,
-} from "../core/checkpoint";
-import {
-  createSystemBackup,
-  deleteSystemBackup,
-  listSystemBackups,
-  readSystemRestoreStatus,
-  scheduleSystemRestore,
-  systemBackupDirectory,
-} from "../core/system-backup";
-import {
-  getProviderPlanMonitoringConfig,
-  getProviderPlanAvailability,
-  getProviderPlanStatus,
-  enrichProviderPlanStatusWithLiveUsage,
-  setProviderPlanMonitoringConfig,
-} from "../core/provider-plans";
-import {
-  detectMigrationSources,
-  runSourceMigration,
-  type SourceMigrationRequest,
-} from "../core/source-migration";
-import { getRouterStatus, selectProvider, getAllPricing, type RouterConfig } from "../core/router";
-import { getSystemMonitorSnapshot } from "../core/system-monitor";
-import { dirname, isAbsolute, resolve } from "path";
-import { createHash, randomBytes } from "crypto";
-import {
-  getGatewayAuthSettings,
+  type AuthResult,
   clearGatewayPassword,
+  getGatewayAuthSettings,
   revealGatewayApiKey,
   rotateGatewayApiKey,
   securityCheck,
@@ -195,24 +213,8 @@ import {
   setGatewayRemoteAccessSettings,
   setRequireAuthForLocalhost,
   validateUrl,
-  type AuthResult,
 } from "./security";
-import { gatewayAuthSettingsResponse, updateGatewayHostSetting } from "./gateway-network";
-import { buildJourney } from "./journey";
-import { escapeHtml } from "./html-escape";
-import { createLogger } from "../core/logger";
-import { openUrlInBrowser } from "../core/runtime/open-url";
-import {
-  startAgentLoop,
-  listAgentLoopRuns,
-  getAgentLoopRun,
-  cancelAgentLoopRun,
-} from "../core/agent-loop";
-import { listArtifacts, readArtifact, deleteArtifact, listAllArtifacts } from "../core/artifacts";
-import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbox";
-import { workspaceIndexer } from "../core/workspace-indexer";
-import { normalizeTimestamp, getCombinedLogs, getCombinedLogsPage, getLogStats } from "./queries";
-import { setOAuthCallback, deleteOAuthCallback, consumeOAuthCallback } from "./oauth-callbacks";
+import { serializeSubagentDetail, serializeSubagentSummary } from "./subagents";
 
 const log = createLogger("API");
 
@@ -223,6 +225,8 @@ const routes: Record<string, RouteHandler> = {
   ...ideLspRoutes,
   ...runtimeRoutes,
   ...mcpRoutes,
+  ...integrationCredentialRoutes,
+  ...webResearchRoutes,
   "GET /api/health": () => {
     const now = new Date();
     const system = getSystemMonitorSnapshot();

@@ -1,29 +1,30 @@
-import { useState, useEffect, useRef } from "react";
 import {
-  Server,
-  Search,
-  Plus,
-  Play,
-  Square,
-  RefreshCw,
-  Trash2,
-  Package,
   CheckCircle,
-  XCircle,
   Download,
   Globe2,
-  TerminalSquare,
   KeyRound,
+  Package,
+  Play,
+  Plus,
+  RefreshCw,
+  Search,
+  Server,
+  Square,
+  TerminalSquare,
+  Trash2,
+  XCircle,
 } from "lucide-react";
-import { Card } from "../components/ui/Card";
-import { Button } from "../components/ui/Button";
-import { Input } from "../components/ui/Input";
-import { Badge } from "../components/ui/Badge";
-import { Modal } from "../components/ui/Modal";
+import { useEffect, useRef, useState } from "react";
 import { PageLayout } from "@/components/layout";
-import { useUIStore } from "../stores/uiStore";
-import { mcpApi, type MCPRegistryServer, type MCPServer } from "@/lib/api";
+import { ManagedCredentialField } from "@/components/settings/ManagedCredentialField";
+import { type MCPRegistryServer, type MCPServer, mcpApi } from "@/lib/api";
 import { openExternal } from "@/utils/openExternal";
+import { Badge } from "../components/ui/Badge";
+import { Button } from "../components/ui/Button";
+import { Card } from "../components/ui/Card";
+import { Input } from "../components/ui/Input";
+import { Modal } from "../components/ui/Modal";
+import { useUIStore } from "../stores/uiStore";
 
 function needsOAuth(error: string | undefined): boolean {
   return /\b401\b|unauthori[sz]ed|authentication required/i.test(error || "");
@@ -267,14 +268,22 @@ export function MCPServers() {
       </div>
 
       {tab === "registry" && (
-        <div className="mb-6 relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
-          <Input
-            placeholder="Search MCP servers..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
+        <div className="mb-6 max-w-2xl space-y-4">
+          <ManagedCredentialField
+            credentialId="smithery"
+            title="Smithery registry"
+            description="Enable authenticated search across the Smithery catalog."
+            onUpdated={() => void loadRegistry()}
           />
+          <div className="relative max-w-xl">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+            <Input
+              placeholder="Search MCP servers..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10"
+            />
+          </div>
         </div>
       )}
 

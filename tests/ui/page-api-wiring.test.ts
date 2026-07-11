@@ -308,7 +308,7 @@ describe("UI page API wiring", () => {
   test("MCPServers page uses shared mcpApi client helpers", () => {
     const source = readPage("MCPServers.tsx");
 
-    expect(source).toContain("import { mcpApi");
+    expect(source).toMatch(/import\s*\{[^}]*mcpApi[^}]*\}\s*from\s*["']@\/lib\/api["'];/);
     expect(source).toContain("mcpApi.list()");
     expect(source).toContain("mcpApi.popular()");
     expect(source).toContain("mcpApi.search(query.trim())");

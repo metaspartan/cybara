@@ -1,4 +1,5 @@
 import { filterWebSearchResultsByAllowlist } from "./web-policy";
+import { getWebResearchRuntimeEnv } from "../../web-research-settings";
 import {
   firecrawlConfigured,
   parallelConfigured,
@@ -493,12 +494,13 @@ export async function handleWebSearch(args: Record<string, unknown>): Promise<Se
     return cached;
   }
 
-  const backends = resolveSearchBackends(requested, process.env);
+  const env = getWebResearchRuntimeEnv();
+  const backends = resolveSearchBackends(requested, env);
 
   const errors: string[] = [];
   for (const backend of backends) {
     try {
-      const result = await runBackend(backend, query, count, process.env, args);
+      const result = await runBackend(backend, query, count, env, args);
       result.results = filterByRequestedDomains(result.results, includeDomains, excludeDomains);
       result.results = filterWebSearchResultsByAllowlist(result.results);
       result.count = result.results.length;

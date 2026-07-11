@@ -1,3 +1,4 @@
+import { getIntegrationCredential } from "./integration-credentials";
 import { mcpManager } from "./mcp";
 
 export interface MCPRegistryServer {
@@ -270,7 +271,7 @@ class MCPRegistryManager {
       if (!registry || registry === "official") {
         external = await this.searchOfficial(q).catch(() => []);
       }
-      if ((!registry || registry === "smithery") && process.env.SMITHERY_API_KEY) {
+      if ((!registry || registry === "smithery") && getIntegrationCredential("smithery")) {
         external = [...external, ...(await this.searchSmithery(q).catch(() => []))];
       }
       if (registry === "npm" || (!registry && external.length === 0)) {
@@ -347,7 +348,7 @@ class MCPRegistryManager {
   }
 
   private async searchSmithery(query: string): Promise<MCPRegistryServer[]> {
-    const apiKey = process.env.SMITHERY_API_KEY?.trim();
+    const apiKey = getIntegrationCredential("smithery");
     if (!apiKey) return [];
     const safeQualifiedName = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._/-]*$/i;
     try {

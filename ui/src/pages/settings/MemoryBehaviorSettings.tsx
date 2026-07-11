@@ -1,12 +1,13 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
+import { Activity, Brain, Database, RefreshCw, Save } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ManagedCredentialField } from "@/components/settings/ManagedCredentialField";
 import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Input, Select, Textarea } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
 import { memoryApi, settingsApi } from "@/lib/api";
-import { openExternal } from "@/utils/openExternal";
 import { useUIStore } from "@/stores/uiStore";
-import { Activity, Brain, Database, RefreshCw, Save } from "lucide-react";
-import { useEffect, useState } from "react";
+import { openExternal } from "@/utils/openExternal";
 import {
   asSettingsRecord,
   readBooleanSetting,
@@ -897,6 +898,13 @@ export function MemoryBehaviorSettings() {
               }
             />
           </div>
+          {(recall.embeddingProvider === "auto" || recall.embeddingProvider === "voyage") && (
+            <ManagedCredentialField
+              credentialId="voyage"
+              title="Voyage AI embeddings"
+              description="Use Voyage embeddings for semantic memory and workspace search."
+            />
+          )}
           <div className="flex justify-end">
             <Button
               leftIcon={

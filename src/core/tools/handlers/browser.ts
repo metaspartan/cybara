@@ -16,6 +16,7 @@ import * as profileManager from "../../browser/profiles";
 import * as pwManager from "../../browser/pw-manager";
 import { CONTENT_ROLES, INTERACTIVE_ROLES, STRUCTURAL_ROLES } from "../../browser/pw-role-snapshot";
 import type { ToolContext } from "../index";
+import { getWebResearchRuntimeEnv } from "../../web-research-settings";
 import { enforceWebFetchAllowlist } from "./web-policy";
 import {
   extractFirecrawl,
@@ -1407,9 +1408,10 @@ export async function handleWebFetch(
     args.provider === "direct" || args.provider === "firecrawl" || args.provider === "parallel"
       ? args.provider
       : undefined;
+  const env = getWebResearchRuntimeEnv();
   const external = [
-    ...(firecrawlConfigured(process.env) ? (["firecrawl"] as const) : []),
-    ...(parallelConfigured(process.env) ? (["parallel"] as const) : []),
+    ...(firecrawlConfigured(env) ? (["firecrawl"] as const) : []),
+    ...(parallelConfigured(env) ? (["parallel"] as const) : []),
   ];
   const providers: Array<"direct" | "firecrawl" | "parallel"> = requestedProvider
     ? [requestedProvider, "direct", ...external]
@@ -1422,10 +1424,10 @@ export async function handleWebFetch(
   for (const provider of uniqueProviders) {
     try {
       if (provider === "firecrawl") {
-        return await extractFirecrawl(validatedUrl, extractMode, maxChars, process.env);
+        return await extractFirecrawl(validatedUrl, extractMode, maxChars, env);
       }
       if (provider === "parallel") {
-        const apiKey = process.env.PARALLEL_API_KEY;
+        const apiKey = env.PARALLEL_API_KEY;
         if (!apiKey) throw new Error("PARALLEL_API_KEY is not configured");
         return await extractParallel(
           validatedUrl,
