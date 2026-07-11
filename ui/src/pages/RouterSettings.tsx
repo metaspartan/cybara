@@ -123,6 +123,13 @@ function formatMoney(value: number | undefined, precision = 2): string {
   return `$${num.toFixed(precision)}`;
 }
 
+function formatSpend(value: number | undefined): string {
+  const num = Number.isFinite(value) ? Number(value) : 0;
+  if (num <= 0) return "$0.00";
+  if (num < 0.01) return `$${Number(num.toFixed(4))}`;
+  return `$${num.toFixed(2)}`;
+}
+
 function formatTokenPrice(input?: number, output?: number): string {
   const hasInput = Number.isFinite(input) && Number(input) > 0;
   const hasOutput = Number.isFinite(output) && Number(output) > 0;
@@ -382,7 +389,7 @@ export function RouterSettings() {
             selection strategies, provider limits, and cash spend caps.
           </p>
         </div>
-        <div className="grid grid-cols-4 gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2 text-center">
+        <div className="grid grid-cols-2 gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-2 text-center sm:grid-cols-4">
           <div className="rounded-lg bg-black/25 px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-gray-500">Active</p>
             <p className="text-sm font-semibold text-white">
@@ -391,7 +398,7 @@ export function RouterSettings() {
           </div>
           <div className="rounded-lg bg-black/25 px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-gray-500">Today</p>
-            <p className="text-sm font-semibold text-emerald-300">{formatMoney(spendToday, 4)}</p>
+            <p className="text-sm font-semibold text-emerald-300">{formatSpend(spendToday)}</p>
           </div>
           <div className="rounded-lg bg-black/25 px-3 py-2">
             <p className="text-[10px] uppercase tracking-wide text-gray-500">Prices</p>
@@ -637,11 +644,13 @@ export function RouterSettings() {
           <div>
             <div className="mb-1 flex items-center justify-between text-xs">
               <span className="text-gray-500">
-                Spent today {formatMoney(spendToday, 4)}
+                Spent today {formatSpend(spendToday)}
                 {dailyLimit > 0 ? ` of ${formatMoney(dailyLimit, 2)}` : " (uncapped)"}
               </span>
               <span className="text-gray-500">
-                {dailyLimit > 0 ? `${budgetUsedPct.toFixed(1)}%` : "No cap"}
+                {dailyLimit > 0
+                  ? `${budgetUsedPct >= 10 ? Math.round(budgetUsedPct) : Number(budgetUsedPct.toFixed(1))}%`
+                  : "No cap"}
               </span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-white/10">
@@ -913,7 +922,11 @@ function RouteRow({
           >
             {!route.enabled ? "disabled" : route.available ? "available" : "blocked"}
           </span>
-          {route.reason && <span className="text-[10px] text-red-400">{route.reason}</span>}
+          {route.reason && (
+            <span className="min-w-0 truncate text-[10px] text-red-400" title={route.reason}>
+              {route.reason}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <button type="button" onClick={() => update("enabled", !routeCfg.enabled)}>
@@ -939,14 +952,14 @@ function RouteRow({
           <p className="font-semibold text-gray-200">{Number(routeCfg.weight ?? 50)}</p>
         </div>
         <div className="rounded-lg bg-white/[0.035] px-2.5 py-2">
-          <p className="text-gray-600">Requests</p>
+          <p className="text-gray-600">Requests 5h · 7d</p>
           <p className="font-semibold text-gray-200">
-            {route.requestsIn5hWindow} / {route.requestsInWeekWindow}
+            {route.requestsIn5hWindow} · {route.requestsInWeekWindow}
           </p>
         </div>
         <div className="rounded-lg bg-white/[0.035] px-2.5 py-2">
           <p className="text-gray-600">Spend today</p>
-          <p className="font-semibold text-emerald-300">{formatMoney(route.spendToday, 4)}</p>
+          <p className="font-semibold text-emerald-300">{formatSpend(route.spendToday)}</p>
         </div>
         <div className="rounded-lg bg-white/[0.035] px-2.5 py-2">
           <p className="text-gray-600">Token price</p>
@@ -1244,7 +1257,7 @@ function PlanUsageMeters({ plan }: { plan: ProviderPlanSnapshot }) {
           value:
             window.usedPercent === undefined
               ? `${formatCompactNumber(window.usedTokens)} tokens`
-              : `${window.usedPercent.toFixed(1)}%`,
+              : `${Number(window.usedPercent.toFixed(1))}%`,
           unlimited: Boolean(window.unlimited),
           resetLabel: window.resetsAt || null,
         };
@@ -1258,7 +1271,7 @@ function PlanUsageMeters({ plan }: { plan: ProviderPlanSnapshot }) {
               <span>
                 {window.usedPercent === undefined
                   ? `${formatCompactNumber(window.usedTokens)} tokens`
-                  : `${window.usedPercent.toFixed(1)}%`}
+                  : `${Number(window.usedPercent.toFixed(1))}%`}
               </span>
             </div>
             <div className="h-1.5 overflow-hidden rounded-full bg-black/30">
