@@ -119,13 +119,13 @@ requires, so notarization passes.
 For macOS/Linux release installs, the repository also ships an `install.sh` bootstrapper that downloads the latest CLI binary from GitHub Releases:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash
+curl -fsSL https://cybara.ai/install.sh | bash
 ```
 
 To install a pinned CLI release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash -s -- --version 1.0.818
+curl -fsSL https://cybara.ai/install.sh | bash -s -- --version 1.0.818
 ```
 
 ## Architecture

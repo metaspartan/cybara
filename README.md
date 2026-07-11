@@ -97,13 +97,13 @@ Then open:
 For a release binary install on macOS/Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash
+curl -fsSL https://cybara.ai/install.sh | bash
 ```
 
 On Windows (PowerShell, x64 & arm64):
 
 ```powershell
-powershell -c "irm https://raw.githubusercontent.com/metaspartan/cybara/main/install.ps1 | iex"
+powershell -c "irm https://cybara.ai/install.ps1 | iex"
 ```
 
 Or run it instantly with npm or Bun:
@@ -116,7 +116,7 @@ bunx cybara
 To pin a specific release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash -s -- --version 1.0.818
+curl -fsSL https://cybara.ai/install.sh | bash -s -- --version 1.0.818
 ```
 
 Then update later with:

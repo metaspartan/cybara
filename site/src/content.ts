@@ -45,9 +45,9 @@ export const X_URL = "https://x.com/cybaraAI";
 export const CREATOR_X_URL = "https://x.com/carsenklock";
 export const RELEASES_URL = "https://github.com/metaspartan/cybara/releases/latest";
 export const INSTALL_COMMAND =
-  "curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash";
+  "curl -fsSL https://cybara.ai/install.sh | bash";
 export const INSTALL_COMMAND_WINDOWS =
-  'powershell -c "irm https://raw.githubusercontent.com/metaspartan/cybara/main/install.ps1 | iex"';
+  'powershell -c "irm https://cybara.ai/install.ps1 | iex"';
 export const INSTALL_COMMAND_NPM = "npx cybara";
 
 export interface InstallTab {

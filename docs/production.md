@@ -18,13 +18,13 @@ This guide covers the production surfaces that are ready today: CLI release inst
 Latest release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash
+curl -fsSL https://cybara.ai/install.sh | bash
 ```
 
 Pinned release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash -s -- --version 1.0.818
+curl -fsSL https://cybara.ai/install.sh | bash -s -- --version 1.0.818
 ```
 
 Useful installer env vars:
