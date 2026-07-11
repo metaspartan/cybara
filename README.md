@@ -31,6 +31,22 @@
 
 ---
 
+## Cybara in Action
+
+<p align="center">
+  <img src="docs/images/cybara-web-chat.jpg" alt="Cybara web chat showing a repository audit" width="100%" />
+</p>
+
+<p align="center"><strong>Web and desktop chat</strong> with workspaces, persisted sessions, structured responses, context controls, and agent selection.</p>
+
+<p align="center">
+  <img src="docs/images/cybara-tui-chat.png" alt="Cybara terminal chat showing tool activity and a code workspace result" width="100%" />
+</p>
+
+<p align="center"><strong>Terminal chat</strong> with responsive layouts, tool activity, session history, queueing, steering, plans, approvals, and slash commands.</p>
+
+---
+
 ## What Cybara Is
 
 Cybara is an agent operating system for developers and operators who want one stack for:

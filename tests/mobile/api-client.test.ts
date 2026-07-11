@@ -2006,7 +2006,9 @@ describe("mobile API client", () => {
           hasMore: true,
         });
       }
-      if (path === "/api/agents") return Response.json([{ id: "a1", name: "Main" }]);
+      if (path === "/api/agents/summary") {
+        return Response.json([{ id: "a1", name: "Main", reasoning_effort: "high" }]);
+      }
       if (path === "/api/providers")
         return Response.json([{ id: "p1", name: "Anthropic", provider: "anthropic" }]);
       if (path === "/api/skills")
@@ -2057,6 +2059,7 @@ describe("mobile API client", () => {
       expect(summary.sessions).toHaveLength(1);
       expect(summary.sessionTotal).toBe(1200);
       expect(summary.agents).toHaveLength(1);
+      expect(summary.agents[0]?.reasoning_effort).toBe("high");
       expect(summary.providers).toHaveLength(1);
       expect(summary.skills).toEqual([
         expect.objectContaining({ id: "code-review", title: "code-review" }),
@@ -2071,6 +2074,47 @@ describe("mobile API client", () => {
       expect(summary.availability.systemPrompt.ok).toBe(true);
       expect(summary.systemPrompt?.features.memoryEnabled).toBe(true);
       expect(summary.config.tool_approval_mode).toBe("ask");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("loads lightweight agent summaries before one editable agent detail", async () => {
+    const calls: string[] = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url) => {
+      const path = new URL(String(url)).pathname;
+      calls.push(path);
+      if (path === "/api/agents/summary") {
+        return Response.json([
+          { id: "agent-1", name: "Primary", model: "model-1", reasoning_effort: "high" },
+        ]);
+      }
+      if (path === "/api/agents/agent-1") {
+        return Response.json({
+          id: "agent-1",
+          name: "Primary",
+          model: "model-1",
+          system_prompt: "Complete the task.",
+          config: { tool_profile: "coding" },
+        });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const api = new CybaraMobileApi(profile);
+      await expect(api.agents()).resolves.toEqual([
+        expect.objectContaining({ id: "agent-1", reasoning_effort: "high" }),
+      ]);
+      await expect(api.agent("agent-1")).resolves.toEqual(
+        expect.objectContaining({
+          id: "agent-1",
+          system_prompt: "Complete the task.",
+          config: { tool_profile: "coding" },
+        })
+      );
+      expect(calls).toEqual(["/api/agents/summary", "/api/agents/agent-1"]);
     } finally {
       globalThis.fetch = originalFetch;
     }

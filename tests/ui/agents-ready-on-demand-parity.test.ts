@@ -15,13 +15,11 @@ describe("agents are ready on demand across clients", () => {
   });
 
   test("mobile agent settings edit configuration without start or stop actions", () => {
-    const source = read("apps/mobile/src/screens/dashboardSettingsPanels.tsx");
-    const panel = source.slice(
-      source.indexOf("export function AgentSettingsPanel"),
-      source.indexOf("export function ProviderSettingsPanel")
-    );
+    const panel = read("apps/mobile/src/screens/dashboardAgentSettingsPanel.tsx");
     expect(panel).toContain('label="Save"');
     expect(panel).toContain('label="Delete"');
+    expect(panel).toContain(".agent(item.id)");
+    expect(panel).toContain("disabled={loadingAgent}");
     expect(panel).not.toContain("toggleAgentRuntime");
     expect(panel).not.toContain("api.startAgent");
     expect(panel).not.toContain("api.stopAgent");
@@ -34,5 +32,7 @@ describe("agents are ready on demand across clients", () => {
     expect(source).not.toContain("client.startAgent");
     expect(source).not.toContain("client.stopAgent");
     expect(source).not.toContain("Auto-start on gateway boot");
+    expect(source).toContain("client.agent(agent.id)");
+    expect(source).toContain("loadingAgentID == agent.id");
   });
 });

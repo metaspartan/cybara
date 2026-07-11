@@ -4,6 +4,7 @@ import { join } from "path";
 import { homedir, tmpdir } from "os";
 import { EventEmitter } from "events";
 import { redactSecrets, redactSecretText } from "./redaction";
+import { formatRecoverableToolOutputPreview } from "./tool-output-recovery";
 
 export interface SubagentActivity {
   id: string;
@@ -91,12 +92,18 @@ const SUBAGENT_MAX_ACTIVITIES = 300;
 const SUBAGENT_MAX_TOOL_CALLS = 100;
 const SUBAGENT_TOOL_VALUE_MAX_CHARS = 24_000;
 
-function normalizeSubagentResult(value: unknown): string | undefined {
+function normalizeSubagentResult(
+  value: unknown,
+  context: { requesterSessionKey: string; runId: string }
+): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = redactSecretText(value).trim();
   if (!normalized) return undefined;
-  if (normalized.length <= SUBAGENT_RESULT_MAX_CHARS) return normalized;
-  return `${normalized.slice(0, SUBAGENT_RESULT_MAX_CHARS)}\n\n... [subagent result truncated]`;
+  return formatRecoverableToolOutputPreview(normalized, SUBAGENT_RESULT_MAX_CHARS, {
+    sessionId: context.requesterSessionKey,
+    toolName: "subagent_result",
+    toolCallId: context.runId,
+  }).content;
 }
 
 function normalizeSubagentThinking(value: unknown): string | undefined {
@@ -117,6 +124,31 @@ function normalizeSubagentToolValue(value: unknown): unknown {
     return {
       truncated: true,
       preview: serialized.slice(0, SUBAGENT_TOOL_VALUE_MAX_CHARS),
+    };
+  } catch {
+    return redactSecretText(String(value)).slice(0, SUBAGENT_TOOL_VALUE_MAX_CHARS);
+  }
+}
+
+function normalizeSubagentToolResult(
+  value: unknown,
+  context: { requesterSessionKey: string; runId: string; toolName: string; toolCallId?: string }
+): unknown {
+  const redacted = redactSecrets(value);
+  try {
+    const serialized = JSON.stringify(redacted, (_key, nested) =>
+      typeof nested === "bigint" ? nested.toString() : nested
+    );
+    if (serialized.length <= SUBAGENT_TOOL_VALUE_MAX_CHARS) return redacted;
+    const preview = formatRecoverableToolOutputPreview(serialized, SUBAGENT_TOOL_VALUE_MAX_CHARS, {
+      sessionId: context.requesterSessionKey,
+      toolName: context.toolName,
+      toolCallId: context.toolCallId || context.runId,
+    });
+    return {
+      truncated: true,
+      preview: preview.content,
+      outputPath: preview.outputPath,
     };
   } catch {
     return redactSecretText(String(value)).slice(0, SUBAGENT_TOOL_VALUE_MAX_CHARS);
@@ -145,13 +177,18 @@ function normalizeSubagentActivities(
 }
 
 function normalizeSubagentToolCalls(
-  toolCalls: SubagentToolCall[] | undefined
+  toolCalls: SubagentToolCall[] | undefined,
+  context: { requesterSessionKey: string; runId: string }
 ): SubagentToolCall[] | undefined {
   if (!toolCalls?.length) return undefined;
   return toolCalls.slice(-SUBAGENT_MAX_TOOL_CALLS).map((toolCall) => ({
     ...toolCall,
     args: normalizeSubagentToolArgs(toolCall.args),
-    result: normalizeSubagentToolValue(toolCall.result),
+    result: normalizeSubagentToolResult(toolCall.result, {
+      ...context,
+      toolName: toolCall.name,
+      toolCallId: toolCall.id,
+    }),
   }));
 }
 
@@ -296,7 +333,10 @@ function ensureListener(): void {
         const error = typeof evt.data?.error === "string" ? evt.data.error : undefined;
         entry.outcome = { status: "error", error };
       } else {
-        const result = normalizeSubagentResult(evt.data?.result);
+        const result = normalizeSubagentResult(evt.data?.result, {
+          requesterSessionKey: entry.requesterSessionKey,
+          runId: entry.runId,
+        });
         entry.outcome = { status: "ok", result };
       }
 
@@ -502,7 +542,10 @@ export function updateRunDetails(runId: string, details: SubagentRunDetails): bo
     entry.activities = normalizeSubagentActivities(details.activities);
   }
   if (details.toolCalls !== undefined) {
-    entry.toolCalls = normalizeSubagentToolCalls(details.toolCalls);
+    entry.toolCalls = normalizeSubagentToolCalls(details.toolCalls, {
+      requesterSessionKey: entry.requesterSessionKey,
+      runId: entry.runId,
+    });
   }
   persistSubagentRuns();
   return true;
@@ -517,11 +560,17 @@ export function markRunCompleted(
   if (!entry) return false;
 
   entry.endedAt = Date.now();
-  const normalizedResult = normalizeSubagentResult(result);
+  const normalizedResult = normalizeSubagentResult(result, {
+    requesterSessionKey: entry.requesterSessionKey,
+    runId: entry.runId,
+  });
   entry.outcome = { status: "ok", result: normalizedResult };
   entry.thinking = normalizeSubagentThinking(details?.thinking);
   entry.activities = normalizeSubagentActivities(details?.activities);
-  entry.toolCalls = normalizeSubagentToolCalls(details?.toolCalls);
+  entry.toolCalls = normalizeSubagentToolCalls(details?.toolCalls, {
+    requesterSessionKey: entry.requesterSessionKey,
+    runId: entry.runId,
+  });
   persistSubagentRuns();
 
   const timer = runTimers.get(runId);

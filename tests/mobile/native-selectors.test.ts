@@ -7,6 +7,7 @@ const read = (rel: string) => readFileSync(`${root}/${rel}`, "utf8");
 const screen =
   read("screens/DashboardScreen.tsx") +
   read("screens/dashboardDetailPanels.tsx") +
+  read("screens/dashboardAgentSettingsPanel.tsx") +
   read("screens/dashboardSettingsPanels.tsx") +
   read("screens/dashboardSurfaceData.ts");
 // The shared settings-control components were extracted out of the screen.

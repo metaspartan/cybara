@@ -12,12 +12,34 @@ describe("web search backend selection", () => {
 
   test("quality backends precede brave, then searxng, then ddg", () => {
     const order = selectSearchBackends({
+      FIRECRAWL_API_KEY: "f",
+      PARALLEL_API_KEY: "p",
       TAVILY_API_KEY: "t",
       EXA_API_KEY: "e",
       BRAVE_API_KEY: "b",
       SEARXNG_URL: "http://localhost:8080",
     });
-    expect(order).toEqual(["tavily", "exa", "brave", "searxng", "duckduckgo"]);
+    expect(order).toEqual([
+      "firecrawl",
+      "parallel",
+      "tavily",
+      "exa",
+      "brave",
+      "searxng",
+      "duckduckgo",
+    ]);
+  });
+
+  test("Firecrawl supports cloud keys and self-hosted endpoints", () => {
+    expect(selectSearchBackends({ FIRECRAWL_API_KEY: "f" })).toEqual(["firecrawl", "duckduckgo"]);
+    expect(selectSearchBackends({ FIRECRAWL_API_URL: "http://localhost:3002" })).toEqual([
+      "firecrawl",
+      "duckduckgo",
+    ]);
+  });
+
+  test("Parallel is selected when configured", () => {
+    expect(selectSearchBackends({ PARALLEL_API_KEY: "p" })).toEqual(["parallel", "duckduckgo"]);
   });
 
   test("Tavily wins when set", () => {

@@ -34,6 +34,9 @@ import { printArtifacts, printJourney } from "./cli-resource-commands";
 import { getFlagValue, hasFlag } from "./cli-args";
 import { rawUpdate } from "./cli-update";
 import { runSystemBackupCommand, TUIBackupsCommand } from "./cli-system-backup";
+import { TUIBackProvider, useTUIBack } from "./cli-tui-navigation";
+import { useTerminalScreen } from "./cli-tui-terminal";
+import { TUIBrowserCommand, TUIWalletCommand } from "./cli-tui-operations-panels";
 import { commandExists } from "./core/platform";
 import {
   configureWalletCli,
@@ -2615,7 +2618,7 @@ const ErrorState = ({ message }: { message: string }) => (
 );
 
 const TUIStatusCommand = () => {
-  const { exit } = useApp();
+  const exit = useTUIBack();
   const [data, setData] = React.useState<StatusResponse | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -2731,7 +2734,7 @@ const TUIStatusCommand = () => {
 };
 
 const TUIMetricsCommand = () => {
-  const { exit } = useApp();
+  const exit = useTUIBack();
   const [data, setData] = React.useState<MetricsResponse | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -2816,7 +2819,7 @@ const TUIMetricsCommand = () => {
 };
 
 const TUISkillsCommand = () => {
-  const { exit } = useApp();
+  const exit = useTUIBack();
   const [data, setData] = React.useState<SkillItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -2870,7 +2873,7 @@ const TUISkillsCommand = () => {
 };
 
 const TUIAgentsCommand = () => {
-  const { exit } = useApp();
+  const exit = useTUIBack();
   const [data, setData] = React.useState<AgentItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -2923,7 +2926,7 @@ const TUIAgentsCommand = () => {
 };
 
 const TUITasksCommand = () => {
-  const { exit } = useApp();
+  const exit = useTUIBack();
   const [data, setData] = React.useState<TaskItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -3121,7 +3124,7 @@ function planWindow(
 }
 
 const TUIProvidersCommand = () => {
-  const { exit } = useApp();
+  const exit = useTUIBack();
   const [providers, setProviders] = React.useState<ProviderInfo[]>([]);
   const [plans, setPlans] = React.useState<TUIProviderPlanStatus | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -3213,7 +3216,7 @@ const TUIProvidersCommand = () => {
 };
 
 const TUIRouterCommand = () => {
-  const { exit } = useApp();
+  const exit = useTUIBack();
   const [data, setData] = React.useState<TUIRouterStatus | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -3289,7 +3292,7 @@ const TUIRouterCommand = () => {
 };
 
 const TUISessionsCommand = () => {
-  const { exit } = useApp();
+  const exit = useTUIBack();
   const [data, setData] = React.useState<SessionInfo[]>([]);
   const [agentsById, setAgentsById] = React.useState<Map<string, AgentItem>>(() => new Map());
   const [loading, setLoading] = React.useState(true);
@@ -3346,7 +3349,7 @@ const TUISessionsCommand = () => {
 };
 
 const TUILogsCommand = () => {
-  const { exit } = useApp();
+  const exit = useTUIBack();
   const [data, setData] = React.useState<LogEntry[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -3413,7 +3416,7 @@ const TUILogsCommand = () => {
 };
 
 const TUIMobileCommand = () => {
-  const { exit } = useApp();
+  const exit = useTUIBack();
   const [data, setData] = React.useState<TUIMobileDevice[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -3851,11 +3854,19 @@ const SetupWizard = () => {
   );
 };
 
-const TUIApp = ({ command }: { command?: string }) => {
+function TUIContent({
+  command,
+  onOpenPanel,
+}: {
+  command?: string;
+  onOpenPanel: (action: MainMenuAction) => void;
+}): React.ReactElement {
   switch (command) {
     case "wizard":
     case "setup":
     case "install":
+    case "configure":
+    case "onboard":
       return <SetupWizard />;
     case "status":
       return <TUIStatusCommand />;
@@ -3880,6 +3891,10 @@ const TUIApp = ({ command }: { command?: string }) => {
       return <TUIMemoryCommand fetchAPI={fetchAPI} />;
     case "tools":
       return <TUIToolsCommand fetchAPI={fetchAPI} />;
+    case "browser":
+      return <TUIBrowserCommand fetchAPI={fetchAPI} />;
+    case "wallet":
+      return <TUIWalletCommand fetchAPI={fetchAPI} />;
     case "chat":
       return <TUIChatCommand fetchAPI={fetchAPI} />;
     case "sessions":
@@ -3907,11 +3922,11 @@ const TUIApp = ({ command }: { command?: string }) => {
         <MainMenu
           apiBase={API_BASE}
           header={<Logo />}
-          onOpenPanel={(action: MainMenuAction) => {
-            render(<TUIApp command={action} />);
-          }}
+          onOpenPanel={onOpenPanel}
           onOpenWebUI={() => {
-            spawn("open", [`${API_BASE}`]);
+            void import("./core/runtime/open-url").then(({ openUrlInBrowser }) =>
+              openUrlInBrowser(API_BASE),
+            );
           }}
           onStartServer={() => {
             spawn("bun", ["run", "dev"], { stdio: "inherit" });
@@ -3920,6 +3935,24 @@ const TUIApp = ({ command }: { command?: string }) => {
         />
       );
   }
+}
+
+const TUIApp = ({ command }: { command?: string }) => {
+  const { exit } = useApp();
+  const [activeCommand, setActiveCommand] = React.useState(command);
+  useTerminalScreen();
+  const goBack = React.useCallback(() => {
+    if (activeCommand) {
+      setActiveCommand(undefined);
+      return;
+    }
+    exit();
+  }, [activeCommand, exit]);
+  return (
+    <TUIBackProvider onBack={goBack}>
+      <TUIContent command={activeCommand} onOpenPanel={setActiveCommand} />
+    </TUIBackProvider>
+  );
 };
 
 const args = process.argv.slice(2);

@@ -166,7 +166,12 @@ struct GatewayClient: Sendable {
     }
 
     func agents() async throws -> [GatewayAgent] {
-        try await getList("api/agents", keys: ["agents", "items"])
+        try await getList("api/agents/summary", keys: ["agents", "items"])
+    }
+
+    func agent(_ id: String) async throws -> GatewayAgent {
+        let encoded = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? id
+        return try await get("api/agents/\(encoded)", as: GatewayAgent.self)
     }
 
     func journey() async throws -> GatewayJourney {

@@ -1,8 +1,9 @@
 import React from "react";
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Text, useInput } from "ink";
 import Spinner from "ink-spinner";
 import { InteractiveChatTUI } from "./cli-tui-interactive-chat";
 import { useTerminalLayout } from "./cli-tui-terminal";
+import { useTUIBack } from "./cli-tui-navigation";
 
 const TUI_INPUT_OPTIONS = {
   isActive:
@@ -59,6 +60,12 @@ function sessionsFromResponse(value: unknown): ChatSessionSummary[] {
     return (value as { sessions: ChatSessionSummary[] }).sessions;
   }
   return [];
+}
+
+function sessionTotalFromResponse(value: unknown, fallback: number): number {
+  if (!value || typeof value !== "object") return fallback;
+  const total = (value as { total?: unknown }).total;
+  return typeof total === "number" && Number.isFinite(total) ? Math.max(fallback, total) : fallback;
 }
 
 function agentsFromResponse(value: unknown): ChatAgentSummary[] {
@@ -173,8 +180,9 @@ function sessionRowMeta(
 }
 
 export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
-  const { exit } = useApp();
+  const exit = useTUIBack();
   const [sessions, setSessions] = React.useState<ChatSessionSummary[]>([]);
+  const [totalSessions, setTotalSessions] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = React.useState<number | null>(null);
@@ -197,7 +205,7 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
     setError(null);
     try {
       const [response, agentResponse] = await Promise.all([
-        fetchAPI<unknown>("/api/sessions"),
+        fetchAPI<unknown>("/api/sessions?limit=48&includeTotal=1"),
         fetchAPI<unknown>("/api/agents/summary"),
       ]);
       const nextSessions = sessionsFromResponse(response)
@@ -208,6 +216,7 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
             sessionTimestamp(b) - sessionTimestamp(a),
         );
       setSessions(nextSessions.slice(0, 24));
+      setTotalSessions(sessionTotalFromResponse(response, nextSessions.length));
       setAgentsById(
         new Map(
           agentsFromResponse(agentResponse).flatMap((agent) =>
@@ -429,7 +438,7 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
           </Text>
         </Box>
         <Text color="gray">
-          Recent sessions · {visibleSessions.length}/{sessions.length} shown
+          Recent sessions · {visibleSessions.length}/{totalSessions} shown
           {activeCount > 0 ? ` · ${activeCount} running` : ""}
           {pendingCount > 0 ? ` · ${pendingCount} queued` : ""}
           {loading && sessions.length > 0 ? " · refreshing" : ""}

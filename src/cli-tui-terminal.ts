@@ -19,6 +19,33 @@ export interface TranscriptLine {
   hidden?: boolean;
 }
 
+export interface TerminalScreenSequence {
+  enter: string;
+  exit: string;
+}
+
+export function terminalScreenSequence(
+  isTTY: boolean,
+  env: NodeJS.ProcessEnv
+): TerminalScreenSequence | null {
+  if (!isTTY || env.TERM === "dumb" || env.CYBARA_TUI_ALT_SCREEN === "0") return null;
+  return {
+    enter: "\u001B[?1049h\u001B[2J\u001B[H\u001B[?25l",
+    exit: "\u001B[?25h\u001B[?1049l",
+  };
+}
+
+export function useTerminalScreen(): void {
+  React.useEffect(() => {
+    const sequence = terminalScreenSequence(Boolean(process.stdout.isTTY), process.env);
+    if (!sequence) return;
+    process.stdout.write(sequence.enter);
+    return () => {
+      process.stdout.write(sequence.exit);
+    };
+  }, []);
+}
+
 export function resolveTerminalLayout(columns?: number, rows?: number): TerminalLayout {
   const width = Math.max(40, columns || 80);
   const height = Math.max(18, rows || 32);
@@ -29,9 +56,9 @@ export function resolveTerminalLayout(columns?: number, rows?: number): Terminal
     rows: height,
     narrow,
     compact,
-    composerLines: narrow ? 3 : Math.max(4, Math.min(8, Math.floor(height / 7))),
+    composerLines: height <= 24 ? 1 : narrow ? 3 : Math.max(4, Math.min(8, Math.floor(height / 7))),
     commandRows: narrow ? 4 : 6,
-    messageLines: height < 24 ? 3 : narrow ? (height < 28 ? 4 : 6) : 8,
+    messageLines: height <= 24 ? 3 : narrow ? (height < 28 ? 4 : 6) : 8,
     transcriptMessages:
       height < 34 ? 1 : Math.max(2, Math.min(8, Math.floor(height / (narrow ? 10 : 12)))),
   };

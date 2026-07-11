@@ -70,7 +70,6 @@ import { EmptyState, GatewayDetailPill, LoadingState, SettingsRow } from "./dash
 import { MobileWebPolicyPanel } from "./dashboardWebPolicyPanel";
 import { MobileComputerUsePanel } from "./dashboardComputerUsePanel";
 import {
-  AgentSettingsPanel,
   ApprovalSettingsPanel,
   ChannelSettingsPanel,
   GatewayManagementPanel,
@@ -82,6 +81,7 @@ import {
   TaskSettingsPanel,
   WalletPolicyPanel,
 } from "./dashboardSettingsPanels";
+import { AgentSettingsPanel } from "./dashboardAgentSettingsPanel";
 import { JourneyPanel } from "./dashboardJourneyPanel";
 import { ModelRouterPanel } from "./dashboardModelRouterPanel";
 import { SpeechSettingsPanel } from "./dashboardSpeechSettingsPanel";

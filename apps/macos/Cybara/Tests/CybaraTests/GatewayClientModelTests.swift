@@ -500,6 +500,16 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(agent.reasoningEffort, "medium")
     }
 
+    func testAgentDecodesLightweightSummaryReasoningEffort() throws {
+        let agent = try decodeAgent(
+            #"{"id":"agent-summary","name":"Summary","model":"gpt-5.6-sol","provider_type":"openai-codex","reasoning_effort":"xhigh"}"#
+        )
+
+        XCTAssertEqual(agent.providerType, "openai-codex")
+        XCTAssertEqual(agent.reasoningEffort, "xhigh")
+        XCTAssertNil(agent.config)
+    }
+
     func testProviderModelsDecodeAvailableProviderCatalog() throws {
         let available = try JSONDecoder().decode(
             GatewayAvailableProvider.self,

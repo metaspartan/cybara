@@ -48,4 +48,13 @@ describe("CLI TUI markdown", () => {
     expect(splitTerminalInline("**unclosed")).toEqual([{ text: "**unclosed" }]);
     expect(splitTerminalInline("")).toEqual([{ text: " " }]);
   });
+
+  test("preserves underscores inside identifiers and session markers", () => {
+    expect(splitTerminalInline("GLM_E2E_1783775771")).toEqual([{ text: "GLM_E2E_1783775771" }]);
+    expect(splitTerminalInline("Use _italic_ text")).toEqual([
+      { text: "Use " },
+      { text: "italic", italic: true },
+      { text: " text" },
+    ]);
+  });
 });

@@ -44,6 +44,8 @@ cybara tui router         # Model router state and route windows
 cybara tui channels       # Channel state, access policy, and default routing
 cybara tui memory         # Memory provider status and recent entries
 cybara tui tools          # Tool categories and permissions
+cybara tui browser        # Browser runtime and open tabs
+cybara tui wallet         # Wallet security and agent policy
 cybara tui chat           # Modern terminal chat with search, input, queueing, and steering
 cybara tui sessions       # Recent chat/session list
 cybara tui logs           # Recent gateway/app logs
@@ -406,7 +408,13 @@ CYBARA_HOME=~/.cybara     # Runtime data root
 CYBARA_HOST=127.0.0.1     # Bind address (default: localhost only)
 CYBARA_API_KEY=...        # API key (auto-generated if not set)
 CYBARA_API=http://localhost:4269  # API endpoint for CLI
-BRAVE_API_KEY=...         # Web search API key
+FIRECRAWL_API_KEY=...     # Search and page/PDF extraction
+FIRECRAWL_API_URL=...     # Optional self-hosted Firecrawl endpoint
+PARALLEL_API_KEY=...      # Search and relevance-aware extraction
+TAVILY_API_KEY=...        # Web search
+EXA_API_KEY=...           # Web search
+BRAVE_API_KEY=...         # Web search
+SEARXNG_URL=...           # Self-hosted web search
 CYBARA_RELEASE_REPOSITORY=metaspartan/cybara  # Alternate GitHub release repo for update/install
 ```
 

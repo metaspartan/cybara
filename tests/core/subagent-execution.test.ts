@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { existsSync, rmSync } from "fs";
+import { existsSync, readFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { agentManager } from "../../src/core/agent";
@@ -15,6 +15,7 @@ import { broadcastStatus, createStatusSnapshotEvent } from "../../src/core/statu
 import {
   getRun,
   getRunsByRequester,
+  markRunCompleted,
   onSubagentLifecycle,
   registerSubagentRun,
   resetSubagentRegistryForTests,
@@ -75,6 +76,49 @@ afterEach(() => {
 });
 
 describe("Subagent execution wiring", () => {
+  test("preserves oversized final results in the private recovery cache", () => {
+    const runId = `result-recovery-${process.pid}`;
+    registerSubagentRun({
+      runId,
+      childSessionKey: `child-${runId}`,
+      requesterSessionKey: `parent-${runId}`,
+      task: "Return a large review result",
+    });
+
+    const fullResult = `HEAD_MARKER\n${"x".repeat(15_000)}\nTAIL_MARKER`;
+    const fullToolResult = { output: `TOOL_HEAD\n${"y".repeat(28_000)}\nTOOL_TAIL` };
+    expect(
+      markRunCompleted(runId, fullResult, {
+        toolCalls: [
+          {
+            id: "large-tool-call",
+            name: "exec",
+            result: fullToolResult,
+            status: "completed",
+          },
+        ],
+      })
+    ).toBe(true);
+
+    const preview = getRun(runId)?.outcome?.result || "";
+    expect(preview).toContain("HEAD_MARKER");
+    expect(preview).toContain("TAIL_MARKER");
+    expect(preview).toContain("Full output saved to:");
+    const outputPath = preview.match(/Full output saved to: (.+)/)?.[1]?.trim();
+    expect(outputPath).toBeTruthy();
+    expect(existsSync(outputPath || "")).toBe(true);
+    expect(readFileSync(outputPath || "", "utf8")).toBe(fullResult);
+    const toolResult = getRun(runId)?.toolCalls?.[0]?.result as
+      | { preview?: string; outputPath?: string }
+      | undefined;
+    expect(toolResult?.preview).toContain("TOOL_HEAD");
+    expect(toolResult?.preview).toContain("TOOL_TAIL");
+    expect(existsSync(toolResult?.outputPath || "")).toBe(true);
+    expect(JSON.parse(readFileSync(toolResult?.outputPath || "", "utf8"))).toEqual(fullToolResult);
+    rmSync(outputPath || "", { force: true });
+    rmSync(toolResult?.outputPath || "", { force: true });
+  });
+
   test("uses requested agent id and model override through agentManager.execute", async () => {
     const provider = providerManager.create({
       provider: "openai",

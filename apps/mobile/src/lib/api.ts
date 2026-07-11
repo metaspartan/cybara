@@ -1793,7 +1793,9 @@ function normalizeAgent(agent: unknown, index = 0): AgentSummary {
   const providerType = readString(record, ["provider_type", "providerType"]);
   const config = normalizeAgentConfig(record.config);
   const modelParams = asRecord(config.model_params ?? config.modelParams) ?? {};
-  const reasoningEffort = readString(modelParams, ["reasoning_effort", "reasoningEffort"]);
+  const reasoningEffort =
+    readString(record, ["reasoning_effort", "reasoningEffort"]) ??
+    readString(modelParams, ["reasoning_effort", "reasoningEffort"]);
   return {
     id,
     name: readString(record, ["name", "label", "id"]) || id,
@@ -2564,7 +2566,11 @@ export class CybaraMobileApi {
   }
 
   async agents(): Promise<AgentSummary[]> {
-    return normalizeAgents(await this.request<unknown>("/api/agents"));
+    return normalizeAgents(await this.request<unknown>("/api/agents/summary"));
+  }
+
+  async agent(id: string): Promise<AgentSummary> {
+    return normalizeAgent(await this.request<unknown>(`/api/agents/${encodeURIComponent(id)}`));
   }
 
   async updateAgent(id: string, data: AgentUpdatePayload): Promise<AgentSummary> {

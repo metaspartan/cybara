@@ -20,4 +20,12 @@ describe("provider icon lookup", () => {
     expect(hasProviderIcon(null)).toBe(false);
     expect(hasProviderIcon("custom-provider")).toBe(false);
   });
+
+  test("imports only the provider icon modules used by the lookup", async () => {
+    const source = await Bun.file("ui/src/components/ProviderIcon.tsx").text();
+    expect(source).not.toContain('from "@lobehub/icons"');
+    expect(source).toContain('from "@lobehub/icons/es/OpenAI/components/Mono"');
+    expect(source).toContain('from "@lobehub/icons/es/Minimax/components/Mono"');
+    expect(source).toContain('from "@lobehub/icons/es/ZAI/components/Mono"');
+  });
 });

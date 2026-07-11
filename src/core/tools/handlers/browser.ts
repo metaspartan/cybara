@@ -17,6 +17,12 @@ import * as pwManager from "../../browser/pw-manager";
 import { CONTENT_ROLES, INTERACTIVE_ROLES, STRUCTURAL_ROLES } from "../../browser/pw-role-snapshot";
 import type { ToolContext } from "../index";
 import { enforceWebFetchAllowlist } from "./web-policy";
+import {
+  extractFirecrawl,
+  extractParallel,
+  firecrawlConfigured,
+  parallelConfigured,
+} from "./web-research-providers";
 
 const SCREENSHOTS_DIR = join(
   process.env.HOME || process.env.USERPROFILE || homedir(),
@@ -1385,71 +1391,107 @@ export async function handleBrowser(
 
 export async function handleWebFetch(
   args: Record<string, unknown>
-): Promise<{ content: string; url: string; title?: string }> {
-  const url = args.url as string;
-  const extractMode = (args.extractMode as string) || "markdown";
-  const maxChars = (args.maxChars as number) || 50000;
+): Promise<{ content: string; url: string; title?: string; provider?: string }> {
+  const url = typeof args.url === "string" ? args.url.trim() : "";
+  const extractMode = args.extractMode === "text" ? "text" : "markdown";
+  const requestedMaxChars =
+    typeof args.maxChars === "number" && Number.isFinite(args.maxChars) ? args.maxChars : 50_000;
+  const maxChars = Math.max(1_000, Math.min(200_000, Math.floor(requestedMaxChars)));
 
   if (!url) {
     throw new Error("URL is required");
   }
 
-  try {
-    // Follow redirects manually and re-validate every hop. Auto-follow ("follow",
-    // the default) would let a validated public URL 302 to an internal host
-    // (e.g. 169.254.169.254 cloud metadata) — a classic SSRF-via-redirect.
-    const MAX_REDIRECTS = 5;
-    let currentUrl = url;
-    let response: Response | undefined;
-    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      currentUrl = await validateBrowserNavigationUrl(currentUrl, "Request");
-      const hopResponse = await fetch(currentUrl, {
-        redirect: "manual",
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-          Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-          "Accept-Language": "en-US,en;q=0.9",
-        },
-      });
+  const validatedUrl = await validateBrowserNavigationUrl(url, "Request");
+  const requestedProvider =
+    args.provider === "direct" || args.provider === "firecrawl" || args.provider === "parallel"
+      ? args.provider
+      : undefined;
+  const external = [
+    ...(firecrawlConfigured(process.env) ? (["firecrawl"] as const) : []),
+    ...(parallelConfigured(process.env) ? (["parallel"] as const) : []),
+  ];
+  const providers: Array<"direct" | "firecrawl" | "parallel"> = requestedProvider
+    ? [requestedProvider, "direct", ...external]
+    : /\.pdf(?:$|[?#])/i.test(validatedUrl)
+      ? [...external, "direct"]
+      : ["direct", ...external];
+  const uniqueProviders = [...new Set(providers)];
+  const errors: string[] = [];
 
-      if (hopResponse.status >= 300 && hopResponse.status < 400) {
-        const location = hopResponse.headers.get("location");
-        if (!location) {
-          response = hopResponse;
-          break;
-        }
-        if (hop === MAX_REDIRECTS) {
-          throw new Error("Too many redirects");
-        }
-        currentUrl = new URL(location, currentUrl).toString();
-        continue;
+  for (const provider of uniqueProviders) {
+    try {
+      if (provider === "firecrawl") {
+        return await extractFirecrawl(validatedUrl, extractMode, maxChars, process.env);
       }
-
-      response = hopResponse;
-      break;
+      if (provider === "parallel") {
+        const apiKey = process.env.PARALLEL_API_KEY;
+        if (!apiKey) throw new Error("PARALLEL_API_KEY is not configured");
+        return await extractParallel(
+          validatedUrl,
+          maxChars,
+          apiKey,
+          typeof args.objective === "string" ? args.objective : undefined
+        );
+      }
+      const result = await fetchDirectWebContent(validatedUrl, extractMode, maxChars);
+      if (!result.content.trim()) throw new Error("page contained no readable content");
+      return { ...result, provider: "direct" };
+    } catch (error) {
+      errors.push(`${provider}: ${error instanceof Error ? error.message : String(error)}`);
     }
-
-    if (!response) {
-      throw new Error("Too many redirects");
-    }
-
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    }
-
-    const html = await response.text();
-    const { title, content } = extractReadableContent(html, extractMode);
-
-    let finalContent = content;
-    if (finalContent.length > maxChars) {
-      finalContent = finalContent.slice(0, maxChars) + "\n... [truncated]";
-    }
-
-    return { content: finalContent, url, title };
-  } catch (error) {
-    throw new Error(`Failed to fetch ${url}: ${(error as Error).message}`);
   }
+
+  throw new Error(`Failed to fetch ${url}: ${errors.join("; ")}`);
+}
+
+async function fetchDirectWebContent(
+  url: string,
+  extractMode: "markdown" | "text",
+  maxChars: number
+): Promise<{ content: string; url: string; title?: string }> {
+  const maxRedirects = 5;
+  let currentUrl = url;
+  let response: Response | undefined;
+  for (let hop = 0; hop <= maxRedirects; hop++) {
+    currentUrl = await validateBrowserNavigationUrl(currentUrl, "Request");
+    const hopResponse = await fetch(currentUrl, {
+      redirect: "manual",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_7_2) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+      },
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (hopResponse.status >= 300 && hopResponse.status < 400) {
+      const location = hopResponse.headers.get("location");
+      if (!location) {
+        response = hopResponse;
+        break;
+      }
+      if (hop === maxRedirects) throw new Error("Too many redirects");
+      currentUrl = new URL(location, currentUrl).toString();
+      continue;
+    }
+
+    response = hopResponse;
+    break;
+  }
+
+  if (!response) throw new Error("Too many redirects");
+  if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+  if ((response.headers.get("content-type") || "").toLowerCase().includes("application/pdf")) {
+    throw new Error("PDF extraction requires a configured extraction provider");
+  }
+  const { title, content } = extractReadableContent(await response.text(), extractMode);
+  return {
+    content: content.length > maxChars ? `${content.slice(0, maxChars)}\n... [truncated]` : content,
+    url: currentUrl,
+    title: title || undefined,
+  };
 }
 
 function extractReadableContent(

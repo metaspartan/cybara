@@ -1,4 +1,10 @@
 import { filterWebSearchResultsByAllowlist } from "./web-policy";
+import {
+  firecrawlConfigured,
+  parallelConfigured,
+  searchFirecrawl,
+  searchParallel,
+} from "./web-research-providers";
 
 const BRAVE_SEARCH_ENDPOINT = "https://api.search.brave.com/res/v1/web/search";
 const DDG_HTML_ENDPOINT = "https://html.duckduckgo.com/html/";
@@ -300,20 +306,24 @@ function safeHostname(url: string): string | undefined {
   }
 }
 
-export type WebSearchBackend = "tavily" | "exa" | "brave" | "searxng" | "duckduckgo";
+export type WebSearchBackend =
+  | "firecrawl"
+  | "parallel"
+  | "tavily"
+  | "exa"
+  | "brave"
+  | "searxng"
+  | "duckduckgo";
 
-/**
- * Resolve which backends to try, in order. Quality backends (Tavily/Exa) are
- * preferred when their key is set, then Brave, then a self-hosted SearXNG, with
- * DuckDuckGo always available as a no-key fallback. Pure for unit testing.
- */
 export function selectSearchBackends(env: Record<string, string | undefined>): WebSearchBackend[] {
   const order: WebSearchBackend[] = [];
+  if (firecrawlConfigured(env)) order.push("firecrawl");
+  if (parallelConfigured(env)) order.push("parallel");
   if (env.TAVILY_API_KEY) order.push("tavily");
   if (env.EXA_API_KEY) order.push("exa");
   if (env.BRAVE_API_KEY) order.push("brave");
   if (env.SEARXNG_URL || env.SEARXNG_BASE_URL) order.push("searxng");
-  order.push("duckduckgo"); // always-available fallback
+  order.push("duckduckgo");
   return order;
 }
 
@@ -322,6 +332,8 @@ function backendIsConfigured(
   env: Record<string, string | undefined>
 ): boolean {
   if (backend === "duckduckgo") return true;
+  if (backend === "firecrawl") return firecrawlConfigured(env);
+  if (backend === "parallel") return parallelConfigured(env);
   if (backend === "tavily") return Boolean(env.TAVILY_API_KEY);
   if (backend === "exa") return Boolean(env.EXA_API_KEY);
   if (backend === "brave") return Boolean(env.BRAVE_API_KEY);
@@ -341,9 +353,37 @@ function runBackend(
   backend: WebSearchBackend,
   query: string,
   count: number,
-  env: Record<string, string | undefined>
+  env: Record<string, string | undefined>,
+  args: Record<string, unknown>
 ): Promise<SearchResponse> {
+  const start = Date.now();
   switch (backend) {
+    case "firecrawl":
+      return searchFirecrawl(query, count, env, {
+        categories: stringList(args.categories),
+        includeDomains: stringList(args.includeDomains),
+        excludeDomains: stringList(args.excludeDomains),
+        timeRange: optionalString(args.timeRange),
+        location: optionalString(args.location),
+        country: optionalString(args.country),
+      }).then((results) => ({
+        query,
+        provider: "firecrawl",
+        count: results.length,
+        tookMs: Date.now() - start,
+        results,
+      }));
+    case "parallel": {
+      const apiKey = env.PARALLEL_API_KEY;
+      if (!apiKey) return Promise.reject(new Error("PARALLEL_API_KEY is not configured"));
+      return searchParallel(query, count, apiKey).then((results) => ({
+        query,
+        provider: "parallel",
+        count: results.length,
+        tookMs: Date.now() - start,
+        results,
+      }));
+    }
     case "tavily":
       return searchWithTavily(query, count, env.TAVILY_API_KEY!);
     case "exa":
@@ -357,8 +397,72 @@ function runBackend(
   }
 }
 
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function stringList(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value.flatMap((item) =>
+    typeof item === "string" && item.trim() ? [item.trim()] : []
+  );
+  return values.length > 0 ? values : undefined;
+}
+
+function requestedBackend(value: unknown): WebSearchBackend | undefined {
+  const supported = new Set<WebSearchBackend>([
+    "firecrawl",
+    "parallel",
+    "tavily",
+    "exa",
+    "brave",
+    "searxng",
+    "duckduckgo",
+  ]);
+  return typeof value === "string" && supported.has(value as WebSearchBackend)
+    ? (value as WebSearchBackend)
+    : undefined;
+}
+
+function normalizedDomain(value: string): string {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return "";
+  try {
+    return new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`).hostname;
+  } catch {
+    return trimmed.replace(/^\*\./, "");
+  }
+}
+
+function matchesDomain(url: string, domain: string): boolean {
+  const expected = normalizedDomain(domain);
+  if (!expected) return false;
+  try {
+    const actual = new URL(url).hostname.toLowerCase();
+    return actual === expected || actual.endsWith(`.${expected}`);
+  } catch {
+    return false;
+  }
+}
+
+function filterByRequestedDomains(
+  results: SearchResult[],
+  includeDomains: string[] | undefined,
+  excludeDomains: string[] | undefined
+): SearchResult[] {
+  return results.filter((result) => {
+    if (
+      includeDomains?.length &&
+      !includeDomains.some((domain) => matchesDomain(result.url, domain))
+    ) {
+      return false;
+    }
+    return !excludeDomains?.some((domain) => matchesDomain(result.url, domain));
+  });
+}
+
 export async function handleWebSearch(args: Record<string, unknown>): Promise<SearchResponse> {
-  const query = args.query as string;
+  const query = typeof args.query === "string" ? args.query.trim() : "";
   const count = Math.min(
     Math.max(1, (args.count as number) || DEFAULT_SEARCH_COUNT),
     MAX_SEARCH_COUNT
@@ -367,23 +471,35 @@ export async function handleWebSearch(args: Record<string, unknown>): Promise<Se
   if (!query) {
     throw new Error("query is required");
   }
+  if (query.length > 500) throw new Error("query must be 500 characters or fewer");
 
-  const cacheKey = getCacheKey(query, count);
+  const includeDomains = stringList(args.includeDomains);
+  const excludeDomains = stringList(args.excludeDomains);
+  if (includeDomains?.length && excludeDomains?.length) {
+    throw new Error("includeDomains and excludeDomains cannot be used together");
+  }
+
+  const requested = requestedBackend(args.provider);
+  const cacheKey = `${getCacheKey(query, count)}:${requested || "auto"}:${JSON.stringify({
+    categories: stringList(args.categories),
+    includeDomains,
+    excludeDomains,
+    timeRange: optionalString(args.timeRange),
+    location: optionalString(args.location),
+    country: optionalString(args.country),
+  })}`;
   const cached = getFromCache(cacheKey);
   if (cached) {
     return cached;
   }
 
-  // Allow forcing a specific backend; otherwise try them in resolved precedence,
-  // falling through to the next on failure (DuckDuckGo is the final no-key path).
-  const requested =
-    typeof args.provider === "string" ? (args.provider as WebSearchBackend) : undefined;
   const backends = resolveSearchBackends(requested, process.env);
 
   const errors: string[] = [];
   for (const backend of backends) {
     try {
-      const result = await runBackend(backend, query, count, process.env);
+      const result = await runBackend(backend, query, count, process.env, args);
+      result.results = filterByRequestedDomains(result.results, includeDomains, excludeDomains);
       result.results = filterWebSearchResultsByAllowlist(result.results);
       result.count = result.results.length;
       setCache(cacheKey, result);

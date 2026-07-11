@@ -21,6 +21,9 @@ describe("mobile settings module organization", () => {
     expect(readScreen("dashboardProviderPlanUsage.tsx")).toContain(
       "export function ProviderPlanUsageGrid"
     );
+    expect(readScreen("dashboardAgentSettingsPanel.tsx")).toContain(
+      "export function AgentSettingsPanel"
+    );
   });
 
   test("does not duplicate extracted feature implementations in the shared module", () => {
@@ -28,5 +31,6 @@ describe("mobile settings module organization", () => {
     expect(source).not.toContain("export function ModelRouterPanel");
     expect(source).not.toContain("export function SpeechSettingsPanel");
     expect(source).not.toContain("export function JourneyPanel");
+    expect(source).not.toContain("export function AgentSettingsPanel");
   });
 });

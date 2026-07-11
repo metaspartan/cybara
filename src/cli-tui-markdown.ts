@@ -15,7 +15,7 @@ export type TerminalListItem =
 export function splitTerminalInline(line: string): TerminalInlineSegment[] {
   const parts: TerminalInlineSegment[] = [];
   const pattern =
-    /(\*\*[^*]+\*\*|~~[^~]+~~|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)]+\)|(?<!\*)\*[^*]+\*(?!\*)|_[^_]+_)/g;
+    /(\*\*[^*]+\*\*|~~[^~]+~~|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)]+\)|(?<!\*)\*[^*]+\*(?!\*)|(?<![\w])_[^_\n]+_(?![\w]))/g;
   let offset = 0;
   for (const match of line.matchAll(pattern)) {
     if (match.index === undefined) continue;

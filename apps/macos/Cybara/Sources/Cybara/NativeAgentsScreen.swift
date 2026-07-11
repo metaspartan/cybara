@@ -167,6 +167,7 @@ struct AgentsScreen: View {
     @State private var searchText = ""
     @State private var showingCreate = false
     @State private var editingAgent: GatewayAgent?
+    @State private var loadingAgentID: String?
     @State private var deleteTarget: GatewayAgent?
     @State private var error: String?
 
@@ -310,11 +311,17 @@ struct AgentsScreen: View {
             Spacer()
 
             Button {
-                editingAgent = agent
+                Task { await edit(agent) }
             } label: {
-                Image(systemName: "pencil")
+                if loadingAgentID == agent.id {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: "pencil")
+                }
             }
             .buttonStyle(.borderless)
+            .disabled(loadingAgentID != nil)
             .help("Edit agent")
             Button(role: .destructive) {
                 deleteTarget = agent
@@ -349,6 +356,17 @@ struct AgentsScreen: View {
         do {
             try await client.createDefaultAgent()
             await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func edit(_ agent: GatewayAgent) async {
+        guard loadingAgentID == nil else { return }
+        loadingAgentID = agent.id
+        defer { loadingAgentID = nil }
+        do {
+            editingAgent = try await client.agent(agent.id)
         } catch {
             self.error = error.localizedDescription
         }

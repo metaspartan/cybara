@@ -3,18 +3,23 @@ import {
   clipboardCandidates,
   composerWindow,
   resolveTerminalLayout,
+  terminalScreenSequence,
   transcriptWindow,
 } from "../../src/cli-tui-terminal";
 
 describe("CLI TUI terminal behavior", () => {
   test("adapts controls and content density to terminal dimensions", () => {
     const narrow = resolveTerminalLayout(52, 20);
+    const standard = resolveTerminalLayout(80, 24);
     const wide = resolveTerminalLayout(140, 60);
     expect(narrow.narrow).toBe(true);
-    expect(narrow.composerLines).toBe(3);
+    expect(narrow.composerLines).toBe(1);
     expect(narrow.commandRows).toBe(4);
     expect(narrow.transcriptMessages).toBe(1);
     expect(narrow.messageLines).toBe(3);
+    expect(standard.compact).toBe(true);
+    expect(standard.composerLines).toBe(1);
+    expect(standard.messageLines).toBe(3);
     expect(wide.narrow).toBe(false);
     expect(wide.compact).toBe(false);
     expect(wide.composerLines).toBeGreaterThan(narrow.composerLines);
@@ -52,5 +57,15 @@ describe("CLI TUI terminal behavior", () => {
     expect(clipboardCandidates("win32", {})).toEqual([["clip.exe"], ["clip"]]);
     expect(clipboardCandidates("linux", { WAYLAND_DISPLAY: "wayland-0" })[0]).toEqual(["wl-copy"]);
     expect(clipboardCandidates("linux", {}).at(-1)).toEqual(["xsel", "--clipboard", "--input"]);
+  });
+
+  test("uses one reversible alternate screen for interactive terminals", () => {
+    expect(terminalScreenSequence(true, {})).toEqual({
+      enter: "\u001B[?1049h\u001B[2J\u001B[H\u001B[?25l",
+      exit: "\u001B[?25h\u001B[?1049l",
+    });
+    expect(terminalScreenSequence(false, {})).toBeNull();
+    expect(terminalScreenSequence(true, { TERM: "dumb" })).toBeNull();
+    expect(terminalScreenSequence(true, { CYBARA_TUI_ALT_SCREEN: "0" })).toBeNull();
   });
 });

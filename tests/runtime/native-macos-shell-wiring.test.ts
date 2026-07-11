@@ -344,6 +344,14 @@ describe("native macOS shell wiring", () => {
     expect(sidecarManager).toContain("Waiting for attached Cybara gateway to restart");
   });
 
+  test("native agent lists use summaries and fetch full detail only for editing", () => {
+    const client = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const agents = readFileSync(join(MACOS_APP_DIR, "NativeAgentsScreen.swift"), "utf8");
+    expect(client).toContain('getList("api/agents/summary"');
+    expect(client).toContain('get("api/agents/\\(encoded)"');
+    expect(agents).toContain("client.agent(agent.id)");
+  });
+
   test("native settings exposes supported migration controls", () => {
     const gatewayClient = readFileSync(
       join(MACOS_APP_DIR, "GatewayManagementClient.swift"),

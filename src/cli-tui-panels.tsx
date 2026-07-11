@@ -1,7 +1,8 @@
 import React from "react";
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Text, useInput } from "ink";
 import Spinner from "ink-spinner";
 import { useTerminalLayout } from "./cli-tui-terminal";
+import { useTUIBack } from "./cli-tui-navigation";
 
 export type TUIDataFetch = <T>(
   endpoint: string,
@@ -21,12 +22,12 @@ interface PanelState<T> {
   error: string | null;
 }
 
-function usePanelData<T>(
+export function usePanelData<T>(
   loader: () => Promise<T | null>,
   errorMessage: string,
   shortcutsActive = true,
 ) {
-  const { exit } = useApp();
+  const exit = useTUIBack();
   const [revision, setRevision] = React.useState(0);
   const [state, setState] = React.useState<PanelState<T>>({
     data: null,
@@ -71,7 +72,7 @@ function usePanelData<T>(
   return { ...state, refresh };
 }
 
-function PanelShell({
+export function PanelShell({
   title,
   detail,
   loading,
@@ -118,13 +119,13 @@ function PanelShell({
   );
 }
 
-function compact(value: unknown, max = 34): string {
+export function compactPanelValue(value: unknown, max = 34): string {
   const text = String(value ?? "").trim();
   if (text.length <= max) return text || "-";
   return `${text.slice(0, Math.max(1, max - 1))}…`;
 }
 
-function panelListLimit(
+export function panelListLimit(
   total: number,
   layout: ReturnType<typeof useTerminalLayout>,
   rowHeight: number,
@@ -133,7 +134,7 @@ function panelListLimit(
   return total > capacity ? Math.max(1, capacity - 1) : capacity;
 }
 
-function PanelRemainder({
+export function PanelRemainder({
   total,
   shown,
 }: {
@@ -243,7 +244,7 @@ export function TUIUsageCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
             >
               <Box width={layout.narrow ? undefined : 28}>
                 <Text bold>
-                  {compact(provider.providerName, layout.narrow ? 38 : 26)}
+                  {compactPanelValue(provider.providerName, layout.narrow ? 38 : 26)}
                 </Text>
               </Box>
               <Box width={layout.narrow ? undefined : 19}>
@@ -303,10 +304,10 @@ export function TUIChannelsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
         visibleChannels.map((channel) => (
           <Box key={channel.id}>
             <Box width={20}>
-              <Text bold>{compact(channel.name, 18)}</Text>
+              <Text bold>{compactPanelValue(channel.name, 18)}</Text>
             </Box>
             <Box width={13}>
-              <Text color="gray">{compact(channel.type, 11)}</Text>
+              <Text color="gray">{compactPanelValue(channel.type, 11)}</Text>
             </Box>
             <Box width={10}>
               <Text color={channel.enabled ? "green" : "yellow"}>
@@ -318,7 +319,7 @@ export function TUIChannelsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
             </Box>
             <Text color="gray">
               {channel.config?.default_agent_id
-                ? compact(channel.config.default_agent_id, 16)
+                ? compactPanelValue(channel.config.default_agent_id, 16)
                 : "gateway default"}
             </Text>
           </Box>
@@ -398,14 +399,14 @@ export function TUIMemoryCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
           >
             <Box>
               <Text bold color="cyan">
-                {compact(entry.file, 30)}
+                {compactPanelValue(entry.file, 30)}
               </Text>
               <Text color="gray"> · {entry.type || "note"}</Text>
               {entry.timestamp && (
                 <Text color="gray"> · {entry.timestamp}</Text>
               )}
             </Box>
-            <Text wrap="wrap">{compact(entry.content, 120)}</Text>
+            <Text wrap="wrap">{compactPanelValue(entry.content, 120)}</Text>
           </Box>
         ))
       )}
@@ -450,17 +451,17 @@ export function TUIToolsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
         <Box key={tool.name} flexDirection="column" marginBottom={1}>
           <Box>
             <Text bold color="cyan">
-              {compact(tool.name, 26)}
+              {compactPanelValue(tool.name, 26)}
             </Text>
             <Text color="gray"> · {tool.category || "other"}</Text>
             {tool.permissions && tool.permissions.length > 0 && (
               <Text color="gray">
                 {" "}
-                · {compact(tool.permissions.join(", "), 26)}
+                · {compactPanelValue(tool.permissions.join(", "), 26)}
               </Text>
             )}
           </Box>
-          <Text wrap="wrap">{compact(tool.description, 110)}</Text>
+          <Text wrap="wrap">{compactPanelValue(tool.description, 110)}</Text>
         </Box>
       ))}
       <PanelRemainder total={tools.length} shown={visibleTools.length} />
@@ -618,7 +619,7 @@ export function TUIMcpCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
           <Box key={service.id} flexDirection="column" marginBottom={1}>
             <Box flexDirection={layout.narrow ? "column" : "row"}>
               <Box width={layout.narrow ? undefined : 28}>
-                <Text bold>{compact(service.name || service.id, 26)}</Text>
+                <Text bold>{compactPanelValue(service.name || service.id, 26)}</Text>
               </Box>
               <Box width={layout.narrow ? undefined : 12}>
                 <Text color={service.status === "running" ? "green" : "gray"}>
@@ -629,7 +630,7 @@ export function TUIMcpCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
             </Box>
             {service.url || service.command ? (
               <Text color="gray">
-                {compact(service.url || service.command, 76)}
+                {compactPanelValue(service.url || service.command, 76)}
               </Text>
             ) : null}
           </Box>
@@ -700,7 +701,7 @@ export function TUILspCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
               <Box flexDirection={layout.narrow ? "column" : "row"}>
                 <Box width={layout.narrow ? undefined : 24}>
                   <Text bold>
-                    {compact(language.displayName || language.language, 22)}
+                    {compactPanelValue(language.displayName || language.language, 22)}
                   </Text>
                 </Box>
                 <Box width={layout.narrow ? undefined : 14}>
@@ -712,7 +713,7 @@ export function TUILspCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
               </Box>
               <Text color="gray">
                 {language.path
-                  ? compact(language.path, 76)
+                  ? compactPanelValue(language.path, 76)
                   : language.requiresRuntime
                     ? `Requires ${language.requiresRuntime}`
                     : `Install with cybara lsp install ${language.language}`}
@@ -771,7 +772,7 @@ export function TUISubagentsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
             <Box flexDirection={layout.narrow ? "column" : "row"}>
               <Box width={layout.narrow ? undefined : 28}>
                 <Text bold>
-                  {compact(run.label || run.task || run.runId || run.id, 26)}
+                  {compactPanelValue(run.label || run.task || run.runId || run.id, 26)}
                 </Text>
               </Box>
               <Box width={layout.narrow ? undefined : 12}>
@@ -787,10 +788,10 @@ export function TUISubagentsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
                   {run.status || "unknown"}
                 </Text>
               </Box>
-              <Text color="gray">{compact(run.model, 24)}</Text>
+              <Text color="gray">{compactPanelValue(run.model, 24)}</Text>
             </Box>
             {run.task ? (
-              <Text color="gray">{compact(run.task, 88)}</Text>
+              <Text color="gray">{compactPanelValue(run.task, 88)}</Text>
             ) : null}
           </Box>
         ))
@@ -848,7 +849,7 @@ export function TUIArtifactsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
             marginBottom={layout.narrow ? 1 : 0}
           >
             <Box width={layout.narrow ? undefined : 30}>
-              <Text bold>{compact(artifact.title || artifact.name, 28)}</Text>
+              <Text bold>{compactPanelValue(artifact.title || artifact.name, 28)}</Text>
             </Box>
             <Box width={layout.narrow ? undefined : 16}>
               <Text color="cyan">{artifact.kind || "custom"}</Text>
@@ -856,7 +857,7 @@ export function TUIArtifactsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
             <Box width={layout.narrow ? undefined : 12}>
               <Text color="gray">{formatBytes(artifact.size)}</Text>
             </Box>
-            <Text color="gray">{compact(artifact.sessionId, 18)}</Text>
+            <Text color="gray">{compactPanelValue(artifact.sessionId, 18)}</Text>
           </Box>
         ))
       )}
@@ -912,10 +913,10 @@ export function TUIJourneyCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
                   {event.kind}
                 </Text>
               </Box>
-              <Text bold>{compact(event.title, 64)}</Text>
+              <Text bold>{compactPanelValue(event.title, 64)}</Text>
             </Box>
             {event.detail ? (
-              <Text color="gray">{compact(event.detail, 92)}</Text>
+              <Text color="gray">{compactPanelValue(event.detail, 92)}</Text>
             ) : null}
           </Box>
         ))

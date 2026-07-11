@@ -7,6 +7,10 @@ const cliSource = readFileSync(join(root, "src", "cli.tsx"), "utf8");
 const cliChatSource = readFileSync(join(root, "src", "cli-chat.ts"), "utf8");
 const cliTuiMenuSource = readFileSync(join(root, "src", "cli-tui-menu.tsx"), "utf8");
 const cliTuiPanelsSource = readFileSync(join(root, "src", "cli-tui-panels.tsx"), "utf8");
+const cliTuiOperationsPanelsSource = readFileSync(
+  join(root, "src", "cli-tui-operations-panels.tsx"),
+  "utf8"
+);
 const cliTuiChatSource = readFileSync(join(root, "src", "cli-tui-chat.tsx"), "utf8");
 const cliTuiInteractiveChatSource = readFileSync(
   join(root, "src", "cli-tui-interactive-chat.tsx"),
@@ -37,6 +41,8 @@ const tuiPanels = [
   { command: "channels", component: "TUIChannelsCommand", label: "Channels" },
   { command: "memory", component: "TUIMemoryCommand", label: "Memory" },
   { command: "tools", component: "TUIToolsCommand", label: "Tools" },
+  { command: "browser", component: "TUIBrowserCommand", label: "Browser Preview" },
+  { command: "wallet", component: "TUIWalletCommand", label: "Wallet" },
   { command: "chat", component: "TUIChatCommand", label: "Chat" },
   { command: "sessions", component: "TUISessionsCommand", label: "Sessions" },
   { command: "logs", component: "TUILogsCommand", label: "Logs" },
@@ -70,6 +76,9 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiMenuSource).toContain("Direct launch: cybara tui <panel> · Press ? for keys");
     expect(cliSource).toContain("<MainMenu");
     expect(cliSource).toContain("onOpenPanel");
+    expect(cliSource).toContain("<TUIBackProvider onBack={goBack}>");
+    expect(cliSource).toContain("onOpenPanel={onOpenPanel}");
+    expect(cliSource).not.toContain("render(<TUIApp command={action}");
   });
 
   test("main TUI menu supports modern terminal navigation", () => {
@@ -102,6 +111,10 @@ describe("CLI TUI source wiring", () => {
       "/api/memory/status",
       "/api/memory",
       "/api/tools",
+      "/api/browser/status",
+      "/api/browser/tabs",
+      "/api/wallet/status",
+      "/api/wallet/agent-policy",
       "/api/mcp",
       "/oauth/start",
       "/api/lsp/install-status",
@@ -109,7 +122,7 @@ describe("CLI TUI source wiring", () => {
       "/api/artifacts",
       "/api/journey",
     ]) {
-      expect(cliSource + cliTuiPanelsSource).toContain(route);
+      expect(cliSource + cliTuiPanelsSource + cliTuiOperationsPanelsSource).toContain(route);
     }
   });
 
@@ -152,6 +165,7 @@ describe("CLI TUI source wiring", () => {
 
   test("chat TUI surfaces terminal chat queue and steering controls", () => {
     expect(cliTuiChatSource).toContain("/api/sessions");
+    expect(cliTuiChatSource).toContain("/api/sessions?limit=48&includeTotal=1");
     expect(cliTuiChatSource).toContain("/api/agents/summary");
     expect(cliTuiChatSource).toContain('input === "n"');
     expect(cliTuiChatSource).toContain("setSearchMode(true)");
@@ -272,6 +286,8 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("ACTIVITY_DETAIL_COLOR");
     expect(cliTuiInteractiveChatSource).toContain("strikethrough={part.strikethrough}");
     expect(cliTuiInteractiveChatSource).toContain("splitTerminalInline(line)");
+    expect(cliTuiInteractiveChatSource).toContain('overflow="hidden"');
+    expect(cliTuiInteractiveChatSource).toContain("flexShrink={0}");
     expect(cliTuiInteractiveChatSource).toContain("parseTerminalListItem(line.text)");
   });
 

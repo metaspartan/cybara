@@ -9,7 +9,6 @@ import {
   StableDetailPanel,
 } from "./dashboardControls";
 import {
-  AgentSettingsPanel,
   ApprovalSettingsPanel,
   ChannelSettingsPanel,
   GatewayManagementPanel,

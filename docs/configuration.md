@@ -9,7 +9,13 @@
 | `CYBARA_HOST` | `127.0.0.1` | Bind address (localhost only) |
 | `CYBARA_API_KEY` | auto-generated | API key for auth |
 | `CYBARA_API` | `http://localhost:4269` | API endpoint for CLI |
-| `BRAVE_API_KEY` | - | Web search (optional, falls back to DuckDuckGo) |
+| `FIRECRAWL_API_KEY` | - | Firecrawl search and resilient page/PDF extraction |
+| `FIRECRAWL_API_URL` | Firecrawl cloud | Optional self-hosted Firecrawl base URL |
+| `PARALLEL_API_KEY` | - | Parallel search and relevance-aware page/PDF extraction |
+| `TAVILY_API_KEY` | - | Tavily web search |
+| `EXA_API_KEY` | - | Exa web search |
+| `BRAVE_API_KEY` | - | Brave web search |
+| `SEARXNG_URL` | - | Self-hosted SearXNG search endpoint |
 | `FAL_KEY` / `FAL_API_KEY` | - | fal.ai media generation key for images, videos, music, and the bundled `fal.ai` skill |
 | `LOG_LEVEL` | info | Logging verbosity |
 | `LOG_FORMAT` | pretty | Log output format (`pretty` or `json`) |

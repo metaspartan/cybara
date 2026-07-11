@@ -572,7 +572,8 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
 
   web_fetch: {
     name: "web_fetch",
-    description: "Fetch and extract readable content from a URL",
+    description:
+      "Fetch and extract readable content from a URL. Uses direct retrieval first, with configured Firecrawl or Parallel extraction fallback for blocked, dynamic, and PDF content.",
     category: "browser",
     input_schema: {
       type: "object",
@@ -580,6 +581,15 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
         url: { type: "string", description: "URL to fetch" },
         extractMode: { type: "string", enum: ["markdown", "text"], description: "Extraction mode" },
         maxChars: { type: "number", description: "Maximum characters to return" },
+        provider: {
+          type: "string",
+          enum: ["direct", "firecrawl", "parallel"],
+          description: "Optional preferred extraction backend",
+        },
+        objective: {
+          type: "string",
+          description: "Optional extraction goal used by relevance-aware backends",
+        },
       },
       required: ["url"],
     },
@@ -589,13 +599,39 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
   web_search: {
     name: "web_search",
     description:
-      "Search the web. Returns titles, URLs, and snippets. Use for quick research before browsing. Auto-selects the best configured backend (Tavily/Exa/Brave/SearXNG) and falls back to DuckDuckGo.",
+      "Search the web. Returns titles, URLs, and snippets. Auto-selects configured Firecrawl, Parallel, Tavily, Exa, Brave, or SearXNG backends and falls back to DuckDuckGo.",
     category: "browser",
     input_schema: {
       type: "object",
       properties: {
         query: { type: "string", description: "Search query string" },
         count: { type: "number", description: "Number of results (1-10, default 5)" },
+        provider: {
+          type: "string",
+          enum: ["firecrawl", "parallel", "tavily", "exa", "brave", "searxng", "duckduckgo"],
+          description: "Optional preferred search backend",
+        },
+        categories: {
+          type: "array",
+          items: { type: "string", enum: ["github", "research", "pdf"] },
+          description: "Optional Firecrawl result categories",
+        },
+        includeDomains: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional domains to include",
+        },
+        excludeDomains: {
+          type: "array",
+          items: { type: "string" },
+          description: "Optional domains to exclude",
+        },
+        timeRange: {
+          type: "string",
+          description: "Optional time filter such as qdr:d, qdr:w, qdr:m, or qdr:y",
+        },
+        location: { type: "string", description: "Optional search location" },
+        country: { type: "string", description: "Optional ISO country code" },
       },
       required: ["query"],
     },

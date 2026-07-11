@@ -1,7 +1,8 @@
 import React from "react";
-import { Box, Text, useApp, useInput } from "ink";
+import { Box, Text, useInput } from "ink";
 import Spinner from "ink-spinner";
 import { useTerminalLayout } from "./cli-tui-terminal";
+import { useTUIBack } from "./cli-tui-navigation";
 
 const TUI_INPUT_OPTIONS = {
   isActive:
@@ -21,6 +22,8 @@ export type MainMenuAction =
   | "channels"
   | "memory"
   | "tools"
+  | "browser"
+  | "wallet"
   | "chat"
   | "sessions"
   | "logs"
@@ -57,6 +60,14 @@ export const MAIN_TUI_MENU_ITEMS: MenuItem[] = [
     group: "Workflows",
     kind: "panel",
     detail: "Terminal chat with queueing, steering, slash commands, and session history",
+  },
+  {
+    label: "Browser Preview",
+    action: "browser",
+    shortcut: "1",
+    group: "Workflows",
+    kind: "panel",
+    detail: "Agent-visible browser runtime and open tabs",
   },
   {
     label: "Tasks",
@@ -211,6 +222,14 @@ export const MAIN_TUI_MENU_ITEMS: MenuItem[] = [
     detail: "Create and inspect private gateway restore points",
   },
   {
+    label: "Wallet",
+    action: "wallet",
+    shortcut: "2",
+    group: "System",
+    kind: "panel",
+    detail: "Wallet security, addresses, and agent transaction policy",
+  },
+  {
     label: "Logs",
     action: "logs",
     shortcut: "l",
@@ -273,7 +292,7 @@ export function MainMenu({
   onOpenWebUI,
   onStartServer,
 }: MainMenuProps): React.ReactElement {
-  const { exit } = useApp();
+  const exit = useTUIBack();
   const layout = useTerminalLayout();
   const [selected, setSelected] = React.useState(0);
   const [searchMode, setSearchMode] = React.useState(false);

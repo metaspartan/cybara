@@ -146,15 +146,17 @@ Full Chrome control via Playwright.
 ```
 
 ### web_search
-Search the web (Brave API or DuckDuckGo fallback).
+Search the web through the best configured backend, with a no-key fallback. Optional filters support domains, recency, location, and research-oriented result categories where the selected backend provides them.
 ```json
 {"name": "web_search", "args": {"query": "bun typescript tutorial"}}
+{"name": "web_search", "args": {"query": "agent runtime research", "categories": ["github", "research"], "timeRange": "qdr:m"}}
 ```
 
 ### web_fetch
-Fetch and extract readable content from a URL.
+Fetch and extract readable content from a URL. Direct retrieval is attempted first, with configured extraction providers available for blocked pages, JavaScript-heavy content, and PDFs.
 ```json
 {"name": "web_fetch", "args": {"url": "https://example.com/article"}}
+{"name": "web_fetch", "args": {"url": "https://example.com/report.pdf", "objective": "Extract the benchmark methodology and results"}}
 ```
 
 ### canvas

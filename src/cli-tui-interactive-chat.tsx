@@ -39,6 +39,12 @@ import {
   skillStatusLines,
 } from "./cli-tui-chat-inspection";
 import { parseTerminalListItem, splitTerminalInline } from "./cli-tui-markdown";
+import {
+  limitTUIActivityDetails,
+  summarizeTUIActivities,
+  type TUIActivityItem,
+  type TUIToolCallItem,
+} from "./cli-tui-activity";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -47,16 +53,8 @@ interface ChatMessage {
   tool_calls?: ToolCallItem[];
 }
 
-interface ActivityItem {
-  phase?: string;
-  text?: string;
-  toolName?: string;
-}
-
-interface ToolCallItem {
-  name?: string;
-  status?: string;
-}
+type ActivityItem = TUIActivityItem;
+type ToolCallItem = TUIToolCallItem;
 
 interface PendingMessage {
   id: string;
@@ -497,43 +495,30 @@ function MessageBody({
 
 function ActivitySummary({
   message,
+  maxDetails,
+  maxColumns,
 }: {
   message: ChatMessage;
+  maxDetails?: number;
+  maxColumns: number;
 }): React.ReactElement | null {
-  const activities = message.process_activities || [];
-  const tools = message.tool_calls || [];
-  if (activities.length === 0 && tools.length === 0) return null;
-  const labels = Array.from(
-    new Set(
-      [
-        ...activities
-          .slice(-5)
-          .map(
-            (activity) => activity.text || activity.toolName || activity.phase,
-          ),
-        ...tools
-          .slice(-5)
-          .map(
-            (tool) =>
-              `${tool.name || "tool"}${tool.status ? ` ${tool.status}` : ""}`,
-          ),
-      ]
-        .filter(
-          (label): label is string =>
-            typeof label === "string" && label.trim().length > 0,
-        )
-        .map((label) => compact(label.replace(/\s+/g, " ").trim(), 96)),
-    ),
-  ).slice(-5);
-  const count = activities.length + tools.length;
+  const summary = summarizeTUIActivities(
+    message.process_activities || [],
+    message.tool_calls || [],
+  );
+  if (!summary) return null;
   return (
     <Box paddingLeft={2} marginBottom={1} flexDirection="column">
       <Text color={ACTIVITY_HEADING_COLOR}>
-        ◇ Ran {count} {count === 1 ? "step" : "steps"}
+        {summary.icon} {compact(summary.label, Math.max(12, maxColumns - 4))}
       </Text>
-      {labels.map((label, index) => (
+      {limitTUIActivityDetails(
+        summary.details,
+        maxDetails ?? summary.details.length,
+      ).map((label, index, details) => (
         <Text key={`${index}-${label}`} color={ACTIVITY_DETAIL_COLOR}>
-          {index === labels.length - 1 ? "└" : "├"} {label}
+          {index === details.length - 1 ? "└" : "├"}{" "}
+          {compact(label, Math.max(12, maxColumns - 6))}
         </Text>
       ))}
     </Box>
@@ -543,10 +528,12 @@ function ActivitySummary({
 function MessageView({
   message,
   maxLines,
+  maxActivityDetails,
   maxColumns,
 }: {
   message: ChatMessage;
   maxLines?: number;
+  maxActivityDetails?: number;
   maxColumns: number;
 }): React.ReactElement {
   const meta = ROLE_META[message.role];
@@ -557,7 +544,11 @@ function MessageView({
           {meta.marker} {meta.label}
         </Text>
       </Box>
-      <ActivitySummary message={message} />
+      <ActivitySummary
+        message={message}
+        maxColumns={maxColumns}
+        maxDetails={maxActivityDetails}
+      />
       <Box paddingLeft={2}>
         <MessageBody
           content={message.content}
@@ -1962,13 +1953,14 @@ export function InteractiveChatTUI({
         borderColor="cyan"
         paddingX={1}
         flexDirection="column"
+        flexShrink={0}
       >
         <Box
           flexDirection={layout.narrow ? "column" : "row"}
           justifyContent="space-between"
         >
           <Text bold color="cyan">
-            Cybara Chat · {compact(headerTitle, layout.narrow ? 30 : 64)}
+            Cybara Chat · {compact(headerTitle, layout.compact ? 44 : 64)}
           </Text>
           <Text color={sending ? "yellow" : "gray"}>
             {sending ? "working" : "ready"}
@@ -1981,7 +1973,7 @@ export function InteractiveChatTUI({
             : ` · ${localSessionId || "session will be created on send"}`}
         </Text>
       </Box>
-      <Box marginTop={1}>
+      <Box marginTop={1} flexShrink={0}>
         <StatusRail
           agent={selectedAgent}
           approvalCount={approvalRequests.length}
@@ -1990,23 +1982,30 @@ export function InteractiveChatTUI({
           routerStatus={routerStatus}
           sessionId={localSessionId}
           modelOverride={modelOverride || undefined}
-          narrow={layout.narrow}
+          narrow={layout.compact}
           useModelRouter={useModelRouter}
         />
       </Box>
 
       {narrowOverlayVisible ? null : loading ? (
-        <Box paddingX={1} paddingY={1} flexGrow={1}>
+        <Box paddingX={1} paddingY={1} flexGrow={1} flexShrink={1} overflow="hidden">
           <Text color="yellow">
             <Spinner type="dots" /> Loading conversation
           </Text>
         </Box>
       ) : visibleMessages.length === 0 ? (
-        <Box paddingX={1} paddingY={1} flexGrow={1}>
+        <Box paddingX={1} paddingY={1} flexGrow={1} flexShrink={1} overflow="hidden">
           <Text color="gray">No messages yet. Type a prompt or /help.</Text>
         </Box>
       ) : (
-        <Box flexDirection="column" paddingX={1} paddingTop={1} flexGrow={1}>
+        <Box
+          flexDirection="column"
+          paddingX={1}
+          paddingTop={1}
+          flexGrow={1}
+          flexShrink={1}
+          overflow="hidden"
+        >
           {visibleMessageEnd < transcriptMessages.length ? (
             <Text color="gray">
               ↓ {transcriptMessages.length - visibleMessageEnd} newer messages
@@ -2017,6 +2016,9 @@ export function InteractiveChatTUI({
               key={`${index}-${message.role}-${message.content.slice(0, 12)}`}
               message={message}
               maxLines={expandedTranscript ? undefined : layout.messageLines}
+              maxActivityDetails={
+                expandedTranscript ? undefined : layout.rows <= 24 ? 0 : undefined
+              }
               maxColumns={Math.max(24, layout.columns - 8)}
             />
           ))}
@@ -2075,6 +2077,7 @@ export function InteractiveChatTUI({
         borderColor={sending ? "yellow" : "green"}
         paddingX={1}
         flexDirection="column"
+        flexShrink={0}
       >
         <Text color="gray">Ask Cybara</Text>
         {composerLines.map((line, index) => (
@@ -2084,7 +2087,7 @@ export function InteractiveChatTUI({
           </Text>
         ))}
       </Box>
-      <Box paddingX={1}>
+      <Box paddingX={1} flexShrink={0}>
         <Text color="gray">
           {layout.narrow
             ? "Enter send · ^J newline · Tab · Esc"
