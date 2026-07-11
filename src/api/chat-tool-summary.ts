@@ -2,7 +2,12 @@ import { isCodeMutationRequest } from "../core/message-action";
 
 export interface ToolCallResultLike {
   name: string;
-  result: unknown;
+  result?: unknown;
+}
+
+export interface ProcessActivityLike {
+  phase: string;
+  toolName?: string;
 }
 
 export interface ToolCallOutcome {
@@ -34,6 +39,37 @@ export function classifyToolCallResult(result: unknown): ToolCallOutcome {
   const error = typeof record.error === "string" ? record.error.trim() : "";
   if (!error) return { status: "completed" };
   return { status: "failed", error };
+}
+
+function hasUsableWebResult(toolCall: ToolCallResultLike): boolean {
+  if (toolCall.name !== "web_search" && toolCall.name !== "web_fetch") return false;
+  if (classifyToolCallResult(toolCall.result).status === "failed") return false;
+  if (typeof toolCall.result === "string") return toolCall.result.trim().length > 0;
+  if (!toolCall.result || typeof toolCall.result !== "object" || Array.isArray(toolCall.result)) {
+    return false;
+  }
+  const result = toolCall.result as Record<string, unknown>;
+  if (toolCall.name === "web_search") {
+    return (
+      (Array.isArray(result.results) && result.results.length > 0) ||
+      (typeof result.count === "number" && result.count > 0)
+    );
+  }
+  return [result.content, result.text, result.markdown, result.output].some(
+    (value) => typeof value === "string" && value.trim().length > 0
+  );
+}
+
+export function suppressRecoveredWebFailureActivities<T extends ProcessActivityLike>(
+  activities: T[] | undefined,
+  toolCalls: ToolCallResultLike[]
+): T[] | undefined {
+  if (!activities?.length || !toolCalls.some(hasUsableWebResult)) return activities;
+  return activities.filter(
+    (activity) =>
+      activity.phase !== "error" ||
+      (activity.toolName !== "web_search" && activity.toolName !== "web_fetch")
+  );
 }
 
 function summarizeUnknownResult(value: unknown): string {

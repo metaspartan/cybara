@@ -13,6 +13,7 @@ export function resolveBackgroundAgentId(requesterAgentId?: string): string | un
 
 const DEFAULT_MIN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes per session
 const DEFAULT_REVIEW_TIMEOUT_S = 90;
+export const BACKGROUND_REVIEW_TOOL_NAMES = ["memory_search", "memory_get", "memory_save"] as const;
 
 const lastReviewAt = new Map<string, number>();
 
@@ -78,7 +79,10 @@ export async function maybeRunBackgroundReview(
         cleanup: "delete",
         silent: true,
       } as Record<string, unknown>,
-      context
+      {
+        ...context,
+        allowedToolNames: [...BACKGROUND_REVIEW_TOOL_NAMES],
+      }
     );
   } catch {}
 }

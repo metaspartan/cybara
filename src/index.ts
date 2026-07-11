@@ -2,7 +2,7 @@ import { readFileSync, existsSync, statSync } from "fs";
 import { join, dirname, resolve, sep } from "path";
 import { fileURLToPath } from "url";
 import { agentManager } from "./core/agent";
-import { handleChat, listSessions, sendToSession, type ChatMessage } from "./api/chat";
+import { handleChat, listSessions, sendToSession } from "./api/chat";
 import { handleRequest } from "./api/routes";
 import {
   createTerminalSession,
@@ -61,7 +61,6 @@ import {
   createStatusSnapshotEvent,
 } from "./core/status";
 import { logSandboxRuntimeStatus } from "./core/sandbox";
-import { onSubagentLifecycle } from "./core/subagent-registry";
 import { resolveUiPath } from "./core/runtime/ui-path";
 import { resolveMediaFile } from "./core/runtime/media-files";
 import {
@@ -818,24 +817,6 @@ startScheduler();
 console.log("[Cron] Scheduler initialized with agent execution support");
 taskScheduler.initialize();
 console.log("[Task] Scheduler initialized");
-
-onSubagentLifecycle((event) => {
-  if (event.type === "announce" && event.data?.message) {
-    const sessionKey = event.data.requesterSessionKey as string;
-    if (sessionKey) {
-      const announcement: ChatMessage = {
-        role: "assistant",
-        content: event.data.message as string,
-        timestamp: new Date().toISOString(),
-      };
-      const injected = sendToSession(sessionKey, announcement);
-      if (injected) {
-        console.log(`[Subagent] Announced to requester session ${sessionKey.slice(0, 20)}...`);
-      }
-    }
-  }
-});
-console.log("[Subagent] Lifecycle listener registered");
 
 setChannelSubagentSpawnHandler(handleSessionsSpawn);
 configureChannelChatRuntime({

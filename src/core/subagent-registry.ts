@@ -256,7 +256,7 @@ async function sweepSubagentRuns(): Promise<void> {
   }
 }
 
-export type LifecycleEventType = "start" | "end" | "error" | "archive" | "announce";
+export type LifecycleEventType = "start" | "end" | "error" | "archive";
 
 export interface LifecycleEvent {
   runId: string;
@@ -303,58 +303,10 @@ function ensureListener(): void {
       persistSubagentRuns();
 
       if (beginSubagentCleanup(evt.runId)) {
-        void runAnnounceFlow(evt.runId).then((didAnnounce) => {
-          finalizeSubagentCleanup(evt.runId, entry.cleanup, didAnnounce);
-        });
+        finalizeSubagentCleanup(evt.runId, entry.cleanup);
       }
     }
   });
-}
-
-async function runAnnounceFlow(runId: string): Promise<boolean> {
-  const entry = subagentRuns.get(runId);
-  if (!entry) return false;
-
-  // Silent runs (background memory review, etc.) must NOT post their completion
-  // — including any provider errors like 401 — into the requester's chat. Treat
-  // as "handled" so cleanup still finalizes, but emit no announcement.
-  if (entry.silent) {
-    console.log(`[Subagent] Suppressed announcement for silent run ${runId}`);
-    return true;
-  }
-
-  try {
-    const duration =
-      entry.endedAt && entry.startedAt ? Math.round((entry.endedAt - entry.startedAt) / 1000) : 0;
-    const status = entry.outcome?.status === "ok" ? "✅" : "❌";
-    const label = entry.label || entry.task.slice(0, 50);
-
-    const message = [
-      `${status} **Subagent completed**: ${label}`,
-      `Duration: ${duration}s`,
-      entry.outcome?.error ? `Error: ${entry.outcome.error}` : "",
-      entry.outcome?.result ? `\n${entry.outcome.result}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    emitLifecycle({
-      runId,
-      type: "announce",
-      data: {
-        requesterSessionKey: entry.requesterSessionKey,
-        message,
-        outcome: entry.outcome,
-        duration,
-      },
-    });
-
-    console.log(`[Subagent] Announced completion for ${runId}`);
-    return true;
-  } catch (err) {
-    console.error(`[Subagent] Announce failed for ${runId}:`, err);
-    return false;
-  }
 }
 
 function beginSubagentCleanup(runId: string): boolean {
@@ -368,11 +320,7 @@ function beginSubagentCleanup(runId: string): boolean {
   return true;
 }
 
-function finalizeSubagentCleanup(
-  runId: string,
-  cleanup: "delete" | "keep",
-  didAnnounce: boolean
-): void {
+function finalizeSubagentCleanup(runId: string, cleanup: "delete" | "keep"): void {
   const entry = subagentRuns.get(runId);
   if (!entry) return;
 
@@ -380,12 +328,6 @@ function finalizeSubagentCleanup(
     subagentRuns.delete(runId);
     persistSubagentRuns();
     console.log(`[Subagent] Deleted run ${runId} (cleanup=delete)`);
-    return;
-  }
-
-  if (!didAnnounce) {
-    entry.cleanupHandled = false;
-    persistSubagentRuns();
     return;
   }
 
@@ -402,9 +344,7 @@ function resumeSubagentRun(runId: string): void {
 
   if (typeof entry.endedAt === "number" && entry.endedAt > 0) {
     if (beginSubagentCleanup(runId)) {
-      void runAnnounceFlow(runId).then((didAnnounce) => {
-        finalizeSubagentCleanup(runId, entry.cleanup, didAnnounce);
-      });
+      finalizeSubagentCleanup(runId, entry.cleanup);
     }
     resumedRuns.add(runId);
     return;

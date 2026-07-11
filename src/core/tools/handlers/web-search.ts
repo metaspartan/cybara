@@ -297,6 +297,26 @@ export function selectSearchBackends(env: Record<string, string | undefined>): W
   return order;
 }
 
+function backendIsConfigured(
+  backend: WebSearchBackend,
+  env: Record<string, string | undefined>
+): boolean {
+  if (backend === "duckduckgo") return true;
+  if (backend === "tavily") return Boolean(env.TAVILY_API_KEY);
+  if (backend === "exa") return Boolean(env.EXA_API_KEY);
+  if (backend === "brave") return Boolean(env.BRAVE_API_KEY);
+  return Boolean(env.SEARXNG_URL || env.SEARXNG_BASE_URL);
+}
+
+export function resolveSearchBackends(
+  requested: WebSearchBackend | undefined,
+  env: Record<string, string | undefined>
+): WebSearchBackend[] {
+  const automatic = selectSearchBackends(env);
+  if (!requested || !backendIsConfigured(requested, env)) return automatic;
+  return [requested, ...automatic.filter((backend) => backend !== requested)];
+}
+
 function runBackend(
   backend: WebSearchBackend,
   query: string,
@@ -336,8 +356,9 @@ export async function handleWebSearch(args: Record<string, unknown>): Promise<Se
 
   // Allow forcing a specific backend; otherwise try them in resolved precedence,
   // falling through to the next on failure (DuckDuckGo is the final no-key path).
-  const requested = typeof args.provider === "string" ? (args.provider as WebSearchBackend) : null;
-  const backends = requested ? [requested] : selectSearchBackends(process.env);
+  const requested =
+    typeof args.provider === "string" ? (args.provider as WebSearchBackend) : undefined;
+  const backends = resolveSearchBackends(requested, process.env);
 
   const errors: string[] = [];
   for (const backend of backends) {

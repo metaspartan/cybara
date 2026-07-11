@@ -596,11 +596,6 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
       properties: {
         query: { type: "string", description: "Search query string" },
         count: { type: "number", description: "Number of results (1-10, default 5)" },
-        provider: {
-          type: "string",
-          enum: ["tavily", "exa", "brave", "searxng", "duckduckgo"],
-          description: "Optional: force a specific search backend instead of auto-selecting.",
-        },
       },
       required: ["query"],
     },

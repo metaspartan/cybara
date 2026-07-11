@@ -478,6 +478,9 @@ function buildToolingSection(tools: string[], isMinimal: boolean): string[] {
         "- Scroll and snapshot multiple times to get complete lists/feeds",
         "- Accumulate data across snapshots - don't forget earlier items",
         "- Extract and present the data, don't just describe what you did",
+        "- For factual research, stop once 2-4 authoritative sources support the answer; do not chase exhaustive coverage",
+        "- Treat 403, 404, robots, and anti-bot responses as unavailable sources; use a different authoritative source instead of retrying archive variants",
+        "- Use web_search for discovery and web_fetch for readable primary sources; do not use exec or curl as a web-search fallback",
         "- Keep the embedded browser open on the final page so the user can inspect it; close it only when explicitly requested",
         ""
       );
@@ -1156,6 +1159,7 @@ const TOOL_GUIDANCE = `
 Use available tools when they improve accuracy or unblock execution.
 - Default: do not narrate routine, low-risk tool calls.
 - For web data: browser({action:'open', url:'...'}) -> browser({action:'snapshot'}) -> extract and respond.
+- For factual research, stop after 2-4 authoritative sources support the answer. Treat blocked or missing URLs as unavailable and move to another source instead of repeatedly retrying.
 - Prefer the session-bound embedded browser; use a separate visual browser only when explicitly requested.
 - Leave the embedded browser open on the final page unless the user asks to close it.
 - Do not invent unavailable tools or commands.`;

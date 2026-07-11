@@ -26,7 +26,7 @@ import {
 } from "../../speech";
 import { providerManager } from "../../providers";
 import { getProviderAvailability } from "../../router";
-import { onStatus, type StatusPayload, type ToolStatusPhase } from "../../status";
+import { broadcastStatus, onStatus, type StatusPayload, type ToolStatusPhase } from "../../status";
 import type { AgentToolCallResult } from "../../agent-internals";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -442,7 +442,7 @@ function buildSubagentSystemPrompt(
     "- Do not spawn additional sub-agents from this sub-agent session",
     silent
       ? "- This is a silent background task. Do NOT announce your result to the requester."
-      : "- Return the completed result in your final response; Cybara delivers it to the requester automatically",
+      : "- Return the completed result in your final response; the parent retrieves it through sessions_wait and synthesizes the user-facing answer",
     "",
     `Requester session: ${requesterSessionKey}`,
     `Your session: ${childSessionKey}`,
@@ -605,6 +605,12 @@ async function executeSubagent(sessionId: string, run?: SubagentRunRecord): Prom
 
     console.error(`[Subagent] Session ${sessionId} failed:`, error);
   } finally {
+    broadcastStatus({
+      status: "idle",
+      sessionId,
+      agentId: session.agentId,
+      timestamp: Date.now(),
+    });
     stopStatusCapture();
     if (subagentAbortControllers.get(sessionId) === abortController) {
       subagentAbortControllers.delete(sessionId);
@@ -632,13 +638,20 @@ export function clearSubagentSession(sessionKey: string): void {
 }
 
 export async function handleSessionsSend(
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  context?: ToolContext
 ): Promise<{ success: boolean; sessionId: string; message: string }> {
   const sessionId = readTrimmedString(args.sessionId);
   const message = readTrimmedString(args.message);
 
   if (!sessionId || !message) {
     throw new Error("sessionId and message are required");
+  }
+
+  if (subagentRegistry.isSubagentSessionKey(context?.sessionId || "") && !sessions.has(sessionId)) {
+    throw new Error(
+      "Subagents cannot write directly to the parent transcript. Return the result for the parent to retrieve with sessions_wait."
+    );
   }
 
   const session = sessions.get(sessionId);

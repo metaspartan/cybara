@@ -56,7 +56,6 @@ import {
   stripSessionTitleAgentPrefix,
 } from "../core/session-title";
 import { handleMemorySave } from "../core/tools/handlers/memory";
-import { resolveAgentToolPolicy } from "../core/toolsets";
 import {
   trackSessionTokens,
   trackSessionEvent,
@@ -79,12 +78,12 @@ import {
   classifyToolCallResult,
   shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
+  suppressRecoveredWebFailureActivities,
 } from "./chat-tool-summary";
 import {
   buildMemoryFlushMessages,
   compactChatContentForPrompt,
   formatToolResultPromptBlock,
-  TOOL_RESULT_FINAL_PROMPT_MAX_CHARS,
 } from "../core/chat-token-optimization";
 import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
 import {
@@ -2130,126 +2129,38 @@ async function handleChatTurn(
           )
           .join("\n\n");
 
-        try {
-          const summaryMessages: AgentMessage[] = [
-            ...session.messages.slice(0, -1).map((m) => ({
-              role: m.role,
-              content: compactChatContentForPrompt(m),
-            })),
-            {
-              role: "user",
-              content: `The user asked: "${message}"\n\nTools executed:\n${toolResultsText}\n\nIf more actions are needed to fully complete the user's request (e.g., taking a screenshot after navigating), call the appropriate tools. Otherwise, respond to the user with what was accomplished.`,
-            },
-          ];
-
+        if (!responseContent.trim()) {
           const providerForSummary = agent?.provider_id
             ? providerManager.getWithCredentials(agent.provider_id)
             : undefined;
-
           if (providerForSummary) {
-            const summaryToolPolicy = tools ? resolveAgentToolPolicy(agent) : undefined;
-            const toolSchemaList = summaryToolPolicy?.offeredTools ?? [];
-
-            const summaryResult = await agentManager.callLLM(
-              providerForSummary,
-              agent?.model,
-              summaryMessages,
-              toolSchemaList.map((t) => ({
-                name: t.name,
-                description: t.description,
-                inputSchema: t.input_schema,
-              })),
-              {
-                agentId: agent.id,
-                sessionId: session.id,
-                channel,
-                userId,
-                workspaceDir: session.workspaceDir || undefined,
-                abortSignal: turnAbortController.signal,
-                allowedToolNames: summaryToolPolicy?.allowedToolNames,
-                allowDynamicTools: summaryToolPolicy?.allowDynamicTools,
-              }
-            );
-            responseContent = summaryResult.content;
-
-            if (summaryResult.tool_calls && summaryResult.tool_calls.length > 0) {
-              for (const tc of summaryResult.tool_calls) {
-                const timelineIndex = allToolCalls.length;
-                const outcome = classifyToolCallResult(tc.result);
-                allToolCalls.push({
-                  id: `call_${crypto.randomUUID().slice(0, 8)}`,
-                  name: tc.name,
-                  args:
-                    tc.args && typeof tc.args === "object" && !Array.isArray(tc.args)
-                      ? (tc.args as Record<string, unknown>)
-                      : {},
-                  status: outcome.status,
-                  result: tc.result,
-                  error: outcome.error,
-                  duration: 0,
-                  timeline_index: timelineIndex,
-                });
-              }
-
-              let screenshotFound = false;
-              let screenshotPath = "";
-              for (const tc of summaryResult.tool_calls) {
-                const toolResult = tc.result as { filePath?: unknown } | undefined;
-                if (typeof toolResult?.filePath === "string") {
-                  screenshotFound = true;
-                  screenshotPath = toolResult.filePath;
-                  break;
-                }
-              }
-
-              if (screenshotFound) {
-                responseContent = `Here's the screenshot of the page:\n\n📸 Screenshot saved: ${screenshotPath}\n\n![Screenshot](file://${screenshotPath})`;
-              } else {
-                const allToolResultsText = [...toolResults, ...summaryResult.tool_calls]
-                  .map((tc) =>
-                    formatToolResultPromptBlock(tc.name, tc.result, {
-                      toonEnabled: toonStructuredDataEnabled,
-                      maxChars: TOOL_RESULT_FINAL_PROMPT_MAX_CHARS,
-                      sessionId: session.id,
-                      toolCallId: typeof tc.id === "string" ? tc.id : undefined,
-                    })
-                  )
-                  .join("\n\n");
-
-                const finalMessages: AgentMessage[] = [
+            try {
+              const finalResult = await agentManager.callLLM(
+                providerForSummary,
+                agent?.model,
+                [
                   {
                     role: "user",
-                    content: `The user asked: "${message}"\n\nAll tools completed:\n${allToolResultsText}\n\nProvide a brief, friendly response summarizing what was accomplished.`,
+                    content: `The user asked: "${message}"\n\nTools completed:\n${toolResultsText}\n\nAnswer the user from these results. Do not call tools.`,
                   },
-                ];
-
-                try {
-                  const finalResult = await agentManager.callLLM(
-                    providerForSummary,
-                    agent?.model,
-                    finalMessages,
-                    [], // No more tools - final response only
-                    {
-                      agentId: agent.id,
-                      sessionId: session.id,
-                      channel,
-                      userId,
-                      workspaceDir: session.workspaceDir || undefined,
-                      abortSignal: turnAbortController.signal,
-                    }
-                  );
-                  responseContent = finalResult.content;
-                } catch {
-                  responseContent = `Completed! ${allToolCalls.length} tool${allToolCalls.length === 1 ? "" : "s"} executed successfully.`;
+                ],
+                [],
+                {
+                  agentId: agent.id,
+                  sessionId: session.id,
+                  channel,
+                  userId,
+                  workspaceDir: session.workspaceDir || undefined,
+                  abortSignal: turnAbortController.signal,
                 }
-              }
+              );
+              responseContent = finalResult.content;
+            } catch {
+              responseContent = buildToolExecutionFallbackMessage(toolResults);
             }
+          } else {
+            responseContent = buildToolExecutionFallbackMessage(toolResults);
           }
-        } catch {
-          log.warn("Could not generate summary, returning concise tool digest", {
-            sessionId: session.id,
-          });
-          responseContent = buildToolExecutionFallbackMessage(toolResults);
         }
       }
 
@@ -2336,6 +2247,12 @@ async function handleChatTurn(
           parseIsoTimestampMs(userMessage.timestamp) || assistantTimestampMs
         )
       : undefined;
+  const visibleProcessActivities = suppressRecoveredWebFailureActivities(
+    statusSnapshotActivities && statusSnapshotActivities.length > 0
+      ? statusSnapshotActivities
+      : fallbackProcessActivities,
+    allToolCalls
+  );
   const assistantContent =
     cleanContent.trim().length > 0
       ? cleanContent
@@ -2354,10 +2271,7 @@ async function handleChatTurn(
     timestamp: assistantTimestamp,
     thinking: finalThinking || undefined,
     tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
-    process_activities:
-      statusSnapshotActivities && statusSnapshotActivities.length > 0
-        ? statusSnapshotActivities
-        : fallbackProcessActivities,
+    process_activities: visibleProcessActivities,
   };
   appendAssistantMessage(session, assistantMessage);
   if (!session.title || shouldRegenerateSessionTitle(session.title)) {

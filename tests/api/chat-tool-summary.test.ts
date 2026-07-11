@@ -4,6 +4,7 @@ import {
   classifyToolCallResult,
   shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
+  suppressRecoveredWebFailureActivities,
 } from "../../src/api/chat-tool-summary";
 
 describe("chat tool summary utilities", () => {
@@ -65,5 +66,32 @@ describe("chat tool summary utilities", () => {
       )
     ).toBe(true);
     expect(shouldPreferArtifactsForMessage("hello what can you do")).toBe(false);
+  });
+
+  test("hides recovered web failures from the main timeline", () => {
+    const activities = [
+      { phase: "error", toolName: "web_fetch", text: "Fetch failed" },
+      { phase: "result", toolName: "web_fetch", text: "Fetched source" },
+      { phase: "error", toolName: "exec", text: "Command failed" },
+    ];
+    const filtered = suppressRecoveredWebFailureActivities(activities, [
+      { name: "web_fetch", result: { error: "HTTP 404" } },
+      { name: "web_fetch", result: { content: "Primary source text" } },
+    ]);
+
+    expect(filtered).toEqual([
+      { phase: "result", toolName: "web_fetch", text: "Fetched source" },
+      { phase: "error", toolName: "exec", text: "Command failed" },
+    ]);
+  });
+
+  test("keeps web failures visible when no source succeeded", () => {
+    const activities = [{ phase: "error", toolName: "web_search", text: "Search failed" }];
+    expect(
+      suppressRecoveredWebFailureActivities(activities, [
+        { name: "web_search", result: { count: 0, results: [] } },
+        { name: "web_fetch", result: { error: "HTTP 404" } },
+      ])
+    ).toEqual(activities);
   });
 });

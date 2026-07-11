@@ -161,6 +161,11 @@ import {
   type OpenAIUsage,
 } from "./agent-internals";
 import {
+  countWebResearchCalls,
+  WEB_RESEARCH_SYNTHESIS_INSTRUCTION,
+  webResearchBudgetReached,
+} from "./agent-web-research";
+import {
   extractOpenAICodexAccountId,
   getOpenAICodexModelCandidates,
   shouldRetryOpenAICodexModel,
@@ -4124,6 +4129,7 @@ class AgentManager {
     const allToolCalls: AgentToolCallResult[] = [];
     let finalContent = currentData.content?.find((c) => c.type === "text")?.text || "";
     let lastProgressThought = "";
+    let webResearchToolCalls = 0;
     const thinking =
       currentData.content?.find((c) => c.type === ("thinking" as string))?.text || undefined;
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
@@ -4295,6 +4301,11 @@ class AgentManager {
         }
       }
 
+      webResearchToolCalls += countWebResearchCalls(
+        iterationToolCalls.map((toolCall) => toolCall.name)
+      );
+      const forceResearchSynthesis = webResearchBudgetReached(webResearchToolCalls);
+
       const toolResultIds = new Set(toolResults.map((toolResult) => toolResult.tool_use_id));
       const assistantLoopContent = toAnthropicReplayContentWithNormalizedToolUses(
         currentData.content,
@@ -4309,9 +4320,13 @@ class AgentManager {
       const steeringText = this.consumeSteeringText(toolContext);
       currentMessages.push({
         role: "user",
-        content: steeringText
-          ? [...toolResults, { type: "text", text: steeringText }]
-          : toolResults,
+        content: [
+          ...toolResults,
+          ...(steeringText ? [{ type: "text", text: steeringText }] : []),
+          ...(forceResearchSynthesis
+            ? [{ type: "text", text: WEB_RESEARCH_SYNTHESIS_INSTRUCTION }]
+            : []),
+        ],
       });
 
       this.compactAnthropicLoopMessagesForContext(currentMessages, contextGuard.contextBudgetChars);
@@ -4327,7 +4342,7 @@ class AgentManager {
         loopRequestBody.system = systemMessage.content;
       }
 
-      if (tools && Array.isArray(tools) && tools.length > 0) {
+      if (!forceResearchSynthesis && tools && Array.isArray(tools) && tools.length > 0) {
         loopRequestBody.tools = tools.map((t) => ({
           name: t.name,
           description: t.description || "",

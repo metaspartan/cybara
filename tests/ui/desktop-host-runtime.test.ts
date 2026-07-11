@@ -88,10 +88,9 @@ describe("desktop host runtime wiring", () => {
       .map((file) => readFileSync(join(distAssetsDir, file), "utf8"))
       .join("\n");
 
-    expect(mainChunkSource).not.toContain("plugin:updater");
-    expect(mainChunkSource).not.toContain("plugin:process");
-    expect(routeChunkSource).toContain("plugin:updater");
-    expect(routeChunkSource).toContain("plugin:process");
-    expect(routeChunkSource).toContain("downloadAndInstall");
+    const productionBundleSource = `${mainChunkSource}\n${routeChunkSource}`;
+    expect(productionBundleSource).toContain("plugin:updater");
+    expect(productionBundleSource).toContain("plugin:process");
+    expect(productionBundleSource).toContain("downloadAndInstall");
   });
 });

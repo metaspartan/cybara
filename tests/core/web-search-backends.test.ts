@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { selectSearchBackends } from "../../src/core/tools/handlers/web-search";
+import {
+  resolveSearchBackends,
+  selectSearchBackends,
+} from "../../src/core/tools/handlers/web-search";
 
 describe("web search backend selection", () => {
   test("DuckDuckGo is always the final fallback with no keys", () => {
@@ -38,5 +41,22 @@ describe("web search backend selection", () => {
 
   test("empty-string keys are treated as unset", () => {
     expect(selectSearchBackends({ TAVILY_API_KEY: "", BRAVE_API_KEY: "" })).toEqual(["duckduckgo"]);
+  });
+
+  test("ignores an explicitly requested backend when it is not configured", () => {
+    expect(resolveSearchBackends("searxng", { BRAVE_API_KEY: "b" })).toEqual([
+      "brave",
+      "duckduckgo",
+    ]);
+  });
+
+  test("falls through after an explicitly requested configured backend", () => {
+    expect(
+      resolveSearchBackends("exa", {
+        TAVILY_API_KEY: "t",
+        EXA_API_KEY: "e",
+        BRAVE_API_KEY: "b",
+      })
+    ).toEqual(["exa", "tavily", "brave", "duckduckgo"]);
   });
 });

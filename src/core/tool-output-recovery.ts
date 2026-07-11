@@ -36,6 +36,15 @@ function ensurePrivateDir(path: string): void {
   } catch {}
 }
 
+function formatPersistedContent(content: string): string {
+  try {
+    const parsed: unknown = JSON.parse(content);
+    return `${JSON.stringify(parsed, null, 2)}\n`;
+  } catch {
+    return content;
+  }
+}
+
 function cleanupOldOutputs(now = Date.now()): void {
   if (now - lastCleanupAt < CLEANUP_INTERVAL_MS) return;
   lastCleanupAt = now;
@@ -71,9 +80,10 @@ export function persistToolOutputForRecovery(input: {
     ensurePrivateDir(TOOL_OUTPUT_RECOVERY_DIR);
     ensurePrivateDir(sessionDir);
     const timestamp = (input.now ?? new Date()).toISOString().replace(/[:.]/g, "-");
-    const hash = createHash("sha256").update(input.content).digest("hex").slice(0, 12);
+    const persistedContent = formatPersistedContent(input.content);
+    const hash = createHash("sha256").update(persistedContent).digest("hex").slice(0, 12);
     const path = join(sessionDir, `${timestamp}-${tool}-${call}-${hash}.txt`);
-    writeFileSync(path, input.content, "utf8");
+    writeFileSync(path, persistedContent, "utf8");
     try {
       chmodSync(path, 0o600);
     } catch {}

@@ -55,4 +55,28 @@ describe("tool output recovery", () => {
 
     rmSync(path!, { force: true });
   });
+
+  test("persists structured output as line-readable equivalent JSON", () => {
+    const payload = {
+      status: "completed",
+      runs: Array.from({ length: 40 }, (_, index) => ({
+        runId: `run-${index}`,
+        result: `finding-${index}-${"detail".repeat(40)}`,
+      })),
+    };
+    const serialized = JSON.stringify(payload);
+    const path = persistToolOutputForRecovery({
+      content: serialized,
+      sessionId: "structured-output",
+      toolName: "sessions_wait",
+      toolCallId: "wait-1",
+    });
+
+    expect(path).toBeTruthy();
+    const persisted = readFileSync(path!, "utf8");
+    expect(persisted.split("\n").length).toBeGreaterThan(80);
+    expect(JSON.parse(persisted)).toEqual(payload);
+
+    rmSync(path!, { force: true });
+  });
 });
