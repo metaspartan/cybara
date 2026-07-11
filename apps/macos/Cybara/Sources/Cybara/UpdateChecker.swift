@@ -78,23 +78,26 @@ final class UpdateChecker: ObservableObject {
 
     private func presentUpdateAlert(_ release: ReleaseInfo) {
         let asset = UpdateCore.selectNativeAsset(release.assets, arch: UpdateCore.currentArchSlug())
+        let checksumAsset = asset.flatMap {
+            UpdateCore.selectChecksumAsset(for: $0, assets: release.assets)
+        }
         let alert = NSAlert()
         alert.messageText = "A new version of Cybara is available"
         alert.informativeText =
             "\(release.name ?? release.tagName) is available. You're running \(currentVersion)."
-        if asset != nil {
+        if asset != nil, checksumAsset != nil {
             alert.addButton(withTitle: "Install & Relaunch")
         }
         alert.addButton(withTitle: "Release Notes")
         alert.addButton(withTitle: "Later")
 
         let response = alert.runModal()
-        if let asset, response == .alertFirstButtonReturn {
-            Task { await installAndRelaunch(asset) }
+        if let asset, let checksumAsset, response == .alertFirstButtonReturn {
+            Task { await installAndRelaunch(asset, checksumAsset: checksumAsset) }
             return
         }
         let notesResponse: NSApplication.ModalResponse =
-            asset == nil ? .alertFirstButtonReturn : .alertSecondButtonReturn
+            asset == nil || checksumAsset == nil ? .alertFirstButtonReturn : .alertSecondButtonReturn
         if response == notesResponse, let url = UpdateChecker.safeReleaseURL(release.htmlURL) {
             NSWorkspace.shared.open(url)
         }
@@ -108,10 +111,11 @@ final class UpdateChecker: ObservableObject {
         return url
     }
 
-    private func installAndRelaunch(_ asset: ReleaseAsset) async {
+    private func installAndRelaunch(_ asset: ReleaseAsset, checksumAsset: ReleaseAsset) async {
         do {
             try await UpdateChecker.stageInstaller(
                 asset: asset,
+                checksumAsset: checksumAsset,
                 destAppPath: Bundle.main.bundleURL.path,
                 scriptBody: UpdateCore.selfUpdateScript
             )
@@ -154,15 +158,33 @@ extension UpdateChecker {
     /// filesystem and process work runs off the main actor.
     nonisolated static func stageInstaller(
         asset: ReleaseAsset,
+        checksumAsset: ReleaseAsset,
         destAppPath: String,
         scriptBody: String
     ) async throws {
-        guard let url = URL(string: asset.downloadURL) else {
+        guard let url = UpdateCore.trustedReleaseAssetURL(asset.downloadURL) else {
             throw UpdateInstallError.message("Invalid download URL.")
+        }
+        guard let checksumURL = UpdateCore.trustedReleaseAssetURL(checksumAsset.downloadURL) else {
+            throw UpdateInstallError.message("Invalid checksum URL.")
+        }
+        let (checksumData, checksumResponse) = try await URLSession.shared.data(from: checksumURL)
+        if let http = checksumResponse as? HTTPURLResponse, http.statusCode != 200 {
+            throw UpdateInstallError.message("Checksum download failed (HTTP \(http.statusCode)).")
+        }
+        guard
+            let checksumText = String(data: checksumData, encoding: .utf8),
+            let expectedChecksum = UpdateCore.parseSHA256(checksumText)
+        else {
+            throw UpdateInstallError.message("The published checksum is invalid.")
         }
         let (downloadedURL, response) = try await URLSession.shared.download(from: url)
         if let http = response as? HTTPURLResponse, http.statusCode != 200 {
             throw UpdateInstallError.message("Download failed (HTTP \(http.statusCode)).")
+        }
+        let archiveData = try Data(contentsOf: downloadedURL, options: .mappedIfSafe)
+        guard UpdateCore.sha256Hex(archiveData) == expectedChecksum else {
+            throw UpdateInstallError.message("The downloaded update failed checksum verification.")
         }
 
         let fileManager = FileManager.default

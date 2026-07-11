@@ -11,7 +11,7 @@ export function Channels(): React.ReactElement {
       <SectionHeading
         eyebrow={t("site.channels.eyebrow")}
         title={t("site.channels.title")}
-        description="One agent runtime, adapters for the platforms people already use — each gated by pairing, allowlists, and per-channel policy."
+        description="Your agents shouldn't live in one app. Cybara speaks to the platforms your team already uses — chat apps, team tools, and notification services — from a single runtime, with every channel gated by pairing, allowlists, and per-channel access policy."
       />
       <div className="glass channel-panel">
         <div className="channel-cloud">

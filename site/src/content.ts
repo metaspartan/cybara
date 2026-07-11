@@ -28,16 +28,16 @@ export interface UseCase {
 
 export interface NavLink {
   label: string;
-  labelKey: TranslationKey;
+  labelKey?: TranslationKey;
   href: string;
 }
 
 export const NAV_LINKS: readonly NavLink[] = [
-  { label: "Features", labelKey: "site.nav.features", href: "#features" },
-  { label: "Providers", labelKey: "site.nav.providers", href: "#providers" },
-  { label: "Channels", labelKey: "site.nav.channels", href: "#channels" },
+  { label: "Features", labelKey: "site.nav.features", href: "/features" },
+  { label: "Providers", labelKey: "site.nav.providers", href: "/providers" },
+  { label: "Channels", labelKey: "site.nav.channels", href: "/channels" },
   { label: "Download", labelKey: "site.nav.download", href: "/download" },
-  { label: "Control", labelKey: "site.nav.control", href: "#control" },
+  { label: "FAQ", href: "/faq" },
 ];
 
 export const GITHUB_URL = "https://github.com/metaspartan/cybara";
@@ -153,8 +153,38 @@ export const FEATURES: readonly Feature[] = [
   {
     title: "MCP in both directions",
     description:
-      "Install MCP servers as agent tools — or flip it around and expose Cybara's own tools to Claude Desktop, editors, and other agents over MCP and ACP.",
+      "Install MCP servers as agent tools from the official registry, Smithery, or npm — or flip it around and expose Cybara's own tools to Claude Desktop and other agents over MCP.",
     icon: "plug",
+  },
+  {
+    title: "Editor integration over ACP",
+    description:
+      "Drive Cybara agents straight from your editor over the Agent Client Protocol. Run `cybara acp` and connect Zed or any ACP client to code with your own self-hosted runtime.",
+    icon: "terminal",
+  },
+  {
+    title: "Live browser preview",
+    description:
+      "A session-bound embedded browser the agent drives — open pages, click, scroll, extract data, and screenshot — while you watch it work live in the chat panel.",
+    icon: "desktop",
+  },
+  {
+    title: "25+ messaging channels",
+    description:
+      "Run agents on Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Teams, and 20+ more — each gated by pairing, allowlists, and per-channel access policy.",
+    icon: "mobile",
+  },
+  {
+    title: "Persistent memory",
+    description:
+      "Agents recall prior work, decisions, people, and preferences from a searchable memory store, with semantic recall that compounds across every session.",
+    icon: "package",
+  },
+  {
+    title: "Skill registry & install",
+    description:
+      "Browse and install reusable SKILL.md procedures from ClawHub, Skills.sh, and GitHub, or let agents author their own — self-improvement that grows your toolkit.",
+    icon: "skills",
   },
 ];
 
@@ -478,6 +508,41 @@ export const FAQS: readonly Faq[] = [
     question: "How does Cybara keep operators in control?",
     answer:
       "Sensitive tool calls can require interactive approval with per-session or persistent allowlists, the filesystem supports checkpoint and rollback, wallet operations enforce policy caps and allowlists, and the gateway uses a localhost auth policy with rotatable API keys.",
+  },
+  {
+    question: "Which model providers can I use?",
+    answer:
+      "Cybara connects to 60+ providers — OpenAI, Anthropic, Google Gemini, xAI, Meta, DeepSeek, Qwen, Moonshot/Kimi, Z.ai/GLM, MiniMax, Groq, OpenRouter, local Ollama, and more. You bring your own keys; Cybara pools multiple keys per provider, rotates on rate limits, routes by weight or cost, and enforces spend caps.",
+  },
+  {
+    question: "How does Cybara handle my API keys and data?",
+    answer:
+      "Everything stays on infrastructure you control. Model keys, wallet keys, memory, and conversations live locally, the wallet is encrypted at rest, and there's no required account, telemetry, or cloud relay. Keys are never printed to logs and never leave your machine unless a tool you approve sends them.",
+  },
+  {
+    question: "Can I drive Cybara from my code editor?",
+    answer:
+      "Yes. Run cybara acp to expose the agent over the Agent Client Protocol (ACP) and connect Zed or any ACP-compatible editor, so you can code with your own self-hosted runtime. The ACP server can be toggled on or off in settings.",
+  },
+  {
+    question: "What are skills and where do they come from?",
+    answer:
+      "Skills are reusable SKILL.md procedures agents follow for recurring work. Browse and install them from the ClawHub, Skills.sh, and GitHub registries, author your own, or let agents codify a verified procedure automatically — the loader picks it up in every future session.",
+  },
+  {
+    question: "Does Cybara support MCP servers?",
+    answer:
+      "In both directions. Install Model Context Protocol servers as agent tools from the official MCP registry, Smithery, or npm — or expose Cybara's own tools to Claude Desktop and other MCP clients.",
+  },
+  {
+    question: "Can agents use a real web browser?",
+    answer:
+      "Yes. Each session gets an embedded browser the agent drives — opening pages, clicking, scrolling, extracting data, and taking screenshots — and you watch it work live in the chat panel. It works cross-platform, including on Windows.",
+  },
+  {
+    question: "What does Cybara cost?",
+    answer:
+      "Cybara itself is free and MIT-licensed. You only pay for the model provider usage on your own accounts — Cybara adds no markup, subscription, or per-seat fee, and there's no hosted tier to buy.",
   },
 ];
 

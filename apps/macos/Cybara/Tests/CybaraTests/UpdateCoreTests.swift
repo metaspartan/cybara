@@ -12,6 +12,14 @@ final class UpdateCoreTests: XCTestCase {
             "https://api.github.com/repos/metaspartan/cybara/releases/latest")
     }
 
+    func testTrustedReleaseAssetURL() {
+        XCTAssertNotNil(
+            UpdateCore.trustedReleaseAssetURL(
+                "https://github.com/metaspartan/cybara/releases/download/v1.0.1/update.zip"))
+        XCTAssertNil(UpdateCore.trustedReleaseAssetURL("http://github.com/update.zip"))
+        XCTAssertNil(UpdateCore.trustedReleaseAssetURL("https://example.com/update.zip"))
+    }
+
     // MARK: - parseSemVer
 
     func testParseSemVerPlain() {
@@ -148,6 +156,23 @@ final class UpdateCoreTests: XCTestCase {
             ReleaseAsset(name: "Cybara_aarch64.app.tar.gz", downloadURL: "https://x/tauri"),
         ]
         XCTAssertNil(UpdateCore.selectNativeAsset(assets, arch: "arm64"))
+    }
+
+    func testSelectChecksumAssetMatchesNativeArchive() {
+        let archive = ReleaseAsset(
+            name: "CybaraNative-v1.0.916-arm64.zip", downloadURL: "https://x/native")
+        let checksum = ReleaseAsset(
+            name: "CybaraNative-v1.0.916-arm64.zip.sha256", downloadURL: "https://x/checksum")
+        XCTAssertEqual(
+            UpdateCore.selectChecksumAsset(for: archive, assets: [archive, checksum]),
+            checksum)
+    }
+
+    func testSHA256ParsingAndHashing() {
+        let digest = UpdateCore.sha256Hex(Data("cybara".utf8))
+        XCTAssertEqual(digest, "a00930355f0a279a9c418d061cce9dbbb0e2e54734f4fd8388197bef2b431a1b")
+        XCTAssertEqual(UpdateCore.parseSHA256("\(digest)  update.zip\n"), digest)
+        XCTAssertNil(UpdateCore.parseSHA256("not-a-checksum"))
     }
 
     func testCurrentArchSlugIsKnown() {

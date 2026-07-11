@@ -36,7 +36,7 @@ export function Nav(): React.ReactElement {
             const href = link.href.startsWith("#") ? `/${link.href}` : link.href;
             return (
               <A key={link.href} href={href} className="nav-link">
-                {t(link.labelKey)}
+                {link.labelKey ? t(link.labelKey) : link.label}
               </A>
             );
           })}

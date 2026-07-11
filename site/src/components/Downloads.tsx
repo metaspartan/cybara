@@ -22,7 +22,7 @@ export function Downloads(): React.ReactElement {
       <SectionHeading
         eyebrow={t("site.download.eyebrow")}
         title={t("site.download.title")}
-        description="Signed binaries for every platform, resolved straight from GitHub Releases — desktop, mobile, and CLI."
+        description="Install in minutes on any machine you own. Cybara ships native desktop apps for macOS, Windows, and Linux, mobile apps for iOS and Android, and a single-binary CLI — every build signed, checksummed, and resolved straight from GitHub Releases, with in-place auto-updates after that."
       />
       {release && release.version ? (
         <div className="release-badge">

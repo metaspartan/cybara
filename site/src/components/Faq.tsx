@@ -7,7 +7,7 @@ export function Faq(): React.ReactElement {
       <SectionHeading
         eyebrow="Questions"
         title="Frequently asked"
-        description="The essentials about what Cybara is, where it runs, and how it stays under your control."
+        description="What Cybara is, where it runs, which providers and channels it supports, how it protects your keys and data, and how it stays under your control."
       />
       <div className="faq-list">
         {FAQS.map((faq) => (

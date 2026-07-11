@@ -4,27 +4,10 @@ import { render, Box, Text, useApp, useInput } from "ink";
 import Gradient from "ink-gradient";
 import Spinner from "ink-spinner";
 import { spawn } from "child_process";
-import { createHash } from "crypto";
-import {
-  chmodSync,
-  copyFileSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-  renameSync,
-  unlinkSync,
-} from "fs";
-import { dirname, join } from "path";
-import { homedir, tmpdir } from "os";
-import { getAppVersion, getReleaseRepository } from "./core/build-info";
-import {
-  buildGitHubReleaseApiUrl,
-  buildReleaseChecksumUrl,
-  compareVersions,
-  isNewerVersion,
-  resolveReleaseBinaryFilename,
-  resolveSelfUpdateDestination,
-} from "./core/versioning";
+import { mkdirSync, openSync, readFileSync } from "fs";
+import { join } from "path";
+import { homedir } from "os";
+import { getAppVersion } from "./core/build-info";
 import { checkForUpdateInBackground, isUpdateCheckDisabled } from "./core/update-check";
 import { runMcpStdioServer } from "./core/mcp-host-server";
 import { resolveCybaraHome } from "./core/cybara-home";
@@ -49,6 +32,7 @@ import {
 } from "./cli-tui-panels";
 import { printArtifacts, printJourney } from "./cli-resource-commands";
 import { getFlagValue, hasFlag } from "./cli-args";
+import { rawUpdate } from "./cli-update";
 import { commandExists } from "./core/platform";
 import {
   configureWalletCli,
@@ -3980,19 +3964,6 @@ function shouldExitAfterMain(): boolean {
   return !["wizard", "setup", "install", "configure", "onboard", "tui"].includes(command);
 }
 
-interface GitHubReleaseAsset {
-  name?: string;
-  browser_download_url?: string;
-}
-
-type GitHubReleaseNamedAsset = GitHubReleaseAsset & { name: string };
-
-interface GitHubReleaseResponse {
-  tag_name?: string;
-  html_url?: string;
-  assets?: GitHubReleaseAsset[];
-}
-
 function getVersion(): string {
   return getAppVersion();
 }
@@ -4086,187 +4057,6 @@ async function rawPairCommand(args: string[]): Promise<void> {
     await rawPairPolicy(channelName, policy);
   } else {
     await rawPairApprove(pairSubCmd);
-  }
-}
-
-async function fetchGitHubRelease(
-  repository: string,
-  versionArg?: string
-): Promise<{ release: GitHubReleaseResponse; assetName: string; downloadUrl: string }> {
-  const releaseApiUrl = buildGitHubReleaseApiUrl(repository, versionArg);
-  const assetName = resolveReleaseBinaryFilename(process.platform, process.arch);
-
-  if (!assetName) {
-    console.error(`No release asset mapping exists for ${process.platform}/${process.arch}.`);
-    process.exit(1);
-  }
-
-  const releaseResponse = await fetch(releaseApiUrl, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "User-Agent": "cybara-cli",
-    },
-  });
-  if (!releaseResponse.ok) {
-    console.error(`Failed to fetch release metadata (${releaseResponse.status}).`);
-    process.exit(1);
-  }
-
-  const release = (await releaseResponse.json()) as GitHubReleaseResponse;
-  const hasExe = assetName.endsWith(".exe");
-  const legacyBase = hasExe ? assetName.slice(0, -4) : assetName;
-  const suffix = `${legacyBase.replace(/^cybara/, "")}-cli`;
-  const asset = (release.assets || []).find((candidate): candidate is GitHubReleaseNamedAsset => {
-    const candidateName = candidate.name;
-    if (!candidateName || candidateName.endsWith(".sha256")) return false;
-    const base = candidateName.endsWith(".exe") ? candidateName.slice(0, -4) : candidateName;
-    return base.endsWith(suffix);
-  });
-  const downloadUrl = asset?.browser_download_url;
-
-  if (!asset || !downloadUrl) {
-    console.error(`Release ${release.tag_name || "latest"} does not contain a CLI asset (*${suffix}).`);
-    process.exit(1);
-  }
-
-  return { release, assetName: asset.name, downloadUrl };
-}
-
-function computeFileSha256(filePath: string): string {
-  const hash = createHash("sha256");
-  hash.update(readFileSync(filePath));
-  return hash.digest("hex");
-}
-
-async function fetchExpectedChecksum(
-  repository: string,
-  assetName: string,
-  tagName?: string
-): Promise<string | null> {
-  const checksumUrl = buildReleaseChecksumUrl(repository, assetName, tagName);
-  try {
-    const response = await fetch(checksumUrl, {
-      headers: { "User-Agent": "cybara-cli" },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!response.ok) return null;
-    const raw = (await response.text()).trim();
-    // Sidecars are written as "<hash>  <filename>"; tolerate bare hashes too.
-    const firstToken = raw.split(/\s+/)[0]?.toLowerCase();
-    return /^[0-9a-f]{64}$/.test(firstToken) ? firstToken : null;
-  } catch {
-    return null;
-  }
-}
-
-interface UpdateOptions {
-  version?: string;
-  checkOnly?: boolean;
-  force?: boolean;
-}
-
-async function rawUpdate(options: UpdateOptions = {}): Promise<void> {
-  const { version: versionArg, checkOnly = false, force = false } = options;
-  const repository = getReleaseRepository();
-  const { release, assetName, downloadUrl } = await fetchGitHubRelease(repository, versionArg);
-
-  const currentVersion = getAppVersion();
-  const latestTag = release.tag_name?.trim() || "";
-  const latestVersion = latestTag.replace(/^v/i, "");
-  const updateAvailable = latestVersion ? isNewerVersion(latestVersion, currentVersion) : false;
-
-  if (checkOnly) {
-    if (!latestVersion) {
-      console.log("Could not determine the latest published version.");
-      process.exit(1);
-    }
-    if (updateAvailable) {
-      console.log(`Update available: ${currentVersion} -> ${latestVersion}`);
-      console.log(release.html_url || `https://github.com/${repository}/releases/latest`);
-      process.exit(1); // non-zero signals "stale" for scripts/CI
-    }
-    console.log(`Already on the latest release (${currentVersion}).`);
-    process.exit(0);
-  }
-
-  if (latestVersion && !updateAvailable && !force) {
-    console.log(`Already on the latest release (${currentVersion}). Use --force to reinstall.`);
-    return;
-  }
-
-  const destinationPath = resolveSelfUpdateDestination(process.execPath, process.platform);
-  const destinationDir = dirname(destinationPath);
-  mkdirSync(destinationDir, { recursive: true });
-
-  const extension = process.platform === "win32" ? ".exe" : "";
-  const tempPath = join(destinationDir, `.cybara-update-${Date.now()}${extension}`);
-
-  console.log(`Downloading ${release.tag_name || "latest"} from ${repository}...`);
-  const downloadResponse = await fetch(downloadUrl, {
-    headers: {
-      Accept: "application/octet-stream",
-      "User-Agent": "cybara-cli",
-    },
-  });
-  if (!downloadResponse.ok) {
-    console.error(`Failed to download release asset (${downloadResponse.status}).`);
-    process.exit(1);
-  }
-
-  await Bun.write(tempPath, Buffer.from(await downloadResponse.arrayBuffer()));
-
-  // Integrity check: verify the downloaded binary against its published SHA256 sidecar.
-  const expectedChecksum = await fetchExpectedChecksum(repository, assetName, release.tag_name);
-  if (expectedChecksum) {
-    const actualChecksum = computeFileSha256(tempPath);
-    if (actualChecksum !== expectedChecksum) {
-      unlinkSync(tempPath);
-      console.error(
-        "Checksum verification FAILED — the downloaded asset is corrupted or tampered."
-      );
-      console.error(`Expected: ${expectedChecksum}`);
-      console.error(`Actual:   ${actualChecksum}`);
-      console.error("Aborting update. Re-run later or download manually from GitHub Releases.");
-      process.exit(1);
-    }
-    console.log("Checksum verified.");
-  } else if (!force) {
-    // Refuse to install an unverified binary unless the user explicitly opts in with --force.
-    unlinkSync(tempPath);
-    console.error("No SHA256 checksum sidecar was found for this release asset.");
-    console.error(
-      "For your safety, the update was aborted. If you understand the risk, re-run with --force."
-    );
-    process.exit(1);
-  } else {
-    console.warn("Warning: no checksum sidecar found; installing unverified (--force).");
-  }
-
-  if (process.platform !== "win32") {
-    chmodSync(tempPath, 0o755);
-  }
-
-  if (process.platform === "win32" && destinationPath === process.execPath) {
-    const fallbackPath = join(tmpdir(), `cybara-${release.tag_name || "latest"}${extension}`);
-    copyFileSync(tempPath, fallbackPath);
-    unlinkSync(tempPath);
-    console.log("Windows cannot replace the running executable in place.");
-    console.log(`Downloaded the update to: ${fallbackPath}`);
-    console.log(`Replace ${process.execPath} with that file after exiting Cybara.`);
-    return;
-  }
-
-  if (process.platform === "win32") {
-    copyFileSync(tempPath, destinationPath);
-    unlinkSync(tempPath);
-  } else {
-    renameSync(tempPath, destinationPath);
-  }
-
-  console.log(`Updated Cybara to ${release.tag_name || "latest"}.`);
-  console.log(`Binary path: ${destinationPath}`);
-  if (destinationPath !== process.execPath) {
-    console.log("If this binary is not already on your PATH, add it before the next run.");
   }
 }
 

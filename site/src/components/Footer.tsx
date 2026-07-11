@@ -23,7 +23,7 @@ export function Footer(): React.ReactElement {
         <nav className="footer-links" aria-label="Footer">
           {NAV_LINKS.map((link) => (
             <a key={link.href} href={link.href} className="footer-link">
-              {t(link.labelKey)}
+              {link.labelKey ? t(link.labelKey) : link.label}
             </a>
           ))}
           <a href={GITHUB_URL} target="_blank" rel="noreferrer" className="footer-link">

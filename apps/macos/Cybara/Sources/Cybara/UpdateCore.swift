@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// A downloadable asset attached to a GitHub release.
@@ -80,6 +81,13 @@ public enum UpdateCore {
         "https://api.github.com/repos/\(repo)/releases/latest"
     }
 
+    public static func trustedReleaseAssetURL(_ raw: String) -> URL? {
+        guard let url = URL(string: raw), url.scheme?.lowercased() == "https" else { return nil }
+        guard let host = url.host?.lowercased() else { return nil }
+        guard host == "github.com" || host == "www.github.com" else { return nil }
+        return url
+    }
+
     /// Parse a version string like "v1.2.3", "1.2.3", or "1.2.3-beta.1".
     /// Returns nil if it doesn't contain at least major.minor.patch.
     public static func parseSemVer(_ raw: String) -> SemVer? {
@@ -131,6 +139,26 @@ public enum UpdateCore {
             let name = asset.name.lowercased()
             return name.hasPrefix("cybaranative-") && name.hasSuffix(suffix)
         }
+    }
+
+    public static func selectChecksumAsset(
+        for asset: ReleaseAsset,
+        assets: [ReleaseAsset]
+    ) -> ReleaseAsset? {
+        let expectedName = "\(asset.name).sha256".lowercased()
+        return assets.first { $0.name.lowercased() == expectedName }
+    }
+
+    public static func parseSHA256(_ text: String) -> String? {
+        guard let token = text.split(whereSeparator: { $0.isWhitespace }).first else { return nil }
+        let normalized = token.lowercased()
+        guard normalized.count == 64 else { return nil }
+        guard normalized.allSatisfy({ $0.isHexDigit }) else { return nil }
+        return normalized
+    }
+
+    public static func sha256Hex(_ data: Data) -> String {
+        SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
     /// Shell script that swaps the running app bundle with a freshly downloaded

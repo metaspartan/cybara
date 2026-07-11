@@ -186,6 +186,54 @@
                   "@type": "Answer",
                   "text": "Sensitive tool calls can require interactive approval with per-session or persistent allowlists, the filesystem supports checkpoint and rollback, wallet operations enforce policy caps and allowlists, and the gateway uses a localhost auth policy with rotatable API keys."
                 }
+              },
+              {
+                "@type": "Question",
+                "name": "Which model providers can I use with Cybara?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Cybara connects to 60+ providers including OpenAI, Anthropic, Google Gemini, xAI, Meta, DeepSeek, Qwen, Moonshot/Kimi, Z.ai/GLM, MiniMax, Groq, OpenRouter, and local Ollama. You bring your own keys; Cybara pools multiple keys per provider, rotates on rate limits, routes by weight or cost, and enforces spend caps."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How does Cybara handle my API keys and data?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Everything stays on infrastructure you control. Model keys, wallet keys, memory, and conversations live locally, the wallet is encrypted at rest, and there is no required account, telemetry, or cloud relay. Keys are never printed to logs and never leave your machine unless a tool you approve sends them."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I drive Cybara from my code editor?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Run 'cybara acp' to expose the agent over the Agent Client Protocol (ACP) and connect Zed or any ACP-compatible editor to code with your own self-hosted runtime. The ACP server can be toggled on or off in settings."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What are Cybara skills and where do they come from?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Skills are reusable SKILL.md procedures agents follow for recurring work. Browse and install them from the ClawHub, Skills.sh, and GitHub registries, author your own, or let agents codify a verified procedure automatically so the loader reuses it in future sessions."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Does Cybara support MCP servers?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "In both directions. Install Model Context Protocol servers as agent tools from the official MCP registry, Smithery, or npm, or expose Cybara's own tools to Claude Desktop and other MCP clients."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What does Cybara cost?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Cybara itself is free and MIT-licensed. You only pay for model provider usage on your own accounts — Cybara adds no markup, subscription, or per-seat fee, and there is no hosted tier to buy."
+                }
               }
             ]
           }

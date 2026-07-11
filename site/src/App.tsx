@@ -8,6 +8,7 @@ import { Channels } from "./components/Channels";
 import { Platforms } from "./components/Platforms";
 import { UseCases } from "./components/UseCases";
 import { HowItWorks } from "./components/HowItWorks";
+import { Principles } from "./components/Principles";
 import { Downloads } from "./components/Downloads";
 import { Migrate } from "./components/Migrate";
 import { Control } from "./components/Control";
@@ -16,8 +17,24 @@ import { CallToAction } from "./components/CallToAction";
 import { Footer } from "./components/Footer";
 import { ScrollToTop } from "./components/ScrollToTop";
 import { DownloadPage } from "./components/DownloadPage";
-import { usePath } from "./lib/router";
+import { FeaturesPage } from "./components/FeaturesPage";
+import { ProvidersPage } from "./components/ProvidersPage";
+import { ChannelsPage } from "./components/ChannelsPage";
+import { FaqPage } from "./components/FaqPage";
+import { A, usePath } from "./lib/router";
 import { useDocumentHead } from "./lib/head";
+import { Icon, type IconName } from "./components/Icon";
+
+function SectionMore({ href, label }: { href: string; label: string }): React.ReactElement {
+  return (
+    <div className="section-more">
+      <A className="section-more-link" href={href}>
+        <span>{label}</span>
+        <Icon name={"arrow" as IconName} className="section-more-icon" />
+      </A>
+    </div>
+  );
+}
 
 function LandingPage(): React.ReactElement {
   useDocumentHead({
@@ -40,9 +57,13 @@ function LandingPage(): React.ReactElement {
       <Nav />
       <main>
         <Hero />
+        <Principles />
         <Features />
+        <SectionMore href="/features" label="Explore all features" />
         <Providers />
+        <SectionMore href="/providers" label="See all 60+ providers" />
         <Channels />
+        <SectionMore href="/channels" label="See all 25+ channels" />
         <Platforms />
         <UseCases />
         <HowItWorks />
@@ -50,6 +71,7 @@ function LandingPage(): React.ReactElement {
         <Migrate />
         <Control />
         <Faq />
+        <SectionMore href="/faq" label="Read the full FAQ" />
         <CallToAction />
       </main>
       <Footer />
@@ -61,5 +83,9 @@ function LandingPage(): React.ReactElement {
 export function App(): React.ReactElement {
   const path = usePath();
   if (path === "/download") return <DownloadPage />;
+  if (path === "/features") return <FeaturesPage />;
+  if (path === "/providers") return <ProvidersPage />;
+  if (path === "/channels") return <ChannelsPage />;
+  if (path === "/faq") return <FaqPage />;
   return <LandingPage />;
 }
