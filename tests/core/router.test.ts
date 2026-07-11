@@ -321,29 +321,25 @@ describe("provider selection", () => {
         "z.ai": { fiveHour: { tokenLimit: 1000 } },
       },
     });
-    const originalGetByTypeSince = tables.metrics.getByTypeSince;
-    tables.metrics.getByTypeSince = ((type: string) =>
+    const originalGetKeyTotalsForWindows = tables.metrics.getKeyTotalsForWindows;
+    tables.metrics.getKeyTotalsForWindows = ((type: string, startsSql: string[]) =>
       type === "token_usage_by_provider"
         ? [
             {
-              created_at: new Date().toISOString(),
               key: "minimax",
-              value: 900,
-              metadata: JSON.stringify({ provider: "minimax" }),
+              totals: startsSql.map(() => 900),
             },
             {
-              created_at: new Date().toISOString(),
               key: "z.ai",
-              value: 100,
-              metadata: JSON.stringify({ provider: "z.ai" }),
+              totals: startsSql.map(() => 100),
             },
           ]
-        : []) as typeof tables.metrics.getByTypeSince;
+        : []) as typeof tables.metrics.getKeyTotalsForWindows;
 
     try {
       expect(selectProvider()).toBe("z.ai");
     } finally {
-      tables.metrics.getByTypeSince = originalGetByTypeSince;
+      tables.metrics.getKeyTotalsForWindows = originalGetKeyTotalsForWindows;
     }
   });
 });
