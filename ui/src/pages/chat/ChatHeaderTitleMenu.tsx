@@ -3,6 +3,7 @@ import {
   Check,
   Copy,
   ExternalLink,
+  GitFork,
   Hash,
   MoreHorizontal,
   Pencil,
@@ -13,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useDeleteSession, usePinSession, useRenameSession, useSessions } from "@/hooks/useChat";
+import { chatApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, SessionContextUsage, SessionTokenUsage } from "@/types";
 
@@ -214,6 +216,21 @@ export function ChatHeaderTitleMenu({
     window.open(`/chat?session=${encodeURIComponent(sessionId)}`, "_blank", "noopener");
   }, [sessionId]);
 
+  const handleForkChat = useCallback(async () => {
+    setMenuOpen(false);
+    try {
+      const response = await chatApi.forkSession(sessionId, { agentId });
+      const forkedId = response.data?.fork?.sessionId;
+      if (response.success && forkedId) {
+        window.open(`/chat?session=${encodeURIComponent(forkedId)}`, "_blank", "noopener");
+      } else {
+        console.error("Failed to fork session:", response.data?.error ?? response.error);
+      }
+    } catch (error) {
+      console.error("Failed to fork session:", error);
+    }
+  }, [sessionId, agentId]);
+
   const handleDelete = useCallback(async () => {
     setMenuOpen(false);
     if (!window.confirm("Delete this chat? This cannot be undone.")) return;
@@ -265,7 +282,7 @@ export function ChatHeaderTitleMenu({
     createPortal(
       <div
         ref={menuRef}
-        className="workspace-open-menu-panel fixed z-[1000] w-64 overflow-hidden rounded-xl border border-white/10 p-1.5 text-sm shadow-[0_18px_60px_rgba(0,0,0,0.65)]"
+        className="workspace-open-menu-panel fixed z-[1000] w-64 overflow-hidden rounded-xl border border-white/10 p-1.5 text-xs shadow-[0_18px_60px_rgba(0,0,0,0.65)]"
         style={{
           left: menuPosition.left,
           top: menuPosition.top,
@@ -276,7 +293,7 @@ export function ChatHeaderTitleMenu({
           type="button"
           onClick={() => void handleCopySessionId()}
           title="Copy session ID"
-          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/10"
+          className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/10"
         >
           {copiedSessionId ? (
             <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
@@ -294,7 +311,7 @@ export function ChatHeaderTitleMenu({
         <button
           type="button"
           onClick={() => void handleTogglePin()}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-gray-100 transition-colors hover:bg-white/10"
         >
           {currentSummary?.pinned ? (
             <PinOff className="w-3.5 h-3.5 text-gray-400" />
@@ -306,7 +323,7 @@ export function ChatHeaderTitleMenu({
         <button
           type="button"
           onClick={beginRename}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-gray-100 transition-colors hover:bg-white/10"
         >
           <Pencil className="w-3.5 h-3.5 text-gray-400" />
           Rename
@@ -317,7 +334,7 @@ export function ChatHeaderTitleMenu({
             void handleCopySessionId();
             setMenuOpen(false);
           }}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-gray-100 transition-colors hover:bg-white/10"
         >
           <Copy className="w-3.5 h-3.5 text-gray-400" />
           Copy session ID
@@ -325,7 +342,7 @@ export function ChatHeaderTitleMenu({
         <button
           type="button"
           onClick={() => void handleCopyDebugInfo()}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-gray-100 transition-colors hover:bg-white/10"
         >
           {copiedDebugInfo ? (
             <Check className="w-3.5 h-3.5 text-emerald-400" />
@@ -336,8 +353,16 @@ export function ChatHeaderTitleMenu({
         </button>
         <button
           type="button"
+          onClick={() => void handleForkChat()}
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-gray-100 transition-colors hover:bg-white/10"
+        >
+          <GitFork className="w-3.5 h-3.5 text-gray-400" />
+          Fork into new chat
+        </button>
+        <button
+          type="button"
           onClick={handleOpenInNewWindow}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-gray-100 transition-colors hover:bg-white/10"
         >
           <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
           Open in new window
@@ -346,7 +371,7 @@ export function ChatHeaderTitleMenu({
         <button
           type="button"
           onClick={() => void handleDelete()}
-          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-red-400 transition-colors hover:bg-red-500/10"
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-red-400 transition-colors hover:bg-red-500/10"
         >
           <Trash2 className="w-3.5 h-3.5" />
           Delete chat
