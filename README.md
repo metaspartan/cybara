@@ -100,6 +100,19 @@ For a release binary install on macOS/Linux:
 curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash
 ```
 
+On Windows (PowerShell, x64 & arm64):
+
+```powershell
+powershell -c "irm https://raw.githubusercontent.com/metaspartan/cybara/main/install.ps1 | iex"
+```
+
+Or run it instantly with npm or Bun:
+
+```bash
+npx cybara
+bunx cybara
+```
+
 To pin a specific release:
 
 ```bash

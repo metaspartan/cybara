@@ -1,22 +1,11 @@
-import { useState } from "react";
 import { Icon } from "./Icon";
-import { STATS, INSTALL_COMMAND } from "../content";
+import { InstallTabs } from "./InstallTabs";
+import { STATS } from "../content";
 import { useSiteI18n } from "../i18n";
 import { A } from "../lib/router";
 
 export function Hero(): React.ReactElement {
-  const [copied, setCopied] = useState<boolean>(false);
   const { t } = useSiteI18n();
-
-  const copyInstall = async (): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText(INSTALL_COMMAND);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      setCopied(false);
-    }
-  };
 
   return (
     <section className="hero" id="top">
@@ -33,21 +22,12 @@ export function Hero(): React.ReactElement {
 
         <p className="hero-sub">{t("site.hero.subtitle")}</p>
 
-        <div className="hero-actions">
+        <div className="hero-actions hero-actions--install">
           <A className="btn btn--primary" href="/download">
             <span>{t("site.hero.primary")}</span>
             <Icon name="arrow" className="btn-icon" />
           </A>
-          <button
-            type="button"
-            className="code-copy"
-            onClick={copyInstall}
-            aria-label="Copy install command"
-          >
-            <span className="code-prompt">$</span>
-            <code>{INSTALL_COMMAND}</code>
-            <span className="code-copy-state">{copied ? "Copied" : "Copy"}</span>
-          </button>
+          <InstallTabs />
         </div>
 
         <dl className="hero-stats">

@@ -6,7 +6,8 @@ import { DownloadCard } from "./DownloadCard";
 import { Icon, type IconName } from "./Icon";
 import { useDocumentHead } from "../lib/head";
 import { clientMatchesOS, osLabel, useDetectedOS, type DetectedOS } from "../lib/os";
-import { DOWNLOAD_GROUPS, INSTALL_COMMAND, type DownloadClient } from "../content";
+import { DOWNLOAD_GROUPS, type DownloadClient } from "../content";
+import { InstallTabs } from "./InstallTabs";
 import { formatDownloadTotal, useDownloadTotal, useLatestRelease } from "../hooks/useLatestRelease";
 
 type SectionKey = "mac" | "windows" | "linux" | "mobile" | "packages" | "cli";
@@ -116,9 +117,9 @@ export function DownloadPage(): React.ReactElement {
           <div className="download-quickinstall glass">
             <div className="download-quickinstall-body">
               <Icon name={"terminal" as IconName} className="download-quickinstall-icon" />
-              <div>
-                <p className="download-quickinstall-label">One-line install (macOS · Linux)</p>
-                <code className="download-quickinstall-cmd">{INSTALL_COMMAND}</code>
+              <div className="download-quickinstall-widget">
+                <p className="download-quickinstall-label">One-line install</p>
+                <InstallTabs showHint />
               </div>
             </div>
           </div>

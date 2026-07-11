@@ -46,6 +46,41 @@ export const CREATOR_X_URL = "https://x.com/carsenklock";
 export const RELEASES_URL = "https://github.com/metaspartan/cybara/releases/latest";
 export const INSTALL_COMMAND =
   "curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash";
+export const INSTALL_COMMAND_WINDOWS =
+  'powershell -c "irm https://raw.githubusercontent.com/metaspartan/cybara/main/install.ps1 | iex"';
+export const INSTALL_COMMAND_NPM = "npx cybara";
+
+export interface InstallTab {
+  key: "shell" | "windows" | "npm";
+  label: string;
+  prompt: string;
+  command: string;
+  hint: string;
+}
+
+export const INSTALL_TABS: readonly InstallTab[] = [
+  {
+    key: "shell",
+    label: "macOS / Linux",
+    prompt: "$",
+    command: INSTALL_COMMAND,
+    hint: "SHA256-verified binary install for macOS and Linux (x64 & arm64).",
+  },
+  {
+    key: "windows",
+    label: "Windows",
+    prompt: ">",
+    command: INSTALL_COMMAND_WINDOWS,
+    hint: "PowerShell installer for Windows x64 & arm64, added to your PATH.",
+  },
+  {
+    key: "npm",
+    label: "npm",
+    prompt: "$",
+    command: INSTALL_COMMAND_NPM,
+    hint: "Runs instantly via npx or bunx — any OS with Node or Bun.",
+  },
+];
 
 export const STATS: readonly Stat[] = [
   { value: "60+", label: "model providers" },
@@ -386,6 +421,22 @@ export const DOWNLOAD_GROUPS: readonly DownloadGroup[] = [
         icon: "terminal",
         href: RELEASES_URL,
         command: INSTALL_COMMAND,
+      },
+      {
+        name: "CLI installer",
+        platform: "Windows · PowerShell",
+        format: "SHA256-verified · one line",
+        icon: "windows",
+        href: RELEASES_URL,
+        command: INSTALL_COMMAND_WINDOWS,
+      },
+      {
+        name: "Windows CLI",
+        platform: "x64 binary",
+        format: "standalone · .exe",
+        icon: "terminal",
+        href: RELEASES_URL,
+        assetPattern: /-windows-x64-cli\.exe$/i,
       },
       {
         name: "Linux CLI",

@@ -422,6 +422,74 @@ img {
   font-weight: 700;
 }
 
+.install-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.install-tabs-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.install-tab {
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-surface);
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.install-tab:hover {
+  color: var(--text);
+  border-color: var(--glass-border-strong);
+}
+
+.install-tab--active {
+  color: var(--text);
+  background: var(--accent-soft);
+  border-color: rgba(124, 92, 255, 0.45);
+}
+
+.install-tabs-cmd {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.install-tabs-cmd code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.install-tabs-hint {
+  font-size: 0.76rem;
+  color: var(--text-faint);
+}
+
+.hero-actions--install {
+  align-items: flex-start;
+}
+
+.download-quickinstall-widget {
+  flex: 1;
+  min-width: 0;
+}
+
+.download-quickinstall-widget .install-tabs {
+  margin-top: 8px;
+}
+
 .code-copy-state {
   margin-left: 4px;
   padding: 2px 9px;
