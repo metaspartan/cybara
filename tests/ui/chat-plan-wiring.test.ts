@@ -60,7 +60,8 @@ describe("chat plan and artifact UI wiring", () => {
     const planCard = readPlanCardSource();
     expect(source).toContain("ChatEnvironmentOverview");
     expect(source).toContain("function PlanSummaryCard");
-    expect(source).toContain("Current chat only");
+    expect(source).toContain("Session overview");
+    expect(source).toContain("Active context");
     expect(source).toContain('t("chat.plan.title")');
     expect(source).toContain("extractLatestPlanFromMessages(typedMessages, sessionId)");
     expect(chatPage).toContain("useEnvironmentGitBranches(effectiveWorkspaceDir)");
@@ -91,7 +92,8 @@ describe("chat plan and artifact UI wiring", () => {
     expect(environmentOverview).not.toContain("browserOrigin");
     expect(environmentOverview).toContain("<PlanSummaryCard");
     expect(environmentOverview).toContain("onDismiss={onDismissPlan}");
-    expect(environmentOverview).toContain('label="TTFT"');
+    expect(environmentOverview).toContain('label="First token"');
+    expect(environmentOverview).toContain('label="Output speed"');
     expect(environmentOverview).toContain("agentUsingBrowser");
     expect(environmentOverview).toContain("chat-environment-panel");
     expect(environmentOverview).toContain("gitBranch: string | null");

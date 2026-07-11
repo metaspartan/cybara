@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { FolderOpen, GitBranch, GitCompare, Gauge, Globe2, Timer, X } from "lucide-react";
+import { FolderOpen, GitBranch, GitCompare, Globe2, X } from "lucide-react";
 import type { Subagent } from "@/hooks/useApi";
 import type { SessionContextUsage, SessionTokenUsage } from "@/types";
 import { formatWorkspaceLabel, type FileChangeSummary, type SessionPlanView } from "./chatModel";
@@ -46,6 +46,23 @@ function formatLatency(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return "—";
   if (ms < 1000) return `${Math.round(ms)}ms`;
   return `${(ms / 1000).toFixed(ms < 10_000 ? 2 : 1)}s`;
+}
+
+function UsageStat({
+  description,
+  label,
+  value,
+}: {
+  description?: string;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0" title={description}>
+      <div className="truncate text-[10px] uppercase text-gray-600">{label}</div>
+      <div className="mt-0.5 truncate text-[12px] font-medium text-gray-300">{value}</div>
+    </div>
+  );
 }
 
 export function ChatEnvironmentOverview({
@@ -99,6 +116,9 @@ export function ChatEnvironmentOverview({
 }) {
   if (!isOpen) return null;
 
+  const contextPercent = Math.max(0, Math.min(100, contextUsage?.usedPercent || 0));
+  const hasTokenUsage = Boolean(tokenUsage && tokenUsage.totalTokens > 0);
+
   const panel = (
     <div
       className="chat-environment-panel fixed right-3 top-[52px] z-[2147483000] max-h-[calc(100vh-68px)] w-[360px] max-w-[calc(100vw-24px)] overflow-y-auto rounded-xl border p-3 text-sm shadow-[0_28px_90px_rgba(0,0,0,0.92)]"
@@ -117,7 +137,7 @@ export function ChatEnvironmentOverview({
       <div className="mb-2.5 flex items-center justify-between gap-3">
         <div>
           <div className="text-[12px] font-semibold text-gray-200">Environment</div>
-          <div className="text-[11px] text-gray-500">Current chat only</div>
+          <div className="text-[11px] text-gray-500">Session overview</div>
         </div>
         <button
           type="button"
@@ -162,46 +182,72 @@ export function ChatEnvironmentOverview({
               />
             </EnvironmentRow>
           )}
-          <EnvironmentRow icon={<Gauge className="h-3.5 w-3.5" />} label="Tokens">
-            {tokenUsage && tokenUsage.totalTokens > 0 ? (
-              <span className="text-gray-300">
-                {formatCompactNumber(tokenUsage.inputTokens)} in /{" "}
-                {formatCompactNumber(tokenUsage.outputTokens)} out
-              </span>
-            ) : (
-              <span className="text-gray-500">No usage recorded</span>
-            )}
-          </EnvironmentRow>
-          {tokenUsage && tokenUsage.totalTokens > 0 && (
-            <EnvironmentRow icon={<Gauge className="h-3.5 w-3.5" />} label="Speed">
-              <span className="text-gray-300">
-                {tokenUsage.tokensPerSecond !== null
-                  ? `${tokenUsage.tokensPerSecond} tok/s`
-                  : "No duration sample"}
-                <span className="ml-2 text-gray-500">{tokenUsage.callCount} calls</span>
-              </span>
-            </EnvironmentRow>
-          )}
-          {timeToFirstTokenMs !== null && (
-            <EnvironmentRow icon={<Timer className="h-3.5 w-3.5" />} label="TTFT">
-              <span className="text-gray-300" title="Time to first token in the latest turn">
-                {formatLatency(timeToFirstTokenMs)}
-              </span>
-            </EnvironmentRow>
-          )}
-          {contextUsage?.compacted && (
-            <EnvironmentRow icon={<Gauge className="h-3.5 w-3.5" />} label="Compact">
-              <span className="text-gray-300">
-                {contextUsage.compactionCount || 0}x
-                {(contextUsage.compactedTokens || 0) > 0 && (
-                  <span className="ml-2 text-gray-500">
-                    {formatCompactNumber(contextUsage.compactedTokens || 0)} summarized
-                  </span>
-                )}
-              </span>
-            </EnvironmentRow>
-          )}
         </div>
+
+        <EnvironmentSection title="Context and usage">
+          <div className="space-y-2.5">
+            <div>
+              <div className="mb-1.5 flex items-center justify-between gap-3 text-[11px]">
+                <span className="text-gray-400">Active context</span>
+                <span className="font-mono text-gray-300">
+                  {contextUsage
+                    ? `${formatCompactNumber(contextUsage.usedTokens)} / ${formatCompactNumber(contextUsage.limitTokens)}`
+                    : "Not available"}
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-[rgb(var(--accent-primary))] transition-[width] duration-300"
+                  style={{ width: `${contextPercent}%` }}
+                />
+              </div>
+              <div className="mt-1 flex items-center justify-between text-[10px] text-gray-600">
+                <span>{contextUsage ? `${contextPercent}% used` : "Waiting for context data"}</span>
+                {contextUsage && (
+                  <span>{formatCompactNumber(contextUsage.remainingTokens)} remaining</span>
+                )}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-x-3 gap-y-2 border-t border-white/10 pt-2.5">
+              <UsageStat
+                label="Input"
+                value={hasTokenUsage ? formatCompactNumber(tokenUsage?.inputTokens || 0) : "—"}
+              />
+              <UsageStat
+                label="Output"
+                value={hasTokenUsage ? formatCompactNumber(tokenUsage?.outputTokens || 0) : "—"}
+              />
+              <UsageStat
+                label="Calls"
+                value={hasTokenUsage ? formatCompactNumber(tokenUsage?.callCount || 0) : "—"}
+              />
+              <UsageStat
+                description="Average generated tokens per second"
+                label="Output speed"
+                value={
+                  tokenUsage?.tokensPerSecond !== null && tokenUsage?.tokensPerSecond !== undefined
+                    ? `${tokenUsage.tokensPerSecond} tok/s`
+                    : "—"
+                }
+              />
+              <UsageStat
+                description="Time to first token in the latest turn"
+                label="First token"
+                value={timeToFirstTokenMs !== null ? formatLatency(timeToFirstTokenMs) : "—"}
+              />
+              <UsageStat
+                description="Earlier context reduced to preserve the active window"
+                label="Compaction"
+                value={
+                  contextUsage?.compacted
+                    ? `${contextUsage.compactionCount || 0}x · ${formatCompactNumber(contextUsage.compactedTokens || 0)}`
+                    : "Never"
+                }
+              />
+            </div>
+          </div>
+        </EnvironmentSection>
 
         <EnvironmentSection title="Plans">
           {currentPlan ? (
