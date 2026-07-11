@@ -11,6 +11,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useDeleteSession, usePinSession, useRenameSession, useSessions } from "@/hooks/useChat";
 import { cn } from "@/lib/utils";
 import type { ChatMessage, SessionContextUsage, SessionTokenUsage } from "@/types";
@@ -26,6 +27,9 @@ interface ChatHeaderTitleMenuProps {
   appVersion?: string;
   onDeleted: () => void;
 }
+
+const MENU_WIDTH = 256;
+const MENU_PADDING = 8;
 
 async function writeToClipboard(value: string) {
   try {
@@ -69,7 +73,9 @@ export function ChatHeaderTitleMenu({
   const [titleDraft, setTitleDraft] = useState("");
   const [copiedSessionId, setCopiedSessionId] = useState(false);
   const [copiedDebugInfo, setCopiedDebugInfo] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const copyTimerRef = useRef<number | null>(null);
 
   const currentSummary = useMemo(
@@ -89,6 +95,18 @@ export function ChatHeaderTitleMenu({
   }, [currentSummary, messages]);
 
   const title = derivedTitle ?? "Untitled chat";
+
+  const updateMenuPosition = useCallback(() => {
+    const rect = rootRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setMenuPosition({
+      left: Math.max(
+        MENU_PADDING,
+        Math.min(rect.left, window.innerWidth - MENU_WIDTH - MENU_PADDING)
+      ),
+      top: Math.min(rect.bottom + 6, window.innerHeight - MENU_PADDING),
+    });
+  }, []);
 
   const flashCopy = useCallback((target: "id" | "debug") => {
     if (copyTimerRef.current !== null) {
@@ -209,26 +227,133 @@ export function ChatHeaderTitleMenu({
 
   useEffect(() => {
     if (!menuOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setMenuOpen(false);
-      }
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setMenuOpen(false);
     };
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
+    const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setMenuOpen(false);
     };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
     };
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    updateMenuPosition();
+    const onMove = () => updateMenuPosition();
+    window.addEventListener("resize", onMove);
+    window.addEventListener("scroll", onMove, true);
+    return () => {
+      window.removeEventListener("resize", onMove);
+      window.removeEventListener("scroll", onMove, true);
+    };
+  }, [menuOpen, updateMenuPosition]);
 
   useEffect(() => {
     setMenuOpen(false);
     setRenaming(false);
   }, [sessionId]);
+
+  const menu =
+    menuOpen &&
+    createPortal(
+      <div
+        ref={menuRef}
+        className="workspace-open-menu-panel fixed z-[1000] w-64 overflow-hidden rounded-xl border border-white/10 p-1.5 text-sm shadow-[0_18px_60px_rgba(0,0,0,0.65)]"
+        style={{
+          left: menuPosition.left,
+          top: menuPosition.top,
+          backgroundColor: "var(--workspace-open-menu-bg)",
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => void handleCopySessionId()}
+          title="Copy session ID"
+          className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/10"
+        >
+          {copiedSessionId ? (
+            <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+          ) : (
+            <Hash className="w-3.5 h-3.5 shrink-0 text-gray-400" />
+          )}
+          <span className="flex min-w-0 flex-col">
+            <span className="text-[10px] uppercase tracking-wide text-gray-500">
+              {copiedSessionId ? "Copied to clipboard" : "Session ID"}
+            </span>
+            <span className="truncate font-mono text-xs text-gray-200">{sessionId}</span>
+          </span>
+        </button>
+        <div className="my-1 h-px bg-white/10" />
+        <button
+          type="button"
+          onClick={() => void handleTogglePin()}
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
+        >
+          {currentSummary?.pinned ? (
+            <PinOff className="w-3.5 h-3.5 text-gray-400" />
+          ) : (
+            <Pin className="w-3.5 h-3.5 text-gray-400" />
+          )}
+          {currentSummary?.pinned ? "Unpin" : "Pin"}
+        </button>
+        <button
+          type="button"
+          onClick={beginRename}
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
+        >
+          <Pencil className="w-3.5 h-3.5 text-gray-400" />
+          Rename
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            void handleCopySessionId();
+            setMenuOpen(false);
+          }}
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
+        >
+          <Copy className="w-3.5 h-3.5 text-gray-400" />
+          Copy session ID
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleCopyDebugInfo()}
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
+        >
+          {copiedDebugInfo ? (
+            <Check className="w-3.5 h-3.5 text-emerald-400" />
+          ) : (
+            <Bug className="w-3.5 h-3.5 text-gray-400" />
+          )}
+          {copiedDebugInfo ? "Debug info copied" : "Copy debug info (JSON)"}
+        </button>
+        <button
+          type="button"
+          onClick={handleOpenInNewWindow}
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
+        >
+          <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
+          Open in new window
+        </button>
+        <div className="my-1 h-px bg-white/10" />
+        <button
+          type="button"
+          onClick={() => void handleDelete()}
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-red-400 transition-colors hover:bg-red-500/10"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+          Delete chat
+        </button>
+      </div>,
+      document.body
+    );
 
   return (
     <>
@@ -262,10 +387,13 @@ export function ChatHeaderTitleMenu({
           </button>
         )}
       </div>
-      <div className="relative" ref={menuRef}>
+      <div className="relative" ref={rootRef}>
         <button
           type="button"
-          onClick={() => setMenuOpen((open) => !open)}
+          onClick={() => {
+            updateMenuPosition();
+            setMenuOpen((open) => !open);
+          }}
           aria-label="Chat options"
           aria-expanded={menuOpen}
           className={cn(
@@ -275,89 +403,7 @@ export function ChatHeaderTitleMenu({
         >
           <MoreHorizontal className="w-4 h-4" />
         </button>
-        {menuOpen && (
-          <div className="workspace-open-menu-panel absolute left-0 top-full mt-1 z-[1000] w-64 overflow-hidden rounded-xl border border-white/10 p-1.5 text-sm shadow-[0_18px_60px_rgba(0,0,0,0.65)]">
-            <button
-              type="button"
-              onClick={() => void handleCopySessionId()}
-              title="Copy session ID"
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/10"
-            >
-              {copiedSessionId ? (
-                <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-              ) : (
-                <Hash className="w-3.5 h-3.5 shrink-0 text-gray-400" />
-              )}
-              <span className="flex min-w-0 flex-col">
-                <span className="text-[10px] uppercase tracking-wide text-gray-500">
-                  {copiedSessionId ? "Copied to clipboard" : "Session ID"}
-                </span>
-                <span className="truncate font-mono text-xs text-gray-200">{sessionId}</span>
-              </span>
-            </button>
-            <div className="my-1 h-px bg-white/10" />
-            <button
-              type="button"
-              onClick={() => void handleTogglePin()}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
-            >
-              {currentSummary?.pinned ? (
-                <PinOff className="w-3.5 h-3.5 text-gray-400" />
-              ) : (
-                <Pin className="w-3.5 h-3.5 text-gray-400" />
-              )}
-              {currentSummary?.pinned ? "Unpin" : "Pin"}
-            </button>
-            <button
-              type="button"
-              onClick={beginRename}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
-            >
-              <Pencil className="w-3.5 h-3.5 text-gray-400" />
-              Rename
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                void handleCopySessionId();
-                setMenuOpen(false);
-              }}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
-            >
-              <Copy className="w-3.5 h-3.5 text-gray-400" />
-              Copy session ID
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleCopyDebugInfo()}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
-            >
-              {copiedDebugInfo ? (
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
-              ) : (
-                <Bug className="w-3.5 h-3.5 text-gray-400" />
-              )}
-              {copiedDebugInfo ? "Debug info copied" : "Copy debug info (JSON)"}
-            </button>
-            <button
-              type="button"
-              onClick={handleOpenInNewWindow}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
-            >
-              <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
-              Open in new window
-            </button>
-            <div className="my-1 h-px bg-white/10" />
-            <button
-              type="button"
-              onClick={() => void handleDelete()}
-              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-red-400 transition-colors hover:bg-red-500/10"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              Delete chat
-            </button>
-          </div>
-        )}
+        {menu}
       </div>
     </>
   );
