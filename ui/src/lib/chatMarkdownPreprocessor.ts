@@ -58,6 +58,70 @@ function stripPrefixedTimestamps(raw: string): string {
   return raw.replace(pattern, "");
 }
 
+function replaceMathDelimiters(line: string): string {
+  let output = "";
+  let index = 0;
+  let inlineCodeTicks = 0;
+
+  while (index < line.length) {
+    if (line[index] === "`") {
+      let tickEnd = index;
+      while (line[tickEnd] === "`") tickEnd += 1;
+      const tickCount = tickEnd - index;
+      if (inlineCodeTicks === 0) inlineCodeTicks = tickCount;
+      else if (inlineCodeTicks === tickCount) inlineCodeTicks = 0;
+      output += line.slice(index, tickEnd);
+      index = tickEnd;
+      continue;
+    }
+
+    if (inlineCodeTicks === 0) {
+      const delimiter = line.slice(index, index + 2);
+      if (delimiter === "\\(") {
+        output += "$";
+        index += 2;
+        continue;
+      }
+      if (delimiter === "\\)") {
+        output += "$";
+        index += 2;
+        continue;
+      }
+      if (delimiter === "\\[") {
+        output += "\n$$\n";
+        index += 2;
+        continue;
+      }
+      if (delimiter === "\\]") {
+        output += "\n$$\n";
+        index += 2;
+        continue;
+      }
+    }
+
+    output += line[index];
+    index += 1;
+  }
+
+  return output;
+}
+
+function normalizeMathDelimiters(raw: string): string {
+  let fenceMarker = "";
+  return raw
+    .split("\n")
+    .map((line) => {
+      const fence = /^\s{0,3}(`{3,}|~{3,})/.exec(line)?.[1] ?? "";
+      if (fence) {
+        if (!fenceMarker) fenceMarker = fence[0] ?? "";
+        else if (fence[0] === fenceMarker) fenceMarker = "";
+        return line;
+      }
+      return fenceMarker ? line : replaceMathDelimiters(line);
+    })
+    .join("\n");
+}
+
 function normalize(raw: string): string {
   let output = raw.replace(/\r\n/g, "\n");
   output = output.replace(/\n\n\n/g, "\n\n");
@@ -68,5 +132,5 @@ function normalize(raw: string): string {
 export function preprocessChatMarkdown(raw: string): string {
   const withoutContext = stripInboundContextBlocks(raw);
   const withoutTimestamps = stripPrefixedTimestamps(withoutContext);
-  return normalize(withoutTimestamps);
+  return normalize(normalizeMathDelimiters(withoutTimestamps));
 }

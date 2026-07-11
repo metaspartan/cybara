@@ -43,6 +43,9 @@ struct NativeSettingsScreen: View {
     @State private var webPolicyEnabled = false
     @State private var webFetchHosts = ""
     @State private var webSearchHosts = ""
+    @State private var computerUseStatus: GatewayComputerUseStatus?
+    @State private var computerUseDriverPath = ""
+    @State private var computerUseBusy = false
     @State private var dangerousPolicyEnabled = false
     @State private var dangerousPolicyMode = "audit"
     @State private var toolApprovalMode = "always_allow"
@@ -761,6 +764,7 @@ struct NativeSettingsScreen: View {
                         }
                     }
                 }
+
             }
             .nativeSettingsContentLayout()
         }
@@ -1422,8 +1426,60 @@ struct NativeSettingsScreen: View {
                         }
                     }
                 }
+
+                computerUseCard
             }
             .nativeSettingsContentLayout()
+        }
+    }
+
+    private var computerUseCard: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("Computer Use")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                    Spacer()
+                    if computerUseBusy {
+                        ProgressView().controlSize(.small)
+                    } else if let status = computerUseStatus {
+                        Text(status.ready ? "Ready" : status.available ? "Needs Attention" : "Not Installed")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(status.ready ? .green : .secondary)
+                    }
+                }
+                if let status = computerUseStatus {
+                    Text(status.message)
+                        .font(.system(size: 11, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    if let version = status.version {
+                        settingRow("Version", version)
+                    }
+                    if status.platform == "darwin" {
+                        settingRow("Accessibility", status.accessibility == true ? "Granted" : "Required")
+                        settingRow("Screen Recording", status.screenRecording == true ? "Granted" : "Required")
+                    }
+                }
+                TextField("Driver path override", text: $computerUseDriverPath)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { saveComputerUseDriverPath() }
+                HStack {
+                    Button("Check Status") {
+                        Task { await loadComputerUseStatus() }
+                    }
+                    .disabled(computerUseBusy)
+                    if computerUseStatus?.platform == "darwin" {
+                        Button("Request Permissions") {
+                            Task { await grantComputerUsePermissions() }
+                        }
+                        .disabled(computerUseBusy)
+                    }
+                    Spacer()
+                    Button("Save Driver Path") { saveComputerUseDriverPath() }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(computerUseBusy)
+                }
+            }
         }
     }
 
@@ -1615,6 +1671,44 @@ struct NativeSettingsScreen: View {
             ],
             key: "web_tool_url_policy"
         )
+    }
+
+    private func saveComputerUseDriverPath() {
+        saveConfigPatch(
+            ["computer_use": ["driverCommand": computerUseDriverPath.trimmingCharacters(in: .whitespacesAndNewlines)]],
+            key: "computer_use",
+            onSuccess: { Task { await loadComputerUseStatus() } }
+        )
+    }
+
+    @MainActor
+    private func loadComputerUseStatus() async {
+        computerUseBusy = true
+        defer { computerUseBusy = false }
+        do {
+            let status = try await client.computerUseStatus()
+            computerUseStatus = status
+            computerUseDriverPath = status.configuredCommand ?? ""
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func grantComputerUsePermissions() async {
+        computerUseBusy = true
+        defer { computerUseBusy = false }
+        do {
+            let result = try await client.grantComputerUsePermissions()
+            if result["ok"] as? Bool != true {
+                self.error = result["message"] as? String ?? "Permission request failed."
+            }
+            let status = try await client.computerUseStatus()
+            computerUseStatus = status
+            computerUseDriverPath = status.configuredCommand ?? ""
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     private func saveSpeechSettings() {
@@ -2111,6 +2205,7 @@ struct NativeSettingsScreen: View {
         webPolicyEnabled = webPolicy["enabled"] as? Bool ?? false
         webFetchHosts = (webPolicy["fetch_allowlist"] as? [String] ?? []).joined(separator: ", ")
         webSearchHosts = (webPolicy["search_result_allowlist"] as? [String] ?? []).joined(separator: ", ")
+        Task { await loadComputerUseStatus() }
         let policy = config["dangerous_tool_policy"] as? [String: Any] ?? [:]
         dangerousPolicyEnabled = policy["enabled"] as? Bool ?? false
         dangerousPolicyMode = policy["mode"] as? String == "block" ? "block" : "audit"

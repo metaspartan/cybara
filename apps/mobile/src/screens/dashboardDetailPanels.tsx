@@ -68,22 +68,23 @@ import {
 } from "./dashboardHelpers";
 import { EmptyState, GatewayDetailPill, LoadingState, SettingsRow } from "./dashboardPrimitives";
 import { MobileWebPolicyPanel } from "./dashboardWebPolicyPanel";
+import { MobileComputerUsePanel } from "./dashboardComputerUsePanel";
 import {
   AgentSettingsPanel,
   ApprovalSettingsPanel,
   ChannelSettingsPanel,
   GatewayManagementPanel,
-  JourneyPanel,
   MemorySettingsPanel,
   MigrationSettingsPanel,
-  ModelRouterPanel,
   ProviderSettingsPanel,
-  SpeechSettingsPanel,
   SystemMonitorDetailPanel,
   SystemPromptPanel,
   TaskSettingsPanel,
   WalletPolicyPanel,
 } from "./dashboardSettingsPanels";
+import { JourneyPanel } from "./dashboardJourneyPanel";
+import { ModelRouterPanel } from "./dashboardModelRouterPanel";
+import { SpeechSettingsPanel } from "./dashboardSpeechSettingsPanel";
 import { MobileMcpSettingsPanel } from "./dashboardMcpPanel";
 import { styles } from "./dashboardStyles";
 import {
@@ -977,12 +978,15 @@ export function SettingsPanel({
               )}
             </SettingsSection>
             {configAvailable ? (
-              <MobileWebPolicyPanel
-                accentColor={accentColor}
-                api={api}
-                config={(summary?.config ?? {}) as Record<string, unknown>}
-                refreshSummary={refreshSummary}
-              />
+              <>
+                <MobileWebPolicyPanel
+                  accentColor={accentColor}
+                  api={api}
+                  config={(summary?.config ?? {}) as Record<string, unknown>}
+                  refreshSummary={refreshSummary}
+                />
+                <MobileComputerUsePanel api={api} />
+              </>
             ) : null}
           </>
         ) : null}

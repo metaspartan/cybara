@@ -9,10 +9,14 @@ import {
   useState,
 } from "react";
 import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import "katex/dist/katex.min.css";
 import { chatMarkdownImageSrc } from "@/lib/chatImages";
 import { preprocessChatMarkdown } from "@/lib/chatMarkdownPreprocessor";
 import { cn } from "@/lib/utils";
+import { MermaidCodeBlock } from "./MermaidCodeBlock";
 
 const CODE_LANGUAGE_ALIASES: Record<string, string> = {
   ts: "typescript",
@@ -262,15 +266,27 @@ function SyntaxCodeBlock({ code, language }: { code: string; language: string })
   );
 }
 
-export function MessageContent({ content }: { content: string }) {
+export function MessageContent({
+  content,
+  onOpenImage,
+}: {
+  content: string;
+  onOpenImage?: (src: string, alt: string) => void;
+}) {
   type MarkdownPreProps = ComponentPropsWithoutRef<"pre">;
   type MarkdownCodeProps = ComponentPropsWithoutRef<"code"> & { inline?: boolean };
   const cleanedContent = useMemo(() => preprocessChatMarkdown(content), [content]);
 
   return (
-    <div className="max-w-none text-[12px] text-gray-200 leading-[1.45rem]">
+    <div className="chat-markdown max-w-none text-[12px] text-gray-200 leading-[1.45rem]">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[
+          [
+            rehypeKatex,
+            { output: "htmlAndMathml", strict: "warn", throwOnError: false, trust: false },
+          ],
+        ]}
         components={{
           pre: ({ children }: MarkdownPreProps) => <>{children}</>,
           code({ className, children, inline, ...props }: MarkdownCodeProps) {
@@ -282,6 +298,14 @@ export function MessageContent({ content }: { content: string }) {
 
             const languageMatch = className ? /language-([^\s]+)/.exec(className) : null;
             const language = normalizeCodeLanguage(languageMatch?.[1]);
+            if (language === "mermaid") {
+              return (
+                <MermaidCodeBlock
+                  code={rawCode}
+                  codeView={<SyntaxCodeBlock code={rawCode} language="plaintext" />}
+                />
+              );
+            }
             if (looksLikeDiffCode(rawCode, language)) {
               return <DiffCodeBlock code={rawCode} />;
             }
@@ -326,11 +350,13 @@ export function MessageContent({ content }: { content: string }) {
             const imageSource = chatMarkdownImageSrc(source);
             if (!imageSource) return <span>{alt || ""}</span>;
             return (
-              <a
-                href={imageSource}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block my-2"
+              <button
+                type="button"
+                onClick={() => onOpenImage?.(imageSource, alt || "Image")}
+                data-chat-lightbox-src={imageSource}
+                data-chat-lightbox-alt={alt || "Image"}
+                className="block my-2 cursor-zoom-in"
+                aria-label={`Open ${alt || "image"} preview`}
               >
                 <img
                   src={imageSource}
@@ -338,7 +364,7 @@ export function MessageContent({ content }: { content: string }) {
                   loading="lazy"
                   className="max-h-80 max-w-full rounded-lg border border-white/12 object-contain"
                 />
-              </a>
+              </button>
             );
           },
           blockquote: ({ children }) => (

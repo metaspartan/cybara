@@ -1021,6 +1021,20 @@ function route(method: string, url: URL, body: string): Response {
     });
   }
 
+  if (method === "POST" && pathname === "/api/wallet/seed") {
+    const parsed = body
+      ? (JSON.parse(body) as { password?: string; acknowledgement?: string })
+      : {};
+    if (!parsed.password || parsed.acknowledgement !== "REVEAL") {
+      return json({ error: "verification required" }, 400);
+    }
+    return json({
+      mnemonic:
+        "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda mu nu xi omicron pi rho sigma tau upsilon phi chi psi omega",
+      wordCount: 24,
+    });
+  }
+
   if (method === "POST" && pathname === "/api/wallet/lock") {
     walletState.unlocked = false;
     return json({ success: true });
@@ -2180,6 +2194,17 @@ describe("CLI Commands", () => {
     const unlock = await runCli(["wallet", "unlock", "--password", "supersecret123"]);
     expect(unlock.exitCode).toBe(0);
     expect(unlock.stdout).toContain("Wallet unlocked");
+
+    const reveal = await runCli([
+      "wallet",
+      "reveal-seed",
+      "--password",
+      "supersecret123",
+      "--confirm",
+      "REVEAL",
+    ]);
+    expect(reveal.exitCode).toBe(0);
+    expect(reveal.stdout).toContain("24-word seed phrase");
   }, 20000);
 
   test("memory search query path is wired", async () => {

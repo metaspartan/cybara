@@ -3,7 +3,7 @@ import { handleTodo, noteToolActivityForTodoReminder } from "../../src/core/tool
 import { handleClarify } from "../../src/core/tools/handlers/clarify";
 
 describe("todo stale-plan reminder", () => {
-  test("reminds after repeated tool calls with an incomplete list, then resets", async () => {
+  test("reminds after each tool result while a plan is incomplete", async () => {
     const context = { sessionId: "todo-reminder-session" };
     await handleTodo(
       {
@@ -14,13 +14,11 @@ describe("todo stale-plan reminder", () => {
       },
       context
     );
-    for (let call = 0; call < 5; call += 1) {
-      expect(noteToolActivityForTodoReminder("exec", context)).toBeNull();
-    }
     const reminder = noteToolActivityForTodoReminder("exec", context);
-    expect(reminder).toContain("2 items not marked completed");
+    expect(reminder).toContain("2 items remain");
     expect(reminder).toContain("todo");
-    expect(noteToolActivityForTodoReminder("exec", context)).toBeNull();
+    expect(reminder).toContain("genuinely unfinished work pending");
+    expect(noteToolActivityForTodoReminder("exec", context)).toContain("2 items remain");
   });
 
   test("todo calls and completed lists suppress the reminder", async () => {
@@ -31,9 +29,6 @@ describe("todo stale-plan reminder", () => {
       },
       context
     );
-    for (let call = 0; call < 5; call += 1) {
-      noteToolActivityForTodoReminder("exec", context);
-    }
     expect(noteToolActivityForTodoReminder("todo", context)).toBeNull();
     await handleTodo(
       {

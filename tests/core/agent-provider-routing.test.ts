@@ -10,6 +10,7 @@ const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   config.set("tool_approval_mode", "ask");
+  config.set("router", null);
   globalThis.fetch = originalFetch;
   for (const agentId of createdAgentIds.splice(0)) {
     agentManager.delete(agentId);
@@ -21,6 +22,66 @@ afterEach(() => {
 });
 
 describe("Agent provider API-family routing", () => {
+  test("model router resolves provider-type routes without changing the selected agent", async () => {
+    let requestUrl = "";
+    let requestHeaders = new Headers();
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestUrl = String(input);
+      requestHeaders = new Headers(init?.headers);
+      return new Response(
+        JSON.stringify({
+          id: "msg-routed",
+          type: "message",
+          role: "assistant",
+          model: "hf:MiniMaxAI/MiniMax-M2.1",
+          content: [{ type: "text", text: "router-ok" }],
+          usage: { input_tokens: 8, output_tokens: 2 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const originalProvider = providerManager.create({
+      provider: "openai",
+      name: "Original Agent Provider",
+      api_key: "openai-test-key",
+    });
+    const routedProvider = providerManager.create({
+      provider: "synthetic",
+      name: "Routed Synthetic Provider",
+      api_key: "synthetic-router-key",
+    });
+    createdProviderIds.push(originalProvider.id, routedProvider.id);
+
+    const agent = agentManager.create({
+      name: "Router Identity Agent",
+      type: "main",
+      provider_id: originalProvider.id,
+      model: "hf:MiniMaxAI/MiniMax-M2.1",
+      system_prompt: "KEEP_AGENT_IDENTITY",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+    config.set("router", {
+      enabled: true,
+      strategy: "priority",
+      fallbackToAny: false,
+      routes: { synthetic: { weight: 100, priority: 0, enabled: true } },
+    });
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "route this request" }],
+      { useTools: false, useModelRouter: true, sessionId: "router-provider-type-session" }
+    );
+
+    expect(result.content).toBe("router-ok");
+    expect(requestUrl.endsWith("/messages")).toBe(true);
+    expect(requestHeaders.get("x-api-key")).toBe("synthetic-router-key");
+    expect(agentManager.get(agent.id)?.provider_id).toBe(originalProvider.id);
+  });
+
   test("routes anthropic-family providers through /messages and forwards system prompt", async () => {
     let requestUrl = "";
     let requestBody: Record<string, unknown> = {};

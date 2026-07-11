@@ -372,6 +372,7 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
             status: security.statusCode || 403,
             headers: {
               "Content-Type": "application/json",
+              "Cache-Control": "no-store",
               ...commonSecurityHeaders,
               ...security.headers,
             },
@@ -545,6 +546,7 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
             status: response.status,
             headers: {
               "Content-Type": "application/json",
+              "Cache-Control": "no-store",
               ...commonSecurityHeaders,
               ...response.headers,
             },

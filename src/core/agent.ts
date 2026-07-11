@@ -377,12 +377,15 @@ class AgentManager {
   ): ReturnType<typeof providerManager.getWithCredentials> {
     const routerSelected = selectProvider(agent.provider_id);
     if (routerSelected) {
-      const routedProvider = providerManager.getWithCredentials(routerSelected);
+      const routedProviderId = providerManager.resolveProviderId(routerSelected);
+      const routedProvider = routedProviderId
+        ? providerManager.getWithCredentials(routedProviderId)
+        : undefined;
       if (routedProvider) {
-        if (persistIfResolved && agent.provider_id !== routerSelected) {
-          this.update(agent.id, { provider_id: routerSelected });
+        if (persistIfResolved && agent.provider_id !== routedProvider.id) {
+          this.update(agent.id, { provider_id: routedProvider.id });
           if ("provider_id" in agent) {
-            agent.provider_id = routerSelected;
+            agent.provider_id = routedProvider.id;
           }
         }
         return routedProvider;

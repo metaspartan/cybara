@@ -9,6 +9,10 @@ const messageContentPath = fileURLToPath(
 const activityTimelinePath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ActivityTimeline.tsx", import.meta.url)
 );
+const mermaidCodeBlockPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/MermaidCodeBlock.tsx", import.meta.url)
+);
+const indexStylesPath = fileURLToPath(new URL("../../ui/src/index.css", import.meta.url));
 
 function readChatSource(): string {
   return readFileSync(chatPagePath, "utf8") + readFileSync(messageContentPath, "utf8");
@@ -40,6 +44,39 @@ describe("Chat markdown rendering behavior", () => {
       "const cleanedContent = useMemo(() => preprocessChatMarkdown(content), [content]);"
     );
     expect(source).toContain("{cleanedContent}");
+  });
+
+  test("renders Mermaid fences with themed preview and source tabs", () => {
+    const messageSource = readFileSync(messageContentPath, "utf8");
+    const mermaidSource = readFileSync(mermaidCodeBlockPath, "utf8");
+
+    expect(messageSource).toContain('if (language === "mermaid")');
+    expect(messageSource).toContain("<MermaidCodeBlock");
+    expect(mermaidSource).toContain('import mermaid from "mermaid"');
+    expect(mermaidSource).toContain('securityLevel: "strict"');
+    expect(mermaidSource).toContain("new MutationObserver(syncTheme)");
+    expect(mermaidSource).toContain('attributeFilter: ["class", "data-theme-mode"]');
+    expect(mermaidSource).toContain('theme: lightTheme ? "default" : "dark"');
+    expect(mermaidSource).toContain("bg-[var(--surface-panel,#11131c)]");
+    expect(mermaidSource).toContain('role="tablist"');
+    expect(mermaidSource).toContain('(["preview", "code"] as MermaidView[])');
+    expect(mermaidSource).toContain("Rendering diagram...");
+  });
+
+  test("renders accessible inline and display LaTeX with theme-aware KaTeX", () => {
+    const source = readFileSync(messageContentPath, "utf8");
+    const styles = readFileSync(indexStylesPath, "utf8");
+
+    expect(source).toContain('import rehypeKatex from "rehype-katex"');
+    expect(source).toContain('import remarkMath from "remark-math"');
+    expect(source).toContain('import "katex/dist/katex.min.css"');
+    expect(source).toContain("remarkPlugins={[remarkGfm, remarkMath]}");
+    expect(source).toContain('output: "htmlAndMathml"');
+    expect(source).toContain("trust: false");
+    expect(source).toContain('className="chat-markdown');
+    expect(styles).toContain(".chat-markdown .katex-display");
+    expect(styles).toContain("background: var(--surface-panel, #11131c)");
+    expect(styles).toContain("color: inherit");
   });
 
   test("renders activity thoughts with inline markdown and neutral status icons", () => {

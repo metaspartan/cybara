@@ -100,6 +100,7 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    wallet create --password <p>      Create 24-word wallet");
   console.log('    wallet import --password <p> --mnemonic "..."   Import wallet');
   console.log("    wallet unlock --password <p>      Unlock wallet");
+  console.log("    wallet reveal-seed --password <p> --confirm REVEAL");
   console.log("    wallet lock                       Lock wallet");
   console.log("    wallet accounts [--chains c] [--count n] [--start n]");
   console.log("    wallet balances [--chains c] [--count n] [--start n]");

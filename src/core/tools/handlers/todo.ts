@@ -111,22 +111,12 @@ export function readTodo(context?: ToolContext): TodoItem[] {
   return getState(context).items;
 }
 
-const TODO_REMINDER_INTERVAL = 6;
-const toolCallsSinceTodoUpdate = new Map<string, number>();
-
-/**
- * Called for every executed tool. Returns a reminder string when the session
- * has an incomplete todo list and the model hasn't touched it for a while, so
- * plans get reconciled instead of freezing at "1/7 complete" after the work is
- * actually done.
- */
 export function noteToolActivityForTodoReminder(
   toolName: string,
   context?: ToolContext
 ): string | null {
   const key = keyFor(context);
   if (toolName === "todo") {
-    toolCallsSinceTodoUpdate.set(key, 0);
     return null;
   }
   const items = sessionTodos[key]?.items ?? [];
@@ -134,14 +124,7 @@ export function noteToolActivityForTodoReminder(
   const inProgress = items.filter((item) => item.status === "in_progress").length;
   const incomplete = pending + inProgress;
   if (incomplete === 0) {
-    toolCallsSinceTodoUpdate.delete(key);
     return null;
   }
-  const count = (toolCallsSinceTodoUpdate.get(key) ?? 0) + 1;
-  if (count < TODO_REMINDER_INTERVAL) {
-    toolCallsSinceTodoUpdate.set(key, count);
-    return null;
-  }
-  toolCallsSinceTodoUpdate.set(key, 0);
-  return `Your todo list has ${incomplete} item${incomplete === 1 ? "" : "s"} not marked completed (${inProgress} in_progress, ${pending} pending). Update it with the todo tool now: mark finished items completed, set the current item in_progress, and before giving your final answer make sure every finished item is marked completed.`;
+  return `Plan check: ${incomplete} item${incomplete === 1 ? "" : "s"} remain (${inProgress} in progress, ${pending} pending). Call todo before continuing: mark finished work completed, keep genuinely unfinished work pending, and leave at most one current item in progress. Before a final answer, reconcile the full plan so its statuses match the work actually delivered.`;
 }

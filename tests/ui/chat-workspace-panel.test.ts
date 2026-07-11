@@ -77,9 +77,12 @@ describe("chat workspace panel", () => {
     expect(chatSource).toContain("pageKey={instance.pageKey}");
     expect(browserSource).toContain("viewportWidth");
     expect(browserSource).toContain("ResizeObserver");
-    expect(browserSource).toContain("refreshSessionPreview");
-    expect(browserSource).toContain("const BROWSER_PREVIEW_POLL_MS = 1_500");
-    expect(browserSource).toContain("const BROWSER_STATE_POLL_MS = 500");
+    expect(browserSource).not.toContain("refreshSessionPreview");
+    expect(browserSource).toContain("const BROWSER_PREVIEW_POLL_MS = 1_000");
+    expect(browserSource).toContain("const BROWSER_STATE_POLL_MS = 750");
+    expect(browserSource).toContain('format: "jpeg"');
+    expect(browserSource).toContain('document.visibilityState === "visible"');
+    expect(browserSource).toContain("onTitleChangeRef.current");
     expect(browserSource).toContain("AbortSignal.timeout(BROWSER_REQUEST_TIMEOUT_MS)");
     expect(browserSource).toContain("data-browser-session-id={browserSessionId}");
     expect(browserSource).toContain("getBoundingClientRect");
@@ -97,6 +100,8 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("transition-[left,top] duration-100");
     expect(browserSource).not.toContain(">\n              Agent\n");
     expect(browserSource).toContain("absolute inset-0 h-full w-full");
+    expect(browserSource).toContain("object-contain");
+    expect(browserSource).not.toContain("object-fill");
     expect(browserSource).not.toContain("Close browser tab");
     expect(chatSource).toContain(
       "onTitleChange={(title) => updateWorkspaceTabTitle(instance.id, title)}"

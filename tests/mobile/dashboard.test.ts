@@ -68,6 +68,18 @@ const dashboardScreenSource =
     "utf8"
   ) +
   readFileSync(
+    new URL("../../apps/mobile/src/screens/dashboardProviderPlanUsage.tsx", import.meta.url),
+    "utf8"
+  ) +
+  readFileSync(
+    new URL("../../apps/mobile/src/screens/dashboardModelRouterPanel.tsx", import.meta.url),
+    "utf8"
+  ) +
+  readFileSync(
+    new URL("../../apps/mobile/src/screens/dashboardSpeechSettingsPanel.tsx", import.meta.url),
+    "utf8"
+  ) +
+  readFileSync(
     new URL("../../apps/mobile/src/screens/dashboardGatewayPanel.tsx", import.meta.url),
     "utf8"
   ) +

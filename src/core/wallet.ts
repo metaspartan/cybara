@@ -528,6 +528,16 @@ class WalletManager {
     };
   }
 
+  async revealMnemonic(password: string): Promise<{ mnemonic: string; wordCount: number }> {
+    this.validatePassword(password);
+    const vault = this.readVault();
+    if (!vault) {
+      throw new Error("Validation error: Wallet not found");
+    }
+    const mnemonic = await this.decryptMnemonic(vault, password);
+    return { mnemonic, wordCount: mnemonic.split(/\s+/).length };
+  }
+
   lock(): { success: boolean } {
     this.unlockedState = null;
     return { success: true };

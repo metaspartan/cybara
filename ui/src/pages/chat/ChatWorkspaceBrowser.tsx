@@ -41,8 +41,9 @@ interface BrowserPreview {
 const DEFAULT_BROWSER_VIEWPORT: BrowserViewport = { width: 960, height: 640 };
 const BROWSER_START_TIMEOUT_MS = 90_000;
 const BROWSER_REQUEST_TIMEOUT_MS = 12_000;
-const BROWSER_PREVIEW_POLL_MS = 1_500;
-const BROWSER_STATE_POLL_MS = 500;
+const BROWSER_PREVIEW_POLL_MS = 1_000;
+const BROWSER_STATE_POLL_MS = 750;
+const BROWSER_PREVIEW_QUALITY = 72;
 
 interface BrowserLaunchStatus {
   phase: "idle" | "starting" | "running" | "failed";
@@ -130,6 +131,25 @@ function parseBrowserViewport(value: unknown): BrowserViewport | null {
   return { width: record.width, height: record.height };
 }
 
+function sameBrowserPage(left: BrowserPage | null, right: BrowserPage | null): boolean {
+  return left?.id === right?.id && left?.title === right?.title && left?.url === right?.url;
+}
+
+function sameBrowserCursor(left: BrowserCursor | null, right: BrowserCursor | null): boolean {
+  return (
+    left?.x === right?.x &&
+    left?.y === right?.y &&
+    left?.visible === right?.visible &&
+    left?.updatedAt === right?.updatedAt &&
+    left?.action === right?.action &&
+    left?.source === right?.source
+  );
+}
+
+function sameBrowserViewport(left: BrowserViewport | null, right: BrowserViewport | null): boolean {
+  return left?.width === right?.width && left?.height === right?.height;
+}
+
 async function responseError(response: Response, fallback: string): Promise<Error> {
   const data: unknown = await response.json().catch(() => null);
   if (data && typeof data === "object") {
@@ -190,27 +210,26 @@ export function ChatWorkspaceBrowser({
   const previewSurfaceRef = useRef<HTMLDivElement>(null);
   const requestInFlightRef = useRef(false);
   const stateRequestInFlightRef = useRef(false);
+  const onTitleChangeRef = useRef(onTitleChange);
   const [browserViewport, setBrowserViewport] = useState(DEFAULT_BROWSER_VIEWPORT);
+  onTitleChangeRef.current = onTitleChange;
 
-  const syncPage = useCallback(
-    (nextPage: BrowserPage | null) => {
-      setPage((current) => {
-        if (
-          current?.id === nextPage?.id &&
-          current?.title === nextPage?.title &&
-          current?.url === nextPage?.url
-        ) {
-          return current;
-        }
-        return nextPage;
-      });
-      if (nextPage && document.activeElement !== addressRef.current) {
-        setAddress(nextPage.url ?? "");
+  const syncPage = useCallback((nextPage: BrowserPage | null) => {
+    setPage((current) => {
+      if (
+        current?.id === nextPage?.id &&
+        current?.title === nextPage?.title &&
+        current?.url === nextPage?.url
+      ) {
+        return current;
       }
-      onTitleChange?.(nextPage?.title?.trim() || "Browser");
-    },
-    [onTitleChange]
-  );
+      return nextPage;
+    });
+    if (nextPage && document.activeElement !== addressRef.current) {
+      setAddress(nextPage.url ?? "");
+    }
+    onTitleChangeRef.current?.(nextPage?.title?.trim() || "Browser");
+  }, []);
 
   const ensurePage = useCallback(async (): Promise<BrowserPage> => {
     const existing = await readSessionPage(browserSessionId);
@@ -226,6 +245,8 @@ export function ChatWorkspaceBrowser({
       try {
         const query = new URLSearchParams({
           fullPage: "false",
+          format: "jpeg",
+          quality: String(BROWSER_PREVIEW_QUALITY),
           viewportWidth: String(browserViewport.width),
           viewportHeight: String(browserViewport.height),
         });
@@ -248,11 +269,24 @@ export function ChatWorkspaceBrowser({
         const screenshot = payload?.screenshot;
         if (typeof screenshot !== "string") throw new Error("Browser preview is unavailable");
         const nextPage = parseBrowserPage(payload?.page) ?? targetPage;
-        setPreview({
-          screenshot: `data:image/png;base64,${screenshot}`,
-          cursor: parseBrowserCursor(payload?.cursor),
-          viewport: parseBrowserViewport(payload?.viewport),
-          page: nextPage,
+        const nextScreenshot = `data:${String(payload?.contentType || "image/jpeg")};base64,${screenshot}`;
+        const nextCursor = parseBrowserCursor(payload?.cursor);
+        const nextViewport = parseBrowserViewport(payload?.viewport);
+        setPreview((current) => {
+          if (
+            current?.screenshot === nextScreenshot &&
+            sameBrowserCursor(current.cursor, nextCursor) &&
+            sameBrowserViewport(current.viewport, nextViewport) &&
+            sameBrowserPage(current.page, nextPage)
+          ) {
+            return current;
+          }
+          return {
+            screenshot: nextScreenshot,
+            cursor: nextCursor,
+            viewport: nextViewport,
+            page: nextPage,
+          };
         });
         syncPage(nextPage);
         setError(null);
@@ -283,11 +317,19 @@ export function ChatWorkspaceBrowser({
         const nextPage = parseBrowserPage(payload?.page) ?? targetPage;
         const cursor = parseBrowserCursor(payload?.cursor);
         const viewport = parseBrowserViewport(payload?.viewport);
-        setPreview((current) =>
-          current
+        setPreview((current) => {
+          if (
+            current &&
+            sameBrowserCursor(current.cursor, cursor) &&
+            sameBrowserViewport(current.viewport, viewport) &&
+            sameBrowserPage(current.page, nextPage)
+          ) {
+            return current;
+          }
+          return current
             ? { ...current, cursor, viewport, page: nextPage }
-            : { screenshot: "", cursor, viewport, page: nextPage }
-        );
+            : { screenshot: "", cursor, viewport, page: nextPage };
+        });
         syncPage(nextPage);
       } finally {
         stateRequestInFlightRef.current = false;
@@ -295,14 +337,6 @@ export function ChatWorkspaceBrowser({
     },
     [syncPage]
   );
-
-  const refreshSessionPreview = useCallback(async () => {
-    const sessionPage = await readSessionPage(browserSessionId).catch(() => null);
-    const targetPage = sessionPage ?? page;
-    if (!targetPage) return;
-    syncPage(targetPage);
-    await loadPreview(targetPage);
-  }, [browserSessionId, loadPreview, page, syncPage]);
 
   useEffect(() => {
     const surface = previewSurfaceRef.current;
@@ -365,15 +399,33 @@ export function ChatWorkspaceBrowser({
   }, [loading, preview?.screenshot, visible]);
 
   useEffect(() => {
-    if (!visible) return;
-    const timer = window.setInterval(() => void refreshSessionPreview(), BROWSER_PREVIEW_POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [refreshSessionPreview, visible]);
+    if (!visible || !page) return;
+    let cancelled = false;
+    let timer: number | null = null;
+    const poll = async () => {
+      if (document.visibilityState === "visible") await loadPreview(page);
+      if (!cancelled) timer = window.setTimeout(() => void poll(), BROWSER_PREVIEW_POLL_MS);
+    };
+    timer = window.setTimeout(() => void poll(), BROWSER_PREVIEW_POLL_MS);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [loadPreview, page, visible]);
 
   useEffect(() => {
     if (!visible || !page) return;
-    const timer = window.setInterval(() => void loadBrowserState(page), BROWSER_STATE_POLL_MS);
-    return () => window.clearInterval(timer);
+    let cancelled = false;
+    let timer: number | null = null;
+    const poll = async () => {
+      if (document.visibilityState === "visible") await loadBrowserState(page);
+      if (!cancelled) timer = window.setTimeout(() => void poll(), BROWSER_STATE_POLL_MS);
+    };
+    timer = window.setTimeout(() => void poll(), BROWSER_STATE_POLL_MS);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
   }, [loadBrowserState, page, visible]);
 
   const runPageAction = async (action: "back" | "forward" | "reload") => {
@@ -454,9 +506,20 @@ export function ChatWorkspaceBrowser({
     if (!page || !preview?.viewport) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     if (bounds.width <= 0 || bounds.height <= 0) return;
+    const viewportAspect = preview.viewport.width / preview.viewport.height;
+    const surfaceAspect = bounds.width / bounds.height;
+    const renderedWidth =
+      surfaceAspect > viewportAspect ? bounds.height * viewportAspect : bounds.width;
+    const renderedHeight =
+      surfaceAspect > viewportAspect ? bounds.height : bounds.width / viewportAspect;
+    const offsetX = (bounds.width - renderedWidth) / 2;
+    const offsetY = (bounds.height - renderedHeight) / 2;
+    const localX = event.clientX - bounds.left - offsetX;
+    const localY = event.clientY - bounds.top - offsetY;
+    if (localX < 0 || localY < 0 || localX > renderedWidth || localY > renderedHeight) return;
     event.currentTarget.focus();
-    const x = ((event.clientX - bounds.left) / bounds.width) * preview.viewport.width;
-    const y = ((event.clientY - bounds.top) / bounds.height) * preview.viewport.height;
+    const x = (localX / renderedWidth) * preview.viewport.width;
+    const y = (localY / renderedHeight) * preview.viewport.height;
     void sendPageInput("pointer/click", { x, y });
   };
 
@@ -561,7 +624,7 @@ export function ChatWorkspaceBrowser({
           <img
             src={preview.screenshot}
             alt="Browser preview"
-            className="absolute inset-0 h-full w-full select-none object-fill"
+            className="absolute inset-0 h-full w-full select-none object-contain"
             draggable={false}
           />
         ) : (

@@ -27,6 +27,7 @@ const walletMockState = {
   createCalls: [] as string[],
   importCalls: [] as Array<{ mnemonic: string; password: string }>,
   unlockCalls: [] as string[],
+  revealSeedCalls: [] as string[],
   lockCalls: 0,
   accountsCalls: [] as Array<{ chains?: WalletChain[]; count?: number; startIndex?: number }>,
   receiveCalls: [] as Array<{ chain: WalletChain; index: number }>,
@@ -281,6 +282,10 @@ mock.module("../../src/core/wallet", () => ({
         unlockExpiresAt: new Date().toISOString(),
         primaryAddresses: { eth: "0xabc", btc: "bc1", sol: "sol" },
       };
+    },
+    revealMnemonic: async (password: string) => {
+      walletMockState.revealSeedCalls.push(password);
+      return { mnemonic: "alpha beta gamma", wordCount: 3 };
     },
     lock: () => {
       walletMockState.lockCalls += 1;
@@ -629,6 +634,7 @@ function resetState() {
   walletMockState.createCalls = [];
   walletMockState.importCalls = [];
   walletMockState.unlockCalls = [];
+  walletMockState.revealSeedCalls = [];
   walletMockState.lockCalls = 0;
   walletMockState.accountsCalls = [];
   walletMockState.receiveCalls = [];
@@ -1086,6 +1092,20 @@ describe("Wallet route contracts (mocked manager)", () => {
     const unlockRes = await api("POST", "/api/wallet/unlock", { password: "secretpass" });
     expect(unlockRes.status).toBe(200);
     expect(walletMockState.unlockCalls).toEqual(["secretpass"]);
+
+    const rejectedReveal = await api("POST", "/api/wallet/seed", {
+      password: "secretpass",
+      acknowledgement: "yes",
+    });
+    expect(rejectedReveal.status).toBe(400);
+    expect(walletMockState.revealSeedCalls).toEqual([]);
+
+    const revealRes = await api("POST", "/api/wallet/seed", {
+      password: "secretpass",
+      acknowledgement: "REVEAL",
+    });
+    expect(revealRes.status).toBe(200);
+    expect(walletMockState.revealSeedCalls).toEqual(["secretpass"]);
 
     const lockRes = await api("POST", "/api/wallet/lock");
     expect(lockRes.status).toBe(200);

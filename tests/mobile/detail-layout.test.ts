@@ -15,6 +15,7 @@ describe("mobile: iOS-style detail layout", () => {
   const controls = read("screens/dashboardControls.tsx");
   const settingsPanels = read("screens/dashboardSettingsPanels.tsx");
   const gatewayPanel = read("screens/dashboardGatewayPanel.tsx");
+  const journeyPanel = read("screens/dashboardJourneyPanel.tsx");
 
   test("detail info renders through a grouped DetailInfoSection", () => {
     expect(read("screens/dashboardControls.tsx")).toContain("function DetailInfoSection(");
@@ -52,9 +53,9 @@ describe("mobile: iOS-style detail layout", () => {
   });
 
   test("journey and gateway settings stay grouped into native mobile sections", () => {
-    expect(settingsPanels).toContain("styles.journeyStatGrid");
-    expect(settingsPanels).toContain("styles.journeyEventRow");
-    expect(settingsPanels).toContain('label="Loading journey"');
+    expect(journeyPanel).toContain("styles.journeyStatGrid");
+    expect(journeyPanel).toContain("styles.journeyEventRow");
+    expect(journeyPanel).toContain('label="Loading journey"');
     expect(gatewayPanel).toContain('<SettingsSection title="Gateway runtime">');
     expect(gatewayPanel).toContain('<SettingsSection title="Storage">');
     expect(gatewayPanel).toContain('<SettingsSection title="Security">');

@@ -42,6 +42,17 @@ describe("security-sensitive runtime defaults", () => {
     expect(serverSource).not.toContain("?token=${gatewayKey}");
   });
 
+  test("API responses disable caching for sensitive and live data", () => {
+    const serverSource = readFileSync(join(ROOT_DIR, "src", "index.ts"), "utf8");
+    const apiResponseStart = serverSource.indexOf(
+      'response.raw ? String(response.body ?? "") : JSON.stringify(response.body)'
+    );
+    expect(apiResponseStart).toBeGreaterThan(0);
+    expect(serverSource.slice(apiResponseStart, apiResponseStart + 500)).toContain(
+      '"Cache-Control": "no-store"'
+    );
+  });
+
   test("workspace indexing does not start automatically by default", () => {
     const configSource = readFileSync(join(ROOT_DIR, "src", "core", "config.ts"), "utf8");
     const ideConstantsSource = readFileSync(

@@ -47,6 +47,7 @@ import {
   type SessionModelMetadata,
 } from "./routes/session-model-metadata";
 import { extractLatestSessionPlan } from "../core/session-plan";
+import { listChatCapabilities } from "../core/chat/capability-mentions";
 import { formatSkillInstallSpec } from "./routes/skill-formatting";
 import { tables } from "../core/database";
 import { agentManager, getBuiltinTools } from "../core/agent";
@@ -1761,6 +1762,9 @@ const routes: Record<string, RouteHandler> = {
           : undefined;
     return await handleChat({ ...data, modelOverride });
   },
+  "GET /api/chat/capabilities": async (_body, params) => ({
+    capabilities: await listChatCapabilities(normalizeOptionalString(params?.workspaceDir)),
+  }),
   "POST /api/speech/dictate": async (body) => {
     const data = body as {
       audioBase64?: string;

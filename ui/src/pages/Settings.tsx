@@ -1097,6 +1097,11 @@ function WalletSettings() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletePassword, setDeletePassword] = useState("");
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [seedDialogOpen, setSeedDialogOpen] = useState(false);
+  const [seedPassword, setSeedPassword] = useState("");
+  const [seedConfirmText, setSeedConfirmText] = useState("");
+  const [revealedSeed, setRevealedSeed] = useState("");
+  const seedRevealTimer = useRef<number | null>(null);
 
   const syncWalletPolicyInputs = useCallback((policy: WalletAgentPolicy) => {
     setAgentPolicy(policy);
@@ -1145,6 +1150,51 @@ function WalletSettings() {
     }, 60_000);
     return () => window.clearInterval(timer);
   }, [load]);
+
+  useEffect(
+    () => () => {
+      if (seedRevealTimer.current !== null) window.clearTimeout(seedRevealTimer.current);
+    },
+    []
+  );
+
+  function closeSeedDialog() {
+    if (seedRevealTimer.current !== null) window.clearTimeout(seedRevealTimer.current);
+    seedRevealTimer.current = null;
+    setSeedDialogOpen(false);
+    setSeedPassword("");
+    setSeedConfirmText("");
+    setRevealedSeed("");
+  }
+
+  async function handleRevealSeed() {
+    if (seedConfirmText.trim() !== "REVEAL") {
+      addToast("error", "Type REVEAL to acknowledge seed phrase exposure");
+      return;
+    }
+    if (!seedPassword) {
+      addToast("error", "Wallet password is required");
+      return;
+    }
+    setBusy(true);
+    try {
+      const response = await walletApi.revealSeed(seedPassword, "REVEAL");
+      if (!response.success || !response.data?.mnemonic) {
+        throw new Error(response.error || "Seed phrase reveal failed");
+      }
+      setRevealedSeed(response.data.mnemonic);
+      setSeedPassword("");
+      if (seedRevealTimer.current !== null) window.clearTimeout(seedRevealTimer.current);
+      seedRevealTimer.current = window.setTimeout(() => {
+        setRevealedSeed("");
+        seedRevealTimer.current = null;
+      }, 60_000);
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Seed phrase reveal failed");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function handleToggleAgentAccess(enabled: boolean) {
     setBusy(true);
@@ -1265,6 +1315,28 @@ function WalletSettings() {
 
   return (
     <div className="space-y-6">
+      <Card variant="liquid">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Eye className="h-5 w-5 text-amber-400" />
+            Recovery Phrase
+          </CardTitle>
+          <CardDescription>
+            Reveal the wallet seed only to create an offline backup. Anyone with it controls every
+            derived account.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Button
+            variant="secondary"
+            onClick={() => setSeedDialogOpen(true)}
+            disabled={loading || busy || !status?.exists}
+          >
+            Reveal Seed Phrase
+          </Button>
+        </CardContent>
+      </Card>
+
       <Card variant="liquid">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -1440,6 +1512,60 @@ function WalletSettings() {
           </Button>
         </CardContent>
       </Card>
+
+      <Modal
+        isOpen={seedDialogOpen}
+        onClose={() => {
+          if (!busy) closeSeedDialog();
+        }}
+        title="Reveal Seed Phrase"
+        description="Fresh password verification is required even while the wallet is unlocked."
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-100">
+            Never share these words, paste them into a website, or store them in cloud notes. The
+            phrase disappears from this screen after 60 seconds.
+          </div>
+          {revealedSeed ? (
+            <div className="grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-black/30 p-4 sm:grid-cols-3">
+              {revealedSeed.split(/\s+/).map((word, index) => (
+                <div key={`${index}-${word}`} className="flex gap-2 font-mono text-sm text-white">
+                  <span className="w-6 text-right text-gray-500">{index + 1}.</span>
+                  <span className="select-text">{word}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              <Input
+                type="password"
+                label="Wallet password"
+                value={seedPassword}
+                onChange={(event) => setSeedPassword(event.target.value)}
+                autoComplete="current-password"
+                data-autofocus
+              />
+              <Input
+                label='Type "REVEAL" to confirm'
+                value={seedConfirmText}
+                onChange={(event) => setSeedConfirmText(event.target.value)}
+                autoComplete="off"
+              />
+            </>
+          )}
+          <div className="flex justify-end gap-3">
+            <Button variant="ghost" onClick={closeSeedDialog} disabled={busy}>
+              {revealedSeed ? "Done" : "Cancel"}
+            </Button>
+            {!revealedSeed ? (
+              <Button variant="danger" onClick={() => void handleRevealSeed()} isLoading={busy}>
+                Reveal Phrase
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={deleteDialogOpen}

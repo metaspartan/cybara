@@ -241,6 +241,22 @@ export async function rawWalletUnlock(password?: string): Promise<void> {
   console.log(`expires: ${formatWalletTimestamp(data.unlockExpiresAt)}`);
 }
 
+export async function rawWalletRevealSeed(password?: string, confirmation?: string): Promise<void> {
+  if (!password || confirmation !== "REVEAL") {
+    console.error("Usage: cybara wallet reveal-seed --password <password> --confirm REVEAL");
+    process.exit(1);
+  }
+  const data = await walletRequest<{ mnemonic: string; wordCount: number }>(
+    "POST",
+    "/api/wallet/seed",
+    { password, acknowledgement: confirmation }
+  );
+  console.log(`${data.wordCount}-word seed phrase:`);
+  console.log(data.mnemonic);
+  console.log("");
+  console.log("Store it offline and clear this terminal after recording it.");
+}
+
 export async function rawWalletLock(): Promise<void> {
   await walletRequest<{ success: boolean }>("POST", "/api/wallet/lock");
   console.log("Wallet locked");

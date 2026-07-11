@@ -730,6 +730,11 @@ export const walletApi = {
       primaryAddresses: Record<WalletChain, string>;
       unlockExpiresAt: string;
     }>("/wallet/unlock", { method: "POST", body: JSON.stringify({ password }) }),
+  revealSeed: (password: string, acknowledgement: string) =>
+    fetchApi<{ mnemonic: string; wordCount: number }>("/wallet/seed", {
+      method: "POST",
+      body: JSON.stringify({ password, acknowledgement }),
+    }),
   lock: () => fetchApi<{ success: boolean }>("/wallet/lock", { method: "POST" }),
   accounts: (params?: { chains?: WalletChain[]; count?: number; startIndex?: number }) => {
     const query = new URLSearchParams();
@@ -1159,7 +1164,19 @@ export const skillsApi = {
     fetchApi<unknown>(`/skills/${id}/execute`, { method: "POST", body: JSON.stringify(params) }),
 };
 
+export interface ChatCapabilityOption {
+  kind: "skill" | "mcp";
+  token: string;
+  name: string;
+  description: string;
+  source: string;
+}
+
 export const chatApi = {
+  capabilities: (workspaceDir?: string | null) =>
+    fetchApi<{ capabilities: ChatCapabilityOption[] }>(
+      `/chat/capabilities${workspaceDir ? `?workspaceDir=${encodeURIComponent(workspaceDir)}` : ""}`
+    ),
   send: (
     message: string,
     agentId?: string,

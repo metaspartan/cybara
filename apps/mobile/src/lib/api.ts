@@ -90,6 +90,20 @@ export interface SystemMonitorSnapshot {
   } | null;
 }
 
+export interface ComputerUseStatus {
+  available: boolean;
+  command: string;
+  configuredCommand?: string;
+  driverSource?: "env" | "config" | "path" | "known-install-dir" | "default";
+  platform: string;
+  version?: string;
+  accessibility?: boolean;
+  screenRecording?: boolean;
+  ready: boolean;
+  message: string;
+  installHint?: string;
+}
+
 export interface SessionSummary {
   id: string;
   title: string | null;
@@ -2848,6 +2862,16 @@ export class CybaraMobileApi {
         body: JSON.stringify(data),
       }
     );
+  }
+
+  computerUseStatus(): Promise<ComputerUseStatus> {
+    return this.request<ComputerUseStatus>("/api/computer-use/status");
+  }
+
+  grantComputerUsePermissions(): Promise<{ ok: boolean; message: string }> {
+    return this.request<{ ok: boolean; message: string }>("/api/computer-use/permissions/grant", {
+      method: "POST",
+    });
   }
 
   testMemoryProvider(

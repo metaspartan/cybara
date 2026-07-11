@@ -2,6 +2,10 @@ import { agentManager, type AgentMessage } from "../core/agent";
 import { KeyedMutex } from "../core/keyed-mutex";
 import { type AgentImage, hasImages, sanitizeAgentImages } from "../core/llm/image-blocks";
 import { persistImageAttachments, hydrateImageDataFromPath } from "../core/chat/attachments";
+import {
+  applyChatCapabilityInstruction,
+  resolveChatCapabilityMentions,
+} from "../core/chat/capability-mentions";
 import { mergeSessionTranscriptMessages } from "./session-transcript";
 import { providerManager } from "../core/providers";
 import { config } from "../core/config";
@@ -2000,15 +2004,25 @@ async function handleChatTurn(
         throw new Error(`LLM circuit breaker open for provider ${provider.id}`);
       }
 
-      const executionMessages = buildChatExecutionMessagesForAgent(session.messages, {
+      const baseExecutionMessages = buildChatExecutionMessagesForAgent(session.messages, {
         sessionId: session.id,
         materializedSteeringTurn: isMaterializedSteeringTurn,
       });
+      const capabilityMentions = await resolveChatCapabilityMentions(
+        message,
+        session.workspaceDir || undefined
+      );
+      const executionMessages = applyChatCapabilityInstruction(
+        baseExecutionMessages,
+        capabilityMentions.instruction
+      );
       const shouldPreferArtifacts = tools && shouldPreferArtifactsForMessage(message);
       let result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,
         sessionId: session.id,
-        requireToolUse: shouldPreferArtifacts,
+        requireToolUse:
+          shouldPreferArtifacts ||
+          capabilityMentions.mentions.some((mention) => mention.kind === "mcp"),
         requiredToolName: shouldPreferArtifacts ? "artifacts" : undefined,
         workspaceDir: session.workspaceDir || undefined,
         abortSignal: turnAbortController.signal,

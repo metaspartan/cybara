@@ -117,6 +117,7 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("GET", "/api/system/backups")).toBe("root");
     expect(routeRequiredScope("POST", "/api/system/backups")).toBe("root");
     expect(routeRequiredScope("POST", "/api/system/backups/backup_12345678/restore")).toBe("root");
+    expect(routeRequiredScope("POST", "/api/wallet/seed")).toBe("root");
     expect(normalizeMobileScopes(["root"])).not.toContain("root");
   });
 

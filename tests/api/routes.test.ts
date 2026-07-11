@@ -688,6 +688,25 @@ describe("Wallet API", () => {
     expect(statusAfterCreate.data.unlocked).toBe(true);
     expect(statusAfterCreate.data.primaryAddresses.eth).toBe(create.data.primaryAddresses.eth);
 
+    const revealWithoutAcknowledgement = await api("POST", "/api/wallet/seed", {
+      password: "integration-pass-123",
+    });
+    expect(revealWithoutAcknowledgement.status).toBe(400);
+
+    const revealWrongPassword = await api("POST", "/api/wallet/seed", {
+      password: "incorrect-password",
+      acknowledgement: "REVEAL",
+    });
+    expect(revealWrongPassword.status).toBe(400);
+
+    const reveal = await api("POST", "/api/wallet/seed", {
+      password: "integration-pass-123",
+      acknowledgement: "REVEAL",
+    });
+    expect(reveal.status).toBe(200);
+    expect(reveal.data.mnemonic).toBe(create.data.mnemonic);
+    expect(reveal.data.wordCount).toBe(24);
+
     const accounts = await api(
       "GET",
       "/api/wallet/accounts?chains=eth,btc,sol&count=1&startIndex=0"

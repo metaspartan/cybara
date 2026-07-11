@@ -126,6 +126,15 @@ export const walletRoutes: Record<string, RouteHandler> = {
       async (walletManager) => await walletManager.unlock(data.password || "")
     );
   },
+  "POST /api/wallet/seed": async (body) => {
+    const data = body as { password?: string; acknowledgement?: string };
+    if (data.acknowledgement !== "REVEAL") {
+      throw new Error("Validation error: Type REVEAL to acknowledge seed phrase exposure");
+    }
+    return await withWalletManager(
+      async (walletManager) => await walletManager.revealMnemonic(data.password || "")
+    );
+  },
   "POST /api/wallet/lock": async () => {
     return await withWalletManager((walletManager) => walletManager.lock());
   },

@@ -30,7 +30,10 @@ const browserMockState = {
   closePageCalls: [] as string[],
   navigateCalls: [] as NavigateCall[],
   snapshotCalls: [] as string[],
-  screenshotCalls: [] as string[],
+  screenshotCalls: [] as Array<{
+    id: string;
+    options?: { fullPage?: boolean; type?: "png" | "jpeg"; quality?: number };
+  }>,
   resizeCalls: [] as Array<{ id: string; width: number; height: number }>,
   clickCalls: [] as ClickCall[],
   coordinateClickCalls: [] as Array<{ id: string; x: number; y: number }>,
@@ -76,8 +79,11 @@ mock.module("../../src/core/browser/pw-manager", () => ({
     browserMockState.snapshotCalls.push(id);
     return { markdown: "# Snapshot", elements: [] };
   },
-  screenshot: async (id: string) => {
-    browserMockState.screenshotCalls.push(id);
+  screenshot: async (
+    id: string,
+    options?: { fullPage?: boolean; type?: "png" | "jpeg"; quality?: number }
+  ) => {
+    browserMockState.screenshotCalls.push({ id, options });
     return Buffer.from("img");
   },
   resize: async (id: string, width: number, height: number) => {
@@ -313,8 +319,23 @@ describe("Browser route contracts (mocked manager)", () => {
         page: { id: "tab-1", url: "https://example.com", title: "Example Domain" },
       },
     });
-    expect(browserMockState.screenshotCalls).toEqual(["tab-1"]);
+    expect(browserMockState.screenshotCalls).toEqual([
+      { id: "tab-1", options: { fullPage: true, type: "png" } },
+    ]);
     expect(browserMockState.resizeCalls).toEqual([{ id: "tab-1", width: 1280, height: 800 }]);
+  });
+
+  test("GET /api/browser/tabs/:id/screenshot supports bounded JPEG previews", async () => {
+    const res = await api(
+      "GET",
+      "/api/browser/tabs/tab-1/screenshot?fullPage=false&format=jpeg&quality=100&viewportWidth=960&viewportHeight=640"
+    );
+    expect(res.status).toBe(200);
+    expect((res.body as { data: { contentType: string } }).data.contentType).toBe("image/jpeg");
+    expect(browserMockState.screenshotCalls).toEqual([
+      { id: "tab-1", options: { fullPage: false, type: "jpeg", quality: 90 } },
+    ]);
+    expect(browserMockState.resizeCalls).toEqual([{ id: "tab-1", width: 960, height: 640 }]);
   });
 
   test("POST /api/browser/tabs/:id/click validates selector and forwards options", async () => {

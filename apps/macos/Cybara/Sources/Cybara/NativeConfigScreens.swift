@@ -1744,6 +1744,12 @@ struct WalletScreen: View {
     @State private var confirmingSend = false
     @State private var sendResult: String?
     @State private var sendError: String?
+    @State private var seedRevealPresented = false
+    @State private var seedPassword = ""
+    @State private var seedConfirmation = ""
+    @State private var revealedSeed = ""
+    @State private var revealingSeed = false
+    @State private var seedRevealTask: Task<Void, Never>?
     @State private var error: String?
 
     private static let nativeChains = ["eth", "btc", "sol"]
@@ -1811,6 +1817,24 @@ struct WalletScreen: View {
                                         .truncationMode(.middle)
                                     Spacer()
                                 }
+                            }
+                        }
+                    }
+
+                    GlassCard {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Recovery Phrase")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            Text("Reveal the seed only to create an offline backup. Anyone with it controls every derived account.")
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.secondary)
+                            HStack {
+                                Spacer()
+                                Button("Reveal Seed Phrase") {
+                                    seedRevealPresented = true
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(status["exists"] as? Bool != true)
                             }
                         }
                     }
@@ -1948,6 +1972,90 @@ struct WalletScreen: View {
         } message: {
             Text("Recipient: \(sendTo)")
         }
+        .sheet(isPresented: $seedRevealPresented, onDismiss: clearRevealedSeed) {
+            seedRevealSheet
+        }
+    }
+
+    private var seedRevealSheet: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Reveal Seed Phrase")
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+            Text("Never share these words, paste them into a website, or store them in cloud notes. The phrase disappears after 60 seconds.")
+                .font(.system(size: 12, design: .rounded))
+                .foregroundStyle(.orange)
+            if revealedSeed.isEmpty {
+                SecureField("Wallet password", text: $seedPassword)
+                    .textFieldStyle(.roundedBorder)
+                TextField("Type REVEAL to confirm", text: $seedConfirmation)
+                    .textFieldStyle(.roundedBorder)
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
+                    ForEach(Array(revealedSeed.split(separator: " ").enumerated()), id: \.offset) { index, word in
+                        HStack(spacing: 6) {
+                            Text("\(index + 1).")
+                                .foregroundStyle(.tertiary)
+                                .frame(width: 24, alignment: .trailing)
+                            Text(String(word))
+                                .textSelection(.enabled)
+                            Spacer()
+                        }
+                        .font(.system(size: 12, design: .monospaced))
+                    }
+                }
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.05)))
+            }
+            HStack {
+                Spacer()
+                Button(revealedSeed.isEmpty ? "Cancel" : "Done") {
+                    seedRevealPresented = false
+                }
+                if revealedSeed.isEmpty {
+                    Button(revealingSeed ? "Revealing…" : "Reveal Phrase", role: .destructive) {
+                        Task { await revealSeed() }
+                    }
+                    .disabled(revealingSeed || seedPassword.isEmpty || seedConfirmation != "REVEAL")
+                }
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
+    }
+
+    @MainActor
+    private func revealSeed() async {
+        guard seedConfirmation == "REVEAL", !seedPassword.isEmpty else { return }
+        revealingSeed = true
+        defer { revealingSeed = false }
+        do {
+            let result = try await client.revealWalletSeed(password: seedPassword)
+            guard let mnemonic = result["mnemonic"] as? String, !mnemonic.isEmpty else {
+                throw GatewayClientError.invalidResponse
+            }
+            seedPassword = ""
+            revealedSeed = mnemonic
+            seedRevealTask?.cancel()
+            seedRevealTask = Task {
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    revealedSeed = ""
+                    seedConfirmation = ""
+                    seedRevealTask = nil
+                }
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func clearRevealedSeed() {
+        seedRevealTask?.cancel()
+        seedRevealTask = nil
+        seedPassword = ""
+        seedConfirmation = ""
+        revealedSeed = ""
     }
 
     private var addressRows: [(chain: String, address: String)] {

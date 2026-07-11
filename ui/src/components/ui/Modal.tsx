@@ -16,6 +16,8 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
   const titleId = useId();
   const descriptionId = useId();
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     if (isOpen) {
@@ -55,7 +57,7 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        onClose();
+        onCloseRef.current();
         return;
       }
 
@@ -88,7 +90,7 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
       document.removeEventListener("keydown", handleKeyDown);
       previouslyFocused?.focus();
     };
-  }, [isOpen, onClose]);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -144,6 +146,7 @@ export function Modal({ isOpen, onClose, title, description, children, size = "m
               )}
             </div>
             <button
+              type="button"
               onClick={onClose}
               aria-label="Close dialog"
               className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-white/10 transition-all"

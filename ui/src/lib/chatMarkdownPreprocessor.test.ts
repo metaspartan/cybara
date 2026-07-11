@@ -26,6 +26,19 @@ describe("preprocessChatMarkdown", () => {
     expect(output).toContain("```");
   });
 
+  test("normalizes common inline and display math delimiters", () => {
+    expect(preprocessChatMarkdown("Inline \\(x^2 + y^2\\) value")).toBe("Inline $x^2 + y^2$ value");
+    expect(preprocessChatMarkdown("\\[\n\\sum_{i=1}^{n} i\n\\]")).toBe(
+      "$$\n\n\\sum_{i=1}^{n} i\n\n$$"
+    );
+    expect(preprocessChatMarkdown("Display \\[x^2\\] now")).toBe("Display \n$$\nx^2\n$$\n now");
+  });
+
+  test("preserves math-like delimiters inside inline and fenced code", () => {
+    const input = ["`\\(literal\\)`", "", "```tex", "\\[literal\\]", "```"].join("\n");
+    expect(preprocessChatMarkdown(input)).toBe(input);
+  });
+
   test("strips the header line of a non-json context block", () => {
     const input = ["Sender (untrusted metadata):", "alice", "", "Actual message body"].join("\n");
     const output = preprocessChatMarkdown(input);

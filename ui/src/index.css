@@ -887,6 +887,25 @@ textarea[data-chat-composer-input="true"]:focus-visible {
   color: var(--context-tooltip-body);
 }
 
+.chat-markdown .katex {
+  color: inherit;
+  font-size: 1.04em;
+}
+
+.chat-markdown .katex-display {
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: 0.75rem;
+  background: var(--surface-panel, #11131c);
+  padding: 0.875rem 1rem;
+}
+
+.chat-markdown .katex-display > .katex {
+  min-width: max-content;
+}
+
 /* Print Styles */
 @media print {
   body {

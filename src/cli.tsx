@@ -50,6 +50,7 @@ import {
   rawWalletLock,
   rawWalletPrice,
   rawWalletReceive,
+  rawWalletRevealSeed,
   rawWalletRpc,
   rawWalletRpcCall,
   rawWalletSend,
@@ -4335,6 +4336,12 @@ async function main() {
           break;
         case "unlock":
           await rawWalletUnlock(getFlagValue(walletArgs, "--password"));
+          break;
+        case "reveal-seed":
+          await rawWalletRevealSeed(
+            getFlagValue(walletArgs, "--password"),
+            getFlagValue(walletArgs, "--confirm")
+          );
           break;
         case "lock":
           await rawWalletLock();

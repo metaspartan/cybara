@@ -819,6 +819,9 @@ export function routeRequiredScope(method: string, path: string): string | null 
   if (path.startsWith("/api/checkpoints")) {
     return "root";
   }
+  if (path === "/api/wallet/seed") {
+    return "root";
+  }
   if (path === "/api/system/restart") {
     return "manage";
   }

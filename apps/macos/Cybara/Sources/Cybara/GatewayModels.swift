@@ -1,5 +1,19 @@
 import Foundation
 
+struct GatewayComputerUseStatus: Decodable {
+    let available: Bool
+    let command: String
+    let configuredCommand: String?
+    let driverSource: String?
+    let platform: String
+    let version: String?
+    let accessibility: Bool?
+    let screenRecording: Bool?
+    let ready: Bool
+    let message: String
+    let installHint: String?
+}
+
 struct GatewayHealth: Decodable {
     let status: String?
     let version: String?

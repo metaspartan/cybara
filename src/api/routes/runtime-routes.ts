@@ -38,6 +38,11 @@ function browserViewportDimension(value: unknown, fallback: number, maximum: num
   return Number.isFinite(parsed) ? Math.min(maximum, Math.max(320, Math.round(parsed))) : fallback;
 }
 
+function browserScreenshotQuality(value: unknown): number {
+  const parsed = typeof value === "string" || typeof value === "number" ? Number(value) : NaN;
+  return Number.isFinite(parsed) ? Math.min(90, Math.max(40, Math.round(parsed))) : 72;
+}
+
 function buildRestartCommand(argv: string[], cwd: string): string[] {
   if (isWindows()) {
     const powerShell = commandExists("pwsh")
@@ -151,16 +156,19 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     const screenshot = pwManager.screenshot;
     const width = browserViewportDimension(params?.viewportWidth, 1280, 2560);
     const height = browserViewportDimension(params?.viewportHeight, 800, 1600);
+    const format = params?.format === "jpeg" ? "jpeg" : "png";
     await pwManager.resize(params!.id, width, height);
     const screenshotBuffer = await screenshot(params!.id, {
       fullPage: params?.fullPage !== "false",
+      type: format,
+      ...(format === "jpeg" ? { quality: browserScreenshotQuality(params?.quality) } : {}),
     });
     const page = await pwManager.getPageSummary(params!.id);
     return {
       success: true,
       data: {
         screenshot: screenshotBuffer.toString("base64"),
-        contentType: "image/png",
+        contentType: format === "jpeg" ? "image/jpeg" : "image/png",
         viewport: pwManager.getViewportSize(params!.id),
         cursor: pwManager.getPointerState(params!.id),
         page,

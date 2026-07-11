@@ -104,9 +104,12 @@ import type {
 import { LiveActivityTimeline, ProcessActivityList } from "./chat/ActivityTimeline";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
 import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
+import { ChatCapabilityMenu } from "./chat/ChatCapabilityMenu";
 import { ChatEnvironmentOverview } from "./chat/ChatEnvironmentOverview";
+import { ChatImageLightbox, type ChatLightboxImage } from "./chat/ChatImageLightbox";
 import { ChatReasoningControl } from "./chat/ChatReasoningControl";
 import { isChatNearBottom } from "./chat/chatScroll";
+import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
 import { ChatWorkspaceBrowser } from "./chat/ChatWorkspaceBrowser";
 import { ChatWorkspaceFiles } from "./chat/ChatWorkspaceFiles";
 import {
@@ -1359,6 +1362,10 @@ export function Chat() {
   const [pendingImages, setPendingImages] = useState<ChatImageAttachment[]>([]);
   const [pendingFiles, setPendingFiles] = useState<ChatFileAttachment[]>([]);
   const [imageDragActive, setImageDragActive] = useState(false);
+  const [imageLightbox, setImageLightbox] = useState<{
+    images: ChatLightboxImage[];
+    index: number;
+  } | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const [workspaceSaving, setWorkspaceSaving] = useState(false);
   const [showWorkspacePicker, setShowWorkspacePicker] = useState(false);
@@ -1463,6 +1470,22 @@ export function Chat() {
   const dictationStreamRef = useRef<MediaStream | null>(null);
   const dictationChunksRef = useRef<Blob[]>([]);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const openChatImage = useCallback((src: string, alt: string) => {
+    const nodes = Array.from(
+      messagesContainerRef.current?.querySelectorAll<HTMLElement>("[data-chat-lightbox-src]") ?? []
+    );
+    const images = nodes
+      .map((node) => ({
+        src: node.dataset.chatLightboxSrc?.trim() || "",
+        alt: node.dataset.chatLightboxAlt?.trim() || "Image",
+      }))
+      .filter((image) => image.src.length > 0);
+    const index = Math.max(
+      0,
+      images.findIndex((image) => image.src === src && image.alt === alt)
+    );
+    setImageLightbox({ images: images.length > 0 ? images : [{ src, alt }], index });
+  }, []);
   const keepScrolledToBottomRef = useRef(true);
   const programmaticScrollUntilRef = useRef(0);
   const programmaticScrollTimeoutRef = useRef<number | null>(null);
@@ -3843,13 +3866,13 @@ export function Chat() {
     setArtifactViewerRawView(false);
   }, []);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.nativeEvent.isComposing) return;
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
+  const capabilityPicker = useChatCapabilityPicker({
+    input,
+    setInput,
+    inputRef,
+    workspaceDir: effectiveWorkspaceDir,
+    onSend: handleSend,
+  });
 
   const handleConfirmRevert = useCallback(async () => {
     if (!revertTarget) return;
@@ -4294,12 +4317,14 @@ export function Chat() {
                                   const src = chatImageSrc(image);
                                   if (!src) return null;
                                   return (
-                                    <a
+                                    <button
+                                      type="button"
                                       key={`msg-image-${originalIndex}-${imageIndex}`}
-                                      href={src}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="block max-w-[220px] overflow-hidden rounded-lg border border-white/12"
+                                      onClick={() => openChatImage(src, image.name || "Attachment")}
+                                      data-chat-lightbox-src={src}
+                                      data-chat-lightbox-alt={image.name || "Attachment"}
+                                      className="block max-w-[220px] cursor-zoom-in overflow-hidden rounded-lg border border-white/12"
+                                      aria-label={`Open ${image.name || "attachment"} preview`}
                                     >
                                       <img
                                         src={src}
@@ -4307,12 +4332,12 @@ export function Chat() {
                                         loading="lazy"
                                         className="h-auto max-h-64 w-full object-contain"
                                       />
-                                    </a>
+                                    </button>
                                   );
                                 })}
                               </div>
                             )}
-                            <MessageContent content={message.content} />
+                            <MessageContent content={message.content} onOpenImage={openChatImage} />
                             {message.role !== "user" &&
                               (() => {
                                 const outputImages = (message.tool_calls || [])
@@ -4322,12 +4347,14 @@ export function Chat() {
                                 return (
                                   <div className="mt-2 flex flex-wrap gap-2">
                                     {outputImages.map((src, imageIndex) => (
-                                      <a
+                                      <button
+                                        type="button"
                                         key={`tool-image-${originalIndex}-${imageIndex}`}
-                                        href={src}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        className="block max-w-[320px] overflow-hidden rounded-lg border border-white/12"
+                                        onClick={() => openChatImage(src, "Tool output")}
+                                        data-chat-lightbox-src={src}
+                                        data-chat-lightbox-alt="Tool output"
+                                        className="block max-w-[320px] cursor-zoom-in overflow-hidden rounded-lg border border-white/12"
+                                        aria-label="Open tool output preview"
                                       >
                                         <img
                                           src={src}
@@ -4335,7 +4362,7 @@ export function Chat() {
                                           loading="lazy"
                                           className="h-auto max-h-80 w-full object-contain"
                                         />
-                                      </a>
+                                      </button>
                                     ))}
                                   </div>
                                 );
@@ -4472,7 +4499,7 @@ export function Chat() {
                 )}
                 <div
                   className={cn(
-                    "rounded-[22px] border bg-white/[0.035] px-3 py-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors",
+                    "relative rounded-[22px] border bg-white/[0.035] px-3 py-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors",
                     imageDragActive ? "border-[rgba(var(--accent-primary),0.6)]" : "border-white/10"
                   )}
                   onDragOver={(e) => {
@@ -4566,13 +4593,23 @@ export function Chat() {
                     ref={inputRef}
                     data-chat-composer-input="true"
                     value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={handleKeyDown}
+                    onChange={capabilityPicker.onChange}
+                    onKeyDown={capabilityPicker.onKeyDown}
+                    onClick={(e) => capabilityPicker.onCursorChange(e.currentTarget.selectionStart)}
+                    onKeyUp={(e) => capabilityPicker.onCursorChange(e.currentTarget.selectionStart)}
                     onPaste={handleComposerPaste}
                     placeholder={t("chat.composer.placeholder")}
                     rows={1}
                     className="w-full min-h-[38px] max-h-[220px] overflow-y-auto resize-none bg-transparent px-0 py-1 text-[13px] leading-5 text-white placeholder-gray-500 !outline-none"
                   />
+                  {capabilityPicker.menuOpen && (
+                    <ChatCapabilityMenu
+                      options={capabilityPicker.options}
+                      selectedIndex={capabilityPicker.selectedIndex}
+                      loading={capabilityPicker.loading}
+                      onSelect={capabilityPicker.select}
+                    />
+                  )}
                   <div className="mt-0.5 flex min-h-8 items-center gap-1.5">
                     <ChatApprovalControls
                       mode={toolApprovalMode}
@@ -4791,6 +4828,14 @@ export function Chat() {
             })}
           </ChatWorkspacePanel>
         )}
+
+        {imageLightbox ? (
+          <ChatImageLightbox
+            images={imageLightbox.images}
+            initialIndex={imageLightbox.index}
+            onClose={() => setImageLightbox(null)}
+          />
+        ) : null}
 
         <Modal
           isOpen={!!revertTarget}

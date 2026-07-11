@@ -572,6 +572,22 @@ struct GatewayClient: Sendable {
         try await putJSON("api/config", body: body)
     }
 
+    func computerUseStatus() async throws -> GatewayComputerUseStatus {
+        try await get("api/computer-use/status", as: GatewayComputerUseStatus.self)
+    }
+
+    func grantComputerUsePermissions() async throws -> [String: Any] {
+        let data = try await request(
+            "api/computer-use/permissions/grant",
+            method: "POST",
+            body: Data("{}".utf8)
+        )
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GatewayClientError.invalidResponse
+        }
+        return object
+    }
+
     // ─── System prompt ───────────────────────────────────────────────────────
 
     func systemPrompt() async throws -> [String: Any] {
@@ -771,6 +787,17 @@ struct GatewayClient: Sendable {
 
     func walletStatus() async throws -> [String: Any] {
         try await rawObject("api/wallet/status")
+    }
+
+    func revealWalletSeed(password: String) async throws -> [String: Any] {
+        let body = try JSONSerialization.data(
+            withJSONObject: ["password": password, "acknowledgement": "REVEAL"]
+        )
+        let data = try await request("api/wallet/seed", method: "POST", body: body)
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw GatewayClientError.invalidResponse
+        }
+        return object
     }
 
     func walletPolicy() async throws -> [String: Any] {

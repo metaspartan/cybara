@@ -13,17 +13,17 @@ import {
   ApprovalSettingsPanel,
   ChannelSettingsPanel,
   GatewayManagementPanel,
-  JourneyPanel,
   MemorySettingsPanel,
   MigrationSettingsPanel,
-  ModelRouterPanel,
   ProviderSettingsPanel,
-  SpeechSettingsPanel,
   SystemMonitorDetailPanel,
   SystemPromptPanel,
   TaskSettingsPanel,
   WalletPolicyPanel,
 } from "./dashboardSettingsPanels";
+import { JourneyPanel } from "./dashboardJourneyPanel";
+import { ModelRouterPanel } from "./dashboardModelRouterPanel";
+import { SpeechSettingsPanel } from "./dashboardSpeechSettingsPanel";
 import {
   useEffect,
   useCallback,

@@ -10,6 +10,7 @@ describe("mobile settings: Speech lives on its own screen", () => {
     read("screens/DashboardScreen.tsx") +
     read("screens/dashboardDetailPanels.tsx") +
     read("screens/dashboardSettingsPanels.tsx") +
+    read("screens/dashboardSpeechSettingsPanel.tsx") +
     read("screens/dashboardSurfaceData.ts");
 
   test("there is a dedicated SpeechSettingsPanel with TTS + STT sections", () => {
