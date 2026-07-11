@@ -240,8 +240,11 @@ jobs:
   npm:
     needs: resolve
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     env:
-      HAS: ${{ secrets.NPM_TOKEN != '' }}
+      HAS: ${{ secrets.NPM_TOKEN != '' || vars.NPM_TRUSTED_PUBLISHER == 'true' }}
       VER: ${{ needs.resolve.outputs.version }}
     steps:
       - if: env.HAS == 'true'
@@ -249,8 +252,11 @@ jobs:
       - if: env.HAS == 'true'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "20"
+          node-version: "22"
           registry-url: "https://registry.npmjs.org"
+      - name: Ensure npm supports OIDC
+        if: env.HAS == 'true'
+        run: npm install -g npm@latest
       - name: Publish to npm
         if: env.HAS == 'true'
         working-directory: packaging/npm
@@ -263,7 +269,7 @@ jobs:
             exit 0
           fi
           npm version "${VER}" --no-git-tag-version --allow-same-version
-          npm publish --access public
+          npm publish --access public --provenance
 
   nix:
     needs: resolve
