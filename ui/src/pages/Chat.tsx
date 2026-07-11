@@ -2,7 +2,6 @@ import {
   AlertTriangle,
   ArrowDown,
   ArrowLeft,
-  Bug,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -15,18 +14,13 @@ import {
   FolderOpen,
   GripVertical,
   GitFork,
-  Hash,
   Loader2,
   MessageSquare,
   Mic,
   MicOff,
-  MoreHorizontal,
-  ExternalLink,
   PanelRightOpen,
   Paperclip,
   Pencil,
-  Pin,
-  PinOff,
   Plus,
   RotateCcw,
   ShieldAlert,
@@ -50,15 +44,7 @@ import {
   useSubagents,
   useUpdateAgentReasoning,
 } from "@/hooks/useApi";
-import {
-  useChat,
-  useDeleteSession,
-  useLoadSession,
-  usePinSession,
-  useRenameSession,
-  useSessions,
-  useUpdateSessionAgent,
-} from "@/hooks/useChat";
+import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
 import { apiFetch, appendApiTokenParam } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
@@ -199,6 +185,7 @@ import {
   writeCachedOptimisticPendingMessages,
 } from "./chat/pendingQueueCache";
 import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
+import { ChatHeaderTitleMenu } from "./chat/ChatHeaderTitleMenu";
 import { SessionsPanel } from "./chat/SessionSidebar";
 import { SubagentIcon } from "./chat/SubagentIcon";
 import { SubagentPanel } from "./chat/SubagentPanel";
@@ -1222,17 +1209,6 @@ export function Chat() {
   );
   const loadSessionMutation = useLoadSession();
   const updateSessionAgent = useUpdateSessionAgent();
-  const { data: sessionsList } = useSessions();
-  const renameSession = useRenameSession();
-  const pinSessionMutation = usePinSession();
-  const deleteSessionMutation = useDeleteSession();
-  const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
-  const [renamingHeader, setRenamingHeader] = useState(false);
-  const [headerTitleDraft, setHeaderTitleDraft] = useState("");
-  const [copiedSessionId, setCopiedSessionId] = useState(false);
-  const [copiedDebugInfo, setCopiedDebugInfo] = useState(false);
-  const headerMenuRef = useRef<HTMLDivElement>(null);
-  const headerCopyTimerRef = useRef<number | null>(null);
   const refreshSessionMessagesRef = useRef<(sid: string) => Promise<boolean>>(() =>
     Promise.resolve(false)
   );
@@ -2587,199 +2563,6 @@ export function Chat() {
     },
     [clearChat]
   );
-
-  const currentSessionSummary = useMemo(
-    () => (sessionId ? (sessionsList?.find((session) => session.id === sessionId) ?? null) : null),
-    [sessionsList, sessionId]
-  );
-
-  const derivedSessionTitle = useMemo(() => {
-    const explicitTitle = currentSessionSummary?.title?.trim();
-    if (explicitTitle) return explicitTitle;
-    const firstUserMessage = typedMessages.find(
-      (message) => message.role === "user" && message.content.trim()
-    );
-    const snippet = firstUserMessage?.content.trim().replace(/\s+/g, " ");
-    if (snippet) return snippet.length > 80 ? `${snippet.slice(0, 80)}…` : snippet;
-    return null;
-  }, [currentSessionSummary, typedMessages]);
-
-  const headerTitle = sessionId ? (derivedSessionTitle ?? "Untitled chat") : "New chat";
-
-  const writeToClipboard = useCallback(async (value: string) => {
-    try {
-      await navigator.clipboard.writeText(value);
-      return true;
-    } catch {
-      try {
-        const textarea = document.createElement("textarea");
-        textarea.value = value;
-        textarea.style.position = "fixed";
-        textarea.style.opacity = "0";
-        document.body.appendChild(textarea);
-        textarea.select();
-        const ok = document.execCommand("copy");
-        document.body.removeChild(textarea);
-        return ok;
-      } catch (error) {
-        console.error("Failed to copy to clipboard:", error);
-        return false;
-      }
-    }
-  }, []);
-
-  const flashHeaderCopy = useCallback((target: "id" | "debug") => {
-    if (headerCopyTimerRef.current !== null) {
-      window.clearTimeout(headerCopyTimerRef.current);
-    }
-    if (target === "id") {
-      setCopiedSessionId(true);
-      setCopiedDebugInfo(false);
-    } else {
-      setCopiedDebugInfo(true);
-      setCopiedSessionId(false);
-    }
-    headerCopyTimerRef.current = window.setTimeout(() => {
-      setCopiedSessionId(false);
-      setCopiedDebugInfo(false);
-      headerCopyTimerRef.current = null;
-    }, 1500);
-  }, []);
-
-  const handleCopySessionId = useCallback(async () => {
-    if (!sessionId) return;
-    if (await writeToClipboard(sessionId)) flashHeaderCopy("id");
-  }, [sessionId, writeToClipboard, flashHeaderCopy]);
-
-  const handleCopyDebugInfo = useCallback(async () => {
-    if (!sessionId) return;
-    const debugPayload = {
-      exportedAt: new Date().toISOString(),
-      app: {
-        version: info?.version ?? null,
-        userAgent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-      },
-      session: {
-        id: sessionId,
-        title: currentSessionSummary?.title ?? derivedSessionTitle ?? null,
-        agentId: chatAgentId ?? selectedAgentId ?? sessionAgentId ?? null,
-        modelRouterEnabled: useModelRouter,
-        workspaceDir: effectiveWorkspaceDir,
-        pinned: currentSessionSummary?.pinned ?? null,
-        createdAt: currentSessionSummary?.created_at ?? null,
-        updatedAt: currentSessionSummary?.updated_at ?? null,
-        messageCount: typedMessages.length,
-      },
-      context: sessionContextUsage ?? null,
-      tokenUsage: sessionTokenUsage ?? null,
-      messages: typedMessages.map((message) => ({
-        role: message.role,
-        content: message.content,
-        timestamp: message.timestamp ?? null,
-        thinking: message.thinking ?? null,
-        imageCount: message.images?.length ?? 0,
-        toolCalls: (message.tool_calls ?? []).map((call) => ({
-          name: call.name,
-          arguments: call.arguments,
-          result: call.result,
-          status: call.status,
-        })),
-      })),
-    };
-    const serialized = JSON.stringify(debugPayload, null, 2);
-    if (await writeToClipboard(serialized)) {
-      flashHeaderCopy("debug");
-      setHeaderMenuOpen(false);
-    }
-  }, [
-    sessionId,
-    info,
-    currentSessionSummary,
-    derivedSessionTitle,
-    chatAgentId,
-    selectedAgentId,
-    sessionAgentId,
-    useModelRouter,
-    effectiveWorkspaceDir,
-    sessionContextUsage,
-    sessionTokenUsage,
-    typedMessages,
-    writeToClipboard,
-    flashHeaderCopy,
-  ]);
-
-  const beginHeaderRename = useCallback(() => {
-    setHeaderTitleDraft(currentSessionSummary?.title?.trim() || derivedSessionTitle || "");
-    setRenamingHeader(true);
-    setHeaderMenuOpen(false);
-  }, [currentSessionSummary, derivedSessionTitle]);
-
-  const submitHeaderRename = useCallback(async () => {
-    const nextTitle = headerTitleDraft.trim();
-    setRenamingHeader(false);
-    if (!sessionId || !nextTitle || nextTitle === (currentSessionSummary?.title?.trim() || "")) {
-      return;
-    }
-    try {
-      await renameSession.mutateAsync({ sessionId, title: nextTitle });
-    } catch (error) {
-      console.error("Failed to rename session:", error);
-    }
-  }, [headerTitleDraft, sessionId, currentSessionSummary, renameSession]);
-
-  const handleTogglePinCurrentSession = useCallback(async () => {
-    if (!sessionId) return;
-    setHeaderMenuOpen(false);
-    try {
-      await pinSessionMutation.mutateAsync({
-        sessionId,
-        pinned: !currentSessionSummary?.pinned,
-      });
-    } catch (error) {
-      console.error("Failed to pin session:", error);
-    }
-  }, [sessionId, currentSessionSummary, pinSessionMutation]);
-
-  const handleOpenSessionInNewWindow = useCallback(() => {
-    if (!sessionId) return;
-    setHeaderMenuOpen(false);
-    window.open(`/chat?session=${encodeURIComponent(sessionId)}`, "_blank", "noopener");
-  }, [sessionId]);
-
-  const handleDeleteCurrentSession = useCallback(async () => {
-    if (!sessionId) return;
-    setHeaderMenuOpen(false);
-    if (!window.confirm("Delete this chat? This cannot be undone.")) return;
-    try {
-      await deleteSessionMutation.mutateAsync(sessionId);
-      resetChatSession({ resetAgentSelection: false });
-    } catch (error) {
-      console.error("Failed to delete session:", error);
-    }
-  }, [sessionId, deleteSessionMutation, resetChatSession]);
-
-  useEffect(() => {
-    if (!headerMenuOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      if (headerMenuRef.current && !headerMenuRef.current.contains(event.target as Node)) {
-        setHeaderMenuOpen(false);
-      }
-    };
-    const handleKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") setHeaderMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handlePointerDown);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", handlePointerDown);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [headerMenuOpen]);
-
-  useEffect(() => {
-    setHeaderMenuOpen(false);
-    setRenamingHeader(false);
-  }, [sessionId]);
 
   useEffect(() => {
     activeSessionRef.current = sessionId;
@@ -4182,140 +3965,20 @@ export function Chat() {
           >
             <MessageSquare className="w-4 h-4" />
           </button>
-          <div className="flex flex-col min-w-0">
-            {renamingHeader ? (
-              <input
-                autoFocus
-                value={headerTitleDraft}
-                onChange={(event) => setHeaderTitleDraft(event.target.value)}
-                onBlur={() => void submitHeaderRename()}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    void submitHeaderRename();
-                  } else if (event.key === "Escape") {
-                    event.preventDefault();
-                    setRenamingHeader(false);
-                  }
-                }}
-                className="w-40 sm:w-64 bg-white/5 border border-white/15 rounded-md px-2 py-1 text-sm font-semibold text-white outline-none focus:border-white/30"
-                placeholder="Chat title"
-              />
-            ) : (
-              <button
-                type="button"
-                onClick={() => sessionId && beginHeaderRename()}
-                disabled={!sessionId}
-                title={sessionId ? "Rename chat" : undefined}
-                className={cn(
-                  "text-sm sm:text-base font-semibold text-white truncate max-w-[9rem] sm:max-w-sm text-left",
-                  sessionId
-                    ? "cursor-pointer hover:text-white/80 transition-colors"
-                    : "cursor-default"
-                )}
-              >
-                {headerTitle}
-              </button>
-            )}
-          </div>
-          {sessionId && (
-            <div className="relative" ref={headerMenuRef}>
-              <button
-                type="button"
-                onClick={() => setHeaderMenuOpen((open) => !open)}
-                aria-label="Chat options"
-                aria-expanded={headerMenuOpen}
-                className={cn(
-                  "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
-                  headerMenuOpen ? "text-white bg-white/5" : "text-gray-500"
-                )}
-              >
-                <MoreHorizontal className="w-4 h-4" />
-              </button>
-              {headerMenuOpen && (
-                <div className="workspace-open-menu-panel absolute left-0 top-full mt-1 z-[1000] w-64 overflow-hidden rounded-xl border border-white/10 p-1.5 text-sm shadow-[0_18px_60px_rgba(0,0,0,0.65)]">
-                  <button
-                    type="button"
-                    onClick={() => void handleCopySessionId()}
-                    title="Copy session ID"
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-white/10"
-                  >
-                    {copiedSessionId ? (
-                      <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-                    ) : (
-                      <Hash className="w-3.5 h-3.5 shrink-0 text-gray-400" />
-                    )}
-                    <span className="flex min-w-0 flex-col">
-                      <span className="text-[10px] uppercase tracking-wide text-gray-500">
-                        {copiedSessionId ? "Copied to clipboard" : "Session ID"}
-                      </span>
-                      <span className="truncate font-mono text-xs text-gray-200">{sessionId}</span>
-                    </span>
-                  </button>
-                  <div className="my-1 h-px bg-white/10" />
-                  <button
-                    type="button"
-                    onClick={() => void handleTogglePinCurrentSession()}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
-                  >
-                    {currentSessionSummary?.pinned ? (
-                      <PinOff className="w-3.5 h-3.5 text-gray-400" />
-                    ) : (
-                      <Pin className="w-3.5 h-3.5 text-gray-400" />
-                    )}
-                    {currentSessionSummary?.pinned ? "Unpin" : "Pin"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={beginHeaderRename}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
-                  >
-                    <Pencil className="w-3.5 h-3.5 text-gray-400" />
-                    Rename
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleCopySessionId();
-                      setHeaderMenuOpen(false);
-                    }}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
-                  >
-                    <Copy className="w-3.5 h-3.5 text-gray-400" />
-                    Copy session ID
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleCopyDebugInfo()}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
-                  >
-                    {copiedDebugInfo ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                    ) : (
-                      <Bug className="w-3.5 h-3.5 text-gray-400" />
-                    )}
-                    {copiedDebugInfo ? "Debug info copied" : "Copy debug info (JSON)"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleOpenSessionInNewWindow}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-gray-100 transition-colors hover:bg-white/10"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
-                    Open in new window
-                  </button>
-                  <div className="my-1 h-px bg-white/10" />
-                  <button
-                    type="button"
-                    onClick={() => void handleDeleteCurrentSession()}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left text-red-400 transition-colors hover:bg-red-500/10"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Delete chat
-                  </button>
-                </div>
-              )}
-            </div>
+          {sessionId ? (
+            <ChatHeaderTitleMenu
+              sessionId={sessionId}
+              messages={typedMessages}
+              agentId={chatAgentId ?? selectedAgentId ?? sessionAgentId ?? undefined}
+              workspaceDir={effectiveWorkspaceDir}
+              useModelRouter={useModelRouter}
+              contextUsage={sessionContextUsage}
+              tokenUsage={sessionTokenUsage}
+              appVersion={info?.version}
+              onDeleted={() => resetChatSession({ resetAgentSelection: false })}
+            />
+          ) : (
+            <h1 className="text-sm sm:text-base font-semibold text-white">New chat</h1>
           )}
         </div>
         <div className="flex items-center gap-1 sm:gap-2">
