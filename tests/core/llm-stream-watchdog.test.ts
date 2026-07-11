@@ -196,11 +196,16 @@ describe("consumeOpenAIChatStream onTextDelta", () => {
       },
     });
     const deltas: string[] = [];
-    const assembled = await consumeOpenAIChatStream(stream, undefined, (delta) =>
-      deltas.push(delta)
+    const startedAt = performance.now() - 25;
+    const assembled = await consumeOpenAIChatStream(
+      stream,
+      undefined,
+      (delta) => deltas.push(delta),
+      startedAt
     );
     expect(deltas).toEqual(["Hel", "lo"]);
     expect(assembled.choices[0]?.message.content).toBe("Hello");
+    expect(assembled.first_token_ms).toBeGreaterThanOrEqual(20);
   });
 });
 

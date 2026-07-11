@@ -345,10 +345,14 @@ export interface SessionContextUsage {
 export interface SessionTokenUsage {
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
+  cacheHitRate: number | null;
   totalTokens: number;
   callCount: number;
   durationMs: number;
   tokensPerSecond: number | null;
+  firstTokenMs: number | null;
   source?: "metrics";
 }
 

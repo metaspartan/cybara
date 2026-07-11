@@ -6,6 +6,7 @@ SCREEN_GEOMETRY="${SCREEN_GEOMETRY:-1280x800x24}"
 CDP_PORT="${CDP_PORT:-9222}"
 VNC_PORT="${VNC_PORT:-5900}"
 NOVNC_PORT="${NOVNC_PORT:-6080}"
+CHROMIUM_CDP_PORT="${CHROMIUM_CDP_PORT:-9223}"
 export DISPLAY
 
 cleanup() {
@@ -13,31 +14,26 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Virtual display.
 Xvfb "$DISPLAY" -screen 0 "$SCREEN_GEOMETRY" -nolisten tcp &
 for _ in $(seq 1 50); do
   if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then break; fi
   sleep 0.1
 done
 
-# Lightweight window manager so dialogs/menus behave.
 fluxbox >/dev/null 2>&1 &
 
-# VNC server on the virtual display + noVNC web bridge for human viewing.
 x11vnc -display "$DISPLAY" -rfbport "$VNC_PORT" -forever -shared -nopw -quiet -bg
 websockify --web=/usr/share/novnc "$NOVNC_PORT" "localhost:${VNC_PORT}" >/dev/null 2>&1 &
+socat "TCP-LISTEN:${CDP_PORT},fork,reuseaddr,bind=0.0.0.0" "TCP:127.0.0.1:${CHROMIUM_CDP_PORT}" &
 
-# Chromium with CDP bound to all interfaces so the host can attach via the
-# published port. Isolated profile; sandbox disabled (required inside a
-# container without extra capabilities).
 exec chromium \
   --no-first-run \
   --no-default-browser-check \
   --disable-gpu \
   --no-sandbox \
   --disable-dev-shm-usage \
-  --remote-debugging-address=0.0.0.0 \
-  --remote-debugging-port="$CDP_PORT" \
+  --remote-debugging-address=127.0.0.1 \
+  --remote-debugging-port="$CHROMIUM_CDP_PORT" \
   --user-data-dir=/tmp/chrome-profile \
   --window-size=1280,800 \
   "about:blank"

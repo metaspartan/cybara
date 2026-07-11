@@ -13,6 +13,7 @@ RUN apt-get update \
     fonts-liberation \
     fluxbox \
     novnc \
+    socat \
     websockify \
     x11vnc \
     xvfb \
@@ -23,7 +24,6 @@ RUN apt-get update \
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
-# CDP (Chrome DevTools Protocol) and noVNC (browser-viewable desktop).
 EXPOSE 9222 6080
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]

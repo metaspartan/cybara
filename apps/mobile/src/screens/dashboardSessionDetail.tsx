@@ -2332,9 +2332,17 @@ function mobileSessionTokenUsageDetail(usage?: SessionTokenUsage): string | null
     usage.tokensPerSecond !== null && Number.isFinite(usage.tokensPerSecond)
       ? ` · ${usage.tokensPerSecond} tok/s`
       : "";
+  const firstToken =
+    usage.firstTokenMs !== null && Number.isFinite(usage.firstTokenMs)
+      ? ` · first token ${usage.firstTokenMs < 1000 ? `${Math.round(usage.firstTokenMs)}ms` : `${(usage.firstTokenMs / 1000).toFixed(1)}s`}`
+      : "";
+  const cache =
+    usage.cachedInputTokens > 0 || usage.cacheWriteTokens > 0
+      ? ` · cache ${mobileFormatTokenCount(usage.cachedInputTokens)} read / ${mobileFormatTokenCount(usage.cacheWriteTokens)} write`
+      : "";
   return `Tokens: ${mobileFormatTokenCount(usage.inputTokens)} input / ${mobileFormatTokenCount(
     usage.outputTokens
-  )} output · ${usage.callCount} calls${speed}`;
+  )} output · ${usage.callCount} calls${speed}${firstToken}${cache}`;
 }
 
 function mobileProviderPlanFor(

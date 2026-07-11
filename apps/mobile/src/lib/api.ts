@@ -693,10 +693,14 @@ export interface SessionContextUsage {
 export interface SessionTokenUsage {
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
+  cacheHitRate: number | null;
   totalTokens: number;
   callCount: number;
   durationMs: number;
   tokensPerSecond: number | null;
+  firstTokenMs: number | null;
   source?: "metrics";
 }
 
@@ -1551,10 +1555,20 @@ function normalizeSessionTokenUsage(value: unknown): SessionTokenUsage | undefin
   return {
     inputTokens,
     outputTokens,
+    cachedInputTokens: Math.max(
+      0,
+      readNumber(record, ["cachedInputTokens", "cached_input_tokens"]) ?? 0
+    ),
+    cacheWriteTokens: Math.max(
+      0,
+      readNumber(record, ["cacheWriteTokens", "cache_write_tokens"]) ?? 0
+    ),
+    cacheHitRate: readNumber(record, ["cacheHitRate", "cache_hit_rate"]) ?? null,
     totalTokens: Math.max(totalTokens, inputTokens + outputTokens),
     callCount: Math.max(0, readNumber(record, ["callCount", "call_count"]) ?? 0),
     durationMs: Math.max(0, readNumber(record, ["durationMs", "duration_ms"]) ?? 0),
     tokensPerSecond: readNumber(record, ["tokensPerSecond", "tokens_per_second"]) ?? null,
+    firstTokenMs: readNumber(record, ["firstTokenMs", "first_token_ms"]) ?? null,
     source: readString(record, ["source"]) === "metrics" ? "metrics" : undefined,
   };
 }

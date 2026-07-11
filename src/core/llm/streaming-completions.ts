@@ -41,18 +41,26 @@ export interface AssembledOpenAIResponse {
     finish_reason: string;
   }>;
   usage?: Record<string, unknown>;
+  first_token_ms?: number;
 }
 
 export async function consumeOpenAIChatStream(
   body: ReadableStream<Uint8Array>,
   watchdog?: StreamWatchdog,
-  onTextDelta?: (delta: string) => void
+  onTextDelta?: (delta: string) => void,
+  requestStartedAt?: number
 ): Promise<AssembledOpenAIResponse> {
   let content = "";
   let reasoning = "";
   let finishReason = "stop";
   let usage: Record<string, unknown> | undefined;
+  let firstTokenMs: number | undefined;
   const toolCalls = new Map<number, { id: string; name: string; args: string }>();
+
+  const markFirstToken = (): void => {
+    if (firstTokenMs !== undefined || requestStartedAt === undefined) return;
+    firstTokenMs = Math.max(0, Math.round(performance.now() - requestStartedAt));
+  };
 
   for await (const event of parseServerSentEvents(body)) {
     watchdog?.touch();
@@ -71,13 +79,16 @@ export async function consumeOpenAIChatStream(
     if (!delta) continue;
 
     if (typeof delta.content === "string" && delta.content) {
+      markFirstToken();
       content += delta.content;
       onTextDelta?.(delta.content);
     }
     if (typeof delta.reasoning_content === "string" && delta.reasoning_content) {
+      markFirstToken();
       reasoning += delta.reasoning_content;
     }
     for (const toolDelta of delta.tool_calls || []) {
+      markFirstToken();
       const index = typeof toolDelta.index === "number" ? toolDelta.index : 0;
       const existing = toolCalls.get(index) || { id: "", name: "", args: "" };
       if (typeof toolDelta.id === "string" && toolDelta.id) existing.id = toolDelta.id;
@@ -114,5 +125,6 @@ export async function consumeOpenAIChatStream(
       },
     ],
     ...(usage ? { usage } : {}),
+    ...(firstTokenMs !== undefined ? { first_token_ms: firstTokenMs } : {}),
   };
 }

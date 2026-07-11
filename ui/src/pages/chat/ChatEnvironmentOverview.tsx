@@ -118,6 +118,7 @@ export function ChatEnvironmentOverview({
 
   const contextPercent = Math.max(0, Math.min(100, contextUsage?.usedPercent || 0));
   const hasTokenUsage = Boolean(tokenUsage && tokenUsage.totalTokens > 0);
+  const latestFirstTokenMs = tokenUsage?.firstTokenMs ?? timeToFirstTokenMs;
 
   const panel = (
     <div
@@ -219,7 +220,8 @@ export function ChatEnvironmentOverview({
                 value={hasTokenUsage ? formatCompactNumber(tokenUsage?.outputTokens || 0) : "—"}
               />
               <UsageStat
-                label="Calls"
+                description="Provider requests made during this session"
+                label="Model calls"
                 value={hasTokenUsage ? formatCompactNumber(tokenUsage?.callCount || 0) : "—"}
               />
               <UsageStat
@@ -234,7 +236,21 @@ export function ChatEnvironmentOverview({
               <UsageStat
                 description="Time to first token in the latest turn"
                 label="First token"
-                value={timeToFirstTokenMs !== null ? formatLatency(timeToFirstTokenMs) : "—"}
+                value={latestFirstTokenMs !== null ? formatLatency(latestFirstTokenMs) : "—"}
+              />
+              <UsageStat
+                description="Input tokens served from the provider cache"
+                label="Cache read"
+                value={
+                  hasTokenUsage
+                    ? `${formatCompactNumber(tokenUsage?.cachedInputTokens || 0)}${tokenUsage?.cacheHitRate !== null && tokenUsage?.cacheHitRate !== undefined ? ` · ${tokenUsage.cacheHitRate}%` : ""}`
+                    : "—"
+                }
+              />
+              <UsageStat
+                description="Input tokens written to the provider cache"
+                label="Cache write"
+                value={hasTokenUsage ? formatCompactNumber(tokenUsage?.cacheWriteTokens || 0) : "—"}
               />
               <UsageStat
                 description="Earlier context reduced to preserve the active window"

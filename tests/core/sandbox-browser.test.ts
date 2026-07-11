@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync } from "fs";
 import {
   buildDockerRunArgs,
   sandboxCdpUrl,
+  resolveSandboxContextDir,
   sandboxNovncUrl,
   SANDBOX_BROWSER_IMAGE,
   SANDBOX_BROWSER_CONTAINER,
@@ -30,5 +32,34 @@ describe("sandbox browser launcher", () => {
     expect(sandboxCdpUrl(9333)).toBe("http://127.0.0.1:9333");
     expect(sandboxNovncUrl(6081)).toContain("http://127.0.0.1:6081/vnc.html");
     expect(sandboxNovncUrl(6081)).toContain("autoconnect=1");
+  });
+
+  test("resolves source and bundled sandbox contexts by Dockerfile presence", async () => {
+    const root = mkdtempSync("/tmp/cybara-sandbox-context-");
+    try {
+      const sourceContext = `${root}/checkout/docker/sandbox-browser`;
+      const bundledContext = `${root}/bundle/docker/sandbox-browser`;
+      mkdirSync(sourceContext, { recursive: true });
+      mkdirSync(bundledContext, { recursive: true });
+      await Bun.write(`${sourceContext}/Dockerfile`, "FROM scratch\n");
+      await Bun.write(`${bundledContext}/Dockerfile`, "FROM scratch\n");
+
+      expect(
+        resolveSandboxContextDir({
+          cwd: `${root}/checkout`,
+          execDir: `${root}/bin`,
+          moduleDir: `${root}/checkout/src/core/browser`,
+        })
+      ).toBe(sourceContext);
+      expect(
+        resolveSandboxContextDir({
+          cwd: `${root}/elsewhere`,
+          execDir: `${root}/bin`,
+          moduleDir: `${root}/bundle/dist`,
+        })
+      ).toBe(bundledContext);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

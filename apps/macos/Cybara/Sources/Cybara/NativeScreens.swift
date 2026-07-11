@@ -1344,6 +1344,15 @@ struct ChatScreen: View {
         if let tokenUsage = activeTokenUsage, tokenUsage.totalTokens > 0 {
             let speed = tokenUsage.tokensPerSecond.map { " at \(formatNativeDecimal($0)) tok/s" } ?? ""
             parts.append("Session tokens: \(formatNativeTokenCount(tokenUsage.inputTokens)) input / \(formatNativeTokenCount(tokenUsage.outputTokens)) output across \(tokenUsage.callCount) call\(tokenUsage.callCount == 1 ? "" : "s")\(speed).")
+            if let firstTokenMs = tokenUsage.firstTokenMs {
+                let firstToken = firstTokenMs < 1000
+                    ? "\(Int(firstTokenMs.rounded())) ms"
+                    : String(format: "%.1f s", firstTokenMs / 1000)
+                parts.append("First token: \(firstToken).")
+            }
+            if tokenUsage.cachedInputTokens > 0 || tokenUsage.cacheWriteTokens > 0 {
+                parts.append("Cache: \(formatNativeTokenCount(tokenUsage.cachedInputTokens)) read / \(formatNativeTokenCount(tokenUsage.cacheWriteTokens)) write.")
+            }
         }
         if let detail = providerPlanText {
             parts.append(detail)

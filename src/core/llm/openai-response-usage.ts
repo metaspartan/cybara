@@ -22,7 +22,15 @@ export function trackOpenAIResponseUsage(
     response.usage.prompt_tokens || 0,
     response.usage.completion_tokens || 0,
     context.durationMs,
-    { sessionId: context.sessionId }
+    {
+      sessionId: context.sessionId,
+      cachedInputTokens:
+        response.usage.prompt_tokens_details?.cached_tokens ||
+        response.usage.cache_read_input_tokens ||
+        0,
+      cacheWriteTokens: response.usage.cache_creation_input_tokens || 0,
+      firstTokenMs: response.first_token_ms ?? context.durationMs,
+    }
   );
   return true;
 }

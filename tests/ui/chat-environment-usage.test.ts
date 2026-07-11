@@ -14,9 +14,13 @@ describe("chat environment usage summary", () => {
     expect(source).toContain("remaining");
     expect(source).toContain('label="Input"');
     expect(source).toContain('label="Output"');
-    expect(source).toContain('label="Calls"');
+    expect(source).toContain('label="Model calls"');
     expect(source).toContain('label="Output speed"');
     expect(source).toContain('label="First token"');
+    expect(source).toContain('label="Model calls"');
+    expect(source).toContain('label="Cache read"');
+    expect(source).toContain('label="Cache write"');
+    expect(source).toContain("tokenUsage?.firstTokenMs ?? timeToFirstTokenMs");
     expect(source).toContain('label="Compaction"');
     expect(source).not.toContain('label="Compact"');
   });

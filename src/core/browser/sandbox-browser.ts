@@ -27,6 +27,14 @@ export interface SandboxBrowserStatus {
   reason?: string;
 }
 
+export interface SandboxContextPaths {
+  cwd?: string;
+  execDir?: string;
+  moduleDir?: string;
+  resourceDir?: string;
+  configuredDir?: string;
+}
+
 function resolved(opts?: SandboxBrowserOptions) {
   return {
     image: opts?.image || SANDBOX_BROWSER_IMAGE,
@@ -65,9 +73,29 @@ export function buildDockerRunArgs(opts: {
   ];
 }
 
+export function resolveSandboxContextDir(paths: SandboxContextPaths = {}): string {
+  const moduleDir = paths.moduleDir || dirname(fileURLToPath(import.meta.url));
+  const cwd = paths.cwd || process.cwd();
+  const execDir = paths.execDir || dirname(process.execPath);
+  const resourceDir = paths.resourceDir || process.env.CYBARA_RESOURCE_DIR?.trim();
+  const configuredDir = paths.configuredDir || process.env.CYBARA_SANDBOX_BROWSER_DIR?.trim();
+  const candidates = [
+    configuredDir,
+    resourceDir && join(resourceDir, "docker", "sandbox-browser"),
+    resourceDir && join(resourceDir, "bin", "docker", "sandbox-browser"),
+    join(cwd, "docker", "sandbox-browser"),
+    join(moduleDir, "..", "docker", "sandbox-browser"),
+    join(moduleDir, "..", "..", "..", "docker", "sandbox-browser"),
+    join(execDir, "docker", "sandbox-browser"),
+    join(execDir, "..", "docker", "sandbox-browser"),
+    join(execDir, "resources", "bin", "docker", "sandbox-browser"),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+  const resolved = candidates.find((candidate) => existsSync(join(candidate, "Dockerfile")));
+  return resolved || candidates[0];
+}
+
 export function sandboxContextDir(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  return join(here, "..", "..", "..", "docker", "sandbox-browser");
+  return resolveSandboxContextDir();
 }
 
 function dockerAvailable(): boolean {

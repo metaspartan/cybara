@@ -14,8 +14,13 @@ export function trackTokenUsage(
   inputTokens: number,
   outputTokens: number,
   durationMs?: number,
-  options?: { sessionId?: string }
-) {
+  options?: {
+    sessionId?: string;
+    cachedInputTokens?: number;
+    cacheWriteTokens?: number;
+    firstTokenMs?: number;
+  }
+): void {
   try {
     // ── Feed the model router's usage tracking + circuit breaker ──
     recordUsage(provider, inputTokens, outputTokens, true, model);
@@ -24,6 +29,12 @@ export function trackTokenUsage(
   }
   try {
     const totalTokens = inputTokens + outputTokens;
+    const cachedInputTokens = Math.max(0, Math.round(options?.cachedInputTokens || 0));
+    const cacheWriteTokens = Math.max(0, Math.round(options?.cacheWriteTokens || 0));
+    const firstTokenMs =
+      typeof options?.firstTokenMs === "number" && Number.isFinite(options.firstTokenMs)
+        ? Math.max(0, Math.round(options.firstTokenMs))
+        : undefined;
     const callId = crypto.randomUUID();
     const timestamp = Date.now();
     const tokenMetadata = {
@@ -35,6 +46,9 @@ export function trackTokenUsage(
       outputTokens,
       totalTokens,
       durationMs: durationMs ?? null,
+      cachedInputTokens,
+      cacheWriteTokens,
+      firstTokenMs,
       sessionId:
         typeof options?.sessionId === "string" && options.sessionId.trim()
           ? options.sessionId.trim()

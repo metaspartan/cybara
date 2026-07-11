@@ -626,26 +626,36 @@ struct GatewaySessionContextUsage: Decodable, Hashable {
 struct GatewaySessionTokenUsage: Decodable, Hashable {
     let inputTokens: Int
     let outputTokens: Int
+    let cachedInputTokens: Int
+    let cacheWriteTokens: Int
+    let cacheHitRate: Double?
     let totalTokens: Int
     let callCount: Int
     let durationMs: Int
     let tokensPerSecond: Double?
+    let firstTokenMs: Double?
     let source: String?
 
     private enum CodingKeys: String, CodingKey {
         case inputTokens, input_tokens, outputTokens, output_tokens, totalTokens, total_tokens
         case callCount, call_count, durationMs, duration_ms, tokensPerSecond, tokens_per_second, source
+        case cachedInputTokens, cached_input_tokens, cacheWriteTokens, cache_write_tokens
+        case cacheHitRate, cache_hit_rate, firstTokenMs, first_token_ms
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         inputTokens = max(0, try container.decodeFlexibleInt(forKeys: [.inputTokens, .input_tokens]) ?? 0)
         outputTokens = max(0, try container.decodeFlexibleInt(forKeys: [.outputTokens, .output_tokens]) ?? 0)
+        cachedInputTokens = max(0, try container.decodeFlexibleInt(forKeys: [.cachedInputTokens, .cached_input_tokens]) ?? 0)
+        cacheWriteTokens = max(0, try container.decodeFlexibleInt(forKeys: [.cacheWriteTokens, .cache_write_tokens]) ?? 0)
+        cacheHitRate = try container.decodeFlexibleDouble(forKeys: [.cacheHitRate, .cache_hit_rate])
         let decodedTotal = try container.decodeFlexibleInt(forKeys: [.totalTokens, .total_tokens]) ?? 0
         totalTokens = max(decodedTotal, inputTokens + outputTokens)
         callCount = max(0, try container.decodeFlexibleInt(forKeys: [.callCount, .call_count]) ?? 0)
         durationMs = max(0, try container.decodeFlexibleInt(forKeys: [.durationMs, .duration_ms]) ?? 0)
         tokensPerSecond = try container.decodeFlexibleDouble(forKeys: [.tokensPerSecond, .tokens_per_second])
+        firstTokenMs = try container.decodeFlexibleDouble(forKeys: [.firstTokenMs, .first_token_ms])
         source = try container.decodeFlexibleString(forKeys: [.source])
     }
 }

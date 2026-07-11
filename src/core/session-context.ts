@@ -284,19 +284,29 @@ export interface SessionContextUsage {
 export interface SessionTokenUsage {
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
+  cacheHitRate: number | null;
   totalTokens: number;
   callCount: number;
   durationMs: number;
   tokensPerSecond: number | null;
+  firstTokenMs: number | null;
   source: "metrics";
 }
 
 interface SessionTokenUsageRow {
   inputTokens?: number;
   outputTokens?: number;
+  cachedInputTokens?: number;
+  cacheWriteTokens?: number;
   totalTokens?: number;
   durationMs?: number;
   callCount?: number;
+}
+
+interface LatestSessionLatencyRow {
+  firstTokenMs?: number;
 }
 
 export function summarizeSessionTokenUsage(sessionId: string): SessionTokenUsage {
@@ -305,10 +315,14 @@ export function summarizeSessionTokenUsage(sessionId: string): SessionTokenUsage
     return {
       inputTokens: 0,
       outputTokens: 0,
+      cachedInputTokens: 0,
+      cacheWriteTokens: 0,
+      cacheHitRate: null,
       totalTokens: 0,
       callCount: 0,
       durationMs: 0,
       tokensPerSecond: null,
+      firstTokenMs: null,
       source: "metrics",
     };
   }
@@ -318,6 +332,8 @@ export function summarizeSessionTokenUsage(sessionId: string): SessionTokenUsage
       `SELECT
          COALESCE(SUM(CAST(json_extract(metadata, '$.inputTokens') AS REAL)), 0) as inputTokens,
          COALESCE(SUM(CAST(json_extract(metadata, '$.outputTokens') AS REAL)), 0) as outputTokens,
+         COALESCE(SUM(CAST(json_extract(metadata, '$.cachedInputTokens') AS REAL)), 0) as cachedInputTokens,
+         COALESCE(SUM(CAST(json_extract(metadata, '$.cacheWriteTokens') AS REAL)), 0) as cacheWriteTokens,
          COALESCE(SUM(value), 0) as totalTokens,
          COALESCE(SUM(CASE
            WHEN CAST(json_extract(metadata, '$.durationMs') AS REAL) > 0
@@ -331,10 +347,24 @@ export function summarizeSessionTokenUsage(sessionId: string): SessionTokenUsage
     )
     .get(normalizedSessionId) as SessionTokenUsageRow | null;
 
+  const latestLatency = db
+    .prepare(
+      `SELECT CAST(json_extract(metadata, '$.firstTokenMs') AS REAL) as firstTokenMs
+       FROM metrics
+       WHERE type = 'token_usage_by_session'
+         AND key = ?
+         AND json_type(metadata, '$.firstTokenMs') IN ('integer', 'real')
+       ORDER BY rowid DESC
+       LIMIT 1`
+    )
+    .get(normalizedSessionId) as LatestSessionLatencyRow | null;
+
   const row = sessionRow;
 
   const inputTokens = Math.max(0, Math.round(Number(row?.inputTokens || 0)));
   const outputTokens = Math.max(0, Math.round(Number(row?.outputTokens || 0)));
+  const cachedInputTokens = Math.max(0, Math.round(Number(row?.cachedInputTokens || 0)));
+  const cacheWriteTokens = Math.max(0, Math.round(Number(row?.cacheWriteTokens || 0)));
   const totalTokens = Math.max(
     inputTokens + outputTokens,
     Math.round(Number(row?.totalTokens || 0))
@@ -342,14 +372,22 @@ export function summarizeSessionTokenUsage(sessionId: string): SessionTokenUsage
   const durationMs = Math.max(0, Number(row?.durationMs || 0));
   const tokensPerSecond =
     durationMs > 0 ? Number(((outputTokens / durationMs) * 1000).toFixed(2)) : null;
+  const firstTokenMs = Number(latestLatency?.firstTokenMs);
 
   return {
     inputTokens,
     outputTokens,
+    cachedInputTokens,
+    cacheWriteTokens,
+    cacheHitRate:
+      inputTokens > 0 && cachedInputTokens <= inputTokens
+        ? Number(((cachedInputTokens / inputTokens) * 100).toFixed(1))
+        : null,
     totalTokens,
     callCount: Math.max(0, Math.round(Number(row?.callCount || 0))),
     durationMs: Math.round(durationMs),
     tokensPerSecond,
+    firstTokenMs: Number.isFinite(firstTokenMs) ? Math.max(0, Math.round(firstTokenMs)) : null,
     source: "metrics",
   };
 }

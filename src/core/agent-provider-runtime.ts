@@ -1309,6 +1309,7 @@ export abstract class AgentProviderRuntime {
         label: "chat.completions",
       });
       try {
+        const requestStartedAt = performance.now();
         const response = await fetch(`${baseUrl}/chat/completions`, {
           method: "POST",
           headers,
@@ -1325,8 +1326,8 @@ export abstract class AgentProviderRuntime {
         }
         const contentType = response.headers.get("content-type")?.toLowerCase() || "";
         if (!contentType.includes("text/event-stream")) {
-          // Provider ignored the stream flag and answered with plain JSON.
           const json = (await response.json()) as OpenAIResponse;
+          json.first_token_ms = Math.max(0, Math.round(performance.now() - requestStartedAt));
           watchdog.dispose();
           return json;
         }
@@ -1335,7 +1336,12 @@ export abstract class AgentProviderRuntime {
           throw new Error(`${errorPrefix}: empty streaming response body`);
         }
         watchdog.touch();
-        const assembled = await consumeOpenAIChatStream(response.body, watchdog, onTextDelta);
+        const assembled = await consumeOpenAIChatStream(
+          response.body,
+          watchdog,
+          onTextDelta,
+          requestStartedAt
+        );
         watchdog.dispose();
         return assembled as unknown as OpenAIResponse;
       } catch (error) {
@@ -1999,7 +2005,8 @@ export abstract class AgentProviderRuntime {
     response: Response,
     sessionId?: string,
     agentId?: string,
-    watchdog?: StreamWatchdog
+    watchdog?: StreamWatchdog,
+    requestStartedAt?: number
   ): Promise<OpenAICodexTurnResult> {
     const contentType = response.headers.get("content-type")?.toLowerCase() || "";
 
@@ -2020,8 +2027,15 @@ export abstract class AgentProviderRuntime {
             ? {
                 inputTokens: Number((json.usage as OpenAIUsage).prompt_tokens || 0),
                 outputTokens: Number((json.usage as OpenAIUsage).completion_tokens || 0),
+                cachedInputTokens: Number(
+                  (json.usage as OpenAIUsage).prompt_tokens_details?.cached_tokens || 0
+                ),
               }
             : undefined,
+          firstTokenMs:
+            requestStartedAt !== undefined
+              ? Math.max(0, Math.round(performance.now() - requestStartedAt))
+              : undefined,
         };
       }
     }
@@ -2032,6 +2046,7 @@ export abstract class AgentProviderRuntime {
 
     let outputText = "";
     let usage: OpenAICodexUsage | undefined;
+    let firstTokenMs: number | undefined;
     let activeToolCallKey: string | undefined;
     const toolCalls = new Map<
       string,
@@ -2053,6 +2068,13 @@ export abstract class AgentProviderRuntime {
     for await (const event of parseServerSentEvents(response.body)) {
       watchdog?.touch();
       const type = typeof event.type === "string" ? event.type : "";
+      if (
+        firstTokenMs === undefined &&
+        requestStartedAt !== undefined &&
+        (type === "response.output_text.delta" || type === "response.output_item.added")
+      ) {
+        firstTokenMs = Math.max(0, Math.round(performance.now() - requestStartedAt));
+      }
 
       if (type === "response.output_text.delta") {
         if (typeof event.delta === "string") {
@@ -2182,7 +2204,13 @@ export abstract class AgentProviderRuntime {
             typeof usageObj.output_tokens === "number" && Number.isFinite(usageObj.output_tokens)
               ? Math.floor(usageObj.output_tokens)
               : 0;
-          usage = { inputTokens, outputTokens };
+          const inputDetails = usageObj.input_tokens_details as Record<string, unknown> | undefined;
+          const cachedInputTokens =
+            typeof inputDetails?.cached_tokens === "number" &&
+            Number.isFinite(inputDetails.cached_tokens)
+              ? Math.floor(inputDetails.cached_tokens)
+              : 0;
+          usage = { inputTokens, outputTokens, cachedInputTokens };
         }
         continue;
       }
@@ -2215,6 +2243,7 @@ export abstract class AgentProviderRuntime {
         }))
         .filter((toolCall) => toolCall.name.trim().length > 0),
       usage,
+      firstTokenMs,
     };
   }
 
@@ -2243,6 +2272,7 @@ export abstract class AgentProviderRuntime {
         label: "Codex",
       });
       let response: Response;
+      const requestStartedAt = performance.now();
       try {
         response = await fetch(url, {
           method: "POST",
@@ -2278,7 +2308,8 @@ export abstract class AgentProviderRuntime {
           response,
           sessionId,
           agentId,
-          watchdog
+          watchdog,
+          requestStartedAt
         );
         watchdog.dispose();
         return { ...parsed, resolvedModel: candidate };
@@ -2441,7 +2472,12 @@ export abstract class AgentProviderRuntime {
           turn.usage.inputTokens,
           turn.usage.outputTokens,
           durationMs,
-          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
+          {
+            sessionId: sessionIdForVisibleTokenUsage(toolContext),
+            cachedInputTokens: turn.usage.cachedInputTokens,
+            cacheWriteTokens: turn.usage.cacheWriteTokens,
+            firstTokenMs: turn.firstTokenMs ?? durationMs,
+          }
         );
       }
 
@@ -2717,6 +2753,8 @@ export abstract class AgentProviderRuntime {
         const outputTokens = usage.candidatesTokenCount || 0;
         trackTokenUsage(modelId, providerConfig, baseUrl, inputTokens, outputTokens, durationMs, {
           sessionId: sessionIdForVisibleTokenUsage(toolContext),
+          cachedInputTokens: usage.cachedContentTokenCount || 0,
+          firstTokenMs: durationMs,
         });
       }
 
@@ -2942,7 +2980,10 @@ export abstract class AgentProviderRuntime {
           inputTokens,
           outputTokens,
           durationMs,
-          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
+          {
+            sessionId: sessionIdForVisibleTokenUsage(toolContext),
+            firstTokenMs: durationMs,
+          }
         );
       }
 
@@ -3232,6 +3273,9 @@ export abstract class AgentProviderRuntime {
       const outputTokens = data.usage.output_tokens || 0;
       trackTokenUsage(modelId, providerConfig, baseUrl, inputTokens, outputTokens, durationMs, {
         sessionId: sessionIdForVisibleTokenUsage(toolContext),
+        cachedInputTokens: data.usage.cache_read_input_tokens || 0,
+        cacheWriteTokens: data.usage.cache_creation_input_tokens || 0,
+        firstTokenMs: durationMs,
       });
     }
 
@@ -3613,7 +3657,12 @@ export abstract class AgentProviderRuntime {
           responseData.usage.input_tokens || 0,
           responseData.usage.output_tokens || 0,
           Math.round(performance.now() - loopRequestStartedAt),
-          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
+          {
+            sessionId: sessionIdForVisibleTokenUsage(toolContext),
+            cachedInputTokens: responseData.usage.cache_read_input_tokens || 0,
+            cacheWriteTokens: responseData.usage.cache_creation_input_tokens || 0,
+            firstTokenMs: Math.round(performance.now() - loopRequestStartedAt),
+          }
         );
       }
       const latestText = responseData.content?.find((c3) => c3.type === "text")?.text;

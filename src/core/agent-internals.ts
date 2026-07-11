@@ -24,6 +24,11 @@ export interface OpenAIUsage {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  prompt_tokens_details?: {
+    cached_tokens?: number;
+  };
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
 }
 
 export interface OpenAIResponse {
@@ -32,6 +37,7 @@ export interface OpenAIResponse {
   model: string;
   choices: OpenAIChoice[];
   usage?: OpenAIUsage;
+  first_token_ms?: number;
 }
 
 export interface OpenAICodexToolCall {
@@ -45,12 +51,15 @@ export interface OpenAICodexToolCall {
 export interface OpenAICodexUsage {
   inputTokens: number;
   outputTokens: number;
+  cachedInputTokens?: number;
+  cacheWriteTokens?: number;
 }
 
 export interface OpenAICodexTurnResult {
   content: string;
   toolCalls: OpenAICodexToolCall[];
   usage?: OpenAICodexUsage;
+  firstTokenMs?: number;
 }
 
 export interface AnthropicContentBlock {
@@ -64,6 +73,8 @@ export interface AnthropicContentBlock {
 export interface AnthropicUsage {
   input_tokens: number;
   output_tokens: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
 }
 
 export interface AnthropicResponse {
@@ -109,6 +120,7 @@ export interface GoogleUsageMetadata {
   promptTokenCount?: number;
   candidatesTokenCount?: number;
   totalTokenCount?: number;
+  cachedContentTokenCount?: number;
 }
 
 export interface GoogleResponse {
