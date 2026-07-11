@@ -27,6 +27,7 @@ import {
   handleMemoryList,
   handleMemorySave,
   handleMemorySearch,
+  handleSessionSearch,
 } from "./handlers/memory";
 import { handleWorkspaceIndexSearch } from "./handlers/workspace-index";
 
@@ -698,6 +699,24 @@ export const toolSchemas: Record<string, Omit<Tool, "handler">> = {
       properties: {
         query: { type: "string", description: "Search query" },
         maxResults: { type: "number", description: "Maximum results to return" },
+      },
+      required: ["query"],
+    },
+    permissions: ["memory:read"],
+  },
+  session_search: {
+    name: "session_search",
+    description:
+      "Full-text search across all past chat sessions and messages. Use to recall prior conversations, decisions, or outputs.",
+    category: "memory",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search terms" },
+        maxResults: { type: "number", description: "Maximum results (default 20, max 100)" },
+        offset: { type: "number", description: "Pagination offset" },
+        sessionId: { type: "string", description: "Restrict to one session" },
+        role: { type: "string", description: "Filter by role: user, assistant, system, tool" },
       },
       required: ["query"],
     },
@@ -2628,6 +2647,7 @@ _toolHandlers.set("grep", handleGrep);
 _toolHandlers.set("workspace_index_search", handleWorkspaceIndexSearch);
 
 _toolHandlers.set("memory_search", handleMemorySearch);
+_toolHandlers.set("session_search", handleSessionSearch);
 _toolHandlers.set("memory_get", handleMemoryGet);
 _toolHandlers.set("memory_save", handleMemorySave);
 _toolHandlers.set("memory_list", handleMemoryList);

@@ -11,6 +11,7 @@ export function AiFeatureSettings() {
   const [defaultAgentId, setDefaultAgentId] = useState("");
   const [backgroundAgentId, setBackgroundAgentId] = useState("");
   const [selfImprovingSkills, setSelfImprovingSkills] = useState(true);
+  const [skillLearningNudge, setSkillLearningNudge] = useState(false);
   const [reasoningEffort, setReasoningEffort] = useState("");
   const [toonStructuredDataEnabled, setToonStructuredDataEnabled] = useState(true);
   const [savingReasoningEffort, setSavingReasoningEffort] = useState(false);
@@ -31,6 +32,7 @@ export function AiFeatureSettings() {
           typeof data?.background_agent_id === "string" ? data.background_agent_id : ""
         );
         setSelfImprovingSkills(data?.self_improving_skills_enabled !== false);
+        setSkillLearningNudge(data?.skill_learning_nudge_enabled === true);
         setReasoningEffort(typeof data?.reasoning_effort === "string" ? data.reasoning_effort : "");
         const tokenOptimization = data?.token_optimization as
           | { toonStructuredDataEnabled?: boolean; toon_structured_data_enabled?: boolean }
@@ -97,6 +99,20 @@ export function AiFeatureSettings() {
     } catch {
       addToast("error", "Failed to update self-improving skills setting");
       setSelfImprovingSkills(!enabled);
+    }
+  };
+
+  const toggleSkillLearningNudge = async (enabled: boolean) => {
+    setSkillLearningNudge(enabled);
+    try {
+      const result = await settingsApi.updateConfig({ skill_learning_nudge_enabled: enabled });
+      if (!result.success || !result.data?.success) {
+        throw new Error(result.error || "Config update failed");
+      }
+      addToast("success", `Auto-learn after complex tasks ${enabled ? "enabled" : "disabled"}`);
+    } catch {
+      addToast("error", "Failed to update auto-learn setting");
+      setSkillLearningNudge(!enabled);
     }
   };
 
@@ -234,6 +250,22 @@ export function AiFeatureSettings() {
             checked={selfImprovingSkills}
             disabled={loading}
             onChange={(next) => void toggleSelfImprovingSkills(next)}
+          />
+        </div>
+
+        <div className="flex items-center justify-between py-3 border-b border-white/10">
+          <div className="min-w-0 pr-3">
+            <p className="text-sm text-white font-medium">Auto-Learn After Complex Tasks</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Proactively prompt the agent to codify a skill once a task uses several tools, closing
+              the learning loop automatically. Adds a short extra step on complex turns, so it is
+              off by default.
+            </p>
+          </div>
+          <Switch
+            checked={skillLearningNudge}
+            disabled={loading || !selfImprovingSkills}
+            onChange={(next) => void toggleSkillLearningNudge(next)}
           />
         </div>
 

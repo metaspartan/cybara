@@ -10,6 +10,7 @@ import { handleExec, handleProcess, handleGit } from "./process";
 import { handleBrowser, handleWebFetch } from "./browser";
 import {
   handleMemorySearch,
+  handleSessionSearch,
   handleMemoryGet,
   handleMemorySave,
   handleMemorySaveDurable,
@@ -208,6 +209,7 @@ const toolHandlers: Record<
   artifacts: handleArtifacts,
 
   memory_search: handleMemorySearch,
+  session_search: handleSessionSearch,
   memory_get: handleMemoryGet,
   memory_save: handleMemorySave,
   memory_save_durable: handleMemorySaveDurable,

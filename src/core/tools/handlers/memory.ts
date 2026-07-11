@@ -23,6 +23,7 @@ import {
   type HeartbeatState,
 } from "../../memory";
 import { memoryDir } from "../../paths";
+import { searchSessionMessages } from "../../session-search";
 import { config } from "../../config";
 
 /**
@@ -504,4 +505,39 @@ export async function handleHeartbeatState(args: Record<string, unknown>): Promi
     default:
       throw new Error(`Unknown action: ${action}. Use: status, record, due, quiet`);
   }
+}
+
+export async function handleSessionSearch(args: Record<string, unknown>): Promise<{
+  query: string;
+  results: Array<{
+    sessionId: string;
+    sessionTitle: string | null;
+    role: string;
+    snippet: string;
+    createdAt: string;
+  }>;
+  totalReturned: number;
+}> {
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  if (!query) {
+    throw new Error("Query is required");
+  }
+  const results = searchSessionMessages(query, {
+    limit: typeof args.maxResults === "number" ? args.maxResults : 20,
+    offset: typeof args.offset === "number" ? args.offset : 0,
+    sessionId: typeof args.sessionId === "string" ? args.sessionId : undefined,
+    agentId: typeof args.agentId === "string" ? args.agentId : undefined,
+    role: typeof args.role === "string" ? args.role : undefined,
+  });
+  return {
+    query,
+    results: results.map((hit) => ({
+      sessionId: hit.sessionId,
+      sessionTitle: hit.sessionTitle,
+      role: hit.role,
+      snippet: hit.snippet,
+      createdAt: hit.createdAt,
+    })),
+    totalReturned: results.length,
+  };
 }

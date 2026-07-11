@@ -58,6 +58,7 @@ import {
   TOOL_RESULT_COMPACTION_NOTICE,
 } from "./llm/tool-transcript";
 import { trackTokenUsage } from "./llm/token-usage-tracking";
+import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
 import { formatToolResultForModel } from "./llm/model-visible-format";
 import { formatRecoverableToolOutputPreview } from "./tool-output-recovery";
 import {
@@ -202,6 +203,30 @@ registerCredentialsFromEnv("deepseek", "DEEPSEEK_API_KEY");
 registerCredentialsFromEnv("xai", "XAI_API_KEY");
 
 registerShellHooks();
+
+const SKILL_NUDGE_TRIVIAL_TOOLS = new Set([
+  "read",
+  "file_search",
+  "grep",
+  "memory_search",
+  "memory_get",
+  "session_search",
+  "todo",
+  "clarify",
+  "tool_search",
+  "tool_describe",
+  "workspace_index_search",
+]);
+
+function shouldNudgeSkillLearning(toolCalls: Array<{ name: string }>): boolean {
+  if (config.get<boolean>("skill_learning_nudge_enabled") !== true) return false;
+  if (config.get<boolean>("self_improving_skills_enabled") === false) return false;
+  if (toolCalls.some((call) => call.name === "skill_save")) return false;
+  const substantial = new Set(
+    toolCalls.map((call) => call.name).filter((name) => !SKILL_NUDGE_TRIVIAL_TOOLS.has(name))
+  );
+  return substantial.size >= 4;
+}
 
 function sessionIdForVisibleTokenUsage(toolContext?: ToolContext): string | undefined {
   if (toolContext?.suppressStreaming) return undefined;
@@ -2532,19 +2557,13 @@ class AgentManager {
     const choice = data.choices?.[0];
     let message = choice?.message;
 
-    if (data.usage) {
-      const inputTokens = data.usage.prompt_tokens || 0;
-      const outputTokens = data.usage.completion_tokens || 0;
-      trackTokenUsage(
-        modelId,
-        providerConfig || "openai-compat",
-        baseUrl,
-        inputTokens,
-        outputTokens,
-        durationMs,
-        { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
-      );
-    }
+    trackOpenAIResponseUsage(data, {
+      model: modelId,
+      provider: providerConfig || "openai-compat",
+      providerUrl: baseUrl,
+      durationMs,
+      sessionId: sessionIdForVisibleTokenUsage(toolContext),
+    });
 
     if (!message) {
       throw new Error("No response from API");
@@ -2563,6 +2582,7 @@ class AgentManager {
     const allToolCalls: AgentToolCallResult[] = [];
     let finalContent = "";
     let lastProgressThought = "";
+    let webResearchToolCalls = 0;
     const hookContext = this.buildHookContext(providerConfig, modelId, toolContext);
     const loopState: AgenticLoopState = {
       previousFingerprint: undefined,
@@ -2668,6 +2688,11 @@ class AgentManager {
         break;
       }
 
+      webResearchToolCalls += countWebResearchCalls(
+        iterationToolCalls.map((toolCall) => toolCall.name)
+      );
+      const forceResearchSynthesis = webResearchBudgetReached(webResearchToolCalls);
+
       const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
       const loopEvaluation = this.evaluateNoProgressLoop(
         providerConfig || "openai-compat",
@@ -2688,6 +2713,9 @@ class AgentManager {
       for (const toolResult of toolResults) {
         currentMessages.push(toolResult);
       }
+      if (forceResearchSynthesis) {
+        currentMessages.push({ role: "user", content: WEB_RESEARCH_SYNTHESIS_INSTRUCTION });
+      }
       const steeringText = this.consumeSteeringText(toolContext);
       if (steeringText) {
         currentMessages.push({ role: "user", content: steeringText });
@@ -2702,7 +2730,7 @@ class AgentManager {
         loopRequestBody.reasoning_split = true;
       }
 
-      if (tools && Array.isArray(tools) && tools.length > 0) {
+      if (!forceResearchSynthesis && tools && Array.isArray(tools) && tools.length > 0) {
         loopRequestBody.tools = tools.map((t) => ({
           type: "function",
           function: {
@@ -2723,6 +2751,7 @@ class AgentManager {
       this.applyOpenAITokenLimit(loopRequestBody, preferMaxCompletionTokens, loopTokenLimit);
 
       let loopData: OpenAIResponse;
+      const loopRequestStartedAt = performance.now();
       try {
         loopData = await this.postOpenAIChatCompletions(
           baseUrl,
@@ -2770,6 +2799,13 @@ class AgentManager {
           { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
         );
       }
+      trackOpenAIResponseUsage(loopData, {
+        model: modelId,
+        provider: providerConfig || "openai-compat",
+        providerUrl: baseUrl,
+        durationMs: Math.round(performance.now() - loopRequestStartedAt),
+        sessionId: sessionIdForVisibleTokenUsage(toolContext),
+      });
       const loopChoice = loopData.choices?.[0];
       message = loopChoice?.message as OpenAIMessage;
 
@@ -2798,6 +2834,7 @@ class AgentManager {
           contextWindowTokens
         );
         this.applyOpenAITokenLimit(nudgeBody, preferMaxCompletionTokens, limit);
+        const nudgeStartedAt = performance.now();
         const nudgeData = await this.postOpenAIChatCompletions(
           baseUrl,
           headers,
@@ -2807,6 +2844,13 @@ class AgentManager {
           { providerId: options?.providerId, providerType: providerConfig },
           { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
         );
+        trackOpenAIResponseUsage(nudgeData, {
+          model: modelId,
+          provider: providerConfig || "openai-compat",
+          providerUrl: baseUrl,
+          durationMs: Math.round(performance.now() - nudgeStartedAt),
+          sessionId: sessionIdForVisibleTokenUsage(toolContext),
+        });
         const nudgeContent = nudgeData.choices?.[0]?.message?.content;
         if (typeof nudgeContent === "string" && nudgeContent.trim()) finalContent = nudgeContent;
       } catch (error) {
@@ -3260,6 +3304,8 @@ class AgentManager {
     let activeModelId = modelId;
     let finalContent = "";
     let closingResponseRequested = false;
+    let skillLearningNudged = false;
+    let preservedFinalContent: string | null = null;
     let lastProgressThought = "";
     const allToolCalls: AgentToolCallResult[] = [];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
@@ -3360,7 +3406,29 @@ class AgentManager {
 
       if (turn.toolCalls.length === 0) {
         if (turn.content.trim().length > 0) {
-          finalContent = turn.content.trim();
+          if (
+            !skillLearningNudged &&
+            preservedFinalContent === null &&
+            shouldNudgeSkillLearning(allToolCalls)
+          ) {
+            skillLearningNudged = true;
+            preservedFinalContent = turn.content.trim();
+            inputItems.push({
+              role: "user",
+              content: [
+                {
+                  type: "input_text",
+                  text: "SYSTEM: You just completed a complex multi-step task. If (and only if) the procedure is genuinely reusable and no existing skill covers it, call skill_save now to codify it as a concise SKILL.md (when-to-use, prerequisites, verified steps). Otherwise reply with exactly 'no skill needed'. Do not repeat your answer to the user — they already have it.",
+                },
+              ],
+            });
+            continue;
+          }
+          finalContent = preservedFinalContent ?? turn.content.trim();
+          break;
+        }
+        if (skillLearningNudged && preservedFinalContent !== null) {
+          finalContent = preservedFinalContent;
           break;
         }
         if (allToolCalls.length > 0 && !closingResponseRequested) {

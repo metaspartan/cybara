@@ -30,6 +30,7 @@ import {
   handleMemorySearch,
 } from "../api/memory/memory-api";
 import { agentManager, getBuiltinTools } from "../core/agent";
+import { searchSessionMessages } from "../core/session-search";
 import {
   cancelAgentLoopRun,
   getAgentLoopRun,
@@ -1833,6 +1834,14 @@ const routes: Record<string, RouteHandler> = {
       model: result.model,
     };
   },
+  "GET /api/sessions/search": (_body, params) =>
+    searchSessionMessages(typeof params?.q === "string" ? params.q : "", {
+      limit: parseBoundedQueryNumber(params?.limit, 1, 100) ?? 20,
+      offset: parseBoundedQueryNumber(params?.offset, 0, 10000) ?? 0,
+      sessionId:
+        typeof params?.sessionId === "string" && params.sessionId ? params.sessionId : undefined,
+      role: typeof params?.role === "string" && params.role ? params.role : undefined,
+    }),
   "GET /api/chat/sessions": (_body, params) =>
     listSessions({
       limit: parseBoundedQueryNumber(params?.limit, 1, 500) ?? 150,
