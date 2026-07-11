@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Update, DownloadEvent } from "@tauri-apps/plugin-updater";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import {
   checkForDesktopUpdate,
   installDesktopUpdate,
@@ -21,7 +23,6 @@ const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 async function notifyTray(available: boolean, version: string | null): Promise<void> {
   if (!isTauriDesktopRuntime()) return;
   try {
-    const { invoke } = await import("@tauri-apps/api/core");
     await invoke("set_update_available", { available, version });
   } catch {
     /* command absent in older builds */
@@ -93,17 +94,19 @@ export function useDesktopUpdate() {
   useEffect(() => {
     if (!isTauriDesktopRuntime()) return;
     let unlisten: (() => void) | undefined;
-    void (async () => {
-      try {
-        const { listen } = await import("@tauri-apps/api/event");
-        unlisten = await listen("cybara://install-update", () => {
-          void startUpdate();
-        });
-      } catch {
+    let cancelled = false;
+    listen("cybara://install-update", () => {
+      void startUpdate();
+    })
+      .then((fn) => {
+        if (cancelled) fn();
+        else unlisten = fn;
+      })
+      .catch(() => {
         /* event API unavailable */
-      }
-    })();
+      });
     return () => {
+      cancelled = true;
       if (unlisten) unlisten();
     };
   }, [startUpdate]);
