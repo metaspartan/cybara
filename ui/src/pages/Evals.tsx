@@ -1,11 +1,16 @@
 import { PageLayout } from "@/components/layout/PageLayout";
+import { Switch } from "@/components/ui/Switch";
 import { type AgentEvalRun, type AgentGolden, evalsApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { TraceDatasetPanel } from "@/pages/research/TraceDatasetPanel";
+import { BenchmarkPanel } from "@/pages/research/BenchmarkPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   Bookmark,
   CheckCircle2,
+  Database,
+  Gauge,
   Download,
   FileJson,
   FlaskConical,
@@ -244,6 +249,7 @@ function GoldenRow({
 
 export function Evals() {
   const queryClient = useQueryClient();
+  const [labView, setLabView] = useState<"data" | "benchmarks" | "evals">("data");
   const [busyGoldenId, setBusyGoldenId] = useState<string | null>(null);
   const [sanitizeExport, setSanitizeExport] = useState(true);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
@@ -338,171 +344,252 @@ export function Evals() {
     let passing = 0;
     let failing = 0;
     let notRun = 0;
+    let scoreTotal = 0;
+    let scored = 0;
+    const divergenceCounts = new Map<string, number>();
     for (const golden of goldens) {
       const run = latestRuns.get(golden.id);
       if (!run || run.status === "running") notRun += 1;
       else if (run.status === "passed") passing += 1;
       else failing += 1;
+      if (typeof run?.score === "number") {
+        scoreTotal += run.score;
+        scored += 1;
+      }
+      for (const difference of run?.comparison?.differences ?? []) {
+        divergenceCounts.set(difference.path, (divergenceCounts.get(difference.path) ?? 0) + 1);
+      }
     }
-    return { total: goldens.length, passing, failing, notRun };
+    const completed = passing + failing;
+    return {
+      total: goldens.length,
+      passing,
+      failing,
+      notRun,
+      coverage: goldens.length === 0 ? 0 : Math.round((completed / goldens.length) * 100),
+      passRate: completed === 0 ? 0 : Math.round((passing / completed) * 100),
+      averageScore: scored === 0 ? 0 : Math.round(scoreTotal / scored),
+      divergences: [...divergenceCounts.entries()]
+        .sort((left, right) => right[1] - left[1])
+        .slice(0, 4),
+    };
   }, [goldens, latestRuns]);
 
   return (
     <PageLayout
-      title="Evals"
-      subtitle="Replayable agent trajectories and structural regression tests"
+      title="Lab"
+      subtitle="Curate agent data, inspect reasoning traces, and measure behavior"
       actions={
-        <button
-          type="button"
-          onClick={() => runSuite.mutate()}
-          disabled={goldens.length === 0 || runSuite.isPending}
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-indigo-400/25 bg-indigo-400/10 px-3 text-[12px] font-medium text-indigo-100 hover:bg-indigo-400/15 disabled:opacity-50"
-        >
-          {runSuite.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Play className="h-4 w-4" />
-          )}
-          Run suite
-        </button>
+        labView === "evals" ? (
+          <button
+            type="button"
+            onClick={() => runSuite.mutate()}
+            disabled={goldens.length === 0 || runSuite.isPending}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-indigo-400/25 bg-indigo-400/10 px-3 text-[12px] font-medium text-indigo-100 hover:bg-indigo-400/15 disabled:opacity-50"
+          >
+            {runSuite.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            Run suite
+          </button>
+        ) : null
       }
     >
-      <EvalsExplainer />
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2.5">
-        <div className="min-w-0">
-          <p className="text-[13px] font-medium text-gray-100">Portable eval data</p>
-          <p className="mt-0.5 text-[11px] text-gray-500">
-            Suite backups can be imported later. JSONL is ready for analysis and training pipelines.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={sanitizeExport}
-            onClick={() => setSanitizeExport((value) => !value)}
-            className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-[11px] text-gray-300 hover:bg-white/[0.05]"
-            title="Remove prompt content, workspace paths, tool arguments, and tool results from JSONL"
-          >
-            <span
-              className={cn(
-                "relative h-4 w-7 rounded-full transition-colors",
-                sanitizeExport ? "bg-indigo-500" : "bg-white/15"
-              )}
-            >
-              <span
-                className={cn(
-                  "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform",
-                  sanitizeExport ? "translate-x-3.5" : "translate-x-0.5"
-                )}
-              />
-            </span>
-            Redact JSONL
-          </button>
-          <button
-            type="button"
-            onClick={() => exportData.mutate("bundle")}
-            disabled={goldens.length === 0 || exportData.isPending}
-            title="Full replayable backup. May contain prompts, paths, and tool output."
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-[11px] text-gray-200 hover:bg-white/[0.06] disabled:opacity-40"
-          >
-            <FileJson className="h-3.5 w-3.5" />
-            Suite JSON
-          </button>
-          <button
-            type="button"
-            onClick={() => exportData.mutate("jsonl")}
-            disabled={goldens.length === 0 || exportData.isPending}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-[11px] text-gray-200 hover:bg-white/[0.06] disabled:opacity-40"
-          >
-            <Download className="h-3.5 w-3.5" />
-            Trajectory JSONL
-          </button>
-          <button
-            type="button"
-            onClick={() => importInputRef.current?.click()}
-            disabled={importData.isPending}
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-[11px] text-gray-200 hover:bg-white/[0.06] disabled:opacity-40"
-          >
-            {importData.isPending ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Upload className="h-3.5 w-3.5" />
-            )}
-            Import suite
-          </button>
-          <input
-            ref={importInputRef}
-            type="file"
-            accept="application/json,.json"
-            onChange={handleImport}
-            className="hidden"
-          />
-        </div>
-        {transferMessage && (
-          <p className="w-full text-right text-[11px] text-gray-400">{transferMessage}</p>
-        )}
+      <div className="mb-4 inline-flex rounded-lg border border-white/10 bg-white/[0.025] p-1">
+        <button
+          type="button"
+          onClick={() => setLabView("data")}
+          className={cn(
+            "inline-flex h-8 items-center gap-2 rounded-md px-3 text-[12px] transition-colors",
+            labView === "data" ? "bg-white/10 text-white" : "text-gray-500 hover:text-gray-200"
+          )}
+        >
+          <Database className="h-3.5 w-3.5" />
+          Data
+        </button>
+        <button
+          type="button"
+          onClick={() => setLabView("benchmarks")}
+          className={cn(
+            "inline-flex h-8 items-center gap-2 rounded-md px-3 text-[12px] transition-colors",
+            labView === "benchmarks"
+              ? "bg-white/10 text-white"
+              : "text-gray-500 hover:text-gray-200"
+          )}
+        >
+          <Gauge className="h-3.5 w-3.5" />
+          Benchmarks
+        </button>
+        <button
+          type="button"
+          onClick={() => setLabView("evals")}
+          className={cn(
+            "inline-flex h-8 items-center gap-2 rounded-md px-3 text-[12px] transition-colors",
+            labView === "evals" ? "bg-white/10 text-white" : "text-gray-500 hover:text-gray-200"
+          )}
+        >
+          <FlaskConical className="h-3.5 w-3.5" />
+          Evals
+        </button>
       </div>
-      {goldens.length > 0 && (
-        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {[
-            { label: "Golden tests", value: insights.total, tone: "text-white" },
-            { label: "Passing", value: insights.passing, tone: "text-emerald-300" },
-            { label: "Failing", value: insights.failing, tone: "text-red-300" },
-            { label: "Not run", value: insights.notRun, tone: "text-gray-300" },
-          ].map((stat) => (
-            <div
-              key={stat.label}
-              className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5"
-            >
-              <p className={cn("text-lg font-semibold tabular-nums", stat.tone)}>{stat.value}</p>
-              <p className="text-[11px] text-gray-500">{stat.label}</p>
-            </div>
-          ))}
-        </div>
-      )}
-      {query.isLoading ? (
-        <div className="grid gap-3 md:grid-cols-2">
-          {[0, 1, 2, 3].map((item) => (
-            <div
-              key={item}
-              className="h-40 animate-pulse rounded-lg border border-white/10 bg-white/[0.03]"
-            />
-          ))}
-        </div>
-      ) : query.isError ? (
-        <div className="rounded-lg border border-red-400/20 bg-red-400/[0.06] p-4 text-sm text-red-200">
-          {query.error instanceof Error ? query.error.message : "Failed to load evals"}
-        </div>
-      ) : goldens.length === 0 ? (
-        <div className="flex min-h-[360px] items-center justify-center text-center">
-          <div className="max-w-md">
-            <FlaskConical className="mx-auto h-9 w-9 text-gray-600" />
-            <h2 className="mt-4 text-base font-semibold text-white">No golden tests yet</h2>
-            <p className="mt-2 text-sm leading-6 text-gray-400">
-              Golden tests are saved from real chats. Open a{" "}
-              <Link to="/chat" className="text-indigo-300 hover:text-indigo-200">
-                chat
-              </Link>{" "}
-              you're happy with, hover a completed assistant turn, and choose{" "}
-              <span className="font-medium text-gray-200">Save as golden</span>. It'll show up here,
-              ready to replay whenever you change your model, prompt, or tools.
-            </p>
-          </div>
-        </div>
+      {labView === "data" ? (
+        <TraceDatasetPanel />
+      ) : labView === "benchmarks" ? (
+        <BenchmarkPanel />
       ) : (
-        <div className="grid gap-3 xl:grid-cols-2">
-          {goldens.map((golden) => (
-            <GoldenRow
-              key={golden.id}
-              golden={golden}
-              latestRun={latestRuns.get(golden.id)}
-              busy={busyGoldenId === golden.id}
-              onReplay={() => replay.mutate(golden.id)}
-              onDelete={() => remove.mutate(golden.id)}
-            />
-          ))}
-        </div>
+        <>
+          <EvalsExplainer />
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2.5">
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium text-gray-100">Portable eval data</p>
+              <p className="mt-0.5 text-[11px] text-gray-500">
+                Suite backups can be imported later. JSONL is ready for analysis and training
+                pipelines.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div
+                className="inline-flex h-8 items-center gap-2 px-1 text-[11px] text-gray-300"
+                title="Remove prompt content, workspace paths, tool arguments, and tool results from JSONL"
+              >
+                <Switch
+                  checked={sanitizeExport}
+                  onChange={setSanitizeExport}
+                  ariaLabel="Redact JSONL"
+                />
+                <span>Redact JSONL</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => exportData.mutate("bundle")}
+                disabled={goldens.length === 0 || exportData.isPending}
+                title="Full replayable backup. May contain prompts, paths, and tool output."
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-[11px] text-gray-200 hover:bg-white/[0.06] disabled:opacity-40"
+              >
+                <FileJson className="h-3.5 w-3.5" />
+                Suite JSON
+              </button>
+              <button
+                type="button"
+                onClick={() => exportData.mutate("jsonl")}
+                disabled={goldens.length === 0 || exportData.isPending}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-[11px] text-gray-200 hover:bg-white/[0.06] disabled:opacity-40"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Trajectory JSONL
+              </button>
+              <button
+                type="button"
+                onClick={() => importInputRef.current?.click()}
+                disabled={importData.isPending}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-[11px] text-gray-200 hover:bg-white/[0.06] disabled:opacity-40"
+              >
+                {importData.isPending ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Upload className="h-3.5 w-3.5" />
+                )}
+                Import suite
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                accept="application/json,.json"
+                onChange={handleImport}
+                className="hidden"
+              />
+            </div>
+            {transferMessage && (
+              <p className="w-full text-right text-[11px] text-gray-400">{transferMessage}</p>
+            )}
+          </div>
+          {goldens.length > 0 && (
+            <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+              {[
+                { label: "Golden tests", value: insights.total, tone: "text-white" },
+                { label: "Coverage", value: `${insights.coverage}%`, tone: "text-blue-300" },
+                { label: "Pass rate", value: `${insights.passRate}%`, tone: "text-emerald-300" },
+                {
+                  label: "Average match",
+                  value: `${insights.averageScore}%`,
+                  tone: "text-indigo-300",
+                },
+                { label: "Failing", value: insights.failing, tone: "text-red-300" },
+                { label: "Not run", value: insights.notRun, tone: "text-gray-300" },
+              ].map((stat) => (
+                <div
+                  key={stat.label}
+                  className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5"
+                >
+                  <p className={cn("text-lg font-semibold tabular-nums", stat.tone)}>
+                    {stat.value}
+                  </p>
+                  <p className="text-[11px] text-gray-500">{stat.label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          {insights.divergences.length > 0 && (
+            <div className="mb-4 rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2.5">
+              <p className="text-[12px] font-medium text-gray-200">Recurring divergences</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {insights.divergences.map(([path, count]) => (
+                  <span
+                    key={path}
+                    className="rounded-md border border-white/10 bg-black/20 px-2 py-1 font-mono text-[10px] text-gray-400"
+                  >
+                    {path} · {count}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+          {query.isLoading ? (
+            <div className="grid gap-3 md:grid-cols-2">
+              {[0, 1, 2, 3].map((item) => (
+                <div
+                  key={item}
+                  className="h-40 animate-pulse rounded-lg border border-white/10 bg-white/[0.03]"
+                />
+              ))}
+            </div>
+          ) : query.isError ? (
+            <div className="rounded-lg border border-red-400/20 bg-red-400/[0.06] p-4 text-sm text-red-200">
+              {query.error instanceof Error ? query.error.message : "Failed to load evals"}
+            </div>
+          ) : goldens.length === 0 ? (
+            <div className="flex min-h-[360px] items-center justify-center text-center">
+              <div className="max-w-md">
+                <FlaskConical className="mx-auto h-9 w-9 text-gray-600" />
+                <h2 className="mt-4 text-base font-semibold text-white">No golden tests yet</h2>
+                <p className="mt-2 text-sm leading-6 text-gray-400">
+                  Golden tests are saved from real chats. Open a{" "}
+                  <Link to="/chat" className="text-indigo-300 hover:text-indigo-200">
+                    chat
+                  </Link>{" "}
+                  you're happy with, hover a completed assistant turn, and choose{" "}
+                  <span className="font-medium text-gray-200">Save as golden</span>. It'll show up
+                  here, ready to replay whenever you change your model, prompt, or tools.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid gap-3 xl:grid-cols-2">
+              {goldens.map((golden) => (
+                <GoldenRow
+                  key={golden.id}
+                  golden={golden}
+                  latestRun={latestRuns.get(golden.id)}
+                  busy={busyGoldenId === golden.id}
+                  onReplay={() => replay.mutate(golden.id)}
+                  onDelete={() => remove.mutate(golden.id)}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </PageLayout>
   );

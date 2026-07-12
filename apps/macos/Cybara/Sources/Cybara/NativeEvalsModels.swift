@@ -67,3 +67,19 @@ struct GatewayEvalImportResponse: Decodable, Hashable {
     let count: Int
     let error: String?
 }
+
+struct GatewayResearchStats: Decodable, Hashable {
+    let total: Int
+    let toolCalls: Int
+    let failedToolCalls: Int
+    let reasoningTraces: Int
+    let cleanTraces: Int
+    let train: Int
+    let validation: Int
+    let test: Int
+}
+
+struct GatewayResearchResponse: Decodable, Hashable {
+    let stats: GatewayResearchStats
+    let total: Int
+}

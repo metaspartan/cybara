@@ -2,6 +2,7 @@ import * as Clipboard from "expo-clipboard";
 import {
   CheckCircle2,
   ClipboardCopy,
+  Database,
   FileJson,
   FlaskConical,
   Play,
@@ -11,7 +12,12 @@ import {
 } from "lucide-react-native";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from "react-native";
-import type { CybaraMobileApi, MobileEvalGolden, MobileEvalRun } from "../lib/api";
+import type {
+  CybaraMobileApi,
+  MobileEvalGolden,
+  MobileEvalRun,
+  MobileResearchStats,
+} from "../lib/api";
 import { haptics } from "../lib/haptics";
 import { useTheme } from "../theme/ThemeContext";
 import { EmptyState, LoadingState } from "./dashboardPrimitives";
@@ -26,6 +32,7 @@ export function MobileEvalsPanel({
   const colors = useTheme();
   const [goldens, setGoldens] = useState<MobileEvalGolden[]>([]);
   const [runs, setRuns] = useState<MobileEvalRun[]>([]);
+  const [researchStats, setResearchStats] = useState<MobileResearchStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const latestRuns = useMemo(() => {
@@ -36,9 +43,10 @@ export function MobileEvalsPanel({
 
   const load = useCallback(async () => {
     try {
-      const response = await api.evals();
+      const [response, research] = await Promise.all([api.evals(), api.researchTraces()]);
       setGoldens(response.goldens ?? []);
       setRuns(response.runs ?? []);
+      setResearchStats(research.stats);
     } catch (error) {
       Alert.alert("Evals unavailable", error instanceof Error ? error.message : String(error));
     } finally {
@@ -97,6 +105,19 @@ export function MobileEvalsPanel({
     }
   };
 
+  const copyTrainingJsonl = async () => {
+    try {
+      const exported = await api.exportResearch("trl_sft");
+      await Clipboard.setStringAsync(exported.content);
+      Alert.alert(
+        "Training data copied",
+        `${exported.count} redacted ${exported.count === 1 ? "trace" : "traces"} copied as conversational JSONL.`
+      );
+    } catch (error) {
+      Alert.alert("Export failed", error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const copySuite = async () => {
     try {
       const exported = await api.exportEvals("bundle", false);
@@ -132,6 +153,26 @@ export function MobileEvalsPanel({
 
   return (
     <View style={styles.section}>
+      <View style={styles.statsGrid}>
+        <View
+          style={[styles.stat, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
+          <Database color={accentColor} size={16} />
+          <Text style={[styles.statValue, { color: colors.text }]}>
+            {researchStats?.total ?? 0}
+          </Text>
+          <Text style={[styles.statLabel, { color: colors.textMuted }]}>Traces</Text>
+        </View>
+        <View
+          style={[styles.stat, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        >
+          <FlaskConical color={accentColor} size={16} />
+          <Text style={[styles.statValue, { color: colors.text }]}>
+            {researchStats?.reasoningTraces ?? 0}
+          </Text>
+          <Text style={[styles.statLabel, { color: colors.textMuted }]}>Reasoning</Text>
+        </View>
+      </View>
       <View style={styles.header}>
         <View style={styles.headerCopy}>
           <Text style={[styles.title, { color: colors.text }]}>Golden tests</Text>
@@ -140,6 +181,13 @@ export function MobileEvalsPanel({
           </Text>
         </View>
         <View style={styles.actions}>
+          <Pressable
+            accessibilityLabel="Copy conversational training JSONL"
+            onPress={copyTrainingJsonl}
+            style={[styles.iconButton, { backgroundColor: colors.inset }]}
+          >
+            <Database color={colors.textMuted} size={17} />
+          </Pressable>
           <Pressable
             accessibilityLabel="Copy replayable eval suite"
             onPress={copySuite}
@@ -234,6 +282,16 @@ export function MobileEvalsPanel({
 
 const styles = StyleSheet.create({
   section: { gap: 12 },
+  statsGrid: { flexDirection: "row", gap: 8 },
+  stat: {
+    flex: 1,
+    minHeight: 72,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 10,
+  },
+  statValue: { fontSize: 18, fontWeight: "700", marginTop: 5 },
+  statLabel: { fontSize: 10, marginTop: 1 },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 },
   headerCopy: { flex: 1 },
   title: { fontSize: 16, fontWeight: "700" },

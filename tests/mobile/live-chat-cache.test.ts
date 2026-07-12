@@ -3,6 +3,7 @@ import {
   clearCachedMobileLiveAssistant,
   liveAssistantFromStatusSnapshot,
   liveAssistantMessage,
+  liveActivityFromStatusEvent,
   mergeLiveActivity,
   mobileAgentUsingBrowser,
   mobilePreSteerProcessActivities,
@@ -13,6 +14,30 @@ import {
 } from "../../apps/mobile/src/screens/dashboardLiveChat";
 
 describe("mobile live chat cache", () => {
+  test("replaces active compaction with its completed result", () => {
+    const started = liveActivityFromStatusEvent({
+      type: "status",
+      status: "compacting",
+      detail: "Summarizing earlier conversation to continue...",
+      timestamp: 100,
+    });
+    const completed = liveActivityFromStatusEvent({
+      type: "status",
+      status: "thinking",
+      detail: "Context compacted · 4,200 tokens freed",
+      timestamp: 200,
+    });
+    if (!started || !completed) throw new Error("expected compaction activities");
+
+    const activities = mergeLiveActivity([started], completed);
+    expect(activities).toHaveLength(1);
+    expect(activities[0]).toMatchObject({
+      phase: "result",
+      text: "Context compacted · 4,200 tokens freed",
+      toolName: "__context_compaction",
+    });
+  });
+
   test("reports browser use only for active in-flight browser activities", () => {
     const sessionId = `mobile-browser-${Date.now()}`;
     const live = {

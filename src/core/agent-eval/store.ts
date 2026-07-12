@@ -137,6 +137,27 @@ export function listSessionTrajectories(sessionId: string): AgentTrajectory[] {
   ).map(trajectoryFromRow);
 }
 
+export function listTrajectories(limit = 100, offset = 0): AgentTrajectory[] {
+  const boundedLimit = Math.max(1, Math.min(1000, Math.floor(limit)));
+  const boundedOffset = Math.max(0, Math.floor(offset));
+  return (
+    db
+      .prepare("SELECT * FROM agent_trajectories ORDER BY created_at DESC LIMIT ? OFFSET ?")
+      .all(boundedLimit, boundedOffset) as TrajectoryRow[]
+  ).map(trajectoryFromRow);
+}
+
+export function countTrajectories(): number {
+  const row = db.prepare("SELECT COUNT(*) AS count FROM agent_trajectories").get() as {
+    count: number;
+  };
+  return row.count;
+}
+
+export function deleteSessionTrajectories(sessionId: string): number {
+  return db.prepare("DELETE FROM agent_trajectories WHERE session_id = ?").run(sessionId).changes;
+}
+
 export function saveGolden(input: {
   trajectory: AgentTrajectory;
   name: string;
@@ -199,7 +220,12 @@ export function importGoldens(entries: ParsedEvalSuiteGolden[]): AgentGolden[] {
 }
 
 export function deleteGolden(id: string): boolean {
-  return (db.prepare("DELETE FROM agent_goldens WHERE id = ?").run(id).changes ?? 0) > 0;
+  let deleted = false;
+  db.transaction(() => {
+    db.prepare("DELETE FROM agent_eval_runs WHERE golden_id = ?").run(id);
+    deleted = (db.prepare("DELETE FROM agent_goldens WHERE id = ?").run(id).changes ?? 0) > 0;
+  })();
+  return deleted;
 }
 
 export function createEvalRun(goldenId: string): AgentEvalRun {

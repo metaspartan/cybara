@@ -220,7 +220,7 @@ export function LiveActivityTimeline({
       (status === "generating"
         ? "Generating response..."
         : status === "compacting"
-          ? "Context automatically compacted"
+          ? "Compacting earlier context..."
           : status === "thinking"
             ? "Thinking..."
             : null);

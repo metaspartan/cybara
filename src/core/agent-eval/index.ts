@@ -1,5 +1,7 @@
 export * from "./runtime";
 export * from "./portable";
+export * from "./benchmark";
+export * from "./research";
 export * from "./session-fork";
 export * from "./store";
 export * from "./structure";

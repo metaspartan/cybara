@@ -7,7 +7,7 @@ import {
   parseEvalSuiteBundle,
   summarizeGolden,
 } from "../../src/core/agent-eval";
-import type { AgentGolden } from "../../src/core/agent-eval/types";
+import type { AgentEvalRun, AgentGolden } from "../../src/core/agent-eval/types";
 
 function golden(): AgentGolden {
   return {
@@ -88,14 +88,36 @@ describe("agent eval portability", () => {
   });
 
   test("emits one analysis-ready JSONL trajectory per golden", () => {
-    const lines = evalSuiteJsonl([golden()]).split("\n");
+    const run: AgentEvalRun = {
+      id: "run-1",
+      goldenId: "golden-1",
+      replaySessionId: "replay-1",
+      status: "failed",
+      score: 82,
+      comparison: {
+        equivalent: false,
+        score: 82,
+        differences: [
+          { path: "tools[0].name", expected: "read", actual: "exec", severity: "error" },
+        ],
+      },
+      error: null,
+      createdAt: "2026-07-11T00:01:00.000Z",
+      completedAt: "2026-07-11T00:02:00.000Z",
+    };
+    const lines = evalSuiteJsonl([golden()], { runs: [run] }).split("\n");
     expect(lines).toHaveLength(1);
     const row = JSON.parse(lines[0]) as {
       conversations: Array<{ from: string; value: string }>;
-      metadata: { structure: { tools: Array<{ name: string }> } };
+      metadata: {
+        structure: { tools: Array<{ name: string }> };
+        latestEval: { status: string; score: number; differences: Array<{ path: string }> };
+      };
     };
     expect(row.conversations.map((message) => message.from)).toEqual(["system", "human", "gpt"]);
     expect(row.metadata.structure.tools[0]?.name).toBe("read");
+    expect(row.metadata.latestEval).toMatchObject({ status: "failed", score: 82 });
+    expect(row.metadata.latestEval.differences[0]?.path).toBe("tools[0].name");
   });
 
   test("imports replayable suites with fresh local identities", () => {

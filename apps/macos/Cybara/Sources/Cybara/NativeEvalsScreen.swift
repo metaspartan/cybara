@@ -8,6 +8,7 @@ struct NativeEvalsScreen: View {
     @Environment(\.cybaraAccent) private var accentTint
     @State private var goldens: [GatewayEvalGolden] = []
     @State private var runs: [GatewayEvalRun] = []
+    @State private var researchStats: GatewayResearchStats?
     @State private var loading = true
     @State private var busyID: String?
     @State private var message: String?
@@ -22,7 +23,13 @@ struct NativeEvalsScreen: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            ScreenHeader(title: "Evals", subtitle: "Replay known-good agent behavior after changing models, prompts, or tools")
+            ScreenHeader(title: "Lab", subtitle: "Curate agent data and replay known-good behavior")
+            HStack(spacing: 10) {
+                metric("Captured Traces", value: researchStats?.total ?? 0, icon: "cylinder.split.1x2")
+                metric("Tool Calls", value: researchStats?.toolCalls ?? 0, icon: "wrench.and.screwdriver")
+                metric("Reasoning", value: researchStats?.reasoningTraces ?? 0, icon: "brain")
+                metric("Clean Traces", value: researchStats?.cleanTraces ?? 0, icon: "checkmark.seal")
+            }
             HStack(spacing: 8) {
                 Button { Task { await runSuite() } } label: {
                     Label("Run Suite", systemImage: "play.fill")
@@ -31,6 +38,8 @@ struct NativeEvalsScreen: View {
                 .tint(accentTint)
                 .disabled(goldens.isEmpty || busyID != nil)
                 Menu {
+                    Button("Conversational SFT JSONL") { Task { await exportResearch(format: "trl_sft") } }
+                    Button("Long-Context JSONL") { Task { await exportResearch(format: "long_context") } }
                     Button("Suite Backup") { Task { await export(format: "bundle", sanitize: false) } }
                     Button("Redacted Trajectory JSONL") { Task { await export(format: "jsonl", sanitize: true) } }
                     Button("Full Trajectory JSONL") { Task { await export(format: "jsonl", sanitize: false) } }
@@ -138,12 +147,33 @@ struct NativeEvalsScreen: View {
         }
     }
 
+    private func metric(_ title: String, value: Int, icon: String) -> some View {
+        GlassCard {
+            HStack(spacing: 9) {
+                Image(systemName: icon)
+                    .foregroundStyle(accentTint)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(value.formatted())
+                        .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    Text(title)
+                        .font(.system(size: 10, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
     @MainActor
     private func load() async {
         do {
-            let response = try await client.evals()
+            async let evals = client.evals()
+            async let research = client.researchTraces()
+            let (response, researchResponse) = try await (evals, research)
             goldens = response.goldens
             runs = response.runs
+            researchStats = researchResponse.stats
         } catch {
             message = error.localizedDescription
         }
@@ -201,6 +231,23 @@ struct NativeEvalsScreen: View {
             if panel.runModal() == .OK, let url = panel.url {
                 try response.content.write(to: url, atomically: true, encoding: .utf8)
                 message = "Exported \(response.count) golden tests"
+            }
+        } catch {
+            message = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func exportResearch(format: String) async {
+        busyID = "research-export"
+        defer { busyID = nil }
+        do {
+            let response = try await client.exportResearch(format: format)
+            let panel = NSSavePanel()
+            panel.nameFieldStringValue = response.filename
+            if panel.runModal() == .OK, let url = panel.url {
+                try response.content.write(to: url, atomically: true, encoding: .utf8)
+                message = "Exported \(response.count) traces"
             }
         } catch {
             message = error.localizedDescription

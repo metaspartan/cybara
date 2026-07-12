@@ -929,7 +929,7 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertFalse(completed.contains(where: { $0.phase == .start }))
     }
 
-    func testNativeCompactingStatusRendersVisibleThoughtActivity() throws {
+    func testNativeCompactingStatusWaitsForCompletionBeforeRecordingActivity() throws {
         let event = try decodeStatusEvent(
             #"""
             {
@@ -942,9 +942,23 @@ final class GatewayClientModelTests: XCTestCase {
         )
 
         let activity = nativeLiveActivity(from: event)
-        XCTAssertEqual(activity?.toolName, "__thought")
-        XCTAssertEqual(activity?.phase, .result)
-        XCTAssertEqual(activity?.text, "Context automatically compacted")
+        XCTAssertNil(activity)
+
+        let completed = try decodeStatusEvent(
+            #"""
+            {
+              "type": "status",
+              "status": "thinking",
+              "detail": "Context compacted · 4,200 tokens freed",
+              "timestamp": 1783015200200,
+              "sessionId": "session-1"
+            }
+            """#
+        )
+        let completedActivity = nativeLiveActivity(from: completed)
+        XCTAssertEqual(completedActivity?.toolName, "__thought")
+        XCTAssertEqual(completedActivity?.phase, .result)
+        XCTAssertEqual(completedActivity?.text, "Context compacted · 4,200 tokens freed")
     }
 
     func testNativeStatusEventsDecodeLiveToolActivityAndSnapshots() throws {

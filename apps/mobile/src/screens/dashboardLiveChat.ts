@@ -187,11 +187,14 @@ function isMeaningfulLiveDetail(value: string | undefined): value is string {
 export function liveActivityFromStatusEvent(
   event: StatusEvent
 ): SessionProcessActivitySummary | null {
-  const phase = liveStatusPhase(event);
+  const compactionCompleted =
+    event.status === "thinking" && (event.detail || "").trim().startsWith("Context compacted");
+  const phase = compactionCompleted ? "result" : liveStatusPhase(event);
   if (!phase) return null;
   const timestamp = typeof event.timestamp === "number" ? event.timestamp : Date.now();
+  const compactionActivity = event.status === "compacting" || compactionCompleted;
   const toolName =
-    event.toolName ||
+    (compactionActivity ? "__context_compaction" : event.toolName) ||
     (event.status === "thinking" || event.status === "generating" || event.status === "compacting"
       ? "__thought"
       : undefined);
@@ -201,7 +204,7 @@ export function liveActivityFromStatusEvent(
       : event.status === "generating"
         ? "Generating response..."
         : event.status === "compacting"
-          ? "Summarizing context..."
+          ? "Compacting earlier context..."
           : event.status === "error"
             ? "Run failed"
             : phase === "blocked"
@@ -211,12 +214,14 @@ export function liveActivityFromStatusEvent(
                 : "Working...";
   const text = isMeaningfulLiveDetail(event.detail) ? event.detail.trim() : fallbackText;
   return {
-    id: event.toolCallId || `live-${event.status}-${timestamp}`,
+    id: compactionActivity
+      ? "live-context-compaction"
+      : event.toolCallId || `live-${event.status}-${timestamp}`,
     phase,
     text,
     timestamp,
     toolName,
-    toolCallId: event.toolCallId,
+    toolCallId: compactionActivity ? "live-context-compaction" : event.toolCallId,
   };
 }
 

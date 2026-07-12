@@ -70,7 +70,7 @@ export const MOBILE_SETTINGS_TABS: Array<{ label: string; value: MobileSettingsT
   { label: "General", value: "general" },
   { label: "Gateway", value: "gateway" },
   { label: "AI", value: "ai" },
-  { label: "Evals", value: "evals" },
+  { label: "Lab", value: "evals" },
   { label: "Memory", value: "memory" },
   { label: "Voice", value: "voice" },
   { label: "MCP", value: "mcp" },

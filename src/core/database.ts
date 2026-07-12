@@ -181,6 +181,7 @@ try {
     agent_id TEXT NOT NULL,
     title TEXT,
     messages TEXT NOT NULL,
+    context_state TEXT,
     workspace_dir TEXT,
     pinned INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -249,6 +250,21 @@ try {
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     completed_at DATETIME,
     FOREIGN KEY (golden_id) REFERENCES agent_goldens(id) ON DELETE CASCADE
+  );
+
+  CREATE TABLE IF NOT EXISTS agent_benchmark_runs (
+    id TEXT PRIMARY KEY,
+    suite_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    provider TEXT,
+    model TEXT,
+    status TEXT NOT NULL DEFAULT 'completed',
+    score REAL NOT NULL DEFAULT 0,
+    current_task INTEGER NOT NULL DEFAULT 0,
+    results_json TEXT NOT NULL,
+    error TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    completed_at DATETIME
   );
 
   -- System logs
@@ -405,10 +421,26 @@ try {
   }
 
   try {
+    db.exec("ALTER TABLE chat_sessions ADD COLUMN context_state TEXT");
+    console.log("[Database] Migration: Added context_state column to chat_sessions");
+  } catch {}
+
+  try {
     db.exec("ALTER TABLE mcp_servers ADD COLUMN url TEXT");
     console.log("[Database] Migration: Added url column to mcp_servers");
   } catch {
     // Column already exists, ignore
+  }
+
+  for (const sql of [
+    "ALTER TABLE agent_benchmark_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'completed'",
+    "ALTER TABLE agent_benchmark_runs ADD COLUMN current_task INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE agent_benchmark_runs ADD COLUMN error TEXT",
+    "ALTER TABLE agent_benchmark_runs ADD COLUMN completed_at DATETIME",
+  ]) {
+    try {
+      db.exec(sql);
+    } catch {}
   }
 
   try {
@@ -540,6 +572,7 @@ db.exec(`
     agent_id TEXT NOT NULL,
     title TEXT,
     messages TEXT NOT NULL,
+    context_state TEXT,
     workspace_dir TEXT,
     pinned INTEGER NOT NULL DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -558,10 +591,13 @@ db.exec(`
   );
 `);
 
+db.exec("DELETE FROM agent_eval_runs WHERE golden_id NOT IN (SELECT id FROM agent_goldens)");
+
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_chat_sessions_agent ON chat_sessions(agent_id);
   CREATE INDEX IF NOT EXISTS idx_chat_memory_session ON chat_memory(session_id);
   CREATE INDEX IF NOT EXISTS idx_agent_trajectories_session ON agent_trajectories(session_id, turn_index);
+  CREATE INDEX IF NOT EXISTS idx_agent_benchmark_runs_created ON agent_benchmark_runs(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_agent_goldens_updated ON agent_goldens(updated_at DESC);
   CREATE INDEX IF NOT EXISTS idx_agent_eval_runs_golden ON agent_eval_runs(golden_id, created_at DESC);
 `);
@@ -685,7 +721,15 @@ const stmts = {
   chatSessions: {
     get: prepare("SELECT * FROM chat_sessions WHERE id = ?"),
     upsert: prepare(
-      "INSERT OR REPLACE INTO chat_sessions (id, agent_id, title, messages, workspace_dir, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+      `INSERT INTO chat_sessions (id, agent_id, title, messages, workspace_dir, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         agent_id = excluded.agent_id,
+         title = excluded.title,
+         messages = excluded.messages,
+         workspace_dir = excluded.workspace_dir,
+         created_at = excluded.created_at,
+         updated_at = excluded.updated_at`
     ),
     updateWorkspace: prepare(
       "UPDATE chat_sessions SET workspace_dir = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
@@ -1518,6 +1562,7 @@ export interface ChatSessionDB {
   title?: string | null;
   messages: string;
   workspace_dir?: string | null;
+  context_state?: string | null;
   created_at: string;
   updated_at?: string;
 }

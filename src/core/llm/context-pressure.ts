@@ -53,7 +53,7 @@ export function recordMidLoopContextCompaction(input: {
 
   if (!input.toolContext?.suppressStreaming) {
     broadcastStatus({
-      status: "compacting",
+      status: "thinking",
       timestamp: Date.now(),
       detail: `Reduced earlier tool output by ${measurement.reducedTokens.toLocaleString()} tokens to preserve context.`,
       sessionId,

@@ -1005,6 +1005,20 @@ struct GatewayClient: Sendable {
         try await get("api/evals", as: GatewayEvalsResponse.self)
     }
 
+    func researchTraces() async throws -> GatewayResearchResponse {
+        try await get("api/evals/research/traces", as: GatewayResearchResponse.self, queryItems: [
+            URLQueryItem(name: "limit", value: "200"),
+            URLQueryItem(name: "offset", value: "0"),
+        ])
+    }
+
+    func exportResearch(format: String) async throws -> GatewayEvalExportResponse {
+        try await get("api/evals/research/export", as: GatewayEvalExportResponse.self, queryItems: [
+            URLQueryItem(name: "format", value: format),
+            URLQueryItem(name: "sanitize", value: "1"),
+        ])
+    }
+
     func replayEval(_ id: String) async throws -> GatewayEvalReplayResponse {
         let data = try await request("api/evals/goldens/\(id)/replay", method: "POST", body: Data("{}".utf8))
         return try JSONDecoder().decode(GatewayEvalReplayResponse.self, from: data)

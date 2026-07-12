@@ -33,7 +33,9 @@ import {
   setPersistedSessionAgent,
   shouldCompactContext,
   compactContext,
+  clearSessionContextState,
   persistSession,
+  persistSessionContextState,
   upsertPersistedSessionMessage,
   deletePersistedSession,
   estimateMessagesTokens,
@@ -228,8 +230,13 @@ interface InMemoryChatSession {
   updatedAt: string;
   workspaceDir?: string | null;
   persisted: boolean;
-  compactionCount?: number; // Track compaction cycles for memory flush
-  lastFlushCompactionCount?: number; // Last compaction cycle we flushed
+  compactionCount?: number;
+  lastFlushCompactionCount?: number;
+}
+
+function persistActiveSessionContext(session: InMemoryChatSession): void {
+  if ((session.compactionCount || 0) <= 0) return;
+  persistSessionContextState(session.id, session.messages, session.compactionCount || 0);
 }
 
 export interface ChatSessionAgentUpdate {
@@ -406,6 +413,7 @@ async function finishInterruptedChatTurn(
       session.workspaceDir,
       session.title
     );
+    persistActiveSessionContext(session);
     upsertPersistedSessionIndex({
       id: session.id,
       agentId: session.agentId,
@@ -996,16 +1004,17 @@ async function restorePersistedChatSessionForChat(
         modelMetadata?.agent_name,
         persisted.agentId,
       ]),
-      messages: persisted.messages,
+      messages: persisted.contextMessages ?? persisted.messages,
       createdAt,
       updatedAt: indexed?.updatedAt || createdAt,
       workspaceDir: persisted.workspaceDir ?? indexed?.workspaceDir ?? null,
       persisted: true,
+      compactionCount: persisted.compactionCount,
     };
     chatSessions.set(sessionId, restored);
     log.info("Restored persisted session for chat turn", {
       sessionId,
-      messages: persisted.messages.length,
+      messages: (persisted.contextMessages ?? persisted.messages).length,
     });
     return restored;
   } catch {
@@ -1648,6 +1657,7 @@ export async function steerPendingChatMessage(
     session.workspaceDir,
     session.title
   );
+  persistActiveSessionContext(session);
   upsertPersistedSessionIndex({
     id: session.id,
     agentId: session.agentId,
@@ -1859,6 +1869,7 @@ async function handleChatTurn(
       createdAt: userMessage.timestamp,
     });
   }
+  persistActiveSessionContext(session);
 
   const provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
   const turnAbortController = new AbortController();
@@ -1976,8 +1987,6 @@ async function handleChatTurn(
       const messagesBefore = session.messages.length;
       const tokensBefore = estimateMessagesTokens(session.messages);
 
-      // Surface an explicit "compacting" lifecycle state so the UI shows an
-      // indicator instead of an apparent silent reset.
       broadcastStatus({
         status: "compacting",
         sessionId: session.id,
@@ -1990,6 +1999,7 @@ async function handleChatTurn(
       if (compaction.wasCompacted) {
         session.messages = compaction.messages;
         session.compactionCount = (session.compactionCount || 0) + 1;
+        persistActiveSessionContext(session);
 
         const tokensAfter = estimateMessagesTokens(session.messages);
         trackContextCompaction(session.id, {
@@ -2005,6 +2015,13 @@ async function handleChatTurn(
         log.info("Context compacted", {
           sessionId: session.id,
           summaryPreview: compaction.summary?.slice(0, 100),
+        });
+        broadcastStatus({
+          status: "thinking",
+          sessionId: session.id,
+          agentId: agent.id,
+          timestamp: Date.now(),
+          detail: `Context compacted · ${Math.max(0, tokensBefore - tokensAfter).toLocaleString()} tokens freed`,
         });
       }
     }
@@ -2308,6 +2325,7 @@ async function handleChatTurn(
       process_activities: assistantMessage.process_activities,
     },
   });
+  persistActiveSessionContext(session);
 
   // Only mark the session persisted when the write actually succeeded, so a
   // failed write is retried on the next turn instead of being silently lost.
@@ -2507,11 +2525,12 @@ export async function getSession(sessionId: string) {
       id: sessionId,
       agentId: persisted.agentId,
       title: resolvedTitle,
-      messages: persisted.messages,
+      messages: persisted.contextMessages ?? persisted.messages,
       createdAt,
       updatedAt,
       workspaceDir,
       persisted: true,
+      compactionCount: persisted.compactionCount,
     };
     chatSessions.set(sessionId, restoredSession);
     upsertPersistedSessionIndex({
@@ -2563,6 +2582,7 @@ export async function updateSessionAgent(
       session.title
     );
   }
+  persistActiveSessionContext(session);
 
   const modelMetadata = resolveSessionModelMetadata(agent.id);
   upsertPersistedSessionIndex({
@@ -2891,6 +2911,8 @@ export async function revertSessionToMessage(
 
   if (inMemorySession) {
     inMemorySession.messages = keptMessages;
+    inMemorySession.compactionCount = 0;
+    inMemorySession.lastFlushCompactionCount = 0;
     inMemorySession.persisted = true;
     inMemorySession.updatedAt = new Date().toISOString();
   } else {
@@ -2907,6 +2929,7 @@ export async function revertSessionToMessage(
   }
 
   if (removedCount > 0) {
+    clearSessionContextState(sessionId);
     await deletePersistedSession(sessionId);
     await persistSession(sessionId, agentId, keptMessages, workspaceDir, sessionTitle);
     for (const message of keptMessages) {

@@ -163,4 +163,15 @@ describe("session-context chunking helpers", () => {
     expect(result.messages.at(-1)).toEqual(messages.at(-1));
     expect(result.messages.at(-2)).toEqual(messages.at(-2));
   });
+
+  test("forced compaction exercises the same summary path below the automatic threshold", async () => {
+    const messages = Array.from({ length: 8 }, (_, index) =>
+      msg(index % 2 === 0 ? "user" : "assistant", `turn-${index}-IDENTIFIER_${index}`)
+    );
+    const result = await compactContext(messages, "mixtral", undefined, { force: true });
+
+    expect(result.wasCompacted).toBe(true);
+    expect(result.summary).toContain("IDENTIFIER_");
+    expect(result.messages.at(-1)).toEqual(messages.at(-1));
+  });
 });

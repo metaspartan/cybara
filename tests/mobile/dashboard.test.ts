@@ -680,7 +680,7 @@ describe("mobile dashboard model", () => {
       "General",
       "Gateway",
       "AI",
-      "Evals",
+      "Lab",
       "Memory",
       "Voice",
       "MCP",

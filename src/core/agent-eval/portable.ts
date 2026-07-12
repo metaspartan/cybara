@@ -1,4 +1,4 @@
-import type { AgentGolden, AgentTrajectory, EvalMessage } from "./types";
+import type { AgentEvalRun, AgentGolden, AgentTrajectory, EvalMessage } from "./types";
 
 export const EVAL_SUITE_FORMAT = "cybara-agent-eval-suite";
 export const EVAL_SUITE_VERSION = 1;
@@ -78,7 +78,7 @@ function sanitizeMessage(message: EvalMessage): EvalMessage {
   };
 }
 
-function sanitizeTrajectory(trajectory: AgentTrajectory): AgentTrajectory {
+export function sanitizeTrajectory(trajectory: AgentTrajectory): AgentTrajectory {
   return {
     ...trajectory,
     request: {
@@ -135,11 +135,19 @@ export function summarizeGolden(golden: AgentGolden): AgentGoldenSummary {
   };
 }
 
-export function evalSuiteJsonl(goldens: AgentGolden[], options?: { sanitize?: boolean }): string {
+export function evalSuiteJsonl(
+  goldens: AgentGolden[],
+  options?: { sanitize?: boolean; runs?: AgentEvalRun[] }
+): string {
   const bundle = createEvalSuiteBundle(goldens, options);
+  const latestRuns = new Map<string, AgentEvalRun>();
+  for (const run of options?.runs ?? []) {
+    if (!latestRuns.has(run.goldenId)) latestRuns.set(run.goldenId, run);
+  }
   return bundle.goldens
-    .map((golden) =>
-      JSON.stringify({
+    .map((golden) => {
+      const latestRun = latestRuns.get(golden.id);
+      return JSON.stringify({
         format: "cybara-agent-trajectory",
         version: 1,
         id: golden.id,
@@ -166,9 +174,18 @@ export function evalSuiteJsonl(goldens: AgentGolden[], options?: { sanitize?: bo
           structure: golden.baseline.structure,
           toolCalls: golden.baseline.response.tool_calls ?? [],
           createdAt: golden.baseline.createdAt,
+          latestEval: latestRun
+            ? {
+                status: latestRun.status,
+                score: latestRun.score,
+                differences: latestRun.comparison?.differences ?? [],
+                error: latestRun.error,
+                completedAt: latestRun.completedAt,
+              }
+            : null,
         },
-      })
-    )
+      });
+    })
     .join("\n");
 }
 

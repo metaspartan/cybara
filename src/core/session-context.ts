@@ -613,7 +613,8 @@ export function shouldCompactContext(
 export async function compactContext(
   messages: ChatMessage[],
   model?: string,
-  providerId?: string
+  providerId?: string,
+  options?: { force?: boolean }
 ): Promise<{ messages: ChatMessage[]; summary?: string; wasCompacted: boolean }> {
   const contextWindow = getContextWindow(model);
   const maxHistoryTokens = Math.floor((contextWindow * MAX_HISTORY_SHARE) / CONTEXT_SAFETY_MARGIN);
@@ -627,12 +628,13 @@ export async function compactContext(
   let recentCount = Math.min(nonSystemMessages.length, minRecent);
   const systemTokens = estimateMessagesTokens(systemMessages);
   const reserveForSummaryAndSystem = systemTokens + SUMMARY_RESERVE_TOKENS;
-  for (let n = recentCount + 1; n <= nonSystemMessages.length; n += 1) {
-    const candidateRecent = nonSystemMessages.slice(-n);
-    const candidateTokens = estimateMessagesTokens(candidateRecent);
-    // Keep up to ~40% of the history budget for the recent window.
-    if (candidateTokens > (maxHistoryTokens - reserveForSummaryAndSystem) * 0.4) break;
-    recentCount = n;
+  if (!options?.force) {
+    for (let n = recentCount + 1; n <= nonSystemMessages.length; n += 1) {
+      const candidateRecent = nonSystemMessages.slice(-n);
+      const candidateTokens = estimateMessagesTokens(candidateRecent);
+      if (candidateTokens > (maxHistoryTokens - reserveForSummaryAndSystem) * 0.4) break;
+      recentCount = n;
+    }
   }
   const recentMessages = nonSystemMessages.slice(-recentCount);
   const olderMessages = nonSystemMessages.slice(0, -recentCount);
@@ -645,7 +647,7 @@ export async function compactContext(
   const availableForOlder = maxHistoryTokens - recentTokens - reserveForSummaryAndSystem;
 
   const olderTokens = estimateMessagesTokens(olderMessages);
-  if (olderTokens <= availableForOlder) {
+  if (!options?.force && olderTokens <= availableForOlder) {
     return { messages, wasCompacted: false };
   }
 
@@ -853,9 +855,80 @@ export async function persistSession(
   }
 }
 
+interface PersistedSessionContextState {
+  messages: ChatMessage[];
+  compactionCount: number;
+}
+
+function parsePersistedSessionContextState(
+  value?: string | null
+): PersistedSessionContextState | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    const record = parsed as Record<string, unknown>;
+    if (!Array.isArray(record.messages) || record.messages.length === 0) return null;
+    const messages = record.messages.filter(
+      (message): message is ChatMessage =>
+        !!message &&
+        typeof message === "object" &&
+        !Array.isArray(message) &&
+        typeof (message as Record<string, unknown>).role === "string" &&
+        typeof (message as Record<string, unknown>).content === "string"
+    );
+    if (messages.length !== record.messages.length) return null;
+    const rawCount = Number(record.compactionCount);
+    return {
+      messages,
+      compactionCount: Number.isFinite(rawCount) ? Math.max(1, Math.floor(rawCount)) : 1,
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function persistSessionContextState(
+  sessionId: string,
+  messages: ChatMessage[],
+  compactionCount: number
+): boolean {
+  const normalizedCount = Math.max(0, Math.floor(compactionCount));
+  if (!sessionId.trim() || normalizedCount === 0 || messages.length === 0) return false;
+  try {
+    const state: PersistedSessionContextState = {
+      messages,
+      compactionCount: normalizedCount,
+    };
+    return (
+      db
+        .prepare("UPDATE chat_sessions SET context_state = ? WHERE id = ?")
+        .run(JSON.stringify(state), sessionId).changes > 0
+    );
+  } catch (error) {
+    log.exception("Failed to persist compacted session context", error, { sessionId });
+    return false;
+  }
+}
+
+export function clearSessionContextState(sessionId: string): boolean {
+  if (!sessionId.trim()) return false;
+  try {
+    return (
+      db.prepare("UPDATE chat_sessions SET context_state = NULL WHERE id = ?").run(sessionId)
+        .changes > 0
+    );
+  } catch (error) {
+    log.exception("Failed to clear compacted session context", error, { sessionId });
+    return false;
+  }
+}
+
 export async function loadPersistedSession(sessionId: string): Promise<{
   agentId: string;
   messages: ChatMessage[];
+  contextMessages: ChatMessage[] | null;
+  compactionCount: number;
   workspaceDir: string | null;
   title: string | null;
 } | null> {
@@ -880,11 +953,14 @@ export async function loadPersistedSession(sessionId: string): Promise<{
     });
 
     const session = db
-      .prepare("SELECT agent_id, workspace_dir, title FROM chat_sessions WHERE id = ?")
+      .prepare(
+        "SELECT agent_id, workspace_dir, title, context_state FROM chat_sessions WHERE id = ?"
+      )
       .get(sessionId) as {
       agent_id?: string;
       workspace_dir?: string | null;
       title?: string | null;
+      context_state?: string | null;
     } | null;
     const agentId =
       (typeof session?.agent_id === "string" && session.agent_id.trim()
@@ -895,12 +971,15 @@ export async function loadPersistedSession(sessionId: string): Promise<{
         ? session.workspace_dir
         : null;
     const title = normalizeSessionTitle(session?.title);
+    const contextState = parsePersistedSessionContextState(session?.context_state);
 
     log.debug("Loaded persisted session", { sessionId, messageCount: messages.length });
 
     return {
       agentId: agentId || "default",
       messages,
+      contextMessages: contextState?.messages ?? null,
+      compactionCount: contextState?.compactionCount ?? 0,
       workspaceDir,
       title: title || deriveSessionTitle(messages, agentId || "default"),
     };

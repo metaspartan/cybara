@@ -51,7 +51,7 @@ enum NativeI18n {
             "nav.ide": "IDE",
             "nav.sessions": "Sessions",
             "nav.usage": "Usage",
-            "nav.evals": "Evals",
+            "nav.evals": "Lab",
             "nav.skills": "Skills",
             "nav.tools": "Tools",
             "nav.terminal": "Terminal",

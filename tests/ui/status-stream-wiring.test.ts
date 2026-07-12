@@ -156,7 +156,7 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("Drag to reorder");
     expect(source).toContain('aria-label="Edit queued message"');
     expect(source).toContain('aria-label="Delete queued message"');
-    expect(source).toContain('"Context automatically compacted"');
+    expect(source).toContain('"Compacting earlier context..."');
     expect(source).toContain("canQueueCurrentMessage");
     expect(source).toContain("const locallyLoadingCurrentSession =");
     expect(source).toContain("const requestSessionId = requestedQueueMode");

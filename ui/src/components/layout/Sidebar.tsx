@@ -215,7 +215,7 @@ const navCategories: SidebarNavCategory[] = [
       { path: "/ide", icon: FolderOpen, labelKey: "nav.ide" },
       { path: "/sessions", icon: MessagesSquare, labelKey: "nav.sessions" },
       { path: "/usage", icon: Gauge, labelKey: "nav.usage", requiresUsage: true },
-      { path: "/evals", icon: FlaskConical, label: "Evals" },
+      { path: "/evals", icon: FlaskConical, label: "Lab" },
       { path: "/skills", icon: LibraryBig, labelKey: "nav.skills" },
       { path: "/tools", icon: Wrench, labelKey: "nav.tools" },
       { path: "/terminal", icon: SquareTerminal, labelKey: "nav.terminal" },

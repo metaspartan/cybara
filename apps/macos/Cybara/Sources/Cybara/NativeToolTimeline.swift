@@ -119,7 +119,7 @@ struct NativeLiveToolTimelineView: View {
         case "generating":
             return "Generating response..."
         case "compacting":
-            return "Context automatically compacted"
+            return "Compacting earlier context..."
         case "thinking", "tool_executing", "tool_completed":
             return "Thinking..."
         default:
@@ -616,10 +616,11 @@ func nativeLiveActivity(from event: GatewayStatusEvent) -> NativeToolActivity? {
 
     if status == "thinking" || status == "generating" || status == "compacting" {
         guard nativeFirstNonEmpty(event.toolName) == nil else { return nil }
+        if status == "compacting" { return nil }
         let detail = nativeFirstNonEmpty(event.detail)
         let text = nativeIsMeaningfulThoughtLabel(detail ?? "")
             ? detail!
-            : (status == "compacting" ? "Context automatically compacted" : "")
+            : ""
         guard !text.isEmpty else { return nil }
         return NativeToolActivity(
             id: "thought-\(Int(timestamp))-\(text.prefix(10))",

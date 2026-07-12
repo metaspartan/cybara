@@ -153,6 +153,17 @@ export interface MobileEvalRun {
   error: string | null;
 }
 
+export interface MobileResearchStats {
+  total: number;
+  toolCalls: number;
+  failedToolCalls: number;
+  reasoningTraces: number;
+  cleanTraces: number;
+  train: number;
+  validation: number;
+  test: number;
+}
+
 export interface GitBranchSummary {
   name: string;
   current: boolean;
@@ -2636,6 +2647,16 @@ export class CybaraMobileApi {
 
   evals(): Promise<{ goldens: MobileEvalGolden[]; runs: MobileEvalRun[] }> {
     return this.request("/api/evals");
+  }
+
+  researchTraces(): Promise<{ stats: MobileResearchStats; total: number }> {
+    return this.request("/api/evals/research/traces?limit=200&offset=0");
+  }
+
+  exportResearch(
+    format: "cybara_trace" | "trl_sft" | "prompt_completion" | "long_context"
+  ): Promise<{ filename: string; mimeType: string; content: string; count: number }> {
+    return this.request(`/api/evals/research/export?format=${format}&sanitize=1`);
   }
 
   replayEval(id: string): Promise<{ success: boolean; run?: MobileEvalRun; error?: string }> {

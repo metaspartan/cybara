@@ -1614,6 +1614,74 @@ export interface AgentEvalRun {
   completedAt: string | null;
 }
 
+export type ResearchExportFormat =
+  | "cybara_trace"
+  | "trl_sft"
+  | "prompt_completion"
+  | "long_context";
+
+export interface ResearchTraceSummary {
+  id: string;
+  sessionId: string;
+  turnIndex: number;
+  agentId: string;
+  provider: string | null;
+  model: string | null;
+  promptPreview: string;
+  responsePreview: string;
+  messageCount: number;
+  toolCallCount: number;
+  failedToolCallCount: number;
+  hasObservableReasoning: boolean;
+  observableReasoningCharacters: number;
+  qualityScore: number;
+  qualityFlags: string[];
+  split: "train" | "validation" | "test";
+  createdAt: string;
+}
+
+export interface ResearchTraceStats {
+  total: number;
+  toolCalls: number;
+  failedToolCalls: number;
+  reasoningTraces: number;
+  cleanTraces: number;
+  train: number;
+  validation: number;
+  test: number;
+}
+
+export interface IntelligenceBenchmarkResult {
+  taskId: string;
+  label: string;
+  category: "instruction" | "reasoning" | "coding" | "transformation" | "tool_use";
+  passed: boolean;
+  score: number;
+  response: string;
+  expected: string;
+  difficulty: "basic" | "intermediate" | "advanced";
+  weight: number;
+  gradingReason: string;
+  durationMs: number;
+  toolCalls: string[];
+  error: string | null;
+}
+
+export interface IntelligenceBenchmarkRun {
+  id: string;
+  suiteId: string;
+  agentId: string;
+  provider: string | null;
+  model: string | null;
+  status: "running" | "completed" | "error";
+  score: number;
+  currentTask: number;
+  results: IntelligenceBenchmarkResult[];
+  error: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
 export const evalsApi = {
   list: () => fetchApi<{ goldens: AgentGolden[]; runs: AgentEvalRun[] }>("/evals"),
   export: (format: "bundle" | "jsonl", sanitize: boolean) =>
@@ -1640,6 +1708,62 @@ export const evalsApi = {
     }),
   deleteGolden: (goldenId: string) =>
     fetchApi<{ success: boolean }>(`/evals/goldens/${goldenId}`, { method: "DELETE" }),
+};
+
+export const researchApi = {
+  traces: (limit = 200, offset = 0) =>
+    fetchApi<{
+      traces: ResearchTraceSummary[];
+      stats: ResearchTraceStats;
+      total: number;
+      limit: number;
+      offset: number;
+    }>(`/evals/research/traces?limit=${limit}&offset=${offset}`),
+  export: (format: ResearchExportFormat, sanitize: boolean, ids: string[]) => {
+    const params = new URLSearchParams({
+      format,
+      sanitize: sanitize ? "1" : "0",
+    });
+    if (ids.length > 0) params.set("ids", ids.join(","));
+    return fetchApi<{
+      format: ResearchExportFormat;
+      filename: string;
+      mimeType: string;
+      content: string;
+      count: number;
+    }>(`/evals/research/export?${params.toString()}`);
+  },
+};
+
+export const benchmarksApi = {
+  list: () =>
+    fetchApi<{
+      suite: {
+        id: string;
+        name: string;
+        description: string;
+        taskCount: number;
+        tasks: Array<{
+          id: string;
+          label: string;
+          category: string;
+          prompt: string;
+          difficulty: "basic" | "intermediate" | "advanced";
+          weight: number;
+          requiredTool?: string;
+        }>;
+      };
+      runs: IntelligenceBenchmarkRun[];
+    }>("/evals/benchmarks"),
+  run: (agentId: string) =>
+    fetchApi<{ success: boolean; run?: IntelligenceBenchmarkRun; error?: string }>(
+      "/evals/benchmarks/run",
+      { method: "POST", body: JSON.stringify({ agentId }) }
+    ),
+  export: () =>
+    fetchApi<{ filename: string; mimeType: string; content: string; count: number }>(
+      "/evals/benchmarks/export"
+    ),
 };
 
 export const workspaceOpenApi = {

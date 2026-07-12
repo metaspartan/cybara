@@ -2225,7 +2225,7 @@ export function Chat() {
         } else if (normalizedStatus === "generating") {
           currentStep = "Generating response...";
         } else if (normalizedStatus === "compacting") {
-          currentStep = "Context automatically compacted";
+          currentStep = "Compacting earlier context...";
         } else if (normalizedStatus === "thinking") {
           currentStep = "Thinking...";
         }
@@ -2325,11 +2325,10 @@ export function Chat() {
         const activeToolStep = getLatestInFlightStep(activities);
         if (!payload.toolName) {
           const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
-          if (status === "compacting" || isMeaningfulThoughtDetail(detail)) {
-            const text =
-              status === "compacting" && !isMeaningfulThoughtDetail(detail)
-                ? "Context automatically compacted"
-                : detail;
+          if (status === "compacting") {
+            currentStep = activeToolStep || detail || "Compacting earlier context...";
+          } else if (isMeaningfulThoughtDetail(detail)) {
+            const text = detail;
             activities = applyLiveActivityEvent(activities, {
               phase: "result",
               text,
@@ -2855,14 +2854,9 @@ export function Chat() {
           if (!payload.toolName) {
             const activeToolStep = getLatestInFlightStep(runActivityBufferRef.current);
             const detail = typeof payload.detail === "string" ? payload.detail.trim() : "";
-            const eventTimestamp =
-              typeof payload.timestamp === "number" && Number.isFinite(payload.timestamp)
-                ? payload.timestamp
-                : undefined;
             const compactingDetail = isMeaningfulThoughtDetail(detail)
               ? detail
-              : "Context automatically compacted";
-            appendLiveActivity("result", compactingDetail, "__thought", eventTimestamp);
+              : "Compacting earlier context...";
             setLiveCurrentStep(activeToolStep || compactingDetail);
           }
           setLiveStatus("compacting");

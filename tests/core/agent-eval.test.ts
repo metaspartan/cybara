@@ -6,6 +6,7 @@ import {
   buildTrajectoryForMessage,
   buildTrajectoryStructure,
   compareTrajectoryStructures,
+  createEvalRun,
   deleteGolden,
   forkSession,
   getGolden,
@@ -105,7 +106,10 @@ describe("agent eval trajectories", () => {
     ]);
     expect(listGoldens().some((entry) => entry.id === golden.id)).toBe(true);
     expect(listEvalRuns().some((run) => run.goldenId === golden.id)).toBe(false);
+    createEvalRun(golden.id);
+    expect(listEvalRuns().some((run) => run.goldenId === golden.id)).toBe(true);
     expect(deleteGolden(golden.id)).toBe(true);
+    expect(listEvalRuns().some((run) => run.goldenId === golden.id)).toBe(false);
   });
 
   test("captures provider and model from the persisted assistant response", () => {

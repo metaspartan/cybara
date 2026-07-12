@@ -1,5 +1,7 @@
 import { createHash, randomBytes } from "crypto";
-import { dirname, isAbsolute, resolve } from "path";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { dirname, isAbsolute, join, resolve } from "path";
 import {
   type ChatMessage,
   deletePendingChatMessage,
@@ -66,23 +68,39 @@ import { createLogger } from "../core/logger";
 import {
   buildTrajectoryStructure,
   compareTrajectoryStructures,
+  countTrajectories,
   createEvalSuiteBundle,
   createEvalRun,
   deleteGolden,
+  deleteSessionTrajectories,
   ensureSessionTrajectory,
+  exportResearchTraces,
   finishEvalRun,
   forkSession,
   forkSessionFromMessages,
   getGolden,
+  getTrajectory,
   importGoldens,
   listEvalRuns,
   listGoldens,
+  listIntelligenceBenchmarkRuns,
   listSessionTrajectories,
+  listTrajectories,
   evalSuiteJsonl,
   parseEvalSuiteBundle,
+  parseResearchExportFormat,
+  quickIntelligenceTasks,
+  QUICK_INTELLIGENCE_SUITE_ID,
   registerEvalReplayExecutor,
   saveGolden,
+  createIntelligenceBenchmarkRun,
+  explainIntelligenceBenchmarkGrade,
+  findRunningIntelligenceBenchmark,
+  failIntelligenceBenchmarkRun,
   summarizeGolden,
+  summarizeResearchTraces,
+  updateIntelligenceBenchmarkRun,
+  gradeIntelligenceBenchmarkTask,
   type AgentEvalRun,
   type EvalReplayOptions,
 } from "../core/agent-eval";
@@ -283,6 +301,77 @@ async function runGoldenReplay(
 
 registerEvalReplayExecutor(runGoldenReplay);
 
+async function runQuickIntelligenceBenchmark(runId: string, agentId: string): Promise<void> {
+  let workspaceDir: string | null = null;
+  const sessionIds: string[] = [];
+  try {
+    const agent = agentManager.get(agentId);
+    if (!agent) throw new Error("Agent not found");
+    workspaceDir = mkdtempSync(join(tmpdir(), "cybara-benchmark-"));
+    await Bun.write(join(workspaceDir, "benchmark.txt"), "ORCHID-742");
+    const results = [];
+    for (const task of quickIntelligenceTasks) {
+      const sessionId = crypto.randomUUID();
+      sessionIds.push(sessionId);
+      const startedAt = Date.now();
+      try {
+        const response = await handleChat({
+          sessionId,
+          agentId,
+          message: task.prompt,
+          workspaceDir: workspaceDir ?? undefined,
+          source: "intelligence_benchmark",
+          tools: task.requiredTool !== undefined,
+        });
+        const calls = (response.message.tool_calls ?? []).map((call) => call.name);
+        const passed = gradeIntelligenceBenchmarkTask(task, response.message.content, calls);
+        results.push({
+          taskId: task.id,
+          label: task.label,
+          category: task.category,
+          passed,
+          score: passed ? 100 : 0,
+          response: response.message.content,
+          expected: task.expected,
+          difficulty: task.difficulty,
+          weight: task.weight,
+          gradingReason: explainIntelligenceBenchmarkGrade(task, response.message.content, calls),
+          durationMs: Date.now() - startedAt,
+          toolCalls: calls,
+          error: null,
+        });
+      } catch (error) {
+        results.push({
+          taskId: task.id,
+          label: task.label,
+          category: task.category,
+          passed: false,
+          score: 0,
+          response: "",
+          expected: task.expected,
+          difficulty: task.difficulty,
+          weight: task.weight,
+          gradingReason: error instanceof Error ? error.message : "The task failed to run.",
+          durationMs: Date.now() - startedAt,
+          toolCalls: [],
+          error: error instanceof Error ? error.message : "Benchmark task failed",
+        });
+      }
+      updateIntelligenceBenchmarkRun(runId, results, false);
+    }
+    updateIntelligenceBenchmarkRun(runId, results, true);
+  } catch (error) {
+    failIntelligenceBenchmarkRun(
+      runId,
+      error instanceof Error ? error.message : "Benchmark failed"
+    );
+  } finally {
+    await Promise.all(sessionIds.map((sessionId) => deleteSession(sessionId)));
+    sessionIds.forEach((sessionId) => deleteSessionTrajectories(sessionId));
+    if (workspaceDir) rmSync(workspaceDir, { recursive: true, force: true });
+  }
+}
+
 const routes: Record<string, RouteHandler> = {
   ...walletRoutes,
   ...mobileRoutes,
@@ -390,15 +479,80 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/evals/runs": (_body, params) => ({
     runs: listEvalRuns(parseBoundedQueryNumber(params?.limit, 1, 500) ?? 100),
   }),
+  "GET /api/evals/research/traces": (_body, params) => {
+    const limit = parseBoundedQueryNumber(params?.limit, 1, 1000) ?? 200;
+    const offset = parseBoundedQueryNumber(params?.offset, 0, 1_000_000) ?? 0;
+    const page = summarizeResearchTraces(listTrajectories(limit, offset));
+    const all = summarizeResearchTraces(listTrajectories(1000));
+    return {
+      traces: page.traces,
+      stats: all.stats,
+      total: countTrajectories(),
+      limit,
+      offset,
+    };
+  },
+  "GET /api/evals/research/export": (_body, params) => {
+    const ids = (params?.ids ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .slice(0, 1000);
+    const trajectories =
+      ids.length > 0
+        ? ids.map(getTrajectory).filter((trajectory) => trajectory !== null)
+        : listTrajectories(1000);
+    return exportResearchTraces(trajectories, {
+      format: parseResearchExportFormat(params?.format),
+      sanitize: params?.sanitize === "true" || params?.sanitize === "1",
+    });
+  },
+  "GET /api/evals/benchmarks": (_body, params) => ({
+    suite: {
+      id: QUICK_INTELLIGENCE_SUITE_ID,
+      name: "Quick Intelligence",
+      description:
+        "A low-cost objective capability baseline covering reasoning, instruction following, coding, transformation, and grounded tool use.",
+      taskCount: quickIntelligenceTasks.length,
+      tasks: quickIntelligenceTasks.map(({ expected: _expected, ...task }) => task),
+    },
+    runs: listIntelligenceBenchmarkRuns(parseBoundedQueryNumber(params?.limit, 1, 200) ?? 50),
+  }),
+  "GET /api/evals/benchmarks/export": () => {
+    const runs = listIntelligenceBenchmarkRuns(200);
+    return {
+      filename: `cybara-benchmarks-${new Date().toISOString().slice(0, 10)}.jsonl`,
+      mimeType: "application/x-ndjson",
+      content: runs.map((run) => JSON.stringify(run)).join("\n"),
+      count: runs.length,
+    };
+  },
+  "POST /api/evals/benchmarks/run": async (body) => {
+    const data = (body || {}) as { agentId?: string };
+    if (!data.agentId?.trim()) return { success: false, error: "agentId is required" };
+    const agentId = data.agentId.trim();
+    const running = findRunningIntelligenceBenchmark();
+    if (running) return { success: false, error: "A benchmark is already running", run: running };
+    const agent = agentManager.get(agentId);
+    if (!agent) return { success: false, error: "Agent not found" };
+    const run = createIntelligenceBenchmarkRun({
+      agentId,
+      provider: agent.provider_id || agent.provider || null,
+      model: agent.model || null,
+    });
+    void runQuickIntelligenceBenchmark(run.id, agentId);
+    return { success: true, run };
+  },
   "GET /api/evals/export": (_body, params) => {
     const goldens = listGoldens();
+    const runs = listEvalRuns(500);
     const sanitized = params?.sanitize === "true" || params?.sanitize === "1";
     const date = new Date().toISOString().slice(0, 10);
     if (params?.format === "jsonl") {
       return {
         filename: `cybara-eval-trajectories-${date}.jsonl`,
         mimeType: "application/x-ndjson",
-        content: evalSuiteJsonl(goldens, { sanitize: sanitized }),
+        content: evalSuiteJsonl(goldens, { sanitize: sanitized, runs }),
         count: goldens.length,
       };
     }
