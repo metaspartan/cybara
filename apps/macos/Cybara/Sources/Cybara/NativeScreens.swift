@@ -1188,14 +1188,21 @@ struct ChatScreen: View {
         Label {
             Text(target.label)
         } icon: {
-            if let image = workspaceOpenTargetImage(target) {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 14, height: 14)
-            } else {
-                Image(systemName: workspaceOpenTargetIcon(target))
+            ZStack {
+                if let image = workspaceOpenTargetImage(target) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(
+                            width: target.id == "cybara_ide" ? 12 : 14,
+                            height: target.id == "cybara_ide" ? 12 : 14
+                        )
+                } else {
+                    Image(systemName: workspaceOpenTargetIcon(target))
+                        .font(.system(size: 12, weight: .medium))
+                }
             }
+            .frame(width: 16, height: 16)
         }
     }
 
@@ -2288,6 +2295,12 @@ struct ChatScreen: View {
                     isActive: activeWorkspaceTab == .browser
                 )
                     .nativeWorkspacePanelVisibility(activeWorkspaceTab == .browser)
+                NativeChatComputerPanel(
+                    client: client,
+                    sessionID: selectedSessionID,
+                    isActive: activeWorkspaceTab == .computer
+                )
+                    .nativeWorkspacePanelVisibility(activeWorkspaceTab == .computer)
                 NativeChatFilesPanel(client: client, workspacePath: activeWorkspaceDir)
                     .nativeWorkspacePanelVisibility(activeWorkspaceTab == .files)
                 subagentsPopover

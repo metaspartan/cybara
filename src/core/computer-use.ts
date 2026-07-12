@@ -451,6 +451,7 @@ function sendRaw(method: string, params: Record<string, unknown>): Promise<unkno
 
 export type ComputerUseAction =
   | "capture"
+  | "move"
   | "click"
   | "double_click"
   | "right_click"
@@ -465,9 +466,15 @@ export type ComputerUseAction =
   | "focus_app";
 
 /** Actions that only read/inspect (no side effects) — safe to run without consent. */
-const SAFE_ACTIONS: ReadonlySet<ComputerUseAction> = new Set(["capture", "wait", "list_apps"]);
+const SAFE_ACTIONS: ReadonlySet<ComputerUseAction> = new Set([
+  "capture",
+  "move",
+  "wait",
+  "list_apps",
+]);
 export const VALID_ACTIONS: ReadonlySet<ComputerUseAction> = new Set<ComputerUseAction>([
   "capture",
+  "move",
   "click",
   "double_click",
   "right_click",
@@ -484,6 +491,7 @@ export const VALID_ACTIONS: ReadonlySet<ComputerUseAction> = new Set<ComputerUse
 
 export const COMPUTER_USE_ACTION_TOOL_ALIASES: readonly ComputerUseAction[] = [
   "capture",
+  "move",
   "click",
   "double_click",
   "right_click",
@@ -594,6 +602,8 @@ export function setComputerUseApprovalCallback(
 
 export function summarizeAction(action: ComputerUseAction, args: ComputerUseArgs): string {
   switch (action) {
+    case "move":
+      return `move to ${args.coordinate?.join(",") ?? "unknown coordinate"}`;
     case "click":
     case "double_click":
     case "right_click":
@@ -682,7 +692,190 @@ export interface ComputerUseResult {
   capturedAfter?: boolean;
   /** Absolute path to the saved screenshot PNG (set by the native capture fallback). */
   filePath?: string;
+  viewport?: { width: number; height: number };
   error?: string;
+}
+
+export interface ComputerUsePreviewCursor {
+  x: number;
+  y: number;
+  visible: boolean;
+  action: "move" | "click" | "type" | "drag";
+  updatedAt: number;
+}
+
+export interface ComputerUsePreviewState {
+  sessionId: string;
+  action: ComputerUseAction;
+  app?: string;
+  screenshot?: string;
+  contentType?: string;
+  viewport?: { width: number; height: number };
+  cursor?: ComputerUsePreviewCursor;
+  updatedAt: number;
+  revision: number;
+  screenshotRevision: number;
+}
+
+interface ComputerUseContext {
+  sessionId?: string;
+}
+
+const computerUsePreviews = new Map<string, ComputerUsePreviewState>();
+const computerUsePreviewViews = new Map<string, number>();
+const COMPUTER_USE_PREVIEW_ACTIVE_MS = 5_000;
+const COMPUTER_USE_PREVIEW_LIMIT = 24;
+
+function pngDimensions(bytes: Buffer): { width: number; height: number } | undefined {
+  if (bytes.length < 24 || bytes.toString("ascii", 1, 4) !== "PNG") return undefined;
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+function jpegDimensions(bytes: Buffer): { width: number; height: number } | undefined {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return undefined;
+  let offset = 2;
+  while (offset + 8 < bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = bytes[offset + 1];
+    if (marker === 0xd8 || marker === 0xd9) {
+      offset += 2;
+      continue;
+    }
+    const length = bytes.readUInt16BE(offset + 2);
+    if (length < 2 || offset + length + 2 > bytes.length) return undefined;
+    if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7)) {
+      return {
+        width: bytes.readUInt16BE(offset + 7),
+        height: bytes.readUInt16BE(offset + 5),
+      };
+    }
+    offset += length + 2;
+  }
+  return undefined;
+}
+
+function screenshotDimensions(
+  screenshot: string | undefined,
+  contentType: string | undefined
+): { width: number; height: number } | undefined {
+  if (!screenshot) return undefined;
+  const bytes = Buffer.from(screenshot, "base64");
+  return contentType?.includes("jpeg") || contentType?.includes("jpg")
+    ? jpegDimensions(bytes)
+    : (pngDimensions(bytes) ?? jpegDimensions(bytes));
+}
+
+function captureResult(
+  text: string,
+  screenshot: string,
+  screenshotMime: string,
+  filePath?: string
+): ComputerUseResult {
+  const viewport = screenshotDimensions(screenshot, screenshotMime);
+  return {
+    action: "capture",
+    ok: true,
+    text: viewport ? `${text} Image size: ${viewport.width}x${viewport.height}.` : text,
+    screenshot,
+    screenshotMime,
+    filePath,
+    viewport,
+  };
+}
+
+function normalizedComputerUseSessionId(value: string | undefined): string | null {
+  const sessionId = value?.trim();
+  return sessionId ? sessionId : null;
+}
+
+function trimComputerUsePreviews(): void {
+  while (computerUsePreviews.size > COMPUTER_USE_PREVIEW_LIMIT) {
+    const oldest = [...computerUsePreviews.values()].sort(
+      (left, right) => left.updatedAt - right.updatedAt
+    )[0];
+    if (!oldest) return;
+    computerUsePreviews.delete(oldest.sessionId);
+    computerUsePreviewViews.delete(oldest.sessionId);
+  }
+}
+
+function computerUseCursorFor(
+  args: ComputerUseArgs,
+  previous: ComputerUsePreviewCursor | undefined
+): ComputerUsePreviewCursor | undefined {
+  const coordinate = args.action === "drag" ? args.toCoordinate : args.coordinate;
+  const action =
+    args.action === "drag"
+      ? "drag"
+      : args.action === "type" || args.action === "key" || args.action === "set_value"
+        ? "type"
+        : args.action.includes("click")
+          ? "click"
+          : "move";
+  if (Array.isArray(coordinate) && coordinate.length === 2) {
+    return {
+      x: coordinate[0],
+      y: coordinate[1],
+      visible: true,
+      action,
+      updatedAt: Date.now(),
+    };
+  }
+  return previous ? { ...previous, action, updatedAt: Date.now() } : undefined;
+}
+
+export function recordComputerUsePreview(
+  sessionId: string,
+  args: ComputerUseArgs,
+  screenshot?: string,
+  contentType?: string
+): void {
+  const previous = computerUsePreviews.get(sessionId);
+  const revision = (previous?.revision ?? 0) + 1;
+  computerUsePreviews.set(sessionId, {
+    sessionId,
+    action: args.action,
+    app: args.app ?? previous?.app,
+    screenshot: screenshot ?? previous?.screenshot,
+    contentType: contentType ?? previous?.contentType,
+    viewport: screenshotDimensions(screenshot, contentType) ?? previous?.viewport,
+    cursor: computerUseCursorFor(args, previous?.cursor),
+    updatedAt: Date.now(),
+    revision,
+    screenshotRevision: screenshot ? revision : (previous?.screenshotRevision ?? 0),
+  });
+  trimComputerUsePreviews();
+}
+
+export function getComputerUsePreview(
+  sessionIdValue: string,
+  knownScreenshotRevision?: number
+): ComputerUsePreviewState | null {
+  const sessionId = normalizedComputerUseSessionId(sessionIdValue);
+  if (!sessionId) return null;
+  computerUsePreviewViews.set(sessionId, Date.now());
+  const preview = computerUsePreviews.get(sessionId);
+  if (!preview) return null;
+  if (knownScreenshotRevision === preview.screenshotRevision) {
+    return { ...preview, screenshot: undefined };
+  }
+  return { ...preview };
+}
+
+export function clearComputerUsePreview(sessionIdValue: string): void {
+  const sessionId = normalizedComputerUseSessionId(sessionIdValue);
+  if (!sessionId) return;
+  computerUsePreviews.delete(sessionId);
+  computerUsePreviewViews.delete(sessionId);
+}
+
+function isComputerUsePreviewActive(sessionId: string): boolean {
+  return (
+    Date.now() - (computerUsePreviewViews.get(sessionId) ?? 0) <= COMPUTER_USE_PREVIEW_ACTIVE_MS
+  );
 }
 
 const SCREENSHOTS_DIR = join(
@@ -790,14 +983,12 @@ async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
         const base64 = proc.stdout?.toString().trim().replace(/\s+/g, "");
         if (proc.success && base64 && base64.length > 32) {
           writeFileSync(filePath, Buffer.from(base64, "base64"));
-          return {
-            action: "capture",
-            ok: true,
-            text: "Captured the full desktop using PowerShell.",
-            screenshot: base64,
-            screenshotMime: "image/png",
-            filePath,
-          };
+          return captureResult(
+            "Captured the full desktop using PowerShell.",
+            base64,
+            "image/png",
+            filePath
+          );
         }
         // On native Windows there's no other tool; on WSL fall through to any
         // Linux capture tool (captures the WSLg Linux desktop, if present).
@@ -843,14 +1034,12 @@ async function nativeScreenCapture(): Promise<ComputerUseResult | null> {
     }
 
     const screenshot = readFileSync(filePath).toString("base64");
-    return {
-      action: "capture",
-      ok: true,
-      text: "Captured the full desktop using the native OS screenshot tool.",
+    return captureResult(
+      "Captured the full desktop using the native OS screenshot tool.",
       screenshot,
-      screenshotMime: "image/png",
-      filePath,
-    };
+      "image/png",
+      filePath
+    );
   } catch (error) {
     console.warn(
       `[computer_use] native screenshot error: ${error instanceof Error ? error.message : error}`
@@ -871,6 +1060,48 @@ interface DriverWindow {
   pid: number;
   windowId?: number;
   zIndex: number;
+}
+
+interface DriverApp {
+  active?: boolean;
+  name?: string;
+  pid?: number;
+  running?: boolean;
+}
+
+function driverAppsFromResult(result: DriverCallResult): DriverApp[] {
+  const structuredApps = result.structured?.apps;
+  if (Array.isArray(structuredApps)) return structuredApps as DriverApp[];
+  if (!result.text) return [];
+  try {
+    const parsed = JSON.parse(result.text) as { apps?: unknown };
+    return Array.isArray(parsed.apps) ? (parsed.apps as DriverApp[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function summarizeDriverApps(result: DriverCallResult): DriverCallResult {
+  const apps = driverAppsFromResult(result);
+  if (apps.length === 0) return result;
+  const active = apps.find((app) => app.active === true);
+  const running = apps.filter((app) => app.running === true && app.name?.trim());
+  const runningNames = running.slice(0, 24).map((app) => app.name?.trim());
+  const remaining = Math.max(0, running.length - runningNames.length);
+  return {
+    text: [
+      `Frontmost app: ${active?.name?.trim() || "unknown"}.`,
+      `Running apps (${running.length}): ${runningNames.join(", ") || "none"}${remaining > 0 ? `, and ${remaining} more` : ""}.`,
+      `Installed apps discovered: ${apps.length}.`,
+    ].join(" "),
+    structured: {
+      active: active
+        ? { name: active.name, pid: active.pid, running: active.running === true }
+        : null,
+      running: running.map((app) => ({ name: app.name, pid: app.pid })),
+      installedCount: apps.length,
+    },
+  };
 }
 
 function driverHasTool(name: string): boolean {
@@ -988,6 +1219,20 @@ function splitHotkeyCombo(keys: string): string[] {
     .filter(Boolean);
 }
 
+export function nativeFocusCommand(platform: NodeJS.Platform, app: string): string[] | null {
+  return platform === "darwin" ? ["/usr/bin/open", "-a", app] : null;
+}
+
+function focusApplicationNatively(app: string): boolean {
+  const command = nativeFocusCommand(process.platform, app);
+  if (!command) return false;
+  const result = Bun.spawnSync(command, { stdout: "pipe", stderr: "pipe" });
+  if (!result.success) {
+    throw new Error(result.stderr.toString().trim() || `Unable to focus ${app}.`);
+  }
+  return true;
+}
+
 /**
  * Translate one of our high-level actions into the driver's tool vocabulary
  * (cua-driver 0.6.x: get_window_state/type_text/press_key/hotkey/... — every
@@ -1003,7 +1248,7 @@ async function performDriverAction(typedArgs: ComputerUseArgs): Promise<DriverCa
   }
 
   if (action === "list_apps") {
-    return callDriverTool("list_apps", {});
+    return summarizeDriverApps(await callDriverTool("list_apps", {}));
   }
 
   if (action === "capture") {
@@ -1030,11 +1275,27 @@ async function performDriverAction(typedArgs: ComputerUseArgs): Promise<DriverCa
     }
     const target = await resolveWindowTarget(typedArgs.app);
     const appName = activeWindowTarget?.appName || typedArgs.app;
+    if (typedArgs.raiseWindow !== false && focusApplicationNatively(appName)) {
+      return { text: `Focused ${appName} (pid ${target.pid}) and raised its window.` };
+    }
     if (typedArgs.raiseWindow !== false && driverHasTool("bring_to_front")) {
       await callDriverTool("bring_to_front", { pid: target.pid, window_id: target.windowId });
       return { text: `Focused ${appName} (pid ${target.pid}) and raised its window.` };
     }
     return { text: `Targeted ${appName} (pid ${target.pid}) without raising the window.` };
+  }
+
+  if (action === "move") {
+    if (!Array.isArray(typedArgs.coordinate) || typedArgs.coordinate.length !== 2) {
+      throw new Error("Validation error: move requires 'coordinate'.");
+    }
+    if (!driverHasTool("move_cursor")) {
+      throw new Error("The installed cua-driver does not support agent cursor movement.");
+    }
+    return callDriverTool("move_cursor", {
+      x: typedArgs.coordinate[0],
+      y: typedArgs.coordinate[1],
+    });
   }
 
   const target = await resolveWindowTarget(typedArgs.app);
@@ -1103,7 +1364,10 @@ async function performDriverAction(typedArgs: ComputerUseArgs): Promise<DriverCa
   }
 }
 
-export async function handleComputerUse(args: Record<string, unknown>): Promise<ComputerUseResult> {
+export async function handleComputerUse(
+  args: Record<string, unknown>,
+  context?: ComputerUseContext
+): Promise<ComputerUseResult> {
   const requestedAction = typeof args.action === "string" ? args.action : "";
   if (!requestedAction) {
     throw new Error("Validation error: 'action' is required.");
@@ -1130,7 +1394,13 @@ export async function handleComputerUse(args: Record<string, unknown>): Promise<
   try {
     if (isFullDesktopCaptureRequest(typedArgs)) {
       const native = await nativeScreenCapture();
-      if (native) return native;
+      if (native) {
+        const sessionId = normalizedComputerUseSessionId(context?.sessionId);
+        if (sessionId) {
+          recordComputerUsePreview(sessionId, typedArgs, native.screenshot, native.screenshotMime);
+        }
+        return native;
+      }
     }
     await ensureDriver();
     const result = await performDriverAction(typedArgs);
@@ -1139,7 +1409,18 @@ export async function handleComputerUse(args: Record<string, unknown>): Promise<
 
     // Optional follow-up capture so the model can self-verify the action.
     let capturedAfter = false;
-    if (typedArgs.captureAfter && typedArgs.action !== "capture" && typedArgs.action !== "wait") {
+    const sessionId = normalizedComputerUseSessionId(context?.sessionId);
+    const refreshActivePreview =
+      sessionId !== null &&
+      isComputerUsePreviewActive(sessionId) &&
+      typedArgs.action !== "capture" &&
+      typedArgs.action !== "wait" &&
+      typedArgs.action !== "list_apps";
+    if (
+      (typedArgs.captureAfter || refreshActivePreview) &&
+      typedArgs.action !== "capture" &&
+      typedArgs.action !== "wait"
+    ) {
       try {
         const after = await performDriverAction({
           action: "capture",
@@ -1149,17 +1430,25 @@ export async function handleComputerUse(args: Record<string, unknown>): Promise<
         if (after.screenshot) {
           screenshot = after.screenshot;
           screenshotMime = after.screenshotMime || screenshotMime;
-          capturedAfter = true;
+          capturedAfter = typedArgs.captureAfter === true;
         }
       } catch {
         /* follow-up capture is best-effort */
       }
     }
 
+    if (sessionId) {
+      recordComputerUsePreview(sessionId, typedArgs, screenshot, screenshotMime);
+    }
+
     const filePath = screenshot ? persistDriverScreenshot(screenshot, screenshotMime) : undefined;
+    const viewport = screenshotDimensions(screenshot, screenshotMime);
+    const dimensionsText = viewport ? ` Image size: ${viewport.width}x${viewport.height}.` : "";
     const text = filePath
-      ? `${result.text || "Capture complete."} Screenshot saved to ${filePath}.`
-      : result.text;
+      ? `${result.text || "Capture complete."} Screenshot saved to ${filePath}.${dimensionsText}`
+      : result.text
+        ? `${result.text}${dimensionsText}`
+        : undefined;
 
     return {
       action: typedArgs.action,
@@ -1169,6 +1458,7 @@ export async function handleComputerUse(args: Record<string, unknown>): Promise<
       screenshot,
       screenshotMime: screenshot ? screenshotMime : undefined,
       capturedAfter,
+      viewport,
     };
   } catch (error) {
     // cua-driver unavailable (e.g. not installed). For the read-only `capture`

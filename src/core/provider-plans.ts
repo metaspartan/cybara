@@ -1325,7 +1325,9 @@ function liveUsageWindow(
     usedPercent: live.usedPercent,
     remainingPercent: Math.max(0, 100 - live.usedPercent),
     resetsAt,
-    resetDescription: formatUsageReset(resetsAt) || base?.resetDescription || resetDescription,
+    resetDescription: live.unlimited
+      ? "No limit"
+      : formatUsageReset(resetsAt) || base?.resetDescription || resetDescription,
     usageKnown: true,
     unlimited: live.unlimited,
   };

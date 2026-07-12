@@ -53,6 +53,15 @@ describe("native macOS shell wiring", () => {
     expect(contentView).not.toContain("Web UI");
   });
 
+  test("native workspace open targets use a stable optical icon column", () => {
+    const screens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+
+    expect(screens).toContain('width: target.id == "cybara_ide" ? 12 : 14');
+    expect(screens).toContain('height: target.id == "cybara_ide" ? 12 : 14');
+    expect(screens).toContain(".font(.system(size: 12, weight: .medium))");
+    expect(screens).toContain(".frame(width: 16, height: 16)");
+  });
+
   test("native app exposes a template menu bar icon with usage and lifecycle controls", () => {
     const app = readFileSync(join(MACOS_APP_DIR, "CybaraApp.swift"), "utf8");
     const menu = readFileSync(join(MACOS_APP_DIR, "CybaraMenuBar.swift"), "utf8");

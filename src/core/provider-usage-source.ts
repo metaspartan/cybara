@@ -94,14 +94,22 @@ export function parseCodexUsageResponse(body: unknown, now: number): LiveProvide
   const json = asRecord(body);
   const rateLimit = asRecord(json?.rate_limit);
   if (!rateLimit) return null;
+  const primary = parseCodexWindow(rateLimit.primary_window);
+  const secondary = parseCodexWindow(rateLimit.secondary_window);
+  const weekly =
+    [primary, secondary].find(
+      (window) => window?.windowSeconds !== undefined && window.windowSeconds >= 6 * 24 * 60 * 60
+    ) ??
+    secondary ??
+    primary;
   const planType = typeof json?.plan_type === "string" ? json.plan_type : undefined;
   const planLabel = planType
     ? `Codex ${planType.charAt(0).toUpperCase()}${planType.slice(1)}`
     : undefined;
   return {
     planLabel,
-    fiveHour: parseCodexWindow(rateLimit.primary_window),
-    weekly: parseCodexWindow(rateLimit.secondary_window),
+    fiveHour: { usedPercent: 0, unlimited: true },
+    weekly,
     source: "oauth_api",
     fetchedAt: now,
   };

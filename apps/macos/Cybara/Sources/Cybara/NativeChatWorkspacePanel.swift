@@ -19,6 +19,7 @@ enum NativeChatWorkspaceTab: String, CaseIterable, Identifiable {
     case review
     case terminal
     case browser
+    case computer
     case files
     case subagents
 
@@ -29,6 +30,7 @@ enum NativeChatWorkspaceTab: String, CaseIterable, Identifiable {
         case .review: "Review"
         case .terminal: "Terminal"
         case .browser: "Browser"
+        case .computer: "Desktop"
         case .files: "Files"
         case .subagents: "Side Task"
         }
@@ -39,6 +41,7 @@ enum NativeChatWorkspaceTab: String, CaseIterable, Identifiable {
         case .review: "doc.text.magnifyingglass"
         case .terminal: "terminal"
         case .browser: "globe"
+        case .computer: "display"
         case .files: "folder"
         case .subagents: "person.2"
         }
@@ -159,7 +162,11 @@ extension GatewayClient {
     fileprivate func chatBrowserScreenshot(_ id: String) async throws -> NativeBrowserPreview {
         let data = try await request(
             "api/browser/tabs/\(nativeChatPathSegment(id))/screenshot",
-            queryItems: [URLQueryItem(name: "fullPage", value: "false")]
+            queryItems: [
+                URLQueryItem(name: "fullPage", value: "false"),
+                URLQueryItem(name: "format", value: "jpeg"),
+                URLQueryItem(name: "quality", value: "62"),
+            ]
         )
         let payload = try JSONDecoder().decode(NativeBrowserScreenshotEnvelope.self, from: data).data
         let encoded = payload.screenshot
@@ -249,11 +256,14 @@ struct NativeChatBrowserPanel: View {
                                 .font(.system(size: 16, weight: .bold))
                                 .foregroundStyle(.white, .black)
                                 .shadow(color: .black.opacity(0.8), radius: 2)
-                                .position(
-                                    x: proxy.size.width * cursor.x / viewport.width,
-                                    y: proxy.size.height * cursor.y / viewport.height
-                                )
-                                .animation(.easeOut(duration: 0.5), value: cursor.updatedAt ?? 0)
+                                .position(nativePreviewPosition(
+                                    cursorX: cursor.x,
+                                    cursorY: cursor.y,
+                                    viewportWidth: viewport.width,
+                                    viewportHeight: viewport.height,
+                                    container: proxy.size
+                                ))
+                                .animation(.easeOut(duration: 0.15), value: cursor.updatedAt ?? 0)
                         }
                     }
                 } else if loading {
@@ -282,7 +292,7 @@ struct NativeChatBrowserPanel: View {
             await loadPage()
             while !Task.isCancelled {
                 await refreshPreview()
-                try? await Task.sleep(for: .milliseconds(1400))
+                try? await Task.sleep(for: .milliseconds(750))
             }
         }
     }
@@ -340,6 +350,201 @@ struct NativeChatBrowserPanel: View {
                     address = updatedPage.url ?? address
                 }
             }
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+}
+
+private func nativePreviewPosition(
+    cursorX: Double,
+    cursorY: Double,
+    viewportWidth: Double,
+    viewportHeight: Double,
+    container: CGSize
+) -> CGPoint {
+    guard viewportWidth > 0, viewportHeight > 0, container.width > 0, container.height > 0 else {
+        return CGPoint(x: container.width / 2, y: container.height / 2)
+    }
+    let scale = min(container.width / viewportWidth, container.height / viewportHeight)
+    let width = viewportWidth * scale
+    let height = viewportHeight * scale
+    return CGPoint(
+        x: (container.width - width) / 2 + cursorX * scale,
+        y: (container.height - height) / 2 + cursorY * scale
+    )
+}
+
+private struct NativeComputerPreviewCursor: Decodable {
+    let x: Double
+    let y: Double
+    let visible: Bool
+    let action: String
+    let updatedAt: Double
+}
+
+private struct NativeComputerPreviewData: Decodable {
+    let action: String
+    let app: String?
+    let screenshot: String?
+    let contentType: String?
+    let viewport: NativeComputerPreviewViewport?
+    let cursor: NativeComputerPreviewCursor?
+    let screenshotRevision: Int
+}
+
+private struct NativeComputerPreviewViewport: Decodable {
+    let width: Double
+    let height: Double
+}
+
+private struct NativeComputerPreviewEnvelope: Decodable {
+    let success: Bool
+    let data: NativeComputerPreviewData?
+}
+
+extension GatewayClient {
+    fileprivate func computerPreview(
+        sessionID: String,
+        screenshotRevision: Int
+    ) async throws -> NativeComputerPreviewData? {
+        let data = try await request(
+            "api/computer-use/preview",
+            queryItems: [
+                URLQueryItem(name: "sessionId", value: sessionID),
+                URLQueryItem(name: "screenshotRevision", value: String(screenshotRevision)),
+            ]
+        )
+        return try JSONDecoder().decode(NativeComputerPreviewEnvelope.self, from: data).data
+    }
+
+    fileprivate func clearComputerPreview(sessionID: String) async throws {
+        _ = try await request(
+            "api/computer-use/preview",
+            method: "DELETE",
+            queryItems: [URLQueryItem(name: "sessionId", value: sessionID)]
+        )
+    }
+}
+
+struct NativeChatComputerPanel: View {
+    let client: GatewayClient
+    let sessionID: String?
+    let isActive: Bool
+    @State private var image: NSImage?
+    @State private var cursor: NativeComputerPreviewCursor?
+    @State private var action = ""
+    @State private var app = ""
+    @State private var screenshotRevision = 0
+    @State private var viewport: NativeComputerPreviewViewport?
+    @State private var error: String?
+
+    private var resolvedSessionID: String {
+        firstNonEmptyGatewayString(sessionID) ?? "preview-new-chat"
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: "display")
+                    .foregroundStyle(.secondary)
+                Text(action.isEmpty ? "Desktop" : "\(app.isEmpty ? "Desktop" : app) · \(action.replacingOccurrences(of: "_", with: " "))")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+                if image != nil {
+                    Button {
+                        Task { await clear() }
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Clear desktop preview")
+                }
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 38)
+
+            Divider()
+
+            ZStack {
+                if let image {
+                    GeometryReader { proxy in
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                        if let cursor, cursor.visible {
+                            Image(systemName: "arrow.up.left")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(.white, .black)
+                                .shadow(color: .black.opacity(0.8), radius: 2)
+                                .position(nativePreviewPosition(
+                                    cursorX: cursor.x,
+                                    cursorY: cursor.y,
+                                    viewportWidth: viewport?.width ?? image.size.width,
+                                    viewportHeight: viewport?.height ?? image.size.height,
+                                    container: proxy.size
+                                ))
+                                .animation(.easeOut(duration: 0.15), value: cursor.updatedAt)
+                        }
+                    }
+                } else {
+                    ContentUnavailableView(
+                        "No Desktop Preview",
+                        systemImage: "display",
+                        description: Text(error ?? "Computer-use activity for this chat appears here.")
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .textBackgroundColor).opacity(0.45))
+        }
+        .task(id: "\(resolvedSessionID):\(isActive)") {
+            guard isActive else { return }
+            while !Task.isCancelled {
+                await refresh()
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+        }
+    }
+
+    private func refresh() async {
+        do {
+            guard let preview = try await client.computerPreview(
+                sessionID: resolvedSessionID,
+                screenshotRevision: screenshotRevision
+            ) else {
+                error = nil
+                return
+            }
+            action = preview.action
+            app = preview.app ?? app
+            cursor = preview.cursor
+            viewport = preview.viewport ?? viewport
+            if let encoded = preview.screenshot,
+               let data = Data(base64Encoded: encoded),
+               let nextImage = NSImage(data: data) {
+                image = nextImage
+                screenshotRevision = preview.screenshotRevision
+            }
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func clear() async {
+        do {
+            try await client.clearComputerPreview(sessionID: resolvedSessionID)
+            image = nil
+            cursor = nil
+            action = ""
+            app = ""
+            screenshotRevision = 0
+            viewport = nil
             error = nil
         } catch {
             self.error = error.localizedDescription

@@ -78,13 +78,11 @@ async function launchWithFallback(
       });
     }
   } else {
-    const playwrightAttempts: Array<{ label: string; options: LaunchOptions }> = [
-      { label: "Packaged Chromium", options: { headless, args } },
-    ];
+    const playwrightAttempts: Array<{ label: string; options: LaunchOptions }> = [];
     for (const target of buildBrowserLaunchPlan(
       process.platform,
       explicitExecutable,
-      null,
+      bundledExecutable,
       systemExecutables
     )) {
       playwrightAttempts.push({
@@ -912,25 +910,15 @@ async function movePointer(
   y: number,
   source: BrowserPointerState["source"]
 ): Promise<void> {
-  const current = pointerStates.get(pageId);
-  const startX = current?.x ?? Math.round((page.viewportSize()?.width ?? x) / 2);
-  const startY = current?.y ?? Math.round((page.viewportSize()?.height ?? y) / 2);
-  const steps = 12;
-  for (let step = 1; step <= steps; step += 1) {
-    const progress = step / steps;
-    const nextX = Math.round(startX + (x - startX) * progress);
-    const nextY = Math.round(startY + (y - startY) * progress);
-    await page.mouse.move(nextX, nextY);
-    pointerStates.set(pageId, {
-      x: nextX,
-      y: nextY,
-      visible: true,
-      updatedAt: Date.now(),
-      action: "move",
-      source,
-    });
-    if (step < steps) await Bun.sleep(24);
-  }
+  await page.mouse.move(x, y);
+  pointerStates.set(pageId, {
+    x,
+    y,
+    visible: true,
+    updatedAt: Date.now(),
+    action: "move",
+    source,
+  });
 }
 
 function setPointerAction(

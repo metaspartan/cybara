@@ -80,6 +80,7 @@ import { recordCompletedTrajectory } from "../core/agent-eval";
 import {
   buildToolExecutionFallbackMessage,
   classifyToolCallResult,
+  requiredDirectToolForMessage,
   shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
   suppressRecoveredWebFailureActivities,
@@ -2115,13 +2116,16 @@ async function handleChatTurn(
         capabilityMentions.instruction
       );
       const shouldPreferArtifacts = tools && shouldPreferArtifactsForMessage(message);
+      const requiredDirectToolName = tools ? requiredDirectToolForMessage(message) : undefined;
+      const requiredToolName = shouldPreferArtifacts ? "artifacts" : requiredDirectToolName;
       let result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,
         sessionId: session.id,
         requireToolUse:
           shouldPreferArtifacts ||
+          Boolean(requiredDirectToolName) ||
           capabilityMentions.mentions.some((mention) => mention.kind === "mcp"),
-        requiredToolName: shouldPreferArtifacts ? "artifacts" : undefined,
+        requiredToolName,
         workspaceDir: session.workspaceDir || undefined,
         abortSignal: turnAbortController.signal,
         consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
@@ -2152,15 +2156,17 @@ async function handleChatTurn(
 
       let toolResults = result.tool_calls || [];
       const shouldForceToolExecution =
-        tools && (shouldEnforceToolUseForMessage(message) || shouldPreferArtifacts);
-      const hasArtifactsToolCall = toolResults.some((toolCall) => toolCall.name === "artifacts");
-      if (
-        shouldForceToolExecution &&
-        (toolResults.length === 0 || (shouldPreferArtifacts && !hasArtifactsToolCall))
-      ) {
+        tools &&
+        (shouldEnforceToolUseForMessage(message) ||
+          shouldPreferArtifacts ||
+          Boolean(requiredDirectToolName));
+      const hasRequiredToolCall = requiredToolName
+        ? toolResults.some((toolCall) => toolCall.name === requiredToolName)
+        : toolResults.length > 0;
+      if (shouldForceToolExecution && (toolResults.length === 0 || !hasRequiredToolCall)) {
         try {
-          const forcedInstruction = shouldPreferArtifacts
-            ? "Use the `artifacts` tool now to create or update the relevant .md.resolved artifact(s) for this request before responding. Perform concrete tool calls first, then summarize outcomes."
+          const forcedInstruction = requiredToolName
+            ? `Use the \`${requiredToolName}\` tool now to execute the request before responding. Perform concrete tool calls first, then summarize outcomes.`
             : "Execute the request now using available tools. Do not provide only a plan or intent. Perform concrete tool calls and then summarize the results.";
           const forcedMessages: AgentMessage[] = [
             ...executionMessages,
@@ -2173,7 +2179,7 @@ async function handleChatTurn(
             useTools: true,
             sessionId: session.id,
             requireToolUse: true,
-            requiredToolName: shouldPreferArtifacts ? "artifacts" : undefined,
+            requiredToolName,
             workspaceDir: session.workspaceDir || undefined,
             abortSignal: turnAbortController.signal,
             consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
@@ -2181,10 +2187,10 @@ async function handleChatTurn(
             modelOverride: requestedModelOverride,
           });
           const forcedToolCalls = forcedResult.tool_calls || [];
-          const forcedHasArtifacts = forcedToolCalls.some(
-            (toolCall) => toolCall.name === "artifacts"
-          );
-          if (forcedToolCalls.length > 0 && (!shouldPreferArtifacts || forcedHasArtifacts)) {
+          const forcedHasRequiredTool = requiredToolName
+            ? forcedToolCalls.some((toolCall) => toolCall.name === requiredToolName)
+            : forcedToolCalls.length > 0;
+          if (forcedToolCalls.length > 0 && forcedHasRequiredTool) {
             result = forcedResult;
             responseContent = forcedResult.content;
             toolResults = forcedToolCalls;

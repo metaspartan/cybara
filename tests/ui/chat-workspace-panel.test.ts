@@ -15,6 +15,10 @@ const browserSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/chat/ChatWorkspaceBrowser.tsx", import.meta.url)),
   "utf8"
 );
+const computerSource = readFileSync(
+  fileURLToPath(new URL("../../ui/src/pages/chat/ChatWorkspaceComputer.tsx", import.meta.url)),
+  "utf8"
+);
 const browserManagerSource = readFileSync(
   fileURLToPath(new URL("../../src/core/browser/pw-manager.ts", import.meta.url)),
   "utf8"
@@ -48,6 +52,7 @@ describe("chat workspace panel", () => {
     expect(chatWorkspaceTabLabel("review")).toBe("Review");
     expect(chatWorkspaceTabLabel("terminal")).toBe("Terminal");
     expect(chatWorkspaceTabLabel("browser")).toBe("Browser");
+    expect(chatWorkspaceTabLabel("computer")).toBe("Desktop");
     expect(chatWorkspaceTabLabel("files")).toBe("Files");
     expect(chatWorkspaceTabLabel("subagents")).toBe("Side task");
   });
@@ -56,6 +61,7 @@ describe("chat workspace panel", () => {
     expect(chatSource).toContain("ChatWorkspacePanel");
     expect(chatSource).toContain("EmbeddedTerminalPanel");
     expect(chatSource).toContain("ChatWorkspaceBrowser");
+    expect(chatSource).toContain("ChatWorkspaceComputer");
     expect(chatSource).toContain("ChatWorkspaceFiles");
     expect(chatSource).toContain("<SessionDiffPanel");
     expect(chatSource).toContain("<SubagentPanel");
@@ -78,8 +84,8 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("viewportWidth");
     expect(browserSource).toContain("ResizeObserver");
     expect(browserSource).not.toContain("refreshSessionPreview");
-    expect(browserSource).toContain("const BROWSER_PREVIEW_POLL_MS = 1_000");
-    expect(browserSource).toContain("const BROWSER_STATE_POLL_MS = 750");
+    expect(browserSource).toContain("const BROWSER_PREVIEW_POLL_MS = 750");
+    expect(browserSource).toContain("const BROWSER_STATE_POLL_MS = 200");
     expect(browserSource).toContain('format: "jpeg"');
     expect(browserSource).toContain('document.visibilityState === "visible"');
     expect(browserSource).toContain("onTitleChangeRef.current");
@@ -97,7 +103,7 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain('sendPageInput("pointer/click"');
     expect(browserSource).toContain('sendPageInput("scroll"');
     expect(browserSource).toContain('sendPageInput("keyboard"');
-    expect(browserSource).toContain("transition-[left,top] duration-100");
+    expect(browserSource).toContain("transition-[left,top] duration-150");
     expect(browserSource).not.toContain(">\n              Agent\n");
     expect(browserSource).toContain("absolute inset-0 h-full w-full");
     expect(browserSource).toContain("object-contain");
@@ -108,7 +114,7 @@ describe("chat workspace panel", () => {
     );
     expect(browserManagerSource).toContain('button[aria-label^="Cybara pet"]');
     expect(nativeBrowserSource).toContain(
-      ".animation(.easeOut(duration: 0.5), value: cursor.updatedAt ?? 0)"
+      ".animation(.easeOut(duration: 0.15), value: cursor.updatedAt ?? 0)"
     );
     expect(nativeBrowserSource).toContain("@FocusState private var addressFocused: Bool");
     expect(nativeBrowserSource).toContain("guard isActive else { return }");
@@ -118,12 +124,28 @@ describe("chat workspace panel", () => {
     expect(styleSource).toContain("animation: browser-agent-click-pulse 420ms ease-out forwards");
   });
 
+  test("computer use has a session-scoped visual preview with agent cursor telemetry", () => {
+    expect(computerSource).toContain("/api/computer-use/preview?");
+    expect(computerSource).toContain("screenshotRevision");
+    expect(computerSource).toContain('data-testid="computer-agent-cursor"');
+    expect(computerSource).toContain("COMPUTER_PREVIEW_POLL_MS = 300");
+    expect(nativeBrowserSource).toContain("NativeChatComputerPanel");
+    expect(nativeChatSource).toContain("activeWorkspaceTab == .computer");
+  });
+
   test("workspace tools remain mounted while switching tabs", () => {
     expect(chatSource).toContain("workspaceTabs.map((instance)");
     expect(chatSource).toContain('instance.kind === "terminal"');
     expect(chatSource).toContain('cn("h-full", !active && "hidden")');
     expect(chatSource).toContain("visible={showWorkspacePanel && active}");
     expect(chatSource).toContain('instance.kind === "browser"');
+  });
+
+  test("keeps a visible workspace panel on a valid active tab after chat switches", () => {
+    expect(chatSource).toContain(
+      "if (workspaceTabs.some((instance) => instance.id === activeWorkspaceTab)) return;"
+    );
+    expect(chatSource).toContain("setActiveWorkspaceTab(workspaceTabs[0].id)");
   });
 
   test("browser and terminal support multiple instances in the workspace panel", () => {

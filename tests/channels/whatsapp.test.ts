@@ -157,6 +157,14 @@ describe("WhatsApp adapter mocked flows", () => {
       )
     ).toBe(true);
     expect(
+      isRecoverableWhatsAppProfileProcess(
+        405,
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome --user-data-dir=/Users/carsen/.cybara/channels/whatsapp-auth/channel/session-channel",
+        100,
+        99
+      )
+    ).toBe(true);
+    expect(
       isRecoverableWhatsAppProfileProcess(100, "Google Chrome --user-data-dir=/tmp/wa", 100, 99)
     ).toBe(false);
     expect(

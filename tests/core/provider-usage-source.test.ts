@@ -31,16 +31,37 @@ const CODEX_BODY = {
 };
 
 describe("parseCodexUsageResponse", () => {
-  test("maps primary/secondary windows to 5h/weekly with reset times", () => {
+  test("treats the retired 5h window as unlimited and maps weekly usage by duration", () => {
     const result = parseCodexUsageResponse(CODEX_BODY, 1000);
     expect(result?.planLabel).toBe("Codex Pro");
-    expect(result?.fiveHour?.usedPercent).toBe(42);
-    expect(result?.fiveHour?.windowSeconds).toBe(18000);
-    expect(result?.fiveHour?.resetsAt).toBe(new Date(1783405927 * 1000).toISOString());
+    expect(result?.fiveHour).toEqual({ usedPercent: 0, unlimited: true });
     expect(result?.weekly?.usedPercent).toBe(62);
+    expect(result?.weekly?.windowSeconds).toBe(604800);
     expect(result?.weekly?.resetsAt).toBe(new Date(1783665881 * 1000).toISOString());
     expect(result?.source).toBe("oauth_api");
     expect(result?.fetchedAt).toBe(1000);
+  });
+
+  test("maps a single primary weekly window from the current response shape", () => {
+    const result = parseCodexUsageResponse(
+      {
+        plan_type: "plus",
+        rate_limit: {
+          primary_window: {
+            used_percent: 37,
+            limit_window_seconds: 604800,
+            reset_at: 1783665881,
+          },
+        },
+      },
+      2000
+    );
+
+    expect(result?.planLabel).toBe("Codex Plus");
+    expect(result?.fiveHour).toEqual({ usedPercent: 0, unlimited: true });
+    expect(result?.weekly?.usedPercent).toBe(37);
+    expect(result?.weekly?.windowSeconds).toBe(604800);
+    expect(result?.weekly?.resetsAt).toBe(new Date(1783665881 * 1000).toISOString());
   });
 
   test("returns null when rate_limit is absent", () => {
@@ -53,7 +74,8 @@ describe("parseCodexUsageResponse", () => {
       { rate_limit: { primary_window: { used_percent: 150 } } },
       1
     );
-    expect(result?.fiveHour?.usedPercent).toBe(100);
+    expect(result?.fiveHour?.unlimited).toBe(true);
+    expect(result?.weekly?.usedPercent).toBe(100);
   });
 });
 

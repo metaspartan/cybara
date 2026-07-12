@@ -2406,7 +2406,7 @@ ACTIONS:
   computer_use: {
     name: "computer_use",
     description:
-      "Control the user's desktop in the background (capture, click, type, scroll, drag, key, set_value, focus app) via the cua-driver. Does NOT steal the cursor by default. Requires the external cua-driver binary and (on macOS) Accessibility + Screen Recording grants. Prefer 'element' (1-based SOM index) over pixel 'coordinate'; prefer 'set_value' over typing into dropdowns. Dangerous key combos (logout/lock) and shell-injection text are hard-blocked.",
+      "Control the user's desktop in the background (capture, move the visible agent cursor, click, type, scroll, drag, key, set_value, focus app) via the cua-driver. Does NOT steal the user's cursor by default. Requires the external cua-driver binary and (on macOS) Accessibility + Screen Recording grants. Prefer 'element' (1-based SOM index) over pixel 'coordinate'; prefer 'set_value' over typing into dropdowns. Dangerous key combos (logout/lock) and shell-injection text are hard-blocked.",
     category: "media",
     input_schema: {
       type: "object",
@@ -2415,6 +2415,7 @@ ACTIONS:
           type: "string",
           enum: [
             "capture",
+            "move",
             "click",
             "double_click",
             "right_click",
@@ -2727,13 +2728,13 @@ _toolHandlers.set("lsp_languages", handleLSPLanguages);
 _toolHandlers.set("canvas", handleCanvas);
 _toolHandlers.set("computer_use", handleComputerUse);
 for (const action of COMPUTER_USE_ACTION_TOOL_ALIASES) {
-  _toolHandlers.set(action, async (args) =>
-    handleComputerUse(normalizeComputerUseActionArgs(action, args))
+  _toolHandlers.set(action, async (args, context) =>
+    handleComputerUse(normalizeComputerUseActionArgs(action, args), context)
   );
 }
 for (const [toolName, action] of Object.entries(COMPUTER_USE_COMPAT_TOOL_ALIASES)) {
-  _toolHandlers.set(toolName, async (args) =>
-    handleComputerUse(normalizeComputerUseCompatToolArgs(action, args))
+  _toolHandlers.set(toolName, async (args, context) =>
+    handleComputerUse(normalizeComputerUseCompatToolArgs(action, args), context)
   );
 }
 getSkillExecutors()

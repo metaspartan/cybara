@@ -25,7 +25,6 @@ export function isRecoverableWhatsAppProfileProcess(
   const normalized = command.toLowerCase();
   if (!normalized.trim()) return false;
   if (
-    normalized.includes("cybara") ||
     normalized.includes("/bun") ||
     normalized.includes(" bun ") ||
     normalized.includes("bunx") ||

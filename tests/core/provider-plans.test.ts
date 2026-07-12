@@ -274,11 +274,16 @@ describe("provider plan monitoring", () => {
     expect(snapshot?.sourceLabel).toBe("OpenAI OAuth usage");
     expect(snapshot?.dataConfidence).toBe("exact");
     expect(snapshot?.status).toBe("warning");
-    expect(snapshot?.windows.map((window) => [window.id, window.usedPercent])).toEqual([
-      ["5h", 48],
-      ["weekly", 82],
+    expect(
+      snapshot?.windows.map((window) => [window.id, window.usedPercent, window.unlimited])
+    ).toEqual([
+      ["5h", 0, true],
+      ["weekly", 82, undefined],
       ["local_30d", undefined, undefined],
     ]);
+    expect(snapshot?.windows.find((window) => window.id === "5h")?.resetDescription).toBe(
+      "No limit"
+    );
     expect(status.summary.configured).toBeGreaterThanOrEqual(1);
     expect(status.summary.warnings).toBeGreaterThanOrEqual(1);
   });

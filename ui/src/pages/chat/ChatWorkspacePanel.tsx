@@ -3,6 +3,7 @@ import {
   FileText,
   FolderTree,
   Globe2,
+  Monitor,
   PanelRightClose,
   Plus,
   SquareTerminal,
@@ -12,7 +13,13 @@ import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { SubagentIcon } from "./SubagentIcon";
 
-export type ChatWorkspaceTab = "review" | "terminal" | "browser" | "files" | "subagents";
+export type ChatWorkspaceTab =
+  | "review"
+  | "terminal"
+  | "browser"
+  | "computer"
+  | "files"
+  | "subagents";
 
 export interface WorkspaceTabInstance {
   id: string;
@@ -23,6 +30,7 @@ export interface WorkspaceTabInstance {
 
 export const WORKSPACE_SINGLETON_KINDS: ReadonlySet<ChatWorkspaceTab> = new Set([
   "review",
+  "computer",
   "files",
   "subagents",
 ]);
@@ -38,6 +46,7 @@ const TAB_DETAILS: Record<
   review: { label: "Review", labelKey: "chat.tabs.review", icon: FileText },
   terminal: { label: "Terminal", labelKey: "chat.tabs.terminal", icon: SquareTerminal },
   browser: { label: "Browser", labelKey: "chat.tabs.browser", icon: Globe2 },
+  computer: { label: "Desktop", labelKey: "chat.tabs.computer", icon: Monitor },
   files: { label: "Files", labelKey: "chat.tabs.files", icon: FolderTree },
   subagents: { label: "Side task", labelKey: "chat.tabs.subagents", icon: SubagentIcon },
 };

@@ -7,6 +7,7 @@ import {
 } from "../../core/browser/sandbox-browser";
 import { tables } from "../../core/database";
 import { commandExists, isWindows } from "../../core/platform";
+import { clearComputerUsePreview, getComputerUsePreview } from "../../core/computer-use";
 import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../../core/status";
 import { getSystemMonitorSnapshot } from "../../core/system-monitor";
 import {
@@ -75,6 +76,24 @@ function buildRestartCommand(argv: string[], cwd: string): string[] {
 }
 
 export const runtimeRoutes: Record<string, RouteHandler> = {
+  "GET /api/computer-use/preview": (_body, params) => {
+    const sessionId = browserSessionId(params?.sessionId);
+    if (!sessionId) return { success: false, error: "Session ID is required" };
+    const screenshotRevision = Number(params?.screenshotRevision);
+    return {
+      success: true,
+      data: getComputerUsePreview(
+        sessionId,
+        Number.isFinite(screenshotRevision) ? screenshotRevision : undefined
+      ),
+    };
+  },
+  "DELETE /api/computer-use/preview": (_body, params) => {
+    const sessionId = browserSessionId(params?.sessionId);
+    if (!sessionId) return { success: false, error: "Session ID is required" };
+    clearComputerUsePreview(sessionId);
+    return { success: true };
+  },
   "GET /api/browser/status": async () => {
     const getStatus = pwManager.getStatus;
     return await getStatus();

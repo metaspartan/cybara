@@ -866,6 +866,9 @@ export function routeRequiredScope(method: string, path: string): string | null 
   if (path === "/api/ide/open-terminal" || path.startsWith("/api/terminal")) {
     return "terminal";
   }
+  if (path.startsWith("/api/computer-use")) {
+    return "terminal";
+  }
   if (path.startsWith("/api/mcp")) {
     if (method === "GET") return null;
     return "mcp";

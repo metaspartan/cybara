@@ -103,6 +103,7 @@ import { ChatHeaderTitleMenu } from "./chat/ChatHeaderTitleMenu";
 import { ChatImageLightbox, type ChatLightboxImage } from "./chat/ChatImageLightbox";
 import { ChatReasoningControl } from "./chat/ChatReasoningControl";
 import { ChatWorkspaceBrowser } from "./chat/ChatWorkspaceBrowser";
+import { ChatWorkspaceComputer } from "./chat/ChatWorkspaceComputer";
 import { ChatWorkspaceFiles } from "./chat/ChatWorkspaceFiles";
 import {
   ChatWorkspacePanel,
@@ -775,6 +776,11 @@ export function Chat() {
     () => workspaceTabs.find((instance) => instance.id === activeWorkspaceTab)?.kind ?? null,
     [workspaceTabs, activeWorkspaceTab]
   );
+  useEffect(() => {
+    if (!showWorkspacePanel || workspaceTabs.length === 0) return;
+    if (workspaceTabs.some((instance) => instance.id === activeWorkspaceTab)) return;
+    setActiveWorkspaceTab(workspaceTabs[0].id);
+  }, [activeWorkspaceTab, showWorkspacePanel, workspaceTabs]);
   const [showEnvironmentOverview, setShowEnvironmentOverview] = useState(false);
   const [hiddenComposerPlanKey, setHiddenComposerPlanKey] = useState<string | null>(null);
   const [diffPanelWidth, setDiffPanelWidth] = useState<number>(() => readPersistedDiffPanelWidth());
@@ -4263,6 +4269,16 @@ export function Chat() {
                 return (
                   <div key={instance.id} className={hiddenClass}>
                     <ChatWorkspaceFiles workspaceDir={effectiveWorkspaceDir} />
+                  </div>
+                );
+              }
+              if (instance.kind === "computer") {
+                return (
+                  <div key={instance.id} className={hiddenClass}>
+                    <ChatWorkspaceComputer
+                      sessionId={sessionId}
+                      visible={showWorkspacePanel && active}
+                    />
                   </div>
                 );
               }

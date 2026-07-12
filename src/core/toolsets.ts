@@ -144,6 +144,7 @@ const directToolNames = new Set([
   "process",
   "git",
   "browser",
+  "computer_use",
   "web_fetch",
   "web_search",
   "memory_search",

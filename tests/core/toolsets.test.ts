@@ -91,11 +91,13 @@ describe("agent toolsets", () => {
     expect(first.allowedToolNames).toContain("write");
     expect(first.offeredTools.map((tool) => tool.name)).not.toContain("kanban_show");
     expect(first.offeredTools.map((tool) => tool.name)).toContain("tool_search");
+    expect(first.offeredTools.map((tool) => tool.name)).toContain("computer_use");
   });
 
   test("supports profiles and additive toolsets", () => {
     const coding = resolveAgentToolPolicy(agent({ config: { tool_profile: "coding" } }));
     expect(coding.allowedToolNames).toContain("write");
+    expect(coding.offeredTools.map((tool) => tool.name)).toContain("computer_use");
     expect(coding.allowedToolNames).not.toContain("wallet");
 
     const codingAutomation = resolveAgentToolPolicy(
@@ -110,6 +112,7 @@ describe("agent toolsets", () => {
     expect(policy.allowedToolNames).toContain("web_search");
     expect(policy.allowedToolNames).not.toContain("write");
     expect(policy.allowedToolNames).not.toContain("exec");
+    expect(policy.offeredTools.map((tool) => tool.name)).not.toContain("computer_use");
     expect(policy.allowDynamicTools).toBe(false);
   });
 

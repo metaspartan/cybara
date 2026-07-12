@@ -295,12 +295,12 @@ const toolHandlers: Record<
 };
 
 for (const action of COMPUTER_USE_ACTION_TOOL_ALIASES) {
-  toolHandlers[action] = async (args: Record<string, unknown>) =>
-    handleComputerUse(normalizeComputerUseActionArgs(action, args));
+  toolHandlers[action] = async (args: Record<string, unknown>, context?: ToolContext) =>
+    handleComputerUse(normalizeComputerUseActionArgs(action, args), context);
 }
 for (const [toolName, action] of Object.entries(COMPUTER_USE_COMPAT_TOOL_ALIASES)) {
-  toolHandlers[toolName] = async (args: Record<string, unknown>) =>
-    handleComputerUse(normalizeComputerUseCompatToolArgs(action, args));
+  toolHandlers[toolName] = async (args: Record<string, unknown>, context?: ToolContext) =>
+    handleComputerUse(normalizeComputerUseCompatToolArgs(action, args), context);
 }
 
 function getDangerousToolPolicy(): { enabled: boolean; mode: "audit" | "block" } {

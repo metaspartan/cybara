@@ -41,9 +41,9 @@ interface BrowserPreview {
 const DEFAULT_BROWSER_VIEWPORT: BrowserViewport = { width: 960, height: 640 };
 const BROWSER_START_TIMEOUT_MS = 90_000;
 const BROWSER_REQUEST_TIMEOUT_MS = 12_000;
-const BROWSER_PREVIEW_POLL_MS = 1_000;
-const BROWSER_STATE_POLL_MS = 750;
-const BROWSER_PREVIEW_QUALITY = 72;
+const BROWSER_PREVIEW_POLL_MS = 750;
+const BROWSER_STATE_POLL_MS = 200;
+const BROWSER_PREVIEW_QUALITY = 62;
 
 interface BrowserLaunchStatus {
   phase: "idle" | "starting" | "running" | "failed";
@@ -641,7 +641,7 @@ export function ChatWorkspaceBrowser({
         )}
         {cursorStyle ? (
           <div
-            className="pointer-events-none absolute z-20 -translate-x-[2px] -translate-y-[1px] transition-[left,top] duration-100 ease-out"
+            className="pointer-events-none absolute z-20 -translate-x-[2px] -translate-y-[1px] transition-[left,top] duration-150 ease-out"
             style={cursorStyle}
             data-testid="browser-agent-cursor"
           >

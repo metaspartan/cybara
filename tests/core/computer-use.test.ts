@@ -7,13 +7,18 @@ import {
   COMPUTER_USE_ACTION_TOOL_ALIASES,
   COMPUTER_USE_COMPAT_TOOL_ALIASES,
   isFullDesktopCaptureRequest,
+  nativeFocusCommand,
   isBlockedKeyCombo,
   isBlockedTypeText,
   normalizeComputerUseActionArgs,
   normalizeComputerUseCompatToolArgs,
   parseCuaDriverVersion,
+  clearComputerUsePreview,
+  getComputerUsePreview,
+  recordComputerUsePreview,
   resolveCuaDriverCommand,
   setComputerUseAutoApprove,
+  summarizeDriverApps,
   summarizeAction,
   VALID_ACTIONS,
 } from "../../src/core/computer-use";
@@ -67,6 +72,7 @@ describe("computer_use action validation", () => {
   test("VALID_ACTIONS includes the full parity set", () => {
     for (const a of [
       "capture",
+      "move",
       "click",
       "double_click",
       "right_click",
@@ -140,6 +146,16 @@ describe("computer_use action validation", () => {
     expect(isFullDesktopCaptureRequest({ action: "wait", app: "desktop" })).toBe(false);
   });
 
+  test("focuses macOS applications without shell interpolation", () => {
+    expect(nativeFocusCommand("darwin", "Visual Studio Code")).toEqual([
+      "/usr/bin/open",
+      "-a",
+      "Visual Studio Code",
+    ]);
+    expect(nativeFocusCommand("win32", "Visual Studio Code")).toBeNull();
+    expect(nativeFocusCommand("linux", "Visual Studio Code")).toBeNull();
+  });
+
   test("assertActionAllowed throws on blocked key combos even with auto-approve", () => {
     setComputerUseAutoApprove(true);
     expect(() => assertActionAllowed("key", { action: "key", keys: "cmd+shift+q" })).toThrow(
@@ -157,6 +173,9 @@ describe("computer_use action validation", () => {
   test("assertActionAllowed allows safe actions without consent", () => {
     setComputerUseAutoApprove(false);
     expect(() => assertActionAllowed("capture", { action: "capture" })).not.toThrow();
+    expect(() =>
+      assertActionAllowed("move", { action: "move", coordinate: [120, 80] })
+    ).not.toThrow();
     expect(() => assertActionAllowed("wait", { action: "wait", seconds: 1 })).not.toThrow();
     expect(() => assertActionAllowed("list_apps", { action: "list_apps" })).not.toThrow();
   });
@@ -186,10 +205,91 @@ describe("computer_use action validation", () => {
 
 describe("summarizeAction", () => {
   test("produces readable summaries", () => {
+    expect(summarizeAction("move", { action: "move", coordinate: [20, 40] })).toContain("20,40");
     expect(summarizeAction("click", { action: "click", element: 5 })).toContain("element #5");
     expect(summarizeAction("type", { action: "type", text: "hello" })).toContain('"hello"');
     expect(summarizeAction("key", { action: "key", keys: "cmd+s" })).toContain('"cmd+s"');
     expect(summarizeAction("scroll", { action: "scroll", direction: "up" })).toContain("up");
+  });
+});
+
+describe("computer use application summaries", () => {
+  test("keeps the active app prominent without sending the installed catalog to the model", () => {
+    const result = summarizeDriverApps({
+      structured: {
+        apps: [
+          { name: "Finder", running: true, active: false, pid: 10 },
+          { name: "Cybara", running: true, active: true, pid: 20 },
+          { name: "Installed Only", running: false, active: false, pid: 0 },
+        ],
+      },
+    });
+
+    expect(result.text).toContain("Frontmost app: Cybara");
+    expect(result.text).toContain("Running apps (2): Finder, Cybara");
+    expect(result.text).toContain("Installed apps discovered: 3");
+    expect(result.text).not.toContain("Installed Only");
+    expect(result.structured?.active).toEqual({ name: "Cybara", pid: 20, running: true });
+  });
+
+  test("preserves unrecognized driver output", () => {
+    expect(summarizeDriverApps({ text: "legacy output" })).toEqual({ text: "legacy output" });
+  });
+});
+
+describe("computer-use session previews", () => {
+  test("keeps screenshots and pointer coordinates scoped to one chat session", () => {
+    clearComputerUsePreview("preview-a");
+    clearComputerUsePreview("preview-b");
+
+    recordComputerUsePreview(
+      "preview-a",
+      { action: "capture", app: "desktop" },
+      "c2NyZWVu",
+      "image/png"
+    );
+    recordComputerUsePreview("preview-a", { action: "click", coordinate: [120, 80] });
+
+    const preview = getComputerUsePreview("preview-a");
+    expect(preview?.screenshot).toBe("c2NyZWVu");
+    expect(preview?.contentType).toBe("image/png");
+    expect(preview?.cursor).toMatchObject({ x: 120, y: 80, action: "click", visible: true });
+    expect(getComputerUsePreview("preview-b")).toBeNull();
+  });
+
+  test("omits unchanged screenshot bytes while preserving current telemetry", () => {
+    clearComputerUsePreview("preview-revision");
+    recordComputerUsePreview(
+      "preview-revision",
+      { action: "capture", app: "desktop" },
+      "aW1hZ2U=",
+      "image/png"
+    );
+    const initial = getComputerUsePreview("preview-revision");
+    const unchanged = getComputerUsePreview("preview-revision", initial?.screenshotRevision);
+
+    expect(initial?.screenshot).toBe("aW1hZ2U=");
+    expect(unchanged?.screenshot).toBeUndefined();
+    expect(unchanged?.action).toBe("capture");
+  });
+
+  test("reports screenshot pixel dimensions for accurate cross-platform pointer placement", () => {
+    clearComputerUsePreview("preview-dimensions");
+    const png = Buffer.alloc(24);
+    png.write("PNG", 1, "ascii");
+    png.writeUInt32BE(1920, 16);
+    png.writeUInt32BE(1080, 20);
+    recordComputerUsePreview(
+      "preview-dimensions",
+      { action: "capture", app: "desktop" },
+      png.toString("base64"),
+      "image/png"
+    );
+
+    expect(getComputerUsePreview("preview-dimensions")?.viewport).toEqual({
+      width: 1920,
+      height: 1080,
+    });
   });
 });
 
@@ -359,6 +459,12 @@ describe("computer_use driver vocabulary translation", () => {
 
   test("never sends our action names as driver tool names", () => {
     expect(source).not.toContain("name: typedArgs.action");
+  });
+
+  test("maps visual pointer movement to the driver's session cursor overlay", () => {
+    const source = readFileSync(join(process.cwd(), "src/core/computer-use.ts"), "utf8");
+    expect(source).toContain('callDriverTool("move_cursor"');
+    expect(source).toContain('driverHasTool("move_cursor")');
   });
 
   test("maps actions onto real driver primitives with a resolved pid target", () => {

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildToolExecutionFallbackMessage,
   classifyToolCallResult,
+  requiredDirectToolForMessage,
   shouldEnforceToolUseForMessage,
   shouldPreferArtifactsForMessage,
   suppressRecoveredWebFailureActivities,
@@ -54,6 +55,17 @@ describe("chat tool summary utilities", () => {
     expect(shouldEnforceToolUseForMessage("How would I build an app in this workspace?")).toBe(
       false
     );
+  });
+
+  test("binds explicit desktop actions to computer use without forcing capability questions", () => {
+    expect(
+      requiredDirectToolForMessage(
+        "Move the computer-use cursor, capture the desktop, and report the frontmost app"
+      )
+    ).toBe("computer_use");
+    expect(requiredDirectToolForMessage("Take a screenshot of my screen")).toBe("computer_use");
+    expect(requiredDirectToolForMessage("What is computer use?")).toBeUndefined();
+    expect(requiredDirectToolForMessage("Explain desktop automation security")).toBeUndefined();
   });
 
   test("detects artifact-focused prompts for artifact-preferred tool execution", () => {

@@ -197,6 +197,17 @@ export function shouldEnforceToolUseForMessage(message: string): boolean {
   return hasActionVerb && hasWorkContext;
 }
 
+export function requiredDirectToolForMessage(message: string): string | undefined {
+  const lower = message.trim().toLowerCase();
+  const namesComputerUse = /\bcomputer[-_\s]?use\b/.test(lower);
+  const namesDesktop = /\b(desktop|screen)\b/.test(lower);
+  const requestsDesktopAction =
+    /\b(capture|screenshot|move|click|type|scroll|drag|focus|control|open|close|list)\b/.test(
+      lower
+    );
+  return (namesComputerUse || namesDesktop) && requestsDesktopAction ? "computer_use" : undefined;
+}
+
 const ARTIFACT_INTENT_PATTERNS = [
   /\bartifact(?:s)?\b/i,
   /\.md\.resolved\b/i,

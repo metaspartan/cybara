@@ -139,6 +139,8 @@ describe("route scope requirements", () => {
 
   test("terminal execution requires the terminal scope", () => {
     expect(routeRequiredScope("POST", "/api/ide/open-terminal")).toBe("terminal");
+    expect(routeRequiredScope("GET", "/api/computer-use/preview")).toBe("terminal");
+    expect(routeRequiredScope("DELETE", "/api/computer-use/preview")).toBe("terminal");
   });
 
   test("MCP install, mutation, start, and tool calls require the mcp scope", () => {
