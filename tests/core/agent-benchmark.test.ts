@@ -129,10 +129,73 @@ describe("cybara intelligence rating suite", () => {
     expect(normalizeBenchmarkAnswer(" `CYBARA` \n")).toBe("CYBARA");
     expect(normalizeBenchmarkAnswer("\\frac{2}{5}")).toBe("2/5");
     expect(normalizeBenchmarkAnswer("\\boxed{150}")).toBe("150");
+    expect(normalizeBenchmarkAnswer("**3600**")).toBe("3600");
+    expect(normalizeBenchmarkAnswer("*31*")).toBe("31");
+    expect(normalizeBenchmarkAnswer("__42__")).toBe("42");
+    expect(normalizeBenchmarkAnswer("~~42~~")).toBe("42");
+    expect(normalizeBenchmarkAnswer("**Wednesday**")).toBe("Wednesday");
+    expect(normalizeBenchmarkAnswer("3600.")).toBe("3600");
+    expect(normalizeBenchmarkAnswer("0.5")).toBe("0.5");
+    expect(normalizeBenchmarkAnswer("3,600")).toBe("3600");
+    expect(normalizeBenchmarkAnswer("$\\boxed{3600}$")).toBe("3600");
+    expect(normalizeBenchmarkAnswer("**`1854`**")).toBe("1854");
+    expect(normalizeBenchmarkAnswer("$\\frac{1}{7}$")).toBe("1/7");
+    expect(normalizeBenchmarkAnswer("## 111")).toBe("111");
+    expect(normalizeBenchmarkAnswer('```json\n{"stable":true}\n```')).toBe('{"stable":true}');
+    expect(normalizeBenchmarkAnswer("The answer is 3600")).toBe("The answer is 3600");
+    expect(normalizeBenchmarkAnswer("111 steps")).toBe("111 steps");
     const task = intelligenceRatingTasks.find((item) => item.id === "instruction-exact");
     if (!task) throw new Error("Instruction benchmark task is missing");
     expect(gradeIntelligenceBenchmarkTask(task, "CYBARA", [])).toBe(true);
+    expect(gradeIntelligenceBenchmarkTask(task, "**CYBARA**", [])).toBe(true);
     expect(gradeIntelligenceBenchmarkTask(task, "The answer is CYBARA", [])).toBe(false);
+    const seating = intelligenceRatingTasks.find((item) => item.id === "circular-seating");
+    if (!seating) throw new Error("Seating benchmark task is missing");
+    expect(gradeIntelligenceBenchmarkTask(seating, "**3600**", [])).toBe(true);
+    expect(gradeIntelligenceBenchmarkTask(seating, "3,600", [])).toBe(true);
+  });
+
+  test("grades fractions and decimals as numerically equivalent without loosening text answers", () => {
+    const probability = intelligenceRatingTasks.find((item) => item.id === "urn-probability");
+    if (!probability) throw new Error("Probability task is missing");
+    expect(probability.expected).toBe("2/5");
+    expect(gradeIntelligenceBenchmarkTask(probability, "2/5", [])).toBe(true);
+    expect(gradeIntelligenceBenchmarkTask(probability, "0.4", [])).toBe(true);
+    expect(gradeIntelligenceBenchmarkTask(probability, "**0.40**", [])).toBe(true);
+    expect(gradeIntelligenceBenchmarkTask(probability, "0.41", [])).toBe(false);
+    expect(gradeIntelligenceBenchmarkTask(probability, "1/7", [])).toBe(false);
+    const binary = intelligenceRatingTasks.find((item) => item.id === "binary-conversion");
+    if (!binary) throw new Error("Binary task is missing");
+    expect(gradeIntelligenceBenchmarkTask(binary, "255", [])).toBe(false);
+    expect(gradeIntelligenceBenchmarkTask(binary, "11111111", [])).toBe(true);
+    const instruction = intelligenceRatingTasks.find((item) => item.id === "instruction-exact");
+    if (!instruction) throw new Error("Instruction task is missing");
+    expect(gradeIntelligenceBenchmarkTask(instruction, "CYBARA extra", [])).toBe(false);
+  });
+
+  test("full simulated runs place noisy-but-correct models in expected rating bands", () => {
+    const simulate = (ceiling: number, formatter: (expected: string) => string) => {
+      const results = intelligenceRatingTasks.map((task) => {
+        const passed =
+          task.rating <= ceiling &&
+          gradeIntelligenceBenchmarkTask(
+            task,
+            formatter(task.expected),
+            task.requiredTool ? [task.requiredTool] : []
+          );
+        return { rating: task.rating, passed };
+      });
+      return computeIntelligenceRating(results);
+    };
+    const messy = (expected: string) => `**${expected}**`;
+    const clean = (expected: string) => expected;
+    const midMessy = simulate(1700, messy);
+    const midClean = simulate(1700, clean);
+    expect(midMessy).toBe(midClean);
+    expect(midMessy).toBeGreaterThan(1400);
+    expect(midMessy).toBeLessThan(2000);
+    const strong = simulate(3000, messy);
+    expect(strong).toBeGreaterThan(midMessy + 600);
   });
 
   test("requires both the grounded answer and observed tool use", () => {

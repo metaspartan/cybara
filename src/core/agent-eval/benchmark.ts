@@ -575,7 +575,7 @@ export function intelligenceRatingManifest(): Record<string, unknown> {
     grading: {
       method: "objective-string-match",
       description:
-        "Responses are trimmed, unwrapped from quotes, backticks, \\boxed{}, and \\frac{}{} forms, then compared case-insensitively against the expected answer. Tasks with a required tool additionally verify that the tool was observed. No judge model is used.",
+        "Responses are trimmed, then formatting wrappers are stripped to a fixed point: markdown emphasis (**x**, *x*, __x__, ~~x~~), inline and fenced code, headings, quotes, LaTeX $..$, \\boxed{}, \\text{}, \\frac{}{} (to a/b), one trailing sentence period, and thousands separators in integers. The unwrapped answer is compared case-insensitively against the expected value. If both the expected and the answer parse as numbers (integers, decimals, or a/b fractions), they are compared numerically so 2/5 and 0.4 are equal. Extra prose around the answer still fails. Tasks with a required tool additionally verify that the tool was observed. No judge model is used.",
       workspaceFixtures: {
         "benchmark.txt": "ORCHID-742",
         "data.csv": "value\n17\n25\n41\n9\n",
@@ -734,13 +734,73 @@ export function findRunningIntelligenceBenchmark(): IntelligenceBenchmarkRun | n
   return row ? fromRow(row) : null;
 }
 
+const ANSWER_UNWRAP_STEPS: Array<[RegExp, string]> = [
+  [/^```[a-z]*\n([\s\S]*?)\n?```$/i, "$1"],
+  [/^\$\$?([\s\S]+?)\$\$?$/, "$1"],
+  [/^\\\[([\s\S]+?)\\\]$/, "$1"],
+  [/^\\\(([\s\S]+?)\\\)$/, "$1"],
+  [/^\\boxed\{(.+)\}$/s, "$1"],
+  [/^\\text\{(.+)\}$/s, "$1"],
+  [/^\\mathrm\{(.+)\}$/s, "$1"],
+  [/^\\frac\{([^{}]+)\}\{([^{}]+)\}$/s, "$1/$2"],
+  [/^\*\*\*(.+)\*\*\*$/s, "$1"],
+  [/^\*\*(.+)\*\*$/s, "$1"],
+  [/^\*(.+)\*$/s, "$1"],
+  [/^__(.+)__$/s, "$1"],
+  [/^_(.+)_$/s, "$1"],
+  [/^~~(.+)~~$/s, "$1"],
+  [/^`(.+)`$/s, "$1"],
+  [/^"(.+)"$/s, "$1"],
+  [/^'(.+)'$/s, "$1"],
+  [/^#{1,6}\s+(.+)$/s, "$1"],
+];
+
 export function normalizeBenchmarkAnswer(value: string): string {
-  return value
-    .trim()
-    .replace(/^\\boxed\{(.+)\}$/s, "$1")
-    .replace(/^\\frac\{([^{}]+)\}\{([^{}]+)\}$/s, "$1/$2")
-    .replace(/^['"`]|['"`]$/g, "")
-    .trim();
+  let current = value.trim();
+  for (let pass = 0; pass < 12; pass += 1) {
+    let next = current;
+    for (const [pattern, replacement] of ANSWER_UNWRAP_STEPS) {
+      next = next.replace(pattern, replacement).trim();
+    }
+    if (/^.+[.。]$/s.test(next) && !/\d[.]\d/.test(next.slice(-3))) {
+      const withoutPeriod = next.replace(/[.。]$/, "").trim();
+      if (withoutPeriod.length > 0) next = withoutPeriod;
+    }
+    if (next === current) break;
+    current = next;
+  }
+  if (/^-?\d{1,3}(,\d{3})+$/.test(current)) {
+    current = current.replace(/,/g, "");
+  }
+  return current;
+}
+
+function parseNumericAnswer(value: string): number | null {
+  const trimmed = value.trim();
+  const fraction = trimmed.match(/^(-?\d+)\s*\/\s*(-?\d+)$/);
+  if (fraction) {
+    const denominator = Number(fraction[2]);
+    if (denominator === 0) return null;
+    return Number(fraction[1]) / denominator;
+  }
+  if (/^-?\d+(\.\d+)?$/.test(trimmed) || /^-?\.\d+$/.test(trimmed)) {
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+export function benchmarkAnswerMatches(expected: string, response: string): boolean {
+  const normalized = normalizeBenchmarkAnswer(response);
+  if (normalized.toLowerCase() === expected.toLowerCase()) return true;
+  const expectedNumber = parseNumericAnswer(expected);
+  const responseNumber = parseNumericAnswer(normalized);
+  if (expectedNumber !== null && responseNumber !== null) {
+    return (
+      Math.abs(expectedNumber - responseNumber) <= 1e-9 * Math.max(1, Math.abs(expectedNumber))
+    );
+  }
+  return false;
 }
 
 export function gradeIntelligenceBenchmarkTask(
@@ -748,8 +808,7 @@ export function gradeIntelligenceBenchmarkTask(
   response: string,
   toolCalls: string[]
 ): boolean {
-  const answerMatches =
-    normalizeBenchmarkAnswer(response).toLowerCase() === task.expected.toLowerCase();
+  const answerMatches = benchmarkAnswerMatches(task.expected, response);
   const toolMatches =
     !task.requiredTool ||
     toolCalls.some(
@@ -763,8 +822,7 @@ export function explainIntelligenceBenchmarkGrade(
   response: string,
   toolCalls: string[]
 ): string {
-  const answerMatches =
-    normalizeBenchmarkAnswer(response).toLowerCase() === task.expected.toLowerCase();
+  const answerMatches = benchmarkAnswerMatches(task.expected, response);
   if (!answerMatches) return "The normalized answer did not match the objective expected value.";
   if (
     task.requiredTool &&

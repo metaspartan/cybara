@@ -10,37 +10,62 @@ use tauri_plugin_updater::UpdaterExt;
 use crate::{CYBARA_SERVER_ADDR, CYBARA_SERVER_URL, cybara_api_key};
 
 pub struct UpdateMenu(pub std::sync::Mutex<MenuItem<tauri::Wry>>);
+pub struct UpdatePhase(pub std::sync::atomic::AtomicBool);
 
 const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(300);
 const UPDATE_FIRST_CHECK_DELAY: Duration = Duration::from_secs(15);
 
-pub fn apply_update_state(app: &AppHandle, available: bool, version: Option<String>) {
+fn update_menu_text(available: bool, version: &Option<String>, status: &Option<String>) -> String {
+    match status.as_deref() {
+        Some("downloading") => match version {
+            Some(value) => format!("Updating to {value}…"),
+            None => "Updating…".to_string(),
+        },
+        Some("installing") => "Installing update…".to_string(),
+        Some("done") => "Update installed · restarting…".to_string(),
+        _ if available => match version {
+            Some(value) => format!("Install Update {value}"),
+            None => "Install Update".to_string(),
+        },
+        _ => "No updates available".to_string(),
+    }
+}
+
+fn update_tooltip_text(available: bool, version: &Option<String>, status: &Option<String>) -> String {
+    match status.as_deref() {
+        Some("downloading") | Some("installing") => "Cybara · Updating…".to_string(),
+        Some("done") => "Cybara · Restarting to finish update".to_string(),
+        _ if available => match version {
+            Some(value) => format!("Cybara · Update {value} available"),
+            None => "Cybara · Update available".to_string(),
+        },
+        _ => "Cybara".to_string(),
+    }
+}
+
+pub fn apply_update_state(
+    app: &AppHandle,
+    available: bool,
+    version: Option<String>,
+    status: Option<String>,
+) {
+    let busy = matches!(
+        status.as_deref(),
+        Some("downloading") | Some("installing") | Some("done")
+    );
+    if let Some(phase) = app.try_state::<UpdatePhase>() {
+        phase.0.store(busy, std::sync::atomic::Ordering::Relaxed);
+    }
     if let Some(state) = app.try_state::<UpdateMenu>() {
         if let Ok(item) = state.0.lock() {
-            let text = if available {
-                match &version {
-                    Some(value) => format!("Install Update {value}"),
-                    None => "Install Update".to_string(),
-                }
-            } else {
-                "No updates available".to_string()
-            };
-            let _ = item.set_text(text);
-            let _ = item.set_enabled(available);
+            let _ = item.set_text(update_menu_text(available, &version, &status));
+            let _ = item.set_enabled(available && !busy);
         }
     }
     if let Some(tray) = app.tray_by_id("cybara-tray") {
-        let tooltip = if available {
-            match &version {
-                Some(value) => format!("Cybara · Update {value} available"),
-                None => "Cybara · Update available".to_string(),
-            }
-        } else {
-            "Cybara".to_string()
-        };
-        let _ = tray.set_tooltip(Some(tooltip));
+        let _ = tray.set_tooltip(Some(update_tooltip_text(available, &version, &status)));
         if let Some(base) = app.default_window_icon().cloned() {
-            if available {
+            if available || busy {
                 let _ = tray.set_icon(Some(crate::badge_icon(&base)));
             } else {
                 let _ = tray.set_icon(Some(base));
@@ -55,17 +80,24 @@ fn start_update_check(app: &AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(UPDATE_FIRST_CHECK_DELAY);
         loop {
-            let update = handle
-                .updater()
-                .ok()
-                .and_then(|updater| tauri::async_runtime::block_on(updater.check()).ok())
-                .flatten();
-            let available = update.is_some();
-            let version = update.map(|value| value.version.clone());
-            let apply = handle.clone();
-            let _ = handle.run_on_main_thread(move || {
-                apply_update_state(&apply, available, version);
-            });
+            let busy = handle
+                .try_state::<UpdatePhase>()
+                .map(|phase| phase.0.load(std::sync::atomic::Ordering::Relaxed))
+                .unwrap_or(false);
+            if !busy {
+                let update = handle
+                    .updater()
+                    .ok()
+                    .and_then(|updater| tauri::async_runtime::block_on(updater.check()).ok())
+                    .flatten();
+                if let Some(update) = update {
+                    let version = Some(update.version.clone());
+                    let apply = handle.clone();
+                    let _ = handle.run_on_main_thread(move || {
+                        apply_update_state(&apply, true, version, None);
+                    });
+                }
+            }
             std::thread::sleep(UPDATE_CHECK_INTERVAL);
         }
     });
@@ -378,6 +410,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         })
         .build(app)?;
     app.manage(UpdateMenu(std::sync::Mutex::new(update.clone())));
+    app.manage(UpdatePhase(std::sync::atomic::AtomicBool::new(false)));
     start_update_check(app.handle());
     let app_handle = app.handle().clone();
     std::thread::spawn(move || {

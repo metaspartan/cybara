@@ -131,10 +131,15 @@ pub(crate) fn badge_icon(base: &tauri::image::Image) -> tauri::image::Image<'sta
 }
 
 #[tauri::command]
-fn set_update_available(app: tauri::AppHandle, available: bool, version: Option<String>) {
+fn set_update_available(
+    app: tauri::AppHandle,
+    available: bool,
+    version: Option<String>,
+    status: Option<String>,
+) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
-        tray::apply_update_state(&handle, available, version);
+        tray::apply_update_state(&handle, available, version, status);
     });
 }
 

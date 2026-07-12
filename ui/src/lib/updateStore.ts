@@ -66,9 +66,13 @@ export function subscribeUpdateState(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-async function notifyTray(available: boolean, version: string | null): Promise<void> {
+async function notifyTray(
+  available: boolean,
+  version: string | null,
+  status?: "downloading" | "installing" | "done"
+): Promise<void> {
   try {
-    await invoke("set_update_available", { available, version });
+    await invoke("set_update_available", { available, version, status: status ?? null });
   } catch (error) {
     console.warn("[updates] tray notify failed:", error);
   }
@@ -123,6 +127,7 @@ export async function startUpdateInstall(): Promise<void> {
   if (!update || installing) return;
   installing = true;
   setState({ phase: "downloading", progress: 0, downloadedBytes: 0, totalBytes: null });
+  void notifyTray(true, update.version, "downloading");
   let total = 0;
   let downloaded = 0;
   try {
@@ -138,14 +143,17 @@ export async function startUpdateInstall(): Promise<void> {
         });
       } else if (event.event === "Finished") {
         setState({ phase: "installing", progress: 1 });
+        void notifyTray(true, update.version, "installing");
       }
     });
     setState({ phase: "done", progress: 1 });
+    void notifyTray(true, update.version, "done");
     await new Promise((resolve) => setTimeout(resolve, 900));
     await relaunchDesktopApp();
   } catch (error) {
     installing = false;
     setState({ phase: "available", error: describeDesktopUpdaterError(error) });
+    void notifyTray(true, update.version);
   }
 }
 
