@@ -2,15 +2,160 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
-import { settingsApi } from "@/lib/api";
+import { chatApi, settingsApi } from "@/lib/api";
 import { useProviders } from "@/hooks/useApi";
 import { useUIStore } from "@/stores/uiStore";
-import { Mic, RefreshCw, Save, Volume2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  CheckCircle2,
+  Download,
+  Loader2,
+  Mic,
+  RefreshCw,
+  Save,
+  Trash2,
+  Volume2,
+} from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+
+type LocalTtsCatalog = Awaited<ReturnType<typeof chatApi.localSpeechModels>>["data"];
+
+function LocalTtsManager({
+  voice,
+  onVoiceChange,
+}: {
+  voice: string;
+  onVoiceChange: (voice: string) => void;
+}) {
+  const addToast = useUIStore((state) => state.addToast);
+  const [catalog, setCatalog] = useState<LocalTtsCatalog | null>(null);
+  const [busy, setBusy] = useState<"load" | "unload" | null>(null);
+
+  const refresh = useCallback(async () => {
+    const response = await chatApi.localSpeechModels();
+    if (response.success && response.data) setCatalog(response.data);
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const status = catalog?.tts.status?.[0];
+  const model = catalog?.tts.models?.[0];
+  const loading = status?.state === "loading" || busy === "load";
+
+  useEffect(() => {
+    if (status?.state !== "loading") return;
+    const timer = window.setInterval(() => void refresh(), 800);
+    return () => window.clearInterval(timer);
+  }, [status?.state, refresh]);
+
+  const handleLoad = async () => {
+    setBusy("load");
+    try {
+      const response = await chatApi.loadLocalSpeechModel(model?.id);
+      if (!response.success) throw new Error(response.error || "Model load failed");
+      addToast("success", "Kokoro voice model is ready");
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Model load failed");
+    } finally {
+      setBusy(null);
+      void refresh();
+    }
+  };
+
+  const handleUnload = async () => {
+    setBusy("unload");
+    try {
+      await chatApi.unloadLocalSpeechModel(model?.id);
+      addToast("success", "Model unloaded from memory");
+    } finally {
+      setBusy(null);
+      void refresh();
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-white">{model?.label || "Kokoro 82M"}</p>
+          <p className="mt-0.5 text-[11px] leading-4 text-gray-500">
+            {model?.description || "Local neural TTS."}{" "}
+            {model ? `~${model.sizeMb} MB download.` : ""}
+          </p>
+        </div>
+        <span
+          className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${
+            status?.state === "ready"
+              ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+              : status?.state === "error"
+                ? "border-red-400/30 bg-red-400/10 text-red-200"
+                : "border-white/15 text-gray-400"
+          }`}
+        >
+          {status?.state === "ready" ? (
+            <CheckCircle2 className="h-3 w-3" />
+          ) : loading ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : null}
+          {loading ? "Loading" : status?.state === "ready" ? "Ready" : "Not loaded"}
+        </span>
+      </div>
+      {loading && (
+        <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+          <div
+            className="h-full rounded-full bg-cyan-400 transition-[width] duration-300"
+            style={{ width: `${Math.max(4, status?.loadProgress ?? 0)}%` }}
+          />
+        </div>
+      )}
+      {status?.state === "error" && status.lastError && (
+        <p className="text-[11px] text-red-300">{status.lastError}</p>
+      )}
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          onClick={() => void handleLoad()}
+          disabled={loading}
+        >
+          {loading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Download className="h-3.5 w-3.5" />
+          )}
+          {status?.state === "ready" ? "Reload" : "Download & load"}
+        </Button>
+        {status?.state === "ready" && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => void handleUnload()}
+            disabled={busy === "unload"}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Unload
+          </Button>
+        )}
+      </div>
+      <Select
+        label="Voice"
+        options={(catalog?.tts.voices || []).map((entry) => ({
+          value: entry.id,
+          label: `${entry.label} · ${entry.language} · ${entry.gender}`,
+        }))}
+        value={voice || model?.defaultVoice || "af_heart"}
+        onChange={onVoiceChange}
+      />
+    </div>
+  );
+}
 
 export type SpeechSettingsState = {
   tts: {
-    provider: "auto" | "system" | "elevenlabs" | "openai";
+    provider: "auto" | "system" | "elevenlabs" | "openai" | "local";
     providerId: string;
     model: string;
     voice: string;
@@ -57,7 +202,10 @@ function readSpeechSettings(value: unknown): SpeechSettingsState {
   const tts = speechRecord(root.tts);
   const stt = speechRecord(root.stt);
   const ttsProvider =
-    tts.provider === "system" || tts.provider === "elevenlabs" || tts.provider === "openai"
+    tts.provider === "system" ||
+    tts.provider === "elevenlabs" ||
+    tts.provider === "openai" ||
+    tts.provider === "local"
       ? tts.provider
       : "auto";
   const sttProvider =
@@ -181,6 +329,7 @@ export function SpeechSettingsSection() {
               label="Provider"
               options={[
                 { value: "auto", label: "Auto" },
+                { value: "local", label: "Local · Kokoro 82M (offline)" },
                 { value: "elevenlabs", label: "ElevenLabs" },
                 { value: "openai", label: "OpenAI" },
                 { value: "system", label: "System voice" },
@@ -196,15 +345,28 @@ export function SpeechSettingsSection() {
                 }))
               }
             />
-            <Select
-              label="Provider account"
-              options={providerOptions}
-              value={speech.tts.providerId}
-              onChange={(providerId) =>
-                setSpeech((current) => ({ ...current, tts: { ...current.tts, providerId } }))
-              }
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {speech.tts.provider === "local" ? (
+              <LocalTtsManager
+                voice={speech.tts.voice}
+                onVoiceChange={(voice) =>
+                  setSpeech((current) => ({ ...current, tts: { ...current.tts, voice } }))
+                }
+              />
+            ) : (
+              <Select
+                label="Provider account"
+                options={providerOptions}
+                value={speech.tts.providerId}
+                onChange={(providerId) =>
+                  setSpeech((current) => ({ ...current, tts: { ...current.tts, providerId } }))
+                }
+              />
+            )}
+            <div
+              className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${
+                speech.tts.provider === "local" ? "hidden" : ""
+              }`}
+            >
               <Input
                 label="Model"
                 placeholder="eleven_multilingual_v2"

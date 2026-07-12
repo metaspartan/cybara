@@ -1390,6 +1390,32 @@ describe("Speech API", () => {
     if (!data.tts.ready) expect(String(data.tts.error ?? "")).not.toBe(undefined);
   });
 
+  test("GET /api/speech/local/models lists Kokoro model, voices, and status", async () => {
+    const { status, data } = await api("GET", "/api/speech/local/models");
+    expect(status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(Array.isArray(data.tts.models)).toBe(true);
+    expect(data.tts.models.length).toBeGreaterThan(0);
+    expect(data.tts.voices.length).toBeGreaterThan(0);
+    expect(data.tts.status[0].state).toBeDefined();
+  });
+
+  test("POST /api/speech/local/unload reports success without a loaded model", async () => {
+    const { status, data } = await api("POST", "/api/speech/local/unload", {});
+    expect(status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(Array.isArray(data.status)).toBe(true);
+  });
+
+  test("GET /api/speech/status reports local Kokoro as ready when selected", async () => {
+    await api("PUT", "/api/speech/settings", { tts: { provider: "local" }, stt: {} });
+    const { status, data } = await api("GET", "/api/speech/status");
+    expect(status).toBe(200);
+    expect(data.tts.type).toBe("local");
+    expect(data.tts.ready).toBe(true);
+    await api("PUT", "/api/speech/settings", { tts: { provider: "auto" }, stt: {} });
+  });
+
   test("GET /api/speech/status reflects native transcription mode", async () => {
     await api("PUT", "/api/speech/settings", {
       tts: { provider: "auto" },

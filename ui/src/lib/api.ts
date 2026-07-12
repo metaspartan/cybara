@@ -1323,6 +1323,36 @@ export const chatApi = {
     }>(`/chat/sessions/${sessionId}/pending/${pendingMessageId}`, {
       method: "DELETE",
     }),
+  localSpeechModels: () =>
+    fetchApi<{
+      success: boolean;
+      tts: {
+        models: Array<{
+          id: string;
+          label: string;
+          description: string;
+          sizeMb: number;
+          defaultVoice: string;
+        }>;
+        voices: Array<{ id: string; label: string; language: string; gender: string }>;
+        status: Array<{
+          id: string;
+          state: "unloaded" | "loading" | "ready" | "error";
+          loadProgress: number | null;
+          lastError: string | null;
+        }>;
+      };
+    }>("/speech/local/models"),
+  loadLocalSpeechModel: (model?: string) =>
+    fetchApi<{ success: boolean; error?: string; status: unknown[] }>("/speech/local/load", {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    }),
+  unloadLocalSpeechModel: (model?: string) =>
+    fetchApi<{ success: boolean; unloaded: boolean; status: unknown[] }>("/speech/local/unload", {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    }),
   getSpeechStatus: () =>
     fetchApi<{
       success: boolean;

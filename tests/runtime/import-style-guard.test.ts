@@ -20,6 +20,9 @@ const DYNAMIC_IMPORT_ALLOWLIST = new Set([
   // @huggingface/transformers) and runtime-resolved model paths. Eagerly
   // importing these would break the server-only runtime and pull native deps.
   "src/core/memory/embeddings.ts",
+  // Lazy-loads the optional kokoro-js neural TTS runtime only when the local
+  // speech provider is selected, keeping it out of the base server bundle.
+  "src/core/local-speech.ts",
   // Lazy-loads the optional Playwright runtime resolved from packaged resource
   // dirs at runtime; static importing bundles a build-time path that breaks the
   // compiled sidecar at startup.

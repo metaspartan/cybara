@@ -4,6 +4,7 @@ import { join } from "path";
 import { config, type SpeechSettings, type SpeechTtsProviderPreference } from "./config";
 import { resolveCybaraHome } from "./cybara-home";
 import type { Provider } from "./database";
+import { resolveLocalTtsVoice, synthesizeLocalSpeech } from "./local-speech";
 import { providerManager, providers, resolveProviderType } from "./providers";
 
 export const SPEECH_TTS_PROVIDER_TYPES = ["elevenlabs", "openai", "openai-codex"] as const;
@@ -29,7 +30,7 @@ export interface SpeechSynthesisResult {
   text: string;
   voice?: string;
   format: string;
-  provider: "system" | SpeechTtsProviderType;
+  provider: "system" | "local" | SpeechTtsProviderType;
   providerId?: string;
   model?: string;
 }
@@ -331,6 +332,28 @@ export async function synthesizeSpeech(args: SpeechSynthesisArgs): Promise<Speec
 
   const providerPreference = args.provider?.trim() || settings.tts.provider;
   const fallbackToSystem = args.fallbackToSystem ?? settings.tts.fallbackToSystem;
+
+  if (providerPreference === "local") {
+    const stamp = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    const voice = resolveLocalTtsVoice(args.voice?.trim() || settings.tts.voice, args.model || "");
+    const outputPath = join(mediaDir(), `tts-local-${stamp}.wav`);
+    const local = await synthesizeLocalSpeech({
+      text,
+      voice,
+      speed: args.speed,
+      model: args.model || undefined,
+      outputPath,
+    });
+    return {
+      audioPath: local.audioPath,
+      text,
+      voice: local.voice,
+      format: "wav",
+      provider: "local",
+      model: local.model,
+    };
+  }
+
   if (providerPreference !== "system") {
     try {
       const resolved = resolveSpeechTtsProvider({

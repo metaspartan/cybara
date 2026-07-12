@@ -256,6 +256,9 @@ function copyTransformersRuntime(
     omitSourceMaps: true,
   });
 
+  copyPackageJson("kokoro-js", targetNodeModulesDir);
+  copyPackageDirectory("kokoro-js", "dist", targetNodeModulesDir, { omitSourceMaps: true });
+
   copyPackageJson("onnxruntime-common", targetNodeModulesDir);
   copyPackageDirectory("onnxruntime-common", "dist", targetNodeModulesDir, {
     omitSourceMaps: true,
@@ -443,7 +446,7 @@ export default instance.exports;
   }
 
   try {
-    await $`bun build src/index.ts --compile --target=${target.bunTarget} --outfile ${releasePath} --external electron --external @aws-sdk/client-s3 --external onnxruntime-node --external onnxruntime-web --external @huggingface/transformers --external playwright --external playwright-core`;
+    await $`bun build src/index.ts --compile --target=${target.bunTarget} --outfile ${releasePath} --external electron --external @aws-sdk/client-s3 --external onnxruntime-node --external onnxruntime-web --external @huggingface/transformers --external kokoro-js --external playwright --external playwright-core`;
   } finally {
     // Restore original wasm_loader.js
     if (originalWasmLoader) {

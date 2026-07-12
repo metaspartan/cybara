@@ -170,6 +170,13 @@ import {
   runSourceMigration,
   type SourceMigrationRequest,
 } from "../core/source-migration";
+import {
+  listLocalTtsModelStatus,
+  loadLocalTtsModel,
+  LOCAL_TTS_MODELS,
+  LOCAL_TTS_VOICES,
+  unloadLocalTtsModel,
+} from "../core/local-speech";
 import { resolveSpeechTtsProvider, synthesizeSpeech } from "../core/speech";
 import * as subagentRegistry from "../core/subagent-registry";
 import {
@@ -779,15 +786,26 @@ const routes: Record<string, RouteHandler> = {
       systemFallback: settings.tts.fallbackToSystem && process.platform === "darwin",
       error: null,
     };
-    try {
-      const resolved = resolveSpeechTtsProvider({ settings });
-      if (resolved) {
-        tts = { ...tts, ready: true, provider: resolved.provider.name, type: resolved.type };
-      } else {
-        tts.error = "No ElevenLabs or OpenAI provider with speech credentials";
+    if (settings.tts.provider === "local") {
+      const localStatus = listLocalTtsModelStatus()[0];
+      tts = {
+        ...tts,
+        ready: true,
+        provider: "Kokoro 82M (local)",
+        type: "local",
+        error: localStatus?.state === "error" ? localStatus.lastError : null,
+      };
+    } else {
+      try {
+        const resolved = resolveSpeechTtsProvider({ settings });
+        if (resolved) {
+          tts = { ...tts, ready: true, provider: resolved.provider.name, type: resolved.type };
+        } else {
+          tts.error = "No ElevenLabs or OpenAI provider with speech credentials";
+        }
+      } catch (error) {
+        tts.error = error instanceof Error ? error.message : "TTS provider resolution failed";
       }
-    } catch (error) {
-      tts.error = error instanceof Error ? error.message : "TTS provider resolution failed";
     }
     let stt: {
       ready: boolean;
@@ -833,6 +851,32 @@ const routes: Record<string, RouteHandler> = {
     success: true,
     speech: config.setSpeechSettings(body),
   }),
+  "GET /api/speech/local/models": () => ({
+    success: true,
+    tts: {
+      models: LOCAL_TTS_MODELS,
+      voices: LOCAL_TTS_VOICES,
+      status: listLocalTtsModelStatus(),
+    },
+  }),
+  "POST /api/speech/local/load": async (body) => {
+    const data = (body || {}) as { model?: string };
+    try {
+      await loadLocalTtsModel(data.model?.trim() || undefined);
+      return { success: true, status: listLocalTtsModelStatus() };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Model load failed",
+        status: listLocalTtsModelStatus(),
+      };
+    }
+  },
+  "POST /api/speech/local/unload": (body) => {
+    const data = (body || {}) as { model?: string };
+    const unloaded = unloadLocalTtsModel(data.model?.trim() || undefined);
+    return { success: true, unloaded, status: listLocalTtsModelStatus() };
+  },
   "GET /api/sandbox/status": () => getSandboxRuntimeStatus(),
   "PUT /api/config": async (body) => {
     const data = body as Record<string, unknown>;
