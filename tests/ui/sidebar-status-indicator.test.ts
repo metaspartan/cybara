@@ -65,7 +65,7 @@ describe("Sidebar status indicator behavior", () => {
     expect(css).toContain("width: 4rem");
     expect(css).toContain("height: 4rem");
     expect(css).toContain("background-size: 32rem 4rem");
-    expect(css).toContain("background-position: -23rem 0");
+    expect(css).toContain("background-position: -32rem 0");
     expect(css).not.toContain("background-size: 800% 100%");
   });
 
