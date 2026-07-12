@@ -5,6 +5,7 @@ import {
   ExternalLink,
   GitFork,
   Hash,
+  Link2,
   MoreHorizontal,
   Pencil,
   Pin,
@@ -73,8 +74,7 @@ export function ChatHeaderTitleMenu({
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
-  const [copiedSessionId, setCopiedSessionId] = useState(false);
-  const [copiedDebugInfo, setCopiedDebugInfo] = useState(false);
+  const [copied, setCopied] = useState<null | "id" | "debug" | "link" | "transcript">(null);
   const [menuPosition, setMenuPosition] = useState({ left: 0, top: 0 });
   const rootRef = useRef<HTMLDivElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -110,20 +110,13 @@ export function ChatHeaderTitleMenu({
     });
   }, []);
 
-  const flashCopy = useCallback((target: "id" | "debug") => {
+  const flashCopy = useCallback((target: "id" | "debug" | "link" | "transcript") => {
     if (copyTimerRef.current !== null) {
       window.clearTimeout(copyTimerRef.current);
     }
-    if (target === "id") {
-      setCopiedSessionId(true);
-      setCopiedDebugInfo(false);
-    } else {
-      setCopiedDebugInfo(true);
-      setCopiedSessionId(false);
-    }
+    setCopied(target);
     copyTimerRef.current = window.setTimeout(() => {
-      setCopiedSessionId(false);
-      setCopiedDebugInfo(false);
+      setCopied(null);
       copyTimerRef.current = null;
     }, 1500);
   }, []);
@@ -131,6 +124,31 @@ export function ChatHeaderTitleMenu({
   const handleCopySessionId = useCallback(async () => {
     if (await writeToClipboard(sessionId)) flashCopy("id");
   }, [sessionId, flashCopy]);
+
+  const handleCopyLink = useCallback(async () => {
+    const link = `${window.location.origin}/chat?session=${encodeURIComponent(sessionId)}`;
+    if (await writeToClipboard(link)) {
+      flashCopy("link");
+      setMenuOpen(false);
+    }
+  }, [sessionId, flashCopy]);
+
+  const handleCopyTranscript = useCallback(async () => {
+    const heading = currentSummary?.title?.trim() || derivedTitle || "Chat";
+    const lines = [`# ${heading}`, `Session: ${sessionId}`, ""];
+    for (const message of messages) {
+      if (message.role === "system") continue;
+      const role =
+        message.role === "user" ? "User" : message.role === "assistant" ? "Assistant" : "Tool";
+      const content = message.content.trim();
+      if (!content) continue;
+      lines.push(`## ${role}`, content, "");
+    }
+    if (await writeToClipboard(lines.join("\n").trim())) {
+      flashCopy("transcript");
+      setMenuOpen(false);
+    }
+  }, [sessionId, currentSummary, derivedTitle, messages, flashCopy]);
 
   const handleCopyDebugInfo = useCallback(async () => {
     const debugPayload = {
@@ -295,14 +313,14 @@ export function ChatHeaderTitleMenu({
           title="Copy session ID"
           className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-white/10"
         >
-          {copiedSessionId ? (
+          {copied === "id" ? (
             <Check className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
           ) : (
             <Hash className="w-3.5 h-3.5 shrink-0 text-gray-400" />
           )}
           <span className="flex min-w-0 flex-col">
             <span className="text-[10px] uppercase tracking-wide text-gray-500">
-              {copiedSessionId ? "Copied to clipboard" : "Session ID"}
+              {copied === "id" ? "Copied to clipboard" : "Session ID"}
             </span>
             <span className="truncate font-mono text-xs text-gray-200">{sessionId}</span>
           </span>
@@ -330,26 +348,39 @@ export function ChatHeaderTitleMenu({
         </button>
         <button
           type="button"
-          onClick={() => {
-            void handleCopySessionId();
-            setMenuOpen(false);
-          }}
+          onClick={() => void handleCopyLink()}
           className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-gray-100 transition-colors hover:bg-white/10"
         >
-          <Copy className="w-3.5 h-3.5 text-gray-400" />
-          Copy session ID
+          {copied === "link" ? (
+            <Check className="w-3.5 h-3.5 text-emerald-400" />
+          ) : (
+            <Link2 className="w-3.5 h-3.5 text-gray-400" />
+          )}
+          {copied === "link" ? "Link copied" : "Copy link to chat"}
+        </button>
+        <button
+          type="button"
+          onClick={() => void handleCopyTranscript()}
+          className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-gray-100 transition-colors hover:bg-white/10"
+        >
+          {copied === "transcript" ? (
+            <Check className="w-3.5 h-3.5 text-emerald-400" />
+          ) : (
+            <Copy className="w-3.5 h-3.5 text-gray-400" />
+          )}
+          {copied === "transcript" ? "Transcript copied" : "Copy transcript (Markdown)"}
         </button>
         <button
           type="button"
           onClick={() => void handleCopyDebugInfo()}
           className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-gray-100 transition-colors hover:bg-white/10"
         >
-          {copiedDebugInfo ? (
+          {copied === "debug" ? (
             <Check className="w-3.5 h-3.5 text-emerald-400" />
           ) : (
             <Bug className="w-3.5 h-3.5 text-gray-400" />
           )}
-          {copiedDebugInfo ? "Debug info copied" : "Copy debug info (JSON)"}
+          {copied === "debug" ? "Debug info copied" : "Copy debug info (JSON)"}
         </button>
         <button
           type="button"
