@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { EmbeddedTerminalPanel } from "@/components/ide/EmbeddedTerminalPanel";
 import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
 import { PageLayout } from "@/components/layout";
@@ -1150,6 +1151,7 @@ function SessionDiffPanel({
 }
 
 export function Chat() {
+  const queryClient = useQueryClient();
   const { t } = useI18n();
   const navigate = useNavigate();
   const { data: agents = [] } = useAgentSummaries();
@@ -1589,6 +1591,7 @@ export function Chat() {
         if (!response.success || !response.data?.golden) {
           throw new Error(response.error || "Failed to save golden test");
         }
+        void queryClient.invalidateQueries({ queryKey: ["agent-evals"] });
         useUIStore.getState().addToast("success", "Saved turn as a golden test");
       } catch (error) {
         useUIStore
@@ -1598,7 +1601,7 @@ export function Chat() {
         setSavingGoldenMessageIndex(null);
       }
     },
-    [savingGoldenMessageIndex, sessionId]
+    [queryClient, savingGoldenMessageIndex, sessionId]
   );
 
   useEffect(() => {

@@ -33,6 +33,7 @@ import {
 import { printArtifacts, printJourney } from "./cli-resource-commands";
 import { getFlagValue, hasFlag } from "./cli-args";
 import { rawUpdate } from "./cli-update";
+import { runEvalCommand, TUIEvalsCommand } from "./cli-evals";
 import { runSystemBackupCommand, TUIBackupsCommand } from "./cli-system-backup";
 import { TUIBackProvider, useTUIBack } from "./cli-tui-navigation";
 import { useTerminalScreen } from "./cli-tui-terminal";
@@ -3885,6 +3886,9 @@ function TUIContent({
       return <TUIRouterCommand />;
     case "usage":
       return <TUIUsageCommand fetchAPI={fetchAPI} />;
+    case "evals":
+    case "eval":
+      return <TUIEvalsCommand fetchAPI={fetchAPI} />;
     case "channels":
       return <TUIChannelsCommand fetchAPI={fetchAPI} />;
     case "memory":
@@ -4136,6 +4140,10 @@ async function main() {
       } else {
         await rawMetrics();
       }
+      break;
+    case "eval":
+    case "evals":
+      await runEvalCommand(args.slice(1), fetchAPI);
       break;
     case "agents":
       await rawAgents();

@@ -129,6 +129,30 @@ export interface SessionListPage {
   hasMore: boolean;
 }
 
+export interface MobileEvalGolden {
+  id: string;
+  name: string;
+  description: string | null;
+  tags: string[];
+  baseline: {
+    sessionId: string;
+    turnIndex: number;
+    provider: string | null;
+    model: string | null;
+    request: { userMessage: { content: string } };
+    structure: { tools: Array<{ name: string; status: string }> };
+  };
+}
+
+export interface MobileEvalRun {
+  id: string;
+  goldenId: string;
+  replaySessionId: string | null;
+  status: "running" | "passed" | "failed" | "error";
+  score: number | null;
+  error: string | null;
+}
+
 export interface GitBranchSummary {
   name: string;
   current: boolean;
@@ -2607,6 +2631,40 @@ export class CybaraMobileApi {
     return this.request(`/api/sessions/${encodeURIComponent(id)}/golden`, {
       method: "POST",
       body: JSON.stringify(payload),
+    });
+  }
+
+  evals(): Promise<{ goldens: MobileEvalGolden[]; runs: MobileEvalRun[] }> {
+    return this.request("/api/evals");
+  }
+
+  replayEval(id: string): Promise<{ success: boolean; run?: MobileEvalRun; error?: string }> {
+    return this.request(`/api/evals/goldens/${encodeURIComponent(id)}/replay`, {
+      method: "POST",
+      body: "{}",
+    });
+  }
+
+  deleteEval(id: string): Promise<{ success: boolean }> {
+    return this.request(`/api/evals/goldens/${encodeURIComponent(id)}`, { method: "DELETE" });
+  }
+
+  exportEvals(
+    format: "bundle" | "jsonl",
+    sanitize: boolean
+  ): Promise<{
+    filename: string;
+    mimeType: string;
+    content: string;
+    count: number;
+  }> {
+    return this.request(`/api/evals/export?format=${format}&sanitize=${sanitize ? "1" : "0"}`);
+  }
+
+  importEvals(bundle: unknown): Promise<{ success: boolean; count: number; error?: string }> {
+    return this.request("/api/evals/import", {
+      method: "POST",
+      body: JSON.stringify({ bundle }),
     });
   }
 

@@ -15,7 +15,11 @@ describe("agent eval UI wiring", () => {
     expect(app).toContain('path="/evals"');
     expect(sidebar).toContain('path: "/evals"');
     expect(page).toContain("Run suite");
+    expect(page).toContain("Trajectory JSONL");
+    expect(page).toContain("Import suite");
+    expect(page).toContain("Redact JSONL");
     expect(page).toContain("Structurally equivalent");
+    expect(chat).toContain('invalidateQueries({ queryKey: ["agent-evals"] })');
     expect(chat).toContain("Fork chat from this message");
     expect(chat).toContain("Save turn as golden test");
   });

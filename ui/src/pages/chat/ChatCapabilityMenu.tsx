@@ -1,4 +1,4 @@
-import { Puzzle, Wrench, Plug, Server, Bot } from "lucide-react";
+import { Bot, Command, Plug, Puzzle, Server, Wrench } from "lucide-react";
 import type { ChatCapabilityOption } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -8,6 +8,7 @@ const KIND_ICON: Record<string, typeof Wrench> = {
   mcp: Plug,
   agent: Bot,
   tool: Wrench,
+  command: Command,
 };
 
 const KIND_LABEL: Record<string, string> = {
@@ -16,6 +17,7 @@ const KIND_LABEL: Record<string, string> = {
   mcp: "MCP tool",
   agent: "Agent",
   tool: "Tool",
+  command: "Command",
 };
 
 interface ChatCapabilityMenuProps {
@@ -40,9 +42,7 @@ export function ChatCapabilityMenu({
       {loading ? (
         <div className="px-3 py-3 text-xs text-gray-400">Loading capabilities...</div>
       ) : options.length === 0 ? (
-        <div className="px-3 py-3 text-xs text-gray-400">
-          No matching skills, MCP servers, agents, or tools
-        </div>
+        <div className="px-3 py-3 text-xs text-gray-400">No matching commands or capabilities</div>
       ) : (
         options.map((option, index) => {
           const Icon = KIND_ICON[option.kind] ?? Wrench;

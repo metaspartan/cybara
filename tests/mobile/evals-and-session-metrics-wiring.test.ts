@@ -15,13 +15,28 @@ describe("mobile eval and session runtime parity", () => {
       join(root, "apps/mobile/src/screens/dashboardMetricsPanels.tsx"),
       "utf8"
     );
+    const evals = readFileSync(
+      join(root, "apps/mobile/src/screens/dashboardEvalsPanel.tsx"),
+      "utf8"
+    );
+    const settings = readFileSync(
+      join(root, "apps/mobile/src/screens/dashboardDetailPanels.tsx"),
+      "utf8"
+    );
 
     expect(api).toContain("forkSession(");
     expect(api).toContain("saveSessionGolden(");
+    expect(api).toContain("exportEvals(");
+    expect(api).toContain("importEvals(");
+    expect(api).toContain("replayEval(");
     expect(api).toContain('"/api/metrics/sessions"');
     expect(detail).toContain('label: "Fork chat"');
     expect(detail).toContain('label: "Save golden run"');
     expect(metrics).toContain('title="Chat runtime"');
     expect(metrics).toContain('label="Average TTFT"');
+    expect(evals).toContain("Copy redacted eval JSONL");
+    expect(evals).toContain("Copy replayable eval suite");
+    expect(evals).toContain("Import eval suite from clipboard");
+    expect(settings).toContain("<MobileEvalsPanel");
   });
 });

@@ -1,9 +1,10 @@
 import { mcpManager } from "../mcp";
+import { listPromptCommands } from "../prompt-commands";
 import { createEligibilityContext, filterEligibleSkills, loadAllSkills } from "../skills";
 import { tables } from "../database";
 import { toolSchemas } from "../tools";
 
-export type ChatCapabilityKind = "skill" | "mcp_server" | "mcp" | "agent" | "tool";
+export type ChatCapabilityKind = "skill" | "mcp_server" | "mcp" | "agent" | "tool" | "command";
 
 export interface ChatCapabilityOption {
   kind: ChatCapabilityKind;
@@ -136,6 +137,28 @@ export async function listChatCapabilities(workspaceDir?: string): Promise<ChatC
   return (await resolvedCapabilities(workspaceDir)).map(
     ({ instruction: _instruction, ...capability }) => capability
   );
+}
+
+const COMMAND_DESCRIPTIONS: Record<string, string> = {
+  goal: "Start, inspect, pause, resume, edit, complete, or clear a session goal",
+  loop: "Keep working toward a session goal until it is completed or blocked",
+  learn: "Create a reusable skill from a URL, local source, or recent conversation",
+  plan: "Create a concise implementation plan before making changes",
+  review: "Review code for correctness, security, and performance issues",
+  test: "Run the relevant tests and fix failures",
+  summarize: "Summarize the conversation and current work state",
+};
+
+export function listChatCommands(): ChatCapabilityOption[] {
+  return ["goal", "loop", ...listPromptCommands()]
+    .filter((command, index, commands) => commands.indexOf(command) === index)
+    .map((command) => ({
+      kind: "command",
+      token: `/${command}`,
+      name: command,
+      description: COMMAND_DESCRIPTIONS[command] || `Run the ${command} chat command`,
+      source: "Command",
+    }));
 }
 
 export async function resolveChatCapabilityMentions(

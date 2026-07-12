@@ -539,6 +539,20 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("useModelRouter: useModelRouter");
   });
 
+  test("native macOS exposes replayable eval management without web-backed views", () => {
+    const content = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
+    const client = readFileSync(join(MACOS_APP_DIR, "GatewayClient.swift"), "utf8");
+    const screen = readFileSync(join(MACOS_APP_DIR, "NativeEvalsScreen.swift"), "utf8");
+
+    expect(content).toContain("case evals");
+    expect(content).toContain("NativeEvalsScreen(client: client)");
+    expect(client).toContain("func exportEvals(format: String, sanitize: Bool)");
+    expect(client).toContain("func importEvals(_ bundleData: Data)");
+    expect(screen).toContain('Button("Suite Backup")');
+    expect(screen).toContain('Button("Redacted Trajectory JSONL")');
+    expect(screen).not.toContain("WKWebView");
+  });
+
   test("native provider plan editors respect automatic provider-managed plans", () => {
     const providersScreen = readFileSync(
       join(MACOS_APP_DIR, "NativeProvidersScreen.swift"),

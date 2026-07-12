@@ -833,6 +833,9 @@ export function routeRequiredScope(method: string, path: string): string | null 
     return "manage";
   }
   if (path.startsWith("/api/evals")) {
+    if (path === "/api/evals/export" || path === "/api/evals/import" || method === "DELETE") {
+      return "manage";
+    }
     if (method === "GET") return "read";
     return "chat";
   }

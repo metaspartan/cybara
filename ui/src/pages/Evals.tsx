@@ -6,6 +6,8 @@ import {
   AlertCircle,
   Bookmark,
   CheckCircle2,
+  Download,
+  FileJson,
   FlaskConical,
   GitFork,
   Loader2,
@@ -13,10 +15,11 @@ import {
   RotateCcw,
   ShieldCheck,
   Trash2,
+  Upload,
   X,
   XCircle,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type ChangeEvent, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 function EvalsExplainer() {
@@ -242,6 +245,9 @@ function GoldenRow({
 export function Evals() {
   const queryClient = useQueryClient();
   const [busyGoldenId, setBusyGoldenId] = useState<string | null>(null);
+  const [sanitizeExport, setSanitizeExport] = useState(true);
+  const [transferMessage, setTransferMessage] = useState<string | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
   const query = useQuery({
     queryKey: ["agent-evals"],
     queryFn: async () => {
@@ -285,6 +291,48 @@ export function Evals() {
     },
     onSettled: () => void queryClient.invalidateQueries({ queryKey: ["agent-evals"] }),
   });
+  const exportData = useMutation({
+    mutationFn: async (format: "bundle" | "jsonl") => {
+      const response = await evalsApi.export(format, format === "jsonl" && sanitizeExport);
+      if (!response.success || !response.data) {
+        throw new Error(response.error || "Export failed");
+      }
+      const blob = new Blob([response.data.content], { type: response.data.mimeType });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = response.data.filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      return response.data.count;
+    },
+    onSuccess: (count) =>
+      setTransferMessage(`Exported ${count} golden test${count === 1 ? "" : "s"}`),
+    onError: (error) =>
+      setTransferMessage(error instanceof Error ? error.message : "Export failed"),
+  });
+  const importData = useMutation({
+    mutationFn: async (file: File) => {
+      if (file.size > 25_000_000) throw new Error("Eval suite exceeds 25 MB");
+      const bundle = JSON.parse(await file.text()) as unknown;
+      const response = await evalsApi.import(bundle);
+      if (!response.success || !response.data?.success) {
+        throw new Error(response.error || response.data?.error || "Import failed");
+      }
+      return response.data.count;
+    },
+    onSuccess: (count) => {
+      setTransferMessage(`Imported ${count} golden test${count === 1 ? "" : "s"}`);
+      void queryClient.invalidateQueries({ queryKey: ["agent-evals"] });
+    },
+    onError: (error) =>
+      setTransferMessage(error instanceof Error ? error.message : "Import failed"),
+  });
+  const handleImport = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (file) importData.mutate(file);
+  };
   const goldens = query.data?.goldens ?? [];
   const insights = useMemo(() => {
     let passing = 0;
@@ -320,6 +368,81 @@ export function Evals() {
       }
     >
       <EvalsExplainer />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.025] px-3 py-2.5">
+        <div className="min-w-0">
+          <p className="text-[13px] font-medium text-gray-100">Portable eval data</p>
+          <p className="mt-0.5 text-[11px] text-gray-500">
+            Suite backups can be imported later. JSONL is ready for analysis and training pipelines.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={sanitizeExport}
+            onClick={() => setSanitizeExport((value) => !value)}
+            className="inline-flex h-8 items-center gap-2 rounded-md px-2 text-[11px] text-gray-300 hover:bg-white/[0.05]"
+            title="Remove prompt content, workspace paths, tool arguments, and tool results from JSONL"
+          >
+            <span
+              className={cn(
+                "relative h-4 w-7 rounded-full transition-colors",
+                sanitizeExport ? "bg-indigo-500" : "bg-white/15"
+              )}
+            >
+              <span
+                className={cn(
+                  "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-transform",
+                  sanitizeExport ? "translate-x-3.5" : "translate-x-0.5"
+                )}
+              />
+            </span>
+            Redact JSONL
+          </button>
+          <button
+            type="button"
+            onClick={() => exportData.mutate("bundle")}
+            disabled={goldens.length === 0 || exportData.isPending}
+            title="Full replayable backup. May contain prompts, paths, and tool output."
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-[11px] text-gray-200 hover:bg-white/[0.06] disabled:opacity-40"
+          >
+            <FileJson className="h-3.5 w-3.5" />
+            Suite JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => exportData.mutate("jsonl")}
+            disabled={goldens.length === 0 || exportData.isPending}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-[11px] text-gray-200 hover:bg-white/[0.06] disabled:opacity-40"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Trajectory JSONL
+          </button>
+          <button
+            type="button"
+            onClick={() => importInputRef.current?.click()}
+            disabled={importData.isPending}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-white/10 px-2.5 text-[11px] text-gray-200 hover:bg-white/[0.06] disabled:opacity-40"
+          >
+            {importData.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Upload className="h-3.5 w-3.5" />
+            )}
+            Import suite
+          </button>
+          <input
+            ref={importInputRef}
+            type="file"
+            accept="application/json,.json"
+            onChange={handleImport}
+            className="hidden"
+          />
+        </div>
+        {transferMessage && (
+          <p className="w-full text-right text-[11px] text-gray-400">{transferMessage}</p>
+        )}
+      </div>
       {goldens.length > 0 && (
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[

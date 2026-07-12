@@ -34,6 +34,10 @@ export function useChatCapabilityPicker({
 }: UseChatCapabilityPickerOptions) {
   const [cursor, setCursor] = useState<number | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const activeMention = useMemo(
+    () => (cursor === null ? null : findActiveCapabilityMention(input, cursor)),
+    [cursor, input]
+  );
   const query = useQuery({
     queryKey: ["chat-capabilities", workspaceDir],
     queryFn: async () => {
@@ -43,14 +47,14 @@ export function useChatCapabilityPicker({
       }
       return response.data.capabilities;
     },
-    staleTime: 60_000,
+    enabled: activeMention !== null,
+    staleTime: 300_000,
   });
-  const activeMention = useMemo(
-    () => (cursor === null ? null : findActiveCapabilityMention(input, cursor)),
-    [cursor, input]
-  );
   const options = useMemo(
-    () => (activeMention ? filterChatCapabilities(query.data || [], activeMention.query) : []),
+    () =>
+      activeMention
+        ? filterChatCapabilities(query.data || [], activeMention.query, 10, activeMention.trigger)
+        : [],
     [activeMention, query.data]
   );
 

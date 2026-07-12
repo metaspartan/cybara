@@ -166,6 +166,9 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("POST", "/api/sessions/session-1/fork")).toBe("chat");
     expect(routeRequiredScope("POST", "/api/sessions/session-1/golden")).toBe("chat");
     expect(routeRequiredScope("GET", "/api/evals")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/evals/export")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/evals/import")).toBe("manage");
+    expect(routeRequiredScope("DELETE", "/api/evals/goldens/example")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/evals/run")).toBe("chat");
     expect(routeRequiredScope("GET", "/api/metrics/sessions")).toBeNull();
     expect(routeRequiredScope("DELETE", "/api/sessions/session-1/artifacts/file.md")).toBe("chat");

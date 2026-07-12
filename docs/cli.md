@@ -39,6 +39,7 @@ cybara tui                # Searchable terminal dashboard menu
 cybara tui status         # Gateway health panel
 cybara tui metrics        # Token/tool/API metrics panel
 cybara tui usage          # Automatic provider coding-plan windows
+cybara tui evals          # Golden trajectories and regression status
 cybara tui providers      # Provider and coding-plan usage panel
 cybara tui router         # Model router state and route windows
 cybara tui channels       # Channel state, access policy, and default routing
@@ -116,6 +117,22 @@ cybara artifacts --json   # Emit artifact data for scripts
 cybara journey            # Show learned skills and memory activity
 cybara journey --json     # Emit journey data for scripts
 ```
+
+### Agent Evals
+
+```bash
+cybara evals list [--json]                  # List golden tests and latest results
+cybara evals save <session-id> [--turn N]   # Save a completed turn
+cybara evals replay <golden-id>             # Replay one golden trajectory
+cybara evals run                            # Run the complete suite
+cybara evals export --format jsonl --sanitize --output evals.jsonl
+cybara evals export --output eval-suite.json
+cybara evals import eval-suite.json
+cybara evals delete <golden-id> --yes
+```
+
+Suite JSON is a replayable backup and can include prompts, workspace paths, and tool output. Use
+sanitized JSONL for analysis or training data when those details should be removed.
 
 `cybara update` verifies the downloaded binary against its published SHA256 sidecar before
 installing; it refuses an unverified binary unless you pass `--force`. You can also pin a specific

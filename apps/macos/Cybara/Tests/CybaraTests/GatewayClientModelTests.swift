@@ -4,6 +4,16 @@ import XCTest
 
 final class GatewayClientModelTests: XCTestCase {
 
+    func testEvalModelsDecodeSummaryAndLatestRun() throws {
+        let data = Data(
+            #"{"goldens":[{"id":"golden-1","name":"Read version","description":null,"tags":["repo"],"baseline":{"sessionId":"session-1","turnIndex":0,"provider":"openai","model":"gpt-5.4-mini","request":{"userMessage":{"content":"Read package.json"},"workspaceDir":"/tmp/repo"},"structure":{"tools":[{"name":"read","status":"completed"}]}}}],"runs":[{"id":"run-1","goldenId":"golden-1","replaySessionId":"replay-1","status":"passed","score":100,"error":null}]}"#.utf8
+        )
+        let response = try JSONDecoder().decode(GatewayEvalsResponse.self, from: data)
+        XCTAssertEqual(response.goldens.first?.baseline.request.userMessage.content, "Read package.json")
+        XCTAssertEqual(response.goldens.first?.baseline.structure.tools.first?.name, "read")
+        XCTAssertEqual(response.runs.first?.score, 100)
+    }
+
     func testSessionForkAndRuntimeMetricsDecodeGatewayResponses() throws {
         let forkData = Data(
             #"{"success":true,"fork":{"sessionId":"fork-1","sourceSessionId":"source-1","agentId":"agent-1","messageCount":3,"workspaceDir":"/tmp/project","title":"Forked chat"}}"#.utf8

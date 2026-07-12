@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
+import { createDecipheriv } from "crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { createServer } from "net";
 import { tmpdir } from "os";
@@ -320,6 +321,17 @@ function getRawProviderRecord(id: string): {
   }
 }
 
+function openRawProviderApiKey(id: string, value: string): string {
+  const prefix = "cybara-secret:v1:";
+  if (!value.startsWith(prefix)) return value;
+  const key = readFileSync(join(testHome, ".cybara", "secure", "storage.key"));
+  const payload = Buffer.from(value.slice(prefix.length), "base64url");
+  const decipher = createDecipheriv("aes-256-gcm", key, payload.subarray(0, 12));
+  decipher.setAAD(Buffer.from(`provider:${id}:api_key`, "utf8"));
+  decipher.setAuthTag(payload.subarray(12, 28));
+  return Buffer.concat([decipher.update(payload.subarray(28)), decipher.final()]).toString("utf8");
+}
+
 beforeAll(async () => {
   testHome = mkdtempSync(join(tmpdir(), "cybara-routes-test-home-"));
   const port = await getFreePort();
@@ -331,6 +343,7 @@ beforeAll(async () => {
       ...process.env,
       HOME: testHome,
       USERPROFILE: testHome,
+      CYBARA_HOME: "",
       PORT: String(port),
     },
     stdout: "ignore",
@@ -1020,6 +1033,35 @@ describe("Agents API", () => {
   });
 });
 
+describe("Agent Evals API", () => {
+  test("exports portable suites and rejects redacted imports", async () => {
+    const exported = await api("GET", "/api/evals/export?format=bundle&sanitize=0");
+    expect(exported.status).toBe(200);
+    expect(exported.data?.filename).toEndWith(".json");
+    const bundle = JSON.parse(exported.data?.content || "null") as {
+      format?: string;
+      version?: number;
+      goldens?: unknown[];
+    };
+    expect(bundle.format).toBe("cybara-agent-eval-suite");
+    expect(bundle.version).toBe(1);
+    expect(Array.isArray(bundle.goldens)).toBe(true);
+
+    const imported = await api("POST", "/api/evals/import", {
+      bundle: { ...bundle, goldens: [] },
+    });
+    expect(imported.status).toBe(200);
+    expect(imported.data?.count).toBe(0);
+
+    const rejected = await api("POST", "/api/evals/import", {
+      bundle: { ...bundle, sanitized: true, goldens: [] },
+    });
+    expect(rejected.status).toBe(200);
+    expect(rejected.data?.success).toBe(false);
+    expect(rejected.data?.error).toContain("not replayable");
+  });
+});
+
 describe("Provider Plan API", () => {
   test("GET /api/provider-plans/availability returns cheap usage-nav metadata", async () => {
     const { status, data } = await api("GET", "/api/provider-plans/availability");
@@ -1115,7 +1157,9 @@ describe("Providers API", () => {
 
     const before = getRawProviderRecord(providerId);
     expect(before).not.toBeNull();
-    expect(before?.api_key).toContain("sk-preserve-");
+    expect(before?.api_key).toStartWith("cybara-secret:v1:");
+    const originalKey = openRawProviderApiKey(providerId, before?.api_key || "");
+    expect(originalKey).toStartWith("sk-preserve-");
 
     const update = await api("PUT", `/api/providers/${providerId}`, {
       name: `preserve-openai-key-updated-${Date.now()}`,
@@ -1127,7 +1171,8 @@ describe("Providers API", () => {
     const after = getRawProviderRecord(providerId);
     expect(after).not.toBeNull();
     expect(after?.name).toContain("preserve-openai-key-updated-");
-    expect(after?.api_key).toBe(before?.api_key);
+    expect(after?.api_key).toStartWith("cybara-secret:v1:");
+    expect(openRawProviderApiKey(providerId, after?.api_key || "")).toBe(originalKey);
 
     await api("DELETE", `/api/providers/${providerId}`);
   });

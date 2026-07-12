@@ -51,7 +51,7 @@ import {
   securityManager,
   whatsappAdapter,
 } from "../core/channels";
-import { listChatCapabilities } from "../core/chat/capability-mentions";
+import { listChatCapabilities, listChatCommands } from "../core/chat/capability-mentions";
 import {
   createCheckpoint,
   deleteCheckpoint,
@@ -66,6 +66,7 @@ import { createLogger } from "../core/logger";
 import {
   buildTrajectoryStructure,
   compareTrajectoryStructures,
+  createEvalSuiteBundle,
   createEvalRun,
   deleteGolden,
   ensureSessionTrajectory,
@@ -73,11 +74,15 @@ import {
   forkSession,
   forkSessionFromMessages,
   getGolden,
+  importGoldens,
   listEvalRuns,
   listGoldens,
   listSessionTrajectories,
+  evalSuiteJsonl,
+  parseEvalSuiteBundle,
   registerEvalReplayExecutor,
   saveGolden,
+  summarizeGolden,
   type AgentEvalRun,
   type EvalReplayOptions,
 } from "../core/agent-eval";
@@ -378,10 +383,46 @@ const routes: Record<string, RouteHandler> = {
     runSourceMigration({ ...((body || {}) as SourceMigrationRequest), dryRun: true }),
   "POST /api/migrations/run": async (body) =>
     runSourceMigration({ ...((body || {}) as SourceMigrationRequest), dryRun: false }),
-  "GET /api/evals": () => ({ goldens: listGoldens(), runs: listEvalRuns() }),
+  "GET /api/evals": () => ({
+    goldens: listGoldens().map(summarizeGolden),
+    runs: listEvalRuns(),
+  }),
   "GET /api/evals/runs": (_body, params) => ({
     runs: listEvalRuns(parseBoundedQueryNumber(params?.limit, 1, 500) ?? 100),
   }),
+  "GET /api/evals/export": (_body, params) => {
+    const goldens = listGoldens();
+    const sanitized = params?.sanitize === "true" || params?.sanitize === "1";
+    const date = new Date().toISOString().slice(0, 10);
+    if (params?.format === "jsonl") {
+      return {
+        filename: `cybara-eval-trajectories-${date}.jsonl`,
+        mimeType: "application/x-ndjson",
+        content: evalSuiteJsonl(goldens, { sanitize: sanitized }),
+        count: goldens.length,
+      };
+    }
+    return {
+      filename: `cybara-eval-suite-${date}.json`,
+      mimeType: "application/json",
+      content: JSON.stringify(createEvalSuiteBundle(goldens, { sanitize: sanitized }), null, 2),
+      count: goldens.length,
+    };
+  },
+  "POST /api/evals/import": (body) => {
+    const data = (body || {}) as { bundle?: unknown };
+    try {
+      const imported = importGoldens(parseEvalSuiteBundle(data.bundle));
+      return { success: true, imported, count: imported.length };
+    } catch (error) {
+      return {
+        success: false,
+        imported: [],
+        count: 0,
+        error: error instanceof Error ? error.message : "Invalid eval suite",
+      };
+    }
+  },
   "POST /api/evals/goldens": async (body) => {
     const data = (body || {}) as {
       sessionId?: string;
@@ -1889,7 +1930,10 @@ const routes: Record<string, RouteHandler> = {
     return await handleChat({ ...data, modelOverride });
   },
   "GET /api/chat/capabilities": async (_body, params) => ({
-    capabilities: await listChatCapabilities(normalizeOptionalString(params?.workspaceDir)),
+    capabilities: [
+      ...(await listChatCapabilities(normalizeOptionalString(params?.workspaceDir))),
+      ...listChatCommands(),
+    ],
   }),
   "POST /api/speech/dictate": async (body) => {
     const data = body as {

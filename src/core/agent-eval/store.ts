@@ -1,5 +1,6 @@
 import db from "../database";
 import type { AgentEvalRun, AgentGolden, AgentTrajectory, StructuralComparison } from "./types";
+import type { ParsedEvalSuiteGolden } from "./portable";
 
 interface TrajectoryRow {
   id: string;
@@ -171,6 +172,30 @@ export function listGoldens(): AgentGolden[] {
   return (
     db.prepare("SELECT * FROM agent_goldens ORDER BY updated_at DESC").all() as GoldenRow[]
   ).map(goldenFromRow);
+}
+
+export function importGoldens(entries: ParsedEvalSuiteGolden[]): AgentGolden[] {
+  const imported: AgentGolden[] = [];
+  db.transaction(() => {
+    for (const entry of entries) {
+      const importId = crypto.randomUUID();
+      const trajectory = upsertTrajectory({
+        ...entry.baseline,
+        id: `trajectory_import_${importId.replaceAll("-", "")}`,
+        sessionId: `eval-import-${importId}`,
+        createdAt: new Date().toISOString(),
+      });
+      imported.push(
+        saveGolden({
+          trajectory,
+          name: entry.name,
+          description: entry.description,
+          tags: entry.tags,
+        })
+      );
+    }
+  })();
+  return imported;
 }
 
 export function deleteGolden(id: string): boolean {

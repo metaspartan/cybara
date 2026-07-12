@@ -1001,6 +1001,37 @@ struct GatewayClient: Sendable {
         return try JSONDecoder().decode(GatewayGoldenSaveResponse.self, from: data)
     }
 
+    func evals() async throws -> GatewayEvalsResponse {
+        try await get("api/evals", as: GatewayEvalsResponse.self)
+    }
+
+    func replayEval(_ id: String) async throws -> GatewayEvalReplayResponse {
+        let data = try await request("api/evals/goldens/\(id)/replay", method: "POST", body: Data("{}".utf8))
+        return try JSONDecoder().decode(GatewayEvalReplayResponse.self, from: data)
+    }
+
+    func runEvalSuite() async throws {
+        _ = try await request("api/evals/run", method: "POST", body: Data("{}".utf8))
+    }
+
+    func deleteEval(_ id: String) async throws {
+        _ = try await request("api/evals/goldens/\(id)", method: "DELETE")
+    }
+
+    func exportEvals(format: String, sanitize: Bool) async throws -> GatewayEvalExportResponse {
+        try await get("api/evals/export", as: GatewayEvalExportResponse.self, queryItems: [
+            URLQueryItem(name: "format", value: format),
+            URLQueryItem(name: "sanitize", value: sanitize ? "1" : "0"),
+        ])
+    }
+
+    func importEvals(_ bundleData: Data) async throws -> GatewayEvalImportResponse {
+        let bundle = try JSONSerialization.jsonObject(with: bundleData)
+        let body = try JSONSerialization.data(withJSONObject: ["bundle": bundle])
+        let data = try await request("api/evals/import", method: "POST", body: body)
+        return try JSONDecoder().decode(GatewayEvalImportResponse.self, from: data)
+    }
+
     func updateSessionWorkspace(
         _ id: String,
         workspaceDir: String?

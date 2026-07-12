@@ -7,6 +7,7 @@ const cliSource = readFileSync(join(root, "src", "cli.tsx"), "utf8");
 const cliChatSource = readFileSync(join(root, "src", "cli-chat.ts"), "utf8");
 const cliTuiMenuSource = readFileSync(join(root, "src", "cli-tui-menu.tsx"), "utf8");
 const cliTuiPanelsSource = readFileSync(join(root, "src", "cli-tui-panels.tsx"), "utf8");
+const cliEvalsSource = readFileSync(join(root, "src", "cli-evals.tsx"), "utf8");
 const cliTuiOperationsPanelsSource = readFileSync(
   join(root, "src", "cli-tui-operations-panels.tsx"),
   "utf8"
@@ -38,6 +39,7 @@ const tuiPanels = [
   },
   { command: "router", component: "TUIRouterCommand", label: "Model Router" },
   { command: "usage", component: "TUIUsageCommand", label: "Usage" },
+  { command: "evals", component: "TUIEvalsCommand", label: "Agent Evals" },
   { command: "channels", component: "TUIChannelsCommand", label: "Channels" },
   { command: "memory", component: "TUIMemoryCommand", label: "Memory" },
   { command: "tools", component: "TUIToolsCommand", label: "Tools" },
@@ -103,6 +105,7 @@ describe("CLI TUI source wiring", () => {
     for (const route of [
       "/api/providers",
       "/api/provider-plans/status",
+      "/api/evals",
       "/api/router/status",
       "/api/sessions",
       "/api/logs/system?limit=12",
@@ -122,7 +125,9 @@ describe("CLI TUI source wiring", () => {
       "/api/artifacts",
       "/api/journey",
     ]) {
-      expect(cliSource + cliTuiPanelsSource + cliTuiOperationsPanelsSource).toContain(route);
+      expect(
+        cliSource + cliTuiPanelsSource + cliTuiOperationsPanelsSource + cliEvalsSource
+      ).toContain(route);
     }
   });
 

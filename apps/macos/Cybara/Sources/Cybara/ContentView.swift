@@ -67,6 +67,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
     case ide
     case sessions
     case usage
+    case evals
     case skills
     case tools
     case terminal
@@ -99,6 +100,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .ide: return "nav.ide"
         case .sessions: return "nav.sessions"
         case .usage: return "nav.usage"
+        case .evals: return "nav.evals"
         case .skills: return "nav.skills"
         case .tools: return "nav.tools"
         case .terminal: return "nav.terminal"
@@ -127,6 +129,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .ide: return "folder"
         case .sessions: return "bubble.left.and.text.bubble.right"
         case .usage: return "gauge.with.dots.needle.67percent"
+        case .evals: return "flask"
         case .skills: return "wand.and.stars"
         case .tools: return "wrench.and.screwdriver"
         case .terminal: return "terminal"
@@ -250,7 +253,7 @@ struct ContentView: View {
                     }
                 }
                 Section(NativeI18n.t("nav.developer")) {
-                    ForEach([NativeDestination.mcp, .lsp, .ide, .sessions, .usage, .skills, .tools, .terminal]) { item in
+                    ForEach([NativeDestination.mcp, .lsp, .ide, .sessions, .usage, .evals, .skills, .tools, .terminal]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -311,6 +314,8 @@ struct ContentView: View {
                 }
             case .usage:
                 UsageScreen(client: client)
+            case .evals:
+                NativeEvalsScreen(client: client)
             case .tools:
                 ToolsScreen(client: client)
             case .terminal:

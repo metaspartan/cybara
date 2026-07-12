@@ -28,6 +28,9 @@ const capabilities: ChatCapabilityOption[] = [
 const capabilityMenuPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatCapabilityMenu.tsx", import.meta.url)
 );
+const capabilityPickerPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/useChatCapabilityPicker.ts", import.meta.url)
+);
 
 describe("chat capability mention composer", () => {
   test("detects an active mention at the cursor", () => {
@@ -35,6 +38,7 @@ describe("chat capability mention composer", () => {
       start: 11,
       end: 17,
       query: "model",
+      trigger: "@",
     });
     expect(findActiveCapabilityMention("email@example.com", 17)).toBeNull();
     expect(findActiveCapabilityMention("@model finished", 15)).toBeNull();
@@ -45,6 +49,7 @@ describe("chat capability mention composer", () => {
       start: 4,
       end: 18,
       query: "robinhood/get",
+      trigger: "@",
     });
     expect(filterChatCapabilities(capabilities, "robinhood/get")).toEqual([capabilities[1]]);
   });
@@ -65,8 +70,35 @@ describe("chat capability mention composer", () => {
   });
 
   test("bounds malformed cursor positions", () => {
-    expect(findActiveCapabilityMention("@mod", 999)).toEqual({ start: 0, end: 4, query: "mod" });
+    expect(findActiveCapabilityMention("@mod", 999)).toEqual({
+      start: 0,
+      end: 4,
+      query: "mod",
+      trigger: "@",
+    });
     expect(findActiveCapabilityMention("hello", -4)).toBeNull();
+  });
+
+  test("discovers slash commands only at the start of the composer", () => {
+    const commands: ChatCapabilityOption[] = [
+      {
+        kind: "command",
+        token: "/loop",
+        name: "loop",
+        description: "Keep working toward a goal",
+        source: "Command",
+      },
+    ];
+    expect(findActiveCapabilityMention("  /lo", 5)).toEqual({
+      start: 2,
+      end: 5,
+      query: "lo",
+      trigger: "/",
+    });
+    expect(findActiveCapabilityMention("Please /lo", 10)).toBeNull();
+    expect(filterChatCapabilities([...capabilities, ...commands], "lo", 10, "/")).toEqual([
+      commands[0],
+    ]);
   });
 
   test("uses shared theme surfaces and mapped interaction colors", () => {
@@ -75,5 +107,11 @@ describe("chat capability mention composer", () => {
     expect(source).toContain("bg-[var(--surface-panel,#15161c)]");
     expect(source).toContain('index === selectedIndex ? "bg-white/10" : "hover:bg-white/5"');
     expect(source).not.toContain("bg-[#15161c]");
+  });
+
+  test("loads the capability catalog only for active mentions or commands", () => {
+    const source = readFileSync(capabilityPickerPath, "utf8");
+    expect(source).toContain("enabled: activeMention !== null");
+    expect(source).not.toContain("enabled: cursor !== null");
   });
 });

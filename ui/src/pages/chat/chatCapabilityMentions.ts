@@ -4,6 +4,7 @@ export interface ActiveCapabilityMention {
   start: number;
   end: number;
   query: string;
+  trigger: "@" | "/";
 }
 
 export function findActiveCapabilityMention(
@@ -12,19 +13,32 @@ export function findActiveCapabilityMention(
 ): ActiveCapabilityMention | null {
   const boundedCursor = Math.max(0, Math.min(cursor, value.length));
   const prefix = value.slice(0, boundedCursor);
-  const match = prefix.match(/(^|\s)@([a-zA-Z0-9._/-]*)$/);
-  if (!match || match.index === undefined) return null;
-  const start = match.index + match[1].length;
-  return { start, end: boundedCursor, query: match[2].toLowerCase() };
+  const mentionMatch = prefix.match(/(^|\s)@([a-zA-Z0-9._/-]*)$/);
+  if (mentionMatch?.index !== undefined) {
+    const start = mentionMatch.index + mentionMatch[1].length;
+    return { start, end: boundedCursor, query: mentionMatch[2].toLowerCase(), trigger: "@" };
+  }
+  const commandMatch = prefix.match(/^(\s*)\/([a-zA-Z0-9_-]*)$/);
+  if (commandMatch) {
+    return {
+      start: commandMatch[1].length,
+      end: boundedCursor,
+      query: commandMatch[2].toLowerCase(),
+      trigger: "/",
+    };
+  }
+  return null;
 }
 
 export function filterChatCapabilities(
   options: ChatCapabilityOption[],
   query: string,
-  limit = 10
+  limit = 10,
+  trigger: "@" | "/" = "@"
 ): ChatCapabilityOption[] {
   const normalized = query.trim().toLowerCase();
   return options
+    .filter((option) => option.token.startsWith(trigger))
     .map((option) => {
       const token = option.token.slice(1).toLowerCase();
       const name = option.name.toLowerCase();
@@ -36,6 +50,7 @@ export function filterChatCapabilities(
         mcp: 30,
         agent: 20,
         tool: 10,
+        command: 60,
       };
       const score = !normalized
         ? (kindRank[option.kind] ?? 5)

@@ -1223,7 +1223,7 @@ export const skillsApi = {
 };
 
 export interface ChatCapabilityOption {
-  kind: "skill" | "mcp_server" | "mcp" | "agent" | "tool";
+  kind: "skill" | "mcp_server" | "mcp" | "agent" | "tool" | "command";
   token: string;
   name: string;
   description: string;
@@ -1616,6 +1616,18 @@ export interface AgentEvalRun {
 
 export const evalsApi = {
   list: () => fetchApi<{ goldens: AgentGolden[]; runs: AgentEvalRun[] }>("/evals"),
+  export: (format: "bundle" | "jsonl", sanitize: boolean) =>
+    fetchApi<{
+      filename: string;
+      mimeType: string;
+      content: string;
+      count: number;
+    }>(`/evals/export?format=${format}&sanitize=${sanitize ? "1" : "0"}`),
+  import: (bundle: unknown) =>
+    fetchApi<{ success: boolean; imported: AgentGolden[]; count: number; error?: string }>(
+      "/evals/import",
+      { method: "POST", body: JSON.stringify({ bundle }) }
+    ),
   replay: (goldenId: string, payload?: { agentId?: string; modelOverride?: string }) =>
     fetchApi<{ success: boolean; run: AgentEvalRun; error?: string }>(
       `/evals/goldens/${goldenId}/replay`,

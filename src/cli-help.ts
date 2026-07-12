@@ -26,6 +26,13 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    gateway restart         Restart the gateway");
   console.log("    gateway start           Start the local gateway (background)");
   console.log("  metrics     Show token usage and metrics");
+  console.log("  evals       Replayable agent regression tests");
+  console.log("    evals list [--json]                  List golden tests and latest status");
+  console.log("    evals save <session-id> [--turn N]   Save a completed turn as a golden");
+  console.log("    evals replay <golden-id>             Replay one golden test");
+  console.log("    evals run                            Run the full golden suite");
+  console.log("    evals export [--format jsonl] [--sanitize] [--output PATH]");
+  console.log("    evals import <path>                  Import a replayable suite backup");
   console.log("  doctor      Run environment diagnostics");
   console.log("  update      Download and install the latest CLI release (verifies SHA256)");
   console.log(

@@ -19,6 +19,7 @@ export type MainMenuAction =
   | "providers"
   | "router"
   | "usage"
+  | "evals"
   | "channels"
   | "memory"
   | "tools"
@@ -100,6 +101,14 @@ export const MAIN_TUI_MENU_ITEMS: MenuItem[] = [
     group: "Workflows",
     kind: "panel",
     detail: "Active and completed delegated agent runs",
+  },
+  {
+    label: "Agent Evals",
+    action: "evals",
+    shortcut: "3",
+    group: "Workflows",
+    kind: "panel",
+    detail: "Golden trajectories and structural regression status",
   },
   {
     label: "Artifacts",

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   applyChatCapabilityMentions,
   listChatCapabilities,
+  listChatCommands,
   normalizeCapabilityAlias,
   resolveChatCapabilityMentions,
 } from "../../src/core/chat/capability-mentions";
@@ -30,6 +31,14 @@ describe("chat capability mentions", () => {
     );
     expect(execTool).toBeDefined();
     expect(execTool?.source).toBe("Tool");
+  });
+
+  test("lists goal, loop, and prompt commands for composer discovery", () => {
+    const commands = listChatCommands();
+    expect(commands.map((command) => command.token)).toEqual(
+      expect.arrayContaining(["/goal", "/loop", "/learn", "/plan", "/review", "/test"])
+    );
+    expect(commands.every((command) => command.kind === "command")).toBe(true);
   });
 
   test("resolves a built-in tool mention to its instruction", async () => {
