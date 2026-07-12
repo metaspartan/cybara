@@ -488,8 +488,7 @@ describe("Setup & Info API", () => {
     const afterFirstCount = Array.isArray(afterFirstCompleteAgents.data)
       ? afterFirstCompleteAgents.data.length
       : 0;
-    expect(afterFirstCount).toBeGreaterThanOrEqual(beforeCount);
-    expect(afterFirstCount - beforeCount).toBeLessThanOrEqual(1);
+    expect(afterFirstCount).toBe(beforeCount);
 
     const secondCompleteRes = await api("POST", "/api/setup/complete");
     expect(secondCompleteRes.status).toBe(200);
@@ -1408,22 +1407,34 @@ describe("Speech API", () => {
   });
 
   test("GET /api/speech/status reports the system voice (not a cloud provider) when system is selected", async () => {
-    await api("PUT", "/api/speech/settings", { tts: { provider: "system" }, stt: {} });
+    await api("PUT", "/api/speech/settings", {
+      tts: { provider: "system" },
+      stt: {},
+    });
     const { status, data } = await api("GET", "/api/speech/status");
     expect(status).toBe(200);
     expect(data.tts.type).toBe("system");
     expect(String(data.tts.provider ?? "")).not.toContain("OpenAI");
     expect(String(data.tts.provider ?? "")).not.toContain("ElevenLabs");
-    await api("PUT", "/api/speech/settings", { tts: { provider: "auto" }, stt: {} });
+    await api("PUT", "/api/speech/settings", {
+      tts: { provider: "auto" },
+      stt: {},
+    });
   });
 
   test("GET /api/speech/status reports local Kokoro as ready when selected", async () => {
-    await api("PUT", "/api/speech/settings", { tts: { provider: "local" }, stt: {} });
+    await api("PUT", "/api/speech/settings", {
+      tts: { provider: "local" },
+      stt: {},
+    });
     const { status, data } = await api("GET", "/api/speech/status");
     expect(status).toBe(200);
     expect(data.tts.type).toBe("local");
     expect(data.tts.ready).toBe(true);
-    await api("PUT", "/api/speech/settings", { tts: { provider: "auto" }, stt: {} });
+    await api("PUT", "/api/speech/settings", {
+      tts: { provider: "auto" },
+      stt: {},
+    });
   });
 
   test("GET /api/speech/status reflects native transcription mode", async () => {
@@ -1461,7 +1472,9 @@ describe("Speech API", () => {
   });
 
   test("POST /api/speech/synthesize should reject empty text", async () => {
-    const { status, data } = await api("POST", "/api/speech/synthesize", { text: "" });
+    const { status, data } = await api("POST", "/api/speech/synthesize", {
+      text: "",
+    });
     expect(status).toBe(400);
     expect(data.code).toBe("VALIDATION_ERROR");
     expect(String(data.error)).toContain("text is required");

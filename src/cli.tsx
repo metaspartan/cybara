@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
 import React from "react";
 import { render, Box, Text, useApp, useInput } from "ink";
-import Gradient from "ink-gradient";
 import Spinner from "ink-spinner";
 import { spawn } from "child_process";
 import { mkdirSync, openSync, readFileSync } from "fs";
@@ -33,11 +32,28 @@ import {
 import { printArtifacts, printJourney } from "./cli-resource-commands";
 import { getFlagValue, hasFlag } from "./cli-args";
 import { rawUpdate } from "./cli-update";
+import { connectCliProviderOAuth } from "./cli-provider-oauth";
 import { runEvalCommand, TUIEvalsCommand } from "./cli-evals";
 import { runSystemBackupCommand, TUIBackupsCommand } from "./cli-system-backup";
 import { TUIBackProvider, useTUIBack } from "./cli-tui-navigation";
 import { useTerminalScreen } from "./cli-tui-terminal";
 import { TUIBrowserCommand, TUIWalletCommand } from "./cli-tui-operations-panels";
+import {
+  formatStatusBytes,
+  formatStatusPct,
+  formatStatusStorageBytes,
+  formatStatusUptime,
+  type MetricsResponse,
+  type StatusResponse,
+} from "./cli-status-contract";
+import {
+  TUIErrorState as ErrorState,
+  TUILoadingState as LoadingState,
+  TUILogo as Logo,
+  TUIStatusBadge as StatusBadge,
+  TUITable as Table,
+} from "./cli-tui-primitives";
+import { TUIMetricsCommand, TUIStatusCommand } from "./cli-tui-system-panels";
 import { commandExists } from "./core/platform";
 import {
   configureWalletCli,
@@ -110,57 +126,6 @@ function withCliAuthHeaders(
 
 configureWalletCli({ apiBase: API_BASE, withAuthHeaders: withCliAuthHeaders });
 
-interface StatusResponse {
-  status: string;
-  uptime: number;
-  checks: Record<string, { status?: string; total?: number; running?: number }>;
-  timestamp: string;
-  system?: {
-    cpu?: {
-      usagePct?: number;
-      loadPct?: number | null;
-      cores?: number;
-      model?: string;
-    };
-    memory?: {
-      totalBytes?: number;
-      freeBytes?: number;
-      usedBytes?: number;
-      usedPct?: number;
-      swap?: {
-        totalBytes?: number;
-        freeBytes?: number;
-        usedBytes?: number;
-        usedPct?: number;
-      } | null;
-    };
-    process?: {
-      pid?: number;
-      cpuUsagePct?: number;
-      memory?: {
-        rssBytes?: number;
-        heapUsedBytes?: number;
-        heapTotalBytes?: number;
-      };
-    };
-    disk?: {
-      path?: string;
-      totalBytes?: number;
-      freeBytes?: number;
-      usedBytes?: number;
-      usedPct?: number;
-    } | null;
-  };
-}
-
-interface MetricsResponse {
-  tokenUsage: { total: number; input: number; output: number; cache: number };
-  fileOperations: { filesRead: number; filesWritten: number; filesEdited: number };
-  toolCalls: { totalCalls: number };
-  apiCalls: { totalCalls: number; successfulCalls: number; failedCalls: number };
-  agentExecutions: { totalExecutions: number; totalMessages: number };
-}
-
 interface TokenAnalysisResponse {
   summary: {
     callCount: number;
@@ -213,32 +178,6 @@ interface TokenAnalysisResponse {
     durationMs: number | null;
     tokensPerSecond: number | null;
   }>;
-}
-
-function formatStatusUptime(sec: number): string {
-  const h = Math.floor(sec / 3600);
-  const m = Math.floor((sec % 3600) / 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-
-function formatStatusBytes(bytes?: number): string {
-  const value = Number(bytes || 0);
-  if (value >= 1024 * 1024 * 1024) return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${Math.round(value)} B`;
-}
-
-function formatStatusStorageBytes(bytes?: number): string {
-  const value = Number(bytes || 0);
-  if (value >= 1000 * 1000 * 1000) return `${(value / (1000 * 1000 * 1000)).toFixed(2)} GB`;
-  if (value >= 1000 * 1000) return `${(value / (1000 * 1000)).toFixed(1)} MB`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)} KB`;
-  return `${Math.round(value)} B`;
-}
-
-function formatStatusPct(value?: number | null): string {
-  return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "n/a";
 }
 
 interface TaskItem {
@@ -1389,6 +1328,8 @@ interface AvailableProviderInfo {
   description: string;
   baseUrl: string;
   authType: string;
+  oauthFlow?: "device_code" | "redirect" | null;
+  hasOAuthConfig?: boolean;
   models: { id: string; name: string; context: number }[];
 }
 
@@ -1461,103 +1402,29 @@ async function rawProviderAdd(
 
   if (useOAuth) {
     try {
-      const dcRes = await fetch(`${API_BASE}/api/providers/oauth/device-code`, {
-        method: "POST",
-        headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ providerType: type }),
+      const available = await fetchAPI<AvailableProviderInfo[]>("/api/providers/available");
+      const provider = available?.find((entry) => entry.id === type);
+      if (!provider?.hasOAuthConfig || !provider.oauthFlow) {
+        throw new Error(`OAuth is not configured for ${type}`);
+      }
+      const credentials = await connectCliProviderOAuth({
+        apiBase: API_BASE,
+        providerType: type,
+        oauthFlow: provider.oauthFlow,
+        headers: () => withCliAuthHeaders({ "Content-Type": "application/json" }),
+        onVerification: ({ code, url }) => {
+          console.log("");
+          if (code) console.log(`  Code: ${code.padEnd(28)}`);
+          console.log(`  Open: ${url}`);
+          console.log("  Finish authorization in your browser.");
+          console.log("");
+          process.stdout.write("  Waiting for authorization");
+        },
       });
-      const dcData = (await dcRes.json()) as {
-        user_code?: string;
-        verification_uri?: string;
-        device_code?: string;
-        expires_in?: number;
-        interval?: number;
-        error?: string;
-      };
-
-      if (!dcRes.ok || !dcData.user_code) {
-        console.error(
-          `✗ OAuth not available for ${type}: ${dcData.error || "No device code flow configured"}`
-        );
-        process.exit(1);
-      }
-
-      console.log("");
-      console.log(`  Code: ${dcData.user_code.padEnd(28)}`);
-      console.log("");
-      console.log(`  Open: ${dcData.verification_uri}`);
-      console.log("  Enter the code above, then authorize.");
-      console.log("");
-
-      try {
-        const verificationUri = dcData.verification_uri;
-        if (verificationUri) {
-          if (process.platform === "darwin") {
-            const child = spawn("open", [verificationUri], { stdio: "ignore", detached: true });
-            child.unref();
-          } else if (process.platform === "win32") {
-            const child = spawn("cmd", ["/c", "start", "", verificationUri], {
-              stdio: "ignore",
-              detached: true,
-            });
-            child.unref();
-          } else {
-            const child = spawn("xdg-open", [verificationUri], { stdio: "ignore", detached: true });
-            child.unref();
-          }
-        }
-      } catch {
-        void 0;
-      }
-
-      let interval = Math.max(5, dcData.interval || 5) * 1000;
-      const pollDeadline = Date.now() + (dcData.expires_in || 900) * 1000;
-      process.stdout.write("  Waiting for authorization");
-
-      while (Date.now() < pollDeadline) {
-        await new Promise((r) => setTimeout(r, interval));
-        process.stdout.write(".");
-
-        const pollRes = await fetch(`${API_BASE}/api/providers/oauth/poll`, {
-          method: "POST",
-          headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ providerType: type, deviceCode: dcData.device_code }),
-        });
-        const pollData = (await pollRes.json()) as {
-          status: string;
-          access_token?: string;
-          refresh_token?: string;
-          expires_at?: number;
-          error?: string;
-        };
-
-        if (pollData.status === "success" && pollData.access_token) {
-          console.log(" ✓");
-          accessToken = pollData.access_token;
-          refreshToken = pollData.refresh_token;
-          expiresAt = pollData.expires_at;
-          break;
-        }
-        if (pollData.status === "denied" || pollData.status === "expired") {
-          console.log("");
-          console.error(`✗ Authorization ${pollData.status}`);
-          process.exit(1);
-        }
-        if (pollData.status === "slow_down") {
-          interval += 5000;
-        }
-        if (pollData.status === "error") {
-          console.log("");
-          console.error(`✗ Error: ${pollData.error}`);
-          process.exit(1);
-        }
-      }
-
-      if (!accessToken) {
-        console.log("");
-        console.error("✗ Authorization timed out");
-        process.exit(1);
-      }
+      console.log(" ✓");
+      accessToken = credentials.accessToken;
+      refreshToken = credentials.refreshToken;
+      expiresAt = credentials.expiresAt;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("ECONNREFUSED") || msg.includes("fetch failed")) {
@@ -2546,273 +2413,6 @@ async function rawRouter(args: string[]): Promise<void> {
   console.log("           priceIn=10 priceOut=30 enabled=true");
 }
 
-const Logo = ({ compact = false }: { compact?: boolean }) => (
-  <Box justifyContent="center" marginBottom={compact ? 0 : 1} flexShrink={0}>
-    <Gradient name="rainbow">
-      <Text bold>CYBARA</Text>
-    </Gradient>
-    <Text color="gray"> · {compact ? "TUI" : "Agent Platform · Terminal"}</Text>
-  </Box>
-);
-
-const Table = ({ headers, rows }: { headers: string[]; rows: (string | React.ReactNode)[][] }) => (
-  <Box flexDirection="column">
-    <Box>
-      {headers.map((h, i) => (
-        <Box key={i} width={i === 0 ? 20 : 15} marginRight={1}>
-          <Text bold color="cyan">
-            {h}
-          </Text>
-        </Box>
-      ))}
-    </Box>
-    <Box marginBottom={1}>
-      <Text color="gray">{"─".repeat(60)}</Text>
-    </Box>
-    {rows.map((row, i) => (
-      <Box key={i}>
-        {row.map((cell, j) => (
-          <Box key={j} width={j === 0 ? 20 : 15} marginRight={1}>
-            {typeof cell === "string" ? <Text>{cell}</Text> : cell}
-          </Box>
-        ))}
-      </Box>
-    ))}
-  </Box>
-);
-
-const StatusBadge = ({ status }: { status: string }) => {
-  const colors: Record<string, string> = {
-    healthy: "green",
-    running: "green",
-    active: "green",
-    eligible: "green",
-    stopped: "yellow",
-    error: "red",
-    blocked: "red",
-  };
-  return <Text color={colors[status] || "white"}>{status}</Text>;
-};
-
-function healthCheckStatus(info: { status?: string }): string {
-  return info.status || "ok";
-}
-
-const LoadingState = ({ message }: { message: string }) => (
-  <Box>
-    <Text color="yellow">
-      <Spinner type="dots" /> {message}
-    </Text>
-  </Box>
-);
-
-const ErrorState = ({ message }: { message: string }) => (
-  <Box>
-    <Text color="red">✗ {message}</Text>
-  </Box>
-);
-
-const TUIStatusCommand = () => {
-  const exit = useTUIBack();
-  const [data, setData] = React.useState<StatusResponse | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  useInput(
-    (input) => {
-      if (input === "q") exit();
-    },
-    TUI_INPUT_OPTIONS
-  );
-
-  React.useEffect(() => {
-    fetchAPI<StatusResponse>("/api/health")
-      .then((d) => {
-        if (d) setData(d);
-        else setError("Failed to connect to Cybara server");
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <LoadingState message="Fetching status..." />;
-  if (error) return <ErrorState message={error} />;
-  if (!data) return <ErrorState message="No data" />;
-
-  const checks = Object.entries(data.checks || {});
-
-  return (
-    <Box flexDirection="column">
-      <Logo compact />
-      <Box
-        flexDirection="column"
-        marginY={1}
-        borderStyle="round"
-        borderColor="cyan"
-        paddingX={2}
-        paddingY={1}
-      >
-        <Text bold>System Status</Text>
-        <Box marginTop={1}>
-          <Text color="gray">Status: </Text>
-          <StatusBadge status={data.status} />
-        </Box>
-        <Box>
-          <Text color="gray">Uptime: </Text>
-          <Text>{formatStatusUptime(data.uptime)}</Text>
-        </Box>
-        <Box>
-          <Text color="gray">Time: </Text>
-          <Text>{new Date(data.timestamp).toLocaleString()}</Text>
-        </Box>
-        {data.system && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text bold color="cyan">
-              System Monitor
-            </Text>
-            <Box>
-              <Text color="gray">CPU: </Text>
-              <Text>
-                {formatStatusPct(data.system.cpu?.usagePct)} ({data.system.cpu?.cores || 0} cores)
-              </Text>
-            </Box>
-            <Box>
-              <Text color="gray">Memory: </Text>
-              <Text>
-                {formatStatusPct(data.system.memory?.usedPct)} used (
-                {formatStatusBytes(data.system.memory?.usedBytes)} /{" "}
-                {formatStatusBytes(data.system.memory?.totalBytes)})
-              </Text>
-            </Box>
-            {data.system.memory?.swap && (
-              <Box>
-                <Text color="gray">Swap: </Text>
-                <Text>
-                  {formatStatusPct(data.system.memory.swap.usedPct)} used (
-                  {formatStatusBytes(data.system.memory.swap.usedBytes)} /{" "}
-                  {formatStatusBytes(data.system.memory.swap.totalBytes)})
-                </Text>
-              </Box>
-            )}
-            {data.system.disk && (
-              <Box>
-                <Text color="gray">Disk: </Text>
-                <Text>
-                  {formatStatusPct(data.system.disk.usedPct)} used (
-                  {formatStatusStorageBytes(data.system.disk.freeBytes)} free)
-                </Text>
-              </Box>
-            )}
-          </Box>
-        )}
-      </Box>
-      {checks.length > 0 && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text bold color="cyan">
-            Health Checks
-          </Text>
-          {checks.map(([name, info]) => (
-            <Box key={name}>
-              <Box width={15}>
-                <Text color="gray">{name}</Text>
-              </Box>
-              <StatusBadge status={healthCheckStatus(info)} />
-              {info.total !== undefined && <Text color="gray"> ({info.total} total)</Text>}
-            </Box>
-          ))}
-        </Box>
-      )}
-      <Box marginTop={1}>
-        <Text color="gray">Press q to exit</Text>
-      </Box>
-    </Box>
-  );
-};
-
-const TUIMetricsCommand = () => {
-  const exit = useTUIBack();
-  const [data, setData] = React.useState<MetricsResponse | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
-
-  useInput(
-    (input) => {
-      if (input === "q") exit();
-    },
-    TUI_INPUT_OPTIONS
-  );
-
-  React.useEffect(() => {
-    fetchAPI<MetricsResponse>("/api/metrics/overview")
-      .then((d) => {
-        if (d) setData(d);
-        else setError("Failed to fetch metrics");
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <LoadingState message="Fetching metrics..." />;
-  if (error) return <ErrorState message={error} />;
-  if (!data) return <ErrorState message="No data" />;
-
-  return (
-    <Box flexDirection="column">
-      <Logo compact />
-      <Box
-        flexDirection="column"
-        marginY={1}
-        borderStyle="round"
-        borderColor="cyan"
-        paddingX={2}
-        paddingY={1}
-      >
-        <Text bold>Token Metrics</Text>
-        <Box marginTop={1}>
-          <Text color="gray">Total Tokens: </Text>
-          <Text color="green">{(data.tokenUsage?.total || 0).toLocaleString()}</Text>
-        </Box>
-        <Box>
-          <Text color="gray">Input Tokens: </Text>
-          <Text>{(data.tokenUsage?.input || 0).toLocaleString()}</Text>
-        </Box>
-        <Box>
-          <Text color="gray">Output Tokens: </Text>
-          <Text>{(data.tokenUsage?.output || 0).toLocaleString()}</Text>
-        </Box>
-        <Box>
-          <Text color="gray">Tool Calls: </Text>
-          <Text>{(data.toolCalls?.totalCalls || 0).toLocaleString()}</Text>
-        </Box>
-        <Box>
-          <Text color="gray">API Calls: </Text>
-          <Text>{(data.apiCalls?.totalCalls || 0).toLocaleString()}</Text>
-        </Box>
-      </Box>
-      {data.fileOperations && (
-        <Box flexDirection="column" marginTop={1}>
-          <Text bold color="cyan">
-            File Operations
-          </Text>
-          <Box>
-            <Box width={20}>
-              <Text color="gray">Files Read</Text>
-            </Box>
-            <Text>{(data.fileOperations.filesRead || 0).toLocaleString()}</Text>
-          </Box>
-          <Box>
-            <Box width={20}>
-              <Text color="gray">Files Written</Text>
-            </Box>
-            <Text>{(data.fileOperations.filesWritten || 0).toLocaleString()}</Text>
-          </Box>
-        </Box>
-      )}
-      <Box marginTop={1}>
-        <Text color="gray">Press q to exit</Text>
-      </Box>
-    </Box>
-  );
-};
-
 const TUISkillsCommand = () => {
   const exit = useTUIBack();
   const [data, setData] = React.useState<SkillItem[]>([]);
@@ -3495,6 +3095,9 @@ interface ProviderOption {
   id: string;
   name: string;
   description: string;
+  authType: string;
+  oauthFlow?: "device_code" | "redirect" | null;
+  hasOAuthConfig?: boolean;
   requiresApiKey: boolean;
 }
 
@@ -3503,31 +3106,42 @@ const FALLBACK_PROVIDER_OPTIONS: ProviderOption[] = [
     id: "anthropic",
     name: "Anthropic",
     description: "Claude models (3.5 Sonnet, Opus, Haiku)",
+    authType: "api_key",
     requiresApiKey: true,
   },
-  { id: "openai", name: "OpenAI", description: "GPT-4o, GPT-4, GPT-3.5", requiresApiKey: true },
+  {
+    id: "openai",
+    name: "OpenAI",
+    description: "GPT-4o, GPT-4, GPT-3.5",
+    authType: "api_key",
+    requiresApiKey: true,
+  },
   {
     id: "gemini",
     name: "Google Gemini",
     description: "Gemini Pro, Ultra models",
+    authType: "api_key",
     requiresApiKey: true,
   },
   {
     id: "openrouter",
     name: "OpenRouter",
     description: "Access many models via OpenRouter",
+    authType: "api_key",
     requiresApiKey: true,
   },
   {
     id: "ollama",
     name: "Ollama (Local)",
     description: "Run models locally with Ollama",
+    authType: "none",
     requiresApiKey: false,
   },
   {
     id: "lmstudio",
     name: "LM Studio (Local)",
     description: "Local models via LM Studio",
+    authType: "none",
     requiresApiKey: false,
   },
 ];
@@ -3535,12 +3149,16 @@ const FALLBACK_PROVIDER_OPTIONS: ProviderOption[] = [
 const SetupWizard = () => {
   const { exit } = useApp();
   const [step, setStep] = React.useState<
-    "welcome" | "provider" | "apikey" | "permissions" | "complete"
+    "welcome" | "provider" | "apikey" | "oauth" | "permissions" | "complete"
   >("welcome");
   const [providerOptions, setProviderOptions] =
     React.useState<ProviderOption[]>(FALLBACK_PROVIDER_OPTIONS);
   const [selectedProvider, setSelectedProvider] = React.useState(0);
   const [apiKey, setApiKey] = React.useState("");
+  const [oauthVerification, setOAuthVerification] = React.useState<{
+    code?: string;
+    url: string;
+  } | null>(null);
   const [toolApprovalMode, setToolApprovalMode] = React.useState<"always_allow" | "ask">("ask");
   const [status, setStatus] = React.useState<{
     message: string;
@@ -3557,6 +3175,9 @@ const SetupWizard = () => {
             id: provider.id,
             name: provider.name,
             description: provider.description || `Use ${provider.name} models`,
+            authType,
+            oauthFlow: provider.oauthFlow,
+            hasOAuthConfig: provider.hasOAuthConfig,
             requiresApiKey: authType !== "none" && authType !== "oauth" && authType !== "aws-sdk",
           } satisfies ProviderOption;
         });
@@ -3595,7 +3216,10 @@ const SetupWizard = () => {
         } else if (key.return) {
           const provider = providerOptions[selectedProvider];
           if (!provider) return;
-          if (provider.requiresApiKey) {
+          if (provider.authType === "oauth") {
+            setStep("oauth");
+            void createOAuthProvider(provider);
+          } else if (provider.requiresApiKey) {
             setStep("apikey");
           } else {
             createProvider(provider.id, "");
@@ -3618,6 +3242,14 @@ const SetupWizard = () => {
         } else if (input === "") {
           exit();
         }
+      } else if (step === "oauth") {
+        if (input.toLowerCase() === "b") {
+          setStep("provider");
+          setOAuthVerification(null);
+          setStatus(null);
+        } else if (input === "q") {
+          exit();
+        }
       } else if (step === "permissions") {
         if (key.leftArrow || input === "1" || input.toLowerCase() === "a") {
           setToolApprovalMode("always_allow");
@@ -3637,7 +3269,38 @@ const SetupWizard = () => {
     TUI_INPUT_OPTIONS
   );
 
-  const createProvider = async (providerId: string, key: string) => {
+  const createOAuthProvider = async (provider: ProviderOption) => {
+    if (!provider.hasOAuthConfig || !provider.oauthFlow) {
+      setStatus({ message: `OAuth is not configured for ${provider.name}`, type: "error" });
+      return;
+    }
+    setStatus({ message: "Waiting for authorization...", type: "loading" });
+    try {
+      const credentials = await connectCliProviderOAuth({
+        apiBase: API_BASE,
+        providerType: provider.id,
+        oauthFlow: provider.oauthFlow,
+        headers: () => withCliAuthHeaders({ "Content-Type": "application/json" }),
+        onVerification: setOAuthVerification,
+      });
+      await createProvider(provider.id, "", credentials);
+    } catch (reason) {
+      setStatus({
+        message: reason instanceof Error ? reason.message : "OAuth authorization failed",
+        type: "error",
+      });
+    }
+  };
+
+  const createProvider = async (
+    providerId: string,
+    key: string,
+    credentials?: {
+      accessToken: string;
+      refreshToken?: string;
+      expiresAt?: number;
+    }
+  ) => {
     setStatus({ message: "Creating provider...", type: "loading" });
 
     const result = await fetchAPI<{ id?: string; error?: string }>("/api/providers", {
@@ -3646,6 +3309,9 @@ const SetupWizard = () => {
         provider: providerId,
         name: providerOptions.find((p) => p.id === providerId)?.name || providerId,
         api_key: key || undefined,
+        access_token: credentials?.accessToken,
+        refresh_token: credentials?.refreshToken,
+        expires_at: credentials?.expiresAt,
         is_default: true,
       }),
     });
@@ -3746,6 +3412,24 @@ const SetupWizard = () => {
           </>
         )}
 
+        {step === "oauth" && (
+          <>
+            <Text bold>
+              Connect {providerOptions[selectedProvider]?.name || "OAuth Provider"}
+            </Text>
+            <Box marginTop={1} flexDirection="column">
+              {oauthVerification?.code && (
+                <Text color="cyan">Authorization code: {oauthVerification.code}</Text>
+              )}
+              {oauthVerification?.url && <Text color="gray">Open: {oauthVerification.url}</Text>}
+              <Text color="gray">Finish authorization in your browser.</Text>
+            </Box>
+            <Box marginTop={1}>
+              <Text color="gray">Press B to choose another provider</Text>
+            </Box>
+          </>
+        )}
+
         {step === "permissions" && (
           <>
             <Text bold>Tool Approval Mode</Text>
@@ -3826,9 +3510,9 @@ function TUIContent({
     case "onboard":
       return <SetupWizard />;
     case "status":
-      return <TUIStatusCommand />;
+      return <TUIStatusCommand fetchAPI={fetchAPI} />;
     case "metrics":
-      return <TUIMetricsCommand />;
+      return <TUIMetricsCommand fetchAPI={fetchAPI} />;
     case "tasks":
       return <TUITasksCommand />;
     case "skills":

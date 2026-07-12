@@ -1,4 +1,9 @@
 import { providers, resolveProviderType, type ProviderType } from "../core/providers";
+import {
+  isMiniMaxPortalOAuth,
+  pollMiniMaxPortalOAuth,
+  startMiniMaxPortalOAuth,
+} from "./provider-oauth-minimax";
 
 interface DeviceOAuthConfig {
   clientId?: string;
@@ -101,13 +106,17 @@ function getDeviceOAuthConfig(providerType: string): {
   if (!oauthConfig?.clientId) {
     throw new Error(`Provider ${providerType} does not support device code OAuth flow`);
   }
-  return { resolvedProviderType, oauthConfig: { ...oauthConfig, clientId: oauthConfig.clientId } };
+  return {
+    resolvedProviderType,
+    oauthConfig: { ...oauthConfig, clientId: oauthConfig.clientId },
+  };
 }
 
 export async function startProviderDeviceCodeOAuth(
   body: unknown
 ): Promise<Record<string, unknown>> {
   const { providerType } = body as { providerType: string };
+  if (isMiniMaxPortalOAuth(providerType)) return startMiniMaxPortalOAuth(providerType);
   const { resolvedProviderType, oauthConfig } = getDeviceOAuthConfig(providerType);
   const endpoints = await discoverDeviceOAuthEndpoints(resolvedProviderType, oauthConfig);
 
@@ -161,7 +170,13 @@ export async function startProviderDeviceCodeOAuth(
 }
 
 export async function pollProviderDeviceCodeOAuth(body: unknown): Promise<Record<string, unknown>> {
-  const { providerType, deviceCode } = body as { providerType: string; deviceCode: string };
+  const { providerType, deviceCode } = body as {
+    providerType: string;
+    deviceCode: string;
+  };
+  if (isMiniMaxPortalOAuth(providerType)) {
+    return pollMiniMaxPortalOAuth(providerType, deviceCode);
+  }
   const { resolvedProviderType, oauthConfig } = getDeviceOAuthConfig(providerType);
   const endpoints = await discoverDeviceOAuthEndpoints(resolvedProviderType, oauthConfig);
 

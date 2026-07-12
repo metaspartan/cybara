@@ -155,7 +155,9 @@ describe("UI page API wiring", () => {
       /import\s*\{\s*setupApi,\s*settingsApi\s*\}\s*from\s*["']@\/lib\/api["'];/
     );
     expect(source).toContain("setupApi.complete()");
-    expect(source).toContain("settingsApi.updateConfig({ tool_approval_mode: toolApprovalMode })");
+    expect(source).toMatch(
+      /settingsApi\.updateConfig\(\{\s*tool_approval_mode:\s*toolApprovalMode,?\s*\}\)/
+    );
     expect(source).not.toContain("apiFetch('/api/setup/complete'");
   });
 

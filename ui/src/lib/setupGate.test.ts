@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resolveSetupGate, type SetupGateInput } from "./setupGate";
+import { commitSetupComplete, resolveSetupGate, type SetupGateInput } from "./setupGate";
 
 const base: SetupGateInput = {
   pathname: "/",
@@ -20,9 +20,13 @@ describe("resolveSetupGate", () => {
 
   test("returning user cache skips the spinner while setup status refreshes", () => {
     expect(resolveSetupGate({ ...base, cachedSetupComplete: true })).toBe("children");
-    expect(resolveSetupGate({ ...base, cachedSetupComplete: true, setupReady: false })).toBe(
-      "children"
-    );
+    expect(
+      resolveSetupGate({
+        ...base,
+        cachedSetupComplete: true,
+        setupReady: false,
+      })
+    ).toBe("children");
   });
 
   test("never redirects to /setup until setup status has actually resolved", () => {
@@ -52,5 +56,18 @@ describe("resolveSetupGate", () => {
         setupComplete: false,
       })
     ).toBe("redirect");
+  });
+});
+
+describe("commitSetupComplete", () => {
+  test("updates setup status before navigation can re-run the guard", () => {
+    let key: readonly string[] = [];
+    let value = { complete: false };
+    commitSetupComplete((nextKey, nextValue) => {
+      key = nextKey;
+      value = nextValue;
+    });
+    expect(key).toEqual(["setup", "status"]);
+    expect(value).toEqual({ complete: true });
   });
 });

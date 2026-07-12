@@ -1,5 +1,6 @@
 import { tables, type Agent, type ToolDefinition } from "./database";
 import { AgentProviderRuntime } from "./agent-provider-runtime";
+import { truncateTextWithHeadAndTail } from "./agent-context-guard";
 import { config } from "./config";
 import {
   providerManager,
@@ -683,9 +684,7 @@ class AgentManager extends AgentProviderRuntime {
       console.error("[Agent] Conversation summary generation failed:", error);
     }
 
-    // Heuristic fallback: keep the head and tail of the transcript so we still
-    // shrink history even when the summary model is unavailable.
-    return this.truncateTextWithHeadAndTail(transcript, CONVERSATION_SUMMARY_MAX_CHARS);
+    return truncateTextWithHeadAndTail(transcript, CONVERSATION_SUMMARY_MAX_CHARS);
   }
 
   private async executeWithState(

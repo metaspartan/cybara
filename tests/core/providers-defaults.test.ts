@@ -6,6 +6,7 @@ import {
   providerManager,
   providers,
   resolveProviderType,
+  shouldSeedProvider,
 } from "../../src/core/providers";
 
 describe("Provider model defaults and API-family parity", () => {
@@ -253,6 +254,32 @@ describe("Provider model defaults and API-family parity", () => {
     expect(grok45?.context).toBe(500000);
     expect(grok45?.reasoning).toBe(true);
     expect(grok45?.input).toEqual(["text", "image"]);
+  });
+
+  test("configures MiniMax Portal for PKCE user-code login", () => {
+    const provider = providers["minimax-portal"];
+    expect(provider.authType).toBe("oauth");
+    expect(provider.oauthFlow).toBe("device_code");
+    expect(provider.oauthConfig.clientId).toBe("78257093-7e40-4613-99e0-527b14b39113");
+    expect(provider.oauthConfig.deviceCodeUrl).toBe(
+      "https://account.minimax.io/oauth2/device/code"
+    );
+    expect(provider.oauthConfig.tokenUrl).toBe("https://account.minimax.io/oauth2/token");
+    expect(provider.oauthConfig.scope).toBe("group_id profile model.completion");
+  });
+
+  test("does not advertise non-interactive portal credentials as OAuth", () => {
+    expect(providers["qwen-portal"].authType).toBe("token");
+    expect(providers["copilot-proxy"].authType).toBe("none");
+  });
+
+  test("only seeds providers that work without stored credentials", () => {
+    expect(shouldSeedProvider("none")).toBe(true);
+    expect(shouldSeedProvider("aws-sdk")).toBe(true);
+    expect(shouldSeedProvider("api_key")).toBe(false);
+    expect(shouldSeedProvider("oauth")).toBe(false);
+    expect(shouldSeedProvider("token")).toBe(false);
+    expect(shouldSeedProvider("bearer")).toBe(false);
   });
 
   test("uses current MiniMax IDs and output/context caps", () => {

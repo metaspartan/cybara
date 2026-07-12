@@ -659,8 +659,14 @@ export const foundationProviderCatalog = {
     baseUrl: "https://api.minimax.io/anthropic/v1",
     api: "anthropic-messages",
     authType: "oauth",
-    oauthFlow: "redirect" as const,
-    oauthLoginUrl: "https://www.minimax.io/",
+    oauthFlow: "device_code" as const,
+    oauthConfig: {
+      clientId: "78257093-7e40-4613-99e0-527b14b39113",
+      deviceCodeUrl: "https://account.minimax.io/oauth2/device/code",
+      tokenUrl: "https://account.minimax.io/oauth2/token",
+      scope: "group_id profile model.completion",
+    },
+    oauthLoginUrl: "https://account.minimax.io/",
     models: [
       {
         id: "MiniMax-M3",
@@ -805,8 +811,7 @@ export const foundationProviderCatalog = {
     name: "Qwen Portal",
     baseUrl: "https://portal.qwen.ai/v1",
     api: "openai-completions",
-    authType: "oauth",
-    oauthFlow: "redirect" as const,
+    authType: "token",
     oauthLoginUrl: "https://chat.qwen.ai/",
     models: [
       {

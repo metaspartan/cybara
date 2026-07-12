@@ -1,4 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, mock, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
@@ -116,7 +117,11 @@ let handleRequest: (req: {
   url: string;
   headers: Record<string, string>;
   body?: unknown;
-}) => Promise<{ status: number; headers: Record<string, string>; body?: unknown }>;
+}) => Promise<{
+  status: number;
+  headers: Record<string, string>;
+  body?: unknown;
+}>;
 
 const originalFetch = globalThis.fetch;
 
@@ -131,7 +136,9 @@ async function api(method: string, path: string, body?: unknown) {
 
 describe("Provider test route contracts (mocked providers)", () => {
   beforeAll(() => {
-    const routes = require("../../src/api/routes") as { handleRequest: typeof handleRequest };
+    const routes = require("../../src/api/routes") as {
+      handleRequest: typeof handleRequest;
+    };
     handleRequest = routes.handleRequest;
   });
 
@@ -369,6 +376,83 @@ describe("Provider test route contracts (mocked providers)", () => {
       "urn:ietf:params:oauth:grant-type:device_code"
     );
     expect(seenTokenBodies[1]?.get("device_code")).toBe("device-456");
+  });
+
+  test("MiniMax OAuth uses PKCE user-code authorization and returns refresh credentials", async () => {
+    let verifier = "";
+    let challenge = "";
+    let userCode = "";
+    let tokenGrant = "";
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const body = init?.body as URLSearchParams;
+      if (url.endsWith("/oauth2/device/code")) {
+        challenge = body.get("code_challenge") || "";
+        const state = body.get("state") || "";
+        expect(body.get("client_id")).toBe("78257093-7e40-4613-99e0-527b14b39113");
+        expect(body.get("code_challenge_method")).toBe("S256");
+        return Response.json({
+          user_code: "MINI-MAX",
+          verification_uri: "https://platform.minimax.io/device",
+          expired_in: Date.now() + 600_000,
+          interval: 2000,
+          state,
+        });
+      }
+      expect(url).toBe("https://account.minimax.io/oauth2/token");
+      verifier = body.get("code_verifier") || "";
+      userCode = body.get("user_code") || "";
+      tokenGrant = body.get("grant_type") || "";
+      return Response.json({
+        status: "success",
+        access_token: "minimax-access",
+        refresh_token: "minimax-refresh",
+        expired_in: 3600,
+      });
+    }) as typeof fetch;
+
+    const start = await api("POST", "/api/providers/oauth/device-code", {
+      providerType: "minimax-portal",
+    });
+    const startBody = start.body as { device_code?: string; interval?: number };
+    expect(start.status).toBe(200);
+    expect(startBody.interval).toBe(2);
+    expect(challenge).toHaveLength(43);
+
+    const poll = await api("POST", "/api/providers/oauth/poll", {
+      providerType: "minimax-portal",
+      deviceCode: startBody.device_code,
+    });
+    expect(poll.status).toBe(200);
+    expect(poll.body).toMatchObject({
+      status: "success",
+      access_token: "minimax-access",
+      refresh_token: "minimax-refresh",
+    });
+    expect(userCode).toBe("MINI-MAX");
+    expect(tokenGrant).toBe("urn:ietf:params:oauth:grant-type:user_code");
+    expect(createHash("sha256").update(verifier).digest("base64url")).toBe(challenge);
+  });
+
+  test("MiniMax OAuth rejects an untrusted verification host", async () => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = init?.body as URLSearchParams;
+      return Response.json({
+        user_code: "MINI-MAX",
+        verification_uri: "https://attacker.example/device",
+        expired_in: Date.now() + 600_000,
+        interval: 2000,
+        state: body.get("state"),
+      });
+    }) as typeof fetch;
+
+    const response = await api("POST", "/api/providers/oauth/device-code", {
+      providerType: "minimax-portal",
+    });
+    expect(response.status).toBe(400);
+    expect((response.body as { error?: string }).error).toContain(
+      "MiniMax returned an invalid authorization response"
+    );
   });
 
   test("POST /api/providers/oauth/device-code rejects untrusted xAI discovery endpoints", async () => {

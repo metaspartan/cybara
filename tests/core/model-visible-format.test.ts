@@ -3,8 +3,11 @@ import {
   formatStructuredDataForModel,
   formatToolResultForModel,
 } from "../../src/core/llm/model-visible-format";
-import { agentManager } from "../../src/core/agent";
 import { config } from "../../src/core/config";
+import {
+  resolveContextGuardBudgets,
+  truncateToolResultContentForContext,
+} from "../../src/core/agent-context-guard";
 
 describe("model-visible structured data formatting", () => {
   test("uses TOON for uniform structured records when it is smaller than JSON", () => {
@@ -64,32 +67,19 @@ describe("model-visible structured data formatting", () => {
         { path: "src/c.ts", lines: 60, language: "ts" },
       ],
     };
-    const formatter = (
-      agentManager as unknown as {
-        truncateToolResultContentForContext: (payload: unknown, maxChars: number) => string;
-      }
-    ).truncateToolResultContentForContext.bind(agentManager);
-
     config.setTokenOptimizationSettings({ toonStructuredDataEnabled: true });
-    const toon = formatter(value, 10_000);
+    const toon = truncateToolResultContentForContext(value, 10_000);
     expect(toon).toContain("files[3]{path,lines,language}:");
 
     config.setTokenOptimizationSettings({ toonStructuredDataEnabled: false });
-    const json = formatter(value, 10_000);
+    const json = truncateToolResultContentForContext(value, 10_000);
     expect(json).toBe(JSON.stringify(value));
 
     config.setTokenOptimizationSettings({ toonStructuredDataEnabled: true });
   });
 
   test("agent tool-result context budget is capped below large model windows", () => {
-    const budget = (
-      agentManager as unknown as {
-        resolveContextGuardBudgets: (contextWindowTokens: number) => {
-          contextBudgetChars: number;
-          maxSingleToolResultChars: number;
-        };
-      }
-    ).resolveContextGuardBudgets(1_000_000);
+    const budget = resolveContextGuardBudgets(1_000_000);
 
     expect(budget.contextBudgetChars).toBeGreaterThan(1_000_000);
     expect(budget.maxSingleToolResultChars).toBe(6_000);

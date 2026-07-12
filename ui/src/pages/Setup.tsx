@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {
   Cloud,
@@ -22,6 +23,7 @@ import {
 } from "@/hooks/useApi";
 import { useProviderOAuth, type ProviderOAuthCredentials } from "@/hooks/useProviderOAuth";
 import { setupApi, settingsApi } from "@/lib/api";
+import { commitSetupComplete } from "@/lib/setupGate";
 import type { AvailableProvider, Provider } from "@/types";
 
 type WizardStep =
@@ -38,11 +40,31 @@ function getAuthFlow(provider: AvailableProvider): SetupAuthFlow {
   if (!provider.authType || provider.authType === "none") return "none";
   if (provider.authType === "oauth") return "oauth";
   if (provider.authType === "aws-sdk") return "external";
-  return "api_key"; // api_key, bearer, token
+  return "api_key";
+}
+
+function credentialCopy(provider: AvailableProvider): {
+  title: string;
+  description: string;
+  placeholder: string;
+} {
+  if (provider.authType === "token" || provider.authType === "bearer") {
+    return {
+      title: "Enter Access Token",
+      description: `Add your ${provider.name} access token`,
+      placeholder: "Paste your access token",
+    };
+  }
+  return {
+    title: "Enter API Key",
+    description: `Add your ${provider.name} API key`,
+    placeholder: "Paste your API key",
+  };
 }
 
 export function Setup() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<WizardStep>("welcome");
   const [selectedProvider, setSelectedProvider] = useState<AvailableProvider | null>(null);
   const [providerSearch, setProviderSearch] = useState("");
@@ -53,6 +75,7 @@ export function Setup() {
   const [agentModel, setAgentModel] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [agentCreated, setAgentCreated] = useState(false);
 
   const {
     data: availableProviders,
@@ -83,6 +106,7 @@ export function Setup() {
       provider.name.toLowerCase().includes(search) || provider.id.toLowerCase().includes(search)
     );
   });
+  const selectedCredentialCopy = selectedProvider ? credentialCopy(selectedProvider) : null;
 
   useEffect(() => {
     if (!discoveredModels?.length) return;
@@ -117,7 +141,8 @@ export function Setup() {
     try {
       const created = await createProvider.mutateAsync({
         provider: providerId,
-        name: selectedProvider?.name || providerId,
+        name:
+          availableProviders?.find((provider) => provider.id === providerId)?.name || providerId,
         api_key: key || undefined,
         access_token: oauthCredentials?.access_token,
         refresh_token: oauthCredentials?.refresh_token,
@@ -144,7 +169,9 @@ export function Setup() {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await settingsApi.updateConfig({ tool_approval_mode: toolApprovalMode });
+      const result = await settingsApi.updateConfig({
+        tool_approval_mode: toolApprovalMode,
+      });
       if (!result.success || !result.data?.success) {
         throw new Error(result.error || "Failed to save permissions");
       }
@@ -161,12 +188,15 @@ export function Setup() {
     setError(null);
     try {
       if (!configuredProvider) throw new Error("Connect a provider before creating an agent");
-      await createAgent.mutateAsync({
-        name: agentName.trim(),
-        type: "main",
-        model: agentModel,
-        provider_id: configuredProvider.id,
-      });
+      if (!agentCreated) {
+        await createAgent.mutateAsync({
+          name: agentName.trim(),
+          type: "main",
+          model: agentModel,
+          provider_id: configuredProvider.id,
+        });
+        setAgentCreated(true);
+      }
       await completeSetup();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create agent");
@@ -184,6 +214,7 @@ export function Setup() {
       if (!result.success || !result.data?.success) {
         throw new Error(result.error || "Failed to complete setup");
       }
+      commitSetupComplete((key, value) => queryClient.setQueryData(key, value));
       setStep("complete");
     } catch (err) {
       setError("Failed to complete setup");
@@ -193,7 +224,7 @@ export function Setup() {
   };
 
   const handleGoToDashboard = () => {
-    navigate("/");
+    navigate("/", { replace: true });
   };
 
   return (
@@ -358,14 +389,16 @@ export function Setup() {
                   <div className="w-16 h-16 mx-auto mb-4 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center">
                     <Key className="w-8 h-8 text-white" />
                   </div>
-                  <h2 className="text-2xl font-bold text-white mb-2">Enter API Key</h2>
-                  <p className="text-gray-400">Add your {selectedProvider.name} API key</p>
+                  <h2 className="text-2xl font-bold text-white mb-2">
+                    {selectedCredentialCopy?.title}
+                  </h2>
+                  <p className="text-gray-400">{selectedCredentialCopy?.description}</p>
                 </div>
 
                 <div className="space-y-4">
                   <Input
                     type="password"
-                    placeholder="sk-... or your API key"
+                    placeholder={selectedCredentialCopy?.placeholder}
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}
                     className="text-lg"

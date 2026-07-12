@@ -51,6 +51,10 @@ export function resolveProviderType(value: string | undefined): ProviderType | u
   return PROVIDER_TYPE_ALIASES[normalized];
 }
 
+export function shouldSeedProvider(authType: string): boolean {
+  return authType === "none" || authType === "aws-sdk";
+}
+
 class ProviderManager {
   private authoritativeModelIds = new Map<string, Set<string>>();
 
@@ -471,7 +475,7 @@ class ProviderManager {
     for (const [key, config] of Object.entries(providers)) {
       if (existingProviders.has(key)) continue;
 
-      if (config.authType === "oauth" || config.authType === "api_key") continue;
+      if (!shouldSeedProvider(config.authType)) continue;
 
       try {
         tables.providers.create({

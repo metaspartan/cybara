@@ -487,23 +487,21 @@ const routes: Record<string, RouteHandler> = {
   }),
   "POST /api/setup/complete": async () => {
     config.completeSetup();
-    if (!agentManager.hasDefaultAgent()) {
-      const agent = agentManager.createDefault();
-      try {
-        await agentManager.start(agent.id);
-      } catch {
-        /* keep the created agent even if start fails */
-      }
-    }
     return { success: true };
   },
   "GET /api/migrations/sources": () => ({
     sources: detectMigrationSources(),
   }),
   "POST /api/migrations/preview": async (body) =>
-    runSourceMigration({ ...((body || {}) as SourceMigrationRequest), dryRun: true }),
+    runSourceMigration({
+      ...((body || {}) as SourceMigrationRequest),
+      dryRun: true,
+    }),
   "POST /api/migrations/run": async (body) =>
-    runSourceMigration({ ...((body || {}) as SourceMigrationRequest), dryRun: false }),
+    runSourceMigration({
+      ...((body || {}) as SourceMigrationRequest),
+      dryRun: false,
+    }),
   "GET /api/evals": () => ({
     goldens: listGoldens().map(summarizeGolden),
     runs: listEvalRuns(),
@@ -584,7 +582,10 @@ const routes: Record<string, RouteHandler> = {
     if (!data.runId?.trim()) return { success: false, error: "runId is required" };
     const deleted = deleteIntelligenceBenchmarkRun(data.runId.trim());
     if (!deleted) {
-      return { success: false, error: "Run not found or still running; cancel it first" };
+      return {
+        success: false,
+        error: "Run not found or still running; cancel it first",
+      };
     }
     return { success: true };
   },
@@ -593,7 +594,12 @@ const routes: Record<string, RouteHandler> = {
     if (!data.agentId?.trim()) return { success: false, error: "agentId is required" };
     const agentId = data.agentId.trim();
     const running = findRunningIntelligenceBenchmark();
-    if (running) return { success: false, error: "A benchmark is already running", run: running };
+    if (running)
+      return {
+        success: false,
+        error: "A benchmark is already running",
+        run: running,
+      };
     const agent = agentManager.get(agentId);
     if (!agent) return { success: false, error: "Agent not found" };
     const run = createIntelligenceBenchmarkRun({
@@ -775,7 +781,10 @@ const routes: Record<string, RouteHandler> = {
     return gatewayAuthSettingsResponse();
   },
   "GET /api/auth/key": () => ({ success: true, ...revealGatewayApiKey() }),
-  "POST /api/auth/rotate-key": () => ({ success: true, ...rotateGatewayApiKey() }),
+  "POST /api/auth/rotate-key": () => ({
+    success: true,
+    ...rotateGatewayApiKey(),
+  }),
   "GET /api/speech/settings": () => config.getSpeechSettings(),
   "GET /api/speech/status": () => {
     const settings = config.getSpeechSettings();
@@ -815,7 +824,12 @@ const routes: Record<string, RouteHandler> = {
       try {
         const resolved = resolveSpeechTtsProvider({ settings });
         if (resolved) {
-          tts = { ...tts, ready: true, provider: resolved.provider.name, type: resolved.type };
+          tts = {
+            ...tts,
+            ready: true,
+            provider: resolved.provider.name,
+            type: resolved.type,
+          };
         } else if (tts.systemFallback) {
           tts = {
             ...tts,
@@ -1046,7 +1060,9 @@ const routes: Record<string, RouteHandler> = {
   "POST /api/agents/:id/stop": async (_body, params) => ({
     success: await agentManager.stop(params!.id),
   }),
-  "DELETE /api/agents/:id": (_body, params) => ({ success: agentManager.delete(params!.id) }),
+  "DELETE /api/agents/:id": (_body, params) => ({
+    success: agentManager.delete(params!.id),
+  }),
 
   "POST /api/agents/:id/message": async (body, params) => {
     const data = body as { message: string };
@@ -1146,7 +1162,10 @@ const routes: Record<string, RouteHandler> = {
     }
     const valid = ["approve_once", "approve_session", "approve_always", "deny"];
     if (!valid.includes(data.decision)) {
-      return { success: false, error: `Invalid decision. Must be one of: ${valid.join(", ")}` };
+      return {
+        success: false,
+        error: `Invalid decision. Must be one of: ${valid.join(", ")}`,
+      };
     }
     const ok = resolveApproval(data.requestId, data.decision as never);
     return { success: ok };
@@ -1511,7 +1530,10 @@ const routes: Record<string, RouteHandler> = {
     if (!resolvedProviderType) {
       throw new Error(`Validation error: unknown provider '${data.provider}'`);
     }
-    validateProviderCredentialShape(resolvedProviderType, { apiKey, accessToken });
+    validateProviderCredentialShape(resolvedProviderType, {
+      apiKey,
+      accessToken,
+    });
 
     const created = providerManager.create({
       provider: resolvedProviderType as Parameters<typeof providerManager.create>[0]["provider"],
@@ -1826,7 +1848,12 @@ const routes: Record<string, RouteHandler> = {
           }, 5000);
           return new Response(
             renderOAuthCallbackHtml("Authorization failed", "You can close this tab.", "error"),
-            { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } }
+            {
+              headers: {
+                "Content-Type": "text/html; charset=utf-8",
+                "Cache-Control": "no-store",
+              },
+            }
           );
         }
 
@@ -1892,7 +1919,12 @@ const routes: Record<string, RouteHandler> = {
             "You can close this tab and return to Cybara.",
             "success"
           ),
-          { headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } }
+          {
+            headers: {
+              "Content-Type": "text/html; charset=utf-8",
+              "Cache-Control": "no-store",
+            },
+          }
         );
       },
     });
@@ -1982,7 +2014,11 @@ const routes: Record<string, RouteHandler> = {
     return channel;
   },
   "POST /api/channels": (body) => {
-    const data = body as { type?: string; name?: string; config?: Record<string, unknown> };
+    const data = body as {
+      type?: string;
+      name?: string;
+      config?: Record<string, unknown>;
+    };
     if (!data.type || !data.name) {
       throw new Error("Validation error: type and name are required");
     }
@@ -2001,7 +2037,9 @@ const routes: Record<string, RouteHandler> = {
   }),
   "POST /api/channels/:id/toggle": (body, params) => {
     const data = body as { enabled: boolean };
-    return { success: channelManager.update(params!.id, { enabled: data.enabled }) };
+    return {
+      success: channelManager.update(params!.id, { enabled: data.enabled }),
+    };
   },
   "POST /api/channels/:id/test": async (_body, params) => {
     const channel = channelManager.get(params!.id);
@@ -2011,7 +2049,10 @@ const routes: Record<string, RouteHandler> = {
 
     const adapter = channelManager.getAdapter(channel.type as keyof typeof channels);
     if (!adapter) {
-      return { success: false, error: `No adapter registered for channel type: ${channel.type}` };
+      return {
+        success: false,
+        error: `No adapter registered for channel type: ${channel.type}`,
+      };
     }
 
     const config = parseJsonObject(channel.config) || {};
@@ -2130,7 +2171,9 @@ const routes: Record<string, RouteHandler> = {
       ...state,
     };
   },
-  "DELETE /api/channels/:id": (_body, params) => ({ success: channelManager.delete(params!.id) }),
+  "DELETE /api/channels/:id": (_body, params) => ({
+    success: channelManager.delete(params!.id),
+  }),
 
   "GET /api/channels/:id/pairings": (_body, params) => {
     const channelId = params!.id;
@@ -2180,7 +2223,9 @@ const routes: Record<string, RouteHandler> = {
     return { success: true };
   },
   "DELETE /api/channels/:id/allowed-senders/:senderId": (_body, params) => {
-    return { success: securityManager.removeAllowedSender(params!.id, params!.senderId) };
+    return {
+      success: securityManager.removeAllowedSender(params!.id, params!.senderId),
+    };
   },
   "PUT /api/channels/:id/security": (body, params) => {
     const channelId = params!.id;
@@ -2222,7 +2267,9 @@ const routes: Record<string, RouteHandler> = {
     success: await taskScheduler.trigger(params!.id),
   }),
   "GET /api/tasks/:id/runs": (_body, params) => tables.taskRuns.getByTask(params!.id),
-  "DELETE /api/tasks/:id": (_body, params) => ({ success: taskScheduler.delete(params!.id) }),
+  "DELETE /api/tasks/:id": (_body, params) => ({
+    success: taskScheduler.delete(params!.id),
+  }),
 
   "POST /api/webhooks/telegram/:channelId": async (body, params, ctx) => {
     const { channelId } = params!;
@@ -2440,7 +2487,10 @@ const routes: Record<string, RouteHandler> = {
         configuredModel: indexerSettings.embeddingModel,
       };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : "unavailable" };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "unavailable",
+      };
     }
   },
   "GET /api/memory/providers": () => {
@@ -2548,7 +2598,11 @@ const routes: Record<string, RouteHandler> = {
       return { skills: [], registries, counts: {} };
     }
 
-    const results = await registryManager.searchAll(query, { registry, dedupe, limit });
+    const results = await registryManager.searchAll(query, {
+      registry,
+      dedupe,
+      limit,
+    });
     const counts = results.reduce<Record<string, number>>((acc, skill) => {
       acc[skill.registry] = (acc[skill.registry] ?? 0) + 1;
       return acc;
@@ -2582,7 +2636,13 @@ const routes: Record<string, RouteHandler> = {
         ? (sortParam as (typeof validSorts)[number])
         : "downloads";
 
-    const results = await registryManager.browseAll({ registry, dedupe, limit, maxPages, sort });
+    const results = await registryManager.browseAll({
+      registry,
+      dedupe,
+      limit,
+      maxPages,
+      sort,
+    });
     const counts = results.reduce<Record<string, number>>((acc, skill) => {
       acc[skill.registry] = (acc[skill.registry] ?? 0) + 1;
       return acc;
@@ -2597,7 +2657,10 @@ const routes: Record<string, RouteHandler> = {
       allowSuspicious?: boolean;
     };
     if (!slug) throw new Error("Skill slug is required");
-    const result = await registryManager.install(slug, { registry, allowSuspicious });
+    const result = await registryManager.install(slug, {
+      registry,
+      allowSuspicious,
+    });
     if (result.success) {
       clearSkillsCache(); // Invalidate cache so new skill appears in list
     }
@@ -2915,7 +2978,11 @@ const routes: Record<string, RouteHandler> = {
       if (!result.found) {
         return { success: false, error: "Session not found" };
       }
-      return { success: true, sessionId: params!.sessionId, pinned: result.pinned };
+      return {
+        success: true,
+        sessionId: params!.sessionId,
+        pinned: result.pinned,
+      };
     } catch (error) {
       return {
         success: false,
@@ -3243,7 +3310,12 @@ function checkDatabaseHealth(): { status: string; error?: string } {
   }
 }
 
-function getMemoryUsage(): { heapUsed: number; heapTotal: number; external: number; rss: number } {
+function getMemoryUsage(): {
+  heapUsed: number;
+  heapTotal: number;
+  external: number;
+  rss: number;
+} {
   const usage = process.memoryUsage();
   return {
     heapUsed: Math.round(usage.heapUsed / 1024 / 1024),
@@ -3317,7 +3389,10 @@ async function dispatchChannelWebhook(
   if (!channel) return { status: 404, body: { error: "channel not found" } };
   const adapter = channelManager.getAdapter(channel.type);
   if (!adapter?.handleWebhook) {
-    return { status: 400, body: { error: `channel ${channel.type} does not accept webhooks` } };
+    return {
+      status: 400,
+      body: { error: `channel ${channel.type} does not accept webhooks` },
+    };
   }
   const result = await adapter.handleWebhook(channelId, {
     body,
@@ -3371,7 +3446,10 @@ export async function handleRequest(req: {
   const security = securityCheck(method, path, req.headers, clientIp);
   if (!security.passed) {
     const duration = Date.now() - startTime;
-    log.warn(`Security check failed: ${security.error}`, { path, ip: clientIp });
+    log.warn(`Security check failed: ${security.error}`, {
+      path,
+      ip: clientIp,
+    });
     recordApiMetrics(method, path, security.statusCode || 403, duration);
     logRequest({
       timestamp: new Date().toISOString(),
@@ -3607,7 +3685,12 @@ function findRoute(
     if (!match) continue;
 
     if (!bestMatch) {
-      bestMatch = { routeKey: key, params: localParams, dynamicSegments, staticSegments };
+      bestMatch = {
+        routeKey: key,
+        params: localParams,
+        dynamicSegments,
+        staticSegments,
+      };
       continue;
     }
 
@@ -3615,7 +3698,12 @@ function findRoute(
       dynamicSegments < bestMatch.dynamicSegments ||
       (dynamicSegments === bestMatch.dynamicSegments && staticSegments > bestMatch.staticSegments)
     ) {
-      bestMatch = { routeKey: key, params: localParams, dynamicSegments, staticSegments };
+      bestMatch = {
+        routeKey: key,
+        params: localParams,
+        dynamicSegments,
+        staticSegments,
+      };
     }
   }
 

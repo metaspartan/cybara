@@ -47,17 +47,12 @@ import {
   trackEstimatedSessionTokenUsage,
 } from "./llm/session-token-usage";
 import { compactCodexInputItemsForContext, sanitizeCodexInputItems } from "./llm/codex-context";
-import { recordMidLoopContextCompaction } from "./llm/context-pressure";
 import {
-  compactOpenAIChatTranscriptInPlace,
   compactOpenAIRequestMessagesForContext as compactOpenAIRequestMessages,
   isContextOverflowError,
-  TOOL_RESULT_COMPACTION_NOTICE,
 } from "./llm/tool-transcript";
 import { trackTokenUsage } from "./llm/token-usage-tracking";
 import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
-import { formatToolResultForModel } from "./llm/model-visible-format";
-import { formatRecoverableToolOutputPreview } from "./tool-output-recovery";
 import { googleFunctionDeclaration } from "./llm/google-tool-schema";
 import {
   hasTextToolCallMarkup,
@@ -92,15 +87,8 @@ import {
 import {
   ANTHROPIC_CONTEXT_1M_BETA,
   CONTEXT_CHARS_PER_TOKEN_ESTIMATE,
-  CONTEXT_INPUT_HEADROOM_RATIO,
-  CONTEXT_LIMIT_TRUNCATION_NOTICE,
   DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
   DEFAULT_MODEL_MAX_OUTPUT_TOKENS,
-  HARD_MAX_TOOL_RESULT_CHARS,
-  LOOP_WARNING_BUCKET_SIZE,
-  MAX_TOOL_RESULT_CONTEXT_SHARE,
-  MIN_TOOL_RESULT_CHARS,
-  buildToolIterationFingerprint,
   extractSandboxProviderFromToolResult,
   formatToolActivityDetail,
   normalizeGoogleModelId,
@@ -124,6 +112,19 @@ import {
   type OpenAIResponse,
   type OpenAIUsage,
 } from "./agent-internals";
+import {
+  compactAnthropicLoopMessagesForContext,
+  compactOpenAILoopMessagesForContext,
+  resolveContextGuardBudgets,
+  truncateTextWithHeadAndTail,
+  truncateToolResultContentForContext,
+} from "./agent-context-guard";
+import {
+  applyAgenticLoopLimitMessage,
+  evaluateNoProgressLoop,
+  resolveAgenticLoopLimit,
+  updateNoProgressLoopState,
+} from "./agent-loop-runtime";
 import {
   countWebResearchCalls,
   WEB_RESEARCH_SYNTHESIS_INSTRUCTION,
@@ -220,139 +221,6 @@ export abstract class AgentProviderRuntime {
       env: process.env,
       modelParams,
     });
-  }
-
-  private updateNoProgressLoopState(
-    loopState: AgenticLoopState,
-    iterationToolCalls: AgentToolCallResult[]
-  ): number {
-    if (iterationToolCalls.length === 0) {
-      loopState.previousFingerprint = undefined;
-      loopState.noProgressStreak = 0;
-      loopState.warningBucket = -1;
-      return 0;
-    }
-
-    const iterationFingerprint = buildToolIterationFingerprint(iterationToolCalls);
-    if (!iterationFingerprint) {
-      loopState.previousFingerprint = undefined;
-      loopState.noProgressStreak = 0;
-      loopState.warningBucket = -1;
-      return 0;
-    }
-
-    if (iterationFingerprint === loopState.previousFingerprint) {
-      loopState.noProgressStreak += 1;
-    } else {
-      loopState.noProgressStreak = 1;
-      loopState.warningBucket = -1;
-    }
-    loopState.previousFingerprint = iterationFingerprint;
-    return loopState.noProgressStreak;
-  }
-
-  private evaluateNoProgressLoop(
-    providerLabel: string,
-    noProgressStreak: number,
-    loopState: AgenticLoopState,
-    loopPolicy: AgenticLoopPolicy
-  ): { stop: boolean; message?: string } {
-    if (!loopPolicy.loopDetectionEnabled) {
-      return { stop: false };
-    }
-    if (noProgressStreak <= 0) {
-      return { stop: false };
-    }
-
-    if (noProgressStreak >= loopPolicy.globalCircuitBreakerThreshold) {
-      console.warn(
-        `[Agent] ${providerLabel} tool loop global circuit breaker triggered (${noProgressStreak} repeated no-progress iterations); stopping early`
-      );
-      return {
-        stop: true,
-        message:
-          "I stopped because tool calls were repeating with no progress and hit the global loop circuit breaker. Please refine the request and try again.",
-      };
-    }
-
-    if (noProgressStreak >= loopPolicy.criticalThreshold) {
-      console.warn(
-        `[Agent] ${providerLabel} tool loop reached critical no-progress threshold (${noProgressStreak} iterations); stopping early`
-      );
-      return {
-        stop: true,
-        message:
-          "I stopped because tool calls were repeating with no progress. Please refine the request and try again.",
-      };
-    }
-
-    if (noProgressStreak >= loopPolicy.warningThreshold) {
-      const warningBucket = Math.floor(noProgressStreak / LOOP_WARNING_BUCKET_SIZE);
-      if (warningBucket > loopState.warningBucket) {
-        loopState.warningBucket = warningBucket;
-        console.warn(
-          `[Agent] ${providerLabel} tool loop warning: ${noProgressStreak} repeated no-progress iterations`
-        );
-      }
-    }
-
-    return { stop: false };
-  }
-
-  private resolveAgenticLoopLimit(
-    loopPolicy: AgenticLoopPolicy,
-    iterations: number,
-    loopStartedAt: number
-  ): "maxIterations" | "runtime" | undefined {
-    if (typeof loopPolicy.maxIterations === "number" && iterations >= loopPolicy.maxIterations) {
-      return "maxIterations";
-    }
-    if (
-      typeof loopPolicy.maxRuntimeMs === "number" &&
-      Date.now() - loopStartedAt >= loopPolicy.maxRuntimeMs
-    ) {
-      return "runtime";
-    }
-    return undefined;
-  }
-
-  private formatRuntimeLimitLabel(ms: number): string {
-    if (!Number.isFinite(ms) || ms <= 0) return "unknown";
-    const totalSeconds = Math.max(1, Math.round(ms / 1000));
-    if (totalSeconds < 60) return `${totalSeconds}s`;
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    if (seconds === 0) return `${minutes}m`;
-    return `${minutes}m ${seconds}s`;
-  }
-
-  private applyAgenticLoopLimitMessage(
-    providerLabel: string,
-    limitReason: "maxIterations" | "runtime",
-    loopPolicy: AgenticLoopPolicy,
-    finalContent: string
-  ): string {
-    if (limitReason === "maxIterations") {
-      console.log(
-        `[Agent] ${providerLabel} agentic loop reached configured max iterations (${loopPolicy.maxIterations})`
-      );
-      if (!finalContent.trim()) {
-        return `I reached the configured tool-iteration limit (${loopPolicy.maxIterations}) for this turn. Ask me to continue and I'll resume from here.`;
-      }
-      return finalContent;
-    }
-
-    console.log(
-      `[Agent] ${providerLabel} agentic loop reached runtime limit (${this.formatRuntimeLimitLabel(
-        loopPolicy.maxRuntimeMs ?? 0
-      )})`
-    );
-    if (!finalContent.trim()) {
-      return `I reached the tool-loop runtime limit (${this.formatRuntimeLimitLabel(
-        loopPolicy.maxRuntimeMs ?? 0
-      )}) for this turn. Ask me to continue and I'll resume from here.`;
-    }
-    return finalContent;
   }
 
   private mergeHeaderToken(existing: string | undefined, token: string): string {
@@ -860,191 +728,6 @@ export abstract class AgentProviderRuntime {
     );
   }
 
-  private resolveContextGuardBudgets(contextWindowTokens: number): {
-    contextBudgetChars: number;
-    maxSingleToolResultChars: number;
-  } {
-    const safeContextTokens = Math.max(1024, Math.floor(contextWindowTokens));
-    const contextBudgetChars = Math.max(
-      4096,
-      Math.floor(
-        safeContextTokens * CONTEXT_CHARS_PER_TOKEN_ESTIMATE * CONTEXT_INPUT_HEADROOM_RATIO
-      )
-    );
-    const maxSingleToolResultChars = Math.max(
-      MIN_TOOL_RESULT_CHARS,
-      Math.min(
-        HARD_MAX_TOOL_RESULT_CHARS,
-        Math.floor(
-          safeContextTokens * CONTEXT_CHARS_PER_TOKEN_ESTIMATE * MAX_TOOL_RESULT_CONTEXT_SHARE
-        )
-      )
-    );
-    return {
-      contextBudgetChars,
-      maxSingleToolResultChars,
-    };
-  }
-
-  private estimateAnthropicMessageChars(message: Record<string, unknown>): number {
-    const content = message.content;
-    if (typeof content === "string") {
-      return content.length;
-    }
-    if (!Array.isArray(content)) {
-      return 0;
-    }
-
-    let total = 0;
-    for (const block of content) {
-      if (!block || typeof block !== "object") continue;
-      const typed = block as Record<string, unknown>;
-      if (typeof typed.text === "string") {
-        total += typed.text.length;
-        continue;
-      }
-      if (typeof typed.content === "string") {
-        total += typed.content.length;
-        continue;
-      }
-      try {
-        const serialized = JSON.stringify(block);
-        total += typeof serialized === "string" ? serialized.length : 0;
-      } catch {
-        total += 128;
-      }
-    }
-    return total;
-  }
-
-  private estimateAnthropicContextChars(messages: Record<string, unknown>[]): number {
-    return messages.reduce(
-      (sum, message) => sum + this.estimateAnthropicMessageChars(message) + 64,
-      0
-    );
-  }
-
-  private truncateTextToContextBudget(text: string, maxChars: number): string {
-    if (text.length <= maxChars) return text;
-
-    const suffix = `\n${CONTEXT_LIMIT_TRUNCATION_NOTICE}`;
-    if (maxChars <= suffix.length) {
-      return CONTEXT_LIMIT_TRUNCATION_NOTICE;
-    }
-    const budget = Math.max(0, maxChars - suffix.length);
-    let cutPoint = budget;
-    const nearestNewline = text.lastIndexOf("\n", budget);
-    if (nearestNewline > budget * 0.7) {
-      cutPoint = nearestNewline;
-    }
-    return text.slice(0, cutPoint) + suffix;
-  }
-
-  protected truncateTextWithHeadAndTail(text: string, maxChars: number): string {
-    if (text.length <= maxChars) return text;
-    const marker = `\n${CONTEXT_LIMIT_TRUNCATION_NOTICE}\n[...${Math.max(1, text.length - maxChars)} chars truncated...]\n`;
-    const budget = Math.max(0, maxChars - marker.length);
-    if (budget <= 16) {
-      return this.truncateTextToContextBudget(text, maxChars);
-    }
-    const headBudget = Math.floor(budget * 0.7);
-    const tailBudget = budget - headBudget;
-    const head = text.slice(0, headBudget);
-    const tail = text.slice(text.length - tailBudget);
-    return head + marker + tail;
-  }
-
-  private truncateToolResultContentForContext(
-    resultPayload: unknown,
-    maxChars: number,
-    recovery?: { sessionId?: string; toolName?: string; toolCallId?: string }
-  ): string {
-    const serialized = formatToolResultForModel(resultPayload, {
-      toonEnabled: config.getTokenOptimizationSettings().toonStructuredDataEnabled,
-    });
-    return formatRecoverableToolOutputPreview(serialized, maxChars, recovery).content;
-  }
-
-  private compactAnthropicLoopMessagesForContext(
-    messages: Record<string, unknown>[],
-    contextBudgetChars: number,
-    aggressive = false,
-    context?: { model?: string; toolContext?: ToolContext }
-  ): boolean {
-    const beforeChars = this.estimateAnthropicContextChars(messages);
-    let totalChars = beforeChars;
-    if (totalChars <= contextBudgetChars && !aggressive) return false;
-
-    const minRecentMessagesToKeep = aggressive ? 0 : 6;
-    let compacted = false;
-    let forceCompaction = aggressive;
-
-    for (let index = 0; index < messages.length; index += 1) {
-      if (!forceCompaction && totalChars <= contextBudgetChars) break;
-      const remaining = messages.length - index;
-      if (remaining <= minRecentMessagesToKeep) break;
-
-      const message = messages[index];
-      if (!message || message.role !== "user" || !Array.isArray(message.content)) {
-        continue;
-      }
-
-      let changed = false;
-      const nextContent = message.content.map((block) => {
-        if (!block || typeof block !== "object") return block;
-        const typed = block as Record<string, unknown>;
-        if (typed.type !== "tool_result" || typeof typed.content !== "string") {
-          return block;
-        }
-        if (typed.content.includes(TOOL_RESULT_COMPACTION_NOTICE)) {
-          return block;
-        }
-        changed = true;
-        return {
-          ...typed,
-          content: TOOL_RESULT_COMPACTION_NOTICE,
-        };
-      });
-
-      if (!changed) continue;
-      message.content = nextContent;
-      compacted = true;
-      forceCompaction = false;
-      totalChars = this.estimateAnthropicContextChars(messages);
-    }
-
-    if (compacted) {
-      recordMidLoopContextCompaction({
-        beforeChars,
-        afterChars: totalChars,
-        messageCount: messages.length,
-        model: context?.model,
-        toolContext: context?.toolContext,
-      });
-    }
-    return compacted;
-  }
-
-  private compactOpenAILoopMessagesForContext(
-    messages: Record<string, unknown>[],
-    contextBudgetChars: number,
-    aggressive = false,
-    context?: { model?: string; toolContext?: ToolContext }
-  ): boolean {
-    const beforeChars = JSON.stringify(messages).length;
-    const elided = compactOpenAIChatTranscriptInPlace(messages, contextBudgetChars, { aggressive });
-    if (elided > 0) {
-      recordMidLoopContextCompaction({
-        beforeChars,
-        afterChars: JSON.stringify(messages).length,
-        messageCount: messages.length,
-        model: context?.model,
-        toolContext: context?.toolContext,
-      });
-    }
-    return elided > 0;
-  }
-
   private compactOpenAIRequestMessagesForContext(
     requestBody: Record<string, unknown>,
     contextWindowTokens: number | undefined,
@@ -1448,7 +1131,7 @@ export abstract class AgentProviderRuntime {
       options.contextWindowTokens > 0
         ? Math.max(1, Math.floor(options.contextWindowTokens))
         : undefined;
-    const contextGuard = this.resolveContextGuardBudgets(
+    const contextGuard = resolveContextGuardBudgets(
       contextWindowTokens ?? DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS
     );
     const requestBody: Record<string, unknown> = {
@@ -1616,7 +1299,7 @@ export abstract class AgentProviderRuntime {
     let limitReason: "maxIterations" | "runtime" | undefined;
 
     while (true) {
-      limitReason = this.resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
       if (limitReason) {
         break;
       }
@@ -1660,7 +1343,7 @@ export abstract class AgentProviderRuntime {
           toolResults.push({
             tool_call_id: toolCallId,
             role: "tool",
-            content: this.truncateToolResultContentForContext(
+            content: truncateToolResultContentForContext(
               missingNamePayload,
               contextGuard.maxSingleToolResultChars,
               {
@@ -1696,7 +1379,7 @@ export abstract class AgentProviderRuntime {
         toolResults.push({
           tool_call_id: toolCallId,
           role: "tool",
-          content: this.truncateToolResultContentForContext(
+          content: truncateToolResultContentForContext(
             resultPayload,
             contextGuard.maxSingleToolResultChars,
             {
@@ -1725,8 +1408,8 @@ export abstract class AgentProviderRuntime {
       );
       const forceResearchSynthesis = webResearchBudgetReached(webResearchToolCalls);
 
-      const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
-      const loopEvaluation = this.evaluateNoProgressLoop(
+      const noProgressStreak = updateNoProgressLoopState(loopState, iterationToolCalls);
+      const loopEvaluation = evaluateNoProgressLoop(
         providerConfig || "openai-compat",
         noProgressStreak,
         loopState,
@@ -1755,12 +1438,10 @@ export abstract class AgentProviderRuntime {
       if (steeringText) {
         currentMessages.push({ role: "user", content: steeringText });
       }
-      this.compactOpenAILoopMessagesForContext(
-        currentMessages,
-        contextGuard.contextBudgetChars,
-        false,
-        { model: modelId, toolContext }
-      );
+      compactOpenAILoopMessagesForContext(currentMessages, contextGuard.contextBudgetChars, false, {
+        model: modelId,
+        toolContext,
+      });
 
       const loopRequestBody: Record<string, unknown> = {
         model: modelId,
@@ -1807,7 +1488,7 @@ export abstract class AgentProviderRuntime {
         if (!isContextOverflowError(errorMessage)) {
           throw error;
         }
-        const compacted = this.compactOpenAILoopMessagesForContext(
+        const compacted = compactOpenAILoopMessagesForContext(
           currentMessages,
           Math.max(4096, Math.floor(contextGuard.contextBudgetChars * 0.65)),
           true,
@@ -1900,7 +1581,7 @@ export abstract class AgentProviderRuntime {
     }
 
     if (limitReason) {
-      finalContent = this.applyAgenticLoopLimitMessage(
+      finalContent = applyAgenticLoopLimitMessage(
         providerConfig || "openai-compat",
         limitReason,
         loopPolicy,
@@ -2335,7 +2016,7 @@ export abstract class AgentProviderRuntime {
         ? contextWindowTokens
         : DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS;
     const { contextBudgetChars: codexBudgetChars, maxSingleToolResultChars: codexMaxOutputChars } =
-      this.resolveContextGuardBudgets(codexContextWindow);
+      resolveContextGuardBudgets(codexContextWindow);
     const { instructions, input } = this.buildOpenAICodexInputFromMessages(messages);
     const inputItems: Array<Record<string, unknown>> = [...input];
     const toolDefinitions = this.buildOpenAICodexToolDefinitions(tools);
@@ -2381,7 +2062,7 @@ export abstract class AgentProviderRuntime {
     let limitReason: "maxIterations" | "runtime" | undefined;
 
     while (true) {
-      limitReason = this.resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
       if (limitReason) {
         break;
       }
@@ -2559,7 +2240,7 @@ export abstract class AgentProviderRuntime {
         functionCallOutputs.push({
           type: "function_call_output",
           call_id: toolCall.callId,
-          output: this.truncateToolResultContentForContext(resultPayload, codexMaxOutputChars, {
+          output: truncateToolResultContentForContext(resultPayload, codexMaxOutputChars, {
             sessionId: toolContext?.sessionId,
             toolName: toolCall.name,
             toolCallId: toolCall.callId,
@@ -2574,8 +2255,8 @@ export abstract class AgentProviderRuntime {
         break;
       }
 
-      const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
-      const loopEvaluation = this.evaluateNoProgressLoop(
+      const noProgressStreak = updateNoProgressLoopState(loopState, iterationToolCalls);
+      const loopEvaluation = evaluateNoProgressLoop(
         providerConfig || "openai-codex",
         noProgressStreak,
         loopState,
@@ -2600,7 +2281,7 @@ export abstract class AgentProviderRuntime {
     }
 
     if (limitReason) {
-      finalContent = this.applyAgenticLoopLimitMessage(
+      finalContent = applyAgenticLoopLimitMessage(
         providerConfig || "openai-codex",
         limitReason,
         loopPolicy,
@@ -2675,7 +2356,7 @@ export abstract class AgentProviderRuntime {
     this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
     while (true) {
-      limitReason = this.resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
       if (limitReason) {
         break;
       }
@@ -2811,8 +2492,8 @@ export abstract class AgentProviderRuntime {
         break;
       }
 
-      const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
-      const loopEvaluation = this.evaluateNoProgressLoop(
+      const noProgressStreak = updateNoProgressLoopState(loopState, iterationToolCalls);
+      const loopEvaluation = evaluateNoProgressLoop(
         "google",
         noProgressStreak,
         loopState,
@@ -2837,12 +2518,7 @@ export abstract class AgentProviderRuntime {
     }
 
     if (limitReason) {
-      finalContent = this.applyAgenticLoopLimitMessage(
-        "google",
-        limitReason,
-        loopPolicy,
-        finalContent
-      );
+      finalContent = applyAgenticLoopLimitMessage("google", limitReason, loopPolicy, finalContent);
     }
 
     return {
@@ -2908,7 +2584,7 @@ export abstract class AgentProviderRuntime {
     this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
     while (true) {
-      limitReason = this.resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
       if (limitReason) {
         break;
       }
@@ -3043,8 +2719,8 @@ export abstract class AgentProviderRuntime {
         break;
       }
 
-      const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
-      const loopEvaluation = this.evaluateNoProgressLoop(
+      const noProgressStreak = updateNoProgressLoopState(loopState, iterationToolCalls);
+      const loopEvaluation = evaluateNoProgressLoop(
         "bedrock",
         noProgressStreak,
         loopState,
@@ -3069,12 +2745,7 @@ export abstract class AgentProviderRuntime {
     }
 
     if (limitReason) {
-      finalContent = this.applyAgenticLoopLimitMessage(
-        "bedrock",
-        limitReason,
-        loopPolicy,
-        finalContent
-      );
+      finalContent = applyAgenticLoopLimitMessage("bedrock", limitReason, loopPolicy, finalContent);
     }
 
     return {
@@ -3260,7 +2931,7 @@ export abstract class AgentProviderRuntime {
       providerId,
       modelId
     );
-    const contextGuard = this.resolveContextGuardBudgets(contextWindowTokens);
+    const contextGuard = resolveContextGuardBudgets(contextWindowTokens);
     const loopStartedAt = Date.now();
     let iterations = 0;
     let currentData = data;
@@ -3286,7 +2957,7 @@ export abstract class AgentProviderRuntime {
     let limitReason: "maxIterations" | "runtime" | undefined;
 
     while (true) {
-      limitReason = this.resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
       if (limitReason) {
         break;
       }
@@ -3364,7 +3035,7 @@ export abstract class AgentProviderRuntime {
           toolResults.push({
             type: "tool_result",
             tool_use_id: toolUseId,
-            content: this.truncateToolResultContentForContext(
+            content: truncateToolResultContentForContext(
               missingNamePayload,
               contextGuard.maxSingleToolResultChars,
               {
@@ -3396,7 +3067,7 @@ export abstract class AgentProviderRuntime {
         toolResults.push({
           type: "tool_result",
           tool_use_id: toolUseId,
-          content: this.truncateToolResultContentForContext(
+          content: truncateToolResultContentForContext(
             resultPayload,
             contextGuard.maxSingleToolResultChars,
             {
@@ -3414,7 +3085,7 @@ export abstract class AgentProviderRuntime {
         toolResults.push({
           type: "tool_result",
           tool_use_id: expectedId,
-          content: this.truncateToolResultContentForContext(
+          content: truncateToolResultContentForContext(
             { error: "Missing tool result synthesized by Cybara" },
             contextGuard.maxSingleToolResultChars,
             {
@@ -3441,8 +3112,8 @@ export abstract class AgentProviderRuntime {
       }
 
       if (iterationToolCalls.length > 0) {
-        const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
-        const loopEvaluation = this.evaluateNoProgressLoop(
+        const noProgressStreak = updateNoProgressLoopState(loopState, iterationToolCalls);
+        const loopEvaluation = evaluateNoProgressLoop(
           "anthropic",
           noProgressStreak,
           loopState,
@@ -3484,7 +3155,7 @@ export abstract class AgentProviderRuntime {
         ],
       });
 
-      this.compactAnthropicLoopMessagesForContext(
+      compactAnthropicLoopMessagesForContext(
         currentMessages,
         contextGuard.contextBudgetChars,
         false,
@@ -3545,7 +3216,7 @@ export abstract class AgentProviderRuntime {
           });
 
           if (loopResponse.status === 400 && isContextOverflowError(lastLoopError)) {
-            this.compactAnthropicLoopMessagesForContext(
+            compactAnthropicLoopMessagesForContext(
               currentMessages,
               Math.max(4096, Math.floor(contextGuard.contextBudgetChars * 0.65)),
               true,
@@ -3639,7 +3310,7 @@ export abstract class AgentProviderRuntime {
     }
 
     if (limitReason) {
-      finalContent = this.applyAgenticLoopLimitMessage(
+      finalContent = applyAgenticLoopLimitMessage(
         "anthropic",
         limitReason,
         loopPolicy,
@@ -3664,7 +3335,7 @@ export abstract class AgentProviderRuntime {
   ): Promise<{ content: string; tool_calls?: AgentToolCallResult[] }> {
     const maxOutputTokens = resolveModelMaxOutputTokens("openai", undefined, modelId);
     const contextWindowTokens = resolveModelContextWindowTokens("openai", undefined, modelId);
-    const contextGuard = this.resolveContextGuardBudgets(contextWindowTokens);
+    const contextGuard = resolveContextGuardBudgets(contextWindowTokens);
     const systemMessage = messages.find((m) => m.role === "system");
     const chatMessages = messages
       .filter((m) => m.role !== "system")
@@ -3752,7 +3423,7 @@ export abstract class AgentProviderRuntime {
     let limitReason: "maxIterations" | "runtime" | undefined;
 
     while (true) {
-      limitReason = this.resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
       if (limitReason) {
         break;
       }
@@ -3795,7 +3466,7 @@ export abstract class AgentProviderRuntime {
           toolResults.push({
             tool_call_id: toolCallId,
             role: "tool",
-            content: this.truncateToolResultContentForContext(
+            content: truncateToolResultContentForContext(
               missingNamePayload,
               contextGuard.maxSingleToolResultChars,
               {
@@ -3831,7 +3502,7 @@ export abstract class AgentProviderRuntime {
         toolResults.push({
           tool_call_id: toolCallId,
           role: "tool",
-          content: this.truncateToolResultContentForContext(
+          content: truncateToolResultContentForContext(
             resultPayload,
             contextGuard.maxSingleToolResultChars,
             {
@@ -3860,8 +3531,8 @@ export abstract class AgentProviderRuntime {
       );
       const forceResearchSynthesis = webResearchBudgetReached(webResearchToolCalls);
 
-      const noProgressStreak = this.updateNoProgressLoopState(loopState, iterationToolCalls);
-      const loopEvaluation = this.evaluateNoProgressLoop(
+      const noProgressStreak = updateNoProgressLoopState(loopState, iterationToolCalls);
+      const loopEvaluation = evaluateNoProgressLoop(
         "openai",
         noProgressStreak,
         loopState,
@@ -3890,12 +3561,10 @@ export abstract class AgentProviderRuntime {
       if (steeringText) {
         currentMessages.push({ role: "user", content: steeringText });
       }
-      this.compactOpenAILoopMessagesForContext(
-        currentMessages,
-        contextGuard.contextBudgetChars,
-        false,
-        { model: modelId, toolContext }
-      );
+      compactOpenAILoopMessagesForContext(currentMessages, contextGuard.contextBudgetChars, false, {
+        model: modelId,
+        toolContext,
+      });
 
       const loopRequestBody: Record<string, unknown> = {
         model: modelId,
@@ -3932,7 +3601,7 @@ export abstract class AgentProviderRuntime {
         if (!isContextOverflowError(errorMessage)) {
           throw error;
         }
-        const compacted = this.compactOpenAILoopMessagesForContext(
+        const compacted = compactOpenAILoopMessagesForContext(
           currentMessages,
           Math.max(4096, Math.floor(contextGuard.contextBudgetChars * 0.65)),
           true,
@@ -3974,12 +3643,7 @@ export abstract class AgentProviderRuntime {
     }
 
     if (limitReason) {
-      finalContent = this.applyAgenticLoopLimitMessage(
-        "openai",
-        limitReason,
-        loopPolicy,
-        finalContent
-      );
+      finalContent = applyAgenticLoopLimitMessage("openai", limitReason, loopPolicy, finalContent);
     }
 
     return {

@@ -1430,9 +1430,7 @@ export const codingProviderCatalog = {
     name: "Copilot Proxy",
     baseUrl: "http://localhost:1234/v1",
     api: "openai-completions",
-    authType: "oauth",
-    oauthFlow: "redirect" as const,
-    oauthLoginUrl: "https://github.com/settings/copilot",
+    authType: "none",
     models: [],
   },
 } as const;

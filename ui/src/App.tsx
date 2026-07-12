@@ -8,13 +8,11 @@ import { Sidebar, SidebarProvider, useSidebar } from "@/components/layout/Sideba
 import { UpdateBanner } from "@/components/layout/UpdateBanner";
 import { ToastContainer } from "@/components/ui/Toast";
 import { settingsApi, setupApi } from "@/lib/api";
-import { resolveSetupGate } from "@/lib/setupGate";
+import { readSetupComplete, resolveSetupGate, writeSetupComplete } from "@/lib/setupGate";
 import { isPetWindow } from "@/lib/tauriPet";
 import { cn } from "@/lib/utils";
 import { PetOverlay } from "@/pages/PetOverlay";
 import { readThemeAccentFromConfig, readThemeModeFromIdentity, useUIStore } from "@/stores/uiStore";
-
-const SETUP_COMPLETE_KEY = "cybara.setupComplete";
 
 const Dashboard = lazy(() =>
   import("@/pages/Dashboard").then((module) => ({ default: module.Dashboard }))
@@ -24,7 +22,9 @@ const Providers = lazy(() =>
   import("@/pages/Providers").then((module) => ({ default: module.Providers }))
 );
 const RouterSettings = lazy(() =>
-  import("@/pages/RouterSettings").then((module) => ({ default: module.RouterSettings }))
+  import("@/pages/RouterSettings").then((module) => ({
+    default: module.RouterSettings,
+  }))
 );
 const Channels = lazy(() =>
   import("@/pages/Channels").then((module) => ({ default: module.Channels }))
@@ -50,12 +50,16 @@ const Metrics = lazy(() =>
 const Usage = lazy(() => import("@/pages/Usage").then((module) => ({ default: module.Usage })));
 const Evals = lazy(() => import("@/pages/Evals").then((module) => ({ default: module.Evals })));
 const MCPServers = lazy(() =>
-  import("@/pages/MCPServers").then((module) => ({ default: module.MCPServers }))
+  import("@/pages/MCPServers").then((module) => ({
+    default: module.MCPServers,
+  }))
 );
 const LSP = lazy(() => import("@/pages/LSP").then((module) => ({ default: module.LSP })));
 const IDE = lazy(() => import("@/pages/IDE").then((module) => ({ default: module.IDE })));
 const TerminalPage = lazy(() =>
-  import("@/pages/Terminal").then((module) => ({ default: module.TerminalPage }))
+  import("@/pages/Terminal").then((module) => ({
+    default: module.TerminalPage,
+  }))
 );
 const Wallet = lazy(() => import("@/pages/Wallet").then((module) => ({ default: module.Wallet })));
 const Artifacts = lazy(() =>
@@ -71,23 +75,6 @@ function PageLoader() {
       <Loader2 className="h-7 w-7 animate-spin text-indigo-500" />
     </div>
   );
-}
-
-function readSetupComplete(): boolean {
-  try {
-    return localStorage.getItem(SETUP_COMPLETE_KEY) === "1";
-  } catch {
-    return false;
-  }
-}
-
-function writeSetupComplete(done: boolean): void {
-  try {
-    if (done) localStorage.setItem(SETUP_COMPLETE_KEY, "1");
-    else localStorage.removeItem(SETUP_COMPLETE_KEY);
-  } catch {
-    /* ignore */
-  }
 }
 
 function SetupGuard({ children }: { children: React.ReactNode }) {

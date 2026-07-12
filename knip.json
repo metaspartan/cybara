@@ -6,11 +6,11 @@
       "entry": [
         "src/index.ts",
         "src/main.ts",
-        "src/cli-*.ts",
+        "src/cli-*.{ts,tsx}",
         "scripts/*.ts",
         "tests/**/*.test.ts"
       ],
-      "project": ["src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts"],
+      "project": ["src/**/*.{ts,tsx}", "scripts/*.ts", "tests/**/*.ts"],
       "ignoreDependencies": ["@huggingface/transformers", "typescript-language-server"],
       "ignoreBinaries": [
         "preview",
@@ -24,7 +24,6 @@
         "netstat",
         "lsof",
         "open",
-        "xdg-open",
         "pgrep"
       ]
     },

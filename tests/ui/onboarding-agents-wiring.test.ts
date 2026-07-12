@@ -65,6 +65,17 @@ describe("Onboarding provider and agent setup", () => {
     expect(setupWizard).not.toContain("Create Default Agent");
   });
 
+  test("commits setup status before replacing the onboarding route", () => {
+    expect(setup).toContain("commitSetupComplete");
+    expect(setup).toContain("queryClient.setQueryData(key, value)");
+    expect(setup).toContain('navigate("/", { replace: true })');
+  });
+
+  test("does not duplicate an agent when setup completion is retried", () => {
+    expect(setup).toContain("if (!agentCreated)");
+    expect(setup).toContain("setAgentCreated(true)");
+  });
+
   test("connects OAuth providers during onboarding and stores returned credentials", () => {
     expect(setup).toContain("await oauth.connect()");
     expect(setup).toContain("access_token: oauthCredentials?.access_token");
@@ -73,6 +84,22 @@ describe("Onboarding provider and agent setup", () => {
     expect(oauth).toContain('apiFetch("/api/providers/oauth/poll"');
     expect(oauth).toContain('apiFetch("/api/providers/oauth/start"');
     expect(oauth).toContain('apiFetch("/api/providers/oauth/callback-status"');
+    expect(cli).toContain("connectCliProviderOAuth");
+    expect(cli).toContain('provider.authType === "oauth"');
+    expect(cli).toContain("access_token: credentials?.accessToken");
+  });
+
+  test("distinguishes pasted access tokens from API keys", () => {
+    expect(setup).toContain('provider.authType === "token"');
+    expect(setup).toContain('title: "Enter Access Token"');
+    expect(setup).toContain('placeholder: "Paste your access token"');
+  });
+
+  test("credential-free providers resolve their own name instead of stale selection state", () => {
+    expect(setup).toContain(
+      "availableProviders?.find((provider) => provider.id === providerId)?.name || providerId"
+    );
+    expect(setup).not.toContain("name: selectedProvider?.name || providerId");
   });
 
   test("uses the regular configured-provider model discovery contract", () => {
