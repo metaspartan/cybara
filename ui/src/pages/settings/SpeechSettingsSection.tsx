@@ -3,19 +3,63 @@ import { Button } from "@/components/ui/Button";
 import { Input, Select } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
 import { chatApi, settingsApi } from "@/lib/api";
+import { appendApiTokenParam } from "@/lib/auth";
 import { useProviders } from "@/hooks/useApi";
 import { useUIStore } from "@/stores/uiStore";
 import {
+  AlertTriangle,
   CheckCircle2,
   Download,
   Loader2,
   Mic,
+  Play,
   RefreshCw,
   Save,
   Trash2,
   Volume2,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+type SpeechStatus = Awaited<ReturnType<typeof chatApi.getSpeechStatus>>["data"];
+
+const TTS_PROVIDER_HINTS: Record<string, string> = {
+  auto: "Uses your best configured cloud voice, falling back to the system voice if enabled.",
+  local: "Kokoro 82M runs fully offline on this machine. No API key or network needed after load.",
+  elevenlabs: "Highest-quality cloud voices. Requires an ElevenLabs provider with an API key.",
+  openai: "OpenAI text-to-speech. Requires an OpenAI (or OpenAI-compatible) provider with a key.",
+  system: "Uses the built-in macOS speech synthesizer. Works offline, no key, macOS only.",
+};
+
+function ReadinessBadge({
+  ready,
+  loading,
+  label,
+}: {
+  ready: boolean | undefined;
+  loading: boolean;
+  label: string;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] ${
+        loading
+          ? "border-white/15 text-gray-400"
+          : ready
+            ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-200"
+            : "border-amber-400/30 bg-amber-400/10 text-amber-200"
+      }`}
+    >
+      {loading ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : ready ? (
+        <CheckCircle2 className="h-3 w-3" />
+      ) : (
+        <AlertTriangle className="h-3 w-3" />
+      )}
+      {loading ? "Checking" : label}
+    </span>
+  );
+}
 
 type LocalTtsCatalog = Awaited<ReturnType<typeof chatApi.localSpeechModels>>["data"];
 
@@ -247,6 +291,22 @@ export function SpeechSettingsSection() {
   const [speech, setSpeech] = useState<SpeechSettingsState>(defaultSpeechSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<SpeechStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(true);
+  const [testing, setTesting] = useState(false);
+  const testAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const refreshStatus = useCallback(async () => {
+    setStatusLoading(true);
+    try {
+      const result = await chatApi.getSpeechStatus();
+      if (result.success && result.data) setStatus(result.data);
+    } catch {
+      void 0;
+    } finally {
+      setStatusLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -262,10 +322,38 @@ export function SpeechSettingsSection() {
       }
     };
     void load();
+    void refreshStatus();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [refreshStatus]);
+
+  const testVoice = async () => {
+    setTesting(true);
+    try {
+      const result = await chatApi.synthesizeSpeech({
+        text: "This is how the selected Cybara voice sounds.",
+        providerId: speech.tts.providerId || undefined,
+        model: speech.tts.model || undefined,
+        voice: speech.tts.voice || undefined,
+        speed: speech.tts.speed,
+      });
+      if (!result.success || !result.data?.audioPath) {
+        throw new Error(result.error || "Voice test failed");
+      }
+      testAudioRef.current?.pause();
+      const audio = new Audio(
+        appendApiTokenParam(`/api/media?path=${encodeURIComponent(result.data.audioPath)}`)
+      );
+      testAudioRef.current = audio;
+      await audio.play();
+      addToast("success", `Playing ${result.data.provider} voice`);
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Voice test failed");
+    } finally {
+      setTesting(false);
+    }
+  };
 
   const providerOptions = [
     { value: "", label: "Auto select" },
@@ -300,6 +388,7 @@ export function SpeechSettingsSection() {
         throw new Error(result.error || "Speech settings were not saved");
       }
       addToast("success", "Speech settings saved");
+      void refreshStatus();
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to save speech settings");
     } finally {
@@ -321,18 +410,25 @@ export function SpeechSettingsSection() {
       <CardContent className="space-y-5">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <Volume2 className="w-4 h-4 text-cyan-300" />
-              <h3 className="text-sm font-semibold text-white">Text to Speech</h3>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Volume2 className="w-4 h-4 text-cyan-300" />
+                <h3 className="text-sm font-semibold text-white">Text to Speech</h3>
+              </div>
+              <ReadinessBadge
+                loading={statusLoading}
+                ready={status?.tts.ready}
+                label={status?.tts.ready ? (status.tts.provider ?? "Ready") : "Needs setup"}
+              />
             </div>
             <Select
               label="Provider"
               options={[
-                { value: "auto", label: "Auto" },
+                { value: "auto", label: "Auto (best available)" },
                 { value: "local", label: "Local · Kokoro 82M (offline)" },
-                { value: "elevenlabs", label: "ElevenLabs" },
-                { value: "openai", label: "OpenAI" },
-                { value: "system", label: "System voice" },
+                { value: "elevenlabs", label: "ElevenLabs (cloud)" },
+                { value: "openai", label: "OpenAI (cloud)" },
+                { value: "system", label: "System voice (macOS)" },
               ]}
               value={speech.tts.provider}
               onChange={(provider) =>
@@ -345,6 +441,14 @@ export function SpeechSettingsSection() {
                 }))
               }
             />
+            <p className="text-[11px] leading-4 text-gray-500">
+              {TTS_PROVIDER_HINTS[speech.tts.provider] ?? ""}
+            </p>
+            {status && !status.tts.ready && status.tts.error && (
+              <p className="rounded-lg border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-[11px] leading-4 text-amber-200">
+                {status.tts.error}
+              </p>
+            )}
             {speech.tts.provider === "local" ? (
               <LocalTtsManager
                 voice={speech.tts.voice}
@@ -352,6 +456,20 @@ export function SpeechSettingsSection() {
                   setSpeech((current) => ({ ...current, tts: { ...current.tts, voice } }))
                 }
               />
+            ) : speech.tts.provider === "system" ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input
+                  label="System voice name (optional)"
+                  placeholder="e.g. Samantha, Daniel"
+                  value={speech.tts.voice}
+                  onChange={(event) =>
+                    setSpeech((current) => ({
+                      ...current,
+                      tts: { ...current.tts, voice: event.target.value },
+                    }))
+                  }
+                />
+              </div>
             ) : (
               <Select
                 label="Provider account"
@@ -364,7 +482,7 @@ export function SpeechSettingsSection() {
             )}
             <div
               className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${
-                speech.tts.provider === "local" ? "hidden" : ""
+                speech.tts.provider === "local" || speech.tts.provider === "system" ? "hidden" : ""
               }`}
             >
               <Input
@@ -442,25 +560,55 @@ export function SpeechSettingsSection() {
                   }))
                 }
               />
-              <div className="flex items-center justify-between gap-3 rounded-xl bg-white/5 border border-white/10 px-4 py-3 mt-6">
-                <span className="text-sm text-gray-300">Fallback to macOS system voice</span>
-                <Switch
-                  checked={speech.tts.fallbackToSystem}
-                  onChange={(next) =>
-                    setSpeech((current) => ({
-                      ...current,
-                      tts: { ...current.tts, fallbackToSystem: next },
-                    }))
-                  }
-                />
-              </div>
+              {speech.tts.provider !== "system" && speech.tts.provider !== "local" && (
+                <div className="flex items-center justify-between gap-3 rounded-xl bg-white/5 border border-white/10 px-4 py-3 mt-6">
+                  <span className="text-sm text-gray-300">Fallback to macOS system voice</span>
+                  <Switch
+                    checked={speech.tts.fallbackToSystem}
+                    onChange={(next) =>
+                      setSpeech((current) => ({
+                        ...current,
+                        tts: { ...current.tts, fallbackToSystem: next },
+                      }))
+                    }
+                  />
+                </div>
+              )}
             </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              leftIcon={
+                testing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Play className="w-3.5 h-3.5" />
+                )
+              }
+              onClick={() => void testVoice()}
+              disabled={testing || !status?.tts.ready}
+            >
+              Test voice
+            </Button>
           </div>
 
           <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
-            <div className="flex items-center gap-2">
-              <Mic className="w-4 h-4 text-emerald-300" />
-              <h3 className="text-sm font-semibold text-white">Speech to Text</h3>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Mic className="w-4 h-4 text-emerald-300" />
+                <h3 className="text-sm font-semibold text-white">Speech to Text</h3>
+              </div>
+              <ReadinessBadge
+                loading={statusLoading}
+                ready={status?.stt.ready}
+                label={
+                  status?.stt.ready
+                    ? status.stt.native
+                      ? "Native dictation"
+                      : (status.stt.provider ?? "Ready")
+                    : "Needs setup"
+                }
+              />
             </div>
             <Select
               label="Provider"

@@ -786,6 +786,7 @@ const routes: Record<string, RouteHandler> = {
       systemFallback: settings.tts.fallbackToSystem && process.platform === "darwin",
       error: null,
     };
+    const systemVoiceAvailable = process.platform === "darwin";
     if (settings.tts.provider === "local") {
       const localStatus = listLocalTtsModelStatus()[0];
       tts = {
@@ -795,13 +796,33 @@ const routes: Record<string, RouteHandler> = {
         type: "local",
         error: localStatus?.state === "error" ? localStatus.lastError : null,
       };
+    } else if (settings.tts.provider === "system") {
+      tts = {
+        ...tts,
+        ready: systemVoiceAvailable,
+        provider: systemVoiceAvailable ? "System voice (macOS)" : null,
+        type: "system",
+        error: systemVoiceAvailable
+          ? null
+          : "System voice uses the macOS speech synthesizer. Choose Local, OpenAI, or ElevenLabs on this platform.",
+      };
     } else {
       try {
         const resolved = resolveSpeechTtsProvider({ settings });
         if (resolved) {
           tts = { ...tts, ready: true, provider: resolved.provider.name, type: resolved.type };
+        } else if (tts.systemFallback) {
+          tts = {
+            ...tts,
+            ready: true,
+            provider: "System voice (fallback)",
+            type: "system",
+          };
         } else {
-          tts.error = "No ElevenLabs or OpenAI provider with speech credentials";
+          tts.error =
+            settings.tts.provider === "auto"
+              ? "No speech provider yet. Add OpenAI/ElevenLabs, pick Local Kokoro, or enable the system-voice fallback."
+              : `No ${settings.tts.provider} provider with speech credentials is configured.`;
         }
       } catch (error) {
         tts.error = error instanceof Error ? error.message : "TTS provider resolution failed";

@@ -1407,6 +1407,16 @@ describe("Speech API", () => {
     expect(Array.isArray(data.status)).toBe(true);
   });
 
+  test("GET /api/speech/status reports the system voice (not a cloud provider) when system is selected", async () => {
+    await api("PUT", "/api/speech/settings", { tts: { provider: "system" }, stt: {} });
+    const { status, data } = await api("GET", "/api/speech/status");
+    expect(status).toBe(200);
+    expect(data.tts.type).toBe("system");
+    expect(String(data.tts.provider ?? "")).not.toContain("OpenAI");
+    expect(String(data.tts.provider ?? "")).not.toContain("ElevenLabs");
+    await api("PUT", "/api/speech/settings", { tts: { provider: "auto" }, stt: {} });
+  });
+
   test("GET /api/speech/status reports local Kokoro as ready when selected", async () => {
     await api("PUT", "/api/speech/settings", { tts: { provider: "local" }, stt: {} });
     const { status, data } = await api("GET", "/api/speech/status");
