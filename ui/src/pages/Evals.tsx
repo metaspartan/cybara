@@ -4,6 +4,7 @@ import { type AgentEvalRun, type AgentGolden, evalsApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { TraceDatasetPanel } from "@/pages/research/TraceDatasetPanel";
 import { BenchmarkPanel } from "@/pages/research/BenchmarkPanel";
+import { LeaderboardPanel } from "@/pages/research/LeaderboardPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -20,6 +21,7 @@ import {
   RotateCcw,
   ShieldCheck,
   Trash2,
+  Trophy,
   Upload,
   X,
   XCircle,
@@ -249,7 +251,7 @@ function GoldenRow({
 
 export function Evals() {
   const queryClient = useQueryClient();
-  const [labView, setLabView] = useState<"data" | "benchmarks" | "evals">("data");
+  const [labView, setLabView] = useState<"data" | "benchmarks" | "leaderboard" | "evals">("data");
   const [busyGoldenId, setBusyGoldenId] = useState<string | null>(null);
   const [sanitizeExport, setSanitizeExport] = useState(true);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
@@ -398,46 +400,34 @@ export function Evals() {
       }
     >
       <div className="mb-4 inline-flex rounded-lg border border-white/10 bg-white/[0.025] p-1">
-        <button
-          type="button"
-          onClick={() => setLabView("data")}
-          className={cn(
-            "inline-flex h-8 items-center gap-2 rounded-md px-3 text-[12px] transition-colors",
-            labView === "data" ? "bg-white/10 text-white" : "text-gray-500 hover:text-gray-200"
-          )}
-        >
-          <Database className="h-3.5 w-3.5" />
-          Data
-        </button>
-        <button
-          type="button"
-          onClick={() => setLabView("benchmarks")}
-          className={cn(
-            "inline-flex h-8 items-center gap-2 rounded-md px-3 text-[12px] transition-colors",
-            labView === "benchmarks"
-              ? "bg-white/10 text-white"
-              : "text-gray-500 hover:text-gray-200"
-          )}
-        >
-          <Gauge className="h-3.5 w-3.5" />
-          Benchmarks
-        </button>
-        <button
-          type="button"
-          onClick={() => setLabView("evals")}
-          className={cn(
-            "inline-flex h-8 items-center gap-2 rounded-md px-3 text-[12px] transition-colors",
-            labView === "evals" ? "bg-white/10 text-white" : "text-gray-500 hover:text-gray-200"
-          )}
-        >
-          <FlaskConical className="h-3.5 w-3.5" />
-          Evals
-        </button>
+        {(
+          [
+            { key: "data", label: "Data", icon: Database },
+            { key: "benchmarks", label: "Benchmark", icon: Gauge },
+            { key: "leaderboard", label: "Leaderboard", icon: Trophy },
+            { key: "evals", label: "Evals", icon: FlaskConical },
+          ] as const
+        ).map((tab) => (
+          <button
+            key={tab.key}
+            type="button"
+            onClick={() => setLabView(tab.key)}
+            className={cn(
+              "inline-flex h-8 items-center gap-2 rounded-md px-3 text-[12px] transition-colors",
+              labView === tab.key ? "bg-white/10 text-white" : "text-gray-500 hover:text-gray-200"
+            )}
+          >
+            <tab.icon className="h-3.5 w-3.5" />
+            {tab.label}
+          </button>
+        ))}
       </div>
       {labView === "data" ? (
         <TraceDatasetPanel />
       ) : labView === "benchmarks" ? (
         <BenchmarkPanel />
+      ) : labView === "leaderboard" ? (
+        <LeaderboardPanel />
       ) : (
         <>
           <EvalsExplainer />

@@ -1651,15 +1651,23 @@ export interface ResearchTraceStats {
   test: number;
 }
 
+export type IntelligenceTaskDifficulty =
+  | "basic"
+  | "intermediate"
+  | "advanced"
+  | "expert"
+  | "frontier";
+
 export interface IntelligenceBenchmarkResult {
   taskId: string;
   label: string;
   category: "instruction" | "reasoning" | "coding" | "transformation" | "tool_use";
   passed: boolean;
   score: number;
+  rating?: number;
   response: string;
   expected: string;
-  difficulty: "basic" | "intermediate" | "advanced";
+  difficulty: IntelligenceTaskDifficulty;
   weight: number;
   gradingReason: string;
   durationMs: number;
@@ -1743,12 +1751,15 @@ export const benchmarksApi = {
         name: string;
         description: string;
         taskCount: number;
+        minRating?: number;
+        maxRating?: number;
         tasks: Array<{
           id: string;
           label: string;
           category: string;
           prompt: string;
-          difficulty: "basic" | "intermediate" | "advanced";
+          rating?: number;
+          difficulty: IntelligenceTaskDifficulty;
           weight: number;
           requiredTool?: string;
         }>;
@@ -1764,6 +1775,8 @@ export const benchmarksApi = {
     fetchApi<{ filename: string; mimeType: string; content: string; count: number }>(
       "/evals/benchmarks/export"
     ),
+  manifest: () =>
+    fetchApi<{ filename: string; mimeType: string; content: string }>("/evals/benchmarks/manifest"),
 };
 
 export const workspaceOpenApi = {

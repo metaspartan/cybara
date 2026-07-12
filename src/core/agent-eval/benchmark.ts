@@ -1,12 +1,28 @@
+import { createHash } from "crypto";
 import db from "../database";
+
+export type IntelligenceTaskCategory =
+  | "instruction"
+  | "reasoning"
+  | "coding"
+  | "transformation"
+  | "tool_use";
+
+export type IntelligenceTaskDifficulty =
+  | "basic"
+  | "intermediate"
+  | "advanced"
+  | "expert"
+  | "frontier";
 
 export interface IntelligenceBenchmarkTask {
   id: string;
   label: string;
-  category: "instruction" | "reasoning" | "coding" | "transformation" | "tool_use";
+  category: IntelligenceTaskCategory;
   prompt: string;
   expected: string;
-  difficulty: "basic" | "intermediate" | "advanced";
+  rating: number;
+  difficulty: IntelligenceTaskDifficulty;
   weight: number;
   requiredTool?: string;
 }
@@ -14,12 +30,13 @@ export interface IntelligenceBenchmarkTask {
 export interface IntelligenceBenchmarkResult {
   taskId: string;
   label: string;
-  category: IntelligenceBenchmarkTask["category"];
+  category: IntelligenceTaskCategory;
   passed: boolean;
   score: number;
+  rating: number;
   response: string;
   expected: string;
-  difficulty: IntelligenceBenchmarkTask["difficulty"];
+  difficulty: IntelligenceTaskDifficulty;
   weight: number;
   gradingReason: string;
   durationMs: number;
@@ -57,106 +74,415 @@ interface BenchmarkRunRow {
   completed_at: string | null;
 }
 
-export const QUICK_INTELLIGENCE_SUITE_ID = "cybara-quick-intelligence-v2";
+export const INTELLIGENCE_RATING_SUITE_ID = "cybara-intelligence-rating-v1";
+export const LEGACY_QUICK_INTELLIGENCE_SUITE_ID = "cybara-quick-intelligence-v2";
+export const INTELLIGENCE_RATING_SCALE = 400;
+export const INTELLIGENCE_RATING_EDGE_MARGIN = 400;
 
-export const quickIntelligenceTasks: IntelligenceBenchmarkTask[] = [
-  {
+function difficultyForRating(rating: number): IntelligenceTaskDifficulty {
+  if (rating < 1300) return "basic";
+  if (rating < 1800) return "intermediate";
+  if (rating < 2300) return "advanced";
+  if (rating < 2800) return "expert";
+  return "frontier";
+}
+
+function weightForRating(rating: number): number {
+  if (rating < 1300) return 1;
+  if (rating < 1800) return 2;
+  if (rating < 2300) return 3;
+  if (rating < 2800) return 4;
+  return 5;
+}
+
+function task(input: {
+  id: string;
+  label: string;
+  category: IntelligenceTaskCategory;
+  prompt: string;
+  expected: string;
+  rating: number;
+  requiredTool?: string;
+}): IntelligenceBenchmarkTask {
+  return {
+    ...input,
+    difficulty: difficultyForRating(input.rating),
+    weight: weightForRating(input.rating),
+  };
+}
+
+export const intelligenceRatingTasks: IntelligenceBenchmarkTask[] = [
+  task({
     id: "instruction-exact",
     label: "Exact instruction",
     category: "instruction",
     prompt: "Reply with exactly CYBARA and no other text.",
     expected: "CYBARA",
-    difficulty: "basic",
-    weight: 1,
-  },
-  {
-    id: "arithmetic",
-    label: "Arithmetic",
+    rating: 850,
+  }),
+  task({
+    id: "addition",
+    label: "Addition",
+    category: "reasoning",
+    prompt: "Compute 47 + 58. Reply with the number only.",
+    expected: "105",
+    rating: 900,
+  }),
+  task({
+    id: "reverse-word",
+    label: "String reversal",
+    category: "transformation",
+    prompt: "Reverse the letters in stressed. Reply with the reversed word only.",
+    expected: "desserts",
+    rating: 1000,
+  }),
+  task({
+    id: "letter-count",
+    label: "Letter counting",
+    category: "transformation",
+    prompt:
+      "How many times does the letter s appear in the word assessments? Reply with the number only.",
+    expected: "5",
+    rating: 1150,
+  }),
+  task({
+    id: "arithmetic-chain",
+    label: "Chained arithmetic",
     category: "reasoning",
     prompt: "Compute (37 × 19) + 8. Reply with the number only.",
     expected: "711",
-    difficulty: "basic",
-    weight: 1,
-  },
-  {
-    id: "logic",
+    rating: 1200,
+  }),
+  task({
+    id: "syllogism",
     label: "Deductive logic",
     category: "reasoning",
     prompt: "All nims are veks. No veks are tars. Can any nim be a tar? Reply only YES or NO.",
     expected: "NO",
-    difficulty: "intermediate",
-    weight: 2,
-  },
-  {
-    id: "combinatorics",
-    label: "Combinatorics",
-    category: "reasoning",
-    prompt:
-      "How many onto functions exist from a labeled five-element set to a labeled three-element set? Reply with the integer only.",
-    expected: "150",
-    difficulty: "advanced",
-    weight: 3,
-  },
-  {
-    id: "probability",
-    label: "Exact probability",
-    category: "reasoning",
-    prompt:
-      "An urn has 3 red and 2 blue balls. Two are drawn uniformly without replacement. Reply with the reduced fraction for the probability that both have the same color.",
-    expected: "2/5",
-    difficulty: "advanced",
-    weight: 3,
-  },
-  {
-    id: "code-trace",
-    label: "Code tracing",
+    rating: 1300,
+  }),
+  task({
+    id: "code-trace-loop",
+    label: "Loop tracing",
     category: "coding",
-    prompt: "Let x = 3. Repeat x = x * 2 - 1 exactly four times. Reply with the final number only.",
+    prompt:
+      "Let x = 3. Repeat x = x * 2 - 1 exactly four times. Reply with the final value of x only.",
     expected: "33",
-    difficulty: "intermediate",
-    weight: 2,
-  },
-  {
-    id: "algorithm-analysis",
-    label: "Algorithm analysis",
-    category: "coding",
+    rating: 1400,
+  }),
+  task({
+    id: "grounded-read",
+    label: "Grounded file read",
+    category: "tool_use",
     prompt:
-      "A binary search checks one midpoint per iteration in a sorted array of 1000 distinct items. What is the maximum number of midpoint checks needed to find an existing item? Reply with the integer only.",
-    expected: "10",
-    difficulty: "advanced",
-    weight: 3,
-  },
-  {
-    id: "transformation",
-    label: "Text transformation",
-    category: "transformation",
-    prompt: "Reverse the letters in stressed. Reply with the reversed word only.",
-    expected: "desserts",
-    difficulty: "basic",
-    weight: 1,
-  },
-  {
-    id: "structured-output",
+      "Use the read tool to read benchmark.txt in the workspace. Reply with only its exact contents.",
+    expected: "ORCHID-742",
+    rating: 1400,
+    requiredTool: "read",
+  }),
+  task({
+    id: "json-structured",
     label: "Structured output",
     category: "transformation",
     prompt:
       'Return exactly this compact JSON object with keys in the shown order: language is "TypeScript", runtime is "Bun", and stable is true.',
     expected: '{"language":"TypeScript","runtime":"Bun","stable":true}',
-    difficulty: "intermediate",
-    weight: 2,
-  },
-  {
-    id: "grounded-read",
-    label: "Grounded tool use",
+    rating: 1450,
+  }),
+  task({
+    id: "day-of-week",
+    label: "Calendar arithmetic",
+    category: "reasoning",
+    prompt:
+      "Today is Monday. What day of the week will it be 100 days from today? Reply with the day name only.",
+    expected: "Wednesday",
+    rating: 1500,
+  }),
+  task({
+    id: "alphabetical-third",
+    label: "Sorting",
+    category: "transformation",
+    prompt:
+      "Sort these words alphabetically: banana, apple, cherry, date. Reply with the third word only.",
+    expected: "cherry",
+    rating: 1500,
+  }),
+  task({
+    id: "binary-conversion",
+    label: "Base conversion",
+    category: "coding",
+    prompt: "Convert the decimal number 255 to binary. Reply with the binary digits only.",
+    expected: "11111111",
+    rating: 1550,
+  }),
+  task({
+    id: "units-digit-power",
+    label: "Units digit",
+    category: "reasoning",
+    prompt: "What is the units digit of 7 to the power of 5? Reply with the digit only.",
+    expected: "7",
+    rating: 1600,
+  }),
+  task({
+    id: "stack-trace",
+    label: "Stack simulation",
+    category: "coding",
+    prompt:
+      "A stack starts empty. Push 1, 2, 3, 4, 5 in order. Pop twice. Push 6. Pop once. What number is now on top? Reply with the number only.",
+    expected: "3",
+    rating: 1700,
+  }),
+  task({
+    id: "binary-search-steps",
+    label: "Binary search bound",
+    category: "coding",
+    prompt:
+      "A binary search checks one midpoint per iteration in a sorted array of 1000 distinct items. What is the maximum number of midpoint checks needed to find an existing item? Reply with the number only.",
+    expected: "10",
+    rating: 1750,
+  }),
+  task({
+    id: "grounded-sum",
+    label: "Grounded computation",
     category: "tool_use",
     prompt:
-      "Use the read tool to read benchmark.txt in the workspace. Reply with only its exact contents.",
-    expected: "ORCHID-742",
-    difficulty: "intermediate",
-    weight: 2,
+      "Use the read tool to read data.csv in the workspace, then compute the sum of the value column. Reply with the number only.",
+    expected: "92",
+    rating: 1800,
     requiredTool: "read",
-  },
+  }),
+  task({
+    id: "lcm-gcd",
+    label: "LCM and GCD",
+    category: "reasoning",
+    prompt: "Compute lcm(12, 18) + gcd(12, 18). Reply with the number only.",
+    expected: "42",
+    rating: 1800,
+  }),
+  task({
+    id: "digit-sum-power",
+    label: "Digit sum",
+    category: "reasoning",
+    prompt:
+      "What is the sum of the decimal digits of 2 to the power of 15? Reply with the number only.",
+    expected: "26",
+    rating: 1850,
+  }),
+  task({
+    id: "urn-probability",
+    label: "Exact probability",
+    category: "reasoning",
+    prompt:
+      "An urn has 3 red and 2 blue balls. Two are drawn uniformly at random without replacement. What is the probability both have the same color? Reply with the reduced fraction only.",
+    expected: "2/5",
+    rating: 1950,
+  }),
+  task({
+    id: "recursion-trace",
+    label: "Recurrence tracing",
+    category: "coding",
+    prompt:
+      "Define f(0) = 1, f(1) = 1, and f(n) = f(n-1) + 2*f(n-2) for n >= 2. What is f(6)? Reply with the number only.",
+    expected: "43",
+    rating: 2000,
+  }),
+  task({
+    id: "onto-functions",
+    label: "Combinatorics",
+    category: "reasoning",
+    prompt:
+      "How many onto functions exist from a labeled five-element set to a labeled three-element set? Reply with the number only.",
+    expected: "150",
+    rating: 2150,
+  }),
+  task({
+    id: "modular-exponent",
+    label: "Modular exponentiation",
+    category: "reasoning",
+    prompt: "What is 3 to the power of 100, mod 7? Reply with the number only.",
+    expected: "4",
+    rating: 2250,
+  }),
+  task({
+    id: "knights-knaves",
+    label: "Knights and knaves",
+    category: "reasoning",
+    prompt:
+      "On an island, knights always tell the truth and knaves always lie. Person A says: We are both knaves. What is person B? Reply only KNIGHT or KNAVE.",
+    expected: "KNIGHT",
+    rating: 2300,
+  }),
+  task({
+    id: "chinese-remainder",
+    label: "Simultaneous congruences",
+    category: "reasoning",
+    prompt:
+      "Find the smallest positive integer that leaves remainder 2 when divided by 3, remainder 3 when divided by 5, and remainder 2 when divided by 7. Reply with the number only.",
+    expected: "23",
+    rating: 2400,
+  }),
+  task({
+    id: "pythagorean",
+    label: "Exact geometry",
+    category: "reasoning",
+    prompt:
+      "A right triangle has legs of length 20 and 21. What is the length of the hypotenuse? Reply with the number only.",
+    expected: "29",
+    rating: 2450,
+  }),
+  task({
+    id: "lattice-paths",
+    label: "Lattice paths",
+    category: "reasoning",
+    prompt:
+      "Moving only right or up along grid lines from (0,0) to (4,4), how many distinct lattice paths exist? Reply with the number only.",
+    expected: "70",
+    rating: 2500,
+  }),
+  task({
+    id: "conditional-probability",
+    label: "Conditional probability",
+    category: "reasoning",
+    prompt:
+      "Three fair coins are flipped. Given that at least one shows heads, what is the probability that all three show heads? Reply with the reduced fraction only.",
+    expected: "1/7",
+    rating: 2550,
+  }),
+  task({
+    id: "trailing-zeros",
+    label: "Factorial zeros",
+    category: "reasoning",
+    prompt: "How many trailing zeros does 100 factorial have? Reply with the number only.",
+    expected: "24",
+    rating: 2650,
+  }),
+  task({
+    id: "circular-seating",
+    label: "Constrained seating",
+    category: "reasoning",
+    prompt:
+      "In how many ways can 8 people be seated around a circular table if two particular people refuse to sit next to each other? Treat rotations as identical and reflections as distinct. Reply with the number only.",
+    expected: "3600",
+    rating: 2800,
+  }),
+  task({
+    id: "collatz-steps",
+    label: "Long process tracing",
+    category: "coding",
+    prompt:
+      "Apply the Collatz rule (n becomes 3n+1 if n is odd, n/2 if n is even) starting at 27. How many steps are needed to reach 1? Reply with the number only.",
+    expected: "111",
+    rating: 2900,
+  }),
+  task({
+    id: "smallest-divisors",
+    label: "Divisor counting",
+    category: "reasoning",
+    prompt:
+      "What is the smallest positive integer with exactly 12 positive divisors? Reply with the number only.",
+    expected: "60",
+    rating: 3000,
+  }),
+  task({
+    id: "constrained-digits",
+    label: "Constraint satisfaction",
+    category: "reasoning",
+    prompt:
+      "Find the unique three-digit number where the digits sum to 18, the hundreds digit is twice the units digit, and the tens digit is the average of the hundreds and units digits. Reply with the number only.",
+    expected: "864",
+    rating: 3100,
+  }),
 ];
+
+export function intelligenceRatingBounds(): { min: number; max: number } {
+  const ratings = intelligenceRatingTasks.map((item) => item.rating);
+  return { min: Math.min(...ratings), max: Math.max(...ratings) };
+}
+
+export function expectedPassProbability(taskRating: number, modelRating: number): number {
+  return 1 / (1 + 10 ** ((taskRating - modelRating) / INTELLIGENCE_RATING_SCALE));
+}
+
+export function computeIntelligenceRating(
+  results: Array<{ rating: number; passed: boolean }>
+): number {
+  const rated = results.filter((item) => Number.isFinite(item.rating) && item.rating > 0);
+  if (rated.length === 0) return 0;
+  const ratings = rated.map((item) => item.rating);
+  const minRating = Math.min(...ratings);
+  const maxRating = Math.max(...ratings);
+  const passedCount = rated.filter((item) => item.passed).length;
+  if (passedCount === 0) return Math.max(0, minRating - INTELLIGENCE_RATING_EDGE_MARGIN);
+  if (passedCount === rated.length) return maxRating + INTELLIGENCE_RATING_EDGE_MARGIN;
+  let low = minRating - INTELLIGENCE_RATING_EDGE_MARGIN * 2;
+  let high = maxRating + INTELLIGENCE_RATING_EDGE_MARGIN * 2;
+  for (let iteration = 0; iteration < 80; iteration += 1) {
+    const middle = (low + high) / 2;
+    const expected = rated.reduce(
+      (total, item) => total + expectedPassProbability(item.rating, middle),
+      0
+    );
+    if (expected < passedCount) low = middle;
+    else high = middle;
+  }
+  return Math.round((low + high) / 2);
+}
+
+export function intelligenceRatingTier(rating: number): string {
+  if (rating < 1000) return "Emerging";
+  if (rating < 1400) return "Developing";
+  if (rating < 1800) return "Capable";
+  if (rating < 2200) return "Advanced";
+  if (rating < 2600) return "Expert";
+  if (rating < 3000) return "Frontier";
+  return "Superhuman";
+}
+
+export function intelligenceRatingManifest(): Record<string, unknown> {
+  const bounds = intelligenceRatingBounds();
+  return {
+    format: "cybara-intelligence-rating-manifest",
+    version: 1,
+    suiteId: INTELLIGENCE_RATING_SUITE_ID,
+    name: "Cybara Intelligence Rating",
+    taskCount: intelligenceRatingTasks.length,
+    scoring: {
+      method: "rasch-elo-mle",
+      description:
+        "Each task carries a fixed difficulty rating. The model rating is the maximum-likelihood ability under a one-parameter logistic model P(pass) = 1 / (1 + 10^((task - ability) / 400)), solved deterministically by bisection. A perfect run is capped at the hardest task rating plus 400; a zero run at the easiest minus 400.",
+      scale: INTELLIGENCE_RATING_SCALE,
+      edgeMargin: INTELLIGENCE_RATING_EDGE_MARGIN,
+      minTaskRating: bounds.min,
+      maxTaskRating: bounds.max,
+      tiers: [
+        { below: 1000, label: "Emerging" },
+        { below: 1400, label: "Developing" },
+        { below: 1800, label: "Capable" },
+        { below: 2200, label: "Advanced" },
+        { below: 2600, label: "Expert" },
+        { below: 3000, label: "Frontier" },
+        { below: null, label: "Superhuman" },
+      ],
+    },
+    grading: {
+      method: "objective-string-match",
+      description:
+        "Responses are trimmed, unwrapped from quotes, backticks, \\boxed{}, and \\frac{}{} forms, then compared case-insensitively against the expected answer. Tasks with a required tool additionally verify that the tool was observed. No judge model is used.",
+      workspaceFixtures: {
+        "benchmark.txt": "ORCHID-742",
+        "data.csv": "value\n17\n25\n41\n9\n",
+      },
+    },
+    reproducibility:
+      "Run each prompt as an isolated single-turn conversation with tools enabled only for tool_use tasks. Grade with the normalization above and compute the rating with the published formula. Prompts are open by design; treat memorized answers as a known public-benchmark tradeoff.",
+    tasks: intelligenceRatingTasks.map((item) => ({
+      ...item,
+      sha256: createHash("sha256")
+        .update(`${item.id}\n${item.prompt}\n${item.expected}`)
+        .digest("hex"),
+    })),
+  };
+}
 
 function fromRow(row: BenchmarkRunRow): IntelligenceBenchmarkRun {
   return {
@@ -187,7 +513,7 @@ export function createIntelligenceBenchmarkRun(input: {
      VALUES (?, ?, ?, ?, ?, 'running', 0, 0, '[]')`
   ).run(
     id,
-    QUICK_INTELLIGENCE_SUITE_ID,
+    INTELLIGENCE_RATING_SUITE_ID,
     input.agentId,
     input.provider ?? null,
     input.model ?? null
@@ -203,12 +529,7 @@ export function updateIntelligenceBenchmarkRun(
   results: IntelligenceBenchmarkResult[],
   completed: boolean
 ): IntelligenceBenchmarkRun {
-  const totalWeight = results.reduce((total, result) => total + result.weight, 0);
-  const earnedWeight = results.reduce(
-    (total, result) => total + (result.passed ? result.weight : 0),
-    0
-  );
-  const score = totalWeight === 0 ? 0 : Math.round((earnedWeight / totalWeight) * 10_000) / 100;
+  const score = computeIntelligenceRating(results);
   db.prepare(
     `UPDATE agent_benchmark_runs SET
       status = ?, score = ?, current_task = ?, results_json = ?, completed_at = ?

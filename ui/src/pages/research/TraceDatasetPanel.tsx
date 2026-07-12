@@ -134,8 +134,31 @@ function TraceMetadata({ trace }: { trace: ResearchTraceSummary }) {
   );
 }
 
+type TraceFilter = "all" | "clean" | "reasoning" | "tools" | "train" | "validation" | "test";
+
+const traceFilters: Array<{ value: TraceFilter; label: string }> = [
+  { value: "all", label: "All" },
+  { value: "clean", label: "Clean" },
+  { value: "reasoning", label: "Has reasoning" },
+  { value: "tools", label: "Uses tools" },
+  { value: "train", label: "Train" },
+  { value: "validation", label: "Validation" },
+  { value: "test", label: "Test" },
+];
+
+function matchesTraceFilter(trace: ResearchTraceSummary, filter: TraceFilter): boolean {
+  if (filter === "clean") return trace.qualityFlags.length === 0;
+  if (filter === "reasoning") return trace.hasObservableReasoning;
+  if (filter === "tools") return trace.toolCallCount > 0;
+  if (filter === "train" || filter === "validation" || filter === "test") {
+    return trace.split === filter;
+  }
+  return true;
+}
+
 export function TraceDatasetPanel() {
   const [queryText, setQueryText] = useState("");
+  const [filter, setFilter] = useState<TraceFilter>("all");
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
   const [format, setFormat] = useState<ResearchExportFormat>("cybara_trace");
   const [sanitize, setSanitize] = useState(true);
@@ -152,14 +175,14 @@ export function TraceDatasetPanel() {
   });
   const filtered = useMemo(() => {
     const needle = queryText.trim().toLowerCase();
-    const traces = query.data?.traces ?? [];
+    const traces = (query.data?.traces ?? []).filter((trace) => matchesTraceFilter(trace, filter));
     if (!needle) return traces;
     return traces.filter((trace) =>
       [trace.promptPreview, trace.responsePreview, trace.provider, trace.model, trace.agentId]
         .filter((value): value is string => typeof value === "string")
         .some((value) => value.toLowerCase().includes(needle))
     );
-  }, [query.data?.traces, queryText]);
+  }, [query.data?.traces, queryText, filter]);
   const exporter = useMutation({
     mutationFn: async () => {
       const response = await researchApi.export(format, sanitize, [...selected]);
@@ -279,6 +302,23 @@ export function TraceDatasetPanel() {
             {selected.size > 0 ? `${selected.size} selected · ` : ""}
             {filtered.length} shown
           </span>
+          <div className="flex w-full flex-wrap gap-1 pt-1">
+            {traceFilters.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                onClick={() => setFilter(item.value)}
+                className={cn(
+                  "h-6 rounded-full border px-2 text-[10px] transition-colors",
+                  filter === item.value
+                    ? "border-indigo-400/40 bg-indigo-400/15 text-indigo-200"
+                    : "border-white/10 text-gray-500 hover:text-gray-200"
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
         </div>
         {query.isLoading ? (
           <div className="space-y-px p-3">

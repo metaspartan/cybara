@@ -89,8 +89,10 @@ import {
   evalSuiteJsonl,
   parseEvalSuiteBundle,
   parseResearchExportFormat,
-  quickIntelligenceTasks,
-  QUICK_INTELLIGENCE_SUITE_ID,
+  intelligenceRatingManifest,
+  intelligenceRatingTasks,
+  INTELLIGENCE_RATING_EDGE_MARGIN,
+  INTELLIGENCE_RATING_SUITE_ID,
   registerEvalReplayExecutor,
   saveGolden,
   createIntelligenceBenchmarkRun,
@@ -309,8 +311,9 @@ async function runQuickIntelligenceBenchmark(runId: string, agentId: string): Pr
     if (!agent) throw new Error("Agent not found");
     workspaceDir = mkdtempSync(join(tmpdir(), "cybara-benchmark-"));
     await Bun.write(join(workspaceDir, "benchmark.txt"), "ORCHID-742");
+    await Bun.write(join(workspaceDir, "data.csv"), "value\n17\n25\n41\n9\n");
     const results = [];
-    for (const task of quickIntelligenceTasks) {
+    for (const task of intelligenceRatingTasks) {
       const sessionId = crypto.randomUUID();
       sessionIds.push(sessionId);
       const startedAt = Date.now();
@@ -331,6 +334,7 @@ async function runQuickIntelligenceBenchmark(runId: string, agentId: string): Pr
           category: task.category,
           passed,
           score: passed ? 100 : 0,
+          rating: task.rating,
           response: response.message.content,
           expected: task.expected,
           difficulty: task.difficulty,
@@ -347,6 +351,7 @@ async function runQuickIntelligenceBenchmark(runId: string, agentId: string): Pr
           category: task.category,
           passed: false,
           score: 0,
+          rating: task.rating,
           response: "",
           expected: task.expected,
           difficulty: task.difficulty,
@@ -509,15 +514,28 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/evals/benchmarks": (_body, params) => ({
     suite: {
-      id: QUICK_INTELLIGENCE_SUITE_ID,
-      name: "Quick Intelligence",
+      id: INTELLIGENCE_RATING_SUITE_ID,
+      name: "Cybara Intelligence Rating",
       description:
-        "A low-cost objective capability baseline covering reasoning, instruction following, coding, transformation, and grounded tool use.",
-      taskCount: quickIntelligenceTasks.length,
-      tasks: quickIntelligenceTasks.map(({ expected: _expected, ...task }) => task),
+        "A reproducible, judge-free capability rating. 32 objectively graded tasks calibrated from 850 to 3100 produce an Elo-style rating where roughly 1500 is a capable mid-tier model and 3000 is frontier-class.",
+      taskCount: intelligenceRatingTasks.length,
+      minRating: Math.min(...intelligenceRatingTasks.map((task) => task.rating)),
+      maxRating:
+        Math.max(...intelligenceRatingTasks.map((task) => task.rating)) +
+        INTELLIGENCE_RATING_EDGE_MARGIN,
+      tasks: intelligenceRatingTasks.map(({ expected: _expected, ...task }) => task),
     },
     runs: listIntelligenceBenchmarkRuns(parseBoundedQueryNumber(params?.limit, 1, 200) ?? 50),
   }),
+  "GET /api/evals/benchmarks/manifest": () => {
+    const manifest = intelligenceRatingManifest();
+    return {
+      filename: `${INTELLIGENCE_RATING_SUITE_ID}-manifest.json`,
+      mimeType: "application/json",
+      content: JSON.stringify(manifest, null, 2),
+      manifest,
+    };
+  },
   "GET /api/evals/benchmarks/export": () => {
     const runs = listIntelligenceBenchmarkRuns(200);
     return {
