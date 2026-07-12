@@ -11,6 +11,8 @@ import {
   FileJson,
   Loader2,
   Play,
+  Square,
+  Trash2,
   XCircle,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -115,6 +117,22 @@ export function BenchmarkPanel() {
     },
     onSuccess: (value) => downloadFile(value.content, value.filename, value.mimeType),
   });
+  const cancel = useMutation({
+    mutationFn: async (runId: string) => {
+      const response = await benchmarksApi.cancel(runId);
+      if (!response.success || !response.data?.success)
+        throw new Error(response.error || response.data?.error || "Cancel failed");
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["lab-benchmarks"] }),
+  });
+  const remove = useMutation({
+    mutationFn: async (runId: string) => {
+      const response = await benchmarksApi.remove(runId);
+      if (!response.success || !response.data?.success)
+        throw new Error(response.error || response.data?.error || "Delete failed");
+    },
+    onSettled: () => void queryClient.invalidateQueries({ queryKey: ["lab-benchmarks"] }),
+  });
   const suite = benchmarkQuery.data?.suite;
   const latest = benchmarkQuery.data?.runs[0];
   const activeRun = benchmarkQuery.data?.runs.find((item) => item.status === "running");
@@ -202,6 +220,21 @@ export function BenchmarkPanel() {
                     ? "Starting"
                     : "Run benchmark"}
               </button>
+              {activeRun && (
+                <button
+                  type="button"
+                  onClick={() => cancel.mutate(activeRun.id)}
+                  disabled={cancel.isPending}
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border border-red-400/25 bg-red-400/10 px-3 text-[12px] font-medium text-red-200 hover:bg-red-400/15 disabled:opacity-40"
+                >
+                  {cancel.isPending ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Square className="h-3.5 w-3.5" />
+                  )}
+                  Cancel
+                </button>
+              )}
             </div>
             {run.isError && (
               <p className="mt-2 text-[11px] text-red-300">
@@ -368,58 +401,83 @@ export function BenchmarkPanel() {
             const tier = rated && item.status === "completed" ? tierFor(item.score) : null;
             return (
               <div key={item.id} className="border-b border-white/10 last:border-b-0">
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExpandedRun((current) => (current === item.id ? null : item.id))
-                  }
-                  className="grid w-full grid-cols-[minmax(0,1fr)_auto_90px] items-center gap-3 px-3 py-3 text-left hover:bg-white/[0.03]"
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-[12px] font-medium text-white">
-                      {item.model || item.agentId}
-                      {!rated && (
-                        <span className="ml-2 rounded border border-white/10 px-1 py-px text-[9px] uppercase text-gray-500">
-                          legacy suite
+                <div className="flex items-center hover:bg-white/[0.03]">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedRun((current) => (current === item.id ? null : item.id))
+                    }
+                    className="grid min-w-0 flex-1 grid-cols-[minmax(0,1fr)_auto_90px] items-center gap-3 px-3 py-3 text-left"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-[12px] font-medium text-white">
+                        {item.model || item.agentId}
+                        {!rated && (
+                          <span className="ml-2 rounded border border-white/10 px-1 py-px text-[9px] uppercase text-gray-500">
+                            legacy suite
+                          </span>
+                        )}
+                        {item.status === "cancelled" && (
+                          <span className="ml-2 rounded border border-amber-400/30 bg-amber-400/10 px-1 py-px text-[9px] uppercase text-amber-200">
+                            cancelled
+                          </span>
+                        )}
+                      </span>
+                      <span className="block text-[10px] text-gray-500">
+                        {item.status === "running"
+                          ? `Running task ${Math.min(item.currentTask + 1, taskCount)} of ${taskCount}`
+                          : item.status === "error"
+                            ? item.error || "Run interrupted"
+                            : item.status === "cancelled"
+                              ? `Cancelled after ${item.results.length} of ${taskCount} tasks`
+                              : new Date(item.createdAt).toLocaleString()}
+                      </span>
+                    </span>
+                    <span className="flex items-center justify-end gap-2">
+                      {tier && (
+                        <span
+                          className={cn(
+                            "hidden rounded-full border px-2 py-0.5 text-[9px] font-medium sm:inline",
+                            tier.chip
+                          )}
+                        >
+                          {tier.label}
                         </span>
                       )}
-                    </span>
-                    <span className="block text-[10px] text-gray-500">
-                      {item.status === "running"
-                        ? `Running task ${Math.min(item.currentTask + 1, taskCount)} of ${taskCount}`
-                        : item.status === "error"
-                          ? item.error || "Run interrupted"
-                          : new Date(item.createdAt).toLocaleString()}
-                    </span>
-                  </span>
-                  <span className="flex items-center justify-end gap-2">
-                    {tier && (
                       <span
                         className={cn(
-                          "hidden rounded-full border px-2 py-0.5 text-[9px] font-medium sm:inline",
-                          tier.chip
+                          "text-right text-[13px] font-semibold tabular-nums",
+                          tier?.tone ?? "text-gray-300"
                         )}
                       >
-                        {tier.label}
+                        {item.status === "running"
+                          ? `${item.currentTask}/${taskCount}`
+                          : runScoreLabel(item, suite?.id)}
                       </span>
-                    )}
-                    <span
-                      className={cn(
-                        "text-right text-[13px] font-semibold tabular-nums",
-                        tier?.tone ?? "text-gray-300"
-                      )}
-                    >
-                      {item.status === "running"
-                        ? `${item.currentTask}/${taskCount}`
-                        : runScoreLabel(item, suite?.id)}
                     </span>
-                  </span>
-                  <span className="text-right text-[10px] text-gray-500">
-                    {item.status === "running"
-                      ? "in progress"
-                      : `${item.results.filter((result) => result.passed).length}/${item.results.length} passed`}
-                  </span>
-                </button>
+                    <span className="text-right text-[10px] text-gray-500">
+                      {item.status === "running"
+                        ? "in progress"
+                        : `${item.results.filter((result) => result.passed).length}/${item.results.length} passed`}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      item.status === "running" ? cancel.mutate(item.id) : remove.mutate(item.id)
+                    }
+                    disabled={remove.isPending || cancel.isPending}
+                    title={item.status === "running" ? "Cancel run" : "Delete run"}
+                    aria-label={item.status === "running" ? "Cancel run" : "Delete run"}
+                    className="mr-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-600 hover:bg-red-400/10 hover:text-red-300 disabled:opacity-40"
+                  >
+                    {item.status === "running" ? (
+                      <Square className="h-3 w-3" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </button>
+                </div>
                 {expandedRun === item.id && (
                   <div className="grid gap-px border-t border-white/10 bg-white/10 sm:grid-cols-2 xl:grid-cols-3">
                     {item.results.map((result) => (

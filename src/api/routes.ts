@@ -89,10 +89,15 @@ import {
   evalSuiteJsonl,
   parseEvalSuiteBundle,
   parseResearchExportFormat,
+  cancelIntelligenceBenchmarkRun,
+  clearIntelligenceBenchmarkCancelRequest,
+  deleteIntelligenceBenchmarkRun,
   intelligenceRatingManifest,
   intelligenceRatingTasks,
   INTELLIGENCE_RATING_EDGE_MARGIN,
   INTELLIGENCE_RATING_SUITE_ID,
+  isIntelligenceBenchmarkCancelRequested,
+  requestIntelligenceBenchmarkCancel,
   registerEvalReplayExecutor,
   saveGolden,
   createIntelligenceBenchmarkRun,
@@ -313,7 +318,12 @@ async function runQuickIntelligenceBenchmark(runId: string, agentId: string): Pr
     await Bun.write(join(workspaceDir, "benchmark.txt"), "ORCHID-742");
     await Bun.write(join(workspaceDir, "data.csv"), "value\n17\n25\n41\n9\n");
     const results = [];
+    let cancelled = false;
     for (const task of intelligenceRatingTasks) {
+      if (isIntelligenceBenchmarkCancelRequested(runId)) {
+        cancelled = true;
+        break;
+      }
       const sessionId = crypto.randomUUID();
       sessionIds.push(sessionId);
       const startedAt = Date.now();
@@ -364,13 +374,15 @@ async function runQuickIntelligenceBenchmark(runId: string, agentId: string): Pr
       }
       updateIntelligenceBenchmarkRun(runId, results, false);
     }
-    updateIntelligenceBenchmarkRun(runId, results, true);
+    if (cancelled) cancelIntelligenceBenchmarkRun(runId, results);
+    else updateIntelligenceBenchmarkRun(runId, results, true);
   } catch (error) {
     failIntelligenceBenchmarkRun(
       runId,
       error instanceof Error ? error.message : "Benchmark failed"
     );
   } finally {
+    clearIntelligenceBenchmarkCancelRequest(runId);
     await Promise.all(sessionIds.map((sessionId) => deleteSession(sessionId)));
     sessionIds.forEach((sessionId) => deleteSessionTrajectories(sessionId));
     if (workspaceDir) rmSync(workspaceDir, { recursive: true, force: true });
@@ -544,6 +556,22 @@ const routes: Record<string, RouteHandler> = {
       content: runs.map((run) => JSON.stringify(run)).join("\n"),
       count: runs.length,
     };
+  },
+  "POST /api/evals/benchmarks/cancel": (body) => {
+    const data = (body || {}) as { runId?: string };
+    if (!data.runId?.trim()) return { success: false, error: "runId is required" };
+    const run = requestIntelligenceBenchmarkCancel(data.runId.trim());
+    if (!run) return { success: false, error: "No running benchmark with that id" };
+    return { success: true, run };
+  },
+  "DELETE /api/evals/benchmarks": (body) => {
+    const data = (body || {}) as { runId?: string };
+    if (!data.runId?.trim()) return { success: false, error: "runId is required" };
+    const deleted = deleteIntelligenceBenchmarkRun(data.runId.trim());
+    if (!deleted) {
+      return { success: false, error: "Run not found or still running; cancel it first" };
+    }
+    return { success: true };
   },
   "POST /api/evals/benchmarks/run": async (body) => {
     const data = (body || {}) as { agentId?: string };

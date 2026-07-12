@@ -50,7 +50,7 @@ export interface IntelligenceBenchmarkRun {
   agentId: string;
   provider: string | null;
   model: string | null;
-  status: "running" | "completed" | "error";
+  status: "running" | "completed" | "cancelled" | "error";
   score: number;
   currentTask: number;
   results: IntelligenceBenchmarkResult[];
@@ -74,8 +74,11 @@ interface BenchmarkRunRow {
   completed_at: string | null;
 }
 
-export const INTELLIGENCE_RATING_SUITE_ID = "cybara-intelligence-rating-v1";
-export const LEGACY_QUICK_INTELLIGENCE_SUITE_ID = "cybara-quick-intelligence-v2";
+export const INTELLIGENCE_RATING_SUITE_ID = "cybara-intelligence-rating-v2";
+export const LEGACY_INTELLIGENCE_SUITE_IDS = [
+  "cybara-quick-intelligence-v2",
+  "cybara-intelligence-rating-v1",
+];
 export const INTELLIGENCE_RATING_SCALE = 400;
 export const INTELLIGENCE_RATING_EDGE_MARGIN = 400;
 
@@ -392,6 +395,111 @@ export const intelligenceRatingTasks: IntelligenceBenchmarkTask[] = [
     expected: "864",
     rating: 3100,
   }),
+  task({
+    id: "domino-tiling",
+    label: "Domino tilings",
+    category: "reasoning",
+    prompt:
+      "How many ways can a 2 by 10 rectangle be completely tiled by 2 by 1 dominoes? Reply with the number only.",
+    expected: "89",
+    rating: 3150,
+  }),
+  task({
+    id: "josephus-survivor",
+    label: "Josephus survivor",
+    category: "coding",
+    prompt:
+      "41 people stand in a circle, numbered 1 to 41. Counting starts at person 1 and every third person is eliminated, so persons 3 and 6 are eliminated first. Counting continues around the shrinking circle. What is the number of the last person remaining? Reply with the number only.",
+    expected: "31",
+    rating: 3200,
+  }),
+  task({
+    id: "lis-length",
+    label: "Longest increasing subsequence",
+    category: "coding",
+    prompt:
+      "What is the length of the longest strictly increasing subsequence of this list: 8, 3, 11, 6, 14, 2, 17, 9, 20, 5, 23, 12, 26, 1, 29? Reply with the number only.",
+    expected: "8",
+    rating: 3250,
+  }),
+  task({
+    id: "edit-distance",
+    label: "Edit distance",
+    category: "coding",
+    prompt:
+      "What is the Levenshtein edit distance between intention and execution? Reply with the number only.",
+    expected: "5",
+    rating: 3300,
+  }),
+  task({
+    id: "matrix-determinant",
+    label: "Matrix determinant",
+    category: "reasoning",
+    prompt:
+      "Compute the determinant of the 3 by 3 matrix with rows [2, 3, 1], [4, 1, 5], [6, 2, 3]. Reply with the number only.",
+    expected: "42",
+    rating: 3300,
+  }),
+  task({
+    id: "modpow-large",
+    label: "Large modular power",
+    category: "reasoning",
+    prompt: "What is 2 to the power of 100, mod 1001? Reply with the number only.",
+    expected: "562",
+    rating: 3350,
+  }),
+  task({
+    id: "digit-count-power",
+    label: "Digit counting",
+    category: "reasoning",
+    prompt: "How many decimal digits does 2 to the power of 333 have? Reply with the number only.",
+    expected: "101",
+    rating: 3400,
+  }),
+  task({
+    id: "derangements",
+    label: "Derangements",
+    category: "reasoning",
+    prompt:
+      "How many permutations of 7 distinct letters leave no letter in its original position? Reply with the number only.",
+    expected: "1854",
+    rating: 3450,
+  }),
+  task({
+    id: "catalan-number",
+    label: "Catalan number",
+    category: "reasoning",
+    prompt:
+      "What is the 10th Catalan number, where C(0) = 1 is the 0th? Reply with the number only.",
+    expected: "16796",
+    rating: 3500,
+  }),
+  task({
+    id: "partitions-20",
+    label: "Integer partitions",
+    category: "reasoning",
+    prompt:
+      "In how many ways can the integer 20 be written as a sum of positive integers, where the order of the parts does not matter? Reply with the number only.",
+    expected: "627",
+    rating: 3550,
+  }),
+  task({
+    id: "factorial-digit-sum",
+    label: "Factorial digit sum",
+    category: "coding",
+    prompt: "What is the sum of the decimal digits of 100 factorial? Reply with the number only.",
+    expected: "648",
+    rating: 3600,
+  }),
+  task({
+    id: "factorial-zeros-inverse",
+    label: "Inverse trailing zeros",
+    category: "reasoning",
+    prompt:
+      "What is the smallest positive integer n such that n factorial ends in at least 100 trailing zeros? Reply with the number only.",
+    expected: "405",
+    rating: 3650,
+  }),
 ];
 
 export function intelligenceRatingBounds(): { min: number; max: number } {
@@ -546,6 +654,50 @@ export function updateIntelligenceBenchmarkRun(
     .prepare("SELECT * FROM agent_benchmark_runs WHERE id = ?")
     .get(id) as BenchmarkRunRow;
   return fromRow(row);
+}
+
+const benchmarkCancelRequests = new Set<string>();
+
+export function requestIntelligenceBenchmarkCancel(id: string): IntelligenceBenchmarkRun | null {
+  const row = db
+    .prepare("SELECT * FROM agent_benchmark_runs WHERE id = ? AND status = 'running'")
+    .get(id) as BenchmarkRunRow | null;
+  if (!row) return null;
+  benchmarkCancelRequests.add(id);
+  return fromRow(row);
+}
+
+export function isIntelligenceBenchmarkCancelRequested(id: string): boolean {
+  return benchmarkCancelRequests.has(id);
+}
+
+export function clearIntelligenceBenchmarkCancelRequest(id: string): void {
+  benchmarkCancelRequests.delete(id);
+}
+
+export function cancelIntelligenceBenchmarkRun(
+  id: string,
+  results: IntelligenceBenchmarkResult[]
+): IntelligenceBenchmarkRun {
+  benchmarkCancelRequests.delete(id);
+  const score = computeIntelligenceRating(results);
+  db.prepare(
+    `UPDATE agent_benchmark_runs SET
+      status = 'cancelled', score = ?, current_task = ?, results_json = ?,
+      error = 'Cancelled before completion; partial results retained', completed_at = ?
+     WHERE id = ?`
+  ).run(score, results.length, JSON.stringify(results), new Date().toISOString(), id);
+  const row = db
+    .prepare("SELECT * FROM agent_benchmark_runs WHERE id = ?")
+    .get(id) as BenchmarkRunRow;
+  return fromRow(row);
+}
+
+export function deleteIntelligenceBenchmarkRun(id: string): boolean {
+  const changes = db
+    .prepare("DELETE FROM agent_benchmark_runs WHERE id = ? AND status != 'running'")
+    .run(id).changes;
+  return changes > 0;
 }
 
 export function failIntelligenceBenchmarkRun(id: string, error: string): IntelligenceBenchmarkRun {

@@ -3,7 +3,15 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { Crown, TrendingDown, TrendingUp, Trophy } from "lucide-react";
 import { useMemo } from "react";
-import { formatRating, ratingPercent, tierFor } from "./rating";
+import { computeRatingFromResults, formatRating, ratingPercent, tierFor } from "./rating";
+
+const matrixCategories = [
+  { key: "instruction", label: "Instruction" },
+  { key: "reasoning", label: "Reasoning" },
+  { key: "coding", label: "Coding" },
+  { key: "transformation", label: "Transform" },
+  { key: "tool_use", label: "Tool use" },
+] as const;
 
 interface LeaderboardEntry {
   key: string;
@@ -179,6 +187,55 @@ export function LeaderboardPanel() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {entries.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border border-white/10 bg-white/[0.025]">
+          <div className="border-b border-white/10 px-3 py-2.5">
+            <h3 className="text-[12px] font-medium text-gray-200">Capability matrix</h3>
+            <p className="mt-0.5 text-[10px] text-gray-500">
+              Per-category rating from each model's best run — shows where models differ, not just
+              how much.
+            </p>
+          </div>
+          <table className="w-full min-w-[560px] text-left">
+            <thead>
+              <tr className="border-b border-white/10 text-[10px] uppercase tracking-wide text-gray-500">
+                <th className="px-3 py-2 font-medium">Model</th>
+                {matrixCategories.map((category) => (
+                  <th key={category.key} className="px-3 py-2 text-right font-medium">
+                    {category.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((entry) => (
+                <tr key={entry.key} className="border-b border-white/5 last:border-b-0">
+                  <td className="max-w-[200px] truncate px-3 py-2 text-[12px] text-white">
+                    {entry.model}
+                  </td>
+                  {matrixCategories.map((category) => {
+                    const rating = computeRatingFromResults(
+                      entry.bestRun.results.filter((result) => result.category === category.key)
+                    );
+                    return (
+                      <td
+                        key={category.key}
+                        className={cn(
+                          "px-3 py-2 text-right text-[12px] font-medium tabular-nums",
+                          rating === null ? "text-gray-600" : tierFor(rating).tone
+                        )}
+                      >
+                        {rating === null ? "—" : formatRating(rating)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

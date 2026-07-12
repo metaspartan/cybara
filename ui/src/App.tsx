@@ -172,7 +172,8 @@ function AppRoutes() {
         <Route path="/memory" element={<Memory />} />
         <Route path="/metrics" element={<Metrics />} />
         <Route path="/usage" element={<Usage />} />
-        <Route path="/evals" element={<Evals />} />
+        <Route path="/lab" element={<Evals />} />
+        <Route path="/evals" element={<Navigate to="/lab" replace />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/logs" element={<Logs />} />

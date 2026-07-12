@@ -1681,7 +1681,7 @@ export interface IntelligenceBenchmarkRun {
   agentId: string;
   provider: string | null;
   model: string | null;
-  status: "running" | "completed" | "error";
+  status: "running" | "completed" | "cancelled" | "error";
   score: number;
   currentTask: number;
   results: IntelligenceBenchmarkResult[];
@@ -1777,6 +1777,16 @@ export const benchmarksApi = {
     ),
   manifest: () =>
     fetchApi<{ filename: string; mimeType: string; content: string }>("/evals/benchmarks/manifest"),
+  cancel: (runId: string) =>
+    fetchApi<{ success: boolean; run?: IntelligenceBenchmarkRun; error?: string }>(
+      "/evals/benchmarks/cancel",
+      { method: "POST", body: JSON.stringify({ runId }) }
+    ),
+  remove: (runId: string) =>
+    fetchApi<{ success: boolean; error?: string }>("/evals/benchmarks", {
+      method: "DELETE",
+      body: JSON.stringify({ runId }),
+    }),
 };
 
 export const workspaceOpenApi = {

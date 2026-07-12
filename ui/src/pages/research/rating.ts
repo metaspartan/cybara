@@ -64,6 +64,34 @@ export function ratingPercent(rating: number): number {
   return Math.max(0, Math.min(100, (rating / RATING_CEILING) * 100));
 }
 
+export function computeRatingFromResults(
+  results: Array<{ rating?: number; passed: boolean }>
+): number | null {
+  const rated = results.filter(
+    (item): item is { rating: number; passed: boolean } =>
+      typeof item.rating === "number" && item.rating > 0
+  );
+  if (rated.length === 0) return null;
+  const ratings = rated.map((item) => item.rating);
+  const minRating = Math.min(...ratings);
+  const maxRating = Math.max(...ratings);
+  const passedCount = rated.filter((item) => item.passed).length;
+  if (passedCount === 0) return Math.max(0, minRating - 400);
+  if (passedCount === rated.length) return maxRating + 400;
+  let low = minRating - 800;
+  let high = maxRating + 800;
+  for (let iteration = 0; iteration < 80; iteration += 1) {
+    const middle = (low + high) / 2;
+    const expected = rated.reduce(
+      (total, item) => total + 1 / (1 + 10 ** ((item.rating - middle) / 400)),
+      0
+    );
+    if (expected < passedCount) low = middle;
+    else high = middle;
+  }
+  return Math.round((low + high) / 2);
+}
+
 export function downloadFile(content: string, filename: string, mimeType: string): void {
   const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
   const anchor = document.createElement("a");

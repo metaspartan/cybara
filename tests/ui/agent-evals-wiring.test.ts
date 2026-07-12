@@ -14,8 +14,9 @@ describe("agent eval UI wiring", () => {
     const benchmarks = read("ui/src/pages/research/BenchmarkPanel.tsx");
     const chat = read("ui/src/pages/Chat.tsx");
 
-    expect(app).toContain('path="/evals"');
-    expect(sidebar).toContain('path: "/evals"');
+    expect(app).toContain('path="/lab"');
+    expect(app).toContain('path="/evals" element={<Navigate to="/lab" replace />}');
+    expect(sidebar).toContain('path: "/lab"');
     expect(page).toContain('title="Lab"');
     expect(page).toContain("Run suite");
     expect(page).toContain("Trajectory JSONL");
@@ -33,9 +34,13 @@ describe("agent eval UI wiring", () => {
     expect(benchmarks).toContain("Latest rating");
     expect(benchmarks).toContain("Suite manifest");
     expect(benchmarks).toContain("Difficulty ladder");
+    expect(benchmarks).toContain("Cancel run");
+    expect(benchmarks).toContain("Delete run");
+    expect(benchmarks).toContain("cancelled");
     const leaderboard = read("ui/src/pages/research/LeaderboardPanel.tsx");
     expect(leaderboard).toContain("Model leaderboard");
     expect(leaderboard).toContain("bestRating");
+    expect(leaderboard).toContain("Capability matrix");
     expect(page).toContain("LeaderboardPanel");
     expect(research).toContain("Has reasoning");
     expect(chat).toContain('invalidateQueries({ queryKey: ["agent-evals"] })');
