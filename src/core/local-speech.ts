@@ -1,5 +1,5 @@
-import { chmodSync, mkdirSync } from "fs";
-import { join } from "path";
+import { chmodSync, existsSync, mkdirSync } from "fs";
+import { dirname, join } from "path";
 import { pathToFileURL } from "url";
 import { resolveCybaraHome } from "./cybara-home";
 
@@ -101,6 +101,11 @@ interface TransformersRuntimeModule {
   env: { cacheDir: string };
 }
 
+export interface LocalSpeechRuntimeEntries {
+  kokoro: string;
+  transformers: string;
+}
+
 const runtimeStatus = new Map<string, LocalSpeechModelStatus>();
 const loadingPromises = new Map<string, Promise<KokoroTtsInstance>>();
 const readyModels = new Map<string, KokoroTtsInstance>();
@@ -138,14 +143,75 @@ export function listLocalTtsModelStatus(): LocalSpeechModelStatus[] {
   return LOCAL_TTS_MODELS.map((model) => statusFor(model.id));
 }
 
+function localSpeechRuntimeRoots(): string[] {
+  const seeds = [process.env.CYBARA_RESOURCE_DIR, process.cwd(), dirname(process.execPath)].filter(
+    (value): value is string => typeof value === "string" && value.length > 0
+  );
+  const roots: string[] = [];
+  const seen = new Set<string>();
+  for (const seed of seeds) {
+    let current = seed;
+    for (let depth = 0; depth < 6; depth += 1) {
+      if (!seen.has(current)) {
+        seen.add(current);
+        roots.push(current);
+      }
+      const parent = dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+  }
+  return roots;
+}
+
+export function findLocalSpeechRuntimeEntries(
+  roots: string[] = localSpeechRuntimeRoots()
+): LocalSpeechRuntimeEntries | null {
+  const moduleParents = ["", "bin", "resources", join("resources", "bin")];
+  for (const root of roots) {
+    for (const parent of moduleParents) {
+      const modules = join(root, parent, "node_modules");
+      const kokoro = join(modules, "kokoro-js", "dist", "kokoro.js");
+      const nestedTransformers = join(
+        modules,
+        "kokoro-js",
+        "node_modules",
+        "@huggingface",
+        "transformers",
+        "dist",
+        "transformers.node.mjs"
+      );
+      const rootTransformers = join(
+        modules,
+        "@huggingface",
+        "transformers",
+        "dist",
+        "transformers.node.mjs"
+      );
+      if (!existsSync(kokoro)) continue;
+      if (existsSync(nestedTransformers)) {
+        return { kokoro, transformers: nestedTransformers };
+      }
+      if (existsSync(rootTransformers)) {
+        return { kokoro, transformers: rootTransformers };
+      }
+    }
+  }
+  return null;
+}
+
 async function importKokoro(): Promise<KokoroModule> {
-  const kokoroEntry = Bun.resolveSync("kokoro-js", import.meta.dir);
-  const kokoroRoot = join(kokoroEntry, "..", "..");
-  const transformersEntry = Bun.resolveSync("@huggingface/transformers", kokoroRoot);
+  const entries = findLocalSpeechRuntimeEntries();
+  const transformersEntry = entries
+    ? entries.transformers
+    : Bun.resolveSync("@huggingface/transformers", import.meta.dir);
   const transformers = (await import(
     pathToFileURL(transformersEntry).href
   )) as unknown as TransformersRuntimeModule;
   transformers.env.cacheDir = localSpeechCacheDir();
+  if (entries) {
+    return (await import(pathToFileURL(entries.kokoro).href)) as unknown as KokoroModule;
+  }
   return (await import("kokoro-js")) as unknown as KokoroModule;
 }
 

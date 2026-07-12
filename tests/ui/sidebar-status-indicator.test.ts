@@ -6,8 +6,9 @@ import { PNG } from "pngjs";
 const sidebarPath = fileURLToPath(
   new URL("../../ui/src/components/layout/Sidebar.tsx", import.meta.url)
 );
-const thinkingSpritePath = fileURLToPath(
-  new URL("../../ui/public/cybara-thinking-sprite.png", import.meta.url)
+const logoPath = fileURLToPath(new URL("../../ui/public/cybara.png", import.meta.url));
+const thinkingLogoPath = fileURLToPath(
+  new URL("../../ui/public/cybara-thinking.png", import.meta.url)
 );
 
 function readSidebarSource(): string {
@@ -48,8 +49,12 @@ describe("Sidebar status indicator behavior", () => {
     expect(source).toContain("globalLastSeenRef.current = 0");
   });
 
-  test("renders active thinking sprite instead of a halo ring", () => {
+  test("renders the shared two-frame thinking mark instead of a halo ring", () => {
     const source = readSidebarSource();
+    const mark = readFileSync(
+      fileURLToPath(new URL("../../ui/src/components/CybaraThinkingMark.tsx", import.meta.url)),
+      "utf8"
+    );
     const css = readFileSync(
       fileURLToPath(new URL("../../ui/src/index.css", import.meta.url)),
       "utf8"
@@ -59,50 +64,48 @@ describe("Sidebar status indicator behavior", () => {
     expect(source).not.toContain("ring-2 ring-amber-400/60");
     expect(source).toContain('src="/cybara.png"');
     expect(source).toContain('status === "active" && "opacity-0"');
-    expect(source).toContain("cybara-thinking-sprite");
-    expect(css).toContain('url("/cybara-thinking-sprite.png")');
+    expect(source).toContain("<CybaraThinkingMark />");
+    expect(mark).toContain('from "../../public/cybara.png"');
+    expect(mark).toContain('from "../../public/cybara-thinking.png"');
+    expect(css).toContain(".cybara-thinking-mark");
     expect(css).not.toContain(".gif");
-    expect(css).toContain("width: 4rem");
-    expect(css).toContain("height: 4rem");
-    expect(css).toContain("background-size: 32rem 4rem");
-    expect(css).toContain("background-position: -32rem 0");
-    expect(css).not.toContain("background-size: 800% 100%");
+    expect(css).toContain("inset: 0");
+    expect(css).toContain("width: 100%");
+    expect(css).toContain("height: 100%");
+    expect(css).toContain("steps(1, end)");
+    expect(css).toContain("object-fit: contain");
+    expect(css).not.toContain("cybara-thinking-sprite");
+    expect(css).not.toContain('url("/cybara-thinking-sprite.png")');
   });
 
-  test("thinking sprite contains a left-to-right animation sequence", () => {
-    const png = PNG.sync.read(readFileSync(thinkingSpritePath));
-    const frameSize = 96;
-    const frameCount = 8;
-    const hashes = new Set<string>();
-    const centers: number[] = [];
-
-    expect(png.width).toBe(frameSize * frameCount);
-    expect(png.height).toBe(frameSize);
-
-    for (let frame = 0; frame < frameCount; frame += 1) {
-      let hash = 2166136261;
-      let weightedX = 0;
-      let pixels = 0;
-      for (let y = 0; y < frameSize; y += 1) {
-        for (let x = 0; x < frameSize; x += 1) {
-          const index = (y * png.width + frame * frameSize + x) * 4;
-          for (let channel = 0; channel < 4; channel += 1) {
-            hash ^= png.data[index + channel];
-            hash = Math.imul(hash, 16777619);
-          }
-          if (png.data[index + 3] > 20) {
-            weightedX += x;
-            pixels += 1;
+  test("thinking frames use square canvases and matching visible proportions", () => {
+    const logo = PNG.sync.read(readFileSync(logoPath));
+    const thinking = PNG.sync.read(readFileSync(thinkingLogoPath));
+    const visibleBounds = (
+      png: PNG
+    ): { top: number; bottom: number; height: number; center: number } => {
+      let top = png.height;
+      let bottom = -1;
+      for (let y = 0; y < png.height; y += 1) {
+        for (let x = 0; x < png.width; x += 1) {
+          if (png.data[(y * png.width + x) * 4 + 3] > 8) {
+            top = Math.min(top, y);
+            bottom = Math.max(bottom, y);
           }
         }
       }
-      hashes.add((hash >>> 0).toString(16));
-      centers.push(weightedX / pixels);
-    }
+      return { top, bottom, height: bottom - top + 1, center: (top + bottom) / 2 };
+    };
 
-    expect(hashes.size).toBeGreaterThanOrEqual(5);
-    expect(Math.min(...centers)).toBeLessThan(46);
-    expect(Math.max(...centers)).toBeGreaterThan(50.5);
-    expect(Math.max(...centers) - Math.min(...centers)).toBeGreaterThan(5);
+    expect(logo.width).toBe(logo.height);
+    expect(thinking.width).toBe(thinking.height);
+    const logoBounds = visibleBounds(logo);
+    const thinkingBounds = visibleBounds(thinking);
+    const logoHeightRatio = logoBounds.height / logo.height;
+    const thinkingHeightRatio = thinkingBounds.height / thinking.height;
+    const logoCenterRatio = logoBounds.center / logo.height;
+    const thinkingCenterRatio = thinkingBounds.center / thinking.height;
+    expect(Math.abs(thinkingHeightRatio - logoHeightRatio)).toBeLessThanOrEqual(0.01);
+    expect(Math.abs(thinkingCenterRatio - logoCenterRatio)).toBeLessThanOrEqual(0.01);
   });
 });

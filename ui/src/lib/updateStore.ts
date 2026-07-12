@@ -157,6 +157,11 @@ export async function startUpdateInstall(): Promise<void> {
   }
 }
 
+async function startTrayUpdateInstall(): Promise<void> {
+  if (!state.available) await checkForUpdate();
+  await startUpdateInstall();
+}
+
 export function ensureUpdatePolling(): void {
   if (started || !isTauriDesktopRuntime()) return;
   started = true;
@@ -166,7 +171,7 @@ export function ensureUpdatePolling(): void {
   }, CHECK_INTERVAL_MS);
   window.addEventListener("focus", () => void checkForUpdate());
   listen("cybara://install-update", () => {
-    void startUpdateInstall();
+    void startTrayUpdateInstall();
   }).catch(() => {
     /* event API unavailable */
   });

@@ -15,6 +15,35 @@ pub struct UpdatePhase(pub std::sync::atomic::AtomicBool);
 const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(300);
 const UPDATE_FIRST_CHECK_DELAY: Duration = Duration::from_secs(15);
 
+fn macos_template_icon(source: &tauri::image::Image) -> tauri::image::Image<'static> {
+    let mut rgba = source.rgba().to_vec();
+    for pixel in rgba.chunks_exact_mut(4) {
+        let source_alpha = pixel[3] as f32 / 255.0;
+        let luminance =
+            (pixel[0] as f32 * 0.2126 + pixel[1] as f32 * 0.7152 + pixel[2] as f32 * 0.0722)
+                / 255.0;
+        let detail_alpha = ((luminance - 0.08) / 0.72).clamp(0.0, 1.0);
+        pixel[0] = 0;
+        pixel[1] = 0;
+        pixel[2] = 0;
+        pixel[3] = (source_alpha * detail_alpha * 255.0).round() as u8;
+    }
+    tauri::image::Image::new_owned(rgba, source.width(), source.height())
+}
+
+fn tray_image(source: &tauri::image::Image, badged: bool) -> tauri::image::Image<'static> {
+    let base = if badged {
+        crate::badge_icon(source)
+    } else {
+        tauri::image::Image::new_owned(source.rgba().to_vec(), source.width(), source.height())
+    };
+    if cfg!(target_os = "macos") {
+        macos_template_icon(&base)
+    } else {
+        base
+    }
+}
+
 fn update_menu_text(available: bool, version: &Option<String>, status: &Option<String>) -> String {
     match status.as_deref() {
         Some("downloading") => match version {
@@ -31,7 +60,11 @@ fn update_menu_text(available: bool, version: &Option<String>, status: &Option<S
     }
 }
 
-fn update_tooltip_text(available: bool, version: &Option<String>, status: &Option<String>) -> String {
+fn update_tooltip_text(
+    available: bool,
+    version: &Option<String>,
+    status: &Option<String>,
+) -> String {
     match status.as_deref() {
         Some("downloading") | Some("installing") => "Cybara · Updating…".to_string(),
         Some("done") => "Cybara · Restarting to finish update".to_string(),
@@ -64,12 +97,8 @@ pub fn apply_update_state(
     }
     if let Some(tray) = app.tray_by_id("cybara-tray") {
         let _ = tray.set_tooltip(Some(update_tooltip_text(available, &version, &status)));
-        if let Some(base) = app.default_window_icon().cloned() {
-            if available || busy {
-                let _ = tray.set_icon(Some(crate::badge_icon(&base)));
-            } else {
-                let _ = tray.set_icon(Some(base));
-            }
+        if let Some(base) = app.default_window_icon() {
+            let _ = tray.set_icon(Some(tray_image(base, available || busy)));
             let _ = tray.set_icon_as_template(cfg!(target_os = "macos"));
         }
     }
@@ -214,11 +243,9 @@ fn usage_reset_text(plan: &ProviderUsagePlan) -> Option<String> {
         .iter()
         .find(|window| window.kind == "rolling_5h" && meaningful_reset(&window.reset_description))
         .or_else(|| {
-            plan.windows
-                .iter()
-                .find(|window| {
-                    window.kind == "rolling_week" && meaningful_reset(&window.reset_description)
-                })
+            plan.windows.iter().find(|window| {
+                window.kind == "rolling_week" && meaningful_reset(&window.reset_description)
+            })
         })
         .map(|window| window.reset_description.clone())
 }
@@ -385,10 +412,11 @@ pub fn setup(app: &App) -> tauri::Result<()> {
             &quit,
         ],
     )?;
-    let icon = app
+    let window_icon = app
         .default_window_icon()
         .cloned()
         .ok_or_else(|| tauri::Error::AssetNotFound("Cybara tray icon".to_string()))?;
+    let icon = tray_image(&window_icon, false);
     let gateway_item = gateway.clone();
     TrayIconBuilder::with_id("cybara-tray")
         .icon(icon)
@@ -402,6 +430,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
             "open-usage" => show_route(app, "/usage"),
             "settings" => show_route(app, "/settings"),
             "install-update" => {
+                apply_update_state(app, true, None, Some("downloading".to_string()));
                 let _ = app.emit("cybara://install-update", ());
                 show_main_window(app);
             }
@@ -433,7 +462,10 @@ pub fn setup(app: &App) -> tauri::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ProviderUsagePlan, ProviderUsageWindow, truncate_label, usage_window_text};
+    use super::{
+        ProviderUsagePlan, ProviderUsageWindow, macos_template_icon, truncate_label,
+        update_menu_text, usage_window_text,
+    };
 
     fn plan(window: ProviderUsageWindow) -> ProviderUsagePlan {
         ProviderUsagePlan {
@@ -443,6 +475,39 @@ mod tests {
             external_source_available: true,
             windows: vec![window],
         }
+    }
+
+    #[test]
+    fn update_menu_reports_busy_phases() {
+        assert_eq!(
+            update_menu_text(
+                true,
+                &Some("1.2.3".to_string()),
+                &Some("downloading".to_string())
+            ),
+            "Updating to 1.2.3…"
+        );
+        assert_eq!(
+            update_menu_text(
+                true,
+                &Some("1.2.3".to_string()),
+                &Some("installing".to_string())
+            ),
+            "Installing update…"
+        );
+    }
+
+    #[test]
+    fn macos_template_icon_preserves_bright_shape_and_dark_detail() {
+        let source = tauri::image::Image::new_owned(
+            vec![240, 180, 80, 255, 24, 20, 18, 255, 0, 0, 0, 0],
+            3,
+            1,
+        );
+        let template = macos_template_icon(&source);
+        assert_eq!(&template.rgba()[0..3], &[0, 0, 0]);
+        assert!(template.rgba()[3] > template.rgba()[7]);
+        assert_eq!(template.rgba()[11], 0);
     }
 
     #[test]

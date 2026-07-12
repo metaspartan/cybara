@@ -1298,27 +1298,64 @@ html.light .hover\:bg-\[\#1c202a\]:hover,
 html.light .hover\:bg-\[\#202633\]:hover,
 html.light .hover\:bg-\[\#242733\]:hover { background-color: var(--surface-hover); }
 
-@keyframes cybara-thinking-sprite {
-  from {
-    background-position: 0 0;
+@keyframes cybara-thinking-awake {
+  0%,
+  49.999%,
+  100% {
+    opacity: 1;
   }
-  to {
-    background-position: -32rem 0;
+  50%,
+  99.999% {
+    opacity: 0;
   }
 }
 
-.cybara-thinking-sprite {
+@keyframes cybara-thinking-resting {
+  0%,
+  49.999%,
+  100% {
+    opacity: 0;
+  }
+  50%,
+  99.999% {
+    opacity: 1;
+  }
+}
+
+.cybara-thinking-mark {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 4rem;
-  height: 4rem;
-  transform: translate(-50%, -50%);
-  background-image: url("/cybara-thinking-sprite.png");
-  background-repeat: no-repeat;
-  background-size: 32rem 4rem;
-  animation: cybara-thinking-sprite 1.05s steps(8) infinite;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   pointer-events: none;
+}
+
+.cybara-thinking-mark-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+}
+
+.cybara-thinking-mark-awake {
+  animation: cybara-thinking-awake 1.2s steps(1, end) infinite;
+}
+
+.cybara-thinking-mark-resting {
+  animation: cybara-thinking-resting 1.2s steps(1, end) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cybara-thinking-mark-awake,
+  .cybara-thinking-mark-resting {
+    animation: none;
+  }
+
+  .cybara-thinking-mark-resting {
+    opacity: 0;
+  }
 }
 
 @keyframes cybara-pet-float {
@@ -1709,9 +1746,24 @@ html.light[data-theme-mode="icy"] body::before {
   width: 12rem;
   height: 12rem;
   border-radius: 9999px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
   cursor: pointer;
   outline: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+.pet-mascot-button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  appearance: none;
+  -webkit-appearance: none;
 }
 .voice-orb:disabled {
   cursor: default;
@@ -1724,16 +1776,13 @@ html.light[data-theme-mode="icy"] body::before {
 }
 .voice-orb-aura {
   position: absolute;
-  inset: -24%;
+  inset: 7%;
   border-radius: 9999px;
-  background: radial-gradient(
-    circle at 50% 45%,
-    rgba(129, 140, 248, 0.38),
-    rgba(34, 211, 238, 0.18) 42%,
-    rgba(232, 121, 249, 0.1) 58%,
-    transparent 72%
-  );
-  filter: blur(24px);
+  background: transparent;
+  box-shadow:
+    0 0 42px rgba(99, 102, 241, 0.42),
+    0 0 72px rgba(34, 211, 238, 0.2),
+    0 0 96px rgba(232, 121, 249, 0.12);
   opacity: calc(0.55 + var(--orb-level) * 0.45);
   transform: scale(calc(1 + var(--orb-level) * 0.18));
   transition: opacity 0.2s ease;
@@ -1743,16 +1792,17 @@ html.light[data-theme-mode="icy"] body::before {
   position: absolute;
   inset: 9%;
   border-radius: 9999px;
-  overflow: hidden;
-  isolation: isolate;
-  background: radial-gradient(circle at 50% 42%, #6366f1, #312e81 62%, #10082e 92%);
-  box-shadow:
-    inset 0 -16px 38px rgba(2, 6, 23, 0.6),
-    inset 0 12px 30px rgba(255, 255, 255, 0.16),
-    0 20px 54px rgba(79, 70, 229, 0.45);
+  overflow: visible;
+  background: transparent;
+  filter: none;
   transform: scale(calc(1 + var(--orb-level) * 0.11));
   transition: transform 0.09s ease-out;
   animation: voice-orb-breathe 5.4s ease-in-out infinite;
+}
+
+.voice-orb-swirl,
+.voice-orb-blob {
+  display: none;
 }
 .voice-orb-swirl {
   position: absolute;
@@ -1798,14 +1848,6 @@ html.light[data-theme-mode="icy"] body::before {
   inset: 52% -4% 6% 48%;
   background: radial-gradient(circle, rgba(52, 211, 153, 0.85), transparent 62%);
   animation: voice-orb-drift-c 9.5s ease-in-out infinite;
-}
-.voice-orb-sheen {
-  position: absolute;
-  inset: 5% 16% 58% 13%;
-  border-radius: 9999px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent 76%);
-  filter: blur(6px);
-  pointer-events: none;
 }
 .voice-orb-ring {
   position: absolute;

@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
   KOKORO_MODEL_ID,
+  findLocalSpeechRuntimeEntries,
   listLocalTtsModelStatus,
   LOCAL_TTS_MODELS,
   LOCAL_TTS_VOICES,
@@ -54,6 +55,30 @@ describe("local speech catalog", () => {
     try {
       process.env.CYBARA_HOME = dir;
       expect(localSpeechCacheDir()).toBe(join(dir, "models", "speech"));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("discovers the packaged Kokoro runtime from a Tauri resource directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-local-speech-runtime-"));
+    const modules = join(dir, "node_modules");
+    const kokoro = join(modules, "kokoro-js", "dist", "kokoro.js");
+    const transformers = join(
+      modules,
+      "kokoro-js",
+      "node_modules",
+      "@huggingface",
+      "transformers",
+      "dist",
+      "transformers.node.mjs"
+    );
+    try {
+      mkdirSync(join(kokoro, ".."), { recursive: true });
+      mkdirSync(join(transformers, ".."), { recursive: true });
+      writeFileSync(kokoro, "export const KokoroTTS = {};");
+      writeFileSync(transformers, "export const env = {};");
+      expect(findLocalSpeechRuntimeEntries([dir])).toEqual({ kokoro, transformers });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

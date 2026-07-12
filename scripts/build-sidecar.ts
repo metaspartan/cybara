@@ -455,8 +455,6 @@ export async function buildSidecar(): Promise<void> {
   const tauriDebugDir = join(import.meta.dirname, "..", "src-tauri", "target", "debug");
   const tauriDebugSidecarPath = join(tauriDebugDir, `cybara${ext}`);
   const uiDistPath = join(import.meta.dirname, "..", "ui", "dist");
-  const sidecarUiDistPath = join(TAURI_BIN_DIR, "ui", "dist");
-  const tauriDebugUiDistPath = join(tauriDebugDir, "ui", "dist");
 
   console.log(`\n⚡ Building Cybara sidecar for ${target.tauriSuffix}\n`);
 
@@ -613,17 +611,14 @@ export default instance.exports;
 
   // Ensure the sidecar can serve the packaged UI in tauri:dev.
   if (existsSync(uiDistPath)) {
-    if (existsSync(sidecarUiDistPath)) {
-      rmSync(sidecarUiDistPath, { recursive: true });
+    for (const targetBase of [RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]) {
+      const targetUiDist = join(targetBase, "ui", "dist");
+      if (existsSync(targetUiDist)) {
+        rmSync(targetUiDist, { recursive: true });
+      }
+      mkdirSync(join(targetBase, "ui"), { recursive: true });
+      cpSync(uiDistPath, targetUiDist, { recursive: true });
     }
-    mkdirSync(join(TAURI_BIN_DIR, "ui"), { recursive: true });
-    cpSync(uiDistPath, sidecarUiDistPath, { recursive: true });
-
-    if (existsSync(tauriDebugUiDistPath)) {
-      rmSync(tauriDebugUiDistPath, { recursive: true });
-    }
-    mkdirSync(join(tauriDebugDir, "ui"), { recursive: true });
-    cpSync(uiDistPath, tauriDebugUiDistPath, { recursive: true });
   } else {
     console.warn(
       `[build-sidecar] UI dist not found at ${uiDistPath}. Run "cd ui && bun run build" first.`

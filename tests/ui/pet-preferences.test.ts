@@ -21,6 +21,14 @@ const overlaySource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/PetOverlay.tsx", import.meta.url)),
   "utf8"
 );
+const cssSource = readFileSync(
+  fileURLToPath(new URL("../../ui/src/index.css", import.meta.url)),
+  "utf8"
+);
+const htmlSource = readFileSync(
+  fileURLToPath(new URL("../../ui/index.html", import.meta.url)),
+  "utf8"
+);
 
 describe("pet preferences", () => {
   test("requires an explicit opt-in", () => {
@@ -45,9 +53,17 @@ describe("pet preferences", () => {
     expect(nativePetSource).not.toContain("Bundle.module");
     expect(nativePetSource).not.toContain("Circle().fill");
     expect(webPetSource).toContain('src="/cybara.png"');
+    expect(webPetSource).toContain("<CybaraThinkingMark />");
     expect(webPetSource).toContain("object-contain");
     expect(webPetSource).not.toContain("bg-[#12121a]/90");
-    expect(overlaySource).toContain('src="/cybara.png"');
+    expect(overlaySource).toContain('import cybaraLogoUrl from "../../public/cybara.png"');
+    expect(overlaySource).toContain("src={cybaraLogoUrl}");
+    expect(overlaySource).toContain("<CybaraThinkingMark />");
+    expect(overlaySource).toContain("pet-mascot-button");
+    expect(overlaySource).not.toContain("drop-shadow-xl");
+    expect(overlaySource).not.toContain("cybara-pet-idle");
+    expect(cssSource).toContain(".pet-mascot-button");
+    expect(htmlSource).toContain("html.pet-window body");
     expect(overlaySource).not.toContain("bg-[#12121a] cursor-grab");
   });
 });

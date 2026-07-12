@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { CybaraThinkingMark } from "@/components/CybaraThinkingMark";
 import { apiFetch } from "@/lib/auth";
-import { connectStatusStream, type StatusStreamEvent } from "@/lib/status-stream";
 import {
   PET_CHANGED_EVENT,
+  type PetPosition,
   persistPetPosition,
   readPetEnabled,
   readPetPosition,
-  type PetPosition,
 } from "@/lib/petPreferences";
-import { persistSessionId } from "@/pages/chat/chatModel";
+import { connectStatusStream, type StatusStreamEvent } from "@/lib/status-stream";
 import {
   closePetWindow,
   ensurePetWindow,
@@ -17,6 +17,7 @@ import {
   listenForPetOpenSession,
 } from "@/lib/tauriPet";
 import { cn } from "@/lib/utils";
+import { persistSessionId } from "@/pages/chat/chatModel";
 
 const PET_SIZE = 64;
 const DRAG_THRESHOLD_PX = 5;
@@ -313,13 +314,13 @@ export function CybaraPet() {
         style={{ touchAction: "none" }}
       >
         {activeCount > 0 ? (
-          <span className="cybara-thinking-sprite" aria-hidden="true" />
+          <CybaraThinkingMark />
         ) : (
           <img
             src="/cybara.png"
             alt=""
             draggable={false}
-            className="pointer-events-none absolute inset-0 h-full w-full scale-[0.86] object-contain"
+            className="pointer-events-none absolute inset-0 h-full w-full object-contain"
           />
         )}
         {activeCount > 0 && (

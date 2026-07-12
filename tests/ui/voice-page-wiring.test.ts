@@ -32,6 +32,12 @@ describe("voice UI wiring", () => {
     expect(css).toContain(".voice-orb-body");
     expect(css).toContain("voice-orb-breathe");
     expect(css).toContain("prefers-reduced-motion");
+    expect(css).toContain("appearance: none");
+    expect(css).toContain("background: transparent");
+    expect(voice).toContain('radialGradient id="voice-orb-fill"');
+    expect(voice).toContain('circle cx="96" cy="96" r="95"');
+    expect(css).toContain("0 0 72px rgba(34, 211, 238, 0.2)");
+    expect(css).toContain("display: none");
   });
 
   test("voice page is routed and assistant messages expose read aloud", () => {

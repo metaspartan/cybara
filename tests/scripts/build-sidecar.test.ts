@@ -232,4 +232,10 @@ describe("build-sidecar host target mapping", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test("stages the same UI beside every generated sidecar", () => {
+    const source = readFileSync(join(process.cwd(), "scripts", "build-sidecar.ts"), "utf8");
+    expect(source).toContain("[RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]");
+    expect(source).toContain('const targetUiDist = join(targetBase, "ui", "dist")');
+  });
 });

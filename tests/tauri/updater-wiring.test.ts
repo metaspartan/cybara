@@ -11,9 +11,9 @@ describe("desktop updater wiring", () => {
     const settingsTsx = readFileSync(settingsPath, "utf8");
 
     expect(settingsTsx).toContain("Desktop Updates");
-    expect(settingsTsx).toContain("checkForDesktopUpdate");
-    expect(settingsTsx).toContain("installDesktopUpdate");
-    expect(settingsTsx).toContain("relaunchDesktopApp");
+    expect(settingsTsx).toContain("checkForUpdate");
+    expect(settingsTsx).toContain("startUpdateInstall");
+    expect(settingsTsx).toContain("useDesktopUpdate");
     expect(settingsTsx).toContain("releaseRepositoryUrl");
   });
 
@@ -40,6 +40,19 @@ describe("desktop updater wiring", () => {
     expect(tauriConfig).toContain('"updater"');
     expect(tauriConfig).toContain('"endpoints": []');
     expect(tauriConfig).toContain('"pubkey": "dev-placeholder-updater-key"');
+  });
+
+  test("tray update state becomes busy before frontend installation begins", () => {
+    const trayRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "tray.rs"), "utf8");
+    const mainTsx = readFileSync(join(ROOT_DIR, "ui", "src", "main.tsx"), "utf8");
+    const updateStore = readFileSync(join(ROOT_DIR, "ui", "src", "lib", "updateStore.ts"), "utf8");
+
+    expect(trayRs).toContain(
+      'apply_update_state(app, true, None, Some("downloading".to_string()))'
+    );
+    expect(mainTsx).toContain("ensureUpdatePolling()");
+    expect(updateStore).toContain("if (!state.available) await checkForUpdate()");
+    expect(trayRs).toContain("macos_template_icon");
   });
 
   test("release workflow prepares updater config and passes the release tag", () => {

@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { CybaraThinkingMark } from "@/components/CybaraThinkingMark";
 import { providerPlansApi } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { connectStatusStream } from "@/lib/status-stream";
@@ -360,11 +361,9 @@ export function Sidebar() {
                   status === "active" && "opacity-0"
                 )}
               >
-                <img src="/cybara.png" alt="Cybara" className="w-full h-full object-cover" />
+                <img src="/cybara.png" alt="Cybara" className="h-full w-full object-contain" />
               </div>
-              {status === "active" && (
-                <span className="cybara-thinking-sprite" aria-hidden="true" />
-              )}
+              {status === "active" && <CybaraThinkingMark />}
             </div>
             {!collapsed && (
               <div className="flex-1 min-w-0">

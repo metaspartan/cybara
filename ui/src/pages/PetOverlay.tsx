@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CybaraThinkingMark } from "@/components/CybaraThinkingMark";
 import { apiFetch } from "@/lib/auth";
 import { connectStatusStream, type StatusStreamEvent } from "@/lib/status-stream";
 import {
@@ -7,7 +8,7 @@ import {
   setPetWindowExpanded,
   startPetWindowDrag,
 } from "@/lib/tauriPet";
-import { cn } from "@/lib/utils";
+import cybaraLogoUrl from "../../public/cybara.png";
 
 const DRAG_THRESHOLD_PX = 5;
 const ACTIVE_STATUSES = new Set([
@@ -190,20 +191,17 @@ export function PetOverlay() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        className={cn(
-          "relative h-16 w-16 flex-shrink-0 select-none cursor-grab drop-shadow-xl transition-transform duration-150 hover:scale-105 active:scale-95 active:cursor-grabbing",
-          activeCount === 0 && "cybara-pet-idle"
-        )}
+        className="pet-mascot-button relative h-16 w-16 flex-shrink-0 select-none cursor-grab active:cursor-grabbing"
         style={{ touchAction: "none" }}
       >
         {activeCount > 0 ? (
-          <span className="cybara-thinking-sprite" aria-hidden="true" />
+          <CybaraThinkingMark />
         ) : (
           <img
-            src="/cybara.png"
+            src={cybaraLogoUrl}
             alt=""
             draggable={false}
-            className="pointer-events-none absolute inset-0 h-full w-full scale-[0.86] object-contain"
+            className="pointer-events-none absolute inset-0 h-full w-full object-contain"
           />
         )}
         {activeCount > 0 && (
