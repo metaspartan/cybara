@@ -590,8 +590,15 @@ export function SessionsPanel({
                         }`}
                         aria-label={tooltip}
                         aria-busy={isRowLoading}
+                        role="button"
+                        tabIndex={0}
                         data-loading={isRowLoading ? "true" : undefined}
                         onClick={() => void handleLoadSession(session.id)}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          void handleLoadSession(session.id);
+                        }}
                         onMouseEnter={(event) => {
                           setHoveredSessionTooltip({
                             anchor: event.currentTarget.getBoundingClientRect(),

@@ -1,12 +1,17 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   handleChannelManagementCommand,
+  handleSharedChannelManagementCommand,
   setChannelSubagentSpawnHandler,
   clearChannelSubagentSpawnHandler,
   type ChannelCommandContext,
   type ChannelSubagentSpawnResult,
 } from "../../src/core/channels/commands";
 import { getSessionGoal, resetSessionGoalsForTests } from "../../src/core/session-goals";
+import {
+  configureChannelChatRuntime,
+  resetChannelChatRuntime,
+} from "../../src/core/channels/chat-runtime";
 
 function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -36,6 +41,61 @@ function baseContext(overrides: Partial<ChannelCommandContext> = {}): ChannelCom
 afterEach(() => {
   clearChannelSubagentSpawnHandler();
   resetSessionGoalsForTests();
+  resetChannelChatRuntime();
+});
+
+describe("channel follow-up controls", () => {
+  test("queues, lists, steers, and stops through the shared runtime bridge", async () => {
+    const pending = [
+      {
+        id: "pending-1",
+        content: "focus on tests",
+        mode: "queued",
+        sequence: 1,
+      },
+    ];
+    let stoppedSession = "";
+    configureChannelChatRuntime({
+      listPending: () => pending,
+      queue: async (_sessionId, message) => ({
+        queued: true,
+        pendingMessages: [{ ...pending[0], content: message }],
+      }),
+      steer: async (_sessionId, pendingMessageId) => ({
+        success: pendingMessageId === "pending-1",
+        pendingMessages: [],
+      }),
+      stop: (sessionId) => {
+        stoppedSession = sessionId;
+        return { stopped: true };
+      },
+    });
+    const context = baseContext({ sessionId: "session-1" });
+
+    expect(await handleChannelManagementCommand("/queue focus on tests", context)).toContain(
+      "Queued follow-up"
+    );
+    expect(await handleChannelManagementCommand("/pending", context)).toContain("focus on tests");
+    expect(await handleChannelManagementCommand("/steer 1", context)).toContain(
+      "Steered follow-up"
+    );
+    expect(await handleChannelManagementCommand("/stop", context)).toBe(
+      "Stopped the active response."
+    );
+    expect(stoppedSession).toBe("session-1");
+  });
+
+  test("returns concise usage and inactive-session errors", async () => {
+    expect(await handleChannelManagementCommand("/queue", baseContext())).toContain(
+      "active session"
+    );
+    expect(
+      await handleChannelManagementCommand("/steer missing", baseContext({ sessionId: "s" }))
+    ).toContain("Usage: /steer");
+    expect(await handleChannelManagementCommand("/stop", baseContext())).toContain(
+      "active session"
+    );
+  });
 });
 
 describe("command parsing", () => {
@@ -232,6 +292,29 @@ describe("permissions command (config-backed, read + restore)", () => {
     }
     const restored = await handleChannelManagementCommand("/permissions show", localContext);
     expect(restored).toBe(original);
+  });
+});
+
+describe("shared channel command fallback", () => {
+  test("handles management commands for adapters without native command routing", async () => {
+    const result = await handleSharedChannelManagementCommand("/status", {
+      channelId: "matrix-command-fallback",
+      chatId: "room-1",
+      platform: "matrix",
+      sessionId: "matrix:room-1",
+    });
+    expect(typeof result).toBe("string");
+    expect(result?.length).toBeGreaterThan(0);
+  });
+
+  test("does not let a remote fallback change global permissions", async () => {
+    const result = await handleSharedChannelManagementCommand("/permissions allow", {
+      channelId: "zulip-command-fallback",
+      chatId: "stream-1",
+      platform: "zulip",
+      sessionId: "zulip:stream-1",
+    });
+    expect(result).toContain("only available from the local app");
   });
 });
 

@@ -306,7 +306,7 @@ export function CybaraPet() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         className={cn(
-          "relative h-16 w-16 select-none rounded-full border border-white/15 bg-[#12121a]/90 shadow-xl backdrop-blur transition-transform",
+          "relative h-16 w-16 select-none drop-shadow-xl transition-transform",
           dragging ? "scale-105 cursor-grabbing" : "cursor-grab hover:scale-105",
           activeCount === 0 && "cybara-pet-idle"
         )}
@@ -319,7 +319,7 @@ export function CybaraPet() {
             src="/cybara.png"
             alt=""
             draggable={false}
-            className="pointer-events-none absolute left-1/2 top-1/2 h-11 w-11 -translate-x-1/2 -translate-y-1/2"
+            className="pointer-events-none absolute inset-0 h-full w-full object-contain"
           />
         )}
         {activeCount > 0 && (

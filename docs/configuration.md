@@ -225,21 +225,40 @@ Speech settings are shared by Web/Tauri, React Native mobile, native macOS, and 
       "providerId": "",
       "model": "",
       "language": "en-us"
+    },
+    "realtime": {
+      "provider": "managed",
+      "providerId": "",
+      "model": "",
+      "voice": "",
+      "serverUrl": "",
+      "bargeIn": true,
+      "silenceDurationMs": 700
     }
   }
 }
 ```
 
-TTS provider values are `auto`, `system`, `elevenlabs`, and `openai`; STT provider values are
+TTS provider values are `auto`, `local`, `system`, `elevenlabs`, and `openai`; STT provider values are
 `auto`, `native`, and `openai`. Native STT uses browser/OS speech recognition when available. Server
 transcription uses `/api/speech/dictate` with an OpenAI/OpenAI Codex-compatible provider.
+Hands-free provider values are `managed`, `openai`, `gemini`, and `moshi`. Managed mode preserves
+the normal Cybara agent and tool workflow. Realtime provider credentials remain on the gateway;
+clients receive short-lived session credentials. Self-hosted servers accept HTTP(S) or WebSocket URLs.
 
 Routes:
 
 ```http
 GET /api/speech/settings
 PUT /api/speech/settings
+GET /api/speech/status
+GET /api/speech/local/models
+POST /api/speech/local/load
+POST /api/speech/local/unload
 POST /api/speech/dictate
+POST /api/speech/synthesize
+POST /api/speech/realtime/session
+POST /api/speech/realtime/test
 ```
 
 ## Source Migration

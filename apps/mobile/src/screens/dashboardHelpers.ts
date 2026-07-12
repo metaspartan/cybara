@@ -90,7 +90,7 @@ export function booleanSetting(record: Record<string, unknown> | null, key: stri
 
 export type MobileSpeechSettings = {
   tts: {
-    provider: "auto" | "system" | "elevenlabs" | "openai";
+    provider: "auto" | "local" | "system" | "elevenlabs" | "openai";
     providerId: string;
     model: string;
     voice: string;
@@ -105,6 +105,15 @@ export type MobileSpeechSettings = {
     model: string;
     language: string;
   };
+  realtime: {
+    provider: "managed" | "openai" | "gemini" | "moshi";
+    providerId: string;
+    model: string;
+    voice: string;
+    serverUrl: string;
+    bargeIn: boolean;
+    silenceDurationMs: number;
+  };
 };
 
 export function readMobileSpeechSettings(
@@ -113,12 +122,22 @@ export function readMobileSpeechSettings(
   const speech = objectRecord(configRecord?.speech);
   const tts = objectRecord(speech?.tts);
   const stt = objectRecord(speech?.stt);
+  const realtime = objectRecord(speech?.realtime);
   const ttsProvider =
-    tts?.provider === "system" || tts?.provider === "elevenlabs" || tts?.provider === "openai"
+    tts?.provider === "local" ||
+    tts?.provider === "system" ||
+    tts?.provider === "elevenlabs" ||
+    tts?.provider === "openai"
       ? tts.provider
       : "auto";
   const sttProvider =
     stt?.provider === "native" || stt?.provider === "openai" ? stt.provider : "auto";
+  const realtimeProvider =
+    realtime?.provider === "openai" ||
+    realtime?.provider === "gemini" ||
+    realtime?.provider === "moshi"
+      ? realtime.provider
+      : "managed";
   return {
     tts: {
       provider: ttsProvider,
@@ -138,6 +157,16 @@ export function readMobileSpeechSettings(
       providerId: typeof stt?.providerId === "string" ? stt.providerId : "",
       model: typeof stt?.model === "string" ? stt.model : "",
       language: typeof stt?.language === "string" ? stt.language : "",
+    },
+    realtime: {
+      provider: realtimeProvider,
+      providerId: typeof realtime?.providerId === "string" ? realtime.providerId : "",
+      model: typeof realtime?.model === "string" ? realtime.model : "",
+      voice: typeof realtime?.voice === "string" ? realtime.voice : "",
+      serverUrl: typeof realtime?.serverUrl === "string" ? realtime.serverUrl : "",
+      bargeIn: typeof realtime?.bargeIn === "boolean" ? realtime.bargeIn : true,
+      silenceDurationMs:
+        typeof realtime?.silenceDurationMs === "number" ? realtime.silenceDurationMs : 700,
     },
   };
 }

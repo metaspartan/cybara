@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const uiSrc = fileURLToPath(new URL("../../ui/src", import.meta.url));
 const read = (rel: string) => readFileSync(`${uiSrc}/${rel}`, "utf8");
+const cli = readFileSync(fileURLToPath(new URL("../../src/cli.tsx", import.meta.url)), "utf8");
 
 describe("onboarding boot: no shell flash + full-screen spinner", () => {
   const app = read("App.tsx");
@@ -47,6 +48,45 @@ describe("Agents: ready-on-demand chat routing + default model", () => {
   test("default model selector persists via config", () => {
     expect(agents).toContain("settingsApi.updateConfig({ default_model:");
     expect(agents).toContain("Default model");
+  });
+});
+
+describe("Onboarding provider and agent setup", () => {
+  const setup = read("pages/Setup.tsx");
+  const oauth = read("hooks/useProviderOAuth.ts");
+
+  test("never creates the generic default agent", () => {
+    expect(setup).toContain("useCreateAgent");
+    expect(setup).not.toContain("useCreateDefaultAgent");
+    expect(setup).not.toContain("/agents/default");
+    expect(setup).toContain("provider_id: configuredProvider.id");
+    const setupWizard = cli.slice(cli.indexOf("const SetupWizard"), cli.indexOf("const TUIApp"));
+    expect(setupWizard).not.toContain("/api/agents/default");
+    expect(setupWizard).not.toContain("Create Default Agent");
+  });
+
+  test("connects OAuth providers during onboarding and stores returned credentials", () => {
+    expect(setup).toContain("await oauth.connect()");
+    expect(setup).toContain("access_token: oauthCredentials?.access_token");
+    expect(setup).toContain("refresh_token: oauthCredentials?.refresh_token");
+    expect(oauth).toContain('apiFetch("/api/providers/oauth/device-code"');
+    expect(oauth).toContain('apiFetch("/api/providers/oauth/poll"');
+    expect(oauth).toContain('apiFetch("/api/providers/oauth/start"');
+    expect(oauth).toContain('apiFetch("/api/providers/oauth/callback-status"');
+  });
+
+  test("uses the regular configured-provider model discovery contract", () => {
+    expect(setup).toContain("useProviderModels(configuredProvider?.id)");
+    expect(setup).toContain("discoveredModels");
+    expect(setup).toContain("model.model_id");
+    expect(setup).not.toContain("selectedProvider?.models || []");
+  });
+
+  test("relies on setup status instead of polling full resource lists", () => {
+    expect(setup).not.toContain("useProviders()");
+    expect(setup).not.toContain("useAgents()");
+    expect(setup).not.toContain("providersLoading");
+    expect(setup).not.toContain("agentsLoading");
   });
 });
 

@@ -1,6 +1,7 @@
 import { chmodSync, mkdirSync } from "fs";
-import { homedir } from "os";
 import { join } from "path";
+import { pathToFileURL } from "url";
+import { resolveCybaraHome } from "./cybara-home";
 
 export type LocalSpeechDtype = "fp32" | "fp16" | "q8" | "q4" | "q4f16";
 
@@ -71,12 +72,7 @@ export function resolveLocalTtsVoice(voice: string | undefined, model: string): 
 }
 
 export function localSpeechCacheDir(): string {
-  const dir = join(
-    process.env.HOME || process.env.USERPROFILE || homedir(),
-    ".cybara",
-    "models",
-    "speech"
-  );
+  const dir = join(resolveCybaraHome().dir, "models", "speech");
   mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -99,6 +95,10 @@ interface KokoroModule {
       }
     ): Promise<KokoroTtsInstance>;
   };
+}
+
+interface TransformersRuntimeModule {
+  env: { cacheDir: string };
 }
 
 const runtimeStatus = new Map<string, LocalSpeechModelStatus>();
@@ -139,6 +139,13 @@ export function listLocalTtsModelStatus(): LocalSpeechModelStatus[] {
 }
 
 async function importKokoro(): Promise<KokoroModule> {
+  const kokoroEntry = Bun.resolveSync("kokoro-js", import.meta.dir);
+  const kokoroRoot = join(kokoroEntry, "..", "..");
+  const transformersEntry = Bun.resolveSync("@huggingface/transformers", kokoroRoot);
+  const transformers = (await import(
+    pathToFileURL(transformersEntry).href
+  )) as unknown as TransformersRuntimeModule;
+  transformers.env.cacheDir = localSpeechCacheDir();
   return (await import("kokoro-js")) as unknown as KokoroModule;
 }
 

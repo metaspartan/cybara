@@ -7,8 +7,10 @@ import { chatApi } from "@/lib/api";
 import { appendApiTokenParam } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
+import { nextVoiceActivityState } from "./voice/voiceActivity";
 
 type VoiceStatus = "idle" | "listening" | "thinking" | "speaking";
+type VoiceMode = "tap" | "hands-free";
 type VoiceTurn = { role: "user" | "assistant"; content: string };
 type MicPermission = "granted" | "denied" | "prompt" | "unknown";
 
@@ -59,6 +61,7 @@ export function Voice() {
   const [agentId, setAgentId] = useState("");
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<VoiceStatus>("idle");
+  const [voiceMode, setVoiceMode] = useState<VoiceMode>("tap");
   const [turns, setTurns] = useState<VoiceTurn[]>([]);
   const [sessionId, setSessionId] = useState<string>();
   const [micPermission, setMicPermission] = useState<MicPermission>("unknown");
@@ -71,6 +74,11 @@ export function Voice() {
   const audioContextRef = useRef<AudioContext | null>(null);
   const levelFrameRef = useRef<number | null>(null);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const voiceModeRef = useRef<VoiceMode>("tap");
+  const startRecordingRef = useRef<() => Promise<void>>(async () => undefined);
+  const speechDetectedRef = useRef(false);
+  const silenceStartedRef = useRef<number | null>(null);
+  const recordingStartedRef = useRef(0);
 
   const speechStatus = useQuery({
     queryKey: ["speech-status"],
@@ -107,8 +115,8 @@ export function Voice() {
     };
   }, []);
 
-  const ttsReady = speechStatus.data?.tts.ready || speechStatus.data?.tts.systemFallback || false;
-  const sttReady = speechStatus.data?.stt.ready || false;
+  const ttsReady = speechStatus.data?.tts?.ready || speechStatus.data?.tts?.systemFallback || false;
+  const sttReady = speechStatus.data?.stt?.ready || false;
   const micReady = micPermission === "granted";
   const allReady = ttsReady && sttReady && micReady;
   const setupVisible = setupOpen ?? (speechStatus.isSuccess && !allReady);
@@ -127,7 +135,7 @@ export function Voice() {
   }, [setOrbLevel]);
 
   const startLevelMeter = useCallback(
-    (stream: MediaStream) => {
+    (stream: MediaStream, stopAfterSilence: boolean) => {
       try {
         const context = new AudioContext();
         audioContextRef.current = context;
@@ -145,6 +153,19 @@ export function Voice() {
           }
           const rms = Math.sqrt(sum / samples.length);
           setOrbLevel(Math.min(1, rms * 4));
+          if (stopAfterSilence && recorderRef.current?.state === "recording") {
+            const now = performance.now();
+            const activity = nextVoiceActivityState({
+              rms,
+              now,
+              recordingStartedAt: recordingStartedRef.current,
+              speechDetected: speechDetectedRef.current,
+              silenceStartedAt: silenceStartedRef.current,
+            });
+            speechDetectedRef.current = activity.speechDetected;
+            silenceStartedRef.current = activity.silenceStartedAt;
+            if (activity.shouldStop) recorderRef.current.stop();
+          }
           levelFrameRef.current = requestAnimationFrame(tick);
         };
         levelFrameRef.current = requestAnimationFrame(tick);
@@ -174,6 +195,9 @@ export function Voice() {
     const clear = () => {
       if (audioRef.current === audio) audioRef.current = null;
       setStatus("idle");
+      if (voiceModeRef.current === "hands-free") {
+        window.setTimeout(() => void startRecordingRef.current(), 180);
+      }
     };
     audio.addEventListener("ended", clear, { once: true });
     audio.addEventListener("error", clear, { once: true });
@@ -205,6 +229,7 @@ export function Voice() {
   };
 
   const startRecording = async () => {
+    if (recorderRef.current?.state === "recording") return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       addToast("error", "Microphone recording is unavailable in this runtime");
       return;
@@ -215,7 +240,10 @@ export function Voice() {
       setMicPermission("granted");
       streamRef.current = stream;
       chunksRef.current = [];
-      startLevelMeter(stream);
+      speechDetectedRef.current = false;
+      silenceStartedRef.current = null;
+      recordingStartedRef.current = performance.now();
+      startLevelMeter(stream, voiceModeRef.current === "hands-free");
       const recorder = new MediaRecorder(stream);
       recorderRef.current = recorder;
       recorder.addEventListener("dataavailable", (event) => {
@@ -226,6 +254,13 @@ export function Voice() {
         streamRef.current = null;
         stopLevelMeter();
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        if (!speechDetectedRef.current && voiceModeRef.current === "hands-free") {
+          setVoiceMode("tap");
+          voiceModeRef.current = "tap";
+          setStatus("idle");
+          addToast("info", "Hands-free listening paused because no speech was detected");
+          return;
+        }
         setStatus("thinking");
         try {
           const result = await chatApi.dictate({
@@ -252,6 +287,15 @@ export function Voice() {
     }
   };
 
+  startRecordingRef.current = startRecording;
+
+  const selectVoiceMode = (mode: VoiceMode) => {
+    setVoiceMode(mode);
+    voiceModeRef.current = mode;
+    if (mode === "hands-free" && status === "idle") void startRecording();
+    if (mode === "tap" && status === "listening") stopRecording();
+  };
+
   useEffect(
     () => () => {
       audioRef.current?.pause();
@@ -275,7 +319,9 @@ export function Voice() {
         : status === "speaking"
           ? "Speaking"
           : allReady
-            ? "Tap to talk"
+            ? voiceMode === "hands-free"
+              ? "Hands-free ready"
+              : "Tap to talk"
             : "Ready";
 
   const orbDisabled = status === "thinking";
@@ -328,11 +374,11 @@ export function Voice() {
                 ready={ttsReady}
                 title="Voice output"
                 detail={
-                  speechStatus.data?.tts.ready
+                  speechStatus.data?.tts?.ready
                     ? `Speech is synthesized with ${speechStatus.data.tts.provider} (${speechStatus.data.tts.type}).`
-                    : speechStatus.data?.tts.systemFallback
-                      ? "No speech provider yet — falling back to the built-in system voice."
-                      : "Add an OpenAI or ElevenLabs provider with API credentials so replies can be spoken."
+                    : speechStatus.data?.tts?.systemFallback
+                      ? "No cloud voice is configured, so replies use the gateway's system voice."
+                      : "Choose Local Kokoro, a system voice, OpenAI, or ElevenLabs so replies can be spoken."
                 }
                 action={{ label: "Add provider", to: "/providers" }}
               />
@@ -340,9 +386,9 @@ export function Voice() {
                 ready={sttReady}
                 title="Transcription"
                 detail={
-                  speechStatus.data?.stt.native
+                  speechStatus.data?.stt?.native
                     ? "Using native on-device dictation."
-                    : speechStatus.data?.stt.ready
+                    : speechStatus.data?.stt?.ready
                       ? `Your voice is transcribed with ${speechStatus.data.stt.provider}.`
                       : "Add an OpenAI-compatible provider so recordings can be transcribed to text."
                 }
@@ -369,6 +415,29 @@ export function Voice() {
             </div>
           </section>
         )}
+
+        <div className="mt-6 inline-flex rounded-lg border border-white/10 bg-white/[0.035] p-1">
+          {(
+            [
+              { value: "tap", label: "Tap to talk" },
+              { value: "hands-free", label: "Hands-free" },
+            ] as const
+          ).map((mode) => (
+            <button
+              key={mode.value}
+              type="button"
+              onClick={() => selectVoiceMode(mode.value)}
+              className={cn(
+                "rounded-md px-3 py-1.5 text-xs transition-colors",
+                voiceMode === mode.value
+                  ? "bg-white/10 text-white"
+                  : "text-gray-500 hover:text-gray-300"
+              )}
+            >
+              {mode.label}
+            </button>
+          ))}
+        </div>
 
         <button
           ref={orbRef}

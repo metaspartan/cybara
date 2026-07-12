@@ -44,6 +44,7 @@ describe("mobile: chat management", () => {
     expect(api).toContain("reorderPendingMessages(");
     expect(api).toContain("updatePendingMessage(");
     expect(api).toContain("deletePendingMessage(");
+    expect(api).toContain("stopChatSession(sessionId: string)");
     expect(screen).toContain("optimisticPendingMessageId");
     expect(screen).toContain(
       "`optimistic-${liveStartedAt}-${optimisticPendingCounterRef.current}`"
@@ -68,6 +69,9 @@ describe("mobile: chat management", () => {
     expect(screen).toContain('accessibilityLabel="Edit pending message"');
     expect(screen).toContain('accessibilityLabel="Delete pending message"');
     expect(screen).toContain('accessibilityLabel="Steer pending message"');
+    expect(screen).toContain('? "Stop response"');
+    expect(screen).toContain("api.stopChatSession(sessionId)");
+    expect(screen).toContain("<Square");
     expect(screen).toContain("Edit queued message");
     expect(styles).toContain("pendingQueueActions:");
     expect(styles).toContain("pendingEditCard:");

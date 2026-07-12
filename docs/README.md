@@ -150,7 +150,7 @@ Router strategies include weighted, round-robin, lowest-cost, priority, and mixt
 Legacy agent imports are available through `cybara migrate`, `/api/migrations/*`, Web/Tauri settings, and the native macOS settings surface. Dry runs preview memories, skills, providers, speech settings, and opt-in secret imports before writing.
 
 ### Speech
-Shared speech settings cover TTS providers (`system`, `elevenlabs`, `openai`) and STT providers (`native`, `openai`, `auto`) across the Web/Tauri chat input, mobile settings, native macOS settings, and the `tts`/`transcribe` tools.
+Shared speech settings cover local, operating-system, and cloud voices, native and provider-backed transcription, and managed or full-duplex hands-free conversation across Web/Tauri, mobile, native macOS, and the speech tools.
 
 ### Security
 API key authentication, rate limiting, SSRF protection, path sandboxing. See [Security](./security.md).

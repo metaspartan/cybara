@@ -2,7 +2,14 @@ import { readFileSync, existsSync, statSync } from "fs";
 import { join, dirname, resolve, sep } from "path";
 import { fileURLToPath } from "url";
 import { agentManager } from "./core/agent";
-import { handleChat, listSessions, sendToSession } from "./api/chat";
+import {
+  handleChat,
+  listPendingChatMessages,
+  listSessions,
+  sendToSession,
+  steerPendingChatMessage,
+  stopActiveChatTurn,
+} from "./api/chat";
 import { handleRequest } from "./api/routes";
 import {
   createTerminalSession,
@@ -14,7 +21,10 @@ import {
 } from "./api/terminal";
 import { config } from "./core/config";
 import { startScheduler, setAgentHandler, setWakeHandler } from "./core/cron";
-import { setChannelSubagentSpawnHandler } from "./core/channels/commands";
+import {
+  handleSharedChannelManagementCommand,
+  setChannelSubagentSpawnHandler,
+} from "./core/channels/commands";
 import { configureChannelChatRuntime } from "./core/channels/chat-runtime";
 import { resolveChannelAgentRouting } from "./core/channels/agent-selection";
 import {
@@ -131,7 +141,11 @@ try {
 }
 
 function readUiIndex(): string {
-  const raw = readUiIndexContent({ uiPath, uiExists, fallbackContent: uiContent });
+  const raw = readUiIndexContent({
+    uiPath,
+    uiExists,
+    fallbackContent: uiContent,
+  });
   const basePath = getGatewayBasePath();
   if (!basePath) return raw;
   // The Vite build emits root-absolute asset URLs; rewrite them under the
@@ -379,7 +393,9 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
 
         if (!isTerminalEnabled()) {
           return new Response(
-            JSON.stringify({ error: "Terminal disabled. Start with --enable-terminal" }),
+            JSON.stringify({
+              error: "Terminal disabled. Start with --enable-terminal",
+            }),
             {
               status: 403,
               headers: {
@@ -393,11 +409,16 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
 
         if (pathname === "/api/terminal/ws") {
           const sessionId = url.searchParams.get("session") || crypto.randomUUID();
-          const success = server.upgrade(req, { data: { kind: "terminal", sessionId } });
+          const success = server.upgrade(req, {
+            data: { kind: "terminal", sessionId },
+          });
           if (success) return undefined;
           return new Response("WebSocket upgrade failed", {
             status: 400,
-            headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8",
+              ...commonSecurityHeaders,
+            },
           });
         }
 
@@ -430,7 +451,10 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
         if (success) return undefined;
         return new Response("WebSocket upgrade failed", {
           status: 400,
-          headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            ...commonSecurityHeaders,
+          },
         });
       }
 
@@ -525,7 +549,10 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
             }),
             {
               status: 400,
-              headers: { "Content-Type": "application/json", ...commonSecurityHeaders },
+              headers: {
+                "Content-Type": "application/json",
+                ...commonSecurityHeaders,
+              },
             }
           );
         }
@@ -560,7 +587,10 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
         }
         return new Response("Static asset not found", {
           status: 404,
-          headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            ...commonSecurityHeaders,
+          },
         });
       }
 
@@ -576,7 +606,10 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
         if (statSync(filePath).isDirectory()) {
           return new Response("Directory listing not allowed", {
             status: 403,
-            headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8",
+              ...commonSecurityHeaders,
+            },
           });
         }
         const ext = pathname.substring(pathname.lastIndexOf("."));
@@ -593,7 +626,10 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
         } catch {
           return new Response("File error", {
             status: 500,
-            headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+            headers: {
+              "Content-Type": "text/plain; charset=utf-8",
+              ...commonSecurityHeaders,
+            },
           });
         }
       }
@@ -601,7 +637,10 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
       if (fileLikePath) {
         return new Response("Static asset not found", {
           status: 404,
-          headers: { "Content-Type": "text/plain; charset=utf-8", ...commonSecurityHeaders },
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            ...commonSecurityHeaders,
+          },
         });
       }
 
@@ -825,6 +864,28 @@ configureChannelChatRuntime({
   memoryContext: handleMemoryContext,
   memoryList: handleMemoryList,
   listTools: () => Object.keys(toolSchemas),
+  listPending: listPendingChatMessages,
+  queue: async (sessionId, message) => {
+    const response = await handleChat({
+      message,
+      sessionId,
+      queueMode: "queue",
+      source: "channel",
+    });
+    return {
+      queued: response.queued === true,
+      pendingMessages: response.pendingMessages || [],
+    };
+  },
+  steer: async (sessionId, pendingMessageId) => {
+    const response = await steerPendingChatMessage(sessionId, pendingMessageId);
+    return {
+      success: response.success,
+      ...(response.success ? {} : { error: response.error }),
+      pendingMessages: response.pendingMessages,
+    };
+  },
+  stop: stopActiveChatTurn,
 });
 
 telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInfo) => {
@@ -865,6 +926,13 @@ const createChannelChatHandler =
     sessionId: string,
     fileInfo: MessageHandlerFileInfo
   ): Promise<string> => {
+    const commandResponse = await handleSharedChannelManagementCommand(message, {
+      channelId: fileInfo.channelId,
+      chatId,
+      platform: channelName,
+      sessionId,
+    });
+    if (commandResponse !== null) return commandResponse;
     const fullMessage = buildChannelMessageWithFileContext(message, fileInfo);
     const images = buildChannelImages(fileInfo);
     const routing = resolveChannelAgentRouting(fileInfo.channelId, agentManager.list());

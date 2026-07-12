@@ -1,13 +1,24 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
 import {
   KOKORO_MODEL_ID,
   listLocalTtsModelStatus,
   LOCAL_TTS_MODELS,
   LOCAL_TTS_VOICES,
   isLocalTtsVoice,
+  localSpeechCacheDir,
   resolveLocalTtsVoice,
   unloadLocalTtsModel,
 } from "../../src/core/local-speech";
+
+const originalCybaraHome = process.env.CYBARA_HOME;
+
+afterEach(() => {
+  if (originalCybaraHome === undefined) delete process.env.CYBARA_HOME;
+  else process.env.CYBARA_HOME = originalCybaraHome;
+});
 
 describe("local speech catalog", () => {
   test("exposes Kokoro with a defined default voice and voice catalog", () => {
@@ -36,5 +47,15 @@ describe("local speech catalog", () => {
     expect(["unloaded", "loading", "ready", "error"]).toContain(status[0].state);
     unloadLocalTtsModel(KOKORO_MODEL_ID);
     expect(listLocalTtsModelStatus()[0].state).toBe("unloaded");
+  });
+
+  test("stores model downloads under the writable Cybara data directory", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-local-speech-cache-"));
+    try {
+      process.env.CYBARA_HOME = dir;
+      expect(localSpeechCacheDir()).toBe(join(dir, "models", "speech"));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

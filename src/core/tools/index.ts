@@ -1553,7 +1553,7 @@ Use for tasks that may take longer or require separate context. For parallel del
   tts: {
     name: "tts",
     description:
-      "Convert text to speech using the configured speech provider (ElevenLabs/OpenAI) with macOS system voice fallback; returns the path to a generated audio file.",
+      "Convert text to speech using the configured cloud, local, or operating-system voice; returns the path to a generated audio file.",
     category: "media",
     input_schema: {
       type: "object",
@@ -1561,14 +1561,14 @@ Use for tasks that may take longer or require separate context. For parallel del
         text: { type: "string", description: "Text to convert to speech" },
         provider: {
           type: "string",
-          enum: ["auto", "system", "elevenlabs", "openai"],
+          enum: ["auto", "local", "system", "elevenlabs", "openai"],
           description: "Optional TTS provider override",
         },
         providerId: { type: "string", description: "Optional configured provider id override" },
         model: { type: "string", description: "Optional TTS model override" },
         voice: { type: "string", description: "Optional voice name or ElevenLabs voice id" },
         speed: { type: "number", description: "Optional speech speed multiplier" },
-        rate: { type: "number", description: "Backward-compatible macOS words-per-minute hint" },
+        rate: { type: "number", description: "Optional speaking-rate hint" },
         stability: { type: "number", description: "Optional ElevenLabs stability (0-1)" },
         similarity: { type: "number", description: "Optional ElevenLabs similarity boost (0-1)" },
         style: { type: "number", description: "Optional ElevenLabs style exaggeration (0-1)" },
@@ -1577,7 +1577,7 @@ Use for tasks that may take longer or require separate context. For parallel del
           enum: ["mp3", "m4a", "wav", "aiff", "opus", "aac"],
           description: "Output audio format (default follows speech settings)",
         },
-        fallbackToSystem: { type: "boolean", description: "Allow macOS system TTS fallback" },
+        fallbackToSystem: { type: "boolean", description: "Allow operating-system TTS fallback" },
       },
       required: ["text"],
     },

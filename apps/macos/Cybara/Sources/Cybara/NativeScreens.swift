@@ -2024,17 +2024,23 @@ struct ChatScreen: View {
                     .help("Attach images or text files")
                     .disabled(pendingAttachments.count >= 8 && pendingFiles.count >= 8)
                     Button {
-                        Task { await send() }
+                        Task {
+                            if showWorkingTimeline && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingAttachments.isEmpty && pendingFiles.isEmpty {
+                                await stopResponse()
+                            } else {
+                                await send()
+                            }
+                        }
                     } label: {
-                        Image(systemName: "arrow.up.circle.fill")
+                        Image(systemName: showWorkingTimeline && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && pendingAttachments.isEmpty && pendingFiles.isEmpty ? "stop.circle.fill" : "arrow.up.circle.fill")
                             .font(.system(size: 24))
                     }
                     .buttonStyle(.borderless)
                     .disabled(
-                        (draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        (!showWorkingTimeline && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                             && pendingAttachments.isEmpty
                             && pendingFiles.isEmpty) ||
-                            ((showWorkingTimeline || !pendingMessages.isEmpty) && !followUpBehaviorEnabled)
+                            ((showWorkingTimeline || !pendingMessages.isEmpty) && !followUpBehaviorEnabled && (!draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !pendingAttachments.isEmpty || !pendingFiles.isEmpty))
                     )
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
@@ -2274,9 +2280,13 @@ struct ChatScreen: View {
             ZStack {
                 ScrollView { fileDiffsPopover }
                     .nativeWorkspacePanelVisibility(activeWorkspaceTab == .review)
-                TerminalScreen(client: client)
+                TerminalScreen(client: client, isActive: activeWorkspaceTab == .terminal, compact: true)
                     .nativeWorkspacePanelVisibility(activeWorkspaceTab == .terminal)
-                NativeChatBrowserPanel(client: client, sessionID: selectedSessionID)
+                NativeChatBrowserPanel(
+                    client: client,
+                    sessionID: selectedSessionID,
+                    isActive: activeWorkspaceTab == .browser
+                )
                     .nativeWorkspacePanelVisibility(activeWorkspaceTab == .browser)
                 NativeChatFilesPanel(client: client, workspacePath: activeWorkspaceDir)
                     .nativeWorkspacePanelVisibility(activeWorkspaceTab == .files)
@@ -3330,6 +3340,19 @@ struct ChatScreen: View {
         }
         if !queuedSend {
             sending = false
+        }
+    }
+
+    private func stopResponse() async {
+        guard let sessionID = selectedSessionID else { return }
+        do {
+            _ = try await client.stopChatSession(sessionID)
+            sending = false
+            resetLiveTimeline(clearStartedAt: true)
+            await loadMessages(sessionID)
+            await hydrateStatus(sessionID)
+        } catch {
+            self.error = "Failed to stop response: \(error.localizedDescription)"
         }
     }
 

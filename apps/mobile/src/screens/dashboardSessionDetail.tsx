@@ -17,6 +17,7 @@ import {
   Send,
   Settings2,
   ShieldAlert,
+  Square,
   Trash2,
   X,
 } from "lucide-react-native";
@@ -1205,6 +1206,22 @@ export function SessionDetailPanel({
     }
   };
 
+  const stopResponse = async () => {
+    try {
+      const result = await api.stopChatSession(sessionId);
+      if (!result.success && !result.stopped) {
+        Alert.alert("Unable to stop", result.error || "No active response was found.");
+        return;
+      }
+      setSending(false);
+      responseHapticActiveRef.current = false;
+      commitLiveAssistant(() => null);
+      await loadSession(false);
+    } catch (error) {
+      Alert.alert("Unable to stop", error instanceof Error ? error.message : "Request failed.");
+    }
+  };
+
   const steerPendingMessage = async (pendingMessageId: string) => {
     if (pendingMessageId.startsWith("optimistic-")) return;
     setSteeringPendingId(pendingMessageId);
@@ -2300,13 +2317,21 @@ export function SessionDetailPanel({
               <Paperclip color={colors.text} size={19} strokeWidth={2.4} />
             </Pressable>
             <Pressable
-              accessibilityLabel="Send message"
+              accessibilityLabel={
+                chatBusy && !draft.trim() && pendingImages.length === 0
+                  ? "Stop response"
+                  : "Send message"
+              }
               accessibilityRole="button"
               disabled={
-                (!draft.trim() && pendingImages.length === 0) ||
-                (chatBusy && !followUpBehaviorEnabled)
+                (!chatBusy && !draft.trim() && pendingImages.length === 0) ||
+                (chatBusy &&
+                  !followUpBehaviorEnabled &&
+                  (!!draft.trim() || pendingImages.length > 0))
               }
-              onPress={sendMessage}
+              onPress={
+                chatBusy && !draft.trim() && pendingImages.length === 0 ? stopResponse : sendMessage
+              }
               style={[
                 styles.sendButton,
                 {
@@ -2316,7 +2341,11 @@ export function SessionDetailPanel({
                 },
               ]}
             >
-              <Send color={colors.text} size={19} strokeWidth={2.4} />
+              {chatBusy && !draft.trim() && pendingImages.length === 0 ? (
+                <Square color={colors.text} fill={colors.text} size={15} strokeWidth={2.4} />
+              ) : (
+                <Send color={colors.text} size={19} strokeWidth={2.4} />
+              )}
             </Pressable>
           </View>
         </View>

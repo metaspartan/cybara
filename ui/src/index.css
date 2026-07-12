@@ -1311,12 +1311,12 @@ html.light .hover\:bg-\[\#242733\]:hover { background-color: var(--surface-hover
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 2.875rem;
-  height: 2.875rem;
+  width: 4rem;
+  height: 4rem;
   transform: translate(-50%, -50%);
   background-image: url("/cybara-thinking-sprite.png");
   background-repeat: no-repeat;
-  background-size: 23rem 2.875rem;
+  background-size: 32rem 4rem;
   animation: cybara-thinking-sprite 1.05s steps(8) infinite;
   pointer-events: none;
 }

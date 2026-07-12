@@ -10,6 +10,7 @@ import {
   reorderPendingChatMessages,
   sendToSession,
   steerPendingChatMessage,
+  stopActiveChatTurn,
   updatePendingChatMessage,
   updateSessionAgent,
 } from "../../src/api/chat";
@@ -45,6 +46,89 @@ afterEach(async () => {
 });
 
 describe("handleChat per-session serialization", () => {
+  test("stopping an active turn aborts provider work and prevents a late assistant response", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Stop Provider",
+      api_key: "sk-stop",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Stop Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-stop",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+    let providerAborted = false;
+    let markProviderStarted: (() => void) | undefined;
+    const providerStarted = new Promise<void>((resolve) => {
+      markProviderStarted = resolve;
+    });
+    globalThis.fetch = ((_url, init) =>
+      new Promise<Response>((resolve, reject) => {
+        markProviderStarted?.();
+        const timer = setTimeout(
+          () =>
+            resolve(
+              Response.json({
+                choices: [
+                  {
+                    finish_reason: "stop",
+                    message: {
+                      role: "assistant",
+                      content: "late response must not persist",
+                    },
+                  },
+                ],
+                usage: {
+                  prompt_tokens: 2,
+                  completion_tokens: 4,
+                  total_tokens: 6,
+                },
+              })
+            ),
+          100
+        );
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            providerAborted = true;
+            clearTimeout(timer);
+            reject(new DOMException("stopped", "AbortError"));
+          },
+          { once: true }
+        );
+      })) as typeof fetch;
+
+    const sessionId = `stop-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const activeTurn = handleChat({
+      message: "start a long response",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+    });
+    await providerStarted;
+
+    expect(stopActiveChatTurn(sessionId)).toEqual({
+      success: true,
+      stopped: true,
+      sessionId,
+    });
+    const response = await activeTurn;
+
+    expect(response.stopped).toBe(true);
+    expect(response.interrupted).toBe(true);
+    expect(providerAborted).toBe(true);
+    const messages = await waitForVisibleSessionMessages(sessionId, 1);
+    expect(messages.map((message) => message.content)).toEqual(["start a long response"]);
+    expect(messages.some((message) => message.content.includes("late response"))).toBe(false);
+    expect(stopActiveChatTurn(sessionId).stopped).toBe(false);
+  });
+
   test("rejects concurrent follow-ups when queue and steer behavior is disabled", async () => {
     const provider = providerManager.create({
       provider: "openai",
@@ -155,7 +239,10 @@ describe("handleChat per-session serialization", () => {
             {
               index: 0,
               finish_reason: "stop",
-              message: { role: "assistant", content: "Parent accepted the spawn" },
+              message: {
+                role: "assistant",
+                content: "Parent accepted the spawn",
+              },
             },
           ],
           usage: { prompt_tokens: 5, completion_tokens: 4, total_tokens: 9 },
@@ -294,7 +381,9 @@ describe("handleChat per-session serialization", () => {
     createdAgentIds.push(firstAgent.id, secondAgent.id);
 
     globalThis.fetch = (async (_url, init) => {
-      const request = JSON.parse(String(init?.body || "{}")) as { model?: string };
+      const request = JSON.parse(String(init?.body || "{}")) as {
+        model?: string;
+      };
       const model = request.model || "unknown-model";
       return new Response(
         JSON.stringify({
@@ -331,7 +420,11 @@ describe("handleChat per-session serialization", () => {
     expect(updated.contextUsage.usedTokens).toBeGreaterThan(0);
     expect(updated.contextUsage.limitTokens).toBeGreaterThan(updated.contextUsage.usedTokens);
 
-    const second = await handleChat({ message: "second", sessionId, tools: false });
+    const second = await handleChat({
+      message: "second",
+      sessionId,
+      tools: false,
+    });
     expect(second.agent?.id).toBe(secondAgent.id);
     expect(second.message.content).toBe("reply from gpt-switch-b");
     expect(second.contextUsage?.usedTokens).toBeGreaterThan(0);
@@ -485,7 +578,9 @@ describe("handleChat per-session serialization", () => {
 
     let sentModel = "";
     globalThis.fetch = (async (_url, init) => {
-      const request = JSON.parse(String(init?.body || "{}")) as { model?: string };
+      const request = JSON.parse(String(init?.body || "{}")) as {
+        model?: string;
+      };
       sentModel = request.model || "";
       return new Response(
         JSON.stringify({
@@ -496,7 +591,10 @@ describe("handleChat per-session serialization", () => {
             {
               index: 0,
               finish_reason: "stop",
-              message: { role: "assistant", content: `reply from ${sentModel}` },
+              message: {
+                role: "assistant",
+                content: `reply from ${sentModel}`,
+              },
             },
           ],
           usage: { prompt_tokens: 5, completion_tokens: 3, total_tokens: 8 },
@@ -571,7 +669,12 @@ describe("handleChat per-session serialization", () => {
     });
 
     const [firstResponse, secondResponse] = await Promise.all([
-      handleChat({ message: "first", agentId: agent.id, sessionId, tools: false }),
+      handleChat({
+        message: "first",
+        agentId: agent.id,
+        sessionId,
+        tools: false,
+      }),
       handleChat({
         message: "second",
         agentId: agent.id,
@@ -658,7 +761,12 @@ describe("handleChat per-session serialization", () => {
       }
     });
 
-    const firstTurn = handleChat({ message: "start", agentId: agent.id, sessionId, tools: false });
+    const firstTurn = handleChat({
+      message: "start",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+    });
     await new Promise((resolve) => setTimeout(resolve, 5));
     const queued = await handleChat({
       message: "adjust course",
@@ -747,7 +855,10 @@ describe("handleChat per-session serialization", () => {
             {
               index: 0,
               finish_reason: "stop",
-              message: { role: "assistant", content: `tool-steer-seed-${seedCall}` },
+              message: {
+                role: "assistant",
+                content: `tool-steer-seed-${seedCall}`,
+              },
             },
           ],
           usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 },
@@ -793,7 +904,9 @@ describe("handleChat per-session serialization", () => {
             resolve();
             return;
           }
-          options?.abortSignal?.addEventListener("abort", () => resolve(), { once: true });
+          options?.abortSignal?.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
         });
         consumedDuringAbort = options?.consumeSteeringMessages?.() || [];
         broadcastStatus({
@@ -856,7 +969,12 @@ describe("handleChat per-session serialization", () => {
         )
       ).toBe(true);
       expect(
-        [...((secondExecutionMessages || []) as Array<{ role: string; content: string }>)]
+        [
+          ...((secondExecutionMessages || []) as Array<{
+            role: string;
+            content: string;
+          }>),
+        ]
           .reverse()
           .find((message) => message.role === "user")?.content
       ).toBe("steer after command");
@@ -931,7 +1049,9 @@ describe("handleChat per-session serialization", () => {
       if (n === 1) {
         await new Promise<void>((resolve) => {
           if (init?.signal instanceof AbortSignal) {
-            init.signal.addEventListener("abort", () => resolve(), { once: true });
+            init.signal.addEventListener("abort", () => resolve(), {
+              once: true,
+            });
           }
           setTimeout(resolve, 120);
         });
@@ -1071,7 +1191,12 @@ describe("handleChat per-session serialization", () => {
     const sessionId = `status-queue-${Date.now()}`;
     createdSessionIds.push(sessionId);
 
-    await handleChat({ message: "first", agentId: agent.id, sessionId, tools: false });
+    await handleChat({
+      message: "first",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+    });
     broadcastStatus({
       status: "thinking",
       timestamp: Date.now(),

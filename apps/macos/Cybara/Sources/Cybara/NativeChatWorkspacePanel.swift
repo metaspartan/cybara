@@ -183,6 +183,7 @@ extension GatewayClient {
 struct NativeChatBrowserPanel: View {
     let client: GatewayClient
     let sessionID: String?
+    let isActive: Bool
     @State private var page: NativeBrowserTab?
     @State private var address = ""
     @State private var image: NSImage?
@@ -190,6 +191,7 @@ struct NativeChatBrowserPanel: View {
     @State private var viewport: NativeBrowserViewport?
     @State private var loading = false
     @State private var error: String?
+    @FocusState private var addressFocused: Bool
 
     private var browserSessionID: String {
         firstNonEmptyGatewayString(sessionID) ?? "preview-new-chat"
@@ -228,6 +230,7 @@ struct NativeChatBrowserPanel: View {
                 TextField("Search or enter address", text: $address)
                     .textFieldStyle(.roundedBorder)
                     .multilineTextAlignment(.center)
+                    .focused($addressFocused)
                     .onSubmit { Task { await navigate() } }
             }
             .padding(8)
@@ -239,9 +242,8 @@ struct NativeChatBrowserPanel: View {
                     GeometryReader { proxy in
                         Image(nsImage: image)
                             .resizable()
-                            .scaledToFill()
+                            .scaledToFit()
                             .frame(width: proxy.size.width, height: proxy.size.height)
-                            .clipped()
                         if let cursor, let viewport, cursor.visible, cursor.source != "user", viewport.width > 0, viewport.height > 0 {
                             Image(systemName: "arrow.up.left")
                                 .font(.system(size: 16, weight: .bold))
@@ -265,6 +267,7 @@ struct NativeChatBrowserPanel: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(nsColor: .textBackgroundColor).opacity(0.45))
 
             if let error {
                 Text(error)
@@ -274,11 +277,12 @@ struct NativeChatBrowserPanel: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
-        .task(id: browserSessionID) {
+        .task(id: "\(browserSessionID):\(isActive)") {
+            guard isActive else { return }
             await loadPage()
             while !Task.isCancelled {
                 await refreshPreview()
-                try? await Task.sleep(for: .milliseconds(900))
+                try? await Task.sleep(for: .milliseconds(1400))
             }
         }
     }
@@ -332,7 +336,9 @@ struct NativeChatBrowserPanel: View {
             viewport = preview.viewport
             if let updatedPage = preview.page {
                 self.page = updatedPage
-                address = updatedPage.url ?? address
+                if !addressFocused {
+                    address = updatedPage.url ?? address
+                }
             }
             error = nil
         } catch {

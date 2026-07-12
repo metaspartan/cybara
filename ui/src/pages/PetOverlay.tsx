@@ -191,8 +191,7 @@ export function PetOverlay() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         className={cn(
-          "relative h-16 w-16 flex-shrink-0 select-none rounded-full bg-[#12121a] cursor-grab transition-transform duration-150 hover:scale-105 active:scale-95 active:cursor-grabbing",
-          activeCount > 0 ? "border-2 border-indigo-400/70" : "border border-white/20",
+          "relative h-16 w-16 flex-shrink-0 select-none cursor-grab drop-shadow-xl transition-transform duration-150 hover:scale-105 active:scale-95 active:cursor-grabbing",
           activeCount === 0 && "cybara-pet-idle"
         )}
         style={{ touchAction: "none" }}
@@ -204,7 +203,7 @@ export function PetOverlay() {
             src="/cybara.png"
             alt=""
             draggable={false}
-            className="pointer-events-none absolute left-1/2 top-1/2 h-11 w-11 -translate-x-1/2 -translate-y-1/2"
+            className="pointer-events-none absolute inset-0 h-full w-full object-contain"
           />
         )}
         {activeCount > 0 && (

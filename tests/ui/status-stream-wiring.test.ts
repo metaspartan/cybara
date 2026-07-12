@@ -9,6 +9,9 @@ const composerActionPath = fileURLToPath(
 const chatAgentControlsPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatAgentControls.tsx", import.meta.url)
 );
+const chatFollowUpControlsPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ChatFollowUpControls.tsx", import.meta.url)
+);
 const contextUsageRingPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ContextUsageRing.tsx", import.meta.url)
 );
@@ -46,6 +49,7 @@ describe("status stream websocket wiring", () => {
     const source = [
       readSource(chatPath),
       readSource(chatAgentControlsPath),
+      readSource(chatFollowUpControlsPath),
       readSource(composerActionPath),
       readSource(contextUsageRingPath),
       readSource(chatReasoningControlPath),
@@ -195,10 +199,11 @@ describe("status stream websocket wiring", () => {
   test("chat composer controls collapse by available composer width", () => {
     const chatSource = readSource(chatPath);
     const controlsSource = readSource(chatAgentControlsPath);
+    const followUpControlsSource = readSource(chatFollowUpControlsPath);
     const cssSource = readSource(indexCssPath);
 
     expect(chatSource).toContain("chat-composer-responsive");
-    expect(chatSource).toContain("chat-approval-control");
+    expect(followUpControlsSource).toContain("chat-approval-control");
     expect(controlsSource).toContain("chat-agent-selector-compact-label");
     expect(controlsSource).toContain("selectedAgent?.model || selectedAgent?.name");
     expect(cssSource).toContain("container-type: inline-size");

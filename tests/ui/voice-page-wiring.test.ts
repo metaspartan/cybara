@@ -25,6 +25,9 @@ describe("voice UI wiring", () => {
     expect(voice).toContain("voice-orb");
     expect(voice).toContain("--orb-level");
     expect(voice).toContain("createAnalyser");
+    expect(voice).toContain("Hands-free");
+    expect(voice).toContain("nextVoiceActivityState");
+    expect(voice).toContain('voiceModeRef.current === "hands-free"');
     const css = readFileSync(join(root, "ui", "src", "index.css"), "utf8");
     expect(css).toContain(".voice-orb-body");
     expect(css).toContain("voice-orb-breathe");

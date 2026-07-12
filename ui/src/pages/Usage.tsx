@@ -101,7 +101,7 @@ export function Usage() {
     staleTime: 15_000,
     gcTime: 30 * 60_000,
     refetchInterval: 30_000,
-    refetchIntervalInBackground: true,
+    refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     refetchOnMount: true,
   });

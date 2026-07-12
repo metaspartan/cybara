@@ -1326,7 +1326,7 @@ export const chatApi = {
   localSpeechModels: () =>
     fetchApi<{
       success: boolean;
-      tts: {
+      tts?: {
         models: Array<{
           id: string;
           label: string;
@@ -1363,15 +1363,51 @@ export const chatApi = {
         systemFallback: boolean;
         error: string | null;
       };
-      stt: {
+      stt?: {
         ready: boolean;
         provider: string | null;
         type: string | null;
         native: boolean;
         error: string | null;
       };
-      settings: { ttsProvider: string; ttsVoice: string; sttProvider: string };
+      realtime?: {
+        provider: "managed" | "openai" | "gemini" | "moshi";
+        ready: boolean;
+        transport: "managed" | "webrtc" | "websocket";
+        model: string;
+        voice: string;
+        serverUrl: string | null;
+        error: string | null;
+      };
+      settings?: {
+        ttsProvider: string;
+        ttsVoice: string;
+        sttProvider: string;
+        realtimeProvider: string;
+      };
     }>("/speech/status"),
+  createRealtimeVoiceSession: () =>
+    fetchApi<{
+      success: boolean;
+      session: {
+        provider: "openai" | "gemini" | "moshi";
+        transport: "webrtc" | "websocket";
+        model: string;
+        voice: string;
+        endpoint: string;
+        credential?: string;
+        expiresAt?: string;
+      };
+    }>("/speech/realtime/session", { method: "POST" }),
+  testRealtimeVoiceConnection: () =>
+    fetchApi<{
+      success: boolean;
+      result: {
+        success: true;
+        provider: "managed" | "openai" | "gemini" | "moshi";
+        detail: string;
+      };
+    }>("/speech/realtime/test", { method: "POST" }),
   dictate: (payload: {
     audioBase64: string;
     mimeType?: string;

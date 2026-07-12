@@ -2384,63 +2384,85 @@ final class NativeTerminalConnection: ObservableObject {
 
 struct TerminalScreen: View {
     let client: GatewayClient
+    var isActive = true
+    var compact = false
     @StateObject private var connection = NativeTerminalConnection()
     @State private var sessions: [NativeTerminalSession] = []
     @State private var activeSessionID = UUID().uuidString
     @State private var command = ""
     @State private var loaded = false
     @State private var error: String?
+    @State private var terminalEnabled: Bool?
+    @State private var enabling = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                ScreenHeader(title: "Terminal", subtitle: connection.connected ? "Connected" : "Native shell session")
-                Button("New") {
-                    activeSessionID = UUID().uuidString
-                    connection.connect(client: client, sessionID: activeSessionID)
+            if terminalEnabled == false {
+                ContentUnavailableView {
+                    Label("Terminal Disabled", systemImage: "terminal")
+                } description: {
+                    Text("Enable terminal access to use a native shell session.")
+                } actions: {
+                    Button("Enable Terminal") {
+                        Task { await enableTerminal() }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(enabling)
                 }
-                .buttonStyle(.borderedProminent)
-                Button(connection.connected ? "Disconnect" : "Connect") {
-                    if connection.connected {
-                        connection.disconnect()
-                    } else {
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                HStack {
+                    ScreenHeader(title: "Terminal", subtitle: connection.connected ? "Connected" : "Native shell session")
+                    Button("New") {
+                        activeSessionID = UUID().uuidString
                         connection.connect(client: client, sessionID: activeSessionID)
                     }
+                    .buttonStyle(.borderedProminent)
+                    Button(connection.connected ? "Disconnect" : "Connect") {
+                        if connection.connected {
+                            connection.disconnect()
+                        } else {
+                            connection.connect(client: client, sessionID: activeSessionID)
+                        }
+                    }
+                    .buttonStyle(.bordered)
                 }
-                .buttonStyle(.bordered)
-            }
-            .padding(24)
+                .padding(compact ? 12 : 24)
 
-            if let error = error ?? connection.error {
-                Text(error)
-                    .font(.system(size: 12, design: .rounded))
-                    .foregroundStyle(.red)
-                    .padding(.horizontal, 24)
-            }
-
-            VStack(alignment: .leading, spacing: 10) {
-                ScrollView {
-                    Text(connection.output.isEmpty ? "Connect to start a terminal session." : connection.output)
-                        .font(.system(size: 12, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(14)
+                if let error = error ?? connection.error {
+                    Text(error)
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.red)
+                        .padding(.horizontal, compact ? 12 : 24)
                 }
-                .cybaraGlass(cornerRadius: 16)
 
-                HStack {
-                    TextField("Command", text: $command)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit { sendCommand() }
-                    Button("Send", action: sendCommand)
-                        .buttonStyle(.borderedProminent)
-                        .disabled(!connection.connected || command.isEmpty)
+                VStack(alignment: .leading, spacing: 10) {
+                    ScrollView {
+                        Text(connection.output.isEmpty ? "Connect to start a terminal session." : connection.output)
+                            .font(.system(size: 12, design: .monospaced))
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
+                    .cybaraGlass(cornerRadius: compact ? 10 : 16)
+
+                    HStack {
+                        TextField("Command", text: $command)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit { sendCommand() }
+                        Button("Send", action: sendCommand)
+                            .buttonStyle(.borderedProminent)
+                            .disabled(!connection.connected || command.isEmpty)
+                    }
                 }
+                .padding(.horizontal, compact ? 12 : 24)
+                .padding(.bottom, compact ? 12 : 24)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 24)
         }
-        .task { await loadSessions() }
+        .task(id: isActive) {
+            guard isActive else { return }
+            await loadSessions()
+        }
         .onDisappear { connection.disconnect() }
     }
 
@@ -2453,6 +2475,13 @@ struct TerminalScreen: View {
 
     private func loadSessions() async {
         do {
+            let config = try await client.appConfig()
+            terminalEnabled = config["terminal_enabled"] as? Bool ?? false
+            guard terminalEnabled == true else {
+                error = nil
+                loaded = true
+                return
+            }
             sessions = try await client.terminalSessions()
             if let first = sessions.first {
                 activeSessionID = first.id
@@ -2462,6 +2491,20 @@ struct TerminalScreen: View {
             self.error = error.localizedDescription
         }
         loaded = true
+    }
+
+    private func enableTerminal() async {
+        enabling = true
+        defer { enabling = false }
+        do {
+            let body = try JSONSerialization.data(withJSONObject: ["terminal_enabled": true])
+            try await client.updateAppConfig(body)
+            terminalEnabled = true
+            error = nil
+            await loadSessions()
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 }
 

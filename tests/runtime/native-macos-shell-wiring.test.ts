@@ -70,11 +70,22 @@ describe("native macOS shell wiring", () => {
 
   test("native logo loading does not call SwiftPM Bundle.module at app startup", () => {
     const brand = readFileSync(join(MACOS_APP_DIR, "CybaraBrand.swift"), "utf8");
+    const pet = readFileSync(join(MACOS_APP_DIR, "PetPanel.swift"), "utf8");
 
     expect(brand).not.toContain("Bundle.module");
+    expect(pet).not.toContain("Bundle.module");
+    expect(pet).toContain("CybaraBrand.logoImage");
     expect(brand).toContain('appendingPathComponent("Resources"');
     expect(brand).toContain("Cybara_Cybara.bundle");
     expect(brand).toContain("logoURLCandidates");
+  });
+
+  test("native terminal presents an enable action instead of a disabled endpoint error", () => {
+    const screens = readFileSync(join(MACOS_APP_DIR, "NativePlatformScreens.swift"), "utf8");
+
+    expect(screens).toContain('Label("Terminal Disabled", systemImage: "terminal")');
+    expect(screens).toContain('Button("Enable Terminal")');
+    expect(screens).toContain('["terminal_enabled": true]');
   });
 
   test("native shell exposes major web and Tauri destinations as SwiftUI screens", () => {
@@ -387,6 +398,7 @@ describe("native macOS shell wiring", () => {
     expect(gatewayClient).toContain("func reorderPendingMessages(");
     expect(gatewayClient).toContain("func updatePendingMessage(");
     expect(gatewayClient).toContain("func deletePendingMessage(");
+    expect(gatewayClient).toContain("func stopChatSession(");
     expect(gatewayClient).toContain("processActivities: [GatewayProcessActivityPayload] = []");
     expect(gatewayClient).toContain(
       "GatewaySteerPendingBody(processActivities: processActivities)"
@@ -410,6 +422,8 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("pendingIds: nextMessages.map(\\.id)");
     expect(nativeScreens).toContain("await updatePending(message, content: editingPendingDraft)");
     expect(nativeScreens).toContain("await deletePending(message)");
+    expect(nativeScreens).toContain("await stopResponse()");
+    expect(nativeScreens).toContain('"stop.circle.fill"');
     expect(nativeScreens).toContain(
       "processActivities: nativeSteeringProcessActivityPayloads(from: liveActivities)"
     );

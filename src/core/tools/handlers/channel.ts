@@ -1575,8 +1575,8 @@ export async function handleImage(
 export async function handleTTS(args: Record<string, unknown>): Promise<SpeechSynthesisResult> {
   const provider =
     typeof args.provider === "string" &&
-    ["auto", "system", "elevenlabs", "openai", "openai-codex"].includes(args.provider)
-      ? (args.provider as "auto" | "system" | "elevenlabs" | "openai" | "openai-codex")
+    ["auto", "local", "system", "elevenlabs", "openai", "openai-codex"].includes(args.provider)
+      ? (args.provider as "auto" | "local" | "system" | "elevenlabs" | "openai" | "openai-codex")
       : undefined;
   return await synthesizeSpeech({
     text: typeof args.text === "string" ? args.text : "",

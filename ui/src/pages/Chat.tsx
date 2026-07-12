@@ -2,39 +2,32 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowDown,
-  ArrowLeft,
   Check,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  CircleHelp,
   Copy,
   FileText,
   FlaskConical,
   Folder,
-  FolderOpen,
   GitFork,
-  GripVertical,
   Loader2,
   MessageSquare,
   Mic,
   MicOff,
   PanelRightOpen,
   Paperclip,
-  Pencil,
   Plus,
   RotateCcw,
-  ShieldAlert,
   SlidersHorizontal,
   Sparkles,
   Square,
-  Trash2,
   User,
   Volume2,
   VolumeX,
   X,
 } from "lucide-react";
-import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { EmbeddedTerminalPanel } from "@/components/ide/EmbeddedTerminalPanel";
 import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
@@ -95,10 +88,17 @@ import type {
   SessionTokenUsage,
 } from "@/types";
 import { LiveActivityTimeline, ProcessActivityList } from "./chat/ActivityTimeline";
+import { ArtifactViewerPanel } from "./chat/ArtifactViewerPanel";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
 import { ChatCapabilityMenu } from "./chat/ChatCapabilityMenu";
 import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
 import { ChatEnvironmentOverview } from "./chat/ChatEnvironmentOverview";
+import {
+  ChatApprovalControls,
+  normalizeToolApprovalMode,
+  PendingChatQueue,
+  type ToolApprovalMode,
+} from "./chat/ChatFollowUpControls";
 import { ChatHeaderTitleMenu } from "./chat/ChatHeaderTitleMenu";
 import { ChatImageLightbox, type ChatLightboxImage } from "./chat/ChatImageLightbox";
 import { ChatReasoningControl } from "./chat/ChatReasoningControl";
@@ -116,7 +116,6 @@ import {
   buildPreSteeringActivityMessage,
   type ChatMessage,
   clampDiffPanelWidth,
-  DIFF_PANEL_MIN_WIDTH,
   type DictationMode,
   type DictationRuntimeCapabilities,
   dedupeArtifactSummaries,
@@ -124,7 +123,6 @@ import {
   extractLatestPlanFromMessages,
   type FileChangeItem,
   type FileChangeSummary,
-  formatFilePathForDisplay,
   formatSandboxProviderLabel,
   formatToolIntent,
   formatWorkspaceLabel,
@@ -178,7 +176,7 @@ import {
   readCachedLiveSessionState,
   writeCachedLiveSessionState,
 } from "./chat/liveSessionState";
-import { DiffCodeBlock, MessageContent } from "./chat/MessageContent";
+import { MessageContent } from "./chat/MessageContent";
 import { writeCachedSessionMessages } from "./chat/messageCache";
 import { PendingApprovalsBanner } from "./chat/PendingApprovalsBanner";
 import { PlanSummaryCard } from "./chat/PlanSummaryCard";
@@ -189,6 +187,7 @@ import {
 } from "./chat/pendingQueueCache";
 import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
 import { SessionsPanel } from "./chat/SessionSidebar";
+import { SessionDiffPanel } from "./chat/SessionDiffPanel";
 import { SubagentIcon } from "./chat/SubagentIcon";
 import { SubagentPanel } from "./chat/SubagentPanel";
 import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
@@ -208,53 +207,6 @@ function formatWorkedDuration(durationMs: number): string {
   return `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
 }
 
-type ToolApprovalMode = "always_allow" | "ask";
-
-function normalizeToolApprovalMode(value: unknown): ToolApprovalMode {
-  return value === "ask" ? "ask" : "always_allow";
-}
-
-function toolApprovalModeLabel(mode: ToolApprovalMode): string {
-  return mode === "ask" ? "Ask Me" : "Always Allow";
-}
-
-function ChatApprovalControls({
-  mode,
-  onChange,
-  updating,
-}: {
-  mode: ToolApprovalMode;
-  onChange: (mode: ToolApprovalMode) => void;
-  updating?: boolean;
-}) {
-  const isAskMode = mode === "ask";
-  const label = toolApprovalModeLabel(mode);
-  const Icon = updating ? Loader2 : isAskMode ? CircleHelp : ShieldAlert;
-  const nextMode: ToolApprovalMode = isAskMode ? "always_allow" : "ask";
-  return (
-    <div className="chat-approval-control relative shrink-0">
-      <button
-        type="button"
-        disabled={updating}
-        onClick={() => onChange(nextMode)}
-        title={`Tool approvals: ${label} (click to switch)`}
-        aria-label={`Tool approvals: ${label}`}
-        className="composer-icon-btn chat-approval-toggle inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-transparent px-2 text-gray-400 hover:text-white disabled:opacity-50"
-      >
-        <Icon
-          className={cn(
-            "h-4 w-4 shrink-0",
-            updating ? "animate-spin text-gray-400" : isAskMode ? "text-sky-300" : "text-amber-300"
-          )}
-        />
-        <span className="chat-approval-label text-[11px] font-semibold whitespace-nowrap">
-          {label}
-        </span>
-      </button>
-    </div>
-  );
-}
-
 function parseTimestampMs(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -270,185 +222,6 @@ function parseTimestampMs(value: unknown): number | undefined {
     }
   }
   return undefined;
-}
-
-function PendingChatQueue({
-  messages,
-  onSteer,
-  onReorder,
-  onUpdate,
-  onDelete,
-  steeringMessageId,
-  mutatingMessageId,
-}: {
-  messages: PendingChatMessage[];
-  onSteer: (id: string) => void;
-  onReorder: (orderedIds: string[]) => void;
-  onUpdate: (id: string, content: string) => void;
-  onDelete: (id: string) => void;
-  steeringMessageId: string | null;
-  mutatingMessageId: string | null;
-}) {
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingContent, setEditingContent] = useState("");
-  if (messages.length === 0) return null;
-
-  const beginEdit = (message: PendingChatMessage) => {
-    setEditingId(message.id);
-    setEditingContent(message.content);
-  };
-
-  const cancelEdit = () => {
-    setEditingId(null);
-    setEditingContent("");
-  };
-
-  const submitEdit = (message: PendingChatMessage) => {
-    const nextContent = editingContent.trim();
-    if (!nextContent || nextContent === message.content.trim()) {
-      cancelEdit();
-      return;
-    }
-    onUpdate(message.id, nextContent);
-    cancelEdit();
-  };
-
-  const handleEditKeyDown = (
-    event: KeyboardEvent<HTMLInputElement>,
-    message: PendingChatMessage
-  ) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      submitEdit(message);
-    }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      cancelEdit();
-    }
-  };
-
-  const reorderMessages = (sourceId: string, targetId: string) => {
-    if (!sourceId || sourceId === targetId) return;
-    const sourceIndex = messages.findIndex((message) => message.id === sourceId);
-    const targetIndex = messages.findIndex((message) => message.id === targetId);
-    if (sourceIndex < 0 || targetIndex < 0) return;
-    const next = [...messages];
-    const [moved] = next.splice(sourceIndex, 1);
-    if (!moved) return;
-    next.splice(targetIndex, 0, moved);
-    onReorder(next.map((message) => message.id));
-  };
-
-  return (
-    <div data-testid="pending-chat-queue" className="mb-2 w-full min-w-0 space-y-1.5">
-      {messages.map((message) => {
-        const isSteering = message.mode === "steering";
-        const isOptimistic = message.id.startsWith("optimistic-");
-        const isMutating = mutatingMessageId === message.id;
-        const canChange = !isSteering && !isOptimistic && !isMutating;
-        const canDrag = messages.length > 1 && canChange;
-        const isEditing = editingId === message.id;
-        return (
-          <div
-            key={message.id}
-            data-testid="pending-chat-message"
-            onMouseUp={() => {
-              if (!draggingId) return;
-              reorderMessages(draggingId, message.id);
-              setDraggingId(null);
-            }}
-            className={cn(
-              "flex h-11 w-full min-w-0 select-none items-center gap-2 rounded-t-2xl rounded-b-lg border border-white/10 bg-white/[0.055] px-3 text-[12px] shadow-[0_8px_24px_rgba(0,0,0,0.22)]",
-              canDrag ? "cursor-grab active:cursor-grabbing" : "",
-              draggingId === message.id ? "opacity-60" : ""
-            )}
-          >
-            {canDrag ? (
-              <span
-                className="inline-flex h-6 w-5 shrink-0 items-center justify-center rounded-md text-gray-500"
-                title="Drag to reorder"
-                aria-label="Drag to reorder queued message"
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  setDraggingId(message.id);
-                }}
-              >
-                <GripVertical className="h-3.5 w-3.5" />
-              </span>
-            ) : (
-              <MessageSquare className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-            )}
-            <span
-              className={cn(
-                "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                isSteering ? "bg-emerald-500/15 text-emerald-200" : "bg-white/8 text-gray-300"
-              )}
-            >
-              {isSteering ? "Steering" : "Queued"}
-            </span>
-            {isEditing ? (
-              <input
-                autoFocus
-                value={editingContent}
-                onChange={(event) => setEditingContent(event.target.value)}
-                onBlur={() => submitEdit(message)}
-                onKeyDown={(event) => handleEditKeyDown(event, message)}
-                className="min-w-0 flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[12px] text-white outline-none focus:border-amber-400/40"
-              />
-            ) : (
-              <span
-                className="min-w-0 flex-1 truncate text-gray-300"
-                title={`${message.content} · ${formatRelativeTime(new Date(message.createdAt).toISOString())}`}
-              >
-                {message.content}
-              </span>
-            )}
-            {!isSteering && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => beginEdit(message)}
-                  disabled={!canChange}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-white/[0.08] hover:text-white disabled:opacity-40"
-                  title="Edit queued message"
-                  aria-label="Edit queued message"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onDelete(message.id)}
-                  disabled={!canChange}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-rose-500/10 hover:text-rose-200 disabled:opacity-40"
-                  title="Delete queued message"
-                  aria-label="Delete queued message"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
-              </>
-            )}
-            {!isSteering ? (
-              <button
-                type="button"
-                onClick={() => onSteer(message.id)}
-                disabled={isOptimistic || steeringMessageId === message.id || isMutating}
-                className="inline-flex h-7 shrink-0 items-center justify-center rounded-md px-2 text-[12px] font-medium text-gray-300 transition-colors hover:bg-white/[0.08] hover:text-white disabled:opacity-60"
-              >
-                {isOptimistic
-                  ? "Queueing..."
-                  : steeringMessageId === message.id
-                    ? "Steering..."
-                    : "Steer"}
-              </button>
-            ) : (
-              <span className="shrink-0 text-[11px] text-emerald-300">Steering</span>
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
 }
 
 function parseDurationMs(value: unknown): number {
@@ -844,314 +617,6 @@ function AssistantMetaInline({
   );
 }
 
-function ArtifactViewerPanel({
-  artifact,
-  loading,
-  error,
-  content,
-  rawView,
-  onBack,
-  onToggleView,
-}: {
-  artifact: ArtifactSummaryView | null;
-  loading: boolean;
-  error: string | null;
-  content: string;
-  rawView: boolean;
-  onBack: () => void;
-  onToggleView: (raw: boolean) => void;
-}) {
-  const resolvedPath =
-    artifact?.path ||
-    (artifact ? `~/.cybara/artifacts/${artifact.sessionId}/${artifact.fileName}` : "");
-  const locationLabel = artifact
-    ? `/api/sessions/${encodeURIComponent(artifact.sessionId)}/artifacts/${encodeURIComponent(artifact.fileName)}`
-    : "";
-
-  return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="px-3 sm:px-4 py-2 border-b border-white/10 bg-[#0a0a0f]/90 backdrop-blur-xl">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[12px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            Back to chat
-          </button>
-          <div className="flex items-center gap-1 rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-[12px] text-gray-300">
-            <FileText className="w-3.5 h-3.5 text-indigo-300" />
-            <span className="truncate max-w-[280px] sm:max-w-[520px]">
-              {artifact?.title || artifact?.fileName || "Artifact"}
-            </span>
-          </div>
-          <div className="ml-auto flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => onToggleView(false)}
-              className={cn(
-                "rounded-md border px-2 py-1 text-[12px] transition-colors cursor-pointer",
-                !rawView
-                  ? "border-indigo-400/40 bg-indigo-500/20 text-indigo-200"
-                  : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
-              )}
-            >
-              Markdown
-            </button>
-            <button
-              type="button"
-              onClick={() => onToggleView(true)}
-              className={cn(
-                "rounded-md border px-2 py-1 text-[12px] transition-colors cursor-pointer",
-                rawView
-                  ? "border-indigo-400/40 bg-indigo-500/20 text-indigo-200"
-                  : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:bg-white/[0.08]"
-              )}
-            >
-              Raw
-            </button>
-          </div>
-        </div>
-        {artifact && (
-          <div className="mt-2 space-y-1 text-[12px] text-gray-500">
-            <p className="truncate">Path: {resolvedPath}</p>
-            <p className="truncate">Endpoint: {locationLabel}</p>
-          </div>
-        )}
-      </div>
-      <div className="flex-1 overflow-y-auto px-3 sm:px-4 py-4">
-        {loading ? (
-          <div className="flex items-center gap-2 text-sm text-gray-400">
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Loading artifact...
-          </div>
-        ) : error ? (
-          <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
-            {error}
-          </div>
-        ) : rawView ? (
-          <pre className="max-h-full overflow-auto rounded-lg border border-white/10 bg-black/40 p-3 text-[12px] text-gray-200 whitespace-pre-wrap">
-            {content}
-          </pre>
-        ) : (
-          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-4">
-            <MessageContent content={content} />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SessionDiffPanel({
-  embedded = false,
-  isOpen,
-  summary,
-  selectedPath,
-  onSelectPath,
-  onClose,
-  width,
-  onResizeStart,
-  onOpenInIDE,
-  workspaceDir,
-  loading = false,
-  error = null,
-  onRetry,
-}: {
-  embedded?: boolean;
-  isOpen: boolean;
-  summary: FileChangeSummary | null;
-  selectedPath: string | null;
-  onSelectPath: (path: string) => void;
-  onClose: () => void;
-  width: number;
-  onResizeStart: (event: React.MouseEvent<HTMLElement>) => void;
-  onOpenInIDE: (file: FileChangeItem) => void;
-  workspaceDir?: string | null;
-  loading?: boolean;
-  error?: string | null;
-  onRetry?: () => void;
-}) {
-  if (!isOpen) return null;
-
-  const selectedFile =
-    summary?.files.find((file) => file.path === selectedPath) || summary?.files[0] || null;
-
-  return (
-    <div
-      className={cn(
-        "relative flex min-h-0 min-w-0 flex-col overflow-hidden",
-        embedded ? "h-full w-full" : "glass-strong border-l border-white/5"
-      )}
-      style={embedded ? undefined : { width: `${width}px`, minWidth: `${DIFF_PANEL_MIN_WIDTH}px` }}
-    >
-      {!embedded && (
-        <button
-          type="button"
-          onMouseDown={onResizeStart}
-          className="absolute left-0 top-0 h-full w-2 -translate-x-1/2 cursor-col-resize z-20 group"
-          title="Resize file diff panel"
-          aria-label="Resize file diff panel"
-        >
-          <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/10 transition-colors group-hover:bg-indigo-400/70" />
-        </button>
-      )}
-      <div className="flex min-w-0 items-center justify-between gap-2 border-b border-white/5 bg-white/[0.02] px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <FileText className="w-3.5 h-3.5 shrink-0 text-indigo-300" />
-          <h3 className="text-sm font-medium text-white">File Diffs</h3>
-          {loading && (
-            <Loader2
-              className="h-3 w-3 shrink-0 animate-spin text-gray-500"
-              aria-label="Loading complete diffs"
-            />
-          )}
-          {summary && summary.files.length > 0 && (
-            <span className="truncate text-[11px] text-gray-500">
-              <span className="text-green-300">+{summary.totalAdded}</span>
-              <span className="mx-0.5">/</span>
-              <span className="text-red-300">-{summary.totalRemoved}</span>
-              <span className="ml-1.5">
-                {summary.files.length} file{summary.files.length === 1 ? "" : "s"}
-              </span>
-            </span>
-          )}
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {error && onRetry && (
-            <button
-              type="button"
-              onClick={onRetry}
-              className="rounded-lg p-1.5 text-amber-300 transition-colors hover:bg-white/5 hover:text-amber-200"
-              title={error}
-              aria-label="Retry loading complete file diffs"
-            >
-              <RotateCcw className="h-3.5 w-3.5" />
-            </button>
-          )}
-          {selectedFile && (
-            <button
-              type="button"
-              onClick={() => onOpenInIDE(selectedFile)}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-indigo-300 transition-colors cursor-pointer"
-              title="Open selected file in IDE"
-            >
-              <FolderOpen className="w-3.5 h-3.5" />
-            </button>
-          )}
-          {!embedded && (
-            <button
-              onClick={onClose}
-              className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-white transition-colors cursor-pointer"
-              title="Close file diff panel"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {!summary || summary.files.length === 0 ? (
-        <div className="flex-1 flex items-center justify-center px-4 text-center text-gray-500">
-          <div>
-            <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
-            <p className="text-xs">No file diffs in this session yet</p>
-          </div>
-        </div>
-      ) : (
-        <>
-          <div className="max-h-52 shrink-0 overflow-y-auto border-b border-white/5 py-1">
-            {summary.files.map((file) => {
-              const isSelected = selectedFile?.path === file.path;
-              const pathDisplay = formatFilePathForDisplay(file.path, workspaceDir);
-              return (
-                <button
-                  key={`${file.path}-${file.type}`}
-                  type="button"
-                  onClick={() => onSelectPath(file.path)}
-                  title={pathDisplay.fullPath}
-                  className={cn(
-                    "grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 px-3 py-1.5 text-left transition-colors cursor-pointer",
-                    isSelected ? "bg-[rgba(var(--accent-primary),0.12)]" : "hover:bg-white/[0.045]"
-                  )}
-                >
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "h-1.5 w-1.5 shrink-0 rounded-full",
-                      file.type === "created"
-                        ? "bg-green-400"
-                        : file.type === "deleted"
-                          ? "bg-red-400"
-                          : "bg-amber-300"
-                    )}
-                    title={file.type}
-                  />
-                  <span className="min-w-0">
-                    <span className="block truncate text-[12px] font-medium text-gray-100">
-                      {pathDisplay.fileName}
-                    </span>
-                    <span className="block truncate text-[10.5px] text-gray-500">
-                      {pathDisplay.parentPath || file.type}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-[10.5px] tabular-nums">
-                    <span className="text-green-300">+{file.added}</span>
-                    <span className="ml-1 text-red-300">-{file.removed}</span>
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden p-2.5">
-            {selectedFile ? (
-              <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border border-white/10 bg-black/20">
-                <div className="flex items-center gap-2 border-b border-white/10 px-2.5 py-2">
-                  {(() => {
-                    const pathDisplay = formatFilePathForDisplay(selectedFile.path, workspaceDir);
-                    return (
-                      <div className="min-w-0 flex-1" title={pathDisplay.fullPath}>
-                        <p className="truncate text-[12px] font-medium text-gray-100">
-                          {pathDisplay.fileName}
-                        </p>
-                        <p className="truncate text-[10px] text-gray-500">
-                          {pathDisplay.parentPath || pathDisplay.relativePath}
-                        </p>
-                      </div>
-                    );
-                  })()}
-                  <button
-                    type="button"
-                    onClick={() => onOpenInIDE(selectedFile)}
-                    className="p-1 rounded-md text-gray-500 hover:text-indigo-300 hover:bg-white/5 transition-colors cursor-pointer"
-                    title="Open selected file in IDE"
-                    aria-label={`Open ${selectedFile.path} in IDE`}
-                  >
-                    <FolderOpen className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-                {selectedFile.diff ? (
-                  <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-                    <DiffCodeBlock code={selectedFile.diff} fill />
-                  </div>
-                ) : (
-                  <div className="p-3 text-[12px] text-gray-500">
-                    No line-by-line diff captured for this file change.
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-[12px] text-gray-500">Select a file to view its diff.</div>
-            )}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
 export function Chat() {
   const queryClient = useQueryClient();
   const { t } = useI18n();
@@ -1240,8 +705,6 @@ export function Chat() {
       await navigator.clipboard.writeText(content);
       copied = true;
     } catch {
-      // Clipboard API can be unavailable (permissions, embedded webviews);
-      // fall back to the legacy selection-based copy.
       try {
         const textarea = document.createElement("textarea");
         textarea.value = content;
@@ -1330,9 +793,6 @@ export function Chat() {
   );
   const [liveActivities, setLiveActivities] = useState<LiveActivityItem[]>([]);
   const [liveCurrentStep, setLiveCurrentStep] = useState<string | null>(null);
-  // Tracked (for cache/completion-handoff) but NOT rendered as a live answer:
-  // during a run the UI shows only the working timeline/status, and the full
-  // reply appears when the turn completes — consistent across all providers.
   const [streamingContent, setStreamingContent] = useState<string | null>(null);
   const [pendingMessages, setPendingMessages] = useState<PendingChatMessage[]>([]);
   const [sessionContextUsage, setSessionContextUsage] = useState<SessionContextUsage | null>(null);
@@ -2088,11 +1548,9 @@ export function Chat() {
         pendingProcessCaptureRef.current = {
           ...pendingProcessCaptureRef.current,
           activities: runActivities.map((activity) => ({ ...activity })),
-          // Reset timeout window at completion so long runs don't expire before attach.
           createdAt: Date.now(),
         };
       } else if (runActivities.length > 0) {
-        // Keep the working timeline visible until the next assistant message is attached.
         pendingProcessCaptureRef.current = {
           assistantCountBefore: assistantCount,
           activities: runActivities.map((activity) => ({ ...activity })),
@@ -2130,7 +1588,6 @@ export function Chat() {
         ? assistantEntries[pending.assistantCountBefore]
         : undefined;
     if (!target && !isLoading && assistantEntries.length > 0) {
-      // Fallback: attach to the newest assistant message produced around this capture window.
       const cutoffTimestamp = pending.createdAt - 5000;
       target =
         assistantEntries.find((entry) => {
@@ -2762,7 +2219,6 @@ export function Chat() {
           return;
         }
         if (payload.type !== "status") {
-          // Token streaming: accumulate assistant text deltas for live display.
           if (payload.type === "assistant_token") {
             const delta = typeof payload.delta === "string" ? payload.delta : "";
             if (delta) {
@@ -4736,9 +4192,6 @@ export function Chat() {
                     />
                   </div>
                 </div>
-                {/* <div className="mt-1 px-1 text-[10px] text-gray-500">
-                  Enter to send • Shift+Enter for newline
-                </div> */}
               </div>
             </>
           )}

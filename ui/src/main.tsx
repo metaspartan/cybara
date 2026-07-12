@@ -6,7 +6,10 @@ import App from "./App";
 import { getDesktopHostRuntime } from "./lib/desktopHost";
 import { getGatewayBasePath } from "./lib/auth";
 import { I18nProvider } from "./lib/i18n";
+import { installPreloadRecovery } from "./lib/preloadRecovery";
 import "./index.css";
+
+installPreloadRecovery();
 
 const rootElement = document.documentElement;
 const desktopRuntime = getDesktopHostRuntime();
@@ -21,10 +24,6 @@ const platformHint = (() => {
 rootElement.dataset.runtime = desktopRuntime || "web";
 rootElement.dataset.platform = platformHint;
 
-// Data stays live without manual refresh buttons: queries go stale after 15s,
-// refetch on focus/navigation, and list views poll while mounted (intervals
-// set per-hook). Polling only runs for mounted queries and pauses in
-// background tabs, so idle cost stays near zero.
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

@@ -155,6 +155,10 @@ describe("security-sensitive runtime defaults", () => {
     const mainSource = readFileSync(join(ROOT_DIR, "src", "main.ts"), "utf8");
     const cliSource = readFileSync(join(ROOT_DIR, "src", "cli.tsx"), "utf8");
     const speechSource = readFileSync(join(ROOT_DIR, "src", "core", "speech.ts"), "utf8");
+    const systemSpeechSource = readFileSync(
+      join(ROOT_DIR, "src", "core", "system-speech.ts"),
+      "utf8"
+    );
     const pluginsSource = readFileSync(
       join(ROOT_DIR, "src", "core", "plugins", "index.ts"),
       "utf8"
@@ -168,6 +172,7 @@ describe("security-sensitive runtime defaults", () => {
     expect(cliSource).toContain("resolveCybaraHome().dir");
     expect(speechSource).toContain('join(resolveCybaraHome().dir, "media")');
     expect(pluginsSource).toContain("resolveCybaraHome().dir");
-    expect(speechSource).toContain("chmodSync(aiffPath, 0o600)");
+    expect(speechSource).toContain("chmodSync(audioPath, 0o600)");
+    expect(systemSpeechSource).toContain("chmodSync(input.outputPath, 0o600)");
   });
 });

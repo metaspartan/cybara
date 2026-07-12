@@ -40,10 +40,9 @@ describe("router, provider, and metrics UI wiring", () => {
   test("router plan polling is slower than route health polling and guarded while loading", () => {
     const source = read("ui/src/pages/RouterSettings.tsx");
 
-    expect(source).toContain("const statusInterval = setInterval(() => void fetchStatus(), 5000)");
-    expect(source).toContain(
-      "const planInterval = setInterval(() => void fetchPlanStatus(), 15000)"
-    );
+    expect(source).toContain("const statusInterval = setInterval(refreshStatus, 5000)");
+    expect(source).toContain("const planInterval = setInterval(refreshPlans, 15000)");
+    expect(source).toContain('document.visibilityState === "visible"');
     expect(source).toContain("if (!planConfig) return Promise.resolve()");
     expect(source).toContain("disabled={!planConfigLoaded}");
     expect(source).toContain("planStatusLoaded");

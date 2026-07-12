@@ -19,6 +19,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { RealtimeVoiceSettings } from "./RealtimeVoiceSettings";
 
 type SpeechStatus = Awaited<ReturnType<typeof chatApi.getSpeechStatus>>["data"];
 
@@ -27,7 +28,7 @@ const TTS_PROVIDER_HINTS: Record<string, string> = {
   local: "Kokoro 82M runs fully offline on this machine. No API key or network needed after load.",
   elevenlabs: "Highest-quality cloud voices. Requires an ElevenLabs provider with an API key.",
   openai: "OpenAI text-to-speech. Requires an OpenAI (or OpenAI-compatible) provider with a key.",
-  system: "Uses the built-in macOS speech synthesizer. Works offline, no key, macOS only.",
+  system: "Uses the built-in voice available on this gateway's operating system.",
 };
 
 function ReadinessBadge({
@@ -89,8 +90,15 @@ function LocalTtsManager({
 
   useEffect(() => {
     if (status?.state !== "loading") return;
-    const timer = window.setInterval(() => void refresh(), 800);
-    return () => window.clearInterval(timer);
+    const refreshVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", refreshVisible);
+    const timer = window.setInterval(refreshVisible, 1500);
+    return () => {
+      document.removeEventListener("visibilitychange", refreshVisible);
+      window.clearInterval(timer);
+    };
   }, [status?.state, refresh]);
 
   const handleLoad = async () => {
@@ -214,6 +222,15 @@ export type SpeechSettingsState = {
     model: string;
     language: string;
   };
+  realtime: {
+    provider: "managed" | "openai" | "gemini" | "moshi";
+    providerId: string;
+    model: string;
+    voice: string;
+    serverUrl: string;
+    bargeIn: boolean;
+    silenceDurationMs: number;
+  };
 };
 
 const defaultSpeechSettings: SpeechSettingsState = {
@@ -233,6 +250,15 @@ const defaultSpeechSettings: SpeechSettingsState = {
     model: "",
     language: "",
   },
+  realtime: {
+    provider: "managed",
+    providerId: "",
+    model: "",
+    voice: "",
+    serverUrl: "",
+    bargeIn: true,
+    silenceDurationMs: 700,
+  },
 };
 
 function speechRecord(value: unknown): Record<string, unknown> {
@@ -245,6 +271,7 @@ function readSpeechSettings(value: unknown): SpeechSettingsState {
   const root = speechRecord(value);
   const tts = speechRecord(root.tts);
   const stt = speechRecord(root.stt);
+  const realtime = speechRecord(root.realtime);
   const ttsProvider =
     tts.provider === "system" ||
     tts.provider === "elevenlabs" ||
@@ -254,6 +281,12 @@ function readSpeechSettings(value: unknown): SpeechSettingsState {
       : "auto";
   const sttProvider =
     stt.provider === "native" || stt.provider === "openai" ? stt.provider : "auto";
+  const realtimeProvider =
+    realtime.provider === "openai" ||
+    realtime.provider === "gemini" ||
+    realtime.provider === "moshi"
+      ? realtime.provider
+      : "managed";
   const outputFormat =
     tts.outputFormat === "m4a" ||
     tts.outputFormat === "wav" ||
@@ -282,6 +315,16 @@ function readSpeechSettings(value: unknown): SpeechSettingsState {
       model: typeof stt.model === "string" ? stt.model : "",
       language: typeof stt.language === "string" ? stt.language : "",
     },
+    realtime: {
+      provider: realtimeProvider,
+      providerId: typeof realtime.providerId === "string" ? realtime.providerId : "",
+      model: typeof realtime.model === "string" ? realtime.model : "",
+      voice: typeof realtime.voice === "string" ? realtime.voice : "",
+      serverUrl: typeof realtime.serverUrl === "string" ? realtime.serverUrl : "",
+      bargeIn: typeof realtime.bargeIn === "boolean" ? realtime.bargeIn : true,
+      silenceDurationMs:
+        typeof realtime.silenceDurationMs === "number" ? realtime.silenceDurationMs : 700,
+    },
   };
 }
 
@@ -294,6 +337,7 @@ export function SpeechSettingsSection() {
   const [status, setStatus] = useState<SpeechStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
   const [testing, setTesting] = useState(false);
+  const [activeTab, setActiveTab] = useState<"output" | "input" | "realtime">("output");
   const testAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const refreshStatus = useCallback(async () => {
@@ -408,59 +452,121 @@ export function SpeechSettingsSection() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Volume2 className="w-4 h-4 text-cyan-300" />
-                <h3 className="text-sm font-semibold text-white">Text to Speech</h3>
+        <div
+          className="inline-grid grid-cols-3 rounded-lg border border-white/10 bg-black/20 p-1"
+          role="tablist"
+        >
+          {(["output", "input", "realtime"] as const).map((tab) => (
+            <button
+              key={tab}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab}
+              className={`rounded-md px-4 py-1.5 text-xs font-medium transition-colors ${
+                activeTab === tab
+                  ? "bg-white/10 text-white shadow-sm"
+                  : "text-gray-400 hover:bg-white/5 hover:text-white"
+              }`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab === "output" ? "Output" : tab === "input" ? "Input" : "Realtime"}
+            </button>
+          ))}
+        </div>
+        <div>
+          {activeTab === "output" ? (
+            <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Volume2 className="w-4 h-4 text-cyan-300" />
+                  <h3 className="text-sm font-semibold text-white">Text to Speech</h3>
+                </div>
+                <ReadinessBadge
+                  loading={statusLoading}
+                  ready={status?.tts?.ready}
+                  label={status?.tts?.ready ? (status.tts.provider ?? "Ready") : "Needs setup"}
+                />
               </div>
-              <ReadinessBadge
-                loading={statusLoading}
-                ready={status?.tts.ready}
-                label={status?.tts.ready ? (status.tts.provider ?? "Ready") : "Needs setup"}
-              />
-            </div>
-            <Select
-              label="Provider"
-              options={[
-                { value: "auto", label: "Auto (best available)" },
-                { value: "local", label: "Local · Kokoro 82M (offline)" },
-                { value: "elevenlabs", label: "ElevenLabs (cloud)" },
-                { value: "openai", label: "OpenAI (cloud)" },
-                { value: "system", label: "System voice (macOS)" },
-              ]}
-              value={speech.tts.provider}
-              onChange={(provider) =>
-                setSpeech((current) => ({
-                  ...current,
-                  tts: {
-                    ...current.tts,
-                    provider: provider as SpeechSettingsState["tts"]["provider"],
-                  },
-                }))
-              }
-            />
-            <p className="text-[11px] leading-4 text-gray-500">
-              {TTS_PROVIDER_HINTS[speech.tts.provider] ?? ""}
-            </p>
-            {status && !status.tts.ready && status.tts.error && (
-              <p className="rounded-lg border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-[11px] leading-4 text-amber-200">
-                {status.tts.error}
-              </p>
-            )}
-            {speech.tts.provider === "local" ? (
-              <LocalTtsManager
-                voice={speech.tts.voice}
-                onVoiceChange={(voice) =>
-                  setSpeech((current) => ({ ...current, tts: { ...current.tts, voice } }))
+              <Select
+                label="Provider"
+                options={[
+                  { value: "auto", label: "Auto (best available)" },
+                  { value: "local", label: "Local · Kokoro 82M (offline)" },
+                  { value: "elevenlabs", label: "ElevenLabs (cloud)" },
+                  { value: "openai", label: "OpenAI (cloud)" },
+                  { value: "system", label: "System voice" },
+                ]}
+                value={speech.tts.provider}
+                onChange={(provider) =>
+                  setSpeech((current) => ({
+                    ...current,
+                    tts: {
+                      ...current.tts,
+                      provider: provider as SpeechSettingsState["tts"]["provider"],
+                    },
+                  }))
                 }
               />
-            ) : speech.tts.provider === "system" ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <p className="text-[11px] leading-4 text-gray-500">
+                {TTS_PROVIDER_HINTS[speech.tts.provider] ?? ""}
+              </p>
+              {status?.tts && !status.tts.ready && status.tts.error && (
+                <p className="rounded-lg border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-[11px] leading-4 text-amber-200">
+                  {status.tts.error}
+                </p>
+              )}
+              {speech.tts.provider === "local" ? (
+                <LocalTtsManager
+                  voice={speech.tts.voice}
+                  onVoiceChange={(voice) =>
+                    setSpeech((current) => ({ ...current, tts: { ...current.tts, voice } }))
+                  }
+                />
+              ) : speech.tts.provider === "system" ? (
+                <div className="grid grid-cols-1 gap-3">
+                  <Input
+                    label="System voice name (optional)"
+                    placeholder="Optional installed voice name"
+                    value={speech.tts.voice}
+                    onChange={(event) =>
+                      setSpeech((current) => ({
+                        ...current,
+                        tts: { ...current.tts, voice: event.target.value },
+                      }))
+                    }
+                  />
+                </div>
+              ) : (
+                <Select
+                  label="Provider account"
+                  options={providerOptions}
+                  value={speech.tts.providerId}
+                  onChange={(providerId) =>
+                    setSpeech((current) => ({ ...current, tts: { ...current.tts, providerId } }))
+                  }
+                />
+              )}
+              <div
+                className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${
+                  speech.tts.provider === "local" || speech.tts.provider === "system"
+                    ? "hidden"
+                    : ""
+                }`}
+              >
                 <Input
-                  label="System voice name (optional)"
-                  placeholder="e.g. Samantha, Daniel"
+                  label="Model"
+                  placeholder="eleven_multilingual_v2"
+                  value={speech.tts.model}
+                  onChange={(event) =>
+                    setSpeech((current) => ({
+                      ...current,
+                      tts: { ...current.tts, model: event.target.value },
+                    }))
+                  }
+                />
+                <Input
+                  label="Voice"
+                  placeholder="Voice ID or name"
                   value={speech.tts.voice}
                   onChange={(event) =>
                     setSpeech((current) => ({
@@ -469,202 +575,175 @@ export function SpeechSettingsSection() {
                     }))
                   }
                 />
+                <Select
+                  label="Format"
+                  options={[
+                    { value: "mp3", label: "MP3" },
+                    { value: "m4a", label: "M4A" },
+                    { value: "wav", label: "WAV" },
+                    { value: "opus", label: "Opus" },
+                    { value: "aac", label: "AAC" },
+                    { value: "aiff", label: "AIFF" },
+                  ]}
+                  value={speech.tts.outputFormat}
+                  onChange={(outputFormat) =>
+                    setSpeech((current) => ({
+                      ...current,
+                      tts: {
+                        ...current.tts,
+                        outputFormat: outputFormat as SpeechSettingsState["tts"]["outputFormat"],
+                      },
+                    }))
+                  }
+                />
+                <Input
+                  label="Max characters"
+                  min={1}
+                  max={50000}
+                  type="number"
+                  value={speech.tts.maxTextLength}
+                  onChange={(event) =>
+                    setSpeech((current) => ({
+                      ...current,
+                      tts: {
+                        ...current.tts,
+                        maxTextLength: Number(event.target.value) || 8000,
+                      },
+                    }))
+                  }
+                />
               </div>
-            ) : (
+              <div className="flex flex-col sm:flex-row gap-3">
+                <Input
+                  label="Speed"
+                  min={0.5}
+                  max={2}
+                  step={0.05}
+                  type="number"
+                  value={speech.tts.speed}
+                  onChange={(event) =>
+                    setSpeech((current) => ({
+                      ...current,
+                      tts: { ...current.tts, speed: Number(event.target.value) || 1 },
+                    }))
+                  }
+                />
+                {speech.tts.provider !== "system" && speech.tts.provider !== "local" && (
+                  <div className="flex items-center justify-between gap-3 rounded-xl bg-white/5 border border-white/10 px-4 py-3 mt-6">
+                    <span className="text-sm text-gray-300">Fallback to system voice</span>
+                    <Switch
+                      checked={speech.tts.fallbackToSystem}
+                      onChange={(next) =>
+                        setSpeech((current) => ({
+                          ...current,
+                          tts: { ...current.tts, fallbackToSystem: next },
+                        }))
+                      }
+                    />
+                  </div>
+                )}
+              </div>
+              <Button
+                variant="secondary"
+                size="sm"
+                leftIcon={
+                  testing ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5" />
+                  )
+                }
+                onClick={() => void testVoice()}
+                disabled={testing || !status?.tts?.ready}
+              >
+                Test voice
+              </Button>
+            </div>
+          ) : activeTab === "input" ? (
+            <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Mic className="w-4 h-4 text-emerald-300" />
+                  <h3 className="text-sm font-semibold text-white">Speech to Text</h3>
+                </div>
+                <ReadinessBadge
+                  loading={statusLoading}
+                  ready={status?.stt?.ready}
+                  label={
+                    status?.stt?.ready
+                      ? status.stt.native
+                        ? "Native dictation"
+                        : (status.stt.provider ?? "Ready")
+                      : "Needs setup"
+                  }
+                />
+              </div>
+              <Select
+                label="Provider"
+                options={[
+                  { value: "auto", label: "Auto: native when available, then model" },
+                  { value: "native", label: "Native dictation only" },
+                  { value: "openai", label: "OpenAI-compatible transcription" },
+                ]}
+                value={speech.stt.provider}
+                onChange={(provider) =>
+                  setSpeech((current) => ({
+                    ...current,
+                    stt: {
+                      ...current.stt,
+                      provider: provider as SpeechSettingsState["stt"]["provider"],
+                    },
+                  }))
+                }
+              />
               <Select
                 label="Provider account"
-                options={providerOptions}
-                value={speech.tts.providerId}
+                options={sttProviderOptions}
+                value={speech.stt.providerId}
                 onChange={(providerId) =>
-                  setSpeech((current) => ({ ...current, tts: { ...current.tts, providerId } }))
+                  setSpeech((current) => ({ ...current, stt: { ...current.stt, providerId } }))
                 }
               />
-            )}
-            <div
-              className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${
-                speech.tts.provider === "local" || speech.tts.provider === "system" ? "hidden" : ""
-              }`}
-            >
-              <Input
-                label="Model"
-                placeholder="eleven_multilingual_v2"
-                value={speech.tts.model}
-                onChange={(event) =>
-                  setSpeech((current) => ({
-                    ...current,
-                    tts: { ...current.tts, model: event.target.value },
-                  }))
-                }
-              />
-              <Input
-                label="Voice"
-                placeholder="Voice ID or name"
-                value={speech.tts.voice}
-                onChange={(event) =>
-                  setSpeech((current) => ({
-                    ...current,
-                    tts: { ...current.tts, voice: event.target.value },
-                  }))
-                }
-              />
-              <Select
-                label="Format"
-                options={[
-                  { value: "mp3", label: "MP3" },
-                  { value: "m4a", label: "M4A" },
-                  { value: "wav", label: "WAV" },
-                  { value: "opus", label: "Opus" },
-                  { value: "aac", label: "AAC" },
-                  { value: "aiff", label: "AIFF" },
-                ]}
-                value={speech.tts.outputFormat}
-                onChange={(outputFormat) =>
-                  setSpeech((current) => ({
-                    ...current,
-                    tts: {
-                      ...current.tts,
-                      outputFormat: outputFormat as SpeechSettingsState["tts"]["outputFormat"],
-                    },
-                  }))
-                }
-              />
-              <Input
-                label="Max characters"
-                min={1}
-                max={50000}
-                type="number"
-                value={speech.tts.maxTextLength}
-                onChange={(event) =>
-                  setSpeech((current) => ({
-                    ...current,
-                    tts: {
-                      ...current.tts,
-                      maxTextLength: Number(event.target.value) || 8000,
-                    },
-                  }))
-                }
-              />
-            </div>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Input
-                label="Speed"
-                min={0.5}
-                max={2}
-                step={0.05}
-                type="number"
-                value={speech.tts.speed}
-                onChange={(event) =>
-                  setSpeech((current) => ({
-                    ...current,
-                    tts: { ...current.tts, speed: Number(event.target.value) || 1 },
-                  }))
-                }
-              />
-              {speech.tts.provider !== "system" && speech.tts.provider !== "local" && (
-                <div className="flex items-center justify-between gap-3 rounded-xl bg-white/5 border border-white/10 px-4 py-3 mt-6">
-                  <span className="text-sm text-gray-300">Fallback to macOS system voice</span>
-                  <Switch
-                    checked={speech.tts.fallbackToSystem}
-                    onChange={(next) =>
-                      setSpeech((current) => ({
-                        ...current,
-                        tts: { ...current.tts, fallbackToSystem: next },
-                      }))
-                    }
-                  />
-                </div>
-              )}
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
-              leftIcon={
-                testing ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Play className="w-3.5 h-3.5" />
-                )
-              }
-              onClick={() => void testVoice()}
-              disabled={testing || !status?.tts.ready}
-            >
-              Test voice
-            </Button>
-          </div>
-
-          <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Mic className="w-4 h-4 text-emerald-300" />
-                <h3 className="text-sm font-semibold text-white">Speech to Text</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input
+                  label="Model"
+                  placeholder="gpt-4o-mini-transcribe"
+                  value={speech.stt.model}
+                  onChange={(event) =>
+                    setSpeech((current) => ({
+                      ...current,
+                      stt: { ...current.stt, model: event.target.value },
+                    }))
+                  }
+                />
+                <Input
+                  label="Language"
+                  placeholder="en"
+                  value={speech.stt.language}
+                  onChange={(event) =>
+                    setSpeech((current) => ({
+                      ...current,
+                      stt: { ...current.stt, language: event.target.value },
+                    }))
+                  }
+                />
               </div>
-              <ReadinessBadge
-                loading={statusLoading}
-                ready={status?.stt.ready}
-                label={
-                  status?.stt.ready
-                    ? status.stt.native
-                      ? "Native dictation"
-                      : (status.stt.provider ?? "Ready")
-                    : "Needs setup"
-                }
+              <p className="text-xs text-gray-500">
+                Native dictation uses browser or OS speech recognition when available. Model
+                transcription records microphone audio and sends it to the configured provider.
+              </p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+              <RealtimeVoiceSettings
+                providers={providers || []}
+                realtime={speech.realtime}
+                status={status}
+                statusLoading={statusLoading}
+                onChange={(realtime) => setSpeech((current) => ({ ...current, realtime }))}
               />
             </div>
-            <Select
-              label="Provider"
-              options={[
-                { value: "auto", label: "Auto: native when available, then model" },
-                { value: "native", label: "Native dictation only" },
-                { value: "openai", label: "OpenAI-compatible transcription" },
-              ]}
-              value={speech.stt.provider}
-              onChange={(provider) =>
-                setSpeech((current) => ({
-                  ...current,
-                  stt: {
-                    ...current.stt,
-                    provider: provider as SpeechSettingsState["stt"]["provider"],
-                  },
-                }))
-              }
-            />
-            <Select
-              label="Provider account"
-              options={sttProviderOptions}
-              value={speech.stt.providerId}
-              onChange={(providerId) =>
-                setSpeech((current) => ({ ...current, stt: { ...current.stt, providerId } }))
-              }
-            />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Input
-                label="Model"
-                placeholder="gpt-4o-mini-transcribe"
-                value={speech.stt.model}
-                onChange={(event) =>
-                  setSpeech((current) => ({
-                    ...current,
-                    stt: { ...current.stt, model: event.target.value },
-                  }))
-                }
-              />
-              <Input
-                label="Language"
-                placeholder="en"
-                value={speech.stt.language}
-                onChange={(event) =>
-                  setSpeech((current) => ({
-                    ...current,
-                    stt: { ...current.stt, language: event.target.value },
-                  }))
-                }
-              />
-            </div>
-            <p className="text-xs text-gray-500">
-              Native dictation uses browser or OS speech recognition when available. Model
-              transcription records microphone audio and sends it to the configured provider.
-            </p>
-          </div>
+          )}
         </div>
         <div className="flex justify-end">
           <Button

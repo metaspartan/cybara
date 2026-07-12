@@ -4,7 +4,14 @@ import { getDefaultModel } from "../providers";
 import { homedir } from "os";
 import { resolve } from "path";
 import { existsSync, statSync } from "fs";
-import { listChannelRuntimeSessions } from "./chat-runtime";
+import {
+  listChannelRuntimePending,
+  listChannelRuntimeSessions,
+  queueChannelRuntimeMessage,
+  steerChannelRuntimeMessage,
+  stopChannelRuntimeMessage,
+  type ChannelRuntimePendingMessage,
+} from "./chat-runtime";
 import { handleSessionGoalCommand } from "../session-goals";
 import {
   configuredChannelUsesModelRouter,
@@ -45,6 +52,11 @@ export interface ChannelCommandContext {
   setSessionId?: (sessionId: string) => void;
   allowSecuritySettings?: boolean;
 }
+
+export type SharedChannelCommandContext = Pick<
+  ChannelCommandContext,
+  "channelId" | "chatId" | "platform" | "sessionId"
+>;
 
 export interface ChannelSubagentSpawnResult {
   status: string;
@@ -174,7 +186,9 @@ function resolveSessionSelection(
 ): SessionSelectionResult {
   const normalized = parseSessionToken(token);
   if (!normalized) {
-    return { error: "Session target is required. Use /switch <number|session_id_prefix>." };
+    return {
+      error: "Session target is required. Use /switch <number|session_id_prefix>.",
+    };
   }
 
   if (/^\d+$/.test(normalized)) {
@@ -242,6 +256,10 @@ function formatCommandHelp(): string {
     "/workspace [path] — Show or set session workspace (~/path supported)",
     "/workspace clear — Reset workspace to default",
     "/goal <objective> — Keep working toward a session goal (/loop alias)",
+    "/queue <message> — Queue a follow-up for the active run",
+    "/pending — List queued follow-ups",
+    "/steer <number|id> — Inject a queued follow-up now",
+    "/stop — Stop the active run",
     "/permissions [ask|allow] — Dangerous tool approval mode",
     "",
     "🤖 *Agents & Models:*",
@@ -257,6 +275,30 @@ function formatCommandHelp(): string {
     "/subagents spawn <task> — Run a one-off subagent",
     "/help — Show this help",
   ].join("\n");
+}
+
+function formatPendingMessages(messages: ChannelRuntimePendingMessage[]): string {
+  if (messages.length === 0) return "No pending follow-ups.";
+  return [
+    "Pending follow-ups:",
+    ...messages.map(
+      (message, index) =>
+        `${index + 1}. ${message.mode === "steering" ? "Steering" : "Queued"}: ${message.content}`
+    ),
+  ].join("\n");
+}
+
+function resolvePendingMessageId(
+  target: string,
+  messages: ChannelRuntimePendingMessage[]
+): string | null {
+  const normalized = target.trim().replace(/^#/, "");
+  if (!normalized) return null;
+  if (/^\d+$/.test(normalized)) return messages[Number.parseInt(normalized, 10) - 1]?.id || null;
+  const exact = messages.find((message) => message.id === normalized);
+  if (exact) return exact.id;
+  const matches = messages.filter((message) => message.id.startsWith(normalized));
+  return matches.length === 1 ? matches[0].id : null;
 }
 
 function formatAgentsList(agents: AgentRow[], channelId?: string): string {
@@ -395,6 +437,39 @@ export async function handleChannelManagementCommand(
     }
     const commandText = `/${command}${joinedArgs ? ` ${joinedArgs}` : ""}`;
     return handleSessionGoalCommand(sessionId, commandText).response || "Goal command handled.";
+  }
+
+  if (command === "pending") {
+    if (!context.sessionId) return "No active session in this channel context.";
+    return formatPendingMessages(listChannelRuntimePending(context.sessionId));
+  }
+
+  if (command === "queue") {
+    if (!context.sessionId) return "Queueing needs an active session. Use /new first.";
+    if (!joinedArgs) return "Usage: /queue <message>";
+    const result = await queueChannelRuntimeMessage(context.sessionId, joinedArgs);
+    if (!result) return "Queueing is unavailable in this channel context.";
+    return result.queued
+      ? `Queued follow-up.\n${formatPendingMessages(result.pendingMessages)}`
+      : "The session was idle, so the message started immediately.";
+  }
+
+  if (command === "steer") {
+    if (!context.sessionId) return "Steering needs an active session. Use /new first.";
+    const messages = listChannelRuntimePending(context.sessionId);
+    const pendingId = resolvePendingMessageId(args[0] || "", messages);
+    if (!pendingId) return "Usage: /steer <number|pending_id>. Use /pending to list follow-ups.";
+    const result = await steerChannelRuntimeMessage(context.sessionId, pendingId);
+    if (!result) return "Steering is unavailable in this channel context.";
+    if (!result.success) return result.error || "Failed to steer the follow-up.";
+    return `Steered follow-up into the active conversation.\n${formatPendingMessages(result.pendingMessages)}`;
+  }
+
+  if (command === "stop") {
+    if (!context.sessionId) return "Stopping needs an active session.";
+    const result = stopChannelRuntimeMessage(context.sessionId);
+    if (!result) return "Stopping is unavailable in this channel context.";
+    return result.stopped ? "Stopped the active response." : result.error || "No active response.";
   }
 
   if (command === "new") {
@@ -802,4 +877,14 @@ export async function handleChannelManagementCommand(
   }
 
   return null;
+}
+
+export function handleSharedChannelManagementCommand(
+  input: string,
+  context: SharedChannelCommandContext
+): Promise<string | null> {
+  return handleChannelManagementCommand(input, {
+    ...context,
+    allowSecuritySettings: false,
+  });
 }

@@ -110,6 +110,11 @@ describe("chat workspace panel", () => {
     expect(nativeBrowserSource).toContain(
       ".animation(.easeOut(duration: 0.5), value: cursor.updatedAt ?? 0)"
     );
+    expect(nativeBrowserSource).toContain("@FocusState private var addressFocused: Bool");
+    expect(nativeBrowserSource).toContain("guard isActive else { return }");
+    expect(nativeBrowserSource).toContain("if !addressFocused {");
+    expect(nativeBrowserSource).toContain(".scaledToFit()");
+    expect(nativeBrowserSource).not.toContain(".scaledToFill()");
     expect(styleSource).toContain("animation: browser-agent-click-pulse 420ms ease-out forwards");
   });
 
@@ -141,6 +146,8 @@ describe("chat workspace panel", () => {
     expect(nativeChatSource).toContain(
       ".nativeWorkspacePanelVisibility(activeWorkspaceTab == .terminal)"
     );
+    expect(nativeChatSource).toContain("isActive: activeWorkspaceTab == .browser");
+    expect(nativeChatSource).toContain("isActive: activeWorkspaceTab == .terminal");
     expect(nativeChatSource).not.toContain("switch activeWorkspaceTab");
   });
 

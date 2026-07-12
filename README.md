@@ -80,7 +80,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - MCP host mode (expose cybara's tools to other MCP clients) + MCP client (consume external servers)
 - Local workspace indexing with lexical search plus optional local Transformers.js embeddings; packaged desktop sidecars bundle Transformers.js, ONNX Runtime native binaries when available, and ONNX Web/WASM fallback assets
 - Source migration from supported legacy agent installations with dry-run previews, conflict handling, skill/memory import, and opt-in secret import
-- Shared speech settings for TTS via system/ElevenLabs/OpenAI and STT via native dictation or OpenAI-compatible transcription
+- Shared speech settings for local Kokoro, operating-system, and cloud speech plus managed or full-duplex hands-free conversation
 - Gateway operator controls for localhost auth policy, API-key reveal/rotation, gateway restart, and log viewing
 - Media generation (image/video/music) via swappable provider registry, dynamic tool discovery, a tool-calling code sandbox, desktop control with safety hardening, and a multi-agent kanban orchestration tier
 - Tauri desktop app + native SwiftUI macOS app + React Native mobile companion + Bun server/CLI runtime

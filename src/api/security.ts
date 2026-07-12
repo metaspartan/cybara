@@ -874,6 +874,12 @@ export function routeRequiredScope(method: string, path: string): string | null 
     if (method === "GET") return null;
     return "manage";
   }
+  if (path.startsWith("/api/speech")) {
+    if (method === "GET") return null;
+    if (path === "/api/speech/dictate" || path === "/api/speech/synthesize") return "chat";
+    if (path === "/api/speech/realtime/session") return "chat";
+    return "manage";
+  }
   if (path === "/api/web-research/settings") {
     if (method === "GET") return null;
     return "manage";

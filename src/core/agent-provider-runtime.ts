@@ -1281,14 +1281,10 @@ export abstract class AgentProviderRuntime {
                 delta,
               });
             } catch {
-              /* streaming is best-effort */
+              void 0;
             }
           }
         : undefined;
-    // Streaming with inactivity watchdogs (first-token + stall, no total cap
-    // by default): a healthy hours-long run keeps emitting chunks; only a
-    // silent provider gets cut off. Providers that reject `stream` fall back
-    // to a plain request guarded by a generous non-streaming ceiling.
     let streamingDisabled = false;
     const post = async (body: Record<string, unknown>): Promise<Response | OpenAIResponse> => {
       if (streamingDisabled) {
@@ -1860,9 +1856,6 @@ export abstract class AgentProviderRuntime {
       }
     }
 
-    // A turn that executed tools must end with real assistant text: one
-    // explicit no-tools nudge recovers the answer instead of surfacing a
-    // synthetic "Completed N tool calls" placeholder to the user.
     if (!limitReason && !finalContent.trim() && allToolCalls.length > 0) {
       console.warn("[Agent] Final content empty after tool loop; requesting a closing response");
       try {
@@ -2088,7 +2081,7 @@ export abstract class AgentProviderRuntime {
                 delta: event.delta,
               });
             } catch {
-              /* streaming is best-effort */
+              void 0;
             }
           }
         }
@@ -2264,9 +2257,6 @@ export abstract class AgentProviderRuntime {
     for (let index = 0; index < candidates.length; index++) {
       const candidate = candidates[index];
       const body = { ...requestBody, model: candidate };
-      // The watchdog covers the whole turn: connection, first event, and
-      // every SSE chunk after it. Long runs stay alive as long as Codex
-      // keeps emitting events; only silence trips it.
       const watchdog = createStreamWatchdog({
         ...resolveLlmWatchdogDefaults(url),
         callerSignal: signal,
@@ -2397,10 +2387,6 @@ export abstract class AgentProviderRuntime {
       }
       iterations++;
 
-      // Protocol guard: never send a function_call_output without its matching
-      // function_call. The Codex Responses API 400s the whole request otherwise
-      // ("No tool call found for function call output"). Logging the repair
-      // count surfaces the root cause if one ever appears.
       const sanitized = sanitizeCodexInputItems(inputItems);
       if (sanitized.droppedOutputs > 0) {
         console.warn(
@@ -2448,7 +2434,6 @@ export abstract class AgentProviderRuntime {
           headers,
           requestBody,
           activeModelId,
-          // Suppress token streaming for meta calls (no sessionId => no broadcast).
           toolContext?.suppressStreaming ? undefined : toolContext?.sessionId,
           toolContext?.agentId,
           toolContext?.abortSignal,
@@ -3180,10 +3165,6 @@ export abstract class AgentProviderRuntime {
 
     this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
-    // Prompt caching: mark the stable system prompt + recent turns as cacheable.
-    // Anthropic honors up to 4 ephemeral breakpoints and reuses the cached prefix,
-    // cutting input-token cost/latency substantially on multi-turn sessions.
-    // No-op for requests too small to benefit; safe for all Anthropic models.
     const cached = applyAnthropicCacheControl(
       {
         system: requestBody.system as string | undefined,
@@ -3529,9 +3510,6 @@ export abstract class AgentProviderRuntime {
         }));
       }
 
-      // Re-anchor the cache each iteration so the stable prefix (system + prior
-      // turns) stays cached and only the newest tool results are re-billed;
-      // otherwise every loop iteration pays full price for the whole prefix.
       const loopCached = applyAnthropicCacheControl(
         {
           system: loopRequestBody.system as string | undefined,
@@ -3566,7 +3544,6 @@ export abstract class AgentProviderRuntime {
             providerType: providerConfig,
           });
 
-          // Context window exceeded — compact and retry immediately
           if (loopResponse.status === 400 && isContextOverflowError(lastLoopError)) {
             this.compactAnthropicLoopMessagesForContext(
               currentMessages,
@@ -3610,19 +3587,15 @@ export abstract class AgentProviderRuntime {
             continue;
           }
 
-          // Exhausted retries or non-retryable error
           loopFatalError = true;
           break;
         }
       } catch (fetchError) {
-        // Network-level error (DNS, timeout, etc.)
         console.error(`[Agent] Anthropic fetch error on iteration ${iterations}:`, fetchError);
         loopFatalError = true;
         lastLoopError = String(fetchError);
       }
 
-      // If the API call failed after retries, gracefully stop the loop
-      // and return whatever content we've accumulated so far
       if (loopFatalError || !loopResponse || !loopResponse.ok) {
         const statusCode = loopResponse?.status ?? "unknown";
         console.warn(
@@ -3641,7 +3614,6 @@ export abstract class AgentProviderRuntime {
         break;
       }
 
-      // Parse successful response
       const responseData = (await loopResponse.json()) as AnthropicResponse;
       if (responseData.usage) {
         trackTokenUsage(

@@ -72,29 +72,19 @@ final class PetPanelController {
 private struct PetPanelView: View {
     @State private var hovering = false
 
-    private var petImage: NSImage? {
-        guard let url = Bundle.module.url(forResource: "cybara", withExtension: "png") else {
-            return nil
-        }
-        return NSImage(contentsOf: url)
-    }
-
     var body: some View {
         ZStack {
-            Circle()
-                .fill(Color(red: 0.07, green: 0.07, blue: 0.1).opacity(0.92))
-                .overlay(Circle().strokeBorder(Color.white.opacity(0.15), lineWidth: 1))
-                .shadow(color: .black.opacity(0.4), radius: 10, y: 4)
-            if let petImage {
+            if let petImage = CybaraBrand.logoImage {
                 Image(nsImage: petImage)
                     .resizable()
                     .interpolation(.high)
                     .scaledToFit()
-                    .frame(width: 44, height: 44)
+                    .frame(width: 64, height: 64)
+                    .shadow(color: .black.opacity(0.32), radius: 7, y: 3)
             } else {
-                Image(systemName: "pawprint.fill")
-                    .font(.system(size: 24))
-                    .foregroundStyle(.white.opacity(0.85))
+                Image(systemName: "sparkles")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(.secondary)
             }
         }
         .frame(width: 64, height: 64)

@@ -64,6 +64,13 @@ struct NativeSettingsScreen: View {
     @State private var speechSTTProviderId = ""
     @State private var speechSTTModel = ""
     @State private var speechSTTLanguage = ""
+    @State private var speechRealtimeProvider = "managed"
+    @State private var speechRealtimeProviderId = ""
+    @State private var speechRealtimeModel = ""
+    @State private var speechRealtimeVoice = ""
+    @State private var speechRealtimeServerURL = ""
+    @State private var speechRealtimeBargeIn = true
+    @State private var speechRealtimeSilence = "700"
     @State private var memoryBackgroundReview = true
     @State private var memoryFlushEnabled = true
     @State private var memoryFlushThreshold = "4000"
@@ -138,6 +145,13 @@ struct NativeSettingsScreen: View {
     private var sttProviderAccounts: [GatewayProvider] {
         providers.filter { provider in
             ["openai", "openai-codex"].contains(provider.providerType)
+        }
+    }
+
+    private var realtimeProviderAccounts: [GatewayProvider] {
+        providers.filter { provider in
+            if speechRealtimeProvider == "openai" { return provider.providerType == "openai" }
+            return ["google", "gemini", "google-ai", "google_ai"].contains(provider.providerType)
         }
     }
 
@@ -798,6 +812,7 @@ struct NativeSettingsScreen: View {
                         }
                         Picker("Provider", selection: $speechTTSProvider) {
                             Text("Auto").tag("auto")
+                            Text("Kokoro 82M").tag("local")
                             Text("ElevenLabs").tag("elevenlabs")
                             Text("OpenAI").tag("openai")
                             Text("System").tag("system")
@@ -805,34 +820,38 @@ struct NativeSettingsScreen: View {
                         .pickerStyle(.segmented)
                         .onChange(of: speechTTSProvider) { _, _ in saveSpeechSettings() }
 
-                        Picker("Provider account", selection: $speechTTSProviderId) {
-                            Text("Auto").tag("")
-                            ForEach(ttsProviderAccounts) { provider in
-                                Text("\(provider.displayName) (\(provider.providerType))").tag(provider.id)
+                        if speechTTSProvider != "local" && speechTTSProvider != "system" {
+                            Picker("Provider account", selection: $speechTTSProviderId) {
+                                Text("Auto").tag("")
+                                ForEach(ttsProviderAccounts) { provider in
+                                    Text("\(provider.displayName) (\(provider.providerType))").tag(provider.id)
+                                }
                             }
+                            .pickerStyle(.menu)
+                            .onChange(of: speechTTSProviderId) { _, _ in saveSpeechSettings() }
                         }
-                        .pickerStyle(.menu)
-                        .onChange(of: speechTTSProviderId) { _, _ in saveSpeechSettings() }
 
                         ViewThatFits(in: .horizontal) {
                             HStack(spacing: 12) { ttsTextFields }
                             VStack(alignment: .leading, spacing: 10) { ttsTextFields }
                         }
 
-                        Picker("Format", selection: $speechTTSFormat) {
-                            Text("MP3").tag("mp3")
-                            Text("M4A").tag("m4a")
-                            Text("WAV").tag("wav")
-                            Text("Opus").tag("opus")
-                            Text("AAC").tag("aac")
-                            Text("AIFF").tag("aiff")
-                        }
-                        .pickerStyle(.segmented)
-                        .onChange(of: speechTTSFormat) { _, _ in saveSpeechSettings() }
+                        if speechTTSProvider != "local" && speechTTSProvider != "system" {
+                            Picker("Format", selection: $speechTTSFormat) {
+                                Text("MP3").tag("mp3")
+                                Text("M4A").tag("m4a")
+                                Text("WAV").tag("wav")
+                                Text("Opus").tag("opus")
+                                Text("AAC").tag("aac")
+                                Text("AIFF").tag("aiff")
+                            }
+                            .pickerStyle(.segmented)
+                            .onChange(of: speechTTSFormat) { _, _ in saveSpeechSettings() }
 
-                        Toggle("Fallback to macOS system voice", isOn: $speechTTSFallback)
-                            .toggleStyle(.switch)
-                            .onChange(of: speechTTSFallback) { _, _ in saveSpeechSettings() }
+                            Toggle("Fallback to system voice", isOn: $speechTTSFallback)
+                                .toggleStyle(.switch)
+                                .onChange(of: speechTTSFallback) { _, _ in saveSpeechSettings() }
+                        }
                     }
                 }
 
@@ -866,6 +885,67 @@ struct NativeSettingsScreen: View {
                             HStack(spacing: 12) { sttTextFields }
                             VStack(alignment: .leading, spacing: 10) { sttTextFields }
                         }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "waveform.circle")
+                                .foregroundStyle(.secondary)
+                            Text("Hands-free Conversation")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            Spacer()
+                        }
+                        Picker("Engine", selection: $speechRealtimeProvider) {
+                            Text("Managed").tag("managed")
+                            Text("OpenAI").tag("openai")
+                            Text("Gemini").tag("gemini")
+                            Text("Moshi").tag("moshi")
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: speechRealtimeProvider) { _, _ in
+                            speechRealtimeProviderId = ""
+                            saveSpeechSettings()
+                        }
+
+                        if speechRealtimeProvider == "moshi" {
+                            TextField("Server URL", text: $speechRealtimeServerURL)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit { saveSpeechSettings() }
+                        } else if speechRealtimeProvider != "managed" {
+                            Picker("Provider account", selection: $speechRealtimeProviderId) {
+                                Text("Auto").tag("")
+                                ForEach(realtimeProviderAccounts) { provider in
+                                    Text(provider.displayName).tag(provider.id)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .onChange(of: speechRealtimeProviderId) { _, _ in saveSpeechSettings() }
+                            ViewThatFits(in: .horizontal) {
+                                HStack(spacing: 12) {
+                                    TextField("Model", text: $speechRealtimeModel)
+                                    TextField("Voice", text: $speechRealtimeVoice)
+                                }
+                                VStack(alignment: .leading, spacing: 10) {
+                                    TextField("Model", text: $speechRealtimeModel)
+                                    TextField("Voice", text: $speechRealtimeVoice)
+                                }
+                            }
+                            .textFieldStyle(.roundedBorder)
+                        }
+
+                        Toggle("Interrupt while speaking", isOn: $speechRealtimeBargeIn)
+                            .toggleStyle(.switch)
+                            .onChange(of: speechRealtimeBargeIn) { _, _ in saveSpeechSettings() }
+                        Picker("End-of-turn pause", selection: $speechRealtimeSilence) {
+                            Text("Fast · 0.4 seconds").tag("400")
+                            Text("Balanced · 0.7 seconds").tag("700")
+                            Text("Patient · 1 second").tag("1000")
+                            Text("Very patient · 1.5 seconds").tag("1500")
+                        }
+                        .pickerStyle(.menu)
+                        .onChange(of: speechRealtimeSilence) { _, _ in saveSpeechSettings() }
                     }
                 }
 
@@ -1510,9 +1590,11 @@ struct NativeSettingsScreen: View {
 
     @ViewBuilder
     private var ttsTextFields: some View {
-        TextField("Model", text: $speechTTSModel)
-            .textFieldStyle(.roundedBorder)
-            .onSubmit { saveSpeechSettings() }
+        if speechTTSProvider != "local" && speechTTSProvider != "system" {
+            TextField("Model", text: $speechTTSModel)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { saveSpeechSettings() }
+        }
         TextField("Voice ID or name", text: $speechTTSVoice)
             .textFieldStyle(.roundedBorder)
             .onSubmit { saveSpeechSettings() }
@@ -1578,6 +1660,7 @@ struct NativeSettingsScreen: View {
 
     private var speechTTSProviderLabel: String {
         switch speechTTSProvider {
+        case "local": return "Kokoro 82M"
         case "elevenlabs": return "ElevenLabs"
         case "openai": return "OpenAI"
         case "system": return "System"
@@ -1753,6 +1836,15 @@ struct NativeSettingsScreen: View {
                         "providerId": speechSTTProviderId,
                         "model": speechSTTModel,
                         "language": speechSTTLanguage,
+                    ],
+                    "realtime": [
+                        "provider": speechRealtimeProvider,
+                        "providerId": speechRealtimeProviderId,
+                        "model": speechRealtimeModel,
+                        "voice": speechRealtimeVoice,
+                        "serverUrl": speechRealtimeServerURL,
+                        "bargeIn": speechRealtimeBargeIn,
+                        "silenceDurationMs": Int(speechRealtimeSilence) ?? 700,
                     ],
                 ],
             ],
@@ -2244,8 +2336,9 @@ struct NativeSettingsScreen: View {
         let speech = config["speech"] as? [String: Any] ?? [:]
         let tts = speech["tts"] as? [String: Any] ?? [:]
         let stt = speech["stt"] as? [String: Any] ?? [:]
+        let realtime = speech["realtime"] as? [String: Any] ?? [:]
         let provider = tts["provider"] as? String ?? "auto"
-        speechTTSProvider = ["auto", "system", "elevenlabs", "openai"].contains(provider) ? provider : "auto"
+        speechTTSProvider = ["auto", "local", "system", "elevenlabs", "openai"].contains(provider) ? provider : "auto"
         speechTTSProviderId = tts["providerId"] as? String ?? ""
         speechTTSModel = tts["model"] as? String ?? ""
         speechTTSVoice = tts["voice"] as? String ?? ""
@@ -2256,6 +2349,14 @@ struct NativeSettingsScreen: View {
         speechSTTProviderId = stt["providerId"] as? String ?? ""
         speechSTTModel = stt["model"] as? String ?? ""
         speechSTTLanguage = stt["language"] as? String ?? ""
+        let realtimeProvider = realtime["provider"] as? String ?? "managed"
+        speechRealtimeProvider = ["managed", "openai", "gemini", "moshi"].contains(realtimeProvider) ? realtimeProvider : "managed"
+        speechRealtimeProviderId = realtime["providerId"] as? String ?? ""
+        speechRealtimeModel = realtime["model"] as? String ?? ""
+        speechRealtimeVoice = realtime["voice"] as? String ?? ""
+        speechRealtimeServerURL = realtime["serverUrl"] as? String ?? ""
+        speechRealtimeBargeIn = realtime["bargeIn"] as? Bool ?? true
+        speechRealtimeSilence = String(realtime["silenceDurationMs"] as? Int ?? 700)
         let memory = config["memory"] as? [String: Any] ?? [:]
         memoryBackgroundReview = memory["backgroundReviewEnabled"] as? Bool ?? true
         memoryFlushEnabled = memory["memoryFlushEnabled"] as? Bool ?? true

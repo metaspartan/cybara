@@ -353,9 +353,24 @@ GET /api/speech/settings
 PUT /api/speech/settings
 ```
 
-The speech config contains `tts` and `stt` settings shared by Web/Tauri, mobile, native macOS, and
-the speech tools. TTS supports `auto`, `system`, `elevenlabs`, and `openai`; STT supports `auto`,
+The speech config contains `tts`, `stt`, and `realtime` settings shared by Web/Tauri, mobile, native macOS, and
+the speech tools. TTS supports `auto`, `local`, `system`, `elevenlabs`, and `openai`; STT supports `auto`,
 `native`, and `openai`.
+
+```http
+GET /api/speech/status
+GET /api/speech/local/models
+POST /api/speech/local/load
+POST /api/speech/local/unload
+POST /api/speech/synthesize
+POST /api/speech/realtime/session
+POST /api/speech/realtime/test
+```
+
+Local Kokoro models run on the gateway and use its writable Cybara data directory for model files.
+System speech uses the available native desktop engine on macOS, Windows, or Linux.
+Realtime sessions use gateway-minted short-lived credentials for supported cloud services or a
+user-configured self-hosted speech server. Provider API keys are never returned to clients.
 
 ### Server Transcription
 ```http

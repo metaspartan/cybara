@@ -107,4 +107,11 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain('apiFetch("/api/ide/reveal"');
     expect(source).toContain("aria-label={`${group.label} project actions`}");
   });
+
+  test("supports keyboard session selection", () => {
+    const source = chatSource();
+    expect(source).toContain('role="button"');
+    expect(source).toContain("tabIndex={0}");
+    expect(source).toContain('event.key !== "Enter" && event.key !== " "');
+  });
 });

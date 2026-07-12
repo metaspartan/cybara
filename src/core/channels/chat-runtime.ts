@@ -23,6 +23,13 @@ export interface ChannelRuntimeMemoryFile {
   size: number;
 }
 
+export interface ChannelRuntimePendingMessage {
+  id: string;
+  content: string;
+  mode: string;
+  sequence: number;
+}
+
 type ChannelListSessionsHandler = () => Promise<ChannelRuntimeSessionSummary[]>;
 type ChannelSendToSessionHandler = (sessionId: string, message: ChannelRuntimeMessage) => boolean;
 type ChannelMemorySearchHandler = (args: Record<string, unknown>) => Promise<{
@@ -34,8 +41,30 @@ type ChannelMemoryContextHandler = (args: Record<string, unknown>) => Promise<{
   context: string;
   lines: number;
 }>;
-type ChannelMemoryListHandler = () => Promise<{ files: ChannelRuntimeMemoryFile[] }>;
+type ChannelMemoryListHandler = () => Promise<{
+  files: ChannelRuntimeMemoryFile[];
+}>;
 type ChannelToolListHandler = () => string[];
+type ChannelPendingListHandler = (sessionId: string) => ChannelRuntimePendingMessage[];
+type ChannelQueueHandler = (
+  sessionId: string,
+  message: string
+) => Promise<{
+  queued: boolean;
+  pendingMessages: ChannelRuntimePendingMessage[];
+}>;
+type ChannelSteerHandler = (
+  sessionId: string,
+  pendingMessageId: string
+) => Promise<{
+  success: boolean;
+  error?: string;
+  pendingMessages: ChannelRuntimePendingMessage[];
+}>;
+type ChannelStopHandler = (sessionId: string) => {
+  stopped: boolean;
+  error?: string;
+};
 
 interface ChannelChatRuntimeHandlers {
   listSessions?: ChannelListSessionsHandler;
@@ -44,6 +73,10 @@ interface ChannelChatRuntimeHandlers {
   memoryContext?: ChannelMemoryContextHandler;
   memoryList?: ChannelMemoryListHandler;
   listTools?: ChannelToolListHandler;
+  listPending?: ChannelPendingListHandler;
+  queue?: ChannelQueueHandler;
+  steer?: ChannelSteerHandler;
+  stop?: ChannelStopHandler;
 }
 
 const channelChatRuntime: {
@@ -53,6 +86,10 @@ const channelChatRuntime: {
   memoryContext: ChannelMemoryContextHandler | null;
   memoryList: ChannelMemoryListHandler | null;
   listTools: ChannelToolListHandler | null;
+  listPending: ChannelPendingListHandler | null;
+  queue: ChannelQueueHandler | null;
+  steer: ChannelSteerHandler | null;
+  stop: ChannelStopHandler | null;
 } = {
   listSessions: null,
   sendToSession: null,
@@ -60,6 +97,10 @@ const channelChatRuntime: {
   memoryContext: null,
   memoryList: null,
   listTools: null,
+  listPending: null,
+  queue: null,
+  steer: null,
+  stop: null,
 };
 
 export function configureChannelChatRuntime(handlers: ChannelChatRuntimeHandlers): void {
@@ -81,6 +122,10 @@ export function configureChannelChatRuntime(handlers: ChannelChatRuntimeHandlers
   if (handlers.listTools) {
     channelChatRuntime.listTools = handlers.listTools;
   }
+  if (handlers.listPending) channelChatRuntime.listPending = handlers.listPending;
+  if (handlers.queue) channelChatRuntime.queue = handlers.queue;
+  if (handlers.steer) channelChatRuntime.steer = handlers.steer;
+  if (handlers.stop) channelChatRuntime.stop = handlers.stop;
 }
 
 export function resetChannelChatRuntime(): void {
@@ -90,6 +135,10 @@ export function resetChannelChatRuntime(): void {
   channelChatRuntime.memoryContext = null;
   channelChatRuntime.memoryList = null;
   channelChatRuntime.listTools = null;
+  channelChatRuntime.listPending = null;
+  channelChatRuntime.queue = null;
+  channelChatRuntime.steer = null;
+  channelChatRuntime.stop = null;
 }
 
 export async function listChannelRuntimeSessions(): Promise<ChannelRuntimeSessionSummary[]> {
@@ -127,14 +176,22 @@ export async function searchChannelRuntimeMemory(args: Record<string, unknown>):
   searchMethod: string;
 }> {
   if (!channelChatRuntime.memorySearch) {
-    return { results: [], query: String(args.query || ""), searchMethod: "unavailable" };
+    return {
+      results: [],
+      query: String(args.query || ""),
+      searchMethod: "unavailable",
+    };
   }
 
   try {
     return await channelChatRuntime.memorySearch(args);
   } catch (error) {
     console.error("[Channels] Failed to search runtime memory:", error);
-    return { results: [], query: String(args.query || ""), searchMethod: "error" };
+    return {
+      results: [],
+      query: String(args.query || ""),
+      searchMethod: "error",
+    };
   }
 }
 
@@ -179,4 +236,35 @@ export function listChannelRuntimeTools(): string[] {
     console.error("[Channels] Failed to list runtime tools:", error);
     return [];
   }
+}
+
+export function listChannelRuntimePending(sessionId: string): ChannelRuntimePendingMessage[] {
+  return channelChatRuntime.listPending?.(sessionId) || [];
+}
+
+export async function queueChannelRuntimeMessage(
+  sessionId: string,
+  message: string
+): Promise<{
+  queued: boolean;
+  pendingMessages: ChannelRuntimePendingMessage[];
+} | null> {
+  return channelChatRuntime.queue?.(sessionId, message) || null;
+}
+
+export async function steerChannelRuntimeMessage(
+  sessionId: string,
+  pendingMessageId: string
+): Promise<{
+  success: boolean;
+  error?: string;
+  pendingMessages: ChannelRuntimePendingMessage[];
+} | null> {
+  return channelChatRuntime.steer?.(sessionId, pendingMessageId) || null;
+}
+
+export function stopChannelRuntimeMessage(
+  sessionId: string
+): { stopped: boolean; error?: string } | null {
+  return channelChatRuntime.stop?.(sessionId) || null;
 }

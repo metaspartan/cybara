@@ -376,6 +376,11 @@ struct GatewayClient: Sendable {
         return try JSONDecoder().decode(GatewayPendingChatResponse.self, from: data)
     }
 
+    @discardableResult
+    func stopChatSession(_ sessionId: String) async throws -> Data {
+        try await request("api/chat/sessions/\(sessionId)/stop", method: "POST")
+    }
+
     func updatePendingMessage(
         sessionId: String,
         pendingId: String,

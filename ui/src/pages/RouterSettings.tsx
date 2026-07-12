@@ -271,15 +271,27 @@ export function RouterSettings() {
   }, []);
 
   useEffect(() => {
-    void fetchConfig();
-    void fetchStatus();
-    void fetchPlanStatus();
-    void fetchPlanConfig();
-    void fetchProviders();
-    void fetchAgents();
-    const statusInterval = setInterval(() => void fetchStatus(), 5000);
-    const planInterval = setInterval(() => void fetchPlanStatus(), 15000);
+    const refreshAll = () => {
+      if (document.visibilityState !== "visible") return;
+      void fetchConfig();
+      void fetchStatus();
+      void fetchPlanStatus();
+      void fetchPlanConfig();
+      void fetchProviders();
+      void fetchAgents();
+    };
+    const refreshStatus = () => {
+      if (document.visibilityState === "visible") void fetchStatus();
+    };
+    const refreshPlans = () => {
+      if (document.visibilityState === "visible") void fetchPlanStatus();
+    };
+    refreshAll();
+    document.addEventListener("visibilitychange", refreshAll);
+    const statusInterval = setInterval(refreshStatus, 5000);
+    const planInterval = setInterval(refreshPlans, 15000);
     return () => {
+      document.removeEventListener("visibilitychange", refreshAll);
       clearInterval(statusInterval);
       clearInterval(planInterval);
     };

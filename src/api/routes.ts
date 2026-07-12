@@ -178,6 +178,12 @@ import {
   unloadLocalTtsModel,
 } from "../core/local-speech";
 import { resolveSpeechTtsProvider, synthesizeSpeech } from "../core/speech";
+import {
+  createRealtimeVoiceSession,
+  getRealtimeVoiceStatus,
+  testRealtimeVoiceConnection,
+} from "../core/realtime-voice";
+import { detectSystemSpeechCapability } from "../core/system-speech";
 import * as subagentRegistry from "../core/subagent-registry";
 import {
   createSystemBackup,
@@ -783,15 +789,16 @@ const routes: Record<string, RouteHandler> = {
       ready: false,
       provider: null,
       type: null,
-      systemFallback: settings.tts.fallbackToSystem && process.platform === "darwin",
+      systemFallback: false,
       error: null,
     };
-    const systemVoiceAvailable = process.platform === "darwin";
+    const systemVoice = detectSystemSpeechCapability();
+    tts.systemFallback = settings.tts.fallbackToSystem && systemVoice.available;
     if (settings.tts.provider === "local") {
       const localStatus = listLocalTtsModelStatus()[0];
       tts = {
         ...tts,
-        ready: true,
+        ready: localStatus?.state !== "error",
         provider: "Kokoro 82M (local)",
         type: "local",
         error: localStatus?.state === "error" ? localStatus.lastError : null,
@@ -799,12 +806,10 @@ const routes: Record<string, RouteHandler> = {
     } else if (settings.tts.provider === "system") {
       tts = {
         ...tts,
-        ready: systemVoiceAvailable,
-        provider: systemVoiceAvailable ? "System voice (macOS)" : null,
+        ready: systemVoice.available,
+        provider: systemVoice.available ? systemVoice.label : null,
         type: "system",
-        error: systemVoiceAvailable
-          ? null
-          : "System voice uses the macOS speech synthesizer. Choose Local, OpenAI, or ElevenLabs on this platform.",
+        error: systemVoice.error,
       };
     } else {
       try {
@@ -815,7 +820,7 @@ const routes: Record<string, RouteHandler> = {
           tts = {
             ...tts,
             ready: true,
-            provider: "System voice (fallback)",
+            provider: `${systemVoice.label} (fallback)`,
             type: "system",
           };
         } else {
@@ -861,10 +866,12 @@ const routes: Record<string, RouteHandler> = {
       success: true,
       tts,
       stt,
+      realtime: getRealtimeVoiceStatus(settings.realtime),
       settings: {
         ttsProvider: settings.tts.provider,
         ttsVoice: settings.tts.voice,
         sttProvider: settings.stt.provider,
+        realtimeProvider: settings.realtime.provider,
       },
     };
   },
@@ -898,6 +905,14 @@ const routes: Record<string, RouteHandler> = {
     const unloaded = unloadLocalTtsModel(data.model?.trim() || undefined);
     return { success: true, unloaded, status: listLocalTtsModelStatus() };
   },
+  "POST /api/speech/realtime/session": async () => ({
+    success: true,
+    session: await createRealtimeVoiceSession(),
+  }),
+  "POST /api/speech/realtime/test": async () => ({
+    success: true,
+    result: await testRealtimeVoiceConnection(),
+  }),
   "GET /api/sandbox/status": () => getSandboxRuntimeStatus(),
   "PUT /api/config": async (body) => {
     const data = body as Record<string, unknown>;

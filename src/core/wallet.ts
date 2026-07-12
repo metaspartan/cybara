@@ -40,12 +40,9 @@ import {
   x402HTTPClient as X402HttpClient,
 } from "@x402/fetch";
 import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
-import {
-  EVM_NETWORK_CHAIN_ID_MAP as X402EvmNetworkChainIdMap,
-  ExactEvmSchemeV1,
-} from "@x402/evm/v1";
+import { ExactEvmSchemeV1 } from "@x402/evm/v1";
 import { ExactSvmScheme, toClientSvmSigner } from "@x402/svm";
-import { ExactSvmSchemeV1, NETWORKS as X402SvmV1Networks } from "@x402/svm/v1";
+import { ExactSvmSchemeV1 } from "@x402/svm/v1";
 import { derivePath as deriveEd25519Path } from "ed25519-hd-key";
 import * as bitcoinImport from "bitcoinjs-lib";
 import BIP32Factory from "bip32";
@@ -56,7 +53,6 @@ import { secureDir } from "./paths";
 import {
   SUPPORTED_CHAINS,
   type AccountsQuery,
-  type AesKeyUsage,
   type BtcUtxo,
   type EthContractCallInput,
   type SolInstructionAccountMeta,
@@ -124,10 +120,22 @@ import {
   parseOptionalNumber,
   parsePositiveAtomicAmount,
 } from "./wallet-internal";
+import {
+  WALLET_PBKDF2_ITERATIONS,
+  WALLET_X402_V1_EVM_NETWORK_CHAIN_IDS,
+  WALLET_X402_V1_SOLANA_NETWORKS,
+  decodeWalletInstructionData,
+  deriveWalletAesKey,
+  extractWalletEthMethodName,
+  fetchWalletJson,
+  normalizeWalletEthMethodSelector,
+  normalizeWalletFeedId,
+  normalizeWalletHttpMethod,
+  normalizeWalletSwapVenue,
+  parseWalletX402NetworkFamily,
+  resolveWalletPair,
+} from "./wallet-runtime";
 
-// tiny-secp256k1 loads WASM at import time. The sidecar build patches the
-// loader to resolve secp256k1.wasm from the executable's directory. Wrap
-// initialization in try-catch so ETH/SOL still work if WASM fails.
 let bitcoin: typeof bitcoinImport | null = null;
 let bip32: ReturnType<typeof BIP32Factory> | null = null;
 let ECPair: ReturnType<typeof ECPairFactory> | null = null;
@@ -145,7 +153,6 @@ try {
 
 const WALLET_FILE = join(secureDir, "wallet.v1.json");
 const WALLET_VERSION = 1 as const;
-const PBKDF2_ITERATIONS = 310_000;
 const UNLOCK_TTL_MS = 15 * 60 * 1000;
 const AGENT_ACCESS_CONFIG_KEY = "wallet_agent_access_enabled";
 const AGENT_POLICY_CONFIG_KEY = "wallet_agent_policy";
@@ -181,20 +188,6 @@ const X402_RESPONSE_HEADER = "PAYMENT-RESPONSE";
 const X402_LEGACY_RESPONSE_HEADER = "X-PAYMENT-RESPONSE";
 const X402_AGENT_MAX_DEFAULT_ATOMIC = "1000000";
 const X402_AGENT_SUPPORTED_SCHEMES = new Set<string>(["exact"]);
-const X402_V1_EVM_NETWORK_CHAIN_IDS: Record<string, number> = {
-  ...Object.fromEntries(
-    Object.entries(X402EvmNetworkChainIdMap).map(([network, chainId]) => [
-      network.toLowerCase(),
-      Number(chainId),
-    ])
-  ),
-  mainnet: 1,
-  arbitrum: 42161,
-  optimism: 10,
-};
-const X402_V1_SOLANA_NETWORKS = [
-  ...new Set(X402SvmV1Networks.map((network) => network.toLowerCase())),
-];
 const CHAINLINK_BASE_ASSETS: Record<string, string> = {
   ETH: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
   BTC: "0xbBbBBBBbbBBBbbbBbbBbbbbBBbBbbbbBbBbbBBbB",
@@ -212,201 +205,6 @@ const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfc
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
-
-function resolvePair(input: { symbol?: string; pair?: string }): { base: string; quote: string } {
-  const pair = typeof input.pair === "string" ? normalizeTicker(input.pair) : "";
-  if (pair.includes("/")) {
-    const [base, quote] = pair.split("/");
-    if (base && quote) {
-      return { base, quote };
-    }
-  }
-
-  const rawSymbol = typeof input.symbol === "string" ? input.symbol.trim() : "";
-  if (rawSymbol && isEvmAddress(rawSymbol)) {
-    return { base: rawSymbol, quote: "USD" };
-  }
-
-  const symbol = rawSymbol ? normalizeTicker(rawSymbol) : "";
-  if (symbol) {
-    return { base: symbol, quote: "USD" };
-  }
-
-  throw new Error("Validation error: symbol or pair is required");
-}
-
-function normalizeSwapVenue(input: string): WalletSwapVenue {
-  const venue = input.trim().toLowerCase();
-  if (venue === "uniswap_v2" || venue === "uniswap-v2" || venue === "uni_v2" || venue === "v2") {
-    return "uniswap_v2";
-  }
-  if (
-    venue === "uniswap_v3" ||
-    venue === "uniswap-v3" ||
-    venue === "uniswap" ||
-    venue === "uni" ||
-    venue === "v3"
-  ) {
-    return "uniswap_v3";
-  }
-  if (venue === "jupiter" || venue === "jup") {
-    return "jupiter";
-  }
-  throw new Error(
-    "Validation error: Unsupported swap venue. Use uniswap_v2, uniswap_v3, or jupiter"
-  );
-}
-
-function normalizeHttpMethod(value?: string): string {
-  const method = String(value || "GET")
-    .trim()
-    .toUpperCase();
-  return method || "GET";
-}
-
-function parseEip155ChainId(networkInput: string): number | undefined {
-  const network = networkInput.trim().toLowerCase();
-  if (!network) return undefined;
-  if (network.startsWith("eip155:")) {
-    const parsed = Number(network.slice("eip155:".length));
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return Math.floor(parsed);
-    }
-  }
-  return X402_V1_EVM_NETWORK_CHAIN_IDS[network];
-}
-
-function parseX402NetworkFamily(networkInput: string): "evm" | "solana" | undefined {
-  const network = networkInput.trim().toLowerCase();
-  if (!network) return undefined;
-  if (parseEip155ChainId(network)) return "evm";
-  if (network.startsWith("solana:") && network.length > "solana:".length) return "solana";
-  if (X402_V1_SOLANA_NETWORKS.includes(network)) {
-    return "solana";
-  }
-  return undefined;
-}
-
-function normalizeFeedId(value: string): string {
-  const trimmed = value.trim().toLowerCase();
-  if (!trimmed) {
-    throw new Error("Validation error: pyth feed id is required");
-  }
-  return trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
-}
-
-function normalizeEthMethodSelector(input: string): string {
-  const trimmed = input.trim().replace(/^function\s+/, "");
-  const openIndex = trimmed.indexOf("(");
-  if (openIndex < 0) {
-    return trimmed;
-  }
-
-  let depth = 0;
-  for (let index = openIndex; index < trimmed.length; index += 1) {
-    const char = trimmed[index];
-    if (char === "(") {
-      depth += 1;
-      continue;
-    }
-    if (char !== ")") {
-      continue;
-    }
-    depth -= 1;
-    if (depth === 0) {
-      const name = trimmed.slice(0, openIndex).trim();
-      const args = trimmed.slice(openIndex + 1, index).trim();
-      return `${name}(${args})`;
-    }
-  }
-
-  return trimmed;
-}
-
-function extractEthMethodName(input: string): string {
-  const selector = normalizeEthMethodSelector(input);
-  if (!selector) {
-    return "";
-  }
-  const openIndex = selector.indexOf("(");
-  if (openIndex < 0) {
-    return selector.trim();
-  }
-  return selector.slice(0, openIndex).trim();
-}
-
-function decodeInstructionData(input: {
-  dataBase64?: string;
-  dataHex?: string;
-  dataUtf8?: string;
-}): Buffer {
-  const base64 = typeof input.dataBase64 === "string" ? input.dataBase64.trim() : "";
-  const hex = typeof input.dataHex === "string" ? input.dataHex.trim() : "";
-  const utf8 = typeof input.dataUtf8 === "string" ? input.dataUtf8 : "";
-  const sources = [base64 ? "base64" : "", hex ? "hex" : "", utf8 ? "utf8" : ""].filter(Boolean);
-
-  if (sources.length > 1) {
-    throw new Error("Validation error: Provide only one instruction data encoding");
-  }
-
-  if (base64) {
-    try {
-      return Buffer.from(base64, "base64");
-    } catch {
-      throw new Error("Validation error: Invalid base64 instruction data");
-    }
-  }
-
-  if (hex) {
-    const normalized = hex.startsWith("0x") ? hex.slice(2) : hex;
-    if (!/^[0-9a-fA-F]*$/.test(normalized) || normalized.length % 2 !== 0) {
-      throw new Error("Validation error: Invalid hex instruction data");
-    }
-    return Buffer.from(normalized, "hex");
-  }
-
-  if (utf8) {
-    return Buffer.from(utf8, "utf8");
-  }
-
-  return Buffer.alloc(0);
-}
-
-async function deriveAesKey(
-  password: string,
-  salt: Uint8Array,
-  usages: AesKeyUsage[]
-): Promise<CryptoKey> {
-  const material = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, [
-    "deriveKey",
-  ]);
-
-  return await crypto.subtle.deriveKey(
-    {
-      name: "PBKDF2",
-      hash: "SHA-256",
-      salt,
-      iterations: PBKDF2_ITERATIONS,
-    },
-    material,
-    { name: "AES-GCM", length: 256 },
-    false,
-    usages
-  );
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(url, {
-    headers: { "user-agent": "cybara-wallet/1.0" },
-    signal: AbortSignal.timeout(12_000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Wallet network request failed: ${response.status}`);
-  }
-
-  return (await response.json()) as T;
-}
 
 class WalletManager {
   private unlockedState: UnlockedWalletState | null = null;
@@ -713,14 +511,8 @@ class WalletManager {
     return this.getReceiveAddress(chain, index);
   }
 
-  /**
-   * Enforce the recipient allowlist and per-transaction cap for agent-initiated
-   * sends. A single prompt-injection should not be able to move funds to an
-   * arbitrary address or in an arbitrary amount.
-   */
   private assertAgentSendWithinPolicy(to: string, amount: string, policy: WalletAgentPolicy): void {
     const recipient = String(to || "").trim();
-    // A send requires an explicit, allowlisted recipient when an allowlist is set.
     if (policy.allowedSendRecipients.length > 0) {
       const allow = policy.allowedSendRecipients.map((a) => a.trim().toLowerCase());
       if (!recipient || !allow.includes(recipient.toLowerCase())) {
@@ -732,17 +524,10 @@ class WalletManager {
     assertAmountWithinCap(amount, policy);
   }
 
-  /** Enforce the per-transaction amount cap (shared by all fund-moving paths). */
   private assertAgentAmountWithinCap(amount: string | undefined, policy: WalletAgentPolicy): void {
     assertAmountWithinCap(amount, policy);
   }
 
-  /**
-   * Enforce the recipient allowlist for any path that can direct funds to an
-   * external address (swaps with an explicit recipient, contract calls). When no
-   * recipient is given, output goes to the wallet's own address, which is safe;
-   * an explicitly-directed recipient must be allowlisted like a send.
-   */
   private assertAgentRecipientAllowed(
     recipient: string | undefined,
     policy: WalletAgentPolicy
@@ -791,7 +576,6 @@ class WalletManager {
       throw new Error("Validation error: Contract address is not allowlisted for agent writes");
     }
     if (!readOnly && input.value !== undefined) {
-      // Native ETH attached to a contract call is a fund movement — cap it.
       this.assertAgentAmountWithinCap(String(input.value), policy);
     }
 
@@ -1176,7 +960,6 @@ class WalletManager {
         try {
           accounts.push(this.deriveAccount(chain, index, unlocked.mnemonic));
         } catch {
-          // Chain derivation unavailable (e.g. BTC WASM missing); skip
           break;
         }
       }
@@ -1226,7 +1009,7 @@ class WalletManager {
             };
           }
           case "btc": {
-            const payload = await fetchJson<{
+            const payload = await fetchWalletJson<{
               chain_stats?: {
                 funded_txo_sum?: number;
                 spent_txo_sum?: number;
@@ -1265,7 +1048,7 @@ class WalletManager {
     const account = this.getReceiveAddress(chain, index);
 
     if (chain === "eth") {
-      const payload = await fetchJson<
+      const payload = await fetchWalletJson<
         Array<{
           value?: string;
           token?: {
@@ -1353,7 +1136,7 @@ class WalletManager {
     const ownerLower = account.address.toLowerCase();
 
     if (chain === "eth") {
-      const payload = await fetchJson<{
+      const payload = await fetchWalletJson<{
         items?: Array<{
           block_number?: number;
           timestamp?: string;
@@ -1513,7 +1296,7 @@ class WalletManager {
     const account = this.getReceiveAddress(chain, index);
 
     if (chain === "eth") {
-      const payload = await fetchJson<{
+      const payload = await fetchWalletJson<{
         items?: Array<{
           hash?: string;
           status?: string;
@@ -1603,7 +1386,7 @@ class WalletManager {
       );
     }
 
-    const txs = await fetchJson<
+    const txs = await fetchWalletJson<
       Array<{
         txid: string;
         fee?: number;
@@ -1880,7 +1663,7 @@ class WalletManager {
         ? requestedSource
         : "auto";
 
-    const { base, quote } = resolvePair({
+    const { base, quote } = resolveWalletPair({
       symbol: input.symbol,
       pair: input.pair,
     });
@@ -1948,7 +1731,7 @@ class WalletManager {
       const url = `${PYTH_HERMES_API_BASE}/updates/price/latest?ids[]=${encodeURIComponent(
         feedId
       )}&parsed=true`;
-      const payload = await fetchJson<{
+      const payload = await fetchWalletJson<{
         parsed?: Array<{
           id?: string;
           price?: {
@@ -1989,7 +1772,7 @@ class WalletManager {
       }
 
       const mint = this.resolveSolMint(String(input.mint || "").trim() || base);
-      const payload = await fetchJson<
+      const payload = await fetchWalletJson<
         Record<
           string,
           {
@@ -2043,7 +1826,7 @@ class WalletManager {
   }
 
   async swap(input: WalletSwapInput): Promise<WalletSwapResult> {
-    const venue = normalizeSwapVenue(String(input.venue || ""));
+    const venue = normalizeWalletSwapVenue(String(input.venue || ""));
     if (venue === "uniswap_v2") {
       const result = await this.swapEthOnUniswap({
         tokenOut: String(input.tokenOut || ""),
@@ -2281,7 +2064,7 @@ class WalletManager {
     quoteUrl.searchParams.set("amount", amountRaw.toString());
     quoteUrl.searchParams.set("slippageBps", String(slippageBps));
 
-    const quoteResponse = await fetchJson<{
+    const quoteResponse = await fetchWalletJson<{
       error?: string;
       errorCode?: string;
       outAmount?: string;
@@ -2425,13 +2208,13 @@ class WalletManager {
     const index = normalizeStartIndex(input.index);
     const readOnly = input.readOnly === true;
     const inferredMethodSignature = methodInput.includes("(") ? methodInput : "";
-    const methodSignature = normalizeEthMethodSelector(
+    const methodSignature = normalizeWalletEthMethodSelector(
       explicitMethodSignature || inferredMethodSignature
     );
     const method =
       methodInput && !methodInput.includes("(")
         ? methodInput
-        : extractEthMethodName(methodInput || methodSignature);
+        : extractWalletEthMethodName(methodInput || methodSignature);
 
     if (!isEvmAddress(contractAddress)) {
       throw new Error("Validation error: Invalid ETH contract address");
@@ -2532,7 +2315,7 @@ class WalletManager {
         isSigner: key.isSigner === true,
         isWritable: key.isWritable === true,
       })),
-      data: decodeInstructionData({
+      data: decodeWalletInstructionData({
         dataBase64: input.dataBase64,
         dataHex: input.dataHex,
         dataUtf8: input.dataUtf8,
@@ -2636,7 +2419,7 @@ class WalletManager {
     this.validateHttpUrl(urlInput, "x402 URL");
     assertPublicHttpUrl(urlInput, "x402 URL");
     const url = new URL(urlInput);
-    const method = normalizeHttpMethod(input.method);
+    const method = normalizeWalletHttpMethod(input.method);
     const timeoutMs =
       typeof input.timeoutMs === "number" && Number.isFinite(input.timeoutMs)
         ? Math.min(60_000, Math.max(1_000, Math.floor(input.timeoutMs)))
@@ -3123,7 +2906,7 @@ class WalletManager {
     }
 
     const apiBase = this.getBtcApiBase();
-    const utxos = await fetchJson<BtcUtxo[]>(`${apiBase}/address/${signer.address}/utxo`);
+    const utxos = await fetchWalletJson<BtcUtxo[]>(`${apiBase}/address/${signer.address}/utxo`);
     if (!utxos.length) {
       throw new Error("Validation error: No spendable BTC balance available");
     }
@@ -3222,7 +3005,7 @@ class WalletManager {
 
   private async getRecommendedBtcFeeRate(apiBase: string): Promise<number> {
     try {
-      const payload = await fetchJson<{
+      const payload = await fetchWalletJson<{
         fastestFee?: number;
         halfHourFee?: number;
         hourFee?: number;
@@ -3264,7 +3047,7 @@ class WalletManager {
     try {
       btcAddress = this.deriveAccount("btc", 0, mnemonic).address;
     } catch {
-      // BTC derivation requires WASM; gracefully degrade
+      void 0;
     }
     return {
       eth: this.deriveAccount("eth", 0, mnemonic).address,
@@ -3486,7 +3269,7 @@ class WalletManager {
     pair?: string;
   }): Promise<string> {
     if (typeof input.pythFeedId === "string" && input.pythFeedId.trim()) {
-      return normalizeFeedId(input.pythFeedId);
+      return normalizeWalletFeedId(input.pythFeedId);
     }
 
     const pair = input.pair ? normalizeTicker(input.pair) : "";
@@ -3500,7 +3283,7 @@ class WalletManager {
       query
     )}&asset_type=crypto`;
     const searchResults =
-      await fetchJson<
+      await fetchWalletJson<
         Array<{ id?: string; attributes?: { display_symbol?: string; symbol?: string } }>
       >(searchUrl);
 
@@ -3513,7 +3296,7 @@ class WalletManager {
       throw new Error(`Validation error: Could not resolve Pyth feed id for '${query}'`);
     }
 
-    return normalizeFeedId(selected.id);
+    return normalizeWalletFeedId(selected.id);
   }
 
   private formatScaledSignedInteger(rawValue: string, exponent: number): string {
@@ -3708,7 +3491,11 @@ class WalletManager {
   ): ((...fnArgs: unknown[]) => Promise<unknown>) & {
     staticCall?: (...fnArgs: unknown[]) => Promise<unknown>;
   } {
-    const methodCandidates = [methodSignature, normalizeEthMethodSelector(methodSignature), method]
+    const methodCandidates = [
+      methodSignature,
+      normalizeWalletEthMethodSelector(methodSignature),
+      method,
+    ]
       .map((entry) => entry.trim())
       .filter(Boolean);
 
@@ -4038,7 +3825,7 @@ class WalletManager {
         const scheme = String(entry.scheme || "").toLowerCase();
         if (!X402_AGENT_SUPPORTED_SCHEMES.has(scheme)) continue;
         const network = String(entry.network || "");
-        const networkFamily = parseX402NetworkFamily(network);
+        const networkFamily = parseWalletX402NetworkFamily(network);
         if (!networkFamily) continue;
         candidates.push({
           x402Version: 2,
@@ -4061,7 +3848,7 @@ class WalletManager {
         const scheme = String(entry.scheme || "").toLowerCase();
         if (!X402_AGENT_SUPPORTED_SCHEMES.has(scheme)) continue;
         const network = String(entry.network || "");
-        const networkFamily = parseX402NetworkFamily(network);
+        const networkFamily = parseWalletX402NetworkFamily(network);
         if (!networkFamily) continue;
         candidates.push({
           x402Version: 1,
@@ -4173,10 +3960,10 @@ class WalletManager {
       .register("eip155:*", evmScheme)
       .register("solana:*", svmScheme);
 
-    for (const network of Object.keys(X402_V1_EVM_NETWORK_CHAIN_IDS)) {
+    for (const network of Object.keys(WALLET_X402_V1_EVM_NETWORK_CHAIN_IDS)) {
       x402Client.registerV1(network, evmSchemeV1);
     }
-    for (const network of X402_V1_SOLANA_NETWORKS) {
+    for (const network of WALLET_X402_V1_SOLANA_NETWORKS) {
       x402Client.registerV1(network, svmSchemeV1);
     }
 
@@ -4511,7 +4298,7 @@ class WalletManager {
       return cached.tokens;
     }
 
-    const payload = await fetchJson<{
+    const payload = await fetchWalletJson<{
       tokens?: Array<{
         address?: string;
         symbol?: string;
@@ -4544,7 +4331,7 @@ class WalletManager {
     }
 
     try {
-      const payload = await fetchJson<Record<string, string>>(JUPITER_PROGRAM_LABELS_API);
+      const payload = await fetchWalletJson<Record<string, string>>(JUPITER_PROGRAM_LABELS_API);
       const labels = Object.fromEntries(
         Object.entries(payload).filter(
           ([programId, label]) =>
@@ -4572,7 +4359,7 @@ class WalletManager {
     const primaryAddresses = this.getPrimaryAddresses(mnemonic);
     const salt = crypto.getRandomValues(new Uint8Array(16));
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const key = await deriveAesKey(password, salt, ["encrypt"]);
+    const key = await deriveWalletAesKey(password, salt, ["encrypt"]);
     const ciphertext = await crypto.subtle.encrypt(
       { name: "AES-GCM", iv },
       key,
@@ -4585,7 +4372,7 @@ class WalletManager {
       kdf: {
         name: "PBKDF2",
         hash: "SHA-256",
-        iterations: PBKDF2_ITERATIONS,
+        iterations: WALLET_PBKDF2_ITERATIONS,
         salt: encodeBase64(salt),
       },
       cipher: {
@@ -4683,7 +4470,7 @@ class WalletManager {
         kdf: {
           name: "PBKDF2",
           hash: "SHA-256",
-          iterations: parsed.kdf.iterations || PBKDF2_ITERATIONS,
+          iterations: parsed.kdf.iterations || WALLET_PBKDF2_ITERATIONS,
           salt: parsed.kdf.salt || "",
         },
         cipher: {
@@ -4708,7 +4495,7 @@ class WalletManager {
     try {
       chmodSync(WALLET_FILE, 0o600);
     } catch {
-      // chmod may fail on some platforms; ignore.
+      void 0;
     }
   }
 
@@ -4717,7 +4504,7 @@ class WalletManager {
       const salt = decodeBase64(vault.kdf.salt);
       const iv = decodeBase64(vault.cipher.iv);
       const ciphertext = decodeBase64(vault.ciphertext);
-      const key = await deriveAesKey(password, salt, ["decrypt"]);
+      const key = await deriveWalletAesKey(password, salt, ["decrypt"]);
       const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
       const mnemonic = normalizeMnemonic(decoder.decode(plaintext));
       this.validateMnemonic(mnemonic);

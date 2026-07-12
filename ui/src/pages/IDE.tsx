@@ -77,7 +77,6 @@ import EmbeddedTerminalPanel, {
   type IdeTerminalPanelState,
 } from "@/components/ide/EmbeddedTerminalPanel";
 import { useStopAgent } from "@/hooks/useApi";
-// Extracted modules (was inline in this file — see ui/src/pages/ide/).
 import type {
   FileEntry,
   BrowseResult,
@@ -276,7 +275,6 @@ export function IDE() {
     () => readWorkspacePathFromUrl() || readPersistedWorkspacePath()
   );
   const [selectedFile, setSelectedFile] = useState<FileEntry | null>(null);
-  // Restore open tabs from localStorage on mount.
   const [openTabs, setOpenTabs] = useState<IdeTab[]>(() => {
     if (typeof window === "undefined") return [];
     const restored = readPersistedOpenTabs();
@@ -454,7 +452,7 @@ export function IDE() {
           .filter((agent) => agent.id);
         setIdeAgentOptions(options);
       } catch {
-        // Keep previously fetched options on transient API failures.
+        void 0;
       }
     };
     void loadAgents();
@@ -2003,7 +2001,6 @@ export function IDE() {
     persistIdePreferences(idePreferences);
   }, [idePreferences]);
 
-  // Persist open tabs so they're restored on reload.
   useEffect(() => {
     persistOpenTabs(openTabs, activeTabPath);
   }, [openTabs, activeTabPath]);

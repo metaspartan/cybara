@@ -29,6 +29,9 @@ const messageContentPath = fileURLToPath(
 const sessionFileChangesPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/useSessionFileChanges.ts", import.meta.url)
 );
+const sessionDiffPanelPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/SessionDiffPanel.tsx", import.meta.url)
+);
 const desktopHostPath = fileURLToPath(new URL("../../ui/src/lib/desktopHost.ts", import.meta.url));
 
 function readChatSource(): string {
@@ -39,7 +42,8 @@ function readChatSource(): string {
     readFileSync(activityTimelinePath, "utf8") +
     readFileSync(fileChangesCardPath, "utf8") +
     readFileSync(messageContentPath, "utf8") +
-    readFileSync(sessionFileChangesPath, "utf8")
+    readFileSync(sessionFileChangesPath, "utf8") +
+    readFileSync(sessionDiffPanelPath, "utf8")
   );
 }
 
@@ -79,7 +83,7 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain('t("chat.workedFor", {');
     expect(source).toContain('section="work"');
     expect(source).toContain('section="summary"');
-    expect(source).toContain("function SessionDiffPanel");
+    expect(source).toContain("export function SessionDiffPanel");
     expect(source).toContain("No file diffs in this session yet");
     expect(source).toContain('toggleWorkspaceTab("review")');
     expect(source).toContain('activeWorkspaceKind === "review"');

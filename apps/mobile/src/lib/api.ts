@@ -2537,6 +2537,23 @@ export class CybaraMobileApi {
     };
   }
 
+  async stopChatSession(sessionId: string): Promise<{
+    success: boolean;
+    stopped: boolean;
+    error?: string;
+  }> {
+    const response = await this.request<unknown>(
+      `/api/chat/sessions/${encodeURIComponent(sessionId)}/stop`,
+      { method: "POST" }
+    );
+    const record = asRecord(response);
+    return {
+      success: record?.success === true,
+      stopped: record?.stopped === true,
+      error: readString(record, ["error"]),
+    };
+  }
+
   updateSessionTitle(id: string, title: string): Promise<{ success: boolean }> {
     return this.request<{ success: boolean }>(`/api/sessions/${encodeURIComponent(id)}/title`, {
       method: "PUT",

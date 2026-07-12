@@ -323,6 +323,7 @@ export function DashboardScreen({
   const metricsRefreshInFlight = useRef(false);
   const metricsLastLoadedAtRef = useRef(0);
   const logPageInFlight = useRef(false);
+  const appStateRef = useRef(AppState.currentState);
   const activeSurface =
     detailRoute?.kind === "surface" || detailRoute?.kind === "item" ? detailRoute.surface : null;
   const hasLoadedMetrics = metrics !== null;
@@ -466,6 +467,7 @@ export function DashboardScreen({
 
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
+      appStateRef.current = state;
       if (state === "active") void refreshAllRef.current(false);
     });
     return () => subscription.remove();
@@ -473,7 +475,7 @@ export function DashboardScreen({
 
   useEffect(() => {
     const interval = setInterval(() => {
-      void refresh(false);
+      if (appStateRef.current === "active") void refresh(false);
     }, 12000);
     return () => clearInterval(interval);
   }, [profile.id]);
@@ -492,7 +494,7 @@ export function DashboardScreen({
         ? MOBILE_METRICS_CHROME.liveRefreshMs
         : MOBILE_METRICS_CHROME.backgroundRefreshMs;
     const interval = setInterval(() => {
-      void refreshMetrics();
+      if (appStateRef.current === "active") void refreshMetrics();
     }, refreshMs);
     return () => clearInterval(interval);
   }, [profile.id, activeTab, detailRoute, hasLoadedMetrics]);

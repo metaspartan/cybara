@@ -2795,6 +2795,30 @@ describe("mobile API client", () => {
     }
   });
 
+  test("stops an active mobile chat through the canonical session route", async () => {
+    const calls: Array<{ method: string; path: string }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (url, init) => {
+      const parsedUrl = new URL(String(url));
+      calls.push({ method: init?.method || "GET", path: parsedUrl.pathname });
+      if (parsedUrl.pathname === "/api/chat/sessions/s-stop/stop" && init?.method === "POST") {
+        return Response.json({ success: true, stopped: true, sessionId: "s-stop" });
+      }
+      return new Response("missing", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      await expect(new CybaraMobileApi(profile).stopChatSession("s-stop")).resolves.toEqual({
+        success: true,
+        stopped: true,
+        error: undefined,
+      });
+      expect(calls).toEqual([{ method: "POST", path: "/api/chat/sessions/s-stop/stop" }]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("keeps the mobile session list bounded while preserving the gateway total", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (url) => {

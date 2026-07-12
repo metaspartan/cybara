@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
   findBundledWindowsPlaywrightRuntime,
   copyFilePortable,
+  copyTransformersRuntime,
   findWindowsPlaywrightBrowserExecutable,
   findOnnxRuntimeNativeDir,
   getHostTargetFor,
@@ -168,6 +169,65 @@ describe("build-sidecar host target mapping", () => {
     const dir = mkdtempSync(join(tmpdir(), "cybara-playwright-package-test-"));
     try {
       expect(findBundledWindowsPlaywrightRuntime(dir)).toBeNull();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("packages Kokoro with its compatible Transformers and Windows ONNX runtime", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-kokoro-package-test-"));
+    try {
+      const nativeDir = copyTransformersRuntime(dir, { platform: "win32", arch: "x64" });
+      const kokoroPackage = JSON.parse(
+        readFileSync(join(dir, "kokoro-js", "package.json"), "utf8")
+      ) as { version: string };
+      const transformerPackage = JSON.parse(
+        readFileSync(
+          join(dir, "kokoro-js", "node_modules", "@huggingface", "transformers", "package.json"),
+          "utf8"
+        )
+      ) as { version: string };
+
+      expect(kokoroPackage.version).toBe("1.2.1");
+      expect(transformerPackage.version.startsWith("3.")).toBe(true);
+      expect(
+        existsSync(
+          join(
+            dir,
+            "kokoro-js",
+            "node_modules",
+            "@huggingface",
+            "transformers",
+            "node_modules",
+            "onnxruntime-node",
+            "bin",
+            "napi-v3",
+            "win32",
+            "x64",
+            "onnxruntime_binding.node"
+          )
+        )
+      ).toBe(true);
+      expect(existsSync(join(dir, "phonemizer", "dist", "phonemizer.js"))).toBe(true);
+      const onnxCommonPackage = JSON.parse(
+        readFileSync(
+          join(
+            dir,
+            "kokoro-js",
+            "node_modules",
+            "@huggingface",
+            "transformers",
+            "node_modules",
+            "onnxruntime-node",
+            "node_modules",
+            "onnxruntime-common",
+            "package.json"
+          ),
+          "utf8"
+        )
+      ) as { version: string };
+      expect(onnxCommonPackage.version).toBe("1.21.0");
+      expect(nativeDir?.replace(/\\/g, "/")).toContain("/win32/x64");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

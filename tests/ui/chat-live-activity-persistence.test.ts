@@ -444,7 +444,8 @@ describe("Chat live activity persistence", () => {
   test("supports multiline compose and dictation controls", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
     expect(source).toContain("<textarea");
-    expect(source).toContain("Enter to send • Shift+Enter for newline");
+    expect(source).toContain("rows={1}");
+    expect(source).toContain("onKeyDown={capabilityPicker.onKeyDown}");
     expect(source).toContain("handleToggleDictation");
     expect(source).toContain("dictationRuntime.unsupportedReason");
     expect(source).toContain('role={dictationError ? "alert" : "status"}');

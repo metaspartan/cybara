@@ -92,6 +92,7 @@ export type SandboxNetworkMode = "allow" | "deny";
 export type { EmbeddingProviderPreference } from "./memory/embeddings";
 export type SpeechTtsProviderPreference = "auto" | "system" | "elevenlabs" | "openai" | "local";
 export type SpeechSttProviderPreference = "auto" | "native" | "openai";
+export type SpeechRealtimeProvider = "managed" | "openai" | "gemini" | "moshi";
 
 export interface DangerousToolPolicyConfig {
   enabled: boolean;
@@ -155,9 +156,20 @@ export interface SpeechSttSettings {
   language: string;
 }
 
+export interface SpeechRealtimeSettings {
+  provider: SpeechRealtimeProvider;
+  providerId: string;
+  model: string;
+  voice: string;
+  serverUrl: string;
+  bargeIn: boolean;
+  silenceDurationMs: number;
+}
+
 export interface SpeechSettings {
   tts: SpeechTtsSettings;
   stt: SpeechSttSettings;
+  realtime: SpeechRealtimeSettings;
 }
 
 export interface ComputerUseSettings {
@@ -271,6 +283,15 @@ export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = {
     providerId: "",
     model: "",
     language: "",
+  },
+  realtime: {
+    provider: "managed",
+    providerId: "",
+    model: "",
+    voice: "",
+    serverUrl: "",
+    bargeIn: true,
+    silenceDurationMs: 700,
   },
 };
 
@@ -473,6 +494,11 @@ function normalizeSpeechSttProvider(value: unknown): SpeechSttProviderPreference
     : "auto";
 }
 
+function normalizeSpeechRealtimeProvider(value: unknown): SpeechRealtimeProvider {
+  if (value === "openai" || value === "gemini" || value === "moshi") return value;
+  return "managed";
+}
+
 function normalizeShortText(value: unknown, maxLength = 200): string {
   if (typeof value !== "string") return "";
   return value.trim().slice(0, maxLength);
@@ -534,6 +560,7 @@ function normalizeSpeechSettings(value: unknown): SpeechSettings {
   const parsed = asObject(value);
   const tts = asObject(parsed?.tts);
   const stt = asObject(parsed?.stt);
+  const realtime = asObject(parsed?.realtime);
   return {
     tts: {
       provider: normalizeSpeechTtsProvider(tts?.provider),
@@ -558,6 +585,23 @@ function normalizeSpeechSettings(value: unknown): SpeechSettings {
       providerId: normalizeShortText(stt?.providerId),
       model: normalizeShortText(stt?.model),
       language: normalizeShortText(stt?.language, 20).toLowerCase(),
+    },
+    realtime: {
+      provider: normalizeSpeechRealtimeProvider(realtime?.provider),
+      providerId: normalizeShortText(realtime?.providerId),
+      model: normalizeShortText(realtime?.model),
+      voice: normalizeShortText(realtime?.voice),
+      serverUrl: normalizeShortText(realtime?.serverUrl, 1000),
+      bargeIn:
+        typeof realtime?.bargeIn === "boolean"
+          ? realtime.bargeIn
+          : DEFAULT_SPEECH_SETTINGS.realtime.bargeIn,
+      silenceDurationMs: normalizePositiveInteger(
+        realtime?.silenceDurationMs,
+        DEFAULT_SPEECH_SETTINGS.realtime.silenceDurationMs,
+        200,
+        5000
+      ),
     },
   };
 }

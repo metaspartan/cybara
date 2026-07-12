@@ -67,7 +67,8 @@ Inside `cybara chat`, use `/status` to show the active session, agent, model/rou
 and approval mode. `/agents`, `/agent <id|name|default>`, `/model <id|router|default>`,
 `/router on|off`, `/permissions ask|always_allow|show`, `/tools full|coding|research|safe|show`, `/reasoning <level>`, `/title <name>`,
 `/workspace <path|default>`, `/environment`, `/context`, `/usage`, `/plan`, `/diffs`, `/tasks`,
-`/subagents`, `/compact`, `/stop`, and `/subagent spawn <task>` mirror the same control-plane
+`/subagents`, `/compact`, `/pending`, `/queue <message>`, `/steer <id|#n>`, `/stop`, and
+`/subagent spawn <task>` mirror the same control-plane
 concepts used by the other clients. The environment panel summarizes workspace, branch, context
 window, token usage, file changes, plan progress, tasks, and subagents without leaving the terminal.
 `/goal start <objective>` creates persistent long-running work for the session, with `/loop` as an

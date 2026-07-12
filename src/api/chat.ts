@@ -184,7 +184,11 @@ export interface ChatResponse {
 
 export function buildChatExecutionMessagesForAgent(
   sessionMessages: ChatMessage[],
-  options?: { sessionId?: string; materializedSteeringTurn?: boolean; supportsImages?: boolean }
+  options?: {
+    sessionId?: string;
+    materializedSteeringTurn?: boolean;
+    supportsImages?: boolean;
+  }
 ): AgentMessage[] {
   const supportsImages = options?.supportsImages !== false;
   const executionMessages: AgentMessage[] = sessionMessages.map((sessionMessage) => {
@@ -615,7 +619,13 @@ function materializeSteeringMessage(
   const existing = findMaterializedSteeringMessage(session, item.id);
   if (existing) return existing;
 
-  const timestamp = new Date(item.updatedAt || item.createdAt).toISOString();
+  const latestMessageTimestamp = session.messages.reduce((latest, message) => {
+    const parsed = parseIsoTimestampMs(message.timestamp);
+    return parsed ? Math.max(latest, parsed) : latest;
+  }, 0);
+  const timestamp = new Date(
+    Math.max(item.updatedAt || item.createdAt, latestMessageTimestamp + 2)
+  ).toISOString();
   const message: ChatMessage = {
     role: "user",
     content: item.content,

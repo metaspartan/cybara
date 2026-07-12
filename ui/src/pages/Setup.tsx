@@ -15,14 +15,14 @@ import { ProviderIcon, hasProviderIcon } from "@/components/ProviderIcon";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import {
-  useProviders,
-  useAgents,
   useAvailableProviders,
   useCreateProvider,
-  useCreateDefaultAgent,
+  useCreateAgent,
+  useProviderModels,
 } from "@/hooks/useApi";
+import { useProviderOAuth, type ProviderOAuthCredentials } from "@/hooks/useProviderOAuth";
 import { setupApi, settingsApi } from "@/lib/api";
-import type { AvailableProvider } from "@/types";
+import type { AvailableProvider, Provider } from "@/types";
 
 type WizardStep =
   | "welcome"
@@ -48,11 +48,12 @@ export function Setup() {
   const [providerSearch, setProviderSearch] = useState("");
   const [toolApprovalMode, setToolApprovalMode] = useState<"always_allow" | "ask">("always_allow");
   const [apiKey, setApiKey] = useState("");
+  const [configuredProvider, setConfiguredProvider] = useState<Provider | null>(null);
+  const [agentName, setAgentName] = useState("My Agent");
+  const [agentModel, setAgentModel] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { data: providers, isLoading: providersLoading } = useProviders();
-  const { data: agents, isLoading: agentsLoading } = useAgents();
   const {
     data: availableProviders,
     isLoading: availableLoading,
@@ -60,7 +61,13 @@ export function Setup() {
     refetch: refetchAvailable,
   } = useAvailableProviders();
   const createProvider = useCreateProvider();
-  const createDefaultAgent = useCreateDefaultAgent();
+  const createAgent = useCreateAgent();
+  const oauth = useProviderOAuth(selectedProvider);
+  const {
+    data: discoveredModels,
+    isLoading: modelsLoading,
+    refetch: refetchModels,
+  } = useProviderModels(configuredProvider?.id);
   const progressSteps: WizardStep[] = [
     "welcome",
     "provider",
@@ -78,15 +85,15 @@ export function Setup() {
   });
 
   useEffect(() => {
-    if (!providersLoading && !agentsLoading) {
-      if (providers && providers.length > 0 && agents && agents.length > 0) {
-        navigate("/");
-      }
+    if (!discoveredModels?.length) return;
+    if (!discoveredModels.some((model) => model.model_id === agentModel)) {
+      setAgentModel(discoveredModels[0].model_id);
     }
-  }, [providers, agents, providersLoading, agentsLoading, navigate]);
+  }, [agentModel, discoveredModels]);
 
   const handleProviderSelect = (provider: AvailableProvider) => {
     setSelectedProvider(provider);
+    setAgentModel("");
     setError(null);
 
     const authFlow = getAuthFlow(provider);
@@ -100,16 +107,24 @@ export function Setup() {
     }
   };
 
-  const handleCreateProvider = async (providerId: string, key: string) => {
+  const handleCreateProvider = async (
+    providerId: string,
+    key: string,
+    oauthCredentials?: ProviderOAuthCredentials
+  ) => {
     setIsLoading(true);
     setError(null);
     try {
-      await createProvider.mutateAsync({
+      const created = await createProvider.mutateAsync({
         provider: providerId,
         name: selectedProvider?.name || providerId,
         api_key: key || undefined,
+        access_token: oauthCredentials?.access_token,
+        refresh_token: oauthCredentials?.refresh_token,
+        expires_at: oauthCredentials?.expires_at,
         is_default: true,
       });
+      setConfiguredProvider(created);
       setStep("permissions");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create provider");
@@ -118,9 +133,10 @@ export function Setup() {
     }
   };
 
-  const handleSkipOAuth = () => {
-    if (selectedProvider) {
-      handleCreateProvider(selectedProvider.id, "");
+  const handleOAuthConnect = async () => {
+    const credentials = await oauth.connect();
+    if (selectedProvider && credentials) {
+      await handleCreateProvider(selectedProvider.id, "", credentials);
     }
   };
 
@@ -144,10 +160,17 @@ export function Setup() {
     setIsLoading(true);
     setError(null);
     try {
-      await createDefaultAgent.mutateAsync();
+      if (!configuredProvider) throw new Error("Connect a provider before creating an agent");
+      await createAgent.mutateAsync({
+        name: agentName.trim(),
+        type: "main",
+        model: agentModel,
+        provider_id: configuredProvider.id,
+      });
       await completeSetup();
     } catch (err) {
-      await completeSetup();
+      setError(err instanceof Error ? err.message : "Failed to create agent");
+      setIsLoading(false);
     }
   };
 
@@ -172,14 +195,6 @@ export function Setup() {
   const handleGoToDashboard = () => {
     navigate("/");
   };
-
-  if (providersLoading || agentsLoading) {
-    return (
-      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen w-full bg-[#0a0a0f] flex items-center justify-center">
@@ -396,21 +411,54 @@ export function Setup() {
 
                 <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30">
                   <p className="text-sm text-amber-200">
-                    This provider uses OAuth for authentication. After setup, go to{" "}
-                    <strong>Settings → Providers</strong> to complete the OAuth flow.
+                    Sign in securely to connect {selectedProvider.name}. Cybara stores the returned
+                    credentials in its encrypted provider store.
                   </p>
                 </div>
 
-                {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+                {oauth.state === "polling" && oauth.deviceCode && (
+                  <div className="p-4 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-center space-y-2">
+                    <p className="text-sm text-indigo-200">Finish authorization in your browser</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const code = oauth.deviceCode?.user_code;
+                        if (code) void navigator.clipboard.writeText(code);
+                      }}
+                      className="text-2xl font-mono font-bold text-white tracking-[0.25em]"
+                    >
+                      {oauth.deviceCode.user_code}
+                    </button>
+                    <p className="text-xs text-gray-400">Waiting for authorization…</p>
+                  </div>
+                )}
+
+                {(error || oauth.error) && (
+                  <p className="text-red-400 text-sm text-center">{error || oauth.error}</p>
+                )}
 
                 <div className="flex gap-3">
                   <Button variant="ghost" onClick={() => setStep("provider")} className="flex-1">
                     Back
                   </Button>
-                  <Button onClick={handleSkipOAuth} isLoading={isLoading} className="flex-1">
-                    Continue Anyway
+                  <Button
+                    onClick={handleOAuthConnect}
+                    isLoading={
+                      oauth.state === "connecting" || oauth.state === "polling" || isLoading
+                    }
+                    disabled={!selectedProvider.hasOAuthConfig}
+                    className="flex-1"
+                  >
+                    {oauth.state === "error"
+                      ? "Try Again"
+                      : `Sign in with ${selectedProvider.name}`}
                   </Button>
                 </div>
+                {!selectedProvider.hasOAuthConfig && (
+                  <p className="text-xs text-amber-300 text-center">
+                    OAuth is unavailable until this provider's client configuration is installed.
+                  </p>
+                )}
               </div>
             )}
 
@@ -486,14 +534,52 @@ export function Setup() {
                     <Bot className="w-8 h-8 text-white" />
                   </div>
                   <h2 className="text-2xl font-bold text-white mb-2">Create Your Agent</h2>
-                  <p className="text-gray-400">Set up a default AI assistant</p>
+                  <p className="text-gray-400">Configure an agent with your connected provider</p>
                 </div>
 
-                <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                  <h3 className="font-medium text-white mb-1">Default Agent</h3>
-                  <p className="text-sm text-gray-400">
-                    A general-purpose AI assistant ready to help with coding, questions, and tasks.
-                  </p>
+                <div className="space-y-4">
+                  <Input
+                    label="Agent name"
+                    value={agentName}
+                    onChange={(event) => setAgentName(event.target.value)}
+                    placeholder="My Agent"
+                  />
+                  <label className="block space-y-2 text-sm text-gray-300">
+                    <span>Model</span>
+                    <select
+                      value={agentModel}
+                      onChange={(event) => setAgentModel(event.target.value)}
+                      className="w-full rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-white"
+                      disabled={modelsLoading || !discoveredModels?.length}
+                    >
+                      {modelsLoading && <option value="">Discovering models…</option>}
+                      {!modelsLoading && !discoveredModels?.length && (
+                        <option value="">No models discovered</option>
+                      )}
+                      {(discoveredModels || []).map((model) => (
+                        <option key={model.id} value={model.model_id}>
+                          {model.model_name || model.model_id}
+                          {model.context_window
+                            ? ` (${Math.round(model.context_window / 1024)}K context)`
+                            : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  {!modelsLoading && !discoveredModels?.length && configuredProvider && (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => void refetchModels()}
+                      className="w-full justify-center"
+                    >
+                      Discover Models Again
+                    </Button>
+                  )}
+                  {configuredProvider && (
+                    <p className="text-xs text-gray-400">Using {configuredProvider.name}</p>
+                  )}
                 </div>
 
                 {error && <p className="text-red-400 text-sm text-center">{error}</p>}
@@ -502,7 +588,12 @@ export function Setup() {
                   <Button variant="ghost" onClick={handleSkipAgent} className="flex-1">
                     Skip for Now
                   </Button>
-                  <Button onClick={handleCreateAgent} isLoading={isLoading} className="flex-1">
+                  <Button
+                    onClick={handleCreateAgent}
+                    isLoading={isLoading}
+                    disabled={!configuredProvider || !agentName.trim() || !agentModel}
+                    className="flex-1"
+                  >
                     Create Agent
                   </Button>
                 </div>

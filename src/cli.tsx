@@ -468,16 +468,12 @@ async function checkStatusWebSocket(): Promise<{ ok: boolean; details: string }>
       try {
         socket.close();
       } catch {
-        // ignore
+        void 0;
       }
       resolve({ ok: false, details: "timeout waiting for snapshot event" });
     }, 5000);
 
     const socket = new WebSocket(wsUrl);
-
-    socket.onopen = () => {
-      // wait for first payload
-    };
 
     socket.onmessage = (event) => {
       if (settled) return;
@@ -487,12 +483,12 @@ async function checkStatusWebSocket(): Promise<{ ok: boolean; details: string }>
       try {
         payload = JSON.parse(String(event.data));
       } catch {
-        // ignore malformed json
+        void 0;
       }
       try {
         socket.close();
       } catch {
-        // ignore
+        void 0;
       }
       const isSnapshot = Boolean(
         payload &&
@@ -1511,7 +1507,7 @@ async function rawProviderAdd(
           }
         }
       } catch {
-        /* ignore */
+        void 0;
       }
 
       let interval = Math.max(5, dcData.interval || 5) * 1000;
@@ -2486,7 +2482,6 @@ async function rawRouter(args: string[]): Promise<void> {
   }
 
   if (subCmd === "set" && args[1]) {
-    // cybara router set <providerId> weight=70 limit5h=100 spendDaily=5 priceIn=10 priceOut=30
     const providerId = args[1];
     const flags = args.slice(2);
     const routeConfig: Record<string, unknown> = { weight: 50, enabled: true };
@@ -2521,7 +2516,6 @@ async function rawRouter(args: string[]): Promise<void> {
           break;
       }
     }
-    // Fetch current config, merge the route, and save.
     const currentResp = await fetchAPI<Record<string, unknown>>("/api/router/config");
     const current = currentResp ?? {
       enabled: true,
@@ -3482,7 +3476,7 @@ const UpdateBanner = () => {
         setMessage(`v${result.latestVersion} is available — run \`cybara update\` to upgrade.`);
       })
       .catch(() => {
-        /* never block the TUI on an update probe */
+        void 0;
       });
     return () => {
       active = false;
@@ -3541,7 +3535,7 @@ const FALLBACK_PROVIDER_OPTIONS: ProviderOption[] = [
 const SetupWizard = () => {
   const { exit } = useApp();
   const [step, setStep] = React.useState<
-    "welcome" | "provider" | "apikey" | "permissions" | "agent" | "complete"
+    "welcome" | "provider" | "apikey" | "permissions" | "complete"
   >("welcome");
   const [providerOptions, setProviderOptions] =
     React.useState<ProviderOption[]>(FALLBACK_PROVIDER_OPTIONS);
@@ -3634,12 +3628,6 @@ const SetupWizard = () => {
         } else if (input === "b" || input === "B") {
           setStep("provider");
         }
-      } else if (step === "agent") {
-        if (key.return || input === "y" || input === "Y") {
-          createDefaultAgent();
-        } else if (input === "n" || input === "N") {
-          completeSetup();
-        }
       } else if (step === "complete") {
         if (key.return || input === " " || input === "q") {
           exit();
@@ -3684,28 +3672,12 @@ const SetupWizard = () => {
       setStatus({ message: "Permissions saved!", type: "success" });
       setTimeout(() => {
         setStatus(null);
-        setStep("agent");
+        void completeSetup();
       }, 800);
       return;
     }
 
     setStatus({ message: result?.error || "Failed to save permissions", type: "error" });
-  };
-
-  const createDefaultAgent = async () => {
-    setStatus({ message: "Creating default agent...", type: "loading" });
-
-    const result = await fetchAPI<{ id?: string; error?: string }>("/api/agents/default", {
-      method: "POST",
-    });
-
-    if (result?.id || result?.error === "Default agent already exists") {
-      setStatus({ message: "Agent ready!", type: "success" });
-      setTimeout(() => completeSetup(), 1000);
-    } else {
-      setStatus({ message: result?.error || "Failed to create agent", type: "error" });
-      setTimeout(() => completeSetup(), 2000);
-    }
   };
 
   const completeSetup = async () => {
@@ -3729,7 +3701,6 @@ const SetupWizard = () => {
             <Box marginLeft={2} flexDirection="column">
               <Text color="gray">• An AI provider (OpenAI, Anthropic, etc.)</Text>
               <Text color="gray">• Tool permission mode (Always Allow or Ask)</Text>
-              <Text color="gray">• A default agent to chat with</Text>
             </Box>
             <Box marginTop={2}>
               <Text color="green" bold>
@@ -3795,21 +3766,6 @@ const SetupWizard = () => {
             </Box>
             <Box marginTop={1}>
               <Text color="gray">1/A or 2/S to choose, ENTER to continue</Text>
-            </Box>
-          </>
-        )}
-
-        {step === "agent" && (
-          <>
-            <Text bold>Create Default Agent?</Text>
-            <Box marginTop={1}>
-              <Text>This creates a general-purpose AI assistant agent.</Text>
-            </Box>
-            <Box marginTop={1}>
-              <Text color="green">Y</Text>
-              <Text> - Yes, create it </Text>
-              <Text color="yellow">N</Text>
-              <Text> - No, I'll configure later</Text>
             </Box>
           </>
         )}
@@ -4595,8 +4551,6 @@ async function main() {
           await rawMcpPopular();
           break;
         case "serve":
-          // Expose cybara's own tools as an MCP server over stdio, so other MCP
-          // clients (Claude Desktop, other agents, IDEs) can call them.
           await runMcpStdioServer();
           break;
         default:

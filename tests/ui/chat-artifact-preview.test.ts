@@ -6,9 +6,16 @@ const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import
 const chatModelPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/chatModel.ts", import.meta.url)
 );
+const artifactViewerPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ArtifactViewerPanel.tsx", import.meta.url)
+);
 
 function readChatSource(): string {
-  return readFileSync(chatPagePath, "utf8") + readFileSync(chatModelPath, "utf8");
+  return (
+    readFileSync(chatPagePath, "utf8") +
+    readFileSync(chatModelPath, "utf8") +
+    readFileSync(artifactViewerPath, "utf8")
+  );
 }
 
 describe("Chat artifact preview wiring", () => {
@@ -35,7 +42,7 @@ describe("Chat artifact preview wiring", () => {
 
   test("renders artifact viewer as a full chat-area panel with markdown/raw toggle", () => {
     const source = readChatSource();
-    expect(source).toContain("function ArtifactViewerPanel");
+    expect(source).toContain("export function ArtifactViewerPanel");
     expect(source).toContain("Back to chat");
     expect(source).toContain("Markdown");
     expect(source).toContain("Raw");
