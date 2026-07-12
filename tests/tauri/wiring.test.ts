@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import { stageTauriUi } from "../../scripts/build-tauri-ui";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -9,12 +11,13 @@ describe("Tauri wiring", () => {
   test("tauri.conf.json includes Cybara sidecar + bundled UI assets", () => {
     const confPath = join(ROOT_DIR, "src-tauri", "tauri.conf.json");
     const conf = JSON.parse(readFileSync(confPath, "utf8")) as {
-      build?: { frontendDist?: string; beforeDevCommand?: string };
+      build?: { frontendDist?: string; beforeDevCommand?: string; beforeBuildCommand?: string };
       bundle?: { resources?: string[] | Record<string, string>; externalBin?: string[] };
     };
 
     expect(conf.build?.frontendDist).toBe("../ui/dist");
     expect(conf.build?.beforeDevCommand).toContain("bun run dev");
+    expect(conf.build?.beforeBuildCommand).toBe("bun run scripts/build-tauri-ui.ts");
     if (Array.isArray(conf.bundle?.resources)) {
       expect(conf.bundle?.resources).toContain("../ui/dist/**/*");
     } else {
@@ -24,6 +27,23 @@ describe("Tauri wiring", () => {
       });
     }
     expect(conf.bundle?.externalBin).toContain("bin/cybara");
+  });
+
+  test("stages the freshly built UI that the packaged sidecar serves", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-tauri-ui-stage-"));
+    const source = join(dir, "source");
+    const target = join(dir, "target");
+    try {
+      mkdirSync(source, { recursive: true });
+      mkdirSync(target, { recursive: true });
+      writeFileSync(join(source, "index.html"), "fresh");
+      writeFileSync(join(target, "index.html"), "stale");
+      stageTauriUi(source, target);
+      expect(readFileSync(join(target, "index.html"), "utf8")).toBe("fresh");
+      expect(existsSync(join(target, "index.html"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   test("main.rs starts and stops the cybara sidecar process", () => {
@@ -45,7 +65,9 @@ describe("Tauri wiring", () => {
 
     expect(mainRs).toContain("#[tauri::command]");
     expect(mainRs).toContain("fn read_cybara_api_key()");
-    expect(mainRs).toContain("tauri::generate_handler![read_cybara_api_key]");
+    expect(mainRs).toContain("tauri::generate_handler![");
+    expect(mainRs).toContain("read_cybara_api_key,");
+    expect(mainRs).toContain("set_update_available");
     expect(mainRs).toContain('std::env::var("CYBARA_API_KEY")');
     expect(mainRs).toContain('std::env::var_os("CYBARA_HOME")');
     expect(mainRs).toContain('std::env::var_os("USERPROFILE")');

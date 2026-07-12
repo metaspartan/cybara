@@ -34,10 +34,12 @@ describe("voice UI wiring", () => {
     expect(css).toContain("prefers-reduced-motion");
     expect(css).toContain("appearance: none");
     expect(css).toContain("background: transparent");
-    expect(voice).toContain('radialGradient id="voice-orb-fill"');
-    expect(voice).toContain('circle cx="96" cy="96" r="95"');
-    expect(css).toContain("0 0 72px rgba(34, 211, 238, 0.2)");
-    expect(css).toContain("display: none");
+    expect(voice).toContain('className="voice-orb-aura"');
+    expect(voice).toContain('className="voice-orb-swirl"');
+    expect(voice).not.toContain('className="voice-orb-sheen"');
+    expect(css).toContain("isolation: isolate");
+    expect(css).toContain("translateZ(0)");
+    expect(css).toContain("mix-blend-mode: normal");
   });
 
   test("voice page is routed and assistant messages expose read aloud", () => {

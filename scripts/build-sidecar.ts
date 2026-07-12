@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 import { $ } from "bun";
-import { mkdirSync, existsSync, cpSync, rmSync, readdirSync, writeFileSync } from "fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "fs";
+import { arch, platform } from "os";
 import { dirname, join } from "path";
-import { platform, arch } from "os";
-import { installBunRuntimeAt, type BunRuntimeTarget } from "../src/core/bun-runtime";
+import { type BunRuntimeTarget, installBunRuntimeAt } from "../src/core/bun-runtime";
 
 const TAURI_BIN_DIR = join(import.meta.dirname, "..", "src-tauri", "bin");
 const RELEASE_DIR = join(import.meta.dirname, "..", "release");
@@ -547,6 +547,12 @@ export default instance.exports;
 
   const packagedRuntimeDir = join(TAURI_BIN_DIR, "runtime");
   await installBunRuntimeAt(packagedRuntimeDir, target.bunTarget);
+  rmSync(join(packagedRuntimeDir, "local-speech-worker.ts"), { force: true });
+  rmSync(join(packagedRuntimeDir, "local-speech-worker-protocol.ts"), { force: true });
+  await copyFilePortable(
+    join(import.meta.dirname, "..", "src", "core", "local-speech-worker.mjs"),
+    join(packagedRuntimeDir, "local-speech-worker.mjs")
+  );
   for (const dir of [RELEASE_DIR, tauriDebugDir]) {
     removeAndCopyDirectory(packagedRuntimeDir, join(dir, "runtime"));
   }

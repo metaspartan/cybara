@@ -1,4 +1,3 @@
-import type { Update, DownloadEvent } from "@tauri-apps/plugin-updater";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -6,13 +5,14 @@ import {
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification";
+import type { DownloadEvent, Update } from "@tauri-apps/plugin-updater";
+import { isTauriDesktopRuntime } from "./desktopHost";
 import {
   checkForDesktopUpdate,
   describeDesktopUpdaterError,
   installDesktopUpdate,
   relaunchDesktopApp,
 } from "./desktopUpdater";
-import { isTauriDesktopRuntime } from "./desktopHost";
 
 export type UpdatePhase =
   | "idle"
@@ -127,7 +127,7 @@ export async function startUpdateInstall(): Promise<void> {
   if (!update || installing) return;
   installing = true;
   setState({ phase: "downloading", progress: 0, downloadedBytes: 0, totalBytes: null });
-  void notifyTray(true, update.version, "downloading");
+  await notifyTray(true, update.version, "downloading");
   let total = 0;
   let downloaded = 0;
   try {

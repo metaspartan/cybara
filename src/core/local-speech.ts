@@ -2,6 +2,11 @@ import { chmodSync, existsSync, mkdirSync } from "fs";
 import { dirname, join } from "path";
 import { pathToFileURL } from "url";
 import { resolveCybaraHome } from "./cybara-home";
+import {
+  isLocalSpeechWorkerResponse,
+  type LocalSpeechWorkerRequest,
+  type LocalSpeechWorkerResponse,
+} from "./local-speech-worker-protocol";
 
 export type LocalSpeechDtype = "fp32" | "fp16" | "q8" | "q4" | "q4f16";
 
@@ -106,9 +111,24 @@ export interface LocalSpeechRuntimeEntries {
   transformers: string;
 }
 
+export interface LocalSpeechWorkerEntries {
+  bun: string;
+  worker: string;
+  resourceDir: string;
+}
+
+interface PendingWorkerRequest {
+  resolve: (response: LocalSpeechWorkerResponse) => void;
+  reject: (error: Error) => void;
+  onProgress?: (progress: number) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 const runtimeStatus = new Map<string, LocalSpeechModelStatus>();
 const loadingPromises = new Map<string, Promise<KokoroTtsInstance>>();
 const readyModels = new Map<string, KokoroTtsInstance>();
+const workerRequests = new Map<string, PendingWorkerRequest>();
+let speechWorker: ReturnType<typeof Bun.spawn> | null = null;
 
 function statusFor(model: string): LocalSpeechModelStatus {
   const existing = runtimeStatus.get(model);
@@ -137,6 +157,16 @@ function readProgress(event: unknown): number | null {
     return Math.round((record.loaded / record.total) * 100);
   }
   return null;
+}
+
+export function describeLocalSpeechError(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === "string" && error.trim()) return error;
+  if (error && typeof error === "object") {
+    const message = (error as Record<string, unknown>).message;
+    if (typeof message === "string" && message.trim()) return message;
+  }
+  return "Model load failed";
 }
 
 export function listLocalTtsModelStatus(): LocalSpeechModelStatus[] {
@@ -200,6 +230,115 @@ export function findLocalSpeechRuntimeEntries(
   return null;
 }
 
+export function findLocalSpeechWorkerEntries(
+  roots: string[] = localSpeechRuntimeRoots()
+): LocalSpeechWorkerEntries | null {
+  for (const resourceDir of roots) {
+    const runtimeDir = join(resourceDir, "runtime");
+    const worker = join(runtimeDir, "local-speech-worker.mjs");
+    if (!existsSync(worker)) continue;
+    for (const executable of ["bun", "bun.exe"]) {
+      const bun = join(runtimeDir, executable);
+      if (existsSync(bun)) return { bun, worker, resourceDir };
+    }
+  }
+  return null;
+}
+
+function failWorkerRequests(message: string): void {
+  for (const pending of workerRequests.values()) {
+    clearTimeout(pending.timeout);
+    pending.reject(new Error(message));
+  }
+  workerRequests.clear();
+}
+
+function handleWorkerResponse(message: unknown): void {
+  if (!isLocalSpeechWorkerResponse(message)) return;
+  const pending = workerRequests.get(message.id);
+  if (!pending) return;
+  if (message.type === "progress") {
+    pending.onProgress?.(message.progress);
+    return;
+  }
+  workerRequests.delete(message.id);
+  clearTimeout(pending.timeout);
+  if (message.success) pending.resolve(message);
+  else pending.reject(new Error(message.error));
+}
+
+function packagedSpeechWorker(): ReturnType<typeof Bun.spawn> | null {
+  if (speechWorker && !speechWorker.killed) return speechWorker;
+  const resourceDir = process.env.CYBARA_RESOURCE_DIR?.trim();
+  if (!resourceDir) return null;
+  const entries = findLocalSpeechWorkerEntries([resourceDir]);
+  if (!entries) return null;
+  const worker = Bun.spawn([entries.bun, entries.worker], {
+    env: {
+      ...process.env,
+      CYBARA_RESOURCE_DIR: entries.resourceDir,
+      CYBARA_SPEECH_CACHE_DIR: localSpeechCacheDir(),
+    },
+    stdin: "ignore",
+    stdout: "inherit",
+    stderr: "inherit",
+    ipc: (message: unknown) => handleWorkerResponse(message),
+    onExit: (subprocess) => {
+      if (speechWorker === subprocess) speechWorker = null;
+      failWorkerRequests("Packaged speech runtime exited unexpectedly");
+    },
+  });
+  speechWorker = worker;
+  process.once("exit", () => worker.kill());
+  return worker;
+}
+
+async function sendWorkerRequest(
+  request: LocalSpeechWorkerRequest,
+  onProgress?: (progress: number) => void
+): Promise<LocalSpeechWorkerResponse> {
+  const worker = packagedSpeechWorker();
+  if (!worker) throw new Error("Packaged speech runtime is unavailable");
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(
+      () => {
+        workerRequests.delete(request.id);
+        reject(new Error("Packaged speech runtime timed out"));
+      },
+      10 * 60 * 1000
+    );
+    workerRequests.set(request.id, { resolve, reject, onProgress, timeout });
+    try {
+      worker.send(request);
+    } catch (error) {
+      clearTimeout(timeout);
+      workerRequests.delete(request.id);
+      reject(new Error(describeLocalSpeechError(error)));
+    }
+  });
+}
+
+function packagedTtsProxy(model: string, dtype: LocalSpeechDtype): KokoroTtsInstance {
+  return {
+    async generate(text, options) {
+      const response = await sendWorkerRequest({
+        id: crypto.randomUUID(),
+        action: "generate",
+        model,
+        dtype,
+        text,
+        voice: options?.voice || resolveLocalTtsVoice(undefined, model),
+        speed: options?.speed ?? 1,
+      });
+      if (response.type !== "result" || !response.success || !response.wav) {
+        throw new Error("Packaged speech runtime returned no audio");
+      }
+      const wav = Uint8Array.from(response.wav);
+      return { toWav: () => wav.buffer };
+    },
+  };
+}
+
 async function importKokoro(): Promise<KokoroModule> {
   const entries = findLocalSpeechRuntimeEntries();
   const transformersEntry = entries
@@ -229,6 +368,13 @@ export async function loadLocalTtsModel(
 
   patchStatus(model, { state: "loading", loadProgress: 0, lastError: null });
   const pending = (async () => {
+    if (packagedSpeechWorker()) {
+      await sendWorkerRequest(
+        { id: crypto.randomUUID(), action: "load", model, dtype },
+        (loadProgress) => patchStatus(model, { loadProgress })
+      );
+      return packagedTtsProxy(model, dtype);
+    }
     const { KokoroTTS } = await importKokoro();
     const instance = await KokoroTTS.from_pretrained(model, {
       dtype,
@@ -253,12 +399,13 @@ export async function loadLocalTtsModel(
     });
     return instance;
   } catch (error) {
+    const message = describeLocalSpeechError(error);
     patchStatus(model, {
       state: "error",
       loadProgress: null,
-      lastError: error instanceof Error ? error.message : "Model load failed",
+      lastError: message,
     });
-    throw error;
+    throw new Error(message);
   } finally {
     loadingPromises.delete(model);
   }
@@ -267,6 +414,14 @@ export async function loadLocalTtsModel(
 export function unloadLocalTtsModel(model: string = KOKORO_MODEL_ID): boolean {
   const existed = readyModels.delete(model);
   loadingPromises.delete(model);
+  if (speechWorker && !speechWorker.killed) {
+    void sendWorkerRequest({
+      id: crypto.randomUUID(),
+      action: "unload",
+      model,
+      dtype: "q8",
+    }).catch(() => undefined);
+  }
   patchStatus(model, {
     state: "unloaded",
     loadProgress: null,

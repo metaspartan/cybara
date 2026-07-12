@@ -3,12 +3,14 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
-  KOKORO_MODEL_ID,
+  describeLocalSpeechError,
   findLocalSpeechRuntimeEntries,
-  listLocalTtsModelStatus,
+  findLocalSpeechWorkerEntries,
+  isLocalTtsVoice,
+  KOKORO_MODEL_ID,
   LOCAL_TTS_MODELS,
   LOCAL_TTS_VOICES,
-  isLocalTtsVoice,
+  listLocalTtsModelStatus,
   localSpeechCacheDir,
   resolveLocalTtsVoice,
   unloadLocalTtsModel,
@@ -22,6 +24,13 @@ afterEach(() => {
 });
 
 describe("local speech catalog", () => {
+  test("preserves resolver messages thrown by compiled Bun modules", () => {
+    expect(describeLocalSpeechError({ message: "Cannot find package 'onnxruntime-common'" })).toBe(
+      "Cannot find package 'onnxruntime-common'"
+    );
+    expect(describeLocalSpeechError("runtime unavailable")).toBe("runtime unavailable");
+  });
+
   test("exposes Kokoro with a defined default voice and voice catalog", () => {
     expect(LOCAL_TTS_MODELS.length).toBeGreaterThan(0);
     const kokoro = LOCAL_TTS_MODELS.find((model) => model.id === KOKORO_MODEL_ID);
@@ -79,6 +88,23 @@ describe("local speech catalog", () => {
       writeFileSync(kokoro, "export const KokoroTTS = {};");
       writeFileSync(transformers, "export const env = {};");
       expect(findLocalSpeechRuntimeEntries([dir])).toEqual({ kokoro, transformers });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("discovers the packaged persistent speech worker", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-local-speech-worker-"));
+    const runtime = join(dir, "runtime");
+    try {
+      mkdirSync(runtime, { recursive: true });
+      writeFileSync(join(runtime, "bun"), "runtime");
+      writeFileSync(join(runtime, "local-speech-worker.mjs"), "worker");
+      expect(findLocalSpeechWorkerEntries([dir])).toEqual({
+        bun: join(runtime, "bun"),
+        worker: join(runtime, "local-speech-worker.mjs"),
+        resourceDir: dir,
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

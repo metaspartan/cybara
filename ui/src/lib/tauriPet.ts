@@ -1,9 +1,10 @@
-import { readPetPosition, persistPetPosition } from "@/lib/petPreferences";
+import { persistPetPosition, readPetPosition } from "@/lib/petPreferences";
 
 export const PET_WINDOW_LABEL = "pet";
 export const PET_OPEN_SESSION_EVENT = "cybara://pet-open-session";
 export const PET_WINDOW_SIZE = 84;
 export const PET_WINDOW_EXPANDED = { width: 280, height: 380 };
+export const PET_WINDOW_URL = "http://127.0.0.1:4269/?pet=1";
 
 export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
@@ -30,7 +31,7 @@ export async function ensurePetWindow(): Promise<void> {
   }
   const saved = readPetPosition();
   const petWindow = new WebviewWindow(PET_WINDOW_LABEL, {
-    url: `index.html?pet=1`,
+    url: PET_WINDOW_URL,
     width: PET_WINDOW_SIZE,
     height: PET_WINDOW_SIZE,
     ...(saved ? { x: saved.x, y: saved.y } : {}),

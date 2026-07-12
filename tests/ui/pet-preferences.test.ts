@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parsePetEnabled, readPetEnabled } from "../../ui/src/lib/petPreferences";
+import { PET_WINDOW_URL } from "../../ui/src/lib/tauriPet";
 
 const nativeSettingsSource = readFileSync(
   fileURLToPath(
@@ -64,6 +65,9 @@ describe("pet preferences", () => {
     expect(overlaySource).not.toContain("cybara-pet-idle");
     expect(cssSource).toContain(".pet-mascot-button");
     expect(htmlSource).toContain("html.pet-window body");
+    expect(htmlSource).toContain("html.pet-window body::before");
+    expect(htmlSource).toContain("content: none !important");
+    expect(PET_WINDOW_URL).toBe("http://127.0.0.1:4269/?pet=1");
     expect(overlaySource).not.toContain("bg-[#12121a] cursor-grab");
   });
 });

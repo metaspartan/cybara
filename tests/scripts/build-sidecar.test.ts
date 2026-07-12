@@ -3,11 +3,11 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "os";
 import { join } from "path";
 import {
-  findBundledWindowsPlaywrightRuntime,
   copyFilePortable,
   copyTransformersRuntime,
-  findWindowsPlaywrightBrowserExecutable,
+  findBundledWindowsPlaywrightRuntime,
   findOnnxRuntimeNativeDir,
+  findWindowsPlaywrightBrowserExecutable,
   getHostTargetFor,
   getRuntimeTargetFor,
   getSharpRuntimePackageNames,

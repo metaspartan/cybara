@@ -7,7 +7,7 @@
     "frontendDist": "../ui/dist",
     "devUrl": "http://localhost:5173",
     "beforeDevCommand": "cd ui && bun run dev",
-    "beforeBuildCommand": "cd ui && bun run build"
+    "beforeBuildCommand": "bun run scripts/build-tauri-ui.ts"
   },
   "app": {
     "macOSPrivateApi": true,

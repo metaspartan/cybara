@@ -44,6 +44,7 @@ describe("desktop updater wiring", () => {
 
   test("tray update state becomes busy before frontend installation begins", () => {
     const trayRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "tray.rs"), "utf8");
+    const mainRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "main.rs"), "utf8");
     const mainTsx = readFileSync(join(ROOT_DIR, "ui", "src", "main.tsx"), "utf8");
     const updateStore = readFileSync(join(ROOT_DIR, "ui", "src", "lib", "updateStore.ts"), "utf8");
 
@@ -52,6 +53,10 @@ describe("desktop updater wiring", () => {
     );
     expect(mainTsx).toContain("ensureUpdatePolling()");
     expect(updateStore).toContain("if (!state.available) await checkForUpdate()");
+    expect(updateStore).toContain('await notifyTray(true, update.version, "downloading")');
+    expect(mainRs).toContain("std::sync::mpsc::sync_channel(1)");
+    expect(mainRs).toContain("app.run_on_main_thread");
+    expect(mainRs).toContain("receiver.recv()");
     expect(trayRs).toContain("macos_template_icon");
   });
 

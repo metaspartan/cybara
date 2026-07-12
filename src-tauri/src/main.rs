@@ -131,16 +131,22 @@ pub(crate) fn badge_icon(base: &tauri::image::Image) -> tauri::image::Image<'sta
 }
 
 #[tauri::command]
-fn set_update_available(
+async fn set_update_available(
     app: tauri::AppHandle,
     available: bool,
     version: Option<String>,
     status: Option<String>,
-) {
+) -> Result<(), String> {
+    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
     let handle = app.clone();
-    let _ = app.run_on_main_thread(move || {
+    app.run_on_main_thread(move || {
         tray::apply_update_state(&handle, available, version, status);
-    });
+        let _ = sender.send(());
+    })
+    .map_err(|error| error.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || receiver.recv().map_err(|error| error.to_string()))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 fn cybara_api_key() -> Result<Option<String>, String> {

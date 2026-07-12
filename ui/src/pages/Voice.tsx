@@ -447,33 +447,13 @@ export function Voice() {
           className={cn("voice-orb my-10", `voice-orb--${status}`)}
           aria-label={status === "listening" ? "Stop recording" : "Start recording"}
         >
-          <svg className="voice-orb-body" viewBox="0 0 192 192" aria-hidden="true">
-            <defs>
-              <radialGradient id="voice-orb-fill" cx="42%" cy="34%" r="74%">
-                <stop offset="0%" stopColor="#c4b5fd" />
-                <stop offset="34%" stopColor="#818cf8" />
-                <stop offset="68%" stopColor="#4f46e5" />
-                <stop offset="100%" stopColor="#171044" />
-              </radialGradient>
-              <linearGradient id="voice-orb-sheen" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="white" stopOpacity="0.42" />
-                <stop offset="100%" stopColor="white" stopOpacity="0" />
-              </linearGradient>
-            </defs>
-            <circle cx="96" cy="96" r="95" fill="#818cf8" fillOpacity="0.08" />
-            <circle cx="96" cy="96" r="90" fill="#22d3ee" fillOpacity="0.1" />
-            <circle cx="96" cy="96" r="82" fill="url(#voice-orb-fill)" />
-            <circle
-              cx="96"
-              cy="96"
-              r="81"
-              fill="none"
-              stroke="#c7d2fe"
-              strokeOpacity="0.34"
-              strokeWidth="2"
-            />
-            <ellipse cx="82" cy="58" rx="49" ry="31" fill="url(#voice-orb-sheen)" />
-          </svg>
+          <span className="voice-orb-aura" />
+          <span className="voice-orb-body">
+            <span className="voice-orb-swirl" />
+            <span className="voice-orb-blob voice-orb-blob-a" />
+            <span className="voice-orb-blob voice-orb-blob-b" />
+            <span className="voice-orb-blob voice-orb-blob-c" />
+          </span>
           <span className="voice-orb-ring" />
           <span className="voice-orb-ring voice-orb-ring-late" />
         </button>
