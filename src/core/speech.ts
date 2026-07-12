@@ -385,7 +385,7 @@ export async function synthesizeWithSystemVoice(
   const requestedFormat =
     outputFormat === "aiff" || outputFormat === "m4a" || outputFormat === "wav"
       ? outputFormat
-      : "m4a";
+      : "wav";
 
   const stamp = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
   const dir = mediaDir();
