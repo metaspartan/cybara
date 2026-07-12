@@ -3,8 +3,8 @@ import { platform } from "os";
 import { join } from "path";
 import { config, type SpeechSettings, type SpeechTtsProviderPreference } from "./config";
 import { resolveCybaraHome } from "./cybara-home";
-import { providerManager, providers, resolveProviderType } from "./providers";
 import type { Provider } from "./database";
+import { providerManager, providers, resolveProviderType } from "./providers";
 
 export const SPEECH_TTS_PROVIDER_TYPES = ["elevenlabs", "openai", "openai-codex"] as const;
 export type SpeechTtsProviderType = (typeof SPEECH_TTS_PROVIDER_TYPES)[number];
@@ -332,23 +332,23 @@ export async function synthesizeSpeech(args: SpeechSynthesisArgs): Promise<Speec
   const providerPreference = args.provider?.trim() || settings.tts.provider;
   const fallbackToSystem = args.fallbackToSystem ?? settings.tts.fallbackToSystem;
   if (providerPreference !== "system") {
-    const resolved = resolveSpeechTtsProvider({
-      provider: providerPreference,
-      providerId: args.providerId,
-      settings,
-    });
+    try {
+      const resolved = resolveSpeechTtsProvider({
+        provider: providerPreference,
+        providerId: args.providerId,
+        settings,
+      });
 
-    if (resolved?.type === "elevenlabs") {
-      return await synthesizeWithElevenLabs(resolved.provider, { ...args, text }, settings);
-    }
-    if (resolved?.type === "openai" || resolved?.type === "openai-codex") {
-      return await synthesizeWithOpenAI(resolved.provider, { ...args, text }, settings);
-    }
+      if (resolved?.type === "elevenlabs") {
+        return await synthesizeWithElevenLabs(resolved.provider, { ...args, text }, settings);
+      }
+      if (resolved?.type === "openai" || resolved?.type === "openai-codex") {
+        return await synthesizeWithOpenAI(resolved.provider, { ...args, text }, settings);
+      }
 
-    if (!fallbackToSystem || platform() !== "darwin") {
-      throw new Error(
-        "No cloud TTS provider is configured. Add ElevenLabs or OpenAI credentials, or enable the macOS system fallback."
-      );
+      throw new Error("No cloud TTS provider is configured");
+    } catch (error) {
+      if (!fallbackToSystem || platform() !== "darwin") throw error;
     }
   }
 

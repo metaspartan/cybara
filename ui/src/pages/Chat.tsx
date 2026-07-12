@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowDown,
@@ -12,8 +13,8 @@ import {
   FlaskConical,
   Folder,
   FolderOpen,
-  GripVertical,
   GitFork,
+  GripVertical,
   Loader2,
   MessageSquare,
   Mic,
@@ -29,11 +30,12 @@ import {
   Square,
   Trash2,
   User,
+  Volume2,
+  VolumeX,
   X,
 } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
 import { EmbeddedTerminalPanel } from "@/components/ide/EmbeddedTerminalPanel";
 import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
 import { PageLayout } from "@/components/layout";
@@ -48,7 +50,6 @@ import {
 import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
 import { apiFetch, appendApiTokenParam } from "@/lib/auth";
-import { useI18n } from "@/lib/i18n";
 import {
   buildActivitiesFromToolCalls,
   finalizeCompletedActivities,
@@ -56,6 +57,7 @@ import {
   mergeActivityLists,
   suppressRecoveredWebFailureActivities,
 } from "@/lib/chatActivities";
+import { loadPersistedCompletion } from "@/lib/chatCompletion";
 import {
   type ChatFileAttachment,
   chatImageSrc,
@@ -73,8 +75,8 @@ import {
   MAX_TEXT_FILES,
   mediaSummaryLabel,
 } from "@/lib/chatImages";
-import { loadPersistedCompletion } from "@/lib/chatCompletion";
 import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
+import { useI18n } from "@/lib/i18n";
 import {
   connectStatusStream,
   type PendingChatMessage,
@@ -94,19 +96,18 @@ import type {
 } from "@/types";
 import { LiveActivityTimeline, ProcessActivityList } from "./chat/ActivityTimeline";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
-import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
 import { ChatCapabilityMenu } from "./chat/ChatCapabilityMenu";
+import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
 import { ChatEnvironmentOverview } from "./chat/ChatEnvironmentOverview";
+import { ChatHeaderTitleMenu } from "./chat/ChatHeaderTitleMenu";
 import { ChatImageLightbox, type ChatLightboxImage } from "./chat/ChatImageLightbox";
 import { ChatReasoningControl } from "./chat/ChatReasoningControl";
-import { isChatNearBottom } from "./chat/chatScroll";
-import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
 import { ChatWorkspaceBrowser } from "./chat/ChatWorkspaceBrowser";
 import { ChatWorkspaceFiles } from "./chat/ChatWorkspaceFiles";
 import {
   ChatWorkspacePanel,
-  WORKSPACE_SINGLETON_KINDS,
   type ChatWorkspaceTab,
+  WORKSPACE_SINGLETON_KINDS,
   type WorkspaceTabInstance,
 } from "./chat/ChatWorkspacePanel";
 import {
@@ -169,6 +170,7 @@ import {
   tryParseJsonRecord,
 } from "./chat/chatModel";
 import { parseInitialChatRoute } from "./chat/chatRoute";
+import { isChatNearBottom } from "./chat/chatScroll";
 import { FileChangesCard } from "./chat/FileChangesCard";
 import { type GitBranchOption, GitBranchSelector } from "./chat/GitBranchSelector";
 import {
@@ -178,18 +180,18 @@ import {
 } from "./chat/liveSessionState";
 import { DiffCodeBlock, MessageContent } from "./chat/MessageContent";
 import { writeCachedSessionMessages } from "./chat/messageCache";
-import { PlanSummaryCard } from "./chat/PlanSummaryCard";
 import { PendingApprovalsBanner } from "./chat/PendingApprovalsBanner";
+import { PlanSummaryCard } from "./chat/PlanSummaryCard";
 import {
   clearCachedOptimisticPendingMessages,
   readCachedOptimisticPendingMessages,
   writeCachedOptimisticPendingMessages,
 } from "./chat/pendingQueueCache";
 import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
-import { ChatHeaderTitleMenu } from "./chat/ChatHeaderTitleMenu";
 import { SessionsPanel } from "./chat/SessionSidebar";
 import { SubagentIcon } from "./chat/SubagentIcon";
 import { SubagentPanel } from "./chat/SubagentPanel";
+import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
 import { useEnvironmentGitBranches } from "./chat/useEnvironmentGitBranches";
 import { useSessionFileChanges } from "./chat/useSessionFileChanges";
 import { WorkspaceOpenMenu } from "./chat/WorkspaceOpenMenu";
@@ -1229,6 +1231,8 @@ export function Chat() {
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const [forkingMessageIndex, setForkingMessageIndex] = useState<number | null>(null);
   const [savingGoldenMessageIndex, setSavingGoldenMessageIndex] = useState<number | null>(null);
+  const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
+  const speechAudioRef = useRef<HTMLAudioElement | null>(null);
   const copiedMessageTimerRef = useRef<number | null>(null);
   const handleCopyMessage = useCallback(async (index: number, content: string) => {
     let copied = false;
@@ -1261,6 +1265,43 @@ export function Chat() {
       copiedMessageTimerRef.current = null;
     }, 1500);
   }, []);
+  const handleReadAloud = useCallback(
+    async (index: number, content: string) => {
+      const activeAudio = speechAudioRef.current;
+      if (activeAudio) {
+        activeAudio.pause();
+        speechAudioRef.current = null;
+        setSpeakingMessageIndex(null);
+        if (speakingMessageIndex === index) return;
+      }
+      try {
+        setSpeakingMessageIndex(index);
+        const result = await chatApi.synthesizeSpeech({ text: content });
+        if (!result.success || !result.data?.audioPath) {
+          throw new Error(result.error || "Speech synthesis failed");
+        }
+        const mediaUrl = appendApiTokenParam(
+          `/api/media?path=${encodeURIComponent(result.data.audioPath)}`
+        );
+        const audio = new Audio(mediaUrl);
+        speechAudioRef.current = audio;
+        const clear = () => {
+          if (speechAudioRef.current === audio) speechAudioRef.current = null;
+          setSpeakingMessageIndex(null);
+        };
+        audio.addEventListener("ended", clear, { once: true });
+        audio.addEventListener("error", clear, { once: true });
+        await audio.play();
+      } catch (error) {
+        speechAudioRef.current = null;
+        setSpeakingMessageIndex(null);
+        useUIStore
+          .getState()
+          .addToast("error", error instanceof Error ? error.message : "Speech synthesis failed");
+      }
+    },
+    [speakingMessageIndex]
+  );
   const [reverting, setReverting] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(true);
   const [showWorkspacePanel, setShowWorkspacePanel] = useState(false);
@@ -1829,6 +1870,8 @@ export function Chat() {
         }
         dictationStreamRef.current = null;
       }
+      speechAudioRef.current?.pause();
+      speechAudioRef.current = null;
     };
   }, []);
 
@@ -4329,6 +4372,29 @@ export function Chat() {
                                 <Copy className="w-3 h-3" />
                               )}
                             </button>
+                            {message.role === "assistant" && message.content.trim() && (
+                              <button
+                                type="button"
+                                onClick={() => void handleReadAloud(originalIndex, message.content)}
+                                className="p-1 rounded-md text-gray-600 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                                title={
+                                  speakingMessageIndex === originalIndex
+                                    ? "Stop reading aloud"
+                                    : "Read aloud"
+                                }
+                                aria-label={
+                                  speakingMessageIndex === originalIndex
+                                    ? "Stop reading aloud"
+                                    : "Read aloud"
+                                }
+                              >
+                                {speakingMessageIndex === originalIndex ? (
+                                  <VolumeX className="h-3 w-3" />
+                                ) : (
+                                  <Volume2 className="h-3 w-3" />
+                                )}
+                              </button>
+                            )}
                             {sessionId && (
                               <button
                                 type="button"

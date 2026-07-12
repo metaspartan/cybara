@@ -1,41 +1,42 @@
-import { NavLink, useLocation } from "react-router-dom";
 import {
-  LayoutDashboard,
-  Bot,
-  Plug,
-  Network,
-  Smartphone,
-  MessageSquare,
-  MessagesSquare,
-  Brain,
-  Sparkles,
-  ListTodo,
-  Logs,
-  LibraryBig,
-  Wrench,
-  Settings,
-  Terminal,
-  SquareTerminal,
+  AudioLines,
   BarChart3,
-  Code,
-  FolderOpen,
-  Menu,
-  X,
+  Bot,
+  Brain,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  Wallet as WalletIcon,
+  Code,
   FileText,
-  TabletSmartphone,
-  Gauge,
   FlaskConical,
+  FolderOpen,
+  Gauge,
+  LayoutDashboard,
+  LibraryBig,
+  ListTodo,
+  Logs,
+  Menu,
+  MessageSquare,
+  MessagesSquare,
+  Network,
+  Plug,
+  Settings,
+  Smartphone,
+  Sparkles,
+  SquareTerminal,
+  TabletSmartphone,
+  Terminal,
+  Wallet as WalletIcon,
+  Wrench,
+  X,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { useI18n } from "@/lib/i18n";
-import type { TranslationKey } from "../../../../shared/i18n/catalog";
-import { useState, useEffect, useRef, createContext, useContext } from "react";
-import { connectStatusStream } from "@/lib/status-stream";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { NavLink, useLocation } from "react-router-dom";
 import { providerPlansApi } from "@/lib/api";
+import { useI18n } from "@/lib/i18n";
+import { connectStatusStream } from "@/lib/status-stream";
+import { cn } from "@/lib/utils";
+import type { TranslationKey } from "../../../../shared/i18n/catalog";
 import { UpdateButton } from "./UpdateButton";
 
 interface SidebarContextType {
@@ -224,7 +225,10 @@ const navCategories: SidebarNavCategory[] = [
   {
     id: "chat",
     labelKey: null,
-    items: [{ path: "/chat", icon: MessageSquare, labelKey: "nav.chat" }],
+    items: [
+      { path: "/chat", icon: MessageSquare, labelKey: "nav.chat" },
+      { path: "/voice", icon: AudioLines, label: "Voice" },
+    ],
   },
   {
     id: "system",

@@ -1,18 +1,18 @@
-import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
+import { lazy, Suspense, useEffect } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { CybaraPet } from "@/components/CybaraPet";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Sidebar, SidebarProvider, useSidebar } from "@/components/layout/Sidebar";
 import { UpdateBanner } from "@/components/layout/UpdateBanner";
 import { ToastContainer } from "@/components/ui/Toast";
-import { CybaraPet } from "@/components/CybaraPet";
-import { PetOverlay } from "@/pages/PetOverlay";
-import { isPetWindow } from "@/lib/tauriPet";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { settingsApi, setupApi } from "@/lib/api";
-import { Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { resolveSetupGate } from "@/lib/setupGate";
-import { lazy, Suspense, useEffect } from "react";
+import { isPetWindow } from "@/lib/tauriPet";
+import { cn } from "@/lib/utils";
+import { PetOverlay } from "@/pages/PetOverlay";
 import { readThemeAccentFromConfig, readThemeModeFromIdentity, useUIStore } from "@/stores/uiStore";
-import { useQuery } from "@tanstack/react-query";
 
 const SETUP_COMPLETE_KEY = "cybara.setupComplete";
 
@@ -62,6 +62,7 @@ const Artifacts = lazy(() =>
   import("@/pages/Artifacts").then((module) => ({ default: module.Artifacts }))
 );
 const Mobile = lazy(() => import("@/pages/Mobile").then((module) => ({ default: module.Mobile })));
+const Voice = lazy(() => import("@/pages/Voice").then((module) => ({ default: module.Voice })));
 const Setup = lazy(() => import("@/pages/Setup").then((module) => ({ default: module.Setup })));
 
 function PageLoader() {
@@ -176,6 +177,7 @@ function AppRoutes() {
         <Route path="/evals" element={<Navigate to="/lab" replace />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/chat" element={<Chat />} />
+        <Route path="/voice" element={<Voice />} />
         <Route path="/logs" element={<Logs />} />
         <Route path="/sessions" element={<Sessions />} />
         <Route path="/wallet" element={<Wallet />} />
