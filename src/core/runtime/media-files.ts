@@ -1,5 +1,5 @@
 import { existsSync, statSync, readFileSync } from "fs";
-import { resolve, sep, extname } from "path";
+import { resolve, sep, extname, isAbsolute } from "path";
 import { cybaraDir } from "../paths";
 
 const MEDIA_MIME: Record<string, string> = {
@@ -10,9 +10,16 @@ const MEDIA_MIME: Record<string, string> = {
   ".webp": "image/webp",
   ".svg": "image/svg+xml",
   ".pdf": "application/pdf",
+  ".mp3": "audio/mpeg",
+  ".m4a": "audio/mp4",
+  ".aac": "audio/aac",
+  ".wav": "audio/wav",
+  ".aiff": "audio/aiff",
+  ".aif": "audio/aiff",
+  ".opus": "audio/ogg",
 };
 
-const ALLOWED_SUBDIRS = ["screenshots", "attachments"] as const;
+const ALLOWED_SUBDIRS = ["screenshots", "attachments", "media"] as const;
 
 function allowedRoots(): string[] {
   return ALLOWED_SUBDIRS.map((dir) => resolve(cybaraDir, dir));
@@ -29,7 +36,9 @@ export function resolveMediaFile(relPath: string): MediaFileResult {
   if (!relPath || typeof relPath !== "string") return { status: 400, error: "path required" };
   if (relPath.includes("\0")) return { status: 400, error: "invalid path" };
 
-  const target = resolve(cybaraDir, relPath.replace(/^\/+/, ""));
+  const target = isAbsolute(relPath)
+    ? resolve(relPath)
+    : resolve(cybaraDir, relPath.replace(/^\/+/, ""));
   const roots = allowedRoots();
   const contained = roots.some((root) => target === root || target.startsWith(root + sep));
   if (!contained) return { status: 403, error: "forbidden" };
