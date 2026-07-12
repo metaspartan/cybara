@@ -1,5 +1,5 @@
-import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { Database } from "bun:sqlite";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { createDecipheriv } from "crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { createServer } from "net";
@@ -1377,6 +1377,34 @@ describe("Speech API", () => {
     });
   });
 
+  test("GET /api/speech/status reports voice readiness for setup guidance", async () => {
+    const { status, data } = await api("GET", "/api/speech/status");
+    expect(status).toBe(200);
+    expect(data.success).toBe(true);
+    expect(typeof data.tts.ready).toBe("boolean");
+    expect(typeof data.tts.systemFallback).toBe("boolean");
+    expect(typeof data.stt.ready).toBe("boolean");
+    expect(typeof data.stt.native).toBe("boolean");
+    expect(typeof data.settings.ttsProvider).toBe("string");
+    expect(typeof data.settings.sttProvider).toBe("string");
+    if (!data.tts.ready) expect(String(data.tts.error ?? "")).not.toBe(undefined);
+  });
+
+  test("GET /api/speech/status reflects native transcription mode", async () => {
+    await api("PUT", "/api/speech/settings", {
+      tts: { provider: "auto" },
+      stt: { provider: "native" },
+    });
+    const { status, data } = await api("GET", "/api/speech/status");
+    expect(status).toBe(200);
+    expect(data.stt.native).toBe(true);
+    expect(data.stt.ready).toBe(true);
+    await api("PUT", "/api/speech/settings", {
+      tts: { provider: "auto" },
+      stt: { provider: "auto" },
+    });
+  });
+
   test("POST /api/speech/dictate should reject missing audio payload", async () => {
     const { status, data } = await api("POST", "/api/speech/dictate", {});
     expect(status).toBe(400);
@@ -1394,6 +1422,13 @@ describe("Speech API", () => {
     expect(status).toBe(400);
     expect(data.code).toBe("VALIDATION_ERROR");
     expect(String(data.error)).toContain("Requested dictation provider ID is invalid");
+  });
+
+  test("POST /api/speech/synthesize should reject empty text", async () => {
+    const { status, data } = await api("POST", "/api/speech/synthesize", { text: "" });
+    expect(status).toBe(400);
+    expect(data.code).toBe("VALIDATION_ERROR");
+    expect(String(data.error)).toContain("text is required");
   });
 });
 

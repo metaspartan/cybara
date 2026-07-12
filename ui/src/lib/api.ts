@@ -1323,6 +1323,25 @@ export const chatApi = {
     }>(`/chat/sessions/${sessionId}/pending/${pendingMessageId}`, {
       method: "DELETE",
     }),
+  getSpeechStatus: () =>
+    fetchApi<{
+      success: boolean;
+      tts: {
+        ready: boolean;
+        provider: string | null;
+        type: string | null;
+        systemFallback: boolean;
+        error: string | null;
+      };
+      stt: {
+        ready: boolean;
+        provider: string | null;
+        type: string | null;
+        native: boolean;
+        error: string | null;
+      };
+      settings: { ttsProvider: string; ttsVoice: string; sttProvider: string };
+    }>("/speech/status"),
   dictate: (payload: {
     audioBase64: string;
     mimeType?: string;
@@ -1337,6 +1356,27 @@ export const chatApi = {
       providerType: string;
       model: string;
     }>("/speech/dictate", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  synthesizeSpeech: (payload: {
+    text: string;
+    providerId?: string;
+    model?: string;
+    voice?: string;
+    format?: string;
+    speed?: number;
+  }) =>
+    fetchApi<{
+      success: boolean;
+      audioPath: string;
+      text: string;
+      voice?: string;
+      format: string;
+      provider: string;
+      providerId?: string;
+      model?: string;
+    }>("/speech/synthesize", {
       method: "POST",
       body: JSON.stringify(payload),
     }),

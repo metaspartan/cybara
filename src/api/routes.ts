@@ -32,7 +32,53 @@ import {
   handleMemorySearch,
 } from "../api/memory/memory-api";
 import { agentManager, getBuiltinTools } from "../core/agent";
-import { searchSessionMessages } from "../core/session-search";
+import {
+  type AgentEvalRun,
+  buildTrajectoryStructure,
+  cancelIntelligenceBenchmarkRun,
+  clearIntelligenceBenchmarkCancelRequest,
+  compareTrajectoryStructures,
+  countTrajectories,
+  createEvalRun,
+  createEvalSuiteBundle,
+  createIntelligenceBenchmarkRun,
+  deleteGolden,
+  deleteIntelligenceBenchmarkRun,
+  deleteSessionTrajectories,
+  type EvalReplayOptions,
+  ensureSessionTrajectory,
+  evalSuiteJsonl,
+  explainIntelligenceBenchmarkGrade,
+  exportResearchTraces,
+  failIntelligenceBenchmarkRun,
+  findRunningIntelligenceBenchmark,
+  finishEvalRun,
+  forkSession,
+  forkSessionFromMessages,
+  getGolden,
+  getTrajectory,
+  gradeIntelligenceBenchmarkTask,
+  INTELLIGENCE_RATING_EDGE_MARGIN,
+  INTELLIGENCE_RATING_SUITE_ID,
+  importGoldens,
+  intelligenceRatingManifest,
+  intelligenceRatingTasks,
+  isIntelligenceBenchmarkCancelRequested,
+  listEvalRuns,
+  listGoldens,
+  listIntelligenceBenchmarkRuns,
+  listSessionTrajectories,
+  listTrajectories,
+  parseEvalSuiteBundle,
+  parseResearchExportFormat,
+  registerEvalReplayExecutor,
+  requestIntelligenceBenchmarkCancel,
+  saveGolden,
+  summarizeGolden,
+  summarizeResearchTraces,
+  updateIntelligenceBenchmarkRun,
+} from "../core/agent-eval";
+import { agentSupportsImages } from "../core/agent-image-capabilities";
 import {
   cancelAgentLoopRun,
   getAgentLoopRun,
@@ -65,53 +111,6 @@ import { resolveCybaraHome, setCybaraHomeOverride } from "../core/cybara-home";
 import { tables } from "../core/database";
 import { resolveGeminiCliOAuthClientConfig } from "../core/gemini-cli-oauth";
 import { createLogger } from "../core/logger";
-import {
-  buildTrajectoryStructure,
-  compareTrajectoryStructures,
-  countTrajectories,
-  createEvalSuiteBundle,
-  createEvalRun,
-  deleteGolden,
-  deleteSessionTrajectories,
-  ensureSessionTrajectory,
-  exportResearchTraces,
-  finishEvalRun,
-  forkSession,
-  forkSessionFromMessages,
-  getGolden,
-  getTrajectory,
-  importGoldens,
-  listEvalRuns,
-  listGoldens,
-  listIntelligenceBenchmarkRuns,
-  listSessionTrajectories,
-  listTrajectories,
-  evalSuiteJsonl,
-  parseEvalSuiteBundle,
-  parseResearchExportFormat,
-  cancelIntelligenceBenchmarkRun,
-  clearIntelligenceBenchmarkCancelRequest,
-  deleteIntelligenceBenchmarkRun,
-  intelligenceRatingManifest,
-  intelligenceRatingTasks,
-  INTELLIGENCE_RATING_EDGE_MARGIN,
-  INTELLIGENCE_RATING_SUITE_ID,
-  isIntelligenceBenchmarkCancelRequested,
-  requestIntelligenceBenchmarkCancel,
-  registerEvalReplayExecutor,
-  saveGolden,
-  createIntelligenceBenchmarkRun,
-  explainIntelligenceBenchmarkGrade,
-  findRunningIntelligenceBenchmark,
-  failIntelligenceBenchmarkRun,
-  summarizeGolden,
-  summarizeResearchTraces,
-  updateIntelligenceBenchmarkRun,
-  gradeIntelligenceBenchmarkTask,
-  type AgentEvalRun,
-  type EvalReplayOptions,
-} from "../core/agent-eval";
-import { agentSupportsImages } from "../core/agent-image-capabilities";
 import {
   getAgentLogs,
   getSessionMessages as getLogSessionMessages,
@@ -153,6 +152,7 @@ import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbo
 import { taskScheduler } from "../core/scheduler";
 import { estimateSessionContextUsage, summarizeSessionTokenUsage } from "../core/session-context";
 import { extractLatestSessionPlan } from "../core/session-plan";
+import { searchSessionMessages } from "../core/session-search";
 import {
   clearSkillsCache,
   createEligibilityContext,
@@ -170,6 +170,7 @@ import {
   runSourceMigration,
   type SourceMigrationRequest,
 } from "../core/source-migration";
+import { resolveSpeechTtsProvider, synthesizeSpeech } from "../core/speech";
 import * as subagentRegistry from "../core/subagent-registry";
 import {
   createSystemBackup,
@@ -763,6 +764,71 @@ const routes: Record<string, RouteHandler> = {
   "GET /api/auth/key": () => ({ success: true, ...revealGatewayApiKey() }),
   "POST /api/auth/rotate-key": () => ({ success: true, ...rotateGatewayApiKey() }),
   "GET /api/speech/settings": () => config.getSpeechSettings(),
+  "GET /api/speech/status": () => {
+    const settings = config.getSpeechSettings();
+    let tts: {
+      ready: boolean;
+      provider: string | null;
+      type: string | null;
+      systemFallback: boolean;
+      error: string | null;
+    } = {
+      ready: false,
+      provider: null,
+      type: null,
+      systemFallback: settings.tts.fallbackToSystem && process.platform === "darwin",
+      error: null,
+    };
+    try {
+      const resolved = resolveSpeechTtsProvider({ settings });
+      if (resolved) {
+        tts = { ...tts, ready: true, provider: resolved.provider.name, type: resolved.type };
+      } else {
+        tts.error = "No ElevenLabs or OpenAI provider with speech credentials";
+      }
+    } catch (error) {
+      tts.error = error instanceof Error ? error.message : "TTS provider resolution failed";
+    }
+    let stt: {
+      ready: boolean;
+      provider: string | null;
+      type: string | null;
+      native: boolean;
+      error: string | null;
+    } = {
+      ready: false,
+      provider: null,
+      type: null,
+      native: settings.stt.provider === "native",
+      error: null,
+    };
+    if (stt.native) {
+      stt.ready = true;
+    } else {
+      try {
+        const provider = pickDictationProvider(settings.stt.providerId || undefined);
+        stt = {
+          ...stt,
+          ready: true,
+          provider: provider.name,
+          type: provider.provider,
+        };
+      } catch (error) {
+        stt.error =
+          error instanceof Error ? error.message : "Transcription provider resolution failed";
+      }
+    }
+    return {
+      success: true,
+      tts,
+      stt,
+      settings: {
+        ttsProvider: settings.tts.provider,
+        ttsVoice: settings.tts.voice,
+        sttProvider: settings.stt.provider,
+      },
+    };
+  },
   "PUT /api/speech/settings": (body) => ({
     success: true,
     speech: config.setSpeechSettings(body),
@@ -2190,6 +2256,25 @@ const routes: Record<string, RouteHandler> = {
       providerType: provider.provider,
       model: result.model,
     };
+  },
+  "POST /api/speech/synthesize": async (body) => {
+    const data = body as {
+      text?: string;
+      providerId?: string;
+      model?: string;
+      voice?: string;
+      format?: string;
+      speed?: number;
+    };
+    const result = await synthesizeSpeech({
+      text: typeof data.text === "string" ? data.text : "",
+      providerId: typeof data.providerId === "string" ? data.providerId : undefined,
+      model: typeof data.model === "string" ? data.model : undefined,
+      voice: typeof data.voice === "string" ? data.voice : undefined,
+      format: typeof data.format === "string" ? data.format : undefined,
+      speed: typeof data.speed === "number" ? data.speed : undefined,
+    });
+    return { success: true, ...result };
   },
   "GET /api/sessions/search": (_body, params) =>
     searchSessionMessages(typeof params?.q === "string" ? params.q : "", {
