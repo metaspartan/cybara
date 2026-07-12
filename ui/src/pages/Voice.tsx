@@ -1,14 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  CheckCircle2,
-  ChevronDown,
-  Loader2,
-  Mic,
-  Send,
-  Settings2,
-  Square,
-} from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Send, Settings2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAgentSummaries } from "@/hooks/useApi";
@@ -71,7 +62,7 @@ export function Voice() {
   const [turns, setTurns] = useState<VoiceTurn[]>([]);
   const [sessionId, setSessionId] = useState<string>();
   const [micPermission, setMicPermission] = useState<MicPermission>("unknown");
-  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupOpen, setSetupOpen] = useState<boolean | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -120,7 +111,8 @@ export function Voice() {
   const sttReady = speechStatus.data?.stt.ready || false;
   const micReady = micPermission === "granted";
   const allReady = ttsReady && sttReady && micReady;
-  const setupVisible = speechStatus.isSuccess && (!allReady || setupOpen);
+  const setupVisible = setupOpen ?? (speechStatus.isSuccess && !allReady);
+  const toggleSetup = () => setSetupOpen((current) => !(current ?? setupVisible));
 
   const setOrbLevel = useCallback((level: number) => {
     orbRef.current?.style.setProperty("--orb-level", String(Math.max(0, Math.min(1, level))));
@@ -298,7 +290,8 @@ export function Voice() {
           </div>
           <button
             type="button"
-            onClick={() => setSetupOpen((open) => !open)}
+            onClick={toggleSetup}
+            aria-expanded={setupVisible}
             className={cn(
               "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[11px] transition-colors",
               allReady
@@ -324,6 +317,12 @@ export function Voice() {
               <Settings2 className="h-3.5 w-3.5 text-gray-500" />
               <p className="text-[12px] font-medium text-gray-300">Voice setup</p>
             </div>
+            {speechStatus.isError && (
+              <p className="px-4 py-3 text-[12px] leading-5 text-amber-200/80">
+                Could not read voice status from the gateway. If Cybara was recently updated,
+                restart the gateway and reload this page.
+              </p>
+            )}
             <div className="divide-y divide-white/5">
               <SetupRow
                 ready={ttsReady}
@@ -381,25 +380,19 @@ export function Voice() {
         >
           <span className="voice-orb-aura" />
           <span className="voice-orb-body">
+            <span className="voice-orb-swirl" />
             <span className="voice-orb-blob voice-orb-blob-a" />
             <span className="voice-orb-blob voice-orb-blob-b" />
+            <span className="voice-orb-blob voice-orb-blob-c" />
             <span className="voice-orb-sheen" />
           </span>
           <span className="voice-orb-ring" />
-          <span className="voice-orb-icon">
-            {status === "listening" ? (
-              <Square className="h-6 w-6 fill-current" />
-            ) : status === "thinking" ? (
-              <Loader2 className="h-7 w-7 animate-spin" />
-            ) : (
-              <Mic className="h-7 w-7" />
-            )}
-          </span>
+          <span className="voice-orb-ring voice-orb-ring-late" />
         </button>
 
         <div className="mb-8 text-center">
           <div className="text-sm font-medium text-gray-200">{statusLabel}</div>
-          {status === "speaking" && (
+          {status === "speaking" ? (
             <button
               type="button"
               onClick={stopAudio}
@@ -407,7 +400,11 @@ export function Voice() {
             >
               Tap to stop
             </button>
-          )}
+          ) : status === "idle" ? (
+            <div className="mt-1.5 text-xs text-gray-600">
+              {allReady ? "Tap the orb and start speaking" : "Tap the orb to begin"}
+            </div>
+          ) : null}
         </div>
 
         <section className="w-full max-w-2xl">
