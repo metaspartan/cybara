@@ -319,7 +319,7 @@ export function CybaraPet() {
             src="/cybara.png"
             alt=""
             draggable={false}
-            className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+            className="pointer-events-none absolute inset-0 h-full w-full scale-[0.86] object-contain"
           />
         )}
         {activeCount > 0 && (
