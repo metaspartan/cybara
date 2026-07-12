@@ -8,6 +8,7 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 interface MediaWorkerReport {
   blockedError: string;
+  oversizedError: string;
   fetchCallsAfterBlocked: number;
   saved: { bytes: number; contentType?: string; path: string };
   fetched: Array<{ url: string; auth?: string | null }>;
@@ -24,7 +25,10 @@ globalThis.fetch = (async (url, init) => {
   fetched.push({ url: String(url), auth: headers.get("authorization") });
   return new Response(new Uint8Array([1, 2, 3, 4]), {
     status: 200,
-    headers: { "Content-Type": "image/png" },
+    headers: {
+      "Content-Type": "image/png",
+      ...(String(url).includes("oversized") ? { "Content-Length": String(10 * 1024 * 1024 + 1) } : {}),
+    },
   });
 }) as typeof fetch;
 
@@ -47,8 +51,21 @@ const saved = await saveInboundMediaFromUrl({
   headers: { Authorization: "Bearer channel-token" },
 });
 
+let oversizedError = "";
+try {
+  await saveInboundMediaFromUrl({
+    channel: "test",
+    url: "https://media.example.test/oversized",
+    fileName: "oversized.png",
+    contentType: "image/png",
+  });
+} catch (error) {
+  oversizedError = error instanceof Error ? error.message : String(error);
+}
+
 console.log("@@REPORT@@" + JSON.stringify({
   blockedError,
+  oversizedError,
   fetchCallsAfterBlocked,
   saved,
   fetched,
@@ -96,7 +113,9 @@ describe("channel inbound media downloads", () => {
 
     expect(report.fetched).toEqual([
       { url: "https://media.example.test/image", auth: "Bearer channel-token" },
+      { url: "https://media.example.test/oversized", auth: null },
     ]);
+    expect(report.oversizedError).toContain("exceeds 10485760 bytes");
     expect(report.saved.bytes).toBe(4);
     expect(report.saved.contentType).toBe("image/png");
     expect(report.saved.path).toContain("/media/inbound/test/");

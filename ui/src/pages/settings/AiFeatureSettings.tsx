@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 export function AiFeatureSettings() {
   const [defaultAgentId, setDefaultAgentId] = useState("");
   const [backgroundAgentId, setBackgroundAgentId] = useState("");
+  const [visionFallbackAgentId, setVisionFallbackAgentId] = useState("");
   const [selfImprovingSkills, setSelfImprovingSkills] = useState(true);
   const [skillLearningNudge, setSkillLearningNudge] = useState(false);
   const [reasoningEffort, setReasoningEffort] = useState("");
@@ -31,6 +32,9 @@ export function AiFeatureSettings() {
         setDefaultAgentId(typeof data?.default_agent_id === "string" ? data.default_agent_id : "");
         setBackgroundAgentId(
           typeof data?.background_agent_id === "string" ? data.background_agent_id : ""
+        );
+        setVisionFallbackAgentId(
+          typeof data?.vision_fallback_agent_id === "string" ? data.vision_fallback_agent_id : ""
         );
         setSelfImprovingSkills(data?.self_improving_skills_enabled !== false);
         setSkillLearningNudge(data?.skill_learning_nudge_enabled === true);
@@ -87,6 +91,24 @@ export function AiFeatureSettings() {
         error instanceof Error ? error.message : "Failed to update background model"
       );
       setBackgroundAgentId(previous);
+    }
+  };
+
+  const saveVisionFallbackAgent = async (agentId: string) => {
+    const previous = visionFallbackAgentId;
+    setVisionFallbackAgentId(agentId);
+    try {
+      const result = await settingsApi.updateConfig({ vision_fallback_agent_id: agentId });
+      if (!result.success || !result.data?.success) {
+        throw new Error(extractApiError(result, "Config update failed"));
+      }
+      addToast("success", agentId ? "Image fallback agent updated" : "Image fallback disabled");
+    } catch (error) {
+      addToast(
+        "error",
+        error instanceof Error ? error.message : "Failed to update image fallback agent"
+      );
+      setVisionFallbackAgentId(previous);
     }
   };
 
@@ -226,6 +248,30 @@ export function AiFeatureSettings() {
                 {agent.model ? ` — ${agent.model}` : ""}
               </option>
             ))}
+          </select>
+        </div>
+
+        <div className="py-3 border-b border-white/10">
+          <p className="text-sm text-white font-medium">Image fallback agent</p>
+          <p className="text-xs text-gray-400 mt-0.5 mb-2">
+            Analyze attachments for text-only models. Images are sent to this agent's provider only
+            when selected here.
+          </p>
+          <select
+            value={visionFallbackAgentId}
+            disabled={loading}
+            onChange={(event) => void saveVisionFallbackAgent(event.target.value)}
+            className="w-full sm:w-72 rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50"
+          >
+            <option value="">Disabled</option>
+            {(agents ?? [])
+              .filter((agent) => agent.supports_images)
+              .map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                  {agent.model ? ` — ${agent.model}` : ""}
+                </option>
+              ))}
           </select>
         </div>
 

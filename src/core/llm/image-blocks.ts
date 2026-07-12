@@ -122,7 +122,8 @@ export function hasImages(images?: AgentImage[]): images is AgentImage[] {
   return Array.isArray(images) && images.some((i) => !!(i.data || i.url));
 }
 
-const MAX_INLINE_BASE64_CHARS = 7_000_000; // ~5MB binary
+export const MAX_INLINE_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_INLINE_BASE64_CHARS = Math.ceil((MAX_INLINE_IMAGE_BYTES * 4) / 3) + 4;
 
 /**
  * Validate/limit untrusted image inputs from the API: cap count, drop oversized

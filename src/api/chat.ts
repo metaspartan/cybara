@@ -8,6 +8,7 @@ import {
 } from "../core/chat/capability-mentions";
 import { mergeSessionTranscriptMessages } from "./session-transcript";
 import { providerManager } from "../core/providers";
+import { agentSupportsImages } from "../core/agent-image-capabilities";
 import { config } from "../core/config";
 import { resolveChannelAgentId } from "../core/channels/agent-selection";
 import type { Agent } from "../core/database";
@@ -134,6 +135,7 @@ export interface ChatMessage {
   process_activities?: ProcessActivityInfo[];
   /** Optional image inputs (vision) attached to a user message. */
   images?: AgentImage[];
+  image_context?: string;
   _pendingSteeringId?: string;
 }
 
@@ -182,15 +184,27 @@ export interface ChatResponse {
 
 export function buildChatExecutionMessagesForAgent(
   sessionMessages: ChatMessage[],
-  options?: { sessionId?: string; materializedSteeringTurn?: boolean }
+  options?: { sessionId?: string; materializedSteeringTurn?: boolean; supportsImages?: boolean }
 ): AgentMessage[] {
-  const executionMessages: AgentMessage[] = sessionMessages.map((sessionMessage) => ({
-    role: sessionMessage.role,
-    content: compactChatContentForPrompt(sessionMessage),
-    ...(sessionMessage.images
-      ? { images: sessionMessage.images.map(hydrateImageDataFromPath) }
-      : {}),
-  }));
+  const supportsImages = options?.supportsImages !== false;
+  const executionMessages: AgentMessage[] = sessionMessages.map((sessionMessage) => {
+    const content = compactChatContentForPrompt(sessionMessage);
+    const imageContext = sessionMessage.image_context?.trim();
+    return {
+      role: sessionMessage.role,
+      content:
+        !supportsImages && sessionMessage.images?.length
+          ? `${content}\n\n${
+              imageContext
+                ? `[Attached image analysis]\n${imageContext}`
+                : "[Attached image unavailable to this text-only model]"
+            }`
+          : content,
+      ...(supportsImages && sessionMessage.images
+        ? { images: sessionMessage.images.map(hydrateImageDataFromPath) }
+        : {}),
+    };
+  });
 
   const activeGoalLine = options?.sessionId ? getActiveGoalContextLine(options.sessionId) : null;
   if (activeGoalLine) {
@@ -1817,6 +1831,8 @@ async function handleChatTurn(
   };
 
   const sanitizedImages = sanitizeAgentImages(request.images);
+  const supportsImages = agentSupportsImages(agent, requestedModelOverride);
+  let imageRoutingError: string | null = null;
   const recordedUserMessageId =
     typeof request.recordedUserMessageId === "string" && request.recordedUserMessageId.trim()
       ? request.recordedUserMessageId.trim()
@@ -1856,6 +1872,40 @@ async function handleChatTurn(
     },
   });
 
+  if (agent && hasImages(sanitizedImages) && !supportsImages) {
+    const fallbackAgentId = config.get<string>("vision_fallback_agent_id")?.trim();
+    const fallbackAgent = fallbackAgentId ? agentManager.get(fallbackAgentId) : undefined;
+    if (!fallbackAgentId || !fallbackAgent || !agentSupportsImages(fallbackAgent)) {
+      imageRoutingError = `${agent.name || agent.model || "The selected agent"} uses a text-only model. Choose an image-capable agent or configure an Image fallback agent in Settings.`;
+    } else {
+      broadcastStatus({
+        status: "thinking",
+        timestamp: Date.now(),
+        detail: `Analyzing attached image with ${fallbackAgent.name}`,
+        sessionId: session.id,
+        agentId: fallbackAgent.id,
+      });
+      const visionResult = await agentManager.execute(
+        fallbackAgent.id,
+        [
+          {
+            role: "user",
+            content: `Describe the attached image or images factually for another assistant. Focus on details relevant to this request: ${message}`,
+            images: sanitizedImages,
+          },
+        ],
+        {
+          useTools: false,
+          sessionId: session.id,
+          workspaceDir: session.workspaceDir || undefined,
+        }
+      );
+      const imageContext = visionResult.content.trim();
+      if (imageContext) userMessage.image_context = imageContext;
+      else imageRoutingError = "The configured image fallback agent returned no description.";
+    }
+  }
+
   if (shouldLogUserMessage) {
     const persistedAttachments = hasImages(sanitizedImages)
       ? persistImageAttachments(session.id, sanitizedImages)
@@ -1865,6 +1915,7 @@ async function handleChatTurn(
       metadata: {
         source: "chat_api",
         ...(persistedAttachments.length ? { attachments: persistedAttachments } : {}),
+        ...(userMessage.image_context ? { image_context: userMessage.image_context } : {}),
       },
       createdAt: userMessage.timestamp,
     });
@@ -1875,7 +1926,7 @@ async function handleChatTurn(
   const turnAbortController = new AbortController();
   const consumeSteeringMessagesForActiveTurn = () =>
     turnAbortController.signal.aborted ? [] : consumeSteeringMessages(session);
-  if (provider && agent) {
+  if (!imageRoutingError && provider && agent) {
     activeChatTurnAbortControllers.set(session.id, turnAbortController);
   }
 
@@ -1903,7 +1954,7 @@ async function handleChatTurn(
     return finishInterruptedChatTurn(session, agent, turnAbortController);
   }
 
-  if (provider && agent) {
+  if (!imageRoutingError && provider && agent) {
     const effectiveModel = requestedModelOverride || agent.model;
     const contextWindow = getContextWindow(effectiveModel);
     const currentTokens = estimateMessagesTokens(session.messages);
@@ -2031,7 +2082,9 @@ async function handleChatTurn(
   const thinkingContent: string = "";
   const allToolCalls: ToolCallInfo[] = [];
 
-  if (provider && agent) {
+  if (imageRoutingError) {
+    responseContent = imageRoutingError;
+  } else if (provider && agent) {
     try {
       const circuit = checkCircuit(`llm:${provider.id}`);
       if (!circuit.allowed) {
@@ -2041,6 +2094,7 @@ async function handleChatTurn(
       const baseExecutionMessages = buildChatExecutionMessagesForAgent(session.messages, {
         sessionId: session.id,
         materializedSteeringTurn: isMaterializedSteeringTurn,
+        supportsImages,
       });
       const capabilityMentions = await resolveChatCapabilityMentions(
         message,

@@ -1,11 +1,10 @@
-import { existsSync, statSync, readFileSync } from "fs";
-import type { AgentImage } from "../llm/image-blocks";
+import { existsSync, readFileSync, statSync } from "fs";
+import { type AgentImage, MAX_INLINE_IMAGE_BYTES } from "../llm/image-blocks";
 import type { MessageHandlerFileInfo } from "./types";
 
 const IMAGE_EXTENSION = /\.(png|jpe?g|gif|webp)$/i;
 const TEXT_EXTENSION =
   /\.(txt|md|markdown|json|jsonc|csv|tsv|xml|ya?ml|toml|ini|cfg|conf|log|html?|css|scss|jsx?|tsx?|mjs|cjs|py|rb|go|rs|java|kt|swift|c|h|cpp|hpp|cc|cs|php|sh|bash|zsh|sql)$/i;
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const MAX_TEXT_BYTES = 256 * 1024;
 
 function isHttpUrl(value: string): boolean {
@@ -20,9 +19,9 @@ export function channelFileIsImage(fileInfo?: Partial<MessageHandlerFileInfo>): 
 }
 
 export function buildChannelImages(fileInfo?: Partial<MessageHandlerFileInfo>): AgentImage[] {
-  if (!channelFileIsImage(fileInfo)) return [];
-  const filePath = (fileInfo!.filePath || "").trim();
-  const fileType = (fileInfo!.fileType || "").toLowerCase();
+  if (!fileInfo || !channelFileIsImage(fileInfo)) return [];
+  const filePath = (fileInfo.filePath || "").trim();
+  const fileType = (fileInfo.fileType || "").toLowerCase();
   if (!filePath) return [];
 
   if (isHttpUrl(filePath)) {
@@ -32,7 +31,7 @@ export function buildChannelImages(fileInfo?: Partial<MessageHandlerFileInfo>): 
   try {
     if (!existsSync(filePath)) return [];
     const stats = statSync(filePath);
-    if (stats.isDirectory() || stats.size > MAX_IMAGE_BYTES) return [];
+    if (stats.isDirectory() || stats.size > MAX_INLINE_IMAGE_BYTES) return [];
     return [{ data: readFileSync(filePath).toString("base64"), mimeType: fileType || "image/png" }];
   } catch {
     return [];
@@ -61,4 +60,28 @@ export function inlineChannelTextFile(fileInfo?: Partial<MessageHandlerFileInfo>
   } catch {
     return null;
   }
+}
+
+export function buildChannelMessageWithFileContext(
+  message: string,
+  fileInfo?: Partial<MessageHandlerFileInfo>
+): string {
+  const parts: string[] = [];
+  const normalizedMessage = message.trim();
+  if (normalizedMessage) parts.push(normalizedMessage);
+  if (!fileInfo?.hasFile) return parts.join("\n\n");
+
+  const placeholder = fileInfo.placeholder?.trim() || "";
+  if (placeholder && !normalizedMessage.includes(placeholder)) parts.push(placeholder);
+
+  const inlinedText = inlineChannelTextFile(fileInfo);
+  if (inlinedText) {
+    parts.push(inlinedText);
+  } else if (!channelFileIsImage(fileInfo)) {
+    if (fileInfo.fileType?.trim()) parts.push(`[File type: ${fileInfo.fileType.trim()}]`);
+    const fileName = (fileInfo.filePath || "").trim().split(/[\\/]/).pop();
+    if (fileName) parts.push(`[File attached: ${fileName}]`);
+  }
+
+  return parts.join("\n\n");
 }

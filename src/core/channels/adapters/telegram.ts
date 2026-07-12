@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { randomBytes, timingSafeEqual } from "crypto";
 import path from "path";
 import { tables } from "../../database";
@@ -12,7 +12,7 @@ import type {
 } from "../types";
 import { formatToolCallsForTelegram, escapeMarkdown } from "../formatting";
 import { buildChannelSecurityConfig, securityManager } from "../security";
-import { getTelegramInboundMediaDir } from "../paths";
+import { saveInboundMediaFromUrl } from "../media";
 
 import { handleChannelManagementCommand } from "../commands";
 import {
@@ -302,6 +302,7 @@ export interface TelegramUpdate {
     };
     date: number;
     text?: string;
+    caption?: string;
     entities?: Array<{
       type: string;
       offset: number;
@@ -688,17 +689,7 @@ async function downloadTelegramMedia(
 
     const telegramFilePath = fileResult.file_path;
     const fileUrl = `https://api.telegram.org/file/bot${botToken}/${telegramFilePath}`;
-    const response = await fetch(fileUrl);
-
-    if (!response.ok || !response.body) {
-      console.error(`[Telegram] Failed to download ${type}: ${response.statusText}`);
-      return null;
-    }
-
-    const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    let contentType = response.headers.get("content-type") || undefined;
+    let contentType: string | undefined;
     let placeholder = "<media:document>";
 
     switch (type) {
@@ -722,41 +713,18 @@ async function downloadTelegramMedia(
         contentType = contentType || "application/octet-stream";
     }
 
-    const mediaDir = getTelegramInboundMediaDir();
-    if (!existsSync(mediaDir)) {
-      mkdirSync(mediaDir, { recursive: true, mode: 0o700 });
-    }
-
-    const timestamp = Date.now();
-    const ext = path.extname(telegramFilePath) || getExtensionForMime(contentType) || ".bin";
-    const fileName = `${type}-${timestamp}${ext}`;
-    const localPath = path.join(mediaDir, fileName);
-
-    writeFileSync(localPath, buffer, { mode: 0o600 });
-    console.log(`[Telegram] Downloaded ${type} to: ${localPath}`);
-
-    return { path: localPath, contentType, placeholder };
+    const saved = await saveInboundMediaFromUrl({
+      channel: "telegram",
+      url: fileUrl,
+      fileName: path.basename(telegramFilePath),
+      contentType,
+    });
+    console.log(`[Telegram] Downloaded ${type} to: ${saved.path}`);
+    return { path: saved.path, contentType: saved.contentType, placeholder };
   } catch (error) {
     console.error(`[Telegram] Error downloading ${type}:`, error);
     return null;
   }
-}
-
-function getExtensionForMime(mimeType?: string): string {
-  if (!mimeType) return "";
-  const mimeToExt: Record<string, string> = {
-    "image/jpeg": ".jpg",
-    "image/png": ".png",
-    "image/gif": ".gif",
-    "image/webp": ".webp",
-    "video/mp4": ".mp4",
-    "video/webm": ".webm",
-    "audio/mpeg": ".mp3",
-    "audio/ogg": ".ogg",
-    "audio/wav": ".wav",
-    "application/pdf": ".pdf",
-  };
-  return mimeToExt[mimeType.split(";")[0].trim()] || "";
 }
 
 function escapeTelegramMarkdown(text: string): string {
@@ -1234,22 +1202,18 @@ export class TelegramBotManager implements ChannelAdapter {
     const chatId = message.chat.id;
     const userId = message.from.id;
 
-    let content = "";
+    let content = (message.text || message.caption || "").trim();
     let hasFile = false;
     let filePath = "";
     let fileType = "";
     let placeholder = "";
-
-    if (message.text) {
-      content = message.text.trim();
-    }
 
     if (message.photo && message.photo.length > 0) {
       const photo = message.photo[message.photo.length - 1];
       if (photo.file_id) {
         const saved = await downloadTelegramMedia(botToken, photo.file_id, "photo");
         if (saved) {
-          content = saved.placeholder;
+          if (!content) content = saved.placeholder;
           filePath = saved.path;
           fileType = saved.contentType || "image";
           hasFile = true;
@@ -1261,7 +1225,7 @@ export class TelegramBotManager implements ChannelAdapter {
     if (message.video?.file_id) {
       const saved = await downloadTelegramMedia(botToken, message.video.file_id, "video");
       if (saved) {
-        content = saved.placeholder;
+        if (!content) content = saved.placeholder;
         filePath = saved.path;
         fileType = saved.contentType || "video";
         hasFile = true;
@@ -1278,7 +1242,7 @@ export class TelegramBotManager implements ChannelAdapter {
         fileName
       );
       if (saved) {
-        content = saved.placeholder;
+        if (!content) content = saved.placeholder;
         filePath = saved.path;
         fileType = saved.contentType || "application/octet-stream";
         hasFile = true;
@@ -1290,7 +1254,7 @@ export class TelegramBotManager implements ChannelAdapter {
       const fileName = message.audio.file_name || "audio.mp3";
       const saved = await downloadTelegramMedia(botToken, message.audio.file_id, "audio", fileName);
       if (saved) {
-        content = saved.placeholder;
+        if (!content) content = saved.placeholder;
         filePath = saved.path;
         fileType = saved.contentType || "audio/mpeg";
         hasFile = true;
@@ -1306,7 +1270,7 @@ export class TelegramBotManager implements ChannelAdapter {
         "voice.ogg"
       );
       if (saved) {
-        content = saved.placeholder;
+        if (!content) content = saved.placeholder;
         filePath = saved.path;
         fileType = "audio/ogg";
         hasFile = true;

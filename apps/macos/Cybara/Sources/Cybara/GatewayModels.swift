@@ -31,13 +31,15 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
     let provider_type: String?
     let system_prompt: String?
     let reasoning_effort: String?
+    let supports_images: Bool?
     let created_at: String?
     let config: [String: JSONValue]?
 
     private enum CodingKeys: String, CodingKey {
         case id, name, label, type, model, status, state, provider, provider_id, providerId
         case provider_type, providerType
-        case system_prompt, systemPrompt, reasoning_effort, reasoningEffort, created_at, createdAt, config
+        case system_prompt, systemPrompt, reasoning_effort, reasoningEffort, supports_images, supportsImages
+        case created_at, createdAt, config
     }
 
     init(from decoder: Decoder) throws {
@@ -53,6 +55,8 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
         provider_type = try container.decodeFlexibleString(forKeys: [.provider_type, .providerType])
         system_prompt = try container.decodeFlexibleString(forKeys: [.system_prompt, .systemPrompt])
         reasoning_effort = try container.decodeFlexibleString(forKeys: [.reasoning_effort, .reasoningEffort])
+        supports_images = try container.decodeIfPresent(Bool.self, forKey: .supports_images)
+            ?? container.decodeIfPresent(Bool.self, forKey: .supportsImages)
         created_at = try container.decodeFlexibleString(forKeys: [.created_at, .createdAt])
         config = try container.decodeJSONDictionary(forKey: .config)
     }
@@ -60,6 +64,7 @@ struct GatewayAgent: Decodable, Identifiable, Hashable {
     var isRunning: Bool { status?.lowercased() == "running" }
     var providerID: String? { firstNonEmptyGatewayString(provider_id, provider) }
     var providerType: String? { firstNonEmptyGatewayString(provider_type) }
+    var supportsImages: Bool { supports_images == true }
 
     var reasoningEffort: String {
         if let reasoning_effort, !reasoning_effort.isEmpty { return reasoning_effort }

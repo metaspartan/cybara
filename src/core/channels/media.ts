@@ -24,6 +24,9 @@ interface SavedInboundMedia {
   contentType?: string;
 }
 
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_MEDIA_BYTES = 100 * 1024 * 1024;
+
 const MEDIA_EXTENSIONS: Record<string, string> = {
   "image/png": ".png",
   "image/jpeg": ".jpg",
@@ -82,6 +85,38 @@ function buildStoredFileName(input: SaveInboundMediaBase): string {
   return `${Date.now()}-${suffix}-${baseName}${extension}`;
 }
 
+function inboundMediaLimit(contentType?: string): number {
+  return contentType?.toLowerCase().startsWith("image/") ? MAX_IMAGE_BYTES : MAX_MEDIA_BYTES;
+}
+
+async function readBoundedResponse(response: Response, maxBytes: number): Promise<Uint8Array> {
+  const declaredLength = Number(response.headers.get("content-length") || "0");
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new Error(`Media download exceeds ${maxBytes} bytes`);
+  }
+  if (!response.body) return new Uint8Array();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    const result = await reader.read();
+    if (result.done) break;
+    total += result.value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel();
+      throw new Error(`Media download exceeds ${maxBytes} bytes`);
+    }
+    chunks.push(result.value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
 export function getInboundMediaRootDir(): string {
   return path.join(cybaraDir, "media", "inbound");
 }
@@ -104,7 +139,7 @@ export async function saveInboundMediaFromUrl(
   }
 
   const contentType = input.contentType || response.headers.get("content-type") || undefined;
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const bytes = await readBoundedResponse(response, inboundMediaLimit(contentType));
   const channelDir = getChannelInboundMediaDir(input.channel);
   ensureDirectory(channelDir);
 
@@ -130,6 +165,10 @@ export function saveInboundMediaFromBase64(
     ? input.base64Data.slice(input.base64Data.indexOf(",") + 1)
     : input.base64Data;
   const buffer = Buffer.from(normalized, "base64");
+  const maxBytes = inboundMediaLimit(input.contentType);
+  if (buffer.byteLength > maxBytes) {
+    throw new Error(`Media upload exceeds ${maxBytes} bytes`);
+  }
   const channelDir = getChannelInboundMediaDir(input.channel);
   ensureDirectory(channelDir);
 

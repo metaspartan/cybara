@@ -2087,7 +2087,13 @@ describe("mobile API client", () => {
       calls.push(path);
       if (path === "/api/agents/summary") {
         return Response.json([
-          { id: "agent-1", name: "Primary", model: "model-1", reasoning_effort: "high" },
+          {
+            id: "agent-1",
+            name: "Primary",
+            model: "model-1",
+            reasoning_effort: "high",
+            supports_images: true,
+          },
         ]);
       }
       if (path === "/api/agents/agent-1") {
@@ -2105,7 +2111,11 @@ describe("mobile API client", () => {
     try {
       const api = new CybaraMobileApi(profile);
       await expect(api.agents()).resolves.toEqual([
-        expect.objectContaining({ id: "agent-1", reasoning_effort: "high" }),
+        expect.objectContaining({
+          id: "agent-1",
+          reasoning_effort: "high",
+          supports_images: true,
+        }),
       ]);
       await expect(api.agent("agent-1")).resolves.toEqual(
         expect.objectContaining({

@@ -58,6 +58,7 @@ import { trackTokenUsage } from "./llm/token-usage-tracking";
 import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
 import { formatToolResultForModel } from "./llm/model-visible-format";
 import { formatRecoverableToolOutputPreview } from "./tool-output-recovery";
+import { googleFunctionDeclaration } from "./llm/google-tool-schema";
 import {
   hasTextToolCallMarkup,
   normalizeAnthropicToolUses,
@@ -2716,14 +2717,7 @@ export abstract class AgentProviderRuntime {
       if (tools.length > 0) {
         requestBody.tools = [
           {
-            functionDeclarations: tools.map((tool) => ({
-              name: tool.name,
-              description: tool.description || "",
-              parameters: tool.input_schema || {
-                type: "object",
-                properties: {},
-              },
-            })),
+            functionDeclarations: tools.map(googleFunctionDeclaration),
           },
         ];
       }

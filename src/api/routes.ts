@@ -111,6 +111,7 @@ import {
   type AgentEvalRun,
   type EvalReplayOptions,
 } from "../core/agent-eval";
+import { agentSupportsImages } from "../core/agent-image-capabilities";
 import {
   getAgentLogs,
   getSessionMessages as getLogSessionMessages,
@@ -856,6 +857,7 @@ const routes: Record<string, RouteHandler> = {
       fallback_provider_id: agent.fallback_provider_id,
       status: agent.status,
       reasoning_effort: readAgentReasoningSetting(agent.config),
+      supports_images: agentSupportsImages(agent),
     })),
   "POST /api/agents": (body) => {
     const data = body as Parameters<typeof agentManager.create>[0];

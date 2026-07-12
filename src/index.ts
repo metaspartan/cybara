@@ -65,8 +65,7 @@ import { resolveUiPath } from "./core/runtime/ui-path";
 import { resolveMediaFile } from "./core/runtime/media-files";
 import {
   buildChannelImages,
-  inlineChannelTextFile,
-  channelFileIsImage,
+  buildChannelMessageWithFileContext,
 } from "./core/channels/inbound-media";
 import { readUiIndexContent } from "./core/runtime/ui-index";
 import {
@@ -837,7 +836,7 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
       `[Telegram] Message from chatId=${chatId}, storedSessionId=${storedSessionId}, using sessionId=${sessionId}`
     );
 
-    const fullMessage = buildMessageWithFileContext(message, fileInfo);
+    const fullMessage = buildChannelMessageWithFileContext(message, fileInfo);
     const images = buildChannelImages(fileInfo);
     const routing = resolveChannelAgentRouting(channelId, agentManager.list());
 
@@ -858,39 +857,6 @@ telegramBot.setMessageHandler(async (message, chatId, userId, channelId, fileInf
   }
 });
 
-function buildMessageWithFileContext(
-  message: string,
-  fileInfo?: Partial<MessageHandlerFileInfo>
-): string {
-  const parts: string[] = [];
-  const normalizedMessage = message.trim();
-  if (normalizedMessage) {
-    parts.push(normalizedMessage);
-  }
-
-  if (fileInfo?.hasFile) {
-    const placeholder = fileInfo.placeholder?.trim() || "";
-    if (placeholder && !normalizedMessage.includes(placeholder)) {
-      parts.push(placeholder);
-    }
-
-    const inlinedText = inlineChannelTextFile(fileInfo);
-    if (inlinedText) {
-      parts.push(inlinedText);
-    } else if (!channelFileIsImage(fileInfo)) {
-      if (fileInfo.fileType?.trim()) {
-        parts.push(`[File type: ${fileInfo.fileType.trim()}]`);
-      }
-      const fileName = (fileInfo.filePath || "").trim().split(/[\\/]/).pop();
-      if (fileName) {
-        parts.push(`[File attached: ${fileName}]`);
-      }
-    }
-  }
-
-  return parts.join("\n\n");
-}
-
 const createChannelChatHandler =
   (channelName: string) =>
   async (
@@ -899,7 +865,7 @@ const createChannelChatHandler =
     sessionId: string,
     fileInfo: MessageHandlerFileInfo
   ): Promise<string> => {
-    const fullMessage = buildMessageWithFileContext(message, fileInfo);
+    const fullMessage = buildChannelMessageWithFileContext(message, fileInfo);
     const images = buildChannelImages(fileInfo);
     const routing = resolveChannelAgentRouting(fileInfo.channelId, agentManager.list());
     const response = await handleChat({

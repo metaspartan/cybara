@@ -32,6 +32,7 @@ struct NativeSettingsScreen: View {
     @State private var agents: [GatewayAgent] = []
     @State private var defaultAgentId = ""
     @State private var backgroundAgentId = ""
+    @State private var visionFallbackAgentId = ""
     @State private var gatewayLogs: [GatewayLogEntry] = []
     @State private var gatewayRestarting = false
     @State private var selectedAccent = "indigo"
@@ -1365,6 +1366,18 @@ struct NativeSettingsScreen: View {
                             Text("Memory and skill review run silently after most turns. Point them at a cheaper agent to cut cost over time.")
                                 .font(.system(size: 11, design: .rounded))
                                 .foregroundStyle(.secondary)
+                            Picker("Image fallback agent", selection: $visionFallbackAgentId) {
+                                Text("None").tag("")
+                                ForEach(agents.filter(\.supportsImages)) { agent in
+                                    Text(agent.model.map { "\(agent.name) — \($0)" } ?? agent.name).tag(agent.id)
+                                }
+                            }
+                            .onChange(of: visionFallbackAgentId) { _, value in
+                                saveConfigPatch(["vision_fallback_agent_id": value], key: "vision_fallback_agent_id")
+                            }
+                            Text("Text-only chat models can use this model to describe attached images.")
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.secondary)
                         }
                         toggleRow("Dangerous tool policy", detail: "Audit or block high-risk tool requests.", isOn: $dangerousPolicyEnabled) {
                             saveDangerousPolicy()
@@ -2211,6 +2224,7 @@ struct NativeSettingsScreen: View {
         followUpBehaviorEnabled = config["follow_up_behavior_enabled"] as? Bool ?? true
         defaultAgentId = config["default_agent_id"] as? String ?? ""
         backgroundAgentId = config["background_agent_id"] as? String ?? ""
+        visionFallbackAgentId = config["vision_fallback_agent_id"] as? String ?? ""
         terminalEnabled = config["terminal_enabled"] as? Bool ?? false
         acpEnabled = config["acp_enabled"] as? Bool ?? true
         selfImprovingSkills = (config["self_improving_skills_enabled"] as? Bool) ?? true

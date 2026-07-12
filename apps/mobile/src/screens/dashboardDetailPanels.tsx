@@ -1079,6 +1079,35 @@ export function SettingsPanel({
                 value={selfImprovingSkillsEnabled}
               />
             ) : null}
+            {configAvailable ? (
+              <SettingSelector
+                disabled={savingConfigKey !== null}
+                label="Image fallback agent"
+                onSelect={(value) => {
+                  void saveConfigPatch(
+                    "vision_fallback_agent_id",
+                    { vision_fallback_agent_id: value },
+                    "Image fallback setting failed"
+                  );
+                }}
+                options={[
+                  { label: "None", value: "" },
+                  ...(summary?.agents ?? [])
+                    .filter((agent) => agent.supports_images)
+                    .map((agent) => ({
+                      label: agent.model ? `${agent.name} — ${agent.model}` : agent.name,
+                      value: agent.id,
+                    })),
+                ]}
+                selected={
+                  typeof summary?.config?.vision_fallback_agent_id === "string"
+                    ? summary.config.vision_fallback_agent_id
+                    : ""
+                }
+                tone={accentColor}
+                variant="menu"
+              />
+            ) : null}
             <Pressable
               accessibilityRole="button"
               style={styles.settingsNavigationRow}

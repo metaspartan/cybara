@@ -4,6 +4,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import {
   buildChannelImages,
+  buildChannelMessageWithFileContext,
   inlineChannelTextFile,
   channelFileIsImage,
 } from "../../src/core/channels/inbound-media";
@@ -75,6 +76,19 @@ describe("channel inbound media", () => {
         placeholder: "",
       })
     ).toBeNull();
+  });
+
+  test("preserves image captions while attaching the image payload", () => {
+    const fileInfo = {
+      hasFile: true,
+      filePath: pngPath,
+      fileType: "image/png",
+      placeholder: "<media:image>",
+    };
+    expect(buildChannelMessageWithFileContext("What is shown here?", fileInfo)).toBe(
+      "What is shown here?\n\n<media:image>"
+    );
+    expect(buildChannelImages(fileInfo)).toHaveLength(1);
   });
 
   test("no file → empty / null", () => {

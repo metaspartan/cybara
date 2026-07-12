@@ -9,6 +9,7 @@ import {
   telegramBot,
   verifyTelegramWebhookSecret,
   generateTelegramWebhookSecret,
+  type TelegramUpdate,
 } from "../../src/core/channels/adapters/telegram";
 import {
   clearChannelSubagentSpawnHandler,
@@ -24,7 +25,7 @@ function makeChannelId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function makeTelegramUpdate(text: string) {
+function makeTelegramUpdate(text: string): TelegramUpdate {
   return {
     update_id: Date.now(),
     message: {
@@ -192,6 +193,16 @@ describe("Telegram webhook mocked flows", () => {
         body,
       });
 
+      if (url.includes("/getFile")) {
+        return Response.json({ ok: true, result: { file_path: "photos/channel-image.jpg" } });
+      }
+      if (url.includes("/file/bot")) {
+        return new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]), {
+          status: 200,
+          headers: { "Content-Type": "image/jpeg" },
+        });
+      }
+
       return new Response(JSON.stringify({ ok: true, result: {} }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
@@ -278,6 +289,45 @@ describe("Telegram webhook mocked flows", () => {
     expect(payload.text).toBe("pong");
     expect(payload.parse_mode).toBe("Markdown");
     expect(payload.reply_to_message_id).toBe(101);
+  });
+
+  test("preserves photo captions and passes persisted image metadata to the channel bridge", async () => {
+    const handlerInputs: Array<{
+      message: string;
+      fileInfo?: { hasFile: boolean; filePath: string; fileType: string; placeholder: string };
+    }> = [];
+    telegramBot.setMessageHandler(async (message, _chatId, _userId, _channelId, fileInfo) => {
+      handlerInputs.push({ message, fileInfo });
+      return "image received";
+    });
+    securityManager.setConfig(channelId, { dm_policy: "open" });
+    const update = makeTelegramUpdate("");
+    if (!update.message) throw new Error("Telegram fixture is missing its message");
+    delete update.message.text;
+    Object.assign(update.message, {
+      caption: "What does this dashboard show?",
+      photo: [
+        {
+          file_id: "photo-1",
+          file_unique_id: "photo-unique-1",
+          width: 32,
+          height: 32,
+        },
+      ],
+    });
+
+    const ok = await processTelegramWebhook(channelId, update);
+
+    expect(ok).toBe(true);
+    expect(handlerInputs).toHaveLength(1);
+    expect(handlerInputs[0].message).toContain("What does this dashboard show?");
+    expect(handlerInputs[0].message).toContain("[File:");
+    expect(handlerInputs[0].fileInfo).toMatchObject({
+      hasFile: true,
+      fileType: "image/jpeg",
+      placeholder: "<media:image>",
+    });
+    expect(handlerInputs[0].fileInfo?.filePath).toContain("media/inbound/telegram/");
   });
 
   test("keeps Telegram typing indicator alive while handler is still running", async () => {

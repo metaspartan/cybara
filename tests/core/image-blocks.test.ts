@@ -1,14 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import {
+  hasImages,
+  MAX_INLINE_IMAGE_BYTES,
+  normalizeMimeType,
+  parseDataUri,
+  sanitizeAgentImages,
   toAnthropicImageBlock,
-  toOpenAIImageBlock,
-  toOpenAIResponsesImageBlock,
   toBedrockImageBlock,
   toGoogleImagePart,
-  parseDataUri,
-  normalizeMimeType,
-  hasImages,
-  sanitizeAgentImages,
+  toOpenAIImageBlock,
+  toOpenAIResponsesImageBlock,
 } from "../../src/core/llm/image-blocks";
 
 describe("responses + bedrock image builders", () => {
@@ -120,7 +121,8 @@ describe("hasImages / sanitizeAgentImages", () => {
   });
 
   test("drops oversized inline payloads", () => {
-    const big = "a".repeat(7_000_001);
+    const maxBase64Chars = Math.ceil((MAX_INLINE_IMAGE_BYTES * 4) / 3) + 4;
+    const big = "a".repeat(maxBase64Chars + 1);
     expect(sanitizeAgentImages([{ data: big }])).toHaveLength(0);
   });
 

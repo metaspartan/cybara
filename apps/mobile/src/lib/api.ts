@@ -193,6 +193,7 @@ export interface AgentSummary {
   provider_type?: string;
   system_prompt?: string;
   reasoning_effort?: "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | null;
+  supports_images?: boolean;
   config?: Record<string, unknown>;
 }
 
@@ -1860,6 +1861,7 @@ function normalizeAgent(agent: unknown, index = 0): AgentSummary {
     )
       ? (reasoningEffort as AgentSummary["reasoning_effort"])
       : null,
+    supports_images: readBoolean(record, ["supports_images", "supportsImages"]),
     config,
   };
 }

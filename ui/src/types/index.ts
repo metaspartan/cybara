@@ -32,6 +32,7 @@ export interface AgentSummary {
   fallback_provider_id?: string;
   status?: Agent["status"];
   reasoning_effort?: AgentReasoningEffort | null;
+  supports_images?: boolean;
 }
 
 export type AgentReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh" | "max";

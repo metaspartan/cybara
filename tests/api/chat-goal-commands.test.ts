@@ -127,4 +127,25 @@ describe("chat goal commands", () => {
       },
     ]);
   });
+
+  test("text-only execution uses persisted image analysis without resending pixels", () => {
+    const executionMessages = buildChatExecutionMessagesForAgent(
+      [
+        {
+          role: "user",
+          content: "What is shown?",
+          images: [{ data: "abc123", mimeType: "image/png" }],
+          image_context: "A capybara with an orange and a robotic leg.",
+        },
+      ],
+      { supportsImages: false }
+    );
+    expect(executionMessages).toEqual([
+      {
+        role: "user",
+        content:
+          "What is shown?\n\n[Attached image analysis]\nA capybara with an orange and a robotic leg.",
+      },
+    ]);
+  });
 });
