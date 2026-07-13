@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
+import { PNG } from "pngjs";
 import {
   assertActionAllowed,
   COMPUTER_USE_ACTION_TOOL_ALIASES,
@@ -16,6 +17,7 @@ import {
   clearComputerUsePreview,
   getComputerUsePreview,
   recordComputerUsePreview,
+  renderAgentCursorOnPng,
   resolveCuaDriverCommand,
   setComputerUseAutoApprove,
   summarizeDriverApps,
@@ -238,6 +240,48 @@ describe("computer use application summaries", () => {
 });
 
 describe("computer-use session previews", () => {
+  test("renders a visible agent cursor into persisted PNG screenshots", () => {
+    const png = new PNG({ width: 80, height: 80 });
+    png.data.fill(32);
+    for (let offset = 3; offset < png.data.length; offset += 4) png.data[offset] = 255;
+    const source = PNG.sync.write(png).toString("base64");
+    const rendered = PNG.sync.read(Buffer.from(renderAgentCursorOnPng(source, 20, 20), "base64"));
+
+    const cursorOffset = (rendered.width * 24 + 22) * 4;
+    const untouchedOffset = (rendered.width * 70 + 70) * 4;
+    expect([...rendered.data.subarray(cursorOffset, cursorOffset + 4)]).not.toEqual([
+      32, 32, 32, 255,
+    ]);
+    expect([...rendered.data.subarray(untouchedOffset, untouchedOffset + 4)]).toEqual([
+      32, 32, 32, 255,
+    ]);
+  });
+
+  test("updates the persisted session screenshot after a pointer action", () =>
+    withTempDir("computer-cursor", (dir) => {
+      const png = new PNG({ width: 80, height: 80 });
+      png.data.fill(32);
+      for (let offset = 3; offset < png.data.length; offset += 4) png.data[offset] = 255;
+      const source = PNG.sync.write(png);
+      const filePath = join(dir, "desktop.png");
+      writeFileSync(filePath, source);
+
+      clearComputerUsePreview("preview-persisted-cursor");
+      recordComputerUsePreview(
+        "preview-persisted-cursor",
+        { action: "capture", app: "desktop" },
+        source.toString("base64"),
+        "image/png",
+        filePath
+      );
+      recordComputerUsePreview("preview-persisted-cursor", {
+        action: "click",
+        coordinate: [20, 20],
+      });
+
+      expect(readFileSync(filePath)).not.toEqual(source);
+    }));
+
   test("keeps screenshots and pointer coordinates scoped to one chat session", () => {
     clearComputerUsePreview("preview-a");
     clearComputerUsePreview("preview-b");

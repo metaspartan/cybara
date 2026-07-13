@@ -23,6 +23,7 @@ import { spawn, type ChildProcess } from "child_process";
 import { mkdirSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
+import { PNG } from "pngjs";
 import { config } from "./config";
 
 const DEFAULT_CUA_DRIVER_CMD = "cua-driver";
@@ -723,12 +724,92 @@ interface ComputerUseContext {
 
 const computerUsePreviews = new Map<string, ComputerUsePreviewState>();
 const computerUsePreviewViews = new Map<string, number>();
+const computerUsePreviewFiles = new Map<string, string>();
 const COMPUTER_USE_PREVIEW_ACTIVE_MS = 5_000;
 const COMPUTER_USE_PREVIEW_LIMIT = 24;
 
 function pngDimensions(bytes: Buffer): { width: number; height: number } | undefined {
   if (bytes.length < 24 || bytes.toString("ascii", 1, 4) !== "PNG") return undefined;
   return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+function pointInsidePolygon(x: number, y: number, points: readonly [number, number][]): boolean {
+  let inside = false;
+  for (let index = 0, previous = points.length - 1; index < points.length; previous = index++) {
+    const currentPoint = points[index];
+    const previousPoint = points[previous];
+    if (!currentPoint || !previousPoint) continue;
+    const [currentX, currentY] = currentPoint;
+    const [previousX, previousY] = previousPoint;
+    const intersects =
+      currentY > y !== previousY > y &&
+      x < ((previousX - currentX) * (y - currentY)) / (previousY - currentY) + currentX;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+function writePixel(
+  png: PNG,
+  x: number,
+  y: number,
+  red: number,
+  green: number,
+  blue: number,
+  alpha: number
+): void {
+  if (x < 0 || y < 0 || x >= png.width || y >= png.height) return;
+  const offset = (png.width * y + x) * 4;
+  png.data[offset] = red;
+  png.data[offset + 1] = green;
+  png.data[offset + 2] = blue;
+  png.data[offset + 3] = alpha;
+}
+
+function paintCursorPolygon(
+  png: PNG,
+  originX: number,
+  originY: number,
+  scale: number,
+  points: readonly [number, number][],
+  color: readonly [number, number, number, number]
+): void {
+  const width = Math.ceil(22 * scale);
+  const height = Math.ceil(28 * scale);
+  for (let y = 0; y <= height; y += 1) {
+    for (let x = 0; x <= width; x += 1) {
+      if (!pointInsidePolygon(x / scale, y / scale, points)) continue;
+      writePixel(png, originX + x, originY + y, color[0], color[1], color[2], color[3]);
+    }
+  }
+}
+
+export function renderAgentCursorOnPng(screenshot: string, x: number, y: number): string {
+  const png = PNG.sync.read(Buffer.from(screenshot, "base64"));
+  const scale = Math.max(0.8, Math.min(2.2, Math.min(png.width, png.height) / 720));
+  const originX = Math.round(x);
+  const originY = Math.round(y);
+  const outline: readonly [number, number][] = [
+    [0, 0],
+    [0, 22],
+    [6, 17],
+    [11, 27],
+    [16, 24],
+    [11, 16],
+    [21, 16],
+  ];
+  const fill: readonly [number, number][] = [
+    [2, 3],
+    [2, 18],
+    [7, 14],
+    [12, 23],
+    [13, 22],
+    [8, 13],
+    [17, 13],
+  ];
+  paintCursorPolygon(png, originX, originY, scale, outline, [15, 17, 21, 255]);
+  paintCursorPolygon(png, originX, originY, scale, fill, [255, 255, 255, 255]);
+  return PNG.sync.write(png).toString("base64");
 }
 
 function jpegDimensions(bytes: Buffer): { width: number; height: number } | undefined {
@@ -799,6 +880,7 @@ function trimComputerUsePreviews(): void {
     if (!oldest) return;
     computerUsePreviews.delete(oldest.sessionId);
     computerUsePreviewViews.delete(oldest.sessionId);
+    computerUsePreviewFiles.delete(oldest.sessionId);
   }
 }
 
@@ -831,7 +913,8 @@ export function recordComputerUsePreview(
   sessionId: string,
   args: ComputerUseArgs,
   screenshot?: string,
-  contentType?: string
+  contentType?: string,
+  filePath?: string
 ): void {
   const previous = computerUsePreviews.get(sessionId);
   const revision = (previous?.revision ?? 0) + 1;
@@ -847,7 +930,9 @@ export function recordComputerUsePreview(
     revision,
     screenshotRevision: screenshot ? revision : (previous?.screenshotRevision ?? 0),
   });
+  if (filePath) computerUsePreviewFiles.set(sessionId, filePath);
   trimComputerUsePreviews();
+  renderComputerUsePreviewFile(sessionId);
 }
 
 export function getComputerUsePreview(
@@ -870,6 +955,24 @@ export function clearComputerUsePreview(sessionIdValue: string): void {
   if (!sessionId) return;
   computerUsePreviews.delete(sessionId);
   computerUsePreviewViews.delete(sessionId);
+  computerUsePreviewFiles.delete(sessionId);
+}
+
+function renderComputerUsePreviewFile(sessionId: string): void {
+  const preview = computerUsePreviews.get(sessionId);
+  const filePath = computerUsePreviewFiles.get(sessionId);
+  if (!preview?.screenshot || !preview.cursor?.visible || !filePath) return;
+  if (preview.contentType && !preview.contentType.includes("png")) return;
+  try {
+    const screenshot = renderAgentCursorOnPng(
+      preview.screenshot,
+      preview.cursor.x,
+      preview.cursor.y
+    );
+    writeFileSync(filePath, Buffer.from(screenshot, "base64"));
+  } catch {
+    return;
+  }
 }
 
 function isComputerUsePreviewActive(sessionId: string): boolean {
@@ -1397,7 +1500,13 @@ export async function handleComputerUse(
       if (native) {
         const sessionId = normalizedComputerUseSessionId(context?.sessionId);
         if (sessionId) {
-          recordComputerUsePreview(sessionId, typedArgs, native.screenshot, native.screenshotMime);
+          recordComputerUsePreview(
+            sessionId,
+            typedArgs,
+            native.screenshot,
+            native.screenshotMime,
+            native.filePath
+          );
         }
         return native;
       }
@@ -1437,11 +1546,10 @@ export async function handleComputerUse(
       }
     }
 
-    if (sessionId) {
-      recordComputerUsePreview(sessionId, typedArgs, screenshot, screenshotMime);
-    }
-
     const filePath = screenshot ? persistDriverScreenshot(screenshot, screenshotMime) : undefined;
+    if (sessionId) {
+      recordComputerUsePreview(sessionId, typedArgs, screenshot, screenshotMime, filePath);
+    }
     const viewport = screenshotDimensions(screenshot, screenshotMime);
     const dimensionsText = viewport ? ` Image size: ${viewport.width}x${viewport.height}.` : "";
     const text = filePath
@@ -1466,6 +1574,16 @@ export async function handleComputerUse(
     // screenshot" still works without the full driver.
     if (typedArgs.action === "capture") {
       const native = await nativeScreenCapture();
+      const sessionId = normalizedComputerUseSessionId(context?.sessionId);
+      if (native && sessionId) {
+        recordComputerUsePreview(
+          sessionId,
+          typedArgs,
+          native.screenshot,
+          native.screenshotMime,
+          native.filePath
+        );
+      }
       if (native) return native;
     }
     return {

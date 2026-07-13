@@ -22,7 +22,7 @@ fn macos_template_icon(source: &tauri::image::Image) -> tauri::image::Image<'sta
         let luminance =
             (pixel[0] as f32 * 0.2126 + pixel[1] as f32 * 0.7152 + pixel[2] as f32 * 0.0722)
                 / 255.0;
-        let detail_alpha = 0.88 + luminance * 0.12;
+        let detail_alpha = 0.5 + (1.0 - luminance) * 0.5;
         pixel[0] = 0;
         pixel[1] = 0;
         pixel[2] = 0;
@@ -506,7 +506,8 @@ mod tests {
         );
         let template = macos_template_icon(&source);
         assert_eq!(&template.rgba()[0..3], &[0, 0, 0]);
-        assert!(template.rgba()[3] > template.rgba()[7]);
+        assert!(template.rgba()[7] > template.rgba()[3]);
+        assert!(template.rgba()[3] >= 125);
         assert!(template.rgba()[7] >= 220);
         assert_eq!(template.rgba()[11], 0);
     }

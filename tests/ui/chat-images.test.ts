@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chatMarkdownImageSrc } from "../../ui/src/lib/chatImages";
+import { chatMarkdownImageSrc, imageToolResultSrc } from "../../ui/src/lib/chatImages";
 import { clampLightboxZoom, nextLightboxIndex } from "../../ui/src/pages/chat/imageLightboxModel";
 
 const chatSource = await Bun.file("ui/src/pages/Chat.tsx").text();
@@ -22,6 +22,15 @@ describe("chat image rendering", () => {
     expect(chatMarkdownImageSrc("data:image/png;base64,aW1n")).toBe("data:image/png;base64,aW1n");
     expect(chatMarkdownImageSrc("file:///Users/carsen/Documents/private.png")).toBeNull();
     expect(chatMarkdownImageSrc("javascript:alert(1)")).toBeNull();
+  });
+
+  test("restores persisted tool screenshots from compact objects and legacy JSON strings", () => {
+    const result = {
+      filePath: "/Users/test/.cybara/screenshots/screen.png",
+      contentType: "image/png",
+    };
+    expect(imageToolResultSrc(result)).toContain("screenshots%2Fscreen.png");
+    expect(imageToolResultSrc(JSON.stringify(result))).toContain("screenshots%2Fscreen.png");
   });
 
   test("chat attachments, markdown images, and tool screenshots open one gallery", () => {

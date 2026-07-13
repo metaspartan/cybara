@@ -113,6 +113,13 @@ export function formatAttachedFiles(text: string, files: ChatFileAttachment[]): 
 }
 
 export function imageToolResultSrc(result: unknown): string | null {
+  if (typeof result === "string" && result.trim().startsWith("{")) {
+    try {
+      return imageToolResultSrc(JSON.parse(result));
+    } catch {
+      return null;
+    }
+  }
   if (!result || typeof result !== "object") return null;
   const record = result as Record<string, unknown>;
   const filePath = typeof record.filePath === "string" ? record.filePath : "";

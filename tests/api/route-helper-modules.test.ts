@@ -18,6 +18,7 @@ import {
   truncateInlineContext,
 } from "../../src/api/routes/lsp-ide";
 import { formatSkillInstallSpec } from "../../src/api/routes/skill-formatting";
+import { sanitizeToolMediaResult } from "../../src/api/chat-media-result";
 
 describe("route helper modules", () => {
   test("validates provider credentials and base URLs before persistence", () => {
@@ -63,6 +64,9 @@ describe("route helper modules", () => {
       "Access-Control-Allow-Origin": "http://127.0.0.1:4269",
     });
     expect(securityHeaders["X-Content-Type-Options"]).toBe("nosniff");
+    expect(securityHeaders["Permissions-Policy"]).toBe(
+      "camera=(), microphone=(self), geolocation=()"
+    );
   });
 
   test("normalizes IDE and LSP payloads outside the route table", () => {
@@ -88,6 +92,29 @@ describe("route helper modules", () => {
         range: { start: { line: 1, character: 2 }, end: { line: 3, character: 4 } },
       })
     ).toMatchObject({ name: "run", line: 2, character: 3, endLine: 4, endCharacter: 5 });
+  });
+
+  test("keeps durable screenshot metadata while removing persisted base64 payloads", () => {
+    const result = sanitizeToolMediaResult(
+      JSON.stringify({
+        action: "capture",
+        ok: true,
+        screenshot: "a".repeat(10_000),
+        screenshotMime: "image/png",
+        filePath: "/Users/test/.cybara/screenshots/screen.png",
+        viewport: { width: 1920, height: 1080 },
+      })
+    );
+
+    expect(result).toEqual({
+      action: "capture",
+      ok: true,
+      contentType: "image/png",
+      screenshotMime: "image/png",
+      filePath: "/Users/test/.cybara/screenshots/screen.png",
+      viewport: { width: 1920, height: 1080 },
+    });
+    expect(result).not.toHaveProperty("screenshot");
   });
 
   test("formats skill install specs without coupling routes to skill internals", () => {

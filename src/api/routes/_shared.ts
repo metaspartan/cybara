@@ -14,6 +14,7 @@ import type { ChatMessage } from "../chat";
 import type { WalletChain, WalletTokenChain } from "../../core/wallet";
 import { sanitizeAssistantContent } from "../../core/llm/text-tool-calls";
 import { sanitizeProcessThoughtText } from "../chat-formatting";
+import { sanitizeToolMediaResult } from "../chat-media-result";
 import {
   providerManager,
   providers,
@@ -1081,7 +1082,10 @@ export function sanitizeSessionMessages(
               ? sanitizeArtifactToolResult(tc.result)
               : undefined;
           const todoResult = isTodoToolCall(tc) ? sanitizeTodoToolResult(tc.result) : undefined;
-          if (artifactResult) {
+          const mediaResult = sanitizeToolMediaResult(tc.result);
+          if (mediaResult) {
+            sanitized.result = mediaResult;
+          } else if (artifactResult) {
             sanitized.result = artifactResult;
           } else if (todoResult) {
             sanitized.result = todoResult;
