@@ -30,6 +30,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import type { KeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { CybaraThinkingMark } from "@/components/CybaraThinkingMark";
@@ -38,11 +39,21 @@ import { useI18n } from "@/lib/i18n";
 import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import type { TranslationKey } from "../../../../shared/i18n/catalog";
+import {
+  clampMainSidebarWidth,
+  MAIN_SIDEBAR_DEFAULT_WIDTH,
+  MAIN_SIDEBAR_MAX_WIDTH,
+  MAIN_SIDEBAR_MIN_WIDTH,
+  MAIN_SIDEBAR_WIDTH_STORAGE_KEY,
+  parseMainSidebarWidth,
+} from "./sidebarSizing";
 import { UpdateButton } from "./UpdateButton";
 
 interface SidebarContextType {
   collapsed: boolean;
   setCollapsed: (collapsed: boolean) => void;
+  width: number;
+  setWidth: (width: number | ((current: number) => number)) => void;
   mobileOpen: boolean;
   setMobileOpen: (open: boolean) => void;
 }
@@ -50,6 +61,8 @@ interface SidebarContextType {
 const SidebarContext = createContext<SidebarContextType>({
   collapsed: false,
   setCollapsed: () => {},
+  width: MAIN_SIDEBAR_DEFAULT_WIDTH,
+  setWidth: () => {},
   mobileOpen: false,
   setMobileOpen: () => {},
 });
@@ -64,13 +77,22 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     return saved === "true";
   });
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [width, setWidth] = useState(() =>
+    parseMainSidebarWidth(localStorage.getItem(MAIN_SIDEBAR_WIDTH_STORAGE_KEY))
+  );
 
   useEffect(() => {
     localStorage.setItem("sidebar-collapsed", String(collapsed));
   }, [collapsed]);
 
+  useEffect(() => {
+    localStorage.setItem(MAIN_SIDEBAR_WIDTH_STORAGE_KEY, String(width));
+  }, [width]);
+
   return (
-    <SidebarContext.Provider value={{ collapsed, setCollapsed, mobileOpen, setMobileOpen }}>
+    <SidebarContext.Provider
+      value={{ collapsed, setCollapsed, width, setWidth, mobileOpen, setMobileOpen }}
+    >
       {children}
     </SidebarContext.Provider>
   );
@@ -250,7 +272,7 @@ export function Sidebar() {
   const location = useLocation();
   const status = useAgentStatus();
   const { t } = useI18n();
-  const { collapsed, setCollapsed, mobileOpen, setMobileOpen } = useSidebar();
+  const { collapsed, setCollapsed, width, setWidth, mobileOpen, setMobileOpen } = useSidebar();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     developer: false,
     system: true,
@@ -285,6 +307,37 @@ export function Sidebar() {
       ...prev,
       [id]: !prev[id],
     }));
+  };
+
+  const beginResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = width;
+
+    const handlePointerMove = (moveEvent: globalThis.PointerEvent) => {
+      setWidth(clampMainSidebarWidth(startWidth + moveEvent.clientX - startX));
+    };
+
+    const handlePointerUp = () => {
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+    };
+
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+  };
+
+  const resizeWithKeyboard = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const delta = event.key === "ArrowLeft" ? -8 : 8;
+    setWidth((current) => clampMainSidebarWidth(current + delta));
   };
 
   const renderNavItem = (item: SidebarNavItem) => {
@@ -340,9 +393,10 @@ export function Sidebar() {
       )}
 
       <aside
+        style={{ "--main-sidebar-width": `${width}px` } as React.CSSProperties}
         className={cn(
-          "fixed left-0 top-0 h-full glass border-r border-white/5 z-40 overflow-hidden transition-all duration-300",
-          collapsed ? "w-16" : "w-64",
+          "fixed left-0 top-0 h-full glass border-r border-white/5 z-40 overflow-hidden transition-[width,transform] duration-200",
+          collapsed ? "md:w-16" : "md:w-[var(--main-sidebar-width)]",
           "max-md:-translate-x-full max-md:w-64",
           mobileOpen && "max-md:translate-x-0"
         )}
@@ -463,6 +517,22 @@ export function Sidebar() {
             </button>
           </div>
         </div>
+        {!collapsed && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize main sidebar"
+            aria-valuemin={MAIN_SIDEBAR_MIN_WIDTH}
+            aria-valuemax={MAIN_SIDEBAR_MAX_WIDTH}
+            aria-valuenow={width}
+            tabIndex={0}
+            onPointerDown={beginResize}
+            onKeyDown={resizeWithKeyboard}
+            onDoubleClick={() => setWidth(MAIN_SIDEBAR_DEFAULT_WIDTH)}
+            className="absolute right-[-3px] top-0 z-50 hidden h-full w-1.5 cursor-col-resize touch-none bg-transparent transition-colors hover:bg-[color-mix(in_srgb,var(--surface-border)_75%,transparent)] focus-visible:bg-[rgba(var(--accent-primary),0.45)] md:block"
+            title="Drag to resize · Double-click to reset"
+          />
+        )}
       </aside>
     </>
   );

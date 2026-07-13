@@ -117,7 +117,7 @@ describe("chat session sidebar layout", () => {
 
     expect(source).toContain("top-1/2 flex -translate-y-1/2 items-center");
     expect(source).toContain("bg-[var(--surface-panel,#11111a)]");
-    expect(source).toContain("hover:bg-[var(--surface-hover,#1a1d24)]");
+    expect(source).toContain("theme-muted-icon-button");
     expect(source).not.toContain("hover:bg-amber-500/20");
     expect(source).not.toContain("hover:bg-indigo-500/20 text-indigo-300");
     expect(source).not.toContain("hover:bg-red-500/20 text-red-400");

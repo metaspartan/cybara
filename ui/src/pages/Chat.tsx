@@ -42,12 +42,12 @@ import {
 } from "@/hooks/useApi";
 import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
-import { apiFetch, appendApiTokenParam } from "@/lib/auth";
 import {
   audioBlobToBase64,
   audioBlobToLocalPcm,
   preferredRecordingMimeType,
 } from "@/lib/audioTranscription";
+import { apiFetch, appendApiTokenParam } from "@/lib/auth";
 import {
   buildActivitiesFromToolCalls,
   finalizeCompletedActivities,
@@ -130,8 +130,8 @@ import {
   type ArtifactSummaryView,
   applyLiveActivityEvent,
   buildPreSteeringActivityMessage,
-  canUseNativeSpeechRecognition,
   type ChatMessage,
+  canUseNativeSpeechRecognition,
   clampDiffPanelWidth,
   type DictationMode,
   type DictationRuntimeCapabilities,
@@ -203,8 +203,8 @@ import {
   writeCachedOptimisticPendingMessages,
 } from "./chat/pendingQueueCache";
 import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
-import { SessionsPanel } from "./chat/SessionSidebar";
 import { SessionDiffPanel } from "./chat/SessionDiffPanel";
+import { SessionsPanel } from "./chat/SessionSidebar";
 import { SubagentIcon } from "./chat/SubagentIcon";
 import { SubagentPanel } from "./chat/SubagentPanel";
 import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
@@ -3891,7 +3891,7 @@ export function Chat() {
                             <button
                               type="button"
                               onClick={() => void handleCopyMessage(originalIndex, message.content)}
-                              className="p-1 rounded-md text-gray-600 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                              className="chat-message-action p-1 rounded-md cursor-pointer"
                               title="Copy message"
                               aria-label="Copy message"
                             >
@@ -3905,7 +3905,7 @@ export function Chat() {
                               <button
                                 type="button"
                                 onClick={() => void handleReadAloud(originalIndex, message.content)}
-                                className="p-1 rounded-md text-gray-600 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                                className="chat-message-action p-1 rounded-md cursor-pointer"
                                 title={
                                   speakingMessageIndex === originalIndex
                                     ? "Stop reading aloud"
@@ -3929,7 +3929,7 @@ export function Chat() {
                                 type="button"
                                 onClick={() => void handleForkSession(originalIndex)}
                                 disabled={forkingMessageIndex !== null}
-                                className="p-1 rounded-md text-gray-600 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer disabled:opacity-50"
+                                className="chat-message-action p-1 rounded-md cursor-pointer disabled:opacity-50"
                                 title="Fork chat from this message"
                                 aria-label="Fork chat from this message"
                               >
@@ -3945,7 +3945,7 @@ export function Chat() {
                                 type="button"
                                 onClick={() => void handleSaveGolden(originalIndex)}
                                 disabled={savingGoldenMessageIndex !== null}
-                                className="p-1 rounded-md text-gray-600 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer disabled:opacity-50"
+                                className="chat-message-action p-1 rounded-md cursor-pointer disabled:opacity-50"
                                 title="Save turn as golden test"
                                 aria-label="Save turn as golden test"
                               >
@@ -3966,7 +3966,7 @@ export function Chat() {
                                     timestamp: message.timestamp,
                                   })
                                 }
-                                className="p-1 rounded-md text-gray-600 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+                                className="chat-message-action p-1 rounded-md cursor-pointer"
                                 title="Revert session to this message"
                                 aria-label="Revert session to this message"
                               >

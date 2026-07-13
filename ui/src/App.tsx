@@ -122,13 +122,14 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 }
 
 function MainContent({ children }: { children: React.ReactNode }) {
-  const { collapsed } = useSidebar();
+  const { collapsed, width } = useSidebar();
 
   return (
     <div
+      style={{ "--main-sidebar-width": `${width}px` } as React.CSSProperties}
       className={cn(
-        "flex-1 overflow-auto transition-all duration-300",
-        collapsed ? "md:ml-16" : "md:ml-64",
+        "flex-1 overflow-auto transition-[margin] duration-200",
+        collapsed ? "md:ml-16" : "md:ml-[var(--main-sidebar-width)]",
         "ml-0"
       )}
     >

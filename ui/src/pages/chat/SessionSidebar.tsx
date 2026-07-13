@@ -1,13 +1,4 @@
 import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent,
-} from "react";
-import {
   Check,
   ChevronDown,
   ChevronRight,
@@ -26,6 +17,16 @@ import {
   X,
 } from "lucide-react";
 import {
+  type MouseEvent,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Button, Modal } from "@/components/ui";
+import {
   type LoadedChatSession,
   useDeleteSession,
   useLoadSession,
@@ -33,18 +34,17 @@ import {
   useRenameSession,
   useSessions,
 } from "@/hooks/useChat";
-import { Button, Modal } from "@/components/ui";
 import { apiFetch } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
-import { cn } from "@/lib/utils";
 import { connectStatusStream } from "@/lib/status-stream";
+import { cn } from "@/lib/utils";
 import type { SessionContextUsage, SessionTokenUsage } from "@/types";
 import type { ChatMessage } from "./chatModel";
 import { sessionDisplayTitle, sessionPreviewText, sessionRouteLabel } from "./chatModel";
 import {
-  groupSessionsForSidebar,
   type ChatSidebarSession,
   type ChatSidebarSessionGroup,
+  groupSessionsForSidebar,
 } from "./sessionGrouping";
 
 interface SessionsPanelProps {
@@ -69,7 +69,7 @@ const CHAT_SIDEBAR_WIDTH_STORAGE_KEY = "cybara.chat.sidebarWidth";
 const CHAT_SIDEBAR_MIN_WIDTH = 248;
 const CHAT_SIDEBAR_MAX_WIDTH = 420;
 const SIDEBAR_ACTION_BUTTON_CLASS =
-  "flex h-5 w-5 items-center justify-center rounded text-gray-500 transition-colors hover:bg-[var(--surface-hover,#1a1d24)] hover:text-gray-200";
+  "theme-muted-icon-button flex h-5 w-5 items-center justify-center rounded";
 
 interface SessionTooltipState {
   anchor: DOMRect;
@@ -545,7 +545,7 @@ export function SessionsPanel({
                         </button>
                       </div>
                       {openGroupMenuId === group.id && (
-                        <div className="absolute right-0 top-6 z-50 w-48 overflow-hidden rounded-xl border border-white/12 bg-[#181820]/95 p-1.5 text-[12px] text-gray-200 shadow-2xl shadow-black/45 backdrop-blur-xl">
+                        <div className="absolute right-0 top-6 z-50 w-48 overflow-hidden rounded-xl border border-white/12 bg-[#181820]/95 p-1.5 text-[12px] text-[var(--text-secondary)] shadow-2xl shadow-black/45 backdrop-blur-xl">
                           <button
                             type="button"
                             className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/[0.08]"
@@ -555,9 +555,9 @@ export function SessionsPanel({
                             }}
                           >
                             {pinnedWorkspaceGroupIds.has(group.id) ? (
-                              <PinOff className="h-3.5 w-3.5 text-amber-300" />
+                              <PinOff className="theme-muted-icon h-3.5 w-3.5" />
                             ) : (
-                              <Pin className="h-3.5 w-3.5 text-amber-300" />
+                              <Pin className="theme-muted-icon h-3.5 w-3.5" />
                             )}
                             {pinnedWorkspaceGroupIds.has(group.id)
                               ? "Unpin project"
@@ -571,7 +571,7 @@ export function SessionsPanel({
                               void revealWorkspaceGroup(group);
                             }}
                           >
-                            <FolderOpen className="h-3.5 w-3.5 text-blue-300" />
+                            <FolderOpen className="theme-muted-icon h-3.5 w-3.5" />
                             Reveal in Finder/Explorer
                           </button>
                         </div>

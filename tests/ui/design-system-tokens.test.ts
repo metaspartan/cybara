@@ -59,6 +59,21 @@ describe("index.css design-system utilities", () => {
   test("honors prefers-reduced-motion", () => {
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
   });
+
+  test("uses theme-aware neutral tokens for chat and workspace actions", () => {
+    const chat = read("../../ui/src/pages/Chat.tsx");
+    const sessionSidebar = read("../../ui/src/pages/chat/SessionSidebar.tsx");
+
+    expect(css).toContain("--icon-muted");
+    expect(css).toContain("--icon-hover");
+    expect(css).toMatch(/html\[data-theme-mode="sand-dune"\][\s\S]*--icon-muted:\s*#928777/);
+    expect(css).toContain(".chat-message-action");
+    expect(chat).toContain("chat-message-action p-1 rounded-md");
+    expect(sessionSidebar).toContain("theme-muted-icon-button");
+    expect(sessionSidebar).toContain('Pin className="theme-muted-icon');
+    expect(sessionSidebar).toContain('FolderOpen className="theme-muted-icon');
+    expect(sessionSidebar).not.toContain('text-blue-300" />');
+  });
 });
 
 describe("Sidebar keyboard focus is not suppressed", () => {
