@@ -129,6 +129,24 @@ const loadingPromises = new Map<string, Promise<KokoroTtsInstance>>();
 const readyModels = new Map<string, KokoroTtsInstance>();
 const workerRequests = new Map<string, PendingWorkerRequest>();
 let speechWorker: ReturnType<typeof Bun.spawn> | null = null;
+let speechWorkerExitHookInstalled = false;
+
+export function describeSpeechWorkerExit(
+  exitCode: number | null,
+  signalCode: number | null,
+  error: { message?: string } | null | undefined,
+  stderr: string
+): string {
+  const detail = stderr.trim() || error?.message?.trim();
+  const status = signalCode ? `signal ${signalCode}` : `exit code ${exitCode ?? "unknown"}`;
+  return detail
+    ? `Packaged speech runtime stopped (${status}): ${detail}`
+    : `Packaged speech runtime stopped (${status})`;
+}
+
+function isSpeechWorkerExitError(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith("Packaged speech runtime stopped (");
+}
 
 function statusFor(model: string): LocalSpeechModelStatus {
   const existing = runtimeStatus.get(model);
@@ -273,6 +291,8 @@ function packagedSpeechWorker(): ReturnType<typeof Bun.spawn> | null {
   if (!resourceDir) return null;
   const entries = findLocalSpeechWorkerEntries([resourceDir]);
   if (!entries) return null;
+  let workerStderr = "";
+  let stderrFinished = Promise.resolve();
   const worker = Bun.spawn([entries.bun, entries.worker], {
     env: {
       ...process.env,
@@ -281,19 +301,43 @@ function packagedSpeechWorker(): ReturnType<typeof Bun.spawn> | null {
     },
     stdin: "ignore",
     stdout: "inherit",
-    stderr: "inherit",
+    stderr: "pipe",
     ipc: (message: unknown) => handleWorkerResponse(message),
-    onExit: (subprocess) => {
-      if (speechWorker === subprocess) speechWorker = null;
-      failWorkerRequests("Packaged speech runtime exited unexpectedly");
+    onExit: (subprocess, exitCode, signalCode, error) => {
+      if (speechWorker !== subprocess) return;
+      speechWorker = null;
+      void stderrFinished.then(() => {
+        failWorkerRequests(describeSpeechWorkerExit(exitCode, signalCode, error, workerStderr));
+      });
     },
   });
   speechWorker = worker;
-  process.once("exit", () => worker.kill());
+  stderrFinished = (async () => {
+    try {
+      const stderr = worker.stderr;
+      if (!stderr || typeof stderr === "number") return;
+      const reader = stderr.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        workerStderr = `${workerStderr}${decoder.decode(chunk.value, { stream: true })}`.slice(
+          -8_000
+        );
+      }
+      workerStderr = `${workerStderr}${decoder.decode()}`.slice(-8_000);
+    } catch {
+      return;
+    }
+  })();
+  if (!speechWorkerExitHookInstalled) {
+    speechWorkerExitHookInstalled = true;
+    process.once("exit", () => speechWorker?.kill());
+  }
   return worker;
 }
 
-async function sendWorkerRequest(
+async function sendWorkerRequestOnce(
   request: LocalSpeechWorkerRequest,
   onProgress?: (progress: number) => void
 ): Promise<LocalSpeechWorkerResponse> {
@@ -316,6 +360,24 @@ async function sendWorkerRequest(
       reject(new Error(describeLocalSpeechError(error)));
     }
   });
+}
+
+async function sendWorkerRequest(
+  request: LocalSpeechWorkerRequest,
+  onProgress?: (progress: number) => void
+): Promise<LocalSpeechWorkerResponse> {
+  try {
+    return await sendWorkerRequestOnce(request, onProgress);
+  } catch (error) {
+    if (
+      request.action === "unload" ||
+      !process.env.CYBARA_RESOURCE_DIR?.trim() ||
+      !isSpeechWorkerExitError(error)
+    ) {
+      throw error;
+    }
+    return sendWorkerRequestOnce({ ...request, id: crypto.randomUUID() }, onProgress);
+  }
 }
 
 function packagedTtsProxy(model: string, dtype: LocalSpeechDtype): KokoroTtsInstance {

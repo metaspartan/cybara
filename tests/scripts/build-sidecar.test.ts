@@ -233,6 +233,15 @@ describe("build-sidecar host target mapping", () => {
     }
   });
 
+  test("deduplicates packaged speech download progress events", () => {
+    const worker = readFileSync(
+      join(process.cwd(), "src", "core", "local-speech-worker.mjs"),
+      "utf8"
+    );
+    expect(worker).toContain("progressByRequest.get(id) === progress");
+    expect(worker).toContain("progressByRequest.delete(request.id)");
+  });
+
   test("stages the same UI beside every generated sidecar", () => {
     const source = readFileSync(join(process.cwd(), "scripts", "build-sidecar.ts"), "utf8");
     expect(source).toContain("[RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]");

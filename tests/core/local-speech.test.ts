@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import {
   describeLocalSpeechError,
+  describeSpeechWorkerExit,
   findLocalSpeechRuntimeEntries,
   findLocalSpeechWorkerEntries,
   isLocalTtsVoice,
@@ -29,6 +30,15 @@ describe("local speech catalog", () => {
       "Cannot find package 'onnxruntime-common'"
     );
     expect(describeLocalSpeechError("runtime unavailable")).toBe("runtime unavailable");
+  });
+
+  test("reports packaged worker diagnostics instead of a generic exit error", () => {
+    expect(describeSpeechWorkerExit(1, null, null, "native module failed\n")).toBe(
+      "Packaged speech runtime stopped (exit code 1): native module failed"
+    );
+    expect(describeSpeechWorkerExit(null, 9, null, "")).toBe(
+      "Packaged speech runtime stopped (signal 9)"
+    );
   });
 
   test("exposes Kokoro with a defined default voice and voice catalog", () => {

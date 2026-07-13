@@ -2,6 +2,7 @@ import { KokoroTTS } from "../node_modules/kokoro-js/dist/kokoro.js";
 import { env as transformersEnv } from "../node_modules/kokoro-js/node_modules/@huggingface/transformers/dist/transformers.node.mjs";
 
 const models = new Map();
+const progressByRequest = new Map();
 const cacheDir = process.env.CYBARA_SPEECH_CACHE_DIR?.trim();
 
 if (!cacheDir) throw new Error("Packaged speech runtime is not configured");
@@ -30,16 +31,20 @@ function progressValue(event) {
   return null;
 }
 
+function sendProgress(id, event) {
+  const progress = progressValue(event);
+  if (progress === null || progressByRequest.get(id) === progress) return;
+  progressByRequest.set(id, progress);
+  send({ id, type: "progress", progress });
+}
+
 async function loadModel(request) {
   const ready = models.get(request.model);
   if (ready) return ready;
   const model = await KokoroTTS.from_pretrained(request.model, {
     dtype: request.dtype,
     device: "cpu",
-    progress_callback: (event) => {
-      const progress = progressValue(event);
-      if (progress !== null) send({ id: request.id, type: "progress", progress });
-    },
+    progress_callback: (event) => sendProgress(request.id, event),
   });
   models.set(request.model, model);
   return model;
@@ -69,6 +74,8 @@ async function handleRequest(request) {
     });
   } catch (error) {
     send({ id: request.id, type: "result", success: false, error: errorMessage(error) });
+  } finally {
+    progressByRequest.delete(request.id);
   }
 }
 
