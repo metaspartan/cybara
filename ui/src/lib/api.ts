@@ -1342,16 +1342,31 @@ export const chatApi = {
           lastError: string | null;
         }>;
       };
+      stt?: {
+        models: Array<{
+          id: string;
+          label: string;
+          description: string;
+          sizeMb: number;
+          language: string;
+        }>;
+        status: Array<{
+          id: string;
+          state: "unloaded" | "loading" | "ready" | "error";
+          loadProgress: number | null;
+          lastError: string | null;
+        }>;
+      };
     }>("/speech/local/models"),
-  loadLocalSpeechModel: (model?: string) =>
+  loadLocalSpeechModel: (model?: string, kind: "tts" | "stt" = "tts") =>
     fetchApi<{ success: boolean; error?: string; status: unknown[] }>("/speech/local/load", {
       method: "POST",
-      body: JSON.stringify({ model }),
+      body: JSON.stringify({ model, kind }),
     }),
-  unloadLocalSpeechModel: (model?: string) =>
+  unloadLocalSpeechModel: (model?: string, kind: "tts" | "stt" = "tts") =>
     fetchApi<{ success: boolean; unloaded: boolean; status: unknown[] }>("/speech/local/unload", {
       method: "POST",
-      body: JSON.stringify({ model }),
+      body: JSON.stringify({ model, kind }),
     }),
   getSpeechStatus: () =>
     fetchApi<{
@@ -1414,6 +1429,7 @@ export const chatApi = {
     fileName?: string;
     model?: string;
     providerId?: string;
+    provider?: "auto" | "native" | "local" | "openai";
   }) =>
     fetchApi<{
       success: boolean;

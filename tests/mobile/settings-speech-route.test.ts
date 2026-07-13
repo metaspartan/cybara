@@ -18,7 +18,8 @@ describe("mobile settings: Speech lives on its own screen", () => {
     expect(screen).toContain('<SettingsSection title="Text to speech">');
     expect(screen).toContain('<SettingsSection title="Speech to text">');
     expect(screen).toContain('label="STT mode"');
-    expect(screen).toContain("Native dictation");
+    expect(screen).toContain("On-device");
+    expect(screen).toContain("Local Whisper");
     expect(screen).toContain("Kokoro 82M · Local");
     expect(screen).toContain("System voice fallback");
     expect(screen).toContain('<SettingsSection title="Hands-free">');

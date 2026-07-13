@@ -866,7 +866,8 @@ struct NativeSettingsScreen: View {
                         }
                         Picker("Mode", selection: $speechSTTProvider) {
                             Text("Auto").tag("auto")
-                            Text("Native").tag("native")
+                            Text("On-device").tag("native")
+                            Text("Local Whisper").tag("local")
                             Text("OpenAI").tag("openai")
                         }
                         .pickerStyle(.segmented)
@@ -2345,7 +2346,7 @@ struct NativeSettingsScreen: View {
         speechTTSFormat = tts["outputFormat"] as? String ?? "mp3"
         speechTTSFallback = tts["fallbackToSystem"] as? Bool ?? true
         let sttProvider = stt["provider"] as? String ?? "auto"
-        speechSTTProvider = ["auto", "native", "openai"].contains(sttProvider) ? sttProvider : "auto"
+        speechSTTProvider = ["auto", "native", "local", "openai"].contains(sttProvider) ? sttProvider : "auto"
         speechSTTProviderId = stt["providerId"] as? String ?? ""
         speechSTTModel = stt["model"] as? String ?? ""
         speechSTTLanguage = stt["language"] as? String ?? ""

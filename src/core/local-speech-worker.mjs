@@ -2,6 +2,7 @@ import { KokoroTTS } from "../node_modules/kokoro-js/dist/kokoro.js";
 import { env as transformersEnv } from "../node_modules/kokoro-js/node_modules/@huggingface/transformers/dist/transformers.node.mjs";
 
 const models = new Map();
+const transcribers = new Map();
 const progressByRequest = new Map();
 const cacheDir = process.env.CYBARA_SPEECH_CACHE_DIR?.trim();
 
@@ -50,11 +51,59 @@ async function loadModel(request) {
   return model;
 }
 
+async function loadTranscriber(request) {
+  const ready = transcribers.get(request.model);
+  if (ready) return ready;
+  const transformers = await import(
+    "../node_modules/@huggingface/transformers/dist/transformers.node.mjs"
+  );
+  transformers.env.cacheDir = cacheDir;
+  const transcriber = await transformers.pipeline(
+    "automatic-speech-recognition",
+    request.model,
+    {
+      dtype: request.dtype,
+      device: "cpu",
+      progress_callback: (event) => sendProgress(request.id, event),
+    }
+  );
+  transcribers.set(request.model, transcriber);
+  return transcriber;
+}
+
 async function handleRequest(request) {
   try {
     if (request.action === "unload") {
       models.delete(request.model);
       send({ id: request.id, type: "result", success: true });
+      return;
+    }
+    if (request.action === "unload_asr") {
+      transcribers.delete(request.model);
+      send({ id: request.id, type: "result", success: true });
+      return;
+    }
+    if (request.action === "load_asr" || request.action === "transcribe") {
+      const transcriber = await loadTranscriber(request);
+      if (request.action === "load_asr") {
+        send({ id: request.id, type: "result", success: true });
+        return;
+      }
+      const bytes = Uint8Array.from(request.audio);
+      if (bytes.byteLength === 0 || bytes.byteLength % 4 !== 0) {
+        throw new Error("Local transcription audio must contain Float32 PCM samples");
+      }
+      const audio = new Float32Array(
+        bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+      );
+      const result = await transcriber(audio, {
+        ...(request.language ? { language: request.language } : {}),
+        chunk_length_s: 30,
+        stride_length_s: 5,
+      });
+      const text = typeof result?.text === "string" ? result.text.trim() : "";
+      if (!text) throw new Error("Local transcription returned no text");
+      send({ id: request.id, type: "result", success: true, text });
       return;
     }
     const model = await loadModel(request);

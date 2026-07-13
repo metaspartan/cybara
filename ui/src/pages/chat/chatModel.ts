@@ -166,7 +166,7 @@ export interface SpeechRecognitionWindow extends Window {
   webkitSpeechRecognition?: SpeechRecognitionCtor;
 }
 
-export type DictationMode = "auto" | "native" | "openai";
+export type DictationMode = "auto" | "native" | "local" | "openai";
 export type DictationEngine = "native" | "recording";
 
 export interface DictationRuntimeCapabilities {
@@ -179,10 +179,11 @@ export interface DictationRuntimeResolution {
   engine: DictationEngine | null;
   label: string;
   unsupportedReason: string | null;
+  serverProvider: "local" | "openai" | null;
 }
 
 export function normalizeDictationMode(value: unknown): DictationMode {
-  if (value === "native" || value === "openai") return value;
+  if (value === "native" || value === "local" || value === "openai") return value;
   return "auto";
 }
 
@@ -192,36 +193,83 @@ export function resolveDictationRuntime(
 ): DictationRuntimeResolution {
   const recordingAvailable = capabilities.microphone && capabilities.mediaRecorder;
   if (mode === "native") {
-    return capabilities.nativeRecognition
-      ? { engine: "native", label: "Native dictation", unsupportedReason: null }
+    if (capabilities.nativeRecognition) {
+      return {
+        engine: "native",
+        label: "Native dictation",
+        unsupportedReason: null,
+        serverProvider: null,
+      };
+    }
+    return recordingAvailable
+      ? {
+          engine: "recording",
+          label: "Local transcription",
+          unsupportedReason: null,
+          serverProvider: "local",
+        }
       : {
           engine: null,
           label: "Native dictation unavailable",
           unsupportedReason:
-            "Native dictation is not available in this browser or desktop runtime.",
+            "Neither native dictation nor local microphone transcription is available here.",
+          serverProvider: null,
+        };
+  }
+  if (mode === "local") {
+    return recordingAvailable
+      ? {
+          engine: "recording",
+          label: "Local transcription",
+          unsupportedReason: null,
+          serverProvider: "local",
+        }
+      : {
+          engine: null,
+          label: "Local transcription unavailable",
+          unsupportedReason:
+            "Microphone capture is not available in this browser or desktop runtime.",
+          serverProvider: null,
         };
   }
   if (mode === "openai") {
     return recordingAvailable
-      ? { engine: "recording", label: "Model transcription", unsupportedReason: null }
+      ? {
+          engine: "recording",
+          label: "Cloud transcription",
+          unsupportedReason: null,
+          serverProvider: "openai",
+        }
       : {
           engine: null,
-          label: "Model transcription unavailable",
+          label: "Cloud transcription unavailable",
           unsupportedReason: capabilities.microphone
             ? "This runtime cannot record audio for model transcription."
             : "Microphone capture is not available in this browser or desktop runtime.",
+          serverProvider: null,
         };
   }
   if (capabilities.nativeRecognition) {
-    return { engine: "native", label: "Native dictation", unsupportedReason: null };
+    return {
+      engine: "native",
+      label: "Native dictation",
+      unsupportedReason: null,
+      serverProvider: null,
+    };
   }
   if (recordingAvailable) {
-    return { engine: "recording", label: "Model transcription", unsupportedReason: null };
+    return {
+      engine: "recording",
+      label: "Local transcription",
+      unsupportedReason: null,
+      serverProvider: "local",
+    };
   }
   return {
     engine: null,
     label: "Dictation unavailable",
     unsupportedReason: "No native dictation or microphone recording support is available here.",
+    serverProvider: null,
   };
 }
 

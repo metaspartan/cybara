@@ -4,22 +4,26 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAgentSummaries } from "@/hooks/useApi";
 import { chatApi } from "@/lib/api";
+import {
+  audioBlobToBase64,
+  audioBlobToLocalPcm,
+  preferredRecordingMimeType,
+} from "@/lib/audioTranscription";
 import { appendApiTokenParam } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
+import {
+  normalizeDictationMode,
+  resolveDictationRuntime,
+  type SpeechRecognitionLike,
+  type SpeechRecognitionWindow,
+} from "./chat/chatModel";
 import { nextVoiceActivityState } from "./voice/voiceActivity";
 
 type VoiceStatus = "idle" | "listening" | "thinking" | "speaking";
 type VoiceMode = "tap" | "hands-free";
 type VoiceTurn = { role: "user" | "assistant"; content: string };
 type MicPermission = "granted" | "denied" | "prompt" | "unknown";
-
-async function blobToBase64(blob: Blob): Promise<string> {
-  const bytes = new Uint8Array(await blob.arrayBuffer());
-  let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary);
-}
 
 function SetupRow({
   ready,
@@ -67,6 +71,7 @@ export function Voice() {
   const [micPermission, setMicPermission] = useState<MicPermission>("unknown");
   const [setupOpen, setSetupOpen] = useState<boolean | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -117,6 +122,16 @@ export function Voice() {
 
   const ttsReady = speechStatus.data?.tts?.ready || speechStatus.data?.tts?.systemFallback || false;
   const sttReady = speechStatus.data?.stt?.ready || false;
+  const speechWindow = window as SpeechRecognitionWindow;
+  const SpeechCtor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
+  const dictationRuntime = resolveDictationRuntime(
+    normalizeDictationMode(speechStatus.data?.settings?.sttProvider),
+    {
+      nativeRecognition: !!SpeechCtor,
+      mediaRecorder: typeof MediaRecorder !== "undefined",
+      microphone: !!navigator.mediaDevices?.getUserMedia,
+    }
+  );
   const micReady = micPermission === "granted";
   const allReady = ttsReady && sttReady && micReady;
   const setupVisible = setupOpen ?? (speechStatus.isSuccess && !allReady);
@@ -225,13 +240,47 @@ export function Voice() {
   };
 
   const stopRecording = () => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
     if (recorderRef.current?.state !== "inactive") recorderRef.current?.stop();
   };
 
   const startRecording = async () => {
-    if (recorderRef.current?.state === "recording") return;
+    if (recorderRef.current?.state === "recording" || recognitionRef.current) return;
+    if (dictationRuntime.engine === "native" && SpeechCtor) {
+      stopAudio();
+      const recognition = new SpeechCtor();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.lang = "";
+      recognition.onresult = (event) => {
+        const transcript = Array.from(event.results || [])
+          .map((result) => result?.[0]?.transcript?.trim() || "")
+          .filter(Boolean)
+          .join(" ");
+        recognitionRef.current = null;
+        if (transcript) void send(transcript);
+        else setStatus("idle");
+      };
+      recognition.onerror = (event) => {
+        recognitionRef.current = null;
+        setStatus("idle");
+        addToast("error", `Native dictation failed: ${event.error || "unknown error"}`);
+      };
+      recognition.onend = () => {
+        recognitionRef.current = null;
+        setStatus((current) => (current === "listening" ? "idle" : current));
+      };
+      recognitionRef.current = recognition;
+      recognition.start();
+      setStatus("listening");
+      return;
+    }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      addToast("error", "Microphone recording is unavailable in this runtime");
+      addToast(
+        "error",
+        dictationRuntime.unsupportedReason || "Microphone recording is unavailable"
+      );
       return;
     }
     try {
@@ -244,7 +293,10 @@ export function Voice() {
       silenceStartedRef.current = null;
       recordingStartedRef.current = performance.now();
       startLevelMeter(stream, voiceModeRef.current === "hands-free");
-      const recorder = new MediaRecorder(stream);
+      const mimeType = preferredRecordingMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       recorderRef.current = recorder;
       recorder.addEventListener("dataavailable", (event) => {
         if (event.data.size > 0) chunksRef.current.push(event.data);
@@ -263,10 +315,17 @@ export function Voice() {
         }
         setStatus("thinking");
         try {
+          const local = dictationRuntime.serverProvider === "local";
+          const payload = local
+            ? await audioBlobToLocalPcm(blob)
+            : {
+                audioBase64: await audioBlobToBase64(blob),
+                mimeType: blob.type,
+                fileName: "voice-message.webm",
+              };
           const result = await chatApi.dictate({
-            audioBase64: await blobToBase64(blob),
-            mimeType: blob.type,
-            fileName: "voice-message.webm",
+            ...payload,
+            provider: dictationRuntime.serverProvider || undefined,
           });
           if (!result.success || !result.data?.text) {
             throw new Error(result.error || "Transcription failed");
@@ -300,6 +359,7 @@ export function Voice() {
     () => () => {
       audioRef.current?.pause();
       if (recorderRef.current?.state !== "inactive") recorderRef.current?.stop();
+      recognitionRef.current?.stop();
       for (const track of streamRef.current?.getTracks() || []) track.stop();
       if (levelFrameRef.current !== null) cancelAnimationFrame(levelFrameRef.current);
       void audioContextRef.current?.close().catch(() => undefined);

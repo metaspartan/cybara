@@ -215,12 +215,16 @@ export function SpeechSettingsPanel({
           disabled={saving}
           label="STT mode"
           onSelect={(provider) => {
-            const nextProvider = provider === "native" || provider === "openai" ? provider : "auto";
+            const nextProvider =
+              provider === "native" || provider === "local" || provider === "openai"
+                ? provider
+                : "auto";
             void saveSpeech("stt", { provider: nextProvider });
           }}
           options={[
             { label: "Auto", value: "auto" },
-            { label: "Native dictation", value: "native" },
+            { label: "On-device", value: "native" },
+            { label: "Local Whisper", value: "local" },
             { label: "OpenAI compatible", value: "openai" },
           ]}
           selected={speechDraft.stt.provider}

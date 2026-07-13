@@ -171,10 +171,15 @@ import {
   type SourceMigrationRequest,
 } from "../core/source-migration";
 import {
+  listLocalSttModelStatus,
   listLocalTtsModelStatus,
+  loadLocalSttModel,
   loadLocalTtsModel,
+  LOCAL_STT_MODELS,
   LOCAL_TTS_MODELS,
   LOCAL_TTS_VOICES,
+  transcribeLocalSpeech,
+  unloadLocalSttModel,
   unloadLocalTtsModel,
 } from "../core/local-speech";
 import { resolveSpeechTtsProvider, synthesizeSpeech } from "../core/speech";
@@ -862,6 +867,15 @@ const routes: Record<string, RouteHandler> = {
     };
     if (stt.native) {
       stt.ready = true;
+    } else if (settings.stt.provider === "local" || settings.stt.provider === "auto") {
+      const localStatus = listLocalSttModelStatus()[0];
+      stt = {
+        ...stt,
+        ready: localStatus?.state !== "error",
+        provider: "Whisper (local)",
+        type: "local",
+        error: localStatus?.state === "error" ? localStatus.lastError : null,
+      };
     } else {
       try {
         const provider = pickDictationProvider(settings.stt.providerId || undefined);
@@ -900,24 +914,39 @@ const routes: Record<string, RouteHandler> = {
       voices: LOCAL_TTS_VOICES,
       status: listLocalTtsModelStatus(),
     },
+    stt: {
+      models: LOCAL_STT_MODELS,
+      status: listLocalSttModelStatus(),
+    },
   }),
   "POST /api/speech/local/load": async (body) => {
-    const data = (body || {}) as { model?: string };
+    const data = (body || {}) as { model?: string; kind?: string };
     try {
+      if (data.kind === "stt") {
+        await loadLocalSttModel(data.model?.trim() || undefined);
+        return { success: true, status: listLocalSttModelStatus() };
+      }
       await loadLocalTtsModel(data.model?.trim() || undefined);
       return { success: true, status: listLocalTtsModelStatus() };
     } catch (error) {
       return {
         success: false,
         error: error instanceof Error ? error.message : "Model load failed",
-        status: listLocalTtsModelStatus(),
+        status: data.kind === "stt" ? listLocalSttModelStatus() : listLocalTtsModelStatus(),
       };
     }
   },
   "POST /api/speech/local/unload": (body) => {
-    const data = (body || {}) as { model?: string };
-    const unloaded = unloadLocalTtsModel(data.model?.trim() || undefined);
-    return { success: true, unloaded, status: listLocalTtsModelStatus() };
+    const data = (body || {}) as { model?: string; kind?: string };
+    const unloaded =
+      data.kind === "stt"
+        ? unloadLocalSttModel(data.model?.trim() || undefined)
+        : unloadLocalTtsModel(data.model?.trim() || undefined);
+    return {
+      success: true,
+      unloaded,
+      status: data.kind === "stt" ? listLocalSttModelStatus() : listLocalTtsModelStatus(),
+    };
   },
   "POST /api/speech/realtime/session": async () => ({
     success: true,
@@ -2337,6 +2366,7 @@ const routes: Record<string, RouteHandler> = {
       fileName?: string;
       model?: string;
       providerId?: string;
+      provider?: string;
     };
 
     if (!data.audioBase64 || typeof data.audioBase64 !== "string") {
@@ -2353,10 +2383,31 @@ const routes: Record<string, RouteHandler> = {
       typeof data.providerId === "string" && data.providerId.trim()
         ? data.providerId.trim()
         : undefined;
-    if (speechSettings.stt.provider === "native" && !requestedProviderId) {
-      throw new Error(
-        "Validation error: Speech-to-text is set to native dictation; choose Auto or OpenAI-compatible transcription for server transcription."
-      );
+    const requestedProvider =
+      typeof data.provider === "string" && data.provider.trim()
+        ? data.provider.trim().toLowerCase()
+        : speechSettings.stt.provider;
+    if (requestedProvider === "local") {
+      if (!decoded.mimeType.toLowerCase().startsWith("audio/pcm-f32le")) {
+        throw new Error("Validation error: Local transcription requires 16 kHz Float32 PCM audio");
+      }
+      const result = await transcribeLocalSpeech({
+        pcmBytes: decoded.bytes,
+        model:
+          typeof data.model === "string" && data.model.trim()
+            ? data.model.trim()
+            : speechSettings.stt.provider === "local"
+              ? speechSettings.stt.model || undefined
+              : undefined,
+        language: speechSettings.stt.language || undefined,
+      });
+      return {
+        success: true,
+        text: result.text,
+        providerId: "local",
+        providerType: "local",
+        model: result.model,
+      };
     }
     const provider = pickDictationProvider(
       requestedProviderId ||

@@ -9,11 +9,13 @@ import {
   findLocalSpeechWorkerEntries,
   isLocalTtsVoice,
   KOKORO_MODEL_ID,
+  LOCAL_STT_MODELS,
   LOCAL_TTS_MODELS,
   LOCAL_TTS_VOICES,
   listLocalTtsModelStatus,
   localSpeechCacheDir,
   resolveLocalTtsVoice,
+  WHISPER_MODEL_ID,
   unloadLocalTtsModel,
 } from "../../src/core/local-speech";
 
@@ -49,6 +51,12 @@ describe("local speech catalog", () => {
     expect(LOCAL_TTS_VOICES.some((voice) => voice.id === kokoro?.defaultVoice)).toBe(true);
     expect(LOCAL_TTS_VOICES.length).toBeGreaterThanOrEqual(10);
     expect(new Set(LOCAL_TTS_VOICES.map((voice) => voice.id)).size).toBe(LOCAL_TTS_VOICES.length);
+  });
+
+  test("exposes local multilingual and English Whisper transcription models", () => {
+    expect(LOCAL_STT_MODELS.some((model) => model.id === WHISPER_MODEL_ID)).toBe(true);
+    expect(LOCAL_STT_MODELS.some((model) => model.language === "en")).toBe(true);
+    expect(new Set(LOCAL_STT_MODELS.map((model) => model.id)).size).toBe(LOCAL_STT_MODELS.length);
   });
 
   test("validates and resolves voices with a safe fallback", () => {

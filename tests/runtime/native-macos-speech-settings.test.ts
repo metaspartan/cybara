@@ -15,7 +15,8 @@ describe("native macOS speech settings wiring", () => {
     expect(settingsSource).toContain('"speech": [');
     expect(settingsSource).toContain('"provider": speechTTSProvider');
     expect(settingsSource).toContain('"provider": speechSTTProvider');
-    expect(settingsSource).toContain('Text("Native").tag("native")');
+    expect(settingsSource).toContain('Text("On-device").tag("native")');
+    expect(settingsSource).toContain('Text("Local Whisper").tag("local")');
     expect(settingsSource).toContain('Text("Kokoro 82M").tag("local")');
     expect(settingsSource).toContain('Toggle("Fallback to system voice"');
     expect(settingsSource).toContain('"providerId": speechSTTProviderId');

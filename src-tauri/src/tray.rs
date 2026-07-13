@@ -22,7 +22,7 @@ fn macos_template_icon(source: &tauri::image::Image) -> tauri::image::Image<'sta
         let luminance =
             (pixel[0] as f32 * 0.2126 + pixel[1] as f32 * 0.7152 + pixel[2] as f32 * 0.0722)
                 / 255.0;
-        let detail_alpha = 0.5 + (1.0 - luminance) * 0.5;
+        let detail_alpha = 0.08 + luminance.powf(0.75) * 0.92;
         pixel[0] = 0;
         pixel[1] = 0;
         pixel[2] = 0;
@@ -498,7 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn macos_template_icon_keeps_the_shape_bright_and_preserves_detail() {
+    fn macos_template_icon_uses_transparency_for_dark_character_detail() {
         let source = tauri::image::Image::new_owned(
             vec![240, 180, 80, 255, 24, 20, 18, 255, 0, 0, 0, 0],
             3,
@@ -506,9 +506,9 @@ mod tests {
         );
         let template = macos_template_icon(&source);
         assert_eq!(&template.rgba()[0..3], &[0, 0, 0]);
-        assert!(template.rgba()[7] > template.rgba()[3]);
-        assert!(template.rgba()[3] >= 125);
-        assert!(template.rgba()[7] >= 220);
+        assert!(template.rgba()[3] > template.rgba()[7]);
+        assert!(template.rgba()[3] >= 200);
+        assert!(template.rgba()[7] <= 100);
         assert_eq!(template.rgba()[11], 0);
     }
 

@@ -64,12 +64,18 @@ function ReadinessBadge({
 
 type LocalTtsCatalog = Awaited<ReturnType<typeof chatApi.localSpeechModels>>["data"];
 
-function LocalTtsManager({
+function LocalModelManager({
+  kind,
+  modelId,
+  onModelChange,
   voice,
   onVoiceChange,
 }: {
-  voice: string;
-  onVoiceChange: (voice: string) => void;
+  kind: "tts" | "stt";
+  modelId?: string;
+  onModelChange?: (model: string) => void;
+  voice?: string;
+  onVoiceChange?: (voice: string) => void;
 }) {
   const addToast = useUIStore((state) => state.addToast);
   const [catalog, setCatalog] = useState<LocalTtsCatalog | null>(null);
@@ -84,8 +90,11 @@ function LocalTtsManager({
     void refresh();
   }, [refresh]);
 
-  const status = catalog?.tts.status?.[0];
-  const model = catalog?.tts.models?.[0];
+  const models = kind === "tts" ? catalog?.tts?.models || [] : catalog?.stt?.models || [];
+  const statuses = kind === "tts" ? catalog?.tts?.status || [] : catalog?.stt?.status || [];
+  const model = models.find((entry) => entry.id === modelId) || models[0];
+  const status = statuses.find((entry) => entry.id === model?.id) || statuses[0];
+  const defaultVoice = model && "defaultVoice" in model ? model.defaultVoice : "";
   const loading = status?.state === "loading" || busy === "load";
 
   useEffect(() => {
@@ -104,9 +113,9 @@ function LocalTtsManager({
   const handleLoad = async () => {
     setBusy("load");
     try {
-      const response = await chatApi.loadLocalSpeechModel(model?.id);
+      const response = await chatApi.loadLocalSpeechModel(model?.id, kind);
       if (!response.success) throw new Error(response.error || "Model load failed");
-      addToast("success", "Kokoro voice model is ready");
+      addToast("success", kind === "tts" ? "Kokoro voice model is ready" : "Whisper is ready");
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Model load failed");
     } finally {
@@ -118,7 +127,7 @@ function LocalTtsManager({
   const handleUnload = async () => {
     setBusy("unload");
     try {
-      await chatApi.unloadLocalSpeechModel(model?.id);
+      await chatApi.unloadLocalSpeechModel(model?.id, kind);
       addToast("success", "Model unloaded from memory");
     } finally {
       setBusy(null);
@@ -130,7 +139,9 @@ function LocalTtsManager({
     <div className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[13px] font-medium text-white">{model?.label || "Kokoro 82M"}</p>
+          <p className="text-[13px] font-medium text-white">
+            {model?.label || (kind === "tts" ? "Kokoro 82M" : "Whisper Tiny")}
+          </p>
           <p className="mt-0.5 text-[11px] leading-4 text-gray-500">
             {model?.description || "Local neural TTS."}{" "}
             {model ? `~${model.sizeMb} MB download.` : ""}
@@ -192,15 +203,24 @@ function LocalTtsManager({
           </Button>
         )}
       </div>
-      <Select
-        label="Voice"
-        options={(catalog?.tts.voices || []).map((entry) => ({
-          value: entry.id,
-          label: `${entry.label} · ${entry.language} · ${entry.gender}`,
-        }))}
-        value={voice || model?.defaultVoice || "af_heart"}
-        onChange={onVoiceChange}
-      />
+      {kind === "tts" && onVoiceChange ? (
+        <Select
+          label="Voice"
+          options={(catalog?.tts?.voices || []).map((entry) => ({
+            value: entry.id,
+            label: `${entry.label} · ${entry.language} · ${entry.gender}`,
+          }))}
+          value={voice || defaultVoice || "af_heart"}
+          onChange={onVoiceChange}
+        />
+      ) : (
+        <Select
+          label="Local model"
+          options={models.map((entry) => ({ value: entry.id, label: entry.label }))}
+          value={model?.id || modelId || ""}
+          onChange={(value) => onModelChange?.(value)}
+        />
+      )}
     </div>
   );
 }
@@ -217,7 +237,7 @@ export type SpeechSettingsState = {
     fallbackToSystem: boolean;
   };
   stt: {
-    provider: "auto" | "native" | "openai";
+    provider: "auto" | "native" | "local" | "openai";
     providerId: string;
     model: string;
     language: string;
@@ -280,7 +300,9 @@ function readSpeechSettings(value: unknown): SpeechSettingsState {
       ? tts.provider
       : "auto";
   const sttProvider =
-    stt.provider === "native" || stt.provider === "openai" ? stt.provider : "auto";
+    stt.provider === "native" || stt.provider === "local" || stt.provider === "openai"
+      ? stt.provider
+      : "auto";
   const realtimeProvider =
     realtime.provider === "openai" ||
     realtime.provider === "gemini" ||
@@ -516,7 +538,8 @@ export function SpeechSettingsSection() {
                 </p>
               )}
               {speech.tts.provider === "local" ? (
-                <LocalTtsManager
+                <LocalModelManager
+                  kind="tts"
                   voice={speech.tts.voice}
                   onVoiceChange={(voice) =>
                     setSpeech((current) => ({ ...current, tts: { ...current.tts, voice } }))
@@ -681,9 +704,10 @@ export function SpeechSettingsSection() {
               <Select
                 label="Provider"
                 options={[
-                  { value: "auto", label: "Auto: native when available, then model" },
-                  { value: "native", label: "Native dictation only" },
-                  { value: "openai", label: "OpenAI-compatible transcription" },
+                  { value: "auto", label: "Auto: system, then local" },
+                  { value: "native", label: "On-device: system, then local" },
+                  { value: "local", label: "Local Whisper (offline)" },
+                  { value: "openai", label: "OpenAI-compatible (cloud)" },
                 ]}
                 value={speech.stt.provider}
                 onChange={(provider) =>
@@ -696,26 +720,38 @@ export function SpeechSettingsSection() {
                   }))
                 }
               />
-              <Select
-                label="Provider account"
-                options={sttProviderOptions}
-                value={speech.stt.providerId}
-                onChange={(providerId) =>
-                  setSpeech((current) => ({ ...current, stt: { ...current.stt, providerId } }))
-                }
-              />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Input
-                  label="Model"
-                  placeholder="gpt-4o-mini-transcribe"
-                  value={speech.stt.model}
-                  onChange={(event) =>
-                    setSpeech((current) => ({
-                      ...current,
-                      stt: { ...current.stt, model: event.target.value },
-                    }))
+              {speech.stt.provider === "local" ? (
+                <LocalModelManager
+                  kind="stt"
+                  modelId={speech.stt.model}
+                  onModelChange={(model) =>
+                    setSpeech((current) => ({ ...current, stt: { ...current.stt, model } }))
                   }
                 />
+              ) : speech.stt.provider === "openai" ? (
+                <Select
+                  label="Provider account"
+                  options={sttProviderOptions}
+                  value={speech.stt.providerId}
+                  onChange={(providerId) =>
+                    setSpeech((current) => ({ ...current, stt: { ...current.stt, providerId } }))
+                  }
+                />
+              ) : null}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {speech.stt.provider === "openai" && (
+                  <Input
+                    label="Model"
+                    placeholder="gpt-4o-mini-transcribe"
+                    value={speech.stt.model}
+                    onChange={(event) =>
+                      setSpeech((current) => ({
+                        ...current,
+                        stt: { ...current.stt, model: event.target.value },
+                      }))
+                    }
+                  />
+                )}
                 <Input
                   label="Language"
                   placeholder="en"
@@ -729,8 +765,9 @@ export function SpeechSettingsSection() {
                 />
               </div>
               <p className="text-xs text-gray-500">
-                Native dictation uses browser or OS speech recognition when available. Model
-                transcription records microphone audio and sends it to the configured provider.
+                On-device mode uses platform recognition when available and local Whisper otherwise.
+                Local audio stays on the gateway machine. Cloud mode sends recorded audio to the
+                selected provider.
               </p>
             </div>
           ) : (

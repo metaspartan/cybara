@@ -44,6 +44,11 @@ import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat"
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
 import { apiFetch, appendApiTokenParam } from "@/lib/auth";
 import {
+  audioBlobToBase64,
+  audioBlobToLocalPcm,
+  preferredRecordingMimeType,
+} from "@/lib/audioTranscription";
+import {
   buildActivitiesFromToolCalls,
   finalizeCompletedActivities,
   type LiveActivityItem,
@@ -2996,10 +3001,7 @@ export function Chat() {
       dictationStreamRef.current = stream;
       dictationChunksRef.current = [];
 
-      const mimeCandidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
-      const selectedMimeType = mimeCandidates.find((candidate) =>
-        window.MediaRecorder.isTypeSupported(candidate)
-      );
+      const selectedMimeType = preferredRecordingMimeType();
       const recorder = selectedMimeType
         ? new window.MediaRecorder(stream, { mimeType: selectedMimeType })
         : new window.MediaRecorder(stream);
@@ -3037,17 +3039,17 @@ export function Chat() {
           setDictationTranscribing(true);
           setDictationStatus("Transcribing dictation...");
           const blob = new Blob(chunks, { type: recorderMimeType });
-          const bytes = new Uint8Array(await blob.arrayBuffer());
-          let binary = "";
-          const chunkSize = 0x8000;
-          for (let index = 0; index < bytes.length; index += chunkSize) {
-            binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
-          }
-          const audioBase64 = btoa(binary);
+          const local = dictationRuntime.serverProvider === "local";
+          const payload = local
+            ? await audioBlobToLocalPcm(blob)
+            : {
+                audioBase64: await audioBlobToBase64(blob),
+                mimeType: recorderMimeType,
+                fileName: "dictation.webm",
+              };
           const response = await chatApi.dictate({
-            audioBase64,
-            mimeType: recorderMimeType,
-            fileName: "dictation.webm",
+            ...payload,
+            provider: dictationRuntime.serverProvider || undefined,
           });
           if (response.success && response.data?.text) {
             appendDictationText(response.data.text);
@@ -3086,6 +3088,7 @@ export function Chat() {
     dictationError,
     dictationLanguage,
     dictationRuntime.engine,
+    dictationRuntime.serverProvider,
     dictationRuntime.unsupportedReason,
     dictationTranscribing,
   ]);

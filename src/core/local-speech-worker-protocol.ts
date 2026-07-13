@@ -8,17 +8,23 @@ interface LocalSpeechWorkerRequestBase {
 
 export type LocalSpeechWorkerRequest =
   | (LocalSpeechWorkerRequestBase & { action: "load" })
+  | (LocalSpeechWorkerRequestBase & { action: "load_asr" })
   | (LocalSpeechWorkerRequestBase & {
       action: "generate";
       text: string;
       voice: string;
       speed: number;
     })
-  | (LocalSpeechWorkerRequestBase & { action: "unload" });
+  | (LocalSpeechWorkerRequestBase & {
+      action: "transcribe";
+      audio: Uint8Array;
+      language?: string;
+    })
+  | (LocalSpeechWorkerRequestBase & { action: "unload" | "unload_asr" });
 
 export type LocalSpeechWorkerResponse =
   | { id: string; type: "progress"; progress: number }
-  | { id: string; type: "result"; success: true; wav?: Uint8Array }
+  | { id: string; type: "result"; success: true; wav?: Uint8Array; text?: string }
   | { id: string; type: "result"; success: false; error: string };
 
 export function isLocalSpeechWorkerResponse(value: unknown): value is LocalSpeechWorkerResponse {

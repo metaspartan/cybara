@@ -25,6 +25,14 @@ export interface LocalTtsVoiceInfo {
   gender: "female" | "male";
 }
 
+export interface LocalSttModelInfo {
+  id: string;
+  label: string;
+  description: string;
+  sizeMb: number;
+  language: string;
+}
+
 export interface LocalSpeechModelStatus {
   id: string;
   state: "unloaded" | "loading" | "ready" | "error";
@@ -35,6 +43,7 @@ export interface LocalSpeechModelStatus {
 }
 
 export const KOKORO_MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
+export const WHISPER_MODEL_ID = "onnx-community/whisper-tiny";
 
 export const LOCAL_TTS_MODELS: LocalTtsModelInfo[] = [
   {
@@ -63,6 +72,23 @@ export const LOCAL_TTS_VOICES: LocalTtsVoiceInfo[] = [
   { id: "bf_isabella", label: "Isabella", language: "en-GB", gender: "female" },
   { id: "bm_george", label: "George", language: "en-GB", gender: "male" },
   { id: "bm_fable", label: "Fable", language: "en-GB", gender: "male" },
+];
+
+export const LOCAL_STT_MODELS: LocalSttModelInfo[] = [
+  {
+    id: WHISPER_MODEL_ID,
+    label: "Whisper Tiny",
+    description: "Fast multilingual speech recognition that runs locally after download.",
+    sizeMb: 151,
+    language: "multilingual",
+  },
+  {
+    id: "onnx-community/whisper-tiny.en",
+    label: "Whisper Tiny English",
+    description: "English-only local speech recognition with lower processing overhead.",
+    sizeMb: 151,
+    language: "en",
+  },
 ];
 
 const LOCAL_VOICE_IDS = new Set(LOCAL_TTS_VOICES.map((voice) => voice.id));
@@ -106,6 +132,26 @@ interface TransformersRuntimeModule {
   env: { cacheDir: string };
 }
 
+interface LocalAsrResult {
+  text?: string;
+}
+
+interface LocalAsrPipeline {
+  (audio: Float32Array, options?: Record<string, unknown>): Promise<LocalAsrResult>;
+}
+
+interface LocalTransformersModule extends TransformersRuntimeModule {
+  pipeline(
+    task: "automatic-speech-recognition",
+    model: string,
+    options: {
+      dtype: LocalSpeechDtype;
+      device: "cpu";
+      progress_callback?: (event: unknown) => void;
+    }
+  ): Promise<LocalAsrPipeline>;
+}
+
 export interface LocalSpeechRuntimeEntries {
   kokoro: string;
   transformers: string;
@@ -127,6 +173,8 @@ interface PendingWorkerRequest {
 const runtimeStatus = new Map<string, LocalSpeechModelStatus>();
 const loadingPromises = new Map<string, Promise<KokoroTtsInstance>>();
 const readyModels = new Map<string, KokoroTtsInstance>();
+const localAsrPipelines = new Map<string, LocalAsrPipeline>();
+const localAsrLoading = new Map<string, Promise<LocalAsrPipeline>>();
 const workerRequests = new Map<string, PendingWorkerRequest>();
 let speechWorker: ReturnType<typeof Bun.spawn> | null = null;
 let speechWorkerExitHookInstalled = false;
@@ -191,6 +239,10 @@ export function listLocalTtsModelStatus(): LocalSpeechModelStatus[] {
   return LOCAL_TTS_MODELS.map((model) => statusFor(model.id));
 }
 
+export function listLocalSttModelStatus(): LocalSpeechModelStatus[] {
+  return LOCAL_STT_MODELS.map((model) => statusFor(model.id));
+}
+
 function localSpeechRuntimeRoots(): string[] {
   const seeds = [process.env.CYBARA_RESOURCE_DIR, process.cwd(), dirname(process.execPath)].filter(
     (value): value is string => typeof value === "string" && value.length > 0
@@ -243,6 +295,27 @@ export function findLocalSpeechRuntimeEntries(
       if (existsSync(rootTransformers)) {
         return { kokoro, transformers: rootTransformers };
       }
+    }
+  }
+  return null;
+}
+
+function findLocalTransformersRuntimeEntry(
+  roots: string[] = localSpeechRuntimeRoots()
+): string | null {
+  const moduleParents = ["", "bin", "resources", join("resources", "bin")];
+  for (const root of roots) {
+    for (const parent of moduleParents) {
+      const entry = join(
+        root,
+        parent,
+        "node_modules",
+        "@huggingface",
+        "transformers",
+        "dist",
+        "transformers.node.mjs"
+      );
+      if (existsSync(entry)) return entry;
     }
   }
   return null;
@@ -371,6 +444,7 @@ async function sendWorkerRequest(
   } catch (error) {
     if (
       request.action === "unload" ||
+      request.action === "unload_asr" ||
       !process.env.CYBARA_RESOURCE_DIR?.trim() ||
       !isSpeechWorkerExitError(error)
     ) {
@@ -414,6 +488,15 @@ async function importKokoro(): Promise<KokoroModule> {
     return (await import(pathToFileURL(entries.kokoro).href)) as unknown as KokoroModule;
   }
   return (await import("kokoro-js")) as unknown as KokoroModule;
+}
+
+async function importLocalTransformers(): Promise<LocalTransformersModule> {
+  const entry =
+    findLocalTransformersRuntimeEntry() ||
+    Bun.resolveSync("@huggingface/transformers", import.meta.dir);
+  const runtime = (await import(pathToFileURL(entry).href)) as unknown as LocalTransformersModule;
+  runtime.env.cacheDir = localSpeechCacheDir();
+  return runtime;
 }
 
 export async function loadLocalTtsModel(
@@ -480,6 +563,137 @@ export function unloadLocalTtsModel(model: string = KOKORO_MODEL_ID): boolean {
     void sendWorkerRequest({
       id: crypto.randomUUID(),
       action: "unload",
+      model,
+      dtype: "q8",
+    }).catch(() => undefined);
+  }
+  patchStatus(model, {
+    state: "unloaded",
+    loadProgress: null,
+    loadedAt: null,
+    lastError: null,
+  });
+  return existed;
+}
+
+export async function loadLocalSttModel(
+  model: string = WHISPER_MODEL_ID,
+  dtype: LocalSpeechDtype = "q8"
+): Promise<LocalAsrPipeline | null> {
+  const ready = localAsrPipelines.get(model);
+  if (ready) {
+    patchStatus(model, { lastUsedAt: Date.now() });
+    return ready;
+  }
+  const inFlight = localAsrLoading.get(model);
+  if (inFlight) return inFlight;
+
+  patchStatus(model, { state: "loading", loadProgress: 0, lastError: null });
+  if (packagedSpeechWorker()) {
+    try {
+      await sendWorkerRequest(
+        { id: crypto.randomUUID(), action: "load_asr", model, dtype },
+        (loadProgress) => patchStatus(model, { loadProgress })
+      );
+      patchStatus(model, {
+        state: "ready",
+        loadProgress: 100,
+        loadedAt: Date.now(),
+        lastUsedAt: Date.now(),
+        lastError: null,
+      });
+      return null;
+    } catch (error) {
+      const message = describeLocalSpeechError(error);
+      patchStatus(model, { state: "error", loadProgress: null, lastError: message });
+      throw new Error(message);
+    }
+  }
+
+  const pending = (async () => {
+    const transformers = await importLocalTransformers();
+    return transformers.pipeline("automatic-speech-recognition", model, {
+      dtype,
+      device: "cpu",
+      progress_callback: (event) => {
+        const progress = readProgress(event);
+        if (progress !== null) patchStatus(model, { loadProgress: progress });
+      },
+    });
+  })();
+  localAsrLoading.set(model, pending);
+  try {
+    const pipeline = await pending;
+    localAsrPipelines.set(model, pipeline);
+    patchStatus(model, {
+      state: "ready",
+      loadProgress: 100,
+      loadedAt: Date.now(),
+      lastUsedAt: Date.now(),
+      lastError: null,
+    });
+    return pipeline;
+  } catch (error) {
+    const message = describeLocalSpeechError(error);
+    patchStatus(model, { state: "error", loadProgress: null, lastError: message });
+    throw new Error(message);
+  } finally {
+    localAsrLoading.delete(model);
+  }
+}
+
+export async function transcribeLocalSpeech(args: {
+  pcmBytes: Uint8Array;
+  model?: string;
+  language?: string;
+  dtype?: LocalSpeechDtype;
+}): Promise<{ text: string; model: string }> {
+  if (args.pcmBytes.byteLength === 0 || args.pcmBytes.byteLength % 4 !== 0) {
+    throw new Error("Local transcription requires 16 kHz Float32 PCM audio");
+  }
+  const model = args.model?.trim() || WHISPER_MODEL_ID;
+  const dtype = args.dtype ?? "q8";
+  if (packagedSpeechWorker()) {
+    const response = await sendWorkerRequest({
+      id: crypto.randomUUID(),
+      action: "transcribe",
+      model,
+      dtype,
+      audio: args.pcmBytes,
+      language: args.language?.trim() || undefined,
+    });
+    if (response.type !== "result" || !response.success || !response.text?.trim()) {
+      throw new Error("Packaged speech runtime returned no transcription");
+    }
+    patchStatus(model, { lastUsedAt: Date.now() });
+    return { text: response.text.trim(), model };
+  }
+  const pipeline = await loadLocalSttModel(model, dtype);
+  if (!pipeline) throw new Error("Local transcription runtime is unavailable");
+  const audio = new Float32Array(
+    args.pcmBytes.buffer.slice(
+      args.pcmBytes.byteOffset,
+      args.pcmBytes.byteOffset + args.pcmBytes.byteLength
+    )
+  );
+  const result = await pipeline(audio, {
+    ...(args.language?.trim() ? { language: args.language.trim() } : {}),
+    chunk_length_s: 30,
+    stride_length_s: 5,
+  });
+  const text = result.text?.trim();
+  if (!text) throw new Error("Local transcription returned no text");
+  patchStatus(model, { lastUsedAt: Date.now() });
+  return { text, model };
+}
+
+export function unloadLocalSttModel(model: string = WHISPER_MODEL_ID): boolean {
+  const existed = localAsrPipelines.delete(model);
+  localAsrLoading.delete(model);
+  if (speechWorker && !speechWorker.killed) {
+    void sendWorkerRequest({
+      id: crypto.randomUUID(),
+      action: "unload_asr",
       model,
       dtype: "q8",
     }).catch(() => undefined);

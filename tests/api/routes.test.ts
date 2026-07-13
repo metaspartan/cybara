@@ -1354,7 +1354,7 @@ describe("Speech API", () => {
     expect(configResponse.data.speech.tts.model).toBe("eleven_flash_v2_5");
   });
 
-  test("native speech-to-text mode is normalized and blocks server transcription by default", async () => {
+  test("native and local speech-to-text modes are normalized", async () => {
     const put = await api("PUT", "/api/speech/settings", {
       tts: { provider: "auto" },
       stt: { provider: "native", language: "en-US" },
@@ -1362,13 +1362,21 @@ describe("Speech API", () => {
     expect(put.status).toBe(200);
     expect(put.data.speech.stt.provider).toBe("native");
 
-    const blocked = await api("POST", "/api/speech/dictate", {
+    const local = await api("PUT", "/api/speech/settings", {
+      tts: { provider: "auto" },
+      stt: { provider: "local", model: "onnx-community/whisper-tiny" },
+    });
+    expect(local.status).toBe(200);
+    expect(local.data.speech.stt.provider).toBe("local");
+
+    const invalidLocalAudio = await api("POST", "/api/speech/dictate", {
+      provider: "local",
       audioBase64: "Zm9v",
       mimeType: "audio/webm",
       fileName: "dictation.webm",
     });
-    expect(blocked.status).toBe(400);
-    expect(String(blocked.data.error)).toContain("native dictation");
+    expect(invalidLocalAudio.status).toBe(400);
+    expect(String(invalidLocalAudio.data.error)).toContain("16 kHz Float32 PCM");
 
     await api("PUT", "/api/speech/settings", {
       tts: { provider: "auto" },
@@ -1397,6 +1405,8 @@ describe("Speech API", () => {
     expect(data.tts.models.length).toBeGreaterThan(0);
     expect(data.tts.voices.length).toBeGreaterThan(0);
     expect(data.tts.status[0].state).toBeDefined();
+    expect(data.stt.models.length).toBeGreaterThan(0);
+    expect(data.stt.status[0].state).toBeDefined();
   });
 
   test("POST /api/speech/local/unload reports success without a loaded model", async () => {

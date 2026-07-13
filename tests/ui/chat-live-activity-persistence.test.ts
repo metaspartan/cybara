@@ -471,8 +471,15 @@ describe("Chat live activity persistence", () => {
         nativeRecognition: false,
         mediaRecorder: true,
         microphone: true,
-      }).unsupportedReason
-    ).toContain("Native dictation");
+      }).serverProvider
+    ).toBe("local");
+    expect(
+      resolveDictationRuntime("local", {
+        nativeRecognition: true,
+        mediaRecorder: true,
+        microphone: true,
+      }).engine
+    ).toBe("recording");
     expect(
       resolveDictationRuntime("openai", {
         nativeRecognition: true,
