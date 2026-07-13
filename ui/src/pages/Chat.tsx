@@ -607,7 +607,7 @@ function AssistantMetaInline({
   return (
     <div className={cn("space-y-2", isWorkSection ? "mb-3" : "mt-3")}>
       {isWorkSection && (
-        <div className="text-[12px] text-gray-500 px-0.5">
+        <div className="chat-activity-text text-gray-500 px-0.5">
           <span>
             {t("chat.workedFor", {
               duration:

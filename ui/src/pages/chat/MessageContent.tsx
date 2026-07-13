@@ -318,7 +318,7 @@ export function MessageContent({
           li: ({ children }) => <li className="mb-1">{children}</li>,
           table: ({ children }) => (
             <div className="my-3 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03]">
-              <table className="w-full text-[12px] border-collapse">{children}</table>
+              <table className="chat-code-text w-full border-collapse">{children}</table>
             </div>
           ),
           thead: ({ children }) => <thead className="bg-white/5">{children}</thead>,

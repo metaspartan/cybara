@@ -1,10 +1,12 @@
 import {
   Check,
+  Building2,
   Cloud,
   ExternalLink,
   KeyRound,
   Link2,
   Mail,
+  NotebookText,
   PlugZap,
   ShieldCheck,
   Unplug,
@@ -52,7 +54,10 @@ async function waitForConnection(state: string): Promise<void> {
 }
 
 function ConnectorIcon({ id }: { id: AccountConnectorId }) {
-  return id === "google_workspace" ? <Mail className="h-5 w-5" /> : <Cloud className="h-5 w-5" />;
+  if (id === "google_workspace") return <Mail className="h-5 w-5" />;
+  if (id === "microsoft_365") return <Building2 className="h-5 w-5" />;
+  if (id === "notion") return <NotebookText className="h-5 w-5" />;
+  return <Cloud className="h-5 w-5" />;
 }
 
 export function Connectors() {
@@ -171,7 +176,7 @@ export function Connectors() {
 
         {loading ? (
           <div className="grid gap-4 lg:grid-cols-2" aria-label="Loading account connectors">
-            {[0, 1].map((item) => (
+            {[0, 1, 2, 3].map((item) => (
               <div
                 key={item}
                 className="h-[28rem] animate-pulse rounded-lg border border-white/10 bg-[var(--surface-panel,#11131c)]"
@@ -249,7 +254,7 @@ export function Connectors() {
                         patchDraft(status.id, { access: enabled ? "read_write" : "read" })
                       }
                       label="Allow account changes"
-                      description="Sending messages, uploading files, and creating events still require agent approval. Changing access reconnects the account."
+                      description="Sending messages, uploading files, creating events, and creating pages still require agent approval. Changing access reconnects the account."
                     />
 
                     {status.needsReauthorization ? (

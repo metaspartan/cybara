@@ -25,6 +25,15 @@ export const accountConnectorDefinitions: Record<AccountConnectorId, AccountConn
     clientIdLabel: "OAuth client ID",
     clientSecretLabel: "OAuth client secret",
   },
+  microsoft_365: {
+    id: "microsoft_365",
+    label: "Microsoft 365",
+    description:
+      "Search Outlook, OneDrive, and Calendar, with optional email, file, and event creation.",
+    services: ["Outlook", "OneDrive", "Calendar"],
+    docsUrl: "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade",
+    clientIdLabel: "Application client ID",
+  },
   dropbox: {
     id: "dropbox",
     label: "Dropbox",
@@ -32,6 +41,15 @@ export const accountConnectorDefinitions: Record<AccountConnectorId, AccountConn
     services: ["Files"],
     docsUrl: "https://www.dropbox.com/developers/apps",
     clientIdLabel: "App key",
+  },
+  notion: {
+    id: "notion",
+    label: "Notion",
+    description: "Search and read workspace pages, with optional page creation.",
+    services: ["Pages", "Databases"],
+    docsUrl: "https://www.notion.so/profile/integrations",
+    clientIdLabel: "OAuth client ID",
+    clientSecretLabel: "OAuth client secret",
   },
 };
 
@@ -225,6 +243,20 @@ export function getRequiredConnectorScopes(
         : []),
     ];
   }
+  if (id === "microsoft_365") {
+    return [
+      "openid",
+      "profile",
+      "email",
+      "offline_access",
+      "User.Read",
+      "Mail.Read",
+      "Files.Read",
+      "Calendars.Read",
+      ...(access === "read_write" ? ["Mail.Send", "Files.ReadWrite", "Calendars.ReadWrite"] : []),
+    ];
+  }
+  if (id === "notion") return [];
   return [
     "account_info.read",
     "files.metadata.read",

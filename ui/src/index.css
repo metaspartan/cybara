@@ -919,6 +919,27 @@ textarea[data-chat-composer-input="true"]:focus-visible {
   line-height: var(--chat-line-height, 1.6);
 }
 
+.chat-activity-text,
+.chat-thought-text {
+  font-size: var(--chat-font-size, 14px);
+  line-height: var(--chat-line-height, 1.6);
+}
+
+.chat-activity-text code,
+.chat-thought-text code {
+  font-size: var(--chat-code-font-size, 12px);
+}
+
+.chat-meta-text {
+  font-size: calc(var(--chat-font-size, 14px) * 0.8);
+  line-height: 1.4;
+}
+
+.chat-code-text {
+  font-size: var(--chat-code-font-size, 12px);
+  line-height: 1.5;
+}
+
 .chat-code-block pre,
 .chat-code-block .font-mono {
   font-size: var(--chat-code-font-size, 12px);

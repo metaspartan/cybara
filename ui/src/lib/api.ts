@@ -638,7 +638,7 @@ export const integrationCredentialsApi = {
     }),
 };
 
-export type AccountConnectorId = "google_workspace" | "dropbox";
+export type AccountConnectorId = "google_workspace" | "microsoft_365" | "dropbox" | "notion";
 export type AccountConnectorAccess = "read" | "read_write";
 
 export interface AccountConnectorStatus {

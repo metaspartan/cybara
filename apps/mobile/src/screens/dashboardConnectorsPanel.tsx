@@ -1,6 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Linking, Text, View } from "react-native";
-import { Cloud, ExternalLink, Link2, Mail, Unplug } from "lucide-react-native";
+import {
+  Building2,
+  Cloud,
+  ExternalLink,
+  Link2,
+  Mail,
+  NotebookText,
+  Unplug,
+} from "lucide-react-native";
 import type { CybaraMobileApi, MobileAccountConnector, MobileAccountConnectorId } from "../lib/api";
 import { colors } from "../theme/liquidGlass";
 import {
@@ -137,7 +145,14 @@ export function MobileConnectorsPanel({
           clientSecret: "",
           writeAccess: connector.access === "read_write",
         };
-        const Icon = connector.id === "google_workspace" ? Mail : Cloud;
+        const Icon =
+          connector.id === "google_workspace"
+            ? Mail
+            : connector.id === "microsoft_365"
+              ? Building2
+              : connector.id === "notion"
+                ? NotebookText
+                : Cloud;
         return (
           <SettingsSection key={connector.id} title={connector.label}>
             <View style={styles.listRow}>
@@ -170,7 +185,7 @@ export function MobileConnectorsPanel({
               OAuth callback: {connector.redirectUri}
             </Text>
             <SettingToggle
-              detail="Messages, files, and events still require agent approval."
+              detail="Messages, files, events, and pages still require agent approval."
               label="Allow account changes"
               onPress={() => patch(connector, { writeAccess: !draft.writeAccess })}
               tone={accentColor}

@@ -454,7 +454,7 @@ export interface MobileMcpServer {
   transport?: "stdio" | "http";
 }
 
-export type MobileAccountConnectorId = "google_workspace" | "dropbox";
+export type MobileAccountConnectorId = "google_workspace" | "microsoft_365" | "dropbox" | "notion";
 
 export interface MobileAccountConnector {
   id: MobileAccountConnectorId;

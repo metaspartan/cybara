@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   DEFAULT_CHAT_APPEARANCE_SETTINGS,
@@ -94,17 +93,22 @@ describe("chat appearance settings", () => {
     ).toBe("spacious");
   });
 
-  test("wires settings, rendering, persistence, and server validation", () => {
-    const settings = readFileSync(
-      join(ROOT_DIR, "ui", "src", "pages", "settings", "ChatAccessibilitySettings.tsx"),
-      "utf8"
-    );
-    const message = readFileSync(
-      join(ROOT_DIR, "ui", "src", "pages", "chat", "MessageContent.tsx"),
-      "utf8"
-    );
-    const styles = readFileSync(join(ROOT_DIR, "ui", "src", "index.css"), "utf8");
-    const routes = readFileSync(join(ROOT_DIR, "src", "api", "routes.ts"), "utf8");
+  test("wires settings, rendering, persistence, and server validation", async () => {
+    const settings = await Bun.file(
+      join(ROOT_DIR, "ui", "src", "pages", "settings", "ChatAccessibilitySettings.tsx")
+    ).text();
+    const message = await Bun.file(
+      join(ROOT_DIR, "ui", "src", "pages", "chat", "MessageContent.tsx")
+    ).text();
+    const activity = await Bun.file(
+      join(ROOT_DIR, "ui", "src", "pages", "chat", "ActivityTimeline.tsx")
+    ).text();
+    const subagents = await Bun.file(
+      join(ROOT_DIR, "ui", "src", "pages", "chat", "SubagentPanel.tsx")
+    ).text();
+    const chat = await Bun.file(join(ROOT_DIR, "ui", "src", "pages", "Chat.tsx")).text();
+    const styles = await Bun.file(join(ROOT_DIR, "ui", "src", "index.css")).text();
+    const routes = await Bun.file(join(ROOT_DIR, "src", "api", "routes.ts")).text();
 
     expect(settings).toContain("Chat text size");
     expect(settings).toContain("Code text size");
@@ -116,8 +120,19 @@ describe("chat appearance settings", () => {
     expect(settings).toContain("chat_appearance: next");
     expect(settings).not.toContain("disabled={saving !== null}");
     expect(message).toContain('className="chat-markdown max-w-none text-gray-200"');
+    expect(activity).toContain("chat-thought-text");
+    expect(activity).toContain("chat-activity-text");
+    expect(subagents).toContain("chat-thought-text");
+    expect(subagents).toContain("chat-activity-text");
+    expect(subagents).toContain("chat-code-text");
+    expect(subagents).not.toContain("p-2 text-[11px] text-gray-400");
+    expect(subagents).not.toContain("p-2 text-[11px] text-gray-300");
+    expect(message).toContain('className="chat-code-text w-full border-collapse"');
+    expect(chat).toContain('className="chat-activity-text text-gray-500 px-0.5"');
+    expect(activity).not.toContain("text-[10px] leading-none text-sky-200");
     expect(styles).toContain("font-size: var(--chat-font-size, 14px)");
     expect(styles).toContain("font-size: var(--chat-code-font-size, 12px)");
+    expect(styles).toContain("font-size: calc(var(--chat-font-size, 14px) * 0.8)");
     expect(styles).toContain('html[data-reduce-motion="true"]');
     expect(styles).toContain('html[data-reduce-transparency="true"]');
     expect(styles).toContain('html[data-high-contrast="true"]');

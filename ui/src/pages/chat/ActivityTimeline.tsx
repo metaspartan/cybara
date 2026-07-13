@@ -43,13 +43,13 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
   if (isRawToolCallThought(activity)) return null;
   if (activity.toolName === "__thought") {
     return (
-      <div className="px-0.5 py-0.5 text-[12.5px] leading-relaxed text-gray-300">
+      <div className="chat-thought-text px-0.5 py-0.5 text-gray-300">
         <ActivityText text={activity.text} />
       </div>
     );
   }
   return (
-    <div className="flex items-start gap-2 text-[12px] px-0.5 text-gray-400">
+    <div className="chat-activity-text flex items-start gap-2 px-0.5 text-gray-400">
       {activity.phase === "start" ? (
         <Loader2 className="w-3 h-3 animate-spin text-current opacity-70 mt-0.5 flex-shrink-0" />
       ) : activity.phase === "result" ? (
@@ -62,7 +62,7 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
       <div className="min-w-0 flex-1 flex items-center gap-2">
         <ActivityText text={activity.text} />
         {activity.toolName !== "__thought" && activity.sandboxProvider && (
-          <span className="inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] leading-none text-sky-200">
+          <span className="chat-meta-text inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 leading-none text-sky-200">
             {formatSandboxProviderLabel(activity.sandboxProvider)}
           </span>
         )}
@@ -71,11 +71,6 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
   );
 }
 
-/**
- * Codex-style activity list: consecutive completed reads/searches/lists
- * collapse into one summary row ("Read 3 files") that expands on click.
- * Failures and in-flight steps always render individually.
- */
 export function GroupedActivityRows({ activities }: { activities: LiveActivityItem[] }) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const entries = groupActivitiesForDisplay(activities);
@@ -105,7 +100,7 @@ export function GroupedActivityRows({ activities }: { activities: LiveActivityIt
             <button
               type="button"
               onClick={() => toggleGroup(entry.id)}
-              className="w-full flex items-center gap-2 text-[12px] px-0.5 text-left text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
+              className="chat-activity-text w-full flex items-center gap-2 px-0.5 text-left text-gray-400 hover:text-gray-200 transition-colors cursor-pointer"
               aria-expanded={expanded}
               title={expanded ? "Collapse" : "Show each call"}
             >
@@ -162,7 +157,7 @@ export function SubagentCallItem({
     <div className={`rounded-lg border ${config.color} overflow-hidden`}>
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full px-3 py-2 flex items-center gap-2 text-sm"
+        className="chat-activity-text w-full px-3 py-2 flex items-center gap-2"
       >
         {config.icon}
         <SubagentIcon className="h-3 w-3" />
@@ -173,11 +168,11 @@ export function SubagentCallItem({
       {expanded && (
         <div className="px-3 pb-3 border-t border-white/10">
           <div className="mt-2">
-            <p className="text-[12px] text-gray-500 mb-1">Task:</p>
-            <p className="text-sm text-gray-300">{subagent.task}</p>
+            <p className="chat-meta-text text-gray-500 mb-1">Task:</p>
+            <p className="chat-activity-text text-gray-300">{subagent.task}</p>
           </div>
           <div className="mt-2 flex items-center gap-2">
-            <p className="text-[12px] text-gray-500">
+            <p className="chat-meta-text text-gray-500">
               ID: <code className="text-gray-400">{subagent.id}</code>
             </p>
             <Badge
@@ -229,7 +224,7 @@ export function LiveActivityTimeline({
     <div className="space-y-1">
       {visibleActivities.length > 0 && <GroupedActivityRows activities={visibleActivities} />}
       {displayCurrentStep ? (
-        <div className="flex items-start gap-2 text-[12px] px-0.5 text-gray-300">
+        <div className="chat-activity-text flex items-start gap-2 px-0.5 text-gray-300">
           <Loader2 className="w-3 h-3 animate-spin text-current opacity-70 mt-0.5 flex-shrink-0" />
           <ActivityText text={displayCurrentStep} />
         </div>
@@ -294,14 +289,14 @@ export function ActivityStepCard({
       </div>
       <div
         className={cn(
-          "rounded-lg border px-3 py-2 text-[12px] leading-5 backdrop-blur-sm",
+          "chat-activity-text rounded-lg border px-3 py-2 backdrop-blur-sm",
           phaseStyles[activity.phase]
         )}
       >
         <div className="min-w-0 flex items-center gap-2">
           <ActivityText text={activity.text} />
           {activity.toolName !== "__thought" && activity.sandboxProvider && (
-            <span className="inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 text-[10px] leading-none text-sky-200">
+            <span className="chat-meta-text inline-flex items-center rounded border border-sky-400/30 bg-sky-400/10 px-1.5 py-0.5 leading-none text-sky-200">
               {formatSandboxProviderLabel(activity.sandboxProvider)}
             </span>
           )}
@@ -328,7 +323,7 @@ export function ActivityText({ text }: { text: string }) {
           return (
             <code
               key={`activity-text-${index}`}
-              className="rounded border border-white/10 bg-white/[0.04] px-1 py-0.5 font-mono text-[0.92em] text-inherit"
+              className="rounded border border-white/10 bg-white/[0.04] px-1 py-0.5 font-mono text-inherit"
             >
               {part.slice(1, -1)}
             </code>

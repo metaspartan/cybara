@@ -790,7 +790,7 @@ struct AccountConnectorsScreen: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: connector.id == "google_workspace" ? "envelope" : "externaldrive.connected.to.line.below")
+                    Image(systemName: connectorSymbol(connector.id))
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(connector.connected ? Color.green : accent)
                         .frame(width: 36, height: 36)
@@ -828,7 +828,7 @@ struct AccountConnectorsScreen: View {
                 }
                 Toggle("Allow account changes", isOn: binding(connector.id, \.writeAccess))
                     .toggleStyle(.switch)
-                Text("Messages, files, and events still require agent approval.")
+                Text("Messages, files, events, and pages still require agent approval.")
                     .font(.system(size: 11, design: .rounded))
                     .foregroundStyle(.secondary)
 
@@ -853,6 +853,15 @@ struct AccountConnectorsScreen: View {
                 }
                 .controlSize(.small)
             }
+        }
+    }
+
+    private func connectorSymbol(_ id: String) -> String {
+        switch id {
+        case "google_workspace": return "envelope"
+        case "microsoft_365": return "building.2"
+        case "notion": return "note.text"
+        default: return "externaldrive.connected.to.line.below"
         }
     }
 

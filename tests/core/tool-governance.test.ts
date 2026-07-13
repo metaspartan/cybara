@@ -91,8 +91,17 @@ describe("tool governance invariants", () => {
     expect(toolSchemas.account_connector.input_schema.properties?.action?.enum).toContain(
       "calendar_list"
     );
+    expect(toolSchemas.account_connector.input_schema.properties?.action?.enum).toContain(
+      "outlook_search"
+    );
+    expect(toolSchemas.account_connector.input_schema.properties?.action?.enum).toContain(
+      "notion_read"
+    );
     expect(toolSchemas.account_connector_write.input_schema.properties?.action?.enum).toContain(
       "calendar_create"
+    );
+    expect(toolSchemas.account_connector_write.input_schema.properties?.action?.enum).toContain(
+      "notion_create_page"
     );
   });
 });

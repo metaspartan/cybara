@@ -10,12 +10,17 @@ import {
   usePanelData,
 } from "./cli-tui-panels";
 import { useTerminalLayout } from "./cli-tui-terminal";
+import { isAccountConnectorId } from "./core/account-connectors/store";
+import {
+  ACCOUNT_CONNECTOR_IDS,
+  type AccountConnectorId,
+} from "./core/account-connectors/types";
 import { openUrlInBrowser } from "./core/runtime/open-url";
 
-type ConnectorId = "google_workspace" | "dropbox";
+const connectorIdHelp = ACCOUNT_CONNECTOR_IDS.join("|");
 
 interface ConnectorStatus {
-  id: ConnectorId;
+  id: AccountConnectorId;
   label: string;
   services: string[];
   docsUrl: string;
@@ -38,19 +43,19 @@ interface OAuthStatus {
 
 type FetchAPI = <T>(endpoint: string, options?: RequestInit) => Promise<T | null>;
 
-function connectorId(value: string | undefined): ConnectorId {
-  if (value === "google_workspace" || value === "dropbox") return value;
-  throw new Error("Connector must be google_workspace or dropbox");
+function connectorId(value: string | undefined): AccountConnectorId {
+  if (isAccountConnectorId(value)) return value;
+  throw new Error(`Connector must be one of: ${ACCOUNT_CONNECTOR_IDS.join(", ")}`);
 }
 
 function printConnectorHelp(): void {
   console.log("Account Connector Commands:");
   console.log("  cybara connectors list");
-  console.log("  cybara connectors configure <google_workspace|dropbox> --client-id <id>");
+  console.log(`  cybara connectors configure <${connectorIdHelp}> --client-id <id>`);
   console.log("    [--read|--write] [CYBARA_CONNECTOR_CLIENT_SECRET=...]");
-  console.log("  cybara connectors connect <google_workspace|dropbox>");
-  console.log("  cybara connectors disconnect <google_workspace|dropbox>");
-  console.log("  cybara connectors setup <google_workspace|dropbox>");
+  console.log(`  cybara connectors connect <${connectorIdHelp}>`);
+  console.log(`  cybara connectors disconnect <${connectorIdHelp}>`);
+  console.log(`  cybara connectors setup <${connectorIdHelp}>`);
 }
 
 async function waitForOAuth(fetchAPI: FetchAPI, state: string): Promise<void> {

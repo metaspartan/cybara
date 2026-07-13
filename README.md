@@ -319,11 +319,11 @@ CLI: `cybara mcp list`, `cybara mcp search <query>`, `cybara mcp install <packag
 
 ### Account Connectors
 
-Connect Google Workspace or Dropbox from the Connectors screen to let agents work with authorized account data. Google Workspace includes Gmail, Drive, and Calendar. Connections default to read-only access; optional write access remains subject to Cybara's normal tool approval policy. Credentials and OAuth tokens are stored through the encrypted secret store.
+Connect Google Workspace, Microsoft 365, Dropbox, or Notion from the Connectors screen to let agents work with authorized account data. Connections default to read-only access; optional write access remains subject to Cybara's normal tool approval policy. Credentials and OAuth tokens are stored through the encrypted secret store.
 
 Additional services can be connected through HTTPS or local MCP servers.
 
-CLI: `cybara connectors list`, `cybara connectors configure <google_workspace|dropbox> --client-id <id>`, `cybara connectors connect <google_workspace|dropbox>`, `cybara connectors disconnect <google_workspace|dropbox>`
+CLI: `cybara connectors list`, `cybara connectors configure <connector-id> --client-id <id>`, `cybara connectors connect <connector-id>`, `cybara connectors disconnect <connector-id>`
 
 ---
 

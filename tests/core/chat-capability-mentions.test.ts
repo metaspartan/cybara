@@ -53,15 +53,24 @@ describe("chat capability mentions", () => {
   });
 
   test("exposes connected accounts as explicit chat capabilities", async () => {
-    updateAccountConnectorConfig("dropbox", { clientId: "dropbox-app" });
-    storeAccountConnectorToken("dropbox", {
+    updateAccountConnectorConfig("microsoft_365", { clientId: "microsoft-app" });
+    storeAccountConnectorToken("microsoft_365", {
       accessToken: "access-token",
-      scopes: ["account_info.read", "files.metadata.read", "files.content.read"],
+      scopes: [
+        "openid",
+        "profile",
+        "email",
+        "offline_access",
+        "User.Read",
+        "Mail.Read",
+        "Files.Read",
+        "Calendars.Read",
+      ],
     });
     try {
-      const resolved = await resolveChatCapabilityMentions("Search @dropbox", process.cwd());
+      const resolved = await resolveChatCapabilityMentions("Search @microsoft-365", process.cwd());
       expect(resolved.mentions).toContainEqual(
-        expect.objectContaining({ kind: "connector", token: "@dropbox" })
+        expect.objectContaining({ kind: "connector", token: "@microsoft-365" })
       );
       expect(resolved.instruction).toContain("untrusted data");
     } finally {

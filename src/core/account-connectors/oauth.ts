@@ -13,6 +13,7 @@ import type {
   AccountConnectorStatus,
   AccountConnectorToken,
 } from "./types";
+import { connectorFetch } from "./request";
 
 const FLOW_TTL_MS = 10 * 60_000;
 
@@ -101,7 +102,7 @@ async function exchangeGoogle(flow: OAuthFlow, code: string): Promise<AccountCon
     code_verifier: flow.verifier,
   });
   if (stored.clientSecret) body.set("client_secret", stored.clientSecret);
-  const response = await fetch("https://oauth2.googleapis.com/token", {
+  const response = await connectorFetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
@@ -115,7 +116,7 @@ async function exchangeGoogle(flow: OAuthFlow, code: string): Promise<AccountCon
 async function exchangeDropbox(flow: OAuthFlow, code: string): Promise<AccountConnectorToken> {
   const stored = getStoredAccountConnector("dropbox");
   if (!stored.clientId) throw new Error("Dropbox app key is not configured");
-  const response = await fetch("https://api.dropboxapi.com/oauth2/token", {
+  const response = await connectorFetch("https://api.dropboxapi.com/oauth2/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
@@ -132,9 +133,54 @@ async function exchangeDropbox(flow: OAuthFlow, code: string): Promise<AccountCo
   );
 }
 
+async function exchangeMicrosoft(flow: OAuthFlow, code: string): Promise<AccountConnectorToken> {
+  const stored = getStoredAccountConnector("microsoft_365");
+  if (!stored.clientId) throw new Error("Microsoft application client ID is not configured");
+  const response = await connectorFetch(
+    "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: stored.clientId,
+        redirect_uri: flow.redirectUri,
+        grant_type: "authorization_code",
+        code_verifier: flow.verifier,
+        scope: getRequiredConnectorScopes("microsoft_365", stored.access).join(" "),
+      }),
+    }
+  );
+  return tokenFromResponse(
+    await jsonResponse<OAuthTokenResponse>(response),
+    getRequiredConnectorScopes("microsoft_365", stored.access)
+  );
+}
+
+async function exchangeNotion(flow: OAuthFlow, code: string): Promise<AccountConnectorToken> {
+  const stored = getStoredAccountConnector("notion");
+  if (!stored.clientId || !stored.clientSecret) {
+    throw new Error("Notion OAuth credentials are not configured");
+  }
+  const response = await connectorFetch("https://api.notion.com/v1/oauth/token", {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${stored.clientId}:${stored.clientSecret}`).toString("base64")}`,
+      "Content-Type": "application/json",
+      "Notion-Version": "2026-03-11",
+    },
+    body: JSON.stringify({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: flow.redirectUri,
+    }),
+  });
+  return tokenFromResponse(await jsonResponse<OAuthTokenResponse>(response), []);
+}
+
 async function accountLabel(id: AccountConnectorId, accessToken: string): Promise<string> {
   if (id === "google_workspace") {
-    const response = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+    const response = await connectorFetch("https://www.googleapis.com/oauth2/v2/userinfo", {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const value = await jsonResponse<{ email?: unknown; name?: unknown }>(response);
@@ -142,7 +188,34 @@ async function accountLabel(id: AccountConnectorId, accessToken: string): Promis
     if (typeof value.name === "string" && value.name.trim()) return value.name.trim();
     return "Google account";
   }
-  const response = await fetch("https://api.dropboxapi.com/2/users/get_current_account", {
+  if (id === "microsoft_365") {
+    const response = await connectorFetch(
+      "https://graph.microsoft.com/v1.0/me?$select=displayName,mail,userPrincipalName",
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    const value = await jsonResponse<{
+      displayName?: unknown;
+      mail?: unknown;
+      userPrincipalName?: unknown;
+    }>(response);
+    for (const candidate of [value.mail, value.userPrincipalName, value.displayName]) {
+      if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+    }
+    return "Microsoft account";
+  }
+  if (id === "notion") {
+    const response = await connectorFetch("https://api.notion.com/v1/users/me", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Notion-Version": "2026-03-11",
+      },
+    });
+    const value = await jsonResponse<{ name?: unknown }>(response);
+    return typeof value.name === "string" && value.name.trim()
+      ? value.name.trim()
+      : "Notion workspace";
+  }
+  const response = await connectorFetch("https://api.dropboxapi.com/2/users/get_current_account", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -174,30 +247,55 @@ export function startAccountConnectorOAuth(id: AccountConnectorId): AccountConne
     status: "pending",
   });
   const scopes = getRequiredConnectorScopes(id, stored.access);
-  const authUrl =
-    id === "google_workspace"
-      ? `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
-          client_id: stored.clientId,
-          redirect_uri: callback,
-          response_type: "code",
-          scope: scopes.join(" "),
-          state,
-          code_challenge: challenge,
-          code_challenge_method: "S256",
-          access_type: "offline",
-          prompt: "consent",
-          include_granted_scopes: "true",
-        })}`
-      : `https://www.dropbox.com/oauth2/authorize?${new URLSearchParams({
-          client_id: stored.clientId,
-          redirect_uri: callback,
-          response_type: "code",
-          token_access_type: "offline",
-          scope: scopes.join(" "),
-          state,
-          code_challenge: challenge,
-          code_challenge_method: "S256",
-        })}`;
+  let authUrl: string;
+  if (id === "google_workspace") {
+    authUrl = `https://accounts.google.com/o/oauth2/v2/auth?${new URLSearchParams({
+      client_id: stored.clientId,
+      redirect_uri: callback,
+      response_type: "code",
+      scope: scopes.join(" "),
+      state,
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+      access_type: "offline",
+      prompt: "consent",
+      include_granted_scopes: "true",
+    })}`;
+  } else if (id === "microsoft_365") {
+    authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${new URLSearchParams(
+      {
+        client_id: stored.clientId,
+        redirect_uri: callback,
+        response_type: "code",
+        response_mode: "query",
+        scope: scopes.join(" "),
+        state,
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+        prompt: "select_account",
+      }
+    )}`;
+  } else if (id === "dropbox") {
+    authUrl = `https://www.dropbox.com/oauth2/authorize?${new URLSearchParams({
+      client_id: stored.clientId,
+      redirect_uri: callback,
+      response_type: "code",
+      token_access_type: "offline",
+      scope: scopes.join(" "),
+      state,
+      code_challenge: challenge,
+      code_challenge_method: "S256",
+    })}`;
+  } else {
+    if (!stored.clientSecret) throw new Error("Configure the Notion client secret first");
+    authUrl = `https://api.notion.com/v1/oauth/authorize?${new URLSearchParams({
+      client_id: stored.clientId,
+      redirect_uri: callback,
+      response_type: "code",
+      owner: "user",
+      state,
+    })}`;
+  }
   return { state, authUrl, expiresAt };
 }
 
@@ -209,7 +307,11 @@ export async function finishAccountConnectorOAuth(state: string, code: string): 
     const token =
       flow.connectorId === "google_workspace"
         ? await exchangeGoogle(flow, code)
-        : await exchangeDropbox(flow, code);
+        : flow.connectorId === "microsoft_365"
+          ? await exchangeMicrosoft(flow, code)
+          : flow.connectorId === "dropbox"
+            ? await exchangeDropbox(flow, code)
+            : await exchangeNotion(flow, code);
     const account = await accountLabel(flow.connectorId, token.accessToken);
     storeAccountConnectorToken(flow.connectorId, token, account);
     flow.status = "connected";
@@ -247,14 +349,14 @@ export async function revokeAccountConnector(
     id === "google_workspace" ? stored.refreshToken || stored.accessToken : stored.accessToken;
   try {
     if (token && id === "google_workspace") {
-      await fetch("https://oauth2.googleapis.com/revoke", {
+      await connectorFetch("https://oauth2.googleapis.com/revoke", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({ token }),
         signal: AbortSignal.timeout(5_000),
       });
-    } else if (token) {
-      await fetch("https://api.dropboxapi.com/2/auth/token/revoke", {
+    } else if (token && id === "dropbox") {
+      await connectorFetch("https://api.dropboxapi.com/2/auth/token/revoke", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         signal: AbortSignal.timeout(5_000),

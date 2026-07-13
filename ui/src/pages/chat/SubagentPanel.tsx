@@ -99,14 +99,14 @@ function SubagentTimeline({ subagent }: { subagent: Subagent }) {
           </h4>
           <div className="space-y-1.5 border-l border-white/10 pl-3">
             {activities.map((activity) => (
-              <div key={activity.id} className="flex gap-2 text-[12px] text-gray-400">
+              <div key={activity.id} className="chat-activity-text flex gap-2 text-gray-400">
                 <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-gray-500" />
                 <div className="min-w-0">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {preprocessChatMarkdown(activity.text)}
                   </ReactMarkdown>
                   {activity.toolName && activity.toolName !== "__thought" && (
-                    <span className="mt-0.5 block font-mono text-[10px] text-gray-600">
+                    <span className="chat-meta-text mt-0.5 block font-mono text-gray-600">
                       {activity.toolName} · {activity.phase}
                     </span>
                   )}
@@ -122,7 +122,7 @@ function SubagentTimeline({ subagent }: { subagent: Subagent }) {
           <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
             Thinking
           </h4>
-          <div className="max-h-52 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-3 text-[12px] text-gray-400">
+          <div className="chat-thought-text max-h-52 overflow-y-auto rounded-lg border border-white/10 bg-black/20 p-3 text-gray-400">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>
               {preprocessChatMarkdown(subagent.thinking)}
             </ReactMarkdown>
@@ -146,7 +146,7 @@ function SubagentTimeline({ subagent }: { subagent: Subagent }) {
                 >
                   <button
                     type="button"
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-gray-300 hover:bg-white/[0.04]"
+                    className="chat-activity-text flex w-full items-center gap-2 px-3 py-2 text-left text-gray-300 hover:bg-white/[0.04]"
                     onClick={() =>
                       setExpandedTools((current) => {
                         const next = new Set(current);
@@ -162,7 +162,7 @@ function SubagentTimeline({ subagent }: { subagent: Subagent }) {
                       <ChevronRight className="h-3 w-3" />
                     )}
                     <span className="min-w-0 flex-1 truncate font-mono">{toolCall.name}</span>
-                    <span className="text-[10px] capitalize text-gray-600">
+                    <span className="chat-meta-text capitalize text-gray-600">
                       {toolCall.status || "completed"}
                     </span>
                   </button>
@@ -170,15 +170,17 @@ function SubagentTimeline({ subagent }: { subagent: Subagent }) {
                     <div className="grid gap-2 border-t border-white/10 p-2.5">
                       {toolCall.args && Object.keys(toolCall.args).length > 0 && (
                         <div>
-                          <div className="mb-1 text-[10px] uppercase text-gray-600">Arguments</div>
-                          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-black/30 p-2 text-[11px] text-gray-400">
+                          <div className="chat-meta-text mb-1 uppercase text-gray-600">
+                            Arguments
+                          </div>
+                          <pre className="chat-code-text max-h-40 overflow-auto whitespace-pre-wrap break-all rounded bg-black/30 p-2 text-gray-400">
                             {formatJson(toolCall.args)}
                           </pre>
                         </div>
                       )}
                       <div>
-                        <div className="mb-1 text-[10px] uppercase text-gray-600">Output</div>
-                        <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-all rounded bg-black/30 p-2 text-[11px] text-gray-300">
+                        <div className="chat-meta-text mb-1 uppercase text-gray-600">Output</div>
+                        <pre className="chat-code-text max-h-56 overflow-auto whitespace-pre-wrap break-all rounded bg-black/30 p-2 text-gray-300">
                           {formatJson(toolCall.result)}
                         </pre>
                       </div>
@@ -546,7 +548,7 @@ export function SubagentPanel({
                 {selectedSubagent.toolCallCount === 1 ? "call" : "calls"}
               </span>
             </div>
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm text-gray-300 whitespace-pre-wrap">
+            <div className="chat-activity-text rounded-lg border border-white/10 bg-white/[0.03] p-3 text-gray-300 whitespace-pre-wrap">
               {selectedSubagent.task}
             </div>
             <SubagentTimeline subagent={selectedSubagent} />
@@ -555,7 +557,7 @@ export function SubagentPanel({
                 <h4 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
                   Final output
                 </h4>
-                <div className="max-h-64 overflow-auto rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-gray-300">
+                <div className="chat-activity-text max-h-64 overflow-auto rounded-lg border border-white/10 bg-black/20 p-3 text-gray-300">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {preprocessChatMarkdown(
                       selectedSubagent.result || selectedSubagent.error || ""

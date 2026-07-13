@@ -1,4 +1,9 @@
-export const ACCOUNT_CONNECTOR_IDS = ["google_workspace", "dropbox"] as const;
+export const ACCOUNT_CONNECTOR_IDS = [
+  "google_workspace",
+  "microsoft_365",
+  "dropbox",
+  "notion",
+] as const;
 
 export type AccountConnectorId = (typeof ACCOUNT_CONNECTOR_IDS)[number];
 export type AccountConnectorAccess = "read" | "read_write";

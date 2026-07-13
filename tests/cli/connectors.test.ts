@@ -72,4 +72,33 @@ describe("connector CLI", () => {
       },
     });
   });
+
+  test("accepts every canonical connector ID", async () => {
+    console.log = () => {};
+    const endpoints: string[] = [];
+    const fetchAPI = async <T>(endpoint: string): Promise<T | null> => {
+      endpoints.push(endpoint);
+      return {
+        id: endpoint.split("/").at(-1),
+        label: "Connector",
+        services: [],
+        docsUrl: "https://example.com",
+        redirectUri: "http://127.0.0.1:4269/api/connectors/oauth/callback",
+        configured: true,
+        connected: false,
+        access: "read",
+      } as T;
+    };
+
+    for (const id of ["google_workspace", "microsoft_365", "dropbox", "notion"]) {
+      await runConnectorCommand(["configure", id, "--client-id", "client-id"], fetchAPI);
+    }
+
+    expect(endpoints).toEqual([
+      "/api/connectors/google_workspace",
+      "/api/connectors/microsoft_365",
+      "/api/connectors/dropbox",
+      "/api/connectors/notion",
+    ]);
+  });
 });

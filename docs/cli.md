@@ -340,7 +340,9 @@ on stdin and writes responses on stdout.
 ```bash
 cybara connectors list
 CYBARA_CONNECTOR_CLIENT_SECRET=<secret> cybara connectors configure google_workspace --client-id <id>
+cybara connectors configure microsoft_365 --client-id <id> --write
 cybara connectors configure dropbox --client-id <id> --write
+CYBARA_CONNECTOR_CLIENT_SECRET=<secret> cybara connectors configure notion --client-id <id>
 cybara connectors connect google_workspace
 cybara connectors disconnect dropbox
 cybara connectors setup google_workspace
