@@ -8,12 +8,12 @@ import {
   promises as fs,
 } from "fs";
 import { join, dirname, extname, isAbsolute, sep } from "path";
-import { glob } from "tinyglobby";
 import { homeDir } from "../../paths";
 import { trackMetric } from "../../metrics";
 import { commandExists } from "../../platform";
 import type { ToolContext } from "../index";
 import { assertWritablePath, assertReadablePath } from "../path-policy";
+import { searchFiles } from "../file-search";
 
 const workspace = homeDir;
 
@@ -489,7 +489,8 @@ export async function handleEdit(
 }
 
 export async function handleFileSearch(
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  context?: ToolContext
 ): Promise<{ files: string[]; pattern: string; cwd: string; error?: string }> {
   const pattern = typeof args.pattern === "string" ? args.pattern.trim() : "";
   let cwd = args.cwd as string | undefined;
@@ -498,7 +499,7 @@ export async function handleFileSearch(
     cwd = cwd.replace(/^~/, homeDir);
   }
 
-  const searchDir = cwd || workspace;
+  const searchDir = cwd || context?.workspaceDir || workspace;
   const safeSearchDir = assertReadablePath(searchDir);
 
   if (!pattern) {
@@ -521,26 +522,33 @@ export async function handleFileSearch(
   }
 
   try {
-    const files = await glob(pattern, {
+    const search = await searchFiles({
       cwd: safeSearchDir,
-      ignore: ["**/node_modules/**", "**/.git/**", "**/dist/**", "**/build/**"],
-      onlyFiles: true,
+      pattern,
+      signal: context?.abortSignal,
     });
 
-    const MAX_RESULTS = 1000;
-    const readableFiles = files.filter((file) => isReadableSearchResult(safeSearchDir, file));
-    const limitedFiles = readableFiles.slice(0, MAX_RESULTS);
+    const readableFiles = search.files.filter((file) =>
+      isReadableSearchResult(safeSearchDir, file)
+    );
 
-    trackMetric("file_operation", "search", 1, { pattern, resultCount: limitedFiles.length });
-    trackMetric("tool_call", "file_search", 1, { pattern, resultCount: limitedFiles.length });
+    trackMetric("file_operation", "search", 1, { pattern, resultCount: readableFiles.length });
+    trackMetric("tool_call", "file_search", 1, { pattern, resultCount: readableFiles.length });
+
+    let error = search.error;
+    if (search.aborted) error = "Search cancelled.";
+    if (search.timedOut) {
+      error = `Search timed out after ${Math.ceil(search.elapsedMs / 1000)} seconds. Narrow the working directory or pattern.`;
+    }
+    if (search.limitReached) {
+      error = `Search limit reached after examining ${search.visitedEntries.toLocaleString()} entries. Narrow the working directory or pattern.`;
+    }
 
     return {
-      files: limitedFiles,
+      files: readableFiles,
       pattern,
       cwd: safeSearchDir,
-      ...(readableFiles.length > MAX_RESULTS
-        ? { error: `Results limited to ${MAX_RESULTS} (found ${readableFiles.length} total)` }
-        : {}),
+      ...(error ? { error } : {}),
     };
   } catch (err) {
     return {
@@ -552,7 +560,10 @@ export async function handleFileSearch(
   }
 }
 
-export async function handleGrep(args: Record<string, unknown>): Promise<{
+export async function handleGrep(
+  args: Record<string, unknown>,
+  toolContext?: ToolContext
+): Promise<{
   results: Array<{ path: string; line: number; content: string }>;
   pattern: string;
   count: number;
@@ -566,7 +577,7 @@ export async function handleGrep(args: Record<string, unknown>): Promise<{
   const caseSensitive = args.caseSensitive as boolean | undefined;
   const shouldRecursive = args.recursive !== false;
 
-  const searchDir = assertReadablePath(expandTilde(path) || workspace);
+  const searchDir = assertReadablePath(expandTilde(path) || toolContext?.workspaceDir || workspace);
   const extensions = fileType ? fileType.split(",").map((t) => t.trim()) : null;
 
   const results: Array<{ path: string; line: number; content: string }> = [];
@@ -582,7 +593,8 @@ export async function handleGrep(args: Record<string, unknown>): Promise<{
       shouldRecursive,
       context,
       results,
-      maxResults
+      maxResults,
+      toolContext?.abortSignal
     );
   } else {
     await searchDirectory(
@@ -593,7 +605,8 @@ export async function handleGrep(args: Record<string, unknown>): Promise<{
       shouldRecursive,
       context,
       results,
-      maxResults
+      maxResults,
+      toolContext?.abortSignal
     );
   }
 
@@ -618,10 +631,33 @@ async function searchWithRipgrep(
   recursive: boolean,
   context: number,
   results: Array<{ path: string; line: number; content: string }>,
-  maxResults: number
+  maxResults: number,
+  signal?: AbortSignal
 ): Promise<void> {
   try {
-    const args = ["--json", `--max-count=${maxResults}`, `--context=${context}`];
+    if (signal?.aborted) return;
+    const args = [
+      "--json",
+      "--no-messages",
+      "--max-filesize=10M",
+      `--max-count=${maxResults}`,
+      `--context=${context}`,
+      "--glob=!node_modules/**",
+      "--glob=!.git/**",
+      "--glob=!dist/**",
+      "--glob=!build/**",
+      "--glob=!target/**",
+      "--glob=!.build/**",
+      "--glob=!.cache/**",
+      "--glob=!.gradle/**",
+      "--glob=!.next/**",
+      "--glob=!.turbo/**",
+      "--glob=!.venv/**",
+      "--glob=!venv/**",
+      "--glob=!coverage/**",
+      "--glob=!DerivedData/**",
+      "--glob=!Pods/**",
+    ];
 
     if (!caseSensitive) {
       args.push("--ignore-case");
@@ -638,11 +674,21 @@ async function searchWithRipgrep(
 
     args.push(pattern, dir);
 
-    const result = Bun.spawnSync(["rg", ...args], {
-      timeout: 30000,
+    const process = Bun.spawn(["rg", ...args], {
+      stdout: "pipe",
+      stderr: "ignore",
     });
-
-    const output = result.stdout.toString();
+    const stop = (): void => process.kill();
+    const timeout = setTimeout(stop, 30_000);
+    signal?.addEventListener("abort", stop, { once: true });
+    let output = "";
+    try {
+      output = await new Response(process.stdout).text();
+      await process.exited;
+    } finally {
+      clearTimeout(timeout);
+      signal?.removeEventListener("abort", stop);
+    }
 
     for (const line of output.split("\n")) {
       if (!line.trim()) continue;
@@ -675,13 +721,15 @@ async function searchDirectory(
   recursive: boolean,
   context: number,
   results: Array<{ path: string; line: number; content: string }>,
-  maxResults: number
+  maxResults: number,
+  signal?: AbortSignal
 ): Promise<void> {
   try {
+    if (signal?.aborted) return;
     const entries = await fs.readdir(dir, { withFileTypes: true });
 
     for (const entry of entries) {
-      if (results.length >= maxResults) return;
+      if (results.length >= maxResults || signal?.aborted) return;
 
       const fullPath = join(dir, entry.name);
 
@@ -700,7 +748,8 @@ async function searchDirectory(
             recursive,
             context,
             results,
-            maxResults
+            maxResults,
+            signal
           );
         }
       } else if (entry.isFile()) {
@@ -719,6 +768,8 @@ async function searchDirectory(
           }
         }
 
+        const fileStat = await fs.stat(fullPath);
+        if (fileStat.size > 10 * 1024 * 1024) continue;
         const content = await fs.readFile(fullPath, "utf-8");
         const lines = content.split("\n");
         const regex = caseSensitive ? new RegExp(pattern, "g") : new RegExp(pattern, "gi");

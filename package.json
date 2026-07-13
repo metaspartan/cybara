@@ -96,7 +96,6 @@
     "react-devtools-core": "7.0.1",
     "socket.io-client": "4.8.3",
     "tiny-secp256k1": "2.2.4",
-    "tinyglobby": "0.2.17",
     "whatsapp-web.js": "1.34.7",
     "zod": "4.4.3"
   },
