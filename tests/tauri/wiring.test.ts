@@ -53,7 +53,7 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain('sidecar("cybara")');
     expect(mainRs).toContain('.args(["start"])');
     expect(mainRs).not.toContain('.args(["start", "--enable-terminal"])');
-    expect(mainRs).toContain('const CYBARA_SERVER_URL: &str = "http://127.0.0.1:4269"');
+    expect(mainRs).toContain('const CYBARA_SERVER_URL: &str = "http://localhost:4269"');
     expect(mainRs).toContain("unwrap_or_else(|| CYBARA_SERVER_URL.parse().unwrap())");
     expect(mainRs).not.toContain('.env("CYBARA_HOST", "127.0.0.1")');
     expect(mainRs).toContain("child.kill()");
@@ -105,6 +105,9 @@ describe("Tauri wiring", () => {
     expect(trayRs).toContain('"New Chat"');
     expect(trayRs).toContain('"Quit Cybara"');
     expect(trayRs).toContain('read_http_body("/api/provider-plans/status")');
+    expect(trayRs).toContain("window.usage_known");
+    expect(trayRs).toContain("!window.unlimited");
+    expect(trayRs).toContain('!description.eq_ignore_ascii_case("No limit")');
     expect(trayRs).toContain('show_route(app, "/usage")');
   });
 
@@ -116,8 +119,8 @@ describe("Tauri wiring", () => {
     };
     const tauriConfig = readFileSync(join(ROOT_DIR, "src-tauri", "tauri.conf.json"), "utf8");
 
-    expect(capability.remote?.urls).toContain("http://127.0.0.1:4269");
-    expect(capability.remote?.urls).toContain("http://localhost:5173");
+    expect(capability.remote?.urls).toContain("http://127.0.0.1:4269/*");
+    expect(capability.remote?.urls).toContain("http://localhost:5173/*");
     expect(capability.remote?.urls).not.toContain("http://localhost:*");
     expect(capability.permissions).not.toContain("shell:allow-spawn");
     expect(capability.permissions).not.toContain("shell:allow-execute");

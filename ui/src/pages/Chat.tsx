@@ -3665,8 +3665,13 @@ export function Chat() {
               setSessionContextUsage(loadedContextUsage ?? null);
               setSessionTokenUsage(loadedTokenUsage ?? null);
             }}
-            onNewSession={() => {
+            onNewSession={(nextWorkspaceDir) => {
               resetChatSession({ resetAgentSelection: true });
+              if (nextWorkspaceDir) {
+                setWorkspaceDir(nextWorkspaceDir);
+                persistWorkspaceDir(nextWorkspaceDir);
+                setLastWorkspaceDir(nextWorkspaceDir);
+              }
             }}
           />
         )}

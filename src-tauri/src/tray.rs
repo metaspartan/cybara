@@ -10,10 +10,34 @@ use tauri_plugin_updater::UpdaterExt;
 use crate::{CYBARA_SERVER_ADDR, CYBARA_SERVER_URL, cybara_api_key};
 
 pub struct UpdateMenu(pub std::sync::Mutex<MenuItem<tauri::Wry>>);
-pub struct UpdatePhase(pub std::sync::atomic::AtomicBool);
+
+#[derive(Clone, Default)]
+struct UpdateSnapshot {
+    available: bool,
+    version: Option<String>,
+    status: Option<String>,
+}
+
+pub struct UpdateState(std::sync::Mutex<UpdateSnapshot>);
 
 const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(300);
-const UPDATE_FIRST_CHECK_DELAY: Duration = Duration::from_secs(15);
+const UPDATE_FIRST_CHECK_DELAY: Duration = Duration::from_secs(1);
+
+fn merge_update_snapshot(
+    current: &UpdateSnapshot,
+    available: bool,
+    version: Option<String>,
+    status: Option<String>,
+) -> UpdateSnapshot {
+    if current.available && !available {
+        return current.clone();
+    }
+    UpdateSnapshot {
+        available,
+        version: version.or_else(|| available.then(|| current.version.clone()).flatten()),
+        status,
+    }
+}
 
 fn macos_template_icon(source: &tauri::image::Image) -> tauri::image::Image<'static> {
     let mut rgba = source.rgba().to_vec();
@@ -46,12 +70,14 @@ fn tray_image(source: &tauri::image::Image, badged: bool) -> tauri::image::Image
 
 fn update_menu_text(available: bool, version: &Option<String>, status: &Option<String>) -> String {
     match status.as_deref() {
+        Some("checking") => "Checking for updates…".to_string(),
         Some("downloading") => match version {
             Some(value) => format!("Updating to {value}…"),
             None => "Updating…".to_string(),
         },
         Some("installing") => "Installing update…".to_string(),
         Some("done") => "Update installed · restarting…".to_string(),
+        Some("error") => "Unable to check for updates".to_string(),
         _ if available => match version {
             Some(value) => format!("Install Update {value}"),
             None => "Install Update".to_string(),
@@ -66,8 +92,10 @@ fn update_tooltip_text(
     status: &Option<String>,
 ) -> String {
     match status.as_deref() {
+        Some("checking") => "Cybara · Checking for updates…".to_string(),
         Some("downloading") | Some("installing") => "Cybara · Updating…".to_string(),
         Some("done") => "Cybara · Restarting to finish update".to_string(),
+        Some("error") => "Cybara · Update check unavailable".to_string(),
         _ if available => match version {
             Some(value) => format!("Cybara · Update {value} available"),
             None => "Cybara · Update available".to_string(),
@@ -82,13 +110,21 @@ pub fn apply_update_state(
     version: Option<String>,
     status: Option<String>,
 ) {
+    let (available, version, status) = if let Some(state) = app.try_state::<UpdateState>() {
+        if let Ok(mut snapshot) = state.0.lock() {
+            let merged = merge_update_snapshot(&snapshot, available, version, status);
+            *snapshot = merged.clone();
+            (merged.available, merged.version, merged.status)
+        } else {
+            (available, version, status)
+        }
+    } else {
+        (available, version, status)
+    };
     let busy = matches!(
         status.as_deref(),
         Some("downloading") | Some("installing") | Some("done")
     );
-    if let Some(phase) = app.try_state::<UpdatePhase>() {
-        phase.0.store(busy, std::sync::atomic::Ordering::Relaxed);
-    }
     if let Some(state) = app.try_state::<UpdateMenu>() {
         if let Ok(item) = state.0.lock() {
             let _ = item.set_text(update_menu_text(available, &version, &status));
@@ -110,22 +146,42 @@ fn start_update_check(app: &AppHandle) {
         std::thread::sleep(UPDATE_FIRST_CHECK_DELAY);
         loop {
             let busy = handle
-                .try_state::<UpdatePhase>()
-                .map(|phase| phase.0.load(std::sync::atomic::Ordering::Relaxed))
+                .try_state::<UpdateState>()
+                .and_then(|state| state.0.lock().ok().map(|snapshot| snapshot.status.clone()))
+                .map(|status| {
+                    matches!(
+                        status.as_deref(),
+                        Some("downloading") | Some("installing") | Some("done")
+                    )
+                })
                 .unwrap_or(false);
             if !busy {
-                let update = handle
+                let checking = handle.clone();
+                let _ = handle.run_on_main_thread(move || {
+                    apply_update_state(&checking, false, None, Some("checking".to_string()));
+                });
+                let result = handle
                     .updater()
-                    .ok()
-                    .and_then(|updater| tauri::async_runtime::block_on(updater.check()).ok())
-                    .flatten();
-                if let Some(update) = update {
-                    let version = Some(update.version.clone());
-                    let apply = handle.clone();
-                    let _ = handle.run_on_main_thread(move || {
-                        apply_update_state(&apply, true, version, None);
+                    .map_err(|error| error.to_string())
+                    .and_then(|updater| {
+                        tauri::async_runtime::block_on(updater.check())
+                            .map_err(|error| error.to_string())
                     });
-                }
+                let apply = handle.clone();
+                let _ = handle.run_on_main_thread(move || match result {
+                    Ok(Some(update)) => {
+                        log::info!("Desktop update available: {}", update.version);
+                        apply_update_state(&apply, true, Some(update.version), None);
+                    }
+                    Ok(None) => {
+                        log::debug!("Desktop app is current");
+                        apply_update_state(&apply, false, None, None);
+                    }
+                    Err(error) => {
+                        log::warn!("Desktop update check failed: {error}");
+                        apply_update_state(&apply, false, None, Some("error".to_string()));
+                    }
+                });
             }
             std::thread::sleep(UPDATE_CHECK_INTERVAL);
         }
@@ -235,16 +291,26 @@ fn usage_window_text(plan: &ProviderUsagePlan, kind: &str) -> String {
 }
 
 fn meaningful_reset(description: &str) -> bool {
-    !description.is_empty() && !description.starts_with("Rolling")
+    !description.is_empty()
+        && !description.starts_with("Rolling")
+        && !description.eq_ignore_ascii_case("No limit")
 }
 
 fn usage_reset_text(plan: &ProviderUsagePlan) -> Option<String> {
     plan.windows
         .iter()
-        .find(|window| window.kind == "rolling_5h" && meaningful_reset(&window.reset_description))
+        .find(|window| {
+            window.kind == "rolling_5h"
+                && window.usage_known
+                && !window.unlimited
+                && meaningful_reset(&window.reset_description)
+        })
         .or_else(|| {
             plan.windows.iter().find(|window| {
-                window.kind == "rolling_week" && meaningful_reset(&window.reset_description)
+                window.kind == "rolling_week"
+                    && window.usage_known
+                    && !window.unlimited
+                    && meaningful_reset(&window.reset_description)
             })
         })
         .map(|window| window.reset_description.clone())
@@ -376,7 +442,7 @@ pub fn setup(app: &App) -> tauri::Result<()> {
     let update = MenuItem::with_id(
         app,
         "install-update",
-        "No updates available",
+        "Checking for updates…",
         false,
         None::<&str>,
     )?;
@@ -439,7 +505,10 @@ pub fn setup(app: &App) -> tauri::Result<()> {
         })
         .build(app)?;
     app.manage(UpdateMenu(std::sync::Mutex::new(update.clone())));
-    app.manage(UpdatePhase(std::sync::atomic::AtomicBool::new(false)));
+    app.manage(UpdateState(std::sync::Mutex::new(UpdateSnapshot {
+        status: Some("checking".to_string()),
+        ..UpdateSnapshot::default()
+    })));
     start_update_check(app.handle());
     let app_handle = app.handle().clone();
     std::thread::spawn(move || {
@@ -463,8 +532,9 @@ pub fn setup(app: &App) -> tauri::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderUsagePlan, ProviderUsageWindow, macos_template_icon, truncate_label,
-        update_menu_text, usage_window_text,
+        ProviderUsagePlan, ProviderUsageWindow, UpdateSnapshot, macos_template_icon,
+        merge_update_snapshot, truncate_label, update_menu_text, usage_reset_text,
+        usage_window_text,
     };
 
     fn plan(window: ProviderUsageWindow) -> ProviderUsagePlan {
@@ -495,6 +565,35 @@ mod tests {
             ),
             "Installing update…"
         );
+        assert_eq!(
+            update_menu_text(false, &None, &Some("checking".to_string())),
+            "Checking for updates…"
+        );
+        assert_eq!(
+            update_menu_text(false, &None, &Some("error".to_string())),
+            "Unable to check for updates"
+        );
+    }
+
+    #[test]
+    fn update_checks_preserve_a_known_available_version() {
+        let current = UpdateSnapshot {
+            available: true,
+            version: Some("1.2.3".to_string()),
+            status: None,
+        };
+
+        assert_eq!(
+            merge_update_snapshot(&current, false, None, Some("checking".to_string()))
+                .version
+                .as_deref(),
+            Some("1.2.3")
+        );
+        assert_eq!(
+            merge_update_snapshot(&current, false, None, Some("error".to_string())).status,
+            None
+        );
+        assert!(merge_update_snapshot(&current, false, None, None).available);
     }
 
     #[test]
@@ -540,6 +639,34 @@ mod tests {
             "rolling_week",
         );
         assert_eq!(value, "∞");
+    }
+
+    #[test]
+    fn reset_text_skips_unlimited_windows() {
+        let plan = ProviderUsagePlan {
+            provider_name: "Codex".to_string(),
+            managed_automatically: true,
+            monitored: true,
+            external_source_available: true,
+            windows: vec![
+                ProviderUsageWindow {
+                    kind: "rolling_5h".to_string(),
+                    usage_known: true,
+                    unlimited: true,
+                    used_percent: Some(0.0),
+                    reset_description: "No limit".to_string(),
+                },
+                ProviderUsageWindow {
+                    kind: "rolling_week".to_string(),
+                    usage_known: true,
+                    unlimited: false,
+                    used_percent: Some(22.0),
+                    reset_description: "resets in 6d 14h".to_string(),
+                },
+            ],
+        };
+
+        assert_eq!(usage_reset_text(&plan).as_deref(), Some("resets in 6d 14h"));
     }
 
     #[test]

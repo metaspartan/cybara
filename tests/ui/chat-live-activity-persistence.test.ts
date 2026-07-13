@@ -515,7 +515,9 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain("loadedWorkspaceDir,");
     expect(source).toContain("loadedAgentId,");
     expect(source).toContain("syncSessionAgentSelection(loadedAgentId);");
-    expect(source).toContain("onNewSession={() => {");
+    expect(source).toContain("onNewSession={(nextWorkspaceDir) => {");
+    expect(source).toContain("setWorkspaceDir(nextWorkspaceDir);");
+    expect(source).toContain("persistWorkspaceDir(nextWorkspaceDir);");
     expect(source).toContain("setSessionAgentId(null);");
   });
 });

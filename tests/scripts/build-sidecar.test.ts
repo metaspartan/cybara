@@ -141,6 +141,35 @@ describe("build-sidecar host target mapping", () => {
     }
   });
 
+  test("packages the current Transformers ONNX runtime when Kokoro is also available", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-transformers-package-test-"));
+    try {
+      const runtimeTarget = getRuntimeTargetFor(getHostTargetFor(process.platform, process.arch));
+      const nativeDir = copyTransformersRuntime(dir, runtimeTarget);
+      const onnxPackage = JSON.parse(
+        readFileSync(join(dir, "onnxruntime-node", "package.json"), "utf8")
+      ) as { version: string };
+      const sourceOnnxRoot = join(process.cwd(), "node_modules", "onnxruntime-node");
+      const sourceOnnxPackage = JSON.parse(
+        readFileSync(join(sourceOnnxRoot, "package.json"), "utf8")
+      ) as { version: string };
+      const sourceNativeDir = findOnnxRuntimeNativeDir(sourceOnnxRoot, runtimeTarget);
+      const packagedNativeDir = findOnnxRuntimeNativeDir(
+        join(dir, "onnxruntime-node"),
+        runtimeTarget
+      );
+
+      expect(onnxPackage.version).toBe(sourceOnnxPackage.version);
+      expect(packagedNativeDir).not.toBeNull();
+      expect(existsSync(join(packagedNativeDir ?? "missing", "onnxruntime_binding.node"))).toBe(
+        true
+      );
+      expect(nativeDir).toBe(sourceNativeDir);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("copyFilePortable copies sidecar binary in a cross-platform way", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cybara-sidecar-test-"));
     const source = join(dir, "source.bin");

@@ -69,7 +69,7 @@ export function subscribeUpdateState(listener: () => void): () => void {
 async function notifyTray(
   available: boolean,
   version: string | null,
-  status?: "downloading" | "installing" | "done"
+  status?: "checking" | "downloading" | "installing" | "done" | "error"
 ): Promise<void> {
   try {
     await invoke("set_update_available", { available, version, status: status ?? null });
@@ -101,6 +101,7 @@ export async function checkForUpdate(): Promise<void> {
   if (state.phase === "idle" || state.phase === "current" || state.phase === "error") {
     setState({ phase: "checking", error: null });
   }
+  void notifyTray(false, null, "checking");
   try {
     const update = await checkForDesktopUpdate();
     const lastCheckedAt = new Date().toISOString();
@@ -109,8 +110,13 @@ export async function checkForUpdate(): Promise<void> {
       void notifyTray(true, update.version);
       void notifyOs(update.version);
     } else {
-      setState({ phase: "current", available: null, lastCheckedAt, error: null });
-      void notifyTray(false, null);
+      if (state.available) {
+        setState({ phase: "available", lastCheckedAt, error: null });
+        void notifyTray(true, state.available.version);
+      } else {
+        setState({ phase: "current", available: null, lastCheckedAt, error: null });
+        void notifyTray(false, null);
+      }
     }
   } catch (error) {
     const message = describeDesktopUpdaterError(error);
@@ -119,6 +125,11 @@ export async function checkForUpdate(): Promise<void> {
       lastCheckedAt: new Date().toISOString(),
       error: message,
     });
+    if (state.available) {
+      void notifyTray(true, state.available.version);
+    } else {
+      void notifyTray(false, null, "error");
+    }
   }
 }
 

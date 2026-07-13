@@ -25,7 +25,7 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain('className="min-w-0 w-full"');
     expect(source).toContain('className="text-[12px] text-white font-medium flex w-full min-w-0');
     expect(source).toContain('className="min-w-0 flex-1 truncate">{displayTitle}</span>');
-    expect(source).toContain("absolute right-2 top-2");
+    expect(source).toContain("absolute right-2 top-1/2");
     expect(source).toContain("pointer-events-none");
     expect(source).toContain("group-hover:pointer-events-auto");
     expect(source).toContain("group-focus-within:pointer-events-auto");
@@ -106,6 +106,21 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain("Reveal in Finder/Explorer");
     expect(source).toContain('apiFetch("/api/ide/reveal"');
     expect(source).toContain("aria-label={`${group.label} project actions`}");
+    expect(source).toContain("onNewSession(group.workspaceDir)");
+    expect(source).toContain("aria-label={`New chat in ${group.label}`}");
+    expect(source).toContain("setWorkspaceDir(nextWorkspaceDir)");
+    expect(source).toContain("persistWorkspaceDir(nextWorkspaceDir)");
+  });
+
+  test("keeps session hover actions neutral, theme-aware, and vertically centered", () => {
+    const source = chatSource();
+
+    expect(source).toContain("top-1/2 flex -translate-y-1/2 items-center");
+    expect(source).toContain("bg-[var(--surface-panel,#11111a)]");
+    expect(source).toContain("hover:bg-[var(--surface-hover,#1a1d24)]");
+    expect(source).not.toContain("hover:bg-amber-500/20");
+    expect(source).not.toContain("hover:bg-indigo-500/20 text-indigo-300");
+    expect(source).not.toContain("hover:bg-red-500/20 text-red-400");
   });
 
   test("supports keyboard session selection", () => {

@@ -21,6 +21,7 @@ import {
   PinOff,
   Plus,
   Search,
+  SquarePen,
   Trash2,
   X,
 } from "lucide-react";
@@ -60,13 +61,15 @@ interface SessionsPanelProps {
     contextUsage?: SessionContextUsage | null,
     tokenUsage?: SessionTokenUsage | null
   ) => void;
-  onNewSession: () => void;
+  onNewSession: (workspaceDir?: string | null) => void;
 }
 
 const PINNED_WORKSPACE_GROUPS_STORAGE_KEY = "cybara.chat.pinnedWorkspaceGroupIds";
 const CHAT_SIDEBAR_WIDTH_STORAGE_KEY = "cybara.chat.sidebarWidth";
 const CHAT_SIDEBAR_MIN_WIDTH = 248;
 const CHAT_SIDEBAR_MAX_WIDTH = 420;
+const SIDEBAR_ACTION_BUTTON_CLASS =
+  "flex h-5 w-5 items-center justify-center rounded text-gray-500 transition-colors hover:bg-[var(--surface-hover,#1a1d24)] hover:text-gray-200";
 
 interface SessionTooltipState {
   anchor: DOMRect;
@@ -447,7 +450,7 @@ export function SessionsPanel({
 
         <div className="flex-1 overflow-y-auto p-2 space-y-3">
           <button
-            onClick={onNewSession}
+            onClick={() => onNewSession()}
             className="w-full p-2.5 rounded-lg bg-[rgba(var(--accent-primary),0.1)] border border-[rgba(var(--accent-primary),0.2)] hover:bg-[rgba(var(--accent-primary),0.15)] text-white text-[12px] font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -510,21 +513,37 @@ export function SessionsPanel({
                     </span>
                   </button>
                   {group.kind === "workspace" ? (
-                    <div className="relative flex h-5 w-8 shrink-0 items-center justify-end">
+                    <div className="relative flex h-5 w-12 shrink-0 items-center justify-end">
                       <span className="text-[10px] text-gray-600 transition-opacity group-hover/session-folder:opacity-0">
                         {group.sessions.length}
                       </span>
-                      <button
-                        type="button"
-                        className="absolute right-0 rounded-md p-1 text-gray-500 opacity-0 transition-opacity hover:bg-white/10 hover:text-white group-hover/session-folder:opacity-100"
-                        aria-label={`${group.label} project actions`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setOpenGroupMenuId((current) => (current === group.id ? null : group.id));
-                        }}
-                      >
-                        <MoreHorizontal className="h-3 w-3" />
-                      </button>
+                      <div className="absolute right-0 flex items-center gap-0.5 opacity-0 transition-opacity group-hover/session-folder:opacity-100 group-focus-within/session-folder:opacity-100">
+                        <button
+                          type="button"
+                          className={SIDEBAR_ACTION_BUTTON_CLASS}
+                          aria-label={`${group.label} project actions`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setOpenGroupMenuId((current) =>
+                              current === group.id ? null : group.id
+                            );
+                          }}
+                        >
+                          <MoreHorizontal className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          className={SIDEBAR_ACTION_BUTTON_CLASS}
+                          aria-label={`New chat in ${group.label}`}
+                          title={`New chat in ${group.label}`}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onNewSession(group.workspaceDir);
+                          }}
+                        >
+                          <SquarePen className="h-3 w-3" />
+                        </button>
+                      </div>
                       {openGroupMenuId === group.id && (
                         <div className="absolute right-0 top-6 z-50 w-48 overflow-hidden rounded-xl border border-white/12 bg-[#181820]/95 p-1.5 text-[12px] text-gray-200 shadow-2xl shadow-black/45 backdrop-blur-xl">
                           <button
@@ -679,17 +698,12 @@ export function SessionsPanel({
                           {editingSessionId !== session.id && (
                             <div
                               className={cn(
-                                "pointer-events-none absolute right-2 top-2 flex items-center gap-1 rounded-md bg-[#11111a]/90 px-1 py-0.5 shadow-lg shadow-black/30 backdrop-blur transition-opacity",
+                                "pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-[var(--surface-panel,#11111a)] p-0.5 shadow-sm transition-opacity",
                                 "opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100"
                               )}
                             >
                               <button
-                                className={cn(
-                                  "p-1 rounded cursor-pointer",
-                                  session.pinned
-                                    ? "text-amber-400 hover:bg-amber-500/20"
-                                    : "text-gray-400 hover:bg-amber-500/20 hover:text-amber-300"
-                                )}
+                                className={SIDEBAR_ACTION_BUTTON_CLASS}
                                 onClick={(event) =>
                                   handleTogglePin(event, session.id, !!session.pinned)
                                 }
@@ -703,7 +717,7 @@ export function SessionsPanel({
                                 )}
                               </button>
                               <button
-                                className="p-1 rounded hover:bg-indigo-500/20 text-indigo-300 cursor-pointer"
+                                className={SIDEBAR_ACTION_BUTTON_CLASS}
                                 onClick={(event) => beginRenameSession(event, session)}
                                 aria-label="Rename session"
                                 title="Rename session"
@@ -711,7 +725,7 @@ export function SessionsPanel({
                                 <Pencil className="w-3 h-3" />
                               </button>
                               <button
-                                className="p-1 rounded hover:bg-red-500/20 text-red-400 cursor-pointer"
+                                className={SIDEBAR_ACTION_BUTTON_CLASS}
                                 onClick={(event) => {
                                   event.stopPropagation();
                                   setShowDeleteModal(session.id);

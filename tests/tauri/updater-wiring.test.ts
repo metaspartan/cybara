@@ -55,9 +55,15 @@ describe("desktop updater wiring", () => {
     expect(trayRs).toContain(
       'apply_update_state(app, true, None, Some("downloading".to_string()))'
     );
+    expect(trayRs).toContain('"Checking for updates…"');
+    expect(trayRs).toContain('Some("error") => "Unable to check for updates"');
+    expect(trayRs).toContain('log::warn!("Desktop update check failed: {error}")');
+    expect(trayRs).toContain('log::info!("Desktop update available: {}", update.version)');
     expect(mainTsx).toContain("ensureUpdatePolling()");
     expect(updateStore).toContain("if (!state.available) await checkForUpdate()");
     expect(updateStore).toContain('await notifyTray(true, update.version, "downloading")');
+    expect(updateStore).toContain('void notifyTray(false, null, "checking")');
+    expect(updateStore).toContain('void notifyTray(false, null, "error")');
     expect(mainRs).toContain("std::sync::mpsc::sync_channel(1)");
     expect(mainRs).toContain("app.run_on_main_thread");
     expect(mainRs).toContain("receiver.recv()");

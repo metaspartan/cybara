@@ -365,7 +365,8 @@ export function copyTransformersRuntime(
   // makes notarization fail on unrelated binaries.
   copySharpRuntime(targetNodeModulesDir, runtimeTarget);
 
-  return kokoroNativeDir || copyOnnxRuntimeNodeRuntime(targetNodeModulesDir, runtimeTarget);
+  const transformersNativeDir = copyOnnxRuntimeNodeRuntime(targetNodeModulesDir, runtimeTarget);
+  return transformersNativeDir || kokoroNativeDir;
 }
 
 export function patchedOnnxBindingSource(): string {
