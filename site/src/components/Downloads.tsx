@@ -30,7 +30,7 @@ export function Downloads(): React.ReactElement {
           Latest release <strong>{release.version}</strong>
           {downloadTotal !== null && downloadTotal > 0 ? (
             <span className="release-badge-downloads">
-              · <strong>{formatDownloadTotal(downloadTotal)}</strong> downloads
+              · <strong>{formatDownloadTotal(downloadTotal)}</strong> installer downloads
             </span>
           ) : null}
         </div>

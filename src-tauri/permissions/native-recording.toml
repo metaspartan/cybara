@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "native-recording"
+description = "Allows the Cybara interface to start and stop native microphone recording."
+commands.allow = ["start_native_recording", "stop_native_recording"]

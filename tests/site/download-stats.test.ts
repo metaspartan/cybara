@@ -2,25 +2,46 @@ import { describe, expect, test } from "bun:test";
 import {
   formatDownloadTotal,
   isCountedDownloadAsset,
+  releaseAutomationBaseline,
   sumReleaseDownloads,
 } from "../../site/downloadStats";
 
 describe("site release download totals", () => {
-  test("excludes updater manifests while retaining downloadable release assets", () => {
+  test("excludes updater metadata while retaining downloadable release assets", () => {
     expect(isCountedDownloadAsset({ name: "latest.json", download_count: 50_000 })).toBe(false);
     expect(isCountedDownloadAsset({ name: "LATEST.JSON", download_count: 50_000 })).toBe(false);
-    expect(isCountedDownloadAsset({ name: "cybara-macos.dmg", download_count: 120 })).toBe(true);
+    expect(isCountedDownloadAsset({ name: "Cybara.app.tar.gz.sig", download_count: 500 })).toBe(
+      false
+    );
+    expect(isCountedDownloadAsset({ name: "cybara.sha256", download_count: 500 })).toBe(false);
+    expect(isCountedDownloadAsset({ name: "checksums.txt", download_count: 500 })).toBe(false);
+    expect(isCountedDownloadAsset({ name: "Cybara_aarch64.app.tar.gz", download_count: 500 })).toBe(
+      false
+    );
     expect(
-      sumReleaseDownloads([
-        {
-          assets: [
-            { name: "latest.json", download_count: 50_000 },
-            { name: "cybara-macos.dmg", download_count: 120 },
-            { name: "cybara-windows.exe", download_count: 80 },
-          ],
-        },
-      ])
-    ).toBe(200);
+      isCountedDownloadAsset({ name: "cybara-v1.0.1-linux-x64-cli", download_count: 500 })
+    ).toBe(false);
+    expect(isCountedDownloadAsset({ name: "cybara-v1.0.1-ios.ipa", download_count: 500 })).toBe(
+      false
+    );
+    expect(
+      isCountedDownloadAsset({ name: "CybaraNative-v1.0.1-arm64.zip", download_count: 5 })
+    ).toBe(true);
+    expect(isCountedDownloadAsset({ name: "cybara-v1.0.1-android.apk", download_count: 5 })).toBe(
+      true
+    );
+    expect(isCountedDownloadAsset({ name: "cybara-macos.dmg", download_count: 120 })).toBe(true);
+    const release = {
+      assets: [
+        { name: "latest.json", download_count: 50_000 },
+        { name: "cybara-macos.dmg.sig", download_count: 100 },
+        { name: "checksums.txt", download_count: 95 },
+        { name: "cybara-macos.dmg", download_count: 120 },
+        { name: "cybara-windows.exe", download_count: 80 },
+      ],
+    };
+    expect(releaseAutomationBaseline(release)).toBe(100);
+    expect(sumReleaseDownloads([release])).toBe(20);
   });
 
   test("ignores malformed and negative counts", () => {

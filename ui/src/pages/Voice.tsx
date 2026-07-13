@@ -10,9 +10,17 @@ import {
   preferredRecordingMimeType,
 } from "@/lib/audioTranscription";
 import { appendApiTokenParam } from "@/lib/auth";
+import { isTauriDesktopRuntime } from "@/lib/desktopHost";
+import {
+  nativeAudioErrorMessage,
+  nativeRecordingBlob,
+  startNativeAudioRecording,
+  stopNativeAudioRecording,
+} from "@/lib/nativeDesktopAudio";
 import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
 import {
+  canUseNativeSpeechRecognition,
   normalizeDictationMode,
   resolveDictationRuntime,
   type SpeechRecognitionLike,
@@ -71,6 +79,7 @@ export function Voice() {
   const [micPermission, setMicPermission] = useState<MicPermission>("unknown");
   const [setupOpen, setSetupOpen] = useState<boolean | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const nativeRecorderActiveRef = useRef(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -127,12 +136,13 @@ export function Voice() {
   const dictationRuntime = resolveDictationRuntime(
     normalizeDictationMode(speechStatus.data?.settings?.sttProvider),
     {
-      nativeRecognition: !!SpeechCtor,
+      nativeRecognition: canUseNativeSpeechRecognition(!!SpeechCtor, isTauriDesktopRuntime()),
+      nativeRecorder: isTauriDesktopRuntime(),
       mediaRecorder: typeof MediaRecorder !== "undefined",
       microphone: !!navigator.mediaDevices?.getUserMedia,
     }
   );
-  const micReady = micPermission === "granted";
+  const micReady = dictationRuntime.engine === "recording" || micPermission === "granted";
   const allReady = ttsReady && sttReady && micReady;
   const setupVisible = setupOpen ?? (speechStatus.isSuccess && !allReady);
   const toggleSetup = () => setSetupOpen((current) => !(current ?? setupVisible));
@@ -239,9 +249,34 @@ export function Voice() {
     }
   };
 
+  const finishNativeRecording = async () => {
+    nativeRecorderActiveRef.current = false;
+    setStatus("thinking");
+    try {
+      const recording = await stopNativeAudioRecording();
+      const local = dictationRuntime.serverProvider === "local";
+      const payload = local ? await audioBlobToLocalPcm(nativeRecordingBlob(recording)) : recording;
+      const result = await chatApi.dictate({
+        ...payload,
+        provider: dictationRuntime.serverProvider || undefined,
+      });
+      if (!result.success || !result.data?.text) {
+        throw new Error(result.error || "Transcription failed");
+      }
+      await send(result.data.text);
+    } catch (error) {
+      setStatus("idle");
+      addToast("error", nativeAudioErrorMessage(error, "Transcription failed"));
+    }
+  };
+
   const stopRecording = () => {
     recognitionRef.current?.stop();
     recognitionRef.current = null;
+    if (nativeRecorderActiveRef.current) {
+      void finishNativeRecording();
+      return;
+    }
     if (recorderRef.current?.state !== "inactive") recorderRef.current?.stop();
   };
 
@@ -274,6 +309,18 @@ export function Voice() {
       recognitionRef.current = recognition;
       recognition.start();
       setStatus("listening");
+      return;
+    }
+    if (isTauriDesktopRuntime()) {
+      try {
+        stopAudio();
+        await startNativeAudioRecording();
+        nativeRecorderActiveRef.current = true;
+        setMicPermission("granted");
+        setStatus("listening");
+      } catch (error) {
+        addToast("error", nativeAudioErrorMessage(error, "Microphone access failed"));
+      }
       return;
     }
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
@@ -359,6 +406,7 @@ export function Voice() {
     () => () => {
       audioRef.current?.pause();
       if (recorderRef.current?.state !== "inactive") recorderRef.current?.stop();
+      if (nativeRecorderActiveRef.current) void stopNativeAudioRecording().catch(() => undefined);
       recognitionRef.current?.stop();
       for (const track of streamRef.current?.getTracks() || []) track.stop();
       if (levelFrameRef.current !== null) cancelAnimationFrame(levelFrameRef.current);

@@ -1,19 +1,148 @@
 // Prevents additional console window on Windows in release
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use base64::Engine;
 use std::io::{Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 use tauri::Manager;
 use tauri::RunEvent;
+use tauri_plugin_audio_recorder::{AudioFormat, AudioQuality, AudioRecorderExt, RecordingConfig};
 use tauri_plugin_shell::ShellExt;
 
 mod tray;
 
 const CYBARA_SERVER_ADDR: &str = "127.0.0.1:4269";
-const CYBARA_SERVER_URL: &str = "http://127.0.0.1:4269";
+const CYBARA_SERVER_URL: &str = "http://localhost:4269";
 const HEALTH_PROBE_TIMEOUT: Duration = Duration::from_millis(750);
+const MAX_NATIVE_RECORDING_BYTES: u64 = 64 * 1024 * 1024;
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeRecordingData {
+    audio_base64: String,
+    mime_type: String,
+    file_name: String,
+}
+
+#[cfg(target_os = "macos")]
+async fn ensure_microphone_access() -> Result<(), String> {
+    use objc2_av_foundation::{AVAuthorizationStatus, AVCaptureDevice, AVMediaTypeAudio};
+
+    let media_type = unsafe { AVMediaTypeAudio }
+        .ok_or_else(|| "macOS audio authorization is unavailable".to_string())?;
+    let status = unsafe { AVCaptureDevice::authorizationStatusForMediaType(media_type) };
+
+    match status {
+        AVAuthorizationStatus::Authorized => Ok(()),
+        AVAuthorizationStatus::Denied => Err(
+            "Microphone access is disabled. Enable Cybara in System Settings > Privacy & Security > Microphone."
+                .into(),
+        ),
+        AVAuthorizationStatus::Restricted => {
+            Err("Microphone access is restricted by macOS policy.".into())
+        }
+        AVAuthorizationStatus::NotDetermined => {
+            let granted = tauri::async_runtime::spawn_blocking(|| {
+                let media_type = unsafe { AVMediaTypeAudio }
+                    .ok_or_else(|| "macOS audio authorization is unavailable".to_string())?;
+                let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+                let handler = block2::RcBlock::new(move |granted: objc2::runtime::Bool| {
+                    let _ = sender.send(granted.as_bool());
+                });
+                unsafe {
+                    AVCaptureDevice::requestAccessForMediaType_completionHandler(
+                        media_type,
+                        &handler,
+                    );
+                }
+                receiver
+                    .recv_timeout(Duration::from_secs(120))
+                    .map_err(|_| "Timed out waiting for microphone permission.".to_string())
+            })
+            .await
+            .map_err(|error| error.to_string())??;
+            if granted {
+                Ok(())
+            } else {
+                Err(
+                    "Microphone access was denied. Enable Cybara in System Settings > Privacy & Security > Microphone."
+                        .into(),
+                )
+            }
+        }
+        _ => Err("macOS returned an unknown microphone authorization state".into()),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+async fn ensure_microphone_access() -> Result<(), String> {
+    Ok(())
+}
+
+async fn read_native_recording(path: String) -> Result<NativeRecordingData, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let recording = std::fs::canonicalize(&path).map_err(|error| error.to_string())?;
+        let temp =
+            std::fs::canonicalize(std::env::temp_dir()).map_err(|error| error.to_string())?;
+        let file_name = recording
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| "invalid native recording path".to_string())?;
+        if !recording.starts_with(&temp)
+            || !file_name.starts_with("recording-")
+            || recording.extension().and_then(|value| value.to_str()) != Some("wav")
+        {
+            return Err(
+                "native recording path is outside the temporary recording directory".into(),
+            );
+        }
+        let metadata = std::fs::metadata(&recording).map_err(|error| error.to_string())?;
+        if metadata.len() > MAX_NATIVE_RECORDING_BYTES {
+            return Err("native recording exceeds the maximum supported size".into());
+        }
+        let bytes = std::fs::read(&recording).map_err(|error| error.to_string())?;
+        std::fs::remove_file(&recording).map_err(|error| error.to_string())?;
+        Ok(NativeRecordingData {
+            audio_base64: base64::engine::general_purpose::STANDARD.encode(bytes),
+            mime_type: "audio/wav".into(),
+            file_name: file_name.to_string(),
+        })
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn start_native_recording(app: tauri::AppHandle) -> Result<(), String> {
+    ensure_microphone_access().await?;
+    tauri::async_runtime::spawn_blocking(move || {
+        app.audio_recorder()
+            .start_recording(RecordingConfig {
+                output_path: String::new(),
+                format: AudioFormat::Wav,
+                quality: AudioQuality::Low,
+                max_duration: 300,
+                device_id: None,
+            })
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn stop_native_recording(app: tauri::AppHandle) -> Result<NativeRecordingData, String> {
+    let recording = tauri::async_runtime::spawn_blocking(move || {
+        app.audio_recorder()
+            .stop_recording()
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    read_native_recording(recording.file_path).await
+}
 
 fn should_log_sidecar_output() -> bool {
     cfg!(debug_assertions)
@@ -251,8 +380,11 @@ fn main() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_audio_recorder::init())
         .invoke_handler(tauri::generate_handler![
             read_cybara_api_key,
+            start_native_recording,
+            stop_native_recording,
             set_update_available
         ])
         .setup(|app| {

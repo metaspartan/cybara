@@ -387,6 +387,114 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Allows the Cybara interface to start and stop native microphone recording.",
+          "type": "string",
+          "const": "native-recording",
+          "markdownDescription": "Allows the Cybara interface to start and stop native microphone recording."
+        },
+        {
+          "description": "Default permissions for the Audio Recorder plugin - allows all audio recording operations\n#### This default permission set includes:\n\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-pause-recording`\n- `allow-resume-recording`\n- `allow-get-status`\n- `allow-get-devices`\n- `allow-check-permission`\n- `allow-request-permission`",
+          "type": "string",
+          "const": "audio-recorder:default",
+          "markdownDescription": "Default permissions for the Audio Recorder plugin - allows all audio recording operations\n#### This default permission set includes:\n\n- `allow-start-recording`\n- `allow-stop-recording`\n- `allow-pause-recording`\n- `allow-resume-recording`\n- `allow-get-status`\n- `allow-get-devices`\n- `allow-check-permission`\n- `allow-request-permission`"
+        },
+        {
+          "description": "Enables the check_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:allow-check-permission",
+          "markdownDescription": "Enables the check_permission command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_devices command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:allow-get-devices",
+          "markdownDescription": "Enables the get_devices command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:allow-get-status",
+          "markdownDescription": "Enables the get_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pause_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:allow-pause-recording",
+          "markdownDescription": "Enables the pause_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the request_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:allow-request-permission",
+          "markdownDescription": "Enables the request_permission command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the resume_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:allow-resume-recording",
+          "markdownDescription": "Enables the resume_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the start_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:allow-start-recording",
+          "markdownDescription": "Enables the start_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stop_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:allow-stop-recording",
+          "markdownDescription": "Enables the stop_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the check_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:deny-check-permission",
+          "markdownDescription": "Denies the check_permission command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_devices command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:deny-get-devices",
+          "markdownDescription": "Denies the get_devices command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:deny-get-status",
+          "markdownDescription": "Denies the get_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pause_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:deny-pause-recording",
+          "markdownDescription": "Denies the pause_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the request_permission command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:deny-request-permission",
+          "markdownDescription": "Denies the request_permission command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the resume_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:deny-resume-recording",
+          "markdownDescription": "Denies the resume_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the start_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:deny-start-recording",
+          "markdownDescription": "Denies the start_recording command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stop_recording command without any pre-configured scope.",
+          "type": "string",
+          "const": "audio-recorder:deny-stop-recording",
+          "markdownDescription": "Denies the stop_recording command without any pre-configured scope."
+        },
+        {
           "description": "Default core plugins set.\n#### This default permission set includes:\n\n- `core:path:default`\n- `core:event:default`\n- `core:window:default`\n- `core:webview:default`\n- `core:app:default`\n- `core:image:default`\n- `core:resources:default`\n- `core:menu:default`\n- `core:tray:default`",
           "type": "string",
           "const": "core:default",

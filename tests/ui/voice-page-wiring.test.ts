@@ -10,6 +10,8 @@ const app = readFileSync(join(root, "ui", "src", "App.tsx"), "utf8");
 describe("voice UI wiring", () => {
   test("voice page records, transcribes, chats, and speaks responses", () => {
     expect(voice).toContain("navigator.mediaDevices.getUserMedia");
+    expect(voice).toContain("startNativeAudioRecording");
+    expect(voice).toContain("stopNativeAudioRecording");
     expect(voice).toContain("chatApi.dictate");
     expect(voice).toContain("chatApi.send");
     expect(voice).toContain("chatApi.synthesizeSpeech");

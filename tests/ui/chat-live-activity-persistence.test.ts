@@ -4,6 +4,7 @@ import { join } from "path";
 import {
   applyLiveActivityEvent,
   buildPreSteeringActivityMessage,
+  canUseNativeSpeechRecognition,
   isAgentUsingBrowser,
   isRawToolCallThought,
   pruneCanonicalizedLiveActivities,
@@ -449,12 +450,18 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain("handleToggleDictation");
     expect(source).toContain("dictationRuntime.unsupportedReason");
     expect(source).toContain('role={dictationError ? "alert" : "status"}');
+    expect(source).toContain(
+      "canUseNativeSpeechRecognition(!!SpeechCtor, isTauriDesktopRuntime())"
+    );
   });
 
   test("resolves dictation runtime by explicit speech-to-text mode", () => {
+    expect(canUseNativeSpeechRecognition(true, false)).toBe(true);
+    expect(canUseNativeSpeechRecognition(true, true)).toBe(false);
     expect(
       resolveDictationRuntime("auto", {
         nativeRecognition: true,
+        nativeRecorder: false,
         mediaRecorder: true,
         microphone: true,
       }).engine
@@ -462,6 +469,7 @@ describe("Chat live activity persistence", () => {
     expect(
       resolveDictationRuntime("auto", {
         nativeRecognition: false,
+        nativeRecorder: false,
         mediaRecorder: true,
         microphone: true,
       }).engine
@@ -469,6 +477,7 @@ describe("Chat live activity persistence", () => {
     expect(
       resolveDictationRuntime("native", {
         nativeRecognition: false,
+        nativeRecorder: false,
         mediaRecorder: true,
         microphone: true,
       }).serverProvider
@@ -476,6 +485,7 @@ describe("Chat live activity persistence", () => {
     expect(
       resolveDictationRuntime("local", {
         nativeRecognition: true,
+        nativeRecorder: false,
         mediaRecorder: true,
         microphone: true,
       }).engine
@@ -483,10 +493,19 @@ describe("Chat live activity persistence", () => {
     expect(
       resolveDictationRuntime("openai", {
         nativeRecognition: true,
+        nativeRecorder: false,
         mediaRecorder: false,
         microphone: true,
       }).unsupportedReason
     ).toContain("record audio");
+    expect(
+      resolveDictationRuntime("native", {
+        nativeRecognition: false,
+        nativeRecorder: true,
+        mediaRecorder: false,
+        microphone: false,
+      }).engine
+    ).toBe("recording");
   });
 
   test("keeps sessions panel open on session switch/new session callbacks", () => {

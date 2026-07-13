@@ -73,8 +73,18 @@ import {
   MAX_TEXT_FILES,
   mediaSummaryLabel,
 } from "@/lib/chatImages";
-import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
+import {
+  isDesktopHostRuntime,
+  isTauriDesktopRuntime,
+  openDesktopDirectoryDialog,
+} from "@/lib/desktopHost";
 import { useI18n } from "@/lib/i18n";
+import {
+  nativeAudioErrorMessage,
+  nativeRecordingBlob,
+  startNativeAudioRecording,
+  stopNativeAudioRecording,
+} from "@/lib/nativeDesktopAudio";
 import {
   connectStatusStream,
   type PendingChatMessage,
@@ -120,6 +130,7 @@ import {
   type ArtifactSummaryView,
   applyLiveActivityEvent,
   buildPreSteeringActivityMessage,
+  canUseNativeSpeechRecognition,
   type ChatMessage,
   clampDiffPanelWidth,
   type DictationMode,
@@ -817,6 +828,7 @@ export function Chat() {
   const [dictationLanguage, setDictationLanguage] = useState("en-US");
   const [dictationCapabilities, setDictationCapabilities] = useState<DictationRuntimeCapabilities>({
     nativeRecognition: false,
+    nativeRecorder: false,
     mediaRecorder: false,
     microphone: false,
   });
@@ -838,6 +850,7 @@ export function Chat() {
   const composerRef = useRef<HTMLDivElement | null>(null);
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const nativeRecorderActiveRef = useRef(false);
   const dictationStreamRef = useRef<MediaStream | null>(null);
   const dictationChunksRef = useRef<Blob[]>([]);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
@@ -1274,6 +1287,7 @@ export function Chat() {
     if (typeof window === "undefined") {
       setDictationCapabilities({
         nativeRecognition: false,
+        nativeRecorder: false,
         mediaRecorder: false,
         microphone: false,
       });
@@ -1282,7 +1296,8 @@ export function Chat() {
     const speechWindow = window as SpeechRecognitionWindow;
     const SpeechCtor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     setDictationCapabilities({
-      nativeRecognition: !!SpeechCtor,
+      nativeRecognition: canUseNativeSpeechRecognition(!!SpeechCtor, isTauriDesktopRuntime()),
+      nativeRecorder: isTauriDesktopRuntime(),
       mediaRecorder: typeof window.MediaRecorder !== "undefined",
       microphone: !!window.navigator?.mediaDevices?.getUserMedia,
     });
@@ -1335,6 +1350,7 @@ export function Chat() {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
         mediaRecorderRef.current.stop();
       }
+      if (nativeRecorderActiveRef.current) void stopNativeAudioRecording().catch(() => undefined);
       if (dictationStreamRef.current) {
         for (const track of dictationStreamRef.current.getTracks()) {
           track.stop();
@@ -2973,6 +2989,48 @@ export function Chat() {
       return;
     }
 
+    if (dictationCapabilities.nativeRecorder) {
+      if (dictationTranscribing) return;
+      if (dictating && nativeRecorderActiveRef.current) {
+        nativeRecorderActiveRef.current = false;
+        setDictating(false);
+        setDictationTranscribing(true);
+        setDictationStatus("Transcribing dictation...");
+        try {
+          const recording = await stopNativeAudioRecording();
+          const local = dictationRuntime.serverProvider === "local";
+          const payload = local
+            ? await audioBlobToLocalPcm(nativeRecordingBlob(recording))
+            : recording;
+          const response = await chatApi.dictate({
+            ...payload,
+            provider: dictationRuntime.serverProvider || undefined,
+          });
+          if (response.success && response.data?.text) {
+            appendDictationText(response.data.text);
+          } else {
+            failDictation(response.error || "No transcript was returned.");
+          }
+        } catch (error) {
+          failDictation(nativeAudioErrorMessage(error, "Dictation transcription failed."));
+        } finally {
+          setDictationTranscribing(false);
+        }
+        return;
+      }
+      try {
+        setDictationError(null);
+        setDictationStatus("Requesting microphone access...");
+        await startNativeAudioRecording();
+        nativeRecorderActiveRef.current = true;
+        setDictating(true);
+        setDictationStatus("Recording for model transcription...");
+      } catch (error) {
+        failDictation(nativeAudioErrorMessage(error, "Failed to start recording."));
+      }
+      return;
+    }
+
     const canRecordAudio =
       !!window.navigator?.mediaDevices?.getUserMedia && typeof window.MediaRecorder !== "undefined";
     if (!canRecordAudio) {
@@ -3086,6 +3144,7 @@ export function Chat() {
   }, [
     dictating,
     dictationError,
+    dictationCapabilities.nativeRecorder,
     dictationLanguage,
     dictationRuntime.engine,
     dictationRuntime.serverProvider,

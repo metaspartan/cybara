@@ -101,13 +101,24 @@ async function respond(request: Request): Promise<Response> {
       url.pathname === "/downloads-badge.json"
         ? {
             schemaVersion: 1,
-            label: "downloads",
+            label: "installer downloads",
             message: formatDownloadTotal(downloadCache.total),
             color: "blue",
           }
         : {
             total: downloadCache.total,
-            excludedAssets: ["latest.json"],
+            includedAssets: [
+              "*.dmg",
+              "*.msi",
+              "*-setup.exe",
+              "*.deb",
+              "*.rpm",
+              "*.AppImage",
+              "*Native-Desktop*.zip",
+              "*native-macos*.zip",
+              "*.apk",
+            ],
+            estimation: "installer-assets-minus-release-automation-baseline",
             updatedAt: new Date(downloadCache.at).toISOString(),
           };
     return Response.json(body, {

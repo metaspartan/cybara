@@ -171,6 +171,7 @@ export type DictationEngine = "native" | "recording";
 
 export interface DictationRuntimeCapabilities {
   nativeRecognition: boolean;
+  nativeRecorder: boolean;
   mediaRecorder: boolean;
   microphone: boolean;
 }
@@ -187,11 +188,19 @@ export function normalizeDictationMode(value: unknown): DictationMode {
   return "auto";
 }
 
+export function canUseNativeSpeechRecognition(
+  speechRecognitionAvailable: boolean,
+  tauriDesktop: boolean
+): boolean {
+  return speechRecognitionAvailable && !tauriDesktop;
+}
+
 export function resolveDictationRuntime(
   mode: DictationMode,
   capabilities: DictationRuntimeCapabilities
 ): DictationRuntimeResolution {
-  const recordingAvailable = capabilities.microphone && capabilities.mediaRecorder;
+  const recordingAvailable =
+    capabilities.nativeRecorder || (capabilities.microphone && capabilities.mediaRecorder);
   if (mode === "native") {
     if (capabilities.nativeRecognition) {
       return {
