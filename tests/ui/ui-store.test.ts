@@ -203,6 +203,9 @@ describe("useUIStore actions", () => {
       codeFontSize: "large",
       lineSpacing: "spacious",
       reduceMotion: true,
+      reduceTransparency: true,
+      highContrast: true,
+      underlineLinks: true,
     });
     useUIStore.getState().setLoading("agents", true);
     useUIStore.getState().setLoading("chat", true);
@@ -220,6 +223,9 @@ describe("useUIStore actions", () => {
       codeFontSize: "large",
       lineSpacing: "spacious",
       reduceMotion: true,
+      reduceTransparency: true,
+      highContrast: true,
+      underlineLinks: true,
     });
     expect(state.loading).toEqual({ agents: false, chat: true });
     expect(state.toasts.map((toast) => toast.message)).toEqual(["saved", "broke"]);
@@ -283,6 +289,9 @@ useUIStore.getState().setChatAppearance({
   codeFontSize: "large",
   lineSpacing: "spacious",
   reduceMotion: true,
+  reduceTransparency: true,
+  highContrast: true,
+  underlineLinks: true,
 });
 useUIStore.getState().setLoading("x", true);
 useUIStore.getState().openModal("m");
@@ -348,6 +357,9 @@ describe("useUIStore persistence", () => {
         codeFontSize: "large",
         lineSpacing: "spacious",
         reduceMotion: true,
+        reduceTransparency: true,
+        highContrast: true,
+        underlineLinks: true,
       },
     });
   });

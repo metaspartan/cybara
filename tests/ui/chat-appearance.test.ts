@@ -19,6 +19,9 @@ describe("chat appearance settings", () => {
       codeFontSize: "standard",
       lineSpacing: "comfortable",
       reduceMotion: false,
+      reduceTransparency: false,
+      highContrast: false,
+      underlineLinks: false,
     });
     expect(getChatFontSizePixels("standard")).toBe(14);
     expect(getChatCodeFontSizePixels("standard")).toBe(12);
@@ -32,12 +35,18 @@ describe("chat appearance settings", () => {
         codeFontSize: "compact",
         lineSpacing: "spacious",
         reduceMotion: true,
+        reduceTransparency: true,
+        highContrast: true,
+        underlineLinks: true,
       })
     ).toEqual({
       fontSize: "large",
       codeFontSize: "compact",
       lineSpacing: "spacious",
       reduceMotion: true,
+      reduceTransparency: true,
+      highContrast: true,
+      underlineLinks: true,
     });
     expect(
       normalizeChatAppearanceSettings({
@@ -45,12 +54,18 @@ describe("chat appearance settings", () => {
         code_font_size: "large",
         line_spacing: "compact",
         reduce_motion: true,
+        reduce_transparency: true,
+        high_contrast: true,
+        underline_links: true,
       })
     ).toEqual({
       fontSize: "extra_large",
       codeFontSize: "large",
       lineSpacing: "compact",
       reduceMotion: true,
+      reduceTransparency: true,
+      highContrast: true,
+      underlineLinks: true,
     });
   });
 
@@ -95,11 +110,18 @@ describe("chat appearance settings", () => {
     expect(settings).toContain("Code text size");
     expect(settings).toContain("Line spacing");
     expect(settings).toContain("Reduce motion");
+    expect(settings).toContain("Reduce transparency");
+    expect(settings).toContain("Increase contrast");
+    expect(settings).toContain("Underline chat links");
     expect(settings).toContain("chat_appearance: next");
+    expect(settings).not.toContain("disabled={saving !== null}");
     expect(message).toContain('className="chat-markdown max-w-none text-gray-200"');
     expect(styles).toContain("font-size: var(--chat-font-size, 14px)");
     expect(styles).toContain("font-size: var(--chat-code-font-size, 12px)");
     expect(styles).toContain('html[data-reduce-motion="true"]');
+    expect(styles).toContain('html[data-reduce-transparency="true"]');
+    expect(styles).toContain('html[data-high-contrast="true"]');
+    expect(styles).toContain('html[data-underline-links="true"]');
     expect(routes).toContain('if (key === "chat_appearance")');
     expect(routes).toContain("config.setChatAppearanceSettings(value)");
   });

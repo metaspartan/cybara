@@ -70,6 +70,7 @@ export type TranslationKey =
   | "settings.capabilities"
   | "settings.security"
   | "settings.general"
+  | "settings.accessibility"
   | "settings.gateway"
   | "settings.ai"
   | "settings.voice"
@@ -236,6 +237,7 @@ const englishTranslations: TranslationCatalog = {
     "settings.capabilities": "Capabilities",
     "settings.security": "Security",
     "settings.general": "General",
+    "settings.accessibility": "Accessibility",
     "settings.gateway": "Gateway",
     "settings.ai": "AI",
     "settings.voice": "Voice",

@@ -235,6 +235,9 @@ function applyChatAppearance(settings: ChatAppearanceSettings) {
   );
   root.style.setProperty("--chat-line-height", String(getChatLineHeight(settings.lineSpacing)));
   root.dataset.reduceMotion = settings.reduceMotion ? "true" : "false";
+  root.dataset.reduceTransparency = settings.reduceTransparency ? "true" : "false";
+  root.dataset.highContrast = settings.highContrast ? "true" : "false";
+  root.dataset.underlineLinks = settings.underlineLinks ? "true" : "false";
 }
 
 export const useUIStore = create<UIState>()(

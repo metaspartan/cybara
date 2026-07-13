@@ -2087,3 +2087,61 @@ html.light[data-theme-mode="icy"] body::before {
     animation: none !important;
   }
 }
+
+html[data-reduce-transparency="true"] {
+  --glass-bg: var(--surface-panel, #11131c);
+  --glass-bg-strong: var(--surface-panel, #11131c);
+  --glass-surface: var(--surface-raised, #171b24);
+}
+
+html[data-reduce-transparency="true"] .glass,
+html[data-reduce-transparency="true"] .glass-strong,
+html[data-reduce-transparency="true"] .glass-card {
+  background: var(--surface-panel, #11131c);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-reduce-transparency="true"] .glass-card:hover {
+  background: var(--surface-hover, #1f2937);
+}
+
+html[data-high-contrast="true"] {
+  --glass-border: rgba(255, 255, 255, 0.28);
+  --surface-border: rgba(255, 255, 255, 0.3);
+  --text-secondary: #f3f4f6;
+  --text-muted: #e5e7eb;
+  --text-subtle: #d1d5db;
+  --icon-muted: #d1d5db;
+  --icon-hover: #ffffff;
+}
+
+html.light[data-high-contrast="true"] {
+  --glass-border: rgba(15, 23, 42, 0.32);
+  --surface-border: rgba(15, 23, 42, 0.34);
+  --text-secondary: #111827;
+  --text-muted: #1f2937;
+  --text-subtle: #374151;
+  --icon-muted: #374151;
+  --icon-hover: #030712;
+}
+
+html:not(.light)[data-high-contrast="true"] .text-gray-500,
+html:not(.light)[data-high-contrast="true"] .text-gray-400 {
+  color: #d1d5db;
+}
+
+html.light[data-high-contrast="true"] .text-gray-500,
+html.light[data-high-contrast="true"] .text-gray-400 {
+  color: #374151;
+}
+
+html[data-high-contrast="true"] :focus-visible {
+  outline-width: 3px;
+}
+
+html[data-underline-links="true"] .chat-markdown a {
+  text-decoration-line: underline;
+  text-decoration-thickness: 0.12em;
+  text-underline-offset: 0.18em;
+}

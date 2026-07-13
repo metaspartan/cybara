@@ -24,6 +24,7 @@ describe("web settings navigation", () => {
     ]);
     expect(settingsSections.map((section) => section.labelKey)).toEqual([
       "settings.general",
+      "settings.accessibility",
       "settings.gateway",
       "settings.ai",
       "nav.memory",
@@ -35,6 +36,7 @@ describe("web settings navigation", () => {
     ]);
     expect(settingsSections.map((section) => section.id)).toEqual([
       "general",
+      "accessibility",
       "gateway",
       "ai",
       "memory",
@@ -76,6 +78,8 @@ describe("web settings navigation", () => {
     expect(navigationSource).not.toContain("{section.description}");
     expect(navigationSource).toContain('className="block text-sm font-medium leading-5"');
     expect(settingsSource).toContain('activeSection === "gateway"');
+    expect(settingsSource).toContain('activeSection === "accessibility"');
+    expect(settingsSource).toContain("<ChatAccessibilitySettings />");
     expect(settingsSource).toContain("<GatewayPathSettingsSection");
     expect(settingsSource).toContain("<GatewayAuthSettingsSection");
     expect(settingsSource).toContain("<GatewayControlSection");

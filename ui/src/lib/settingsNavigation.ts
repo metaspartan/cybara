@@ -2,6 +2,7 @@ import type { TranslationKey } from "../../../shared/i18n/catalog";
 
 export type SettingsSectionId =
   | "general"
+  | "accessibility"
   | "gateway"
   | "ai"
   | "memory"
@@ -30,6 +31,11 @@ export const settingsSectionGroups: SettingsSectionGroup[] = [
         id: "general",
         labelKey: "settings.general",
         description: "Appearance and product identity",
+      },
+      {
+        id: "accessibility",
+        labelKey: "settings.accessibility",
+        description: "Readability and visual comfort",
       },
       {
         id: "gateway",

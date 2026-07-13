@@ -2666,12 +2666,9 @@ export function Settings() {
         <SettingsNavigation activeSection={activeSection} onSelect={selectSection} />
 
         <div className="min-w-0 space-y-6">
-          {activeSection === "general" && (
-            <>
-              <ThemeSettings />
-              <ChatAccessibilitySettings />
-            </>
-          )}
+          {activeSection === "general" && <ThemeSettings />}
+
+          {activeSection === "accessibility" && <ChatAccessibilitySettings />}
 
           {activeSection === "gateway" && (
             <>

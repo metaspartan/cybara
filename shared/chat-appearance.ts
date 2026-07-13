@@ -26,6 +26,9 @@ export interface ChatAppearanceSettings {
   codeFontSize: ChatCodeFontSize;
   lineSpacing: ChatLineSpacing;
   reduceMotion: boolean;
+  reduceTransparency: boolean;
+  highContrast: boolean;
+  underlineLinks: boolean;
 }
 
 export const DEFAULT_CHAT_APPEARANCE_SETTINGS: ChatAppearanceSettings = {
@@ -33,6 +36,9 @@ export const DEFAULT_CHAT_APPEARANCE_SETTINGS: ChatAppearanceSettings = {
   codeFontSize: "standard",
   lineSpacing: "comfortable",
   reduceMotion: false,
+  reduceTransparency: false,
+  highContrast: false,
+  underlineLinks: false,
 };
 
 const chatFontSizes = new Set<string>(chatFontSizeOptions.map((option) => option.value));
@@ -75,6 +81,18 @@ export function normalizeChatAppearanceSettings(value: unknown): ChatAppearanceS
       typeof (record.reduceMotion ?? record.reduce_motion) === "boolean"
         ? Boolean(record.reduceMotion ?? record.reduce_motion)
         : DEFAULT_CHAT_APPEARANCE_SETTINGS.reduceMotion,
+    reduceTransparency:
+      typeof (record.reduceTransparency ?? record.reduce_transparency) === "boolean"
+        ? Boolean(record.reduceTransparency ?? record.reduce_transparency)
+        : DEFAULT_CHAT_APPEARANCE_SETTINGS.reduceTransparency,
+    highContrast:
+      typeof (record.highContrast ?? record.high_contrast) === "boolean"
+        ? Boolean(record.highContrast ?? record.high_contrast)
+        : DEFAULT_CHAT_APPEARANCE_SETTINGS.highContrast,
+    underlineLinks:
+      typeof (record.underlineLinks ?? record.underline_links) === "boolean"
+        ? Boolean(record.underlineLinks ?? record.underline_links)
+        : DEFAULT_CHAT_APPEARANCE_SETTINGS.underlineLinks,
   };
 }
 
