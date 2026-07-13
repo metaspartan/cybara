@@ -5,6 +5,7 @@ import { resolveCybaraHome } from "./cybara-home";
 import type { Provider } from "./database";
 import { resolveLocalTtsVoice, synthesizeLocalSpeech } from "./local-speech";
 import { providerManager, providers, resolveProviderType } from "./providers";
+import { speechTextFromMarkdown } from "./speech-text";
 import { detectSystemSpeechCapability, synthesizeWithSystemSpeech } from "./system-speech";
 
 export const SPEECH_TTS_PROVIDER_TYPES = ["elevenlabs", "openai", "openai-codex"] as const;
@@ -321,7 +322,7 @@ async function synthesizeWithOpenAI(
 }
 
 export async function synthesizeSpeech(args: SpeechSynthesisArgs): Promise<SpeechSynthesisResult> {
-  const text = typeof args.text === "string" ? args.text.trim() : "";
+  const text = typeof args.text === "string" ? speechTextFromMarkdown(args.text) : "";
   if (!text) throw new Error("text is required");
 
   const settings = config.getSpeechSettings();
@@ -382,7 +383,7 @@ export async function synthesizeWithSystemVoice(
   args: SpeechSynthesisArgs,
   settings = config.getSpeechSettings()
 ): Promise<SpeechSynthesisResult> {
-  const text = typeof args.text === "string" ? args.text.trim() : "";
+  const text = typeof args.text === "string" ? speechTextFromMarkdown(args.text) : "";
   if (!text) throw new Error("text is required");
 
   const voice = args.voice?.trim() || settings.tts.voice || undefined;

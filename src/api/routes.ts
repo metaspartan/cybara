@@ -110,6 +110,19 @@ import { config } from "../core/config";
 import { resolveCybaraHome, setCybaraHomeOverride } from "../core/cybara-home";
 import { tables } from "../core/database";
 import { resolveGeminiCliOAuthClientConfig } from "../core/gemini-cli-oauth";
+import {
+  LOCAL_STT_MODELS,
+  LOCAL_TTS_MODELS,
+  LOCAL_TTS_VOICES,
+  listLocalSttModelStatus,
+  listLocalTtsModelStatus,
+  loadLocalSttModel,
+  loadLocalTtsModel,
+  transcribeLocalSpeech,
+  unloadLocalSttModel,
+  unloadLocalTtsModel,
+} from "../core/local-speech";
+import { normalizeLocalTranscriptionAudio } from "../core/local-speech-audio";
 import { createLogger } from "../core/logger";
 import {
   getAgentLogs,
@@ -146,6 +159,11 @@ import {
   providers,
   resolveProviderType,
 } from "../core/providers";
+import {
+  createRealtimeVoiceSession,
+  getRealtimeVoiceStatus,
+  testRealtimeVoiceConnection,
+} from "../core/realtime-voice";
 import { getAllPricing, getRouterStatus, type RouterConfig, selectProvider } from "../core/router";
 import { openUrlInBrowser } from "../core/runtime/open-url";
 import { getSandboxRuntimeStatus, logSandboxRuntimeStatus } from "../core/sandbox";
@@ -170,25 +188,7 @@ import {
   runSourceMigration,
   type SourceMigrationRequest,
 } from "../core/source-migration";
-import {
-  listLocalSttModelStatus,
-  listLocalTtsModelStatus,
-  loadLocalSttModel,
-  loadLocalTtsModel,
-  LOCAL_STT_MODELS,
-  LOCAL_TTS_MODELS,
-  LOCAL_TTS_VOICES,
-  transcribeLocalSpeech,
-  unloadLocalSttModel,
-  unloadLocalTtsModel,
-} from "../core/local-speech";
 import { resolveSpeechTtsProvider, synthesizeSpeech } from "../core/speech";
-import {
-  createRealtimeVoiceSession,
-  getRealtimeVoiceStatus,
-  testRealtimeVoiceConnection,
-} from "../core/realtime-voice";
-import { detectSystemSpeechCapability } from "../core/system-speech";
 import * as subagentRegistry from "../core/subagent-registry";
 import {
   createSystemBackup,
@@ -200,6 +200,7 @@ import {
 } from "../core/system-backup";
 import { getSystemMonitorSnapshot } from "../core/system-monitor";
 import { buildSystemPrompt } from "../core/system-prompt";
+import { detectSystemSpeechCapability } from "../core/system-speech";
 import { getAlwaysAllowlist, getPendingApprovals, resolveApproval } from "../core/tool-approval";
 import {
   clearSubagentSession,
@@ -2388,11 +2389,15 @@ const routes: Record<string, RouteHandler> = {
         ? data.provider.trim().toLowerCase()
         : speechSettings.stt.provider;
     if (requestedProvider === "local") {
-      if (!decoded.mimeType.toLowerCase().startsWith("audio/pcm-f32le")) {
-        throw new Error("Validation error: Local transcription requires 16 kHz Float32 PCM audio");
+      let pcmBytes: Uint8Array;
+      try {
+        pcmBytes = normalizeLocalTranscriptionAudio(decoded);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Recording could not be decoded";
+        throw new Error(`Validation error: ${message}`);
       }
       const result = await transcribeLocalSpeech({
-        pcmBytes: decoded.bytes,
+        pcmBytes,
         model:
           typeof data.model === "string" && data.model.trim()
             ? data.model.trim()

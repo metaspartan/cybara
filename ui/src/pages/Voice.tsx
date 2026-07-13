@@ -13,7 +13,6 @@ import { appendApiTokenParam } from "@/lib/auth";
 import { isTauriDesktopRuntime } from "@/lib/desktopHost";
 import {
   nativeAudioErrorMessage,
-  nativeRecordingBlob,
   startNativeAudioRecording,
   stopNativeAudioRecording,
 } from "@/lib/nativeDesktopAudio";
@@ -254,10 +253,8 @@ export function Voice() {
     setStatus("thinking");
     try {
       const recording = await stopNativeAudioRecording();
-      const local = dictationRuntime.serverProvider === "local";
-      const payload = local ? await audioBlobToLocalPcm(nativeRecordingBlob(recording)) : recording;
       const result = await chatApi.dictate({
-        ...payload,
+        ...recording,
         provider: dictationRuntime.serverProvider || undefined,
       });
       if (!result.success || !result.data?.text) {

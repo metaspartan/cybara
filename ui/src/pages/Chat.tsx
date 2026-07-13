@@ -81,7 +81,6 @@ import {
 import { useI18n } from "@/lib/i18n";
 import {
   nativeAudioErrorMessage,
-  nativeRecordingBlob,
   startNativeAudioRecording,
   stopNativeAudioRecording,
 } from "@/lib/nativeDesktopAudio";
@@ -2998,12 +2997,8 @@ export function Chat() {
         setDictationStatus("Transcribing dictation...");
         try {
           const recording = await stopNativeAudioRecording();
-          const local = dictationRuntime.serverProvider === "local";
-          const payload = local
-            ? await audioBlobToLocalPcm(nativeRecordingBlob(recording))
-            : recording;
           const response = await chatApi.dictate({
-            ...payload,
+            ...recording,
             provider: dictationRuntime.serverProvider || undefined,
           });
           if (response.success && response.data?.text) {

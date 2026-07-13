@@ -29,6 +29,7 @@ interface SpeechWorkerReport {
     url: string;
     authorization?: string | null;
     body: Record<string, unknown>;
+    text?: string;
   };
 }
 
@@ -146,7 +147,10 @@ globalThis.fetch = (async (input, init) => {
   return new Response(new Uint8Array([4, 5, 6]), { status: 200 });
 });
 
-const openaiResult = await synthesizeSpeech({ text: "Hello OpenAI", format: "wav" });
+const openaiResult = await synthesizeSpeech({
+  text: "## Hello **OpenAI**\\n\\nUse [Cybara](https://example.com).",
+  format: "wav",
+});
 const openaiCall = openaiFetchCalls[0];
 assert(openaiCall, "expected OpenAI fetch call");
 const openaiHeaders = new Headers(openaiCall.headers);
@@ -174,6 +178,7 @@ console.log("@@REPORT@@" + JSON.stringify({
     url: openaiCall.url,
     authorization: openaiHeaders.get("authorization"),
     body: parseJsonBody(openaiCall.body),
+    text: openaiResult.text,
   },
 }));
 `;
@@ -240,7 +245,8 @@ describe("speech synthesis requests", () => {
     expect(report.openai.format).toBe("wav");
     expect(report.openai.url).toBe("https://api.openai.com/v1/audio/speech");
     expect(report.openai.authorization).toBe("Bearer sk-test");
-    expect(report.openai.body.input).toBe("Hello OpenAI");
+    expect(report.openai.body.input).toBe("Hello OpenAI\n\nUse Cybara.");
+    expect(report.openai.text).toBe("Hello OpenAI\n\nUse Cybara.");
     expect(report.openai.body.model).toBe("gpt-4o-mini-tts");
     expect(report.openai.body.voice).toBe("nova");
     expect(report.openai.body.response_format).toBe("wav");

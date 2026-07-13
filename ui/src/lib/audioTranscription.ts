@@ -43,13 +43,26 @@ export function resampleAudioChannels(
 }
 
 export async function audioBlobToLocalPcm(blob: Blob): Promise<TranscriptionAudioPayload> {
+  if (blob.size < 32) {
+    throw new Error("No usable audio was captured. Record for at least a moment and try again.");
+  }
   const context = new AudioContext();
   try {
-    const decoded = await context.decodeAudioData(await blob.arrayBuffer());
+    let decoded: AudioBuffer;
+    try {
+      decoded = await context.decodeAudioData(await blob.arrayBuffer());
+    } catch {
+      throw new Error(
+        "This recording format could not be processed for local Whisper. Try recording again or use automatic transcription."
+      );
+    }
     const channels = Array.from({ length: decoded.numberOfChannels }, (_, channel) =>
       decoded.getChannelData(channel)
     );
     const samples = resampleAudioChannels(channels, decoded.sampleRate);
+    if (samples.length < 320) {
+      throw new Error("No usable audio was captured. Record for at least a moment and try again.");
+    }
     return {
       audioBase64: bytesToBase64(new Uint8Array(samples.buffer)),
       mimeType: "audio/pcm-f32le;rate=16000",

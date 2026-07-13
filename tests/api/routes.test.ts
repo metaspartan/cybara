@@ -1376,7 +1376,7 @@ describe("Speech API", () => {
       fileName: "dictation.webm",
     });
     expect(invalidLocalAudio.status).toBe(400);
-    expect(String(invalidLocalAudio.data.error)).toContain("16 kHz Float32 PCM");
+    expect(String(invalidLocalAudio.data.error)).toContain("WAV or 16 kHz Float32 PCM");
 
     await api("PUT", "/api/speech/settings", {
       tts: { provider: "auto" },

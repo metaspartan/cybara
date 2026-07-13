@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { resampleAudioChannels } from "../../ui/src/lib/audioTranscription";
+import { audioBlobToLocalPcm, resampleAudioChannels } from "../../ui/src/lib/audioTranscription";
 
 describe("local transcription audio", () => {
   test("mixes stereo to mono and resamples to 16 kHz", () => {
@@ -15,5 +15,9 @@ describe("local transcription audio", () => {
   test("returns no samples for invalid or empty input", () => {
     expect(resampleAudioChannels([], 48_000).length).toBe(0);
     expect(resampleAudioChannels([new Float32Array([1])], 0).length).toBe(0);
+  });
+
+  test("rejects empty recordings before opening a browser audio context", async () => {
+    expect(audioBlobToLocalPcm(new Blob())).rejects.toThrow("No usable audio was captured");
   });
 });
