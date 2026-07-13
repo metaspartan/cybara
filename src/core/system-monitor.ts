@@ -61,17 +61,25 @@ const SYSTEM_MONITOR_CACHE_MS = 1000;
 let lastSample: MonitorSample | null = null;
 let cachedSnapshot: SystemMonitorSnapshot | null = null;
 let cachedUntilMs = 0;
+let cachedDarwinMemory: SystemMonitorSnapshot["memory"] | null = null;
+let darwinMemoryRefresh: Promise<void> | null = null;
+let nextDarwinMemoryRefreshMs = 0;
 
-function runSystemCommand(command: string, args: string[], timeout: number): string | null {
+async function runSystemCommand(
+  command: string,
+  args: string[],
+  timeout: number
+): Promise<string | null> {
   try {
-    const result = Bun.spawnSync([command, ...args], {
+    const child = Bun.spawn([command, ...args], {
       stdin: "ignore",
       stdout: "pipe",
       stderr: "ignore",
-      timeout,
     });
-    if (result.exitCode !== 0) return null;
-    return new TextDecoder().decode(result.stdout);
+    const timer = setTimeout(() => child.kill(), timeout);
+    const [exitCode, output] = await Promise.all([child.exited, new Response(child.stdout).text()]);
+    clearTimeout(timer);
+    return exitCode === 0 ? output : null;
   } catch {
     return null;
   }
@@ -241,11 +249,6 @@ export function parseLinuxMeminfoSwap(output: string): SystemByteUsage | null {
 function readSwapUsage(): SystemByteUsage | null {
   const osPlatform = platform();
 
-  if (osPlatform === "darwin") {
-    const output = runSystemCommand("/usr/sbin/sysctl", ["vm.swapusage"], 500);
-    return output ? parseDarwinSwapUsage(output) : null;
-  }
-
   if (osPlatform === "linux") {
     try {
       return parseLinuxMeminfoSwap(readFileSync("/proc/meminfo", "utf8"));
@@ -262,13 +265,32 @@ function readGenericMemoryUsage(): SystemMonitorSnapshot["memory"] {
   return buildMemoryUsage(totalBytes, Math.max(0, totalBytes - freemem()), readSwapUsage());
 }
 
+async function refreshDarwinMemory(): Promise<void> {
+  const [vmStat, swapUsage] = await Promise.all([
+    runSystemCommand("/usr/bin/vm_stat", [], 750),
+    runSystemCommand("/usr/sbin/sysctl", ["vm.swapusage"], 500),
+  ]);
+  const memory = vmStat ? parseDarwinVmStatMemory(vmStat) : null;
+  if (memory) {
+    cachedDarwinMemory = {
+      ...memory,
+      swap: swapUsage ? parseDarwinSwapUsage(swapUsage) : null,
+    };
+  }
+}
+
+function scheduleDarwinMemoryRefresh(nowMs: number): void {
+  if (platform() !== "darwin" || darwinMemoryRefresh || nowMs < nextDarwinMemoryRefreshMs) return;
+  nextDarwinMemoryRefreshMs = nowMs + 30_000;
+  darwinMemoryRefresh = refreshDarwinMemory().finally(() => {
+    darwinMemoryRefresh = null;
+  });
+}
+
 function readMemoryUsage(): SystemMonitorSnapshot["memory"] {
   if (platform() !== "darwin") return readGenericMemoryUsage();
-
-  const output = runSystemCommand("/usr/bin/vm_stat", [], 750);
-  if (!output) return readGenericMemoryUsage();
-  const memory = parseDarwinVmStatMemory(output);
-  return memory ? { ...memory, swap: readSwapUsage() } : readGenericMemoryUsage();
+  scheduleDarwinMemoryRefresh(Date.now());
+  return cachedDarwinMemory ?? readGenericMemoryUsage();
 }
 
 export function getSystemMonitorSnapshot(): SystemMonitorSnapshot {

@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { handleExec, handleExecAsync, handleProcess } from "../../src/core/tools/handlers/process";
+import { existsSync, rmSync, statSync } from "node:fs";
+import {
+  handleExec,
+  handleExecAsync,
+  handleGit,
+  handleProcess,
+} from "../../src/core/tools/handlers/process";
 
 type ProcListEntry = { sessionId: string; command: string; startedAt: string };
 
@@ -28,6 +34,24 @@ describe("handleExecAsync", () => {
     const result = await handleExecAsync({ command: "" });
     expect(result.exitCode).toBe(2);
     expect(result.output.toLowerCase()).toContain("command is required");
+  });
+
+  test("spools oversized output without retaining it all in memory", async () => {
+    const result = await handleExecAsync(
+      { command: `bun -e 'process.stdout.write("x".repeat(1200000))'` },
+      { agentId: "test-agent", sessionId: "oversized-async-output" }
+    );
+    const outputPath = result.output.match(/Full output saved to: ([^\n]+)/)?.[1]?.trim();
+
+    try {
+      expect(result.exitCode).toBe(0);
+      expect(result.output.length).toBeLessThan(200_000);
+      expect(outputPath).toBeDefined();
+      expect(outputPath ? existsSync(outputPath) : false).toBe(true);
+      expect(outputPath ? statSync(outputPath).size : 0).toBeGreaterThanOrEqual(1_200_000);
+    } finally {
+      if (outputPath) rmSync(outputPath, { force: true });
+    }
   });
 });
 
@@ -72,7 +96,9 @@ describe("handleExec", () => {
     if (result.pid) {
       try {
         process.kill(-result.pid, "SIGKILL");
-      } catch {}
+      } catch {
+        void 0;
+      }
     }
   });
 
@@ -97,6 +123,44 @@ describe("handleExec", () => {
     const after = (await handleProcess({ action: "list" })) as ProcListEntry[];
     expect(after.find((p) => p.sessionId === found.sessionId)).toBeUndefined();
   }, 15000);
+
+  test("spools oversized output to a recovery file without retaining it all in memory", async () => {
+    const result = await handleExec(
+      { command: `bun -e 'process.stdout.write("x".repeat(1200000))'` },
+      { agentId: "test-agent", sessionId: "oversized-output" }
+    );
+    const outputPath = result.output.match(/Full output saved to: ([^\n]+)/)?.[1]?.trim();
+
+    try {
+      expect(result.exitCode).toBe(0);
+      expect(result.output.length).toBeLessThan(200_000);
+      expect(outputPath).toBeDefined();
+      expect(outputPath ? existsSync(outputPath) : false).toBe(true);
+      expect(outputPath ? statSync(outputPath).size : 0).toBeGreaterThanOrEqual(1_200_000);
+    } finally {
+      if (outputPath) rmSync(outputPath, { force: true });
+    }
+  });
+});
+
+describe("handleGit", () => {
+  test("times out without blocking the gateway event loop", async () => {
+    if (process.platform === "win32") return;
+    let ticks = 0;
+    const heartbeat = setInterval(() => {
+      ticks += 1;
+    }, 10);
+
+    const result = await handleGit({
+      command: "-c 'alias.cybara-wait=!sleep 2' cybara-wait",
+      timeout: 1,
+    });
+    clearInterval(heartbeat);
+
+    expect(result.exitCode).toBe(124);
+    expect(result.output).toContain("Git command timed out after 1 second.");
+    expect(ticks).toBeGreaterThan(20);
+  }, 5000);
 });
 
 describe("handleProcess kill actually terminates the process", () => {

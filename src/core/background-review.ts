@@ -2,6 +2,7 @@ import { handleSessionsSpawn } from "./tools/handlers/channel";
 import type { ToolContext } from "./tools/index";
 import { config } from "./config";
 import { agentManager } from "./agent";
+import { ConcurrencyLimiter } from "./concurrency-limiter";
 
 export function resolveBackgroundAgentId(requesterAgentId?: string): string | undefined {
   const configured = config.get<string>("background_agent_id");
@@ -11,11 +12,12 @@ export function resolveBackgroundAgentId(requesterAgentId?: string): string | un
   return requesterAgentId;
 }
 
-const DEFAULT_MIN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes per session
+const DEFAULT_MIN_INTERVAL_MS = 5 * 60 * 1000;
 const DEFAULT_REVIEW_TIMEOUT_S = 90;
 export const BACKGROUND_REVIEW_TOOL_NAMES = ["memory_search", "memory_get", "memory_save"] as const;
 
 const lastReviewAt = new Map<string, number>();
+const backgroundReviewConcurrency = new ConcurrencyLimiter(1);
 
 export interface BackgroundReviewOptions {
   minIntervalMs?: number;
@@ -66,6 +68,8 @@ export async function maybeRunBackgroundReview(
   lastReviewAt.set(context.sessionId, now);
 
   const prompt = buildReviewPrompt(lastAssistantText, context);
+  const release = await backgroundReviewConcurrency.acquire(undefined, 1);
+  if (!release) return;
 
   try {
     await handleSessionsSpawn(
@@ -84,5 +88,9 @@ export async function maybeRunBackgroundReview(
         allowedToolNames: [...BACKGROUND_REVIEW_TOOL_NAMES],
       }
     );
-  } catch {}
+  } catch {
+    return;
+  } finally {
+    release();
+  }
 }

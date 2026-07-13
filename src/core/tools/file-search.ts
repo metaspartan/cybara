@@ -1,9 +1,11 @@
 import { Worker } from "node:worker_threads";
+import { ConcurrencyLimiter } from "../concurrency-limiter";
 
 const DEFAULT_MAX_ENTRIES = 250_000;
 const DEFAULT_MAX_RESULTS = 1_000;
 const DEFAULT_MAX_DEPTH = 64;
 const DEFAULT_TIMEOUT_MS = 10_000;
+const fileSearchConcurrency = new ConcurrencyLimiter(2);
 
 const workerSource = String.raw`
 const { parentPort, workerData } = require("node:worker_threads");
@@ -152,12 +154,42 @@ export async function searchFiles(options: FileSearchOptions): Promise<FileSearc
     };
   }
 
+  const release = await fileSearchConcurrency.acquire(options.signal, timeoutMs);
+  if (!release) {
+    return {
+      files: [],
+      visitedEntries: 0,
+      limitReached: false,
+      timedOut: options.signal?.aborted !== true,
+      aborted: options.signal?.aborted === true,
+      elapsedMs: Date.now() - startedAt,
+    };
+  }
+
+  const remainingTimeoutMs = Math.max(1, timeoutMs - (Date.now() - startedAt));
+  try {
+    return await runFileSearchWorker(options, startedAt, remainingTimeoutMs, {
+      maxEntries,
+      maxResults,
+      maxDepth,
+    });
+  } finally {
+    release();
+  }
+}
+
+async function runFileSearchWorker(
+  options: FileSearchOptions,
+  startedAt: number,
+  timeoutMs: number,
+  limits: { maxEntries: number; maxResults: number; maxDepth: number }
+): Promise<FileSearchResult> {
   const workerData: FileSearchWorkerData = {
     cwd: options.cwd,
     pattern: options.pattern,
-    maxEntries,
-    maxResults,
-    maxDepth,
+    maxEntries: limits.maxEntries,
+    maxResults: limits.maxResults,
+    maxDepth: limits.maxDepth,
     ignoredDirectories: [
       "node_modules",
       ".git",
@@ -187,8 +219,10 @@ export async function searchFiles(options: FileSearchOptions): Promise<FileSearc
       settled = true;
       clearTimeout(timeout);
       options.signal?.removeEventListener("abort", abort);
-      void worker.terminate();
-      resolve({ files, elapsedMs: Date.now() - startedAt, ...result });
+      const complete = (): void => {
+        resolve({ files, elapsedMs: Date.now() - startedAt, ...result });
+      };
+      void worker.terminate().then(complete, complete);
     };
 
     const abort = (): void => {

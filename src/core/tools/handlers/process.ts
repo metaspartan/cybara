@@ -1,23 +1,50 @@
 import { existsSync } from "fs";
+import { appendFile } from "fs/promises";
 import { homeDir } from "../../paths";
 import { buildSandboxedShellPlan } from "../../sandbox";
 import { createLogger } from "../../logger";
 import { getPathSeparator, isWindows, shellEscapeArg } from "../../platform";
+import { persistToolOutputForRecovery } from "../../tool-output-recovery";
 import type { ToolContext } from "../index";
 
 const log = createLogger("ProcessTool");
 const STREAM_DRAIN_GRACE_MS = 200;
+const MAX_CAPTURED_OUTPUT_CHARS = 1_000_000;
+const OUTPUT_HEAD_CHARS = 96_000;
+const OUTPUT_TAIL_CHARS = 32_000;
+const OUTPUT_APPEND_BATCH_CHARS = 256_000;
+
+interface CollectedProcessOutput {
+  content: string;
+  recoveryPath?: string;
+}
 
 async function collectProcessOutput(
   stream: ReadableStream<Uint8Array>,
-  exited: Promise<number>
-): Promise<string> {
+  exited: Promise<number>,
+  options: { sessionId?: string; toolName: string; streamName: string }
+): Promise<CollectedProcessOutput> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let output = "";
+  let head = "";
+  let tail = "";
+  let pendingAppend = "";
+  let recoveryPath: string | undefined;
   const drainDeadline = exited.then(
     () => new Promise<"stop">((resolve) => setTimeout(() => resolve("stop"), STREAM_DRAIN_GRACE_MS))
   );
+
+  const appendPending = async (): Promise<void> => {
+    if (!recoveryPath || !pendingAppend) return;
+    const pending = pendingAppend;
+    pendingAppend = "";
+    try {
+      await appendFile(recoveryPath, pending, "utf8");
+    } catch {
+      recoveryPath = undefined;
+    }
+  };
 
   for (;;) {
     const next = await Promise.race([
@@ -29,10 +56,135 @@ async function collectProcessOutput(
       break;
     }
     if (next.result.done) break;
-    output += decoder.decode(next.result.value, { stream: true });
+    const text = decoder.decode(next.result.value, { stream: true });
+    if (!head) {
+      output += text;
+      if (output.length > MAX_CAPTURED_OUTPUT_CHARS) {
+        recoveryPath = persistToolOutputForRecovery({
+          content: output,
+          sessionId: options.sessionId,
+          toolName: `${options.toolName}-${options.streamName}`,
+        });
+        head = output.slice(0, OUTPUT_HEAD_CHARS);
+        tail = output.slice(-OUTPUT_TAIL_CHARS);
+        output = "";
+      }
+      continue;
+    }
+
+    tail = `${tail}${text}`.slice(-OUTPUT_TAIL_CHARS);
+    if (recoveryPath) {
+      pendingAppend += text;
+      if (pendingAppend.length >= OUTPUT_APPEND_BATCH_CHARS) {
+        await appendPending();
+      }
+    }
   }
 
-  return output + decoder.decode();
+  const finalText = decoder.decode();
+  if (!head) {
+    output += finalText;
+    return { content: output };
+  }
+  if (finalText) {
+    tail = `${tail}${finalText}`.slice(-OUTPUT_TAIL_CHARS);
+    if (recoveryPath) pendingAppend += finalText;
+  }
+  await appendPending();
+  const recoveryHint = recoveryPath
+    ? `Full output saved to: ${recoveryPath}`
+    : "Full output exceeded the in-memory limit and could not be saved.";
+  return {
+    content: `${head}\n[truncated: process output exceeded ${MAX_CAPTURED_OUTPUT_CHARS.toLocaleString()} characters]\n${recoveryHint}\n${tail}`,
+    recoveryPath,
+  };
+}
+
+interface CapturedProcessOptions {
+  command: string[];
+  displayCommand: string;
+  cwd: string;
+  env: Record<string, string | undefined>;
+  timeoutSeconds: number;
+  signal?: AbortSignal;
+  toolName: string;
+  sessionId?: string;
+}
+
+interface CapturedProcessResult {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  pid: number;
+  timedOut: boolean;
+  aborted: boolean;
+}
+
+async function runCapturedProcess(options: CapturedProcessOptions): Promise<CapturedProcessResult> {
+  const proc = Bun.spawn(options.command, {
+    cwd: options.cwd,
+    env: options.env,
+    stdout: "pipe",
+    stderr: "pipe",
+    detached: process.platform !== "win32",
+  });
+  const key = String(proc.pid);
+  let timedOut = false;
+  let aborted = false;
+  let forceKillTimeoutId: ReturnType<typeof setTimeout> | undefined;
+  const killProcess = (): void => {
+    killSubprocessTree(proc);
+    forceKillTimeoutId = setTimeout(() => killSubprocessTree(proc, "SIGKILL"), 750);
+  };
+  const abortHandler = (): void => {
+    aborted = true;
+    killProcess();
+  };
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    killProcess();
+  }, options.timeoutSeconds * 1000);
+  if (options.signal?.aborted) {
+    abortHandler();
+  } else {
+    options.signal?.addEventListener("abort", abortHandler, { once: true });
+  }
+  runningProcesses.set(key, {
+    pid: proc.pid,
+    command: options.displayCommand,
+    startedAt: new Date(),
+    proc,
+  });
+
+  try {
+    const exitedPromise = proc.exited;
+    const [stdout, stderr, exitCode] = await Promise.all([
+      collectProcessOutput(proc.stdout, exitedPromise, {
+        sessionId: options.sessionId,
+        toolName: options.toolName,
+        streamName: "stdout",
+      }),
+      collectProcessOutput(proc.stderr, exitedPromise, {
+        sessionId: options.sessionId,
+        toolName: options.toolName,
+        streamName: "stderr",
+      }),
+      exitedPromise,
+    ]);
+    return {
+      stdout: stdout.content,
+      stderr: stderr.content,
+      exitCode: exitCode ?? 0,
+      pid: proc.pid,
+      timedOut,
+      aborted,
+    };
+  } finally {
+    clearTimeout(timeoutId);
+    if (forceKillTimeoutId) clearTimeout(forceKillTimeoutId);
+    options.signal?.removeEventListener("abort", abortHandler);
+    runningProcesses.delete(key);
+  }
 }
 
 function expandTilde(path: string | undefined): string | undefined {
@@ -143,77 +295,35 @@ export async function handleExec(
         sandboxProvider: plan.provider || undefined,
       };
     }
-    const proc = Bun.spawn(plan.command, {
+    const captured = await runCapturedProcess({
+      command: plan.command,
+      displayCommand: command,
       cwd: plan.cwd,
       env: spawnEnv,
-      stdout: "pipe",
-      stderr: "pipe",
-      detached: process.platform !== "win32",
+      timeoutSeconds,
+      signal: context?.abortSignal,
+      toolName: "exec",
+      sessionId: context?.sessionId,
     });
-    const key = String(proc.pid);
-    let timedOut = false;
-    let aborted = false;
-    let timeoutId: ReturnType<typeof setTimeout> | undefined;
-    let forceKillTimeoutId: ReturnType<typeof setTimeout> | undefined;
-    const killProcess = () => {
-      killSubprocessTree(proc);
-      forceKillTimeoutId = setTimeout(() => killSubprocessTree(proc, "SIGKILL"), 750);
-    };
-    const abortHandler = () => {
-      aborted = true;
-      killProcess();
-    };
-    if (timeoutSeconds) {
-      timeoutId = setTimeout(() => {
-        timedOut = true;
-        killProcess();
-      }, timeoutSeconds * 1000);
-    }
-    if (context?.abortSignal?.aborted) {
-      abortHandler();
-    } else {
-      context?.abortSignal?.addEventListener("abort", abortHandler, { once: true });
-    }
-    runningProcesses.set(key, { pid: proc.pid, command, startedAt: new Date(startedAt), proc });
-
-    let stdout = "";
-    let stderr = "";
-    let exitCode = 0;
-    try {
-      const exitedPromise = proc.exited;
-      const [stdoutText, stderrText, exited] = await Promise.all([
-        collectProcessOutput(proc.stdout, exitedPromise),
-        collectProcessOutput(proc.stderr, exitedPromise),
-        exitedPromise,
-      ]);
-      stdout = stdoutText;
-      stderr = stderrText;
-      exitCode = exited ?? 0;
-    } finally {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (forceKillTimeoutId) clearTimeout(forceKillTimeoutId);
-      context?.abortSignal?.removeEventListener("abort", abortHandler);
-      runningProcesses.delete(key);
-    }
 
     log.info("Command completed", {
       cwd: plan.cwd,
       sandboxProvider: plan.provider || "host",
-      exitCode,
+      exitCode: captured.exitCode,
       durationMs: Date.now() - startedAt,
-      timedOut,
-      aborted,
+      timedOut: captured.timedOut,
+      aborted: captured.aborted,
     });
 
-    const statusOutput = timedOut
+    const statusOutput = captured.timedOut
       ? `\nCommand timed out after ${timeoutSeconds} second${timeoutSeconds === 1 ? "" : "s"}.`
-      : aborted
+      : captured.aborted
         ? "\nCommand interrupted."
         : "";
     return {
-      output: stdout + (stderr ? "\n" + stderr : "") + statusOutput,
-      exitCode: aborted ? 130 : timedOut ? 124 : exitCode,
-      pid: proc.pid,
+      output: captured.stdout + (captured.stderr ? "\n" + captured.stderr : "") + statusOutput,
+      exitCode: captured.aborted ? 130 : captured.timedOut ? 124 : captured.exitCode,
+      pid: captured.pid,
       cwd: plan.cwd,
       sandboxProvider: plan.provider || undefined,
     };
@@ -230,7 +340,8 @@ export async function handleExec(
 }
 
 export async function handleExecAsync(
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  context?: ToolContext
 ): Promise<{ pid: number; output: string; exitCode: number; sandboxProvider?: string }> {
   const command =
     typeof args.command === "string"
@@ -275,39 +386,34 @@ export async function handleExecAsync(
     sandboxProvider: plan.provider || "host",
   });
 
-  const proc = Bun.spawn(plan.command, {
+  const captured = await runCapturedProcess({
+    command: plan.command,
+    displayCommand: command,
     cwd: plan.cwd,
     env: { ...process.env },
-    stdout: "pipe",
-    stderr: "pipe",
-    detached: process.platform !== "win32",
+    timeoutSeconds: 300,
+    signal: context?.abortSignal,
+    toolName: "exec-async",
+    sessionId: context?.sessionId,
+  });
+  log.info("Async command completed", {
+    cwd: plan.cwd,
+    sandboxProvider: plan.provider || "host",
+    exitCode: captured.exitCode,
+    timedOut: captured.timedOut,
+    aborted: captured.aborted,
   });
 
-  // Register the live handle so `process` list/status/kill can see and terminate
-  // it while it runs. `await proc.exited` yields the event loop, so a concurrent
-  // `process({action:"kill"})` call can run and actually kill it.
-  const key = String(proc.pid);
-  runningProcesses.set(key, { pid: proc.pid, command, startedAt: new Date(), proc });
-  try {
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-    const exitCode = await proc.exited;
-
-    log.info("Async command completed", {
-      cwd: plan.cwd,
-      sandboxProvider: plan.provider || "host",
-      exitCode,
-    });
-
-    return {
-      pid: proc.pid,
-      output: stdout + (stderr ? "\n" + stderr : ""),
-      exitCode,
-      sandboxProvider: plan.provider || undefined,
-    };
-  } finally {
-    runningProcesses.delete(key);
-  }
+  return {
+    pid: captured.pid,
+    output:
+      captured.stdout +
+      (captured.stderr ? "\n" + captured.stderr : "") +
+      (captured.timedOut ? "\nCommand timed out after 300 seconds." : "") +
+      (captured.aborted ? "\nCommand interrupted." : ""),
+    exitCode: captured.aborted ? 130 : captured.timedOut ? 124 : captured.exitCode,
+    sandboxProvider: plan.provider || undefined,
+  };
 }
 
 type RunningProcess = {
@@ -328,19 +434,25 @@ function killSubprocessTree(proc: Bun.Subprocess, signal: ProcessSignal = "SIGTE
         stderr: "ignore",
       });
       return;
-    } catch {}
+    } catch {
+      void 0;
+    }
   }
 
   if (process.platform !== "win32") {
     try {
       process.kill(-proc.pid, signal);
       return;
-    } catch {}
+    } catch {
+      void 0;
+    }
   }
 
   try {
     proc.kill(signal);
-  } catch {}
+  } catch {
+    void 0;
+  }
 }
 
 export async function handleProcess(args: Record<string, unknown>): Promise<unknown> {
@@ -361,8 +473,6 @@ export async function handleProcess(args: Record<string, unknown>): Promise<unkn
       if (!entry) {
         return { success: false, error: `No running process with id ${sessionId}` };
       }
-      // Actually terminate the process — the previous implementation only
-      // removed the map entry, leaving the process running.
       try {
         killSubprocessTree(entry.proc);
       } catch (error) {
@@ -390,7 +500,8 @@ export async function handleProcess(args: Record<string, unknown>): Promise<unkn
 }
 
 export async function handleGit(
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  context?: ToolContext
 ): Promise<{ output: string; exitCode: number; sandboxProvider?: string }> {
   let command = (args.command as string | undefined)?.trim();
   const workdir = expandTilde(args.workdir as string | undefined);
@@ -452,25 +563,46 @@ export async function handleGit(
     sandboxProvider: plan.provider || "host",
   });
 
-  const result = Bun.spawnSync(plan.command, {
+  const timeout = args.timeout as number | undefined;
+  const timeoutSeconds =
+    typeof timeout === "number" && Number.isFinite(timeout)
+      ? Math.min(Math.max(timeout, 1), 300)
+      : 60;
+  const baseEnv =
+    plan.provider === "podman" || plan.provider === "docker"
+      ? { ...process.env, PATH: process.env.PATH }
+      : { ...process.env };
+  const captured = await runCapturedProcess({
+    command: plan.command,
+    displayCommand: gitCommand,
     cwd: plan.cwd,
-    env:
-      plan.provider === "podman" || plan.provider === "docker"
-        ? { ...process.env, PATH: process.env.PATH }
-        : { ...process.env },
+    env: {
+      ...baseEnv,
+      GIT_TERMINAL_PROMPT: "0",
+      GCM_INTERACTIVE: "Never",
+    },
+    timeoutSeconds,
+    signal: context?.abortSignal,
+    toolName: "git",
+    sessionId: context?.sessionId,
   });
 
-  const stdout = result.stdout.toString();
-  const stderr = result.stderr.toString();
   log.info("Git command completed", {
     cwd: plan.cwd,
     sandboxProvider: plan.provider || "host",
-    exitCode: result.exitCode ?? 0,
+    exitCode: captured.exitCode,
     durationMs: Date.now() - startedAt,
+    timedOut: captured.timedOut,
+    aborted: captured.aborted,
   });
+  const statusOutput = captured.timedOut
+    ? `\nGit command timed out after ${timeoutSeconds} second${timeoutSeconds === 1 ? "" : "s"}.`
+    : captured.aborted
+      ? "\nGit command interrupted."
+      : "";
   return {
-    output: stdout + (stderr ? "\n" + stderr : ""),
-    exitCode: result.exitCode ?? 0,
+    output: captured.stdout + (captured.stderr ? "\n" + captured.stderr : "") + statusOutput,
+    exitCode: captured.aborted ? 130 : captured.timedOut ? 124 : captured.exitCode,
     sandboxProvider: plan.provider || undefined,
   };
 }

@@ -117,6 +117,14 @@ describe("file search", () => {
       expect(result.limitReached).toBe(true);
       expect(result.visitedEntries).toBeGreaterThan(50);
       expect(ticks).toBeGreaterThan(0);
+
+      const handled = await handleFileSearch(
+        { pattern: "**/*.txt", maxEntries: 50 },
+        { agentId: "agent", workspaceDir: directory }
+      );
+      expect(handled.error).toBeUndefined();
+      expect(handled.truncated).toBe(true);
+      expect(handled.warning).toContain("Narrow the working directory or pattern");
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }

@@ -109,6 +109,22 @@ describe("session listing pagination", () => {
     expect(newestSession?.lastMessage?.content).toContain("new reply");
   });
 
+  test("keeps bounded pages correct after sessions are resident in memory", async () => {
+    const id = await createPersistedSession({
+      label: "resident-page",
+      updatedAt: "2099-01-01T00:01:00.000Z",
+      userPrompt: "resident page prompt",
+      assistantReply: "resident page reply",
+    });
+
+    await listSessions();
+    const page = await listSessionPage({ limit: 1, offset: 0 });
+
+    expect(page.sessions).toHaveLength(1);
+    expect(page.total).toBeGreaterThanOrEqual(1);
+    expect((await listSessions({ limit: 1000 })).some((session) => session.id === id)).toBe(true);
+  });
+
   test("pinned sessions sort above more-recent unpinned ones", async () => {
     const older = await createPersistedSession({
       label: "pin-older",

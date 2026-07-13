@@ -1,12 +1,21 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  getSystemMonitorSnapshot,
   parseDarwinSwapUsage,
   parseDarwinVmStatMemory,
   parseLinuxMeminfoSwap,
 } from "../../src/core/system-monitor";
 
 describe("system monitor", () => {
+  test("collects request-path snapshots without synchronous child processes", () => {
+    const startedAt = performance.now();
+    const snapshot = getSystemMonitorSnapshot();
+
+    expect(snapshot.status).toBe("healthy");
+    expect(performance.now() - startedAt).toBeLessThan(500);
+  });
+
   test("reports macOS memory used without counting reclaimable inactive cache", () => {
     const totalBytes = 24 * 1024 * 1024 * 1024;
     const snapshot = parseDarwinVmStatMemory(

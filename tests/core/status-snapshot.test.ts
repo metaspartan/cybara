@@ -349,4 +349,30 @@ describe("session status snapshots", () => {
       detail: "idle",
     });
   });
+
+  test("bounds live activity snapshots while preserving the newest events", () => {
+    const sessionId = `status-bounded-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const baseTimestamp = Date.now();
+
+    for (let index = 0; index < 550; index += 1) {
+      broadcastStatus({
+        status: "thinking",
+        timestamp: baseTimestamp + index,
+        sessionId,
+        detail: `Reviewing item ${index}`,
+      });
+    }
+
+    const snapshot = getSessionStatusSnapshot(sessionId);
+    expect(snapshot?.activities).toHaveLength(500);
+    expect(snapshot?.activities[0]?.text).toBe("Reviewing item 50");
+    expect(snapshot?.activities.at(-1)?.text).toBe("Reviewing item 549");
+
+    broadcastStatus({
+      status: "idle",
+      timestamp: baseTimestamp + 551,
+      sessionId,
+      detail: "idle",
+    });
+  });
 });

@@ -4,7 +4,6 @@ import {
   writeFileSync,
   mkdirSync,
   readdirSync,
-  statSync,
   promises as fs,
 } from "fs";
 import { join, dirname, extname, isAbsolute, sep } from "path";
@@ -13,6 +12,7 @@ import { trackMetric } from "../../metrics";
 import { commandExists } from "../../platform";
 import type { ToolContext } from "../index";
 import { assertWritablePath, assertReadablePath } from "../path-policy";
+import { readFileLines } from "../file-read";
 import { searchFiles } from "../file-search";
 
 const workspace = homeDir;
@@ -337,7 +337,8 @@ export function buildUnifiedDiff(path: string, before: string, after: string): s
 }
 
 export async function handleRead(
-  args: Record<string, unknown>
+  args: Record<string, unknown>,
+  context?: ToolContext
 ): Promise<{ content: string; path: string }> {
   const rawPath =
     typeof args.path === "string"
@@ -360,7 +361,7 @@ export async function handleRead(
     throw fileNotFoundError(path);
   }
 
-  const stats = statSync(path);
+  const stats = await fs.stat(path);
   const mediaType = stats.isFile() ? imageMediaTypes.get(extname(path).toLowerCase()) : undefined;
   if (mediaType) {
     trackMetric("file_operation", "read", 1, { path });
@@ -371,29 +372,43 @@ export async function handleRead(
     };
   }
 
-  const content = stats.isDirectory()
-    ? readdirSync(path, { withFileTypes: true })
-        .sort((left, right) => left.name.localeCompare(right.name))
-        .map((entry) => `${entry.name}${entry.isDirectory() ? "/" : ""}`)
-        .join("\n")
-    : readFileSync(path, "utf-8");
-  let lines = content.split("\n");
-
   const offset = args.offset as number | undefined;
   const limit = args.limit as number | undefined;
-
-  if (offset) {
-    lines = lines.slice(offset - 1);
-  }
-  if (limit) {
-    lines = lines.slice(0, limit);
+  let content: string;
+  if (stats.isDirectory()) {
+    const entries = await fs.readdir(path, { withFileTypes: true });
+    const maximumEntries = 10_000;
+    const visibleEntries = entries
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .slice(0, maximumEntries)
+      .map((entry) => `${entry.name}${entry.isDirectory() ? "/" : ""}`);
+    if (entries.length > maximumEntries) {
+      visibleEntries.push(
+        `[Directory listing truncated: ${entries.length.toLocaleString()} entries total]`
+      );
+    }
+    content = visibleEntries.join("\n");
+  } else {
+    const result = await readFileLines({
+      path,
+      offset,
+      limit,
+      signal: context?.abortSignal,
+    });
+    if (result.error) throw new Error(`File read failed: ${result.error}`);
+    if (result.aborted) throw new Error("File read cancelled.");
+    if (result.timedOut) throw new Error("File read timed out. Use a smaller offset and limit.");
+    content = result.content;
+    if (result.truncated) {
+      content += `\n[Read truncated after ${result.returnedLines.toLocaleString()} lines or 2,000,000 characters. Continue with offset and limit.]`;
+    }
   }
 
   trackMetric("file_operation", "read", 1, { path });
   trackMetric("file_read", path, 1);
 
   return {
-    content: lines.join("\n"),
+    content,
     path,
   };
 }
@@ -491,7 +506,15 @@ export async function handleEdit(
 export async function handleFileSearch(
   args: Record<string, unknown>,
   context?: ToolContext
-): Promise<{ files: string[]; pattern: string; cwd: string; error?: string }> {
+): Promise<{
+  files: string[];
+  pattern: string;
+  cwd: string;
+  truncated?: boolean;
+  visitedEntries?: number;
+  warning?: string;
+  error?: string;
+}> {
   const pattern = typeof args.pattern === "string" ? args.pattern.trim() : "";
   let cwd = args.cwd as string | undefined;
 
@@ -526,6 +549,10 @@ export async function handleFileSearch(
       cwd: safeSearchDir,
       pattern,
       signal: context?.abortSignal,
+      maxEntries:
+        typeof args.maxEntries === "number" && Number.isFinite(args.maxEntries)
+          ? Math.min(250_000, Math.max(1, Math.floor(args.maxEntries)))
+          : undefined,
     });
 
     const readableFiles = search.files.filter((file) =>
@@ -536,18 +563,22 @@ export async function handleFileSearch(
     trackMetric("tool_call", "file_search", 1, { pattern, resultCount: readableFiles.length });
 
     let error = search.error;
+    let warning: string | undefined;
     if (search.aborted) error = "Search cancelled.";
     if (search.timedOut) {
       error = `Search timed out after ${Math.ceil(search.elapsedMs / 1000)} seconds. Narrow the working directory or pattern.`;
     }
     if (search.limitReached) {
-      error = `Search limit reached after examining ${search.visitedEntries.toLocaleString()} entries. Narrow the working directory or pattern.`;
+      warning = `Search stopped after examining ${search.visitedEntries.toLocaleString()} entries. Narrow the working directory or pattern for complete results.`;
     }
 
     return {
       files: readableFiles,
       pattern,
       cwd: safeSearchDir,
+      truncated: search.limitReached,
+      visitedEntries: search.visitedEntries,
+      ...(warning ? { warning } : {}),
       ...(error ? { error } : {}),
     };
   } catch (err) {

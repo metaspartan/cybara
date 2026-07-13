@@ -2218,9 +2218,6 @@ async function handleChatTurn(
       });
       responseContent = result.content;
 
-      // Opportunistic, non-blocking background memory review. Forks a restricted
-      // subagent (memory tools only) to persist durable facts/preferences from
-      // this turn. Throttled per-session; failures are swallowed.
       const memorySettings = config.getMemoryBehaviorSettings();
       void maybeRunBackgroundReview(
         {
@@ -2234,9 +2231,7 @@ async function handleChatTurn(
           minIntervalMs: memorySettings.backgroundReviewMinIntervalMs,
           timeoutSeconds: memorySettings.backgroundReviewTimeoutSeconds,
         }
-      ).catch(() => {
-        /* best-effort; never affects the main turn */
-      });
+      ).catch(() => undefined);
 
       let toolResults = result.tool_calls || [];
       const shouldForceToolExecution =
@@ -2818,11 +2813,35 @@ async function buildPersistedSessionPage(options: { limit: number; offset: numbe
   sessions: SessionListEntry[];
   total: number;
 }> {
-  const page = await listPersistedSessionPage(options);
+  const memorySessions = buildMemorySessionListEntries();
+  const transientSessions = memorySessions.filter(
+    (session) => !persistedSessionIndex.has(session.id)
+  );
+  const queryOptions =
+    transientSessions.length > 0 ? { limit: options.limit + options.offset, offset: 0 } : options;
+  const page = await listPersistedSessionPage(queryOptions);
   hydratePersistedSessionIndex(page.sessions, false);
+  const memoryById = new Map(memorySessions.map((session) => [session.id, session]));
+  const persistedEntries = page.sessions.map((persisted) => {
+    const memory = memoryById.get(persisted.id);
+    return memory ?? persistedSessionToIndexEntry(persisted);
+  });
+
+  if (transientSessions.length === 0) {
+    return {
+      sessions: persistedEntries,
+      total: page.total,
+    };
+  }
+
+  const persistedIds = new Set(persistedEntries.map((session) => session.id));
+  const uniqueTransientSessions = transientSessions.filter(
+    (session) => !persistedIds.has(session.id)
+  );
+  const merged = sortSessionListEntries([...persistedEntries, ...uniqueTransientSessions]);
   return {
-    sessions: page.sessions.map(persistedSessionToIndexEntry),
-    total: page.total,
+    sessions: merged.slice(options.offset, options.offset + options.limit),
+    total: page.total + uniqueTransientSessions.length,
   };
 }
 
@@ -2831,7 +2850,7 @@ export async function listSessions(options?: {
   offset?: number;
 }): Promise<SessionListEntry[]> {
   const normalizedOptions = normalizeSessionPageOptions(options);
-  if (normalizedOptions.limit && chatSessions.size === 0) {
+  if (normalizedOptions.limit) {
     const page = await buildPersistedSessionPage({
       limit: normalizedOptions.limit,
       offset: normalizedOptions.offset,
@@ -2849,7 +2868,7 @@ export async function listSessionPage(options?: { limit?: number; offset?: numbe
   hasMore: boolean;
 }> {
   const { limit, offset } = normalizeSessionPageOptions(options);
-  if (limit && chatSessions.size === 0) {
+  if (limit) {
     const page = await buildPersistedSessionPage({ limit, offset });
     return {
       sessions: page.sessions,

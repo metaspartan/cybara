@@ -116,6 +116,7 @@ const ACTIVE_STATUSES = new Set<AgentStatus>([
   "error",
 ]);
 const STATUS_STALE_MS = 15 * 60 * 1000;
+const MAX_LIVE_SESSION_ACTIVITIES = 500;
 
 export function isSessionStatusActive(status?: string): boolean {
   return typeof status === "string" && ACTIVE_STATUSES.has(status as AgentStatus);
@@ -372,7 +373,10 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
     timestamp: payload.timestamp,
     detail: sanitizeActivityText(payload.detail),
     agentId: payload.agentId,
-    activities: nextActivities,
+    activities:
+      nextActivities.length > MAX_LIVE_SESSION_ACTIVITIES
+        ? nextActivities.slice(-MAX_LIVE_SESSION_ACTIVITIES)
+        : nextActivities,
   });
 }
 
