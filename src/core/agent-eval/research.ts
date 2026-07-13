@@ -21,6 +21,7 @@ export interface ResearchTraceSummary {
   responsePreview: string;
   messageCount: number;
   toolCallCount: number;
+  toolNames: string[];
   failedToolCallCount: number;
   hasObservableReasoning: boolean;
   observableReasoningCharacters: number;
@@ -118,6 +119,7 @@ export function summarizeResearchTrace(trajectory: AgentTrajectory): ResearchTra
     responsePreview: preview(trajectory.response.content),
     messageCount: trajectory.request.contextMessageCount + 1,
     toolCallCount: toolCalls(trajectory).length,
+    toolNames: [...new Set(toolCalls(trajectory).map((call) => call.name))],
     failedToolCallCount: failedToolCalls(trajectory).length,
     hasObservableReasoning: reasoning.length > 0,
     observableReasoningCharacters: reasoning.length,

@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Code,
+  Cable,
   FileText,
   FlaskConical,
   FolderOpen,
@@ -228,6 +229,7 @@ const navCategories: SidebarNavCategory[] = [
       { path: "/router", icon: Network, labelKey: "nav.router" },
       { path: "/channels", icon: Smartphone, labelKey: "nav.channels" },
       { path: "/mobile", icon: TabletSmartphone, labelKey: "nav.mobile" },
+      { path: "/connectors", icon: Cable, label: "Connectors" },
     ],
   },
   {

@@ -1,18 +1,40 @@
+import {
+  groupSharedActivities,
+  sharedActivityKind,
+  type SharedActivityGroupKind,
+  type SharedActivityItem,
+  type SharedActivityPhase,
+} from "../shared/chat-activity-groups";
+
 export interface TUIActivityItem {
+  id?: string;
   phase?: string;
   text?: string;
   toolName?: string;
+  toolCallId?: string;
+  timestamp?: number;
 }
 
 export interface TUIToolCallItem {
+  id?: string;
   name?: string;
   status?: string;
+  timeline_index?: number;
 }
 
 export interface TUIActivitySummary {
   icon: string;
   label: string;
   details: string[];
+}
+
+export interface TUIActivityRow {
+  id: string;
+  icon: string;
+  label: string;
+  details: string[];
+  phase: SharedActivityPhase;
+  thought: boolean;
 }
 
 export function limitTUIActivityDetails(details: string[], max: number): string[] {
@@ -36,6 +58,15 @@ const KIND_META: Record<ActivityKind, { icon: string; label: string }> = {
 
 const KIND_ORDER: ActivityKind[] = ["edit", "read", "search", "run", "browse", "delegate", "other"];
 
+const GROUP_ICONS: Record<SharedActivityGroupKind, string> = {
+  read: "▱",
+  search: "⌕",
+  list: "▱",
+  edit: "✎",
+  fetch: "◎",
+  command: "▣",
+};
+
 function classifyActivity(value: string): ActivityKind {
   const normalized = value.toLowerCase();
   if (/\b(edit\w*|writ\w*|patch\w*|replac\w*|create_file|apply_patch)\b/.test(normalized))
@@ -52,6 +83,91 @@ function classifyActivity(value: string): ActivityKind {
 
 function compact(value: string, max: number): string {
   return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
+}
+
+function phaseFromStatus(status: string | undefined): SharedActivityPhase {
+  const normalized = status?.toLowerCase();
+  if (normalized === "pending" || normalized === "executing" || normalized === "running") {
+    return "start";
+  }
+  if (normalized === "blocked") return "blocked";
+  if (normalized === "failed" || normalized === "error") return "error";
+  return "result";
+}
+
+function phaseFromActivity(phase: string | undefined): SharedActivityPhase {
+  return phase === "start" || phase === "error" || phase === "blocked" ? phase : "result";
+}
+
+function fallbackToolText(tool: TUIToolCallItem): string {
+  const name = (tool.name || "tool").replace(/_/g, " ");
+  const phase = phaseFromStatus(tool.status);
+  if (phase === "start") return `Running ${name}`;
+  if (phase === "error") return `${name} failed`;
+  if (phase === "blocked") return `${name} blocked`;
+  return `${name} completed`;
+}
+
+function normalizedActivities(
+  activities: TUIActivityItem[],
+  tools: TUIToolCallItem[]
+): SharedActivityItem[] {
+  const normalized = activities.flatMap((activity, index) => {
+    const text = activity.text || activity.toolName || activity.phase || "";
+    if (!text.trim()) return [];
+    return [
+      {
+        id: activity.id || activity.toolCallId || `activity-${index}`,
+        phase: phaseFromActivity(activity.phase),
+        text: text.trim(),
+        toolName: activity.toolName,
+      },
+    ];
+  });
+  if (normalized.length > 0) return normalized;
+  return tools.map((tool, index) => ({
+    id: tool.id || `tool-${index}`,
+    phase: phaseFromStatus(tool.status),
+    text: fallbackToolText(tool),
+    toolName: tool.name,
+  }));
+}
+
+function singleRow(activity: SharedActivityItem): TUIActivityRow {
+  const thought = activity.toolName === "__thought";
+  const kind = sharedActivityKind(activity) ?? "command";
+  const icon = thought
+    ? ""
+    : activity.phase === "start"
+      ? "◌"
+      : activity.phase === "result"
+        ? GROUP_ICONS[kind]
+        : "!";
+  return {
+    id: activity.id,
+    icon,
+    label: activity.text,
+    details: [],
+    phase: activity.phase,
+    thought,
+  };
+}
+
+export function presentTUIActivities(
+  activities: TUIActivityItem[],
+  tools: TUIToolCallItem[]
+): TUIActivityRow[] {
+  return groupSharedActivities(normalizedActivities(activities, tools)).map((entry) => {
+    if (entry.type === "single") return singleRow(entry.activity);
+    return {
+      id: entry.id,
+      icon: GROUP_ICONS[entry.kind],
+      label: entry.label,
+      details: entry.items.map((activity) => activity.text),
+      phase: "result",
+      thought: false,
+    };
+  });
 }
 
 export function summarizeTUIActivities(

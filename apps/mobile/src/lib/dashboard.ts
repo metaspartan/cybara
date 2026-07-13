@@ -16,6 +16,7 @@ export type MobileSettingsTab =
   | "memory"
   | "voice"
   | "mcp"
+  | "connectors"
   | "safety"
   | "wallet"
   | "migration"
@@ -74,6 +75,7 @@ export const MOBILE_SETTINGS_TABS: Array<{ label: string; value: MobileSettingsT
   { label: "Memory", value: "memory" },
   { label: "Voice", value: "voice" },
   { label: "MCP", value: "mcp" },
+  { label: "Connectors", value: "connectors" },
   { label: "Safety", value: "safety" },
   { label: "Wallet", value: "wallet" },
   { label: "Migration", value: "migration" },

@@ -84,8 +84,10 @@ const DANGLING_TOOL_CALL_LINE_PATTERN =
   /<(?:function_call|tool_call)\b[^>]*>\s*(?:[{[]|<invoke\b|["']?(?:name|tool_name|function)["']?\s*[:=])[^\r\n]*(?=\r?\n|$)/gi;
 const DIRECT_NAMED_XML_TOOL_PATTERN =
   /^\s*<([A-Za-z_][A-Za-z0-9_.:-]{0,119})\b[^>]*>([\s\S]*?)<\/\1>\s*$/i;
-const REPLY_DIRECTIVE_PATTERN =
-  /(?:^|\n)[ \t]*\[\[reply_to(?::[^\]\r\n]+|_current)\]\][ \t]*(?=\n|$)/gi;
+const REPLY_DIRECTIVE_LINE_PATTERN =
+  /(?:^|\n)[ \t]*\[\[\s*reply_to(?:\s*:\s*[^\]\r\n]+|_current)\s*\]\][ \t]*(?=\n|$)/gi;
+const REPLY_DIRECTIVE_INLINE_PATTERN =
+  /(^|\n)[ \t]*\[\[\s*reply_to(?:\s*:\s*[^\]\r\n]+|_current)\s*\]\][ \t]*/gi;
 
 function decodeMarkupEntities(value: string): string {
   return value
@@ -795,7 +797,10 @@ export function toAnthropicReplayContentWithNormalizedToolUses(
 }
 
 export function sanitizeAssistantContent(content: string): string {
-  return stripTextToolCallMarkup(content).replace(REPLY_DIRECTIVE_PATTERN, "").trim();
+  return stripTextToolCallMarkup(content)
+    .replace(REPLY_DIRECTIVE_LINE_PATTERN, "")
+    .replace(REPLY_DIRECTIVE_INLINE_PATTERN, "$1")
+    .trim();
 }
 
 export function shouldUseMiniMaxReasoningSplit(

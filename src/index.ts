@@ -211,6 +211,7 @@ function parsePortFlag(argv: string[]): number | undefined {
 }
 
 const PORT = parsePortFlag(process.argv) || Number(process.env.PORT) || platformConfig.port || 4269;
+process.env.CYBARA_RUNTIME_PORT = String(PORT);
 
 const contentSecurityPolicy = [
   "default-src 'self'",

@@ -84,12 +84,15 @@ single-key shortcuts, `j`/`k` or arrow navigation, `/` search, `?` help, direct 
 small detail pane for the selected destination. The chat panel supports session search, keyboard
 navigation, pinning, guarded deletion, new-chat entry, editable prompt input, multiline prompts with
 `Ctrl+J`, transcript paging with `PageUp`/`PageDown`, slash command completion with `Tab`, agent
-switching, reasoning effort controls, model router selection, and interactive dangerous-tool
+switching, reasoning effort controls, model router selection, `@` completion for agents, skills,
+tools, connectors, and MCP services, and interactive dangerous-tool
 approvals. Approval prompts accept approve-once, approve-for-session, approve-always, or deny without
 leaving the chat. Long message bodies use bounded previews by default; `/expand` toggles the complete
-transcript. The session picker, command palette, help, status rail, transcript density, and multiline
+transcript, while `/details` shows complete tool activity. Live activity uses the same grouped
+command, search, read, and edit summaries as the graphical clients, with thoughts preserved between
+groups. The session picker, command palette, help, status rail, transcript density, and multiline
 composer adapt to the current terminal dimensions. Pending follow-ups support queueing, steering,
-edit/delete/reorder, and active-run stop.
+edit/delete/reorder, and active-run stop. `Ctrl+C` stops an active run before a second interrupt exits.
 Dashboard panels outside chat remain read-only; use raw CLI commands when you need to mutate
 providers, router settings, mobile pairings, wallet state, or channel configuration.
 
@@ -331,6 +334,19 @@ cybara mcp serve          # Expose cybara's own tools as an MCP server (stdio)
 `cybara mcp serve` speaks the MCP JSON-RPC protocol over stdio so MCP clients, IDEs, and other agents
 can call cybara's built-in tools. It reads newline-delimited JSON-RPC requests
 on stdin and writes responses on stdout.
+
+### Account Connectors
+
+```bash
+cybara connectors list
+CYBARA_CONNECTOR_CLIENT_SECRET=<secret> cybara connectors configure google_workspace --client-id <id>
+cybara connectors configure dropbox --client-id <id> --write
+cybara connectors connect google_workspace
+cybara connectors disconnect dropbox
+cybara connectors setup google_workspace
+```
+
+Connector configuration defaults to read-only access. Pass `--write` only when the connected account should permit approval-gated write actions. The setup command opens the provider's application configuration documentation.
 
 ### Skills
 

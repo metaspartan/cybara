@@ -454,6 +454,24 @@ export interface MobileMcpServer {
   transport?: "stdio" | "http";
 }
 
+export type MobileAccountConnectorId = "google_workspace" | "dropbox";
+
+export interface MobileAccountConnector {
+  id: MobileAccountConnectorId;
+  label: string;
+  description: string;
+  services: string[];
+  docsUrl: string;
+  clientIdLabel: string;
+  clientSecretLabel?: string;
+  redirectUri: string;
+  configured: boolean;
+  connected: boolean;
+  access: "read" | "read_write";
+  account?: string;
+  needsReauthorization: boolean;
+}
+
 export interface MobilePushRegistrationResponse {
   success: boolean;
   device?: {
@@ -2182,6 +2200,43 @@ export class CybaraMobileApi {
     return this.request<{ success: boolean }>(`/api/mcp/${encodeURIComponent(id)}`, {
       method: "DELETE",
     });
+  }
+
+  listAccountConnectors(): Promise<MobileAccountConnector[]> {
+    return this.request<MobileAccountConnector[]>("/api/connectors");
+  }
+
+  updateAccountConnector(
+    id: MobileAccountConnectorId,
+    input: { clientId?: string; clientSecret?: string; access: "read" | "read_write" }
+  ): Promise<MobileAccountConnector> {
+    return this.request<MobileAccountConnector>(`/api/connectors/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    });
+  }
+
+  disconnectAccountConnector(id: MobileAccountConnectorId): Promise<MobileAccountConnector> {
+    return this.request<MobileAccountConnector>(`/api/connectors/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+  }
+
+  startAccountConnectorOAuth(id: MobileAccountConnectorId): Promise<{
+    state: string;
+    authUrl: string;
+    expiresAt: number;
+  }> {
+    return this.request(`/api/connectors/${encodeURIComponent(id)}/oauth/start`, {
+      method: "POST",
+    });
+  }
+
+  accountConnectorOAuthStatus(state: string): Promise<{
+    status: "pending" | "connected" | "error" | "not_found";
+    error?: string;
+  }> {
+    return this.request(`/api/connectors/oauth/status?state=${encodeURIComponent(state)}`);
   }
 
   registerPushToken(input: {

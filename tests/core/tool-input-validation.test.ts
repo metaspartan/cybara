@@ -24,6 +24,26 @@ describe("Tool input validation", () => {
     await expect(handleRead({})).rejects.toThrow("Validation error: path is required");
   });
 
+  test("read summarizes images without returning binary bytes", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-image-read-"));
+    try {
+      const path = join(dir, "capture.png");
+      const bytes = Buffer.alloc(24);
+      Buffer.from([0x89, 0x50, 0x4e, 0x47]).copy(bytes);
+      bytes.writeUInt32BE(1920, 16);
+      bytes.writeUInt32BE(1080, 20);
+      writeFileSync(path, bytes);
+
+      const result = await handleRead({ path });
+
+      expect(result.content).toContain("Media type: image/png");
+      expect(result.content).toContain("Dimensions: 1920x1080");
+      expect(result.content.length).toBeLessThan(500);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("file_search blocks sensitive search roots and filters sensitive matches", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cybara-file-search-"));
     try {

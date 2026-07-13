@@ -214,6 +214,35 @@ describe("checkWritePath", () => {
     ).not.toThrow();
   });
 
+  test("allows generated screenshot images without opening the rest of the data directory", () => {
+    expect(() =>
+      assertReadablePath(`${homedir()}/.cybara/screenshots/computer_2026-07-13.png`)
+    ).not.toThrow();
+    expect(() =>
+      assertReadablePath(`${homedir()}/.cybara/screenshots/computer_2026-07-13.jpg`)
+    ).not.toThrow();
+    expect(() =>
+      assertReadablePath(`${homedir()}/.cybara/screenshots/computer_2026-07-13.txt`)
+    ).toThrow();
+  });
+
+  test("generated screenshot carve-out rejects symlink escapes", () => {
+    const screenshotRoot = join(homedir(), ".cybara", "screenshots");
+    mkdirSync(screenshotRoot, { recursive: true });
+    const root = mkdtempSync(join(screenshotRoot, "path-policy-"));
+    const outside = mkdtempSync(join(tmpdir(), "cybara-screenshot-outside-"));
+    try {
+      const target = join(outside, "ordinary.txt");
+      const link = join(root, "capture.png");
+      writeFileSync(target, "outside", "utf8");
+      symlinkSync(target, link);
+      expect(() => assertReadablePath(link)).toThrow("reading this path is blocked");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
   test("sensitive parts of ~/.cybara stay blocked for reads", () => {
     expect(() => assertReadablePath(`${homedir()}/.cybara/api_key`)).toThrow();
     expect(() => assertReadablePath(`${homedir()}/.cybara/data/platform.db`)).toThrow();

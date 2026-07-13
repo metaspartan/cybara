@@ -67,17 +67,23 @@ struct NativeEvalsScreen: View {
                         .foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if goldens.isEmpty {
-                ContentUnavailableView(
-                    "No golden tests",
-                    systemImage: "flask",
-                    description: Text("Save a completed assistant turn from Chat to create one.")
-                )
             } else {
                 ScrollView {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 12)], spacing: 12) {
-                        ForEach(goldens) { golden in
-                            goldenCard(golden)
+                    VStack(alignment: .leading, spacing: 14) {
+                        NativeComputerUseTrajectorySection(client: client, message: $message)
+                        if goldens.isEmpty {
+                            ContentUnavailableView(
+                                "No golden tests",
+                                systemImage: "flask",
+                                description: Text("Save a completed assistant turn from Chat to create one.")
+                            )
+                            .frame(maxWidth: .infinity, minHeight: 180)
+                        } else {
+                            LazyVGrid(columns: [GridItem(.adaptive(minimum: 320), spacing: 12)], spacing: 12) {
+                                ForEach(goldens) { golden in
+                                    goldenCard(golden)
+                                }
+                            }
                         }
                     }
                     .padding(.vertical, 2)

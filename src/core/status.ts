@@ -111,12 +111,14 @@ const ACTIVE_STATUSES = new Set<AgentStatus>([
   "thinking",
   "generating",
   "tool_executing",
+  "tool_completed",
   "compacting",
+  "error",
 ]);
 const STATUS_STALE_MS = 15 * 60 * 1000;
 
-function isActiveStatus(status: AgentStatus): boolean {
-  return ACTIVE_STATUSES.has(status);
+export function isSessionStatusActive(status?: string): boolean {
+  return typeof status === "string" && ACTIVE_STATUSES.has(status as AgentStatus);
 }
 
 function clonePendingMessages(
@@ -386,7 +388,7 @@ export function listSessionStatusSnapshots(): SessionStatusSnapshot[] {
   cleanupStaleSnapshots();
   const snapshots = new Map<string, SessionStatusSnapshot>();
   for (const snapshot of sessionStatusSnapshots.values()) {
-    if (!isActiveStatus(snapshot.status)) continue;
+    if (!isSessionStatusActive(snapshot.status)) continue;
     snapshots.set(snapshot.sessionId, withPendingMessages(snapshot));
   }
   for (const [sessionId, pendingMessages] of sessionPendingChatMessages.entries()) {
@@ -427,7 +429,10 @@ export function setSessionPendingChatMessages(
   if (!key) return;
   const normalized = clonePendingMessages(pendingMessages)
     .filter((message) => message.sessionId === key && message.content.trim().length > 0)
-    .map((message) => ({ ...message, content: redactSecretText(message.content) }));
+    .map((message) => ({
+      ...message,
+      content: redactSecretText(message.content),
+    }));
   if (normalized.length === 0) {
     sessionPendingChatMessages.delete(key);
     return;
@@ -517,7 +522,10 @@ export function broadcastStatus(status: StatusPayload): void {
 }
 
 export function broadcastTaskEvent(event: TaskEventPayload): void {
-  const payload = redactSecrets({ ...event, timestamp: Date.now() }) as TaskEventPayload;
+  const payload = redactSecrets({
+    ...event,
+    timestamp: Date.now(),
+  }) as TaskEventPayload;
   notifyMobilePushForTask(payload);
   emitStatusStreamEvent(payload);
 

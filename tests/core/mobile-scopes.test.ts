@@ -141,6 +141,11 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("POST", "/api/ide/open-terminal")).toBe("terminal");
     expect(routeRequiredScope("GET", "/api/computer-use/preview")).toBe("terminal");
     expect(routeRequiredScope("DELETE", "/api/computer-use/preview")).toBe("terminal");
+    expect(routeRequiredScope("GET", "/api/computer-use/trajectories")).toBe("terminal");
+    expect(routeRequiredScope("GET", "/api/computer-use/trajectories/export")).toBe("terminal");
+    expect(routeRequiredScope("POST", "/api/computer-use/trajectories/example/replay")).toBe(
+      "terminal"
+    );
   });
 
   test("MCP install, mutation, start, and tool calls require the mcp scope", () => {
@@ -427,7 +432,10 @@ describe("expiring one-time pairing codes", () => {
   });
 
   test("an expired code is rejected", async () => {
-    const { code } = createPairingCode({ baseUrl: "http://127.0.0.1:4269", ttlMs: 1 });
+    const { code } = createPairingCode({
+      baseUrl: "http://127.0.0.1:4269",
+      ttlMs: 1,
+    });
     await delay(10);
     expect(redeemPairingCode(code)).toBeNull();
   });

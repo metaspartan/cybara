@@ -25,6 +25,7 @@ import {
   type ProviderType,
 } from "../../core/providers";
 import type { AuthResult } from "../security";
+export { isSessionStatusActive } from "../../core/status";
 
 export interface LspDiagnosticLike {
   severity?: number;
@@ -424,17 +425,6 @@ async function computeStorageMetrics() {
     },
     topLevel: topLevelEntries,
   };
-}
-
-export const ACTIVE_SESSION_STATUSES = new Set([
-  "thinking",
-  "generating",
-  "tool_executing",
-  "compacting",
-]);
-
-export function isSessionStatusActive(status?: string): boolean {
-  return typeof status === "string" && ACTIVE_SESSION_STATUSES.has(status);
 }
 
 export function buildTokenCallSnapshots(tokenUsageEntries: MetricsEntry[]): TokenCallSnapshot[] {

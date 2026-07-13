@@ -37,13 +37,13 @@
   <img src="docs/images/cybara-web-chat.jpg" alt="Cybara web chat showing a repository audit" width="100%" />
 </p>
 
-<p align="center"><strong>Web and desktop chat</strong> with workspaces, persisted sessions, structured responses, context controls, and agent selection.</p>
+<p align="center"><strong>Web and desktop chat</strong> with persisted workspaces, grouped live activity, structured responses, context controls, and agent selection.</p>
 
 <p align="center">
   <img src="docs/images/cybara-tui-chat.png" alt="Cybara terminal chat showing tool activity and a code workspace result" width="100%" />
 </p>
 
-<p align="center"><strong>Terminal chat</strong> with responsive layouts, tool activity, session history, queueing, steering, plans, approvals, and slash commands.</p>
+<p align="center"><strong>Terminal chat</strong> with responsive layouts, grouped live activity, capability completion, session history, queueing, steering, approvals, and slash commands.</p>
 
 ---
 
@@ -78,6 +78,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - Interactive tool approval with per-session/persistent allowlists, filesystem checkpoint/snapshot+rollback, and transform hooks (tool_result/llm_output/terminal_output)
 - Token streaming to the UI (real-time assistant text deltas via WebSocket)
 - MCP host mode (expose cybara's tools to other MCP clients) + MCP client (consume external servers)
+- Encrypted account connectors for Google Workspace and Dropbox, with read-only defaults and approval-gated writes
 - Local workspace indexing with lexical search plus optional local Transformers.js embeddings; packaged desktop sidecars bundle Transformers.js, ONNX Runtime native binaries when available, and ONNX Web/WASM fallback assets
 - Source migration from supported legacy agent installations with dry-run previews, conflict handling, skill/memory import, and opt-in secret import
 - Shared speech settings for local Kokoro, operating-system, and cloud speech plus managed or full-duplex hands-free conversation
@@ -315,6 +316,14 @@ MCP server management and registry integration:
 
 UI: Dedicated MCP Servers page in the web interface (`/mcp-servers`)
 CLI: `cybara mcp list`, `cybara mcp search <query>`, `cybara mcp install <package>`, `cybara mcp popular`, `cybara mcp serve`
+
+### Account Connectors
+
+Connect Google Workspace or Dropbox from the Connectors screen to let agents work with authorized account data. Google Workspace includes Gmail, Drive, and Calendar. Connections default to read-only access; optional write access remains subject to Cybara's normal tool approval policy. Credentials and OAuth tokens are stored through the encrypted secret store.
+
+Additional services can be connected through HTTPS or local MCP servers.
+
+CLI: `cybara connectors list`, `cybara connectors configure <google_workspace|dropbox> --client-id <id>`, `cybara connectors connect <google_workspace|dropbox>`, `cybara connectors disconnect <google_workspace|dropbox>`
 
 ---
 

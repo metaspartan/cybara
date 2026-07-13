@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { TraceDatasetPanel } from "@/pages/research/TraceDatasetPanel";
 import { BenchmarkPanel } from "@/pages/research/BenchmarkPanel";
 import { LeaderboardPanel } from "@/pages/research/LeaderboardPanel";
+import { ComputerUseDatasetPanel } from "@/pages/research/ComputerUseDatasetPanel";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
@@ -17,6 +18,7 @@ import {
   FlaskConical,
   GitFork,
   Loader2,
+  MousePointer2,
   Play,
   RotateCcw,
   ShieldCheck,
@@ -45,19 +47,18 @@ function EvalsExplainer() {
     },
     {
       icon: ShieldCheck,
-      title: "Catch regressions",
-      body: "Cybara checks the agent still calls the same tools in the same order and reaches the same result — so you catch breakage before your users do.",
+      title: "Measure behavioral drift",
+      body: "Compare tool sequences, outputs, and completion structure across models, prompts, and tool versions without expecting identical wording.",
     },
   ];
   return (
     <div className="mb-4 rounded-xl border border-indigo-400/20 bg-indigo-400/[0.06] p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-white">What are evals?</p>
+          <p className="text-sm font-semibold text-white">Reproducible agent experiments</p>
           <p className="mt-1 max-w-3xl text-[13px] leading-6 text-gray-300">
-            Agents aren't deterministic, so a change that looks safe can quietly break behavior.
-            Evals let you lock in a known-good run and re-check it whenever you change models,
-            prompts, or tools.
+            Save representative runs, replay them under a controlled configuration, and inspect
+            structural changes without treating nondeterministic language as a failure.
           </p>
         </div>
         <button
@@ -251,7 +252,9 @@ function GoldenRow({
 
 export function Evals() {
   const queryClient = useQueryClient();
-  const [labView, setLabView] = useState<"data" | "benchmarks" | "leaderboard" | "evals">("data");
+  const [labView, setLabView] = useState<
+    "data" | "computer-use" | "benchmarks" | "leaderboard" | "evals"
+  >("data");
   const [busyGoldenId, setBusyGoldenId] = useState<string | null>(null);
   const [sanitizeExport, setSanitizeExport] = useState(true);
   const [transferMessage, setTransferMessage] = useState<string | null>(null);
@@ -305,7 +308,9 @@ export function Evals() {
       if (!response.success || !response.data) {
         throw new Error(response.error || "Export failed");
       }
-      const blob = new Blob([response.data.content], { type: response.data.mimeType });
+      const blob = new Blob([response.data.content], {
+        type: response.data.mimeType,
+      });
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
@@ -403,6 +408,7 @@ export function Evals() {
         {(
           [
             { key: "data", label: "Data", icon: Database },
+            { key: "computer-use", label: "Computer Use", icon: MousePointer2 },
             { key: "benchmarks", label: "Benchmark", icon: Gauge },
             { key: "leaderboard", label: "Leaderboard", icon: Trophy },
             { key: "evals", label: "Evals", icon: FlaskConical },
@@ -424,6 +430,8 @@ export function Evals() {
       </div>
       {labView === "data" ? (
         <TraceDatasetPanel />
+      ) : labView === "computer-use" ? (
+        <ComputerUseDatasetPanel />
       ) : labView === "benchmarks" ? (
         <BenchmarkPanel />
       ) : labView === "leaderboard" ? (
@@ -498,16 +506,36 @@ export function Evals() {
           {goldens.length > 0 && (
             <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
               {[
-                { label: "Golden tests", value: insights.total, tone: "text-white" },
-                { label: "Coverage", value: `${insights.coverage}%`, tone: "text-blue-300" },
-                { label: "Pass rate", value: `${insights.passRate}%`, tone: "text-emerald-300" },
+                {
+                  label: "Golden tests",
+                  value: insights.total,
+                  tone: "text-white",
+                },
+                {
+                  label: "Coverage",
+                  value: `${insights.coverage}%`,
+                  tone: "text-blue-300",
+                },
+                {
+                  label: "Pass rate",
+                  value: `${insights.passRate}%`,
+                  tone: "text-emerald-300",
+                },
                 {
                   label: "Average match",
                   value: `${insights.averageScore}%`,
                   tone: "text-indigo-300",
                 },
-                { label: "Failing", value: insights.failing, tone: "text-red-300" },
-                { label: "Not run", value: insights.notRun, tone: "text-gray-300" },
+                {
+                  label: "Failing",
+                  value: insights.failing,
+                  tone: "text-red-300",
+                },
+                {
+                  label: "Not run",
+                  value: insights.notRun,
+                  tone: "text-gray-300",
+                },
               ].map((stat) => (
                 <div
                   key={stat.label}

@@ -13,6 +13,7 @@ import { isPetWindow } from "@/lib/tauriPet";
 import { cn } from "@/lib/utils";
 import { PetOverlay } from "@/pages/PetOverlay";
 import { readThemeAccentFromConfig, readThemeModeFromIdentity, useUIStore } from "@/stores/uiStore";
+import { readChatAppearanceFromConfig } from "../../shared/chat-appearance";
 
 const Dashboard = lazy(() =>
   import("@/pages/Dashboard").then((module) => ({ default: module.Dashboard }))
@@ -53,6 +54,9 @@ const MCPServers = lazy(() =>
   import("@/pages/MCPServers").then((module) => ({
     default: module.MCPServers,
   }))
+);
+const Connectors = lazy(() =>
+  import("@/pages/Connectors").then((module) => ({ default: module.Connectors }))
 );
 const LSP = lazy(() => import("@/pages/LSP").then((module) => ({ default: module.LSP })));
 const IDE = lazy(() => import("@/pages/IDE").then((module) => ({ default: module.IDE })));
@@ -149,6 +153,7 @@ function AppRoutes() {
         <Route path="/providers" element={<Providers />} />
         <Route path="/router" element={<RouterSettings />} />
         <Route path="/mcp" element={<MCPServers />} />
+        <Route path="/connectors" element={<Connectors />} />
         <Route path="/channels" element={<Channels />} />
         <Route path="/mobile" element={<Mobile />} />
         <Route path="/tasks" element={<Tasks />} />
@@ -178,6 +183,7 @@ function AppRoutes() {
 function ThemeConfigSync() {
   const setAccent = useUIStore((state) => state.setAccent);
   const setMode = useUIStore((state) => state.setMode);
+  const setChatAppearance = useUIStore((state) => state.setChatAppearance);
 
   useEffect(() => {
     let mounted = true;
@@ -189,6 +195,8 @@ function ThemeConfigSync() {
         if (accent) setAccent(accent);
         const identity = result.data?.identity as Record<string, unknown> | undefined;
         setMode(readThemeModeFromIdentity(identity));
+        const chatAppearance = readChatAppearanceFromConfig(result.data);
+        if (chatAppearance) setChatAppearance(chatAppearance);
       } catch {
         // The persisted local accent remains active while the gateway is unavailable.
       }
@@ -203,7 +211,7 @@ function ThemeConfigSync() {
       window.clearInterval(interval);
       window.removeEventListener("focus", syncTheme);
     };
-  }, [setAccent, setMode]);
+  }, [setAccent, setChatAppearance, setMode]);
 
   return null;
 }

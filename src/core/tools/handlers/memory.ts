@@ -7,7 +7,7 @@ import {
   statSync,
   realpathSync,
 } from "fs";
-import { join, resolve, sep, dirname } from "path";
+import { join, resolve, sep, dirname, isAbsolute } from "path";
 import {
   getVectorStore,
   saveDurableMemory,
@@ -118,7 +118,12 @@ async function ensureVectorStoreIndexed(): Promise<void> {
 }
 
 export async function handleMemorySearch(args: Record<string, unknown>): Promise<{
-  results: Array<{ file: string; content: string; score: number; method: string }>;
+  results: Array<{
+    file: string;
+    content: string;
+    score: number;
+    method: string;
+  }>;
   query: string;
   searchMethod: string;
 }> {
@@ -168,7 +173,12 @@ export async function handleMemorySearch(args: Record<string, unknown>): Promise
     }
   }
 
-  const results: Array<{ file: string; content: string; score: number; method: string }> = [];
+  const results: Array<{
+    file: string;
+    content: string;
+    score: number;
+    method: string;
+  }> = [];
 
   if (!existsSync(memoryDir)) {
     return { results, query, searchMethod: "keyword (no memory files)" };
@@ -276,7 +286,8 @@ export async function handleMemoryGet(
     throw new Error("Invalid memory path");
   }
 
-  const filePath = path.startsWith("/") ? path : join(memoryDir, path);
+  const normalizedPath = path.replace(/^memory[\\/]/i, "");
+  const filePath = isAbsolute(path) ? path : join(memoryDir, normalizedPath);
 
   // Reject anything that escapes the memory directory so `memory_get` can never
   // be used to read arbitrary host files (e.g. ~/.ssh/id_rsa, /etc/passwd, or the
@@ -299,7 +310,7 @@ export async function handleMemoryGet(
 
   return {
     content: linesArr.join("\n"),
-    path,
+    path: isAbsolute(path) ? path : normalizedPath,
     lines: linesArr.length,
   };
 }
@@ -401,9 +412,12 @@ export function initializeTodayMemory(): void {
   }
 }
 
-export async function handleMemorySaveDurable(
-  args: Record<string, unknown>
-): Promise<{ success: boolean; path: string; category: string; indexed: boolean }> {
+export async function handleMemorySaveDurable(args: Record<string, unknown>): Promise<{
+  success: boolean;
+  path: string;
+  category: string;
+  indexed: boolean;
+}> {
   const content = args.content as string;
   const category = (args.category as DurableMemoryEntry["category"]) || "fact";
   const source = args.source as string | undefined;

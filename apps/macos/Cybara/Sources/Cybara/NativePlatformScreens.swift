@@ -15,6 +15,33 @@ struct NativeMCPServer: Decodable, Identifiable, Hashable {
     let error: String?
 }
 
+struct NativeAccountConnector: Decodable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let description: String
+    let services: [String]
+    let docsUrl: String
+    let clientIdLabel: String
+    let clientSecretLabel: String?
+    let redirectUri: String
+    let configured: Bool
+    let connected: Bool
+    let access: String
+    let account: String?
+    let needsReauthorization: Bool
+}
+
+struct NativeAccountConnectorOAuthStart: Decodable {
+    let state: String
+    let authUrl: String
+    let expiresAt: Double
+}
+
+struct NativeAccountConnectorOAuthStatus: Decodable {
+    let status: String
+    let error: String?
+}
+
 struct NativeToolSummary: Decodable, Identifiable, Hashable {
     let name: String
     let description: String?
@@ -343,6 +370,42 @@ struct NativeLSPInstallResult: Decodable {
 }
 
 extension GatewayClient {
+    func nativeAccountConnectors() async throws -> [NativeAccountConnector] {
+        try await nativeList("api/connectors", keys: ["connectors", "items"])
+    }
+
+    func updateAccountConnector(
+        _ id: String,
+        clientID: String,
+        clientSecret: String,
+        writeAccess: Bool
+    ) async throws {
+        var payload: [String: Any] = ["access": writeAccess ? "read_write" : "read"]
+        let normalizedID = clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedSecret = clientSecret.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !normalizedID.isEmpty { payload["clientId"] = normalizedID }
+        if !normalizedSecret.isEmpty { payload["clientSecret"] = normalizedSecret }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        _ = try await request("api/connectors/\(nativePathSegment(id))", method: "PUT", body: body)
+    }
+
+    func startAccountConnectorOAuth(_ id: String) async throws -> NativeAccountConnectorOAuthStart {
+        let data = try await request("api/connectors/\(nativePathSegment(id))/oauth/start", method: "POST")
+        return try JSONDecoder().decode(NativeAccountConnectorOAuthStart.self, from: data)
+    }
+
+    func accountConnectorOAuthStatus(_ state: String) async throws -> NativeAccountConnectorOAuthStatus {
+        try await nativeGet(
+            "api/connectors/oauth/status",
+            as: NativeAccountConnectorOAuthStatus.self,
+            queryItems: [URLQueryItem(name: "state", value: state)]
+        )
+    }
+
+    func disconnectAccountConnector(_ id: String) async throws {
+        _ = try await request("api/connectors/\(nativePathSegment(id))", method: "DELETE")
+    }
+
     func nativeMCPServers() async throws -> [NativeMCPServer] {
         try await nativeList("api/mcp", keys: ["servers", "items"])
     }
@@ -667,6 +730,198 @@ extension GatewayClient {
         var allowed = CharacterSet.urlPathAllowed
         allowed.remove(charactersIn: "/")
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    }
+}
+
+private struct NativeConnectorDraft {
+    var clientID = ""
+    var clientSecret = ""
+    var writeAccess = false
+}
+
+struct AccountConnectorsScreen: View {
+    let client: GatewayClient
+    @Environment(\.cybaraAccent) private var accent
+
+    @State private var connectors: [NativeAccountConnector] = []
+    @State private var drafts: [String: NativeConnectorDraft] = [:]
+    @State private var loaded = false
+    @State private var busyID: String?
+    @State private var error: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                ScreenHeader(title: "Connectors", subtitle: "Accounts your agents can work with")
+
+                GlassCard {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "lock.shield")
+                            .foregroundStyle(accent)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Private by default")
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            Text("Credentials stay encrypted on this gateway. Reading is the default; account changes remain approval-gated.")
+                                .font(.system(size: 12, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                if !loaded {
+                    ProgressView().frame(maxWidth: .infinity)
+                } else if let error {
+                    LoadFailedView(message: error) { Task { await load() } }
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 360), spacing: 14)], spacing: 14) {
+                        ForEach(connectors) { connector in
+                            connectorCard(connector)
+                        }
+                    }
+                }
+            }
+            .padding(24)
+        }
+        .task { await load() }
+    }
+
+    @ViewBuilder
+    private func connectorCard(_ connector: NativeAccountConnector) -> some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: connector.id == "google_workspace" ? "envelope" : "externaldrive.connected.to.line.below")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(connector.connected ? Color.green : accent)
+                        .frame(width: 36, height: 36)
+                        .background(accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 9))
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text(connector.label)
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            StatusBadge(
+                                label: connector.connected ? "Connected" : "Not connected",
+                                color: connector.connected ? .green : .secondary
+                            )
+                        }
+                        Text(connector.account ?? connector.description)
+                            .font(.system(size: 11, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    Spacer()
+                }
+
+                TextField(connector.configured ? "Client ID configured" : connector.clientIdLabel, text: binding(connector.id, \.clientID))
+                    .textFieldStyle(.roundedBorder)
+                if let secretLabel = connector.clientSecretLabel {
+                    SecureField(connector.configured ? "Client secret configured" : secretLabel, text: binding(connector.id, \.clientSecret))
+                        .textFieldStyle(.roundedBorder)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("OAuth callback URL")
+                        .font(.system(size: 11, weight: .medium, design: .rounded))
+                        .foregroundStyle(.secondary)
+                    Text(connector.redirectUri)
+                        .font(.system(size: 10, design: .monospaced))
+                        .textSelection(.enabled)
+                }
+                Toggle("Allow account changes", isOn: binding(connector.id, \.writeAccess))
+                    .toggleStyle(.switch)
+                Text("Messages, files, and events still require agent approval.")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Button(connector.connected ? "Reconnect" : "Connect") {
+                        Task { await connect(connector) }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(busyID != nil)
+                    if connector.connected {
+                        Button("Disconnect", role: .destructive) {
+                            Task { await disconnect(connector) }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(busyID != nil)
+                    }
+                    Spacer()
+                    if busyID == connector.id { ProgressView().controlSize(.small) }
+                    if let url = URL(string: connector.docsUrl) {
+                        Link("Setup", destination: url)
+                    }
+                }
+                .controlSize(.small)
+            }
+        }
+    }
+
+    private func binding<Value>(_ id: String, _ path: WritableKeyPath<NativeConnectorDraft, Value>) -> Binding<Value> {
+        Binding(
+            get: { drafts[id, default: NativeConnectorDraft()][keyPath: path] },
+            set: { value in
+                var draft = drafts[id, default: NativeConnectorDraft()]
+                draft[keyPath: path] = value
+                drafts[id] = draft
+            }
+        )
+    }
+
+    private func load() async {
+        do {
+            connectors = try await client.nativeAccountConnectors()
+            for connector in connectors where drafts[connector.id] == nil {
+                drafts[connector.id] = NativeConnectorDraft(writeAccess: connector.access == "read_write")
+            }
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+        loaded = true
+    }
+
+    private func connect(_ connector: NativeAccountConnector) async {
+        busyID = connector.id
+        do {
+            let draft = drafts[connector.id] ?? NativeConnectorDraft()
+            try await client.updateAccountConnector(
+                connector.id,
+                clientID: draft.clientID,
+                clientSecret: draft.clientSecret,
+                writeAccess: draft.writeAccess
+            )
+            let started = try await client.startAccountConnectorOAuth(connector.id)
+            guard let url = URL(string: started.authUrl) else { throw GatewayClientError.invalidResponse }
+            NSWorkspace.shared.open(url)
+            let deadline = Date().addingTimeInterval(600)
+            while Date() < deadline {
+                try await Task.sleep(for: .seconds(1))
+                let status = try await client.accountConnectorOAuthStatus(started.state)
+                if status.status == "connected" {
+                    await load()
+                    busyID = nil
+                    return
+                }
+                if status.status == "error" || status.status == "not_found" {
+                    throw GatewayClientError.decodingFailed("api/connectors/oauth/status", status.error ?? "Authorization failed")
+                }
+            }
+            throw GatewayClientError.decodingFailed("api/connectors/oauth/status", "Authorization timed out")
+        } catch {
+            self.error = error.localizedDescription
+        }
+        busyID = nil
+    }
+
+    private func disconnect(_ connector: NativeAccountConnector) async {
+        busyID = connector.id
+        do {
+            try await client.disconnectAccountConnector(connector.id)
+            await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        busyID = nil
     }
 }
 

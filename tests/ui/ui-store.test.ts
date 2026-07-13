@@ -11,6 +11,7 @@ import {
   themeConfigPayload,
   useUIStore,
 } from "../../ui/src/stores/uiStore";
+import { DEFAULT_CHAT_APPEARANCE_SETTINGS } from "../../shared/chat-appearance";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const STORE_PATH = join(ROOT_DIR, "ui", "src", "stores", "uiStore.ts").replace(/\\/g, "/");
@@ -46,6 +47,7 @@ beforeEach(() => {
   useUIStore.setState({
     accent: "indigo",
     mode: "dark",
+    chatAppearance: DEFAULT_CHAT_APPEARANCE_SETTINGS,
     loading: {},
     toasts: [],
     activeModal: null,
@@ -196,6 +198,12 @@ describe("useUIStore actions", () => {
   test("updates appearance, loading state, toasts, modals, and sidebar state", () => {
     useUIStore.getState().setAccent("rose");
     useUIStore.getState().setMode("system");
+    useUIStore.getState().setChatAppearance({
+      fontSize: "large",
+      codeFontSize: "large",
+      lineSpacing: "spacious",
+      reduceMotion: true,
+    });
     useUIStore.getState().setLoading("agents", true);
     useUIStore.getState().setLoading("chat", true);
     useUIStore.getState().setLoading("agents", false);
@@ -207,6 +215,12 @@ describe("useUIStore actions", () => {
     const state = useUIStore.getState();
     expect(state.accent).toBe("rose");
     expect(state.mode).toBe("system");
+    expect(state.chatAppearance).toEqual({
+      fontSize: "large",
+      codeFontSize: "large",
+      lineSpacing: "spacious",
+      reduceMotion: true,
+    });
     expect(state.loading).toEqual({ agents: false, chat: true });
     expect(state.toasts.map((toast) => toast.message)).toEqual(["saved", "broke"]);
     expect(state.toasts[0].id).not.toBe(state.toasts[1].id);
@@ -264,6 +278,12 @@ const ls = (globalThis as { localStorage: Storage }).localStorage;
 
 useUIStore.getState().setAccent("amber");
 useUIStore.getState().setMode("system");
+useUIStore.getState().setChatAppearance({
+  fontSize: "large",
+  codeFontSize: "large",
+  lineSpacing: "spacious",
+  reduceMotion: true,
+});
 useUIStore.getState().setLoading("x", true);
 useUIStore.getState().openModal("m");
 const raw = ls.getItem("cybara-ui-settings");
@@ -320,7 +340,16 @@ describe("useUIStore persistence", () => {
 
   test("persists only appearance settings", () => {
     expect(report.persistedAfterSet).not.toBeNull();
-    expect(report.persistedAfterSet?.state).toEqual({ accent: "amber", mode: "system" });
+    expect(report.persistedAfterSet?.state).toEqual({
+      accent: "amber",
+      mode: "system",
+      chatAppearance: {
+        fontSize: "large",
+        codeFontSize: "large",
+        lineSpacing: "spacious",
+        reduceMotion: true,
+      },
+    });
   });
 
   test("rehydrates appearance settings from storage", () => {

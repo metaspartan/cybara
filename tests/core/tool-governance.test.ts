@@ -83,4 +83,16 @@ describe("tool governance invariants", () => {
       "Prefer read-only actions"
     );
   });
+
+  test("account connector writes are approval-gated and reads are not", () => {
+    expect(isDangerousTool("account_connector")).toBe(false);
+    expect(isDangerousTool("account_connector_write")).toBe(true);
+    expect(toolSchemas.account_connector_write.permissions).toContain("connector:write");
+    expect(toolSchemas.account_connector.input_schema.properties?.action?.enum).toContain(
+      "calendar_list"
+    );
+    expect(toolSchemas.account_connector_write.input_schema.properties?.action?.enum).toContain(
+      "calendar_create"
+    );
+  });
 });

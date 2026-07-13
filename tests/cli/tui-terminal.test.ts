@@ -52,6 +52,15 @@ describe("CLI TUI terminal behavior", () => {
     expect(visible.every((line) => line.text.length <= 24)).toBe(true);
   });
 
+  test("keeps inline markdown balanced when a transcript line is truncated", () => {
+    expect(
+      transcriptWindow("**A deliberately long bold result for the terminal**", 2, 24)[0]?.text
+    ).toBe("**A deliberately long…**");
+    expect(transcriptWindow("`a-very-long-inline-code-value`", 2, 18)[0]?.text).toBe(
+      "`a-very-long-inl…`"
+    );
+  });
+
   test("selects native clipboard helpers without invoking a shell", () => {
     expect(clipboardCandidates("darwin", {})).toEqual([["pbcopy"]]);
     expect(clipboardCandidates("win32", {})).toEqual([["clip.exe"], ["clip"]]);

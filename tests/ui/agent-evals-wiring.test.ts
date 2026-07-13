@@ -11,6 +11,7 @@ describe("agent eval UI wiring", () => {
     const sidebar = read("ui/src/components/layout/Sidebar.tsx");
     const page = read("ui/src/pages/Evals.tsx");
     const research = read("ui/src/pages/research/TraceDatasetPanel.tsx");
+    const computerUse = read("ui/src/pages/research/ComputerUseDatasetPanel.tsx");
     const benchmarks = read("ui/src/pages/research/BenchmarkPanel.tsx");
     const chat = read("ui/src/pages/Chat.tsx");
 
@@ -43,6 +44,13 @@ describe("agent eval UI wiring", () => {
     expect(leaderboard).toContain("Capability matrix");
     expect(page).toContain("LeaderboardPanel");
     expect(research).toContain("Has reasoning");
+    expect(page).toContain("ComputerUseDatasetPanel");
+    expect(page).toContain('key: "computer-use", label: "Computer Use"');
+    expect(page).toContain("Measure behavioral drift");
+    expect(computerUse).toContain("Computer-use trajectories");
+    expect(computerUse).toContain("Capture future runs");
+    expect(computerUse).toContain("Replay repeats the recorded clicks and keystrokes");
+    expect(computerUse).toContain("Include media");
     expect(chat).toContain('invalidateQueries({ queryKey: ["agent-evals"] })');
     expect(chat).toContain("Fork chat from this message");
     expect(chat).toContain("Save turn as golden test");

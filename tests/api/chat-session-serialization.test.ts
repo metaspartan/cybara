@@ -46,6 +46,140 @@ afterEach(async () => {
 });
 
 describe("handleChat per-session serialization", () => {
+  test("persists a new session before the provider returns", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "First Turn Persistence Provider",
+      api_key: "sk-first-turn-persistence",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "First Turn Persistence Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-first-turn-persistence",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+
+    let markProviderStarted: (() => void) | undefined;
+    const providerStarted = new Promise<void>((resolve) => {
+      markProviderStarted = resolve;
+    });
+    globalThis.fetch = ((_url, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        markProviderStarted?.();
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("stopped", "AbortError")),
+          { once: true }
+        );
+      })) as typeof fetch;
+
+    const sessionId = `first-turn-persistence-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    const activeTurn = handleChat({
+      message: "Analyze the attached energy chart",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+    });
+
+    await providerStarted;
+    const persisted = await loadPersistedSession(sessionId);
+    expect(persisted?.agentId).toBe(agent.id);
+    expect(persisted?.messages.filter((message) => message.role !== "system")).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: "Analyze the attached energy chart",
+      }),
+    ]);
+
+    expect(stopActiveChatTurn(sessionId).stopped).toBe(true);
+    const response = await activeTurn;
+    expect(response.stopped).toBe(true);
+  });
+
+  test("persists and stops image turns while a vision fallback is running", async () => {
+    const provider = providerManager.create({
+      provider: "minimax",
+      name: "Vision Fallback Persistence Provider",
+      api_key: "sk-vision-fallback-persistence",
+      base_url: "https://api.minimax.io/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const textAgent = agentManager.create({
+      name: "Vision Fallback Text Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "MiniMax-M2.7",
+      memory_enabled: false,
+    });
+    const visionAgent = agentManager.create({
+      name: "Vision Fallback Image Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "MiniMax-M3",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(textAgent.id, visionAgent.id);
+
+    let markFallbackStarted: (() => void) | undefined;
+    const fallbackStarted = new Promise<void>((resolve) => {
+      markFallbackStarted = resolve;
+    });
+    let fallbackAborted = false;
+    globalThis.fetch = ((_url, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        markFallbackStarted?.();
+        init?.signal?.addEventListener(
+          "abort",
+          () => {
+            fallbackAborted = true;
+            reject(new DOMException("stopped", "AbortError"));
+          },
+          { once: true }
+        );
+      })) as typeof fetch;
+
+    const previousFallbackAgentId = config.get<string>("vision_fallback_agent_id");
+    config.set("vision_fallback_agent_id", visionAgent.id);
+    const sessionId = `vision-fallback-persistence-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    try {
+      const activeTurn = handleChat({
+        message: "Analyze this energy chart",
+        agentId: textAgent.id,
+        sessionId,
+        tools: false,
+        images: [
+          {
+            data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+            mimeType: "image/png",
+          },
+        ],
+      });
+
+      await fallbackStarted;
+      const persisted = await loadPersistedSession(sessionId);
+      expect(persisted?.messages.filter((message) => message.role !== "system")).toEqual([
+        expect.objectContaining({
+          role: "user",
+          content: "Analyze this energy chart",
+        }),
+      ]);
+      expect((await getSessionMessages(sessionId)).map(({ role }) => role)).toEqual(["user"]);
+
+      expect(stopActiveChatTurn(sessionId).stopped).toBe(true);
+      const response = await activeTurn;
+      expect(response.stopped).toBe(true);
+      expect(fallbackAborted).toBe(true);
+    } finally {
+      config.set("vision_fallback_agent_id", previousFallbackAgentId ?? "");
+    }
+  });
+
   test("stopping an active turn aborts provider work and prevents a late assistant response", async () => {
     const provider = providerManager.create({
       provider: "openai",
@@ -203,6 +337,50 @@ describe("handleChat per-session serialization", () => {
     const persisted = await loadPersistedSession(sessionId);
 
     expect(persisted?.messages[0]?.content).toBe("Finished.");
+  });
+
+  test("sanitizes inline provider reply directives before returning a response", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Reply Directive Provider",
+      api_key: "sk-reply-directive",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Reply Directive Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-reply-directive",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(agent.id);
+    globalThis.fetch = (async () =>
+      Response.json({
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: "[[reply_to_current]] Answer starts here.",
+            },
+          },
+        ],
+      })) as typeof fetch;
+    const sessionId = `reply-directive-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+
+    const response = await handleChat({
+      message: "Answer this",
+      agentId: agent.id,
+      sessionId,
+      tools: false,
+    });
+
+    expect(response.message.content).toBe("Answer starts here.");
+    expect((await loadPersistedSession(sessionId))?.messages.at(-1)?.content).toBe(
+      "Answer starts here."
+    );
   });
 
   test("orders injected subagent results after the active parent response", async () => {

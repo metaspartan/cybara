@@ -71,6 +71,7 @@ import {
   broadcastStatusSnapshot,
   getSessionRunStatusSnapshot,
   getSessionStatusSnapshot,
+  isSessionStatusActive,
   setSessionPendingChatMessages,
   type PendingChatMessageSnapshot,
 } from "../core/status";
@@ -91,6 +92,10 @@ import {
   formatToolResultPromptBlock,
 } from "../core/chat-token-optimization";
 import { sanitizeProcessThoughtText, stripThinkingTags } from "./chat-formatting";
+import { sanitizeAssistantContent } from "../core/llm/text-tool-calls";
+import { stopComputerUseTrajectoryForSession } from "../core/computer-use";
+import { resolveAgentToolPolicy } from "../core/toolsets";
+import { constrainToolsForMessage } from "./chat-tool-constraints";
 import {
   activeAgentSystemPrompt,
   applyActiveAgentToSession,
@@ -469,16 +474,6 @@ async function finishInterruptedChatTurn(
   };
 }
 
-function isActiveChatStatus(status?: string): boolean {
-  return (
-    status === "thinking" ||
-    status === "generating" ||
-    status === "tool_executing" ||
-    status === "tool_completed" ||
-    status === "compacting"
-  );
-}
-
 function pendingChatSnapshot(item: PendingChatItem): PendingChatMessageSnapshot {
   return {
     id: item.id,
@@ -826,7 +821,7 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
   const isSteeringHandoff =
     typeof runStatusSnapshot?.detail === "string" &&
     runStatusSnapshot.detail.trim().toLowerCase() === "steering to follow-up...";
-  const runStatusActive = isActiveChatStatus(runStatusSnapshot?.status) && !isSteeringHandoff;
+  const runStatusActive = isSessionStatusActive(runStatusSnapshot?.status) && !isSteeringHandoff;
   if (chatTurnMutex.isLocked(sessionId) || runStatusActive) {
     schedulePendingChatDrain(sessionId, runStatusActive ? 500 : 0);
     return;
@@ -878,11 +873,30 @@ function runChatTurnWithQueueDrain(
   const result = chatTurnMutex.run(effectiveSessionId, () =>
     handleChatTurn(request, effectiveSessionId)
   );
-  void result.finally(() => {
-    flushDeferredSessionMessages(effectiveSessionId);
-    schedulePendingChatDrain(effectiveSessionId);
-  });
-  return result;
+  const finalized = result.then(
+    async (response) => {
+      await stopComputerUseTrajectoryForSession(
+        effectiveSessionId,
+        response.interrupted ? "interrupted" : "completed"
+      );
+      return response;
+    },
+    async (error: unknown) => {
+      await stopComputerUseTrajectoryForSession(
+        effectiveSessionId,
+        "error",
+        error instanceof Error ? error.message : String(error)
+      );
+      throw error;
+    }
+  );
+  void finalized
+    .finally(() => {
+      flushDeferredSessionMessages(effectiveSessionId);
+      schedulePendingChatDrain(effectiveSessionId);
+    })
+    .catch(() => undefined);
+  return finalized;
 }
 
 function truncateSessionPreviewContent(content: string): string {
@@ -932,6 +946,34 @@ function upsertPersistedSessionIndex(
   }
 ): void {
   persistedSessionIndex.set(entry.id, normalizePersistedIndexEntry(entry));
+}
+
+async function persistChatSessionSnapshot(
+  session: InMemoryChatSession,
+  lastMessage?: ChatMessage
+): Promise<boolean> {
+  const modelMetadata = resolveSessionModelMetadata(session.agentId);
+  session.persisted = await persistSession(
+    session.id,
+    session.agentId,
+    session.messages,
+    session.workspaceDir,
+    session.title
+  );
+  upsertPersistedSessionIndex({
+    id: session.id,
+    agentId: session.agentId,
+    title: session.title,
+    messageCount: session.messages.length,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    workspaceDir: session.workspaceDir ?? null,
+    lastMessage: buildLastMessagePreview(
+      lastMessage ?? session.messages[session.messages.length - 1]
+    ),
+    modelMetadata,
+  });
+  return session.persisted;
 }
 
 function removePersistedSessionIndex(sessionId: string): void {
@@ -1444,7 +1486,7 @@ export async function handleChat(request: ChatRequest): Promise<ChatResponse> {
   const sessionHasPendingMessages = hasPendingChatMessages(effectiveSessionId);
   const sessionStatusActive =
     !!request.queueMode &&
-    isActiveChatStatus(getSessionRunStatusSnapshot(effectiveSessionId)?.status);
+    isSessionStatusActive(getSessionRunStatusSnapshot(effectiveSessionId)?.status);
   const shouldQueue =
     !!request.sessionId && (sessionLocked || sessionHasPendingMessages || sessionStatusActive);
   if (shouldQueue) {
@@ -1606,6 +1648,16 @@ export function deletePendingChatMessage(
   return { success: true, pendingMessages };
 }
 
+async function waitForPendingChatSession(sessionId: string): Promise<InMemoryChatSession | null> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const session = chatSessions.get(sessionId);
+    if (session) return session;
+    if (!chatTurnMutex.isLocked(sessionId)) return null;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  return chatSessions.get(sessionId) ?? null;
+}
+
 export async function steerPendingChatMessage(
   sessionId: string,
   pendingMessageId: string,
@@ -1641,7 +1693,7 @@ export async function steerPendingChatMessage(
     };
   }
 
-  const session = chatSessions.get(key);
+  const session = await waitForPendingChatSession(key);
   if (!session) {
     return {
       success: false,
@@ -1866,6 +1918,34 @@ async function handleChatTurn(
     session.updatedAt = userMessage.timestamp || new Date().toISOString();
   }
 
+  const provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
+  const turnAbortController = new AbortController();
+  const consumeSteeringMessagesForActiveTurn = () =>
+    turnAbortController.signal.aborted ? [] : consumeSteeringMessages(session);
+  if (provider && agent) {
+    activeChatTurnAbortControllers.set(session.id, turnAbortController);
+  }
+
+  const persistedAttachments =
+    shouldLogUserMessage && hasImages(sanitizedImages)
+      ? persistImageAttachments(session.id, sanitizedImages)
+      : [];
+  const persistedUserMessageKey = `chat-user:${userMessage.timestamp || session.id}`;
+  const persistUserMessage = async (): Promise<void> => {
+    if (!shouldLogUserMessage) return;
+    await upsertPersistedSessionMessage(session.id, agent?.id || session.agentId, userMessage, {
+      stableKey: persistedUserMessageKey,
+      metadata: {
+        source: "chat_api",
+        ...(persistedAttachments.length ? { attachments: persistedAttachments } : {}),
+        ...(userMessage.image_context ? { image_context: userMessage.image_context } : {}),
+      },
+    });
+  };
+  await persistUserMessage();
+  persistActiveSessionContext(session);
+  await persistChatSessionSnapshot(session, userMessage);
+
   broadcastStatus({
     status: "thinking",
     timestamp: Date.now(),
@@ -1896,49 +1976,45 @@ async function handleChatTurn(
         sessionId: session.id,
         agentId: fallbackAgent.id,
       });
-      const visionResult = await agentManager.execute(
-        fallbackAgent.id,
-        [
+      try {
+        const visionResult = await agentManager.execute(
+          fallbackAgent.id,
+          [
+            {
+              role: "user",
+              content: `Describe the attached image or images factually for another assistant. Focus on details relevant to this request: ${message}`,
+              images: sanitizedImages,
+            },
+          ],
           {
-            role: "user",
-            content: `Describe the attached image or images factually for another assistant. Focus on details relevant to this request: ${message}`,
-            images: sanitizedImages,
-          },
-        ],
-        {
-          useTools: false,
-          sessionId: session.id,
-          workspaceDir: session.workspaceDir || undefined,
+            useTools: false,
+            sessionId: session.id,
+            workspaceDir: session.workspaceDir || undefined,
+            abortSignal: turnAbortController.signal,
+          }
+        );
+        const imageContext = visionResult.content.trim();
+        if (imageContext) {
+          userMessage.image_context = imageContext;
+          await persistUserMessage();
+          persistActiveSessionContext(session);
+        } else {
+          imageRoutingError = "The configured image fallback agent returned no description.";
         }
-      );
-      const imageContext = visionResult.content.trim();
-      if (imageContext) userMessage.image_context = imageContext;
-      else imageRoutingError = "The configured image fallback agent returned no description.";
+      } catch (error) {
+        if (isChatTurnInterrupted(error, turnAbortController.signal)) {
+          if (isStoppedChatTurn(turnAbortController)) {
+            return finishStoppedChatTurn(session, agent, turnAbortController);
+          }
+          return finishInterruptedChatTurn(session, agent, turnAbortController);
+        }
+        imageRoutingError = `The configured image fallback agent failed: ${(error as Error).message}`;
+      }
     }
   }
 
-  if (shouldLogUserMessage) {
-    const persistedAttachments = hasImages(sanitizedImages)
-      ? persistImageAttachments(session.id, sanitizedImages)
-      : [];
-    await logSessionMessage(session.id, "user", message, {
-      agentId: agent?.id,
-      metadata: {
-        source: "chat_api",
-        ...(persistedAttachments.length ? { attachments: persistedAttachments } : {}),
-        ...(userMessage.image_context ? { image_context: userMessage.image_context } : {}),
-      },
-      createdAt: userMessage.timestamp,
-    });
-  }
-  persistActiveSessionContext(session);
-
-  const provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
-  const turnAbortController = new AbortController();
-  const consumeSteeringMessagesForActiveTurn = () =>
-    turnAbortController.signal.aborted ? [] : consumeSteeringMessages(session);
-  if (!imageRoutingError && provider && agent) {
-    activeChatTurnAbortControllers.set(session.id, turnAbortController);
+  if (imageRoutingError || !provider || !agent) {
+    clearActiveChatTurnAbortController(session.id, turnAbortController);
   }
 
   if (isNewSession && (!session.title || shouldRegenerateSessionTitle(session.title))) {
@@ -2116,7 +2192,14 @@ async function handleChatTurn(
         capabilityMentions.instruction
       );
       const shouldPreferArtifacts = tools && shouldPreferArtifactsForMessage(message);
-      const requiredDirectToolName = tools ? requiredDirectToolForMessage(message) : undefined;
+      const allowedToolNames = tools
+        ? constrainToolsForMessage(message, resolveAgentToolPolicy(agent).allowedToolNames)
+        : undefined;
+      const directToolCandidate = tools ? requiredDirectToolForMessage(message) : undefined;
+      const requiredDirectToolName =
+        directToolCandidate && (!allowedToolNames || allowedToolNames.includes(directToolCandidate))
+          ? directToolCandidate
+          : undefined;
       const requiredToolName = shouldPreferArtifacts ? "artifacts" : requiredDirectToolName;
       let result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,
@@ -2131,6 +2214,7 @@ async function handleChatTurn(
         consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
         useModelRouter,
         modelOverride: requestedModelOverride,
+        allowedToolNames,
       });
       responseContent = result.content;
 
@@ -2185,6 +2269,7 @@ async function handleChatTurn(
             consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
             useModelRouter,
             modelOverride: requestedModelOverride,
+            allowedToolNames,
           });
           const forcedToolCalls = forcedResult.tool_calls || [];
           const forcedHasRequiredTool = requiredToolName
@@ -2308,7 +2393,9 @@ async function handleChatTurn(
     }
   }
 
-  const { content: cleanContent, thinking: extractedThinking } = stripThinkingTags(responseContent);
+  const { content: extractedContent, thinking: extractedThinking } =
+    stripThinkingTags(responseContent);
+  const cleanContent = sanitizeAssistantContent(extractedContent);
   const finalThinking = sanitizeProcessThoughtText(thinkingContent || extractedThinking);
 
   const memoryPatterns = [
@@ -2399,13 +2486,7 @@ async function handleChatTurn(
 
   // Only mark the session persisted when the write actually succeeded, so a
   // failed write is retried on the next turn instead of being silently lost.
-  session.persisted = await persistSession(
-    session.id,
-    session.agentId,
-    session.messages,
-    session.workspaceDir,
-    session.title
-  );
+  session.persisted = await persistChatSessionSnapshot(session, assistantMessage);
   if (session.persisted) {
     recordCompletedTrajectory({
       sessionId: session.id,
@@ -2416,18 +2497,6 @@ async function handleChatTurn(
       model: modelMetadata?.model,
     });
   }
-  upsertPersistedSessionIndex({
-    id: session.id,
-    agentId: session.agentId,
-    title: session.title,
-    messageCount: session.messages.length,
-    createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
-    workspaceDir: session.workspaceDir ?? null,
-    lastMessage: buildLastMessagePreview(session.messages[session.messages.length - 1]),
-    modelMetadata,
-  });
-
   await emitAgentHook({
     type: "message:sent",
     context: hookContext,

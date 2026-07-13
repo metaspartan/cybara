@@ -873,6 +873,10 @@ export function routeRequiredScope(method: string, path: string): string | null 
     if (method === "GET") return null;
     return "mcp";
   }
+  if (path.startsWith("/api/connectors")) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
   if (path === "/api/config") {
     if (method === "GET") return null;
     return "manage";
@@ -1127,6 +1131,7 @@ export function securityCheck(
 ): SecurityCheckResult {
   const publicPaths = ["/api/health", "/api/health/ready", "/api/health/live"];
   if (path === "/api/mcp/oauth/callback") return { passed: true };
+  if (path === "/api/connectors/oauth/callback") return { passed: true };
   if (publicPaths.some((p) => path.startsWith(p))) {
     return { passed: true };
   }

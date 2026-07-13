@@ -219,6 +219,7 @@ describe("CLI TUI source wiring", () => {
       "/stop",
       "/copy",
       "/raw",
+      "/details",
       "/review",
       "/expand",
       "/resume",
@@ -251,6 +252,11 @@ describe("CLI TUI source wiring", () => {
       expect(cliTuiInteractiveChatSource).toContain(route);
     }
     expect(cliTuiInteractiveChatSource).toContain("PendingQueue");
+    expect(cliTuiInteractiveChatSource).toContain("consumeTUIStatusStream");
+    expect(cliTuiInteractiveChatSource).toContain("/api/chat/capabilities");
+    expect(cliTuiInteractiveChatSource).toContain("CapabilityPalette");
+    expect(cliTuiInteractiveChatSource).toContain("Enter queues · /steer injects · Ctrl+C stops");
+    expect(cliTuiInteractiveChatSource).toContain("sessionIdRef.current = turnSessionId");
     expect(cliTuiInteractiveChatSource).toContain("CommandPalette");
     expect(cliTuiInteractiveChatSource).toContain("StatusRail");
     expect(cliTuiInteractiveChatSource).toContain("EnvironmentPanel");
@@ -289,6 +295,10 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("tool_calls");
     expect(cliTuiInteractiveChatSource).toContain("ACTIVITY_HEADING_COLOR");
     expect(cliTuiInteractiveChatSource).toContain("ACTIVITY_DETAIL_COLOR");
+    expect(cliTuiInteractiveChatSource).toContain("key={`${row.id}-${rowIndex}`}");
+    expect(cliTuiInteractiveChatSource).toContain(
+      "maxActivityDetails={expandedTranscript ? undefined : 0}"
+    );
     expect(cliTuiInteractiveChatSource).toContain("strikethrough={part.strikethrough}");
     expect(cliTuiInteractiveChatSource).toContain("splitTerminalInline(line)");
     expect(cliTuiInteractiveChatSource).toContain('overflow="hidden"');

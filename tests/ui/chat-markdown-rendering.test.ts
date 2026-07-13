@@ -74,7 +74,9 @@ describe("Chat markdown rendering behavior", () => {
     expect(source).toContain('output: "htmlAndMathml"');
     expect(source).toContain("trust: false");
     expect(source).toContain('className="chat-markdown');
+    expect(source).not.toContain("chat-markdown max-w-none text-[12px]");
     expect(styles).toContain(".chat-markdown .katex-display");
+    expect(styles).toContain("font-size: var(--chat-font-size, 14px)");
     expect(styles).toContain("background: var(--surface-panel, #11131c)");
     expect(styles).toContain("color: inherit");
   });

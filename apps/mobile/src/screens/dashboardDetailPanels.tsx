@@ -87,6 +87,7 @@ import { JourneyPanel } from "./dashboardJourneyPanel";
 import { ModelRouterPanel } from "./dashboardModelRouterPanel";
 import { SpeechSettingsPanel } from "./dashboardSpeechSettingsPanel";
 import { MobileMcpSettingsPanel } from "./dashboardMcpPanel";
+import { MobileConnectorsPanel } from "./dashboardConnectorsPanel";
 import { MobileEvalsPanel } from "./dashboardEvalsPanel";
 import { styles } from "./dashboardStyles";
 import {
@@ -590,6 +591,7 @@ export function SettingsPanel({
   const showMemorySettings = selectedSettingsTab === "memory";
   const showVoiceSettings = selectedSettingsTab === "voice";
   const showMcpSettings = selectedSettingsTab === "mcp";
+  const showConnectorsSettings = selectedSettingsTab === "connectors";
   const showSafetySettings = selectedSettingsTab === "safety";
   const showWalletSettings = selectedSettingsTab === "wallet";
   const showMigrationSettings = selectedSettingsTab === "migration";
@@ -995,6 +997,9 @@ export function SettingsPanel({
           </>
         ) : null}
         {showMcpSettings ? <MobileMcpSettingsPanel accentColor={accentColor} api={api} /> : null}
+        {showConnectorsSettings ? (
+          <MobileConnectorsPanel accentColor={accentColor} api={api} />
+        ) : null}
         {showEvalsSettings ? <MobileEvalsPanel accentColor={accentColor} api={api} /> : null}
         {showAiSettings ? (
           <SettingsSection title="AI">

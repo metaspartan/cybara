@@ -14,6 +14,7 @@ import { runMobileCommand } from "./cli-mobile";
 import { rawHelp } from "./cli-help";
 import { printCompletion } from "./cli-completion";
 import { rawComputerUse } from "./cli-computer-use";
+import { runConnectorCommand, TUIConnectorsCommand } from "./cli-connectors";
 import { configureChatCli, rawAgent, rawChatCommand } from "./cli-chat";
 import { runSubagentCommand } from "./cli-subagents";
 import { TUIChatCommand } from "./cli-tui-chat";
@@ -3531,6 +3532,9 @@ function TUIContent({
       return <TUIEvalsCommand fetchAPI={fetchAPI} />;
     case "channels":
       return <TUIChannelsCommand fetchAPI={fetchAPI} />;
+    case "connectors":
+    case "connector":
+      return <TUIConnectorsCommand fetchAPI={fetchAPI} />;
     case "memory":
       return <TUIMemoryCommand fetchAPI={fetchAPI} />;
     case "tools":
@@ -3540,7 +3544,7 @@ function TUIContent({
     case "wallet":
       return <TUIWalletCommand fetchAPI={fetchAPI} />;
     case "chat":
-      return <TUIChatCommand fetchAPI={fetchAPI} />;
+      return <TUIChatCommand apiBase={API_BASE} apiKey={CLI_API_KEY} fetchAPI={fetchAPI} />;
     case "sessions":
       return <TUISessionsCommand />;
     case "logs":
@@ -4200,6 +4204,11 @@ async function main() {
       await rawPairCommand(args.slice(1));
       break;
     }
+
+    case "connectors":
+    case "connector":
+      await runConnectorCommand(args.slice(1), fetchAPI);
+      break;
 
     case "mcp": {
       const mcpSubCmd = args[1];

@@ -188,7 +188,7 @@ export function DiffCodeBlock({ code, fill = false }: { code: string; fill?: boo
   return (
     <div
       className={cn(
-        "flex min-h-0 min-w-0 flex-col overflow-hidden border border-white/10 bg-slate-950/70",
+        "chat-code-block flex min-h-0 min-w-0 flex-col overflow-hidden border border-white/10 bg-slate-950/70",
         fill ? "h-full rounded-none border-0" : "my-3 rounded-xl"
       )}
     >
@@ -234,7 +234,7 @@ function SyntaxCodeBlock({ code, language }: { code: string; language: string })
   const displayLanguage = language === "plaintext" ? "text" : language;
   const lineCount = code ? code.split(/\r?\n/).length : 0;
   return (
-    <div className="my-3 overflow-hidden rounded-xl border border-white/10 bg-black/55 shadow-[0_8px_24px_rgba(0,0,0,0.22)]">
+    <div className="chat-code-block my-3 overflow-hidden rounded-xl border border-white/10 bg-black/55 shadow-[0_8px_24px_rgba(0,0,0,0.22)]">
       <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-[12px] uppercase tracking-[0.08em] text-gray-400">
         <span className="inline-flex items-center gap-2">
           <span>{displayLanguage}</span>
@@ -278,7 +278,7 @@ export function MessageContent({
   const cleanedContent = useMemo(() => preprocessChatMarkdown(content), [content]);
 
   return (
-    <div className="chat-markdown max-w-none text-[12px] text-gray-200 leading-[1.45rem]">
+    <div className="chat-markdown max-w-none text-gray-200">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[

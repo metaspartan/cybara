@@ -129,11 +129,22 @@ function matchesDenyPattern(resolvedPath: string): boolean {
   return false;
 }
 
+function homePolicyRoots(): string[] {
+  const roots = [normalize(homedir())];
+  try {
+    const realHome = normalize(realpathSync.native(homedir()));
+    if (!roots.includes(realHome)) roots.push(realHome);
+  } catch {
+    return roots;
+  }
+  return roots;
+}
+
 function isUnderHomeSubdir(resolvedPath: string, segment: string): boolean {
-  const home = homedir().replace(/\\/g, "/").toLowerCase();
-  const marker = `${home}/${segment.toLowerCase()}`;
-  const markerNoSlash = marker.replace(/\/$/, "");
-  return resolvedPath === markerNoSlash || resolvedPath.startsWith(`${markerNoSlash}/`);
+  return homePolicyRoots().some((home) => {
+    const marker = `${home}/${segment.toLowerCase()}`.replace(/\/$/, "");
+    return resolvedPath === marker || resolvedPath.startsWith(`${marker}/`);
+  });
 }
 
 /**
@@ -239,6 +250,8 @@ const READABLE_CYBARA_SUBDIRS: readonly string[] = [
   ".cybara/skills",
   ".cybara/tool-results",
 ];
+const READABLE_CYBARA_IMAGE_SUBDIRS: readonly string[] = [".cybara/screenshots"];
+const READABLE_IMAGE_PATTERN = /\.(png|jpe?g|webp)$/i;
 
 /**
  * Read-side guard. The same sensitive-file deny-list applies to reads — an
@@ -254,12 +267,17 @@ export function assertReadablePath(
   const decision = checkWritePath(rawPath, options);
   if (!decision.allowed && decision.reason === "sensitive-path" && rawPath) {
     const candidates = policyPaths(rawPath);
-    const inReadableSubdir = candidates.some((candidate) =>
+    const inReadableSubdir = candidates.every((candidate) =>
       READABLE_CYBARA_SUBDIRS.some((subdir) => isUnderHomeSubdir(candidate, subdir))
     );
+    const inReadableImageSubdir =
+      READABLE_IMAGE_PATTERN.test(decision.resolvedPath) &&
+      candidates.every((candidate) =>
+        READABLE_CYBARA_IMAGE_SUBDIRS.some((subdir) => isUnderHomeSubdir(candidate, subdir))
+      );
     // Still honor filename-level denials (e.g. a stray .env inside memory/).
     const hitsFilenameDeny = candidates.some((candidate) => matchesDenyPattern(candidate));
-    if (inReadableSubdir && !hitsFilenameDeny) {
+    if ((inReadableSubdir || inReadableImageSubdir) && !hitsFilenameDeny) {
       return decision.resolvedPath;
     }
   }

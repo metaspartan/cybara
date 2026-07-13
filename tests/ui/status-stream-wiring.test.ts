@@ -112,7 +112,9 @@ describe("status stream websocket wiring", () => {
     );
     expect(source).toContain('"text-sky-300"');
     expect(source).toContain('"text-amber-300"');
-    expect(source).toContain("settingsApi.updateConfig({ tool_approval_mode: nextMode })");
+    expect(source).toMatch(
+      /settingsApi\.updateConfig\(\{\s*tool_approval_mode:\s*nextMode,?\s*\}\)/
+    );
     expect(source).toContain('id="chat-agent-selector"');
     expect(source).toContain("chat-composer-responsive");
     expect(source).toContain("chat-approval-toggle");

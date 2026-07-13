@@ -9,6 +9,11 @@ import {
   normalizeMemoryProviderSettings,
 } from "./memory/providers";
 import { type EmbeddingProviderPreference } from "./memory/embeddings";
+import {
+  type ChatAppearanceSettings,
+  DEFAULT_CHAT_APPEARANCE_SETTINGS,
+  normalizeChatAppearanceSettings,
+} from "../../shared/chat-appearance";
 
 interface PlatformConfig {
   name: string;
@@ -174,6 +179,8 @@ export interface SpeechSettings {
 
 export interface ComputerUseSettings {
   driverCommand: string;
+  trajectoryCaptureEnabled: boolean;
+  trajectoryVideoEnabled: boolean;
 }
 
 export interface TokenOptimizationSettings {
@@ -297,6 +304,8 @@ export const DEFAULT_SPEECH_SETTINGS: SpeechSettings = {
 
 export const DEFAULT_COMPUTER_USE_SETTINGS: ComputerUseSettings = {
   driverCommand: "",
+  trajectoryCaptureEnabled: false,
+  trajectoryVideoEnabled: false,
 };
 
 function parseJsonValue(raw: string): unknown {
@@ -528,6 +537,14 @@ function normalizeComputerUseSettings(value: unknown): ComputerUseSettings {
     (typeof value === "string" ? value : undefined);
   return {
     driverCommand: normalizeCommandText(raw),
+    trajectoryCaptureEnabled:
+      typeof parsed?.trajectoryCaptureEnabled === "boolean"
+        ? parsed.trajectoryCaptureEnabled
+        : DEFAULT_COMPUTER_USE_SETTINGS.trajectoryCaptureEnabled,
+    trajectoryVideoEnabled:
+      typeof parsed?.trajectoryVideoEnabled === "boolean"
+        ? parsed.trajectoryVideoEnabled
+        : DEFAULT_COMPUTER_USE_SETTINGS.trajectoryVideoEnabled,
   };
 }
 
@@ -774,6 +791,7 @@ class ConfigManager {
       token_optimization: { ...DEFAULT_TOKEN_OPTIMIZATION_SETTINGS },
       speech: { ...DEFAULT_SPEECH_SETTINGS },
       computer_use: { ...DEFAULT_COMPUTER_USE_SETTINGS },
+      chat_appearance: { ...DEFAULT_CHAT_APPEARANCE_SETTINGS },
       default_workspace_dir: homeDir,
     };
 
@@ -806,6 +824,16 @@ class ConfigManager {
     }
     this.set("follow_up_behavior_enabled", value);
     return value;
+  }
+
+  getChatAppearanceSettings(): ChatAppearanceSettings {
+    return normalizeChatAppearanceSettings(this.get<unknown>("chat_appearance"));
+  }
+
+  setChatAppearanceSettings(value: unknown): ChatAppearanceSettings {
+    const normalized = normalizeChatAppearanceSettings(value);
+    this.set("chat_appearance", normalized);
+    return normalized;
   }
 
   getDefaultWorkspaceDir(): string {
@@ -936,7 +964,10 @@ class ConfigManager {
   }
 
   setComputerUseSettings(settings: unknown): ComputerUseSettings {
-    const normalized = normalizeComputerUseSettings(settings);
+    const update = asObject(settings);
+    const normalized = normalizeComputerUseSettings(
+      update ? { ...this.getComputerUseSettings(), ...update } : settings
+    );
     this.set("computer_use", normalized);
     return normalized;
   }

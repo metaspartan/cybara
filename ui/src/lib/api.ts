@@ -136,7 +136,10 @@ export const agentsApi = {
   create: (agent: Omit<Agent, "id" | "createdAt" | "updatedAt">) =>
     fetchApi<Agent>("/agents", { method: "POST", body: JSON.stringify(agent) }),
   update: (id: string, agent: Partial<Agent>) =>
-    fetchApi<Agent>(`/agents/${id}`, { method: "PUT", body: JSON.stringify(agent) }),
+    fetchApi<Agent>(`/agents/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(agent),
+    }),
   delete: (id: string) => fetchApi<void>(`/agents/${id}`, { method: "DELETE" }),
   chat: (
     id: string,
@@ -179,12 +182,20 @@ export const providersApi = {
   list: () => fetchApi<Provider[]>("/providers"),
   get: (id: string) => fetchApi<Provider>(`/providers/${id}`),
   create: (provider: Omit<Provider, "id" | "createdAt">) =>
-    fetchApi<Provider>("/providers", { method: "POST", body: JSON.stringify(provider) }),
+    fetchApi<Provider>("/providers", {
+      method: "POST",
+      body: JSON.stringify(provider),
+    }),
   update: (id: string, provider: Partial<Provider>) =>
-    fetchApi<Provider>(`/providers/${id}`, { method: "PUT", body: JSON.stringify(provider) }),
+    fetchApi<Provider>(`/providers/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(provider),
+    }),
   delete: (id: string) => fetchApi<void>(`/providers/${id}`, { method: "DELETE" }),
   test: (id: string) =>
-    fetchApi<{ success: boolean; latency: number }>(`/providers/${id}/test`, { method: "POST" }),
+    fetchApi<{ success: boolean; latency: number }>(`/providers/${id}/test`, {
+      method: "POST",
+    }),
 };
 
 export const providerPlansApi = {
@@ -205,9 +216,10 @@ export const providerPlansApi = {
     };
   },
   availability: () =>
-    fetchApi<{ available: boolean; summary: ProviderPlanStatusResponse["summary"] }>(
-      "/provider-plans/availability"
-    ),
+    fetchApi<{
+      available: boolean;
+      summary: ProviderPlanStatusResponse["summary"];
+    }>("/provider-plans/availability"),
   updateConfig: async (
     payload: ProviderPlanMonitoringConfig
   ): Promise<ApiResponse<ProviderPlanMonitoringConfig>> => {
@@ -231,17 +243,25 @@ export const channelsApi = {
   list: () => fetchApi<Channel[]>("/channels"),
   get: (id: string) => fetchApi<Channel>(`/channels/${id}`),
   create: (channel: Omit<Channel, "id" | "createdAt">) =>
-    fetchApi<Channel>("/channels", { method: "POST", body: JSON.stringify(channel) }),
+    fetchApi<Channel>("/channels", {
+      method: "POST",
+      body: JSON.stringify(channel),
+    }),
   update: (id: string, channel: Partial<Channel>) =>
-    fetchApi<Channel>(`/channels/${id}`, { method: "PUT", body: JSON.stringify(channel) }),
+    fetchApi<Channel>(`/channels/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(channel),
+    }),
   delete: (id: string) => fetchApi<void>(`/channels/${id}`, { method: "DELETE" }),
   test: (id: string) =>
-    fetchApi<{ success: boolean; running?: boolean; error?: string; message?: string }>(
-      `/channels/${id}/test`,
-      {
-        method: "POST",
-      }
-    ),
+    fetchApi<{
+      success: boolean;
+      running?: boolean;
+      error?: string;
+      message?: string;
+    }>(`/channels/${id}/test`, {
+      method: "POST",
+    }),
   getWhatsAppState: (id: string) =>
     fetchApi<{
       success: boolean;
@@ -313,7 +333,9 @@ export const mobileApi = {
       method: "POST",
     }),
   deleteDevice: (id: string) =>
-    fetchApi<{ success: boolean }>(`/mobile/devices/${id}`, { method: "DELETE" }),
+    fetchApi<{ success: boolean }>(`/mobile/devices/${id}`, {
+      method: "DELETE",
+    }),
 };
 
 export interface MCPServer {
@@ -375,12 +397,16 @@ export const mcpApi = {
       body: JSON.stringify(server),
     }),
   start: (id: string) =>
-    fetchApi<{ success: boolean; error?: string }>(`/mcp/${id}/start`, { method: "POST" }),
+    fetchApi<{ success: boolean; error?: string }>(`/mcp/${id}/start`, {
+      method: "POST",
+    }),
   startOAuth: (id: string) =>
-    fetchApi<{ success: boolean; authUrl?: string; state?: string; error?: string }>(
-      `/mcp/${id}/oauth/start`,
-      { method: "POST" }
-    ),
+    fetchApi<{
+      success: boolean;
+      authUrl?: string;
+      state?: string;
+      error?: string;
+    }>(`/mcp/${id}/oauth/start`, { method: "POST" }),
   oauthStatus: (state: string) =>
     fetchApi<{
       status: "pending" | "connected" | "error" | "not_found";
@@ -388,7 +414,9 @@ export const mcpApi = {
       error?: string;
     }>(`/mcp/oauth/status?state=${encodeURIComponent(state)}`),
   stop: (id: string) =>
-    fetchApi<{ success: boolean; error?: string }>(`/mcp/${id}/stop`, { method: "POST" }),
+    fetchApi<{ success: boolean; error?: string }>(`/mcp/${id}/stop`, {
+      method: "POST",
+    }),
   delete: (id: string) => fetchApi<{ success: boolean }>(`/mcp/${id}`, { method: "DELETE" }),
 };
 
@@ -476,10 +504,13 @@ export const systemApi = {
       body: JSON.stringify({ label }),
     }),
   restoreBackup: (backupId: string) =>
-    fetchApi<{ success: boolean; restore: SystemRestoreStatus; restartRequired: boolean }>(
-      `/system/backups/${encodeURIComponent(backupId)}/restore`,
-      { method: "POST" }
-    ),
+    fetchApi<{
+      success: boolean;
+      restore: SystemRestoreStatus;
+      restartRequired: boolean;
+    }>(`/system/backups/${encodeURIComponent(backupId)}/restore`, {
+      method: "POST",
+    }),
   deleteBackup: (backupId: string) =>
     fetchApi<{ success: boolean }>(`/system/backups/${encodeURIComponent(backupId)}`, {
       method: "DELETE",
@@ -503,11 +534,15 @@ export const authApi = {
       body: JSON.stringify(payload),
     }),
   revealKey: () =>
-    fetchApi<{ success: boolean; apiKey: string | null; source: "env" | "file" | "none" }>(
-      "/auth/key"
-    ),
+    fetchApi<{
+      success: boolean;
+      apiKey: string | null;
+      source: "env" | "file" | "none";
+    }>("/auth/key"),
   rotateKey: () =>
-    fetchApi<{ success: boolean; apiKey: string }>("/auth/rotate-key", { method: "POST" }),
+    fetchApi<{ success: boolean; apiKey: string }>("/auth/rotate-key", {
+      method: "POST",
+    }),
 };
 
 export const settingsApi = {
@@ -601,6 +636,55 @@ export const integrationCredentialsApi = {
       method: "PUT",
       body: JSON.stringify({ credentials }),
     }),
+};
+
+export type AccountConnectorId = "google_workspace" | "dropbox";
+export type AccountConnectorAccess = "read" | "read_write";
+
+export interface AccountConnectorStatus {
+  id: AccountConnectorId;
+  label: string;
+  description: string;
+  services: string[];
+  docsUrl: string;
+  clientIdLabel: string;
+  clientSecretLabel?: string;
+  redirectUri: string;
+  configured: boolean;
+  connected: boolean;
+  access: AccountConnectorAccess;
+  account?: string;
+  scopes: string[];
+  needsReauthorization: boolean;
+}
+
+export const accountConnectorsApi = {
+  list: () => fetchApi<AccountConnectorStatus[]>("/connectors"),
+  update: (
+    id: AccountConnectorId,
+    input: {
+      clientId?: string | null;
+      clientSecret?: string | null;
+      access?: AccountConnectorAccess;
+    }
+  ) =>
+    fetchApi<AccountConnectorStatus>(`/connectors/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(input),
+    }),
+  disconnect: (id: AccountConnectorId) =>
+    fetchApi<AccountConnectorStatus>(`/connectors/${id}`, { method: "DELETE" }),
+  startOAuth: (id: AccountConnectorId) =>
+    fetchApi<{ state: string; authUrl: string; expiresAt: number }>(
+      `/connectors/${id}/oauth/start`,
+      { method: "POST" }
+    ),
+  oauthStatus: (state: string) =>
+    fetchApi<{
+      status: "pending" | "connected" | "error" | "not_found";
+      connectorId?: AccountConnectorId;
+      error?: string;
+    }>(`/connectors/oauth/status?state=${encodeURIComponent(state)}`),
 };
 
 export const setupApi = {
@@ -787,7 +871,10 @@ export const walletApi = {
       address: string;
       primaryAddresses: Record<WalletChain, string>;
       unlockExpiresAt: string;
-    }>("/wallet/unlock", { method: "POST", body: JSON.stringify({ password }) }),
+    }>("/wallet/unlock", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
   revealSeed: (password: string, acknowledgement: string) =>
     fetchApi<{ mnemonic: string; wordCount: number }>("/wallet/seed", {
       method: "POST",
@@ -870,13 +957,15 @@ export const walletApi = {
     memo?: string;
     rpcUrl?: string;
   }) =>
-    fetchApi<{ chain: WalletTokenChain; txid: string; explorerUrl: string; tokenAddress: string }>(
-      "/wallet/send-token",
-      {
-        method: "POST",
-        body: JSON.stringify(payload),
-      }
-    ),
+    fetchApi<{
+      chain: WalletTokenChain;
+      txid: string;
+      explorerUrl: string;
+      tokenAddress: string;
+    }>("/wallet/send-token", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   ethContractCall: (payload: {
     contractAddress: string;
     abi?: string;
@@ -1029,7 +1118,12 @@ export const walletApi = {
     }>("/wallet/endpoints"),
   dapps: () =>
     fetchApi<{
-      adapters: Array<{ adapter: string; chain: string; write: boolean; description: string }>;
+      adapters: Array<{
+        adapter: string;
+        chain: string;
+        write: boolean;
+        description: string;
+      }>;
       notes: string[];
     }>("/wallet/dapps"),
   rpcCall: (payload: {
@@ -1149,7 +1243,10 @@ export const memoryApi = {
       error?: string;
     }>("/memory/status"),
   create: (memory: Omit<Memory, "id" | "createdAt" | "updatedAt">) =>
-    fetchApi<Memory>("/memory", { method: "POST", body: JSON.stringify(memory) }),
+    fetchApi<Memory>("/memory", {
+      method: "POST",
+      body: JSON.stringify(memory),
+    }),
   update: (id: string, memory: Partial<Memory>) =>
     fetchApi<Memory>(`/memory/${encodeURIComponent(id)}`, {
       method: "PUT",
@@ -1180,10 +1277,15 @@ export const memoryApi = {
       }>;
     }>("/memory/providers"),
   testProvider: (provider: string, settings?: Record<string, unknown>) =>
-    fetchApi<{ success: boolean; provider: string; ok: boolean; detail: string }>(
-      "/memory/providers/test",
-      { method: "POST", body: JSON.stringify({ provider, settings }) }
-    ),
+    fetchApi<{
+      success: boolean;
+      provider: string;
+      ok: boolean;
+      detail: string;
+    }>("/memory/providers/test", {
+      method: "POST",
+      body: JSON.stringify({ provider, settings }),
+    }),
 };
 
 export const tasksApi = {
@@ -1205,7 +1307,10 @@ export const tasksApi = {
   create: (task: Omit<Task, "id" | "createdAt">) =>
     fetchApi<Task>("/tasks", { method: "POST", body: JSON.stringify(task) }),
   update: (id: string, task: Partial<Task>) =>
-    fetchApi<Task>(`/tasks/${id}`, { method: "PUT", body: JSON.stringify(task) }),
+    fetchApi<Task>(`/tasks/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(task),
+    }),
   delete: (id: string) => fetchApi<void>(`/tasks/${id}`, { method: "DELETE" }),
   run: (id: string) => fetchApi<void>(`/tasks/${id}/run`, { method: "POST" }),
 };
@@ -1216,14 +1321,20 @@ export const skillsApi = {
   create: (skill: Omit<Skill, "id" | "createdAt">) =>
     fetchApi<Skill>("/skills", { method: "POST", body: JSON.stringify(skill) }),
   update: (id: string, skill: Partial<Skill>) =>
-    fetchApi<Skill>(`/skills/${id}`, { method: "PUT", body: JSON.stringify(skill) }),
+    fetchApi<Skill>(`/skills/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(skill),
+    }),
   delete: (id: string) => fetchApi<void>(`/skills/${id}`, { method: "DELETE" }),
   test: (id: string, params: Record<string, unknown>) =>
-    fetchApi<unknown>(`/skills/${id}/execute`, { method: "POST", body: JSON.stringify(params) }),
+    fetchApi<unknown>(`/skills/${id}/execute`, {
+      method: "POST",
+      body: JSON.stringify(params),
+    }),
 };
 
 export interface ChatCapabilityOption {
-  kind: "skill" | "mcp_server" | "mcp" | "agent" | "tool" | "command";
+  kind: "skill" | "mcp_server" | "mcp" | "agent" | "tool" | "connector" | "command";
   token: string;
   name: string;
   description: string;
@@ -1285,13 +1396,17 @@ export const chatApi = {
       error?: string;
     }>(`/chat/sessions/${sessionId}/pending/${pendingMessageId}/steer`, {
       method: "POST",
-      body: JSON.stringify({ processActivities: options?.processActivities || [] }),
+      body: JSON.stringify({
+        processActivities: options?.processActivities || [],
+      }),
     }),
   stopSession: (sessionId: string) =>
-    fetchApi<{ success: boolean; stopped: boolean; sessionId: string; error?: string }>(
-      `/chat/sessions/${sessionId}/stop`,
-      { method: "POST" }
-    ),
+    fetchApi<{
+      success: boolean;
+      stopped: boolean;
+      sessionId: string;
+      error?: string;
+    }>(`/chat/sessions/${sessionId}/stop`, { method: "POST" }),
   getPendingMessages: (sessionId: string) =>
     fetchApi<{ sessionId: string; pendingMessages: PendingChatMessage[] }>(
       `/chat/sessions/${sessionId}/pending`
@@ -1334,7 +1449,12 @@ export const chatApi = {
           sizeMb: number;
           defaultVoice: string;
         }>;
-        voices: Array<{ id: string; label: string; language: string; gender: string }>;
+        voices: Array<{
+          id: string;
+          label: string;
+          language: string;
+          gender: string;
+        }>;
         status: Array<{
           id: string;
           state: "unloaded" | "loading" | "ready" | "error";
@@ -1567,7 +1687,12 @@ export const chatApi = {
     }),
   saveGolden: (
     id: string,
-    payload: { messageIndex?: number; name?: string; description?: string; tags?: string[] }
+    payload: {
+      messageIndex?: number;
+      name?: string;
+      description?: string;
+      tags?: string[];
+    }
   ) =>
     fetchApi<{ success: boolean; golden: AgentGolden; error?: string }>(
       "/sessions/" + id + "/golden",
@@ -1577,29 +1702,35 @@ export const chatApi = {
       }
     ),
   updateSessionTitle: (id: string, title: string) =>
-    fetchApi<{ success: boolean; sessionId: string; title: string; error?: string }>(
-      "/sessions/" + id + "/title",
-      {
-        method: "PUT",
-        body: JSON.stringify({ title }),
-      }
-    ),
+    fetchApi<{
+      success: boolean;
+      sessionId: string;
+      title: string;
+      error?: string;
+    }>("/sessions/" + id + "/title", {
+      method: "PUT",
+      body: JSON.stringify({ title }),
+    }),
   pinSession: (id: string, pinned: boolean) =>
-    fetchApi<{ success: boolean; sessionId: string; pinned: boolean; error?: string }>(
-      "/sessions/" + id + "/pin",
-      {
-        method: "PUT",
-        body: JSON.stringify({ pinned }),
-      }
-    ),
+    fetchApi<{
+      success: boolean;
+      sessionId: string;
+      pinned: boolean;
+      error?: string;
+    }>("/sessions/" + id + "/pin", {
+      method: "PUT",
+      body: JSON.stringify({ pinned }),
+    }),
   updateSessionWorkspace: (id: string, workspaceDir: string | null) =>
-    fetchApi<{ success: boolean; sessionId: string; workspaceDir: string | null; error?: string }>(
-      "/sessions/" + id + "/workspace",
-      {
-        method: "PUT",
-        body: JSON.stringify({ workspaceDir }),
-      }
-    ),
+    fetchApi<{
+      success: boolean;
+      sessionId: string;
+      workspaceDir: string | null;
+      error?: string;
+    }>("/sessions/" + id + "/workspace", {
+      method: "PUT",
+      body: JSON.stringify({ workspaceDir }),
+    }),
   getSessionStatus: (sessionId?: string) =>
     fetchApi<{
       activeSessions?: Array<{
@@ -1707,7 +1838,11 @@ export interface AgentGolden {
     agentId: string;
     provider: string | null;
     model: string | null;
-    request: { userMessage: ChatMessage; userMessageIndex: number; workspaceDir: string | null };
+    request: {
+      userMessage: ChatMessage;
+      userMessageIndex: number;
+      workspaceDir: string | null;
+    };
     structure: AgentTrajectoryStructure;
     createdAt: string;
   };
@@ -1753,6 +1888,7 @@ export interface ResearchTraceSummary {
   responsePreview: string;
   messageCount: number;
   toolCallCount: number;
+  toolNames: string[];
   failedToolCallCount: number;
   hasObservableReasoning: boolean;
   observableReasoningCharacters: number;
@@ -1822,10 +1958,12 @@ export const evalsApi = {
       count: number;
     }>(`/evals/export?format=${format}&sanitize=${sanitize ? "1" : "0"}`),
   import: (bundle: unknown) =>
-    fetchApi<{ success: boolean; imported: AgentGolden[]; count: number; error?: string }>(
-      "/evals/import",
-      { method: "POST", body: JSON.stringify({ bundle }) }
-    ),
+    fetchApi<{
+      success: boolean;
+      imported: AgentGolden[];
+      count: number;
+      error?: string;
+    }>("/evals/import", { method: "POST", body: JSON.stringify({ bundle }) }),
   replay: (goldenId: string, payload?: { agentId?: string; modelOverride?: string }) =>
     fetchApi<{ success: boolean; run: AgentEvalRun; error?: string }>(
       `/evals/goldens/${goldenId}/replay`,
@@ -1837,7 +1975,9 @@ export const evalsApi = {
       body: JSON.stringify(goldenIds ? { goldenIds } : {}),
     }),
   deleteGolden: (goldenId: string) =>
-    fetchApi<{ success: boolean }>(`/evals/goldens/${goldenId}`, { method: "DELETE" }),
+    fetchApi<{ success: boolean }>(`/evals/goldens/${goldenId}`, {
+      method: "DELETE",
+    }),
 };
 
 export const researchApi = {
@@ -1889,21 +2029,32 @@ export const benchmarksApi = {
       runs: IntelligenceBenchmarkRun[];
     }>("/evals/benchmarks"),
   run: (agentId: string) =>
-    fetchApi<{ success: boolean; run?: IntelligenceBenchmarkRun; error?: string }>(
-      "/evals/benchmarks/run",
-      { method: "POST", body: JSON.stringify({ agentId }) }
-    ),
+    fetchApi<{
+      success: boolean;
+      run?: IntelligenceBenchmarkRun;
+      error?: string;
+    }>("/evals/benchmarks/run", {
+      method: "POST",
+      body: JSON.stringify({ agentId }),
+    }),
   export: () =>
-    fetchApi<{ filename: string; mimeType: string; content: string; count: number }>(
-      "/evals/benchmarks/export"
-    ),
+    fetchApi<{
+      filename: string;
+      mimeType: string;
+      content: string;
+      count: number;
+    }>("/evals/benchmarks/export"),
   manifest: () =>
     fetchApi<{ filename: string; mimeType: string; content: string }>("/evals/benchmarks/manifest"),
   cancel: (runId: string) =>
-    fetchApi<{ success: boolean; run?: IntelligenceBenchmarkRun; error?: string }>(
-      "/evals/benchmarks/cancel",
-      { method: "POST", body: JSON.stringify({ runId }) }
-    ),
+    fetchApi<{
+      success: boolean;
+      run?: IntelligenceBenchmarkRun;
+      error?: string;
+    }>("/evals/benchmarks/cancel", {
+      method: "POST",
+      body: JSON.stringify({ runId }),
+    }),
   remove: (runId: string) =>
     fetchApi<{ success: boolean; error?: string }>("/evals/benchmarks", {
       method: "DELETE",
@@ -1913,10 +2064,12 @@ export const benchmarksApi = {
 
 export const workspaceOpenApi = {
   targets: (path: string, signal?: AbortSignal) =>
-    fetchApi<{ success: boolean; path: string; targets: WorkspaceOpenTarget[]; error?: string }>(
-      `/ide/open-targets?path=${encodeURIComponent(path)}`,
-      { signal }
-    ),
+    fetchApi<{
+      success: boolean;
+      path: string;
+      targets: WorkspaceOpenTarget[];
+      error?: string;
+    }>(`/ide/open-targets?path=${encodeURIComponent(path)}`, { signal }),
   open: (path: string, targetId: string) =>
     fetchApi<{ success: boolean; path: string; error?: string }>("/ide/open", {
       method: "POST",
@@ -1943,11 +2096,98 @@ export interface ComputerUseStatus {
   searchedPaths?: string[];
 }
 
+export interface ComputerUseTrajectorySummary {
+  id: string;
+  sessionId: string;
+  status: "recording" | "completed" | "interrupted" | "error";
+  recordVideo: boolean;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  error?: string;
+  replayOf?: string;
+  turnCount: number;
+  screenshotCount: number;
+  clickCount: number;
+  durationMs: number;
+  videoAvailable: boolean;
+}
+
+export interface ComputerUseTrajectoryTurn {
+  index: number;
+  tool: string;
+  arguments: Record<string, unknown>;
+  result: unknown;
+  pid?: number;
+  clickPoint?: { x: number; y: number };
+  timestamp?: string;
+  hasScreenshot: boolean;
+  hasClickImage: boolean;
+  hasAppState: boolean;
+}
+
+export interface ComputerUseTrajectoryDetail extends ComputerUseTrajectorySummary {
+  turns: ComputerUseTrajectoryTurn[];
+}
+
+export interface ComputerUseTrajectorySettings {
+  driverCommand: string;
+  trajectoryCaptureEnabled: boolean;
+  trajectoryVideoEnabled: boolean;
+}
+
 export const computerUseApi = {
   getStatus: () => fetchApi<ComputerUseStatus>("/computer-use/status"),
   grantPermissions: () =>
     fetchApi<{ ok: boolean; message: string }>("/computer-use/permissions/grant", {
       method: "POST",
+    }),
+  trajectories: () =>
+    fetchApi<{
+      trajectories: ComputerUseTrajectorySummary[];
+      activeId: string | null;
+      settings: ComputerUseTrajectorySettings;
+    }>("/computer-use/trajectories"),
+  trajectory: (id: string) =>
+    fetchApi<{
+      success: boolean;
+      trajectory?: ComputerUseTrajectoryDetail;
+      error?: string;
+    }>(`/computer-use/trajectories/${encodeURIComponent(id)}`),
+  configureTrajectories: (settings: {
+    trajectoryCaptureEnabled?: boolean;
+    trajectoryVideoEnabled?: boolean;
+  }) =>
+    fetchApi<{ success: boolean; settings: ComputerUseTrajectorySettings }>(
+      "/computer-use/trajectories/config",
+      { method: "POST", body: JSON.stringify(settings) }
+    ),
+  exportTrajectories: (ids: string[], includeMedia: boolean, redact: boolean) => {
+    const params = new URLSearchParams({
+      includeMedia: includeMedia ? "1" : "0",
+      redact: redact ? "1" : "0",
+    });
+    if (ids.length > 0) params.set("ids", ids.join(","));
+    return fetchApi<{
+      filename: string;
+      mimeType: string;
+      content: string;
+      count: number;
+    }>(`/computer-use/trajectories/export?${params.toString()}`);
+  },
+  replayTrajectory: (id: string, options?: { delayMs?: number; stopOnError?: boolean }) =>
+    fetchApi<{
+      success: boolean;
+      source: ComputerUseTrajectoryDetail;
+      replay: ComputerUseTrajectoryDetail | null;
+      result: string;
+    }>(`/computer-use/trajectories/${encodeURIComponent(id)}/replay`, {
+      method: "POST",
+      body: JSON.stringify(options ?? {}),
+    }),
+  deleteTrajectory: (id: string) =>
+    fetchApi<{ success: boolean }>(`/computer-use/trajectories/${encodeURIComponent(id)}`, {
+      method: "DELETE",
     }),
 };
 
@@ -1965,10 +2205,11 @@ export interface SandboxBrowserStatus {
 export const sandboxBrowserApi = {
   getStatus: () => fetchApi<SandboxBrowserStatus>("/browser/sandbox/status"),
   start: () =>
-    fetchApi<{ success: boolean; status?: SandboxBrowserStatus; error?: string }>(
-      "/browser/sandbox/start",
-      { method: "POST" }
-    ),
+    fetchApi<{
+      success: boolean;
+      status?: SandboxBrowserStatus;
+      error?: string;
+    }>("/browser/sandbox/start", { method: "POST" }),
   stop: () =>
     fetchApi<{ success: boolean; status?: SandboxBrowserStatus }>("/browser/sandbox/stop", {
       method: "POST",
@@ -2065,9 +2306,15 @@ export const migrationApi = {
 
 export const logsApi = {
   getSystem: () =>
-    fetchApi<{ id: string; level: string; source: string; message: string; created_at: string }[]>(
-      "/logs/system"
-    ),
+    fetchApi<
+      {
+        id: string;
+        level: string;
+        source: string;
+        message: string;
+        created_at: string;
+      }[]
+    >("/logs/system"),
   getPage: (limit: number, offset: number) =>
     fetchApi<{
       logs: LogPageEntry[];
@@ -2078,7 +2325,13 @@ export const logsApi = {
     }>(`/logs/system?includeTotal=1&limit=${limit}&offset=${offset}`),
   search: (query: string) =>
     fetchApi<{
-      system: { id: string; level: string; source: string; message: string; created_at: string }[];
+      system: {
+        id: string;
+        level: string;
+        source: string;
+        message: string;
+        created_at: string;
+      }[];
       sessionMessages: {
         id: string;
         session_id: string;
@@ -2086,12 +2339,28 @@ export const logsApi = {
         content: string;
         created_at: string;
       }[];
-      agent: { id: string; agent_id: string; action: string; created_at: string }[];
-      channel: { id: string; channel_type: string; content: string; created_at: string }[];
+      agent: {
+        id: string;
+        agent_id: string;
+        action: string;
+        created_at: string;
+      }[];
+      channel: {
+        id: string;
+        channel_type: string;
+        content: string;
+        created_at: string;
+      }[];
     }>("/logs/search?q=" + encodeURIComponent(query)),
   getActivity: (minutes?: number) =>
     fetchApi<{
-      system: { id: string; level: string; source: string; message: string; created_at: string }[];
+      system: {
+        id: string;
+        level: string;
+        source: string;
+        message: string;
+        created_at: string;
+      }[];
       messages: {
         id: string;
         session_id: string;
@@ -2099,8 +2368,18 @@ export const logsApi = {
         content: string;
         created_at: string;
       }[];
-      agent: { id: string; agent_id: string; action: string; created_at: string }[];
-      channel: { id: string; channel_type: string; content: string; created_at: string }[];
+      agent: {
+        id: string;
+        agent_id: string;
+        action: string;
+        created_at: string;
+      }[];
+      channel: {
+        id: string;
+        channel_type: string;
+        content: string;
+        created_at: string;
+      }[];
     }>("/logs/activity?minutes=" + (minutes || 60)),
   getStats: (hours?: number) =>
     fetchApi<{
@@ -2181,9 +2460,13 @@ export const subagentApi = {
     ),
   get: (id: string) => fetchApi<Record<string, unknown>>(`/subagents/${encodeURIComponent(id)}`),
   kill: (id: string) =>
-    fetchApi<void>(`/subagents/${encodeURIComponent(id)}/kill`, { method: "POST" }),
+    fetchApi<void>(`/subagents/${encodeURIComponent(id)}/kill`, {
+      method: "POST",
+    }),
   clear: (id: string) =>
-    fetchApi<void>(`/subagents/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    fetchApi<void>(`/subagents/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
   clearHistory: (requesterSessionId: string) =>
     fetchApi<{ success: boolean; cleared: number }>(
       `/subagents?sessionId=${encodeURIComponent(requesterSessionId)}`,

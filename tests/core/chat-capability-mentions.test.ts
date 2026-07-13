@@ -6,6 +6,11 @@ import {
   normalizeCapabilityAlias,
   resolveChatCapabilityMentions,
 } from "../../src/core/chat/capability-mentions";
+import { config } from "../../src/core/config";
+import {
+  storeAccountConnectorToken,
+  updateAccountConnectorConfig,
+} from "../../src/core/account-connectors/store";
 
 describe("chat capability mentions", () => {
   test("normalizes names into stable mention aliases", () => {
@@ -45,6 +50,23 @@ describe("chat capability mentions", () => {
     const resolved = await resolveChatCapabilityMentions("Please @exec the tests", process.cwd());
     expect(resolved.mentions.map((mention) => mention.token)).toContain("@exec");
     expect(resolved.instruction).toContain("exec");
+  });
+
+  test("exposes connected accounts as explicit chat capabilities", async () => {
+    updateAccountConnectorConfig("dropbox", { clientId: "dropbox-app" });
+    storeAccountConnectorToken("dropbox", {
+      accessToken: "access-token",
+      scopes: ["account_info.read", "files.metadata.read", "files.content.read"],
+    });
+    try {
+      const resolved = await resolveChatCapabilityMentions("Search @dropbox", process.cwd());
+      expect(resolved.mentions).toContainEqual(
+        expect.objectContaining({ kind: "connector", token: "@dropbox" })
+      );
+      expect(resolved.instruction).toContain("untrusted data");
+    } finally {
+      config.set("account_connectors", null);
+    }
   });
 
   test("resolves exact mentions without matching email addresses or unknown names", async () => {

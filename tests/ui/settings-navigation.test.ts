@@ -54,6 +54,16 @@ describe("web settings navigation", () => {
     expect(resolveSettingsSectionId("unknown")).toBeNull();
   });
 
+  test("derives the active section from the URL without competing local state", () => {
+    expect(settingsSource).toContain(
+      'const activeSection = resolveSettingsSectionId(sectionParam) ?? "general";'
+    );
+    expect(settingsSource).not.toContain("setActiveSection");
+    expect(settingsSource).toContain(
+      'setSearchParams(section === "general" ? {} : { section }, { replace: true });'
+    );
+  });
+
   test("routes high-impact settings into the matching grouped sections", () => {
     expect(settingsSource).toContain("<SettingsNavigation activeSection={activeSection}");
     expect(navigationSource).toContain('aria-label="Settings sections"');

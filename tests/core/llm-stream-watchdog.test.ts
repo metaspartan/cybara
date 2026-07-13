@@ -56,7 +56,10 @@ const server = Bun.serve({
                         {
                           index: 0,
                           id: "call_1",
-                          function: { name: "calc", arguments: '{"expression"' },
+                          function: {
+                            name: "calc",
+                            arguments: '{"expression"',
+                          },
                         },
                       ],
                     },
@@ -71,7 +74,9 @@ const server = Bun.serve({
                 choices: [
                   {
                     index: 0,
-                    delta: { tool_calls: [{ index: 0, function: { arguments: ':"1+1"}' } }] },
+                    delta: {
+                      tool_calls: [{ index: 0, function: { arguments: ':"1+1"}' } }],
+                    },
                     finish_reason: "tool_calls",
                   },
                 ],
@@ -80,7 +85,10 @@ const server = Bun.serve({
           );
           controller.enqueue(
             encoder.encode(
-              sseChunk({ choices: [], usage: { prompt_tokens: 7, completion_tokens: 3 } })
+              sseChunk({
+                choices: [],
+                usage: { prompt_tokens: 7, completion_tokens: 3 },
+              })
             )
           );
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
@@ -95,7 +103,24 @@ const server = Bun.serve({
     if (model === "behave-silent") {
       // Headers arrive, then the socket goes quiet forever (dead provider).
       const stream = new ReadableStream<Uint8Array>({ start() {} });
-      return new Response(stream, { headers: { "Content-Type": "text/event-stream" } });
+      return new Response(stream, {
+        headers: { "Content-Type": "text/event-stream" },
+      });
+    }
+
+    if (model === "behave-empty-heartbeats") {
+      const stream = new ReadableStream<Uint8Array>({
+        async start(controller) {
+          const encoder = new TextEncoder();
+          for (let index = 0; index < 10; index += 1) {
+            controller.enqueue(encoder.encode(sseChunk({ choices: [{ index: 0, delta: {} }] })));
+            await sleep(40);
+          }
+        },
+      });
+      return new Response(stream, {
+        headers: { "Content-Type": "text/event-stream" },
+      });
     }
 
     if (model === "behave-midstream-stall") {
@@ -107,7 +132,9 @@ const server = Bun.serve({
           // ...then silence forever.
         },
       });
-      return new Response(stream, { headers: { "Content-Type": "text/event-stream" } });
+      return new Response(stream, {
+        headers: { "Content-Type": "text/event-stream" },
+      });
     }
 
     if (model === "behave-slow-but-alive") {
@@ -124,7 +151,9 @@ const server = Bun.serve({
           controller.close();
         },
       });
-      return new Response(stream, { headers: { "Content-Type": "text/event-stream" } });
+      return new Response(stream, {
+        headers: { "Content-Type": "text/event-stream" },
+      });
     }
 
     if (model === "behave-scripted") {
@@ -168,10 +197,13 @@ async function fetchStreaming(
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, stream: true, messages: [{ role: "user", content: "hi" }] }),
+      body: JSON.stringify({
+        model,
+        stream: true,
+        messages: [{ role: "user", content: "hi" }],
+      }),
       signal: watchdog.signal,
     });
-    watchdog.touch();
     const assembled = await consumeOpenAIChatStream(response.body!, watchdog);
     watchdog.dispose();
     return assembled;
@@ -189,7 +221,11 @@ describe("consumeOpenAIChatStream onTextDelta", () => {
         controller.enqueue(encoder.encode(contentDelta("Hel")));
         controller.enqueue(encoder.encode(contentDelta("lo")));
         controller.enqueue(
-          encoder.encode(sseChunk({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] }))
+          encoder.encode(
+            sseChunk({
+              choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            })
+          )
         );
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
@@ -211,7 +247,10 @@ describe("consumeOpenAIChatStream onTextDelta", () => {
 
 describe("LLM stream watchdog (inactivity, not duration)", () => {
   test("assembles content, tool calls, and usage from a streamed completion", async () => {
-    const result = await fetchStreaming("behave-normal", { firstChunkMs: 2000, stallMs: 2000 });
+    const result = await fetchStreaming("behave-normal", {
+      firstChunkMs: 2000,
+      stallMs: 2000,
+    });
     const message = result.choices[0]!.message;
     expect(message.content).toBe("Hello world");
     expect(message.tool_calls?.[0]?.function.name).toBe("calc");
@@ -227,9 +266,21 @@ describe("LLM stream watchdog (inactivity, not duration)", () => {
     expect(Date.now() - startedAt).toBeLessThan(2000);
   });
 
+  test("empty heartbeat events do not keep a stalled provider alive", async () => {
+    await expect(
+      fetchStreaming("behave-empty-heartbeats", {
+        firstChunkMs: 150,
+        stallMs: 150,
+      })
+    ).rejects.toThrow(/no first token/i);
+  });
+
   test("a mid-stream stall trips the stall timeout — the exact 07e1bb failure", async () => {
     await expect(
-      fetchStreaming("behave-midstream-stall", { firstChunkMs: 2000, stallMs: 200 })
+      fetchStreaming("behave-midstream-stall", {
+        firstChunkMs: 2000,
+        stallMs: 200,
+      })
     ).rejects.toThrow(/stalled/i);
   });
 
@@ -311,7 +362,10 @@ describe("agentic loop stability against a real streaming provider", () => {
                       {
                         index: 0,
                         id: "call_calc",
-                        function: { name: "calc", arguments: '{"expression":"2+2"}' },
+                        function: {
+                          name: "calc",
+                          arguments: '{"expression":"2+2"}',
+                        },
                       },
                     ],
                   },
@@ -325,7 +379,9 @@ describe("agentic loop stability against a real streaming provider", () => {
         controller.close();
       },
     });
-    return new Response(stream, { headers: { "Content-Type": "text/event-stream" } });
+    return new Response(stream, {
+      headers: { "Content-Type": "text/event-stream" },
+    });
   }
 
   function streamedTextTurn(text: string): Response {
@@ -337,7 +393,9 @@ describe("agentic loop stability against a real streaming provider", () => {
         controller.close();
       },
     });
-    return new Response(stream, { headers: { "Content-Type": "text/event-stream" } });
+    return new Response(stream, {
+      headers: { "Content-Type": "text/event-stream" },
+    });
   }
 
   test("empty final message after a tool round is recovered by the closing nudge", async () => {
@@ -436,12 +494,25 @@ describe("agentic loop stability against a real streaming provider", () => {
 describe("Codex transcript compaction keeps long runs under context budget", () => {
   test("elides old tool results in place, preserving pairing and the leading request", () => {
     const items: Array<Record<string, unknown>> = [
-      { type: "message", role: "user", content: [{ type: "input_text", text: "review the repo" }] },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "review the repo" }],
+      },
     ];
     // Simulate hundreds of tool rounds with large outputs.
     for (let i = 0; i < 200; i++) {
-      items.push({ type: "function_call", call_id: `c${i}`, name: "read", arguments: "{}" });
-      items.push({ type: "function_call_output", call_id: `c${i}`, output: "x".repeat(2000) });
+      items.push({
+        type: "function_call",
+        call_id: `c${i}`,
+        name: "read",
+        arguments: "{}",
+      });
+      items.push({
+        type: "function_call_output",
+        call_id: `c${i}`,
+        output: "x".repeat(2000),
+      });
     }
     const before = items.length;
     compactCodexInputItemsForContext(items, 50_000);
@@ -470,7 +541,11 @@ describe("Codex transcript compaction keeps long runs under context budget", () 
 
   test("is a no-op when already under budget", async () => {
     const items: Array<Record<string, unknown>> = [
-      { type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] },
+      {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "hi" }],
+      },
       { type: "function_call", call_id: "c0", name: "read", arguments: "{}" },
       { type: "function_call_output", call_id: "c0", output: "small" },
     ];
@@ -523,8 +598,17 @@ describe("Codex input sanitizer guarantees call/output pairing", () => {
       { role: "user", content: [{ type: "input_text", text: "review" }] },
     ];
     for (let i = 0; i < 200; i++) {
-      items.push({ type: "function_call", call_id: `c${i}`, name: "read", arguments: "{}" });
-      items.push({ type: "function_call_output", call_id: `c${i}`, output: "x".repeat(2000) });
+      items.push({
+        type: "function_call",
+        call_id: `c${i}`,
+        name: "read",
+        arguments: "{}",
+      });
+      items.push({
+        type: "function_call_output",
+        call_id: `c${i}`,
+        output: "x".repeat(2000),
+      });
     }
     compactCodexInputItemsForContext(items, 50_000);
     const result = sanitizeCodexInputItems(items);

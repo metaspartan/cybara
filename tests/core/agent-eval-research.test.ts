@@ -61,6 +61,7 @@ describe("research trajectory datasets", () => {
     const second = summarizeResearchTrace(value);
 
     expect(first.toolCallCount).toBe(1);
+    expect(first.toolNames).toEqual(["read_file"]);
     expect(first.failedToolCallCount).toBe(0);
     expect(first.hasObservableReasoning).toBe(true);
     expect(first.qualityScore).toBe(100);

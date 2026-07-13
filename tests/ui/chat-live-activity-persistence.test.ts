@@ -27,14 +27,24 @@ describe("Chat live activity persistence", () => {
       toolName: "browser",
       toolCallId: "browser-1",
     };
-    const browserResult = { ...browserStart, phase: "result" as const, text: "Opened browser" };
+    const browserResult = {
+      ...browserStart,
+      phase: "result" as const,
+      text: "Opened browser",
+    };
 
     expect(isAgentUsingBrowser([browserStart], true)).toBe(true);
     expect(isAgentUsingBrowser([browserStart], false)).toBe(false);
     expect(isAgentUsingBrowser([browserResult], true)).toBe(false);
     expect(
       isAgentUsingBrowser(
-        [{ ...browserStart, toolName: "web_search", text: "Searching the web" }],
+        [
+          {
+            ...browserStart,
+            toolName: "web_search",
+            text: "Searching the web",
+          },
+        ],
         true
       )
     ).toBe(false);
@@ -70,6 +80,14 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain("if (!loadingRef.current) {");
     expect(source).toContain("setLiveActivities([]);");
     expect(source).toContain("runActivityBufferRef.current = [];");
+  });
+
+  test("discards cached running activity when the server reports no active session", () => {
+    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    expect(source).toContain("hasBufferedLive &&\n            loadingRef.current &&");
+    expect(source).not.toContain("if (hasBufferedLive) return;");
+    expect(source).toContain("liveActivitiesRef.current = [];");
+    expect(source).toContain("setStreamingContent(null);");
   });
 
   test("clears the temporary live timeline after attaching it to the completed assistant message", () => {

@@ -134,8 +134,17 @@ export function transcriptWindow(
   const width = Math.max(12, maxColumns);
   return selected.map((line) => ({
     ...line,
-    text: line.text.length > width ? `${line.text.slice(0, width - 1)}…` : line.text,
+    text: truncateTranscriptText(line.text, width),
   }));
+}
+
+function truncateTranscriptText(text: string, width: number): string {
+  if (text.length <= width) return text;
+  for (const marker of ["**", "~~", "`", "*", "_"]) {
+    if (!text.startsWith(marker) || text.lastIndexOf(marker) <= marker.length) continue;
+    return `${text.slice(0, width - marker.length - 1)}…${marker}`;
+  }
+  return `${text.slice(0, width - 1)}…`;
 }
 
 export function clipboardCandidates(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string[][] {

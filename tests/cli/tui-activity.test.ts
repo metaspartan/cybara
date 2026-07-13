@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { limitTUIActivityDetails, summarizeTUIActivities } from "../../src/cli-tui-activity";
+import {
+  limitTUIActivityDetails,
+  presentTUIActivities,
+  summarizeTUIActivities,
+} from "../../src/cli-tui-activity";
 
 describe("CLI TUI activity summaries", () => {
   test("groups mixed tool work into a concise action heading", () => {
@@ -37,6 +41,61 @@ describe("CLI TUI activity summaries", () => {
       "four",
       "five",
       "… 3 earlier tool events",
+    ]);
+  });
+
+  test("matches the ordered grouped presentation used by graphical chat", () => {
+    const rows = presentTUIActivities(
+      [
+        {
+          id: "thought-1",
+          phase: "result",
+          text: "I will inspect the runtime",
+          toolName: "__thought",
+        },
+        { id: "read-1", phase: "result", text: "Explored src/index.ts", toolName: "read" },
+        { id: "read-2", phase: "result", text: "Explored package.json", toolName: "read" },
+        { id: "edit-1", phase: "result", text: "Edited src/index.ts", toolName: "edit" },
+        {
+          id: "thought-2",
+          phase: "result",
+          text: "The focused fix is ready",
+          toolName: "__thought",
+        },
+        { id: "test-1", phase: "result", text: "Ran bun test", toolName: "exec" },
+        { id: "test-2", phase: "result", text: "Ran bun run typecheck", toolName: "exec" },
+      ],
+      []
+    );
+
+    expect(rows.map((row) => row.label)).toEqual([
+      "I will inspect the runtime",
+      "Read 2 files, edited a file",
+      "The focused fix is ready",
+      "Ran 2 commands",
+    ]);
+    expect(rows.map((row) => row.icon)).toEqual(["", "✎", "", "▣"]);
+    expect(rows[1]?.details).toEqual([
+      "Explored src/index.ts",
+      "Explored package.json",
+      "Edited src/index.ts",
+    ]);
+  });
+
+  test("keeps failures and active work visible as individual rows", () => {
+    const rows = presentTUIActivities(
+      [
+        { id: "read", phase: "result", text: "Explored src/index.ts", toolName: "read" },
+        { id: "failed", phase: "error", text: "Read failed for missing.ts", toolName: "read" },
+        { id: "active", phase: "start", text: "Running tests", toolName: "exec" },
+      ],
+      []
+    );
+
+    expect(rows.map((row) => [row.label, row.phase])).toEqual([
+      ["Explored src/index.ts", "result"],
+      ["Read failed for missing.ts", "error"],
+      ["Running tests", "start"],
     ]);
   });
 });

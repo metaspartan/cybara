@@ -41,10 +41,24 @@ import {
 import { parseTerminalListItem, splitTerminalInline } from "./cli-tui-markdown";
 import {
   limitTUIActivityDetails,
-  summarizeTUIActivities,
+  presentTUIActivities,
   type TUIActivityItem,
   type TUIToolCallItem,
 } from "./cli-tui-activity";
+import {
+  consumeTUIStatusStream,
+  type TUIStatusStreamEvent,
+  type TUIStreamActivity,
+  type TUIStreamStatus,
+} from "./cli-tui-status-stream";
+import {
+  activeTUICapabilityMention,
+  capabilitiesFromResponse,
+  CapabilityPalette,
+  insertTUICapability,
+  matchingTUICapabilities,
+  type TUICapabilityOption,
+} from "./cli-tui-capabilities";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -87,6 +101,8 @@ interface ControlPlaneState {
 }
 
 interface InteractiveChatProps {
+  apiBase: string;
+  apiKey?: string | null;
   fetchAPI: TUIFetchAPI;
   initialAgentId?: string;
   sessionId?: string;
@@ -139,6 +155,7 @@ const COMMANDS = [
   { name: "/copy", detail: "Copy the latest assistant response" },
   { name: "/raw", detail: "Toggle complete copy-friendly transcript messages" },
   { name: "/review", detail: "Load a workspace review prompt" },
+  { name: "/details", detail: "Toggle full transcript and tool details" },
   { name: "/expand", detail: "Toggle full or compact transcript messages" },
   { name: "/clear", detail: "Clear the local view" },
   { name: "/new", detail: "Start a new session in this TUI" },
@@ -502,24 +519,44 @@ function ActivitySummary({
   maxDetails?: number;
   maxColumns: number;
 }): React.ReactElement | null {
-  const summary = summarizeTUIActivities(
+  const rows = presentTUIActivities(
     message.process_activities || [],
     message.tool_calls || [],
   );
-  if (!summary) return null;
+  if (rows.length === 0) return null;
   return (
     <Box paddingLeft={2} marginBottom={1} flexDirection="column">
-      <Text color={ACTIVITY_HEADING_COLOR}>
-        {summary.icon} {compact(summary.label, Math.max(12, maxColumns - 4))}
-      </Text>
-      {limitTUIActivityDetails(
-        summary.details,
-        maxDetails ?? summary.details.length,
-      ).map((label, index, details) => (
-        <Text key={`${index}-${label}`} color={ACTIVITY_DETAIL_COLOR}>
-          {index === details.length - 1 ? "└" : "├"}{" "}
-          {compact(label, Math.max(12, maxColumns - 6))}
-        </Text>
+      {rows.map((row, rowIndex) => (
+        <Box key={`${row.id}-${rowIndex}`} flexDirection="column">
+          {row.thought ? (
+            <InlineMarkdown line={compact(row.label, Math.max(12, maxColumns - 4))} />
+          ) : (
+            <Text
+              color={
+                row.phase === "error" || row.phase === "blocked"
+                  ? "red"
+                  : ACTIVITY_HEADING_COLOR
+              }
+              dimColor
+            >
+              {row.icon ? `${row.icon} ` : ""}
+              {compact(row.label, Math.max(12, maxColumns - 4))}
+            </Text>
+          )}
+          {limitTUIActivityDetails(
+            row.details,
+            maxDetails ?? row.details.length,
+          ).map((label, index, details) => (
+            <Text
+              key={`${row.id}-${rowIndex}-${index}`}
+              color={ACTIVITY_DETAIL_COLOR}
+              dimColor
+            >
+              {index === details.length - 1 ? "└" : "├"}{" "}
+              {compact(label, Math.max(12, maxColumns - 6))}
+            </Text>
+          ))}
+        </Box>
       ))}
     </Box>
   );
@@ -556,6 +593,37 @@ function MessageView({
           maxColumns={maxColumns}
         />
       </Box>
+    </Box>
+  );
+}
+
+function LiveRunView({
+  activities,
+  content,
+  detail,
+  maxColumns,
+}: {
+  activities: TUIStreamActivity[];
+  content: string;
+  detail: string;
+  maxColumns: number;
+}): React.ReactElement {
+  return (
+    <Box flexDirection="column" marginBottom={1}>
+      <Text bold color="white">
+        ◆ Cybara <Text color="gray"><Spinner type="dots" /></Text>
+      </Text>
+      <ActivitySummary
+        message={{ role: "assistant", content: "", process_activities: activities }}
+        maxColumns={maxColumns}
+      />
+      {content ? (
+        <Box paddingLeft={2}>
+          <MessageBody content={content} maxLines={8} maxColumns={maxColumns} />
+        </Box>
+      ) : detail ? (
+        <Text color="gray">  {compact(detail, Math.max(12, maxColumns - 4))}</Text>
+      ) : null}
     </Box>
   );
 }
@@ -657,7 +725,7 @@ function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
         transcript
       </Text>
       <Text>
-        Tab completes slash commands · approval prompts use 1/2/3/4 or y/s/a/n
+        Tab completes slash commands and @ capabilities · approvals use 1/2/3/4 or y/s/a/n
       </Text>
       <Text>
         /agents lists · /agent name switches · /router on|off · /permissions
@@ -785,6 +853,8 @@ function StatusRail({
 }
 
 export function InteractiveChatTUI({
+  apiBase,
+  apiKey,
   fetchAPI,
   initialAgentId,
   sessionId,
@@ -806,6 +876,12 @@ export function InteractiveChatTUI({
   const [history, setHistory] = React.useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = React.useState<number | null>(null);
   const [sending, setSending] = React.useState(false);
+  const [streamStatus, setStreamStatus] = React.useState<TUIStreamStatus>("idle");
+  const [streamDetail, setStreamDetail] = React.useState("");
+  const [streamingText, setStreamingText] = React.useState("");
+  const [liveActivities, setLiveActivities] = React.useState<TUIStreamActivity[]>([]);
+  const [capabilities, setCapabilities] = React.useState<TUICapabilityOption[]>([]);
+  const [capabilityIndex, setCapabilityIndex] = React.useState(0);
   const [loading, setLoading] = React.useState(Boolean(sessionId));
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
@@ -831,6 +907,100 @@ export function InteractiveChatTUI({
   >([]);
   const [resolvingApproval, setResolvingApproval] = React.useState(false);
   const layout = useTerminalLayout();
+  const sessionIdRef = React.useRef(localSessionId);
+  const lastInterruptAtRef = React.useRef(0);
+  const capabilitiesWorkspaceRef = React.useRef<string | null>(null);
+
+  const activeCapabilityMention = React.useMemo(
+    () => activeTUICapabilityMention(input, cursor),
+    [cursor, input]
+  );
+  const capabilityOptions = React.useMemo(
+    () =>
+      matchingTUICapabilities(
+        capabilities,
+        activeCapabilityMention,
+        Math.max(2, Math.min(6, layout.commandRows))
+      ),
+    [activeCapabilityMention, capabilities, layout.commandRows]
+  );
+
+  React.useEffect(() => {
+    sessionIdRef.current = localSessionId;
+  }, [localSessionId]);
+
+  React.useEffect(() => {
+    setCapabilityIndex(0);
+  }, [activeCapabilityMention?.query]);
+
+  React.useEffect(() => {
+    if (!activeCapabilityMention) return;
+    const cacheKey = workspaceDir || "";
+    if (capabilitiesWorkspaceRef.current === cacheKey) return;
+    capabilitiesWorkspaceRef.current = cacheKey;
+    const suffix = workspaceDir ? `?workspaceDir=${encodeURIComponent(workspaceDir)}` : "";
+    void fetchAPI<unknown>(`/api/chat/capabilities${suffix}`).then((response) => {
+      if (response) setCapabilities(capabilitiesFromResponse(response));
+      else capabilitiesWorkspaceRef.current = null;
+    });
+  }, [activeCapabilityMention, fetchAPI, workspaceDir]);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    const appendStatusActivity = (event: TUIStatusStreamEvent): void => {
+      const activeSessionId = sessionIdRef.current;
+      if (event.type === "snapshot") {
+        const active = event.activeSessions.find((session) => session.sessionId === activeSessionId);
+        if (!active) {
+          setStreamStatus("idle");
+          setStreamDetail("");
+          setLiveActivities([]);
+          return;
+        }
+        setStreamStatus(active.status);
+        setStreamDetail(active.detail || "");
+        setLiveActivities(active.activities || []);
+        return;
+      }
+      if (event.sessionId !== activeSessionId) return;
+      if (event.type === "assistant_token") {
+        setStreamingText((current) => current + event.delta);
+        return;
+      }
+      setStreamStatus(event.status);
+      setStreamDetail(event.detail || "");
+      if (!event.toolPhase && !event.toolName) return;
+      const phase = event.toolPhase || (event.status === "error" ? "error" : "result");
+      const id = event.toolCallId || `${event.toolName || "activity"}-${event.timestamp}`;
+      const activity: TUIStreamActivity = {
+        id,
+        phase,
+        text: event.detail || event.toolName || "Tool activity",
+        timestamp: event.timestamp,
+        toolName: event.toolName,
+        toolCallId: event.toolCallId,
+      };
+      setLiveActivities((current) => [
+        ...current.filter(
+          (item) =>
+            item.id !== id &&
+            (!event.toolCallId || item.toolCallId !== event.toolCallId || item.phase === phase),
+        ),
+        activity,
+      ]);
+    };
+    void consumeTUIStatusStream({
+      apiBase,
+      apiKey,
+      signal: controller.signal,
+      onEvent: appendStatusActivity,
+    }).catch((cause) => {
+      if (!controller.signal.aborted) {
+        setStreamDetail(cause instanceof Error ? cause.message : String(cause));
+      }
+    });
+    return () => controller.abort();
+  }, [apiBase, apiKey]);
 
   const selectedAgent = React.useMemo(
     () => agents.find((agent) => agent.id === selectedAgentId),
@@ -1539,7 +1709,11 @@ export function InteractiveChatTUI({
         setNotice("Review prompt loaded. Edit it or press Enter to send.");
         return true;
       }
-      if (normalizedCommand === "expand" || normalizedCommand === "raw") {
+      if (
+        normalizedCommand === "details" ||
+        normalizedCommand === "expand" ||
+        normalizedCommand === "raw"
+      ) {
         setExpandedTranscript((value) => !value);
         setNotice(
           `Transcript messages ${expandedTranscript ? "compacted" : "expanded"}.`,
@@ -1718,10 +1892,36 @@ export function InteractiveChatTUI({
   const send = React.useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || sending) return;
+      if (!trimmed) return;
       setHistory((previous) =>
         [...previous.filter((item) => item !== trimmed), trimmed].slice(-50),
       );
+      if (sending) {
+        if (trimmed.startsWith("/") && (await runCommand(trimmed))) return;
+        const activeSessionId = localSessionId || sessionIdRef.current;
+        if (!activeSessionId) {
+          setNotice("Wait for the first session to start before queueing a follow-up.");
+          return;
+        }
+        const queued = await fetchAPI<unknown>("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId: selectedAgentId || undefined,
+            message: trimmed,
+            modelOverride: useModelRouter ? undefined : modelOverride || undefined,
+            queueMode: "queue",
+            sessionId: activeSessionId,
+            useModelRouter,
+            workspaceDir: workspaceDir || undefined,
+          }),
+        });
+        setPendingMessages(
+          pendingFrom(isRecord(queued) ? queued.pendingMessages : []),
+        );
+        setNotice("Queued follow-up.");
+        return;
+      }
       if (trimmed.startsWith("/") && (await runCommand(trimmed))) return;
 
       setNotice(null);
@@ -1731,6 +1931,12 @@ export function InteractiveChatTUI({
         { role: "user", content: trimmed },
       ]);
       setSending(true);
+      setStreamStatus("thinking");
+      setStreamDetail("Thinking...");
+      setStreamingText("");
+      setLiveActivities([]);
+      const turnSessionId = localSessionId || crypto.randomUUID();
+      sessionIdRef.current = turnSessionId;
       try {
         const response = await fetchAPI<unknown>("/api/chat", {
           method: "POST",
@@ -1741,7 +1947,7 @@ export function InteractiveChatTUI({
             modelOverride: useModelRouter
               ? undefined
               : modelOverride || undefined,
-            sessionId: localSessionId || undefined,
+            sessionId: turnSessionId,
             stream: false,
             useModelRouter,
             workspaceDir: workspaceDir || undefined,
@@ -1750,11 +1956,12 @@ export function InteractiveChatTUI({
         const nextSessionId =
           isRecord(response) && typeof response.sessionId === "string"
             ? response.sessionId
-            : localSessionId;
+            : turnSessionId;
         const responseMessage = isRecord(response)
           ? messagesFromResponse([response.message])[0]
           : undefined;
         if (nextSessionId) {
+          sessionIdRef.current = nextSessionId;
           setLocalSessionId(nextSessionId);
           if (isTransientRuntimeCommand(trimmed) && responseMessage) {
             setMessages((previous) => [
@@ -1780,6 +1987,10 @@ export function InteractiveChatTUI({
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
         setSending(false);
+        setStreamStatus("idle");
+        setStreamDetail("");
+        setStreamingText("");
+        setLiveActivities([]);
       }
     },
     [
@@ -1816,11 +2027,34 @@ export function InteractiveChatTUI({
   );
   const activeApproval = approvalRequests[0];
   const commandPaletteVisible = commandMatches(input).length > 0;
+  const capabilityPaletteVisible = capabilityOptions.length > 0;
   const narrowOverlayVisible =
-    layout.narrow && (commandPaletteVisible || showEnvironment || showHelp);
+    layout.narrow &&
+    (commandPaletteVisible || capabilityPaletteVisible || showEnvironment || showHelp);
+
+  const selectCapability = React.useCallback((): boolean => {
+    if (!activeCapabilityMention || capabilityOptions.length === 0) return false;
+    const option = capabilityOptions[Math.min(capabilityIndex, capabilityOptions.length - 1)];
+    if (!option) return false;
+    const inserted = insertTUICapability(input, activeCapabilityMention, option);
+    setInput(inserted.value);
+    setCursor(inserted.cursor);
+    return true;
+  }, [activeCapabilityMention, capabilityIndex, capabilityOptions, input]);
 
   useInput((value, key) => {
     if (key.ctrl && value === "c") {
+      const now = Date.now();
+      const activeSessionId = localSessionId || sessionIdRef.current;
+      if (sending && activeSessionId && now - lastInterruptAtRef.current > 1500) {
+        lastInterruptAtRef.current = now;
+        setNotice("Stopping active run. Press Ctrl+C again to exit.");
+        void fetchAPI(
+          `/api/chat/sessions/${encodeURIComponent(activeSessionId)}/stop`,
+          { method: "POST" },
+        );
+        return;
+      }
       exit();
       return;
     }
@@ -1858,6 +2092,7 @@ export function InteractiveChatTUI({
       return;
     }
     if (key.return) {
+      if (selectCapability()) return;
       const pending = input;
       resetInput();
       void send(pending);
@@ -1871,7 +2106,14 @@ export function InteractiveChatTUI({
       setCursor((previous) => Math.min(input.length, previous + 1));
       return;
     }
-    if (key.upArrow && history.length > 0) {
+    if (key.upArrow) {
+      if (capabilityOptions.length > 0) {
+        setCapabilityIndex((current) =>
+          (current - 1 + capabilityOptions.length) % capabilityOptions.length
+        );
+        return;
+      }
+      if (history.length === 0) return;
       const nextIndex =
         historyIndex === null
           ? history.length - 1
@@ -1881,7 +2123,12 @@ export function InteractiveChatTUI({
       setCursor((history[nextIndex] || "").length);
       return;
     }
-    if (key.downArrow && history.length > 0) {
+    if (key.downArrow) {
+      if (capabilityOptions.length > 0) {
+        setCapabilityIndex((current) => (current + 1) % capabilityOptions.length);
+        return;
+      }
+      if (history.length === 0) return;
       if (historyIndex === null) return;
       const nextIndex = historyIndex + 1;
       if (nextIndex >= history.length) {
@@ -1893,11 +2140,14 @@ export function InteractiveChatTUI({
       setCursor((history[nextIndex] || "").length);
       return;
     }
-    if ((key as { tab?: boolean }).tab && input.startsWith("/")) {
-      const match = commandMatches(input)[0];
-      if (match) {
-        setInput(`${match.name} `);
-        setCursor(match.name.length + 1);
+    if ((key as { tab?: boolean }).tab) {
+      if (selectCapability()) return;
+      if (input.startsWith("/")) {
+        const match = commandMatches(input)[0];
+        if (match) {
+          setInput(`${match.name} `);
+          setCursor(match.name.length + 1);
+        }
       }
       return;
     }
@@ -1963,7 +2213,7 @@ export function InteractiveChatTUI({
             Cybara Chat · {compact(headerTitle, layout.compact ? 44 : 64)}
           </Text>
           <Text color={sending ? "yellow" : "gray"}>
-            {sending ? "working" : "ready"}
+            {sending ? streamStatus.replaceAll("_", " ") : "ready"}
           </Text>
         </Box>
         <Text color="gray">
@@ -2016,12 +2266,18 @@ export function InteractiveChatTUI({
               key={`${index}-${message.role}-${message.content.slice(0, 12)}`}
               message={message}
               maxLines={expandedTranscript ? undefined : layout.messageLines}
-              maxActivityDetails={
-                expandedTranscript ? undefined : layout.rows <= 24 ? 0 : undefined
-              }
+              maxActivityDetails={expandedTranscript ? undefined : 0}
               maxColumns={Math.max(24, layout.columns - 8)}
             />
           ))}
+          {sending ? (
+            <LiveRunView
+              activities={liveActivities}
+              content={streamingText}
+              detail={streamDetail}
+              maxColumns={Math.max(24, layout.columns - 8)}
+            />
+          ) : null}
           {visibleMessageEnd - visibleMessages.length > 0 ? (
             <Text color="gray">
               ↑ {visibleMessageEnd - visibleMessages.length} earlier messages ·
@@ -2034,8 +2290,7 @@ export function InteractiveChatTUI({
       {sending ? (
         <Box paddingX={1}>
           <Text color="yellow">
-            <Spinner type="dots" /> Working. Type /queue &lt;message&gt; or
-            /stop.
+            <Spinner type="dots" /> Enter queues · /steer injects · Ctrl+C stops
           </Text>
         </Box>
       ) : null}
@@ -2056,6 +2311,11 @@ export function InteractiveChatTUI({
         />
       ) : null}
       {showHelp ? <HelpPanel narrow={layout.narrow} /> : null}
+      <CapabilityPalette
+        options={capabilityOptions}
+        selectedIndex={capabilityIndex}
+        maxColumns={Math.max(24, layout.columns - 8)}
+      />
       <CommandPalette
         input={input}
         compactMode={layout.compact}
@@ -2090,8 +2350,8 @@ export function InteractiveChatTUI({
       <Box paddingX={1} flexShrink={0}>
         <Text color="gray">
           {layout.narrow
-            ? "Enter send · ^J newline · Tab · Esc"
-            : "Enter send · ^J newline · ↑↓ history · PgUp/Dn scroll · Tab · Esc"}
+            ? "Enter send · ^J newline · Tab complete · @ capabilities · Esc"
+            : "Enter send · ^J newline · ↑↓ history · PgUp/Dn scroll · Tab · @ capabilities · Esc"}
         </Text>
       </Box>
     </Box>

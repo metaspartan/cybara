@@ -1,6 +1,14 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Toast } from "../types";
+import {
+  type ChatAppearanceSettings,
+  DEFAULT_CHAT_APPEARANCE_SETTINGS,
+  getChatCodeFontSizePixels,
+  getChatFontSizePixels,
+  getChatLineHeight,
+  normalizeChatAppearanceSettings,
+} from "../../../shared/chat-appearance";
 
 export type ThemeAccent =
   | "indigo"
@@ -135,6 +143,9 @@ interface UIState {
   mode: ThemeMode;
   setMode: (mode: ThemeMode) => void;
 
+  chatAppearance: ChatAppearanceSettings;
+  setChatAppearance: (settings: ChatAppearanceSettings) => void;
+
   loading: Record<string, boolean>;
   setLoading: (key: string, value: boolean) => void;
 
@@ -214,6 +225,18 @@ function applyThemeMode(mode: ThemeMode) {
   document.documentElement.classList.toggle("theme-tinted", TINTED_THEME_MODES.has(mode));
 }
 
+function applyChatAppearance(settings: ChatAppearanceSettings) {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  root.style.setProperty("--chat-font-size", `${getChatFontSizePixels(settings.fontSize)}px`);
+  root.style.setProperty(
+    "--chat-code-font-size",
+    `${getChatCodeFontSizePixels(settings.codeFontSize)}px`
+  );
+  root.style.setProperty("--chat-line-height", String(getChatLineHeight(settings.lineSpacing)));
+  root.dataset.reduceMotion = settings.reduceMotion ? "true" : "false";
+}
+
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
@@ -227,6 +250,13 @@ export const useUIStore = create<UIState>()(
       setMode: (mode) => {
         applyThemeMode(mode);
         set({ mode });
+      },
+
+      chatAppearance: DEFAULT_CHAT_APPEARANCE_SETTINGS,
+      setChatAppearance: (settings) => {
+        const normalized = normalizeChatAppearanceSettings(settings);
+        applyChatAppearance(normalized);
+        set({ chatAppearance: normalized });
       },
 
       loading: {},
@@ -262,12 +292,23 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: "cybara-ui-settings",
-      partialize: (state) => ({ accent: state.accent, mode: state.mode }),
+      partialize: (state) => ({
+        accent: state.accent,
+        mode: state.mode,
+        chatAppearance: state.chatAppearance,
+      }),
       onRehydrateStorage: () => (state) => {
         if (state?.accent) applyTheme(state.accent);
         applyThemeMode(
           themeModes.has(state?.mode as ThemeMode) ? (state?.mode as ThemeMode) : "dark"
         );
+        if (state) {
+          state.setChatAppearance(
+            normalizeChatAppearanceSettings(
+              state.chatAppearance ?? DEFAULT_CHAT_APPEARANCE_SETTINGS
+            )
+          );
+        }
       },
     }
   )

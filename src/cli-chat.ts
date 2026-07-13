@@ -1,5 +1,6 @@
 import { createInterface } from "readline";
 import { getFlagValue } from "./cli-args";
+import { limitTUIActivityDetails, presentTUIActivities } from "./cli-tui-activity";
 import {
   environmentSnapshotFromDetail,
   formatContextUsageLine,
@@ -77,16 +78,20 @@ interface CliHistoryMessage {
 }
 
 interface CliToolCall {
+  id?: string;
   name?: string;
   status?: string;
   result?: unknown;
+  timeline_index?: number;
 }
 
 interface CliProcessActivity {
+  id?: string;
   phase?: string;
   text?: string;
   toolName?: string;
   toolCallId?: string;
+  timestamp?: number;
   status?: string;
 }
 
@@ -275,26 +280,14 @@ function collectActivities(response: CliChatResponse): CliProcessActivity[] {
 
 function printAssistantResponse(response: CliChatResponse, showThinking: boolean): void {
   const activities = collectActivities(response);
-  if (activities.length > 0) {
-    console.log(
-      `  ${dim(`Ran ${activities.length} activity${activities.length === 1 ? "" : "ies"}`)}`
-    );
-    for (const activity of activities.slice(-12)) {
-      const label =
-        activity.text || activity.toolName || activity.phase || activity.status || "activity";
-      console.log(`  ${dim(`- ${label}`)}`);
-    }
-  }
-
   const toolCalls = collectToolCalls(response);
-  if (toolCalls.length > 0) {
-    console.log(
-      `  ${dim(`Ran ${toolCalls.length} tool call${toolCalls.length === 1 ? "" : "s"}`)}`
-    );
-    for (const tool of toolCalls.slice(-12)) {
-      const name = tool.name || "tool";
-      const status = tool.status ? ` [${tool.status}]` : "";
-      console.log(`  ${dim(`- ${name}${status}`)}`);
+  const activityRows = presentTUIActivities(activities, toolCalls).filter(
+    (row) => showThinking || !row.thought
+  );
+  for (const row of activityRows) {
+    console.log(`  ${dim(`${row.icon ? `${row.icon} ` : ""}${row.label}`)}`);
+    for (const detail of limitTUIActivityDetails(row.details, 4)) {
+      console.log(`    ${dim(detail)}`);
     }
   }
 
@@ -302,7 +295,7 @@ function printAssistantResponse(response: CliChatResponse, showThinking: boolean
     response.thinking ||
     response.message?.thinking ||
     extractThinkingContent(response.message?.content || "");
-  if (showThinking && thinking) {
+  if (showThinking && thinking && !activityRows.some((row) => row.thought)) {
     console.log(`\n  ${dim("[thinking]")}`);
     console.log(`  ${dim(thinking)}`);
   }

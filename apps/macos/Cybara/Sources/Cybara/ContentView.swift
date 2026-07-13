@@ -62,6 +62,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
     case router
     case channels
     case mobile
+    case connectors
     case mcp
     case lsp
     case ide
@@ -95,6 +96,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .router: return "nav.router"
         case .channels: return "nav.channels"
         case .mobile: return "nav.mobile"
+        case .connectors: return "Connectors"
         case .mcp: return "nav.mcp"
         case .lsp: return "nav.lsp"
         case .ide: return "nav.ide"
@@ -124,6 +126,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .router: return "point.3.connected.trianglepath.dotted"
         case .channels: return "link"
         case .mobile: return "iphone.gen3"
+        case .connectors: return "cable.connector"
         case .mcp: return "terminal"
         case .lsp: return "curlybraces.square"
         case .ide: return "folder"
@@ -247,7 +250,7 @@ struct ContentView: View {
 
             List(selection: $destination) {
                 Section {
-                    ForEach([NativeDestination.dashboard, .chat, .agents, .providers, .router, .channels, .mobile]) { item in
+                    ForEach([NativeDestination.dashboard, .chat, .agents, .providers, .router, .channels, .mobile, .connectors]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -293,6 +296,8 @@ struct ContentView: View {
                 )
             case .mobile:
                 MobileScreen(client: client, defaultBaseURL: sidecar.serverURL)
+            case .connectors:
+                AccountConnectorsScreen(client: client)
             case .agents:
                 AgentsScreen(client: client)
             case .providers:

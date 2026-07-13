@@ -395,6 +395,14 @@ Add Model Context Protocol servers:
 cybara mcp add memory '{"command": "bunx", "args": ["@modelcontextprotocol/server-memory"]}'
 ```
 
+## Account Connectors
+
+The Connectors screen configures OAuth applications for Google Workspace and Dropbox. Use the callback URL shown in the UI when creating the provider application, save the client credentials, choose read-only or read/write access, and then complete authorization in the system browser.
+
+Google Workspace provides Gmail, Drive, and Calendar access. Dropbox provides file listing, search, download, and upload access. Read-only is the default. Write operations require read/write authorization and remain governed by tool approvals.
+
+Client secrets and OAuth tokens are stored through Cybara's encrypted secret storage. Disconnecting attempts provider-side revocation and always removes the local authorization.
+
 ## Logging
 
 Runtime logs are emitted to stdout/stderr. Daemon mode also writes `$CYBARA_HOME/cybara.log`.

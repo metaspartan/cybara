@@ -867,12 +867,18 @@ export function Chat() {
       0,
       images.findIndex((image) => image.src === src && image.alt === alt)
     );
-    setImageLightbox({ images: images.length > 0 ? images : [{ src, alt }], index });
+    setImageLightbox({
+      images: images.length > 0 ? images : [{ src, alt }],
+      index,
+    });
   }, []);
   const keepScrolledToBottomRef = useRef(true);
   const programmaticScrollUntilRef = useRef(0);
   const programmaticScrollTimeoutRef = useRef<number | null>(null);
-  const diffPanelResizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+  const diffPanelResizeStateRef = useRef<{
+    startX: number;
+    startWidth: number;
+  } | null>(null);
   const diffPanelResizeCleanupRef = useRef<(() => void) | null>(null);
   const dictationStatusTimerRef = useRef<number | null>(null);
   const activeSessionRef = useRef<string | null>(null);
@@ -1086,7 +1092,9 @@ export function Chat() {
         if (!detail?.messagesList) throw new Error("Forked chat could not be loaded");
         loadSession(fork.sessionId, detail.messagesList as ChatMessage[], fork.workspaceDir);
         syncSessionAgentSelection(fork.agentId);
-        navigate(`/chat?session=${encodeURIComponent(fork.sessionId)}`, { replace: true });
+        navigate(`/chat?session=${encodeURIComponent(fork.sessionId)}`, {
+          replace: true,
+        });
         useUIStore.getState().addToast("success", "Forked chat from this point");
       } catch (error) {
         useUIStore
@@ -1255,7 +1263,9 @@ export function Chat() {
       setToolApprovalMode(nextMode);
       setSavingToolApprovalMode(true);
       try {
-        const result = await settingsApi.updateConfig({ tool_approval_mode: nextMode });
+        const result = await settingsApi.updateConfig({
+          tool_approval_mode: nextMode,
+        });
         if (!result.success || !result.data?.success) {
           throw new Error(result.error || "Config update failed");
         }
@@ -1990,7 +2000,13 @@ export function Chat() {
             (bufferedLive.activities.length > 0 ||
               bufferedLive.status !== "idle" ||
               !!bufferedLive.streamingContent);
-          if (hasBufferedLive) return;
+          if (
+            hasBufferedLive &&
+            loadingRef.current &&
+            activeSessionRef.current === resolvedSessionId
+          ) {
+            return;
+          }
           if (
             !loadingRef.current &&
             activeSessionRef.current === resolvedSessionId &&
@@ -1998,8 +2014,10 @@ export function Chat() {
           ) {
             setLiveStatus("idle");
             setLiveActivities([]);
+            liveActivitiesRef.current = [];
             setLiveCurrentStep(null);
             runActivityBufferRef.current = [];
+            setStreamingContent(null);
           }
           if (!nextActiveIds.includes(resolvedSessionId)) {
             clearCachedLiveSessionState(resolvedSessionId);
@@ -2028,7 +2046,9 @@ export function Chat() {
         const resolved = resolveSnapshotLiveState(snapshot, localActivities);
         setLiveStatus(resolved.status);
         setLiveActivities(resolved.activities);
-        liveActivitiesRef.current = resolved.activities.map((activity) => ({ ...activity }));
+        liveActivitiesRef.current = resolved.activities.map((activity) => ({
+          ...activity,
+        }));
         runActivityBufferRef.current = resolved.activities.map((activity) => ({
           ...activity,
         }));
@@ -2057,7 +2077,9 @@ export function Chat() {
       if (activeSessionRef.current !== resolvedSessionId) return;
       const serverMessages = response.data?.pendingMessages;
       setPendingMessages((current) =>
-        mergePendingChatMessages(serverMessages, current, { preserveOptimistic: false })
+        mergePendingChatMessages(serverMessages, current, {
+          preserveOptimistic: false,
+        })
       );
       if (Array.isArray(serverMessages) && serverMessages.length === 0) {
         clearCachedOptimisticPendingMessages(resolvedSessionId);
@@ -2105,10 +2127,14 @@ export function Chat() {
     if (cached) {
       setLiveStatus(cached.status);
       setLiveActivities(cached.activities);
-      liveActivitiesRef.current = cached.activities.map((activity) => ({ ...activity }));
+      liveActivitiesRef.current = cached.activities.map((activity) => ({
+        ...activity,
+      }));
       setStreamingContent(cached.streamingContent);
       setLiveCurrentStep(cached.currentStep);
-      runActivityBufferRef.current = cached.activities.map((activity) => ({ ...activity }));
+      runActivityBufferRef.current = cached.activities.map((activity) => ({
+        ...activity,
+      }));
     } else {
       setLiveStatus("idle");
       setLiveActivities([]);
@@ -2134,7 +2160,9 @@ export function Chat() {
   }, [hydrateSessionStatus, refreshPendingMessages, sessionId]);
 
   useEffect(() => {
-    liveActivitiesRef.current = liveActivities.map((activity) => ({ ...activity }));
+    liveActivitiesRef.current = liveActivities.map((activity) => ({
+      ...activity,
+    }));
   }, [liveActivities]);
 
   useEffect(() => {
@@ -2149,7 +2177,9 @@ export function Chat() {
     if (!activitiesChanged && !bufferChanged) return;
 
     if (bufferChanged) {
-      runActivityBufferRef.current = prunedBuffer.map((activity) => ({ ...activity }));
+      runActivityBufferRef.current = prunedBuffer.map((activity) => ({
+        ...activity,
+      }));
     }
     if (activitiesChanged) {
       setLiveActivities(prunedActivities);
@@ -3050,7 +3080,9 @@ export function Chat() {
     try {
       setDictationError(null);
       setDictationStatus("Requesting microphone access...");
-      const stream = await window.navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await window.navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
       dictationStreamRef.current = stream;
       dictationChunksRef.current = [];
 
@@ -4368,11 +4400,18 @@ export function Chat() {
                             (result as { agent_id?: string | null }).agent_id || null
                           );
                           setSessionContextUsage(
-                            (result as { contextUsage?: SessionContextUsage | null })
-                              .contextUsage || null
+                            (
+                              result as {
+                                contextUsage?: SessionContextUsage | null;
+                              }
+                            ).contextUsage || null
                           );
                           setSessionTokenUsage(
-                            (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
+                            (
+                              result as {
+                                tokenUsage?: SessionTokenUsage | null;
+                              }
+                            ).tokenUsage || null
                           );
                           setShowWorkspacePanel(false);
                         }
@@ -4406,8 +4445,9 @@ export function Chat() {
           <div className="space-y-4">
             <p className="text-sm text-gray-300">
               Are you sure you want to revert here? This will keep this message, remove{" "}
-              {revertFollowingCount} later message{revertFollowingCount === 1 ? "" : "s"} from this
-              session, then place this text back in the input box for resend.
+              {revertFollowingCount} later message
+              {revertFollowingCount === 1 ? "" : "s"} from this session, then place this text back
+              in the input box for resend.
             </p>
             {revertTarget && (
               <div className="rounded-lg border border-white/10 bg-black/30 p-3">

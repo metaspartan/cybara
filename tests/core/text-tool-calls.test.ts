@@ -12,6 +12,12 @@ describe("text-form tool call parsing", () => {
     expect(sanitizeAssistantContent("Done.\n[[reply_to:message-42]]\nMore detail.")).toBe(
       "Done.\nMore detail."
     );
+    expect(sanitizeAssistantContent("[[reply_to_current]] Answer starts here.")).toBe(
+      "Answer starts here."
+    );
+    expect(sanitizeAssistantContent("[[ reply_to: message-42 ]] Answer starts here.")).toBe(
+      "Answer starts here."
+    );
   });
 
   test("extracts invoke blocks from function_calls markup", () => {
@@ -49,7 +55,9 @@ describe("text-form tool call parsing", () => {
     expect(extractTextToolCalls(raw, new Set(["read"]))).toEqual([
       {
         name: "read",
-        args: { file: "/Users/carsen/.cybara/tool-results/session/snapshot.txt" },
+        args: {
+          file: "/Users/carsen/.cybara/tool-results/session/snapshot.txt",
+        },
       },
     ]);
     expect(stripTextToolCallMarkup(raw)).toBe("");

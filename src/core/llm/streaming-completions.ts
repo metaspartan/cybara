@@ -63,32 +63,48 @@ export async function consumeOpenAIChatStream(
   };
 
   for await (const event of parseServerSentEvents(body)) {
-    watchdog?.touch();
-
     const choices = event.choices as StreamedChoiceDelta[] | undefined;
+    let madeProgress = false;
     if (event.usage && typeof event.usage === "object") {
       usage = event.usage as Record<string, unknown>;
+      madeProgress = true;
     }
     const choice = choices?.[0];
-    if (!choice) continue;
+    if (!choice) {
+      if (madeProgress) watchdog?.touch();
+      continue;
+    }
 
     if (typeof choice.finish_reason === "string" && choice.finish_reason) {
       finishReason = choice.finish_reason;
+      madeProgress = true;
     }
     const delta = choice.delta;
-    if (!delta) continue;
+    if (!delta) {
+      if (madeProgress) watchdog?.touch();
+      continue;
+    }
 
     if (typeof delta.content === "string" && delta.content) {
       markFirstToken();
       content += delta.content;
       onTextDelta?.(delta.content);
+      madeProgress = true;
     }
     if (typeof delta.reasoning_content === "string" && delta.reasoning_content) {
       markFirstToken();
       reasoning += delta.reasoning_content;
+      madeProgress = true;
     }
     for (const toolDelta of delta.tool_calls || []) {
+      const hasToolProgress =
+        (typeof toolDelta.id === "string" && toolDelta.id.length > 0) ||
+        (typeof toolDelta.function?.name === "string" && toolDelta.function.name.length > 0) ||
+        (typeof toolDelta.function?.arguments === "string" &&
+          toolDelta.function.arguments.length > 0);
+      if (!hasToolProgress) continue;
       markFirstToken();
+      madeProgress = true;
       const index = typeof toolDelta.index === "number" ? toolDelta.index : 0;
       const existing = toolCalls.get(index) || { id: "", name: "", args: "" };
       if (typeof toolDelta.id === "string" && toolDelta.id) existing.id = toolDelta.id;
@@ -100,6 +116,7 @@ export async function consumeOpenAIChatStream(
       }
       toolCalls.set(index, existing);
     }
+    if (madeProgress) watchdog?.touch();
   }
 
   const assembledToolCalls = [...toolCalls.entries()]

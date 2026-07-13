@@ -179,7 +179,15 @@ function sessionRowMeta(
   return parts.join(" · ");
 }
 
-export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
+export function TUIChatCommand({
+  apiBase,
+  apiKey,
+  fetchAPI,
+}: {
+  apiBase: string;
+  apiKey?: string | null;
+  fetchAPI: TUIFetchAPI;
+}) {
   const exit = useTUIBack();
   const [sessions, setSessions] = React.useState<ChatSessionSummary[]>([]);
   const [totalSessions, setTotalSessions] = React.useState(0);
@@ -376,6 +384,8 @@ export function TUIChatCommand({ fetchAPI }: { fetchAPI: TUIFetchAPI }) {
   if (openSession) {
     return (
       <InteractiveChatTUI
+        apiBase={apiBase}
+        apiKey={apiKey}
         fetchAPI={fetchAPI}
         initialAgentId={openSession.agent_id || openSession.agentId}
         sessionId={openSession.id}

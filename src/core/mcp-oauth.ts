@@ -110,7 +110,12 @@ export async function startMcpOAuth(
     httpsUrl(metadata.registration_endpoint, "OAuth registration endpoint"),
     validator
   );
-  const redirectUri = `http://127.0.0.1:${config.get<number>("port") || 4269}/api/mcp/oauth/callback`;
+  const runtimePort = Number(process.env.CYBARA_RUNTIME_PORT);
+  const port =
+    Number.isInteger(runtimePort) && runtimePort > 0
+      ? runtimePort
+      : config.get<number>("port") || 4269;
+  const redirectUri = `http://127.0.0.1:${port}/api/mcp/oauth/callback`;
   const registration = await jsonResponse(registrationEndpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

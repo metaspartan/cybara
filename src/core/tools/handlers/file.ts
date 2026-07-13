@@ -7,7 +7,7 @@ import {
   statSync,
   promises as fs,
 } from "fs";
-import { join, dirname, isAbsolute, sep } from "path";
+import { join, dirname, extname, isAbsolute, sep } from "path";
 import { glob } from "tinyglobby";
 import { homeDir } from "../../paths";
 import { trackMetric } from "../../metrics";
@@ -102,6 +102,81 @@ interface FileChangeMeta {
   addedLines: number;
   removedLines: number;
   diff: string;
+}
+
+const imageMediaTypes = new Map([
+  [".png", "image/png"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".webp", "image/webp"],
+]);
+
+function pngImageDimensions(bytes: Uint8Array): { width: number; height: number } | undefined {
+  if (
+    bytes.length < 24 ||
+    bytes[0] !== 0x89 ||
+    bytes[1] !== 0x50 ||
+    bytes[2] !== 0x4e ||
+    bytes[3] !== 0x47
+  ) {
+    return undefined;
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return { width: view.getUint32(16), height: view.getUint32(20) };
+}
+
+function jpegImageDimensions(bytes: Uint8Array): { width: number; height: number } | undefined {
+  if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return undefined;
+  let offset = 2;
+  while (offset + 8 < bytes.length) {
+    if (bytes[offset] !== 0xff) {
+      offset += 1;
+      continue;
+    }
+    const marker = bytes[offset + 1];
+    if (marker === 0xd8 || marker === 0xd9) {
+      offset += 2;
+      continue;
+    }
+    const length = (bytes[offset + 2] << 8) | bytes[offset + 3];
+    if (length < 2 || offset + length + 2 > bytes.length) return undefined;
+    if (
+      (marker >= 0xc0 && marker <= 0xc3) ||
+      (marker >= 0xc5 && marker <= 0xc7) ||
+      (marker >= 0xc9 && marker <= 0xcb) ||
+      (marker >= 0xcd && marker <= 0xcf)
+    ) {
+      return {
+        height: (bytes[offset + 5] << 8) | bytes[offset + 6],
+        width: (bytes[offset + 7] << 8) | bytes[offset + 8],
+      };
+    }
+    offset += length + 2;
+  }
+  return undefined;
+}
+
+async function imageFileSummary(
+  path: string,
+  mediaType: string,
+  sizeBytes: number
+): Promise<string> {
+  const bytes = new Uint8Array(await Bun.file(path).slice(0, 65_536).arrayBuffer());
+  const dimensions =
+    mediaType === "image/png"
+      ? pngImageDimensions(bytes)
+      : mediaType === "image/jpeg"
+        ? jpegImageDimensions(bytes)
+        : undefined;
+  return [
+    `Image file: ${path}`,
+    `Media type: ${mediaType}`,
+    `Size: ${sizeBytes} bytes`,
+    dimensions ? `Dimensions: ${dimensions.width}x${dimensions.height}` : undefined,
+    "Use the image path as an image attachment when visual inspection is required.",
+  ]
+    .filter((line): line is string => Boolean(line))
+    .join("\n");
 }
 
 function expandTilde(path: string | undefined): string | undefined {
@@ -285,7 +360,18 @@ export async function handleRead(
     throw fileNotFoundError(path);
   }
 
-  const content = statSync(path).isDirectory()
+  const stats = statSync(path);
+  const mediaType = stats.isFile() ? imageMediaTypes.get(extname(path).toLowerCase()) : undefined;
+  if (mediaType) {
+    trackMetric("file_operation", "read", 1, { path });
+    trackMetric("file_read", path, 1);
+    return {
+      content: await imageFileSummary(path, mediaType, stats.size),
+      path,
+    };
+  }
+
+  const content = stats.isDirectory()
     ? readdirSync(path, { withFileTypes: true })
         .sort((left, right) => left.name.localeCompare(right.name))
         .map((entry) => `${entry.name}${entry.isDirectory() ? "/" : ""}`)

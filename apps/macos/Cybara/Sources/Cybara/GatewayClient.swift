@@ -1051,6 +1051,38 @@ struct GatewayClient: Sendable {
         return try JSONDecoder().decode(GatewayEvalImportResponse.self, from: data)
     }
 
+    func computerUseTrajectories() async throws -> GatewayComputerUseTrajectoriesResponse {
+        try await get("api/computer-use/trajectories", as: GatewayComputerUseTrajectoriesResponse.self)
+    }
+
+    func configureComputerUseTrajectories(capture: Bool?, video: Bool?) async throws {
+        var payload: [String: Any] = [:]
+        if let capture { payload["trajectoryCaptureEnabled"] = capture }
+        if let video { payload["trajectoryVideoEnabled"] = video }
+        let body = try JSONSerialization.data(withJSONObject: payload)
+        _ = try await request("api/computer-use/trajectories/config", method: "POST", body: body)
+    }
+
+    func exportComputerUseTrajectories() async throws -> GatewayEvalExportResponse {
+        try await get("api/computer-use/trajectories/export", as: GatewayEvalExportResponse.self, queryItems: [
+            URLQueryItem(name: "redact", value: "1"),
+            URLQueryItem(name: "includeMedia", value: "0"),
+        ])
+    }
+
+    func replayComputerUseTrajectory(_ id: String) async throws -> GatewayComputerUseTrajectoryReplayResponse {
+        let data = try await request(
+            "api/computer-use/trajectories/\(pathSegment(id))/replay",
+            method: "POST",
+            body: Data("{}".utf8)
+        )
+        return try JSONDecoder().decode(GatewayComputerUseTrajectoryReplayResponse.self, from: data)
+    }
+
+    func deleteComputerUseTrajectory(_ id: String) async throws {
+        _ = try await request("api/computer-use/trajectories/\(pathSegment(id))", method: "DELETE")
+    }
+
     func updateSessionWorkspace(
         _ id: String,
         workspaceDir: String?

@@ -914,6 +914,28 @@ textarea[data-chat-composer-input="true"]:focus-visible {
   font-size: 1.04em;
 }
 
+.chat-markdown {
+  font-size: var(--chat-font-size, 14px);
+  line-height: var(--chat-line-height, 1.6);
+}
+
+.chat-code-block pre,
+.chat-code-block .font-mono {
+  font-size: var(--chat-code-font-size, 12px);
+}
+
+html[data-reduce-motion="true"] *,
+html[data-reduce-motion="true"] *::before,
+html[data-reduce-motion="true"] *::after {
+  scroll-behavior: auto !important;
+  transition-duration: 0.001ms !important;
+}
+
+html[data-reduce-motion="true"] .animate-pulse,
+html[data-reduce-motion="true"] .animate-bounce {
+  animation: none !important;
+}
+
 .chat-markdown .katex-display {
   margin: 0.75rem 0;
   overflow-x: auto;

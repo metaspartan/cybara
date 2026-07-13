@@ -1015,7 +1015,6 @@ export abstract class AgentProviderRuntime {
           watchdog.dispose();
           throw new Error(`${errorPrefix}: empty streaming response body`);
         }
-        watchdog.touch();
         const assembled = await consumeOpenAIChatStream(
           response.body,
           watchdog,

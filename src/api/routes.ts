@@ -246,6 +246,7 @@ import {
 } from "./routes/_shared";
 import { ideLspRoutes } from "./routes/ide-lsp-routes";
 import { integrationCredentialRoutes } from "./routes/integration-credential-routes";
+import { accountConnectorRoutes } from "./routes/account-connectors";
 import { mcpRoutes } from "./routes/mcp";
 import { metricsRoutes } from "./routes/metrics";
 import {
@@ -417,6 +418,7 @@ const routes: Record<string, RouteHandler> = {
   ...ideLspRoutes,
   ...runtimeRoutes,
   ...mcpRoutes,
+  ...accountConnectorRoutes,
   ...integrationCredentialRoutes,
   ...webResearchRoutes,
   "GET /api/health": () => {
@@ -1024,6 +1026,10 @@ const routes: Record<string, RouteHandler> = {
       }
       if (key === "follow_up_behavior_enabled") {
         config.setFollowUpBehaviorEnabled(value);
+        continue;
+      }
+      if (key === "chat_appearance") {
+        config.setChatAppearanceSettings(value);
         continue;
       }
       config.set(key, value);

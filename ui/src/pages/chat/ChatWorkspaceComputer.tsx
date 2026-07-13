@@ -1,6 +1,7 @@
 import { Loader2, Monitor, MousePointer2, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/auth";
+import { previewPointToContainer, type PreviewSize } from "./previewGeometry";
 
 interface ComputerCursor {
   x: number;
@@ -101,6 +102,8 @@ export function ChatWorkspaceComputer({
   const [error, setError] = useState<string | null>(null);
   const screenshotRevisionRef = useRef(0);
   const requestInFlightRef = useRef(false);
+  const previewSurfaceRef = useRef<HTMLDivElement>(null);
+  const [previewSurfaceSize, setPreviewSurfaceSize] = useState<PreviewSize | null>(null);
 
   const refresh = useCallback(async () => {
     if (requestInFlightRef.current) return;
@@ -160,6 +163,19 @@ export function ChatWorkspaceComputer({
     };
   }, [refresh, visible]);
 
+  useEffect(() => {
+    const surface = previewSurfaceRef.current;
+    if (!surface || typeof ResizeObserver === "undefined") return;
+    const update = () => {
+      const bounds = surface.getBoundingClientRect();
+      setPreviewSurfaceSize({ width: bounds.width, height: bounds.height });
+    };
+    const observer = new ResizeObserver(update);
+    observer.observe(surface);
+    update();
+    return () => observer.disconnect();
+  }, []);
+
   const clear = async () => {
     const query = new URLSearchParams({ sessionId: resolvedSessionId });
     await apiFetch(`/api/computer-use/preview?${query}`, { method: "DELETE" });
@@ -170,13 +186,13 @@ export function ChatWorkspaceComputer({
   };
 
   const cursorDimensions = preview?.viewport ?? imageSize;
-  const cursorStyle =
-    preview?.cursor?.visible && cursorDimensions
-      ? {
-          left: `${Math.min(100, Math.max(0, (preview.cursor.x / cursorDimensions.width) * 100))}%`,
-          top: `${Math.min(100, Math.max(0, (preview.cursor.y / cursorDimensions.height) * 100))}%`,
-        }
+  const cursorPoint =
+    preview?.cursor?.visible && cursorDimensions && previewSurfaceSize
+      ? previewPointToContainer(previewSurfaceSize, cursorDimensions, preview.cursor)
       : null;
+  const cursorStyle = cursorPoint
+    ? { left: `${cursorPoint.x}px`, top: `${cursorPoint.y}px` }
+    : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[var(--chat-environment-panel-bg)]">
@@ -198,7 +214,7 @@ export function ChatWorkspaceComputer({
           </button>
         ) : null}
       </header>
-      <div className="relative min-h-0 flex-1 overflow-hidden bg-[#111216]">
+      <div ref={previewSurfaceRef} className="relative min-h-0 flex-1 overflow-hidden bg-[#111216]">
         {imageUrl ? (
           <img
             src={imageUrl}

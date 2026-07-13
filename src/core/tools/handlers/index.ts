@@ -64,6 +64,7 @@ import {
 import { handleClipboard } from "./clipboard";
 import { handleHttp } from "./http";
 import { handleData } from "./data";
+import { handleAccountConnectorRead, handleAccountConnectorWrite } from "./account-connectors";
 import { handleCalc, handleConvert } from "./calc";
 import { handleEnv } from "./env";
 import { handleWebSearch } from "./web-search";
@@ -275,6 +276,8 @@ const toolHandlers: Record<
   clipboard: handleClipboard,
   http: handleHttp,
   data: handleData,
+  account_connector: handleAccountConnectorRead,
+  account_connector_write: handleAccountConnectorWrite,
   calc: handleCalc,
   convert: handleConvert,
   env: handleEnv,

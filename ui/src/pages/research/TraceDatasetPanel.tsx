@@ -134,13 +134,24 @@ function TraceMetadata({ trace }: { trace: ResearchTraceSummary }) {
   );
 }
 
-type TraceFilter = "all" | "clean" | "reasoning" | "tools" | "train" | "validation" | "test";
+type TraceFilter =
+  | "all"
+  | "clean"
+  | "reasoning"
+  | "tools"
+  | "browser"
+  | "computer"
+  | "train"
+  | "validation"
+  | "test";
 
 const traceFilters: Array<{ value: TraceFilter; label: string }> = [
   { value: "all", label: "All" },
   { value: "clean", label: "Clean" },
   { value: "reasoning", label: "Has reasoning" },
   { value: "tools", label: "Uses tools" },
+  { value: "browser", label: "Browser" },
+  { value: "computer", label: "Computer use" },
   { value: "train", label: "Train" },
   { value: "validation", label: "Validation" },
   { value: "test", label: "Test" },
@@ -150,6 +161,10 @@ function matchesTraceFilter(trace: ResearchTraceSummary, filter: TraceFilter): b
   if (filter === "clean") return trace.qualityFlags.length === 0;
   if (filter === "reasoning") return trace.hasObservableReasoning;
   if (filter === "tools") return trace.toolCallCount > 0;
+  if (filter === "browser") return trace.toolNames.some((name) => name.startsWith("browser"));
+  if (filter === "computer") {
+    return trace.toolNames.some((name) => name === "computer_use" || name.startsWith("computer_"));
+  }
   if (filter === "train" || filter === "validation" || filter === "test") {
     return trace.split === filter;
   }

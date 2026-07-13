@@ -14,6 +14,17 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(response.runs.first?.score, 100)
     }
 
+    func testComputerUseTrajectoryModelsDecodeCaptureAndReplayData() throws {
+        let data = Data(
+            #"{"trajectories":[{"id":"trajectory-1","sessionId":"session-1","status":"completed","recordVideo":true,"createdAt":"2026-07-13T00:00:00.000Z","updatedAt":"2026-07-13T00:00:03.000Z","completedAt":"2026-07-13T00:00:03.000Z","error":null,"replayOf":null,"turnCount":3,"screenshotCount":3,"clickCount":2,"durationMs":3000,"videoAvailable":true}],"activeId":null,"settings":{"driverCommand":"cua-driver","trajectoryCaptureEnabled":true,"trajectoryVideoEnabled":true}}"#.utf8
+        )
+        let response = try JSONDecoder().decode(GatewayComputerUseTrajectoriesResponse.self, from: data)
+        XCTAssertEqual(response.trajectories.first?.turnCount, 3)
+        XCTAssertEqual(response.trajectories.first?.clickCount, 2)
+        XCTAssertTrue(response.settings.trajectoryCaptureEnabled)
+        XCTAssertTrue(response.settings.trajectoryVideoEnabled)
+    }
+
     func testSessionForkAndRuntimeMetricsDecodeGatewayResponses() throws {
         let forkData = Data(
             #"{"success":true,"fork":{"sessionId":"fork-1","sourceSessionId":"source-1","agentId":"agent-1","messageCount":3,"workspaceDir":"/tmp/project","title":"Forked chat"}}"#.utf8

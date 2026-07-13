@@ -6,6 +6,7 @@ import { GatewayRemoteAccessSection } from "@/components/settings/GatewayRemoteA
 import { SettingsNavigation } from "@/components/settings/SettingsNavigation";
 import { SystemBackupSettingsSection } from "@/components/settings/SystemBackupSettingsSection";
 import { AiFeatureSettings } from "./settings/AiFeatureSettings";
+import { ChatAccessibilitySettings } from "./settings/ChatAccessibilitySettings";
 import { FeatureSettings } from "./settings/FeatureSettings";
 import { MemoryBehaviorSettings } from "./settings/MemoryBehaviorSettings";
 import { SpeechSettingsSection } from "./settings/SpeechSettingsSection";
@@ -2601,25 +2602,19 @@ export function Settings() {
   const { data: systemMonitor } = useSystemMonitor();
   const [searchParams, setSearchParams] = useSearchParams();
   const sectionParam = searchParams.get("section");
-  const [activeSection, setActiveSection] = useState<SettingsSectionId>(
-    resolveSettingsSectionId(sectionParam) ?? "general"
-  );
+  const activeSection = resolveSettingsSectionId(sectionParam) ?? "general";
 
   useEffect(() => {
     const resolvedSection = resolveSettingsSectionId(sectionParam);
     if (!resolvedSection) return;
-    if (resolvedSection !== activeSection) {
-      setActiveSection(resolvedSection);
-    }
     if (sectionParam !== resolvedSection) {
       setSearchParams(resolvedSection === "general" ? {} : { section: resolvedSection }, {
         replace: true,
       });
     }
-  }, [activeSection, sectionParam, setSearchParams]);
+  }, [sectionParam, setSearchParams]);
 
   const selectSection = (section: SettingsSectionId) => {
-    setActiveSection(section);
     setSearchParams(section === "general" ? {} : { section }, { replace: true });
   };
 
@@ -2671,7 +2666,12 @@ export function Settings() {
         <SettingsNavigation activeSection={activeSection} onSelect={selectSection} />
 
         <div className="min-w-0 space-y-6">
-          {activeSection === "general" && <ThemeSettings />}
+          {activeSection === "general" && (
+            <>
+              <ThemeSettings />
+              <ChatAccessibilitySettings />
+            </>
+          )}
 
           {activeSection === "gateway" && (
             <>

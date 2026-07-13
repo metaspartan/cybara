@@ -34,6 +34,12 @@ describe("memory_get confinement (security)", () => {
     expect(res.lines).toBe(4);
   });
 
+  test("reads search-result paths prefixed with the memory directory name", async () => {
+    const res = await handleMemoryGet({ path: `memory/${fixtureName}` });
+    expect(res.content).toContain("line one");
+    expect(res.path).toBe(fixtureName);
+  });
+
   test("honors from/lines slicing", async () => {
     const res = await handleMemoryGet({ path: fixtureName, from: 2, lines: 1 });
     expect(res.content).toBe("line two");
@@ -45,6 +51,7 @@ describe("memory_get confinement (security)", () => {
     "../../../etc/passwd",
     "../.ssh/id_rsa",
     "../../.cybara/wallet.v1.json",
+    "memory/../../../etc/passwd",
     "..%2f..%2fetc%2fpasswd/../../../../etc/passwd",
   ])("rejects escaping path %p", async (evil) => {
     await expect(handleMemoryGet({ path: evil })).rejects.toThrow();

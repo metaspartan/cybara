@@ -7,7 +7,20 @@ import {
 } from "../../core/browser/sandbox-browser";
 import { tables } from "../../core/database";
 import { commandExists, isWindows } from "../../core/platform";
-import { clearComputerUsePreview, getComputerUsePreview } from "../../core/computer-use";
+import {
+  activeComputerUseTrajectoryId,
+  clearComputerUsePreview,
+  getComputerUsePreview,
+  replayComputerUseTrajectory,
+  stopComputerUseTrajectoryCapture,
+} from "../../core/computer-use";
+import {
+  deleteComputerUseTrajectory,
+  exportComputerUseTrajectories,
+  getComputerUseTrajectory,
+  listComputerUseTrajectories,
+} from "../../core/computer-use-trajectories";
+import { config } from "../../core/config";
 import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../../core/status";
 import { getSystemMonitorSnapshot } from "../../core/system-monitor";
 import {
@@ -94,6 +107,61 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     clearComputerUsePreview(sessionId);
     return { success: true };
   },
+  "GET /api/computer-use/trajectories": () => ({
+    trajectories: listComputerUseTrajectories(activeComputerUseTrajectoryId()),
+    activeId: activeComputerUseTrajectoryId() ?? null,
+    settings: config.getComputerUseSettings(),
+  }),
+  "GET /api/computer-use/trajectories/export": (_body, params) => {
+    const ids = (params?.ids ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean)
+      .slice(0, 500);
+    return exportComputerUseTrajectories(ids, {
+      includeMedia: params?.includeMedia === "1" || params?.includeMedia === "true",
+      redact: params?.redact !== "0" && params?.redact !== "false",
+    });
+  },
+  "POST /api/computer-use/trajectories/config": async (body) => {
+    const data = (body || {}) as {
+      trajectoryCaptureEnabled?: unknown;
+      trajectoryVideoEnabled?: unknown;
+    };
+    const current = config.getComputerUseSettings();
+    const next = config.setComputerUseSettings({
+      ...current,
+      trajectoryCaptureEnabled:
+        typeof data.trajectoryCaptureEnabled === "boolean"
+          ? data.trajectoryCaptureEnabled
+          : current.trajectoryCaptureEnabled,
+      trajectoryVideoEnabled:
+        typeof data.trajectoryVideoEnabled === "boolean"
+          ? data.trajectoryVideoEnabled
+          : current.trajectoryVideoEnabled,
+    });
+    if (!next.trajectoryCaptureEnabled) await stopComputerUseTrajectoryCapture();
+    return { success: true, settings: next };
+  },
+  "GET /api/computer-use/trajectories/:id": (_body, params) => {
+    const trajectory = getComputerUseTrajectory(params!.id, activeComputerUseTrajectoryId());
+    return trajectory ? { success: true, trajectory } : { success: false, error: "Not found" };
+  },
+  "POST /api/computer-use/trajectories/:id/replay": async (body, params) => {
+    const data = (body || {}) as { delayMs?: unknown; stopOnError?: unknown };
+    const delayMs = Number(data.delayMs);
+    const result = await replayComputerUseTrajectory(params!.id, {
+      delayMs: Number.isFinite(delayMs) ? delayMs : undefined,
+      stopOnError: data.stopOnError !== false,
+    });
+    return { success: true, ...result };
+  },
+  "DELETE /api/computer-use/trajectories/:id": async (_body, params) => {
+    if (params!.id === activeComputerUseTrajectoryId()) {
+      await stopComputerUseTrajectoryCapture();
+    }
+    return { success: deleteComputerUseTrajectory(params!.id) };
+  },
   "GET /api/browser/status": async () => {
     const getStatus = pwManager.getStatus;
     return await getStatus();
@@ -103,7 +171,10 @@ export const runtimeRoutes: Record<string, RouteHandler> = {
     try {
       return { success: true, status: await startSandboxBrowser() };
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : String(error) };
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
     }
   },
   "POST /api/browser/sandbox/stop": async () => {

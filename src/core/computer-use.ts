@@ -25,6 +25,16 @@ import { join } from "path";
 import { homedir } from "os";
 import { PNG } from "pngjs";
 import { config } from "./config";
+import {
+  appendComputerUseTrajectoryTurn,
+  createComputerUseTrajectory,
+  finishComputerUseTrajectory,
+  getComputerUseTrajectory,
+  getComputerUseTrajectoryDir,
+  getPersistedComputerUsePreview,
+  type ComputerUseTrajectoryDetail,
+  touchComputerUseTrajectory,
+} from "./computer-use-trajectories";
 
 const DEFAULT_CUA_DRIVER_CMD = "cua-driver";
 const CUA_DRIVER_CMD_ENV = "CYBARA_CUA_DRIVER_CMD";
@@ -42,13 +52,33 @@ let driverProcess: ChildProcess | null = null;
 /** Tool names advertised by the running driver (tools/list); empty = unknown. */
 let driverToolNames = new Set<string>();
 /** Window the next action targets; every interactive driver tool requires a pid. */
-let activeWindowTarget: { pid: number; windowId?: number; appName?: string } | null = null;
+let activeWindowTarget: {
+  pid: number;
+  windowId?: number;
+  appName?: string;
+} | null = null;
 let nextRequestId = 1;
 const pending = new Map<
   number,
-  { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }
+  {
+    resolve: (v: unknown) => void;
+    reject: (e: Error) => void;
+    timer: NodeJS.Timeout;
+  }
 >();
 let initBuffer = "";
+const declaredDriverSessions = new Set<string>();
+
+interface ActiveComputerUseTrajectory {
+  id: string;
+  sessionId: string;
+  driverRecording: boolean;
+  idleTimer: NodeJS.Timeout;
+}
+
+let activeComputerUseTrajectory: ActiveComputerUseTrajectory | null = null;
+let trajectoryLifecycle: Promise<void> = Promise.resolve();
+const COMPUTER_USE_TRAJECTORY_IDLE_MS = 60_000;
 
 // --- Safety: un-overridable hard blocks ---
 
@@ -283,7 +313,11 @@ export function resolveCuaDriverCommand(
     searchedPaths
   );
   if (installDirMatch) {
-    return { command: installDirMatch, source: "known-install-dir", searchedPaths };
+    return {
+      command: installDirMatch,
+      source: "known-install-dir",
+      searchedPaths,
+    };
   }
 
   return null;
@@ -675,6 +709,7 @@ async function sendWithReconnect(
       }
       driverProcess = null;
     }
+    declaredDriverSessions.clear();
     await ensureDriver();
     return sendRaw(method, params);
   }
@@ -725,6 +760,7 @@ interface ComputerUseContext {
 const computerUsePreviews = new Map<string, ComputerUsePreviewState>();
 const computerUsePreviewViews = new Map<string, number>();
 const computerUsePreviewFiles = new Map<string, string>();
+const clearedComputerUsePreviews = new Set<string>();
 const COMPUTER_USE_PREVIEW_ACTIVE_MS = 5_000;
 const COMPUTER_USE_PREVIEW_LIMIT = 24;
 
@@ -886,9 +922,14 @@ function trimComputerUsePreviews(): void {
 
 function computerUseCursorFor(
   args: ComputerUseArgs,
-  previous: ComputerUsePreviewCursor | undefined
+  previous: ComputerUsePreviewCursor | undefined,
+  observed?: { x: number; y: number }
 ): ComputerUsePreviewCursor | undefined {
-  const coordinate = args.action === "drag" ? args.toCoordinate : args.coordinate;
+  const coordinate = observed
+    ? [observed.x, observed.y]
+    : args.action === "drag"
+      ? args.toCoordinate
+      : args.coordinate;
   const action =
     args.action === "drag"
       ? "drag"
@@ -914,8 +955,10 @@ export function recordComputerUsePreview(
   args: ComputerUseArgs,
   screenshot?: string,
   contentType?: string,
-  filePath?: string
+  filePath?: string,
+  observedCursor?: { x: number; y: number }
 ): void {
+  clearedComputerUsePreviews.delete(sessionId);
   const previous = computerUsePreviews.get(sessionId);
   const revision = (previous?.revision ?? 0) + 1;
   computerUsePreviews.set(sessionId, {
@@ -925,7 +968,7 @@ export function recordComputerUsePreview(
     screenshot: screenshot ?? previous?.screenshot,
     contentType: contentType ?? previous?.contentType,
     viewport: screenshotDimensions(screenshot, contentType) ?? previous?.viewport,
-    cursor: computerUseCursorFor(args, previous?.cursor),
+    cursor: computerUseCursorFor(args, previous?.cursor, observedCursor),
     updatedAt: Date.now(),
     revision,
     screenshotRevision: screenshot ? revision : (previous?.screenshotRevision ?? 0),
@@ -942,7 +985,19 @@ export function getComputerUsePreview(
   const sessionId = normalizedComputerUseSessionId(sessionIdValue);
   if (!sessionId) return null;
   computerUsePreviewViews.set(sessionId, Date.now());
-  const preview = computerUsePreviews.get(sessionId);
+  let preview = computerUsePreviews.get(sessionId);
+  if (!preview && !clearedComputerUsePreviews.has(sessionId)) {
+    const persisted = getPersistedComputerUsePreview(sessionId);
+    if (persisted && VALID_ACTIONS.has(persisted.action as ComputerUseAction)) {
+      preview = {
+        sessionId,
+        ...persisted,
+        action: persisted.action as ComputerUseAction,
+        cursor: persisted.cursor ? { ...persisted.cursor, visible: true } : undefined,
+      };
+      computerUsePreviews.set(sessionId, preview);
+    }
+  }
   if (!preview) return null;
   if (knownScreenshotRevision === preview.screenshotRevision) {
     return { ...preview, screenshot: undefined };
@@ -953,6 +1008,7 @@ export function getComputerUsePreview(
 export function clearComputerUsePreview(sessionIdValue: string): void {
   const sessionId = normalizedComputerUseSessionId(sessionIdValue);
   if (!sessionId) return;
+  clearedComputerUsePreviews.add(sessionId);
   computerUsePreviews.delete(sessionId);
   computerUsePreviewViews.delete(sessionId);
   computerUsePreviewFiles.delete(sessionId);
@@ -1199,7 +1255,11 @@ export function summarizeDriverApps(result: DriverCallResult): DriverCallResult 
     ].join(" "),
     structured: {
       active: active
-        ? { name: active.name, pid: active.pid, running: active.running === true }
+        ? {
+            name: active.name,
+            pid: active.pid,
+            running: active.running === true,
+          }
         : null,
       running: running.map((app) => ({ name: app.name, pid: app.pid })),
       installedCount: apps.length,
@@ -1222,7 +1282,10 @@ async function callDriverTool(
   for (const [key, value] of Object.entries(args)) {
     if (value !== undefined && value !== null) cleaned[key] = value;
   }
-  const result = (await sendWithReconnect("tools/call", { name, arguments: cleaned })) as {
+  const result = (await sendWithReconnect("tools/call", {
+    name,
+    arguments: cleaned,
+  })) as {
     content?: Array<Record<string, unknown>>;
     structuredContent?: Record<string, unknown>;
     isError?: boolean;
@@ -1252,7 +1315,246 @@ async function callDriverTool(
   if (result?.isError) {
     throw new Error(text || `cua-driver tool "${name}" failed`);
   }
-  return { text, screenshot, screenshotMime, structured: result?.structuredContent };
+  return {
+    text,
+    screenshot,
+    screenshotMime,
+    structured: result?.structuredContent,
+  };
+}
+
+function queueTrajectoryLifecycle(task: () => Promise<void>): Promise<void> {
+  const next = trajectoryLifecycle.then(task, task);
+  trajectoryLifecycle = next.catch(() => undefined);
+  return next;
+}
+
+async function stopActiveComputerUseTrajectory(
+  status: "completed" | "interrupted" | "error" = "completed",
+  error?: string
+): Promise<void> {
+  const active = activeComputerUseTrajectory;
+  if (!active) return;
+  clearTimeout(active.idleTimer);
+  activeComputerUseTrajectory = null;
+  try {
+    if (active.driverRecording && driverHasTool("stop_recording")) {
+      await callDriverTool("stop_recording", {});
+    }
+    finishComputerUseTrajectory(active.id, status, error);
+  } catch (reason) {
+    finishComputerUseTrajectory(
+      active.id,
+      "error",
+      reason instanceof Error ? reason.message : String(reason)
+    );
+  }
+}
+
+function scheduleComputerUseTrajectoryStop(): void {
+  const active = activeComputerUseTrajectory;
+  if (!active) return;
+  clearTimeout(active.idleTimer);
+  active.idleTimer = setTimeout(() => {
+    void queueTrajectoryLifecycle(() => stopActiveComputerUseTrajectory("completed"));
+  }, COMPUTER_USE_TRAJECTORY_IDLE_MS);
+}
+
+async function ensureComputerUseTrajectoryRecording(
+  sessionId: string,
+  driverReady: boolean
+): Promise<void> {
+  const settings = config.getComputerUseSettings();
+  if (!settings.trajectoryCaptureEnabled) return;
+  await queueTrajectoryLifecycle(async () => {
+    if (activeComputerUseTrajectory?.sessionId === sessionId) {
+      touchComputerUseTrajectory(activeComputerUseTrajectory.id);
+      scheduleComputerUseTrajectoryStop();
+      return;
+    }
+    if (activeComputerUseTrajectory) {
+      await stopActiveComputerUseTrajectory("completed");
+    }
+    const created = createComputerUseTrajectory({
+      sessionId,
+      recordVideo: settings.trajectoryVideoEnabled,
+    });
+    let driverRecording = false;
+    if (driverReady && driverHasTool("start_recording")) {
+      try {
+        await callDriverTool("start_recording", {
+          output_dir: created.dir,
+          record_video: settings.trajectoryVideoEnabled,
+        });
+        driverRecording = true;
+      } catch {}
+    }
+    try {
+      activeComputerUseTrajectory = {
+        id: created.metadata.id,
+        sessionId,
+        driverRecording,
+        idleTimer: setTimeout(() => undefined, COMPUTER_USE_TRAJECTORY_IDLE_MS),
+      };
+      scheduleComputerUseTrajectoryStop();
+    } catch (error) {
+      finishComputerUseTrajectory(
+        created.metadata.id,
+        "error",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
+  });
+}
+
+function appendActiveComputerUseTurn(
+  sessionId: string | null,
+  typedArgs: ComputerUseArgs,
+  result: {
+    ok: boolean;
+    text?: string;
+    error?: string;
+    filePath?: string;
+    viewport?: { width: number; height: number };
+    capturedAfter?: boolean;
+  },
+  screenshot?: string,
+  screenshotMime?: string,
+  observedCursor?: { x: number; y: number }
+): void {
+  const active = activeComputerUseTrajectory;
+  if (!sessionId || !active || active.sessionId !== sessionId) return;
+  appendComputerUseTrajectoryTurn(active.id, {
+    tool: typedArgs.action,
+    arguments: { ...typedArgs },
+    result,
+    screenshot,
+    screenshotMime,
+    clickPoint: typedArgs.action.includes("click") ? observedCursor : undefined,
+  });
+  scheduleComputerUseTrajectoryStop();
+}
+
+async function ensureDriverSession(sessionId: string): Promise<void> {
+  if (declaredDriverSessions.has(sessionId) || !driverHasTool("start_session")) return;
+  await callDriverTool("start_session", { session: sessionId });
+  declaredDriverSessions.add(sessionId);
+}
+
+function pointFromRecord(value: unknown): { x: number; y: number } | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  const x = Number(record.x);
+  const y = Number(record.y);
+  if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
+  for (const key of ["click_point", "clickPoint", "position", "cursor", "point"]) {
+    const nested = pointFromRecord(record[key]);
+    if (nested) return nested;
+  }
+  return undefined;
+}
+
+export function extractDriverCursorPoint(value: unknown): { x: number; y: number } | undefined {
+  const direct = pointFromRecord(value);
+  if (direct) return direct;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const cursors = (value as Record<string, unknown>).cursors;
+  if (!Array.isArray(cursors)) return undefined;
+  for (const cursor of cursors) {
+    const point = pointFromRecord(cursor);
+    if (point) return point;
+  }
+  return undefined;
+}
+
+async function observedDriverCursor(
+  result: DriverCallResult,
+  sessionId: string | undefined
+): Promise<{ x: number; y: number } | undefined> {
+  const observed = extractDriverCursorPoint(result.structured);
+  if (observed || !sessionId || !driverHasTool("get_agent_cursor_state")) return observed;
+  try {
+    const state = await callDriverTool("get_agent_cursor_state", {
+      cursor_id: sessionId,
+    });
+    return (
+      extractDriverCursorPoint(state.structured) ??
+      extractDriverCursorPoint(state.text ? JSON.parse(state.text) : null)
+    );
+  } catch {
+    return undefined;
+  }
+}
+
+export function activeComputerUseTrajectoryId(): string | undefined {
+  return activeComputerUseTrajectory?.id;
+}
+
+export async function stopComputerUseTrajectoryForSession(
+  sessionId: string,
+  status: "completed" | "interrupted" | "error" = "completed",
+  error?: string
+): Promise<boolean> {
+  const normalizedSessionId = sessionId.trim();
+  if (!normalizedSessionId) return false;
+  let stopped = false;
+  await queueTrajectoryLifecycle(async () => {
+    if (activeComputerUseTrajectory?.sessionId !== normalizedSessionId) return;
+    await stopActiveComputerUseTrajectory(status, error);
+    stopped = true;
+  });
+  return stopped;
+}
+
+export async function stopComputerUseTrajectoryCapture(): Promise<void> {
+  await queueTrajectoryLifecycle(() => stopActiveComputerUseTrajectory("completed"));
+}
+
+export async function replayComputerUseTrajectory(
+  id: string,
+  options: { delayMs?: number; stopOnError?: boolean } = {}
+): Promise<{
+  source: ComputerUseTrajectoryDetail;
+  replay: ComputerUseTrajectoryDetail | null;
+  result: string;
+}> {
+  await ensureDriver();
+  const source = getComputerUseTrajectory(id, activeComputerUseTrajectory?.id);
+  if (!source) throw new Error("Computer-use trajectory not found");
+  await stopComputerUseTrajectoryCapture();
+  const created = createComputerUseTrajectory({
+    sessionId: `replay:${source.sessionId}`,
+    recordVideo: false,
+    replayOf: source.id,
+  });
+  try {
+    await callDriverTool("start_recording", {
+      output_dir: created.dir,
+      record_video: false,
+    });
+    const replayed = await callDriverTool("replay_trajectory", {
+      dir: getComputerUseTrajectoryDir(source.id),
+      delay_ms: Math.min(10_000, Math.max(0, options.delayMs ?? 500)),
+      stop_on_error: options.stopOnError !== false,
+    });
+    await callDriverTool("stop_recording", {});
+    finishComputerUseTrajectory(created.metadata.id, "completed");
+    return {
+      source,
+      replay: getComputerUseTrajectory(created.metadata.id),
+      result: replayed.text ?? "Trajectory replay completed.",
+    };
+  } catch (error) {
+    try {
+      await callDriverTool("stop_recording", {});
+    } catch {}
+    finishComputerUseTrajectory(
+      created.metadata.id,
+      "error",
+      error instanceof Error ? error.message : String(error)
+    );
+    throw error;
+  }
 }
 
 async function listDriverWindows(): Promise<DriverWindow[]> {
@@ -1260,7 +1562,9 @@ async function listDriverWindows(): Promise<DriverWindow[]> {
   let rawWindows = (result.structured?.windows as Array<Record<string, unknown>>) || [];
   if (rawWindows.length === 0 && result.text) {
     try {
-      const parsed = JSON.parse(result.text) as { windows?: Array<Record<string, unknown>> };
+      const parsed = JSON.parse(result.text) as {
+        windows?: Array<Record<string, unknown>>;
+      };
       rawWindows = parsed?.windows || [];
     } catch {
       // Text wasn't JSON; fall through with what we have.
@@ -1295,11 +1599,18 @@ async function resolveWindowTarget(app?: string): Promise<{ pid: number; windowI
         `No on-screen window found for app "${app}". On-screen apps: ${available.join(", ") || "(none)"}.`
       );
     }
-    activeWindowTarget = { pid: match.pid, windowId: match.windowId, appName: match.appName };
+    activeWindowTarget = {
+      pid: match.pid,
+      windowId: match.windowId,
+      appName: match.appName,
+    };
     return { pid: match.pid, windowId: match.windowId };
   }
   if (activeWindowTarget && windows.some((w) => w.pid === activeWindowTarget?.pid)) {
-    return { pid: activeWindowTarget.pid, windowId: activeWindowTarget.windowId };
+    return {
+      pid: activeWindowTarget.pid,
+      windowId: activeWindowTarget.windowId,
+    };
   }
   const frontmost = windows[0];
   if (!frontmost) {
@@ -1341,7 +1652,10 @@ function focusApplicationNatively(app: string): boolean {
  * (cua-driver 0.6.x: get_window_state/type_text/press_key/hotkey/... — every
  * interactive tool requires a target pid) and execute it.
  */
-async function performDriverAction(typedArgs: ComputerUseArgs): Promise<DriverCallResult> {
+async function performDriverAction(
+  typedArgs: ComputerUseArgs,
+  sessionId?: string
+): Promise<DriverCallResult> {
   const action = typedArgs.action;
 
   if (action === "wait") {
@@ -1379,13 +1693,22 @@ async function performDriverAction(typedArgs: ComputerUseArgs): Promise<DriverCa
     const target = await resolveWindowTarget(typedArgs.app);
     const appName = activeWindowTarget?.appName || typedArgs.app;
     if (typedArgs.raiseWindow !== false && focusApplicationNatively(appName)) {
-      return { text: `Focused ${appName} (pid ${target.pid}) and raised its window.` };
+      return {
+        text: `Focused ${appName} (pid ${target.pid}) and raised its window.`,
+      };
     }
     if (typedArgs.raiseWindow !== false && driverHasTool("bring_to_front")) {
-      await callDriverTool("bring_to_front", { pid: target.pid, window_id: target.windowId });
-      return { text: `Focused ${appName} (pid ${target.pid}) and raised its window.` };
+      await callDriverTool("bring_to_front", {
+        pid: target.pid,
+        window_id: target.windowId,
+      });
+      return {
+        text: `Focused ${appName} (pid ${target.pid}) and raised its window.`,
+      };
     }
-    return { text: `Targeted ${appName} (pid ${target.pid}) without raising the window.` };
+    return {
+      text: `Targeted ${appName} (pid ${target.pid}) without raising the window.`,
+    };
   }
 
   if (action === "move") {
@@ -1398,6 +1721,7 @@ async function performDriverAction(typedArgs: ComputerUseArgs): Promise<DriverCa
     return callDriverTool("move_cursor", {
       x: typedArgs.coordinate[0],
       y: typedArgs.coordinate[1],
+      session: sessionId,
     });
   }
 
@@ -1405,6 +1729,7 @@ async function performDriverAction(typedArgs: ComputerUseArgs): Promise<DriverCa
   const base: Record<string, unknown> = {
     pid: target.pid,
     window_id: target.windowId,
+    session: sessionId,
   };
   if (typeof typedArgs.element === "number") base.element_index = typedArgs.element;
 
@@ -1484,6 +1809,7 @@ export async function handleComputerUse(
     requestedAction as ComputerUseAction,
     args
   ) as unknown as ComputerUseArgs;
+  const sessionId = normalizedComputerUseSessionId(context?.sessionId);
   // Safety gate: hard blocks + consent.
   assertActionAllowed(typedArgs.action, typedArgs);
 
@@ -1495,10 +1821,18 @@ export async function handleComputerUse(
     };
   }
   try {
+    let driverReady = false;
+    try {
+      await ensureDriver();
+      driverReady = true;
+      if (sessionId) await ensureDriverSession(sessionId);
+    } catch (error) {
+      if (!isFullDesktopCaptureRequest(typedArgs)) throw error;
+    }
+    if (sessionId) await ensureComputerUseTrajectoryRecording(sessionId, driverReady);
     if (isFullDesktopCaptureRequest(typedArgs)) {
       const native = await nativeScreenCapture();
       if (native) {
-        const sessionId = normalizedComputerUseSessionId(context?.sessionId);
         if (sessionId) {
           recordComputerUsePreview(
             sessionId,
@@ -1507,18 +1841,42 @@ export async function handleComputerUse(
             native.screenshotMime,
             native.filePath
           );
+          appendActiveComputerUseTurn(
+            sessionId,
+            typedArgs,
+            {
+              ok: true,
+              text: native.text,
+              filePath: native.filePath,
+              viewport: native.viewport,
+            },
+            native.screenshot,
+            native.screenshotMime
+          );
         }
         return native;
       }
     }
-    await ensureDriver();
-    const result = await performDriverAction(typedArgs);
+    if (!driverReady) throw new Error("Computer-use driver is unavailable.");
+    const result = await performDriverAction(typedArgs, sessionId ?? undefined);
+    const observedCursor = [
+      "move",
+      "click",
+      "double_click",
+      "right_click",
+      "middle_click",
+      "drag",
+      "type",
+      "key",
+      "set_value",
+    ].includes(typedArgs.action)
+      ? await observedDriverCursor(result, sessionId ?? undefined)
+      : undefined;
     let screenshot = result.screenshot;
     let screenshotMime = result.screenshotMime || "image/png";
 
     // Optional follow-up capture so the model can self-verify the action.
     let capturedAfter = false;
-    const sessionId = normalizedComputerUseSessionId(context?.sessionId);
     const refreshActivePreview =
       sessionId !== null &&
       isComputerUsePreviewActive(sessionId) &&
@@ -1531,11 +1889,14 @@ export async function handleComputerUse(
       typedArgs.action !== "wait"
     ) {
       try {
-        const after = await performDriverAction({
-          action: "capture",
-          mode: typedArgs.mode,
-          app: typedArgs.app,
-        });
+        const after = await performDriverAction(
+          {
+            action: "capture",
+            mode: typedArgs.mode,
+            app: typedArgs.app,
+          },
+          sessionId ?? undefined
+        );
         if (after.screenshot) {
           screenshot = after.screenshot;
           screenshotMime = after.screenshotMime || screenshotMime;
@@ -1548,7 +1909,14 @@ export async function handleComputerUse(
 
     const filePath = screenshot ? persistDriverScreenshot(screenshot, screenshotMime) : undefined;
     if (sessionId) {
-      recordComputerUsePreview(sessionId, typedArgs, screenshot, screenshotMime, filePath);
+      recordComputerUsePreview(
+        sessionId,
+        typedArgs,
+        screenshot,
+        screenshotMime,
+        filePath,
+        observedCursor
+      );
     }
     const viewport = screenshotDimensions(screenshot, screenshotMime);
     const dimensionsText = viewport ? ` Image size: ${viewport.width}x${viewport.height}.` : "";
@@ -1558,7 +1926,7 @@ export async function handleComputerUse(
         ? `${result.text}${dimensionsText}`
         : undefined;
 
-    return {
+    const response: ComputerUseResult = {
       action: typedArgs.action,
       ok: true,
       text,
@@ -1568,13 +1936,27 @@ export async function handleComputerUse(
       capturedAfter,
       viewport,
     };
+    appendActiveComputerUseTurn(
+      sessionId,
+      typedArgs,
+      {
+        ok: true,
+        text,
+        filePath,
+        viewport,
+        capturedAfter,
+      },
+      screenshot,
+      screenshot ? screenshotMime : undefined,
+      observedCursor
+    );
+    return response;
   } catch (error) {
     // cua-driver unavailable (e.g. not installed). For the read-only `capture`
     // action, fall back to the native OS screenshot tool so "give me a
     // screenshot" still works without the full driver.
     if (typedArgs.action === "capture") {
       const native = await nativeScreenCapture();
-      const sessionId = normalizedComputerUseSessionId(context?.sessionId);
       if (native && sessionId) {
         recordComputerUsePreview(
           sessionId,
@@ -1584,8 +1966,26 @@ export async function handleComputerUse(
           native.filePath
         );
       }
-      if (native) return native;
+      if (native) {
+        appendActiveComputerUseTurn(
+          sessionId,
+          typedArgs,
+          {
+            ok: true,
+            text: native.text,
+            filePath: native.filePath,
+            viewport: native.viewport,
+          },
+          native.screenshot,
+          native.screenshotMime
+        );
+        return native;
+      }
     }
+    appendActiveComputerUseTurn(sessionId, typedArgs, {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return {
       action: typedArgs.action,
       ok: false,
@@ -1596,6 +1996,12 @@ export async function handleComputerUse(
 
 /** Stop the cua-driver process (called on agent shutdown). */
 export function stopComputerUseDriver(): void {
+  if (activeComputerUseTrajectory) {
+    clearTimeout(activeComputerUseTrajectory.idleTimer);
+    finishComputerUseTrajectory(activeComputerUseTrajectory.id, "interrupted");
+    activeComputerUseTrajectory = null;
+  }
+  declaredDriverSessions.clear();
   if (driverProcess) {
     try {
       driverProcess.kill();
@@ -1631,7 +2037,9 @@ async function runDriverCommand(
       resolve({ ok, json, stdout: trimmed, stderr: stderr.trim() });
     };
     try {
-      const proc = spawnDriver(command, subcommand, { stdio: ["ignore", "pipe", "pipe"] });
+      const proc = spawnDriver(command, subcommand, {
+        stdio: ["ignore", "pipe", "pipe"],
+      });
       const timer = setTimeout(() => {
         try {
           proc.kill("SIGKILL");
@@ -1785,7 +2193,10 @@ export async function requestComputerUsePermissionsGrant(): Promise<{
   message: string;
 }> {
   if (process.platform !== "darwin") {
-    return { ok: false, message: "Permission grants are only needed on macOS." };
+    return {
+      ok: false,
+      message: "Permission grants are only needed on macOS.",
+    };
   }
   const { command } = getCuaDriverResolution();
   const res = await runDriverCommand(["permissions", "grant"], 60_000, command);

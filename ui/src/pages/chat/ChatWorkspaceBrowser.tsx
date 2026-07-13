@@ -10,6 +10,11 @@ import {
 } from "react";
 import { apiFetch } from "@/lib/auth";
 import { cn } from "@/lib/utils";
+import {
+  containerPointToPreview,
+  previewPointToContainer,
+  type PreviewSize,
+} from "./previewGeometry";
 
 interface BrowserPage {
   id: string;
@@ -212,6 +217,7 @@ export function ChatWorkspaceBrowser({
   const stateRequestInFlightRef = useRef(false);
   const onTitleChangeRef = useRef(onTitleChange);
   const [browserViewport, setBrowserViewport] = useState(DEFAULT_BROWSER_VIEWPORT);
+  const [previewSurfaceSize, setPreviewSurfaceSize] = useState<PreviewSize | null>(null);
   onTitleChangeRef.current = onTitleChange;
 
   const syncPage = useCallback((nextPage: BrowserPage | null) => {
@@ -346,6 +352,7 @@ export function ChatWorkspaceBrowser({
       if (timer !== null) window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         const bounds = surface.getBoundingClientRect();
+        setPreviewSurfaceSize({ width: bounds.width, height: bounds.height });
         const width = Math.min(2560, Math.max(320, Math.round(bounds.width)));
         const height = Math.min(1600, Math.max(320, Math.round(bounds.height)));
         setBrowserViewport((current) =>
@@ -505,22 +512,14 @@ export function ChatWorkspaceBrowser({
   const handlePreviewClick = (event: MouseEvent<HTMLDivElement>) => {
     if (!page || !preview?.viewport) return;
     const bounds = event.currentTarget.getBoundingClientRect();
-    if (bounds.width <= 0 || bounds.height <= 0) return;
-    const viewportAspect = preview.viewport.width / preview.viewport.height;
-    const surfaceAspect = bounds.width / bounds.height;
-    const renderedWidth =
-      surfaceAspect > viewportAspect ? bounds.height * viewportAspect : bounds.width;
-    const renderedHeight =
-      surfaceAspect > viewportAspect ? bounds.height : bounds.width / viewportAspect;
-    const offsetX = (bounds.width - renderedWidth) / 2;
-    const offsetY = (bounds.height - renderedHeight) / 2;
-    const localX = event.clientX - bounds.left - offsetX;
-    const localY = event.clientY - bounds.top - offsetY;
-    if (localX < 0 || localY < 0 || localX > renderedWidth || localY > renderedHeight) return;
+    const point = containerPointToPreview(
+      { width: bounds.width, height: bounds.height },
+      preview.viewport,
+      { x: event.clientX - bounds.left, y: event.clientY - bounds.top }
+    );
+    if (!point) return;
     event.currentTarget.focus();
-    const x = (localX / renderedWidth) * preview.viewport.width;
-    const y = (localY / renderedHeight) * preview.viewport.height;
-    void sendPageInput("pointer/click", { x, y });
+    void sendPageInput("pointer/click", { x: point.x, y: point.y });
   };
 
   const handlePreviewWheel = (event: WheelEvent<HTMLDivElement>) => {
@@ -556,12 +555,14 @@ export function ChatWorkspaceBrowser({
   const cursorStyle = (() => {
     const cursor = preview?.cursor;
     const viewport = preview?.viewport;
-    if (!cursor?.visible || cursor.source !== "agent" || !viewport?.width || !viewport.height) {
+    if (!cursor?.visible || cursor.source !== "agent" || !viewport || !previewSurfaceSize) {
       return null;
     }
+    const point = previewPointToContainer(previewSurfaceSize, viewport, cursor);
+    if (!point) return null;
     return {
-      left: `${Math.min(100, Math.max(0, (cursor.x / viewport.width) * 100))}%`,
-      top: `${Math.min(100, Math.max(0, (cursor.y / viewport.height) * 100))}%`,
+      left: `${point.x}px`,
+      top: `${point.y}px`,
     };
   })();
 

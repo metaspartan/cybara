@@ -8,12 +8,13 @@ import {
 import { isSessionStatusActive } from "../../src/api/routes/_shared";
 
 describe("session status snapshots", () => {
-  test("classifies only in-progress statuses as active", () => {
+  test("keeps a turn active through tool results and errors until idle", () => {
     expect(isSessionStatusActive("thinking")).toBe(true);
     expect(isSessionStatusActive("generating")).toBe(true);
     expect(isSessionStatusActive("tool_executing")).toBe(true);
     expect(isSessionStatusActive("compacting")).toBe(true);
-    expect(isSessionStatusActive("tool_completed")).toBe(false);
+    expect(isSessionStatusActive("tool_completed")).toBe(true);
+    expect(isSessionStatusActive("error")).toBe(true);
     expect(isSessionStatusActive("idle")).toBe(false);
   });
 
@@ -259,7 +260,7 @@ describe("session status snapshots", () => {
     });
   });
 
-  test("does not list tool completion result snapshots as active sessions", () => {
+  test("keeps tool completion snapshots active until the turn becomes idle", () => {
     const sessionId = `status-tool-result-inactive-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const baseTimestamp = Date.now();
 
@@ -287,7 +288,7 @@ describe("session status snapshots", () => {
     expect(snapshot).not.toBeNull();
     expect(snapshot?.status).toBe("tool_completed");
     expect(snapshot?.activities[0]?.phase).toBe("result");
-    expect(listSessionStatusSnapshots().some((entry) => entry.sessionId === sessionId)).toBe(false);
+    expect(listSessionStatusSnapshots().some((entry) => entry.sessionId === sessionId)).toBe(true);
 
     broadcastStatus({
       status: "idle",
