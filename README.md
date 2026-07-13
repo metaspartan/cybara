@@ -19,7 +19,7 @@
   <a href="https://github.com/metaspartan/cybara/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/metaspartan/cybara/ci.yml?branch=main&label=CI&logo=github" alt="CI" /></a>
   <a href="LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
   <a href="https://github.com/metaspartan/cybara/releases"><img src="https://img.shields.io/github/v/release/metaspartan/cybara?include_prereleases&display_name=tag&sort=semver" alt="Release" /></a>
-  <a href="https://github.com/metaspartan/cybara/releases"><img src="https://img.shields.io/github/downloads/metaspartan/cybara/total?label=downloads" alt="Total Downloads" /></a>
+  <a href="https://github.com/metaspartan/cybara/releases"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fcybara.ai%2Fdownloads-badge.json" alt="Total Downloads" /></a>
   <img src="https://img.shields.io/badge/runtime-Bun-f9f1e1?logo=bun" alt="Bun" />
   <img src="https://img.shields.io/badge/language-TypeScript-blue?logo=typescript" alt="TypeScript" />
   <img src="https://img.shields.io/badge/ui-React_19-61dafb?logo=react" alt="React" />

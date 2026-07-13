@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
 import { RELEASES_URL } from "../content";
+import {
+  formatDownloadTotal,
+  sumReleaseDownloads,
+  type GithubDownloadRelease,
+} from "../../downloadStats";
 
 const LATEST_RELEASE_API = "https://api.github.com/repos/metaspartan/cybara/releases/latest";
 
@@ -127,12 +132,34 @@ export function shortSha(sha256?: string): string {
   return sha256.length > 12 ? `${sha256.slice(0, 12)}…` : sha256;
 }
 
+const DOWNLOAD_TOTAL_API = "/api/downloads";
 const ALL_RELEASES_API = "https://api.github.com/repos/metaspartan/cybara/releases?per_page=100";
-const DOWNLOAD_TOTAL_CACHE_KEY = "cybara.site.downloadTotal";
+const DOWNLOAD_TOTAL_CACHE_KEY = "cybara.site.downloadTotal.v2";
 const DOWNLOAD_TOTAL_CACHE_TTL_MS = 30 * 60 * 1000;
 
-interface GithubReleasesListResponse {
-  assets?: Array<{ download_count?: number }>;
+interface DownloadTotalResponse {
+  total?: number;
+}
+
+async function fetchDownloadTotal(signal: AbortSignal): Promise<number> {
+  try {
+    const response = await fetch(DOWNLOAD_TOTAL_API, {
+      headers: { Accept: "application/json" },
+      signal,
+    });
+    if (!response.ok) throw new Error(`Download API returned ${response.status}`);
+    const result = (await response.json()) as DownloadTotalResponse;
+    if (typeof result.total === "number") return result.total;
+  } catch (error) {
+    if (signal.aborted) throw error;
+  }
+  const response = await fetch(ALL_RELEASES_API, {
+    headers: { Accept: "application/vnd.github+json" },
+    signal,
+  });
+  if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
+  const releases = (await response.json()) as GithubDownloadRelease[];
+  return sumReleaseDownloads(Array.isArray(releases) ? releases : []);
 }
 
 function readCachedDownloadTotal(): number | null {
@@ -155,25 +182,9 @@ export function useDownloadTotal(): number | null {
     let active = true;
     const controller = new AbortController();
 
-    fetch(ALL_RELEASES_API, {
-      headers: { Accept: "application/vnd.github+json" },
-      signal: controller.signal,
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
-        return response.json() as Promise<GithubReleasesListResponse[]>;
-      })
-      .then((releases) => {
-        if (!active || !Array.isArray(releases)) return;
-        const sum = releases.reduce(
-          (releaseSum, release) =>
-            releaseSum +
-            (release.assets ?? []).reduce(
-              (assetSum, asset) => assetSum + (asset.download_count ?? 0),
-              0
-            ),
-          0
-        );
+    fetchDownloadTotal(controller.signal)
+      .then((sum) => {
+        if (!active) return;
         setTotal(sum);
         try {
           sessionStorage.setItem(
@@ -197,9 +208,4 @@ export function useDownloadTotal(): number | null {
   return total;
 }
 
-export function formatDownloadTotal(total: number): string {
-  if (total >= 1_000_000) return `${(total / 1_000_000).toFixed(1)}M`;
-  if (total >= 10_000) return `${Math.round(total / 1000)}k`;
-  if (total >= 1_000) return `${(total / 1000).toFixed(1)}k`;
-  return `${total}`;
-}
+export { formatDownloadTotal };

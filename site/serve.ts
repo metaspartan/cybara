@@ -1,9 +1,43 @@
 import { serve, file } from "bun";
 import { join, resolve, sep, extname } from "path";
+import {
+  formatDownloadTotal,
+  sumReleaseDownloads,
+  type GithubDownloadRelease,
+} from "./downloadStats";
 
 const root = resolve(import.meta.dir, "dist");
 const port = Number(process.env.PORT ?? 3399);
 const indexPath = join(root, "index.html");
+const releasesApi = "https://api.github.com/repos/metaspartan/cybara/releases";
+const downloadCacheTtlMs = 30 * 60 * 1000;
+let downloadCache: { total: number; at: number } | null = null;
+
+async function fetchDownloadTotal(): Promise<number> {
+  const headers: Record<string, string> = { Accept: "application/vnd.github+json" };
+  const token = process.env.GITHUB_TOKEN?.trim();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const fetchPage = async (
+    page: number
+  ): Promise<{ releases: GithubDownloadRelease[]; link: string | null }> => {
+    const response = await fetch(`${releasesApi}?per_page=100&page=${page}`, { headers });
+    if (!response.ok) throw new Error(`GitHub API returned ${response.status}`);
+    const batch = (await response.json()) as GithubDownloadRelease[];
+    if (!Array.isArray(batch)) throw new Error("GitHub API returned an invalid release list");
+    return { releases: batch, link: response.headers.get("link") };
+  };
+  const first = await fetchPage(1);
+  const lastPageMatch = first.link?.match(/[?&]page=(\d+)>; rel="last"/);
+  const lastPage = Math.min(50, Math.max(1, Number(lastPageMatch?.[1] ?? 1)));
+  const remaining = await Promise.all(
+    Array.from({ length: lastPage - 1 }, (_, index) => fetchPage(index + 2))
+  );
+  const releases = [...first.releases];
+  for (const page of remaining) {
+    releases.push(...page.releases);
+  }
+  return sumReleaseDownloads(releases);
+}
 
 const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -54,6 +88,32 @@ async function encoded(
 
 async function respond(request: Request): Promise<Response> {
   const url = new URL(request.url);
+  if (url.pathname === "/api/downloads" || url.pathname === "/downloads-badge.json") {
+    const now = Date.now();
+    if (!downloadCache || now - downloadCache.at > downloadCacheTtlMs) {
+      try {
+        downloadCache = { total: await fetchDownloadTotal(), at: now };
+      } catch {
+        if (!downloadCache) return new Response("Download count unavailable", { status: 502 });
+      }
+    }
+    const body =
+      url.pathname === "/downloads-badge.json"
+        ? {
+            schemaVersion: 1,
+            label: "downloads",
+            message: formatDownloadTotal(downloadCache.total),
+            color: "blue",
+          }
+        : {
+            total: downloadCache.total,
+            excludedAssets: ["latest.json"],
+            updatedAt: new Date(downloadCache.at).toISOString(),
+          };
+    return Response.json(body, {
+      headers: { ...SECURITY_HEADERS, "cache-control": "public, max-age=1800" },
+    });
+  }
   const requested = url.pathname === "/" ? "/index.html" : url.pathname;
   const target = resolve(root, `.${requested}`);
 

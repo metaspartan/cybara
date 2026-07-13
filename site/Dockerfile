@@ -11,5 +11,6 @@ WORKDIR /app
 ENV PORT=3399
 COPY --from=build /repo/site/dist ./dist
 COPY --from=build /repo/site/serve.ts ./serve.ts
+COPY --from=build /repo/site/downloadStats.ts ./downloadStats.ts
 EXPOSE 3399
 CMD ["bun", "run", "serve.ts"]
