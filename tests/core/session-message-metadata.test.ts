@@ -81,4 +81,33 @@ describe("persisted session message metadata", () => {
     expect(parsed.tool_calls?.[0]?.args?.patch).toBe(patch);
     expect(parsed.tool_calls?.[0]?.result?.changes?.[0]?.diff).toBe(patch);
   });
+
+  test("persists screenshot paths without redundant image bytes", () => {
+    const metadata = JSON.stringify({
+      tool_calls: [
+        {
+          id: "capture-1",
+          name: "computer_use",
+          result: JSON.stringify({
+            action: "capture",
+            ok: true,
+            screenshot: "a".repeat(20_000),
+            screenshotMime: "image/png",
+            filePath: "/Users/test/.cybara/screenshots/screen.png",
+          }),
+        },
+      ],
+    });
+
+    const persisted = capSessionMessageMetadata(metadata);
+    const parsed = JSON.parse(persisted || "{}") as {
+      tool_calls?: Array<{ result?: Record<string, unknown> }>;
+    };
+    expect(parsed.tool_calls?.[0]?.result).toMatchObject({
+      action: "capture",
+      filePath: "/Users/test/.cybara/screenshots/screen.png",
+      contentType: "image/png",
+    });
+    expect(parsed.tool_calls?.[0]?.result).not.toHaveProperty("screenshot");
+  });
 });

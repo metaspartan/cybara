@@ -79,3 +79,11 @@ export function sanitizeToolMediaResult(result: unknown): Record<string, unknown
   if (viewport) payload.viewport = viewport;
   return payload;
 }
+
+export function extractScreenshotPathFromText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const match = value.match(
+    /((?:[A-Za-z]:[\\/]|\/)[^\s`"'<>]*[\\/]screenshots[\\/][^\s`"'<>]+\.(?:png|jpe?g|gif|webp))/i
+  );
+  return match?.[1];
+}

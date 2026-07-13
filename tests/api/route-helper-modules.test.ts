@@ -18,7 +18,10 @@ import {
   truncateInlineContext,
 } from "../../src/api/routes/lsp-ide";
 import { formatSkillInstallSpec } from "../../src/api/routes/skill-formatting";
-import { sanitizeToolMediaResult } from "../../src/api/chat-media-result";
+import {
+  extractScreenshotPathFromText,
+  sanitizeToolMediaResult,
+} from "../../src/core/tool-media-result";
 
 describe("route helper modules", () => {
   test("validates provider credentials and base URLs before persistence", () => {
@@ -115,6 +118,14 @@ describe("route helper modules", () => {
       viewport: { width: 1920, height: 1080 },
     });
     expect(result).not.toHaveProperty("screenshot");
+    expect(
+      extractScreenshotPathFromText(
+        "Screenshot saved to `/Users/test/.cybara/screenshots/screen.png`"
+      )
+    ).toBe("/Users/test/.cybara/screenshots/screen.png");
+    expect(
+      extractScreenshotPathFromText("Saved C:\\Users\\test\\.cybara\\screenshots\\screen-2.png")
+    ).toBe("C:\\Users\\test\\.cybara\\screenshots\\screen-2.png");
   });
 
   test("formats skill install specs without coupling routes to skill internals", () => {

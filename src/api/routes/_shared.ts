@@ -14,7 +14,10 @@ import type { ChatMessage } from "../chat";
 import type { WalletChain, WalletTokenChain } from "../../core/wallet";
 import { sanitizeAssistantContent } from "../../core/llm/text-tool-calls";
 import { sanitizeProcessThoughtText } from "../chat-formatting";
-import { sanitizeToolMediaResult } from "../chat-media-result";
+import {
+  extractScreenshotPathFromText,
+  sanitizeToolMediaResult,
+} from "../../core/tool-media-result";
 import {
   providerManager,
   providers,
@@ -1082,7 +1085,20 @@ export function sanitizeSessionMessages(
               ? sanitizeArtifactToolResult(tc.result)
               : undefined;
           const todoResult = isTodoToolCall(tc) ? sanitizeTodoToolResult(tc.result) : undefined;
-          const mediaResult = sanitizeToolMediaResult(tc.result);
+          const recoveredScreenshotPath = extractScreenshotPathFromText(content);
+          const toolArgs = isObjectRecord(tc.args) ? tc.args : undefined;
+          const isCaptureTool =
+            tc.name === "screenshot" ||
+            tc.name === "capture" ||
+            (tc.name === "computer_use" && toolArgs?.action === "capture");
+          const mediaResult =
+            sanitizeToolMediaResult(tc.result) ??
+            (recoveredScreenshotPath && isCaptureTool && existsSync(recoveredScreenshotPath)
+              ? sanitizeToolMediaResult({
+                  action: "capture",
+                  filePath: recoveredScreenshotPath,
+                })
+              : undefined);
           if (mediaResult) {
             sanitized.result = mediaResult;
           } else if (artifactResult) {
