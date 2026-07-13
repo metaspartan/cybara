@@ -25,6 +25,8 @@ describe("desktop updater wiring", () => {
       "utf8"
     );
     const tauriConfig = readFileSync(join(ROOT_DIR, "src-tauri", "tauri.conf.json"), "utf8");
+    const infoPlist = readFileSync(join(ROOT_DIR, "src-tauri", "Info.plist"), "utf8");
+    const entitlements = readFileSync(join(ROOT_DIR, "src-tauri", "entitlements.plist"), "utf8");
 
     expect(cargoToml).toContain('tauri-plugin-updater = "2"');
     expect(cargoToml).toContain('tauri-plugin-process = "2"');
@@ -40,6 +42,8 @@ describe("desktop updater wiring", () => {
     expect(tauriConfig).toContain('"updater"');
     expect(tauriConfig).toContain('"endpoints": []');
     expect(tauriConfig).toContain('"pubkey": "dev-placeholder-updater-key"');
+    expect(infoPlist).toContain("NSMicrophoneUsageDescription");
+    expect(entitlements).toContain("com.apple.security.device.audio-input");
   });
 
   test("tray update state becomes busy before frontend installation begins", () => {

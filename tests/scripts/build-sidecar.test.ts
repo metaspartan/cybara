@@ -128,6 +128,19 @@ describe("build-sidecar host target mapping", () => {
     ]);
   });
 
+  test("packages sharp dependencies for the host speech runtime", () => {
+    const dir = mkdtempSync(join(tmpdir(), "cybara-sharp-package-test-"));
+    try {
+      const runtimeTarget = getRuntimeTargetFor(getHostTargetFor(process.platform, process.arch));
+      copyTransformersRuntime(dir, runtimeTarget);
+
+      expect(existsSync(join(dir, "detect-libc", "package.json"))).toBe(true);
+      expect(existsSync(join(dir, "@img", "colour", "package.json"))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("copyFilePortable copies sidecar binary in a cross-platform way", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cybara-sidecar-test-"));
     const source = join(dir, "source.bin");

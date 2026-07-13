@@ -285,6 +285,8 @@ function copySharpRuntime(targetNodeModulesDir: string, runtimeTarget: RuntimeTa
   if (availableRuntimePackages.length === 0) return false;
 
   copyOptionalPackage("sharp", targetNodeModulesDir);
+  copyOptionalPackage("detect-libc", targetNodeModulesDir);
+  copyOptionalPackage("@img/colour", targetNodeModulesDir);
   for (const packageName of availableRuntimePackages) {
     copyOptionalPackage(packageName, targetNodeModulesDir);
   }
