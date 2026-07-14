@@ -6,7 +6,6 @@ import { CybaraPet } from "@/components/CybaraPet";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { GatewayStartupFailure } from "@/components/GatewayStartupFailure";
 import { Sidebar, SidebarProvider, useSidebar } from "@/components/layout/Sidebar";
-import { UpdateBanner } from "@/components/layout/UpdateBanner";
 import { ToastContainer } from "@/components/ui/Toast";
 import { settingsApi, setupApi } from "@/lib/api";
 import { readGatewayStartupStatus } from "@/lib/desktopGatewayStartup";
@@ -154,7 +153,6 @@ function MainContent({ children }: { children: React.ReactNode }) {
         "ml-0"
       )}
     >
-      <UpdateBanner />
       {children}
     </div>
   );

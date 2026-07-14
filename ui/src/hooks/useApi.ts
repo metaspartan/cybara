@@ -868,27 +868,6 @@ export function useInfo() {
   });
 }
 
-export interface UpdateCheckData {
-  updateAvailable: boolean;
-  latestVersion: string | null;
-  currentVersion: string;
-  releaseUrl: string | null;
-  checkedAt: number;
-  cached: boolean;
-  disabled?: boolean;
-}
-
-export function useUpdateCheck() {
-  return useQuery({
-    queryKey: ["update-check"],
-    queryFn: () => fetchApi<UpdateCheckData>("/update-check"),
-    // The backend throttles to once per 6h and caches to disk, so polling here
-    // is cheap and keeps the banner fresh without hammering the GitHub API.
-    refetchInterval: 60 * 60 * 1000,
-    retry: false,
-  });
-}
-
 export function useTools() {
   return useQuery({
     queryKey: ["tools"],
