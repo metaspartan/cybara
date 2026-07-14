@@ -423,7 +423,7 @@ function relativeTime(value?: number): string {
 
 function InlineMarkdown({ line }: { line: string }): React.ReactElement {
   return (
-    <Text>
+    <Text wrap="wrap">
       {splitTerminalInline(line).map((part, index) => (
         <Text
           key={index}
@@ -443,30 +443,24 @@ function InlineMarkdown({ line }: { line: string }): React.ReactElement {
 function MessageBody({
   content,
   maxLines,
-  maxColumns,
 }: {
   content: string;
   maxLines?: number;
-  maxColumns: number;
 }): React.ReactElement {
-  const lines = transcriptWindow(
-    content,
-    maxLines ?? Number.MAX_SAFE_INTEGER,
-    maxColumns,
-  );
+  const lines = transcriptWindow(content, maxLines ?? Number.MAX_SAFE_INTEGER);
   return (
-    <Box flexDirection="column">
+    <Box flexDirection="column" width="100%">
       {lines.map((line, index) => {
         if (line.hidden) {
           return (
-            <Text key={index} color="#9ca6b4">
+            <Text key={index} color="#9ca6b4" wrap="wrap">
               {line.text}
             </Text>
           );
         }
         if (line.fence) {
           return (
-            <Text key={index} color="magenta">
+            <Text key={index} color="magenta" wrap="wrap">
               {line.fence === "open"
                 ? `code${line.language ? ` · ${line.language}` : ""}`
                 : "end code"}
@@ -475,7 +469,7 @@ function MessageBody({
         }
         if (line.code) {
           return (
-            <Text key={index} color="green">
+            <Text key={index} color="green" wrap="wrap">
               {line.text || " "}
             </Text>
           );
@@ -483,7 +477,7 @@ function MessageBody({
         const listItem = parseTerminalListItem(line.text);
         if (listItem?.kind === "task") {
           return (
-            <Text key={index}>
+            <Text key={index} wrap="wrap">
               {listItem.indent}
               <Text color={listItem.checked ? "green" : "gray"}>
                 {listItem.checked ? "☑ " : "☐ "}
@@ -494,7 +488,7 @@ function MessageBody({
         }
         if (listItem?.kind === "bullet") {
           return (
-            <Text key={index}>
+            <Text key={index} wrap="wrap">
               {listItem.indent}
               <Text color="cyan">• </Text>
               <InlineMarkdown line={listItem.content} />
@@ -503,7 +497,7 @@ function MessageBody({
         }
         if (listItem?.kind === "ordered") {
           return (
-            <Text key={index}>
+            <Text key={index} wrap="wrap">
               {listItem.indent}
               <Text color="cyan">{listItem.number}. </Text>
               <InlineMarkdown line={listItem.content} />
@@ -512,14 +506,14 @@ function MessageBody({
         }
         if (/^#{1,6}\s/.test(line.text)) {
           return (
-            <Text key={index} bold>
+            <Text key={index} bold wrap="wrap">
               {line.text.replace(/^#{1,6}\s/, "")}
             </Text>
           );
         }
         if (/^\s*>\s?/.test(line.text)) {
           return (
-            <Text key={index} color="gray">
+            <Text key={index} color="gray" wrap="wrap">
               ▏ {line.text.replace(/^\s*>\s?/, "")}
             </Text>
           );
@@ -615,11 +609,10 @@ function MessageView({
           {"  ⇄ "}Transferred from {transfer.fromAgentName} to {transfer.toAgentName}
         </Text>
       ))}
-      <Box paddingLeft={2}>
+      <Box paddingLeft={2} width="100%">
         <MessageBody
           content={message.content}
           maxLines={maxLines}
-          maxColumns={maxColumns}
         />
       </Box>
     </Box>
@@ -647,8 +640,8 @@ function LiveRunView({
         maxColumns={maxColumns}
       />
       {content ? (
-        <Box paddingLeft={2}>
-          <MessageBody content={content} maxLines={8} maxColumns={maxColumns} />
+        <Box paddingLeft={2} width="100%">
+          <MessageBody content={content} maxLines={8} />
         </Box>
       ) : detail ? (
         <Text color="gray">  {compact(detail, Math.max(12, maxColumns - 4))}</Text>

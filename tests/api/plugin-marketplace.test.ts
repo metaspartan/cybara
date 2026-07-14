@@ -4,10 +4,12 @@ import { tmpdir } from "os";
 import { join } from "path";
 
 import {
+  type MarketplacePluginEntry,
+  type MarketplacePluginSummary,
   marketplacePluginId,
+  paginateMarketplacePlugins,
   parsePluginMarketplace,
   prepareMarketplacePluginRoot,
-  type MarketplacePluginEntry,
 } from "../../src/api/plugin-marketplace";
 import { installLocalPluginFromPath, listInstalledPlugins } from "../../src/core/plugins";
 
@@ -27,6 +29,37 @@ function makeTempRoot(): string {
 }
 
 describe("plugin marketplace", () => {
+  test("paginates the full marketplace and clamps invalid page requests", () => {
+    const plugins: MarketplacePluginSummary[] = Array.from({ length: 53 }, (_, index) => ({
+      id: `plugin-${index + 1}`,
+      name: `Plugin ${String(index + 1).padStart(2, "0")}`,
+      version: "Latest",
+      description: "Plugin bundle",
+      category: "Extension",
+      marketplaceId: "official-community",
+      marketplace: "Official community",
+      capabilities: ["Plugin bundle"],
+      installed: false,
+      enabled: false,
+    }));
+
+    const middle = paginateMarketplacePlugins(plugins, 2, 20);
+    expect(middle.page).toBe(2);
+    expect(middle.page_count).toBe(3);
+    expect(middle.page_size).toBe(20);
+    expect(middle.total).toBe(53);
+    expect(middle.plugins.map((plugin) => plugin.id)).toEqual(
+      Array.from({ length: 20 }, (_, index) => `plugin-${index + 21}`)
+    );
+
+    const clamped = paginateMarketplacePlugins(plugins, 99, 20);
+    expect(clamped.page).toBe(3);
+    expect(clamped.plugins).toHaveLength(13);
+
+    const empty = paginateMarketplacePlugins([], -4, 0);
+    expect(empty).toMatchObject({ page: 1, page_count: 1, page_size: 1, total: 0, plugins: [] });
+  });
+
   test("parses plugin bundles and rejects malformed or unsupported sources", () => {
     const parsed = parsePluginMarketplace({
       plugins: [

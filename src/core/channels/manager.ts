@@ -42,6 +42,17 @@ import {
 
 const log = createLogger("ChannelManager");
 
+export const CHANNEL_SECRET_MASK = "••••••••";
+const MASKED_SECRET_SENTINELS = new Set([CHANNEL_SECRET_MASK, "***redacted***"]);
+
+function stripMaskedSecretValues(config: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(config).filter(
+      ([, value]) => !(typeof value === "string" && MASKED_SECRET_SENTINELS.has(value))
+    )
+  );
+}
+
 export {
   telegramSessions,
   discordSessions,
@@ -104,7 +115,7 @@ export class ChannelManager {
           const fieldName = field.name;
           if (rawConfig[fieldName] !== undefined) {
             if (field.type === "password") {
-              maskedConfig[fieldName] = "••••••••";
+              maskedConfig[fieldName] = CHANNEL_SECRET_MASK;
             } else {
               maskedConfig[fieldName] = rawConfig[fieldName];
             }
@@ -244,15 +255,18 @@ export class ChannelManager {
     const existingType = existing.type as ChannelType;
     const existingEnabled = !!existing.enabled;
     const existingConfig = parseChannelConfig(existing.config);
-    const mergedConfig = updates.config ? { ...existingConfig, ...updates.config } : existingConfig;
+    const incomingConfig = updates.config
+      ? stripMaskedSecretValues(parseChannelConfig(updates.config))
+      : undefined;
+    const mergedConfig = incomingConfig ? { ...existingConfig, ...incomingConfig } : existingConfig;
     const nextEnabled = updates.enabled !== undefined ? updates.enabled : existingEnabled;
     this.validateConfig(existingType, mergedConfig);
 
     let finalUpdates = updates;
-    if (updates.config && existing.config) {
+    if (incomingConfig) {
       finalUpdates = {
         ...updates,
-        config: mergedConfig,
+        config: existing.config ? mergedConfig : incomingConfig,
       };
     }
 
@@ -260,7 +274,7 @@ export class ChannelManager {
 
     const isDisabling = updates.enabled === false && existingEnabled;
     const isEnabling = updates.enabled === true && !existingEnabled;
-    const configUpdateKeys = updates.config ? Object.keys(updates.config) : [];
+    const configUpdateKeys = incomingConfig ? Object.keys(incomingConfig) : [];
     const hasConfigUpdate = configUpdateKeys.length > 0;
     const hasAdapterConfigUpdate = configUpdateKeys.some(
       (key) => key !== CHANNEL_AGENT_ID_KEY && key !== CHANNEL_MODEL_ROUTER_KEY

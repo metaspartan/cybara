@@ -1055,6 +1055,7 @@ const routes: Record<string, RouteHandler> = {
         config.setChatAppearanceSettings(value);
         continue;
       }
+      if (value === "***redacted***") continue;
       config.set(key, value);
     }
     return {
@@ -2808,9 +2809,13 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/plugins/marketplace": async (_body, params) => {
     const query = typeof params?.q === "string" ? params.q : undefined;
-    const rawLimit = Number.parseInt(String(params?.limit ?? ""), 10);
-    const limit = Number.isFinite(rawLimit) ? rawLimit : undefined;
-    return { plugins: await discoverMarketplacePlugins({ query, limit }) };
+    const filter =
+      params?.filter === "installed" || params?.filter === "available" ? params.filter : "all";
+    const rawPage = Number.parseInt(String(params?.page ?? ""), 10);
+    const rawPageSize = Number.parseInt(String(params?.page_size ?? params?.limit ?? ""), 10);
+    const page = Number.isFinite(rawPage) ? rawPage : undefined;
+    const pageSize = Number.isFinite(rawPageSize) ? rawPageSize : undefined;
+    return await discoverMarketplacePlugins({ query, filter, page, pageSize });
   },
   "POST /api/plugins/marketplace/install": async (body) => {
     const record =

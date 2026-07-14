@@ -259,6 +259,43 @@ function upsertRawConfig(key: string, value: string): void {
   }
 }
 
+function readRawConfig(key: string): string | undefined {
+  const dbPath = join(testHome, ".cybara", "data", "platform.db");
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    const row = db.query("SELECT value FROM config WHERE key = ?").get(key) as {
+      value: string;
+    } | null;
+    return row?.value;
+  } finally {
+    db.close();
+  }
+}
+
+function readRawChannelConfig(id: string): string | undefined {
+  const dbPath = join(testHome, ".cybara", "data", "platform.db");
+  const db = new Database(dbPath, { readonly: true });
+  try {
+    const row = db.query("SELECT config FROM channels WHERE id = ?").get(id) as {
+      config: string;
+    } | null;
+    return row?.config;
+  } finally {
+    db.close();
+  }
+}
+
+function openSealedValue(context: string, value: string): string {
+  const prefix = "cybara-secret:v1:";
+  if (!value.startsWith(prefix)) return value;
+  const key = readFileSync(join(testHome, ".cybara", "secure", "storage.key"));
+  const payload = Buffer.from(value.slice(prefix.length), "base64url");
+  const decipher = createDecipheriv("aes-256-gcm", key, payload.subarray(0, 12));
+  decipher.setAAD(Buffer.from(context, "utf8"));
+  decipher.setAuthTag(payload.subarray(12, 28));
+  return Buffer.concat([decipher.update(payload.subarray(28)), decipher.final()]).toString("utf8");
+}
+
 function insertRawSession(
   sessionId: string,
   agentId: string,
@@ -1515,6 +1552,42 @@ describe("Channels API", () => {
     });
     expect(status).toBe(400);
     expect(typeof data.error).toBe("string");
+  });
+
+  test("PUT /api/channels/:id ignores masked secret values echoed back by clients", async () => {
+    const created = await api("POST", "/api/channels", {
+      name: `webhook-mask-${Date.now()}`,
+      type: "webhook",
+      config: { secret: "real-hmac-secret" },
+    });
+    expect(created.status).toBe(200);
+    const channelId = created.data.id as string;
+
+    const fetched = await api("GET", `/api/channels/${channelId}`);
+    expect(fetched.status).toBe(200);
+    expect(fetched.data.config.secret).toBe("••••••••");
+
+    const roundTrip = await api("PUT", `/api/channels/${channelId}`, {
+      config: fetched.data.config,
+    });
+    expect(roundTrip.status).toBe(200);
+    expect(roundTrip.data.success).toBe(true);
+
+    const storedAfterEcho = JSON.parse(
+      openSealedValue(`channel:${channelId}:config`, readRawChannelConfig(channelId) ?? "")
+    ) as Record<string, unknown>;
+    expect(storedAfterEcho.secret).toBe("real-hmac-secret");
+
+    const rotate = await api("PUT", `/api/channels/${channelId}`, {
+      config: { secret: "rotated-hmac-secret" },
+    });
+    expect(rotate.status).toBe(200);
+    const storedAfterRotate = JSON.parse(
+      openSealedValue(`channel:${channelId}:config`, readRawChannelConfig(channelId) ?? "")
+    ) as Record<string, unknown>;
+    expect(storedAfterRotate.secret).toBe("rotated-hmac-secret");
+
+    await api("DELETE", `/api/channels/${channelId}`);
   });
 
   test("POST /api/channels/telegram/setup should validate bot token", async () => {
@@ -3297,6 +3370,57 @@ describe("Config API", () => {
     const getRes = await api("GET", "/api/config");
     expect(getRes.status).toBe(200);
     expect(getRes.data[key]).toBe(value);
+  });
+
+  test("PUT /api/config ignores redacted sentinel values echoed back by clients", async () => {
+    const key = `routes_probe_credential_${Date.now()}`;
+    const secret = `secret-${Date.now()}`;
+
+    const putRes = await api("PUT", "/api/config", { [key]: secret });
+    expect(putRes.status).toBe(200);
+
+    const getRes = await api("GET", "/api/config");
+    expect(getRes.status).toBe(200);
+    expect(getRes.data[key]).toBe("***redacted***");
+
+    const echoRes = await api("PUT", "/api/config", { [key]: "***redacted***" });
+    expect(echoRes.status).toBe(200);
+    expect(echoRes.data.success).toBe(true);
+    expect(readRawConfig(key)).toBe(JSON.stringify(secret));
+  });
+
+  test("GET /api/config never returns the sandbox remote API key", async () => {
+    const putRes = await api("PUT", "/api/config", {
+      sandbox_runtime: {
+        enabled: false,
+        provider: "auto",
+        network: "deny",
+        remoteUrl: "https://api.e2b.dev",
+        remoteApiKey: "e2b-live-secret",
+      },
+    });
+    expect(putRes.status).toBe(200);
+
+    const getRes = await api("GET", "/api/config");
+    expect(getRes.status).toBe(200);
+    expect(getRes.data.sandbox_runtime.remoteApiKey).toBe("***redacted***");
+    expect(JSON.stringify(getRes.data)).not.toContain("e2b-live-secret");
+
+    const echoRes = await api("PUT", "/api/config", {
+      sandbox_runtime: getRes.data.sandbox_runtime,
+    });
+    expect(echoRes.status).toBe(200);
+    const stored = readRawConfig("sandbox_runtime") ?? "";
+    expect(stored).not.toContain("e2b-live-secret");
+    expect(stored).not.toContain("***redacted***");
+    const parsed = JSON.parse(stored) as { remoteApiKey?: string };
+    expect(openSealedValue("sandbox-runtime:remote_api_key", parsed.remoteApiKey ?? "")).toBe(
+      "e2b-live-secret"
+    );
+
+    await api("PUT", "/api/config", {
+      sandbox_runtime: { enabled: false, provider: "auto", network: "deny" },
+    });
   });
 
   test("PUT /api/config normalizes dangerous tool policy payloads", async () => {

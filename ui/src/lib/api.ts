@@ -411,6 +411,14 @@ export interface MarketplacePluginSummary {
   enabled: boolean;
 }
 
+export interface MarketplacePluginPage {
+  plugins: MarketplacePluginSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+  page_count: number;
+}
+
 export interface PluginManifestSummary {
   id: string;
   name: string;
@@ -436,9 +444,14 @@ export interface PluginInstallPayload {
 export const pluginsApi = {
   list: () => fetchApi<{ plugins: InstalledPluginSummary[] }>("/plugins"),
   catalog: () => fetchApi<{ plugins: PluginCatalogSummary[] }>("/plugins/catalog"),
-  marketplace: (query = "", limit = 36) =>
-    fetchApi<{ plugins: MarketplacePluginSummary[] }>(
-      `/plugins/marketplace?q=${encodeURIComponent(query)}&limit=${limit}`
+  marketplace: (
+    query = "",
+    page = 1,
+    pageSize = 24,
+    filter: "all" | "installed" | "available" = "all"
+  ) =>
+    fetchApi<MarketplacePluginPage>(
+      `/plugins/marketplace?q=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}&filter=${filter}`
     ),
   installMarketplace: (payload: { id: string; marketplace: string }) =>
     fetchApi<{

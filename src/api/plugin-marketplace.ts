@@ -3,8 +3,8 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   rmSync,
   statSync,
@@ -79,11 +79,38 @@ export type MarketplacePluginSummary = {
   enabled: boolean;
 };
 
+export type MarketplacePluginPage = {
+  plugins: MarketplacePluginSummary[];
+  total: number;
+  page: number;
+  page_size: number;
+  page_count: number;
+};
+
 export type MarketplacePluginInstallResult = {
   success: boolean;
   pluginId?: string;
   error?: string;
 };
+
+export function paginateMarketplacePlugins(
+  plugins: MarketplacePluginSummary[],
+  requestedPage: number,
+  requestedPageSize: number
+): MarketplacePluginPage {
+  const pageSize = Math.max(1, Math.min(100, Math.floor(requestedPageSize)));
+  const total = plugins.length;
+  const pageCount = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(Math.max(1, Math.floor(requestedPage)), pageCount);
+  const start = (page - 1) * pageSize;
+  return {
+    plugins: plugins.slice(start, start + pageSize),
+    total,
+    page,
+    page_size: pageSize,
+    page_count: pageCount,
+  };
+}
 
 type MarketplaceDocument = {
   plugins: MarketplacePluginEntry[];
@@ -285,18 +312,22 @@ function summarizePlugin(
 
 export async function discoverMarketplacePlugins(options: {
   query?: string;
-  limit?: number;
+  filter?: "all" | "installed" | "available";
+  page?: number;
+  pageSize?: number;
   forceRefresh?: boolean;
-}): Promise<MarketplacePluginSummary[]> {
+}): Promise<MarketplacePluginPage> {
   const query = options.query?.trim().toLowerCase() ?? "";
-  const limit = Math.max(1, Math.min(100, Math.floor(options.limit ?? 36)));
+  const filter = options.filter ?? "all";
+  const requestedPage = Math.max(1, Math.floor(options.page ?? 1));
+  const pageSize = Math.max(1, Math.min(100, Math.floor(options.pageSize ?? 24)));
   const installed = new Map(
     listInstalledPlugins().map(
       (plugin) => [plugin.manifest.id, { enabled: plugin.enabled }] as const
     )
   );
   const plugins = await loadMarketplacePlugins(options.forceRefresh);
-  return plugins
+  const matching = plugins
     .filter((entry) => {
       if (!query) return true;
       return [
@@ -314,8 +345,13 @@ export async function discoverMarketplacePlugins(options: {
         .includes(query);
     })
     .map((entry) => summarizePlugin(entry, installed))
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .slice(0, limit);
+    .filter((plugin) => {
+      if (filter === "installed") return plugin.installed;
+      if (filter === "available") return !plugin.installed;
+      return true;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return paginateMarketplacePlugins(matching, requestedPage, pageSize);
 }
 
 function isWithin(root: string, candidate: string): boolean {

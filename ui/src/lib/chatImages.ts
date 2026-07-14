@@ -1,4 +1,4 @@
-import { appendApiTokenParam } from "@/lib/auth";
+import { withGatewayBasePath } from "@/lib/auth";
 import type { ChatImageAttachment } from "@/types";
 
 export const MAX_CHAT_IMAGES = 8;
@@ -28,14 +28,14 @@ export async function fileToChatImage(file: File): Promise<ChatImageAttachment> 
 
 export function chatImageSrc(image: ChatImageAttachment): string {
   if (image.data) return `data:${image.mimeType || "image/png"};base64,${image.data}`;
-  if (image.path) return appendApiTokenParam(`/api/media?path=${encodeURIComponent(image.path)}`);
+  if (image.path) return withGatewayBasePath(`/api/media?path=${encodeURIComponent(image.path)}`);
   return image.url || "";
 }
 
 export function screenshotMediaSrc(filePath: string): string {
   const base = filePath.split(/[\\/]/).pop() || "";
   if (!base) return "";
-  return appendApiTokenParam(`/api/media?path=${encodeURIComponent(`screenshots/${base}`)}`);
+  return withGatewayBasePath(`/api/media?path=${encodeURIComponent(`screenshots/${base}`)}`);
 }
 
 export function chatMarkdownImageSrc(source: string): string | null {

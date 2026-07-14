@@ -97,11 +97,7 @@ export function composerWindow(value: string, cursor: number, maxLines: number):
   return window;
 }
 
-export function transcriptWindow(
-  content: string,
-  maxLines: number,
-  maxColumns: number
-): TranscriptLine[] {
+export function transcriptWindow(content: string, maxLines: number): TranscriptLine[] {
   let inCode = false;
   const sourceLines = content
     .replace(/\r\n/g, "\n")
@@ -131,20 +127,7 @@ export function transcriptWindow(
           ...sourceLines.slice(-Math.floor((limit - 1) / 2)),
         ]
       : sourceLines;
-  const width = Math.max(12, maxColumns);
-  return selected.map((line) => ({
-    ...line,
-    text: truncateTranscriptText(line.text, width),
-  }));
-}
-
-function truncateTranscriptText(text: string, width: number): string {
-  if (text.length <= width) return text;
-  for (const marker of ["**", "~~", "`", "*", "_"]) {
-    if (!text.startsWith(marker) || text.lastIndexOf(marker) <= marker.length) continue;
-    return `${text.slice(0, width - marker.length - 1)}…${marker}`;
-  }
-  return `${text.slice(0, width - 1)}…`;
+  return selected;
 }
 
 export function clipboardCandidates(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string[][] {

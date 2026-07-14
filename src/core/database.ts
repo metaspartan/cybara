@@ -906,13 +906,28 @@ function providerSecretContext(id: string, field: string): string {
   return `provider:${id}:${field}`;
 }
 
+function tryOpenStoredSecret(value: string, context: string): string | null {
+  try {
+    return openSecret(value, context);
+  } catch {
+    console.warn(
+      `[Database] Stored credential for ${context} could not be decrypted; the encryption key may have changed. Re-enter this credential.`
+    );
+    return null;
+  }
+}
+
 function openProviderRow(row: unknown): Provider | undefined {
   if (!row || typeof row !== "object" || Array.isArray(row)) return undefined;
   const result = { ...(row as StoredRow) };
   const id = storedString(result.id) ?? "";
   for (const field of ["api_key", "access_token", "refresh_token"] as const) {
     const value = storedString(result[field]);
-    if (value) result[field] = openSecret(value, providerSecretContext(id, field));
+    if (value) {
+      const opened = tryOpenStoredSecret(value, providerSecretContext(id, field));
+      if (opened === null) delete result[field];
+      else result[field] = opened;
+    }
   }
   return result as unknown as Provider;
 }
@@ -926,7 +941,7 @@ function openChannelRow(row: unknown): Channel | undefined {
   const result = { ...(row as StoredRow) };
   const id = storedString(result.id) ?? "";
   const config = storedString(result.config);
-  if (config) result.config = openSecret(config, `channel:${id}:config`);
+  if (config) result.config = tryOpenStoredSecret(config, `channel:${id}:config`) ?? "{}";
   return result as unknown as Channel;
 }
 
@@ -935,7 +950,7 @@ function openMcpServerRow(row: unknown): MCPServer | undefined {
   const result = { ...(row as StoredRow) };
   const id = storedString(result.id) ?? "";
   const env = storedString(result.env);
-  if (env) result.env = openSecret(env, `mcp:${id}:env`);
+  if (env) result.env = tryOpenStoredSecret(env, `mcp:${id}:env`) ?? "";
   return result as unknown as MCPServer;
 }
 

@@ -66,6 +66,7 @@ const secureDirectoryName = "secure";
 const storageKeyFileName = "storage.key";
 const storageKeyRelativePath = `${secureDirectoryName}/${storageKeyFileName}`;
 const protectedStorageKeyFileName = "storage.key.enc";
+const protectedStorageKeyRelativePath = `${secureDirectoryName}/${protectedStorageKeyFileName}`;
 
 interface BackupCopyOptions {
   root: string;
@@ -150,8 +151,9 @@ function skipSQLiteSidecar(source: string, options: BackupCopyOptions): boolean 
 }
 
 function excludedNestedPath(source: string, options: BackupCopyOptions): boolean {
-  if (!options.snapshotManagedDatabases) return false;
   const path = portableRelativePath(options.root, source);
+  if (path === protectedStorageKeyRelativePath) return true;
+  if (!options.snapshotManagedDatabases) return false;
   if (path === storageKeyRelativePath) return true;
   return path === "memory/transformers" || path.startsWith("memory/transformers/");
 }

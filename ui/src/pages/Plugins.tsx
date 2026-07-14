@@ -1,11 +1,14 @@
 import {
   Boxes,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Code2,
   Download,
   ExternalLink,
   FlaskConical,
   FolderInput,
+  type LucideIcon,
   Package,
   Palette,
   Play,
@@ -17,7 +20,6 @@ import {
   Square,
   Trash2,
   Workflow,
-  type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -27,11 +29,11 @@ import { Button } from "@/components/ui/Button";
 import { Switch } from "@/components/ui/Switch";
 import {
   type InstalledPluginSummary,
-  type MCPServer,
   type MarketplacePluginSummary,
+  type MCPServer,
+  mcpApi,
   type PluginCatalogSummary,
   type PluginInstallPayload,
-  mcpApi,
   pluginsApi,
 } from "@/lib/api";
 import { useUIStore } from "@/stores/uiStore";
@@ -86,6 +88,11 @@ export function Plugins() {
   const [pluginSearch, setPluginSearch] = useState("");
   const [catalogFilter, setCatalogFilter] = useState<"all" | "installed" | "available">("all");
   const [marketplaceLoading, setMarketplaceLoading] = useState(false);
+  const [marketplacePage, setMarketplacePage] = useState(1);
+  const [marketplacePageCount, setMarketplacePageCount] = useState(1);
+  const [marketplacePageSize, setMarketplacePageSize] = useState(24);
+  const [marketplaceTotal, setMarketplaceTotal] = useState(0);
+  const [marketplaceRevision, setMarketplaceRevision] = useState(0);
   const [services, setServices] = useState<MCPServer[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -138,13 +145,17 @@ export function Plugins() {
       () => {
         setMarketplaceLoading(true);
         void pluginsApi
-          .marketplace(pluginSearch.trim())
+          .marketplace(pluginSearch.trim(), marketplacePage, 24, catalogFilter)
           .then((response) => {
             if (!active) return;
             if (!response.success || !response.data) {
               throw new Error(response.error || "Failed to load plugin marketplace");
             }
             setMarketplace(response.data.plugins);
+            setMarketplacePage(response.data.page);
+            setMarketplacePageCount(response.data.page_count);
+            setMarketplacePageSize(response.data.page_size);
+            setMarketplaceTotal(response.data.total);
           })
           .catch((error: unknown) => {
             if (!active) return;
@@ -163,7 +174,7 @@ export function Plugins() {
       active = false;
       window.clearTimeout(timer);
     };
-  }, [addToast, pluginSearch, tab]);
+  }, [addToast, catalogFilter, marketplacePage, marketplaceRevision, pluginSearch, tab]);
 
   const install = async (payload: PluginInstallPayload): Promise<void> => {
     setBusyId("install");
@@ -236,6 +247,7 @@ export function Plugins() {
           entry.id === plugin.id ? { ...entry, installed: true, enabled: true } : entry
         )
       );
+      setMarketplaceRevision((revision) => revision + 1);
       addToast("success", `${plugin.name} installed`);
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Plugin installation failed");
@@ -254,11 +266,10 @@ export function Plugins() {
       .toLowerCase()
       .includes(normalizedSearch);
   });
-  const visibleMarketplace = marketplace.filter((plugin) => {
-    if (catalogFilter === "installed" && !plugin.installed) return false;
-    if (catalogFilter === "available" && plugin.installed) return false;
-    return true;
-  });
+  const visibleMarketplace = marketplace;
+  const marketplaceStart =
+    marketplaceTotal === 0 ? 0 : (marketplacePage - 1) * marketplacePageSize + 1;
+  const marketplaceEnd = Math.min(marketplaceTotal, marketplacePage * marketplacePageSize);
 
   const setServiceRunning = async (service: MCPServer, running: boolean): Promise<void> => {
     setBusyId(service.id);
@@ -416,7 +427,10 @@ export function Plugins() {
                 <input
                   type="search"
                   value={pluginSearch}
-                  onChange={(event) => setPluginSearch(event.target.value)}
+                  onChange={(event) => {
+                    setPluginSearch(event.target.value);
+                    setMarketplacePage(1);
+                  }}
                   placeholder="Search plugins..."
                   className="h-10 w-full rounded-md border border-[var(--surface-border)] bg-[var(--surface-panel)] pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[rgb(var(--accent-primary))]"
                 />
@@ -429,7 +443,10 @@ export function Plugins() {
                   <button
                     key={filter}
                     type="button"
-                    onClick={() => setCatalogFilter(filter)}
+                    onClick={() => {
+                      setCatalogFilter(filter);
+                      setMarketplacePage(1);
+                    }}
                     className={`rounded px-3 py-1.5 text-sm capitalize ${
                       catalogFilter === filter
                         ? "bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]"
@@ -442,8 +459,8 @@ export function Plugins() {
               </div>
             </div>
             <p className="text-xs text-[var(--text-muted)]">
-              {visibleCatalog.length + visibleMarketplace.length}{" "}
-              {visibleCatalog.length + visibleMarketplace.length === 1 ? "item" : "items"}
+              {visibleCatalog.length + marketplaceTotal}{" "}
+              {visibleCatalog.length + marketplaceTotal === 1 ? "item" : "items"}
             </p>
             {!marketplaceLoading &&
             visibleCatalog.length === 0 &&
@@ -506,7 +523,7 @@ export function Plugins() {
                 </div>
               </div>
             ) : null}
-            {marketplaceLoading ? (
+            {marketplaceLoading && marketplace.length === 0 ? (
               <div className="grid gap-2" aria-label="Loading plugin marketplace">
                 {[0, 1, 2].map((item) => (
                   <div
@@ -523,7 +540,10 @@ export function Plugins() {
                     Marketplace plugins
                   </h2>
                 </div>
-                <div className="divide-y divide-[var(--surface-border)] overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]">
+                <div
+                  className={`divide-y divide-[var(--surface-border)] overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] transition-opacity ${marketplaceLoading ? "opacity-60" : "opacity-100"}`}
+                  aria-busy={marketplaceLoading}
+                >
                   {visibleMarketplace.map((plugin) => {
                     const installed = plugins.find((entry) => entry.id === plugin.id);
                     const PluginIcon = pluginIcon(
@@ -582,6 +602,41 @@ export function Plugins() {
                     );
                   })}
                 </div>
+                <nav
+                  aria-label="Marketplace pagination"
+                  className="flex flex-col gap-2 px-1 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <p className="text-xs text-[var(--text-muted)]">
+                    Showing {marketplaceStart}-{marketplaceEnd} of {marketplaceTotal}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      aria-label="Previous marketplace page"
+                      title="Previous page"
+                      disabled={marketplacePage <= 1 || marketplaceLoading}
+                      onClick={() => setMarketplacePage((page) => Math.max(1, page - 1))}
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <span className="min-w-20 text-center text-xs text-[var(--text-secondary)]">
+                      Page {marketplacePage} of {marketplacePageCount}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="Next marketplace page"
+                      title="Next page"
+                      disabled={marketplacePage >= marketplacePageCount || marketplaceLoading}
+                      onClick={() =>
+                        setMarketplacePage((page) => Math.min(marketplacePageCount, page + 1))
+                      }
+                      className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </nav>
               </div>
             ) : null}
           </div>

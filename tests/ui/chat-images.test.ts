@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { chatMarkdownImageSrc, imageToolResultSrc } from "../../ui/src/lib/chatImages";
+import {
+  chatImageSrc,
+  chatMarkdownImageSrc,
+  imageToolResultSrc,
+  screenshotMediaSrc,
+} from "../../ui/src/lib/chatImages";
 import { clampLightboxZoom, nextLightboxIndex } from "../../ui/src/pages/chat/imageLightboxModel";
 
 const chatSource = await Bun.file("ui/src/pages/Chat.tsx").text();
@@ -13,6 +18,24 @@ describe("chat image rendering", () => {
     );
     expect(source).toContain("/api/media?path=");
     expect(source).toContain("screenshots%2Fscreenshot_1783660799112.jpeg");
+  });
+
+  test("never embeds the api token in media image URLs", () => {
+    const fromMarkdown = chatMarkdownImageSrc(
+      "file:///Users/carsen/.cybara/screenshots/shot.png"
+    );
+    const fromScreenshot = screenshotMediaSrc("/Users/carsen/.cybara/screenshots/shot.png");
+    const fromAttachment = chatImageSrc({ path: "attachments/photo.png" } as never);
+    const fromTool = imageToolResultSrc({
+      filePath: "/Users/test/.cybara/screenshots/screen.png",
+      contentType: "image/png",
+    });
+
+    for (const src of [fromMarkdown, fromScreenshot, fromAttachment, fromTool]) {
+      expect(src).not.toBeNull();
+      expect(src).not.toContain("token=");
+      expect(src).not.toContain("api_key=");
+    }
   });
 
   test("keeps web and data images while rejecting arbitrary local files", () => {

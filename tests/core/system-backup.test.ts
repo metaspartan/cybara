@@ -230,6 +230,75 @@ describe("system backups", () => {
     );
   });
 
+  test("restores a legacy backup that still bundles the raw encryption key", () => {
+    const root = createRoot();
+    mkdirSync(join(root, "secure"), { recursive: true });
+    const legacyKey = Buffer.alloc(32, 3);
+    writeFileSync(join(root, "secure", "storage.key"), legacyKey);
+    writeDatabase(join(root, "data", "platform.db"), "legacy-sealed-data");
+
+    const seed = createSystemBackup("seed", root);
+    const legacyId = "backup_legacyfmt_00000001";
+    const legacyDir = join(root, "backups", legacyId);
+    const legacyPayload = join(legacyDir, "payload");
+    mkdirSync(join(legacyPayload, "secure"), { recursive: true });
+    mkdirSync(join(legacyPayload, "data"), { recursive: true });
+    writeFileSync(join(legacyPayload, "secure", "storage.key"), legacyKey);
+    writeFileSync(
+      join(legacyPayload, "data", "platform.db"),
+      readFileSync(join(root, "backups", seed.id, "payload", "data", "platform.db"))
+    );
+    writeFileSync(
+      join(legacyDir, "manifest.json"),
+      `${JSON.stringify({
+        version: 1,
+        id: legacyId,
+        label: "legacy",
+        createdAt: new Date(0).toISOString(),
+        entries: ["data", "secure"],
+        includesCredentials: true,
+      })}\n`
+    );
+
+    const listed = listSystemBackups(root).find((entry) => entry.id === legacyId);
+    expect(listed).toBeDefined();
+    expect(listed?.keyProtection).toBeUndefined();
+
+    writeFileSync(join(root, "secure", "storage.key"), Buffer.alloc(32, 255));
+    writeDatabase(join(root, "data", "platform.db"), "clobbered");
+
+    scheduleSystemRestore(legacyId, root);
+    const restored = applyPendingSystemRestore(root);
+
+    expect(restored.state).toBe("completed");
+    expect(readFileSync(join(root, "secure", "storage.key"))).toEqual(legacyKey);
+    expect(readDatabase(join(root, "data", "platform.db"))).toBe("legacy-sealed-data");
+  });
+
+  test("does not leak the wrapped key into the live dir or later backups", () => {
+    const root = createRoot();
+    mkdirSync(join(root, "secure"), { recursive: true });
+    const keyBytes = Buffer.alloc(32, 11);
+    writeFileSync(join(root, "secure", "storage.key"), keyBytes);
+    writeFileSync(join(root, "secure", "mobile-devices.json"), "{}");
+    writeDatabase(join(root, "data", "platform.db"), "sealed");
+
+    const backup = createSystemBackup("Portable", root, { password: "pw-abcdef" });
+    rmSync(join(root, "secure", "storage.key"));
+    scheduleSystemRestore(backup.id, root, "pw-abcdef");
+    const restored = applyPendingSystemRestore(root);
+
+    expect(restored.state).toBe("completed");
+    const liveSecure = readFileSync(join(root, "secure", "storage.key"));
+    expect(liveSecure).toEqual(keyBytes);
+    expect(existsSync(join(root, "secure", "storage.key.enc"))).toBe(false);
+
+    const next = createSystemBackup("After restore", root);
+    const nextSecure = join(root, "backups", next.id, "payload", "secure");
+    expect(existsSync(join(nextSecure, "storage.key"))).toBe(false);
+    expect(existsSync(join(nextSecure, "storage.key.enc"))).toBe(false);
+  });
+
   test("rejects invalid identifiers and deletes valid backups", () => {
     const root = createRoot();
     writeDatabase(join(root, "data", "platform.db"), "value");

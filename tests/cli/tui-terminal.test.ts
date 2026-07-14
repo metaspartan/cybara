@@ -35,7 +35,7 @@ describe("CLI TUI terminal behavior", () => {
     expect(visible.join("\n").replace("▏", "")).toContain("four");
   });
 
-  test("bounds transcript rows without leaking omitted code fences", () => {
+  test("bounds transcript rows without shortening their content", () => {
     const content = [
       "Intro",
       "```ts",
@@ -44,20 +44,23 @@ describe("CLI TUI terminal behavior", () => {
       "**Result:** complete",
       "Final",
     ].join("\n");
-    const visible = transcriptWindow(content, 4, 24);
+    const visible = transcriptWindow(content, 4);
     expect(visible).toHaveLength(4);
     expect(visible.some((line) => line.hidden)).toBe(true);
     expect(visible.at(-1)?.text).toBe("Final");
     expect(visible.at(-1)?.code).toBe(false);
-    expect(visible.every((line) => line.text.length <= 24)).toBe(true);
+    expect(visible[1]?.text).toBe("```ts");
   });
 
-  test("keeps inline markdown balanced when a transcript line is truncated", () => {
+  test("preserves long prose and inline markdown for terminal wrapping", () => {
+    const prose =
+      "A deliberately long response remains complete even when the terminal is much narrower.";
+    expect(transcriptWindow(prose, 2)[0]?.text).toBe(prose);
     expect(
-      transcriptWindow("**A deliberately long bold result for the terminal**", 2, 24)[0]?.text
-    ).toBe("**A deliberately long…**");
-    expect(transcriptWindow("`a-very-long-inline-code-value`", 2, 18)[0]?.text).toBe(
-      "`a-very-long-inl…`"
+      transcriptWindow("**A deliberately long bold result for the terminal**", 2)[0]?.text
+    ).toBe("**A deliberately long bold result for the terminal**");
+    expect(transcriptWindow("`a-very-long-inline-code-value`", 2)[0]?.text).toBe(
+      "`a-very-long-inline-code-value`"
     );
   });
 

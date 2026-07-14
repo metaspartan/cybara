@@ -329,6 +329,8 @@ describe("CLI TUI source wiring", () => {
     );
     expect(cliTuiInteractiveChatSource).toContain("strikethrough={part.strikethrough}");
     expect(cliTuiInteractiveChatSource).toContain("splitTerminalInline(line)");
+    expect(cliTuiInteractiveChatSource).toContain('<Text wrap="wrap">');
+    expect(cliTuiInteractiveChatSource).toContain('flexDirection="column" width="100%"');
     expect(cliTuiInteractiveChatSource).toContain('overflow="hidden"');
     expect(cliTuiInteractiveChatSource).toContain("flexShrink={0}");
     expect(cliTuiInteractiveChatSource).toContain("parseTerminalListItem(line.text)");

@@ -4,13 +4,26 @@ const SENSITIVE_KEY_PATTERN =
 const PREFIXED_SECRET_PATTERNS: readonly RegExp[] = [
   /(Bearer\s+)[A-Za-z0-9._~+/=-]+/gi,
   /((?:api[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|token|secret|password|passwd|authorization|cookie)\s*[:=]\s*)([^\s,;'"<>]+)/gi,
+  /(https:\/\/hooks\.slack\.com\/services\/)[A-Za-z0-9/_-]+/gi,
+  /(https:\/\/discord(?:app)?\.com\/api\/webhooks\/)[0-9]+\/[A-Za-z0-9_-]+/gi,
 ];
 
 const SECRET_VALUE_PATTERNS: readonly RegExp[] = [
   /\b(cybara(?:_mobile)?_[a-f0-9]{24,})\b/gi,
   /\b(sk-[A-Za-z0-9_-]{16,})\b/g,
+  /\b(sk_(?:live|test)_[A-Za-z0-9]{16,})\b/g,
+  /\b(rk_(?:live|test)_[A-Za-z0-9]{16,})\b/g,
   /\b(gh[pousr]_[A-Za-z0-9_]{20,})\b/g,
+  /\b(github_pat_[A-Za-z0-9_]{20,})\b/g,
+  /\b(glpat-[A-Za-z0-9_-]{20,})\b/g,
   /\b(xox[baprs]-[A-Za-z0-9-]{16,})\b/g,
+  /\b(xapp-[A-Za-z0-9-]{16,})\b/g,
+  /\b(AIza[0-9A-Za-z_-]{30,})\b/g,
+  /\b((?:AKIA|ASIA)[0-9A-Z]{16})\b/g,
+  /\b(npm_[A-Za-z0-9]{30,})\b/g,
+  /\b(\d{8,10}:[A-Za-z0-9_-]{30,})\b/g,
+  /\b(eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})\b/g,
+  /-----BEGIN[A-Z ]*PRIVATE KEY-----[\s\S]*?-----END[A-Z ]*PRIVATE KEY-----/g,
 ];
 
 export function redactSecretText(input: string): string {
