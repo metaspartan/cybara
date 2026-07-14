@@ -111,9 +111,9 @@ export function GroupedActivityRows({ activities }: { activities: LiveActivityIt
               <GroupIcon className="w-3 h-3 text-current opacity-70 flex-shrink-0" />
               <span className="min-w-0 truncate">{entry.label}</span>
               {expanded ? (
-                <ChevronUp className="w-3 h-3 text-gray-600 flex-shrink-0" />
-              ) : (
                 <ChevronDown className="w-3 h-3 text-gray-600 flex-shrink-0" />
+              ) : (
+                <ChevronRight className="w-3 h-3 text-gray-600 flex-shrink-0" />
               )}
             </button>
             {expanded && (
