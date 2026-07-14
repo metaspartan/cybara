@@ -83,6 +83,8 @@ export function createNativeMacOSInfoPlist(version: string): string {
   <string>Cybara uses the camera when you ask an agent to capture a photo via the nodes tool.</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>Cybara uses the microphone for voice/audio capture features you initiate.</string>
+  <key>NSSpeechRecognitionUsageDescription</key>
+  <string>Cybara transcribes speech on device when you choose native dictation.</string>
   <key>NSAppleEventsUsageDescription</key>
   <string>Cybara controls other apps (e.g. Finder) only when you ask an agent to via computer use.</string>
   <key>NSDesktopFolderUsageDescription</key>

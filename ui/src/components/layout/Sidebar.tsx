@@ -288,7 +288,9 @@ export function Sidebar() {
   const location = useLocation();
   const status = useAgentStatus();
   const { data: info } = useInfo();
+  const onChatPage = location.pathname === "/chat" || location.pathname.startsWith("/chat/");
   const hasAgents = (info?.stats?.agents?.total ?? 0) > 0;
+  const showNewChatShortcut = hasAgents && !onChatPage;
   const { t } = useI18n();
   const { collapsed, setCollapsed, width, setWidth, mobileOpen, setMobileOpen } = useSidebar();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -451,7 +453,7 @@ export function Sidebar() {
               collapsed ? "overflow-hidden" : "overflow-y-auto"
             )}
           >
-            {hasAgents ? (
+            {showNewChatShortcut ? (
               <div className="mb-1 pb-2 border-b border-white/5">
                 <NavLink
                   to="/chat?fresh=1"

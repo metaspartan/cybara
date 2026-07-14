@@ -113,6 +113,7 @@ describe("native macOS shell wiring", () => {
       "/router",
       "/channels",
       "/mobile",
+      "/voice",
       "/plugins",
       "/mcp",
       "/lsp",
@@ -137,6 +138,7 @@ describe("native macOS shell wiring", () => {
     for (const nativeScreen of [
       "RouterScreen(client: client)",
       "ChannelsScreen(client: client)",
+      "NativeVoiceScreen(client: client)",
       "PluginsScreen(client: client)",
       "MCPScreen(client: client)",
       "LSPScreen(client: client)",
@@ -186,6 +188,24 @@ describe("native macOS shell wiring", () => {
 
     expect(contentView).toContain('Section(NativeI18n.t("nav.developer"))');
     expect(contentView).toContain('Section(NativeI18n.t("nav.system"))');
+  });
+
+  test("native voice workspace uses gateway speech contracts without embedding web content", () => {
+    const contentView = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
+    const voice = readFileSync(join(MACOS_APP_DIR, "NativeVoiceScreen.swift"), "utf8");
+    const packaging = readFileSync(join(ROOT_DIR, "scripts", "package-native-macos.ts"), "utf8");
+
+    expect(contentView).toContain("case voice");
+    expect(contentView).toContain("NativeVoiceScreen(client: client)");
+    expect(voice).toContain('request("api/speech/status")');
+    expect(voice).toContain('"api/speech/dictate"');
+    expect(voice).toContain('"api/speech/synthesize"');
+    expect(voice).toContain('"api/media"');
+    expect(voice).toContain("AVCaptureDevice.requestAccess(for: .audio)");
+    expect(voice).toContain("SFSpeechURLRecognitionRequest");
+    expect(voice).toContain('@SceneStorage("cybara.voice.sessionID")');
+    expect(voice).not.toContain("WKWebView");
+    expect(packaging).toContain("NSSpeechRecognitionUsageDescription");
   });
 
   test("native LSP operations expose an explicit progress label", () => {

@@ -17,13 +17,26 @@ private extension View {
     }
 }
 
+enum NativeSettingsTab {
+    case general
+    case accessibility
+    case gateway
+    case model
+    case speech
+    case memory
+    case wallet
+    case migration
+    case features
+    case advanced
+}
+
 struct NativeSettingsScreen: View {
     let client: GatewayClient
     var onAccentChanged: (String) -> Void = { _ in }
 
     @EnvironmentObject private var sidecar: SidecarManager
 
-    @State private var selectedTab: SettingsTab = .general
+    @State private var selectedTab: NativeSettingsTab
     @State private var advancedSelection: SettingsAdvancedSection = .router
     @AppStorage("cybara.petEnabled") private var petEnabled = false
     @State private var health: GatewayHealth?
@@ -156,21 +169,31 @@ struct NativeSettingsScreen: View {
         }
     }
 
+    init(
+        client: GatewayClient,
+        initialTab: NativeSettingsTab = .general,
+        onAccentChanged: @escaping (String) -> Void = { _ in }
+    ) {
+        self.client = client
+        self.onAccentChanged = onAccentChanged
+        _selectedTab = State(initialValue: initialTab)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ScreenHeader(title: NativeI18n.t("nav.settings"), subtitle: NativeI18n.t("settings.subtitle"))
 
             TabView(selection: $selectedTab) {
-                generalTab.tabItem { Label(NativeI18n.t("settings.general"), systemImage: "switch.2") }.tag(SettingsTab.general)
-                accessibilityTab.tabItem { Label(NativeI18n.t("settings.accessibility"), systemImage: "accessibility") }.tag(SettingsTab.accessibility)
-                gatewayTab.tabItem { Label(NativeI18n.t("settings.gateway"), systemImage: "server.rack") }.tag(SettingsTab.gateway)
-                modelTab.tabItem { Label(NativeI18n.t("settings.ai"), systemImage: "brain") }.tag(SettingsTab.model)
-                memoryTab.tabItem { Label(NativeI18n.t("nav.memory"), systemImage: "memorychip") }.tag(SettingsTab.memory)
-                speechTab.tabItem { Label(NativeI18n.t("settings.voice"), systemImage: "waveform") }.tag(SettingsTab.speech)
-                featuresTab.tabItem { Label(NativeI18n.t("settings.safety"), systemImage: "slider.horizontal.3") }.tag(SettingsTab.features)
-                WalletScreen(client: client).tabItem { Label(NativeI18n.t("nav.wallet"), systemImage: "creditcard") }.tag(SettingsTab.wallet)
-                migrationTab.tabItem { Label(NativeI18n.t("settings.migration"), systemImage: "folder.badge.gearshape") }.tag(SettingsTab.migration)
-                advancedTab.tabItem { Label(NativeI18n.t("nav.system"), systemImage: "square.grid.3x3") }.tag(SettingsTab.advanced)
+                generalTab.tabItem { Label(NativeI18n.t("settings.general"), systemImage: "switch.2") }.tag(NativeSettingsTab.general)
+                accessibilityTab.tabItem { Label(NativeI18n.t("settings.accessibility"), systemImage: "accessibility") }.tag(NativeSettingsTab.accessibility)
+                gatewayTab.tabItem { Label(NativeI18n.t("settings.gateway"), systemImage: "server.rack") }.tag(NativeSettingsTab.gateway)
+                modelTab.tabItem { Label(NativeI18n.t("settings.ai"), systemImage: "brain") }.tag(NativeSettingsTab.model)
+                memoryTab.tabItem { Label(NativeI18n.t("nav.memory"), systemImage: "memorychip") }.tag(NativeSettingsTab.memory)
+                speechTab.tabItem { Label(NativeI18n.t("settings.voice"), systemImage: "waveform") }.tag(NativeSettingsTab.speech)
+                featuresTab.tabItem { Label(NativeI18n.t("settings.safety"), systemImage: "slider.horizontal.3") }.tag(NativeSettingsTab.features)
+                WalletScreen(client: client).tabItem { Label(NativeI18n.t("nav.wallet"), systemImage: "creditcard") }.tag(NativeSettingsTab.wallet)
+                migrationTab.tabItem { Label(NativeI18n.t("settings.migration"), systemImage: "folder.badge.gearshape") }.tag(NativeSettingsTab.migration)
+                advancedTab.tabItem { Label(NativeI18n.t("nav.system"), systemImage: "square.grid.3x3") }.tag(NativeSettingsTab.advanced)
             }
 
             if let error {
@@ -2531,19 +2554,6 @@ struct NativeSettingsScreen: View {
             }
         }
         return nil
-    }
-
-    private enum SettingsTab {
-        case general
-        case accessibility
-        case gateway
-        case model
-        case speech
-        case memory
-        case wallet
-        case migration
-        case features
-        case advanced
     }
 
     private enum SettingsAdvancedSection: String, CaseIterable, Identifiable {

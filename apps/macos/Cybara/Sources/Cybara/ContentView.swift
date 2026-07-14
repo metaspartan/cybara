@@ -62,6 +62,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
     case router
     case channels
     case mobile
+    case voice
     case plugins
     case mcp
     case lsp
@@ -96,6 +97,7 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .router: return "nav.router"
         case .channels: return "nav.channels"
         case .mobile: return "nav.mobile"
+        case .voice: return "settings.voice"
         case .plugins: return "nav.plugins"
         case .mcp: return "nav.mcp"
         case .lsp: return "nav.lsp"
@@ -122,12 +124,13 @@ enum NativeDestination: String, CaseIterable, Identifiable {
         case .dashboard: return "square.grid.2x2"
         case .chat: return "bubble.left.and.bubble.right"
         case .agents: return "cpu"
-        case .providers: return "shippingbox"
+        case .providers: return "server.rack"
         case .router: return "point.3.connected.trianglepath.dotted"
         case .channels: return "link"
         case .mobile: return "iphone.gen3"
-        case .plugins: return "shippingbox"
-        case .mcp: return "terminal"
+        case .voice: return "waveform.circle"
+        case .plugins: return "puzzlepiece.extension"
+        case .mcp: return "network"
         case .lsp: return "curlybraces.square"
         case .ide: return "folder"
         case .sessions: return "bubble.left.and.text.bubble.right"
@@ -154,6 +157,7 @@ struct ContentView: View {
     @State private var destination: NativeDestination = .dashboard
     @State private var accent: Color = .accentColor
     @State private var selectedChatSessionID: String?
+    @State private var settingsTab = NativeSettingsTab.general
 
     private var client: GatewayClient {
         GatewayClient(baseURL: sidecar.serverURL)
@@ -250,7 +254,7 @@ struct ContentView: View {
 
             List(selection: $destination) {
                 Section {
-                    ForEach([NativeDestination.dashboard, .chat, .agents, .providers, .router, .channels, .mobile, .plugins]) { item in
+                    ForEach([NativeDestination.dashboard, .chat, .agents, .providers, .router, .channels, .mobile, .voice, .plugins]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -296,6 +300,11 @@ struct ContentView: View {
                 )
             case .mobile:
                 MobileScreen(client: client, defaultBaseURL: sidecar.serverURL)
+            case .voice:
+                NativeVoiceScreen(client: client) {
+                    settingsTab = .speech
+                    destination = .settings
+                }
             case .plugins:
                 PluginsScreen(client: client)
             case .agents:
@@ -345,7 +354,7 @@ struct ContentView: View {
             case .logs:
                 LogsScreen(client: client)
             case .settings:
-                NativeSettingsScreen(client: client) { key in
+                NativeSettingsScreen(client: client, initialTab: settingsTab) { key in
                     accent = CybaraAccent.color(for: key)
                 }
             }

@@ -32,6 +32,38 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertTrue(response.settings.trajectoryVideoEnabled)
     }
 
+    func testNativeSpeechStatusDecodesVoiceReadiness() throws {
+        let data = Data(
+            #"{"success":true,"tts":{"ready":true,"provider":"Kokoro 82M","type":"local","systemFallback":false,"error":null},"stt":{"ready":true,"provider":"Native dictation","type":"native","native":true,"error":null},"settings":{"ttsProvider":"local","ttsVoice":"af_heart","sttProvider":"native","realtimeProvider":"managed"}}"#.utf8
+        )
+        let status = try JSONDecoder().decode(NativeSpeechStatusResponse.self, from: data)
+
+        XCTAssertTrue(status.ttsReady)
+        XCTAssertTrue(status.sttReady)
+        XCTAssertTrue(status.stt?.native == true)
+        XCTAssertEqual(status.settings?.sttProvider, "native")
+        XCTAssertEqual(status.dictationProvider, "native")
+    }
+
+    func testNativeSpeechStatusTreatsSystemFallbackAsReady() throws {
+        let data = Data(
+            #"{"tts":{"ready":false,"provider":"System voice","type":"system","systemFallback":true,"error":null},"stt":{"ready":false,"provider":null,"type":null,"native":false,"error":"Missing provider"}}"#.utf8
+        )
+        let status = try JSONDecoder().decode(NativeSpeechStatusResponse.self, from: data)
+
+        XCTAssertTrue(status.ttsReady)
+        XCTAssertFalse(status.sttReady)
+    }
+
+    func testNativeSpeechStatusRoutesAutomaticWhisperToLocalTranscription() throws {
+        let data = Data(
+            #"{"tts":{"ready":true,"provider":"System voice","type":"system","systemFallback":true,"error":null},"stt":{"ready":true,"provider":"Whisper (local)","type":"local","native":false,"error":null},"settings":{"sttProvider":"auto"}}"#.utf8
+        )
+        let status = try JSONDecoder().decode(NativeSpeechStatusResponse.self, from: data)
+
+        XCTAssertEqual(status.dictationProvider, "local")
+    }
+
     func testSessionForkAndRuntimeMetricsDecodeGatewayResponses() throws {
         let forkData = Data(
             #"{"success":true,"fork":{"sessionId":"fork-1","sourceSessionId":"source-1","agentId":"agent-1","messageCount":3,"workspaceDir":"/tmp/project","title":"Forked chat"}}"#.utf8
