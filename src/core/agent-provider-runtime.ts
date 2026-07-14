@@ -78,6 +78,7 @@ import {
   hasTool,
 } from "./tools/handlers/index";
 import { noteToolActivityForTodoReminder } from "./tools/handlers/todo";
+import { hasAgentTransferEnvelope } from "./agent-transfer";
 import {
   broadcastStatus,
   broadcastTokenDelta,
@@ -1401,6 +1402,10 @@ export abstract class AgentProviderRuntime {
         }
         break;
       }
+      if (hasAgentTransferEnvelope(iterationToolCalls)) {
+        finalContent = "";
+        break;
+      }
 
       webResearchToolCalls += countWebResearchCalls(
         iterationToolCalls.map((toolCall) => toolCall.name)
@@ -1536,7 +1541,12 @@ export abstract class AgentProviderRuntime {
       }
     }
 
-    if (!limitReason && !finalContent.trim() && allToolCalls.length > 0) {
+    if (
+      !limitReason &&
+      !finalContent.trim() &&
+      allToolCalls.length > 0 &&
+      !hasAgentTransferEnvelope(allToolCalls)
+    ) {
       console.warn("[Agent] Final content empty after tool loop; requesting a closing response");
       try {
         currentMessages.push({
@@ -2253,6 +2263,10 @@ export abstract class AgentProviderRuntime {
         }
         break;
       }
+      if (hasAgentTransferEnvelope(iterationToolCalls)) {
+        finalContent = "";
+        break;
+      }
 
       const noProgressStreak = updateNoProgressLoopState(loopState, iterationToolCalls);
       const loopEvaluation = evaluateNoProgressLoop(
@@ -2490,6 +2504,10 @@ export abstract class AgentProviderRuntime {
       if (toolResponses.length === 0) {
         break;
       }
+      if (hasAgentTransferEnvelope(iterationToolCalls)) {
+        finalContent = "";
+        break;
+      }
 
       const noProgressStreak = updateNoProgressLoopState(loopState, iterationToolCalls);
       const loopEvaluation = evaluateNoProgressLoop(
@@ -2715,6 +2733,10 @@ export abstract class AgentProviderRuntime {
       }
 
       if (toolResults.length === 0) {
+        break;
+      }
+      if (hasAgentTransferEnvelope(iterationToolCalls)) {
+        finalContent = "";
         break;
       }
 
@@ -3107,6 +3129,10 @@ export abstract class AgentProviderRuntime {
         if (!finalContent.trim()) {
           finalContent = this.missingExecutableToolCallsMessage();
         }
+        break;
+      }
+      if (hasAgentTransferEnvelope(iterationToolCalls)) {
+        finalContent = "";
         break;
       }
 
@@ -3522,6 +3548,10 @@ export abstract class AgentProviderRuntime {
         if (!finalContent.trim()) {
           finalContent = this.missingExecutableToolCallsMessage();
         }
+        break;
+      }
+      if (hasAgentTransferEnvelope(iterationToolCalls)) {
+        finalContent = "";
         break;
       }
 

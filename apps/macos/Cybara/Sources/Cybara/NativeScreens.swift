@@ -531,6 +531,7 @@ struct ChatScreen: View {
     @State private var approvalSaving = false
     @State private var toolApprovalMode = "always_allow"
     @State private var followUpBehaviorEnabled = true
+    @State private var chatAppearance = NativeChatAppearanceSettings()
     @State private var pendingApprovals: [GatewayPendingApproval] = []
     @State private var expandedApprovalID: String?
     @State private var showContextPopover = false
@@ -618,6 +619,12 @@ struct ChatScreen: View {
             handleStatusEvent(event)
         }
         .onDisappear { statusStream.stop() }
+        .nativeChatAppearance(chatAppearance)
+        .transaction { transaction in
+            if chatAppearance.reduceMotion {
+                transaction.animation = nil
+            }
+        }
         .alert("Revert to this message?", isPresented: $showRevertConfirm) {
             Button("Revert", role: .destructive) {
                 if let candidate = revertCandidate {
@@ -1168,57 +1175,13 @@ struct ChatScreen: View {
         return left.label.localizedCaseInsensitiveCompare(right.label) == .orderedAscending
     }
 
-    private func workspaceOpenTargetIcon(_ target: NativeWorkspaceOpenTarget) -> String {
-        switch target.id {
-        case "cybara_ide":
-            return "macwindow"
-        case "finder", "explorer", "files":
-            return "folder"
-        case "terminal", "ghostty":
-            return "terminal"
-        case "xcode":
-            return "hammer"
-        default:
-            return "curlybraces.square"
-        }
-    }
-
     @ViewBuilder
     private func workspaceOpenTargetLabel(_ target: NativeWorkspaceOpenTarget) -> some View {
         Label {
             Text(target.label)
         } icon: {
-            ZStack {
-                if let image = workspaceOpenTargetImage(target) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(
-                            width: target.id == "cybara_ide" ? 12 : 14,
-                            height: target.id == "cybara_ide" ? 12 : 14
-                        )
-                } else {
-                    Image(systemName: workspaceOpenTargetIcon(target))
-                        .font(.system(size: 12, weight: .medium))
-                }
-            }
-            .frame(width: 16, height: 16)
+            NativeWorkspaceOpenTargetIcon(target: target)
         }
-    }
-
-    private func workspaceOpenTargetImage(_ target: NativeWorkspaceOpenTarget) -> NSImage? {
-        if target.iconUrl == "/cybara.png" {
-            return CybaraBrand.logoImage
-        }
-        guard let iconUrl = firstNonEmptyGatewayString(target.iconUrl),
-              let commaIndex = iconUrl.firstIndex(of: ","),
-              iconUrl[..<commaIndex].lowercased().hasPrefix("data:image/")
-        else {
-            return nil
-        }
-        let encoded = String(iconUrl[iconUrl.index(after: commaIndex)...])
-        guard let data = Data(base64Encoded: encoded) else { return nil }
-        return NSImage(data: data)
     }
 
     private var sessionDetailLine: String {
@@ -1743,6 +1706,7 @@ struct ChatScreen: View {
                             mediaBaseURL: client.baseURL,
                             mediaToken: GatewayClient.loadAPIKey()
                         )
+                        agentTransferTimeline(message.agent_transfers)
                     }
                     if isUser, !message.attachedImages.isEmpty {
                         NativeAttachedImagesStrip(images: message.attachedImages)
@@ -1783,6 +1747,26 @@ struct ChatScreen: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: isUser ? .trailing : .leading)
+    }
+
+    @ViewBuilder
+    private func agentTransferTimeline(_ transfers: [GatewayAgentTransfer]?) -> some View {
+        if let transfers, !transfers.isEmpty {
+            VStack(alignment: .leading, spacing: 5) {
+                ForEach(transfers) { transfer in
+                    HStack(spacing: 7) {
+                        Image(systemName: "arrow.left.arrow.right")
+                            .font(.system(size: 11, weight: .medium))
+                        Text("Transferred from \(transfer.fromAgentName) to \(transfer.toAgentName)")
+                            .font(.system(size: 12))
+                            .lineLimit(1)
+                    }
+                    .foregroundStyle(.secondary)
+                    .help([transfer.reason, transfer.contextSummary].compactMap { $0 }.joined(separator: "\n"))
+                }
+            }
+            .padding(.vertical, 3)
+        }
     }
 
     private func messageTimestampLabel(_ message: GatewaySessionMessage) -> String {
@@ -2791,9 +2775,11 @@ struct ChatScreen: View {
             let config = try await client.appConfig()
             toolApprovalMode = config["tool_approval_mode"] as? String == "ask" ? "ask" : "always_allow"
             followUpBehaviorEnabled = config["follow_up_behavior_enabled"] as? Bool ?? true
+            chatAppearance = NativeChatAppearanceSettings(config: config)
         } catch {
             toolApprovalMode = "always_allow"
             followUpBehaviorEnabled = true
+            chatAppearance = NativeChatAppearanceSettings()
         }
         do {
             let router = try await client.routerConfig()

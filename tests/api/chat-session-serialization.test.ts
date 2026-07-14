@@ -611,6 +611,153 @@ describe("handleChat per-session serialization", () => {
     expect(persisted?.agentId).toBe(secondAgent.id);
   });
 
+  test("transfers an active turn to another agent and persists shared ownership", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Transfer Provider",
+      api_key: "sk-transfer",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+    const firstAgent = agentManager.create({
+      name: "Transfer Agent A",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-transfer-a",
+      memory_enabled: false,
+    });
+    const secondAgent = agentManager.create({
+      name: "Transfer Agent B",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-transfer-b",
+      memory_enabled: false,
+    });
+    createdAgentIds.push(firstAgent.id, secondAgent.id);
+
+    let transferRequested = false;
+    const requestedModels: string[] = [];
+    globalThis.fetch = (async (_url, init) => {
+      const request = JSON.parse(String(init?.body || "{}")) as {
+        model?: string;
+        messages?: Array<{ content?: string }>;
+      };
+      const model = request.model || "unknown";
+      requestedModels.push(model);
+      const prompt = (request.messages || []).map((entry) => entry.content || "").join("\n");
+      if (model === "gpt-transfer-a" && transferRequested) {
+        return new Response(
+          JSON.stringify({
+            id: "transfer-tool-call",
+            object: "chat.completion",
+            model,
+            choices: [
+              {
+                index: 0,
+                finish_reason: "tool_calls",
+                message: {
+                  role: "assistant",
+                  content: null,
+                  tool_calls: [
+                    {
+                      id: "transfer-context-call-1",
+                      type: "function",
+                      function: {
+                        name: "agents_list",
+                        arguments: "{}",
+                      },
+                    },
+                    {
+                      id: "transfer-call-1",
+                      type: "function",
+                      function: {
+                        name: "sessions_transfer",
+                        arguments: JSON.stringify({
+                          agentId: secondAgent.name,
+                          reason: "The second agent owns this specialty",
+                          contextMode: "full",
+                          contextSummary: "Preserve the requested output format",
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+            usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      const isPersistedTransferTurn = request.messages?.some(
+        (entry) => entry.content === "Continue"
+      );
+      const content =
+        model === "gpt-transfer-b"
+          ? isPersistedTransferTurn
+            ? prompt.includes(
+                "The session transfer from Transfer Agent A to Transfer Agent B is complete"
+              )
+              ? "Transfer ownership context persisted."
+              : "Transfer ownership context was missing."
+            : prompt.includes("The active chat was transferred from Transfer Agent A") &&
+                prompt.includes("agents_list:")
+              ? "Transfer Agent B continued with shared context."
+              : "Transfer context was missing."
+          : "Transfer Agent A initial reply.";
+      return new Response(
+        JSON.stringify({
+          id: `transfer-${model}`,
+          object: "chat.completion",
+          model,
+          choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content } }],
+          usage: { prompt_tokens: 8, completion_tokens: 5, total_tokens: 13 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const sessionId = `agent-transfer-${crypto.randomUUID()}`;
+    createdSessionIds.push(sessionId);
+    await handleChat({
+      message: "Start the shared task",
+      agentId: firstAgent.id,
+      sessionId,
+      tools: false,
+    });
+    requestedModels.length = 0;
+    transferRequested = true;
+
+    const transferred = await handleChat({
+      message: "Please let the specialist finish this",
+      sessionId,
+      tools: true,
+    });
+
+    expect(transferred.agent?.id).toBe(secondAgent.id);
+    expect(transferred.message.content).toBe("Transfer Agent B continued with shared context.");
+    expect(transferred.message.agent_transfers).toHaveLength(1);
+    expect(transferred.message.agent_transfers?.[0]).toMatchObject({
+      fromAgentId: firstAgent.id,
+      toAgentId: secondAgent.id,
+      contextMode: "full",
+    });
+    expect(transferred.tool_calls?.map((toolCall) => toolCall.name)).toContain("sessions_transfer");
+    expect(requestedModels.filter((model) => model === "gpt-transfer-a")).toHaveLength(1);
+    expect(requestedModels.filter((model) => model === "gpt-transfer-b")).toHaveLength(1);
+
+    const persisted = await loadPersistedSession(sessionId);
+    expect(persisted?.agentId).toBe(secondAgent.id);
+    expect(persisted?.messages.at(-1)?.agent_transfers?.[0]?.toAgentId).toBe(secondAgent.id);
+
+    requestedModels.length = 0;
+    transferRequested = false;
+    const nextTurn = await handleChat({ message: "Continue", sessionId, tools: false });
+    expect(nextTurn.agent?.id).toBe(secondAgent.id);
+    expect(nextTurn.message.content).toBe("Transfer ownership context persisted.");
+    expect(requestedModels).toEqual(["gpt-transfer-b"]);
+  });
+
   test("sessions get estimated token metrics when a provider omits usage", async () => {
     const provider = providerManager.create({
       provider: "openai",

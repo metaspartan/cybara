@@ -43,6 +43,7 @@ export type TranslationKey =
   | "nav.router"
   | "nav.channels"
   | "nav.mobile"
+  | "nav.plugins"
   | "nav.developer"
   | "nav.mcp"
   | "nav.lsp"
@@ -210,6 +211,7 @@ const englishTranslations: TranslationCatalog = {
     "nav.router": "Model Router",
     "nav.channels": "Channels",
     "nav.mobile": "Mobile",
+    "nav.plugins": "Plugins",
     "nav.developer": "Developer",
     "nav.mcp": "MCP Servers",
     "nav.lsp": "LSP",
@@ -329,6 +331,7 @@ export const translations: { en: TranslationCatalog } & Record<
     "nav.router": "Router de modelos",
     "nav.channels": "Canales",
     "nav.mobile": "Móvil",
+    "nav.plugins": "Complementos",
     "nav.developer": "Desarrollador",
     "nav.mcp": "Servidores MCP",
     "nav.lsp": "LSP",
@@ -440,6 +443,7 @@ export const translations: { en: TranslationCatalog } & Record<
     "nav.router": "模型路由",
     "nav.channels": "渠道",
     "nav.mobile": "移动端",
+    "nav.plugins": "插件",
     "nav.developer": "开发者",
     "nav.mcp": "MCP 服务器",
     "nav.lsp": "LSP",
@@ -551,6 +555,7 @@ export const translations: { en: TranslationCatalog } & Record<
     "nav.router": "モデルルーター",
     "nav.channels": "チャンネル",
     "nav.mobile": "モバイル",
+    "nav.plugins": "プラグイン",
     "nav.developer": "開発者",
     "nav.mcp": "MCPサーバー",
     "nav.lsp": "LSP",
@@ -662,6 +667,7 @@ export const translations: { en: TranslationCatalog } & Record<
     "nav.router": "Routeur de modèles",
     "nav.channels": "Canaux",
     "nav.mobile": "Mobile",
+    "nav.plugins": "Extensions",
     "nav.developer": "Développeur",
     "nav.mcp": "Serveurs MCP",
     "nav.lsp": "LSP",
@@ -786,6 +792,7 @@ export const translations: { en: TranslationCatalog } & Record<
     "nav.router": "Modellrouter",
     "nav.channels": "Kanäle",
     "nav.mobile": "Mobil",
+    "nav.plugins": "Plugins",
     "nav.developer": "Entwickler",
     "nav.mcp": "MCP-Server",
     "nav.sessions": "Sitzungen",
@@ -872,6 +879,7 @@ export const translations: { en: TranslationCatalog } & Record<
     "nav.router": "모델 라우터",
     "nav.channels": "채널",
     "nav.mobile": "모바일",
+    "nav.plugins": "플러그인",
     "nav.developer": "개발자",
     "nav.mcp": "MCP 서버",
     "nav.sessions": "세션",
@@ -958,6 +966,7 @@ export const translations: { en: TranslationCatalog } & Record<
     "nav.router": "Roteador de modelos",
     "nav.channels": "Canais",
     "nav.mobile": "Mobile",
+    "nav.plugins": "Plugins",
     "nav.developer": "Desenvolvedor",
     "nav.mcp": "Servidores MCP",
     "nav.sessions": "Sessões",

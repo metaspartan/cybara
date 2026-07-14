@@ -2334,6 +2334,18 @@ describe("mobile API client", () => {
                   toolName: "read_file",
                 },
               ],
+              agent_transfers: [
+                {
+                  from_agent_id: "agent-1",
+                  from_agent_name: "Builder",
+                  to_agent_id: "agent-2",
+                  to_agent_name: "Reviewer",
+                  reason: "Review the completed implementation",
+                  context_mode: "recent",
+                  context_summary: "The implementation and tests are complete",
+                  requested_at: "2026-06-30T08:00:30.000Z",
+                },
+              ],
             },
           ],
         });
@@ -2417,6 +2429,11 @@ describe("mobile API client", () => {
       });
       expect(detail.messages[0].toolCalls?.[0].name).toBe("read_file");
       expect(detail.messages[0].processActivities?.[0].text).toBe("Read DashboardScreen");
+      expect(detail.messages[0].agentTransfers?.[0]).toMatchObject({
+        fromAgentName: "Builder",
+        toAgentName: "Reviewer",
+        contextMode: "recent",
+      });
       expect(detail.contextUsage?.usedTokens).toBe(1200);
       expect(detail.contextUsage?.limitTokens).toBe(128000);
       expect(sent.contextUsage?.usedTokens).toBe(1500);

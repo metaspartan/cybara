@@ -103,6 +103,7 @@ import type {
 } from "@/types";
 import { LiveActivityTimeline, ProcessActivityList } from "./chat/ActivityTimeline";
 import { ArtifactViewerPanel } from "./chat/ArtifactViewerPanel";
+import { AgentTransferTimeline } from "./chat/AgentTransferTimeline";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
 import { ChatCapabilityMenu } from "./chat/ChatCapabilityMenu";
 import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
@@ -3829,6 +3830,7 @@ export function Chat() {
                             {hasAssistantToolCalls && (
                               <div className="my-2 border-t border-white/12" />
                             )}
+                            <AgentTransferTimeline transfers={message.agent_transfers} />
                             {message.images && message.images.length > 0 && (
                               <div
                                 className={cn(

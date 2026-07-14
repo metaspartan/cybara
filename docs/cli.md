@@ -85,7 +85,7 @@ small detail pane for the selected destination. The chat panel supports session 
 navigation, pinning, guarded deletion, new-chat entry, editable prompt input, multiline prompts with
 `Ctrl+J`, transcript paging with `PageUp`/`PageDown`, slash command completion with `Tab`, agent
 switching, reasoning effort controls, model router selection, `@` completion for agents, skills,
-tools, connectors, and MCP services, and interactive dangerous-tool
+tools, plugins, account apps, and MCP services, and interactive dangerous-tool
 approvals. Approval prompts accept approve-once, approve-for-session, approve-always, or deny without
 leaving the chat. Long message bodies use bounded previews by default; `/expand` toggles the complete
 transcript, while `/details` shows complete tool activity. Live activity uses the same grouped
@@ -335,29 +335,27 @@ cybara mcp serve          # Expose cybara's own tools as an MCP server (stdio)
 can call cybara's built-in tools. It reads newline-delimited JSON-RPC requests
 on stdin and writes responses on stdout.
 
-### Account Connectors
+### Plugins and Account Apps
 
 ```bash
-cybara connectors list
-CYBARA_CONNECTOR_CLIENT_SECRET=<secret> cybara connectors configure google_workspace --client-id <id>
-cybara connectors configure microsoft_365 --client-id <id> --write
-cybara connectors configure dropbox --client-id <id> --write
-CYBARA_CONNECTOR_CLIENT_SECRET=<secret> cybara connectors configure notion --client-id <id>
-cybara connectors connect google_workspace
-cybara connectors disconnect dropbox
-cybara connectors setup google_workspace
+cybara plugin list
+cybara plugin validate /path/to/plugin
+cybara plugin install /path/to/plugin
+cybara plugin remove <plugin-id>
+cybara plugin apps
+CYBARA_CONNECTOR_CLIENT_SECRET=<secret> cybara plugin configure google_workspace --client-id <id>
+cybara plugin configure microsoft_365 --client-id <id> --write
+cybara plugin connect google_workspace
+cybara plugin disconnect dropbox
+cybara plugin setup google_workspace
 ```
 
-Connector configuration defaults to read-only access. Pass `--write` only when the connected account should permit approval-gated write actions. The setup command opens the provider's application configuration documentation.
+Account app configuration defaults to read-only access. Pass `--write` only when the app should permit approval-gated write actions. The setup command opens the provider's application configuration documentation.
 
 ### Skills
 
 ```bash
 cybara skills             # List installed skills
-cybara plugin             # List installed plugins
-cybara plugin validate <path>
-cybara plugin install <path>
-cybara plugin remove <plugin-id>
 ```
 
 ### LSP (Language Servers)

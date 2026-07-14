@@ -71,11 +71,13 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    acp [--agent <id>]    Serve the default or selected agent");
   console.log("  tasks       List scheduled tasks");
   console.log("  skills      List installed skills");
-  console.log("  plugin      Plugin management commands");
+  console.log("  plugin      Plugin, account app, and MCP extension commands");
   console.log("    plugin list                List installed plugins");
   console.log("    plugin validate <path>     Validate a plugin manifest and dirs");
   console.log("    plugin install <path>      Install a local plugin");
   console.log("    plugin remove <plugin-id>  Remove an installed local plugin");
+  console.log("    plugin apps                List account apps");
+  console.log("    plugin connect <app-id>    Connect an account app");
   console.log("  sessions    List chat sessions");
   console.log("  memory      Memory commands");
   console.log("    memory         List recent memories");
@@ -99,10 +101,6 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    browser            Show browser status");
   console.log("    browser tabs       List open browser tabs");
   console.log("  channels    List configured channels");
-  console.log("  connectors  Account connector commands");
-  console.log("    connectors list");
-  console.log("    connectors configure <connector-id> --client-id <id>");
-  console.log("    connectors connect|disconnect|setup <connector-id>");
   console.log("  mobile      Mobile companion commands");
   printMobileHelp("    ");
   console.log("  devices     Alias for mobile device management");

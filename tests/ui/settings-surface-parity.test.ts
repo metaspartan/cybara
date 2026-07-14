@@ -22,6 +22,10 @@ const mobileComputerUse = readFileSync(
   join(root, "apps/mobile/src/screens/dashboardComputerUsePanel.tsx"),
   "utf8"
 );
+const mobileSessionDetail = readFileSync(
+  join(root, "apps/mobile/src/screens/dashboardSessionDetail.tsx"),
+  "utf8"
+);
 const mobileApi = readFileSync(join(root, "apps/mobile/src/lib/api.ts"), "utf8");
 const nativeSettings = readFileSync(
   join(root, "apps/macos/Cybara/Sources/Cybara/NativeSettingsScreen.swift"),
@@ -33,6 +37,14 @@ const nativeClient = readFileSync(
 );
 const nativeConfigScreens = readFileSync(
   join(root, "apps/macos/Cybara/Sources/Cybara/NativeConfigScreens.swift"),
+  "utf8"
+);
+const nativeChatAppearance = readFileSync(
+  join(root, "apps/macos/Cybara/Sources/Cybara/NativeChatAppearance.swift"),
+  "utf8"
+);
+const nativeLiquidGlass = readFileSync(
+  join(root, "apps/macos/Cybara/Sources/Cybara/LiquidGlass.swift"),
   "utf8"
 );
 
@@ -77,6 +89,20 @@ describe("settings surface parity", () => {
     expect(nativeClient).toContain('get("api/computer-use/status"');
     expect(nativeClient).toContain('"api/computer-use/permissions/grant"');
     expect(nativeClient).toContain('method: "POST"');
+  });
+
+  test("native clients consume the shared chat appearance settings", () => {
+    expect(mobileSettings).toContain('title="Readability"');
+    expect(mobileSettings).toContain("chat_appearance: { ...chatAppearance");
+    expect(nativeSettings).toContain('NativeI18n.t("settings.accessibility")');
+    expect(nativeSettings).toContain('["chat_appearance": chatAppearance.payload]');
+    expect(nativeChatAppearance).toContain('config["chat_appearance"]');
+    expect(nativeChatAppearance).toContain("var activityFontSize: CGFloat");
+    expect(nativeLiquidGlass).toContain("chatAppearance.reduceTransparency");
+    expect(mobileSessionDetail).toContain("opaque={chatAppearance.reduceTransparency}");
+    expect(mobileSessionDetail).toContain(
+      'animationType={chatAppearance.reduceMotion ? "none" : "fade"}'
+    );
   });
 
   test("wallet seed reveal requires fresh verification on web and native macOS", () => {

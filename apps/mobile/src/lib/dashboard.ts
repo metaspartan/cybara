@@ -10,13 +10,14 @@ import type { GatewayProfile } from "./connection";
 export type MobileTabKey = "overview" | "sessions" | "metrics" | "usage" | "tasks" | "settings";
 export type MobileSettingsTab =
   | "general"
+  | "accessibility"
   | "gateway"
   | "ai"
   | "evals"
   | "memory"
   | "voice"
   | "mcp"
-  | "connectors"
+  | "plugins"
   | "safety"
   | "wallet"
   | "migration"
@@ -69,13 +70,14 @@ export const MOBILE_TABS: MobileTabDefinition[] = [
 
 export const MOBILE_SETTINGS_TABS: Array<{ label: string; value: MobileSettingsTab }> = [
   { label: "General", value: "general" },
+  { label: "Accessibility", value: "accessibility" },
   { label: "Gateway", value: "gateway" },
   { label: "AI", value: "ai" },
   { label: "Lab", value: "evals" },
   { label: "Memory", value: "memory" },
   { label: "Voice", value: "voice" },
   { label: "MCP", value: "mcp" },
-  { label: "Connectors", value: "connectors" },
+  { label: "Plugins", value: "plugins" },
   { label: "Safety", value: "safety" },
   { label: "Wallet", value: "wallet" },
   { label: "Migration", value: "migration" },
@@ -162,6 +164,7 @@ export const MOBILE_PLATFORM_SETTING_KEYS = [
   "terminal_enabled",
   "tool_approval_mode",
   "follow_up_behavior_enabled",
+  "chat_appearance",
   "reasoning_effort",
   "dangerous_tool_policy",
   "sandbox_runtime",

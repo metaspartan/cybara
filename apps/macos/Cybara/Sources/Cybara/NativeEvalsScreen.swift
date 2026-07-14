@@ -24,7 +24,7 @@ struct NativeEvalsScreen: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             ScreenHeader(title: "Lab", subtitle: "Curate agent data and replay known-good behavior")
-            HStack(spacing: 10) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 150), spacing: 10)], spacing: 10) {
                 metric("Captured Traces", value: researchStats?.total ?? 0, icon: "cylinder.split.1x2")
                 metric("Tool Calls", value: researchStats?.toolCalls ?? 0, icon: "wrench.and.screwdriver")
                 metric("Reasoning", value: researchStats?.reasoningTraces ?? 0, icon: "brain")
@@ -90,6 +90,7 @@ struct NativeEvalsScreen: View {
                 }
             }
         }
+        .padding(24)
         .task { await load() }
     }
 
@@ -99,7 +100,7 @@ struct NativeEvalsScreen: View {
             VStack(alignment: .leading, spacing: 11) {
                 HStack(alignment: .top, spacing: 10) {
                     Image(systemName: "flask")
-                        .foregroundStyle(accentTint)
+                        .foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(golden.name)
                             .font(.system(size: 14, weight: .semibold, design: .rounded))
@@ -157,7 +158,7 @@ struct NativeEvalsScreen: View {
         GlassCard {
             HStack(spacing: 9) {
                 Image(systemName: icon)
-                    .foregroundStyle(accentTint)
+                    .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(value.formatted())
                         .font(.system(size: 18, weight: .semibold, design: .rounded))

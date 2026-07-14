@@ -2755,10 +2755,9 @@ const routes: Record<string, RouteHandler> = {
     const args = body as Record<string, unknown>;
     return await executeSkill(params!.name, args);
   },
-  "GET /api/plugins": (_body, params) => {
-    const workspaceDir = typeof params?.workspaceDir === "string" ? params.workspaceDir : undefined;
+  "GET /api/plugins": () => {
     return {
-      plugins: listInstalledPlugins({ workspaceDir }).map((plugin) => ({
+      plugins: listInstalledPlugins().map((plugin) => ({
         id: plugin.manifest.id,
         name: plugin.manifest.name,
         version: plugin.manifest.version,
@@ -2792,8 +2791,13 @@ const routes: Record<string, RouteHandler> = {
         id: plugin.manifest.id,
         name: plugin.manifest.name,
         version: plugin.manifest.version,
+        description: plugin.manifest.description,
+        author: plugin.manifest.author,
+        homepage: plugin.manifest.homepage,
         source: plugin.source,
+        rootDir: plugin.rootDir,
         skillDirs: plugin.skillDirs,
+        skillCount: plugin.skillDirs.length,
       },
     };
   },

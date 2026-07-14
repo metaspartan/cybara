@@ -42,6 +42,7 @@ import { chatApi, providerPlansApi } from "@/lib/api";
 import { useStopAgent } from "@/hooks/useApi";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "../chat/ChatAgentControls";
 import { ChatComposerActionButton } from "../chat/ChatComposerActionButton";
+import { AgentTransferTimeline } from "../chat/AgentTransferTimeline";
 import {
   mergeActivityLists,
   normalizeActivityTextForPhase,
@@ -143,6 +144,7 @@ import {
 } from "./idePersistence";
 import type {
   Agent,
+  AgentTransferInfo,
   ProviderPlanSnapshot,
   ProviderPlanStatusResponse,
   SessionContextUsage,
@@ -542,6 +544,51 @@ export function IDEChatPanel({
           })
           .filter((entry): entry is IdeProcessActivity => entry !== null)
       : undefined;
+    const agentTransfers = Array.isArray(value.agent_transfers)
+      ? value.agent_transfers
+          .filter(isPlainRecord)
+          .map((entry): AgentTransferInfo | null => {
+            const protocol = entry.protocol === "cybara-agent-transfer-v1" ? entry.protocol : null;
+            const status = entry.status === "accepted" ? entry.status : null;
+            const sessionId = typeof entry.sessionId === "string" ? entry.sessionId : "";
+            const fromAgentId = typeof entry.fromAgentId === "string" ? entry.fromAgentId : "";
+            const fromAgentName =
+              typeof entry.fromAgentName === "string" ? entry.fromAgentName : "";
+            const toAgentId = typeof entry.toAgentId === "string" ? entry.toAgentId : "";
+            const toAgentName = typeof entry.toAgentName === "string" ? entry.toAgentName : "";
+            const reason = typeof entry.reason === "string" ? entry.reason : "";
+            if (
+              !protocol ||
+              !status ||
+              !sessionId ||
+              !fromAgentId ||
+              !fromAgentName ||
+              !toAgentId ||
+              !toAgentName ||
+              !reason
+            ) {
+              return null;
+            }
+            return {
+              protocol,
+              status,
+              sessionId,
+              fromAgentId,
+              fromAgentName,
+              toAgentId,
+              toAgentName,
+              reason,
+              contextMode:
+                entry.contextMode === "recent" || entry.contextMode === "summary"
+                  ? entry.contextMode
+                  : ("full" as const),
+              contextSummary:
+                typeof entry.contextSummary === "string" ? entry.contextSummary : undefined,
+              requestedAt: typeof entry.requestedAt === "string" ? entry.requestedAt : undefined,
+            };
+          })
+          .filter((entry): entry is AgentTransferInfo => entry !== null)
+      : undefined;
 
     return {
       role,
@@ -551,6 +598,7 @@ export function IDEChatPanel({
       tool_calls: toolCalls && toolCalls.length > 0 ? toolCalls : undefined,
       process_activities:
         processActivities && processActivities.length > 0 ? processActivities : undefined,
+      agent_transfers: agentTransfers && agentTransfers.length > 0 ? agentTransfers : undefined,
     };
   }, []);
 
@@ -769,7 +817,9 @@ export function IDEChatPanel({
             : null
         );
         if (typeof response.data.agent_id === "string" && response.data.agent_id.trim()) {
-          setActiveAgentId(response.data.agent_id.trim());
+          const nextAgentId = response.data.agent_id.trim();
+          setActiveAgentId(nextAgentId);
+          onSelectedAgentIdChange(nextAgentId);
         }
         setSessionContextUsage(response.data.contextUsage ?? null);
       } catch {
@@ -785,7 +835,13 @@ export function IDEChatPanel({
     return () => {
       isCancelled = true;
     };
-  }, [clearLiveRunState, hydrateSessionStatus, selectedAgentId, sessionId]);
+  }, [
+    clearLiveRunState,
+    hydrateSessionStatus,
+    onSelectedAgentIdChange,
+    selectedAgentId,
+    sessionId,
+  ]);
 
   useEffect(() => {
     const disconnect = connectStatusStream({
@@ -954,6 +1010,13 @@ export function IDEChatPanel({
       }
       setSessionId(response.data.sessionId || requestSessionId);
       setSessionContextUsage(response.data.contextUsage ?? null);
+      if (isPlainRecord(response.data.agent) && typeof response.data.agent.id === "string") {
+        const nextAgentId = response.data.agent.id.trim();
+        if (nextAgentId) {
+          setActiveAgentId(nextAgentId);
+          onSelectedAgentIdChange(nextAgentId);
+        }
+      }
       const mappedAssistant = mapApiMessageToIde(response.data.message);
       const bufferedActivities = finalizeCompletedActivities(
         mergeActivityLists([], liveRunBufferRef.current)
@@ -1016,6 +1079,7 @@ export function IDEChatPanel({
     liveCurrentStep,
     liveStatus,
     mapApiMessageToIde,
+    onSelectedAgentIdChange,
     selectedAgentId,
     sessionId,
     terminalContext,
@@ -1501,6 +1565,9 @@ export function IDEChatPanel({
                       )}
                     </div>
                   </div>
+                  {message.role === "assistant" && (
+                    <AgentTransferTimeline transfers={message.agent_transfers} />
+                  )}
                   {message.role === "assistant" ? (
                     <div className="text-[12px] leading-6">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={ideMarkdownComponents}>

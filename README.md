@@ -78,7 +78,7 @@ If you need an agent platform that can plan, execute, verify, and report with st
 - Interactive tool approval with per-session/persistent allowlists, filesystem checkpoint/snapshot+rollback, and transform hooks (tool_result/llm_output/terminal_output)
 - Token streaming to the UI (real-time assistant text deltas via WebSocket)
 - MCP host mode (expose cybara's tools to other MCP clients) + MCP client (consume external servers)
-- Encrypted account connectors for Google Workspace and Dropbox, with read-only defaults and approval-gated writes
+- A unified plugin hub for reusable skill bundles, MCP services, and encrypted account apps with read-only defaults and approval-gated writes
 - Local workspace indexing with lexical search plus optional local Transformers.js embeddings; packaged desktop sidecars bundle Transformers.js, ONNX Runtime native binaries when available, and ONNX Web/WASM fallback assets
 - Source migration from supported legacy agent installations with dry-run previews, conflict handling, skill/memory import, and opt-in secret import
 - Shared speech settings for local Kokoro, operating-system, and cloud speech plus managed or full-duplex hands-free conversation
@@ -314,16 +314,16 @@ MCP server management and registry integration:
 - **Popular Pre-configured Servers**: Filesystem, GitHub, GitLab, PostgreSQL, SQLite, Puppeteer, Brave Search, Google Maps, Slack, Fetch, Obsidian, Raycast, and more
 - **Tool Exposure**: MCP server tools are automatically exposed to agents with full JSON-RPC communication
 
-UI: Dedicated MCP Servers page in the web interface (`/mcp-servers`)
+UI: MCP services are available from Plugins and the dedicated management page (`/mcp`)
 CLI: `cybara mcp list`, `cybara mcp search <query>`, `cybara mcp install <package>`, `cybara mcp popular`, `cybara mcp serve`
 
-### Account Connectors
+### Plugins
 
-Connect Google Workspace, Microsoft 365, Dropbox, or Notion from the Connectors screen to let agents work with authorized account data. Connections default to read-only access; optional write access remains subject to Cybara's normal tool approval policy. Credentials and OAuth tokens are stored through the encrypted secret store.
+The Plugins screen brings installed skill bundles, MCP services, and account apps into one extension surface. Google Workspace, Microsoft 365, Dropbox, and Notion account apps default to read-only access; optional writes remain subject to Cybara's normal tool approval policy. Credentials and OAuth tokens use the encrypted secret store.
 
-Additional services can be connected through HTTPS or local MCP servers.
+Plugins can be discovered from bundled, local, and workspace directories. Additional services can be connected through HTTPS or trusted local MCP servers.
 
-CLI: `cybara connectors list`, `cybara connectors configure <connector-id> --client-id <id>`, `cybara connectors connect <connector-id>`, `cybara connectors disconnect <connector-id>`
+CLI: `cybara plugin list`, `cybara plugin install <path>`, `cybara plugin apps`, `cybara plugin configure <app-id> --client-id <id>`, `cybara plugin connect <app-id>`
 
 ---
 

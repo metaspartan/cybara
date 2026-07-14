@@ -81,6 +81,8 @@ describe("agent toolsets", () => {
     expect(names[0]).toEqual(names[1]);
     expect(names[0]).toContain("read");
     expect(names[0]).toContain("tool_search");
+    expect(names[0]).toContain("agents_list");
+    expect(names[0]).toContain("sessions_transfer");
   });
 
   test("uses a stable full profile independent of prompt wording", () => {
@@ -92,6 +94,8 @@ describe("agent toolsets", () => {
     expect(first.offeredTools.map((tool) => tool.name)).not.toContain("kanban_show");
     expect(first.offeredTools.map((tool) => tool.name)).toContain("tool_search");
     expect(first.offeredTools.map((tool) => tool.name)).toContain("computer_use");
+    expect(first.offeredTools.map((tool) => tool.name)).toContain("agents_list");
+    expect(first.offeredTools.map((tool) => tool.name)).toContain("sessions_transfer");
   });
 
   test("supports profiles and additive toolsets", () => {

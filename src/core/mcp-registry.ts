@@ -6,11 +6,11 @@ export interface MCPRegistryServer {
   name: string;
   description: string;
   registry: "smithery" | "mcp.so" | "npm" | "official";
-  package: string; // npm package or smithery package
-  command: string; // Full command to run
-  args?: string; // Additional args
+  package: string;
+  command: string;
+  args?: string;
   url?: string;
-  envVars?: string[]; // Required environment variables
+  envVars?: string[];
   author?: string;
   stars?: number;
   categories?: string[];
@@ -57,14 +57,13 @@ const POPULAR_SERVERS: MCPRegistryServer[] = [
   {
     id: "mcp-github",
     name: "GitHub",
-    description: "GitHub API integration for repos, issues, PRs, and code",
+    description: "Repositories, issues, pull requests, actions, and code through GitHub OAuth",
     registry: "official",
-    package: "@modelcontextprotocol/server-github",
-    command: "bunx",
-    args: "--bun @modelcontextprotocol/server-github",
-    envVars: ["GITHUB_TOKEN"],
+    package: "io.github/github-mcp-server",
+    command: "",
+    url: "https://api.githubcopilot.com/mcp/",
     categories: ["git", "code", "api"],
-    installType: "bunx",
+    installType: "remote",
   },
   {
     id: "mcp-gitlab",
@@ -196,28 +195,48 @@ const POPULAR_SERVERS: MCPRegistryServer[] = [
     installType: "smithery",
   },
   {
-    id: "smithery-notion",
+    id: "mcp-notion",
     name: "Notion",
-    description: "Notion workspace integration for pages and databases",
-    registry: "smithery",
-    package: "notion",
-    command: "bunx",
-    args: "--bun @smithery/cli run notion",
-    envVars: ["NOTION_API_KEY"],
+    description: "Pages, databases, and workspace search through Notion OAuth",
+    registry: "official",
+    package: "com.notion/mcp",
+    command: "",
+    url: "https://mcp.notion.com/mcp",
     categories: ["productivity", "notes"],
-    installType: "smithery",
+    installType: "remote",
   },
   {
-    id: "smithery-linear",
+    id: "mcp-linear",
     name: "Linear",
-    description: "Linear issue tracking and project management",
-    registry: "smithery",
-    package: "linear",
-    command: "bunx",
-    args: "--bun @smithery/cli run linear",
-    envVars: ["LINEAR_API_KEY"],
+    description: "Issues, projects, and team workflows through Linear OAuth",
+    registry: "official",
+    package: "app.linear/linear",
+    command: "",
+    url: "https://mcp.linear.app/mcp",
     categories: ["productivity", "issues"],
-    installType: "smithery",
+    installType: "remote",
+  },
+  {
+    id: "mcp-stripe",
+    name: "Stripe",
+    description: "Payments, customers, subscriptions, and developer resources through Stripe OAuth",
+    registry: "official",
+    package: "com.stripe/mcp",
+    command: "",
+    url: "https://mcp.stripe.com",
+    categories: ["payments", "commerce", "api"],
+    installType: "remote",
+  },
+  {
+    id: "mcp-atlassian",
+    name: "Atlassian",
+    description: "Jira and Confluence workspaces through Atlassian OAuth",
+    registry: "official",
+    package: "com.atlassian/rovo-mcp",
+    command: "",
+    url: "https://mcp.atlassian.com/v1/mcp/authv2",
+    categories: ["productivity", "issues", "knowledge"],
+    installType: "remote",
   },
   {
     id: "mcp-obsidian",

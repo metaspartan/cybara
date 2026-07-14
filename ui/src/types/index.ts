@@ -293,12 +293,27 @@ export interface ChatImageAttachment {
   size?: number;
 }
 
+export interface AgentTransferInfo {
+  protocol: "cybara-agent-transfer-v1";
+  status: "accepted";
+  sessionId: string;
+  fromAgentId: string;
+  fromAgentName: string;
+  toAgentId: string;
+  toAgentName: string;
+  reason: string;
+  contextMode: "full" | "recent" | "summary";
+  contextSummary?: string;
+  requestedAt: string;
+}
+
 export interface ChatMessage {
   role: "user" | "assistant" | "system" | "tool";
   content: string;
   timestamp?: string;
   thinking?: string;
   tool_calls?: ToolCallInfo[];
+  agent_transfers?: AgentTransferInfo[];
   images?: ChatImageAttachment[];
   _truncated?: string;
   _tool_calls_hidden_count?: number;

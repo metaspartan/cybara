@@ -21,7 +21,7 @@ export type MainMenuAction =
   | "usage"
   | "evals"
   | "channels"
-  | "connectors"
+  | "plugins"
   | "memory"
   | "tools"
   | "browser"
@@ -160,12 +160,12 @@ export const MAIN_TUI_MENU_ITEMS: MenuItem[] = [
     detail: "Connection state, access policy, and default agent routing",
   },
   {
-    label: "Account Connectors",
-    action: "connectors",
+    label: "Plugins",
+    action: "plugins",
     shortcut: "4",
     group: "Setup",
     kind: "panel",
-    detail: "Google Workspace and Dropbox account access",
+    detail: "Installed bundles, account apps, and MCP services",
   },
   {
     label: "Mobile Pairing",

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import {
   AlertTriangle,
+  ArrowRightLeft,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -50,7 +51,9 @@ function ActivityRow({ activity }: { activity: LiveActivityItem }) {
   }
   return (
     <div className="chat-activity-text flex items-start gap-2 px-0.5 text-gray-400">
-      {activity.phase === "start" ? (
+      {activity.toolName === "sessions_transfer" ? (
+        <ArrowRightLeft className="w-3 h-3 text-current opacity-70 mt-0.5 flex-shrink-0" />
+      ) : activity.phase === "start" ? (
         <Loader2 className="w-3 h-3 animate-spin text-current opacity-70 mt-0.5 flex-shrink-0" />
       ) : activity.phase === "result" ? (
         <CheckCircle2 className="w-3 h-3 text-current opacity-70 mt-0.5 flex-shrink-0" />

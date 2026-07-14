@@ -1,18 +1,16 @@
 # Cybara Plugins
 
-Cybara plugins are installable extension bundles that can contribute skills without patching core.
+Cybara plugins are trusted extension bundles and connected capabilities that expand an agent without patching core.
 
-## Current scope
+## Plugin hub
 
-This first pass adds:
+The Plugins surfaces in web, Tauri, native macOS, mobile, CLI, and TUI organize:
 
-- plugin manifest validation
-- local path install/remove
-- bundled, local, and workspace plugin discovery
-- plugin-contributed skill directories
-- CLI and API management surface
+- installed bundles that contribute reusable skills
+- OAuth account apps backed by encrypted credentials
+- remote and local MCP services with explicit lifecycle controls
 
-Current plugin manifests use `cybara-plugin.json`.
+Installable bundles use `cybara-plugin.json`.
 
 ## Manifest
 
@@ -52,6 +50,8 @@ cybara plugin list
 cybara plugin validate /path/to/plugin
 cybara plugin install /path/to/plugin
 cybara plugin remove acme-plugin
+cybara plugin apps
+cybara plugin connect google_workspace
 ```
 
 ## API
@@ -68,7 +68,9 @@ DELETE /api/plugins/:id
 - skill contribution paths must stay inside the plugin root
 - absolute contribution paths are ignored
 - only existing skill directories are loaded
-- plugin installation uses local paths
+- plugin bundle installation uses local paths
+- account app writes remain approval-gated
+- MCP installation and execution require explicit trusted actions
 
 ## Security
 
@@ -76,7 +78,7 @@ Plugins are trusted local code. They are not sandboxed simply because they are â
 
 For production hosts:
 
-- review plugin manifests and skill content before install
+- review plugin manifests, skill content, and MCP packages before install
 - prefer project-scoped workspace plugins when possible
 - avoid installing plugins from unreviewed sources on operator machines
 - treat plugin install/remove as privileged operational changes

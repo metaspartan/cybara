@@ -379,6 +379,21 @@ struct NativeAttachedImage: Identifiable, Hashable, Sendable {
     }
 }
 
+struct GatewayAgentTransfer: Decodable, Identifiable, Hashable {
+    let fromAgentId: String
+    let fromAgentName: String
+    let toAgentId: String
+    let toAgentName: String
+    let reason: String
+    let contextMode: String
+    let contextSummary: String?
+    let requestedAt: String?
+
+    var id: String {
+        [fromAgentId, toAgentId, requestedAt ?? "transfer"].joined(separator: ":")
+    }
+}
+
 struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
     let role: String
     let content: String
@@ -386,13 +401,14 @@ struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
     let thinking: String?
     let tool_calls: [GatewayToolCall]?
     let process_activities: [GatewayProcessActivity]?
+    let agent_transfers: [GatewayAgentTransfer]?
     let _tool_calls_total_count: Int?
     let _tool_calls_hidden_count: Int?
     var attachedImages: [NativeAttachedImage] = []
     var id = UUID()
 
     private enum CodingKeys: String, CodingKey {
-        case role, content, timestamp, thinking, tool_calls, process_activities
+        case role, content, timestamp, thinking, tool_calls, process_activities, agent_transfers
         case _tool_calls_total_count, _tool_calls_hidden_count
     }
 
@@ -403,6 +419,7 @@ struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
         thinking: String? = nil,
         tool_calls: [GatewayToolCall]? = nil,
         process_activities: [GatewayProcessActivity]? = nil,
+        agent_transfers: [GatewayAgentTransfer]? = nil,
         _tool_calls_total_count: Int? = nil,
         _tool_calls_hidden_count: Int? = nil,
         attachedImages: [NativeAttachedImage] = []
@@ -414,6 +431,7 @@ struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
         self.thinking = normalized.thinking
         self.tool_calls = tool_calls
         self.process_activities = process_activities
+        self.agent_transfers = agent_transfers
         self._tool_calls_total_count = _tool_calls_total_count
         self._tool_calls_hidden_count = _tool_calls_hidden_count
         self.attachedImages = attachedImages
@@ -437,6 +455,7 @@ struct GatewaySessionMessage: Decodable, Identifiable, Hashable {
         self.thinking = normalized.thinking
         tool_calls = try container.decodeIfPresent([GatewayToolCall].self, forKey: .tool_calls)
         process_activities = try container.decodeIfPresent([GatewayProcessActivity].self, forKey: .process_activities)
+        agent_transfers = try container.decodeIfPresent([GatewayAgentTransfer].self, forKey: .agent_transfers)
         _tool_calls_total_count = try container.decodeIfPresent(Int.self, forKey: ._tool_calls_total_count)
         _tool_calls_hidden_count = try container.decodeIfPresent(Int.self, forKey: ._tool_calls_hidden_count)
     }

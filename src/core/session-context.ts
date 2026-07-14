@@ -40,6 +40,7 @@ type SessionMessageMetadata = Partial<
     | "thinking"
     | "tool_calls"
     | "process_activities"
+    | "agent_transfers"
   >
 >;
 
@@ -79,6 +80,9 @@ function serializeSessionMessageMetadata(
   }
   if (Array.isArray(message.process_activities) && message.process_activities.length > 0) {
     metadata.process_activities = message.process_activities;
+  }
+  if (Array.isArray(message.agent_transfers) && message.agent_transfers.length > 0) {
+    metadata.agent_transfers = message.agent_transfers;
   }
   return Object.keys(metadata).length > 0
     ? capSessionMessageMetadata(JSON.stringify(metadata))

@@ -12,6 +12,50 @@ enum CybaraBrand {
         return NSImage(contentsOf: url)
     }()
 
+    static func menuBarTemplateImage(size: CGFloat = 16) -> NSImage? {
+        guard let source = logoImage,
+              let sourceImage = source.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        else {
+            return nil
+        }
+        let pixelSize = max(1, Int((size * 2).rounded()))
+        guard let context = CGContext(
+            data: nil,
+            width: pixelSize,
+            height: pixelSize,
+            bitsPerComponent: 8,
+            bytesPerRow: pixelSize * 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else {
+            return nil
+        }
+
+        context.interpolationQuality = .high
+        context.draw(sourceImage, in: CGRect(x: 0, y: 0, width: pixelSize, height: pixelSize))
+        guard let raw = context.data?.assumingMemoryBound(to: UInt8.self) else { return nil }
+        for offset in stride(from: 0, to: pixelSize * pixelSize * 4, by: 4) {
+            let sourceAlpha = CGFloat(raw[offset + 3]) / 255
+            let red = CGFloat(raw[offset]) / 255
+            let green = CGFloat(raw[offset + 1]) / 255
+            let blue = CGFloat(raw[offset + 2]) / 255
+            let luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+            let alpha = sourceAlpha * max(0.18, 1 - luminance)
+            raw[offset] = 0
+            raw[offset + 1] = 0
+            raw[offset + 2] = 0
+            raw[offset + 3] = UInt8((alpha * 255).rounded())
+        }
+
+        guard let processed = context.makeImage() else { return nil }
+        let bitmap = NSBitmapImageRep(cgImage: processed)
+        bitmap.size = NSSize(width: size, height: size)
+        let image = NSImage(size: NSSize(width: size, height: size))
+        image.addRepresentation(bitmap)
+        image.isTemplate = true
+        return image
+    }
+
     static func logoURL(
         bundleURL: URL = Bundle.main.bundleURL,
         resourceURL: URL? = Bundle.main.resourceURL,

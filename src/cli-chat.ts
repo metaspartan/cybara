@@ -51,6 +51,7 @@ interface CliGatewayConfig {
   defaultWorkspaceDir?: string;
   tool_approval_mode?: string;
   toolApprovalMode?: string;
+  follow_up_behavior_enabled?: boolean;
 }
 
 interface CliChatSessionSummary {
@@ -75,6 +76,13 @@ interface CliHistoryMessage {
   thinking?: string;
   process_activities?: CliProcessActivity[];
   tool_calls?: CliToolCall[];
+  agent_transfers?: CliAgentTransfer[];
+}
+
+interface CliAgentTransfer {
+  fromAgentName?: string;
+  toAgentName?: string;
+  reason?: string;
 }
 
 interface CliToolCall {
@@ -98,6 +106,7 @@ interface CliProcessActivity {
 interface CliChatResponse {
   sessionId?: string;
   queued?: boolean;
+  agent?: { id?: string };
   message?: {
     content?: unknown;
     thinking?: string;
@@ -318,10 +327,12 @@ function printChatHelp(): void {
   console.log("    /new                       Start a new session");
   console.log("    /agents                    List agents");
   console.log("    /agent <id|name|default>   Use another agent for future turns");
+  console.log("    /transfer <id|name>        Transfer the active session to another agent");
   console.log("    /model <id|router|default> Use a model override or the model router");
   console.log("    /router on|off             Toggle model-router sends");
   console.log("    /workspace <path>          Use a workspace for future turns");
   console.log("    /permissions ask|always_allow|show");
+  console.log("    /followups on|off|show     Toggle queue and steer follow-ups");
   console.log("    /environment               Show workspace, branch, context, plan, diffs, tasks");
   console.log("    /context                   Show context and compaction state");
   console.log("    /usage                     Show token usage for this session");
@@ -725,6 +736,10 @@ async function printSessionHistory(sessionId: string): Promise<void> {
   console.log("\n  --- Session History ---");
   for (const message of messages.slice(-8)) {
     if (message.role === "system") continue;
+    for (const transfer of message.agent_transfers || []) {
+      if (!transfer.fromAgentName || !transfer.toAgentName) continue;
+      console.log(`  ⇄ Transferred from ${transfer.fromAgentName} to ${transfer.toAgentName}`);
+    }
     const content = extractTextContent(message.content || "");
     if (!content) continue;
     const prefix = message.role === "user" ? "  You: " : "  AI:  ";
@@ -787,7 +802,15 @@ async function rawChat(options: CliChatOptions): Promise<void> {
   let useModelRouter = options.useModelRouter;
   let workspaceDir = options.workspaceDir;
   let running = false;
+  let followUpBehaviorEnabled = true;
   let pendingMessages: CliPendingMessage[] = [];
+
+  try {
+    const config = await chatContext().fetchAPI<CliGatewayConfig>("/api/config");
+    followUpBehaviorEnabled = config?.follow_up_behavior_enabled !== false;
+  } catch {
+    followUpBehaviorEnabled = true;
+  }
 
   if (!sessionId) {
     sessionId = await pickInitialSession(rl);
@@ -826,6 +849,7 @@ async function rawChat(options: CliChatOptions): Promise<void> {
     console.log(`    Model: ${modelLabel}`);
     console.log(`    Workspace: ${activeWorkspace}`);
     console.log(`    Permissions: ${approvalMode}`);
+    console.log(`    Follow-ups: ${followUpBehaviorEnabled ? "queue / steer" : "disabled"}`);
   };
 
   await printStatus();
@@ -873,6 +897,9 @@ async function rawChat(options: CliChatOptions): Promise<void> {
       if (data.sessionId) {
         sessionId = data.sessionId;
       }
+      if (data.agent?.id) {
+        agentId = data.agent.id;
+      }
       printAssistantResponse(data, options.showThinking);
       pendingMessages = data.pendingMessages || pendingMessages;
       if (pendingMessages.length > 0) {
@@ -890,6 +917,10 @@ async function rawChat(options: CliChatOptions): Promise<void> {
 
   const handleQueuedInput = async (message: string) => {
     if (!requireSession()) return;
+    if (!followUpBehaviorEnabled) {
+      console.log("  Queue / Steer follow-ups are disabled. Use /followups on to enable them.");
+      return;
+    }
     const data = await queueMessage(sessionId as string, message, {
       agentId,
       modelOverride: useModelRouter ? undefined : modelOverride,
@@ -939,7 +970,7 @@ async function rawChat(options: CliChatOptions): Promise<void> {
       console.log("  New session");
       return true;
     }
-    if (command === "agent") {
+    if (command === "agent" || command === "transfer") {
       if (!argument) {
         const agents = await fetchChatAgents();
         for (const agent of agents) console.log(`  ${formatAgentLine(agent)}`);
@@ -952,6 +983,13 @@ async function rawChat(options: CliChatOptions): Promise<void> {
       }
       agentId = await resolveAgentId(argument);
       useModelRouter = false;
+      if (sessionId && agentId) {
+        await chatContext().fetchAPI(`/api/sessions/${encodeURIComponent(sessionId)}/agent`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agentId }),
+        });
+      }
       console.log(agentId ? `  Agent set to ${agentId}` : "  Agent reset to default");
       return true;
     }
@@ -1017,6 +1055,36 @@ async function rawChat(options: CliChatOptions): Promise<void> {
         console.log(`  Error: ${result.error || "Failed to update permissions"}`);
       } else {
         console.log(`  Permissions set to ${normalized}`);
+      }
+      return true;
+    }
+    if (command === "followups" || command === "followup") {
+      const mode = argument.toLowerCase();
+      if (!mode || mode === "show") {
+        console.log(`  Queue / Steer follow-ups: ${followUpBehaviorEnabled ? "on" : "off"}`);
+        return true;
+      }
+      const enabled = ["on", "enable", "enabled"].includes(mode)
+        ? true
+        : ["off", "disable", "disabled"].includes(mode)
+          ? false
+          : null;
+      if (enabled === null) {
+        console.log("  Usage: /followups on|off|show");
+        return true;
+      }
+      const result = await chatContext().fetchAPI<{ success?: boolean; error?: string }>(
+        "/api/config",
+        {
+          method: "PUT",
+          body: JSON.stringify({ follow_up_behavior_enabled: enabled }),
+        }
+      );
+      if (result?.success === false) {
+        console.log(`  Error: ${result.error || "Failed to update follow-up behavior"}`);
+      } else {
+        followUpBehaviorEnabled = enabled;
+        console.log(`  Queue / Steer follow-ups ${enabled ? "enabled" : "disabled"}`);
       }
       return true;
     }

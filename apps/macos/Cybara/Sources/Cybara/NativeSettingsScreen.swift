@@ -39,6 +39,7 @@ struct NativeSettingsScreen: View {
     @State private var defaultModel = ""
     @State private var reasoningEffort = ""
     @State private var followUpBehaviorEnabled = true
+    @State private var chatAppearance = NativeChatAppearanceSettings()
     @State private var terminalEnabled = false
     @State private var acpEnabled = true
     @State private var selfImprovingSkills = true
@@ -161,6 +162,7 @@ struct NativeSettingsScreen: View {
 
             TabView(selection: $selectedTab) {
                 generalTab.tabItem { Label(NativeI18n.t("settings.general"), systemImage: "switch.2") }.tag(SettingsTab.general)
+                accessibilityTab.tabItem { Label(NativeI18n.t("settings.accessibility"), systemImage: "accessibility") }.tag(SettingsTab.accessibility)
                 gatewayTab.tabItem { Label(NativeI18n.t("settings.gateway"), systemImage: "server.rack") }.tag(SettingsTab.gateway)
                 modelTab.tabItem { Label(NativeI18n.t("settings.ai"), systemImage: "brain") }.tag(SettingsTab.model)
                 memoryTab.tabItem { Label(NativeI18n.t("nav.memory"), systemImage: "memorychip") }.tag(SettingsTab.memory)
@@ -540,6 +542,88 @@ struct NativeSettingsScreen: View {
                     }
                 }
 
+            }
+            .nativeSettingsContentLayout()
+        }
+    }
+
+    private var accessibilityTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: NativeSettingsLayout.cardSpacing) {
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 14) {
+                        HStack {
+                            Label("Readability", systemImage: "textformat.size")
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                            Spacer()
+                            progressLabel(for: "chat_appearance", fallback: "Saved")
+                        }
+                        Picker("Chat text size", selection: $chatAppearance.fontSize) {
+                            Text("Compact").tag("compact")
+                            Text("Standard").tag("standard")
+                            Text("Large").tag("large")
+                            Text("Extra large").tag("extra_large")
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: chatAppearance.fontSize) { _, _ in saveChatAppearance() }
+                        Picker("Code text size", selection: $chatAppearance.codeFontSize) {
+                            Text("Compact").tag("compact")
+                            Text("Standard").tag("standard")
+                            Text("Large").tag("large")
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: chatAppearance.codeFontSize) { _, _ in saveChatAppearance() }
+                        Picker("Line spacing", selection: $chatAppearance.lineSpacing) {
+                            Text("Compact").tag("compact")
+                            Text("Comfortable").tag("comfortable")
+                            Text("Spacious").tag("spacious")
+                        }
+                        .pickerStyle(.segmented)
+                        .onChange(of: chatAppearance.lineSpacing) { _, _ in saveChatAppearance() }
+                        toggleRow(
+                            "Underline chat links",
+                            detail: "Keep links recognizable without relying on color alone.",
+                            isOn: $chatAppearance.underlineLinks
+                        ) { saveChatAppearance() }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Label("Visual Comfort", systemImage: "eye")
+                            .font(.system(size: 15, weight: .bold, design: .rounded))
+                        toggleRow(
+                            "Reduce motion",
+                            detail: "Minimize decorative movement and animated transitions.",
+                            isOn: $chatAppearance.reduceMotion
+                        ) { saveChatAppearance() }
+                        Divider()
+                        toggleRow(
+                            "Reduce transparency",
+                            detail: "Use opaque surfaces instead of translucent glass effects.",
+                            isOn: $chatAppearance.reduceTransparency
+                        ) { saveChatAppearance() }
+                        Divider()
+                        toggleRow(
+                            "Increase contrast",
+                            detail: "Strengthen muted text, icons, borders, and focus indicators.",
+                            isOn: $chatAppearance.highContrast
+                        ) { saveChatAppearance() }
+                    }
+                }
+
+                GlassCard {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Preview")
+                            .font(.system(size: 11, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        NativeMarkdownView(
+                            content: "Responses use your selected size and spacing. `Inline code` remains readable, and [links](https://cybara.ai) stay recognizable.",
+                            isUser: false
+                        )
+                        .nativeChatAppearance(chatAppearance)
+                    }
+                }
             }
             .nativeSettingsContentLayout()
         }
@@ -1748,6 +1832,10 @@ struct NativeSettingsScreen: View {
         )
     }
 
+    private func saveChatAppearance() {
+        saveConfigPatch(["chat_appearance": chatAppearance.payload], key: "chat_appearance")
+    }
+
     private func saveSandboxRuntime() {
         saveConfigPatch(
             [
@@ -2315,6 +2403,7 @@ struct NativeSettingsScreen: View {
         defaultCybaraDataDir = config["default_cybara_data_dir"] as? String ?? ""
         reasoningEffort = config["reasoning_effort"] as? String ?? ""
         followUpBehaviorEnabled = config["follow_up_behavior_enabled"] as? Bool ?? true
+        chatAppearance = NativeChatAppearanceSettings(config: config)
         defaultAgentId = config["default_agent_id"] as? String ?? ""
         backgroundAgentId = config["background_agent_id"] as? String ?? ""
         visionFallbackAgentId = config["vision_fallback_agent_id"] as? String ?? ""
@@ -2403,6 +2492,7 @@ struct NativeSettingsScreen: View {
 
     private enum SettingsTab {
         case general
+        case accessibility
         case gateway
         case model
         case speech

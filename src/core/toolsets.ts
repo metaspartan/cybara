@@ -41,6 +41,7 @@ export interface AgentToolPolicy {
 const exactToolsets: Partial<Record<ToolsetId, string[]>> = {
   sessions: [
     "sessions_spawn",
+    "sessions_transfer",
     "sessions_wait",
     "sessions_send",
     "sessions_history",
@@ -154,7 +155,9 @@ const directToolNames = new Set([
   "memory_get",
   "memory_save",
   "sessions_spawn",
+  "sessions_transfer",
   "sessions_wait",
+  "agents_list",
   "artifacts",
   "todo",
   "clarify",

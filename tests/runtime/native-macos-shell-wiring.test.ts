@@ -55,11 +55,12 @@ describe("native macOS shell wiring", () => {
 
   test("native workspace open targets use a stable optical icon column", () => {
     const screens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
+    const icon = readFileSync(join(MACOS_APP_DIR, "NativeWorkspaceOpenTargetIcon.swift"), "utf8");
 
-    expect(screens).toContain('width: target.id == "cybara_ide" ? 12 : 14');
-    expect(screens).toContain('height: target.id == "cybara_ide" ? 12 : 14');
-    expect(screens).toContain(".font(.system(size: 12, weight: .medium))");
-    expect(screens).toContain(".frame(width: 16, height: 16)");
+    expect(screens).toContain("NativeWorkspaceOpenTargetIcon(target: target)");
+    expect(icon).toContain(".frame(width: 12, height: 12)");
+    expect(icon).toContain(".frame(width: 16, height: 16)");
+    expect(icon).toContain(".symbolRenderingMode(.monochrome)");
   });
 
   test("native app exposes a template menu bar icon with usage and lifecycle controls", () => {
@@ -69,7 +70,8 @@ describe("native macOS shell wiring", () => {
     expect(app).toContain("MenuBarExtra");
     expect(app).toContain("applicationShouldTerminateAfterLastWindowClosed");
     expect(app).toContain("-> Bool {\n        false");
-    expect(menu).toContain("image.isTemplate = true");
+    expect(menu).toContain("CybaraBrand.menuBarTemplateImage()");
+    expect(menu).toContain(".frame(width: 16, height: 16)");
     expect(menu).toContain('Button("Show Cybara")');
     expect(menu).toContain('Button("New Chat")');
     expect(menu).toContain('Menu("Usage")');
@@ -111,6 +113,7 @@ describe("native macOS shell wiring", () => {
       "/router",
       "/channels",
       "/mobile",
+      "/plugins",
       "/mcp",
       "/lsp",
       "/ide",
@@ -134,6 +137,7 @@ describe("native macOS shell wiring", () => {
     for (const nativeScreen of [
       "RouterScreen(client: client)",
       "ChannelsScreen(client: client)",
+      "PluginsScreen(client: client)",
       "MCPScreen(client: client)",
       "LSPScreen(client: client)",
       "IDEScreen(client: client)",
@@ -279,6 +283,7 @@ describe("native macOS shell wiring", () => {
 
     for (const label of [
       'Label(NativeI18n.t("settings.general"), systemImage: "switch.2")',
+      'Label(NativeI18n.t("settings.accessibility"), systemImage: "accessibility")',
       'Label(NativeI18n.t("settings.gateway"), systemImage: "server.rack")',
       'Label(NativeI18n.t("settings.ai"), systemImage: "brain")',
       'Label(NativeI18n.t("nav.memory"), systemImage: "memorychip")',
@@ -573,6 +578,9 @@ describe("native macOS shell wiring", () => {
     expect(client).toContain("func importEvals(_ bundleData: Data)");
     expect(screen).toContain('Button("Suite Backup")');
     expect(screen).toContain('Button("Redacted Trajectory JSONL")');
+    expect(screen).toContain("GridItem(.adaptive(minimum: 150)");
+    expect(screen).toContain(".padding(24)");
+    expect(screen).toContain(".foregroundStyle(.secondary)");
     expect(screen).not.toContain("WKWebView");
   });
 

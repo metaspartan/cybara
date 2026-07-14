@@ -686,6 +686,21 @@ final class GatewayClientModelTests: XCTestCase {
                   "sandbox_provider": "host"
                 }
               ],
+              "agent_transfers": [
+                {
+                  "protocol": "cybara-agent-transfer-v1",
+                  "status": "accepted",
+                  "sessionId": "session-1",
+                  "fromAgentId": "agent-a",
+                  "fromAgentName": "Builder",
+                  "toAgentId": "agent-b",
+                  "toAgentName": "Reviewer",
+                  "reason": "Review the completed implementation",
+                  "contextMode": "recent",
+                  "contextSummary": "Implementation and tests are complete",
+                  "requestedAt": "2026-07-02T18:00:01.000Z"
+                }
+              ],
               "_tool_calls_total_count": 2,
               "_tool_calls_hidden_count": 0
             }
@@ -699,6 +714,9 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(message.process_activities?.first?.toolName, "exec_command")
         XCTAssertEqual(message.process_activities?.first?.toolCallId, "tool-exec")
         XCTAssertEqual(message.process_activities?.first?.sandboxProvider, "host")
+        XCTAssertEqual(message.agent_transfers?.first?.fromAgentName, "Builder")
+        XCTAssertEqual(message.agent_transfers?.first?.toAgentName, "Reviewer")
+        XCTAssertEqual(message.agent_transfers?.first?.contextMode, "recent")
         XCTAssertGreaterThan(message.process_activities?.first?.timestamp ?? 0, 1_783_000_000_000)
     }
 
@@ -1583,6 +1601,27 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertNotNil(CybaraBrand.logoImage)
     }
 
+    func testCybaraMenuBarTemplateUsesFixedSizeAndPreservesDetails() throws {
+        let image = try XCTUnwrap(CybaraBrand.menuBarTemplateImage())
+        let bitmap = try XCTUnwrap(image.representations.first as? NSBitmapImageRep)
+
+        XCTAssertTrue(image.isTemplate)
+        XCTAssertEqual(image.size, NSSize(width: 16, height: 16))
+        XCTAssertLessThan(bitmap.colorAt(x: 0, y: 0)?.alphaComponent ?? 1, 0.05)
+        XCTAssertGreaterThan(bitmap.colorAt(x: bitmap.pixelsWide / 2, y: bitmap.pixelsHigh / 2)?.alphaComponent ?? 0, 0.15)
+    }
+
+    @MainActor
+    func testWorkspaceOpenTargetBitmapUsesMenuIconSize() throws {
+        let source = NSImage(size: NSSize(width: 512, height: 512))
+        let display = NativeWorkspaceOpenTargetIcon.displayImage(source)
+
+        XCTAssertEqual(display.size.width, 14)
+        XCTAssertEqual(display.size.height, 14)
+        XCTAssertEqual(source.size.width, 512)
+        XCTAssertEqual(source.size.height, 512)
+    }
+
     func testCybaraLogoSearchesPackagedAppResourcesBeforeSwiftPMFallback() throws {
         let appURL = URL(fileURLWithPath: "/Applications/CybaraNative.app", isDirectory: true)
         let resourceURL = appURL
@@ -1784,6 +1823,31 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(response.subagentId, "run-2")
         XCTAssertEqual(response.sessionKey, "agent:mini:subagent:2")
         XCTAssertEqual(response.status, "accepted")
+    }
+
+    func testNativeChatAppearanceReadsSharedConfigAndBuildsPayload() {
+        let appearance = NativeChatAppearanceSettings(config: [
+            "chat_appearance": [
+                "font_size": "extra_large",
+                "codeFontSize": "large",
+                "line_spacing": "spacious",
+                "reduce_motion": true,
+                "reduceTransparency": true,
+                "high_contrast": true,
+                "underlineLinks": true,
+            ],
+        ])
+
+        XCTAssertEqual(appearance.fontSize, "extra_large")
+        XCTAssertEqual(appearance.codeFontSize, "large")
+        XCTAssertEqual(appearance.lineSpacing, "spacious")
+        XCTAssertEqual(appearance.bodyFontSize, 18)
+        XCTAssertEqual(appearance.codeTextSize, 14)
+        XCTAssertTrue(appearance.reduceMotion)
+        XCTAssertTrue(appearance.reduceTransparency)
+        XCTAssertTrue(appearance.highContrast)
+        XCTAssertTrue(appearance.underlineLinks)
+        XCTAssertEqual(appearance.payload["fontSize"] as? String, "extra_large")
     }
 
     private func decodeSession(_ json: String) throws -> GatewaySession {

@@ -65,6 +65,16 @@ interface ChatMessage {
   content: string;
   process_activities?: ActivityItem[];
   tool_calls?: ToolCallItem[];
+  agent_transfers?: AgentTransferItem[];
+}
+
+interface AgentTransferItem {
+  fromAgentId: string;
+  fromAgentName: string;
+  toAgentId: string;
+  toAgentName: string;
+  reason: string;
+  requestedAt?: string;
 }
 
 type ActivityItem = TUIActivityItem;
@@ -97,6 +107,7 @@ interface RouterStatus {
 interface ControlPlaneState {
   agents: AgentSummary[];
   approvalMode: string;
+  followUpBehaviorEnabled: boolean;
   routerStatus: RouterStatus | null;
 }
 
@@ -105,6 +116,7 @@ interface InteractiveChatProps {
   apiKey?: string | null;
   fetchAPI: TUIFetchAPI;
   initialAgentId?: string;
+  initialWorkspaceDir?: string;
   sessionId?: string;
   title?: string;
   modelLine?: string;
@@ -120,9 +132,11 @@ const COMMANDS = [
   { name: "/memory", detail: "Show memory and indexing health" },
   { name: "/logs", detail: "Show recent gateway logs" },
   { name: "/agent", detail: "Switch the active chat agent" },
+  { name: "/transfer", detail: "Transfer this chat to another agent" },
   { name: "/model", detail: "Show or override the model for future turns" },
   { name: "/router", detail: "Use or disable model router for new turns" },
   { name: "/permissions", detail: "Show or change tool approval mode" },
+  { name: "/followups", detail: "Show or change queue and steer behavior" },
   { name: "/tools", detail: "Show or change the active agent tool profile" },
   {
     name: "/reasoning",
@@ -201,6 +215,29 @@ function activitiesFrom(value: unknown): ActivityItem[] {
   return value.flatMap((item) =>
     isRecord(item) ? [item as ActivityItem] : [],
   );
+}
+
+function agentTransfersFrom(value: unknown): AgentTransferItem[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const fromAgentId = typeof item.fromAgentId === "string" ? item.fromAgentId : "";
+    const fromAgentName = typeof item.fromAgentName === "string" ? item.fromAgentName : "";
+    const toAgentId = typeof item.toAgentId === "string" ? item.toAgentId : "";
+    const toAgentName = typeof item.toAgentName === "string" ? item.toAgentName : "";
+    const reason = typeof item.reason === "string" ? item.reason : "";
+    if (!fromAgentId || !fromAgentName || !toAgentId || !toAgentName || !reason) return [];
+    return [
+      {
+        fromAgentId,
+        fromAgentName,
+        toAgentId,
+        toAgentName,
+        reason,
+        requestedAt: typeof item.requestedAt === "string" ? item.requestedAt : undefined,
+      },
+    ];
+  });
 }
 
 function toolCallsFrom(value: unknown): ToolCallItem[] {
@@ -329,6 +366,7 @@ function messagesFromResponse(value: unknown): ChatMessage[] {
         content,
         process_activities: activitiesFrom(item.process_activities),
         tool_calls: toolCallsFrom(item.tool_calls),
+        agent_transfers: agentTransfersFrom(item.agent_transfers),
       });
     }
   }
@@ -586,6 +624,15 @@ function MessageView({
         maxColumns={maxColumns}
         maxDetails={maxActivityDetails}
       />
+      {message.agent_transfers?.map((transfer) => (
+        <Text
+          key={`${transfer.fromAgentId}-${transfer.toAgentId}-${transfer.requestedAt || "transfer"}`}
+          color={ACTIVITY_DETAIL_COLOR}
+          dimColor
+        >
+          {"  ⇄ "}Transferred from {transfer.fromAgentName} to {transfer.toAgentName}
+        </Text>
+      ))}
       <Box paddingLeft={2}>
         <MessageBody
           content={message.content}
@@ -703,7 +750,7 @@ function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
         </Text>
         <Text>Enter send · ^J newline · Tab complete</Text>
         <Text>PgUp/PgDn scroll · Esc sessions · ^C quit</Text>
-        <Text>/model · /agent · /permissions · /reasoning</Text>
+        <Text>/model · /agent · /permissions · /followups · /reasoning</Text>
         <Text>/copy · /diff · /review · /environment</Text>
         <Text>/goal or /loop for persistent work</Text>
       </Box>
@@ -731,6 +778,7 @@ function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
         /agents lists · /agent name switches · /router on|off · /permissions
         ask|always_allow
       </Text>
+      <Text>/followups on|off controls queue and steer behavior</Text>
       <Text>
         /reasoning changes effort · /title renames · /workspace changes the
         working root
@@ -783,11 +831,6 @@ function StatusRail({
   narrow: boolean;
   useModelRouter: boolean;
 }): React.ReactElement {
-  const agentLabel = useModelRouter
-    ? "Model Router"
-    : agent
-      ? agentLine(agent)
-      : "Gateway default";
   const routerLabel = useModelRouter
     ? "selected"
     : routerStatus?.enabled
@@ -796,13 +839,13 @@ function StatusRail({
   const shortSessionId = sessionId ? sessionId.slice(0, 8) : "new";
   if (narrow) {
     return (
-      <Box borderStyle="single" borderColor="gray" paddingX={1}>
+      <Box>
         <Text>
-          <Text color="white">{compact(modelOverride || agentLabel, 28)}</Text>
-          <Text color="gray"> · </Text>
-          <Text color={approvalMode === "ask" ? "yellow" : "green"}>
+          <Text color="gray">Tools </Text>
+          <Text color={approvalMode === "ask" ? "yellow" : "white"}>
             {approvalMode === "always_allow" ? "allow" : approvalMode}
           </Text>
+          <Text color="gray"> · {agentReasoningEffort(agent)}</Text>
           <Text color={pendingCount > 0 ? "yellow" : "gray"}>
             {" "}
             · q{pendingCount}
@@ -813,19 +856,10 @@ function StatusRail({
     );
   }
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="single"
-      borderColor="gray"
-      paddingX={1}
-    >
-      <Text>
-        <Text color="gray">Agent </Text>
-        <Text color="white">{compact(agentLabel)}</Text>
-      </Text>
+    <Box flexDirection="column">
       <Text>
         <Text color="gray">Tools </Text>
-        <Text color={approvalMode === "ask" ? "yellow" : "green"}>
+        <Text color={approvalMode === "ask" ? "yellow" : "white"}>
           {approvalMode === "always_allow" ? "allow" : approvalMode}
         </Text>
         {approvalCount > 0 ? (
@@ -857,6 +891,7 @@ export function InteractiveChatTUI({
   apiKey,
   fetchAPI,
   initialAgentId,
+  initialWorkspaceDir,
   sessionId,
   title,
   modelLine,
@@ -865,7 +900,9 @@ export function InteractiveChatTUI({
   const { exit } = useApp();
   const [localSessionId, setLocalSessionId] = React.useState(sessionId || "");
   const [sessionTitle, setSessionTitle] = React.useState(title || "");
-  const [workspaceDir, setWorkspaceDir] = React.useState("");
+  const [workspaceDir, setWorkspaceDir] = React.useState(
+    initialWorkspaceDir || "",
+  );
   const [modelOverride, setModelOverride] = React.useState("");
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [pendingMessages, setPendingMessages] = React.useState<
@@ -892,6 +929,7 @@ export function InteractiveChatTUI({
   );
   const [useModelRouter, setUseModelRouter] = React.useState(false);
   const [approvalMode, setApprovalMode] = React.useState("always_allow");
+  const [followUpBehaviorEnabled, setFollowUpBehaviorEnabled] = React.useState(true);
   const [routerStatus, setRouterStatus] = React.useState<RouterStatus | null>(
     null,
   );
@@ -1022,6 +1060,8 @@ export function InteractiveChatTUI({
         typeof configResponse.tool_approval_mode === "string"
           ? configResponse.tool_approval_mode
           : approvalMode;
+      const nextFollowUpBehaviorEnabled =
+        !isRecord(configResponse) || configResponse.follow_up_behavior_enabled !== false;
       const nextRouterStatus = isRecord(routerResponse)
         ? (routerResponse as RouterStatus)
         : null;
@@ -1032,10 +1072,12 @@ export function InteractiveChatTUI({
       ) {
         setApprovalMode(configResponse.tool_approval_mode);
       }
+      setFollowUpBehaviorEnabled(nextFollowUpBehaviorEnabled);
       setRouterStatus(nextRouterStatus);
       return {
         agents: nextAgents,
         approvalMode: nextApprovalMode,
+        followUpBehaviorEnabled: nextFollowUpBehaviorEnabled,
         routerStatus: nextRouterStatus,
       };
     }, [approvalMode, fetchAPI]);
@@ -1219,6 +1261,7 @@ export function InteractiveChatTUI({
                   ? agentLine(selectedAgent)
                   : modelLine || "gateway default"),
             `tools ${approvalMode}`,
+            `follow-ups ${followUpBehaviorEnabled ? "queue/steer" : "off"}`,
             `${pendingMessages.length} queued`,
           ].join(" · "),
         );
@@ -1283,7 +1326,7 @@ export function InteractiveChatTUI({
         );
         return true;
       }
-      if (normalizedCommand === "agent") {
+      if (normalizedCommand === "agent" || normalizedCommand === "transfer") {
         if (!argument) {
           setNotice("Usage: /agent <id|name|default|router>");
           return true;
@@ -1419,6 +1462,38 @@ export function InteractiveChatTUI({
         }
         setApprovalMode(nextMode);
         setNotice(`Tool approvals set to ${nextMode}.`);
+        return true;
+      }
+      if (["followups", "followup"].includes(normalizedCommand)) {
+        const value = argument.trim().toLowerCase();
+        if (!value || value === "show") {
+          setNotice(`Queue / Steer follow-ups: ${followUpBehaviorEnabled ? "on" : "off"}`);
+          return true;
+        }
+        const enabled = ["on", "enable", "enabled"].includes(value)
+          ? true
+          : ["off", "disable", "disabled"].includes(value)
+            ? false
+            : null;
+        if (enabled === null) {
+          setNotice("Usage: /followups on|off|show");
+          return true;
+        }
+        const response = await fetchAPI<unknown>("/api/config", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ follow_up_behavior_enabled: enabled }),
+        });
+        if (isRecord(response) && response.success === false) {
+          setNotice(
+            typeof response.error === "string"
+              ? response.error
+              : "Gateway rejected the follow-up setting.",
+          );
+          return true;
+        }
+        setFollowUpBehaviorEnabled(enabled);
+        setNotice(`Queue / Steer follow-ups ${enabled ? "enabled" : "disabled"}.`);
         return true;
       }
       if (["tools", "toolset", "toolsets"].includes(normalizedCommand)) {
@@ -1870,6 +1945,7 @@ export function InteractiveChatTUI({
       approvalMode,
       expandedTranscript,
       fetchAPI,
+      followUpBehaviorEnabled,
       loadEnvironmentForSession,
       loadControlPlane,
       loadMessages,
@@ -1898,6 +1974,10 @@ export function InteractiveChatTUI({
       );
       if (sending) {
         if (trimmed.startsWith("/") && (await runCommand(trimmed))) return;
+        if (!followUpBehaviorEnabled) {
+          setNotice("Queue / Steer follow-ups are disabled. Use /followups on to enable them.");
+          return;
+        }
         const activeSessionId = localSessionId || sessionIdRef.current;
         if (!activeSessionId) {
           setNotice("Wait for the first session to start before queueing a follow-up.");
@@ -1960,6 +2040,10 @@ export function InteractiveChatTUI({
         const responseMessage = isRecord(response)
           ? messagesFromResponse([response.message])[0]
           : undefined;
+        if (isRecord(response) && isRecord(response.agent) && typeof response.agent.id === "string") {
+          const nextAgentId = response.agent.id.trim();
+          if (nextAgentId) setSelectedAgentId(nextAgentId);
+        }
         if (nextSessionId) {
           sessionIdRef.current = nextSessionId;
           setLocalSessionId(nextSessionId);
@@ -1995,6 +2079,7 @@ export function InteractiveChatTUI({
     },
     [
       fetchAPI,
+      followUpBehaviorEnabled,
       loadMessagesForSession,
       loadSubagents,
       localSessionId,
@@ -2222,8 +2307,6 @@ export function InteractiveChatTUI({
             ? ""
             : ` · ${localSessionId || "session will be created on send"}`}
         </Text>
-      </Box>
-      <Box marginTop={1} flexShrink={0}>
         <StatusRail
           agent={selectedAgent}
           approvalCount={approvalRequests.length}
@@ -2289,8 +2372,10 @@ export function InteractiveChatTUI({
 
       {sending ? (
         <Box paddingX={1}>
-          <Text color="yellow">
-            <Spinner type="dots" /> Enter queues · /steer injects · Ctrl+C stops
+          <Text color="cyan">
+            <Spinner type="dots" />{" "}
+            {followUpBehaviorEnabled ? "Enter queues · /steer injects" : "Follow-ups off"} ·
+            Ctrl+C stops
           </Text>
         </Box>
       ) : null}
@@ -2334,7 +2419,7 @@ export function InteractiveChatTUI({
 
       <Box
         borderStyle="round"
-        borderColor={sending ? "yellow" : "green"}
+        borderColor={sending ? "cyan" : "gray"}
         paddingX={1}
         flexDirection="column"
         flexShrink={0}

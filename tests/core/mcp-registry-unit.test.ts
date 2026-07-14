@@ -14,6 +14,7 @@ interface ServerShape {
   package: string;
   command: string;
   args?: string;
+  url?: string;
   envVars?: string[];
   categories?: string[];
   installType: string;
@@ -77,7 +78,7 @@ const searchNoMatch = ids(await mcpRegistry.search("zzz-no-such-server", "offici
 const searchEmptyNoRegistry = (await mcpRegistry.search("")).length;
 const searchNpmFetchDown = ids(await mcpRegistry.search("filesystem"));
 
-const installKnown = await mcpRegistry.installByPackage("@modelcontextprotocol/server-github");
+const installKnown = await mcpRegistry.installByPackage("io.github/github-mcp-server");
 const installCustom = await mcpRegistry.installByPackage("some-custom-mcp-pkg");
 const installMalicious = await mcpRegistry.installByPackage("safe-name;touch /tmp/cyb-pwned");
 const validCustomNames = ["@scope/pkg.name", "pkg_name", "pkg.name-1"];
@@ -201,11 +202,16 @@ describe("mcpRegistry catalog surface", () => {
       expect(server.name.length).toBeGreaterThan(0);
       expect(server.description.length).toBeGreaterThan(0);
       expect(["smithery", "mcp.so", "npm", "official"]).toContain(server.registry);
-      expect(server.command).toBe("bunx");
-      expect(["bunx", "bun", "smithery"]).toContain(server.installType);
-      expect(server.args).toContain(
-        server.installType === "smithery" ? "@smithery/cli" : server.package
-      );
+      expect(["bunx", "bun", "smithery", "remote"]).toContain(server.installType);
+      if (server.installType === "remote") {
+        expect(server.command).toBe("");
+        expect(server.url).toStartWith("https://");
+      } else {
+        expect(server.command).toBe("bunx");
+        expect(server.args).toContain(
+          server.installType === "smithery" ? "@smithery/cli" : server.package
+        );
+      }
     }
     const uniqueIds = new Set(report.popularDefault.map((s) => s.id));
     expect(uniqueIds.size).toBe(report.popularDefault.length);
@@ -226,8 +232,9 @@ describe("mcpRegistry catalog surface", () => {
 
   test("getDetails returns full metadata or undefined", () => {
     expect(report.detailsGithub?.name).toBe("GitHub");
-    expect(report.detailsGithub?.package).toBe("@modelcontextprotocol/server-github");
-    expect(report.detailsGithub?.envVars).toEqual(["GITHUB_TOKEN"]);
+    expect(report.detailsGithub?.package).toBe("io.github/github-mcp-server");
+    expect(report.detailsGithub?.url).toBe("https://api.githubcopilot.com/mcp/");
+    expect(report.detailsGithub?.installType).toBe("remote");
     expect(report.detailsMissing).toBe(true);
   });
 
@@ -249,8 +256,6 @@ describe("mcpRegistry search", () => {
       "smithery-browserbase",
       "smithery-exa",
       "smithery-firecrawl",
-      "smithery-linear",
-      "smithery-notion",
     ]);
   });
 

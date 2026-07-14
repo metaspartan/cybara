@@ -41,21 +41,37 @@ interface OAuthStatus {
   error?: string;
 }
 
+interface PluginStatus {
+  id: string;
+  name: string;
+  version: string;
+  source: "bundled" | "local" | "workspace";
+  skillCount: number;
+}
+
+interface MCPServiceStatus {
+  id: string;
+  name: string;
+  status: string;
+  toolCount: number;
+  transport?: "stdio" | "http";
+}
+
 type FetchAPI = <T>(endpoint: string, options?: RequestInit) => Promise<T | null>;
 
 function connectorId(value: string | undefined): AccountConnectorId {
   if (isAccountConnectorId(value)) return value;
-  throw new Error(`Connector must be one of: ${ACCOUNT_CONNECTOR_IDS.join(", ")}`);
+  throw new Error(`Account app must be one of: ${ACCOUNT_CONNECTOR_IDS.join(", ")}`);
 }
 
 function printConnectorHelp(): void {
-  console.log("Account Connector Commands:");
-  console.log("  cybara connectors list");
-  console.log(`  cybara connectors configure <${connectorIdHelp}> --client-id <id>`);
+  console.log("Plugin Account App Commands:");
+  console.log("  cybara plugin apps");
+  console.log(`  cybara plugin configure <${connectorIdHelp}> --client-id <id>`);
   console.log("    [--read|--write] [CYBARA_CONNECTOR_CLIENT_SECRET=...]");
-  console.log(`  cybara connectors connect <${connectorIdHelp}>`);
-  console.log(`  cybara connectors disconnect <${connectorIdHelp}>`);
-  console.log(`  cybara connectors setup <${connectorIdHelp}>`);
+  console.log(`  cybara plugin connect <${connectorIdHelp}>`);
+  console.log(`  cybara plugin disconnect <${connectorIdHelp}>`);
+  console.log(`  cybara plugin setup <${connectorIdHelp}>`);
 }
 
 async function waitForOAuth(fetchAPI: FetchAPI, state: string): Promise<void> {
@@ -134,24 +150,51 @@ export async function runConnectorCommand(args: string[], fetchAPI: FetchAPI): P
   printConnectorHelp();
 }
 
-export function TUIConnectorsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
+export function TUIPluginsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
   const layout = useTerminalLayout();
-  const loader = React.useCallback(
+  const appLoader = React.useCallback(
     () => fetchAPI<ConnectorStatus[]>("/api/connectors"),
     [fetchAPI]
   );
-  const state = usePanelData(loader, "Failed to load account connectors");
-  const connectors = Array.isArray(state.data) ? state.data : [];
-  const visible = connectors.slice(0, panelListLimit(connectors.length, layout, 3));
+  const pluginLoader = React.useCallback(
+    () => fetchAPI<{ plugins: PluginStatus[] }>("/api/plugins"),
+    [fetchAPI]
+  );
+  const serviceLoader = React.useCallback(
+    () => fetchAPI<MCPServiceStatus[]>("/api/mcp"),
+    [fetchAPI]
+  );
+  const appState = usePanelData(appLoader, "Failed to load account apps");
+  const pluginState = usePanelData(pluginLoader, "Failed to load plugins");
+  const serviceState = usePanelData(serviceLoader, "Failed to load MCP services");
+  const connectors = Array.isArray(appState.data) ? appState.data : [];
+  const plugins = Array.isArray(pluginState.data?.plugins) ? pluginState.data.plugins : [];
+  const services = Array.isArray(serviceState.data) ? serviceState.data : [];
+  const visiblePlugins = plugins.slice(0, panelListLimit(plugins.length, layout, 2));
+  const visibleApps = connectors.slice(0, panelListLimit(connectors.length, layout, 3));
+  const visibleServices = services.slice(0, panelListLimit(services.length, layout, 3));
 
   return (
     <PanelShell
-      title={`Account Connectors (${connectors.filter((item) => item.connected).length}/${connectors.length})`}
-      detail="Private account access for agents; writes remain approval-gated"
-      loading={state.loading}
-      error={state.error}
+      title={`Plugins (${plugins.length} bundles · ${connectors.filter((item) => item.connected).length}/${connectors.length} apps · ${services.length} MCP)`}
+      detail="Installed skills, account apps, and MCP services"
+      loading={appState.loading || pluginState.loading || serviceState.loading}
+      error={appState.error || pluginState.error || serviceState.error}
     >
-      {visible.map((connector) => (
+      {visiblePlugins.length > 0 ? <Text color="cyan">Installed bundles</Text> : null}
+      {visiblePlugins.map((plugin) => (
+        <Box key={plugin.id}>
+          <Box width={layout.narrow ? 20 : 28}>
+            <Text bold>{compactPanelValue(plugin.name, layout.narrow ? 18 : 26)}</Text>
+          </Box>
+          <Text color="#9ca6b4">
+            v{plugin.version} · {plugin.skillCount} skills · {plugin.source}
+          </Text>
+        </Box>
+      ))}
+      <PanelRemainder total={plugins.length} shown={visiblePlugins.length} />
+      {visibleApps.length > 0 ? <Text color="cyan">Account apps</Text> : null}
+      {visibleApps.map((connector) => (
         <Box key={connector.id} flexDirection="column" marginBottom={1}>
           <Box>
             <Box width={layout.narrow ? 20 : 28}>
@@ -173,7 +216,21 @@ export function TUIConnectorsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
           </Text>
         </Box>
       ))}
-      <PanelRemainder total={connectors.length} shown={visible.length} />
+      <PanelRemainder total={connectors.length} shown={visibleApps.length} />
+      {visibleServices.length > 0 ? <Text color="cyan">MCP services</Text> : null}
+      {visibleServices.map((service) => (
+        <Box key={service.id}>
+          <Box width={layout.narrow ? 20 : 28}>
+            <Text bold>{compactPanelValue(service.name, layout.narrow ? 18 : 26)}</Text>
+          </Box>
+          <Text color={service.status === "running" ? "green" : "#9ca6b4"}>
+            {service.status} · {service.toolCount} tools ·{" "}
+            {service.transport === "http" ? "remote" : "local"}
+          </Text>
+        </Box>
+      ))}
+      <PanelRemainder total={services.length} shown={visibleServices.length} />
+      <Text color="#9ca6b4">Manage MCP services with cybara tui mcp</Text>
     </PanelShell>
   );
 }

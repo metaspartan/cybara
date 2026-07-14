@@ -15,6 +15,19 @@ struct NativeMCPServer: Decodable, Identifiable, Hashable {
     let error: String?
 }
 
+struct NativePluginSummary: Decodable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let version: String
+    let description: String
+    let author: String?
+    let homepage: String?
+    let source: String
+    let rootDir: String
+    let skillDirs: [String]
+    let skillCount: Int
+}
+
 struct NativeAccountConnector: Decodable, Identifiable, Hashable {
     let id: String
     let label: String
@@ -370,6 +383,10 @@ struct NativeLSPInstallResult: Decodable {
 }
 
 extension GatewayClient {
+    func nativePlugins() async throws -> [NativePluginSummary] {
+        try await nativeList("api/plugins", keys: ["plugins", "items"])
+    }
+
     func nativeAccountConnectors() async throws -> [NativeAccountConnector] {
         try await nativeList("api/connectors", keys: ["connectors", "items"])
     }
@@ -739,11 +756,13 @@ private struct NativeConnectorDraft {
     var writeAccess = false
 }
 
-struct AccountConnectorsScreen: View {
+struct PluginsScreen: View {
     let client: GatewayClient
     @Environment(\.cybaraAccent) private var accent
 
     @State private var connectors: [NativeAccountConnector] = []
+    @State private var plugins: [NativePluginSummary] = []
+    @State private var services: [NativeMCPServer] = []
     @State private var drafts: [String: NativeConnectorDraft] = [:]
     @State private var loaded = false
     @State private var busyID: String?
@@ -752,7 +771,29 @@ struct AccountConnectorsScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                ScreenHeader(title: "Connectors", subtitle: "Accounts your agents can work with")
+                ScreenHeader(title: "Plugins", subtitle: "Skills, account apps, and MCP services")
+
+                if !loaded {
+                    ProgressView().frame(maxWidth: .infinity)
+                } else {
+                    if let error {
+                        GlassCard {
+                            HStack(spacing: 10) {
+                                Image(systemName: "exclamationmark.triangle")
+                                    .foregroundStyle(.orange)
+                                Text(error)
+                                    .font(.system(size: 12, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Button("Retry") { Task { await load() } }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                            }
+                        }
+                    }
+                    pluginSummary
+                    serviceSummary
+                }
 
                 GlassCard {
                     HStack(alignment: .top, spacing: 12) {
@@ -768,11 +809,10 @@ struct AccountConnectorsScreen: View {
                     }
                 }
 
-                if !loaded {
-                    ProgressView().frame(maxWidth: .infinity)
-                } else if let error {
-                    LoadFailedView(message: error) { Task { await load() } }
-                } else {
+                if loaded {
+                    Text("Account Apps")
+                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 360), spacing: 14)], spacing: 14) {
                         ForEach(connectors) { connector in
                             connectorCard(connector)
@@ -783,6 +823,64 @@ struct AccountConnectorsScreen: View {
             .padding(24)
         }
         .task { await load() }
+    }
+
+    private var pluginSummary: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("Installed Plugins", systemImage: "shippingbox")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                if plugins.isEmpty {
+                    Text("No plugin bundles are installed.")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(plugins) { plugin in
+                        HStack(spacing: 10) {
+                            Image(systemName: "puzzlepiece.extension")
+                                .foregroundStyle(accent)
+                                .frame(width: 20)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(plugin.name)
+                                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                                Text("v\(plugin.version) · \(plugin.skillCount) skill\(plugin.skillCount == 1 ? "" : "s") · \(plugin.source)")
+                                    .font(.system(size: 11, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var serviceSummary: some View {
+        GlassCard {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("MCP Services", systemImage: "server.rack")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                if services.isEmpty {
+                    Text("No MCP services are configured.")
+                        .font(.system(size: 12, design: .rounded))
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(services) { service in
+                        HStack(spacing: 10) {
+                            Circle()
+                                .fill(service.status == "running" ? Color.green : Color.secondary)
+                                .frame(width: 7, height: 7)
+                            Text(service.name)
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
+                            Spacer()
+                            Text("\(service.toolCount ?? 0) tools")
+                                .font(.system(size: 11, design: .rounded))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -877,15 +975,24 @@ struct AccountConnectorsScreen: View {
     }
 
     private func load() async {
-        do {
-            connectors = try await client.nativeAccountConnectors()
+        async let connectorResult = try? client.nativeAccountConnectors()
+        async let pluginResult = try? client.nativePlugins()
+        async let serviceResult = try? client.nativeMCPServers()
+        let loadedValues = await (connectorResult, pluginResult, serviceResult)
+        if let nextConnectors = loadedValues.0 {
+            connectors = nextConnectors
             for connector in connectors where drafts[connector.id] == nil {
                 drafts[connector.id] = NativeConnectorDraft(writeAccess: connector.access == "read_write")
             }
-            error = nil
-        } catch {
-            self.error = error.localizedDescription
         }
+        if let nextPlugins = loadedValues.1 { plugins = nextPlugins }
+        if let nextServices = loadedValues.2 { services = nextServices }
+        let unavailable = [
+            loadedValues.0 == nil ? "account apps" : nil,
+            loadedValues.1 == nil ? "installed plugins" : nil,
+            loadedValues.2 == nil ? "MCP services" : nil,
+        ].compactMap { $0 }
+        error = unavailable.isEmpty ? nil : "Unavailable: \(unavailable.joined(separator: ", "))."
         loaded = true
     }
 

@@ -82,7 +82,9 @@ function readPersistedSecuritySettings(): PersistedSecuritySettings {
       }
     }
   } catch (error) {
-    log.warn("Failed to read security settings", { error: (error as Error).message });
+    log.warn("Failed to read security settings", {
+      error: (error as Error).message,
+    });
   }
   cachedSecuritySettings = {};
   return cachedSecuritySettings;
@@ -96,7 +98,9 @@ function writePersistedSecuritySettings(settings: PersistedSecuritySettings): vo
   if (!existsSync(cybaraDir)) {
     mkdirSync(cybaraDir, { recursive: true, mode: 0o700 });
   }
-  writeFileSync(SECURITY_SETTINGS_FILE, JSON.stringify(settings, null, 2), { mode: 0o600 });
+  writeFileSync(SECURITY_SETTINGS_FILE, JSON.stringify(settings, null, 2), {
+    mode: 0o600,
+  });
   try {
     chmodSync(SECURITY_SETTINGS_FILE, 0o600);
   } catch {}
@@ -113,7 +117,11 @@ function readPersistedGatewayPassword(
     /^[a-f0-9]{32}$/i.test(record.salt) &&
     typeof record.hash === "string" &&
     /^[a-f0-9]{64}$/i.test(record.hash)
-    ? { algorithm: "scrypt", salt: record.salt.toLowerCase(), hash: record.hash.toLowerCase() }
+    ? {
+        algorithm: "scrypt",
+        salt: record.salt.toLowerCase(),
+        hash: record.hash.toLowerCase(),
+      }
     : undefined;
 }
 
@@ -285,12 +293,19 @@ export function checkRateLimit(
 
   if (!entry || now > entry.resetAt) {
     rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
-    return { allowed: true, remaining: maxRequests - 1, resetAt: now + windowMs };
+    return {
+      allowed: true,
+      remaining: maxRequests - 1,
+      resetAt: now + windowMs,
+    };
   }
 
   if (entry.count >= maxRequests) {
     const retryAfterMs = entry.resetAt - now;
-    log.warn(`Rate limit exceeded for ${key}`, { count: entry.count, retryAfterMs });
+    log.warn(`Rate limit exceeded for ${key}`, {
+      count: entry.count,
+      retryAfterMs,
+    });
     return {
       allowed: false,
       remaining: 0,
@@ -612,7 +627,11 @@ function remoteAccessStatus(input: {
   try {
     parsed = new URL(input.baseUrl);
   } catch {
-    return { ready: false, status: "invalid_url", message: "Remote access URL is invalid." };
+    return {
+      ready: false,
+      status: "invalid_url",
+      message: "Remote access URL is invalid.",
+    };
   }
   if (isLoopbackMobileGatewayUrl(input.baseUrl)) {
     return {
@@ -756,7 +775,10 @@ export function getGatewayAuthSettings(): GatewayAuthSettings {
   };
 }
 
-export function revealGatewayApiKey(): { apiKey: string | null; source: "env" | "file" | "none" } {
+export function revealGatewayApiKey(): {
+  apiKey: string | null;
+  source: "env" | "file" | "none";
+} {
   const envKey = process.env.CYBARA_API_KEY?.trim();
   const key = config.apiKey;
   return { apiKey: key, source: envKey ? "env" : key ? "file" : "none" };
@@ -872,6 +894,11 @@ export function routeRequiredScope(method: string, path: string): string | null 
   if (path.startsWith("/api/mcp")) {
     if (method === "GET") return null;
     return "mcp";
+  }
+  if (path.startsWith("/api/plugins")) {
+    if (path === "/api/plugins/validate") return "manage";
+    if (method === "GET") return "read";
+    return "manage";
   }
   if (path.startsWith("/api/connectors")) {
     if (method === "GET") return "read";
@@ -1007,7 +1034,10 @@ export async function validateUrl(url: string): Promise<{ valid: boolean; error?
     }
 
     if (parsed.username || parsed.password) {
-      return { valid: false, error: "URLs with embedded credentials are not allowed" };
+      return {
+        valid: false,
+        error: "URLs with embedded credentials are not allowed",
+      };
     }
 
     const hostname = parsed.hostname.toLowerCase();
@@ -1067,7 +1097,10 @@ export async function validateUrl(url: string): Promise<{ valid: boolean; error?
   }
 }
 
-export function validateMessageSize(message: string): { valid: boolean; error?: string } {
+export function validateMessageSize(message: string): {
+  valid: boolean;
+  error?: string;
+} {
   if (!message) {
     return { valid: false, error: "Message is required" };
   }
@@ -1158,7 +1191,9 @@ export function securityCheck(
         passed: false,
         error: "Rate limit exceeded",
         statusCode: 429,
-        headers: { "Retry-After": String(Math.ceil((limit.retryAfterMs || 60000) / 1000)) },
+        headers: {
+          "Retry-After": String(Math.ceil((limit.retryAfterMs || 60000) / 1000)),
+        },
       };
     }
     return { passed: true };
@@ -1175,7 +1210,9 @@ export function securityCheck(
         passed: false,
         error: "Rate limit exceeded",
         statusCode: 429,
-        headers: { "Retry-After": String(Math.ceil((limit.retryAfterMs || 60000) / 1000)) },
+        headers: {
+          "Retry-After": String(Math.ceil((limit.retryAfterMs || 60000) / 1000)),
+        },
       };
     }
     return { passed: true };

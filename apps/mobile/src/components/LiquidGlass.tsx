@@ -34,15 +34,25 @@ export function LiquidGlass({
   intensity = 40,
   tintColor,
   interactive = false,
+  opaque = false,
 }: PropsWithChildren<{
   style?: StyleProp<ViewStyle>;
   contentStyle?: StyleProp<ViewStyle>;
   intensity?: number;
   tintColor?: string;
   interactive?: boolean;
+  opaque?: boolean;
 }>) {
   const { scheme } = useThemeControls();
   const GlassView = useNativeGlassView();
+
+  if (opaque) {
+    return (
+      <View style={[styles.base, styles.opaque, style]}>
+        <View style={[styles.content, contentStyle]}>{children}</View>
+      </View>
+    );
+  }
 
   if (GlassView) {
     return (
@@ -86,6 +96,11 @@ const makeStyles = () =>
     fallbackFill: {
       ...StyleSheet.absoluteFill,
       backgroundColor: colors.chrome,
+    },
+    opaque: {
+      backgroundColor: colors.surface,
+      borderColor: colors.borderStrong,
+      borderWidth: StyleSheet.hairlineWidth,
     },
     sheen: {
       backgroundColor: "rgba(255, 255, 255, 0.14)",

@@ -97,6 +97,11 @@ import { stopComputerUseTrajectoryForSession } from "../core/computer-use";
 import { resolveAgentToolPolicy } from "../core/toolsets";
 import { constrainToolsForMessage } from "./chat-tool-constraints";
 import {
+  buildAgentTransferMessages,
+  findAgentTransferEnvelope,
+  type AgentTransferEnvelope,
+} from "../core/agent-transfer";
+import {
   activeAgentSystemPrompt,
   applyActiveAgentToSession,
   refreshSessionAgentSystemPromptIfNeeded,
@@ -139,6 +144,7 @@ export interface ChatMessage {
   thinking?: string;
   tool_calls?: ToolCallInfo[];
   process_activities?: ProcessActivityInfo[];
+  agent_transfers?: AgentTransferEnvelope[];
   /** Optional image inputs (vision) attached to a user message. */
   images?: AgentImage[];
   image_context?: string;
@@ -194,6 +200,7 @@ export function buildChatExecutionMessagesForAgent(
     sessionId?: string;
     materializedSteeringTurn?: boolean;
     supportsImages?: boolean;
+    activeAgentId?: string;
   }
 ): AgentMessage[] {
   const supportsImages = options?.supportsImages !== false;
@@ -215,6 +222,21 @@ export function buildChatExecutionMessagesForAgent(
         : {}),
     };
   });
+
+  const latestTransfer = sessionMessages
+    .flatMap((sessionMessage) => sessionMessage.agent_transfers || [])
+    .findLast((transfer) => transfer.toAgentId === options?.activeAgentId);
+  if (latestTransfer) {
+    const transferInstruction: AgentMessage = {
+      role: "system",
+      content: `The session transfer from ${latestTransfer.fromAgentName} to ${latestTransfer.toAgentName} is complete. You are ${latestTransfer.toAgentName}, the current active agent. Continue with the shared conversation and do not deny or simulate the completed transfer.`,
+    };
+    if (executionMessages[0]?.role === "system") {
+      executionMessages.splice(1, 0, transferInstruction);
+    } else {
+      executionMessages.unshift(transferInstruction);
+    }
+  }
 
   const activeGoalLine = options?.sessionId ? getActiveGoalContextLine(options.sessionId) : null;
   if (activeGoalLine) {
@@ -1875,7 +1897,7 @@ async function handleChatTurn(
     await setPersistedSessionAgent(session.id, requestedAgent.id);
   }
 
-  const agent = agentManager.get(session.agentId);
+  let agent = agentManager.get(session.agentId);
   if (agent && !isNewSession) {
     await refreshSessionAgentSystemPromptIfNeeded(
       session,
@@ -1918,7 +1940,7 @@ async function handleChatTurn(
     session.updatedAt = userMessage.timestamp || new Date().toISOString();
   }
 
-  const provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
+  let provider = agent ? agentManager.resolveProvider(agent.id) : undefined;
   const turnAbortController = new AbortController();
   const consumeSteeringMessagesForActiveTurn = () =>
     turnAbortController.signal.aborted ? [] : consumeSteeringMessages(session);
@@ -2168,6 +2190,7 @@ async function handleChatTurn(
   let responseContent: string;
   const thinkingContent: string = "";
   const allToolCalls: ToolCallInfo[] = [];
+  const agentTransfers: AgentTransferEnvelope[] = [];
 
   if (imageRoutingError) {
     responseContent = imageRoutingError;
@@ -2178,29 +2201,31 @@ async function handleChatTurn(
         throw new Error(`LLM circuit breaker open for provider ${provider.id}`);
       }
 
-      const baseExecutionMessages = buildChatExecutionMessagesForAgent(session.messages, {
-        sessionId: session.id,
-        materializedSteeringTurn: isMaterializedSteeringTurn,
-        supportsImages,
-      });
       const capabilityMentions = await resolveChatCapabilityMentions(
         message,
         session.workspaceDir || undefined
       );
-      const executionMessages = applyChatCapabilityInstruction(
-        baseExecutionMessages,
+      const shouldPreferArtifacts = tools && shouldPreferArtifactsForMessage(message);
+      const directToolCandidate = tools ? requiredDirectToolForMessage(message) : undefined;
+      let activeModelOverride = requestedModelOverride;
+      let activeSupportsImages = supportsImages;
+      let executionMessages = applyChatCapabilityInstruction(
+        buildChatExecutionMessagesForAgent(session.messages, {
+          sessionId: session.id,
+          materializedSteeringTurn: isMaterializedSteeringTurn,
+          supportsImages: activeSupportsImages,
+          activeAgentId: agent.id,
+        }),
         capabilityMentions.instruction
       );
-      const shouldPreferArtifacts = tools && shouldPreferArtifactsForMessage(message);
-      const allowedToolNames = tools
+      let allowedToolNames = tools
         ? constrainToolsForMessage(message, resolveAgentToolPolicy(agent).allowedToolNames)
         : undefined;
-      const directToolCandidate = tools ? requiredDirectToolForMessage(message) : undefined;
-      const requiredDirectToolName =
+      let requiredDirectToolName =
         directToolCandidate && (!allowedToolNames || allowedToolNames.includes(directToolCandidate))
           ? directToolCandidate
           : undefined;
-      const requiredToolName = shouldPreferArtifacts ? "artifacts" : requiredDirectToolName;
+      let requiredToolName = shouldPreferArtifacts ? "artifacts" : requiredDirectToolName;
       let result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,
         sessionId: session.id,
@@ -2213,9 +2238,107 @@ async function handleChatTurn(
         abortSignal: turnAbortController.signal,
         consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
         useModelRouter,
-        modelOverride: requestedModelOverride,
+        modelOverride: activeModelOverride,
         allowedToolNames,
       });
+      let toolResults = result.tool_calls || [];
+      const maximumTransferDepth = 4;
+
+      while (true) {
+        const transfer = findAgentTransferEnvelope(result.tool_calls);
+        if (!transfer) break;
+        if (agentTransfers.length >= maximumTransferDepth) {
+          result = {
+            ...result,
+            content:
+              "The agent transfer limit was reached for this turn. Choose an agent manually to continue.",
+          };
+          break;
+        }
+        const targetAgent = agentManager.get(transfer.toAgentId);
+        if (!targetAgent || targetAgent.type === "subagent" || targetAgent.type === "worker") {
+          result = {
+            ...result,
+            content:
+              "The requested target agent is no longer available. Choose another agent to continue.",
+          };
+          break;
+        }
+
+        agentTransfers.push(transfer);
+        broadcastStatus({
+          status: "thinking",
+          timestamp: Date.now(),
+          detail: `Continuing with ${targetAgent.name}...`,
+          sessionId: session.id,
+          agentId: targetAgent.id,
+        });
+        await applyActiveAgentToSession(session, targetAgent, session.messages, {
+          useTools: tools,
+        });
+        await setPersistedSessionAgent(session.id, targetAgent.id);
+        persistActiveSessionContext(session);
+        agent = targetAgent;
+        provider = agentManager.resolveProvider(targetAgent.id);
+        if (!provider) {
+          result = {
+            ...result,
+            content: `${targetAgent.name} has no available provider. Choose another agent to continue.`,
+          };
+          break;
+        }
+        const targetCircuit = checkCircuit(`llm:${provider.id}`);
+        if (!targetCircuit.allowed) {
+          result = {
+            ...result,
+            content: `${targetAgent.name} is temporarily unavailable. Choose another agent to continue.`,
+          };
+          break;
+        }
+
+        activeModelOverride = undefined;
+        activeSupportsImages = agentSupportsImages(targetAgent);
+        allowedToolNames = tools
+          ? constrainToolsForMessage(message, resolveAgentToolPolicy(targetAgent).allowedToolNames)
+          : undefined;
+        requiredDirectToolName =
+          directToolCandidate &&
+          (!allowedToolNames || allowedToolNames.includes(directToolCandidate))
+            ? directToolCandidate
+            : undefined;
+        requiredToolName = shouldPreferArtifacts ? "artifacts" : requiredDirectToolName;
+        executionMessages = buildAgentTransferMessages(
+          applyChatCapabilityInstruction(
+            buildChatExecutionMessagesForAgent(session.messages, {
+              sessionId: session.id,
+              materializedSteeringTurn: isMaterializedSteeringTurn,
+              supportsImages: activeSupportsImages,
+              activeAgentId: targetAgent.id,
+            }),
+            capabilityMentions.instruction
+          ),
+          transfer,
+          {
+            response: result.content,
+            toolCalls: toolResults,
+          }
+        );
+        result = await agentManager.execute(targetAgent.id, executionMessages, {
+          useTools: tools,
+          sessionId: session.id,
+          requireToolUse:
+            shouldPreferArtifacts ||
+            Boolean(requiredDirectToolName) ||
+            capabilityMentions.mentions.some((mention) => mention.kind === "mcp"),
+          requiredToolName,
+          workspaceDir: session.workspaceDir || undefined,
+          abortSignal: turnAbortController.signal,
+          consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
+          useModelRouter,
+          allowedToolNames,
+        });
+        toolResults.push(...(result.tool_calls || []));
+      }
       responseContent = result.content;
 
       const memorySettings = config.getMemoryBehaviorSettings();
@@ -2233,7 +2356,6 @@ async function handleChatTurn(
         }
       ).catch(() => undefined);
 
-      let toolResults = result.tool_calls || [];
       const shouldForceToolExecution =
         tools &&
         (shouldEnforceToolUseForMessage(message) ||
@@ -2263,7 +2385,7 @@ async function handleChatTurn(
             abortSignal: turnAbortController.signal,
             consumeSteeringMessages: consumeSteeringMessagesForActiveTurn,
             useModelRouter,
-            modelOverride: requestedModelOverride,
+            modelOverride: activeModelOverride,
             allowedToolNames,
           });
           const forcedToolCalls = forcedResult.tool_calls || [];
@@ -2273,7 +2395,7 @@ async function handleChatTurn(
           if (forcedToolCalls.length > 0 && forcedHasRequiredTool) {
             result = forcedResult;
             responseContent = forcedResult.content;
-            toolResults = forcedToolCalls;
+            toolResults = [...toolResults, ...forcedToolCalls];
           }
         } catch (toolRetryError) {
           log.warn("Forced tool-execution retry failed", {
@@ -2349,7 +2471,7 @@ async function handleChatTurn(
         }
       }
 
-      recordCircuitSuccess(`llm:${provider.id}`);
+      if (provider) recordCircuitSuccess(`llm:${provider.id}`);
       log.info("LLM response received", {
         sessionId: session.id,
         preview: responseContent.substring(0, 100),
@@ -2361,7 +2483,7 @@ async function handleChatTurn(
         }
         return await finishInterruptedChatTurn(session, agent, turnAbortController);
       }
-      recordCircuitFailure(`llm:${provider.id}`);
+      if (provider) recordCircuitFailure(`llm:${provider.id}`);
       log.error("LLM API error", {
         sessionId: session.id,
         error: (error as Error).message,
@@ -2452,20 +2574,22 @@ async function handleChatTurn(
           )
         : "Completed.";
 
+  const modelMetadata = resolveSessionModelMetadata(agent?.id ?? session.agentId);
+
   const assistantMessage: ChatMessage = {
     role: "assistant",
     content: assistantContent,
     timestamp: assistantTimestamp,
+    ...(modelMetadata ?? {}),
     thinking: finalThinking || undefined,
     tool_calls: allToolCalls.length > 0 ? allToolCalls : undefined,
     process_activities: visibleProcessActivities,
+    agent_transfers: agentTransfers.length > 0 ? agentTransfers : undefined,
   };
   appendAssistantMessage(session, assistantMessage);
   if (!session.title || shouldRegenerateSessionTitle(session.title)) {
     session.title = cleanGeneratedSessionTitle(agent?.name, deriveSessionTitleFromTurn(message));
   }
-  const modelMetadata = resolveSessionModelMetadata(agent?.id ?? session.agentId);
-
   await logSessionMessage(session.id, "assistant", assistantMessage.content, {
     agentId: agent?.id,
     createdAt: assistantMessage.timestamp,
@@ -2475,6 +2599,7 @@ async function handleChatTurn(
       thinking: finalThinking,
       tool_calls: allToolCalls,
       process_activities: assistantMessage.process_activities,
+      agent_transfers: assistantMessage.agent_transfers,
     },
   });
   persistActiveSessionContext(session);
@@ -2494,7 +2619,7 @@ async function handleChatTurn(
   }
   await emitAgentHook({
     type: "message:sent",
-    context: hookContext,
+    context: { ...hookContext, agentId: agent?.id },
     message: assistantMessage.content,
     metadata: {
       source: source || "chat_api",
@@ -2938,6 +3063,9 @@ function extractPersistedMessageMetadata(
   }
   if (Array.isArray(message.process_activities) && message.process_activities.length > 0) {
     metadata.process_activities = message.process_activities;
+  }
+  if (Array.isArray(message.agent_transfers) && message.agent_transfers.length > 0) {
+    metadata.agent_transfers = message.agent_transfers;
   }
   return Object.keys(metadata).length > 0 ? metadata : undefined;
 }

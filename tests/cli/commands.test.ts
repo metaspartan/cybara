@@ -434,6 +434,21 @@ function route(method: string, url: URL, body: string): Response {
     return json({ success: true });
   }
 
+  if (method === "GET" && pathname === "/api/connectors") {
+    return json([
+      {
+        id: "google_workspace",
+        label: "Google Workspace",
+        services: ["Gmail", "Drive"],
+        docsUrl: "https://example.com/setup",
+        redirectUri: "http://127.0.0.1:4269/api/connectors/oauth/callback",
+        configured: true,
+        connected: false,
+        access: "read",
+      },
+    ]);
+  }
+
   if (method === "GET" && (pathname === "/api/chat/sessions" || pathname === "/api/sessions")) {
     return json([
       {
@@ -1851,6 +1866,11 @@ describe("CLI Commands", () => {
     const remove = await runCli(["plugin", "remove", "acme-plugin"]);
     expect(remove.exitCode).toBe(0);
     expect(remove.stdout).toContain("Removed plugin: acme-plugin");
+
+    const apps = await runCli(["plugin", "apps"]);
+    expect(apps.exitCode).toBe(0);
+    expect(apps.stdout).toContain("Google Workspace");
+    expect(apps.stdout).toContain("read-only");
   });
 
   test("config commands list/get/set are wired", async () => {

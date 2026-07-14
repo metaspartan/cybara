@@ -26,6 +26,7 @@ const cliTuiChatEnvironmentViewSource = readFileSync(
   "utf8"
 );
 const cliTuiApprovalsSource = readFileSync(join(root, "src", "cli-tui-approvals.tsx"), "utf8");
+const cliPluginsSource = readFileSync(join(root, "src", "cli-connectors.tsx"), "utf8");
 const cliDocs = readFileSync(join(root, "docs", "cli.md"), "utf8");
 
 const tuiPanels = [
@@ -129,6 +130,15 @@ describe("CLI TUI source wiring", () => {
         cliSource + cliTuiPanelsSource + cliTuiOperationsPanelsSource + cliEvalsSource
       ).toContain(route);
     }
+  });
+
+  test("plugins panel summarizes bundles, account apps, and MCP services", () => {
+    expect(cliPluginsSource).toContain('fetchAPI<{ plugins: PluginStatus[] }>("/api/plugins")');
+    expect(cliPluginsSource).toContain('fetchAPI<ConnectorStatus[]>("/api/connectors")');
+    expect(cliPluginsSource).toContain('fetchAPI<MCPServiceStatus[]>("/api/mcp")');
+    expect(cliPluginsSource).toContain("Installed bundles");
+    expect(cliPluginsSource).toContain("Account apps");
+    expect(cliPluginsSource).toContain("MCP services");
   });
 
   test("terminal panels occupy a stable responsive viewport", () => {
@@ -255,10 +265,15 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("consumeTUIStatusStream");
     expect(cliTuiInteractiveChatSource).toContain("/api/chat/capabilities");
     expect(cliTuiInteractiveChatSource).toContain("CapabilityPalette");
-    expect(cliTuiInteractiveChatSource).toContain("Enter queues · /steer injects · Ctrl+C stops");
+    expect(cliTuiInteractiveChatSource).toContain("Enter queues · /steer injects");
+    expect(cliTuiInteractiveChatSource).toContain("Follow-ups off");
+    expect(cliTuiInteractiveChatSource).toContain("follow_up_behavior_enabled");
+    expect(cliTuiInteractiveChatSource).toContain('{ name: "/followups"');
     expect(cliTuiInteractiveChatSource).toContain("sessionIdRef.current = turnSessionId");
     expect(cliTuiInteractiveChatSource).toContain("CommandPalette");
     expect(cliTuiInteractiveChatSource).toContain("StatusRail");
+    expect(cliTuiInteractiveChatSource).not.toContain("<Box marginTop={1} flexShrink={0}>");
+    expect(cliTuiInteractiveChatSource).toContain('borderColor={sending ? "cyan" : "gray"}');
     expect(cliTuiInteractiveChatSource).toContain("EnvironmentPanel");
     expect(cliTuiInteractiveChatSource).toContain("environmentSnapshotFromDetail");
     expect(cliTuiInteractiveChatSource).toContain("formatContextUsageLine");
@@ -312,6 +327,14 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiChatSource).toContain("confirmDeleteId");
     expect(cliTuiChatSource).toContain("/pin");
     expect(cliTuiChatSource).toContain('method: "DELETE"');
+  });
+
+  test("new terminal chats inherit the current workspace", () => {
+    expect(cliTuiChatSource).toContain(
+      "initialWorkspaceDir={sessionWorkspace(openSession) || process.cwd()}"
+    );
+    expect(cliTuiInteractiveChatSource).toContain("initialWorkspaceDir?: string;");
+    expect(cliTuiInteractiveChatSource).toContain('initialWorkspaceDir || ""');
   });
 
   test("terminal chat environment panel is backed by shared parsing helpers", () => {

@@ -11,6 +11,7 @@ import {
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
+  ArrowRightLeft,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -43,6 +44,12 @@ import {
 } from "../lib/chat-format";
 import type { SessionDetailSummary, SessionMessageSummary, SessionPlanSnapshot } from "../lib/api";
 import { Clipboard } from "../lib/expoNativeModules";
+import {
+  getChatCodeFontSizePixels,
+  getChatFontSizePixels,
+  getChatLineHeight,
+  type ChatAppearanceSettings,
+} from "cybara-shared/chat-appearance";
 
 const MOBILE_GROUP_ICONS: Record<MobileActivityGroupKind, typeof FileText> = {
   read: FileText,
@@ -151,9 +158,11 @@ function collectMobileFileChanges(
 }
 
 function InlineMarkdown({
+  appearance,
   selectable = false,
   tokens,
 }: {
+  appearance: ChatAppearanceSettings;
   selectable?: boolean;
   tokens: MarkdownInline[];
 }) {
@@ -181,7 +190,14 @@ function InlineMarkdown({
             );
           case "code":
             return (
-              <Text key={index} selectable={selectable} style={styles.mdInlineCode}>
+              <Text
+                key={index}
+                selectable={selectable}
+                style={[
+                  styles.mdInlineCode,
+                  { fontSize: getChatCodeFontSizePixels(appearance.codeFontSize) },
+                ]}
+              >
                 {token.text}
               </Text>
             );
@@ -190,7 +206,10 @@ function InlineMarkdown({
               <Text
                 key={index}
                 selectable={selectable}
-                style={styles.mdLink}
+                style={[
+                  styles.mdLink,
+                  { textDecorationLine: appearance.underlineLinks ? "underline" : "none" },
+                ]}
                 onPress={() => {
                   void Linking.openURL(token.href).catch(() => {});
                 }}
@@ -210,8 +229,17 @@ function InlineMarkdown({
   );
 }
 
-function MarkdownText({ content }: { content: string }) {
+function MarkdownText({
+  appearance,
+  content,
+}: {
+  appearance: ChatAppearanceSettings;
+  content: string;
+}) {
   const blocks = parseMarkdownBlocks(content);
+  const fontSize = getChatFontSizePixels(appearance.fontSize);
+  const lineHeight = Math.round(fontSize * getChatLineHeight(appearance.lineSpacing));
+  const bodyStyle: TextStyle = { fontSize, lineHeight };
   return (
     <View style={styles.mdBlocks}>
       {blocks.map((block, index) => {
@@ -221,29 +249,30 @@ function MarkdownText({ content }: { content: string }) {
               <Text
                 key={index}
                 selectable
-                style={
-                  block.level === 1 ? styles.mdH1 : block.level === 2 ? styles.mdH2 : styles.mdH3
-                }
+                style={[
+                  block.level === 1 ? styles.mdH1 : block.level === 2 ? styles.mdH2 : styles.mdH3,
+                  { fontSize: fontSize + (block.level === 1 ? 8 : block.level === 2 ? 5 : 2) },
+                ]}
               >
-                <InlineMarkdown tokens={block.inline} />
+                <InlineMarkdown appearance={appearance} tokens={block.inline} />
               </Text>
             );
           case "listItem":
             return (
               <View key={index} style={styles.mdListRow}>
-                <Text selectable style={styles.mdListMarker}>
+                <Text selectable style={[styles.mdListMarker, bodyStyle]}>
                   {block.marker}
                 </Text>
-                <Text selectable style={styles.mdListText}>
-                  <InlineMarkdown tokens={block.inline} />
+                <Text selectable style={[styles.mdListText, bodyStyle]}>
+                  <InlineMarkdown appearance={appearance} tokens={block.inline} />
                 </Text>
               </View>
             );
           case "quote":
             return (
               <View key={index} style={styles.mdQuote}>
-                <Text selectable style={styles.mdQuoteText}>
-                  <InlineMarkdown tokens={block.inline} />
+                <Text selectable style={[styles.mdQuoteText, bodyStyle]}>
+                  <InlineMarkdown appearance={appearance} tokens={block.inline} />
                 </Text>
               </View>
             );
@@ -257,7 +286,7 @@ function MarkdownText({ content }: { content: string }) {
                     {block.header.map((cell, cellIndex) => (
                       <View key={cellIndex} style={styles.mdTableCell}>
                         <Text selectable style={styles.mdTableHeaderText}>
-                          <InlineMarkdown tokens={cell} />
+                          <InlineMarkdown appearance={appearance} tokens={cell} />
                         </Text>
                       </View>
                     ))}
@@ -267,7 +296,7 @@ function MarkdownText({ content }: { content: string }) {
                       {row.map((cell, cellIndex) => (
                         <View key={cellIndex} style={styles.mdTableCell}>
                           <Text selectable style={styles.mdTableCellText}>
-                            <InlineMarkdown tokens={cell} />
+                            <InlineMarkdown appearance={appearance} tokens={cell} />
                           </Text>
                         </View>
                       ))}
@@ -278,8 +307,8 @@ function MarkdownText({ content }: { content: string }) {
             );
           default:
             return (
-              <Text key={index} selectable style={styles.mdParagraph}>
-                <InlineMarkdown tokens={block.inline} />
+              <Text key={index} selectable style={[styles.mdParagraph, bodyStyle]}>
+                <InlineMarkdown appearance={appearance} tokens={block.inline} />
               </Text>
             );
         }
@@ -539,6 +568,7 @@ export function MobilePlanSummaryCard({ plan }: { plan: SessionPlanSnapshot }) {
 
 export function ChatMessageRow({
   accentColor,
+  appearance,
   message,
   nowMs,
   onAddToChat,
@@ -546,6 +576,7 @@ export function ChatMessageRow({
   mediaUrl,
 }: {
   accentColor: string;
+  appearance: ChatAppearanceSettings;
   message: SessionDetailSummary["messages"][number];
   nowMs?: number;
   onAddToChat?: (content: string) => void;
@@ -563,7 +594,10 @@ export function ChatMessageRow({
   const isUser = message.role === "user";
   if (!isUser) {
     const hasWorkTimeline = Boolean(
-      message.thinking || message.processActivities?.length || message.toolCalls?.length
+      message.thinking ||
+        message.processActivities?.length ||
+        message.toolCalls?.length ||
+        message.agentTransfers?.length
     );
     const isLiveMessage =
       typeof message.id === "string" && message.id.startsWith("live-assistant-");
@@ -571,7 +605,7 @@ export function ChatMessageRow({
     if (isLiveMessage) {
       return (
         <View style={styles.agentMessageRow}>
-          <WorkTimeline message={message} nowMs={nowMs} />
+          <WorkTimeline appearance={appearance} message={message} nowMs={nowMs} />
           {fileChanges ? <MobileFileChangesCard summary={fileChanges} /> : null}
           <ChatImageAttachments uris={toolImageUris} />
         </View>
@@ -581,10 +615,16 @@ export function ChatMessageRow({
     const hasContent = content.trim().length > 0;
     return (
       <View style={styles.agentMessageRow}>
-        {hasWorkTimeline ? <WorkTimeline message={message} nowMs={nowMs} /> : null}
+        {hasWorkTimeline ? (
+          <WorkTimeline appearance={appearance} message={message} nowMs={nowMs} />
+        ) : null}
+        <MobileAgentTransferTimeline transfers={message.agentTransfers} />
         <ChatImageAttachments uris={toolImageUris} />
         {hasContent || !hasWorkTimeline ? (
-          <MessageContent content={hasContent ? content : "(empty message)"} />
+          <MessageContent
+            appearance={appearance}
+            content={hasContent ? content : "(empty message)"}
+          />
         ) : null}
         {fileChanges ? <MobileFileChangesCard summary={fileChanges} /> : null}
         <MessageActionsRow
@@ -608,7 +648,7 @@ export function ChatMessageRow({
             { borderColor: `${accentColor}55` },
           ]}
         >
-          <MessageContent content={message.content || "(empty message)"} />
+          <MessageContent appearance={appearance} content={message.content || "(empty message)"} />
           <ChatImageAttachments uris={userImageUris} />
         </View>
         <MessageActionsRow
@@ -623,9 +663,37 @@ export function ChatMessageRow({
   );
 }
 
+function MobileAgentTransferTimeline({
+  transfers,
+}: {
+  transfers: SessionMessageSummary["agentTransfers"];
+}) {
+  if (!transfers?.length) return null;
+  return (
+    <View style={styles.messageActivityList}>
+      {transfers.map((transfer) => (
+        <View
+          key={`${transfer.fromAgentId}-${transfer.toAgentId}-${transfer.requestedAt || "transfer"}`}
+          style={styles.messageActivityRow}
+        >
+          <View style={styles.messageActivityIcon}>
+            <ArrowRightLeft color={colors.textMuted} size={13} strokeWidth={2.2} />
+          </View>
+          <Text selectable style={styles.messageActivityText}>
+            Transferred from {transfer.fromAgentName} to {transfer.toAgentName}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export function WorkActivityIcon({ phase, toolName }: { phase: string; toolName?: string }) {
   if (toolName === "__thought") {
     return <View style={styles.messageActivityDot} />;
+  }
+  if (toolName === "sessions_transfer") {
+    return <ArrowRightLeft color={colors.textMuted} size={13} strokeWidth={2.2} />;
   }
   if (phase === "start") {
     return <Loader2 color={colors.textMuted} size={13} strokeWidth={2.2} />;
@@ -639,7 +707,14 @@ export function WorkActivityIcon({ phase, toolName }: { phase: string; toolName?
   return <CheckCircle2 color={colors.textMuted} size={13} strokeWidth={2.2} />;
 }
 
-function MobileActivityRow({ activity }: { activity: MobileWorkActivity }) {
+function MobileActivityRow({
+  activity,
+  appearance,
+}: {
+  activity: MobileWorkActivity;
+  appearance: ChatAppearanceSettings;
+}) {
+  const fontSize = Math.max(11, getChatFontSizePixels(appearance.fontSize) * 0.84);
   return (
     <View style={styles.messageActivityRow}>
       <View style={styles.messageActivityIcon}>
@@ -651,18 +726,25 @@ function MobileActivityRow({ activity }: { activity: MobileWorkActivity }) {
         style={[
           styles.messageActivityText,
           activity.toolName === "__thought" && styles.messageThoughtText,
+          {
+            color: appearance.highContrast ? colors.text : colors.textMuted,
+            fontSize,
+            lineHeight: Math.round(fontSize * getChatLineHeight(appearance.lineSpacing)),
+          },
         ]}
       >
-        <InlineMarkdown tokens={parseInlineMarkdown(activity.text)} />
+        <InlineMarkdown appearance={appearance} tokens={parseInlineMarkdown(activity.text)} />
       </Text>
     </View>
   );
 }
 
 export function WorkTimeline({
+  appearance,
   message,
   nowMs,
 }: {
+  appearance: ChatAppearanceSettings;
   message: SessionDetailSummary["messages"][number];
   nowMs?: number;
 }) {
@@ -671,16 +753,28 @@ export function WorkTimeline({
   if (timeline.activities.length === 0) return null;
 
   const entries = groupMobileActivities(timeline.activities);
+  const fontSize = Math.max(11, getChatFontSizePixels(appearance.fontSize) * 0.84);
+  const activityStyle: TextStyle = {
+    color: appearance.highContrast ? colors.text : colors.textMuted,
+    fontSize,
+    lineHeight: Math.round(fontSize * getChatLineHeight(appearance.lineSpacing)),
+  };
 
   return (
     <View style={styles.workTimeline}>
-      <Text selectable style={styles.workedForText}>
+      <Text selectable style={[styles.workedForText, activityStyle]}>
         Worked for {timeline.workedDuration}
       </Text>
       <View style={styles.messageActivityList}>
         {entries.map((entry) => {
           if (entry.type === "single") {
-            return <MobileActivityRow key={entry.activity.id} activity={entry.activity} />;
+            return (
+              <MobileActivityRow
+                key={entry.activity.id}
+                activity={entry.activity}
+                appearance={appearance}
+              />
+            );
           }
           const expanded = expandedGroups[entry.id] === true;
           const GroupIcon = MOBILE_GROUP_ICONS[entry.kind];
@@ -696,14 +790,18 @@ export function WorkTimeline({
                 <View style={styles.messageActivityIcon}>
                   <GroupIcon color={colors.textMuted} size={13} strokeWidth={2.2} />
                 </View>
-                <Text selectable style={styles.messageActivityGroupLabel}>
+                <Text selectable style={[styles.messageActivityGroupLabel, activityStyle]}>
                   {entry.label} {expanded ? "▾" : "▸"}
                 </Text>
               </Pressable>
               {expanded ? (
                 <View style={styles.messageActivityGroupItems}>
                   {entry.items.map((activity) => (
-                    <MobileActivityRow key={activity.id} activity={activity} />
+                    <MobileActivityRow
+                      key={activity.id}
+                      activity={activity}
+                      appearance={appearance}
+                    />
                   ))}
                 </View>
               ) : null}
@@ -715,7 +813,13 @@ export function WorkTimeline({
   );
 }
 
-export function MessageContent({ content }: { content: string }) {
+export function MessageContent({
+  appearance,
+  content,
+}: {
+  appearance: ChatAppearanceSettings;
+  content: string;
+}) {
   return (
     <View style={styles.messageContent}>
       {splitMessageContent(content).map((part, index) =>
@@ -730,12 +834,19 @@ export function MessageContent({ content }: { content: string }) {
                 style={[
                   styles.codeText,
                   !hasUnicodeTextFallback(part.content) && styles.codeTextMonospace,
+                  {
+                    fontSize: getChatCodeFontSizePixels(appearance.codeFontSize),
+                    lineHeight: Math.round(
+                      getChatCodeFontSizePixels(appearance.codeFontSize) *
+                        getChatLineHeight(appearance.lineSpacing)
+                    ),
+                  },
                 ]}
               />
             </ScrollView>
           </View>
         ) : part.content.trim().length > 0 ? (
-          <MarkdownText key={`text-${index}`} content={part.content} />
+          <MarkdownText key={`text-${index}`} appearance={appearance} content={part.content} />
         ) : null
       )}
     </View>

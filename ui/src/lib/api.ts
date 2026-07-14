@@ -366,6 +366,32 @@ export interface MCPRegistryServer {
   installType?: string;
 }
 
+export interface InstalledPluginSummary {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author?: string;
+  homepage?: string;
+  source: "bundled" | "local" | "workspace";
+  rootDir: string;
+  skillDirs: string[];
+  skillCount: number;
+}
+
+export const pluginsApi = {
+  list: () => fetchApi<{ plugins: InstalledPluginSummary[] }>("/plugins"),
+  install: (path: string) =>
+    fetchApi<{ success: boolean; plugin?: InstalledPluginSummary }>("/plugins/install", {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    }),
+  remove: (id: string) =>
+    fetchApi<{ success: boolean }>(`/plugins/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+};
+
 export const mcpApi = {
   list: () => fetchApi<MCPServer[]>("/mcp"),
   popular: () => fetchApi<MCPRegistryServer[]>("/mcp/registry/popular"),
@@ -1363,6 +1389,10 @@ export const chatApi = {
       workspaceDir?: string | null;
       contextUsage?: SessionContextUsage;
       plan?: SessionPlanSnapshot | null;
+      agent?: {
+        id: string;
+        name: string;
+      };
       queued?: boolean;
       interrupted?: boolean;
       stopped?: boolean;

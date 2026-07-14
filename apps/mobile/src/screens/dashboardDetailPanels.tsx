@@ -1,4 +1,5 @@
 import {
+  Accessibility,
   Brain,
   CalendarCheck,
   ChevronRight,
@@ -10,6 +11,12 @@ import {
   Trash2,
   Volume2,
 } from "lucide-react-native";
+import {
+  chatCodeFontSizeOptions,
+  chatFontSizeOptions,
+  chatLineSpacingOptions,
+  normalizeChatAppearanceSettings,
+} from "cybara-shared/chat-appearance";
 import { useState } from "react";
 import { ActivityIndicator, Alert, Pressable, Text, View } from "react-native";
 import { useHapticsControls } from "../haptics/HapticsContext";
@@ -87,7 +94,7 @@ import { JourneyPanel } from "./dashboardJourneyPanel";
 import { ModelRouterPanel } from "./dashboardModelRouterPanel";
 import { SpeechSettingsPanel } from "./dashboardSpeechSettingsPanel";
 import { MobileMcpSettingsPanel } from "./dashboardMcpPanel";
-import { MobileConnectorsPanel } from "./dashboardConnectorsPanel";
+import { MobilePluginsPanel } from "./dashboardPluginsPanel";
 import { MobileEvalsPanel } from "./dashboardEvalsPanel";
 import { styles } from "./dashboardStyles";
 import {
@@ -585,17 +592,19 @@ export function SettingsPanel({
   const walletStatusAvailable = Boolean(walletStatus);
   const agentAccessEnabled = booleanSetting(walletStatus, "agentAccessEnabled");
   const showGeneralSettings = selectedSettingsTab === "general";
+  const showAccessibilitySettings = selectedSettingsTab === "accessibility";
   const showGatewaySettings = selectedSettingsTab === "gateway";
   const showAiSettings = selectedSettingsTab === "ai";
   const showEvalsSettings = selectedSettingsTab === "evals";
   const showMemorySettings = selectedSettingsTab === "memory";
   const showVoiceSettings = selectedSettingsTab === "voice";
   const showMcpSettings = selectedSettingsTab === "mcp";
-  const showConnectorsSettings = selectedSettingsTab === "connectors";
+  const showPluginsSettings = selectedSettingsTab === "plugins";
   const showSafetySettings = selectedSettingsTab === "safety";
   const showWalletSettings = selectedSettingsTab === "wallet";
   const showMigrationSettings = selectedSettingsTab === "migration";
   const showSystemSettings = selectedSettingsTab === "system";
+  const chatAppearance = normalizeChatAppearanceSettings(summary?.config?.chat_appearance);
 
   const saveConfigPatch = async (
     key: string,
@@ -668,6 +677,112 @@ export function SettingsPanel({
           selected={selectedSettingsTab}
           tone={accentColor}
         />
+        {showAccessibilitySettings ? (
+          <>
+            <SettingsSection title="Readability">
+              <View style={styles.settingsGroupHeader}>
+                <Accessibility color={accentColor} size={18} strokeWidth={2.1} />
+                <Text style={styles.settingsInfoTitle}>Chat presentation</Text>
+              </View>
+              <SettingSelector
+                disabled={savingConfigKey !== null}
+                label="Chat text size"
+                onSelect={(value) => {
+                  void saveConfigPatch("chat_appearance", {
+                    chat_appearance: { ...chatAppearance, fontSize: value },
+                  });
+                }}
+                options={chatFontSizeOptions.map((option) => ({
+                  label: option.label,
+                  value: option.value,
+                }))}
+                selected={chatAppearance.fontSize}
+                tone={accentColor}
+                variant="segmented"
+              />
+              <SettingSelector
+                disabled={savingConfigKey !== null}
+                label="Code text size"
+                onSelect={(value) => {
+                  void saveConfigPatch("chat_appearance", {
+                    chat_appearance: { ...chatAppearance, codeFontSize: value },
+                  });
+                }}
+                options={chatCodeFontSizeOptions.map((option) => ({
+                  label: option.label,
+                  value: option.value,
+                }))}
+                selected={chatAppearance.codeFontSize}
+                tone={accentColor}
+                variant="segmented"
+              />
+              <SettingSelector
+                disabled={savingConfigKey !== null}
+                label="Line spacing"
+                onSelect={(value) => {
+                  void saveConfigPatch("chat_appearance", {
+                    chat_appearance: { ...chatAppearance, lineSpacing: value },
+                  });
+                }}
+                options={chatLineSpacingOptions.map((option) => ({
+                  label: option.label,
+                  value: option.value,
+                }))}
+                selected={chatAppearance.lineSpacing}
+                tone={accentColor}
+                variant="segmented"
+              />
+              <SettingToggle
+                busy={savingConfigKey === "chat_appearance"}
+                detail="Keep links recognizable without relying on color alone."
+                disabled={savingConfigKey !== null}
+                label="Underline chat links"
+                onPress={() => {
+                  void saveConfigPatch("chat_appearance", {
+                    chat_appearance: {
+                      ...chatAppearance,
+                      underlineLinks: !chatAppearance.underlineLinks,
+                    },
+                  });
+                }}
+                tone={accentColor}
+                value={chatAppearance.underlineLinks}
+              />
+            </SettingsSection>
+            <SettingsSection title="Visual comfort">
+              {(
+                [
+                  ["reduceMotion", "Reduce motion", "Minimize animated transitions."],
+                  [
+                    "reduceTransparency",
+                    "Reduce transparency",
+                    "Use opaque surfaces instead of translucent effects.",
+                  ],
+                  [
+                    "highContrast",
+                    "Increase contrast",
+                    "Strengthen muted text, icons, borders, and focus indicators.",
+                  ],
+                ] as const
+              ).map(([key, label, detail]) => (
+                <SettingToggle
+                  key={key}
+                  busy={savingConfigKey === "chat_appearance"}
+                  detail={detail}
+                  disabled={savingConfigKey !== null}
+                  label={label}
+                  onPress={() => {
+                    void saveConfigPatch("chat_appearance", {
+                      chat_appearance: { ...chatAppearance, [key]: !chatAppearance[key] },
+                    });
+                  }}
+                  tone={accentColor}
+                  value={chatAppearance[key]}
+                />
+              ))}
+            </SettingsSection>
+          </>
+        ) : null}
         {showGatewaySettings && MOBILE_SETTINGS_ROOT_CHROME.gatewayConnectionDetails ? (
           <View style={styles.settingsSection}>
             <View style={styles.settingsGatewayCard}>
@@ -997,9 +1112,7 @@ export function SettingsPanel({
           </>
         ) : null}
         {showMcpSettings ? <MobileMcpSettingsPanel accentColor={accentColor} api={api} /> : null}
-        {showConnectorsSettings ? (
-          <MobileConnectorsPanel accentColor={accentColor} api={api} />
-        ) : null}
+        {showPluginsSettings ? <MobilePluginsPanel accentColor={accentColor} api={api} /> : null}
         {showEvalsSettings ? <MobileEvalsPanel accentColor={accentColor} api={api} /> : null}
         {showAiSettings ? (
           <SettingsSection title="AI">

@@ -540,6 +540,16 @@ export function formatToolActivityDetail(
   const key = toolName.toLowerCase();
   const path = readStringArg(args, ["path", "file_path", "filePath"]);
 
+  if (key === "sessions_transfer") {
+    const target = readStringArg(args, ["agentName", "agentId"]) || "another agent";
+    if (phase === "start") return `Transferring to ${target}...`;
+    if (phase === "result") return `Transferred to ${target}`;
+    return appendToolErrorSummary(
+      phase === "blocked" ? `Transfer blocked for ${target}` : `Transfer failed for ${target}`,
+      result
+    );
+  }
+
   if (key === "read") {
     if (path) {
       const offset = readNumberArg(args, ["offset"]);

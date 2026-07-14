@@ -454,6 +454,19 @@ export interface MobileMcpServer {
   transport?: "stdio" | "http";
 }
 
+export interface MobilePlugin {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author?: string;
+  homepage?: string;
+  source: "bundled" | "local" | "workspace";
+  rootDir: string;
+  skillDirs: string[];
+  skillCount: number;
+}
+
 export type MobileAccountConnectorId = "google_workspace" | "microsoft_365" | "dropbox" | "notion";
 
 export interface MobileAccountConnector {
@@ -727,7 +740,19 @@ export interface SessionMessageSummary {
   thinking?: string;
   toolCalls?: SessionToolCallSummary[];
   processActivities?: SessionProcessActivitySummary[];
+  agentTransfers?: AgentTransferSummary[];
   images?: MobileMessageImage[];
+}
+
+export interface AgentTransferSummary {
+  fromAgentId: string;
+  fromAgentName: string;
+  toAgentId: string;
+  toAgentName: string;
+  reason: string;
+  contextMode: "full" | "recent" | "summary";
+  contextSummary?: string;
+  requestedAt?: string;
 }
 
 export interface SessionContextUsage {
@@ -1499,6 +1524,9 @@ function normalizeSessionDetail(value: unknown, fallbackId: string): SessionDeta
       processActivities: normalizeProcessActivities(
         messageRecord?.process_activities ?? messageRecord?.processActivities
       ),
+      agentTransfers: normalizeAgentTransfers(
+        messageRecord?.agent_transfers ?? messageRecord?.agentTransfers
+      ),
       images: normalizeMessageImages(messageRecord?.images),
     };
   });
@@ -1680,6 +1708,35 @@ function normalizeProcessActivities(value: unknown): SessionProcessActivitySumma
       toolCallId: readString(record, ["toolCallId", "tool_call_id"]),
     };
   });
+}
+
+function normalizeAgentTransfers(value: unknown): AgentTransferSummary[] | undefined {
+  const transfers = normalizeArrayResponse(value, ["agent_transfers", "agentTransfers", "items"]);
+  const normalized = transfers.flatMap((transfer) => {
+    const record = asRecord(transfer);
+    const fromAgentId = readString(record, ["fromAgentId", "from_agent_id"]);
+    const fromAgentName = readString(record, ["fromAgentName", "from_agent_name"]);
+    const toAgentId = readString(record, ["toAgentId", "to_agent_id"]);
+    const toAgentName = readString(record, ["toAgentName", "to_agent_name"]);
+    const reason = readString(record, ["reason"]);
+    if (!fromAgentId || !fromAgentName || !toAgentId || !toAgentName || !reason) return [];
+    const rawMode = readString(record, ["contextMode", "context_mode"]);
+    const contextMode: AgentTransferSummary["contextMode"] =
+      rawMode === "recent" || rawMode === "summary" ? rawMode : "full";
+    return [
+      {
+        fromAgentId,
+        fromAgentName,
+        toAgentId,
+        toAgentName,
+        reason,
+        contextMode,
+        contextSummary: readString(record, ["contextSummary", "context_summary"]),
+        requestedAt: readString(record, ["requestedAt", "requested_at"]),
+      },
+    ];
+  });
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function normalizePendingChatMessages(value: unknown): MobilePendingChatMessage[] {
@@ -2171,6 +2228,11 @@ export class CybaraMobileApi {
     return this.request<MobileMcpServer[]>("/api/mcp");
   }
 
+  async listPlugins(): Promise<MobilePlugin[]> {
+    const response = await this.request<{ plugins: MobilePlugin[] }>("/api/plugins");
+    return response.plugins;
+  }
+
   createMcpServer(input: {
     name: string;
     url: string;
@@ -2471,6 +2533,9 @@ export class CybaraMobileApi {
         ),
         processActivities: normalizeProcessActivities(
           messageRecord?.process_activities ?? messageRecord?.processActivities
+        ),
+        agentTransfers: normalizeAgentTransfers(
+          messageRecord?.agent_transfers ?? messageRecord?.agentTransfers
         ),
         images: normalizeMessageImages(messageRecord?.images),
       },

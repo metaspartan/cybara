@@ -130,17 +130,19 @@ describe("mobile: chat management", () => {
     expect(chat).toContain("<Text key={index} selectable={selectable} style={styles.mdBold}>");
     expect(chat).toContain("<Text key={index} selectable={selectable} style={styles.mdItalic}>");
     expect(chat).toContain("<Text key={index} selectable={selectable} style={styles.mdStrike}>");
-    expect(chat).toContain(
-      "<Text key={index} selectable={selectable} style={styles.mdInlineCode}>"
-    );
+    expect(chat).toContain("styles.mdInlineCode,");
+    expect(chat).toContain("selectable={selectable}");
+    expect(chat).toContain("getChatCodeFontSizePixels(appearance.codeFontSize)");
     expect(chat).toContain("<Text key={index} selectable={selectable}>");
-    expect(chat).toContain("<Text selectable style={styles.mdListMarker}>");
-    expect(chat).toContain("<Text selectable style={styles.mdListText}>");
-    expect(chat).toContain("<Text selectable style={styles.mdQuoteText}>");
+    expect(chat).toContain("<Text selectable style={[styles.mdListMarker, bodyStyle]}>");
+    expect(chat).toContain("<Text selectable style={[styles.mdListText, bodyStyle]}>");
+    expect(chat).toContain("<Text selectable style={[styles.mdQuoteText, bodyStyle]}>");
     expect(chat).toContain("<Text selectable style={styles.mdTableHeaderText}>");
     expect(chat).toContain("<Text selectable style={styles.mdTableCellText}>");
-    expect(chat).toContain("<Text selectable style={styles.workedForText}>");
-    expect(chat).toContain("<Text selectable style={styles.messageActivityGroupLabel}>");
+    expect(chat).toContain("<Text selectable style={[styles.workedForText, activityStyle]}>");
+    expect(chat).toContain(
+      "<Text selectable style={[styles.messageActivityGroupLabel, activityStyle]}>"
+    );
     expect(chat).toContain("selectable = true");
     expect(chat).toContain('accessibilityLabel="Add message to chat"');
     expect(chat).toContain("onAddToChat?: (content: string) => void");

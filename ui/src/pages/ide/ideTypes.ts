@@ -1,5 +1,6 @@
 /** Shared IDE type definitions — extracted from IDE.tsx. */
 import type { LiveActivityItem, ToolCallLike } from "@/lib/chatActivities";
+import type { AgentTransferInfo } from "@/types";
 export interface FileEntry {
   name: string;
   path: string;
@@ -267,6 +268,7 @@ export interface IdeChatMessage {
   thinking?: string;
   tool_calls?: ToolCallLike[];
   process_activities?: IdeProcessActivity[];
+  agent_transfers?: AgentTransferInfo[];
 }
 
 export interface IdeChatAgentOption {

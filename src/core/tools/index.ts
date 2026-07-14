@@ -853,6 +853,37 @@ Use for tasks that may take longer or require separate context. For parallel del
     permissions: ["sessions:create"],
   },
 
+  sessions_transfer: {
+    name: "sessions_transfer",
+    description:
+      "Transfer the active chat to another user-facing agent. The target agent continues the current turn with shared conversation context and becomes the session owner. Use sessions_spawn instead when the current agent should remain in control.",
+    category: "core",
+    input_schema: {
+      type: "object",
+      properties: {
+        agentId: {
+          type: "string",
+          description: "Target agent ID or exact name from agents_list",
+        },
+        reason: {
+          type: "string",
+          description: "Concise reason the target agent is better suited to continue",
+        },
+        contextMode: {
+          type: "string",
+          enum: ["full", "recent", "summary"],
+          description: "Context to share with the target agent. Defaults to full.",
+        },
+        contextSummary: {
+          type: "string",
+          description: "Optional concise state, constraints, and next action for the target agent",
+        },
+      },
+      required: ["agentId", "reason"],
+    },
+    permissions: ["sessions:send"],
+  },
+
   sessions_wait: {
     name: "sessions_wait",
     description:

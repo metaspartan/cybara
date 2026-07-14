@@ -25,6 +25,7 @@ import {
   handleSessionsList,
   handleSessionStatus,
   handleAgentsList,
+  handleSessionsTransfer,
   handleMessage,
   handleCanvas,
   handleNodes,
@@ -220,6 +221,7 @@ const toolHandlers: Record<
   heartbeat_state: handleHeartbeatState,
 
   sessions_spawn: handleSessionsSpawn,
+  sessions_transfer: handleSessionsTransfer,
   sessions_wait: handleSessionsWait,
   sessions_send: handleSessionsSend,
   sessions_history: handleSessionsHistory,

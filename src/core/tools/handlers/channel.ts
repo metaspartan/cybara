@@ -28,6 +28,11 @@ import { providerManager } from "../../providers";
 import { getProviderAvailability } from "../../router";
 import { broadcastStatus, onStatus, type StatusPayload, type ToolStatusPhase } from "../../status";
 import type { AgentToolCallResult } from "../../agent-internals";
+import {
+  createAgentTransferEnvelope,
+  normalizeAgentTransferContextMode,
+  type AgentTransferEnvelope,
+} from "../../agent-transfer";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -813,6 +818,72 @@ export async function handleAgentsList(): Promise<{
       agents: [{ id: "default", name: "Assistant", status: "running", type: "general" }],
     };
   }
+}
+
+export async function handleSessionsTransfer(
+  args: Record<string, unknown>,
+  context?: ToolContext
+): Promise<AgentTransferEnvelope | { status: "forbidden"; error: string }> {
+  const sessionId = readTrimmedString(context?.sessionId);
+  const targetAgentReference = readTrimmedString(args.agentId);
+  if (!sessionId) {
+    return { status: "forbidden", error: "Agent transfer requires an active chat session" };
+  }
+  if (subagentRegistry.isSubagentSessionKey(sessionId)) {
+    return { status: "forbidden", error: "Sub-agent sessions cannot transfer chat ownership" };
+  }
+  if (!targetAgentReference) {
+    return { status: "forbidden", error: "agentId is required" };
+  }
+  const sourceAgent = agentManager.get(context?.agentId || "");
+  const matchingAgents = agentManager
+    .list()
+    .filter(
+      (candidate) =>
+        candidate.name.trim().toLocaleLowerCase() === targetAgentReference.toLocaleLowerCase()
+    );
+  const targetAgent = agentManager.get(targetAgentReference) || matchingAgents[0];
+  if (!sourceAgent) {
+    return { status: "forbidden", error: "Current agent is unavailable" };
+  }
+  if (!targetAgent) {
+    return { status: "forbidden", error: "Target agent was not found" };
+  }
+  if (!agentManager.get(targetAgentReference) && matchingAgents.length > 1) {
+    return { status: "forbidden", error: "Target agent name is ambiguous; use its agent ID" };
+  }
+  if (targetAgent.id === sourceAgent.id) {
+    return { status: "forbidden", error: "Target agent is already active" };
+  }
+  if (targetAgent.type === "subagent" || targetAgent.type === "worker") {
+    return {
+      status: "forbidden",
+      error: "Worker agents must be delegated with sessions_spawn instead of a transfer",
+    };
+  }
+  const targetProvider = agentManager.resolveProvider(targetAgent.id);
+  if (!targetProvider) {
+    return { status: "forbidden", error: "Target agent has no available provider" };
+  }
+  const availability = getProviderAvailability(targetProvider.id);
+  if (!availability.available && (availability.inCooldown || availability.circuitOpen)) {
+    return {
+      status: "forbidden",
+      error: availability.reason || "Target agent provider is temporarily unavailable",
+    };
+  }
+  const reason = readTrimmedString(args.reason)?.slice(0, 1_000) || "Specialist handoff";
+  const contextSummary = readTrimmedString(args.contextSummary)?.slice(0, 8_000);
+  return createAgentTransferEnvelope({
+    sessionId,
+    fromAgentId: sourceAgent.id,
+    fromAgentName: sourceAgent.name,
+    toAgentId: targetAgent.id,
+    toAgentName: targetAgent.name,
+    reason,
+    contextMode: normalizeAgentTransferContextMode(args.contextMode),
+    contextSummary,
+  });
 }
 
 type MessageToolContext = {

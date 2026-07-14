@@ -89,16 +89,13 @@ struct CybaraMenuBarContent: View {
 }
 
 struct CybaraMenuBarLabel: View {
-    private var templateLogo: NSImage? {
-        guard let image = CybaraBrand.logoImage?.copy() as? NSImage else { return nil }
-        image.isTemplate = true
-        return image
-    }
-
     var body: some View {
-        if let image = templateLogo {
+        if let image = CybaraBrand.menuBarTemplateImage() {
             Image(nsImage: image)
                 .renderingMode(.template)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 16, height: 16)
                 .accessibilityLabel("Cybara")
         } else {
             Image(systemName: "brain.head.profile")

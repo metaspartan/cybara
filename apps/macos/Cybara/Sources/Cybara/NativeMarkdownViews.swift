@@ -4,6 +4,7 @@ import SwiftUI
 struct NativeMarkdownView: View {
     let content: String
     let isUser: Bool
+    @Environment(\.nativeChatAppearance) private var appearance
 
     private var blocks: [NativeMarkdownBlock] {
         NativeMarkdown.parse(content, stripAssistantMarkup: !isUser)
@@ -23,8 +24,8 @@ struct NativeMarkdownView: View {
         switch block.kind {
         case .paragraph(let text):
             inlineText(text)
-                .font(.system(size: isUser ? 13 : 12.5, design: .rounded))
-                .lineSpacing(3)
+                .font(.system(size: appearance.bodyFontSize, design: .rounded))
+                .lineSpacing(appearance.lineSpacingPoints)
         case .heading(let level, let text):
             inlineText(text)
                 .font(.system(size: headingSize(level), weight: .bold, design: .rounded))
@@ -48,7 +49,7 @@ struct NativeMarkdownView: View {
                     .fill(Color.accentColor.opacity(0.65))
                     .frame(width: 3)
                 inlineText(text)
-                    .font(.system(size: 12.5, design: .rounded))
+                    .font(.system(size: appearance.bodyFontSize, design: .rounded))
                     .foregroundStyle(.secondary)
             }
             .padding(.vertical, 2)
@@ -79,8 +80,8 @@ struct NativeMarkdownView: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 22, alignment: .trailing)
             inlineText(text)
-                .font(.system(size: 12.5, design: .rounded))
-                .lineSpacing(3)
+                .font(.system(size: appearance.bodyFontSize, design: .rounded))
+                .lineSpacing(appearance.lineSpacingPoints)
         }
     }
 
@@ -99,6 +100,7 @@ private struct NativeCodeBlock: View {
     let code: String
     let isDiff: Bool
     @State private var copied = false
+    @Environment(\.nativeChatAppearance) private var appearance
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -133,7 +135,7 @@ private struct NativeCodeBlock: View {
                     .padding(.vertical, 6)
                 } else {
                     Text(code.isEmpty ? " " : code)
-                        .font(.system(size: 11.5, design: .monospaced))
+                        .font(.system(size: appearance.codeTextSize, design: .monospaced))
                         .foregroundStyle(.primary)
                         .padding(10)
                 }

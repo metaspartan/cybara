@@ -349,6 +349,25 @@ describe("mobile dashboard model", () => {
     expect(dashboardStylesSource).toContain("messageActivityDot");
     expect(dashboardStylesSource).toContain("backgroundColor: colors.textMuted");
     expect(dashboardStylesSource).toContain("messageThoughtText");
+    expect(dashboardChatSource).toContain("appearance.highContrast ? colors.text");
+    expect(dashboardChatSource).toContain("getChatLineHeight(appearance.lineSpacing)");
+    expect(dashboardChatSource).toContain("getChatCodeFontSizePixels(appearance.codeFontSize)");
+  });
+
+  test("uses the shared chat appearance contract on mobile", () => {
+    expect(MOBILE_PLATFORM_SETTING_KEYS).toContain("chat_appearance");
+    expect(dashboardScreenSource).toContain('title="Readability"');
+    expect(dashboardScreenSource).toContain('label="Chat text size"');
+    expect(dashboardScreenSource).toContain('label="Code text size"');
+    expect(dashboardScreenSource).toContain('label="Line spacing"');
+    expect(dashboardScreenSource).toContain('["reduceMotion", "Reduce motion"');
+    expect(dashboardScreenSource).toContain('"reduceTransparency",');
+    expect(dashboardScreenSource).toContain('"Reduce transparency",');
+    expect(dashboardScreenSource).toContain('"highContrast",');
+    expect(dashboardScreenSource).toContain('"Increase contrast",');
+    expect(dashboardScreenSource).toContain(
+      "normalizeChatAppearanceSettings(config?.chat_appearance)"
+    );
   });
 
   test("renders compact mobile file change summaries from chat activity", () => {
@@ -624,6 +643,7 @@ describe("mobile dashboard model", () => {
       "terminal_enabled",
       "tool_approval_mode",
       "follow_up_behavior_enabled",
+      "chat_appearance",
       "reasoning_effort",
       "dangerous_tool_policy",
       "sandbox_runtime",
@@ -678,13 +698,14 @@ describe("mobile dashboard model", () => {
   test("organizes mobile settings into shared native categories", () => {
     expect(MOBILE_SETTINGS_TABS.map((tab) => tab.label)).toEqual([
       "General",
+      "Accessibility",
       "Gateway",
       "AI",
       "Lab",
       "Memory",
       "Voice",
       "MCP",
-      "Connectors",
+      "Plugins",
       "Safety",
       "Wallet",
       "Migration",
@@ -698,6 +719,7 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain('title="Safety controls"');
     for (const guard of [
       "showGeneralSettings",
+      "showAccessibilitySettings",
       "showGatewaySettings",
       "showAiSettings",
       "showMemorySettings",

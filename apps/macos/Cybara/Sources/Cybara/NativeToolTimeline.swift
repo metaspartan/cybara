@@ -29,6 +29,7 @@ struct NativeToolTimelineView: View {
     let message: GatewaySessionMessage
     let mediaBaseURL: URL
     let mediaToken: String?
+    @Environment(\.nativeChatAppearance) private var appearance
 
     private var orderedToolCalls: [GatewayToolCall] {
         nativeOrderedToolCalls(message.tool_calls)
@@ -54,7 +55,7 @@ struct NativeToolTimelineView: View {
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(.secondary)
                     Text("Worked for \(nativeWorkedDurationLabel(for: message))")
-                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .font(.system(size: appearance.activityFontSize, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
                 }
@@ -100,6 +101,7 @@ struct NativeLiveToolTimelineView: View {
     let activities: [NativeToolActivity]
     let currentStep: String?
     let startedAt: Date?
+    @Environment(\.nativeChatAppearance) private var appearance
 
     private var visibleActivities: [NativeToolActivity] {
         activities.filter { !nativeIsGenericStatusLabel($0.text) }
@@ -135,7 +137,7 @@ struct NativeLiveToolTimelineView: View {
                         .font(.system(size: 11.5, weight: .semibold))
                         .foregroundStyle(.secondary)
                     Text("Working for \(nativeLiveWorkedDurationLabel(startedAt: startedAt, activities: visibleActivities, now: context.date))")
-                        .font(.system(size: 11.5, weight: .medium, design: .rounded))
+                        .font(.system(size: appearance.activityFontSize, weight: .medium, design: .rounded))
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
                 }
@@ -174,6 +176,7 @@ struct NativeLiveToolTimelineView: View {
 
 private struct NativeToolActivityRow: View {
     let activity: NativeToolActivity
+    @Environment(\.nativeChatAppearance) private var appearance
 
     var body: some View {
         HStack(alignment: .top, spacing: 7) {
@@ -199,8 +202,8 @@ private struct NativeToolActivityRow: View {
             }
             HStack(alignment: .firstTextBaseline, spacing: 7) {
                 nativeActivityMarkdownText(activity.text)
-                    .font(.system(size: 11.8, design: .rounded))
-                    .foregroundStyle(.secondary)
+                    .font(.system(size: appearance.activityFontSize, design: .rounded))
+                    .foregroundStyle(appearance.highContrast ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                     .lineLimit(3)
                     .textSelection(.enabled)
                 if let provider = activity.sandboxProvider {
@@ -211,6 +214,7 @@ private struct NativeToolActivityRow: View {
     }
 
     private var icon: String {
+        if activity.toolName == "sessions_transfer" { return "arrow.left.arrow.right" }
         switch activity.phase {
         case .start: return "clock"
         case .result: return "checkmark.circle.fill"
@@ -1026,6 +1030,7 @@ private func nativeToolCallStatusLabel(_ toolCall: GatewayToolCall) -> String {
 }
 
 private func nativeToolCallIcon(_ toolCall: GatewayToolCall) -> String {
+    if toolCall.name == "sessions_transfer" { return "arrow.left.arrow.right" }
     switch nativeToolPhase(status: toolCall.status, error: toolCall.error) {
     case .start: return "clock"
     case .result: return "checkmark.circle.fill"
@@ -1463,6 +1468,7 @@ func nativeGroupActivities(_ activities: [NativeToolActivity]) -> [NativeTimelin
 struct NativeGroupedActivities: View {
     let activities: [NativeToolActivity]
     @State private var expanded: Set<String> = []
+    @Environment(\.nativeChatAppearance) private var appearance
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -1482,8 +1488,8 @@ struct NativeGroupedActivities: View {
                                 .frame(width: 13, alignment: .center)
                                 .padding(.top, 1)
                             Text(label)
-                                .font(.system(size: 11.8, weight: .medium, design: .rounded))
-                                .foregroundStyle(.secondary)
+                                .font(.system(size: appearance.activityFontSize, weight: .medium, design: .rounded))
+                                .foregroundStyle(appearance.highContrast ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
                             Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                                 .font(.system(size: 9, weight: .semibold))
                                 .foregroundStyle(.tertiary)

@@ -138,7 +138,9 @@ describe("API security module", () => {
 
   test("gateway password does not break scoped mobile device tokens", () => {
     security.setGatewayPassword("correct horse battery staple");
-    const { token } = createMobileDevice({ baseUrl: "http://192.168.1.20:4269" });
+    const { token } = createMobileDevice({
+      baseUrl: "http://192.168.1.20:4269",
+    });
 
     const result = security.authenticateRequest(
       { authorization: `Bearer ${token}` },
@@ -260,6 +262,13 @@ describe("API security module", () => {
     expect(callback.passed).toBe(true);
     expect(lookalike.passed).toBe(false);
     expect(lookalike.statusCode).toBe(401);
+  });
+
+  test("plugin discovery is readable while plugin changes require management access", () => {
+    expect(security.routeRequiredScope("GET", "/api/plugins")).toBe("read");
+    expect(security.routeRequiredScope("GET", "/api/plugins/validate")).toBe("manage");
+    expect(security.routeRequiredScope("POST", "/api/plugins/install")).toBe("manage");
+    expect(security.routeRequiredScope("DELETE", "/api/plugins/example")).toBe("manage");
   });
 
   test("checkRateLimit enforces max requests per window", () => {

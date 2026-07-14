@@ -86,6 +86,7 @@ import {
 import { Clipboard, ImagePicker } from "../lib/expoNativeModules";
 import { haptics } from "../lib/haptics";
 import { colors, spacing } from "../theme/liquidGlass";
+import { normalizeChatAppearanceSettings } from "cybara-shared/chat-appearance";
 import { ChatMessageRow, MobilePlanSummaryCard } from "./dashboardChat";
 import { absoluteTimestampLabel, relativeTimestamp } from "./dashboardHelpers";
 import {
@@ -2014,6 +2015,7 @@ export function SessionDetailPanel({
   // sits just above the keyboard; otherwise it floats above the nav chrome.
   const composerBottom =
     keyboardHeight > 0 ? keyboardHeight + spacing.xs : navFootprint + spacing.xs;
+  const chatAppearance = normalizeChatAppearanceSettings(config?.chat_appearance);
 
   return (
     <View style={styles.chatShell}>
@@ -2071,6 +2073,7 @@ export function SessionDetailPanel({
               <ChatMessageRow
                 key={`${message.id}-${index}`}
                 accentColor={accentColor}
+                appearance={chatAppearance}
                 message={message}
                 mediaUrl={(filePath) => api.mediaUrl(filePath)}
                 nowMs={message.id === liveAssistant?.id ? liveNowMs : undefined}
@@ -2222,6 +2225,7 @@ export function SessionDetailPanel({
 
       <LiquidGlass
         intensity={64}
+        opaque={chatAppearance.reduceTransparency}
         contentStyle={styles.chatComposerContent}
         style={[styles.chatComposerBar, { bottom: composerBottom }]}
       >
@@ -2351,7 +2355,7 @@ export function SessionDetailPanel({
         </View>
       </LiquidGlass>
       <Modal
-        animationType="fade"
+        animationType={chatAppearance.reduceMotion ? "none" : "fade"}
         onRequestClose={closeEditPendingMessage}
         transparent
         visible={editingPendingMessage !== null}

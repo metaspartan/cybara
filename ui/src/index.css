@@ -826,9 +826,9 @@ textarea[data-chat-composer-input="true"]:focus-visible {
     padding: 1rem !important;
   }
 
-  .grid-cols-2,
-  .grid-cols-3,
-  .grid-cols-4 {
+  .grid-cols-2:not([role="tablist"]),
+  .grid-cols-3:not([role="tablist"]),
+  .grid-cols-4:not([role="tablist"]) {
     grid-template-columns: 1fr !important;
   }
 }
@@ -846,8 +846,8 @@ textarea[data-chat-composer-input="true"]:focus-visible {
     margin-left: 220px !important;
   }
 
-  .grid-cols-3,
-  .grid-cols-4 {
+  .grid-cols-3:not([role="tablist"]),
+  .grid-cols-4:not([role="tablist"]) {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 }

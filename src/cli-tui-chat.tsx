@@ -388,6 +388,7 @@ export function TUIChatCommand({
         apiKey={apiKey}
         fetchAPI={fetchAPI}
         initialAgentId={openSession.agent_id || openSession.agentId}
+        initialWorkspaceDir={sessionWorkspace(openSession) || process.cwd()}
         sessionId={openSession.id}
         title={compactText(openSession.title, openSession.id || "New Chat")}
         modelLine={sessionModelLine(openSession, agentsById)}

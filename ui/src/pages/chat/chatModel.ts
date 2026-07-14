@@ -5,7 +5,12 @@ import {
   type LiveActivityItem,
 } from "@/lib/chatActivities";
 import type { PendingChatMessage } from "@/lib/status-stream";
-import type { ChatImageAttachment, SessionPlanItem, SessionPlanSnapshot } from "@/types";
+import type {
+  AgentTransferInfo,
+  ChatImageAttachment,
+  SessionPlanItem,
+  SessionPlanSnapshot,
+} from "@/types";
 export interface ToolCall {
   id: string;
   name: string;
@@ -38,6 +43,7 @@ export interface ChatMessage {
   content: string;
   timestamp?: string;
   tool_calls?: ToolCall[];
+  agent_transfers?: AgentTransferInfo[];
   process_activities?: Array<{
     id?: string;
     phase?: "start" | "result" | "error" | "blocked";

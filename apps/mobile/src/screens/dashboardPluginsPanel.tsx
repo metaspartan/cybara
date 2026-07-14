@@ -1,5 +1,3 @@
-import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Text, View } from "react-native";
 import {
   Building2,
   Cloud,
@@ -7,9 +5,19 @@ import {
   Link2,
   Mail,
   NotebookText,
+  Package,
+  Server,
   Unplug,
 } from "lucide-react-native";
-import type { CybaraMobileApi, MobileAccountConnector, MobileAccountConnectorId } from "../lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Linking, Text, View } from "react-native";
+import type {
+  CybaraMobileApi,
+  MobileAccountConnector,
+  MobileAccountConnectorId,
+  MobileMcpServer,
+  MobilePlugin,
+} from "../lib/api";
 import { colors } from "../theme/liquidGlass";
 import {
   DetailActionButton,
@@ -37,7 +45,7 @@ async function waitForOAuth(api: CybaraMobileApi, state: string): Promise<void> 
   throw new Error("Authorization timed out");
 }
 
-export function MobileConnectorsPanel({
+export function MobilePluginsPanel({
   accentColor,
   api,
 }: {
@@ -45,35 +53,49 @@ export function MobileConnectorsPanel({
   api: CybaraMobileApi;
 }) {
   const [connectors, setConnectors] = useState<MobileAccountConnector[]>([]);
+  const [plugins, setPlugins] = useState<MobilePlugin[]>([]);
+  const [services, setServices] = useState<MobileMcpServer[]>([]);
   const [drafts, setDrafts] = useState<Partial<Record<MobileAccountConnectorId, ConnectorDraft>>>(
     {}
   );
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<MobileAccountConnectorId | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const next = await api.listAccountConnectors();
-    setConnectors(next);
-    setDrafts((current) => {
-      const output = { ...current };
-      for (const connector of next) {
-        output[connector.id] = output[connector.id] || {
-          clientId: "",
-          clientSecret: "",
-          writeAccess: connector.access === "read_write",
-        };
-      }
-      return output;
-    });
+    const results = await Promise.allSettled([
+      api.listAccountConnectors(),
+      api.listPlugins(),
+      api.listMcpServers(),
+    ]);
+    const [connectorResult, pluginResult, serviceResult] = results;
+    if (connectorResult.status === "fulfilled") {
+      setConnectors(connectorResult.value);
+      setDrafts((current) => {
+        const output = { ...current };
+        for (const connector of connectorResult.value) {
+          output[connector.id] = output[connector.id] || {
+            clientId: "",
+            clientSecret: "",
+            writeAccess: connector.access === "read_write",
+          };
+        }
+        return output;
+      });
+    }
+    if (pluginResult.status === "fulfilled") setPlugins(pluginResult.value);
+    if (serviceResult.status === "fulfilled") setServices(serviceResult.value);
+    const failures = results.flatMap((result) =>
+      result.status === "rejected"
+        ? [result.reason instanceof Error ? result.reason.message : String(result.reason)]
+        : []
+    );
+    if (failures.length > 0) throw new Error(failures.join(". "));
   }, [api]);
 
   useEffect(() => {
     void load()
       .catch((error) =>
-        Alert.alert(
-          "Connectors unavailable",
-          error instanceof Error ? error.message : String(error)
-        )
+        Alert.alert("Plugins unavailable", error instanceof Error ? error.message : String(error))
       )
       .finally(() => setLoading(false));
   }, [load]);
@@ -128,13 +150,56 @@ export function MobileConnectorsPanel({
     }
   };
 
-  if (loading && connectors.length === 0) {
+  if (loading && connectors.length === 0 && plugins.length === 0 && services.length === 0) {
     return <ActivityIndicator color={accentColor} size="small" />;
   }
 
   return (
     <>
-      <SettingsSection title="Account connectors">
+      <SettingsSection title="Installed plugins">
+        {plugins.length === 0 ? (
+          <Text style={styles.settingsFieldHelp}>No plugin bundles are installed.</Text>
+        ) : (
+          plugins.map((plugin) => (
+            <View key={plugin.id} style={styles.listRow}>
+              <View style={styles.listIcon}>
+                <Package color={accentColor} size={19} />
+              </View>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>{plugin.name}</Text>
+                <Text style={styles.listDetail}>
+                  v{plugin.version} · {plugin.skillCount} skill
+                  {plugin.skillCount === 1 ? "" : "s"} · {plugin.source}
+                </Text>
+              </View>
+            </View>
+          ))
+        )}
+      </SettingsSection>
+      <SettingsSection title="MCP services">
+        {services.length === 0 ? (
+          <Text style={styles.settingsFieldHelp}>No MCP services are configured.</Text>
+        ) : (
+          services.map((service) => (
+            <View key={service.id} style={styles.listRow}>
+              <View style={styles.listIcon}>
+                <Server
+                  color={service.status === "running" ? colors.green : accentColor}
+                  size={19}
+                />
+              </View>
+              <View style={styles.listText}>
+                <Text style={styles.listTitle}>{service.name}</Text>
+                <Text style={styles.listDetail}>
+                  {service.status} · {service.toolCount} tool
+                  {service.toolCount === 1 ? "" : "s"}
+                </Text>
+              </View>
+            </View>
+          ))
+        )}
+      </SettingsSection>
+      <SettingsSection title="Account apps">
         <Text style={styles.settingsFieldHelp}>
           Reading is the default. Account changes remain approval-gated.
         </Text>

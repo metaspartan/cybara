@@ -7,7 +7,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Code,
-  Cable,
   FileText,
   FlaskConical,
   FolderOpen,
@@ -20,6 +19,7 @@ import {
   MessageSquare,
   MessagesSquare,
   Network,
+  Package,
   Plug,
   Settings,
   Smartphone,
@@ -92,7 +92,14 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarContext.Provider
-      value={{ collapsed, setCollapsed, width, setWidth, mobileOpen, setMobileOpen }}
+      value={{
+        collapsed,
+        setCollapsed,
+        width,
+        setWidth,
+        mobileOpen,
+        setMobileOpen,
+      }}
     >
       {children}
     </SidebarContext.Provider>
@@ -229,7 +236,7 @@ const navCategories: SidebarNavCategory[] = [
       { path: "/router", icon: Network, labelKey: "nav.router" },
       { path: "/channels", icon: Smartphone, labelKey: "nav.channels" },
       { path: "/mobile", icon: TabletSmartphone, labelKey: "nav.mobile" },
-      { path: "/connectors", icon: Cable, label: "Connectors" },
+      { path: "/plugins", icon: Package, labelKey: "nav.plugins" },
     ],
   },
   {
@@ -240,7 +247,12 @@ const navCategories: SidebarNavCategory[] = [
       { path: "/lsp", icon: Code, labelKey: "nav.lsp" },
       { path: "/ide", icon: FolderOpen, labelKey: "nav.ide" },
       { path: "/sessions", icon: MessagesSquare, labelKey: "nav.sessions" },
-      { path: "/usage", icon: Gauge, labelKey: "nav.usage", requiresUsage: true },
+      {
+        path: "/usage",
+        icon: Gauge,
+        labelKey: "nav.usage",
+        requiresUsage: true,
+      },
       { path: "/lab", icon: FlaskConical, label: "Lab" },
       { path: "/skills", icon: LibraryBig, labelKey: "nav.skills" },
       { path: "/tools", icon: Wrench, labelKey: "nav.tools" },
@@ -488,7 +500,9 @@ export function Sidebar() {
                 )}
                 style={
                   location.pathname === "/settings"
-                    ? { boxShadow: "inset 0 1px 8px rgba(var(--accent-primary), 0.15)" }
+                    ? {
+                        boxShadow: "inset 0 1px 8px rgba(var(--accent-primary), 0.15)",
+                      }
                     : undefined
                 }
               >

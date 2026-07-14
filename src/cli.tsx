@@ -14,7 +14,7 @@ import { runMobileCommand } from "./cli-mobile";
 import { rawHelp } from "./cli-help";
 import { printCompletion } from "./cli-completion";
 import { rawComputerUse } from "./cli-computer-use";
-import { runConnectorCommand, TUIConnectorsCommand } from "./cli-connectors";
+import { runConnectorCommand, TUIPluginsCommand } from "./cli-connectors";
 import { configureChatCli, rawAgent, rawChatCommand } from "./cli-chat";
 import { runSubagentCommand } from "./cli-subagents";
 import { TUIChatCommand } from "./cli-tui-chat";
@@ -3532,9 +3532,11 @@ function TUIContent({
       return <TUIEvalsCommand fetchAPI={fetchAPI} />;
     case "channels":
       return <TUIChannelsCommand fetchAPI={fetchAPI} />;
+    case "plugins":
+    case "plugin":
     case "connectors":
     case "connector":
-      return <TUIConnectorsCommand fetchAPI={fetchAPI} />;
+      return <TUIPluginsCommand fetchAPI={fetchAPI} />;
     case "memory":
       return <TUIMemoryCommand fetchAPI={fetchAPI} />;
     case "tools":
@@ -3819,6 +3821,15 @@ async function main() {
           }
           await rawPluginInstall(args[2]);
           break;
+        case "apps":
+          await runConnectorCommand(["list"], fetchAPI);
+          break;
+        case "configure":
+        case "connect":
+        case "disconnect":
+        case "setup":
+          await runConnectorCommand(args.slice(1), fetchAPI);
+          break;
         case "delete":
         case "remove":
         case "uninstall":
@@ -3834,6 +3845,8 @@ async function main() {
           console.log("  cybara plugin validate <path>     - Validate a plugin manifest and dirs");
           console.log("  cybara plugin install <path>      - Install a local plugin");
           console.log("  cybara plugin remove <plugin-id>  - Remove an installed local plugin");
+          console.log("  cybara plugin apps                - List account apps");
+          console.log("  cybara plugin connect <app-id>    - Connect an account app");
           break;
       }
       break;

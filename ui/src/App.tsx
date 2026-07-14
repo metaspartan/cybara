@@ -55,8 +55,8 @@ const MCPServers = lazy(() =>
     default: module.MCPServers,
   }))
 );
-const Connectors = lazy(() =>
-  import("@/pages/Connectors").then((module) => ({ default: module.Connectors }))
+const Plugins = lazy(() =>
+  import("@/pages/Plugins").then((module) => ({ default: module.Plugins }))
 );
 const LSP = lazy(() => import("@/pages/LSP").then((module) => ({ default: module.LSP })));
 const IDE = lazy(() => import("@/pages/IDE").then((module) => ({ default: module.IDE })));
@@ -153,7 +153,8 @@ function AppRoutes() {
         <Route path="/providers" element={<Providers />} />
         <Route path="/router" element={<RouterSettings />} />
         <Route path="/mcp" element={<MCPServers />} />
-        <Route path="/connectors" element={<Connectors />} />
+        <Route path="/plugins" element={<Plugins />} />
+        <Route path="/connectors" element={<Navigate to="/plugins" replace />} />
         <Route path="/channels" element={<Channels />} />
         <Route path="/mobile" element={<Mobile />} />
         <Route path="/tasks" element={<Tasks />} />

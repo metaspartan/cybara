@@ -7,11 +7,25 @@ extension View {
     /// looks right across supported releases.
     @ViewBuilder
     func cybaraGlass(cornerRadius: CGFloat = 24) -> some View {
+        modifier(CybaraGlassModifier(cornerRadius: cornerRadius))
+    }
+}
+
+private struct CybaraGlassModifier: ViewModifier {
+    @Environment(\.nativeChatAppearance) private var chatAppearance
+    let cornerRadius: CGFloat
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-        if #available(macOS 26.0, *) {
-            self.glassEffect(.regular, in: shape)
+        if chatAppearance.reduceTransparency {
+            content
+                .background(Color(nsColor: .windowBackgroundColor), in: shape)
+                .overlay(shape.stroke(Color.primary.opacity(chatAppearance.highContrast ? 0.28 : 0.12), lineWidth: 1))
+        } else if #available(macOS 26.0, *) {
+            content.glassEffect(.regular, in: shape)
         } else {
-            self.background(.ultraThinMaterial, in: shape)
+            content.background(.ultraThinMaterial, in: shape)
         }
     }
 }
