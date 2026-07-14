@@ -1,14 +1,23 @@
 import {
   Boxes,
+  CheckCircle2,
+  Code2,
+  Download,
   ExternalLink,
+  FlaskConical,
   FolderInput,
   Package,
+  Palette,
   Play,
   Plug,
   Search,
   Server,
+  ShieldCheck,
+  Sparkles,
   Square,
   Trash2,
+  Workflow,
+  type LucideIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -19,6 +28,7 @@ import { Switch } from "@/components/ui/Switch";
 import {
   type InstalledPluginSummary,
   type MCPServer,
+  type MarketplacePluginSummary,
   type PluginCatalogSummary,
   type PluginInstallPayload,
   mcpApi,
@@ -55,14 +65,27 @@ function serviceStatusVariant(status: string): "success" | "warning" | "error" |
   return "default";
 }
 
+function pluginIcon(value: string): LucideIcon {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("develop") || normalized.includes("code")) return Code2;
+  if (normalized.includes("research") || normalized.includes("data")) return FlaskConical;
+  if (normalized.includes("security") || normalized.includes("safety")) return ShieldCheck;
+  if (normalized.includes("delivery") || normalized.includes("workflow")) return Workflow;
+  if (normalized.includes("visual") || normalized.includes("design")) return Palette;
+  if (normalized.includes("community")) return Sparkles;
+  return Package;
+}
+
 export function Plugins() {
   const navigate = useNavigate();
   const { addToast } = useUIStore();
   const [tab, setTab] = useState<PluginTab>("installed");
   const [plugins, setPlugins] = useState<InstalledPluginSummary[]>([]);
   const [catalog, setCatalog] = useState<PluginCatalogSummary[]>([]);
+  const [marketplace, setMarketplace] = useState<MarketplacePluginSummary[]>([]);
   const [pluginSearch, setPluginSearch] = useState("");
-  const [catalogFilter, setCatalogFilter] = useState<"all" | "installed">("all");
+  const [catalogFilter, setCatalogFilter] = useState<"all" | "installed" | "available">("all");
+  const [marketplaceLoading, setMarketplaceLoading] = useState(false);
   const [services, setServices] = useState<MCPServer[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -107,6 +130,40 @@ export function Plugins() {
       })
       .finally(() => setLoading(false));
   }, [addToast, loadPlugins, loadServices]);
+
+  useEffect(() => {
+    if (tab !== "discover") return;
+    let active = true;
+    const timer = window.setTimeout(
+      () => {
+        setMarketplaceLoading(true);
+        void pluginsApi
+          .marketplace(pluginSearch.trim())
+          .then((response) => {
+            if (!active) return;
+            if (!response.success || !response.data) {
+              throw new Error(response.error || "Failed to load plugin marketplace");
+            }
+            setMarketplace(response.data.plugins);
+          })
+          .catch((error: unknown) => {
+            if (!active) return;
+            addToast(
+              "error",
+              error instanceof Error ? error.message : "Failed to load plugin marketplace"
+            );
+          })
+          .finally(() => {
+            if (active) setMarketplaceLoading(false);
+          });
+      },
+      pluginSearch.trim() ? 300 : 0
+    );
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [addToast, pluginSearch, tab]);
 
   const install = async (payload: PluginInstallPayload): Promise<void> => {
     setBusyId("install");
@@ -163,14 +220,44 @@ export function Plugins() {
     }
   };
 
+  const installMarketplace = async (plugin: MarketplacePluginSummary): Promise<void> => {
+    setBusyId(plugin.id);
+    try {
+      const response = await pluginsApi.installMarketplace({
+        id: plugin.id,
+        marketplace: plugin.marketplaceId,
+      });
+      if (!response.success || response.data?.success !== true) {
+        throw new Error(response.error || response.data?.error || "Plugin installation failed");
+      }
+      await loadPlugins();
+      setMarketplace((current) =>
+        current.map((entry) =>
+          entry.id === plugin.id ? { ...entry, installed: true, enabled: true } : entry
+        )
+      );
+      addToast("success", `${plugin.name} installed`);
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "Plugin installation failed");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   const normalizedSearch = pluginSearch.trim().toLowerCase();
   const visibleCatalog = catalog.filter((plugin) => {
     if (catalogFilter === "installed" && !plugin.installed) return false;
+    if (catalogFilter === "available" && plugin.installed) return false;
     if (!normalizedSearch) return true;
     return [plugin.name, plugin.description, ...plugin.tags, ...plugin.skillNames]
       .join(" ")
       .toLowerCase()
       .includes(normalizedSearch);
+  });
+  const visibleMarketplace = marketplace.filter((plugin) => {
+    if (catalogFilter === "installed" && !plugin.installed) return false;
+    if (catalogFilter === "available" && plugin.installed) return false;
+    return true;
   });
 
   const setServiceRunning = async (service: MCPServer, running: boolean): Promise<void> => {
@@ -255,62 +342,68 @@ export function Plugins() {
             </div>
           ) : (
             <div className="grid gap-3 md:grid-cols-2">
-              {plugins.map((plugin) => (
-                <section
-                  key={plugin.id}
-                  className="flex min-h-40 flex-col rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]">
-                      <Package className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="truncate text-sm font-semibold text-[var(--text-primary)]">
-                          {plugin.name}
-                        </h2>
-                        <Badge>{sourceLabel(plugin.source)}</Badge>
+              {plugins.map((plugin) => {
+                const PluginIcon = pluginIcon(plugin.id);
+                return (
+                  <section
+                    key={plugin.id}
+                    className="flex min-h-40 flex-col rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]">
+                        <PluginIcon className="h-4 w-4" />
                       </div>
-                      <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                        v{plugin.version} · {plugin.skillCount} skill
-                        {plugin.skillCount === 1 ? "" : "s"}
-                      </p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="truncate text-sm font-semibold text-[var(--text-primary)]">
+                            {plugin.name}
+                          </h2>
+                          <Badge>{sourceLabel(plugin.source)}</Badge>
+                        </div>
+                        <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                          v{plugin.version} · {plugin.skillCount} skill
+                          {plugin.skillCount === 1 ? "" : "s"}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                  <p className="mt-3 line-clamp-2 text-sm text-[var(--text-secondary)]">
-                    {plugin.description}
-                  </p>
-                  <div className="mt-auto flex items-center gap-2 pt-4">
-                    <Switch
-                      checked={plugin.enabled}
-                      disabled={busyId === plugin.id}
-                      ariaLabel={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.name}`}
-                      onChange={(enabled) => void setEnabled(plugin, enabled)}
-                    />
-                    {plugin.homepage ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        leftIcon={<ExternalLink className="h-4 w-4" />}
-                        onClick={() => void openExternal(plugin.homepage as string)}
-                      >
-                        Details
-                      </Button>
-                    ) : null}
-                    {plugin.source === "local" ? (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        isLoading={busyId === plugin.id}
-                        leftIcon={<Trash2 className="h-4 w-4" />}
-                        onClick={() => void remove(plugin)}
-                      >
-                        Remove
-                      </Button>
-                    ) : null}
-                  </div>
-                </section>
-              ))}
+                    <p className="mt-3 line-clamp-2 text-sm text-[var(--text-secondary)]">
+                      {plugin.description}
+                    </p>
+                    <div className="mt-auto flex items-center gap-2 pt-4">
+                      <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                        <Switch
+                          checked={plugin.enabled}
+                          disabled={busyId === plugin.id}
+                          ariaLabel={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.name}`}
+                          onChange={(enabled) => void setEnabled(plugin, enabled)}
+                        />
+                        <span>{plugin.enabled ? "Enabled" : "Disabled"}</span>
+                      </div>
+                      {plugin.homepage ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={<ExternalLink className="h-4 w-4" />}
+                          onClick={() => void openExternal(plugin.homepage as string)}
+                        >
+                          Details
+                        </Button>
+                      ) : null}
+                      {plugin.source === "local" ? (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          isLoading={busyId === plugin.id}
+                          leftIcon={<Trash2 className="h-4 w-4" />}
+                          onClick={() => void remove(plugin)}
+                        >
+                          Remove
+                        </Button>
+                      ) : null}
+                    </div>
+                  </section>
+                );
+              })}
             </div>
           )
         ) : null}
@@ -332,7 +425,7 @@ export function Plugins() {
                 className="flex rounded-md bg-[var(--surface-panel)] p-1"
                 aria-label="Plugin filter"
               >
-                {(["all", "installed"] as const).map((filter) => (
+                {(["all", "installed", "available"] as const).map((filter) => (
                   <button
                     key={filter}
                     type="button"
@@ -349,9 +442,12 @@ export function Plugins() {
               </div>
             </div>
             <p className="text-xs text-[var(--text-muted)]">
-              {visibleCatalog.length} {visibleCatalog.length === 1 ? "item" : "items"}
+              {visibleCatalog.length + visibleMarketplace.length}{" "}
+              {visibleCatalog.length + visibleMarketplace.length === 1 ? "item" : "items"}
             </p>
-            {visibleCatalog.length === 0 ? (
+            {!marketplaceLoading &&
+            visibleCatalog.length === 0 &&
+            visibleMarketplace.length === 0 ? (
               <div className="flex min-h-48 flex-col items-center justify-center bg-[var(--surface-panel)] px-6 text-center">
                 <Search className="mb-3 h-7 w-7 text-[var(--text-muted)]" />
                 <p className="text-sm font-semibold text-[var(--text-primary)]">No plugins found</p>
@@ -359,44 +455,135 @@ export function Plugins() {
                   Try another name or category.
                 </p>
               </div>
-            ) : (
-              <div className="divide-y divide-[var(--surface-border)] overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]">
-                {visibleCatalog.map((plugin) => {
-                  const installed = plugins.find((entry) => entry.id === plugin.id);
-                  return (
-                    <section key={plugin.id} className="flex items-start gap-3 px-4 py-4">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]">
-                        <Package className="h-4 w-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                            {plugin.name}
-                          </h2>
-                          <Badge>{plugin.installed ? "Installed" : "Available"}</Badge>
+            ) : null}
+            {visibleCatalog.length > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <Boxes className="h-4 w-4 text-[var(--text-muted)]" />
+                  <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                    Cybara bundles
+                  </h2>
+                </div>
+                <div className="divide-y divide-[var(--surface-border)] overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]">
+                  {visibleCatalog.map((plugin) => {
+                    const installed = plugins.find((entry) => entry.id === plugin.id);
+                    const PluginIcon = pluginIcon([plugin.name, ...plugin.tags].join(" "));
+                    return (
+                      <section key={plugin.id} className="flex items-start gap-3 px-4 py-4">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]">
+                          <PluginIcon className="h-4 w-4" />
                         </div>
-                        <p className="mt-1 text-sm text-[var(--text-secondary)]">
-                          {plugin.description}
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {plugin.tags.map((tag) => (
-                            <Badge key={tag}>{tag}</Badge>
-                          ))}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                              {plugin.name}
+                            </h2>
+                            <Badge>{plugin.installed ? "Installed" : "Available"}</Badge>
+                          </div>
+                          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                            {plugin.description}
+                          </p>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {plugin.tags.map((tag) => (
+                              <Badge key={tag}>{tag}</Badge>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                      {installed ? (
-                        <Switch
-                          checked={installed.enabled}
-                          disabled={busyId === installed.id}
-                          ariaLabel={`${installed.enabled ? "Disable" : "Enable"} ${installed.name}`}
-                          onChange={(enabled) => void setEnabled(installed, enabled)}
-                        />
-                      ) : null}
-                    </section>
-                  );
-                })}
+                        {installed ? (
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-[var(--text-muted)]" />
+                            <Switch
+                              checked={installed.enabled}
+                              disabled={busyId === installed.id}
+                              ariaLabel={`${installed.enabled ? "Disable" : "Enable"} ${installed.name}`}
+                              onChange={(enabled) => void setEnabled(installed, enabled)}
+                            />
+                          </div>
+                        ) : null}
+                      </section>
+                    );
+                  })}
+                </div>
               </div>
-            )}
+            ) : null}
+            {marketplaceLoading ? (
+              <div className="grid gap-2" aria-label="Loading plugin marketplace">
+                {[0, 1, 2].map((item) => (
+                  <div
+                    key={item}
+                    className="h-24 animate-pulse rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]"
+                  />
+                ))}
+              </div>
+            ) : visibleMarketplace.length > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <Sparkles className="h-4 w-4 text-[var(--text-muted)]" />
+                  <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                    Marketplace plugins
+                  </h2>
+                </div>
+                <div className="divide-y divide-[var(--surface-border)] overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]">
+                  {visibleMarketplace.map((plugin) => {
+                    const installed = plugins.find((entry) => entry.id === plugin.id);
+                    const PluginIcon = pluginIcon(
+                      `${plugin.category} ${plugin.name} ${plugin.capabilities.join(" ")}`
+                    );
+                    return (
+                      <section key={plugin.id} className="flex items-start gap-3 px-4 py-4">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]">
+                          <PluginIcon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                              {plugin.name}
+                            </h2>
+                            <Badge>{plugin.installed ? "Installed" : "Available"}</Badge>
+                          </div>
+                          <p className="mt-1 line-clamp-2 text-sm text-[var(--text-secondary)]">
+                            {plugin.description}
+                          </p>
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            <Badge>{plugin.category}</Badge>
+                            <Badge>{plugin.marketplace}</Badge>
+                            {plugin.capabilities.map((capability) => (
+                              <Badge key={capability}>{capability}</Badge>
+                            ))}
+                            {plugin.author ? (
+                              <span className="text-xs text-[var(--text-muted)]">
+                                by {plugin.author}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        {installed ? (
+                          <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-[var(--text-muted)]" />
+                            <Switch
+                              checked={installed.enabled}
+                              disabled={busyId === installed.id}
+                              ariaLabel={`${installed.enabled ? "Disable" : "Enable"} ${installed.name}`}
+                              onChange={(enabled) => void setEnabled(installed, enabled)}
+                            />
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            isLoading={busyId === plugin.id}
+                            leftIcon={<Download className="h-4 w-4" />}
+                            onClick={() => void installMarketplace(plugin)}
+                          >
+                            Install
+                          </Button>
+                        )}
+                      </section>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

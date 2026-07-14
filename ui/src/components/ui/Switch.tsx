@@ -1,3 +1,4 @@
+import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface SwitchProps {
@@ -40,10 +41,13 @@ export function Switch({
     >
       <span
         className={cn(
-          "inline-block h-4 w-4 transform rounded-full bg-[var(--text-primary)] shadow transition-transform duration-200",
+          "inline-flex h-4 w-4 transform items-center justify-center rounded-full shadow transition-transform duration-200",
+          checked ? "bg-white text-[rgb(var(--accent-primary))]" : "bg-[var(--text-muted)]",
           checked ? "translate-x-[21px]" : "translate-x-[3px]"
         )}
-      />
+      >
+        {checked ? <Check className="h-2.5 w-2.5" strokeWidth={3} /> : null}
+      </span>
     </button>
   );
 

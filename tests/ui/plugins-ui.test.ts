@@ -26,9 +26,15 @@ describe("plugin UI", () => {
     expect(page).toContain('label: "MCP services"');
     expect(page).toContain("pluginsApi.list()");
     expect(page).toContain("pluginsApi.catalog()");
+    expect(page).toContain(".marketplace(pluginSearch.trim())");
+    expect(page).toContain("pluginsApi.installMarketplace");
+    expect(page).toContain("marketplace: plugin.marketplaceId");
     expect(page).toContain("pluginsApi.setEnabled(plugin.id, enabled)");
     expect(page).toContain('placeholder="Search plugins..."');
     expect(page).toContain('label: "Discover"');
+    expect(page).toContain("Marketplace plugins");
+    expect(page).toContain('<Download className="h-4 w-4" />');
+    expect(page).toContain('<CheckCircle2 className="h-4 w-4 text-[var(--text-muted)]" />');
     expect(page).toContain("No installed plugins");
     expect(page).toContain("mcpApi.list()");
     expect(page).toContain("<AccountAppsPanel />");

@@ -150,6 +150,7 @@ import {
   validatePluginAtPath,
   validatePluginInstallPayload,
 } from "../core/plugins";
+import { discoverMarketplacePlugins, installMarketplacePlugin } from "./plugin-marketplace";
 import {
   enrichProviderPlanStatusWithLiveUsage,
   getProviderPlanAvailability,
@@ -2796,6 +2797,27 @@ const routes: Record<string, RouteHandler> = {
         };
       }),
     };
+  },
+  "GET /api/plugins/marketplace": async (_body, params) => {
+    const query = typeof params?.q === "string" ? params.q : undefined;
+    const rawLimit = Number.parseInt(String(params?.limit ?? ""), 10);
+    const limit = Number.isFinite(rawLimit) ? rawLimit : undefined;
+    return { plugins: await discoverMarketplacePlugins({ query, limit }) };
+  },
+  "POST /api/plugins/marketplace/install": async (body) => {
+    const record =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : {};
+    if (typeof record.id !== "string") {
+      throw new Error("Marketplace plugin id is required");
+    }
+    const result = await installMarketplacePlugin({
+      id: record.id,
+      marketplace: typeof record.marketplace === "string" ? record.marketplace : undefined,
+    });
+    if (result.success) clearSkillsCache();
+    return result;
   },
   "GET /api/plugins/validate": (_body, params) => {
     const targetPath = typeof params?.path === "string" ? params.path.trim() : "";
