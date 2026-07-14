@@ -96,6 +96,19 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
       messages: queuedSend ? prev.messages : [...prev.messages, userMessage],
       isLoading: queuedSend ? prev.isLoading : true,
     }));
+    if (!queuedSend && requestSessionId) {
+      const queryKey = sessionDetailQueryKey(requestSessionId);
+      queryClient.setQueryData<LoadedChatSession>(queryKey, (cached) =>
+        cached
+          ? {
+              ...cached,
+              updated_at: userMessage.timestamp || cached.updated_at,
+              messagesList: [...cached.messagesList, userMessage],
+            }
+          : cached
+      );
+      void invalidateSessionDetail(queryClient, requestSessionId);
+    }
 
     try {
       const response =
@@ -215,14 +228,19 @@ export function useChat(agentId?: string, hookOptions?: { useModelRouter?: boole
   }, []);
 
   const loadSession = useCallback(
-    (sessionId: string, messages: ChatMessage[], workspaceDir?: string | null) => {
+    (
+      sessionId: string,
+      messages: ChatMessage[],
+      workspaceDir?: string | null,
+      preserveReferenceTail = false
+    ) => {
       setState((prev) => {
         const reference =
           prev.sessionId === sessionId && prev.messages.length > 0
             ? prev.messages
             : readCachedSessionMessages(sessionId) || [];
         return {
-          messages: enrichReloadedMessages(reference, messages),
+          messages: enrichReloadedMessages(reference, messages, { preserveReferenceTail }),
           sessionId,
           workspaceDir: workspaceDir ?? null,
           isLoading: false,

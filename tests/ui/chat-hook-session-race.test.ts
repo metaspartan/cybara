@@ -51,7 +51,9 @@ describe("useChat session race guards", () => {
     const loadSessionBlock = source.slice(source.indexOf("const loadSession = useCallback"));
     expect(loadSessionBlock).toContain("setState((prev)");
     expect(loadSessionBlock).toContain("readCachedSessionMessages(sessionId)");
-    expect(loadSessionBlock).toContain("enrichReloadedMessages(reference, messages)");
+    expect(loadSessionBlock).toContain(
+      "enrichReloadedMessages(reference, messages, { preserveReferenceTail })"
+    );
     expect(loadSessionBlock).not.toContain("activeRequestAbortRef.current?.abort();");
   });
 

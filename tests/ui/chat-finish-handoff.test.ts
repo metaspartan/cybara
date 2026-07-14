@@ -52,6 +52,14 @@ describe("chat completion handoff (no blank chat when a run finishes)", () => {
     expect(workingTimelineBlock).toContain('"compacting"');
     expect(workingTimelineBlock).not.toContain('"tool_completed"');
   });
+
+  test("macos: navigation keeps active transcripts and ignores late session loads", () => {
+    const source = read("apps/macos/Cybara/Sources/Cybara/NativeScreens.swift");
+    expect(source).toContain("messagesBySessionID");
+    expect(source).toContain("guard selectedSessionID == id else { return }");
+    expect(source).toContain("nativeMergeReloadedSessionMessages(");
+    expect(source).toContain("preserveReferenceTail: activeSessionIDs.contains(id) || sending");
+  });
 });
 
 // The chat must follow live output (activities, tool calls, streamed tokens)

@@ -490,6 +490,21 @@ private func nativeSessionGroups(
 
 private let nativeModelRouterSelectorValue = "__model_router__"
 
+private func nativeMergeReloadedSessionMessages(
+    reference: [GatewaySessionMessage],
+    reloaded: [GatewaySessionMessage],
+    preserveReferenceTail: Bool
+) -> [GatewaySessionMessage] {
+    guard preserveReferenceTail,
+          reloaded.count < reference.count,
+          reloaded.enumerated().allSatisfy({ index, message in
+              let current = reference[index]
+              return current.role == message.role && current.content == message.content
+          })
+    else { return reloaded }
+    return reloaded + reference.dropFirst(reloaded.count)
+}
+
 struct ChatScreen: View {
     let client: GatewayClient
     @Binding var selectedSessionID: String?
@@ -501,6 +516,7 @@ struct ChatScreen: View {
     @State private var providers: [GatewayProvider] = []
     @State private var providerPlanStatus: ProviderPlanStatusResponse?
     @State private var messages: [GatewaySessionMessage] = []
+    @State private var messagesBySessionID: [String: [GatewaySessionMessage]] = [:]
     @State private var searchText = ""
     @State private var draft = ""
     @State private var sending = false
@@ -617,6 +633,17 @@ struct ChatScreen: View {
         }
         .onReceive(statusStream.$latest.compactMap { $0 }) { event in
             handleStatusEvent(event)
+        }
+        .onChange(of: selectedSessionID) { previous, current in
+            if let previous {
+                messagesBySessionID[previous] = messages
+            }
+            messages = current.flatMap { messagesBySessionID[$0] } ?? []
+        }
+        .onChange(of: messages) { _, current in
+            if let selectedSessionID {
+                messagesBySessionID[selectedSessionID] = current
+            }
         }
         .onDisappear { statusStream.stop() }
         .nativeChatAppearance(chatAppearance)
@@ -3134,7 +3161,7 @@ struct ChatScreen: View {
         do {
             let detail = try await client.sessionDetail(id)
             updateSessionList(with: detail)
-            messages = (detail.messagesList ?? []).map { message in
+            let reloaded = (detail.messagesList ?? []).map { message in
                 guard message.role == "user",
                       let cached = attachmentsByContent[message.content.trimmingCharacters(in: .whitespacesAndNewlines)],
                       !cached.isEmpty else {
@@ -3142,6 +3169,15 @@ struct ChatScreen: View {
                 }
                 return message.withAttachedImages(cached)
             }
+            guard selectedSessionID == id else { return }
+            let reference = messagesBySessionID[id] ?? messages
+            let nextMessages = nativeMergeReloadedSessionMessages(
+                reference: reference,
+                reloaded: reloaded,
+                preserveReferenceTail: activeSessionIDs.contains(id) || sending
+            )
+            messages = nextMessages
+            messagesBySessionID[id] = nextMessages
             liveActivities = nativePrunePersistedLiveActivities(
                 liveActivities,
                 persistedMessages: messages

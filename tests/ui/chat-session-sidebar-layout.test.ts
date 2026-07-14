@@ -62,7 +62,10 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain("pendingSessionLoadId");
     expect(source).toContain("sessionLoadSequenceRef.current = loadSequence");
     expect(source).toContain("const cached = loadSession.getCached(sessionId)");
-    expect(source).toContain("applyLoadedSession(sessionId, cached)");
+    expect(source).toContain("applyLoadedSession(sessionId, cached, sessionIsActive)");
+    expect(source).toContain("const sessionIsActive = activeSessionIds.includes(sessionId)");
+    expect(source).toContain("? await loadSession.loadFresh(sessionId)");
+    expect(source).toContain(": await loadSession.mutateAsync(sessionId)");
     expect(source).not.toContain("warmSessionDetail");
     expect(source).not.toContain("loadSession.prefetch");
     expect(source).not.toContain("SIDEBAR_IDLE_PREFETCH");
@@ -86,6 +89,8 @@ describe("chat session sidebar layout", () => {
     expect(hookSource).toContain("getCached: (sessionId: string)");
     expect(hookSource).not.toContain("prefetch: (sessionId: string)");
     expect(hookSource).toContain("invalidateSessionDetail(queryClient");
+    expect(hookSource).toContain("preserveReferenceTail = false");
+    expect(hookSource).toContain("messagesList: [...cached.messagesList, userMessage]");
   });
 
   test("groups chat sessions into pinned and workspace sections", () => {

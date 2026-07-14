@@ -3683,12 +3683,13 @@ export function Chat() {
               loadedWorkspaceDir,
               loadedAgentId,
               loadedContextUsage,
-              loadedTokenUsage
+              loadedTokenUsage,
+              preserveReferenceTail
             ) => {
               suppressAutoRestoreRef.current = false;
               activeSessionRef.current = id;
               setUseModelRouter(false);
-              loadSession(id, msgs, loadedWorkspaceDir);
+              loadSession(id, msgs, loadedWorkspaceDir, preserveReferenceTail);
               syncSessionAgentSelection(loadedAgentId);
               setSessionContextUsage(loadedContextUsage ?? null);
               setSessionTokenUsage(loadedTokenUsage ?? null);

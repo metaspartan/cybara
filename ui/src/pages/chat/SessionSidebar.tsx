@@ -59,7 +59,8 @@ interface SessionsPanelProps {
     workspaceDir?: string | null,
     agentId?: string | null,
     contextUsage?: SessionContextUsage | null,
-    tokenUsage?: SessionTokenUsage | null
+    tokenUsage?: SessionTokenUsage | null,
+    preserveReferenceTail?: boolean
   ) => void;
   onNewSession: (workspaceDir?: string | null) => void;
 }
@@ -292,14 +293,15 @@ export function SessionsPanel({
   };
 
   const applyLoadedSession = useCallback(
-    (sessionId: string, result: LoadedChatSession) => {
+    (sessionId: string, result: LoadedChatSession, preserveReferenceTail: boolean) => {
       onLoadSession(
         sessionId,
         result.messagesList as ChatMessage[],
         result.workspace_dir || null,
         result.agent_id || null,
         (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null,
-        (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
+        (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null,
+        preserveReferenceTail
       );
     },
     [onLoadSession]
@@ -309,16 +311,19 @@ export function SessionsPanel({
     if (pendingSessionLoadId === sessionId) return;
     const loadSequence = sessionLoadSequenceRef.current + 1;
     sessionLoadSequenceRef.current = loadSequence;
+    const sessionIsActive = activeSessionIds.includes(sessionId);
     const cached = loadSession.getCached(sessionId);
     if (cached?.messagesList) {
-      applyLoadedSession(sessionId, cached);
+      applyLoadedSession(sessionId, cached, sessionIsActive);
     } else {
       setPendingSessionLoadId(sessionId);
     }
     try {
-      const result = await loadSession.mutateAsync(sessionId);
+      const result = sessionIsActive
+        ? await loadSession.loadFresh(sessionId)
+        : await loadSession.mutateAsync(sessionId);
       if (sessionLoadSequenceRef.current === loadSequence && result?.messagesList) {
-        applyLoadedSession(sessionId, result as LoadedChatSession);
+        applyLoadedSession(sessionId, result as LoadedChatSession, sessionIsActive);
       }
     } catch (error) {
       if (sessionLoadSequenceRef.current === loadSequence) {
