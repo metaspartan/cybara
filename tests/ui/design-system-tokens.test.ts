@@ -74,6 +74,25 @@ describe("index.css design-system utilities", () => {
     expect(sessionSidebar).toContain('FolderOpen className="theme-muted-icon');
     expect(sessionSidebar).not.toContain('text-blue-300" />');
   });
+
+  test("shared form controls and native select options use theme surface tokens", () => {
+    const input = read("../../ui/src/components/ui/Input.tsx");
+    const select = read("../../ui/src/components/ui/Select.tsx");
+    const searchableSelect = read("../../ui/src/components/SearchableSelect.tsx");
+
+    expect(css).toContain("--form-control-bg:");
+    expect(css).toContain("--form-control-popover:");
+    expect(css).toMatch(/select option,[\s\S]*background-color:\s*var\(--form-control-popover\)/);
+    expect(css).toMatch(/\.themed-form-control\s*\{[\s\S]*background:\s*var\(--form-control-bg\)/);
+    expect(css).toMatch(
+      /\.themed-select-popover\s*\{[\s\S]*background:\s*var\(--form-control-popover\)/
+    );
+    expect(input).toContain("themed-form-control");
+    expect(select).toContain("themed-form-control");
+    expect(select).not.toContain("bg-[#0f0f16]");
+    expect(searchableSelect).toContain("themed-select-popover");
+    expect(searchableSelect).not.toContain("bg-[#13141c]");
+  });
 });
 
 describe("Sidebar keyboard focus is not suppressed", () => {

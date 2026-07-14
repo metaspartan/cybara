@@ -118,7 +118,7 @@ export function SearchableSelect({
   return (
     <div className="w-full">
       {label && (
-        <label className="block text-sm font-medium text-gray-300 mb-1.5" htmlFor={fieldId}>
+        <label className="themed-form-label mb-1.5 block text-sm font-medium" htmlFor={fieldId}>
           {label}
         </label>
       )}
@@ -128,37 +128,36 @@ export function SearchableSelect({
           id={fieldId}
           disabled={disabled}
           onClick={() => setOpen((value) => !value)}
+          aria-invalid={error ? true : undefined}
           className={cn(
-            "flex w-full items-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 border text-left",
-            "focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50",
-            "transition-all duration-200 cursor-pointer",
-            error
-              ? "border-red-500/50 focus:border-red-500/50 focus:ring-red-500/50"
-              : "border-white/10",
+            "themed-form-control flex w-full items-center gap-2 rounded-xl border px-4 py-2.5 text-left",
+            "cursor-pointer transition-[background-color,border-color,box-shadow] duration-200",
             disabled && "opacity-60 cursor-not-allowed"
           )}
           aria-haspopup="listbox"
           aria-expanded={open}
         >
           {selectedOption?.icon ? (
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center text-white">
+            <span className="flex h-5 w-5 shrink-0 items-center justify-center">
               {selectedOption.icon}
             </span>
           ) : null}
           <span
             className={cn(
               "flex-1 truncate text-sm",
-              selectedOption ? "text-white" : "text-gray-500"
+              selectedOption
+                ? "text-[var(--form-control-text)]"
+                : "text-[var(--form-control-placeholder)]"
             )}
           >
             {selectedOption?.label ?? placeholder}
           </span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
+          <ChevronDown className="themed-select-icon h-4 w-4 shrink-0" />
         </button>
         {open ? (
-          <div className="absolute z-50 mt-1.5 w-full overflow-hidden rounded-xl border border-white/10 bg-[#13141c] shadow-2xl">
-            <div className="flex items-center gap-2 border-b border-white/10 px-3 py-2">
-              <Search className="h-4 w-4 shrink-0 text-gray-500" />
+          <div className="themed-select-popover absolute z-50 mt-1.5 w-full overflow-hidden rounded-xl border">
+            <div className="themed-select-search flex items-center gap-2 border-b px-3 py-2">
+              <Search className="themed-select-icon h-4 w-4 shrink-0" />
               <input
                 ref={inputRef}
                 type="text"
@@ -168,12 +167,12 @@ export function SearchableSelect({
                   setActiveIndex(0);
                 }}
                 placeholder={searchPlaceholder}
-                className="w-full bg-transparent text-sm text-white placeholder-gray-500 outline-none"
+                className="w-full bg-transparent text-sm text-[var(--form-control-text)] placeholder:text-[var(--form-control-placeholder)] outline-none"
               />
             </div>
             <div ref={listRef} className="max-h-60 overflow-y-auto py-1">
               {filtered.length === 0 ? (
-                <div className="px-3 py-6 text-center text-sm text-gray-500">
+                <div className="themed-form-help px-3 py-6 text-center text-sm">
                   No matches for &ldquo;{query}&rdquo;
                 </div>
               ) : (
@@ -183,16 +182,13 @@ export function SearchableSelect({
                     type="button"
                     role="option"
                     aria-selected={option.value === selectedValue}
+                    data-active={index === activeIndex ? "true" : undefined}
                     onClick={() => commit(option.value)}
                     onMouseEnter={() => setActiveIndex(index)}
-                    className={cn(
-                      "flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors",
-                      index === activeIndex ? "bg-white/[0.07]" : "hover:bg-white/[0.04]",
-                      option.value === selectedValue ? "text-white" : "text-gray-300"
-                    )}
+                    className="themed-select-option flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors"
                   >
                     {option.icon ? (
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center text-white">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center">
                         {option.icon}
                       </span>
                     ) : (
@@ -200,7 +196,7 @@ export function SearchableSelect({
                     )}
                     <span className="flex-1 truncate">{option.label}</span>
                     {option.value === selectedValue ? (
-                      <Check className="h-4 w-4 shrink-0 text-emerald-400" />
+                      <Check className="h-4 w-4 shrink-0 text-[rgb(var(--accent-primary))]" />
                     ) : null}
                   </button>
                 ))
@@ -210,8 +206,8 @@ export function SearchableSelect({
         ) : null}
         {required && <input type="hidden" name={name} value={selectedValue} />}
       </div>
-      {error && <p className="mt-1.5 text-sm text-red-400">{error}</p>}
-      {helperText && !error && <p className="mt-1.5 text-sm text-gray-500">{helperText}</p>}
+      {error && <p className="themed-form-error mt-1.5 text-sm">{error}</p>}
+      {helperText && !error && <p className="themed-form-help mt-1.5 text-sm">{helperText}</p>}
     </div>
   );
 }

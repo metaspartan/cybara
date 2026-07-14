@@ -10,17 +10,14 @@ export const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
   ({ className, label, error, ...props }, ref) => {
     return (
       <div className="space-y-2">
-        {label && <label className="text-sm font-medium text-gray-300">{label}</label>}
+        {label && <label className="themed-form-label text-sm font-medium">{label}</label>}
         <textarea
           ref={ref}
-          className={cn(
-            "w-full glass-input min-h-[100px] resize-y",
-            error && "border-red-500/50 focus:border-red-500",
-            className
-          )}
+          aria-invalid={error ? true : undefined}
+          className={cn("w-full glass-input min-h-[100px] resize-y", className)}
           {...props}
         />
-        {error && <p className="text-sm text-red-400">{error}</p>}
+        {error && <p className="themed-form-error text-sm">{error}</p>}
       </div>
     );
   }

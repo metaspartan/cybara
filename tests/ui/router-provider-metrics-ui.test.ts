@@ -6,15 +6,18 @@ const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), "utf8");
 
 describe("router, provider, and metrics UI wiring", () => {
-  test("native selects force dark readable option colors for Tauri Windows", () => {
+  test("native selects keep readable option colors across Tauri themes", () => {
     const selectSource = read("ui/src/components/ui/Select.tsx");
     const cssSource = read("ui/src/index.css");
 
-    expect(selectSource).toContain("[color-scheme:dark]");
-    expect(selectSource).toContain('className="bg-[#0f0f16] text-white"');
+    expect(selectSource).toContain("themed-form-control");
+    expect(selectSource).not.toContain("[color-scheme:dark]");
+    expect(selectSource).not.toContain('className="bg-[#0f0f16] text-white"');
     expect(cssSource).toContain("select option,");
-    expect(cssSource).toContain("background-color: #0f0f16;");
+    expect(cssSource).toContain("background-color: var(--form-control-popover);");
+    expect(cssSource).toContain("color: var(--form-control-text);");
     expect(cssSource).toContain("select option:checked");
+    expect(cssSource).toContain("html.light select");
   });
 
   test("router page exposes strategy cards plus daily and monthly cash budgets", () => {

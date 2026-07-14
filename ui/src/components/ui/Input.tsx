@@ -15,24 +15,23 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div className="w-full">
         {label && (
-          <label htmlFor={inputId} className="block text-sm font-medium text-gray-300 mb-1.5">
+          <label htmlFor={inputId} className="themed-form-label mb-1.5 block text-sm font-medium">
             {label}
           </label>
         )}
         <input
           id={inputId}
           ref={ref}
+          aria-invalid={error ? true : undefined}
           className={cn(
-            "w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500",
-            "focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50",
-            "transition-all duration-200",
-            error && "border-red-500/50 focus:border-red-500/50 focus:ring-red-500/50",
+            "themed-form-control w-full rounded-xl border px-4 py-2.5",
+            "transition-[background-color,border-color,box-shadow] duration-200",
             className
           )}
           {...props}
         />
-        {error && <p className="mt-1.5 text-sm text-red-400">{error}</p>}
-        {helperText && !error && <p className="mt-1.5 text-sm text-gray-500">{helperText}</p>}
+        {error && <p className="themed-form-error mt-1.5 text-sm">{error}</p>}
+        {helperText && !error && <p className="themed-form-help mt-1.5 text-sm">{helperText}</p>}
       </div>
     );
   }
@@ -54,24 +53,26 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(
     return (
       <div className="w-full">
         {label && (
-          <label htmlFor={textareaId} className="block text-sm font-medium text-gray-300 mb-1.5">
+          <label
+            htmlFor={textareaId}
+            className="themed-form-label mb-1.5 block text-sm font-medium"
+          >
             {label}
           </label>
         )}
         <textarea
           id={textareaId}
           ref={ref}
+          aria-invalid={error ? true : undefined}
           className={cn(
-            "w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500",
-            "focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50",
-            "transition-all duration-200 resize-vertical min-h-[100px]",
-            error && "border-red-500/50 focus:border-red-500/50 focus:ring-red-500/50",
+            "themed-form-control min-h-[100px] w-full resize-y rounded-xl border px-4 py-2.5",
+            "transition-[background-color,border-color,box-shadow] duration-200",
             className
           )}
           {...props}
         />
-        {error && <p className="mt-1.5 text-sm text-red-400">{error}</p>}
-        {helperText && !error && <p className="mt-1.5 text-sm text-gray-500">{helperText}</p>}
+        {error && <p className="themed-form-error mt-1.5 text-sm">{error}</p>}
+        {helperText && !error && <p className="themed-form-help mt-1.5 text-sm">{helperText}</p>}
       </div>
     );
   }
