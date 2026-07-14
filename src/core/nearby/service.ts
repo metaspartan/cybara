@@ -265,7 +265,7 @@ function ensureWindowsFirewallRules(port: number): void {
         "action=allow",
         `protocol=${rule.protocol}`,
         `localport=${rule.localport}`,
-        "profile=private,domain",
+        "profile=any",
       ]);
       if (result.exitCode !== 0) {
         log.warn(
