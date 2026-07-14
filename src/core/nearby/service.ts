@@ -2,7 +2,9 @@ import Bonjour from "bonjour-service";
 import type Browser from "bonjour-service/dist/lib/browser";
 import type Service from "bonjour-service/dist/lib/service";
 import { randomUUID } from "crypto";
-import { networkInterfaces } from "os";
+import { writeFileSync } from "fs";
+import { networkInterfaces, tmpdir } from "os";
+import { join } from "path";
 import { createLogger } from "../logger";
 import { isWindows } from "../platform";
 import {
@@ -245,40 +247,58 @@ const BonjourWithBindOptions = Bonjour as unknown as BonjourConstructor;
 
 const MDNS_PORT = 5353;
 
+const PEER_RULE_NAME = "Cybara Nearby Peer";
+const MDNS_RULE_NAME = "Cybara Nearby mDNS";
+
+function windowsFirewallRuleExists(name: string): boolean {
+  try {
+    const result = Bun.spawnSync([
+      "netsh",
+      "advfirewall",
+      "firewall",
+      "show",
+      "rule",
+      `name=${name}`,
+    ]);
+    return result.exitCode === 0 && result.stdout.toString().includes(name);
+  } catch {
+    return false;
+  }
+}
+
 function ensureWindowsFirewallRules(port: number): void {
   if (!isWindows()) return;
-  const rules: Array<{ name: string; protocol: string; localport: number }> = [
-    { name: `Cybara Nearby Peer ${port}`, protocol: "TCP", localport: port },
-    { name: "Cybara Nearby mDNS", protocol: "UDP", localport: MDNS_PORT },
-  ];
-  for (const rule of rules) {
-    try {
-      Bun.spawnSync(["netsh", "advfirewall", "firewall", "delete", "rule", `name=${rule.name}`]);
-      const result = Bun.spawnSync([
-        "netsh",
-        "advfirewall",
-        "firewall",
-        "add",
-        "rule",
-        `name=${rule.name}`,
-        "dir=in",
-        "action=allow",
-        `protocol=${rule.protocol}`,
-        `localport=${rule.localport}`,
-        "profile=any",
-      ]);
-      if (result.exitCode !== 0) {
-        log.warn(
-          "Could not add Windows Firewall rule for Nearby; discovery and pairing may be blocked. Allow the port manually or run Cybara as administrator once.",
-          { rule: rule.name, port: rule.localport, protocol: rule.protocol }
-        );
-      }
-    } catch (error) {
-      log.warn("Windows Firewall rule setup failed for Nearby", {
-        rule: rule.name,
-        error: safeError(error),
-      });
-    }
+  if (windowsFirewallRuleExists(PEER_RULE_NAME)) return;
+  try {
+    const script = [
+      "@echo off",
+      `netsh advfirewall firewall delete rule name="${PEER_RULE_NAME}" >nul 2>&1`,
+      `netsh advfirewall firewall add rule name="${PEER_RULE_NAME}" dir=in action=allow protocol=TCP localport=${port} profile=any`,
+      `netsh advfirewall firewall delete rule name="${MDNS_RULE_NAME}" >nul 2>&1`,
+      `netsh advfirewall firewall add rule name="${MDNS_RULE_NAME}" dir=in action=allow protocol=UDP localport=${MDNS_PORT} profile=any`,
+    ].join("\r\n");
+    const scriptPath = join(tmpdir(), `cybara-nearby-firewall-${port}.cmd`);
+    writeFileSync(scriptPath, `${script}\r\n`);
+    Bun.spawn(
+      [
+        "powershell",
+        "-NoProfile",
+        "-WindowStyle",
+        "Hidden",
+        "-Command",
+        `Start-Process -FilePath '${scriptPath}' -Verb RunAs -WindowStyle Hidden`,
+      ],
+      { stdout: "ignore", stderr: "ignore" }
+    );
+    log.info("Requesting Windows Firewall allowance for Nearby (a UAC prompt may appear)", {
+      port,
+      mdnsPort: MDNS_PORT,
+    });
+  } catch (error) {
+    log.warn(
+      "Could not request a Windows Firewall rule for Nearby; other devices may not reach this one until the port is allowed.",
+      { port, error: safeError(error) }
+    );
   }
 }
 

@@ -1,62 +1,93 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { join } from "path";
-import { assertRecipientAllowed, assertAmountWithinCap } from "./wallet-policy";
-import { assertPublicHttpUrl } from "./wallet-url-guard";
-import { generateMnemonic, mnemonicToSeedSync, validateMnemonic } from "@scure/bip39";
+import { generateMnemonic, mnemonicToSeedSync } from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
+import { createKeyPairSignerFromBytes } from "@solana/signers";
 import {
-  HDNodeWallet,
-  JsonRpcProvider,
-  Contract,
-  TypedDataDomain,
-  formatEther,
-  isAddress as isEvmAddress,
-  parseEther,
-} from "ethers";
-import {
-  Connection,
   ComputeBudgetProgram,
+  Connection,
   Keypair,
   PublicKey,
   SystemProgram,
+  sendAndConfirmTransaction,
   Transaction,
   TransactionInstruction,
   VersionedTransaction,
-  sendAndConfirmTransaction,
 } from "@solana/web3.js";
-import {
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  TOKEN_2022_PROGRAM_ID,
-  TOKEN_PROGRAM_ID,
-  createAssociatedTokenAccountInstruction,
-  createTransferCheckedInstruction,
-  getMintDecimals,
-  getAssociatedTokenAddressSync,
-} from "./solana-token";
-import { createKeyPairSignerFromBytes } from "@solana/signers";
-import {
-  SelectPaymentRequirements as X402SelectPaymentRequirements,
-  x402Client as X402Client,
-  x402HTTPClient as X402HttpClient,
-} from "@x402/fetch";
 import { ExactEvmScheme, toClientEvmSigner } from "@x402/evm";
 import { ExactEvmSchemeV1 } from "@x402/evm/v1";
+import {
+  x402Client as X402Client,
+  x402HTTPClient as X402HttpClient,
+  SelectPaymentRequirements as X402SelectPaymentRequirements,
+} from "@x402/fetch";
 import { ExactSvmScheme, toClientSvmSigner } from "@x402/svm";
 import { ExactSvmSchemeV1 } from "@x402/svm/v1";
-import { derivePath as deriveEd25519Path } from "ed25519-hd-key";
-import * as bitcoinImport from "bitcoinjs-lib";
 import BIP32Factory from "bip32";
+import * as bitcoinImport from "bitcoinjs-lib";
 import ECPairFactory from "ecpair";
+import { derivePath as deriveEd25519Path } from "ed25519-hd-key";
+import {
+  Contract,
+  formatEther,
+  HDNodeWallet,
+  isAddress as isEvmAddress,
+  JsonRpcProvider,
+  parseEther,
+  TypedDataDomain,
+} from "ethers";
 import * as ecc from "tiny-secp256k1";
 import { config } from "./config";
-import { secureDir } from "./paths";
 import {
-  SUPPORTED_CHAINS,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  createAssociatedTokenAccountInstruction,
+  createTransferCheckedInstruction,
+  getAssociatedTokenAddressSync,
+  getMintDecimals,
+  TOKEN_2022_PROGRAM_ID,
+  TOKEN_PROGRAM_ID,
+} from "./solana-token";
+import {
+  assertWalletChain,
+  assertWalletTokenChain,
+  decodeBase64,
+  encodeBase64,
+  formatUnits,
+  isValidEvmAddress,
+  normalizeAddressList,
+  normalizeContractResult,
+  normalizeCount,
+  normalizeHostList,
+  normalizeMnemonic,
+  normalizeNetworkList,
+  normalizeStartIndex,
+  normalizeTicker,
+  parseAmountToUnits,
+  parseBigIntOrZero,
+  parseOptionalNumber,
+  parsePositiveAtomicAmount,
+} from "./wallet-internal";
+import { assertAmountWithinCap, assertRecipientAllowed } from "./wallet-policy";
+import {
+  decodeWalletInstructionData,
+  deriveWalletAesKey,
+  extractWalletEthMethodName,
+  fetchWalletJson,
+  normalizeWalletEthMethodSelector,
+  normalizeWalletFeedId,
+  normalizeWalletHttpMethod,
+  normalizeWalletSwapVenue,
+  parseWalletX402NetworkFamily,
+  resolveWalletPair,
+  WALLET_PBKDF2_ITERATIONS,
+  WALLET_X402_V1_EVM_NETWORK_CHAIN_IDS,
+  WALLET_X402_V1_SOLANA_NETWORKS,
+} from "./wallet-runtime";
+import {
   type AccountsQuery,
   type BtcUtxo,
   type EthContractCallInput,
   type SolInstructionAccountMeta,
   type SolProgramInstructionInput,
+  SUPPORTED_CHAINS,
   type TokenBalancesQuery,
   type TokenTransactionsQuery,
   type TransactionsQuery,
@@ -100,41 +131,16 @@ import {
   type WalletX402SelectedRequirement,
   type WalletX402SettlementResponse,
 } from "./wallet-types";
+import { assertPublicHttpUrl } from "./wallet-url-guard";
 import {
-  assertWalletChain,
-  assertWalletTokenChain,
-  decodeBase64,
-  encodeBase64,
-  formatUnits,
-  isValidEvmAddress,
-  normalizeAddressList,
-  normalizeContractResult,
-  normalizeCount,
-  normalizeHostList,
-  normalizeMnemonic,
-  normalizeNetworkList,
-  normalizeStartIndex,
-  normalizeTicker,
-  parseAmountToUnits,
-  parseBigIntOrZero,
-  parseOptionalNumber,
-  parsePositiveAtomicAmount,
-} from "./wallet-internal";
-import {
-  WALLET_PBKDF2_ITERATIONS,
-  WALLET_X402_V1_EVM_NETWORK_CHAIN_IDS,
-  WALLET_X402_V1_SOLANA_NETWORKS,
-  decodeWalletInstructionData,
-  deriveWalletAesKey,
-  extractWalletEthMethodName,
-  fetchWalletJson,
-  normalizeWalletEthMethodSelector,
-  normalizeWalletFeedId,
-  normalizeWalletHttpMethod,
-  normalizeWalletSwapVenue,
-  parseWalletX402NetworkFamily,
-  resolveWalletPair,
-} from "./wallet-runtime";
+  decryptWalletMnemonic,
+  deleteWalletVault,
+  readWalletVault,
+  validateWalletMnemonic,
+  validateWalletPassword,
+  WALLET_VERSION,
+  writeWalletVault,
+} from "./wallet-vault";
 
 let bitcoin: typeof bitcoinImport | null = null;
 let bip32: ReturnType<typeof BIP32Factory> | null = null;
@@ -151,8 +157,6 @@ try {
   );
 }
 
-const WALLET_FILE = join(secureDir, "wallet.v1.json");
-const WALLET_VERSION = 1 as const;
 const UNLOCK_TTL_MS = 15 * 60 * 1000;
 const AGENT_ACCESS_CONFIG_KEY = "wallet_agent_access_enabled";
 const AGENT_POLICY_CONFIG_KEY = "wallet_agent_policy";
@@ -204,7 +208,6 @@ const CHAINLINK_USD_FEEDS: Record<string, string> = {
 const MEMO_PROGRAM_ID = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 
 class WalletManager {
   private unlockedState: UnlockedWalletState | null = null;
@@ -224,7 +227,7 @@ class WalletManager {
   } | null = null;
 
   getStatus(): WalletStatus {
-    const vault = this.readVault();
+    const vault = readWalletVault();
     const unlocked = this.getUnlockedState();
     const primaryAddresses = unlocked?.primaryAddresses || vault?.primaryAddresses;
 
@@ -255,9 +258,9 @@ class WalletManager {
     address: string;
     primaryAddresses: Record<WalletChain, string>;
   }> {
-    this.validatePassword(password);
+    validateWalletPassword(password);
 
-    if (this.readVault()) {
+    if (readWalletVault()) {
       throw new Error("Wallet already exists");
     }
 
@@ -274,14 +277,14 @@ class WalletManager {
     address: string;
     primaryAddresses: Record<WalletChain, string>;
   }> {
-    this.validatePassword(password);
+    validateWalletPassword(password);
 
-    if (this.readVault()) {
+    if (readWalletVault()) {
       throw new Error("Wallet already exists");
     }
 
     const mnemonic = normalizeMnemonic(mnemonicInput);
-    this.validateMnemonic(mnemonic);
+    validateWalletMnemonic(mnemonic);
 
     return await this.storeMnemonic(mnemonic, password);
   }
@@ -292,14 +295,14 @@ class WalletManager {
     primaryAddresses: Record<WalletChain, string>;
     unlockExpiresAt: string;
   }> {
-    this.validatePassword(password);
+    validateWalletPassword(password);
 
-    const vault = this.readVault();
+    const vault = readWalletVault();
     if (!vault) {
       throw new Error("Validation error: Wallet not found");
     }
 
-    const mnemonic = await this.decryptMnemonic(vault, password);
+    const mnemonic = await decryptWalletMnemonic(vault, password);
     const primaryAddresses = this.getPrimaryAddresses(mnemonic);
     const expiresAtMs = Date.now() + UNLOCK_TTL_MS;
     this.unlockedState = { mnemonic, primaryAddresses, expiresAtMs };
@@ -310,7 +313,7 @@ class WalletManager {
       (primaryAddresses.btc && vault.primaryAddresses.btc !== primaryAddresses.btc) ||
       vault.primaryAddresses.sol !== primaryAddresses.sol
     ) {
-      this.writeVault({
+      writeWalletVault({
         ...vault,
         address: primaryAddresses.eth,
         primaryAddresses,
@@ -327,12 +330,12 @@ class WalletManager {
   }
 
   async revealMnemonic(password: string): Promise<{ mnemonic: string; wordCount: number }> {
-    this.validatePassword(password);
-    const vault = this.readVault();
+    validateWalletPassword(password);
+    const vault = readWalletVault();
     if (!vault) {
       throw new Error("Validation error: Wallet not found");
     }
-    const mnemonic = await this.decryptMnemonic(vault, password);
+    const mnemonic = await decryptWalletMnemonic(vault, password);
     return { mnemonic, wordCount: mnemonic.split(/\s+/).length };
   }
 
@@ -342,18 +345,18 @@ class WalletManager {
   }
 
   async deleteWallet(password?: string): Promise<{ success: boolean }> {
-    const vault = this.readVault();
+    const vault = readWalletVault();
     if (!vault) {
       return { success: true };
     }
 
     if (password && password.trim()) {
-      await this.decryptMnemonic(vault, password);
+      await decryptWalletMnemonic(vault, password);
     } else if (!this.getUnlockedState()) {
       throw new Error("Validation error: Password required to delete wallet");
     }
 
-    rmSync(WALLET_FILE, { force: true });
+    deleteWalletVault();
     this.unlockedState = null;
     config.set(AGENT_ACCESS_CONFIG_KEY, false);
     config.set(AGENT_POLICY_CONFIG_KEY, this.getDefaultAgentPolicy());
@@ -4354,7 +4357,7 @@ class WalletManager {
     address: string;
     primaryAddresses: Record<WalletChain, string>;
   }> {
-    this.validateMnemonic(mnemonic);
+    validateWalletMnemonic(mnemonic);
 
     const primaryAddresses = this.getPrimaryAddresses(mnemonic);
     const salt = crypto.getRandomValues(new Uint8Array(16));
@@ -4387,7 +4390,7 @@ class WalletManager {
       updatedAt: now,
     };
 
-    this.writeVault(vault);
+    writeWalletVault(vault);
     this.unlockedState = {
       mnemonic,
       primaryAddresses,
@@ -4400,22 +4403,6 @@ class WalletManager {
       address: primaryAddresses.eth,
       primaryAddresses,
     };
-  }
-
-  private validateMnemonic(mnemonic: string): void {
-    const words = mnemonic.split(/\s+/).filter(Boolean);
-    if (words.length !== 24) {
-      throw new Error("Validation error: Seed phrase must contain exactly 24 words");
-    }
-    if (!validateMnemonic(mnemonic, wordlist)) {
-      throw new Error("Validation error: Invalid BIP39 seed phrase");
-    }
-  }
-
-  private validatePassword(password: string): void {
-    if (typeof password !== "string" || password.trim().length < 8) {
-      throw new Error("Validation error: Password must be at least 8 characters");
-    }
   }
 
   private assertAgentAccessEnabled(): void {
@@ -4442,114 +4429,43 @@ class WalletManager {
     }
     return this.unlockedState;
   }
-
-  private readVault(): WalletVault | null {
-    if (!existsSync(WALLET_FILE)) return null;
-
-    try {
-      const parsed = JSON.parse(readFileSync(WALLET_FILE, "utf8")) as Partial<WalletVault>;
-      if (
-        !parsed ||
-        parsed.version !== WALLET_VERSION ||
-        parsed.kdf?.name !== "PBKDF2" ||
-        parsed.cipher?.name !== "AES-GCM" ||
-        typeof parsed.ciphertext !== "string"
-      ) {
-        return null;
-      }
-
-      const fallbackEth = typeof parsed.address === "string" ? parsed.address : "";
-      const primaryAddresses = {
-        eth: parsed.primaryAddresses?.eth || fallbackEth,
-        btc: parsed.primaryAddresses?.btc || "",
-        sol: parsed.primaryAddresses?.sol || "",
-      };
-
-      return {
-        version: WALLET_VERSION,
-        kdf: {
-          name: "PBKDF2",
-          hash: "SHA-256",
-          iterations: parsed.kdf.iterations || WALLET_PBKDF2_ITERATIONS,
-          salt: parsed.kdf.salt || "",
-        },
-        cipher: {
-          name: "AES-GCM",
-          iv: parsed.cipher.iv || "",
-        },
-        ciphertext: parsed.ciphertext,
-        address: fallbackEth || primaryAddresses.eth,
-        primaryAddresses,
-        wordCount: parsed.wordCount || 24,
-        createdAt: parsed.createdAt || new Date().toISOString(),
-        updatedAt: parsed.updatedAt || new Date().toISOString(),
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  private writeVault(vault: WalletVault): void {
-    mkdirSync(secureDir, { recursive: true });
-    writeFileSync(WALLET_FILE, JSON.stringify(vault, null, 2), "utf8");
-    try {
-      chmodSync(WALLET_FILE, 0o600);
-    } catch {
-      void 0;
-    }
-  }
-
-  private async decryptMnemonic(vault: WalletVault, password: string): Promise<string> {
-    try {
-      const salt = decodeBase64(vault.kdf.salt);
-      const iv = decodeBase64(vault.cipher.iv);
-      const ciphertext = decodeBase64(vault.ciphertext);
-      const key = await deriveWalletAesKey(password, salt, ["decrypt"]);
-      const plaintext = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ciphertext);
-      const mnemonic = normalizeMnemonic(decoder.decode(plaintext));
-      this.validateMnemonic(mnemonic);
-      return mnemonic;
-    } catch {
-      throw new Error("Validation error: Invalid wallet password");
-    }
-  }
 }
 
 export const walletManager = new WalletManager();
 export type {
-  WalletChain,
-  WalletTokenChain,
-  WalletAccount,
-  WalletBalance,
-  WalletTokenBalance,
-  WalletTokenTransaction,
-  WalletTransaction,
-  WalletSendInput,
-  WalletSendTokenInput,
-  WalletStatus,
-  TokenTransactionsQuery,
-  WalletRpcServiceStatus,
-  WalletRpcStatus,
-  WalletAgentPolicy,
   EthContractCallInput,
   SolInstructionAccountMeta,
   SolProgramInstructionInput,
-  WalletSwapEthUniswapInput,
-  WalletSwapEthUniswapResult,
-  WalletPriceSource,
-  WalletPriceQuoteInput,
-  WalletPriceQuoteResult,
-  WalletSwapVenue,
-  WalletSwapInput,
-  WalletSwapResult,
-  WalletEndpointDirectory,
-  WalletSendResult,
-  WalletRpcCallInput,
-  WalletRpcCallResult,
+  TokenTransactionsQuery,
+  WalletAccount,
+  WalletAgentPolicy,
+  WalletBalance,
+  WalletChain,
   WalletDappAdapter,
   WalletDappAdapterCapability,
   WalletDappCallInput,
   WalletDappDirectory,
+  WalletEndpointDirectory,
+  WalletPriceQuoteInput,
+  WalletPriceQuoteResult,
+  WalletPriceSource,
+  WalletRpcCallInput,
+  WalletRpcCallResult,
+  WalletRpcServiceStatus,
+  WalletRpcStatus,
+  WalletSendInput,
+  WalletSendResult,
+  WalletSendTokenInput,
+  WalletStatus,
+  WalletSwapEthUniswapInput,
+  WalletSwapEthUniswapResult,
+  WalletSwapInput,
+  WalletSwapResult,
+  WalletSwapVenue,
+  WalletTokenBalance,
+  WalletTokenChain,
+  WalletTokenTransaction,
+  WalletTransaction,
   WalletX402RequestInput,
   WalletX402RequestResult,
 };

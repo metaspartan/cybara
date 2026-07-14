@@ -16,6 +16,7 @@ import { rawHelp } from "./cli-help";
 import { printCompletion } from "./cli-completion";
 import { rawComputerUse } from "./cli-computer-use";
 import { runConnectorCommand, TUIPluginsCommand } from "./cli-connectors";
+import { createCliPluginCommands } from "./cli-plugin-commands";
 import {
   accessibilityConfigLines,
   buildCliConfigPatch,
@@ -203,22 +204,6 @@ interface SkillItem {
   source: string;
 }
 
-interface PluginItem {
-  id: string;
-  name: string;
-  version: string;
-  description: string;
-  author?: string;
-  homepage?: string;
-  source: "bundled" | "local" | "workspace";
-  rootDir: string;
-  skillDirs: string[];
-  skillNames: string[];
-  skillCount: number;
-  enabled: boolean;
-  builtIn: boolean;
-}
-
 interface AgentItem {
   id: string;
   name: string;
@@ -249,6 +234,8 @@ async function fetchAPI<T>(endpoint: string, options?: RequestInit): Promise<T |
     return null;
   }
 }
+
+const pluginCommands = createCliPluginCommands(fetchAPI, API_BASE);
 
 configureChatCli({
   apiBase: API_BASE,
@@ -765,175 +752,6 @@ async function rawSkills(): Promise<void> {
   for (const skill of skills.filter((s) => !s.eligible)) {
     console.log(`  - ${skill.name} (${skill.source})`);
   }
-}
-
-async function rawPlugins(): Promise<void> {
-  const data = await fetchAPI<{ plugins: PluginItem[] }>("/api/plugins");
-  if (!data) {
-    console.error("ERROR: Failed to fetch plugins from", API_BASE);
-    process.exit(1);
-  }
-
-  const plugins = Array.isArray(data.plugins) ? data.plugins : [];
-  console.log("CYBARA PLUGINS");
-  console.log("==============");
-  console.log(`total: ${plugins.length}`);
-  console.log("");
-
-  if (plugins.length === 0) {
-    console.log("No plugins installed");
-    console.log("");
-    console.log("Install one with: cybara plugin install <folder-or-zip>");
-    return;
-  }
-
-  for (const plugin of plugins) {
-    console.log(`- ${plugin.name} (${plugin.version})`);
-    console.log(`  id: ${plugin.id}`);
-    console.log(`  source: ${plugin.source}`);
-    console.log(`  status: ${plugin.enabled ? "enabled" : "disabled"}`);
-    console.log(`  skills: ${plugin.skillCount}`);
-    console.log(`  root: ${plugin.rootDir}`);
-    if (plugin.author) console.log(`  author: ${plugin.author}`);
-    if (plugin.description) console.log(`  description: ${plugin.description}`);
-  }
-}
-
-async function rawPluginSetEnabled(pluginId: string, enabled: boolean): Promise<void> {
-  const data = await fetchAPI<{ success: boolean; plugin?: PluginItem }>(
-    `/api/plugins/${encodeURIComponent(pluginId)}`,
-    {
-      method: "PUT",
-      body: JSON.stringify({ enabled }),
-    }
-  );
-  if (!data?.success || !data.plugin) {
-    console.error(`ERROR: Failed to ${enabled ? "enable" : "disable"} plugin ${pluginId}`);
-    process.exit(1);
-  }
-  console.log(`${data.plugin.name} ${enabled ? "enabled" : "disabled"}`);
-}
-
-async function rawPluginDiscover(query = ""): Promise<void> {
-  const data = await fetchAPI<{
-    plugins: Array<{
-      id: string;
-      name: string;
-      description: string;
-      tags: string[];
-      skillNames: string[];
-      installed: boolean;
-      enabled: boolean;
-    }>;
-  }>("/api/plugins/catalog");
-  if (!data) {
-    console.error("ERROR: Failed to fetch plugin catalog from", API_BASE);
-    process.exit(1);
-  }
-  const normalized = query.trim().toLowerCase();
-  const plugins = data.plugins.filter((plugin) =>
-    !normalized
-      ? true
-      : [plugin.name, plugin.description, ...plugin.tags, ...plugin.skillNames]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalized)
-  );
-  console.log("PLUGIN CATALOG");
-  console.log("==============");
-  for (const plugin of plugins) {
-    const status = plugin.installed ? (plugin.enabled ? "enabled" : "disabled") : "available";
-    console.log(`- ${plugin.name} [${status}]`);
-    console.log(`  id: ${plugin.id}`);
-    console.log(`  skills: ${plugin.skillNames.length}`);
-    console.log(`  tags: ${plugin.tags.join(", ")}`);
-    console.log(`  ${plugin.description}`);
-  }
-  if (plugins.length === 0) console.log("No plugins found");
-}
-
-async function rawPluginValidate(inputPath: string): Promise<void> {
-  const data = await fetchAPI<{
-    valid: boolean;
-    errors: string[];
-    warnings: string[];
-    manifest?: { id: string; name: string; version: string };
-  }>("/api/plugins/validate", {
-    method: "POST",
-    body: JSON.stringify({ path: inputPath }),
-  });
-
-  if (!data) {
-    console.error("ERROR: Failed to validate plugin path against", API_BASE);
-    process.exit(1);
-  }
-
-  console.log("PLUGIN VALIDATION");
-  console.log("=================");
-  console.log(`path: ${inputPath}`);
-  console.log(`valid: ${data.valid ? "yes" : "no"}`);
-  if (data.manifest) {
-    console.log(`id: ${data.manifest.id}`);
-    console.log(`name: ${data.manifest.name}`);
-    console.log(`version: ${data.manifest.version}`);
-  }
-  if (data.warnings?.length) {
-    console.log("");
-    console.log("WARNINGS:");
-    for (const warning of data.warnings) {
-      console.log(`  - ${warning}`);
-    }
-  }
-  if (data.errors?.length) {
-    console.log("");
-    console.log("ERRORS:");
-    for (const error of data.errors) {
-      console.log(`  - ${error}`);
-    }
-    process.exit(1);
-  }
-}
-
-async function rawPluginInstall(inputPath: string): Promise<void> {
-  console.log(`Installing plugin from ${inputPath}...`);
-  const data = await fetchAPI<{
-    success: boolean;
-    plugin?: { id: string; name: string; version: string; skillDirs: string[] };
-  }>("/api/plugins/install", {
-    method: "POST",
-    body: JSON.stringify({ path: inputPath }),
-  });
-
-  if (!data || !data.success || !data.plugin) {
-    console.error("ERROR: Failed to install plugin");
-    process.exit(1);
-  }
-
-  console.log(`SUCCESS: Installed ${data.plugin.name}`);
-  console.log(`  id: ${data.plugin.id}`);
-  console.log(`  version: ${data.plugin.version}`);
-  console.log(`  skill_dirs: ${data.plugin.skillDirs.length}`);
-}
-
-async function rawPluginRemove(pluginId: string): Promise<void> {
-  const data = await fetchAPI<{ success: boolean }>(
-    `/api/plugins/${encodeURIComponent(pluginId)}`,
-    {
-      method: "DELETE",
-    }
-  );
-
-  if (!data) {
-    console.error("ERROR: Failed to remove plugin from", API_BASE);
-    process.exit(1);
-  }
-
-  if (!data.success) {
-    console.error(`Plugin not found: ${pluginId}`);
-    process.exit(1);
-  }
-
-  console.log(`Removed plugin: ${pluginId}`);
 }
 
 interface MCPRegistryServer {
@@ -3901,10 +3719,10 @@ async function main() {
       switch (args[1]) {
         case "list":
         case undefined:
-          await rawPlugins();
+          await pluginCommands.list();
           break;
         case "discover":
-          await rawPluginDiscover(args.slice(2).join(" "));
+          await pluginCommands.discover(args.slice(2).join(" "));
           break;
         case "enable":
         case "disable":
@@ -3912,21 +3730,21 @@ async function main() {
             console.error(`Usage: cybara plugin ${args[1]} <plugin-id>`);
             process.exit(1);
           }
-          await rawPluginSetEnabled(args[2], args[1] === "enable");
+          await pluginCommands.setEnabled(args[2], args[1] === "enable");
           break;
         case "validate":
           if (!args[2]) {
             console.error("Usage: cybara plugin validate <folder-or-zip>");
             process.exit(1);
           }
-          await rawPluginValidate(args[2]);
+          await pluginCommands.validate(args[2]);
           break;
         case "install":
           if (!args[2]) {
             console.error("Usage: cybara plugin install <folder-or-zip>");
             process.exit(1);
           }
-          await rawPluginInstall(args[2]);
+          await pluginCommands.install(args[2]);
           break;
         case "apps":
           await runConnectorCommand(["list"], fetchAPI);
@@ -3944,7 +3762,7 @@ async function main() {
             console.error("Usage: cybara plugin remove <plugin-id>");
             process.exit(1);
           }
-          await rawPluginRemove(args[2]);
+          await pluginCommands.remove(args[2]);
           break;
         default:
           console.log("Plugin Commands:");

@@ -10,6 +10,7 @@ describe("completed chat work disclosure parity", () => {
   test("web and Tauri collapse persisted work under the elapsed summary", () => {
     const timeline = source("ui/src/pages/chat/ActivityTimeline.tsx");
     const chat = source("ui/src/pages/Chat.tsx");
+    const assistantMeta = source("ui/src/pages/chat/AssistantMetaInline.tsx");
 
     expect(timeline).toContain("export function CompletedActivityTimeline");
     expect(timeline).toContain("const [expanded, setExpanded] = useState(false)");
@@ -17,8 +18,8 @@ describe("completed chat work disclosure parity", () => {
     expect(timeline).toContain('<ChevronDown className="h-3 w-3 shrink-0 text-current" />');
     expect(timeline).toContain('<ChevronRight className="h-3 w-3 shrink-0 text-current" />');
     expect(timeline).toContain("<ProcessActivityList activities={visibleActivities} />");
-    expect(chat).toContain("<CompletedActivityTimeline");
-    expect(chat).toContain('t("chat.workedFor", {');
+    expect(assistantMeta).toContain("<CompletedActivityTimeline");
+    expect(assistantMeta).toContain('t("chat.workedFor", {');
     expect(chat).not.toContain("hasAssistantToolCalls");
   });
 

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "fs";
 import { join } from "path";
+import type { LiveActivityItem } from "../../ui/src/lib/chatActivities";
+import type { ChatMessage } from "../../ui/src/pages/chat/chatModel";
 import {
   applyLiveActivityEvent,
   buildPreSteeringActivityMessage,
@@ -11,11 +13,32 @@ import {
   resolveDictationRuntime,
   resolveStatusSnapshotActivities,
 } from "../../ui/src/pages/chat/chatModel";
-import type { ChatMessage } from "../../ui/src/pages/chat/chatModel";
-import type { LiveActivityItem } from "../../ui/src/lib/chatActivities";
 
 const chatSourcePath = join(process.cwd(), "ui", "src", "pages", "Chat.tsx");
 const chatModelPath = join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts");
+const chatDictationPath = join(process.cwd(), "ui", "src", "pages", "chat", "useChatDictation.ts");
+const assistantMetaModelPath = join(
+  process.cwd(),
+  "ui",
+  "src",
+  "pages",
+  "chat",
+  "assistantMetaModel.ts"
+);
+const assistantMetaInlinePath = join(
+  process.cwd(),
+  "ui",
+  "src",
+  "pages",
+  "chat",
+  "AssistantMetaInline.tsx"
+);
+
+function readChatMetadataSource(): string {
+  return (
+    readFileSync(assistantMetaModelPath, "utf8") + readFileSync(assistantMetaInlinePath, "utf8")
+  );
+}
 
 describe("Chat live activity persistence", () => {
   test("shows browser activity only while a browser tool is in flight for the active session", () => {
@@ -203,7 +226,7 @@ describe("Chat live activity persistence", () => {
   });
 
   test("renders worked duration when duration is defined", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatMetadataSource();
     expect(source).toContain('t("chat.workedFor", {');
     expect(source).toContain("formatWorkedDuration(workedDurationMs)");
     expect(source).toContain('"0h 00m 00s"');
@@ -411,14 +434,14 @@ describe("Chat live activity persistence", () => {
   });
 
   test("infers thought timeline lines from assistant content as a fallback", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatMetadataSource();
     expect(source).toContain("function inferThoughtActivitiesFromContent(");
     expect(source).toContain("!hasPersistedThoughtActivities");
     expect(source).toContain("inferThoughtActivitiesFromContent(");
   });
 
   test("renders compact work timeline entries instead of large tool cards", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatMetadataSource();
     expect(source).toContain("<CompletedActivityTimeline");
     expect(source).toContain("activities={workActivitiesWithSandbox}");
     expect(source).not.toContain("function ToolCallItem(");
@@ -437,13 +460,16 @@ describe("Chat live activity persistence", () => {
   });
 
   test("prefers the best worked duration candidate instead of tiny synthetic tool ranges", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source = readChatMetadataSource();
     expect(source).toContain("const durationCandidates: number[] = [];");
-    expect(source).toContain("return Math.max(...durationCandidates);");
+    expect(source).toContain("Math.max(...durationCandidates)");
   });
 
   test("restores process thoughts from persisted message metadata", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source =
+      readFileSync(chatSourcePath, "utf8") +
+      readFileSync(chatModelPath, "utf8") +
+      readChatMetadataSource();
     expect(source).toContain("function normalizeMessageProcessActivities(");
     expect(source).toContain("message.process_activities");
     expect(source).toContain(
@@ -453,16 +479,16 @@ describe("Chat live activity persistence", () => {
   });
 
   test("does not cap inferred thinking timeline lines", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
-    const functionBody = source.match(
-      /function inferThoughtActivitiesFromThinking\([\s\S]*?\n}\n\nfunction resolveWorkedDurationMs/
-    )?.[0];
-    expect(functionBody).toBeTruthy();
-    expect(functionBody).not.toContain(".slice(0, 24)");
+    const source = readFileSync(assistantMetaModelPath, "utf8");
+    expect(source).toContain("function inferThoughtActivitiesFromThinking(");
+    expect(source).not.toContain(".slice(0, 24)");
   });
 
   test("supports multiline compose and dictation controls", () => {
-    const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
+    const source =
+      readFileSync(chatSourcePath, "utf8") +
+      readFileSync(chatModelPath, "utf8") +
+      readFileSync(chatDictationPath, "utf8");
     expect(source).toContain("<textarea");
     expect(source).toContain("rows={1}");
     expect(source).toContain("onKeyDown={capabilityPicker.onKeyDown}");

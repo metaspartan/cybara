@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
+  type ChatMessage,
   formatFilePathForDisplay,
   summarizeSessionFileChanges,
-  type ChatMessage,
 } from "../../ui/src/pages/chat/chatModel";
 
 const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
@@ -16,6 +16,12 @@ const sessionSidebarPath = fileURLToPath(
 );
 const activityTimelinePath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ActivityTimeline.tsx", import.meta.url)
+);
+const assistantMetaInlinePath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/AssistantMetaInline.tsx", import.meta.url)
+);
+const assistantMetaModelPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/assistantMetaModel.ts", import.meta.url)
 );
 const fileChangesCardPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/FileChangesCard.tsx", import.meta.url)
@@ -40,6 +46,8 @@ function readChatSource(): string {
     readFileSync(chatModelPath, "utf8") +
     readFileSync(sessionSidebarPath, "utf8") +
     readFileSync(activityTimelinePath, "utf8") +
+    readFileSync(assistantMetaInlinePath, "utf8") +
+    readFileSync(assistantMetaModelPath, "utf8") +
     readFileSync(fileChangesCardPath, "utf8") +
     readFileSync(messageContentPath, "utf8") +
     readFileSync(sessionFileChangesPath, "utf8") +
@@ -90,7 +98,7 @@ describe("Chat revert and diff wiring", () => {
     expect(source).toContain('aria-label="File diffs"');
     expect(source).not.toContain("hasUnreadFileDiffs");
     expect(source).not.toContain("markCurrentFileDiffsSeen");
-    expect(source).toContain("findPriorUserTimestampMs");
+    expect(source).toContain("turnStartedAtMsByIndex");
     expect(source).toContain("turnStartedAtMs");
     expect(source).toContain("assistantTimestamp: message.timestamp");
     expect(source).toContain("touch-pan-x overflow-auto");

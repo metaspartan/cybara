@@ -1,261 +1,261 @@
 import {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-  useDeferredValue,
-  useTransition,
-  memo,
-  type CSSProperties,
-} from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import ReactMarkdown, { type Components } from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { Button } from "@/components/ui/Button";
-import { Switch } from "@/components/ui/Switch";
-import { Highlight, themes } from "prism-react-renderer";
-import {
-  Folder,
-  FolderOpen,
-  FileCode,
-  FileText,
-  FileJson,
-  File,
-  FilePlus,
-  FolderPlus,
-  ChevronRight,
-  ChevronDown,
-  ChevronUp,
-  Home,
-  Eye,
-  Code,
-  Loader2,
   AlertCircle,
   AlertTriangle,
-  Info,
-  X,
   Check,
   CheckCircle2,
-  Zap,
-  GitBranch,
-  Search,
-  MessageSquare,
-  ExternalLink,
+  ChevronDown,
+  ChevronRight,
+  ChevronUp,
+  Code,
   Copy,
+  ExternalLink,
+  Eye,
+  File,
+  FileCode,
+  FileJson,
+  FilePlus,
+  FileText,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  GitBranch,
+  Home,
+  Info,
+  ListTree,
+  Loader2,
+  MessageSquare,
   RotateCcw,
+  Search,
+  Settings2,
   Sparkles,
   Square,
-  ListTree,
-  Settings2,
   TerminalSquare,
+  X,
+  Zap,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { apiFetch } from "@/lib/auth";
-import { chatApi, agentsApi } from "@/lib/api";
-import { connectStatusStream } from "@/lib/status-stream";
+import { Highlight, themes } from "prism-react-renderer";
 import {
-  buildActivitiesFromToolCalls,
-  finalizeCompletedActivities,
-  mergeActivityLists,
-  normalizeActivityTextForPhase,
-  type LiveActivityItem,
-  type ToolCallLike,
-} from "@/lib/chatActivities";
-import {
-  countGitDiffLineChanges,
-  buildPendingInlinePreviewRows,
-  emptyIdePendingDiffDecorations,
-  mergeGitDiffDecorations,
-  parseGitDiffDecorations,
-  type IdePendingInlinePreviewRow,
-  type IdePendingDeletedBlock,
-  type IdePendingDiffDecorations,
-  type IdePendingLineState,
-} from "@/lib/idePendingDiffDecorations";
+  type CSSProperties,
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
+import { useLocation, useNavigate } from "react-router-dom";
+import remarkGfm from "remark-gfm";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import EmbeddedTerminalPanel, {
   type IdeTerminalPanelState,
 } from "@/components/ide/EmbeddedTerminalPanel";
+import { Button } from "@/components/ui/Button";
+import { Switch } from "@/components/ui/Switch";
 import { useStopAgent } from "@/hooks/useApi";
-import type {
-  FileEntry,
-  BrowseResult,
-  ReadResult,
-  Diagnostic,
-  LspActiveServer,
-  IdeSearchMatch,
-  IdeSearchFileResult,
-  IdeSearchResult,
-  IdeReplaceResult,
-  IdeReplacePreviewFile,
-  IdeReplacePreviewResult,
-  IdeListFilesResult,
-  WorkspaceIndexerSettings,
-  IdeBlameLine,
-  IdeBlameResult,
-  GitHistoryStatus,
-  IdeTab,
-  IdeChatMessage,
-  IdeChatAgentOption,
-  IdeProcessActivity,
-  IdeFileChangeItem,
-  IdeFileChangeSummary,
-  IdePendingFileDiff,
-  IdePendingFileDiffController,
-  TreeContextMenuState,
-  IdeCommandItem,
-  IdeOutlineSymbol,
-  IdeOutlineResponse,
-  IdeCompletionItem,
-  IdeCompletionResponse,
-  IdeInlineCompletionResponse,
-  FlattenedOutlineSymbol,
-  IdeBreadcrumb,
-  IdeSettingsSectionId,
-  IdeTopMenuId,
-  IdePreferences,
-  WorkspaceEmbeddingProviderOption,
-  WorkspaceEmbeddingCatalogResponse,
-  WorkspaceEmbeddingRuntimeResponse,
-  WorkspaceIndexerStatusResponse,
-  WorkspaceIndexerSearchResult,
-} from "./ide/ideTypes";
+import { agentsApi, chatApi } from "@/lib/api";
+import { apiFetch } from "@/lib/auth";
 import {
-  IDE_SIDEBAR_WIDTH_STORAGE_KEY,
-  IDE_SIDEBAR_DEFAULT_WIDTH,
-  IDE_SIDEBAR_MIN_WIDTH,
-  IDE_SIDEBAR_MAX_WIDTH,
-  IDE_CHAT_WIDTH_STORAGE_KEY,
-  IDE_CHAT_OPEN_STORAGE_KEY,
-  IDE_CHAT_DEFAULT_WIDTH,
-  IDE_CHAT_MIN_WIDTH,
-  IDE_CHAT_MAX_WIDTH,
-  IDE_WORKSPACE_PATH_STORAGE_KEY,
-  IDE_CHAT_AGENT_STORAGE_KEY,
-  IDE_TERMINAL_OPEN_STORAGE_KEY,
-  IDE_SETTINGS_STORAGE_KEY,
-  EXPLORER_VIRTUALIZATION_MIN_ENTRIES,
-  EXPLORER_VIRTUALIZATION_ROW_HEIGHT,
-  EXPLORER_VIRTUALIZATION_OVERSCAN,
+  buildActivitiesFromToolCalls,
+  finalizeCompletedActivities,
+  type LiveActivityItem,
+  mergeActivityLists,
+  normalizeActivityTextForPhase,
+  type ToolCallLike,
+} from "@/lib/chatActivities";
+import {
+  buildPendingInlinePreviewRows,
+  countGitDiffLineChanges,
+  emptyIdePendingDiffDecorations,
+  type IdePendingDeletedBlock,
+  type IdePendingDiffDecorations,
+  type IdePendingInlinePreviewRow,
+  type IdePendingLineState,
+  mergeGitDiffDecorations,
+  parseGitDiffDecorations,
+} from "@/lib/idePendingDiffDecorations";
+import { connectStatusStream } from "@/lib/status-stream";
+import { cn } from "@/lib/utils";
+import { AdvancedIndexerSettingsModal } from "./ide/AdvancedIndexerSettingsModal";
+import { CodeViewer } from "./ide/CodeViewer";
+import { CreateDialog } from "./ide/CreateDialog";
+import { FileTree, treeBrowseCache } from "./ide/FileTree";
+import { GitStatus } from "./ide/GitStatus";
+import { IDEChatPanel } from "./ide/IDEChatPanel";
+import { IDEWelcomeScreen } from "./ide/IDEWelcomeScreen";
+import {
+  IdeActivityText,
+  IdeLiveActivityTimeline,
+  IdeProcessActivityList,
+} from "./ide/IdeActivityTimeline";
+import { IndexerSettingsPanel } from "./ide/IndexerSettingsPanel";
+import {
+  formatIdeSandboxProviderLabel,
+  formatIdeStatusEventText,
+  getIdeHeaderTitle,
+  getIdeToolCallArgs,
+  getIdeToolCallCommand,
+  getIdeToolCallExitCode,
+  getIdeToolCallResultSummary,
+  getLatestIdeInFlightStep,
+  isGenericIdeStatusLabel,
+  isMeaningfulIdeThoughtDetail,
+  normalizeIdeSandboxProviderValue,
+  parseIdeTimestampMs,
+  toIdeLiveActivityItems,
+} from "./ide/ideActivityHelpers";
+import {
+  COMPLETION_CACHE_MAX_ENTRIES,
+  COMPLETION_CACHE_TTL_MS,
+  COMPLETION_LOCAL_SCAN_AFTER,
+  COMPLETION_LOCAL_SCAN_BEFORE,
+  DEFAULT_INDEXER_SETTINGS_DRAFT,
+  EDITOR_FONT_SIZE_PX,
   EDITOR_LARGE_FILE_CHAR_THRESHOLD,
   EDITOR_LARGE_FILE_LINE_THRESHOLD,
-  COMPLETION_LOCAL_SCAN_BEFORE,
-  COMPLETION_LOCAL_SCAN_AFTER,
-  COMPLETION_CACHE_TTL_MS,
-  COMPLETION_CACHE_MAX_ENTRIES,
-  EDITOR_TYPING_BURST_MS,
-  EDITOR_FONT_SIZE_PX,
   EDITOR_LINE_HEIGHT_PX,
-  IDE_TERMINAL_DEFAULT_HEIGHT,
-  IDE_TERMINAL_MIN_HEIGHT,
-  IDE_TERMINAL_MAX_HEIGHT,
+  EDITOR_TYPING_BURST_MS,
+  EXPLORER_VIRTUALIZATION_MIN_ENTRIES,
+  EXPLORER_VIRTUALIZATION_OVERSCAN,
+  EXPLORER_VIRTUALIZATION_ROW_HEIGHT,
+  IDE_CHAT_AGENT_STORAGE_KEY,
+  IDE_CHAT_DEFAULT_WIDTH,
+  IDE_CHAT_MAX_WIDTH,
+  IDE_CHAT_MIN_WIDTH,
+  IDE_CHAT_OPEN_STORAGE_KEY,
+  IDE_CHAT_WIDTH_STORAGE_KEY,
   IDE_DEFAULT_PREFERENCES,
-  DEFAULT_INDEXER_SETTINGS_DRAFT,
+  IDE_SETTINGS_STORAGE_KEY,
+  IDE_SIDEBAR_DEFAULT_WIDTH,
+  IDE_SIDEBAR_MAX_WIDTH,
+  IDE_SIDEBAR_MIN_WIDTH,
+  IDE_SIDEBAR_WIDTH_STORAGE_KEY,
+  IDE_TERMINAL_DEFAULT_HEIGHT,
+  IDE_TERMINAL_MAX_HEIGHT,
+  IDE_TERMINAL_MIN_HEIGHT,
+  IDE_TERMINAL_OPEN_STORAGE_KEY,
+  IDE_WORKSPACE_PATH_STORAGE_KEY,
 } from "./ide/ideConstants";
 import {
-  clampSidebarWidth,
-  readPersistedSidebarWidth,
-  persistSidebarWidth,
-  clampChatWidth,
-  readPersistedChatWidth,
-  persistChatWidth,
-  readPersistedChatOpen,
-  persistChatOpen,
-  readPersistedWorkspacePath,
-  persistWorkspacePath,
-  readPersistedIdeChatAgentId,
-  persistIdeChatAgentId,
-  clampTerminalHeight,
-  readPersistedTerminalOpen,
-  persistTerminalOpen,
-  readPersistedIdePreferences,
-  persistIdePreferences,
-  readPersistedOpenTabs,
-  persistOpenTabs,
-} from "./ide/idePersistence";
+  countDiffLines,
+  getIdePendingFileDecisionKey,
+  getIdeToolCallsInTimelineOrder,
+  getPendingLineContainerClass,
+  getPendingLineDecorationStyle,
+  getPendingLineTextClass,
+  isIdeToolCallLike,
+  isPlainRecord,
+  isSameIdePath,
+  mergeIdeFileChangeSummaries,
+  normalizeIdePath,
+  parseIdeChangeRecord,
+  parseIdePatchFileChanges,
+  reverseUnifiedDiff,
+  shouldHydratePendingFileDiffFromGit,
+  summarizeIdeActivityFileChanges,
+  summarizeIdeFileChanges,
+  summarizeIdeMessageFileChanges,
+  summarizeIdeTextFileChanges,
+  summarizePendingDeletedBlocks,
+  truncateDiffPreview,
+} from "./ide/ideDiffHelpers";
 import {
-  IDE_ACTIONS,
-  type IdeActionId,
   bindingFromEvent,
   formatBinding,
+  IDE_ACTIONS,
+  type IdeActionId,
   loadKeymapOverrides,
   persistKeymapOverrides,
   resolveKeymap,
 } from "./ide/ideKeymap";
+import { getActiveLanguageFromExtension } from "./ide/ideLanguageMaps";
+import {
+  clampChatWidth,
+  clampSidebarWidth,
+  clampTerminalHeight,
+  persistChatOpen,
+  persistChatWidth,
+  persistIdeChatAgentId,
+  persistIdePreferences,
+  persistOpenTabs,
+  persistSidebarWidth,
+  persistTerminalOpen,
+  persistWorkspacePath,
+  readPersistedChatOpen,
+  readPersistedChatWidth,
+  readPersistedIdeChatAgentId,
+  readPersistedIdePreferences,
+  readPersistedOpenTabs,
+  readPersistedSidebarWidth,
+  readPersistedTerminalOpen,
+  readPersistedWorkspacePath,
+} from "./ide/idePersistence";
+import type {
+  BrowseResult,
+  Diagnostic,
+  FileEntry,
+  FlattenedOutlineSymbol,
+  GitHistoryStatus,
+  IdeBlameLine,
+  IdeBlameResult,
+  IdeBreadcrumb,
+  IdeChatAgentOption,
+  IdeChatMessage,
+  IdeCommandItem,
+  IdeCompletionItem,
+  IdeCompletionResponse,
+  IdeFileChangeItem,
+  IdeFileChangeSummary,
+  IdeInlineCompletionResponse,
+  IdeListFilesResult,
+  IdeOutlineResponse,
+  IdeOutlineSymbol,
+  IdePendingFileDiff,
+  IdePendingFileDiffController,
+  IdePreferences,
+  IdeProcessActivity,
+  IdeReplacePreviewFile,
+  IdeReplacePreviewResult,
+  IdeReplaceResult,
+  IdeSearchFileResult,
+  IdeSearchMatch,
+  IdeSearchResult,
+  IdeSettingsSectionId,
+  IdeTab,
+  IdeTopMenuId,
+  LspActiveServer,
+  ReadResult,
+  TreeContextMenuState,
+  WorkspaceEmbeddingCatalogResponse,
+  WorkspaceEmbeddingProviderOption,
+  WorkspaceEmbeddingRuntimeResponse,
+  WorkspaceIndexerSearchResult,
+  WorkspaceIndexerSettings,
+  WorkspaceIndexerStatusResponse,
+} from "./ide/ideTypes";
+import {
+  fileEntryFromPath,
+  flattenOutlineSymbols,
+  formatBlameDateTime,
+  formatBlameStamp,
+  formatSize,
+  getFileIcon,
+  getLineAndColumn,
+  getPrismLanguage,
+  getSeverityIcon,
+  getSymbolKindLabel,
+  ideMarkdownComponents,
+  isMarkdownExtension,
+  scoreQuickOpenResult,
+  splitPathForBreadcrumbs,
+} from "./ide/ideUtils";
 import {
   computeRuntimeModelStatus,
   resolveEmbeddingRuntimeSelection as resolveEmbeddingRuntimeSelectionModel,
 } from "./ide/indexerModel";
-import { IndexerSettingsPanel } from "./ide/IndexerSettingsPanel";
-import {
-  getFileIcon,
-  formatSize,
-  formatDurationMs,
-  getLineAndColumn,
-  getPrismLanguage,
-  splitPathForBreadcrumbs,
-  flattenOutlineSymbols,
-  getSymbolKindLabel,
-  fileEntryFromPath,
-  isMarkdownExtension,
-  ideMarkdownComponents,
-  formatBlameStamp,
-  formatBlameDateTime,
-  scoreQuickOpenResult,
-  getSeverityIcon,
-} from "./ide/ideUtils";
-import { getActiveLanguageFromExtension } from "./ide/ideLanguageMaps";
-import {
-  isPlainRecord,
-  normalizeIdePath,
-  getIdePendingFileDecisionKey,
-  isSameIdePath,
-  countDiffLines,
-  truncateDiffPreview,
-  shouldHydratePendingFileDiffFromGit,
-  getPendingLineTextClass,
-  getPendingLineDecorationStyle,
-  summarizePendingDeletedBlocks,
-  parseIdePatchFileChanges,
-  parseIdeChangeRecord,
-  summarizeIdeFileChanges,
-  summarizeIdeTextFileChanges,
-  summarizeIdeMessageFileChanges,
-  summarizeIdeActivityFileChanges,
-  mergeIdeFileChangeSummaries,
-  reverseUnifiedDiff,
-  getPendingLineContainerClass,
-  isIdeToolCallLike,
-  getIdeToolCallsInTimelineOrder,
-} from "./ide/ideDiffHelpers";
-import {
-  getIdeToolCallArgs,
-  getIdeToolCallCommand,
-  getIdeToolCallResultSummary,
-  getIdeToolCallExitCode,
-  parseIdeTimestampMs,
-  normalizeIdeSandboxProviderValue,
-  formatIdeSandboxProviderLabel,
-  isGenericIdeStatusLabel,
-  isMeaningfulIdeThoughtDetail,
-  getLatestIdeInFlightStep,
-  toIdeLiveActivityItems,
-  formatIdeStatusEventText,
-  getIdeHeaderTitle,
-} from "./ide/ideActivityHelpers";
-import { CodeViewer } from "./ide/CodeViewer";
-import { FileTree, treeBrowseCache } from "./ide/FileTree";
-import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { CreateDialog } from "./ide/CreateDialog";
 import { LSPStatus } from "./ide/LSPStatus";
-import { GitStatus } from "./ide/GitStatus";
-import {
-  IdeActivityText,
-  IdeProcessActivityList,
-  IdeLiveActivityTimeline,
-} from "./ide/IdeActivityTimeline";
-import { IDEChatPanel } from "./ide/IDEChatPanel";
-import { IDEWelcomeScreen } from "./ide/IDEWelcomeScreen";
 
 function formatIdeScannedFiles(value?: number): string | null {
   if (!Number.isFinite(value)) return null;
@@ -3972,364 +3972,26 @@ export function IDE() {
       )}
 
       {showIndexerSettings && (
-        <div
-          className="absolute inset-0 z-50 bg-black/45 flex items-start justify-center pt-14"
-          onMouseDown={() => setShowIndexerSettings(false)}
-        >
-          <div
-            className="w-[760px] max-w-[94vw] rounded-xl border border-white/15 bg-[#0b0b12] shadow-2xl overflow-hidden"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-              <div>
-                <div className="text-sm font-semibold text-gray-100">Workspace Indexer</div>
-                <div className="text-xs text-gray-500">
-                  Auto-index workspace files for faster quick-open and IDE navigation.
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowIndexerSettings(false)}
-                className="p-1 rounded text-gray-500 hover:text-gray-200 hover:bg-white/5"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
-              <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div>
-                    <div className="text-gray-500">Workspace</div>
-                    <div className="text-gray-200 truncate" title={effectiveWorkspacePath}>
-                      {effectiveWorkspacePath}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-500">State</div>
-                    <div
-                      className={cn(
-                        "font-medium",
-                        indexStatus?.state === "error"
-                          ? "text-red-300"
-                          : indexStatus?.isIndexing
-                            ? "text-indigo-300"
-                            : indexStatus?.state === "ready"
-                              ? "text-emerald-300"
-                              : "text-gray-300"
-                      )}
-                    >
-                      {indexStatus?.state || "idle"}
-                      {indexStatus?.isIndexing && " (running)"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-500">Indexed Files</div>
-                    <div className="text-gray-200 tabular-nums">
-                      {indexStatus?.filesIndexed?.toLocaleString() || "0"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-500">Last Duration</div>
-                    <div className="text-gray-200 tabular-nums">
-                      {formatDurationMs(indexStatus?.durationMs)}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-500">Progress</div>
-                    <div className="text-gray-200 tabular-nums">
-                      {typeof indexStatus?.progress === "number"
-                        ? `${indexStatus.progress}%`
-                        : "0%"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-500">Last Indexed</div>
-                    <div className="text-gray-200">
-                      {indexStatus?.lastIndexedAt
-                        ? new Date(indexStatus.lastIndexedAt).toLocaleString()
-                        : "Never"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-500">Semantic Index</div>
-                    <div
-                      className={cn(
-                        "font-medium",
-                        indexStatus?.semanticReady ? "text-emerald-300" : "text-gray-300"
-                      )}
-                    >
-                      {indexStatus?.semanticReady ? "ready" : "disabled/unavailable"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-500">Semantic Chunks</div>
-                    <div className="text-gray-200 tabular-nums">
-                      {indexStatus?.semanticIndexedChunks?.toLocaleString() || "0"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-500">Embedding Provider</div>
-                    <div className="text-gray-200 truncate">
-                      {indexStatus?.semanticProvider && indexStatus?.semanticProvider !== "none"
-                        ? `${indexStatus.semanticProvider}${indexStatus.semanticModel ? ` · ${indexStatus.semanticModel}` : ""}`
-                        : "none"}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-500">Configured Embedding</div>
-                    <div className="text-gray-200 truncate">
-                      {activeIndexSettings.embeddingProvider}
-                      {activeIndexSettings.embeddingModel
-                        ? ` · ${activeIndexSettings.embeddingModel}`
-                        : ""}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3 h-1.5 w-full rounded bg-white/10 overflow-hidden">
-                  <div
-                    className={cn(
-                      "h-full transition-all",
-                      indexStatus?.state === "error" ? "bg-red-500/80" : "bg-indigo-500/80"
-                    )}
-                    style={{ width: `${Math.max(0, Math.min(indexStatus?.progress || 0, 100))}%` }}
-                  />
-                </div>
-                {indexStatus?.semanticError && (
-                  <div className="mt-2 text-[11px] text-amber-300/90">
-                    Semantic index note: {indexStatus.semanticError}
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3 space-y-3">
-                <div className="flex items-center justify-between gap-3 text-xs text-gray-200">
-                  Enable workspace indexer
-                  <Switch
-                    checked={activeIndexSettings.enabled}
-                    onChange={(next) => {
-                      setIndexSettingsDraft({ ...activeIndexSettings, enabled: next });
-                      setIndexSettingsDirty(true);
-                    }}
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-3 text-xs text-gray-300">
-                  Auto-reindex when workspace is set
-                  <Switch
-                    checked={activeIndexSettings.autoReindexOnWorkspaceSet}
-                    onChange={(next) => {
-                      setIndexSettingsDraft({
-                        ...activeIndexSettings,
-                        autoReindexOnWorkspaceSet: next,
-                      });
-                      setIndexSettingsDirty(true);
-                    }}
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-3 text-xs text-gray-300">
-                  Include hidden files/folders
-                  <Switch
-                    checked={activeIndexSettings.includeHidden}
-                    onChange={(next) => {
-                      setIndexSettingsDraft({ ...activeIndexSettings, includeHidden: next });
-                      setIndexSettingsDirty(true);
-                    }}
-                  />
-                </div>
-                <div className="flex items-center justify-between gap-3 text-xs text-gray-300">
-                  Enable semantic vector index (embeddings)
-                  <Switch
-                    checked={activeIndexSettings.semanticEnabled}
-                    onChange={(next) => {
-                      setIndexSettingsDraft({ ...activeIndexSettings, semanticEnabled: next });
-                      setIndexSettingsDirty(true);
-                    }}
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <label className="text-xs text-gray-400 space-y-1">
-                    <span>Max files</span>
-                    <input
-                      type="number"
-                      min={100}
-                      max={1000000}
-                      value={activeIndexSettings.maxFiles}
-                      onChange={(event) => {
-                        const parsed = Number.parseInt(event.target.value || "", 10);
-                        setIndexSettingsDraft({
-                          ...activeIndexSettings,
-                          maxFiles: Number.isFinite(parsed) ? Math.max(100, parsed) : 100,
-                        });
-                        setIndexSettingsDirty(true);
-                      }}
-                      className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
-                    />
-                  </label>
-                  <label className="text-xs text-gray-400 space-y-1">
-                    <span>Max file size (MB)</span>
-                    <input
-                      type="number"
-                      min={0.1}
-                      max={100}
-                      step={0.1}
-                      value={(activeIndexSettings.maxFileSizeBytes / (1024 * 1024)).toFixed(1)}
-                      onChange={(event) => {
-                        const parsed = Number.parseFloat(event.target.value || "");
-                        const nextMb = Number.isFinite(parsed) ? Math.max(0.1, parsed) : 0.1;
-                        setIndexSettingsDraft({
-                          ...activeIndexSettings,
-                          maxFileSizeBytes: Math.round(nextMb * 1024 * 1024),
-                        });
-                        setIndexSettingsDirty(true);
-                      }}
-                      className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
-                    />
-                  </label>
-                  <label className="text-xs text-gray-400 space-y-1">
-                    <span>Semantic max files</span>
-                    <input
-                      type="number"
-                      min={100}
-                      max={50000}
-                      value={activeIndexSettings.semanticMaxFiles}
-                      onChange={(event) => {
-                        const parsed = Number.parseInt(event.target.value || "", 10);
-                        setIndexSettingsDraft({
-                          ...activeIndexSettings,
-                          semanticMaxFiles: Number.isFinite(parsed) ? Math.max(100, parsed) : 100,
-                        });
-                        setIndexSettingsDirty(true);
-                      }}
-                      className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
-                    />
-                  </label>
-                  <label className="text-xs text-gray-400 space-y-1">
-                    <span>Semantic min score</span>
-                    <input
-                      type="number"
-                      min={0.05}
-                      max={0.99}
-                      step={0.05}
-                      value={activeIndexSettings.semanticMinScore}
-                      onChange={(event) => {
-                        const parsed = Number.parseFloat(event.target.value || "");
-                        const nextValue = Number.isFinite(parsed)
-                          ? Math.min(0.99, Math.max(0.05, parsed))
-                          : 0.45;
-                        setIndexSettingsDraft({
-                          ...activeIndexSettings,
-                          semanticMinScore: Number(nextValue.toFixed(2)),
-                        });
-                        setIndexSettingsDirty(true);
-                      }}
-                      className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
-                    />
-                  </label>
-                </div>
-
-                <label className="block text-xs text-gray-400 space-y-1">
-                  <span>Ignored directories (comma separated)</span>
-                  <input
-                    type="text"
-                    value={activeIndexSettings.ignoreDirs.join(", ")}
-                    onChange={(event) => {
-                      const values = event.target.value
-                        .split(",")
-                        .map((item) => item.trim())
-                        .filter(Boolean)
-                        .map((item) => item.toLowerCase());
-                      setIndexSettingsDraft({
-                        ...activeIndexSettings,
-                        ignoreDirs: values,
-                      });
-                      setIndexSettingsDirty(true);
-                    }}
-                    className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
-                    placeholder=".git, node_modules, dist"
-                  />
-                </label>
-
-                <label className="block text-xs text-gray-400 space-y-1">
-                  <span>Include extensions (optional, comma separated)</span>
-                  <input
-                    type="text"
-                    value={activeIndexSettings.includeExtensions.join(", ")}
-                    onChange={(event) => {
-                      const values = event.target.value
-                        .split(",")
-                        .map((item) => item.trim().toLowerCase())
-                        .filter(Boolean)
-                        .map((item) => (item.startsWith(".") ? item : `.${item}`));
-                      setIndexSettingsDraft({
-                        ...activeIndexSettings,
-                        includeExtensions: values,
-                      });
-                      setIndexSettingsDirty(true);
-                    }}
-                    className="w-full rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
-                    placeholder=".ts, .tsx, .js"
-                  />
-                </label>
-              </div>
-
-              {indexSettingsMessage && (
-                <div className="rounded border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
-                  {indexSettingsMessage}
-                </div>
-              )}
-              {indexSettingsError && (
-                <div className="rounded border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-                  {indexSettingsError}
-                </div>
-              )}
-            </div>
-
-            <div className="px-4 py-3 border-t border-white/10 flex items-center justify-between gap-2">
-              <div className="text-[11px] text-gray-500">
-                {indexStatusLoading ? "Refreshing status..." : "Status updates while indexing."}
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void runWorkspaceReindex()}
-                  disabled={indexActionLoading || indexStatus?.isIndexing}
-                  className="h-7 px-2 text-xs"
-                >
-                  Reindex Now
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void stopWorkspaceIndexing()}
-                  disabled={indexActionLoading || !indexStatus?.isIndexing}
-                  className="h-7 px-2 text-xs"
-                >
-                  Stop
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void fetchEmbeddingCatalog()}
-                  disabled={embeddingCatalogLoading || indexActionLoading}
-                  className="h-7 px-2 text-xs"
-                >
-                  Refresh Models
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => void saveIndexSettings()}
-                  disabled={indexActionLoading || !indexSettingsDirty}
-                  className="h-7 px-2 text-xs"
-                >
-                  Save Settings
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <AdvancedIndexerSettingsModal
+          activeSettings={activeIndexSettings}
+          actionLoading={indexActionLoading}
+          catalogLoading={embeddingCatalogLoading}
+          error={indexSettingsError}
+          message={indexSettingsMessage}
+          status={indexStatus}
+          statusLoading={indexStatusLoading}
+          workspacePath={effectiveWorkspacePath}
+          onChangeSettings={(settings) => {
+            setIndexSettingsDraft(settings);
+            setIndexSettingsDirty(true);
+          }}
+          onClose={() => setShowIndexerSettings(false)}
+          onRefreshModels={() => void fetchEmbeddingCatalog()}
+          onReindex={() => void runWorkspaceReindex()}
+          onSave={() => void saveIndexSettings()}
+          onStop={() => void stopWorkspaceIndexing()}
+          settingsDirty={indexSettingsDirty}
+        />
       )}
 
       {treeContextMenu &&

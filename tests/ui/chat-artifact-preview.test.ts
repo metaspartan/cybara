@@ -9,12 +9,20 @@ const chatModelPath = fileURLToPath(
 const artifactViewerPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ArtifactViewerPanel.tsx", import.meta.url)
 );
+const assistantMetaInlinePath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/AssistantMetaInline.tsx", import.meta.url)
+);
+const assistantMetaModelPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/assistantMetaModel.ts", import.meta.url)
+);
 
 function readChatSource(): string {
   return (
     readFileSync(chatPagePath, "utf8") +
     readFileSync(chatModelPath, "utf8") +
-    readFileSync(artifactViewerPath, "utf8")
+    readFileSync(artifactViewerPath, "utf8") +
+    readFileSync(assistantMetaInlinePath, "utf8") +
+    readFileSync(assistantMetaModelPath, "utf8")
   );
 }
 

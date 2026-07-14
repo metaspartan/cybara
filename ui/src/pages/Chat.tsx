@@ -4,8 +4,6 @@ import {
   ArrowDown,
   Check,
   CheckCircle2,
-  ChevronDown,
-  ChevronUp,
   Copy,
   FileText,
   FlaskConical,
@@ -30,19 +28,13 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { EmbeddedTerminalPanel } from "@/components/ide/EmbeddedTerminalPanel";
 import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
 import { PageLayout } from "@/components/layout";
 import { Badge, Button, GlassCard, Input, Modal } from "@/components/ui";
 import { useAgentSummaries, useInfo, useSubagents, useUpdateAgentReasoning } from "@/hooks/useApi";
 import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
-import { chatApi, nearbyApi, providerPlansApi, settingsApi, type NearbyStatus } from "@/lib/api";
 import { useNearbyStatus } from "@/hooks/useNearbyStatus";
-import {
-  audioBlobToBase64,
-  audioBlobToLocalPcm,
-  preferredRecordingMimeType,
-} from "@/lib/audioTranscription";
+import { chatApi, type NearbyStatus, nearbyApi, providerPlansApi, settingsApi } from "@/lib/api";
 import { apiFetch, appendApiTokenParam } from "@/lib/auth";
 import {
   buildActivitiesFromToolCalls,
@@ -69,17 +61,8 @@ import {
   MAX_TEXT_FILES,
   mediaSummaryLabel,
 } from "@/lib/chatImages";
-import {
-  isDesktopHostRuntime,
-  isTauriDesktopRuntime,
-  openDesktopDirectoryDialog,
-} from "@/lib/desktopHost";
+import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
 import { useI18n } from "@/lib/i18n";
-import {
-  nativeAudioErrorMessage,
-  startNativeAudioRecording,
-  stopNativeAudioRecording,
-} from "@/lib/nativeDesktopAudio";
 import {
   connectStatusStream,
   type PendingChatMessage,
@@ -97,9 +80,11 @@ import type {
   SessionContextUsage,
   SessionTokenUsage,
 } from "@/types";
-import { CompletedActivityTimeline, LiveActivityTimeline } from "./chat/ActivityTimeline";
-import { ArtifactViewerPanel } from "./chat/ArtifactViewerPanel";
+import { LiveActivityTimeline } from "./chat/ActivityTimeline";
 import { AgentTransferTimeline } from "./chat/AgentTransferTimeline";
+import { ArtifactViewerPanel } from "./chat/ArtifactViewerPanel";
+import { AssistantMetaInline } from "./chat/AssistantMetaInline";
+import { parseTimestampMs } from "./chat/assistantMetaModel";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
 import { ChatCapabilityMenu } from "./chat/ChatCapabilityMenu";
 import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
@@ -113,11 +98,8 @@ import {
 import { ChatHeaderTitleMenu } from "./chat/ChatHeaderTitleMenu";
 import { ChatImageLightbox, type ChatLightboxImage } from "./chat/ChatImageLightbox";
 import { ChatReasoningControl } from "./chat/ChatReasoningControl";
-import { ChatWorkspaceBrowser } from "./chat/ChatWorkspaceBrowser";
-import { ChatWorkspaceComputer } from "./chat/ChatWorkspaceComputer";
-import { ChatWorkspaceFiles } from "./chat/ChatWorkspaceFiles";
+import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
 import {
-  ChatWorkspacePanel,
   type ChatWorkspaceTab,
   WORKSPACE_SINGLETON_KINDS,
   type WorkspaceTabInstance,
@@ -127,11 +109,7 @@ import {
   applyLiveActivityEvent,
   buildPreSteeringActivityMessage,
   type ChatMessage,
-  canUseNativeSpeechRecognition,
   clampDiffPanelWidth,
-  type DictationMode,
-  type DictationRuntimeCapabilities,
-  dedupeArtifactSummaries,
   extractFirstTargetLine,
   extractLatestPlanFromMessages,
   type FileChangeItem,
@@ -143,14 +121,10 @@ import {
   getLegacyMessageProcessKey,
   getMessageProcessActivities,
   getMessageProcessKey,
-  getToolCallsInTimelineOrder,
-  inferArtifactSummaries,
   isAgentUsingBrowser,
   isGenericStatusLabel,
   isMeaningfulThoughtDetail,
-  isRecord,
   isSessionPlanComplete,
-  normalizeDictationMode,
   normalizeMessageProcessActivities,
   normalizeSessionStatus,
   normalizeSnapshotActivities,
@@ -166,23 +140,16 @@ import {
   readPersistedMessageProcessMap,
   readPersistedSessionId,
   readPersistedWorkspaceDir,
-  resolveDictationRuntime,
   resolvePathForIde,
   resolveStatusSnapshotActivities,
-  resolveToolCallSandboxProvider,
   SESSION_ACTIVITY_STALE_MS,
   type SessionStatusResponse,
   type SessionStatusSnapshot,
-  type SpeechRecognitionLike,
-  type SpeechRecognitionWindow,
-  summarizeMessageFileChanges,
   type ToolCall,
   toLiveActivityItems,
-  tryParseJsonRecord,
 } from "./chat/chatModel";
 import { parseInitialChatRoute } from "./chat/chatRoute";
 import { isChatNearBottom } from "./chat/chatScroll";
-import { FileChangesCard } from "./chat/FileChangesCard";
 import { type GitBranchOption, GitBranchSelector } from "./chat/GitBranchSelector";
 import {
   clearCachedLiveSessionState,
@@ -199,11 +166,10 @@ import {
   writeCachedOptimisticPendingMessages,
 } from "./chat/pendingQueueCache";
 import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
-import { SessionDiffPanel } from "./chat/SessionDiffPanel";
 import { SessionsPanel } from "./chat/SessionSidebar";
 import { SubagentIcon } from "./chat/SubagentIcon";
-import { SubagentPanel } from "./chat/SubagentPanel";
 import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
+import { useChatDictation } from "./chat/useChatDictation";
 import { useEnvironmentGitBranches } from "./chat/useEnvironmentGitBranches";
 import { useSessionFileChanges } from "./chat/useSessionFileChanges";
 import { WorkspaceOpenMenu } from "./chat/WorkspaceOpenMenu";
@@ -211,419 +177,6 @@ import { WorkspaceOpenMenu } from "./chat/WorkspaceOpenMenu";
 type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
 
 const STOPPED_SESSION_STATUS_SUPPRESSION_MS = 12_000;
-
-function formatWorkedDuration(durationMs: number): string {
-  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  return `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
-}
-
-function parseTimestampMs(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-  if (typeof value === "string" && value.trim().length > 0) {
-    const asNumber = Number(value);
-    if (Number.isFinite(asNumber)) {
-      return asNumber;
-    }
-    const parsed = Date.parse(value);
-    if (Number.isFinite(parsed)) {
-      return parsed;
-    }
-  }
-  return undefined;
-}
-
-function parseDurationMs(value: unknown): number {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return value;
-  }
-  if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed) && parsed > 0) {
-      return parsed;
-    }
-  }
-  return 0;
-}
-
-function inferThoughtActivitiesFromContent(
-  content: string,
-  baseTimestampMs?: number
-): LiveActivityItem[] {
-  const lines = content
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return [];
-
-  const toolishLine =
-    /^(Ran|Explored|Edited|Created|Deleted|Read|Wrote|Updated|Fetched|Searching)\b/i;
-  const thoughtishLine = /^(I'll|I will|Let me|Now let me|Now|Next|First|Then|To start|I’m|I'm)\b/i;
-
-  const fallbackBase =
-    typeof baseTimestampMs === "number" && Number.isFinite(baseTimestampMs)
-      ? baseTimestampMs
-      : Date.now();
-
-  const thoughts: LiveActivityItem[] = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (!line) continue;
-    if (toolishLine.test(line)) continue;
-    if (!thoughtishLine.test(line)) continue;
-    thoughts.push({
-      id: `inferred-thought-${index}-${line.slice(0, 12)}`,
-      phase: "result",
-      text: line,
-      timestamp: fallbackBase + index,
-      toolName: "__thought",
-    });
-  }
-
-  return thoughts;
-}
-
-function inferThoughtActivitiesFromThinking(
-  thinking: string | undefined,
-  baseTimestampMs?: number
-): LiveActivityItem[] {
-  if (typeof thinking !== "string" || thinking.trim().length === 0) return [];
-  const lines = thinking
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (lines.length === 0) return [];
-
-  const fallbackBase =
-    typeof baseTimestampMs === "number" && Number.isFinite(baseTimestampMs)
-      ? baseTimestampMs
-      : Date.now();
-
-  return lines.map((line, index) => ({
-    id: `inferred-thinking-${index}-${line.slice(0, 12)}`,
-    phase: "result",
-    text: line,
-    timestamp: fallbackBase + index,
-    toolName: "__thought",
-  }));
-}
-
-function resolveWorkedDurationMs(
-  processActivities?: LiveActivityItem[],
-  toolCalls?: ToolCall[],
-  options?: {
-    assistantTimestamp?: string;
-    turnStartedAtMs?: number;
-  }
-): number | undefined {
-  const activityTimestamps = (processActivities || [])
-    .map((activity) => activity.timestamp)
-    .filter((timestamp): timestamp is number => Number.isFinite(timestamp));
-  const assistantTimestampMs = parseTimestampMs(options?.assistantTimestamp);
-  const turnStartedAtMs = options?.turnStartedAtMs;
-  const durationCandidates: number[] = [];
-
-  const addDurationCandidate = (value: number | undefined) => {
-    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return;
-    durationCandidates.push(value);
-  };
-
-  if (activityTimestamps.length >= 2) {
-    const minTimestamp = Math.min(...activityTimestamps);
-    const maxTimestamp = Math.max(...activityTimestamps);
-    addDurationCandidate(maxTimestamp - minTimestamp);
-  }
-
-  if (activityTimestamps.length > 0) {
-    const minTimestamp = Math.min(...activityTimestamps);
-    const maxTimestamp = Math.max(...activityTimestamps);
-    const inferredStart =
-      typeof turnStartedAtMs === "number" && Number.isFinite(turnStartedAtMs)
-        ? Math.min(turnStartedAtMs, minTimestamp)
-        : minTimestamp;
-    const inferredEnd =
-      typeof assistantTimestampMs === "number"
-        ? Math.max(assistantTimestampMs, maxTimestamp)
-        : maxTimestamp;
-    addDurationCandidate(inferredEnd - inferredStart);
-  }
-
-  const toolStartTimestamps = (toolCalls || [])
-    .map((toolCall) => parseTimestampMs(toolCall.started_at))
-    .filter((timestamp): timestamp is number => typeof timestamp === "number");
-  if (toolStartTimestamps.length > 0) {
-    const minStart = Math.min(...toolStartTimestamps);
-    const maxEnd = (toolCalls || []).reduce((currentMax, toolCall) => {
-      const startedAt = parseTimestampMs(toolCall.started_at);
-      if (typeof startedAt !== "number") return currentMax;
-      const duration = parseDurationMs(toolCall.duration);
-      const end = duration > 0 ? startedAt + duration : startedAt;
-      return Math.max(currentMax, end);
-    }, minStart);
-    addDurationCandidate(maxEnd - minStart);
-  }
-
-  const toolDurationTotal = (toolCalls || []).reduce((sum, toolCall) => {
-    const duration = parseDurationMs(toolCall.duration);
-    return duration > 0 ? sum + duration : sum;
-  }, 0);
-  addDurationCandidate(toolDurationTotal);
-
-  if (
-    typeof assistantTimestampMs === "number" &&
-    typeof turnStartedAtMs === "number" &&
-    Number.isFinite(turnStartedAtMs)
-  ) {
-    addDurationCandidate(assistantTimestampMs - turnStartedAtMs);
-  }
-
-  if (durationCandidates.length === 0) return undefined;
-  return Math.max(...durationCandidates);
-}
-
-function resolveArtifactAction(toolCall: ToolCall): string | undefined {
-  const args = toolCall.arguments || toolCall.args || {};
-  const actionFromArgs =
-    (typeof args.action === "string" ? args.action : "") ||
-    (typeof args.mode === "string" ? args.mode : "");
-  if (actionFromArgs) return actionFromArgs.toLowerCase();
-
-  const parsedResult = tryParseJsonRecord(toolCall.result);
-  if (isRecord(parsedResult) && typeof parsedResult.action === "string") {
-    return parsedResult.action.toLowerCase();
-  }
-
-  return undefined;
-}
-
-function findPriorUserTimestampMs(
-  messages: ChatMessage[],
-  currentIndex: number
-): number | undefined {
-  for (let index = currentIndex - 1; index >= 0; index -= 1) {
-    const candidate = messages[index];
-    if (!candidate || candidate.role !== "user") continue;
-    const timestamp = parseTimestampMs(candidate.timestamp);
-    if (typeof timestamp === "number") {
-      return timestamp;
-    }
-  }
-  return undefined;
-}
-
-const ARTIFACT_MUTATION_ACTIONS = new Set(["create", "update", "append", "check"]);
-
-function isArtifactMutationAction(action: string): boolean {
-  return ARTIFACT_MUTATION_ACTIONS.has(action);
-}
-
-function hasArtifactMutationResult(toolCall: ToolCall): boolean {
-  const parsedResult = tryParseJsonRecord(toolCall.result);
-  if (!isRecord(parsedResult)) return false;
-
-  if (
-    parsedResult.created === true ||
-    parsedResult.updated === true ||
-    parsedResult.appended === true ||
-    parsedResult.checked === true
-  ) {
-    return true;
-  }
-
-  const actionFromResult =
-    typeof parsedResult.action === "string" ? parsedResult.action.toLowerCase() : "";
-  if (actionFromResult && isArtifactMutationAction(actionFromResult)) {
-    return true;
-  }
-
-  return false;
-}
-
-function collectMessageArtifacts(
-  toolCalls: ToolCall[] | undefined,
-  sessionId?: string | null
-): ArtifactSummaryView[] {
-  const artifacts: ArtifactSummaryView[] = [];
-  for (const toolCall of toolCalls || []) {
-    const isArtifactTool = toolCall.name === "artifacts" || toolCall.name === "artifact";
-    if (!isArtifactTool) continue;
-
-    const action = resolveArtifactAction(toolCall);
-    if (action) {
-      if (!isArtifactMutationAction(action)) {
-        continue;
-      }
-    } else if (!hasArtifactMutationResult(toolCall)) {
-      continue;
-    }
-
-    artifacts.push(...inferArtifactSummaries(toolCall, sessionId));
-  }
-  return dedupeArtifactSummaries(artifacts);
-}
-
-function ArtifactSummaryCard({
-  artifacts,
-  onOpenArtifact,
-}: {
-  artifacts: ArtifactSummaryView[];
-  onOpenArtifact?: (artifact: ArtifactSummaryView) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.02] overflow-hidden">
-      <button
-        onClick={() => setExpanded((value) => !value)}
-        className="w-full px-3 py-2 flex items-center gap-2 text-[12px] cursor-pointer hover:bg-white/5 transition-colors"
-      >
-        <FileText className="w-3 h-3 text-indigo-300" />
-        <span className="text-gray-200 font-medium">
-          {artifacts.length} artifact{artifacts.length === 1 ? "" : "s"} created/updated
-        </span>
-        <span className="flex-1" />
-        {expanded ? (
-          <ChevronUp className="w-3.5 h-3.5 text-gray-500" />
-        ) : (
-          <ChevronDown className="w-3.5 h-3.5 text-gray-500" />
-        )}
-      </button>
-      {expanded && (
-        <div className="border-t border-white/5 px-3 py-2 space-y-2">
-          {artifacts.map((artifact) => (
-            <div
-              key={`${artifact.sessionId}:${artifact.fileName}`}
-              className="flex items-center justify-between gap-2 rounded-md border border-white/10 bg-black/25 px-2.5 py-2"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-[12px] text-gray-200">{artifact.fileName}</p>
-                <p className="text-[10px] text-gray-500 truncate">{artifact.sessionId}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => onOpenArtifact?.(artifact)}
-                className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[12px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
-              >
-                View
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function AssistantMetaInline({
-  message,
-  processActivities,
-  sessionId,
-  turnStartedAtMs,
-  onOpenArtifact,
-  section = "work",
-  workspaceDir,
-}: {
-  message: ChatMessage;
-  processActivities?: LiveActivityItem[];
-  sessionId?: string | null;
-  turnStartedAtMs?: number;
-  onOpenArtifact?: (artifact: ArtifactSummaryView) => void;
-  section?: "work" | "summary";
-  workspaceDir?: string | null;
-}) {
-  const { t } = useI18n();
-  const isWorkSection = section === "work";
-  const orderedToolCalls = getToolCallsInTimelineOrder(message.tool_calls);
-  const fileChangeSummary = summarizeMessageFileChanges(orderedToolCalls);
-  const hasFileChangeSummary = !!fileChangeSummary;
-  const artifactSummary = collectMessageArtifacts(orderedToolCalls, sessionId);
-  const hasArtifacts = artifactSummary.length > 0;
-  const workedDurationMs = resolveWorkedDurationMs(processActivities, message.tool_calls, {
-    assistantTimestamp: message.timestamp,
-    turnStartedAtMs,
-  });
-  const normalizedProcessActivities =
-    processActivities && processActivities.length > 0
-      ? finalizeCompletedActivities(processActivities)
-      : [];
-  const hasPersistedThoughtActivities = normalizedProcessActivities.some(
-    (activity) => activity.toolName === "__thought"
-  );
-  const inferredThoughtActivities = !hasPersistedThoughtActivities
-    ? inferThoughtActivitiesFromContent(
-        message.content,
-        parseTimestampMs(message.timestamp) ?? turnStartedAtMs
-      )
-    : [];
-  const inferredThinkingActivities =
-    !hasPersistedThoughtActivities && inferredThoughtActivities.length === 0
-      ? inferThoughtActivitiesFromThinking(
-          message.thinking,
-          parseTimestampMs(message.timestamp) ?? turnStartedAtMs
-        )
-      : [];
-  const contentAndThinkingActivities = mergeActivityLists(
-    inferredThoughtActivities,
-    inferredThinkingActivities
-  );
-  const workActivities = mergeActivityLists(
-    normalizedProcessActivities,
-    contentAndThinkingActivities
-  );
-  const sandboxProviderByToolCallId = new Map<string, string>();
-  for (const toolCall of orderedToolCalls) {
-    const toolCallId = typeof toolCall.id === "string" ? toolCall.id.trim().toLowerCase() : "";
-    if (!toolCallId) continue;
-    const sandboxProvider = resolveToolCallSandboxProvider(toolCall);
-    if (!sandboxProvider) continue;
-    sandboxProviderByToolCallId.set(toolCallId, sandboxProvider);
-  }
-  const workActivitiesWithSandbox = workActivities.map((activity) => {
-    if (activity.sandboxProvider) return activity;
-    const toolCallId =
-      typeof activity.toolCallId === "string" ? activity.toolCallId.trim().toLowerCase() : "";
-    if (!toolCallId) return activity;
-    const sandboxProvider = sandboxProviderByToolCallId.get(toolCallId);
-    if (!sandboxProvider) return activity;
-    return {
-      ...activity,
-      sandboxProvider,
-    };
-  });
-  const hasWorkSectionContent = workActivities.length > 0;
-  const hasSummarySectionContent = hasFileChangeSummary || hasArtifacts;
-
-  if ((isWorkSection && !hasWorkSectionContent) || (!isWorkSection && !hasSummarySectionContent)) {
-    return null;
-  }
-
-  return (
-    <div className={cn("space-y-2", isWorkSection ? "mb-3" : "mt-3")}>
-      {isWorkSection && workActivitiesWithSandbox.length > 0 && (
-        <CompletedActivityTimeline
-          activities={workActivitiesWithSandbox}
-          label={t("chat.workedFor", {
-            duration:
-              workedDurationMs !== undefined
-                ? formatWorkedDuration(workedDurationMs)
-                : "0h 00m 00s",
-          })}
-        />
-      )}
-
-      {!isWorkSection && hasFileChangeSummary && fileChangeSummary && (
-        <FileChangesCard summary={fileChangeSummary} workspaceDir={workspaceDir} />
-      )}
-      {!isWorkSection && hasArtifacts && (
-        <ArtifactSummaryCard artifacts={artifactSummary} onOpenArtifact={onOpenArtifact} />
-      )}
-    </div>
-  );
-}
 
 export function Chat() {
   const queryClient = useQueryClient();
@@ -689,6 +242,14 @@ export function Chat() {
     Promise.resolve(false)
   );
   const [input, setInput] = useState("");
+  const {
+    dictating,
+    error: dictationError,
+    handleToggle: handleToggleDictation,
+    runtime: dictationRuntime,
+    status: dictationStatus,
+    transcribing: dictationTranscribing,
+  } = useChatDictation(setInput);
   const [pendingImages, setPendingImages] = useState<ChatImageAttachment[]>([]);
   const [pendingFiles, setPendingFiles] = useState<ChatFileAttachment[]>([]);
   const [imageDragActive, setImageDragActive] = useState(false);
@@ -819,18 +380,6 @@ export function Chat() {
   const [steeringMessageId, setSteeringMessageId] = useState<string | null>(null);
   const [pendingMessageMutationId, setPendingMessageMutationId] = useState<string | null>(null);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
-  const [dictationMode, setDictationMode] = useState<DictationMode>("auto");
-  const [dictationLanguage, setDictationLanguage] = useState("en-US");
-  const [dictationCapabilities, setDictationCapabilities] = useState<DictationRuntimeCapabilities>({
-    nativeRecognition: false,
-    nativeRecorder: false,
-    mediaRecorder: false,
-    microphone: false,
-  });
-  const [dictating, setDictating] = useState(false);
-  const [dictationTranscribing, setDictationTranscribing] = useState(false);
-  const [dictationStatus, setDictationStatus] = useState<string | null>(null);
-  const [dictationError, setDictationError] = useState<string | null>(null);
   const [toolApprovalMode, setToolApprovalMode] = useState<ToolApprovalMode>("always_allow");
   const [followUpBehaviorEnabled, setFollowUpBehaviorEnabled] = useState(true);
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
@@ -843,11 +392,6 @@ export function Chat() {
   );
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
-  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const nativeRecorderActiveRef = useRef(false);
-  const dictationStreamRef = useRef<MediaStream | null>(null);
-  const dictationChunksRef = useRef<Blob[]>([]);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const openChatImage = useCallback((src: string, alt: string) => {
     const nodes = Array.from(
@@ -876,7 +420,6 @@ export function Chat() {
     startWidth: number;
   } | null>(null);
   const diffPanelResizeCleanupRef = useRef<(() => void) | null>(null);
-  const dictationStatusTimerRef = useRef<number | null>(null);
   const activeSessionRef = useRef<string | null>(null);
   const restoreSessionGenerationRef = useRef(0);
   const suppressAutoRestoreRef = useRef(false);
@@ -1035,10 +578,6 @@ export function Chat() {
       return agents.some((agent) => agent.id === trimmed) ? trimmed : undefined;
     },
     [agents]
-  );
-  const dictationRuntime = useMemo(
-    () => resolveDictationRuntime(dictationMode, dictationCapabilities),
-    [dictationCapabilities, dictationMode]
   );
   const activeAgentForPlan = useMemo(
     () => agents.find((agent) => agent.id === (selectedAgentId || sessionAgentId || "")) ?? null,
@@ -1315,53 +854,16 @@ export function Chat() {
   );
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      setDictationCapabilities({
-        nativeRecognition: false,
-        nativeRecorder: false,
-        mediaRecorder: false,
-        microphone: false,
-      });
-      return;
-    }
-    const speechWindow = window as SpeechRecognitionWindow;
-    const SpeechCtor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
-    setDictationCapabilities({
-      nativeRecognition: canUseNativeSpeechRecognition(!!SpeechCtor, isTauriDesktopRuntime()),
-      nativeRecorder: isTauriDesktopRuntime(),
-      mediaRecorder: typeof window.MediaRecorder !== "undefined",
-      microphone: !!window.navigator?.mediaDevices?.getUserMedia,
-    });
-  }, []);
-
-  useEffect(() => {
     let mounted = true;
-    const loadSpeechSettings = async () => {
+    const loadChatSettings = async () => {
       try {
         const result = await settingsApi.getConfig();
         if (!mounted || !result.success) return;
-        const speech =
-          result.data?.speech && typeof result.data.speech === "object"
-            ? (result.data.speech as Record<string, unknown>)
-            : {};
-        const stt =
-          speech.stt && typeof speech.stt === "object"
-            ? (speech.stt as Record<string, unknown>)
-            : {};
         setToolApprovalMode(normalizeToolApprovalMode(result.data?.tool_approval_mode));
         setFollowUpBehaviorEnabled(result.data?.follow_up_behavior_enabled !== false);
-        setDictationMode(normalizeDictationMode(stt.provider));
-        setDictationLanguage(
-          typeof stt.language === "string" && stt.language.trim() ? stt.language.trim() : "en-US"
-        );
-      } catch {
-        if (mounted) {
-          setDictationMode("auto");
-          setDictationLanguage("en-US");
-        }
-      }
+      } catch {}
     };
-    void loadSpeechSettings();
+    void loadChatSettings();
     return () => {
       mounted = false;
     };
@@ -1371,23 +873,6 @@ export function Chat() {
     return () => {
       diffPanelResizeCleanupRef.current?.();
       diffPanelResizeCleanupRef.current = null;
-      if (dictationStatusTimerRef.current !== null) {
-        window.clearTimeout(dictationStatusTimerRef.current);
-        dictationStatusTimerRef.current = null;
-      }
-      if (speechRecognitionRef.current) {
-        speechRecognitionRef.current.stop();
-      }
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-        mediaRecorderRef.current.stop();
-      }
-      if (nativeRecorderActiveRef.current) void stopNativeAudioRecording().catch(() => undefined);
-      if (dictationStreamRef.current) {
-        for (const track of dictationStreamRef.current.getTracks()) {
-          track.stop();
-        }
-        dictationStreamRef.current = null;
-      }
       speechAudioRef.current?.pause();
       speechAudioRef.current = null;
     };
@@ -2934,275 +2419,6 @@ export function Chat() {
     }
   }, [isStoppingSession, markSessionStopped, sessionId, stopGenerating]);
 
-  const handleToggleDictation = useCallback(async () => {
-    if (typeof window === "undefined") return;
-    const flashStatus = (message: string) => {
-      setDictationStatus(message);
-      if (dictationStatusTimerRef.current !== null) {
-        window.clearTimeout(dictationStatusTimerRef.current);
-      }
-      dictationStatusTimerRef.current = window.setTimeout(() => {
-        setDictationStatus(null);
-        dictationStatusTimerRef.current = null;
-      }, 3500);
-    };
-    const failDictation = (message: string) => {
-      setDictationError(message);
-      setDictationStatus(null);
-      useUIStore.getState().addToast("error", message);
-    };
-    const appendDictationText = (text: string) => {
-      const normalized = text.trim();
-      if (!normalized) return;
-      setInput((previous) => {
-        const trimmed = previous.trimEnd();
-        return trimmed.length > 0 ? `${trimmed} ${normalized}` : normalized;
-      });
-      setDictationError(null);
-      flashStatus("Dictation inserted");
-    };
-
-    if (!dictationRuntime.engine) {
-      failDictation(dictationRuntime.unsupportedReason || "Dictation is not available here.");
-      return;
-    }
-
-    const speechWindow = window as SpeechRecognitionWindow;
-    const SpeechCtor = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
-    if (dictationRuntime.engine === "native") {
-      if (!SpeechCtor) {
-        failDictation("Native dictation is not available in this browser or desktop runtime.");
-        return;
-      }
-      if (!speechRecognitionRef.current) {
-        const recognition = new SpeechCtor();
-        recognition.continuous = true;
-        recognition.interimResults = true;
-        recognition.lang = dictationLanguage;
-        recognition.onresult = (event) => {
-          const results = event.results;
-          if (!results || typeof results.length !== "number" || results.length === 0) return;
-          const startIndex =
-            typeof event.resultIndex === "number" && Number.isFinite(event.resultIndex)
-              ? event.resultIndex
-              : 0;
-          const finalChunks: string[] = [];
-
-          for (let index = startIndex; index < results.length; index += 1) {
-            const result = results[index];
-            const alt = result?.[0];
-            const transcript = typeof alt?.transcript === "string" ? alt.transcript.trim() : "";
-            if (!transcript) continue;
-            if (result?.isFinal) {
-              finalChunks.push(transcript);
-            }
-          }
-
-          if (finalChunks.length === 0) return;
-          appendDictationText(finalChunks.join(" "));
-        };
-        recognition.onerror = (event) => {
-          const code = event?.error || "unknown";
-          const message =
-            code === "not-allowed" || code === "service-not-allowed"
-              ? "Microphone permission was denied for native dictation."
-              : code === "audio-capture"
-                ? "No microphone was available for native dictation."
-                : code === "no-speech"
-                  ? "No speech was detected."
-                  : `Native dictation failed: ${code}`;
-          failDictation(message);
-          setDictating(false);
-        };
-        recognition.onend = () => {
-          setDictating(false);
-          if (!dictationError) setDictationStatus(null);
-        };
-        speechRecognitionRef.current = recognition;
-      }
-
-      const recognition = speechRecognitionRef.current;
-      if (!recognition) return;
-      if (dictating) {
-        recognition.stop();
-        setDictating(false);
-        setDictationStatus(null);
-        return;
-      }
-      try {
-        recognition.lang = dictationLanguage;
-        setDictationError(null);
-        setDictationStatus("Listening with native dictation...");
-        recognition.start();
-        setDictating(true);
-      } catch (error) {
-        failDictation(error instanceof Error ? error.message : "Failed to start native dictation.");
-        setDictating(false);
-      }
-      return;
-    }
-
-    if (dictationCapabilities.nativeRecorder) {
-      if (dictationTranscribing) return;
-      if (dictating && nativeRecorderActiveRef.current) {
-        nativeRecorderActiveRef.current = false;
-        setDictating(false);
-        setDictationTranscribing(true);
-        setDictationStatus("Transcribing dictation...");
-        try {
-          const recording = await stopNativeAudioRecording();
-          const response = await chatApi.dictate({
-            ...recording,
-            provider: dictationRuntime.serverProvider || undefined,
-          });
-          if (response.success && response.data?.text) {
-            appendDictationText(response.data.text);
-          } else {
-            failDictation(response.error || "No transcript was returned.");
-          }
-        } catch (error) {
-          failDictation(nativeAudioErrorMessage(error, "Dictation transcription failed."));
-        } finally {
-          setDictationTranscribing(false);
-        }
-        return;
-      }
-      try {
-        setDictationError(null);
-        setDictationStatus("Requesting microphone access...");
-        await startNativeAudioRecording();
-        nativeRecorderActiveRef.current = true;
-        setDictating(true);
-        setDictationStatus("Recording for model transcription...");
-      } catch (error) {
-        failDictation(nativeAudioErrorMessage(error, "Failed to start recording."));
-      }
-      return;
-    }
-
-    const canRecordAudio =
-      !!window.navigator?.mediaDevices?.getUserMedia && typeof window.MediaRecorder !== "undefined";
-    if (!canRecordAudio) {
-      failDictation(
-        window.navigator?.mediaDevices?.getUserMedia
-          ? "This runtime cannot record audio for model transcription."
-          : "Microphone capture is not available in this browser or desktop runtime."
-      );
-      return;
-    }
-
-    if (dictationTranscribing) return;
-
-    if (dictating) {
-      const recorder = mediaRecorderRef.current;
-      if (recorder && recorder.state !== "inactive") {
-        recorder.stop();
-      }
-      return;
-    }
-
-    try {
-      setDictationError(null);
-      setDictationStatus("Requesting microphone access...");
-      const stream = await window.navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      dictationStreamRef.current = stream;
-      dictationChunksRef.current = [];
-
-      const selectedMimeType = preferredRecordingMimeType();
-      const recorder = selectedMimeType
-        ? new window.MediaRecorder(stream, { mimeType: selectedMimeType })
-        : new window.MediaRecorder(stream);
-      const recorderMimeType = recorder.mimeType || selectedMimeType || "audio/webm";
-      mediaRecorderRef.current = recorder;
-
-      recorder.ondataavailable = (event) => {
-        if (event.data && event.data.size > 0) {
-          dictationChunksRef.current.push(event.data);
-        }
-      };
-
-      recorder.onerror = (event) => {
-        console.error("Dictation recorder error:", event);
-        failDictation("Audio recording failed before transcription could start.");
-        setDictating(false);
-        setDictationTranscribing(false);
-      };
-
-      recorder.onstop = async () => {
-        setDictating(false);
-        const chunks = [...dictationChunksRef.current];
-        dictationChunksRef.current = [];
-        mediaRecorderRef.current = null;
-        if (dictationStreamRef.current) {
-          for (const track of dictationStreamRef.current.getTracks()) {
-            track.stop();
-          }
-          dictationStreamRef.current = null;
-        }
-
-        if (chunks.length === 0) return;
-
-        try {
-          setDictationTranscribing(true);
-          setDictationStatus("Transcribing dictation...");
-          const blob = new Blob(chunks, { type: recorderMimeType });
-          const local = dictationRuntime.serverProvider === "local";
-          const payload = local
-            ? await audioBlobToLocalPcm(blob)
-            : {
-                audioBase64: await audioBlobToBase64(blob),
-                mimeType: recorderMimeType,
-                fileName: "dictation.webm",
-              };
-          const response = await chatApi.dictate({
-            ...payload,
-            provider: dictationRuntime.serverProvider || undefined,
-          });
-          if (response.success && response.data?.text) {
-            appendDictationText(response.data.text);
-          } else {
-            failDictation(response.error || "No transcript was returned.");
-          }
-        } catch (error) {
-          failDictation(error instanceof Error ? error.message : "Dictation transcription failed.");
-        } finally {
-          setDictationTranscribing(false);
-        }
-      };
-
-      recorder.start(250);
-      setDictating(true);
-      setDictationStatus("Recording for model transcription...");
-    } catch (error) {
-      failDictation(
-        error instanceof DOMException && error.name === "NotAllowedError"
-          ? "Microphone permission was denied."
-          : error instanceof Error
-            ? error.message
-            : "Failed to start dictation recording."
-      );
-      setDictating(false);
-      setDictationTranscribing(false);
-      if (dictationStreamRef.current) {
-        for (const track of dictationStreamRef.current.getTracks()) {
-          track.stop();
-        }
-        dictationStreamRef.current = null;
-      }
-    }
-  }, [
-    dictating,
-    dictationError,
-    dictationCapabilities.nativeRecorder,
-    dictationLanguage,
-    dictationRuntime.engine,
-    dictationRuntime.serverProvider,
-    dictationRuntime.unsupportedReason,
-    dictationTranscribing,
-  ]);
-
   const applySessionWorkspace = useCallback(
     async (nextWorkspaceDir: string | null) => {
       const previousWorkspaceDir = workspaceDir;
@@ -3401,6 +2617,33 @@ export function Chat() {
     setArtifactViewerContent("");
     setArtifactViewerRawView(false);
   }, []);
+
+  const handleViewSubagentSession = useCallback(
+    async (sessionKey: string): Promise<void> => {
+      try {
+        const result = await loadSessionMutation.mutateAsync(sessionKey);
+        if (!result?.messagesList) return;
+        activeSessionRef.current = sessionKey;
+        setUseModelRouter(false);
+        loadSession(
+          sessionKey,
+          result.messagesList as ChatMessage[],
+          (result as { workspace_dir?: string | null }).workspace_dir || null
+        );
+        syncSessionAgentSelection((result as { agent_id?: string | null }).agent_id || null);
+        setSessionContextUsage(
+          (result as { contextUsage?: SessionContextUsage | null }).contextUsage || null
+        );
+        setSessionTokenUsage(
+          (result as { tokenUsage?: SessionTokenUsage | null }).tokenUsage || null
+        );
+        setShowWorkspacePanel(false);
+      } catch (error) {
+        console.error("Failed to load subagent session:", error);
+      }
+    },
+    [loadSession, loadSessionMutation, syncSessionAgentSelection]
+  );
 
   const capabilityPicker = useChatCapabilityPicker({
     input,
@@ -4366,132 +3609,29 @@ export function Chat() {
         </div>
 
         {!artifactViewerTarget && (
-          <ChatWorkspacePanel
+          <ChatWorkspaceDock
             activeTab={activeWorkspaceTab}
+            agentId={selectedAgentId || sessionAgentId || undefined}
+            diffError={sessionFileChangesError}
+            diffLoading={sessionFileChangesLoading}
+            diffSummary={sessionFileChanges}
             isOpen={showWorkspacePanel}
+            selectedDiffPath={selectedDiffPath}
+            sessionId={sessionId}
             tabs={workspaceTabs}
             width={diffPanelWidth}
+            workspaceDir={effectiveWorkspaceDir}
             onClose={() => setShowWorkspacePanel(false)}
             onCloseTab={closeWorkspaceTab}
+            onOpenDiffInIde={handleOpenDiffFileInIde}
             onOpenTab={openWorkspaceTab}
+            onRefreshDiff={refreshSessionFileChanges}
             onResizeStart={handleDiffPanelResizeStart}
+            onSelectDiffPath={setSelectedDiffPath}
             onSelectTab={setActiveWorkspaceTab}
-          >
-            {workspaceTabs.map((instance) => {
-              const active = activeWorkspaceTab === instance.id;
-              const hiddenClass = cn("h-full", !active && "hidden");
-              if (instance.kind === "review") {
-                return (
-                  <div key={instance.id} className={hiddenClass}>
-                    <SessionDiffPanel
-                      embedded
-                      isOpen={active}
-                      summary={sessionFileChanges}
-                      selectedPath={selectedDiffPath}
-                      onSelectPath={setSelectedDiffPath}
-                      onClose={() => closeWorkspaceTab(instance.id)}
-                      width={diffPanelWidth}
-                      onResizeStart={handleDiffPanelResizeStart}
-                      onOpenInIDE={handleOpenDiffFileInIde}
-                      workspaceDir={effectiveWorkspaceDir}
-                      loading={sessionFileChangesLoading}
-                      error={sessionFileChangesError}
-                      onRetry={refreshSessionFileChanges}
-                    />
-                  </div>
-                );
-              }
-              if (instance.kind === "terminal") {
-                return (
-                  <div key={instance.id} className={hiddenClass}>
-                    <EmbeddedTerminalPanel
-                      workspacePath={effectiveWorkspaceDir || "~"}
-                      visible={showWorkspacePanel && active}
-                      createRequestToken={0}
-                      autoCreateOnVisible
-                      singleSession
-                    />
-                  </div>
-                );
-              }
-              if (instance.kind === "browser") {
-                return (
-                  <div key={instance.id} className={hiddenClass}>
-                    <ChatWorkspaceBrowser
-                      key={`${instance.id}:${sessionId || "new-chat"}`}
-                      visible={showWorkspacePanel && active}
-                      sessionId={sessionId}
-                      pageKey={instance.pageKey}
-                      onTitleChange={(title) => updateWorkspaceTabTitle(instance.id, title)}
-                    />
-                  </div>
-                );
-              }
-              if (instance.kind === "files") {
-                return (
-                  <div key={instance.id} className={hiddenClass}>
-                    <ChatWorkspaceFiles workspaceDir={effectiveWorkspaceDir} />
-                  </div>
-                );
-              }
-              if (instance.kind === "computer") {
-                return (
-                  <div key={instance.id} className={hiddenClass}>
-                    <ChatWorkspaceComputer
-                      sessionId={sessionId}
-                      visible={showWorkspacePanel && active}
-                    />
-                  </div>
-                );
-              }
-              return (
-                <div key={instance.id} className={hiddenClass}>
-                  <SubagentPanel
-                    embedded
-                    agentId={selectedAgentId || sessionAgentId || undefined}
-                    isOpen={active}
-                    onClose={() => closeWorkspaceTab(instance.id)}
-                    sessionId={sessionId}
-                    workspaceDir={effectiveWorkspaceDir}
-                    onViewSession={async (sessionKey) => {
-                      try {
-                        const result = await loadSessionMutation.mutateAsync(sessionKey);
-                        if (result?.messagesList) {
-                          activeSessionRef.current = sessionKey;
-                          setUseModelRouter(false);
-                          loadSession(
-                            sessionKey,
-                            result.messagesList as ChatMessage[],
-                            (result as { workspace_dir?: string | null }).workspace_dir || null
-                          );
-                          syncSessionAgentSelection(
-                            (result as { agent_id?: string | null }).agent_id || null
-                          );
-                          setSessionContextUsage(
-                            (
-                              result as {
-                                contextUsage?: SessionContextUsage | null;
-                              }
-                            ).contextUsage || null
-                          );
-                          setSessionTokenUsage(
-                            (
-                              result as {
-                                tokenUsage?: SessionTokenUsage | null;
-                              }
-                            ).tokenUsage || null
-                          );
-                          setShowWorkspacePanel(false);
-                        }
-                      } catch (error) {
-                        console.error("Failed to load subagent session:", error);
-                      }
-                    }}
-                  />
-                </div>
-              );
-            })}
-          </ChatWorkspacePanel>
+            onUpdateTabTitle={updateWorkspaceTabTitle}
+            onViewSubagentSession={(sessionKey) => void handleViewSubagentSession(sessionKey)}
+          />
         )}
 
         {imageLightbox ? (
