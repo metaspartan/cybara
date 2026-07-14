@@ -6,6 +6,7 @@ import { GatewayRemoteAccessSection } from "@/components/settings/GatewayRemoteA
 import { NearbySettingsSection } from "@/components/settings/NearbySettingsSection";
 import { SettingsNavigation } from "@/components/settings/SettingsNavigation";
 import { SystemBackupSettingsSection } from "@/components/settings/SystemBackupSettingsSection";
+import { SystemMonitorPanel } from "@/components/settings/SystemMonitorPanel";
 import { AiFeatureSettings } from "./settings/AiFeatureSettings";
 import { ChatAccessibilitySettings } from "./settings/ChatAccessibilitySettings";
 import { FeatureSettings } from "./settings/FeatureSettings";
@@ -18,7 +19,6 @@ import { asSettingsRecord, readIntegerSetting } from "./settings/settingsValueRe
 import {
   useHealth,
   useInfo,
-  useSystemMonitor,
   useIdentity,
   useUpdateIdentity,
   type IdentityConfig,
@@ -79,22 +79,13 @@ import {
 import { resolveSettingsSectionId, type SettingsSectionId } from "@/lib/settingsNavigation";
 import { persistPetEnabled, readPetEnabled } from "@/lib/petPreferences";
 import { languageOptions, useI18n } from "@/lib/i18n";
-import {
-  cn,
-  formatByteCount,
-  formatBytes,
-  formatPct,
-  formatStorageBytes,
-  formatUptime,
-} from "@/lib/settingsFormat";
+import { cn, formatByteCount } from "@/lib/settingsFormat";
 import {
   Activity,
   AlertTriangle,
   Server,
   Database,
-  Cpu,
   Clock,
-  CheckCircle,
   Bot,
   Cloud,
   HardDrive,
@@ -2672,7 +2663,6 @@ export function Settings() {
   const { t } = useI18n();
   const { data: health } = useHealth();
   const { data: info } = useInfo();
-  const { data: systemMonitor } = useSystemMonitor();
   const [searchParams, setSearchParams] = useSearchParams();
   const sectionParam = searchParams.get("section");
   const activeSection = resolveSettingsSectionId(sectionParam) ?? "general";
@@ -2693,39 +2683,6 @@ export function Settings() {
 
   const healthData = (health || {}) as HealthData;
   const infoData = (info || {}) as InfoData;
-
-  const stats = [
-    {
-      label: "System Status",
-      value: healthData.status || "Unknown",
-      icon: Activity,
-      color: healthData.status === "healthy" ? "text-emerald-400" : "text-red-400",
-    },
-    {
-      label: "Uptime",
-      value: formatUptime(Number(healthData.uptime) || 0),
-      icon: Clock,
-      color: "text-blue-400",
-    },
-    {
-      label: "Version",
-      value: String(infoData.version || "unknown"),
-      icon: CheckCircle,
-      color: "text-amber-400",
-    },
-    {
-      label: "CPU",
-      value: formatPct(systemMonitor?.cpu.usagePct),
-      icon: Cpu,
-      color: "text-cyan-400",
-    },
-    {
-      label: "Memory",
-      value: formatPct(systemMonitor?.memory.usedPct),
-      icon: HardDrive,
-      color: "text-emerald-400",
-    },
-  ];
 
   const checks = healthData.checks
     ? Object.entries(healthData.checks as Record<string, unknown>).filter(
@@ -2778,94 +2735,7 @@ export function Settings() {
                 currentVersion={String(infoData.version || "unknown")}
                 releaseRepositoryUrl={infoData.releaseRepositoryUrl}
               />
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                {stats.map((stat) => (
-                  <Card key={stat.label} variant="liquid">
-                    <CardContent>
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={cn(
-                            "w-12 h-12 rounded-xl flex items-center justify-center bg-white/5",
-                            stat.color
-                          )}
-                        >
-                          <stat.icon className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <p className="text-sm text-gray-400">{stat.label}</p>
-                          <p className="text-xl font-semibold text-white capitalize">
-                            {stat.value}
-                          </p>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-
-              <Card variant="liquid">
-                <CardHeader>
-                  <CardTitle>System Monitor</CardTitle>
-                  <CardDescription>
-                    Live host resource usage from the Cybara gateway
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="rounded-xl bg-white/5 p-4">
-                    <p className="text-sm text-gray-400">CPU</p>
-                    <p className="mt-1 text-2xl font-semibold text-white">
-                      {formatPct(systemMonitor?.cpu.usagePct)}
-                    </p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {systemMonitor?.cpu.cores || 0} cores -{" "}
-                      {systemMonitor?.cpu.model || "Loading CPU"}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-white/5 p-4">
-                    <p className="text-sm text-gray-400">Memory</p>
-                    <p className="mt-1 text-2xl font-semibold text-white">
-                      {formatPct(systemMonitor?.memory.usedPct)}
-                    </p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {formatBytes(systemMonitor?.memory.usedBytes)} /{" "}
-                      {formatBytes(systemMonitor?.memory.totalBytes)} used
-                    </p>
-                  </div>
-                  {systemMonitor?.memory.swap ? (
-                    <div className="rounded-xl bg-white/5 p-4">
-                      <p className="text-sm text-gray-400">Swap</p>
-                      <p className="mt-1 text-2xl font-semibold text-white">
-                        {formatPct(systemMonitor.memory.swap.usedPct)}
-                      </p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        {formatBytes(systemMonitor.memory.swap.usedBytes)} /{" "}
-                        {formatBytes(systemMonitor.memory.swap.totalBytes)} used
-                      </p>
-                    </div>
-                  ) : null}
-                  <div className="rounded-xl bg-white/5 p-4">
-                    <p className="text-sm text-gray-400">Cybara process</p>
-                    <p className="mt-1 text-2xl font-semibold text-white">
-                      {formatPct(systemMonitor?.process.cpuUsagePct)}
-                    </p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {formatBytes(systemMonitor?.process.memory.rssBytes)} RSS - PID{" "}
-                      {systemMonitor?.process.pid || "n/a"}
-                    </p>
-                  </div>
-                  <div className="rounded-xl bg-white/5 p-4">
-                    <p className="text-sm text-gray-400">Disk</p>
-                    <p className="mt-1 text-2xl font-semibold text-white">
-                      {formatPct(systemMonitor?.disk?.usedPct)}
-                    </p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {systemMonitor?.disk
-                        ? `${formatStorageBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}`
-                        : "Disk telemetry unavailable"}
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
+              <SystemMonitorPanel />
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card variant="liquid">

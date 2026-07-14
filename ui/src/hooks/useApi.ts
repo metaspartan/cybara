@@ -45,14 +45,6 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
 // query is mounted and the tab is focused.
 const LIST_POLL_INTERVAL_MS = 30_000;
 
-export function useAgents() {
-  return useQuery({
-    queryKey: ["agents"],
-    queryFn: () => fetchApi<Agent[]>("/agents"),
-    refetchInterval: LIST_POLL_INTERVAL_MS,
-  });
-}
-
 export function useAgentSummaries() {
   return useQuery({
     queryKey: ["agents", "summary"],
@@ -118,7 +110,10 @@ export function useCreateAgent() {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agents"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      queryClient.invalidateQueries({ queryKey: ["agents", "summary"] });
+    },
   });
 }
 
@@ -132,6 +127,7 @@ export function useUpdateAgent() {
       }),
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: ["agents"] });
+      queryClient.invalidateQueries({ queryKey: ["agents", "summary"] });
       queryClient.invalidateQueries({ queryKey: ["agents", id] });
     },
   });
@@ -141,7 +137,10 @@ export function useDeleteAgent() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => fetchApi<void>(`/agents/${id}`, { method: "DELETE" }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["agents"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["agents"] });
+      queryClient.invalidateQueries({ queryKey: ["agents", "summary"] });
+    },
   });
 }
 
@@ -857,6 +856,7 @@ export function useSystemMonitor() {
     queryKey: ["system", "monitor"],
     queryFn: () => fetchApi<SystemMonitorData>("/system/monitor"),
     refetchInterval: 5000,
+    refetchIntervalInBackground: true,
     staleTime: 1000,
   });
 }
