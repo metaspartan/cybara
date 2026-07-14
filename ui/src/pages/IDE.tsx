@@ -84,6 +84,8 @@ import { CreateDialog } from "./ide/CreateDialog";
 import { FileTree, treeBrowseCache } from "./ide/FileTree";
 import { GitStatus } from "./ide/GitStatus";
 import { IDEChatPanel } from "./ide/IDEChatPanel";
+import { IDEKeyboardSettingsPanel } from "./ide/IDEKeyboardSettingsPanel";
+import { IDETerminalSettingsPanel } from "./ide/IDETerminalSettingsPanel";
 import { IDEWelcomeScreen } from "./ide/IDEWelcomeScreen";
 import {
   IdeActivityText,
@@ -132,8 +134,6 @@ import {
   IDE_SIDEBAR_MAX_WIDTH,
   IDE_SIDEBAR_MIN_WIDTH,
   IDE_SIDEBAR_WIDTH_STORAGE_KEY,
-  IDE_TERMINAL_DEFAULT_HEIGHT,
-  IDE_TERMINAL_MAX_HEIGHT,
   IDE_TERMINAL_MIN_HEIGHT,
   IDE_TERMINAL_OPEN_STORAGE_KEY,
   IDE_WORKSPACE_PATH_STORAGE_KEY,
@@ -163,8 +163,6 @@ import {
 } from "./ide/ideDiffHelpers";
 import {
   bindingFromEvent,
-  formatBinding,
-  IDE_ACTIONS,
   type IdeActionId,
   loadKeymapOverrides,
   persistKeymapOverrides,
@@ -2368,13 +2366,6 @@ export function IDE() {
       )
       .map((section) => section.id);
   }, [normalizedSettingsSearch, settingsSections]);
-  const terminalCapabilityLabel =
-    terminalPanelState.capability === "checking"
-      ? "Checking..."
-      : terminalPanelState.capability === "enabled"
-        ? "Enabled"
-        : "Disabled";
-
   useEffect(() => {
     if (!showIdeSettings) return;
     if (visibleSettingsSectionIds.length === 0) return;
@@ -3768,177 +3759,26 @@ export function IDE() {
                 )}
 
                 {ideSettingsSection === "shortcuts" && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-xs text-gray-400">
-                        Click a shortcut to record a new key combination. Editor keys (save, find,
-                        go to line) are handled in the editor.
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={resetAllKeymap}
-                        disabled={Object.keys(keymapOverrides).length === 0}
-                        className="h-7 px-2 text-xs"
-                      >
-                        Reset all
-                      </Button>
-                    </div>
-                    {(() => {
-                      const activeKeymap = resolveKeymap(keymapOverrides);
-                      const categories = Array.from(
-                        new Set(IDE_ACTIONS.map((action) => action.category))
-                      );
-                      return categories.map((category) => (
-                        <div key={category} className="space-y-1">
-                          <div className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-                            {category}
-                          </div>
-                          {IDE_ACTIONS.filter((action) => action.category === category).map(
-                            (action) => {
-                              const isRecording = recordingActionId === action.id;
-                              const customized = action.id in keymapOverrides;
-                              return (
-                                <div
-                                  key={action.id}
-                                  className="flex items-center justify-between rounded border border-white/10 bg-white/[0.02] px-3 py-1.5"
-                                >
-                                  <span className="text-xs text-gray-200">{action.label}</span>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        setRecordingActionId(isRecording ? null : action.id)
-                                      }
-                                      className={cn(
-                                        "min-w-[92px] rounded border px-2 py-1 text-center font-mono text-[11px]",
-                                        isRecording
-                                          ? "border-indigo-500/60 bg-indigo-500/15 text-indigo-200 animate-pulse"
-                                          : "border-white/10 bg-black/35 text-gray-100 hover:border-indigo-500/40"
-                                      )}
-                                    >
-                                      {isRecording
-                                        ? "Press keys…"
-                                        : formatBinding(activeKeymap[action.id], isMacPlatform)}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => resetKeymapAction(action.id)}
-                                      disabled={!customized}
-                                      title="Reset to default"
-                                      className={cn(
-                                        "text-[11px]",
-                                        customized
-                                          ? "text-gray-400 hover:text-gray-200"
-                                          : "cursor-default text-gray-700"
-                                      )}
-                                    >
-                                      Reset
-                                    </button>
-                                  </div>
-                                </div>
-                              );
-                            }
-                          )}
-                        </div>
-                      ));
-                    })()}
-                  </div>
+                  <IDEKeyboardSettingsPanel
+                    isMacPlatform={isMacPlatform}
+                    keymapOverrides={keymapOverrides}
+                    recordingActionId={recordingActionId}
+                    onRecordAction={setRecordingActionId}
+                    onResetAction={resetKeymapAction}
+                    onResetAll={resetAllKeymap}
+                  />
                 )}
 
                 {ideSettingsSection === "terminal" && (
-                  <div className="space-y-3">
-                    <div className="rounded border border-white/10 bg-white/[0.02] px-3 py-2.5 text-xs">
-                      <div className="text-gray-200 font-medium">Terminal capability</div>
-                      <div
-                        className={cn(
-                          "mt-1",
-                          terminalPanelState.capability === "enabled"
-                            ? "text-emerald-300"
-                            : terminalPanelState.capability === "disabled"
-                              ? "text-amber-300"
-                              : "text-gray-400"
-                        )}
-                      >
-                        {terminalCapabilityLabel}
-                      </div>
-                      {terminalPanelState.capability === "disabled" && (
-                        <div className="mt-1 text-gray-500">
-                          Enable it from Settings → Safety or from the terminal panel.
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-start justify-between gap-3 text-xs text-gray-300">
-                      <span>
-                        <span className="text-gray-200 font-medium">
-                          Open terminal panel on IDE startup
-                        </span>
-                        <span className="block text-gray-500 mt-0.5">
-                          Uses the stored terminal panel visibility at startup.
-                        </span>
-                      </span>
-                      <Switch
-                        checked={idePreferences.openTerminalOnStartup}
-                        onChange={(next) => {
-                          updateIdePreferences({ openTerminalOnStartup: next });
-                          setIsTerminalPanelOpen(next);
-                        }}
-                      />
-                    </div>
-                    <div className="flex items-start justify-between gap-3 text-xs text-gray-300">
-                      <span>
-                        <span className="text-gray-200 font-medium">
-                          Auto-create terminal when panel opens
-                        </span>
-                        <span className="block text-gray-500 mt-0.5">
-                          Create one terminal tab automatically.
-                        </span>
-                      </span>
-                      <Switch
-                        checked={idePreferences.autoCreateTerminalOnOpen}
-                        onChange={(next) =>
-                          updateIdePreferences({ autoCreateTerminalOnOpen: next })
-                        }
-                      />
-                    </div>
-                    <label className="block text-xs text-gray-400 space-y-1.5">
-                      <span>Terminal panel height (px)</span>
-                      <input
-                        type="number"
-                        min={IDE_TERMINAL_MIN_HEIGHT}
-                        max={IDE_TERMINAL_MAX_HEIGHT}
-                        value={idePreferences.terminalPanelHeight}
-                        onChange={(event) =>
-                          updateIdePreferences({
-                            terminalPanelHeight: Number.parseInt(
-                              event.target.value || String(IDE_TERMINAL_DEFAULT_HEIGHT),
-                              10
-                            ),
-                          })
-                        }
-                        className="w-44 rounded border border-white/10 bg-black/35 px-2 py-1.5 text-xs text-gray-100 !outline-none focus:border-indigo-500/50"
-                      />
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={openNewTerminal}
-                        className="h-7 px-2 text-xs"
-                        disabled={terminalPanelState.capability !== "enabled"}
-                      >
-                        New Terminal
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={toggleTerminalPanel}
-                        className="h-7 px-2 text-xs"
-                      >
-                        {isTerminalPanelOpen ? "Hide Panel" : "Show Panel"}
-                      </Button>
-                    </div>
-                  </div>
+                  <IDETerminalSettingsPanel
+                    isTerminalPanelOpen={isTerminalPanelOpen}
+                    preferences={idePreferences}
+                    terminalPanelState={terminalPanelState}
+                    onNewTerminal={openNewTerminal}
+                    onSetTerminalPanelOpen={setIsTerminalPanelOpen}
+                    onToggleTerminalPanel={toggleTerminalPanel}
+                    onUpdatePreferences={updateIdePreferences}
+                  />
                 )}
               </div>
 

@@ -12,7 +12,8 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { PageLayout } from "@/components/layout";
-import { useInfo, useHealth, useSystemMonitor } from "@/hooks/useApi";
+import { useInfo, useHealth } from "@/hooks/useApi";
+import { SystemMonitorPanel } from "@/components/settings/SystemMonitorPanel";
 import { Link } from "react-router-dom";
 
 function getCheckStatus(value: unknown): {
@@ -36,55 +37,9 @@ function getCheckStatus(value: unknown): {
   return { status: "healthy" };
 }
 
-function formatBytes(bytes?: number): string {
-  const value = Number(bytes || 0);
-  if (value >= 1024 * 1024 * 1024) return `${(value / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-  if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${Math.round(value)} B`;
-}
-
-function formatStorageBytes(bytes?: number): string {
-  const value = Number(bytes || 0);
-  if (value >= 1000 * 1000 * 1000) return `${(value / (1000 * 1000 * 1000)).toFixed(2)} GB`;
-  if (value >= 1000 * 1000) return `${(value / (1000 * 1000)).toFixed(1)} MB`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)} KB`;
-  return `${Math.round(value)} B`;
-}
-
-function formatPct(value?: number | null): string {
-  return typeof value === "number" && Number.isFinite(value) ? `${value.toFixed(1)}%` : "n/a";
-}
-
-function ResourceBar({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value?: number | null;
-  detail: string;
-}) {
-  const pct =
-    typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.min(100, value)) : 0;
-  return (
-    <div className="space-y-2 rounded-xl bg-white/5 p-3">
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-sm font-medium text-white">{label}</span>
-        <span className="text-sm font-semibold text-cyan-300">{formatPct(value)}</span>
-      </div>
-      <div className="h-2 overflow-hidden rounded-full bg-white/10">
-        <div className="h-full rounded-full bg-cyan-400" style={{ width: `${pct}%` }} />
-      </div>
-      <p className="text-xs text-gray-500">{detail}</p>
-    </div>
-  );
-}
-
 export function Dashboard() {
   const { data: info } = useInfo();
   const { data: health } = useHealth();
-  const { data: systemMonitor } = useSystemMonitor();
 
   const stats = [
     {
@@ -211,8 +166,8 @@ export function Dashboard() {
 
           <Card variant="liquid">
             <CardHeader>
-              <CardTitle>System Status</CardTitle>
-              <CardDescription>Current platform health metrics</CardDescription>
+              <CardTitle>Service Health</CardTitle>
+              <CardDescription>Gateway component status</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between p-3 rounded-xl bg-white/5">
@@ -229,38 +184,6 @@ export function Dashboard() {
                   {health?.status || "Unknown"}
                 </Badge>
               </div>
-
-              <ResourceBar
-                label="CPU"
-                value={systemMonitor?.cpu.usagePct}
-                detail={`${systemMonitor?.cpu.cores || 0} cores - ${systemMonitor?.cpu.model || "Loading CPU"}`}
-              />
-              <ResourceBar
-                label="Memory"
-                value={systemMonitor?.memory.usedPct}
-                detail={`${formatBytes(systemMonitor?.memory.usedBytes)} / ${formatBytes(systemMonitor?.memory.totalBytes)} used`}
-              />
-              {systemMonitor?.memory.swap ? (
-                <ResourceBar
-                  label="Swap"
-                  value={systemMonitor.memory.swap.usedPct}
-                  detail={`${formatBytes(systemMonitor.memory.swap.usedBytes)} / ${formatBytes(systemMonitor.memory.swap.totalBytes)} used`}
-                />
-              ) : null}
-              <ResourceBar
-                label="Process"
-                value={systemMonitor?.process.cpuUsagePct}
-                detail={`${formatBytes(systemMonitor?.process.memory.rssBytes)} RSS - PID ${systemMonitor?.process.pid || "n/a"}`}
-              />
-              <ResourceBar
-                label="Disk"
-                value={systemMonitor?.disk?.usedPct}
-                detail={
-                  systemMonitor?.disk
-                    ? `${formatStorageBytes(systemMonitor.disk.freeBytes)} free at ${systemMonitor.disk.path}`
-                    : "Disk telemetry unavailable"
-                }
-              />
 
               {checks.map(([key, value]) => {
                 const check = getCheckStatus(value);
@@ -306,6 +229,8 @@ export function Dashboard() {
             </CardContent>
           </Card>
         </div>
+
+        <SystemMonitorPanel />
       </div>
     </PageLayout>
   );

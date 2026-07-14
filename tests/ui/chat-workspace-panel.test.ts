@@ -7,6 +7,7 @@ const chatSource = [
   "../../ui/src/pages/Chat.tsx",
   "../../ui/src/pages/chat/ChatWorkspaceDock.tsx",
   "../../ui/src/pages/chat/ChatPageHeader.tsx",
+  "../../ui/src/pages/chat/useChatWorkspaceTabs.ts",
 ]
   .map((path) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8"))
   .join("\n");
@@ -144,15 +145,15 @@ describe("chat workspace panel", () => {
 
   test("keeps a visible workspace panel on a valid active tab after chat switches", () => {
     expect(chatSource).toContain(
-      "if (workspaceTabs.some((instance) => instance.id === activeWorkspaceTab)) return;"
+      "if (tabs.some((instance) => instance.id === activeTabId)) return;"
     );
-    expect(chatSource).toContain("setActiveWorkspaceTab(workspaceTabs[0].id)");
+    expect(chatSource).toContain("selectTab(tabs[0].id)");
   });
 
   test("browser and terminal support multiple instances in the workspace panel", () => {
     expect(panelSource).toContain("WorkspaceTabInstance");
     expect(panelSource).toContain("WORKSPACE_SINGLETON_KINDS");
-    expect(chatSource).toContain("workspaceTabIdRef");
+    expect(chatSource).toContain("tabIdRef");
     expect(chatSource).toContain(
       'kind === "browser" && current.some((instance) => instance.kind === "browser")'
     );

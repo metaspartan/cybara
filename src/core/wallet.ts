@@ -66,6 +66,7 @@ import {
   parsePositiveAtomicAmount,
 } from "./wallet-internal";
 import { assertAmountWithinCap, assertRecipientAllowed } from "./wallet-policy";
+import { checkWalletRpcStatus } from "./wallet-rpc-health";
 import {
   decodeWalletInstructionData,
   deriveWalletAesKey,
@@ -442,16 +443,7 @@ class WalletManager {
   }
 
   async getRpcStatus(): Promise<WalletRpcStatus> {
-    const rpc = this.getRpcConfig();
-    const checkedAt = new Date().toISOString();
-
-    const services = await Promise.all([
-      this.checkEthRpc(rpc.ethRpc),
-      this.checkSolRpc(rpc.solRpc),
-      this.checkBtcApi(rpc.btcApi),
-    ]);
-
-    return { checkedAt, services };
+    return checkWalletRpcStatus(this.getRpcConfig());
   }
 
   getAgentAddress(): {
@@ -4093,129 +4085,6 @@ class WalletManager {
       responseHeaders: this.serializeResponseHeaders(input.response.headers),
       body,
     };
-  }
-
-  private async checkEthRpc(endpoint: string): Promise<WalletRpcServiceStatus> {
-    const startedAt = Date.now();
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "user-agent": "cybara-wallet/1.0",
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "eth_blockNumber",
-          params: [],
-        }),
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const payload = (await response.json()) as { result?: string; error?: { message?: string } };
-      if (payload.error) {
-        throw new Error(payload.error.message || "RPC error");
-      }
-      const blockNumber = Number.parseInt(String(payload.result || "0x0"), 16);
-      return {
-        chain: "eth",
-        endpoint,
-        healthy: true,
-        latencyMs: Date.now() - startedAt,
-        latestHeight: Number.isFinite(blockNumber) ? String(blockNumber) : undefined,
-      };
-    } catch (error) {
-      return {
-        chain: "eth",
-        endpoint,
-        healthy: false,
-        latencyMs: Date.now() - startedAt,
-        error: (error as Error).message,
-      };
-    }
-  }
-
-  private async checkSolRpc(endpoint: string): Promise<WalletRpcServiceStatus> {
-    const startedAt = Date.now();
-    try {
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "user-agent": "cybara-wallet/1.0",
-        },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "getSlot",
-          params: [{ commitment: "processed" }],
-        }),
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const payload = (await response.json()) as {
-        result?: number;
-        error?: { message?: string };
-      };
-      if (payload.error) {
-        throw new Error(payload.error.message || "RPC error");
-      }
-      return {
-        chain: "sol",
-        endpoint,
-        healthy: true,
-        latencyMs: Date.now() - startedAt,
-        latestHeight:
-          typeof payload.result === "number" && Number.isFinite(payload.result)
-            ? String(payload.result)
-            : undefined,
-      };
-    } catch (error) {
-      return {
-        chain: "sol",
-        endpoint,
-        healthy: false,
-        latencyMs: Date.now() - startedAt,
-        error: (error as Error).message,
-      };
-    }
-  }
-
-  private async checkBtcApi(endpoint: string): Promise<WalletRpcServiceStatus> {
-    const startedAt = Date.now();
-    try {
-      const response = await fetch(`${this.normalizeBtcApiBase(endpoint)}/blocks/tip/height`, {
-        headers: { "user-agent": "cybara-wallet/1.0" },
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const height = (await response.text()).trim();
-      if (!height) {
-        throw new Error("Empty height response");
-      }
-      return {
-        chain: "btc",
-        endpoint,
-        healthy: true,
-        latencyMs: Date.now() - startedAt,
-        latestHeight: height,
-      };
-    } catch (error) {
-      return {
-        chain: "btc",
-        endpoint,
-        healthy: false,
-        latencyMs: Date.now() - startedAt,
-        error: (error as Error).message,
-      };
-    }
   }
 
   private async resolveEthTokenTarget(

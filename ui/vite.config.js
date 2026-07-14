@@ -13,13 +13,13 @@ export default defineConfig({
         port: 5173,
         proxy: {
             "/api": {
-                target: "http://localhost:4269",
+                target: "http://127.0.0.1:4269",
                 changeOrigin: true,
                 ws: true,
                 rewriteWsOrigin: true,
                 configure: (proxy) => {
                     proxy.on("proxyReqWs", (proxyReq) => {
-                        proxyReq.setHeader("origin", "http://localhost:4269");
+                        proxyReq.setHeader("origin", "http://127.0.0.1:4269");
                     });
                 },
             },

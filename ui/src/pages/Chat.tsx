@@ -1,14 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowDown,
-  Folder,
-  Loader2,
-  Plus,
-  RotateCcw,
-  Share2,
-  Sparkles,
-  Square,
-} from "lucide-react";
+import { ArrowDown, Folder, Loader2, Plus, RotateCcw, Share2, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
@@ -27,18 +18,6 @@ import {
   suppressRecoveredWebFailureActivities,
 } from "@/lib/chatActivities";
 import { loadPersistedCompletion } from "@/lib/chatCompletion";
-import {
-  type ChatFileAttachment,
-  fileToChatImage,
-  fileToTextAttachment,
-  formatAttachedFiles,
-  isSupportedImageType,
-  isTextLikeFile,
-  MAX_CHAT_IMAGE_BYTES,
-  MAX_CHAT_IMAGES,
-  MAX_TEXT_FILE_BYTES,
-  MAX_TEXT_FILES,
-} from "@/lib/chatImages";
 import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
 import { useI18n } from "@/lib/i18n";
 import {
@@ -51,7 +30,6 @@ import {
 import { useUIStore } from "@/stores/uiStore";
 import type {
   Agent,
-  ChatImageAttachment,
   ProviderPlanSnapshot,
   ProviderPlanStatusResponse,
   SessionContextUsage,
@@ -67,11 +45,6 @@ import { ChatImageLightbox, type ChatLightboxImage } from "./chat/ChatImageLight
 import { ChatMessageTimeline } from "./chat/ChatMessageTimeline";
 import { ChatPageHeader } from "./chat/ChatPageHeader";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
-import {
-  type ChatWorkspaceTab,
-  WORKSPACE_SINGLETON_KINDS,
-  type WorkspaceTabInstance,
-} from "./chat/ChatWorkspacePanel";
 import {
   type ArtifactSummaryView,
   applyLiveActivityEvent,
@@ -132,8 +105,10 @@ import {
 } from "./chat/pendingQueueCache";
 import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
 import { SessionsPanel } from "./chat/SessionSidebar";
+import { useChatAttachments } from "./chat/useChatAttachments";
 import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
 import { useChatDictation } from "./chat/useChatDictation";
+import { useChatWorkspaceTabs } from "./chat/useChatWorkspaceTabs";
 import { useEnvironmentGitBranches } from "./chat/useEnvironmentGitBranches";
 import { useSessionFileChanges } from "./chat/useSessionFileChanges";
 
@@ -213,9 +188,18 @@ export function Chat() {
     status: dictationStatus,
     transcribing: dictationTranscribing,
   } = useChatDictation(setInput);
-  const [pendingImages, setPendingImages] = useState<ChatImageAttachment[]>([]);
-  const [pendingFiles, setPendingFiles] = useState<ChatFileAttachment[]>([]);
-  const [imageDragActive, setImageDragActive] = useState(false);
+  const {
+    addAttachmentFiles,
+    consumeAttachments,
+    handleComposerDrop,
+    handleComposerPaste,
+    imageDragActive,
+    pendingFiles,
+    pendingImages,
+    removePendingFile,
+    removePendingImage,
+    setImageDragActive,
+  } = useChatAttachments();
   const [imageLightbox, setImageLightbox] = useState<{
     images: ChatLightboxImage[];
     index: number;
@@ -303,20 +287,20 @@ export function Chat() {
   );
   const [reverting, setReverting] = useState(false);
   const [showSessionsPanel, setShowSessionsPanel] = useState(true);
-  const [showWorkspacePanel, setShowWorkspacePanel] = useState(false);
-  const [workspaceTabs, setWorkspaceTabs] = useState<WorkspaceTabInstance[]>([]);
-  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<string | null>(null);
-  const workspaceTabIdRef = useRef(0);
-  const activeWorkspaceKind = useMemo(
-    () => workspaceTabs.find((instance) => instance.id === activeWorkspaceTab)?.kind ?? null,
-    [workspaceTabs, activeWorkspaceTab]
-  );
-  useEffect(() => {
-    if (!showWorkspacePanel || workspaceTabs.length === 0) return;
-    if (workspaceTabs.some((instance) => instance.id === activeWorkspaceTab)) return;
-    setActiveWorkspaceTab(workspaceTabs[0].id);
-  }, [activeWorkspaceTab, showWorkspacePanel, workspaceTabs]);
   const [showEnvironmentOverview, setShowEnvironmentOverview] = useState(false);
+  const closeEnvironmentOverview = useCallback(() => setShowEnvironmentOverview(false), []);
+  const {
+    activeKind: activeWorkspaceKind,
+    activeTabId: activeWorkspaceTab,
+    closeTab: closeWorkspaceTab,
+    isOpen: showWorkspacePanel,
+    openTab: openWorkspaceTab,
+    selectTab: setActiveWorkspaceTab,
+    setOpen: setShowWorkspacePanel,
+    tabs: workspaceTabs,
+    toggleTab: toggleWorkspaceTab,
+    updateTabTitle: updateWorkspaceTabTitle,
+  } = useChatWorkspaceTabs({ onOpen: closeEnvironmentOverview });
   const [hiddenComposerPlanKey, setHiddenComposerPlanKey] = useState<string | null>(null);
   const [diffPanelWidth, setDiffPanelWidth] = useState<number>(() => readPersistedDiffPanelWidth());
   const [selectedDiffPath, setSelectedDiffPath] = useState<string | null>(null);
@@ -441,53 +425,6 @@ export function Chat() {
     liveActivities,
     showWorkspacePanel && activeWorkspaceKind === "review"
   );
-  const openWorkspaceTab = useCallback((kind: ChatWorkspaceTab) => {
-    setShowWorkspacePanel(true);
-    setShowEnvironmentOverview(false);
-    setWorkspaceTabs((current) => {
-      if (WORKSPACE_SINGLETON_KINDS.has(kind)) {
-        const existing = current.find((instance) => instance.kind === kind);
-        if (existing) {
-          setActiveWorkspaceTab(existing.id);
-          return current;
-        }
-      }
-      const id = `${kind}-${(workspaceTabIdRef.current += 1)}`;
-      const pageKey =
-        kind === "browser" && current.some((instance) => instance.kind === "browser")
-          ? id
-          : undefined;
-      setActiveWorkspaceTab(id);
-      return [...current, { id, kind, pageKey }];
-    });
-  }, []);
-  const toggleWorkspaceTab = useCallback(
-    (kind: ChatWorkspaceTab) => {
-      const activeKind = workspaceTabs.find((instance) => instance.id === activeWorkspaceTab)?.kind;
-      if (showWorkspacePanel && activeKind === kind) {
-        setShowWorkspacePanel(false);
-        return;
-      }
-      openWorkspaceTab(kind);
-    },
-    [showWorkspacePanel, activeWorkspaceTab, workspaceTabs, openWorkspaceTab]
-  );
-  const closeWorkspaceTab = useCallback((id: string) => {
-    setWorkspaceTabs((current) => {
-      const index = current.findIndex((instance) => instance.id === id);
-      if (index === -1) return current;
-      const next = current.filter((instance) => instance.id !== id);
-      setActiveWorkspaceTab((prev) =>
-        prev === id ? (next[Math.min(index, next.length - 1)]?.id ?? null) : prev
-      );
-      return next;
-    });
-  }, []);
-  const updateWorkspaceTabTitle = useCallback((id: string, title: string) => {
-    setWorkspaceTabs((current) =>
-      current.map((instance) => (instance.id === id ? { ...instance, title } : instance))
-    );
-  }, []);
   const currentSessionPlan = useMemo(
     () => extractLatestPlanFromMessages(typedMessages, sessionId),
     [typedMessages, sessionId]
@@ -2015,52 +1952,6 @@ export function Chat() {
     );
   }, [activeSessionIds, isLoading, liveActivities.length, liveStatus, loadingSessionId, sessionId]);
 
-  const addAttachmentFiles = async (files: Iterable<File>) => {
-    const list = Array.from(files);
-    const images: ChatImageAttachment[] = [];
-    const texts: ChatFileAttachment[] = [];
-    for (const file of list) {
-      if (isSupportedImageType(file.type)) {
-        if (file.size <= MAX_CHAT_IMAGE_BYTES) images.push(await fileToChatImage(file));
-      } else if (isTextLikeFile(file)) {
-        if (file.size <= MAX_TEXT_FILE_BYTES) texts.push(await fileToTextAttachment(file));
-      }
-    }
-    if (images.length) {
-      setPendingImages((previous) => [...previous, ...images].slice(0, MAX_CHAT_IMAGES));
-    }
-    if (texts.length) {
-      setPendingFiles((previous) => [...previous, ...texts].slice(0, MAX_TEXT_FILES));
-    }
-  };
-
-  const hasAttachableFiles = (files: Iterable<File>) =>
-    Array.from(files).some((file) => isSupportedImageType(file.type) || isTextLikeFile(file));
-
-  const removePendingImage = (index: number) => {
-    setPendingImages((previous) => previous.filter((_, i) => i !== index));
-  };
-
-  const removePendingFile = (index: number) => {
-    setPendingFiles((previous) => previous.filter((_, i) => i !== index));
-  };
-
-  const handleComposerPaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    const files = Array.from(event.clipboardData?.files || []);
-    if (files.length === 0 || !hasAttachableFiles(files)) return;
-    event.preventDefault();
-    void addAttachmentFiles(files);
-  };
-
-  const handleComposerDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    const files = Array.from(event.dataTransfer?.files || []);
-    if (files.length > 0 && hasAttachableFiles(files)) {
-      event.preventDefault();
-      void addAttachmentFiles(files);
-    }
-    setImageDragActive(false);
-  };
-
   const handleSend = async () => {
     suppressAutoRestoreRef.current = false;
     const currentMessageWouldQueue = canQueueCurrentMessage() || pendingMessages.length > 0;
@@ -2077,11 +1968,8 @@ export function Chat() {
       (isLoading && !queueMode)
     )
       return;
-    const message = formatAttachedFiles(input, pendingFiles);
-    const images = pendingImages;
+    const { images, message } = consumeAttachments(input);
     setInput("");
-    setPendingImages([]);
-    setPendingFiles([]);
     let optimisticPendingMessageId: string | null = null;
     if (queueMode && requestSessionId) {
       const now = Date.now();
@@ -2937,7 +2825,12 @@ export function Chat() {
                 {typedMessages.length === 0 && (
                   <div className="flex h-[calc(100%-1rem)] items-center justify-center">
                     <div className="text-center text-gray-500">
-                      <Sparkles className="mx-auto mb-3 h-8 w-8 opacity-30" />
+                      <img
+                        src="/cybara.png"
+                        alt=""
+                        aria-hidden="true"
+                        className="mx-auto mb-3 h-10 w-10 object-contain opacity-35 grayscale brightness-[1.7] contrast-150"
+                      />
                       <p className="text-sm font-medium">Start a conversation</p>
                       <p className="mt-1 text-[12px] text-gray-600">
                         Ask questions, get help with code, or chat with your agents

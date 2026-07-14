@@ -17,6 +17,7 @@ import {
   Logs,
   Menu,
   MessageSquare,
+  MessageSquarePlus,
   MessagesSquare,
   Network,
   Package,
@@ -36,6 +37,7 @@ import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { CybaraThinkingMark } from "@/components/CybaraThinkingMark";
 import { providerPlansApi } from "@/lib/api";
+import { useInfo } from "@/hooks/useApi";
 import { useI18n } from "@/lib/i18n";
 import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
@@ -285,6 +287,8 @@ const navCategories: SidebarNavCategory[] = [
 export function Sidebar() {
   const location = useLocation();
   const status = useAgentStatus();
+  const { data: info } = useInfo();
+  const hasAgents = (info?.stats?.agents?.total ?? 0) > 0;
   const { t } = useI18n();
   const { collapsed, setCollapsed, width, setWidth, mobileOpen, setMobileOpen } = useSidebar();
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
@@ -447,6 +451,22 @@ export function Sidebar() {
               collapsed ? "overflow-hidden" : "overflow-y-auto"
             )}
           >
+            {hasAgents ? (
+              <div className="mb-1 pb-2 border-b border-white/5">
+                <NavLink
+                  to="/chat?fresh=1"
+                  title={collapsed ? t("chat.sidebar.newChat") : undefined}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-lg text-[13px] font-semibold transition-all duration-200 !ring-0",
+                    "border border-[rgba(var(--accent-primary),0.3)] bg-[rgba(var(--accent-primary),0.12)] text-white hover:bg-[rgba(var(--accent-primary),0.2)]",
+                    collapsed ? "px-3 py-2.5 justify-center" : "px-3.5 py-2.5"
+                  )}
+                >
+                  <MessageSquarePlus className="w-4 h-4 flex-shrink-0 accent-text" />
+                  {!collapsed && <span className="truncate">{t("chat.sidebar.newChat")}</span>}
+                </NavLink>
+              </div>
+            ) : null}
             {navCategories.map((category) => (
               <div key={category.id}>
                 {category.labelKey && !collapsed ? (
