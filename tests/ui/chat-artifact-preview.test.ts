@@ -15,6 +15,9 @@ const assistantMetaInlinePath = fileURLToPath(
 const assistantMetaModelPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/assistantMetaModel.ts", import.meta.url)
 );
+const chatMessageTimelinePath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ChatMessageTimeline.tsx", import.meta.url)
+);
 
 function readChatSource(): string {
   return (
@@ -22,7 +25,8 @@ function readChatSource(): string {
     readFileSync(chatModelPath, "utf8") +
     readFileSync(artifactViewerPath, "utf8") +
     readFileSync(assistantMetaInlinePath, "utf8") +
-    readFileSync(assistantMetaModelPath, "utf8")
+    readFileSync(assistantMetaModelPath, "utf8") +
+    readFileSync(chatMessageTimelinePath, "utf8")
   );
 }
 
@@ -55,6 +59,6 @@ describe("Chat artifact preview wiring", () => {
     expect(source).toContain("Markdown");
     expect(source).toContain("Raw");
     expect(source).toContain("{artifactViewerTarget ? (");
-    expect(source).toContain("onOpenArtifact={openArtifactViewer}");
+    expect(source).toContain("onOpenArtifact={(artifact) => void openArtifactViewer(artifact)}");
   });
 });

@@ -38,6 +38,9 @@ const sessionFileChangesPath = fileURLToPath(
 const sessionDiffPanelPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/SessionDiffPanel.tsx", import.meta.url)
 );
+const chatMessageTimelinePath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ChatMessageTimeline.tsx", import.meta.url)
+);
 const desktopHostPath = fileURLToPath(new URL("../../ui/src/lib/desktopHost.ts", import.meta.url));
 
 function readChatSource(): string {
@@ -51,7 +54,8 @@ function readChatSource(): string {
     readFileSync(fileChangesCardPath, "utf8") +
     readFileSync(messageContentPath, "utf8") +
     readFileSync(sessionFileChangesPath, "utf8") +
-    readFileSync(sessionDiffPanelPath, "utf8")
+    readFileSync(sessionDiffPanelPath, "utf8") +
+    readFileSync(chatMessageTimelinePath, "utf8")
   );
 }
 
@@ -66,7 +70,9 @@ describe("Chat revert and diff wiring", () => {
     expect(source).not.toContain("Revert to here");
     expect(source).toContain('aria-label="Revert session to this message"');
     expect(source).toContain('aria-label="Copy message"');
-    expect(source).toContain("handleCopyMessage(originalIndex, message.content)");
+    expect(source).toContain(
+      "onCopyMessage={(index, content) => void handleCopyMessage(index, content)}"
+    );
     // Copy shows transient success feedback and has a legacy fallback.
     expect(source).toContain("copiedMessageIndex === originalIndex");
     expect(source).toContain('document.execCommand("copy")');

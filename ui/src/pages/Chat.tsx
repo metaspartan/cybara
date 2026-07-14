@@ -2,13 +2,9 @@ import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowDown,
-  Check,
   CheckCircle2,
-  Copy,
   FileText,
-  FlaskConical,
   Folder,
-  GitFork,
   Loader2,
   MessageSquare,
   Mic,
@@ -21,9 +17,6 @@ import {
   SlidersHorizontal,
   Sparkles,
   Square,
-  User,
-  Volume2,
-  VolumeX,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -52,7 +45,6 @@ import {
   formatAttachedFiles,
   formatBytes,
   imageAttachmentBytes,
-  imageToolResultSrc,
   isSupportedImageType,
   isTextLikeFile,
   MAX_CHAT_IMAGE_BYTES,
@@ -70,7 +62,6 @@ import {
   type StatusStreamStatusEvent,
   type StatusStreamTokenEvent,
 } from "@/lib/status-stream";
-import { formatRelativeTime } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
 import type {
   Agent,
@@ -81,9 +72,7 @@ import type {
   SessionTokenUsage,
 } from "@/types";
 import { LiveActivityTimeline } from "./chat/ActivityTimeline";
-import { AgentTransferTimeline } from "./chat/AgentTransferTimeline";
 import { ArtifactViewerPanel } from "./chat/ArtifactViewerPanel";
-import { AssistantMetaInline } from "./chat/AssistantMetaInline";
 import { parseTimestampMs } from "./chat/assistantMetaModel";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
 import { ChatCapabilityMenu } from "./chat/ChatCapabilityMenu";
@@ -97,6 +86,7 @@ import {
 } from "./chat/ChatFollowUpControls";
 import { ChatHeaderTitleMenu } from "./chat/ChatHeaderTitleMenu";
 import { ChatImageLightbox, type ChatLightboxImage } from "./chat/ChatImageLightbox";
+import { ChatMessageTimeline } from "./chat/ChatMessageTimeline";
 import { ChatReasoningControl } from "./chat/ChatReasoningControl";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
 import {
@@ -119,7 +109,6 @@ import {
   formatWorkspaceLabel,
   getLatestInFlightStep,
   getLegacyMessageProcessKey,
-  getMessageProcessActivities,
   getMessageProcessKey,
   isAgentUsingBrowser,
   isGenericStatusLabel,
@@ -156,7 +145,6 @@ import {
   readCachedLiveSessionState,
   writeCachedLiveSessionState,
 } from "./chat/liveSessionState";
-import { MessageContent } from "./chat/MessageContent";
 import { writeCachedSessionMessages } from "./chat/messageCache";
 import { PendingApprovalsBanner } from "./chat/PendingApprovalsBanner";
 import { PlanSummaryCard } from "./chat/PlanSummaryCard";
@@ -3039,12 +3027,12 @@ export function Chat() {
                 onScroll={refreshScrollToBottomVisibility}
                 className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-4"
               >
-                {typedMessages.length === 0 ? (
-                  <div className="flex items-center justify-center h-[calc(100%-1rem)]">
+                {typedMessages.length === 0 && (
+                  <div className="flex h-[calc(100%-1rem)] items-center justify-center">
                     <div className="text-center text-gray-500">
-                      <Sparkles className="w-8 h-8 mx-auto mb-3 opacity-30" />
+                      <Sparkles className="mx-auto mb-3 h-8 w-8 opacity-30" />
                       <p className="text-sm font-medium">Start a conversation</p>
-                      <p className="text-[12px] mt-1 text-gray-600">
+                      <p className="mt-1 text-[12px] text-gray-600">
                         Ask questions, get help with code, or chat with your agents
                       </p>
                       <button
@@ -3071,261 +3059,28 @@ export function Chat() {
                       </button>
                     </div>
                   </div>
-                ) : (
-                  visibleMessageEntries.map(({ message, originalIndex, turnStartedAtMs }) => {
-                    const persistedProcessActivities = getMessageProcessActivities(
-                      messageProcessMap,
-                      sessionId,
-                      message,
-                      originalIndex
-                    );
-                    const embeddedProcessActivities = normalizeMessageProcessActivities(
-                      message.process_activities,
-                      parseTimestampMs(message.timestamp) ?? turnStartedAtMs
-                    );
-                    const restoredProcessActivities = mergeActivityLists(
-                      persistedProcessActivities,
-                      embeddedProcessActivities
-                    );
-                    const fallbackToolActivities =
-                      restoredProcessActivities.length === 0
-                        ? buildActivitiesFromToolCalls(message.tool_calls, formatToolIntent, {
-                            baseTimestampMs:
-                              parseTimestampMs(message.timestamp) ?? turnStartedAtMs ?? 0,
-                          })
-                        : [];
-                    const mergedActivities = suppressRecoveredWebFailureActivities(
-                      mergeActivityLists(restoredProcessActivities, fallbackToolActivities),
-                      message.tool_calls
-                    );
-                    const processActivities =
-                      mergedActivities.length > 0
-                        ? finalizeCompletedActivities(mergedActivities)
-                        : undefined;
-                    return (
-                      <div
-                        key={`${message.timestamp || "msg"}-${originalIndex}`}
-                        className={`deferred-chat-message flex gap-3 ${
-                          message.role === "user" ? "flex-row-reverse" : ""
-                        }`}
-                      >
-                        {message.role === "user" && (
-                          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center flex-shrink-0 bg-[rgba(var(--accent-primary),0.2)]">
-                            <User className="w-3.5 h-3.5 sm:w-4 sm:h-4 accent-text" />
-                          </div>
-                        )}
-                        <div
-                          className={
-                            message.role === "user"
-                              ? "max-w-[85%] sm:max-w-[75%] lg:max-w-[65%] text-right"
-                              : "w-full min-w-0"
-                          }
-                        >
-                          <div
-                            className={
-                              message.role === "user"
-                                ? "rounded-xl sm:rounded-2xl px-3 py-2 sm:px-4 sm:py-3 border border-[rgba(var(--accent-primary),0.2)]"
-                                : "py-1"
-                            }
-                          >
-                            {message.role !== "user" && (
-                              <AssistantMetaInline
-                                message={message}
-                                processActivities={processActivities}
-                                sessionId={sessionId}
-                                turnStartedAtMs={turnStartedAtMs}
-                                onOpenArtifact={openArtifactViewer}
-                                section="work"
-                                workspaceDir={effectiveWorkspaceDir}
-                              />
-                            )}
-                            <AgentTransferTimeline transfers={message.agent_transfers} />
-                            {message.images && message.images.length > 0 && (
-                              <div
-                                className={cn(
-                                  "flex flex-wrap gap-2",
-                                  message.content ? "mb-2" : "",
-                                  message.role === "user" ? "justify-end" : ""
-                                )}
-                              >
-                                {message.images.map((image, imageIndex) => {
-                                  const src = chatImageSrc(image);
-                                  if (!src) return null;
-                                  return (
-                                    <button
-                                      type="button"
-                                      key={`msg-image-${originalIndex}-${imageIndex}`}
-                                      onClick={() => openChatImage(src, image.name || "Attachment")}
-                                      data-chat-lightbox-src={src}
-                                      data-chat-lightbox-alt={image.name || "Attachment"}
-                                      className="block max-w-[220px] cursor-zoom-in overflow-hidden rounded-lg border border-white/12"
-                                      aria-label={`Open ${image.name || "attachment"} preview`}
-                                    >
-                                      <img
-                                        src={src}
-                                        alt="Attachment"
-                                        loading="lazy"
-                                        className="h-auto max-h-64 w-full object-contain"
-                                      />
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            )}
-                            <MessageContent content={message.content} onOpenImage={openChatImage} />
-                            {message.role !== "user" &&
-                              (() => {
-                                const outputImages = (message.tool_calls || [])
-                                  .map((toolCall) => imageToolResultSrc(toolCall.result))
-                                  .filter((src): src is string => !!src);
-                                if (outputImages.length === 0) return null;
-                                return (
-                                  <div className="mt-2 flex flex-wrap gap-2">
-                                    {outputImages.map((src, imageIndex) => (
-                                      <button
-                                        type="button"
-                                        key={`tool-image-${originalIndex}-${imageIndex}`}
-                                        onClick={() => openChatImage(src, "Tool output")}
-                                        data-chat-lightbox-src={src}
-                                        data-chat-lightbox-alt="Tool output"
-                                        className="block max-w-[320px] cursor-zoom-in overflow-hidden rounded-lg border border-white/12"
-                                        aria-label="Open tool output preview"
-                                      >
-                                        <img
-                                          src={src}
-                                          alt="Tool output"
-                                          loading="lazy"
-                                          className="h-auto max-h-80 w-full object-contain"
-                                        />
-                                      </button>
-                                    ))}
-                                  </div>
-                                );
-                              })()}
-                            {message.role !== "user" && (
-                              <AssistantMetaInline
-                                message={message}
-                                processActivities={processActivities}
-                                sessionId={sessionId}
-                                turnStartedAtMs={turnStartedAtMs}
-                                onOpenArtifact={openArtifactViewer}
-                                section="summary"
-                                workspaceDir={effectiveWorkspaceDir}
-                              />
-                            )}
-                          </div>
-
-                          <div
-                            className={cn(
-                              "mt-1.5 flex items-center gap-1.5",
-                              message.role === "user" ? "justify-end" : "justify-start"
-                            )}
-                          >
-                            {message.timestamp && (
-                              <span className="text-[10px] text-gray-600">
-                                {formatRelativeTime(message.timestamp)}
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => void handleCopyMessage(originalIndex, message.content)}
-                              className="chat-message-action p-1 rounded-md cursor-pointer"
-                              title="Copy message"
-                              aria-label="Copy message"
-                            >
-                              {copiedMessageIndex === originalIndex ? (
-                                <Check className="w-3 h-3 text-emerald-400" />
-                              ) : (
-                                <Copy className="w-3 h-3" />
-                              )}
-                            </button>
-                            {message.role === "assistant" && message.content.trim() && (
-                              <button
-                                type="button"
-                                onClick={() => void handleReadAloud(originalIndex, message.content)}
-                                className="chat-message-action p-1 rounded-md cursor-pointer"
-                                title={
-                                  speakingMessageIndex === originalIndex
-                                    ? "Stop reading aloud"
-                                    : "Read aloud"
-                                }
-                                aria-label={
-                                  speakingMessageIndex === originalIndex
-                                    ? "Stop reading aloud"
-                                    : "Read aloud"
-                                }
-                              >
-                                {speakingMessageIndex === originalIndex ? (
-                                  <VolumeX className="h-3 w-3" />
-                                ) : (
-                                  <Volume2 className="h-3 w-3" />
-                                )}
-                              </button>
-                            )}
-                            {sessionId && (
-                              <button
-                                type="button"
-                                onClick={() => void handleForkSession(originalIndex)}
-                                disabled={forkingMessageIndex !== null}
-                                className="chat-message-action p-1 rounded-md cursor-pointer disabled:opacity-50"
-                                title="Fork chat from this message"
-                                aria-label="Fork chat from this message"
-                              >
-                                {forkingMessageIndex === originalIndex ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <GitFork className="h-3 w-3" />
-                                )}
-                              </button>
-                            )}
-                            {message.role === "assistant" && sessionId && (
-                              <button
-                                type="button"
-                                onClick={() => void handleSaveGolden(originalIndex)}
-                                disabled={savingGoldenMessageIndex !== null}
-                                className="chat-message-action p-1 rounded-md cursor-pointer disabled:opacity-50"
-                                title="Save turn as golden test"
-                                aria-label="Save turn as golden test"
-                              >
-                                {savingGoldenMessageIndex === originalIndex ? (
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                ) : (
-                                  <FlaskConical className="h-3 w-3" />
-                                )}
-                              </button>
-                            )}
-                            {message.role === "user" && sessionId && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setRevertTarget({
-                                    index: originalIndex,
-                                    content: message.content,
-                                    timestamp: message.timestamp,
-                                  })
-                                }
-                                className="chat-message-action p-1 rounded-md cursor-pointer"
-                                title="Revert session to this message"
-                                aria-label="Revert session to this message"
-                              >
-                                <RotateCcw className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
                 )}
-                {showWorkingTimeline && (
-                  <div className="w-full min-w-0 py-1">
-                    <LiveActivityTimeline
-                      status={timelineStatus}
-                      activities={timelineActivities}
-                      currentStep={liveCurrentStep}
-                    />
-                  </div>
-                )}
+                <ChatMessageTimeline
+                  copiedMessageIndex={copiedMessageIndex}
+                  entries={visibleMessageEntries}
+                  forkingMessageIndex={forkingMessageIndex}
+                  liveActivities={timelineActivities}
+                  liveCurrentStep={liveCurrentStep}
+                  liveStatus={timelineStatus}
+                  messageProcessMap={messageProcessMap}
+                  savingGoldenMessageIndex={savingGoldenMessageIndex}
+                  sessionId={sessionId}
+                  showWorkingTimeline={showWorkingTimeline}
+                  speakingMessageIndex={speakingMessageIndex}
+                  workspaceDir={effectiveWorkspaceDir}
+                  onCopyMessage={(index, content) => void handleCopyMessage(index, content)}
+                  onForkSession={(index) => void handleForkSession(index)}
+                  onOpenArtifact={(artifact) => void openArtifactViewer(artifact)}
+                  onOpenImage={openChatImage}
+                  onReadAloud={(index, content) => void handleReadAloud(index, content)}
+                  onRevert={setRevertTarget}
+                  onSaveGolden={(index) => void handleSaveGolden(index)}
+                />
               </div>
 
               {showScrollToBottomButton && (

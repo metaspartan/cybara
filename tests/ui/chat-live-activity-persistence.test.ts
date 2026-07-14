@@ -33,10 +33,20 @@ const assistantMetaInlinePath = join(
   "chat",
   "AssistantMetaInline.tsx"
 );
+const chatMessageTimelinePath = join(
+  process.cwd(),
+  "ui",
+  "src",
+  "pages",
+  "chat",
+  "ChatMessageTimeline.tsx"
+);
 
 function readChatMetadataSource(): string {
   return (
-    readFileSync(assistantMetaModelPath, "utf8") + readFileSync(assistantMetaInlinePath, "utf8")
+    readFileSync(assistantMetaModelPath, "utf8") +
+    readFileSync(assistantMetaInlinePath, "utf8") +
+    readFileSync(chatMessageTimelinePath, "utf8")
   );
 }
 
