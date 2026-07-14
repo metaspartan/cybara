@@ -371,12 +371,12 @@ function interruptActiveChatTurnForSteering(sessionId: string, pendingSteeringId
   return true;
 }
 
-export function stopActiveChatTurn(sessionId: string): {
+export async function stopActiveChatTurn(sessionId: string): Promise<{
   success: boolean;
   stopped: boolean;
   sessionId: string;
   error?: string;
-} {
+}> {
   const key = sessionId.trim();
   const controller = activeChatTurnAbortControllers.get(key);
   if (!key || !controller || controller.signal.aborted) {
@@ -389,6 +389,10 @@ export function stopActiveChatTurn(sessionId: string): {
   }
   stoppedChatTurnControllers.add(controller);
   controller.abort(new DOMException("Chat turn stopped by user", "AbortError"));
+  const session = chatSessions.get(key);
+  if (session) {
+    await persistStoppedAssistantTurn(session);
+  }
   return { success: true, stopped: true, sessionId: key };
 }
 
@@ -407,6 +411,7 @@ async function finishStoppedChatTurn(
   agent: { id: string; name: string },
   controller: AbortController
 ): Promise<ChatResponse> {
+  const stoppedMessage = await persistStoppedAssistantTurn(session);
   clearActiveChatTurnAbortController(session.id, controller);
   broadcastStatus({
     status: "idle",
@@ -421,11 +426,13 @@ async function finishStoppedChatTurn(
     interrupted: true,
     stopped: true,
     plan: extractLatestSessionPlan(session.id, session.messages),
-    message: {
-      role: "assistant",
-      content: "",
-      timestamp: new Date().toISOString(),
-    },
+    message:
+      stoppedMessage ||
+      ({
+        role: "assistant",
+        content: "",
+        timestamp: new Date().toISOString(),
+      } satisfies ChatMessage),
     agent: {
       id: agent.id,
       name: agent.name,
@@ -814,6 +821,67 @@ function materializeInterruptedAssistantBeforeSteering(
   const lastMessage = session.messages[session.messages.length - 1] || assistantMessage;
   session.updatedAt = lastMessage.timestamp || new Date().toISOString();
   return assistantMessage;
+}
+
+function finalizeStoppedProcessActivity(activity: ProcessActivityInfo): ProcessActivityInfo {
+  if (activity.phase !== "start") return activity;
+  return {
+    ...activity,
+    phase: "blocked",
+    text: `Stopped: ${activity.text}`,
+  };
+}
+
+function materializeStoppedAssistantTurn(session: InMemoryChatSession): ChatMessage | undefined {
+  const latestUserIndex = session.messages.findLastIndex((message) => message.role === "user");
+  if (latestUserIndex < 0) return undefined;
+  const nextMessage = session.messages[latestUserIndex + 1];
+  const existing =
+    nextMessage?.role === "assistant" &&
+    nextMessage.content.trim().length === 0 &&
+    Array.isArray(nextMessage.process_activities)
+      ? nextMessage
+      : undefined;
+  const observed = getSessionProcessActivities(session.id, {
+    excludeActivityIds: collectAttachedProcessActivityIds(session.messages),
+  });
+  const activities = dedupeProcessActivities([
+    ...(existing?.process_activities || []),
+    ...(observed || []).map(finalizeStoppedProcessActivity),
+  ]);
+  if (activities.length === 0) return existing;
+  if (existing) {
+    existing.process_activities = activities;
+    return existing;
+  }
+  const userTimestamp = parseIsoTimestampMs(session.messages[latestUserIndex]?.timestamp);
+  const assistantMessage: ChatMessage = {
+    role: "assistant",
+    content: "",
+    timestamp: new Date(Math.max(Date.now(), (userTimestamp ?? 0) + 1)).toISOString(),
+    process_activities: activities,
+  };
+  session.messages.splice(latestUserIndex + 1, 0, assistantMessage);
+  session.updatedAt = assistantMessage.timestamp || new Date().toISOString();
+  return assistantMessage;
+}
+
+async function persistStoppedAssistantTurn(
+  session: InMemoryChatSession
+): Promise<ChatMessage | undefined> {
+  const stoppedMessage = materializeStoppedAssistantTurn(session);
+  if (!stoppedMessage) return undefined;
+  const latestUser = [...session.messages]
+    .slice(0, session.messages.indexOf(stoppedMessage))
+    .reverse()
+    .find((message) => message.role === "user");
+  await upsertPersistedSessionMessage(session.id, session.agentId, stoppedMessage, {
+    stableKey: `stopped:${latestUser?.timestamp || stoppedMessage.timestamp || session.id}`,
+    metadata: { source: "chat_stopped" },
+  });
+  await persistChatSessionSnapshot(session, stoppedMessage);
+  persistActiveSessionContext(session);
+  return stoppedMessage;
 }
 
 function queuedMaterializedSteeringIds(sessionId: string): Set<string> {

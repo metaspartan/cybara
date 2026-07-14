@@ -39,7 +39,6 @@ import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/auth";
 import { chatApi, providerPlansApi } from "@/lib/api";
-import { useStopAgent } from "@/hooks/useApi";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "../chat/ChatAgentControls";
 import { ChatComposerActionButton } from "../chat/ChatComposerActionButton";
 import { AgentTransferTimeline } from "../chat/AgentTransferTimeline";
@@ -216,7 +215,6 @@ export function IDEChatPanel({
   onPendingFileDiffsChange?: (diffs: IdePendingFileDiff[]) => void;
   onPendingFileDiffControllerChange?: (controller: IdePendingFileDiffController | null) => void;
 }) {
-  const stopAgent = useStopAgent();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
@@ -241,6 +239,7 @@ export function IDEChatPanel({
   const [resolvedPendingDiffs, setResolvedPendingDiffs] = useState<Record<string, string>>({});
   const [expandedDiffs, setExpandedDiffs] = useState<Record<string, boolean>>({});
   const [collapseProgressUpdates, setCollapseProgressUpdates] = useState(false);
+  const [isStoppingSession, setIsStoppingSession] = useState(false);
   const [copiedToolCallKey, setCopiedToolCallKey] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
   const activeRequestAbortRef = useRef<AbortController | null>(null);
@@ -1088,18 +1087,34 @@ export function IDEChatPanel({
   ]);
 
   const handleStopActive = useCallback(async () => {
+    if (!sessionId || isStoppingSession) return;
     activeRequestAbortRef.current?.abort();
     activeRequestAbortRef.current = null;
     setIsSending(false);
-    clearLiveRunState();
-    const targetAgentId = activeAgentId || selectedAgentId || null;
-    if (!targetAgentId) return;
+    setIsStoppingSession(true);
     try {
-      await stopAgent.mutateAsync(targetAgentId);
-    } catch {
-      // Keep the UI responsive even if the stop request fails.
+      const stopped = await chatApi.stopSession(sessionId);
+      if (!stopped.success || !stopped.data?.stopped) {
+        throw new Error(stopped.error || stopped.data?.error || "No active response was found");
+      }
+      const response = await chatApi.getSession(sessionId);
+      if (!response.success || !response.data) {
+        throw new Error(response.error || "Stopped response could not be reloaded");
+      }
+      const reloadedMessages = Array.isArray(response.data.messagesList)
+        ? response.data.messagesList
+            .map((message) => mapApiMessageToIde(message))
+            .filter((message): message is IdeChatMessage => !!message)
+        : [];
+      setMessages(reloadedMessages);
+      setSessionContextUsage(response.data.contextUsage ?? null);
+      clearLiveRunState();
+    } catch (stopError) {
+      setError(stopError instanceof Error ? stopError.message : "Failed to stop response");
+    } finally {
+      setIsStoppingSession(false);
     }
-  }, [activeAgentId, clearLiveRunState, selectedAgentId, stopAgent]);
+  }, [clearLiveRunState, isStoppingSession, mapApiMessageToIde, sessionId]);
 
   const handleNewChat = useCallback(() => {
     activeRequestAbortRef.current?.abort();
@@ -1437,11 +1452,11 @@ export function IDEChatPanel({
             <button
               type="button"
               onClick={() => void handleStopActive()}
-              disabled={stopAgent.isPending}
+              disabled={isStoppingSession}
               className="inline-flex h-7 items-center gap-1 rounded border border-red-500/30 bg-red-500/10 px-2 text-[11px] text-red-200 hover:bg-red-500/20 disabled:opacity-50"
               title="Stop active run"
             >
-              {stopAgent.isPending ? (
+              {isStoppingSession ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
                 <Square className="w-3.5 h-3.5" />
@@ -1948,7 +1963,7 @@ export function IDEChatPanel({
             />
             <ChatComposerActionButton
               disabled={isSending || isReverting || isApplyingDiffAction || !input.trim()}
-              isStopping={stopAgent.isPending}
+              isStopping={isStoppingSession}
               queueing={showWorkingTimeline}
               showStop={showWorkingTimeline}
               onSend={() => void handleSend()}

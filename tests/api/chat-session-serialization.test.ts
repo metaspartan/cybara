@@ -96,7 +96,7 @@ describe("handleChat per-session serialization", () => {
       }),
     ]);
 
-    expect(stopActiveChatTurn(sessionId).stopped).toBe(true);
+    expect((await stopActiveChatTurn(sessionId)).stopped).toBe(true);
     const response = await activeTurn;
     expect(response.stopped).toBe(true);
   });
@@ -171,7 +171,7 @@ describe("handleChat per-session serialization", () => {
       ]);
       expect((await getSessionMessages(sessionId)).map(({ role }) => role)).toEqual(["user"]);
 
-      expect(stopActiveChatTurn(sessionId).stopped).toBe(true);
+      expect((await stopActiveChatTurn(sessionId)).stopped).toBe(true);
       const response = await activeTurn;
       expect(response.stopped).toBe(true);
       expect(fallbackAborted).toBe(true);
@@ -247,7 +247,45 @@ describe("handleChat per-session serialization", () => {
     });
     await providerStarted;
 
-    expect(stopActiveChatTurn(sessionId)).toEqual({
+    broadcastStatus({
+      status: "thinking",
+      timestamp: Date.now(),
+      detail: "Inspecting the current request",
+      sessionId,
+      agentId: agent.id,
+    });
+    broadcastStatus({
+      status: "tool_executing",
+      timestamp: Date.now() + 1,
+      detail: "Reading configuration",
+      sessionId,
+      agentId: agent.id,
+      toolName: "read",
+      toolCallId: "read-complete",
+      toolPhase: "start",
+    });
+    broadcastStatus({
+      status: "tool_completed",
+      timestamp: Date.now() + 2,
+      detail: "Read configuration",
+      sessionId,
+      agentId: agent.id,
+      toolName: "read",
+      toolCallId: "read-complete",
+      toolPhase: "result",
+    });
+    broadcastStatus({
+      status: "tool_executing",
+      timestamp: Date.now() + 3,
+      detail: "Searching workspace",
+      sessionId,
+      agentId: agent.id,
+      toolName: "search",
+      toolCallId: "search-stopped",
+      toolPhase: "start",
+    });
+
+    expect(await stopActiveChatTurn(sessionId)).toEqual({
       success: true,
       stopped: true,
       sessionId,
@@ -257,10 +295,36 @@ describe("handleChat per-session serialization", () => {
     expect(response.stopped).toBe(true);
     expect(response.interrupted).toBe(true);
     expect(providerAborted).toBe(true);
-    const messages = await waitForVisibleSessionMessages(sessionId, 1);
-    expect(messages.map((message) => message.content)).toEqual(["start a long response"]);
+    const messages = await waitForVisibleSessionMessages(sessionId, 2);
+    expect(messages.map((message) => message.content)).toEqual(["start a long response", ""]);
+    const stoppedActivities = messages[1]?.process_activities || [];
+    expect(stoppedActivities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          phase: "result",
+          text: "Inspecting the current request",
+          toolName: "__thought",
+        }),
+        expect.objectContaining({
+          phase: "result",
+          toolName: "read",
+          toolCallId: "read-complete",
+        }),
+        expect.objectContaining({
+          phase: "blocked",
+          text: "Stopped: Searching workspace",
+          toolName: "search",
+          toolCallId: "search-stopped",
+        }),
+      ])
+    );
     expect(messages.some((message) => message.content.includes("late response"))).toBe(false);
-    expect(stopActiveChatTurn(sessionId).stopped).toBe(false);
+    const persisted = await loadPersistedSession(sessionId);
+    const persistedStopped = persisted?.messages.find(
+      (message) => message.role === "assistant" && message.content === ""
+    );
+    expect(persistedStopped?.process_activities).toEqual(stoppedActivities);
+    expect((await stopActiveChatTurn(sessionId)).stopped).toBe(false);
   });
 
   test("rejects concurrent follow-ups when queue and steer behavior is disabled", async () => {

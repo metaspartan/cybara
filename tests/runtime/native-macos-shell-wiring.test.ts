@@ -438,6 +438,18 @@ describe("native macOS shell wiring", () => {
     expect(nativeScreens).toContain("await deletePending(message)");
     expect(nativeScreens).toContain("await stopResponse()");
     expect(nativeScreens).toContain('"stop.circle.fill"');
+    expect(nativeScreens).toContain("activeSessionIDs.remove(sessionID)");
+    const stopResponseIndex = nativeScreens.indexOf("private func stopResponse");
+    const stoppedReloadIndex = nativeScreens.indexOf(
+      "await loadMessages(sessionID)",
+      stopResponseIndex
+    );
+    const stoppedResetIndex = nativeScreens.indexOf(
+      "resetLiveTimeline(clearStartedAt: true)",
+      stopResponseIndex
+    );
+    expect(stoppedReloadIndex).toBeGreaterThan(stopResponseIndex);
+    expect(stoppedResetIndex).toBeGreaterThan(stoppedReloadIndex);
     expect(nativeScreens).toContain(
       "processActivities: nativeSteeringProcessActivityPayloads(from: liveActivities)"
     );

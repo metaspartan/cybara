@@ -555,6 +555,9 @@ struct ChatScreen: View {
     @State private var reasoningDraftIndex = 0.0
     @State private var reasoningSaving = false
     @State private var showEnvironmentPopover = false
+    @State private var showNearbyShare = false
+    @State private var nearbyStatus: NativeNearbyStatus?
+    @State private var nearbyShareBusy = false
     @State private var showWorkspacePanel = false
     @State private var activeWorkspaceTab = NativeChatWorkspaceTab.review
     @State private var subagents: [NativeSubagentSummary] = []
@@ -1080,6 +1083,20 @@ struct ChatScreen: View {
             Spacer()
             workspaceOpenMenu
 
+            if selectedSessionID != nil {
+                Button {
+                    showNearbyShare.toggle()
+                    if showNearbyShare { Task { await loadNearbyShare() } }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .buttonStyle(.borderless)
+                .popover(isPresented: $showNearbyShare, arrowEdge: .bottom) {
+                    nearbySharePopover
+                }
+                .help("Send to nearby Cybara")
+            }
+
             Button {
                 activeWorkspaceTab = .review
                 showWorkspacePanel = true
@@ -1137,6 +1154,51 @@ struct ChatScreen: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 13)
+    }
+
+    private var nearbySharePopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Send to Nearby Cybara")
+                .font(.system(size: 13, weight: .bold, design: .rounded))
+            if nearbyShareBusy {
+                ProgressView().controlSize(.small)
+            } else if let peers = nearbyStatus?.pairedPeers, !peers.isEmpty {
+                ForEach(peers) { peer in
+                    Button {
+                        Task { await sendNearby(peer.id) }
+                    } label: {
+                        Label(peer.name, systemImage: "desktopcomputer")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.vertical, 4)
+                }
+            } else {
+                Text("Pair another Cybara in Gateway settings first.")
+                    .font(.system(size: 11, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .frame(width: 260)
+    }
+
+    private func loadNearbyShare() async {
+        nearbyShareBusy = true
+        nearbyStatus = try? await client.nearbyStatus()
+        nearbyShareBusy = false
+    }
+
+    private func sendNearby(_ peerID: String) async {
+        guard let selectedSessionID else { return }
+        nearbyShareBusy = true
+        do {
+            try await client.sendNearbySession(peerID: peerID, sessionID: selectedSessionID)
+            showNearbyShare = false
+        } catch {
+            self.error = error.localizedDescription
+        }
+        nearbyShareBusy = false
     }
 
     @ViewBuilder
@@ -3383,8 +3445,9 @@ struct ChatScreen: View {
         do {
             _ = try await client.stopChatSession(sessionID)
             sending = false
-            resetLiveTimeline(clearStartedAt: true)
+            activeSessionIDs.remove(sessionID)
             await loadMessages(sessionID)
+            resetLiveTimeline(clearStartedAt: true)
             await hydrateStatus(sessionID)
         } catch {
             self.error = "Failed to stop response: \(error.localizedDescription)"

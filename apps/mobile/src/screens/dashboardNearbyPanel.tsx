@@ -1,0 +1,206 @@
+import { useCallback, useEffect, useState } from "react";
+import { Text, View } from "react-native";
+import { Check, Laptop, Link2, Network, RefreshCw, ShieldCheck, Trash2 } from "lucide-react-native";
+import { CybaraMobileApi, type MobileNearbySettings, type MobileNearbyStatus } from "../lib/api";
+import { colors } from "../theme/liquidGlass";
+import {
+  DetailActionButton,
+  SettingToggle,
+  SettingsSection,
+  SettingsTextField,
+} from "./dashboardControls";
+import { styles } from "./dashboardStyles";
+
+export function NearbyMobileSettings({ api }: { api: CybaraMobileApi }) {
+  const [status, setStatus] = useState<MobileNearbyStatus | null>(null);
+  const [settings, setSettings] = useState<MobileNearbySettings>({
+    enabled: false,
+    displayName: "Cybara",
+    port: 4270,
+    discoveryMinutes: 10,
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const next = await api.nearbyStatus();
+      setStatus(next);
+      setSettings(next.settings);
+      setError(null);
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Nearby settings unavailable";
+      setError(
+        message.includes("403")
+          ? "Full-access pairing is required to manage nearby devices."
+          : message
+      );
+    }
+  }, [api]);
+
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => void load(), 4000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  async function run(action: () => Promise<unknown>) {
+    setBusy(true);
+    setError(null);
+    try {
+      await action();
+      await load();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Nearby action failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const discoverable = Boolean(
+    status?.discoverableUntil && Date.parse(status.discoverableUntil) > Date.now()
+  );
+
+  return (
+    <SettingsSection title="Nearby Cybara">
+      <View style={styles.settingsInfoBox}>
+        <View style={styles.settingsInfoHeader}>
+          <Network color={colors.cyan} size={18} strokeWidth={2.2} />
+          <Text style={styles.settingsInfoTitle}>Local device sharing</Text>
+        </View>
+        <Text style={styles.settingsInfoText}>
+          Pair trusted Cybara installations on the same network and approve chat transfers.
+        </Text>
+        <View style={styles.settingsInfoHeader}>
+          <ShieldCheck color={colors.textMuted} size={16} strokeWidth={2} />
+          <Text style={styles.settingsFieldHelp}>
+            Off by default. Discovery is temporary and pairing requires matching codes.
+          </Text>
+        </View>
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {!error || status ? (
+          <>
+            <SettingToggle
+              disabled={busy}
+              label="Enable Nearby Cybara"
+              onPress={() => {
+                const next = { ...settings, enabled: !settings.enabled };
+                setSettings(next);
+                void run(() => api.updateNearbySettings(next));
+              }}
+              tone={colors.cyan}
+              value={settings.enabled}
+            />
+            {settings.enabled ? (
+              <>
+                <SettingsTextField
+                  label="Device name"
+                  value={settings.displayName}
+                  onChangeText={(displayName) => setSettings({ ...settings, displayName })}
+                />
+                <View style={styles.settingsActionRow}>
+                  <DetailActionButton
+                    Icon={Check}
+                    busy={busy}
+                    disabled={busy}
+                    label="Save"
+                    onPress={() => void run(() => api.updateNearbySettings(settings))}
+                    tone={colors.cyan}
+                  />
+                  <DetailActionButton
+                    Icon={RefreshCw}
+                    busy={busy}
+                    disabled={busy}
+                    label={discoverable ? "Stop Discovery" : "Find Nearby"}
+                    onPress={() =>
+                      void run(() =>
+                        discoverable ? api.stopNearbyDiscovery() : api.makeNearbyDiscoverable()
+                      )
+                    }
+                    tone={colors.cyan}
+                  />
+                </View>
+              </>
+            ) : null}
+          </>
+        ) : null}
+      </View>
+
+      {status?.discoveredPeers.map((peer) => (
+        <View key={peer.id} style={styles.settingsInfoBox}>
+          <View style={styles.settingsInfoHeader}>
+            <Laptop color={colors.textMuted} size={17} />
+            <Text style={styles.settingsInfoTitle}>{peer.name}</Text>
+          </View>
+          <DetailActionButton
+            Icon={Link2}
+            busy={busy}
+            disabled={busy}
+            label="Connect"
+            onPress={() => void run(() => api.pairNearby(peer.id, peer.baseUrl))}
+            tone={colors.cyan}
+          />
+        </View>
+      ))}
+
+      {status?.pairings.map((pairing) => (
+        <View key={pairing.id} style={styles.settingsInfoBox}>
+          <Text style={styles.settingsInfoTitle}>{pairing.peerName}</Text>
+          <Text selectable style={styles.settingsInfoText}>
+            {pairing.verificationCode}
+          </Text>
+          <Text style={styles.settingsFieldHelp}>
+            Confirm only if the code matches the other device.
+          </Text>
+          {!pairing.localConfirmed ? (
+            <DetailActionButton
+              Icon={Check}
+              busy={busy}
+              disabled={busy}
+              label="Codes Match"
+              onPress={() => void run(() => api.confirmNearbyPairing(pairing.id))}
+              tone={colors.cyan}
+            />
+          ) : null}
+        </View>
+      ))}
+
+      {status?.pairedPeers.map((peer) => (
+        <View key={peer.id} style={styles.settingsInfoBox}>
+          <View style={styles.settingsInfoHeader}>
+            <Laptop color={colors.textMuted} size={17} />
+            <View style={styles.listText}>
+              <Text style={styles.settingsInfoTitle}>{peer.name}</Text>
+              <Text style={styles.settingsFieldHelp}>Verified {peer.fingerprint.slice(0, 12)}</Text>
+            </View>
+          </View>
+          <DetailActionButton
+            Icon={Trash2}
+            busy={busy}
+            disabled={busy}
+            label="Remove"
+            onPress={() => void run(() => api.removeNearbyPeer(peer.id))}
+            tone={colors.red}
+          />
+        </View>
+      ))}
+
+      {status?.incomingTransfers.map((transfer) => (
+        <View key={transfer.id} style={styles.settingsInfoBox}>
+          <Text style={styles.settingsInfoTitle}>{transfer.title || "Shared chat"}</Text>
+          <Text style={styles.settingsInfoText}>
+            From {transfer.peerName} · {transfer.messageCount} messages
+          </Text>
+          <DetailActionButton
+            Icon={Check}
+            busy={busy}
+            disabled={busy}
+            label="Accept"
+            onPress={() => void run(() => api.acceptNearbyTransfer(transfer.id))}
+            tone={colors.cyan}
+          />
+        </View>
+      ))}
+    </SettingsSection>
+  );
+}

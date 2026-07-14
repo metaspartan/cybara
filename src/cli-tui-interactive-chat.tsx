@@ -539,11 +539,16 @@ function ActivitySummary({
   );
   if (rows.length === 0) return null;
   return (
-    <Box paddingLeft={2} marginBottom={1} flexDirection="column">
+    <Box
+      paddingLeft={2}
+      marginBottom={1}
+      flexDirection="column"
+      width={Math.max(12, maxColumns)}
+    >
       {rows.map((row, rowIndex) => (
         <Box key={`${row.id}-${rowIndex}`} flexDirection="column">
           {row.thought ? (
-            <InlineMarkdown line={compact(row.label, Math.max(12, maxColumns - 4))} />
+            <InlineMarkdown line={row.label} />
           ) : (
             <Text
               color={
@@ -552,9 +557,10 @@ function ActivitySummary({
                   : ACTIVITY_HEADING_COLOR
               }
               dimColor
+              wrap="wrap"
             >
               {row.icon ? `${row.icon} ` : ""}
-              {compact(row.label, Math.max(12, maxColumns - 4))}
+              {row.label}
             </Text>
           )}
           {limitTUIActivityDetails(
@@ -565,9 +571,10 @@ function ActivitySummary({
               key={`${row.id}-${rowIndex}-${index}`}
               color={ACTIVITY_DETAIL_COLOR}
               dimColor
+              wrap="wrap"
             >
               {index === details.length - 1 ? "└" : "├"}{" "}
-              {compact(label, Math.max(12, maxColumns - 6))}
+              {label}
             </Text>
           ))}
         </Box>
@@ -641,10 +648,10 @@ function LiveRunView({
       />
       {content ? (
         <Box paddingLeft={2} width="100%">
-          <MessageBody content={content} maxLines={8} />
+          <MessageBody content={content} />
         </Box>
       ) : detail ? (
-        <Text color="gray">  {compact(detail, Math.max(12, maxColumns - 4))}</Text>
+        <Text color="gray" wrap="wrap">  {detail}</Text>
       ) : null}
     </Box>
   );
@@ -913,7 +920,7 @@ export function InteractiveChatTUI({
   const [tasks, setTasks] = React.useState<TuiTaskSummary[]>([]);
   const [subagents, setSubagents] = React.useState<TuiSubagentSummary[]>([]);
   const [showEnvironment, setShowEnvironment] = React.useState(false);
-  const [expandedTranscript, setExpandedTranscript] = React.useState(false);
+  const [expandedTranscript, setExpandedTranscript] = React.useState(true);
   const [transcriptOffset, setTranscriptOffset] = React.useState(0);
   const [approvalRequests, setApprovalRequests] = React.useState<
     ToolApprovalRequest[]

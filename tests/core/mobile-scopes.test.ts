@@ -41,6 +41,7 @@ describe("mobile device scopes", () => {
     expect(view?.scopes).not.toContain("wallet");
     expect(view?.scopes).not.toContain("terminal");
     expect(view?.scopes).not.toContain("mcp");
+    expect(view?.scopes).not.toContain("nearby");
   });
 
   test("an admin can grant extra scopes at pairing time", () => {
@@ -117,6 +118,8 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("GET", "/api/system/backups")).toBe("root");
     expect(routeRequiredScope("POST", "/api/system/backups")).toBe("root");
     expect(routeRequiredScope("POST", "/api/system/backups/backup_12345678/restore")).toBe("root");
+    expect(routeRequiredScope("GET", "/api/nearby")).toBe("nearby");
+    expect(routeRequiredScope("PUT", "/api/nearby/settings")).toBe("nearby");
     expect(routeRequiredScope("POST", "/api/wallet/seed")).toBe("root");
     expect(normalizeMobileScopes(["root"])).not.toContain("root");
   });
@@ -247,7 +250,15 @@ describe("route scope requirements", () => {
 
 describe("roles", () => {
   test("map to scope bundles; unknown roles return null", () => {
-    expect(scopesForRole("full")).toEqual(["chat", "manage", "read", "wallet", "terminal", "mcp"]);
+    expect(scopesForRole("full")).toEqual([
+      "chat",
+      "manage",
+      "read",
+      "wallet",
+      "terminal",
+      "mcp",
+      "nearby",
+    ]);
     expect(scopesForRole("standard")).toEqual(["chat", "manage", "read"]);
     expect(scopesForRole("readonly")).toEqual(["chat", "read"]);
     expect(scopesForRole("bogus")).toBeNull();

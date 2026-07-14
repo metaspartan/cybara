@@ -538,4 +538,14 @@ describe("Chat live activity persistence", () => {
     expect(source).toContain("persistWorkspaceDir(nextWorkspaceDir);");
     expect(source).toContain("setSessionAgentId(null);");
   });
+
+  test("stopping a response reloads the durable session timeline without stopping its agent", () => {
+    const source = readFileSync(chatSourcePath, "utf8");
+    expect(source).toContain("await chatApi.stopSession(activeChatSessionId)");
+    expect(source).toContain("await refreshSessionMessagesRef.current(activeChatSessionId)");
+    expect(source).not.toContain("stopAgent.mutateAsync(activeAgentId)");
+    expect(
+      source.indexOf("await refreshSessionMessagesRef.current(activeChatSessionId)")
+    ).toBeLessThan(source.indexOf("clearCachedLiveSessionState(activeChatSessionId)"));
+  });
 });

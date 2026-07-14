@@ -15,6 +15,7 @@ import {
   Pencil,
   Pin,
   Send,
+  Share2,
   Settings2,
   ShieldAlert,
   Square,
@@ -513,6 +514,7 @@ export function SessionDetailPanel({
   const [pinned, setPinned] = useState(sessionSummary?.pinned ?? false);
   const [pinning, setPinning] = useState(false);
   const [reliabilityAction, setReliabilityAction] = useState<"fork" | "golden" | null>(null);
+  const [nearbySharing, setNearbySharing] = useState(false);
   const [agentUpdating, setAgentUpdating] = useState(false);
   const [reasoningUpdating, setReasoningUpdating] = useState(false);
   const [reasoningOverride, setReasoningOverride] = useState<{
@@ -1216,8 +1218,8 @@ export function SessionDetailPanel({
       }
       setSending(false);
       responseHapticActiveRef.current = false;
-      commitLiveAssistant(() => null);
       await loadSession(false);
+      commitLiveAssistant(() => null);
     } catch (error) {
       Alert.alert("Unable to stop", error instanceof Error ? error.message : "Request failed.");
     }
@@ -1896,6 +1898,57 @@ export function SessionDetailPanel({
     setChatSettingsVisible(false);
     setTimeout(action, 180);
   };
+  const shareNearbyChat = async () => {
+    setNearbySharing(true);
+    try {
+      const nearby = await api.nearbyStatus();
+      if (!nearby.settings.enabled || nearby.pairedPeers.length === 0) {
+        Alert.alert(
+          "No nearby devices",
+          "Enable Nearby Cybara and pair a trusted device in Gateway settings first."
+        );
+        return;
+      }
+      const send = async (peerId: string, peerName: string) => {
+        try {
+          await api.sendNearbySession(peerId, sessionId);
+          haptics.success();
+          Alert.alert("Chat sent", `Sent securely to ${peerName}.`);
+        } catch (error) {
+          Alert.alert("Unable to send chat", error instanceof Error ? error.message : "Try again.");
+        }
+      };
+      if (Platform.OS === "ios") {
+        const names = nearby.pairedPeers.map((peer) => peer.name);
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            title: "Send to Nearby Cybara",
+            options: [...names, "Cancel"],
+            cancelButtonIndex: names.length,
+          },
+          (index) => {
+            const peer = nearby.pairedPeers[index];
+            if (peer) void send(peer.id, peer.name);
+          }
+        );
+      } else {
+        Alert.alert("Send to Nearby Cybara", "Choose a verified device.", [
+          ...nearby.pairedPeers.map((peer) => ({
+            text: peer.name,
+            onPress: () => void send(peer.id, peer.name),
+          })),
+          { text: "Cancel", style: "cancel" as const },
+        ]);
+      }
+    } catch (error) {
+      Alert.alert(
+        "Nearby unavailable",
+        error instanceof Error ? error.message : "Full-access pairing may be required."
+      );
+    } finally {
+      setNearbySharing(false);
+    }
+  };
   const chatSettingsActions: ChatSettingsAction[] = [
     {
       icon: Bot,
@@ -1951,6 +2004,12 @@ export function SessionDetailPanel({
       onPress: () => runFromChatSettings(() => void forkChat()),
     },
     {
+      icon: Share2,
+      label: "Send nearby",
+      disabled: nearbySharing,
+      onPress: () => runFromChatSettings(() => void shareNearbyChat()),
+    },
+    {
       icon: FlaskConical,
       label: "Save golden run",
       disabled:
@@ -1986,7 +2045,8 @@ export function SessionDetailPanel({
         reasoningUpdating ||
         toolApprovalUpdating ||
         gitBranchLoading ||
-        reliabilityAction !== null,
+        reliabilityAction !== null ||
+        nearbySharing,
       onPress: () => headerActionRef.current(),
     });
   }, [
@@ -1995,6 +2055,7 @@ export function SessionDetailPanel({
     pinning,
     reasoningUpdating,
     reliabilityAction,
+    nearbySharing,
     sessionId,
     setHeaderAction,
     toolApprovalUpdating,

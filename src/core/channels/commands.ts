@@ -467,7 +467,7 @@ export async function handleChannelManagementCommand(
 
   if (command === "stop") {
     if (!context.sessionId) return "Stopping needs an active session.";
-    const result = stopChannelRuntimeMessage(context.sessionId);
+    const result = await stopChannelRuntimeMessage(context.sessionId);
     if (!result) return "Stopping is unavailable in this channel context.";
     return result.stopped ? "Stopped the active response." : result.error || "No active response.";
   }

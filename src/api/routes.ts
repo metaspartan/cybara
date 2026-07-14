@@ -254,6 +254,7 @@ import { integrationCredentialRoutes } from "./routes/integration-credential-rou
 import { accountConnectorRoutes } from "./routes/account-connectors";
 import { mcpRoutes } from "./routes/mcp";
 import { metricsRoutes } from "./routes/metrics";
+import { nearbyRoutes } from "./routes/nearby";
 import {
   validateProviderBaseUrlShape,
   validateProviderCredentialShape,
@@ -441,6 +442,7 @@ const routes: Record<string, RouteHandler> = {
   ...ideLspRoutes,
   ...runtimeRoutes,
   ...mcpRoutes,
+  ...nearbyRoutes,
   ...accountConnectorRoutes,
   ...integrationCredentialRoutes,
   ...webResearchRoutes,
@@ -2551,7 +2553,7 @@ const routes: Record<string, RouteHandler> = {
       processActivities: data.processActivities,
     });
   },
-  "POST /api/chat/sessions/:id/stop": (_body, params) => stopActiveChatTurn(params!.id),
+  "POST /api/chat/sessions/:id/stop": async (_body, params) => stopActiveChatTurn(params!.id),
   "DELETE /api/chat/sessions/:id": async (_body, params) => ({
     success: await deleteSession(params!.id),
   }),

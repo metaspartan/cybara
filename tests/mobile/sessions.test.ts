@@ -239,4 +239,12 @@ describe("mobile: chat management", () => {
     expect(detail).toContain("current?.id === sessionId ? current");
     expect(detail).toContain("setLoadError(null)");
   });
+
+  test("stopping a response reloads persisted activity before clearing the live overlay", () => {
+    const detail = read("screens/dashboardSessionDetail.tsx");
+    const reloadIndex = detail.indexOf("await loadSession(false);", detail.indexOf("stopResponse"));
+    const clearIndex = detail.indexOf("commitLiveAssistant(() => null);", reloadIndex);
+    expect(reloadIndex).toBeGreaterThan(0);
+    expect(clearIndex).toBeGreaterThan(reloadIndex);
+  });
 });

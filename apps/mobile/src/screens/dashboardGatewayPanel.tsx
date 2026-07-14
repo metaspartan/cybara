@@ -42,6 +42,7 @@ import {
 import { EmptyState } from "./dashboardPrimitives";
 import { styles } from "./dashboardStyles";
 import { gatewayActionError } from "./dashboardActionError";
+import { NearbyMobileSettings } from "./dashboardNearbyPanel";
 
 const remoteAccessModeOptions: Array<{
   label: string;
@@ -870,6 +871,7 @@ export function GatewayManagementPanel({
           </View>
         </View>
       </SettingsSection>
+      <NearbyMobileSettings api={api} />
       <SettingsSection title="Recent gateway logs">
         {recentLogs.length === 0 ? (
           <EmptyState label="No logs loaded" detail="Open Logs to fetch recent gateway events." />

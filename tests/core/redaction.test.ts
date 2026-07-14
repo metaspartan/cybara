@@ -11,8 +11,14 @@ const LEAKY_SAMPLES: Array<[string, string]> = [
   ["gitlab", "glpat-abcdefghij1234567890"],
   ["slack bot", "xoxb-1234567890-abcdefghijklmnop"],
   ["slack app", "xapp-1-A052N9J1L4A-5177886119042-abc123def456ghi789"],
-  ["slack webhook", "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"],
-  ["discord webhook", "https://discord.com/api/webhooks/1234567890/AbCdEfGh_iJkLmNoPqRsTuVwXyZ-0123456789"],
+  [
+    "slack webhook",
+    "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX",
+  ],
+  [
+    "discord webhook",
+    "https://discord.com/api/webhooks/1234567890/AbCdEfGh_iJkLmNoPqRsTuVwXyZ-0123456789",
+  ],
   ["google", "AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY"],
   ["aws access key", "AKIAIOSFODNN7EXAMPLE"],
   ["aws temporary key", "ASIAIOSFODNN7EXAMPLE"],

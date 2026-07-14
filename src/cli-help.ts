@@ -106,6 +106,13 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("  mobile      Mobile companion commands");
   printMobileHelp("    ");
   console.log("  devices     Alias for mobile device management");
+  console.log("  nearby      Secure local-network device discovery and chat transfer");
+  console.log("    nearby status                         Show trusted and available devices");
+  console.log("    nearby enable|disable                 Change the default-off setting");
+  console.log("    nearby discover|stop                  Control temporary discovery");
+  console.log("    nearby pair <peer-id> [--url URL]     Begin verified pairing");
+  console.log("    nearby confirm <pairing-id>           Confirm the matching code");
+  console.log("    nearby send <peer-id> <session-id>    Send a chat for approval");
   console.log("  wallet      Wallet management commands");
   console.log("    wallet status                     Show wallet status and RPC settings");
   console.log("    wallet create --password <p>      Create 24-word wallet");

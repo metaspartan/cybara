@@ -337,6 +337,55 @@ export interface GatewayRemoteAccessSettings {
   message: string;
 }
 
+export interface MobileNearbySettings {
+  enabled: boolean;
+  displayName: string;
+  port: number;
+  discoveryMinutes: number;
+}
+
+export interface MobileNearbyStatus {
+  settings: MobileNearbySettings;
+  identity: { id: string; fingerprint: string };
+  running: boolean;
+  discoverableUntil: string | null;
+  discoveredPeers: Array<{
+    id: string;
+    name: string;
+    baseUrl: string;
+    fingerprint: string;
+    lastSeenAt: string;
+  }>;
+  pairedPeers: Array<{
+    id: string;
+    name: string;
+    baseUrl: string;
+    fingerprint: string;
+    pairedAt: string;
+    syncEnabled: boolean;
+  }>;
+  pairings: Array<{
+    id: string;
+    direction: "incoming" | "outgoing";
+    peerId: string;
+    peerName: string;
+    peerBaseUrl: string;
+    verificationCode: string;
+    localConfirmed: boolean;
+    remoteConfirmed: boolean;
+    expiresAt: string;
+  }>;
+  incomingTransfers: Array<{
+    id: string;
+    peerId: string;
+    peerName: string;
+    receivedAt: string;
+    title: string | null;
+    messageCount: number;
+    workspace: { name: string; branch?: string; commit?: string; dirty?: boolean } | null;
+  }>;
+}
+
 export interface GatewayFirewallResult {
   platform: string;
   required: boolean;
@@ -3090,6 +3139,63 @@ export class CybaraMobileApi {
 
   gatewayAuthSettings(): Promise<GatewayAuthSettings> {
     return this.request<GatewayAuthSettings>("/api/auth/settings");
+  }
+
+  nearbyStatus(): Promise<MobileNearbyStatus> {
+    return this.request<MobileNearbyStatus>("/api/nearby");
+  }
+
+  async updateNearbySettings(settings: MobileNearbySettings): Promise<MobileNearbyStatus> {
+    const response = await this.request<{
+      success: boolean;
+      settings: MobileNearbySettings;
+      status: MobileNearbyStatus;
+    }>("/api/nearby/settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    });
+    return response.status;
+  }
+
+  async makeNearbyDiscoverable(): Promise<void> {
+    await this.request<unknown>("/api/nearby/discoverable", { method: "POST" });
+  }
+
+  async stopNearbyDiscovery(): Promise<void> {
+    await this.request<unknown>("/api/nearby/discoverable", { method: "DELETE" });
+  }
+
+  async pairNearby(peerId: string, baseUrl: string): Promise<void> {
+    await this.request<unknown>("/api/nearby/pair", {
+      method: "POST",
+      body: JSON.stringify({ peerId, baseUrl }),
+    });
+  }
+
+  async confirmNearbyPairing(pairingId: string): Promise<void> {
+    await this.request<unknown>(`/api/nearby/pairings/${encodeURIComponent(pairingId)}/confirm`, {
+      method: "POST",
+    });
+  }
+
+  async removeNearbyPeer(peerId: string): Promise<void> {
+    await this.request<unknown>(`/api/nearby/peers/${encodeURIComponent(peerId)}`, {
+      method: "DELETE",
+    });
+  }
+
+  acceptNearbyTransfer(transferId: string): Promise<{ sessionId: string }> {
+    return this.request<{ sessionId: string }>(
+      `/api/nearby/transfers/${encodeURIComponent(transferId)}/accept`,
+      { method: "POST", body: JSON.stringify({ workspaceDir: null }) }
+    );
+  }
+
+  sendNearbySession(peerId: string, sessionId: string): Promise<{ transferId: string }> {
+    return this.request<{ transferId: string }>(
+      `/api/nearby/peers/${encodeURIComponent(peerId)}/sessions`,
+      { method: "POST", body: JSON.stringify({ sessionId }) }
+    );
   }
 
   updateGatewayAuthSettings(payload: {

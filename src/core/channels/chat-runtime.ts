@@ -61,10 +61,10 @@ type ChannelSteerHandler = (
   error?: string;
   pendingMessages: ChannelRuntimePendingMessage[];
 }>;
-type ChannelStopHandler = (sessionId: string) => {
+type ChannelStopHandler = (sessionId: string) => Promise<{
   stopped: boolean;
   error?: string;
-};
+}>;
 
 interface ChannelChatRuntimeHandlers {
   listSessions?: ChannelListSessionsHandler;
@@ -263,8 +263,8 @@ export async function steerChannelRuntimeMessage(
   return channelChatRuntime.steer?.(sessionId, pendingMessageId) || null;
 }
 
-export function stopChannelRuntimeMessage(
+export async function stopChannelRuntimeMessage(
   sessionId: string
-): { stopped: boolean; error?: string } | null {
+): Promise<{ stopped: boolean; error?: string } | null> {
   return channelChatRuntime.stop?.(sessionId) || null;
 }

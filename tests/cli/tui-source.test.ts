@@ -307,6 +307,14 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain(
       "maxLines={expandedTranscript ? undefined : layout.messageLines}"
     );
+    expect(cliTuiInteractiveChatSource).toContain(
+      "const [expandedTranscript, setExpandedTranscript] = React.useState(true)"
+    );
+    expect(cliTuiInteractiveChatSource).toContain("<InlineMarkdown line={row.label} />");
+    expect(cliTuiInteractiveChatSource).not.toContain("compact(row.label");
+    expect(cliTuiInteractiveChatSource).not.toContain(
+      "<MessageBody content={content} maxLines={8} />"
+    );
     expect(cliTuiInteractiveChatSource).toContain("ToolApprovalPrompt");
     expect(cliTuiInteractiveChatSource).toContain("persistedMessages.some");
     expect(cliTuiInteractiveChatSource).toContain("messagesFromResponse([response.message])");

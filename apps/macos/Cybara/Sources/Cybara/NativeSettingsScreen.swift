@@ -519,6 +519,8 @@ struct NativeSettingsScreen: View {
                     }
                 }
 
+                NativeNearbySettingsSection(client: client)
+
                 GlassCard {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {

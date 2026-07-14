@@ -19,6 +19,7 @@ import {
   Paperclip,
   Plus,
   RotateCcw,
+  Share2,
   SlidersHorizontal,
   Sparkles,
   Square,
@@ -33,15 +34,9 @@ import { EmbeddedTerminalPanel } from "@/components/ide/EmbeddedTerminalPanel";
 import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
 import { PageLayout } from "@/components/layout";
 import { Badge, Button, GlassCard, Input, Modal } from "@/components/ui";
-import {
-  useAgentSummaries,
-  useInfo,
-  useStopAgent,
-  useSubagents,
-  useUpdateAgentReasoning,
-} from "@/hooks/useApi";
+import { useAgentSummaries, useInfo, useSubagents, useUpdateAgentReasoning } from "@/hooks/useApi";
 import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
-import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
+import { chatApi, nearbyApi, providerPlansApi, settingsApi, type NearbyStatus } from "@/lib/api";
 import {
   audioBlobToBase64,
   audioBlobToLocalPcm,
@@ -639,7 +634,6 @@ export function Chat() {
   const { t } = useI18n();
   const navigate = useNavigate();
   const { data: agents = [] } = useAgentSummaries();
-  const stopAgent = useStopAgent();
   const updateAgentReasoning = useUpdateAgentReasoning();
   const { data: info } = useInfo();
   const [initialChatRoute] = useState(() => parseInitialChatRoute(window.location.search));
@@ -712,8 +706,12 @@ export function Chat() {
   const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const [forkingMessageIndex, setForkingMessageIndex] = useState<number | null>(null);
+  const [nearbyShareStatus, setNearbyShareStatus] = useState<NearbyStatus | null>(null);
+  const [showNearbyShare, setShowNearbyShare] = useState(false);
+  const [sharingPeerId, setSharingPeerId] = useState<string | null>(null);
   const [savingGoldenMessageIndex, setSavingGoldenMessageIndex] = useState<number | null>(null);
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
+  const [isStoppingSession, setIsStoppingSession] = useState(false);
   const speechAudioRef = useRef<HTMLAudioElement | null>(null);
   const copiedMessageTimerRef = useRef<number | null>(null);
   const handleCopyMessage = useCallback(async (index: number, content: string) => {
@@ -1113,6 +1111,32 @@ export function Chat() {
       sessionId,
       syncSessionAgentSelection,
     ]
+  );
+
+  const openNearbyShare = useCallback(async () => {
+    const result = await nearbyApi.status();
+    if (!result.success || !result.data) {
+      useUIStore.getState().addToast("error", result.error || "Could not load nearby devices");
+      return;
+    }
+    setNearbyShareStatus(result.data);
+    setShowNearbyShare(true);
+  }, []);
+
+  const shareSessionNearby = useCallback(
+    async (peerId: string) => {
+      if (!sessionId) return;
+      setSharingPeerId(peerId);
+      const result = await nearbyApi.sendSession(peerId, sessionId);
+      setSharingPeerId(null);
+      if (!result.success) {
+        useUIStore.getState().addToast("error", result.error || "Could not send chat");
+        return;
+      }
+      setShowNearbyShare(false);
+      useUIStore.getState().addToast("success", "Chat sent for approval on the other device");
+    },
+    [sessionId]
   );
 
   const handleSaveGolden = useCallback(
@@ -2881,35 +2905,37 @@ export function Chat() {
   }, [isLoading, streamingContent, typedMessages]);
 
   const handleStopActive = useCallback(async () => {
-    const activeAgentId = selectedAgentId || sessionAgentId;
     const activeChatSessionId = sessionId || activeSessionRef.current;
+    if (!activeChatSessionId || isStoppingSession) return;
+    setIsStoppingSession(true);
     markSessionStopped(activeChatSessionId);
     stopGenerating();
-    if (activeChatSessionId) {
-      try {
-        await chatApi.stopSession(activeChatSessionId);
-      } catch (error) {
-        console.error("Failed to stop active chat session:", error);
+    try {
+      const stopped = await chatApi.stopSession(activeChatSessionId);
+      if (!stopped.success || !stopped.data?.stopped) {
+        throw new Error(stopped.error || stopped.data?.error || "No active response was found");
       }
-    }
-    if (activeAgentId) {
-      try {
-        await stopAgent.mutateAsync(activeAgentId);
-      } catch (error) {
-        console.error("Failed to stop active agent:", error);
+      const refreshed = await refreshSessionMessagesRef.current(activeChatSessionId);
+      if (!refreshed) {
+        throw new Error("Stopped response could not be reloaded");
       }
+      setActiveSessionIds((previous) => previous.filter((id) => id !== activeChatSessionId));
+      clearCachedLiveSessionState(activeChatSessionId);
+      setLiveStatus("idle");
+      setLiveCurrentStep(null);
+      setLiveActivities([]);
+      setLoadingSessionId(null);
+      runActivityBufferRef.current = [];
+      pendingProcessCaptureRef.current = null;
+    } catch (error) {
+      console.error("Failed to stop active chat session:", error);
+      useUIStore
+        .getState()
+        .addToast("error", error instanceof Error ? error.message : "Failed to stop response");
+    } finally {
+      setIsStoppingSession(false);
     }
-    if (sessionId) {
-      setActiveSessionIds((previous) => previous.filter((id) => id !== sessionId));
-      clearCachedLiveSessionState(sessionId);
-    }
-    setLiveStatus("idle");
-    setLiveCurrentStep(null);
-    setLiveActivities([]);
-    setLoadingSessionId(null);
-    runActivityBufferRef.current = [];
-    pendingProcessCaptureRef.current = null;
-  }, [markSessionStopped, selectedAgentId, sessionAgentId, stopGenerating, stopAgent, sessionId]);
+  }, [isStoppingSession, markSessionStopped, sessionId, stopGenerating]);
 
   const handleToggleDictation = useCallback(async () => {
     if (typeof window === "undefined") return;
@@ -3545,6 +3571,44 @@ export function Chat() {
         title="Select Session Workspace"
         description="Choose the local folder this chat should use for file tools, git context, and workspace-aware prompts."
       />
+      <Modal
+        isOpen={showNearbyShare}
+        onClose={() => setShowNearbyShare(false)}
+        title="Send chat to nearby Cybara"
+        size="sm"
+      >
+        <div className="space-y-2">
+          {nearbyShareStatus?.pairedPeers.length ? (
+            nearbyShareStatus.pairedPeers.map((peer) => (
+              <button
+                key={peer.id}
+                type="button"
+                disabled={sharingPeerId !== null}
+                onClick={() => void shareSessionNearby(peer.id)}
+                className="flex w-full items-center justify-between gap-3 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-3 text-left transition-colors hover:bg-[var(--surface-elevated)] disabled:opacity-50"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-medium text-[var(--text-primary)]">
+                    {peer.name}
+                  </span>
+                  <span className="block truncate text-xs text-[var(--text-muted)]">
+                    {peer.baseUrl}
+                  </span>
+                </span>
+                {sharingPeerId === peer.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-[var(--text-muted)]" />
+                ) : (
+                  <Share2 className="h-4 w-4 text-[var(--text-muted)]" />
+                )}
+              </button>
+            ))
+          ) : (
+            <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4 text-sm text-[var(--text-secondary)]">
+              Pair another Cybara in Settings → Gateway before sending this chat.
+            </div>
+          )}
+        </div>
+      </Modal>
       <div className="relative flex items-center justify-between px-3 sm:px-4 py-2 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl flex-shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
@@ -3580,6 +3644,17 @@ export function Chat() {
             onSelectWorkspace={() => void handleSelectWorkspace()}
             onOpenCybaraIde={handleOpenWorkspaceInCybaraIde}
           />
+          {sessionId && (
+            <button
+              type="button"
+              aria-label="Send chat to nearby Cybara"
+              onClick={() => void openNearbyShare()}
+              className="relative cursor-pointer rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-white/5 sm:p-2"
+              title="Send to nearby Cybara"
+            >
+              <Share2 className="h-4 w-4" />
+            </button>
+          )}
           <button
             aria-label="File diffs"
             onClick={() => {
@@ -4287,7 +4362,7 @@ export function Chat() {
                         (showWorkingTimeline && !followUpBehaviorEnabled) ||
                         (isLoading && !sendQueuesFollowUp)
                       }
-                      isStopping={stopAgent.isPending}
+                      isStopping={isStoppingSession}
                       onSend={handleSend}
                       onStop={() => void handleStopActive()}
                       queueing={sendQueuesFollowUp}

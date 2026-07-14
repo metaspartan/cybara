@@ -11,6 +11,7 @@ import { checkForUpdateInBackground, isUpdateCheckDisabled } from "./core/update
 import { runMcpStdioServer } from "./core/mcp-host-server";
 import { resolveCybaraHome } from "./core/cybara-home";
 import { runMobileCommand } from "./cli-mobile";
+import { runNearbyCommand } from "./cli-nearby";
 import { rawHelp } from "./cli-help";
 import { printCompletion } from "./cli-completion";
 import { rawComputerUse } from "./cli-computer-use";
@@ -3854,6 +3855,9 @@ async function main() {
     case "backup":
     case "backups":
       await runSystemBackupCommand(args.slice(1), fetchAPI);
+      break;
+    case "nearby":
+      await runNearbyCommand(args.slice(1), fetchAPI);
       break;
     case "doctor":
       await rawDoctor();

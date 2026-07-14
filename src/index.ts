@@ -86,6 +86,7 @@ import {
 } from "./api/security";
 import { setGatewayHostApplyHandler } from "./api/gateway-network";
 import { getClientIp } from "./api/client-ip";
+import { nearbyService } from "./core/nearby";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -761,6 +762,12 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
 }
 
 let gatewayServer = createGatewayServer(runtimeHost);
+
+nearbyService.initialize().catch((error) => {
+  console.error(
+    `[Nearby] Failed to initialize: ${error instanceof Error ? error.message : String(error)}`
+  );
+});
 
 setGatewayHostApplyHandler((nextHost) => {
   const requestedHost = nextHost.trim();

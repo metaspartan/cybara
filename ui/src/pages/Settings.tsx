@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/Badge";
 import { PageLayout } from "@/components/layout";
 import { GatewayPathSettingsSection } from "@/components/settings/GatewayPathSettingsSection";
 import { GatewayRemoteAccessSection } from "@/components/settings/GatewayRemoteAccessSection";
+import { NearbySettingsSection } from "@/components/settings/NearbySettingsSection";
 import { SettingsNavigation } from "@/components/settings/SettingsNavigation";
 import { SystemBackupSettingsSection } from "@/components/settings/SystemBackupSettingsSection";
 import { AiFeatureSettings } from "./settings/AiFeatureSettings";
@@ -2690,6 +2691,7 @@ export function Settings() {
             <>
               <GatewayPathSettingsSection infoData={infoData} />
               <GatewayAuthSettingsSection />
+              <NearbySettingsSection />
               <GatewayControlSection />
             </>
           )}

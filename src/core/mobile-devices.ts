@@ -46,7 +46,15 @@ export interface MobileRemoteAccessInfo {
  * was granted, so a stolen token can't reach capabilities the owner didn't opt
  * into (notably fund-moving wallet ops and terminal execution).
  */
-export const MOBILE_SCOPES = ["chat", "manage", "read", "wallet", "terminal", "mcp"] as const;
+export const MOBILE_SCOPES = [
+  "chat",
+  "manage",
+  "read",
+  "wallet",
+  "terminal",
+  "mcp",
+  "nearby",
+] as const;
 export type MobileScope = (typeof MOBILE_SCOPES)[number];
 
 /** Default scopes for a new pairing: everything the mobile app needs, minus */
@@ -64,7 +72,7 @@ export function normalizeMobileScopes(value: unknown): MobileScope[] {
 
 /** Named scope bundles so pairing UIs can offer simple roles instead of raw scopes. */
 export const MOBILE_ROLES = {
-  full: ["chat", "manage", "read", "wallet", "terminal", "mcp"],
+  full: ["chat", "manage", "read", "wallet", "terminal", "mcp", "nearby"],
   standard: ["chat", "manage", "read"],
   readonly: ["chat", "read"],
 } as const satisfies Record<string, MobileScope[]>;

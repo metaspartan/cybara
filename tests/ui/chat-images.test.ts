@@ -21,9 +21,7 @@ describe("chat image rendering", () => {
   });
 
   test("never embeds the api token in media image URLs", () => {
-    const fromMarkdown = chatMarkdownImageSrc(
-      "file:///Users/carsen/.cybara/screenshots/shot.png"
-    );
+    const fromMarkdown = chatMarkdownImageSrc("file:///Users/carsen/.cybara/screenshots/shot.png");
     const fromScreenshot = screenshotMediaSrc("/Users/carsen/.cybara/screenshots/shot.png");
     const fromAttachment = chatImageSrc({ path: "attachments/photo.png" } as never);
     const fromTool = imageToolResultSrc({

@@ -842,6 +842,9 @@ export function routeRequiredScope(method: string, path: string): string | null 
   if (path.startsWith("/api/system/backups")) {
     return "root";
   }
+  if (path.startsWith("/api/nearby")) {
+    return "nearby";
+  }
   if (path.startsWith("/api/checkpoints")) {
     return "root";
   }

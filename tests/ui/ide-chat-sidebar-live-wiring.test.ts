@@ -53,7 +53,9 @@ describe("IDE chat sidebar live wiring", () => {
     expect(source).toContain("status={liveStatus}");
     expect(source).toContain("currentStep={liveCurrentStep}");
     expect(source).toContain("const handleStopActive = useCallback(async () => {");
-    expect(source).toContain("await stopAgent.mutateAsync(targetAgentId);");
+    expect(source).toContain("await chatApi.stopSession(sessionId)");
+    expect(source).toContain("await chatApi.getSession(sessionId)");
+    expect(source).not.toContain("stopAgent.mutateAsync");
   });
 
   test("renders assistant markdown and preserves multiline tool output cards", () => {

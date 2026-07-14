@@ -46,6 +46,58 @@ export interface WorkspaceOpenTarget {
   detail?: string;
 }
 
+export interface NearbySettings {
+  enabled: boolean;
+  displayName: string;
+  port: number;
+  discoveryMinutes: number;
+}
+
+export interface NearbyPairing {
+  id: string;
+  direction: "incoming" | "outgoing";
+  peerId: string;
+  peerName: string;
+  peerBaseUrl: string;
+  verificationCode: string;
+  localConfirmed: boolean;
+  remoteConfirmed: boolean;
+  expiresAt: string;
+}
+
+export interface NearbyStatus {
+  settings: NearbySettings;
+  identity: { id: string; fingerprint: string };
+  running: boolean;
+  discoverableUntil: string | null;
+  discoveredPeers: Array<{
+    id: string;
+    name: string;
+    baseUrl: string;
+    fingerprint: string;
+    lastSeenAt: string;
+  }>;
+  pairedPeers: Array<{
+    id: string;
+    name: string;
+    baseUrl: string;
+    fingerprint: string;
+    pairedAt: string;
+    lastSeenAt?: string;
+    syncEnabled: boolean;
+  }>;
+  pairings: NearbyPairing[];
+  incomingTransfers: Array<{
+    id: string;
+    peerId: string;
+    peerName: string;
+    receivedAt: string;
+    title: string | null;
+    messageCount: number;
+    workspace: { name: string; branch?: string; commit?: string; dirty?: boolean } | null;
+  }>;
+}
+
 /**
  * Resolve a human-readable error from an ApiResponse: prefer a nested
  * `data.error` (envelope returned with HTTP 200), then the transport `error`,
@@ -2432,6 +2484,52 @@ export const migrationApi = {
     fetchApi<SourceMigrationReport>("/migrations/run", {
       method: "POST",
       body: JSON.stringify({ ...payload, dryRun: false }),
+    }),
+};
+
+export const nearbyApi = {
+  status: () => fetchApi<NearbyStatus>("/nearby"),
+  updateSettings: (settings: NearbySettings) =>
+    fetchApi<{ success: boolean; settings: NearbySettings; status: NearbyStatus }>(
+      "/nearby/settings",
+      { method: "PUT", body: JSON.stringify(settings) }
+    ),
+  makeDiscoverable: () =>
+    fetchApi<{ success: boolean; discoverableUntil: string }>("/nearby/discoverable", {
+      method: "POST",
+    }),
+  stopDiscoverable: () =>
+    fetchApi<{ success: boolean }>("/nearby/discoverable", { method: "DELETE" }),
+  pair: (peerId: string, baseUrl?: string) =>
+    fetchApi<NearbyPairing>("/nearby/pair", {
+      method: "POST",
+      body: JSON.stringify({ peerId, baseUrl }),
+    }),
+  confirmPairing: (pairingId: string) =>
+    fetchApi<NearbyPairing>(`/nearby/pairings/${encodeURIComponent(pairingId)}/confirm`, {
+      method: "POST",
+    }),
+  rejectPairing: (pairingId: string) =>
+    fetchApi<{ success: boolean }>(`/nearby/pairings/${encodeURIComponent(pairingId)}`, {
+      method: "DELETE",
+    }),
+  removePeer: (peerId: string) =>
+    fetchApi<{ success: boolean }>(`/nearby/peers/${encodeURIComponent(peerId)}`, {
+      method: "DELETE",
+    }),
+  sendSession: (peerId: string, sessionId: string) =>
+    fetchApi<{ transferId: string }>(`/nearby/peers/${encodeURIComponent(peerId)}/sessions`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId }),
+    }),
+  acceptTransfer: (transferId: string, workspaceDir?: string | null) =>
+    fetchApi<{ sessionId: string; duplicate: boolean }>(
+      `/nearby/transfers/${encodeURIComponent(transferId)}/accept`,
+      { method: "POST", body: JSON.stringify({ workspaceDir: workspaceDir || null }) }
+    ),
+  dismissTransfer: (transferId: string) =>
+    fetchApi<{ success: boolean }>(`/nearby/transfers/${encodeURIComponent(transferId)}`, {
+      method: "DELETE",
     }),
 };
 
