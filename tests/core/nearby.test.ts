@@ -11,8 +11,11 @@ import {
   importNearbySessionBundle,
   isNearbyEncryptedEnvelope,
   isNearbySessionBundle,
+  getNearbySettings,
+  NearbyService,
   normalizeNearbySettings,
   parseNearbyBaseUrl,
+  setNearbySettings,
   verifyNearbyPairingProof,
 } from "../../src/core/nearby";
 import { createNearbySessionBundle } from "../../src/core/nearby/transfer";
@@ -75,6 +78,32 @@ describe("nearby network and settings boundaries", () => {
     expect(() => parseNearbyBaseUrl("https://192.168.1.15:4270")).toThrow();
     expect(() => parseNearbyBaseUrl("http://8.8.8.8:4270")).toThrow();
     expect(() => parseNearbyBaseUrl("http://user:pass@192.168.1.15:4270")).toThrow();
+  });
+
+  test("rolls settings back when the listener cannot start", async () => {
+    const previous = getNearbySettings();
+    const blocker = Bun.serve({
+      hostname: "0.0.0.0",
+      port: 0,
+      fetch: () => new Response("occupied"),
+    });
+    const service = new NearbyService();
+    try {
+      await expect(
+        service.configure({
+          enabled: true,
+          displayName: "Blocked Nearby",
+          port: blocker.port,
+          discoveryMinutes: 5,
+        })
+      ).rejects.toThrow();
+      expect(getNearbySettings()).toEqual(previous);
+      expect((await service.status()).running).toBe(false);
+    } finally {
+      service.stop();
+      setNearbySettings(previous);
+      blocker.stop(true);
+    }
   });
 });
 

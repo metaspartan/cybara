@@ -1286,7 +1286,7 @@ function normalizeProcessActivityTextForPhase(
     .replace(/^Editing\b/i, "Edit failed");
 }
 
-function formatProcessActivityFromToolCall(toolCall: ToolCallInfo): string {
+export function formatProcessActivityFromToolCall(toolCall: ToolCallInfo): string {
   const key = toolCall.name.toLowerCase();
   const args = toolCall.args || {};
   const path = readToolArgString(args, "path");
@@ -1319,7 +1319,7 @@ function formatProcessActivityFromToolCall(toolCall: ToolCallInfo): string {
         .join(" ")
         .trim();
       if (compact.length > 0) {
-        return `Ran ${compact.length > 80 ? `${compact.slice(0, 77)}...` : compact}`;
+        return `Ran ${compact}`;
       }
     }
     return "Command complete";

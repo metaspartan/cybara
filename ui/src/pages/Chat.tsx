@@ -37,6 +37,7 @@ import { Badge, Button, GlassCard, Input, Modal } from "@/components/ui";
 import { useAgentSummaries, useInfo, useSubagents, useUpdateAgentReasoning } from "@/hooks/useApi";
 import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
 import { chatApi, nearbyApi, providerPlansApi, settingsApi, type NearbyStatus } from "@/lib/api";
+import { useNearbyStatus } from "@/hooks/useNearbyStatus";
 import {
   audioBlobToBase64,
   audioBlobToLocalPcm,
@@ -712,6 +713,7 @@ export function Chat() {
   const [savingGoldenMessageIndex, setSavingGoldenMessageIndex] = useState<number | null>(null);
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
   const [isStoppingSession, setIsStoppingSession] = useState(false);
+  const { data: nearbyStatus } = useNearbyStatus(Boolean(sessionId));
   const speechAudioRef = useRef<HTMLAudioElement | null>(null);
   const copiedMessageTimerRef = useRef<number | null>(null);
   const handleCopyMessage = useCallback(async (index: number, content: string) => {
@@ -3644,7 +3646,7 @@ export function Chat() {
             onSelectWorkspace={() => void handleSelectWorkspace()}
             onOpenCybaraIde={handleOpenWorkspaceInCybaraIde}
           />
-          {sessionId && (
+          {sessionId && nearbyStatus?.settings.enabled === true && (
             <button
               type="button"
               aria-label="Send chat to nearby Cybara"

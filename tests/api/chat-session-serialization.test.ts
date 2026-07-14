@@ -3,6 +3,7 @@ import { agentManager } from "../../src/core/agent";
 import { providerManager } from "../../src/core/providers";
 import {
   deleteSession,
+  formatProcessActivityFromToolCall,
   handleChat,
   getSessionMessages,
   listPendingChatMessages,
@@ -325,6 +326,19 @@ describe("handleChat per-session serialization", () => {
     );
     expect(persistedStopped?.process_activities).toEqual(stoppedActivities);
     expect((await stopActiveChatTurn(sessionId)).stopped).toBe(false);
+  });
+
+  test("formats complete command activity without shortening it", () => {
+    const command =
+      "printf 'complete command activity remains fully visible across every client surface' >/dev/null";
+    expect(
+      formatProcessActivityFromToolCall({
+        id: "complete-command-call",
+        name: "exec",
+        args: { command },
+        status: "completed",
+      })
+    ).toBe(`Ran ${command}`);
   });
 
   test("rejects concurrent follow-ups when queue and steer behavior is disabled", async () => {

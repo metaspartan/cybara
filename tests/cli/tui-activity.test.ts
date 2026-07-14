@@ -98,4 +98,37 @@ describe("CLI TUI activity summaries", () => {
       ["Running tests", "start"],
     ]);
   });
+
+  test("recovers complete commands from persisted tool arguments", () => {
+    const command =
+      'test "$(cat /tmp/cybara/result.txt)" = "GLM PERSISTENCE OK" && echo "contents match exactly"';
+    const rows = presentTUIActivities(
+      [
+        {
+          id: "thought-before-command",
+          phase: "result",
+          text: "I will verify the persisted file",
+          toolName: "__thought",
+        },
+        {
+          id: "command-result",
+          phase: "result",
+          text: 'Ran test "$(cat /tmp/cybara/result.txt)" = "GLM...',
+          toolName: "exec",
+          toolCallId: "runtime-call-id",
+        },
+      ],
+      [
+        {
+          id: "provider-call-id",
+          name: "exec",
+          args: { command },
+          status: "completed",
+        },
+      ]
+    );
+
+    expect(rows[1]?.label).toBe(`Ran ${command}`);
+    expect(rows[1]?.label).not.toContain("...");
+  });
 });

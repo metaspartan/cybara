@@ -107,6 +107,7 @@ import {
   FolderSync,
   MonitorUp,
   Monitor,
+  Network,
 } from "lucide-react";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -2612,6 +2613,61 @@ function GatewayAuthSettingsSection() {
   );
 }
 
+type GatewaySettingsPanel = "overview" | "connection" | "storage" | "nearby";
+
+const gatewaySettingsPanels: Array<{
+  id: GatewaySettingsPanel;
+  label: string;
+  icon: typeof Server;
+}> = [
+  { id: "overview", label: "Overview", icon: Activity },
+  { id: "connection", label: "Connection", icon: Shield },
+  { id: "storage", label: "Storage", icon: Database },
+  { id: "nearby", label: "Nearby", icon: Network },
+];
+
+function GatewaySettingsContent({ infoData }: { infoData: InfoData }) {
+  const [panel, setPanel] = useState<GatewaySettingsPanel>("overview");
+
+  return (
+    <div className="space-y-5">
+      <div
+        role="tablist"
+        aria-label="Gateway settings"
+        className="grid grid-cols-2 rounded-lg bg-[var(--surface-panel)] p-1 sm:grid-cols-4"
+      >
+        {gatewaySettingsPanels.map((item) => {
+          const Icon = item.icon;
+          const selected = panel === item.id;
+          return (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={selected}
+              onClick={() => setPanel(item.id)}
+              className={cn(
+                "flex min-w-0 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm transition-colors",
+                selected
+                  ? "bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]"
+                  : "text-[var(--text-muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)]"
+              )}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="truncate">{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {panel === "overview" ? <GatewayControlSection /> : null}
+      {panel === "connection" ? <GatewayAuthSettingsSection /> : null}
+      {panel === "storage" ? <GatewayPathSettingsSection infoData={infoData} /> : null}
+      {panel === "nearby" ? <NearbySettingsSection /> : null}
+    </div>
+  );
+}
+
 export function Settings() {
   const { t } = useI18n();
   const { data: health } = useHealth();
@@ -2687,14 +2743,7 @@ export function Settings() {
 
           {activeSection === "accessibility" && <ChatAccessibilitySettings />}
 
-          {activeSection === "gateway" && (
-            <>
-              <GatewayPathSettingsSection infoData={infoData} />
-              <GatewayAuthSettingsSection />
-              <NearbySettingsSection />
-              <GatewayControlSection />
-            </>
-          )}
+          {activeSection === "gateway" && <GatewaySettingsContent infoData={infoData} />}
 
           {activeSection === "ai" && (
             <>

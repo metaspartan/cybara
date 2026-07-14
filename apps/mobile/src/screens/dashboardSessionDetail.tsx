@@ -515,6 +515,7 @@ export function SessionDetailPanel({
   const [pinning, setPinning] = useState(false);
   const [reliabilityAction, setReliabilityAction] = useState<"fork" | "golden" | null>(null);
   const [nearbySharing, setNearbySharing] = useState(false);
+  const [nearbyEnabled, setNearbyEnabled] = useState(false);
   const [agentUpdating, setAgentUpdating] = useState(false);
   const [reasoningUpdating, setReasoningUpdating] = useState(false);
   const [reasoningOverride, setReasoningOverride] = useState<{
@@ -562,6 +563,22 @@ export function SessionDetailPanel({
         if (!active) return;
         setRouterEnabled(false);
         setUseModelRouter(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, sessionId]);
+
+  useEffect(() => {
+    let active = true;
+    setNearbyEnabled(false);
+    api
+      .nearbyStatus()
+      .then((status) => {
+        if (active) setNearbyEnabled(status.settings.enabled === true);
+      })
+      .catch(() => {
+        if (active) setNearbyEnabled(false);
       });
     return () => {
       active = false;
@@ -2003,12 +2020,16 @@ export function SessionDetailPanel({
       disabled: reliabilityAction !== null,
       onPress: () => runFromChatSettings(() => void forkChat()),
     },
-    {
-      icon: Share2,
-      label: "Send nearby",
-      disabled: nearbySharing,
-      onPress: () => runFromChatSettings(() => void shareNearbyChat()),
-    },
+    ...(nearbyEnabled
+      ? [
+          {
+            icon: Share2,
+            label: "Send nearby",
+            disabled: nearbySharing,
+            onPress: () => runFromChatSettings(() => void shareNearbyChat()),
+          } satisfies ChatSettingsAction,
+        ]
+      : []),
     {
       icon: FlaskConical,
       label: "Save golden run",

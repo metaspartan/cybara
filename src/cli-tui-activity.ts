@@ -18,6 +18,7 @@ export interface TUIActivityItem {
 export interface TUIToolCallItem {
   id?: string;
   name?: string;
+  args?: Record<string, unknown>;
   status?: string;
   timeline_index?: number;
 }
@@ -108,12 +109,45 @@ function fallbackToolText(tool: TUIToolCallItem): string {
   return `${name} completed`;
 }
 
+function toolArgString(tool: TUIToolCallItem, key: string): string | undefined {
+  const value = tool.args?.[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function completeActivityText(
+  activity: TUIActivityItem,
+  tool: TUIToolCallItem | undefined
+): string {
+  const text = activity.text || activity.toolName || activity.phase || "";
+  if (!tool || !text.endsWith("...")) return text;
+  const name = (tool.name || activity.toolName || "").toLowerCase();
+  if (name !== "exec" && name !== "process" && name !== "git") return text;
+  const command = toolArgString(tool, "command") || toolArgString(tool, "cmd");
+  if (!command) return text;
+  const normalized = command
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .join(" ")
+    .trim();
+  return normalized ? `Ran ${normalized}` : text;
+}
+
 function normalizedActivities(
   activities: TUIActivityItem[],
   tools: TUIToolCallItem[]
 ): SharedActivityItem[] {
+  const toolsById = new Map(tools.flatMap((tool) => (tool.id ? [[tool.id, tool] as const] : [])));
+  const claimedTools = new Set<TUIToolCallItem>();
   const normalized = activities.flatMap((activity, index) => {
-    const text = activity.text || activity.toolName || activity.phase || "";
+    const directTool = activity.toolCallId ? toolsById.get(activity.toolCallId) : undefined;
+    const matchingTool =
+      directTool ||
+      tools.find(
+        (tool) =>
+          !claimedTools.has(tool) && tool.name?.toLowerCase() === activity.toolName?.toLowerCase()
+      );
+    if (matchingTool) claimedTools.add(matchingTool);
+    const text = completeActivityText(activity, matchingTool);
     if (!text.trim()) return [];
     return [
       {

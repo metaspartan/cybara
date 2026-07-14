@@ -88,8 +88,8 @@ navigation, pinning, guarded deletion, new-chat entry, editable prompt input, mu
 switching, reasoning effort controls, model router selection, `@` completion for agents, skills,
 tools, plugins, account apps, and MCP services, and interactive dangerous-tool
 approvals. Approval prompts accept approve-once, approve-for-session, approve-always, or deny without
-leaving the chat. Long message bodies use bounded previews by default; `/expand` toggles the complete
-transcript, while `/details` shows complete tool activity. Live activity uses the same grouped
+leaving the chat. Message bodies and tool activity wrap in full by default; `/expand` toggles a compact
+transcript when a denser view is useful. Live activity uses the same grouped
 command, search, read, and edit summaries as the graphical clients, with thoughts preserved between
 groups. The session picker, command palette, help, status rail, transcript density, and multiline
 composer adapt to the current terminal dimensions. Pending follow-ups support queueing, steering,

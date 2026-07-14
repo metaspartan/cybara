@@ -21,12 +21,20 @@ export function NearbySettingsSection() {
   const [settings, setSettings] = useState<NearbySettings>(fallbackSettings);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const result = await nearbyApi.status();
     if (result.success && result.data) {
       setStatus(result.data);
       setSettings(result.data.settings);
+      setLoadError(null);
+    } else {
+      setLoadError(
+        /not found/i.test(result.error || "")
+          ? "Nearby is unavailable in this gateway build. Rebuild or update the gateway, then restart it."
+          : result.error || "Could not load Nearby Cybara"
+      );
     }
     setLoading(false);
   }, []);
@@ -94,7 +102,7 @@ export function NearbySettingsSection() {
           </div>
           <Switch
             checked={settings.enabled}
-            disabled={loading || busy !== null}
+            disabled={loading || status === null || busy !== null}
             ariaLabel="Enable Nearby Cybara"
             onChange={(enabled) => {
               const next = { ...settings, enabled };
@@ -105,6 +113,14 @@ export function NearbySettingsSection() {
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
+        {loadError ? (
+          <div
+            role="alert"
+            className="rounded-lg border border-[rgba(var(--accent-primary),0.3)] bg-[rgba(var(--accent-primary),0.08)] px-3 py-2.5 text-sm text-[var(--text-secondary)]"
+          >
+            {loadError}
+          </div>
+        ) : null}
         <div className="flex items-start gap-3 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-3">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
           <p className="text-sm text-[var(--text-secondary)]">

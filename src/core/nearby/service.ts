@@ -241,7 +241,23 @@ export class NearbyService {
     }
     if (!previous.enabled || previous.port !== next.port) {
       this.stop();
-      await this.start();
+      try {
+        await this.start();
+      } catch (error) {
+        this.stop();
+        setNearbySettings(previous);
+        if (previous.enabled) {
+          try {
+            await this.start();
+          } catch (restoreError) {
+            log.error("Failed to restore Nearby listener", {
+              error: safeError(restoreError),
+              port: previous.port,
+            });
+          }
+        }
+        throw error;
+      }
     }
     return next;
   }

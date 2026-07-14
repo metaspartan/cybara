@@ -629,6 +629,7 @@ struct ChatScreen: View {
             await loadMessages(selectedSessionID)
             await hydrateStatus(selectedSessionID)
             await loadSubagents()
+            await loadNearbyShare()
         }
         .task(id: activeWorkspaceDir) {
             await loadActiveGitBranch()
@@ -1083,7 +1084,7 @@ struct ChatScreen: View {
             Spacer()
             workspaceOpenMenu
 
-            if selectedSessionID != nil {
+            if selectedSessionID != nil, nearbyStatus?.settings.enabled == true {
                 Button {
                     showNearbyShare.toggle()
                     if showNearbyShare { Task { await loadNearbyShare() } }
