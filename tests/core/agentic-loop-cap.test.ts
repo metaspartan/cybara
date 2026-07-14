@@ -34,6 +34,7 @@ describe("agentic loop default cap", () => {
     expect(policy.maxIterations!).toBeGreaterThanOrEqual(100);
     // ...but well under the absolute configured ceiling.
     expect(policy.maxIterations!).toBeLessThanOrEqual(10000);
-    expect(policy.maxRuntimeMs!).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
+    expect(policy.maxRuntimeMs!).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000);
+    expect(policy.maxRuntimeMs!).toBeLessThanOrEqual(7 * 24 * 60 * 60 * 1000);
   });
 });

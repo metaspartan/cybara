@@ -796,11 +796,10 @@ function buildSkillsSection(skills?: SkillEntry[]): string[] {
   const lines: string[] = [
     "## Skills (mandatory)",
     "Before replying: scan <available_skills> <description> entries.",
-    "- If exactly one skill clearly applies: read its SKILL.md at <location> with `read`, then follow it.",
-    "- If multiple could apply: choose the most specific one, then read/follow it.",
-    "- If none clearly apply: do not read any SKILL.md.",
-    "- A location beginning with `builtin:` is virtual. Never read or search for it; use it only when complete inline instructions are supplied in <selected_capabilities>.",
-    "Constraints: never read more than one skill up front; only read after selecting.",
+    "- If exactly one skill clearly applies: call `skill_load` with its exact name, then follow the returned instructions.",
+    "- If multiple could apply: choose the most specific one, then load and follow it.",
+    "- If none clearly apply: do not load a skill.",
+    "Constraints: never load more than one skill up front; only load after selecting.",
     "",
   ];
 

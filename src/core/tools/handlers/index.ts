@@ -34,7 +34,13 @@ import {
   handleCron,
   handleGateway,
 } from "./channel";
-import { handleSkillSave, handleSummarization, handleVideoFrames, handleWeather } from "./skill";
+import {
+  handleSkillLoad,
+  handleSkillSave,
+  handleSummarization,
+  handleVideoFrames,
+  handleWeather,
+} from "./skill";
 import { handleHomeAssistant } from "./home-assistant";
 import { handleMixtureOfAgents } from "./mixture-of-agents";
 import { handleTodo } from "./todo";
@@ -240,6 +246,7 @@ const toolHandlers: Record<
   cron: handleCron,
   gateway: handleGateway,
 
+  skill_load: handleSkillLoad,
   skill_save: handleSkillSave,
   summarization: handleSummarization,
   video_frames: handleVideoFrames,

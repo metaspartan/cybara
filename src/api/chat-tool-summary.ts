@@ -199,13 +199,27 @@ export function shouldEnforceToolUseForMessage(message: string): boolean {
 
 export function requiredDirectToolForMessage(message: string): string | undefined {
   const lower = message.trim().toLowerCase();
+  const asksForExplanation =
+    /^(?:what|why|how)\s+(?:is|are|does|do|can)\b/.test(lower) ||
+    /^(?:explain|describe|define)\b/.test(lower);
+  if (asksForExplanation) return undefined;
+
   const namesComputerUse = /\bcomputer[-_\s]?use\b/.test(lower);
   const namesDesktop = /\b(desktop|screen)\b/.test(lower);
   const requestsDesktopAction =
     /\b(capture|screenshot|move|click|type|scroll|drag|focus|control|open|close|list)\b/.test(
       lower
     );
-  return (namesComputerUse || namesDesktop) && requestsDesktopAction ? "computer_use" : undefined;
+  if ((namesComputerUse || namesDesktop) && requestsDesktopAction) {
+    return "computer_use";
+  }
+
+  const requestsExecution = /\b(run|execute|use|call|invoke)\b/.test(lower);
+  const namesExec = /\bexec(?:\s+tool)?\b/.test(lower);
+  const namesShellCommand =
+    /\b(?:shell|terminal|powershell|pwsh|bash|zsh)\s+command\b/.test(lower) ||
+    /\b(?:run|execute)\s+(?:the\s+)?command\b/.test(lower);
+  return requestsExecution && (namesExec || namesShellCommand) ? "exec" : undefined;
 }
 
 const ARTIFACT_INTENT_PATTERNS = [

@@ -11,6 +11,7 @@ use tauri::RunEvent;
 use tauri_plugin_audio_recorder::{AudioFormat, AudioQuality, AudioRecorderExt, RecordingConfig};
 use tauri_plugin_shell::ShellExt;
 
+mod desktop_update;
 mod tray;
 
 const CYBARA_SERVER_ADDR: &str = "127.0.0.1:4269";
@@ -259,25 +260,6 @@ pub(crate) fn badge_icon(base: &tauri::image::Image) -> tauri::image::Image<'sta
     tauri::image::Image::new_owned(rgba, width, height)
 }
 
-#[tauri::command]
-async fn set_update_available(
-    app: tauri::AppHandle,
-    available: bool,
-    version: Option<String>,
-    status: Option<String>,
-) -> Result<(), String> {
-    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-    let handle = app.clone();
-    app.run_on_main_thread(move || {
-        tray::apply_update_state(&handle, available, version, status);
-        let _ = sender.send(());
-    })
-    .map_err(|error| error.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || receiver.recv().map_err(|error| error.to_string()))
-        .await
-        .map_err(|error| error.to_string())?
-}
-
 fn cybara_api_key() -> Result<Option<String>, String> {
     if let Ok(key) = std::env::var("CYBARA_API_KEY") {
         let trimmed = key.trim();
@@ -385,11 +367,14 @@ fn main() {
             read_cybara_api_key,
             start_native_recording,
             stop_native_recording,
-            set_update_available
+            desktop_update::get_desktop_update_state,
+            desktop_update::check_desktop_update,
+            desktop_update::install_desktop_update
         ])
         .setup(|app| {
             app.manage(SidecarState(std::sync::Mutex::new(None)));
             app.manage(PendingOpen(std::sync::Mutex::new(None)));
+            app.manage(desktop_update::DesktopUpdateManager::default());
             tray::setup(app)?;
 
             if let Some(path) = file_path_from_args(&std::env::args().collect::<Vec<_>>()) {

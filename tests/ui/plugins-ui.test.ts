@@ -25,6 +25,9 @@ describe("plugin UI", () => {
     expect(page).toContain("mcpApi.list()");
     expect(page).toContain("<AccountAppsPanel />");
     expect(styles).toContain('.grid-cols-3:not([role="tablist"])');
+    expect(page).not.toContain("border-white");
+    expect(page).not.toContain("border-dashed");
+    expect(page).not.toContain("--border-color");
   });
 
   test("uses switches for optional write access and keeps OAuth secrets masked", async () => {
@@ -35,6 +38,11 @@ describe("plugin UI", () => {
     expect(page).toContain("creating events");
     expect(page).toContain("Loading account connectors");
     expect(page).not.toContain('type="checkbox"');
+    expect(page).toContain("border-[var(--surface-border)]");
+    expect(page).toContain("text-[var(--text-primary)]");
+    expect(page).not.toContain("border-white");
+    expect(page).not.toContain("text-white");
+    expect(page).not.toContain("--border-color");
   });
 
   test("keeps account app identities and plugin summaries in parity across clients", async () => {

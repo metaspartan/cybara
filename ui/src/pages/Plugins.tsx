@@ -158,7 +158,7 @@ export function Plugins() {
     >
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         <div
-          className="grid grid-cols-3 rounded-lg border border-[var(--border-color)] bg-[var(--surface-panel)] p-1"
+          className="grid grid-cols-3 rounded-lg bg-[var(--surface-panel)] p-1"
           role="tablist"
           aria-label="Plugin capabilities"
         >
@@ -174,8 +174,8 @@ export function Plugins() {
                 onClick={() => setTab(item.id)}
                 className={`flex min-w-0 items-center justify-center gap-2 rounded-md px-3 py-2 text-sm transition-colors ${
                   selected
-                    ? "bg-[var(--surface-elevated)] text-[var(--text-primary)] shadow-sm"
-                    : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    ? "bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]"
+                    : "text-[var(--text-muted)] hover:bg-[var(--surface-elevated)] hover:text-[var(--text-primary)]"
                 }`}
               >
                 <Icon className="h-4 w-4 shrink-0" />
@@ -191,12 +191,12 @@ export function Plugins() {
               {[0, 1, 2, 3].map((item) => (
                 <div
                   key={item}
-                  className="h-40 animate-pulse rounded-lg border border-[var(--border-color)] bg-[var(--surface-panel)]"
+                  className="h-40 animate-pulse rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]"
                 />
               ))}
             </div>
           ) : plugins.length === 0 ? (
-            <div className="flex min-h-56 flex-col items-center justify-center rounded-lg border border-dashed border-[var(--border-color)] px-6 text-center">
+            <div className="flex min-h-56 flex-col items-center justify-center rounded-lg bg-[var(--surface-panel)] px-6 text-center">
               <Boxes className="mb-3 h-8 w-8 text-[var(--text-muted)]" />
               <h2 className="text-sm font-semibold text-[var(--text-primary)]">
                 No plugin bundles
@@ -210,7 +210,7 @@ export function Plugins() {
               {plugins.map((plugin) => (
                 <section
                   key={plugin.id}
-                  className="flex min-h-40 flex-col rounded-lg border border-[var(--border-color)] bg-[var(--surface-panel)] p-4"
+                  className="flex min-h-40 flex-col rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4"
                 >
                   <div className="flex items-start gap-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]">
@@ -265,7 +265,7 @@ export function Plugins() {
 
         {tab === "services" ? (
           <div className="space-y-4">
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border-color)] bg-[var(--surface-panel)] px-4 py-3">
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-4 py-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium text-[var(--text-primary)]">MCP services</p>
                 <p className="text-sm text-[var(--text-muted)]">
@@ -277,7 +277,7 @@ export function Plugins() {
               </Button>
             </div>
             {services.length === 0 ? (
-              <div className="flex min-h-44 flex-col items-center justify-center rounded-lg border border-dashed border-[var(--border-color)] px-6 text-center">
+              <div className="flex min-h-44 flex-col items-center justify-center rounded-lg bg-[var(--surface-panel)] px-6 text-center">
                 <Server className="mb-3 h-8 w-8 text-[var(--text-muted)]" />
                 <p className="text-sm font-semibold text-[var(--text-primary)]">No MCP services</p>
                 <Button className="mt-3" size="sm" onClick={() => navigate("/mcp")}>
@@ -285,7 +285,7 @@ export function Plugins() {
                 </Button>
               </div>
             ) : (
-              <div className="divide-y divide-[var(--border-color)] overflow-hidden rounded-lg border border-[var(--border-color)] bg-[var(--surface-panel)]">
+              <div className="divide-y divide-[var(--surface-border)] overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]">
                 {services.map((service) => (
                   <div key={service.id} className="flex items-center gap-3 px-4 py-3">
                     <Server className="h-4 w-4 shrink-0 text-[var(--text-muted)]" />

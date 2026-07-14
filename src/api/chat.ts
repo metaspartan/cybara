@@ -2207,6 +2207,7 @@ async function handleChatTurn(
       );
       const shouldPreferArtifacts = tools && shouldPreferArtifactsForMessage(message);
       const directToolCandidate = tools ? requiredDirectToolForMessage(message) : undefined;
+      const selectedSkill = capabilityMentions.mentions.some((mention) => mention.kind === "skill");
       let activeModelOverride = requestedModelOverride;
       let activeSupportsImages = supportsImages;
       let executionMessages = applyChatCapabilityInstruction(
@@ -2225,13 +2226,16 @@ async function handleChatTurn(
         directToolCandidate && (!allowedToolNames || allowedToolNames.includes(directToolCandidate))
           ? directToolCandidate
           : undefined;
-      let requiredToolName = shouldPreferArtifacts ? "artifacts" : requiredDirectToolName;
+      let requiredToolName = shouldPreferArtifacts
+        ? "artifacts"
+        : requiredDirectToolName || (selectedSkill ? "skill_load" : undefined);
       let result = await agentManager.execute(agent.id, executionMessages, {
         useTools: tools,
         sessionId: session.id,
         requireToolUse:
           shouldPreferArtifacts ||
           Boolean(requiredDirectToolName) ||
+          selectedSkill ||
           capabilityMentions.mentions.some((mention) => mention.kind === "mcp"),
         requiredToolName,
         workspaceDir: session.workspaceDir || undefined,
@@ -2306,7 +2310,9 @@ async function handleChatTurn(
           (!allowedToolNames || allowedToolNames.includes(directToolCandidate))
             ? directToolCandidate
             : undefined;
-        requiredToolName = shouldPreferArtifacts ? "artifacts" : requiredDirectToolName;
+        requiredToolName = shouldPreferArtifacts
+          ? "artifacts"
+          : requiredDirectToolName || (selectedSkill ? "skill_load" : undefined);
         executionMessages = buildAgentTransferMessages(
           applyChatCapabilityInstruction(
             buildChatExecutionMessagesForAgent(session.messages, {
@@ -2329,6 +2335,7 @@ async function handleChatTurn(
           requireToolUse:
             shouldPreferArtifacts ||
             Boolean(requiredDirectToolName) ||
+            selectedSkill ||
             capabilityMentions.mentions.some((mention) => mention.kind === "mcp"),
           requiredToolName,
           workspaceDir: session.workspaceDir || undefined,

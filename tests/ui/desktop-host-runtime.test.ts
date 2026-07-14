@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync, readdirSync } from "fs";
+import { existsSync, readdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
@@ -30,10 +30,9 @@ describe("desktop host runtime wiring", () => {
     expect(desktopHost).toContain("openDesktopDirectoryDialog");
     expect(desktopHost).toContain("openDesktopFileDialog");
 
-    expect(desktopUpdater).toContain('from "@tauri-apps/plugin-updater"');
-    expect(desktopUpdater).toContain('from "@tauri-apps/plugin-process"');
-    expect(desktopUpdater).not.toContain('import("@tauri-apps/plugin-updater")');
-    expect(desktopUpdater).not.toContain('import("@tauri-apps/plugin-process")');
+    expect(desktopUpdater).toContain('invoke<DesktopUpdateSnapshot>("check_desktop_update")');
+    expect(desktopUpdater).toContain('invoke<DesktopUpdateSnapshot>("install_desktop_update")');
+    expect(desktopUpdater).toContain('"cybara://update-state"');
     expect(openExternal).toContain('from "@tauri-apps/plugin-shell"');
     expect(openExternal).toContain("isTauriDesktopRuntime()");
     expect(openExternal).toContain("openTauriExternal(url)");
@@ -89,8 +88,8 @@ describe("desktop host runtime wiring", () => {
       .join("\n");
 
     const productionBundleSource = `${mainChunkSource}\n${routeChunkSource}`;
-    expect(productionBundleSource).toContain("plugin:updater");
-    expect(productionBundleSource).toContain("plugin:process");
-    expect(productionBundleSource).toContain("downloadAndInstall");
+    expect(productionBundleSource.includes("check_desktop_update")).toBe(true);
+    expect(productionBundleSource.includes("install_desktop_update")).toBe(true);
+    expect(productionBundleSource.includes("cybara://update-state")).toBe(true);
   });
 });

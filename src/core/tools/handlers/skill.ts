@@ -1,4 +1,11 @@
-import { createLocalSkill, executeSkill } from "../../skills/index";
+import {
+  createEligibilityContext,
+  createLocalSkill,
+  executeSkill,
+  filterEligibleSkills,
+  loadAllSkills,
+} from "../../skills/index";
+import type { ToolContext } from "../index";
 
 export async function handleSummarization(args: Record<string, unknown>): Promise<unknown> {
   return await executeSkill("summarization", args);
@@ -19,11 +26,39 @@ export async function handleSkillExecution(
   return await executeSkill(skillName, args);
 }
 
-/**
- * Self-improving skills: lets the agent codify a successful multi-step
- * procedure as a reusable local skill (~/.cybara/skills/<slug>/SKILL.md),
- * which the loader picks up for future sessions.
- */
+function normalizeSkillName(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+export async function handleSkillLoad(
+  args: Record<string, unknown>,
+  context?: ToolContext
+): Promise<unknown> {
+  const requested = typeof args.name === "string" ? args.name.trim() : "";
+  if (!requested) throw new Error("Validation error: 'name' is required.");
+  const requestedAlias = normalizeSkillName(requested);
+  const eligible = filterEligibleSkills(
+    await loadAllSkills({ workspaceDir: context?.workspaceDir }),
+    createEligibilityContext()
+  );
+  const entry = eligible.find(
+    (candidate) =>
+      candidate.skill.name.toLowerCase() === requested.toLowerCase() ||
+      normalizeSkillName(candidate.skill.name) === requestedAlias
+  );
+  if (!entry) throw new Error(`Skill not found or unavailable: ${requested}`);
+  return {
+    name: entry.skill.name,
+    description: entry.skill.description,
+    instructions: entry.skill.instructions,
+    source: entry.source,
+  };
+}
+
 export async function handleSkillSave(args: Record<string, unknown>): Promise<unknown> {
   const name = typeof args.name === "string" ? args.name.trim() : "";
   const content = typeof args.content === "string" ? args.content.trim() : "";

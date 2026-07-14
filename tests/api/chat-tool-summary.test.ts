@@ -68,6 +68,17 @@ describe("chat tool summary utilities", () => {
     expect(requiredDirectToolForMessage("Explain desktop automation security")).toBeUndefined();
   });
 
+  test("binds explicit command execution to exec without forcing explanations", () => {
+    expect(
+      requiredDirectToolForMessage(
+        "Run exec exactly once with command sleep 30; printf CROSS_SESSION_TOOL_DONE"
+      )
+    ).toBe("exec");
+    expect(requiredDirectToolForMessage("Execute the terminal command bun test")).toBe("exec");
+    expect(requiredDirectToolForMessage("What is the exec tool?")).toBeUndefined();
+    expect(requiredDirectToolForMessage("Explain how a shell command works")).toBeUndefined();
+  });
+
   test("detects artifact-focused prompts for artifact-preferred tool execution", () => {
     expect(
       shouldPreferArtifactsForMessage("audit this codebase and create an artifact report when done")

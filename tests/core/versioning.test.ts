@@ -1,22 +1,22 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  TAURI_DESKTOP_UPDATER_PLATFORMS,
-  TAURI_WINDOWS_X64_MSI_FALLBACK_PLATFORMS,
-  TAURI_WINDOWS_X64_RELEASE_PLATFORMS,
-  buildGitHubReleasesPageUrl,
   buildGitHubReleaseApiUrl,
+  buildGitHubReleasesPageUrl,
   buildGitHubUpdaterEndpoint,
   buildTauriReleaseConfigPatch,
   computeReleaseVersion,
+  isDraftReleaseUrl,
   normalizeReleaseTag,
   replaceCargoTomlVersion,
   replaceJsonVersion,
   resolveReleaseAssetBasename,
   resolveReleaseBinaryFilename,
   resolveSelfUpdateDestination,
+  TAURI_DESKTOP_UPDATER_PLATFORMS,
+  TAURI_WINDOWS_X64_MSI_FALLBACK_PLATFORMS,
+  TAURI_WINDOWS_X64_RELEASE_PLATFORMS,
   validateTauriUpdaterManifest,
-  isDraftReleaseUrl,
 } from "../../src/core/versioning";
 
 describe("versioning helpers", () => {
@@ -75,6 +75,9 @@ describe("versioning helpers", () => {
         updater: {
           endpoints: ["https://github.com/metaspartan/cybara/releases/latest/download/latest.json"],
           pubkey: "PUBLIC_KEY",
+          windows: {
+            installMode: "passive",
+          },
         },
       },
     });

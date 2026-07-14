@@ -1,15 +1,16 @@
 import {
-  LOOP_WARNING_BUCKET_SIZE,
-  buildToolIterationFingerprint,
-  type AgentToolCallResult,
   type AgenticLoopPolicy,
   type AgenticLoopState,
+  type AgentToolCallResult,
+  buildToolIterationFingerprint,
+  LOOP_WARNING_BUCKET_SIZE,
 } from "./agent-internals";
 
 export type AgenticLoopLimit = "maxIterations" | "runtime";
 
 export interface AgenticLoopRuntimeTracker {
   activeToolCount: number;
+  budgetWarningLevel: number;
   pausedAt?: number;
   pausedMs: number;
   startedAt: number;
@@ -23,9 +24,58 @@ export interface LoopEvaluation {
 export function createAgenticLoopRuntimeTracker(now = Date.now()): AgenticLoopRuntimeTracker {
   return {
     activeToolCount: 0,
+    budgetWarningLevel: 0,
     pausedMs: 0,
     startedAt: now,
   };
+}
+
+export function consumeAgenticLoopBudgetWarning(
+  loopPolicy: AgenticLoopPolicy,
+  completedIterations: number,
+  tracker: AgenticLoopRuntimeTracker,
+  now = Date.now()
+): string | undefined {
+  const maxIterations = loopPolicy.maxIterations;
+  const remainingIterations =
+    typeof maxIterations === "number"
+      ? Math.max(0, maxIterations - completedIterations)
+      : undefined;
+  const iterationRatio =
+    typeof maxIterations === "number" && maxIterations > 0
+      ? completedIterations / maxIterations
+      : 0;
+  const runtimeRatio =
+    typeof loopPolicy.maxRuntimeMs === "number" && loopPolicy.maxRuntimeMs > 0
+      ? agenticLoopActiveRuntimeMs(tracker, now) / loopPolicy.maxRuntimeMs
+      : 0;
+  const pressure = Math.max(iterationRatio, runtimeRatio);
+  const nextLevel = pressure >= 0.9 ? 2 : pressure >= 0.7 ? 1 : 0;
+  if (nextLevel === 0 || nextLevel <= tracker.budgetWarningLevel) return undefined;
+  tracker.budgetWarningLevel = nextLevel;
+  if (nextLevel === 2) {
+    const remainingLabel =
+      remainingIterations === undefined
+        ? "The active runtime boundary is close."
+        : `${remainingIterations} tool iteration${remainingIterations === 1 ? "" : "s"} remain.`;
+    return `[AGENT BUDGET WARNING: ${remainingLabel} Finish only essential tool work, then return a complete user-facing response with completed and remaining work. Do not end with a request for the user to tell you to continue.]`;
+  }
+  const remainingLabel =
+    remainingIterations === undefined
+      ? "The active runtime budget is 70% used."
+      : `${remainingIterations} of ${maxIterations} tool iterations remain.`;
+  return `[AGENT BUDGET: ${remainingLabel} Start consolidating the work and reserve room for a complete final response.]`;
+}
+
+export function agenticLoopClosingPrompt(
+  limitReason: AgenticLoopLimit,
+  loopPolicy: AgenticLoopPolicy
+): string {
+  const boundary =
+    limitReason === "maxIterations"
+      ? `${loopPolicy.maxIterations ?? "configured"} tool iterations`
+      : `${formatRuntimeLimitLabel(loopPolicy.maxRuntimeMs ?? 0)} of active agent runtime`;
+  return `The run reached its safety boundary after ${boundary}. Do not call more tools. Return a complete user-facing status now: summarize what was completed, report the latest verified state, and identify any unfinished work without asking the user to tell you to continue.`;
 }
 
 export function pauseAgenticLoopRuntime(
@@ -166,7 +216,7 @@ export function applyAgenticLoopLimitMessage(
     );
     return finalContent.trim()
       ? finalContent
-      : `I reached the configured tool-iteration limit (${loopPolicy.maxIterations}) for this turn. Ask me to continue and I'll resume from here.`;
+      : `The configured tool-iteration safety boundary (${loopPolicy.maxIterations}) was reached. Completed tool work is preserved in this chat.`;
   }
   const runtimeLabel = formatRuntimeLimitLabel(loopPolicy.maxRuntimeMs ?? 0);
   console.log(
@@ -174,5 +224,5 @@ export function applyAgenticLoopLimitMessage(
   );
   return finalContent.trim()
     ? finalContent
-    : `I reached the active agent runtime limit (${runtimeLabel}) for this turn. Ask me to continue and I'll resume from here.`;
+    : `The active agent runtime safety boundary (${runtimeLabel}) was reached. Completed tool work is preserved in this chat.`;
 }

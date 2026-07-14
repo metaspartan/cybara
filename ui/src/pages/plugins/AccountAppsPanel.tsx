@@ -144,11 +144,11 @@ export function AccountAppsPanel() {
 
   return (
     <div className="flex w-full flex-col gap-5">
-      <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-3">
+      <div className="flex items-start gap-3 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-4 py-3">
         <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[rgb(var(--accent-primary))]" />
         <div className="min-w-0">
-          <p className="text-sm font-medium text-white">Private by default</p>
-          <p className="mt-0.5 text-sm text-gray-400">
+          <p className="text-sm font-medium text-[var(--text-primary)]">Private by default</p>
+          <p className="mt-0.5 text-sm text-[var(--text-muted)]">
             Credentials stay encrypted on this gateway. Reading is the default; account changes
             remain approval-gated.
           </p>
@@ -160,7 +160,7 @@ export function AccountAppsPanel() {
           {[0, 1, 2, 3].map((item) => (
             <div
               key={item}
-              className="h-[28rem] animate-pulse rounded-lg border border-white/10 bg-[var(--surface-panel,#11131c)]"
+              className="h-[28rem] animate-pulse rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]"
             />
           ))}
         </div>
@@ -172,21 +172,21 @@ export function AccountAppsPanel() {
             return (
               <section
                 key={status.id}
-                className="overflow-hidden rounded-lg border border-white/10 bg-[var(--surface-panel,#11131c)]"
+                className="overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]"
               >
-                <div className="flex items-start justify-between gap-4 border-b border-white/10 px-4 py-4">
+                <div className="flex items-start justify-between gap-4 border-b border-[var(--surface-border)] px-4 py-4">
                   <div className="flex min-w-0 gap-3">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]">
                       <ConnectorIcon id={status.id} />
                     </div>
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="font-semibold text-white">{status.label}</h2>
+                        <h2 className="font-semibold text-[var(--text-primary)]">{status.label}</h2>
                         <Badge variant={status.connected ? "success" : "default"}>
                           {status.connected ? "Connected" : "Not connected"}
                         </Badge>
                       </div>
-                      <p className="mt-1 text-sm text-gray-400">{status.description}</p>
+                      <p className="mt-1 text-sm text-[var(--text-muted)]">{status.description}</p>
                     </div>
                   </div>
                   {status.connected ? (
@@ -196,9 +196,11 @@ export function AccountAppsPanel() {
 
                 <div className="space-y-4 p-4">
                   {status.account ? (
-                    <div className="rounded-lg bg-white/[0.04] px-3 py-2">
-                      <p className="text-xs text-gray-500">Connected account</p>
-                      <p className="mt-0.5 truncate text-sm text-gray-200">{status.account}</p>
+                    <div className="rounded-lg bg-[var(--surface-elevated)] px-3 py-2">
+                      <p className="text-xs text-[var(--text-muted)]">Connected account</p>
+                      <p className="mt-0.5 truncate text-sm text-[var(--text-secondary)]">
+                        {status.account}
+                      </p>
                     </div>
                   ) : null}
 
@@ -224,9 +226,9 @@ export function AccountAppsPanel() {
                     />
                   ) : null}
 
-                  <div className="rounded-lg bg-white/[0.04] px-3 py-2">
-                    <p className="text-xs text-gray-500">OAuth callback URL</p>
-                    <p className="mt-0.5 break-all font-mono text-xs text-gray-300">
+                  <div className="rounded-lg bg-[var(--surface-elevated)] px-3 py-2">
+                    <p className="text-xs text-[var(--text-muted)]">OAuth callback URL</p>
+                    <p className="mt-0.5 break-all font-mono text-xs text-[var(--text-secondary)]">
                       {status.redirectUri}
                     </p>
                   </div>

@@ -4,40 +4,15 @@ use std::net::TcpStream;
 use std::time::Duration;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::TrayIconBuilder;
-use tauri::{App, AppHandle, Emitter, Manager};
-use tauri_plugin_updater::UpdaterExt;
+use tauri::{App, AppHandle, Manager};
 
+use crate::desktop_update::DesktopUpdateSnapshot;
 use crate::{CYBARA_SERVER_ADDR, CYBARA_SERVER_URL, cybara_api_key};
 
 pub struct UpdateMenu(pub std::sync::Mutex<MenuItem<tauri::Wry>>);
 
-#[derive(Clone, Default)]
-struct UpdateSnapshot {
-    available: bool,
-    version: Option<String>,
-    status: Option<String>,
-}
-
-pub struct UpdateState(std::sync::Mutex<UpdateSnapshot>);
-
 const UPDATE_CHECK_INTERVAL: Duration = Duration::from_secs(300);
 const UPDATE_FIRST_CHECK_DELAY: Duration = Duration::from_secs(1);
-
-fn merge_update_snapshot(
-    current: &UpdateSnapshot,
-    available: bool,
-    version: Option<String>,
-    status: Option<String>,
-) -> UpdateSnapshot {
-    if current.available && !available {
-        return current.clone();
-    }
-    UpdateSnapshot {
-        available,
-        version: version.or_else(|| available.then(|| current.version.clone()).flatten()),
-        status,
-    }
-}
 
 fn macos_template_icon(source: &tauri::image::Image) -> tauri::image::Image<'static> {
     let mut rgba = source.rgba().to_vec();
@@ -68,17 +43,24 @@ fn tray_image(source: &tauri::image::Image, badged: bool) -> tauri::image::Image
     }
 }
 
-fn update_menu_text(available: bool, version: &Option<String>, status: &Option<String>) -> String {
-    match status.as_deref() {
-        Some("checking") => "Checking for updates…".to_string(),
-        Some("downloading") => match version {
-            Some(value) => format!("Updating to {value}…"),
-            None => "Updating…".to_string(),
-        },
-        Some("installing") => "Installing update…".to_string(),
-        Some("done") => "Update installed · restarting…".to_string(),
-        Some("error") => "Unable to check for updates".to_string(),
-        _ if available => match version {
+fn update_menu_text(snapshot: &DesktopUpdateSnapshot) -> String {
+    match snapshot.phase.as_str() {
+        "checking" => "Checking for updates…".to_string(),
+        "downloading" => {
+            if snapshot.progress > 0.0 {
+                format!(
+                    "Downloading update · {}%",
+                    (snapshot.progress * 100.0).round() as u32
+                )
+            } else {
+                "Downloading update…".to_string()
+            }
+        }
+        "installing" => "Installing update…".to_string(),
+        "done" => "Update installed · restarting…".to_string(),
+        "error" => "Update check failed · Open Cybara".to_string(),
+        "available" if snapshot.error.is_some() => "Update failed · Retry".to_string(),
+        "available" => match &snapshot.version {
             Some(value) => format!("Install Update {value}"),
             None => "Install Update".to_string(),
         },
@@ -86,17 +68,20 @@ fn update_menu_text(available: bool, version: &Option<String>, status: &Option<S
     }
 }
 
-fn update_tooltip_text(
-    available: bool,
-    version: &Option<String>,
-    status: &Option<String>,
-) -> String {
-    match status.as_deref() {
-        Some("checking") => "Cybara · Checking for updates…".to_string(),
-        Some("downloading") | Some("installing") => "Cybara · Updating…".to_string(),
-        Some("done") => "Cybara · Restarting to finish update".to_string(),
-        Some("error") => "Cybara · Update check unavailable".to_string(),
-        _ if available => match version {
+fn update_tooltip_text(snapshot: &DesktopUpdateSnapshot) -> String {
+    match snapshot.phase.as_str() {
+        "checking" => "Cybara · Checking for updates…".to_string(),
+        "downloading" => format!(
+            "Cybara · Downloading update · {}%",
+            (snapshot.progress * 100.0).round() as u32
+        ),
+        "installing" => "Cybara · Installing update…".to_string(),
+        "done" => "Cybara · Restarting to finish update".to_string(),
+        "error" => "Cybara · Update check unavailable".to_string(),
+        "available" if snapshot.error.is_some() => {
+            "Cybara · Update failed · Retry available".to_string()
+        }
+        "available" => match &snapshot.version {
             Some(value) => format!("Cybara · Update {value} available"),
             None => "Cybara · Update available".to_string(),
         },
@@ -104,35 +89,20 @@ fn update_tooltip_text(
     }
 }
 
-pub fn apply_update_state(
-    app: &AppHandle,
-    available: bool,
-    version: Option<String>,
-    status: Option<String>,
-) {
-    let (available, version, status) = if let Some(state) = app.try_state::<UpdateState>() {
-        if let Ok(mut snapshot) = state.0.lock() {
-            let merged = merge_update_snapshot(&snapshot, available, version, status);
-            *snapshot = merged.clone();
-            (merged.available, merged.version, merged.status)
-        } else {
-            (available, version, status)
-        }
-    } else {
-        (available, version, status)
-    };
+pub fn apply_update_state(app: &AppHandle, snapshot: &DesktopUpdateSnapshot) {
     let busy = matches!(
-        status.as_deref(),
-        Some("downloading") | Some("installing") | Some("done")
+        snapshot.phase.as_str(),
+        "downloading" | "installing" | "done"
     );
-    if let Some(state) = app.try_state::<UpdateMenu>() {
-        if let Ok(item) = state.0.lock() {
-            let _ = item.set_text(update_menu_text(available, &version, &status));
-            let _ = item.set_enabled(available && !busy);
-        }
+    let available = snapshot.phase == "available";
+    if let Some(state) = app.try_state::<UpdateMenu>()
+        && let Ok(item) = state.0.lock()
+    {
+        let _ = item.set_text(update_menu_text(snapshot));
+        let _ = item.set_enabled(available && !busy);
     }
     if let Some(tray) = app.tray_by_id("cybara-tray") {
-        let _ = tray.set_tooltip(Some(update_tooltip_text(available, &version, &status)));
+        let _ = tray.set_tooltip(Some(update_tooltip_text(snapshot)));
         if let Some(base) = app.default_window_icon() {
             let _ = tray.set_icon(Some(tray_image(base, available || busy)));
             let _ = tray.set_icon_as_template(cfg!(target_os = "macos"));
@@ -145,44 +115,7 @@ fn start_update_check(app: &AppHandle) {
     std::thread::spawn(move || {
         std::thread::sleep(UPDATE_FIRST_CHECK_DELAY);
         loop {
-            let busy = handle
-                .try_state::<UpdateState>()
-                .and_then(|state| state.0.lock().ok().map(|snapshot| snapshot.status.clone()))
-                .map(|status| {
-                    matches!(
-                        status.as_deref(),
-                        Some("downloading") | Some("installing") | Some("done")
-                    )
-                })
-                .unwrap_or(false);
-            if !busy {
-                let checking = handle.clone();
-                let _ = handle.run_on_main_thread(move || {
-                    apply_update_state(&checking, false, None, Some("checking".to_string()));
-                });
-                let result = handle
-                    .updater()
-                    .map_err(|error| error.to_string())
-                    .and_then(|updater| {
-                        tauri::async_runtime::block_on(updater.check())
-                            .map_err(|error| error.to_string())
-                    });
-                let apply = handle.clone();
-                let _ = handle.run_on_main_thread(move || match result {
-                    Ok(Some(update)) => {
-                        log::info!("Desktop update available: {}", update.version);
-                        apply_update_state(&apply, true, Some(update.version), None);
-                    }
-                    Ok(None) => {
-                        log::debug!("Desktop app is current");
-                        apply_update_state(&apply, false, None, None);
-                    }
-                    Err(error) => {
-                        log::warn!("Desktop update check failed: {error}");
-                        apply_update_state(&apply, false, None, Some("error".to_string()));
-                    }
-                });
-            }
+            crate::desktop_update::spawn_check(handle.clone());
             std::thread::sleep(UPDATE_CHECK_INTERVAL);
         }
     });
@@ -496,19 +429,14 @@ pub fn setup(app: &App) -> tauri::Result<()> {
             "open-usage" => show_route(app, "/usage"),
             "settings" => show_route(app, "/settings"),
             "install-update" => {
-                apply_update_state(app, true, None, Some("downloading".to_string()));
-                let _ = app.emit("cybara://install-update", ());
                 show_main_window(app);
+                crate::desktop_update::spawn_install(app.clone());
             }
             "quit" => app.exit(0),
             _ => {}
         })
         .build(app)?;
     app.manage(UpdateMenu(std::sync::Mutex::new(update.clone())));
-    app.manage(UpdateState(std::sync::Mutex::new(UpdateSnapshot {
-        status: Some("checking".to_string()),
-        ..UpdateSnapshot::default()
-    })));
     start_update_check(app.handle());
     let app_handle = app.handle().clone();
     std::thread::spawn(move || {
@@ -532,10 +460,10 @@ pub fn setup(app: &App) -> tauri::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderUsagePlan, ProviderUsageWindow, UpdateSnapshot, macos_template_icon,
-        merge_update_snapshot, truncate_label, update_menu_text, usage_reset_text,
-        usage_window_text,
+        ProviderUsagePlan, ProviderUsageWindow, macos_template_icon, truncate_label,
+        update_menu_text, usage_reset_text, usage_window_text,
     };
+    use crate::desktop_update::DesktopUpdateSnapshot;
 
     fn plan(window: ProviderUsageWindow) -> ProviderUsagePlan {
         ProviderUsagePlan {
@@ -549,51 +477,39 @@ mod tests {
 
     #[test]
     fn update_menu_reports_busy_phases() {
+        let snapshot = |phase: &str, progress: f64| DesktopUpdateSnapshot {
+            phase: phase.to_string(),
+            version: Some("1.2.3".to_string()),
+            progress,
+            ..DesktopUpdateSnapshot::default()
+        };
         assert_eq!(
-            update_menu_text(
-                true,
-                &Some("1.2.3".to_string()),
-                &Some("downloading".to_string())
-            ),
-            "Updating to 1.2.3…"
+            update_menu_text(&snapshot("downloading", 0.42)),
+            "Downloading update · 42%"
         );
         assert_eq!(
-            update_menu_text(
-                true,
-                &Some("1.2.3".to_string()),
-                &Some("installing".to_string())
-            ),
+            update_menu_text(&snapshot("installing", 1.0)),
             "Installing update…"
         );
         assert_eq!(
-            update_menu_text(false, &None, &Some("checking".to_string())),
+            update_menu_text(&snapshot("checking", 0.0)),
             "Checking for updates…"
         );
         assert_eq!(
-            update_menu_text(false, &None, &Some("error".to_string())),
-            "Unable to check for updates"
+            update_menu_text(&snapshot("error", 0.0)),
+            "Update check failed · Open Cybara"
         );
     }
 
     #[test]
-    fn update_checks_preserve_a_known_available_version() {
-        let current = UpdateSnapshot {
-            available: true,
+    fn update_menu_keeps_retryable_failures_actionable() {
+        let failed = DesktopUpdateSnapshot {
+            phase: "available".to_string(),
             version: Some("1.2.3".to_string()),
-            status: None,
+            error: Some("download failed".to_string()),
+            ..DesktopUpdateSnapshot::default()
         };
-
-        assert_eq!(
-            merge_update_snapshot(&current, false, None, Some("checking".to_string()))
-                .version
-                .as_deref(),
-            Some("1.2.3")
-        );
-        assert_eq!(
-            merge_update_snapshot(&current, false, None, Some("error".to_string())).status,
-            None
-        );
-        assert!(merge_update_snapshot(&current, false, None, None).available);
+        assert_eq!(update_menu_text(&failed), "Update failed · Retry");
     }
 
     #[test]

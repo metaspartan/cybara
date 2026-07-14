@@ -10,6 +10,7 @@ import { config } from "../config";
 import { getStoredAccountConnector } from "../account-connectors/store";
 import { ACCOUNT_CONNECTOR_IDS } from "../account-connectors/types";
 import { getSkillExecutors } from "../skills/index";
+import { handleSkillLoad } from "./handlers/skill";
 import { handleArtifacts } from "./handlers/artifacts";
 import { handleCanvas } from "./handlers/canvas";
 import { handleClipboard } from "./handlers/clipboard";
@@ -2092,6 +2093,24 @@ ACTIONS:
     permissions: ["phone:use"],
   },
 
+  skill_load: {
+    name: "skill_load",
+    description:
+      "Load the complete instructions for one available Skill by its exact name or mention alias. Use this instead of reading SKILL.md paths directly.",
+    category: "skill",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description: "Exact Skill name or mention alias",
+        },
+      },
+      required: ["name"],
+    },
+    permissions: [],
+  },
+
   skill_save: {
     name: "skill_save",
     description:
@@ -2849,6 +2868,7 @@ _toolHandlers.set("edit", handleEdit);
 _toolHandlers.set("file_search", handleFileSearch);
 _toolHandlers.set("grep", handleGrep);
 _toolHandlers.set("workspace_index_search", handleWorkspaceIndexSearch);
+_toolHandlers.set("skill_load", handleSkillLoad);
 
 _toolHandlers.set("memory_search", handleMemorySearch);
 _toolHandlers.set("session_search", handleSessionSearch);

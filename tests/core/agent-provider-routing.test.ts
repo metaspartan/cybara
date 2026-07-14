@@ -431,9 +431,25 @@ describe("Agent provider API-family routing", () => {
 
   test("anthropic loop respects model_params max_tool_iterations override", async () => {
     let requestCount = 0;
+    const requestBodies: Array<Record<string, unknown>> = [];
 
-    globalThis.fetch = (async () => {
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
       requestCount += 1;
+      const requestBody = JSON.parse(String(init?.body || "{}")) as Record<string, unknown>;
+      requestBodies.push(requestBody);
+      if (!requestBody.tools) {
+        return new Response(
+          JSON.stringify({
+            id: `msg-max-iter-closing-${requestCount}`,
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-20250514",
+            content: [{ type: "text", text: "Completed work summarized at the safety boundary." }],
+            usage: { input_tokens: 10, output_tokens: 8 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
       return new Response(
         JSON.stringify({
           id: `msg-max-iter-${requestCount}`,
@@ -493,9 +509,87 @@ describe("Agent provider API-family routing", () => {
       { useTools: true, sessionId: "anthropic-max-iteration-session" }
     );
 
+    expect(requestCount).toBe(5);
+    expect(result.tool_calls?.length).toBe(3);
+    expect(result.content).toBe("Completed work summarized at the safety boundary.");
+    expect(JSON.stringify(requestBodies[3])).toContain("AGENT BUDGET WARNING");
+    expect(requestBodies[4]?.tools).toBeUndefined();
+  });
+
+  test("anthropic loop preserves a final response returned at the iteration boundary", async () => {
+    let requestCount = 0;
+
+    globalThis.fetch = (async () => {
+      requestCount += 1;
+      if (requestCount === 4) {
+        return new Response(
+          JSON.stringify({
+            id: "msg-boundary-final",
+            type: "message",
+            role: "assistant",
+            model: "claude-sonnet-4-20250514",
+            content: [{ type: "text", text: "The boundary result is complete." }],
+            usage: { input_tokens: 10, output_tokens: 6 },
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          id: `msg-boundary-${requestCount}`,
+          type: "message",
+          role: "assistant",
+          model: "claude-sonnet-4-20250514",
+          content: [
+            {
+              type: "tool_use",
+              id: `toolu_boundary_${requestCount}`,
+              name: "calc",
+              input: { expression: `${requestCount}+1` },
+            },
+          ],
+          usage: { input_tokens: 10, output_tokens: 4 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const provider = providerManager.create({
+      provider: "anthropic",
+      name: "Anthropic Boundary Provider",
+      api_key: "anthropic-boundary-key",
+    });
+    createdProviderIds.push(provider.id);
+
+    const agent = agentManager.create({
+      name: "Anthropic Boundary Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "claude-sonnet-4-20250514",
+      tools: [
+        {
+          name: "calc",
+          description: "Evaluate math",
+          input_schema: {
+            type: "object",
+            properties: { expression: { type: "string" } },
+            required: ["expression"],
+          },
+        },
+      ],
+      config: { model_params: { max_tool_iterations: 3 } },
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "finish exactly at the boundary" }],
+      { useTools: true, sessionId: "anthropic-boundary-session" }
+    );
+
     expect(requestCount).toBe(4);
     expect(result.tool_calls?.length).toBe(3);
-    expect(result.content).toContain("tool-iteration limit (3)");
+    expect(result.content).toBe("The boundary result is complete.");
   });
 
   test("anthropic loop ignores max_tool_calls alias for iteration cap", async () => {
@@ -858,6 +952,7 @@ describe("Agent provider API-family routing", () => {
           },
         },
       ],
+      config: { model_params: { max_tool_iterations: 1 } },
     });
     createdAgentIds.push(agent.id);
 

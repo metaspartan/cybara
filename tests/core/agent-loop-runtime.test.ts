@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import type { AgenticLoopPolicy, AgenticLoopState } from "../../src/core/agent-internals";
 import {
   agenticLoopActiveRuntimeMs,
+  agenticLoopClosingPrompt,
   applyAgenticLoopLimitMessage,
+  consumeAgenticLoopBudgetWarning,
   createAgenticLoopRuntimeTracker,
   evaluateNoProgressLoop,
   pauseAgenticLoopRuntime,
@@ -9,7 +12,6 @@ import {
   resumeAgenticLoopRuntime,
   updateNoProgressLoopState,
 } from "../../src/core/agent-loop-runtime";
-import type { AgenticLoopPolicy, AgenticLoopState } from "../../src/core/agent-internals";
 
 const policy: AgenticLoopPolicy = {
   maxIterations: 5,
@@ -73,12 +75,31 @@ describe("agent loop runtime", () => {
     expect(agenticLoopActiveRuntimeMs(tracker, 23_000)).toBe(2_000);
   });
 
-  test("keeps partial responses and supplies resumable empty-limit messages", () => {
+  test("keeps partial responses and supplies safe empty-limit messages", () => {
     expect(applyAgenticLoopLimitMessage("test", "maxIterations", policy, "partial")).toBe(
       "partial"
     );
     expect(applyAgenticLoopLimitMessage("test", "runtime", policy, "")).toContain(
-      "active agent runtime limit"
+      "active agent runtime safety boundary"
     );
+  });
+
+  test("warns once at each budget pressure level", () => {
+    const tracker = createAgenticLoopRuntimeTracker(1_000);
+    expect(consumeAgenticLoopBudgetWarning(policy, 3, tracker, 2_000)).toBeUndefined();
+    expect(consumeAgenticLoopBudgetWarning(policy, 4, tracker, 2_000)).toContain(
+      "Start consolidating"
+    );
+    expect(consumeAgenticLoopBudgetWarning(policy, 4, tracker, 2_000)).toBeUndefined();
+    expect(consumeAgenticLoopBudgetWarning(policy, 5, tracker, 2_000)).toContain(
+      "complete user-facing response"
+    );
+    expect(consumeAgenticLoopBudgetWarning(policy, 5, tracker, 2_000)).toBeUndefined();
+  });
+
+  test("builds a tool-disabled closing instruction for either safety boundary", () => {
+    expect(agenticLoopClosingPrompt("maxIterations", policy)).toContain("5 tool iterations");
+    expect(agenticLoopClosingPrompt("runtime", policy)).toContain("10s of active agent runtime");
+    expect(agenticLoopClosingPrompt("runtime", policy)).toContain("Do not call more tools");
   });
 });

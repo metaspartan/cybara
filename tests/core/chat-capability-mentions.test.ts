@@ -115,11 +115,11 @@ describe("chat capability mentions", () => {
     expect(augmented[3].content).toContain(skill.token);
   });
 
-  test("embeds virtual bundled skill instructions instead of treating them as files", async () => {
+  test("loads selected skills through the safe skill loader", async () => {
     const resolved = await resolveChatCapabilityMentions("Use @diagramming", process.cwd());
-    expect(resolved.instruction).toContain("complete inline skill instructions");
-    expect(resolved.instruction).toContain("do not call read");
-    expect(resolved.instruction).not.toContain('read "builtin:diagramming"');
+    expect(resolved.instruction).toContain("call skill_load");
+    expect(resolved.instruction).toContain('skill_load with "diagramming"');
+    expect(resolved.instruction).toContain("Do not read or search for a SKILL.md path");
   });
 
   test("leaves turns unchanged when no capability is selected", async () => {

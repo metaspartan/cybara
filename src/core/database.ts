@@ -7,7 +7,7 @@ import { isSealedSecret, openSecret, sealSecret } from "./secret-storage";
 
 const restoreStatus = applyPendingSystemRestore();
 if (restoreStatus.state === "completed") {
-  console.log(`[Database] Restored system backup ${restoreStatus.backupId || ""}`.trim());
+  console.error(`[Database] Restored system backup ${restoreStatus.backupId || ""}`.trim());
 }
 if (restoreStatus.state === "failed") {
   console.error(`[Database] Backup restore failed: ${restoreStatus.error || "unknown error"}`);
@@ -15,10 +15,10 @@ if (restoreStatus.state === "failed") {
 
 const dbPath = join(dataDir, "platform.db");
 
-console.log("[Database] Initializing at:", dbPath);
+console.error("[Database] Initializing at:", dbPath);
 
 if (!existsSync(dataDir)) {
-  console.log("[Database] Creating data directory");
+  console.error("[Database] Creating data directory");
   mkdirSync(dataDir, { recursive: true });
 }
 
@@ -39,16 +39,16 @@ function restrictPermissions(): void {
 restrictPermissions();
 
 const db = new Database(dbPath);
-console.log("[Database] Database instance created");
+console.error("[Database] Database instance created");
 restrictPermissions();
 db.exec("PRAGMA journal_mode = WAL");
 // NORMAL is safe under WAL and much faster than FULL for our write-heavy
 // telemetry; busy_timeout avoids "database is locked" under concurrent access.
 db.exec("PRAGMA synchronous = NORMAL");
 db.exec("PRAGMA busy_timeout = 5000");
-console.log("[Database] Journal mode set");
+console.error("[Database] Journal mode set");
 
-console.log("[Database] Creating schema...");
+console.error("[Database] Creating schema...");
 try {
   db.exec(`
   -- Platform configuration
@@ -367,7 +367,7 @@ try {
   CREATE INDEX IF NOT EXISTS idx_metrics_created ON metrics(created_at);
   CREATE INDEX IF NOT EXISTS idx_metrics_daily_date ON metrics_daily(date);
 `);
-  console.log("[Database] Schema created successfully");
+  console.error("[Database] Schema created successfully");
 
   try {
     const totalsEmpty =
@@ -383,7 +383,7 @@ try {
       );
       const rows = (db.query("SELECT COUNT(*) as c FROM metrics_totals").get() as { c: number }).c;
       if (rows > 0) {
-        console.log(
+        console.error(
           `[Database] Migration: backfilled metrics_totals (${rows} rollup rows in ${Date.now() - started}ms)`
         );
       }
@@ -394,40 +394,40 @@ try {
 
   try {
     db.exec("ALTER TABLE agents ADD COLUMN fallback_provider_id TEXT");
-    console.log("[Database] Migration: Added fallback_provider_id column");
+    console.error("[Database] Migration: Added fallback_provider_id column");
   } catch {
     // Column already exists, ignore
   }
 
   try {
     db.exec("ALTER TABLE chat_sessions ADD COLUMN workspace_dir TEXT");
-    console.log("[Database] Migration: Added workspace_dir column to chat_sessions");
+    console.error("[Database] Migration: Added workspace_dir column to chat_sessions");
   } catch {
     // Column already exists, ignore
   }
 
   try {
     db.exec("ALTER TABLE chat_sessions ADD COLUMN title TEXT");
-    console.log("[Database] Migration: Added title column to chat_sessions");
+    console.error("[Database] Migration: Added title column to chat_sessions");
   } catch {
     // Column already exists, ignore
   }
 
   try {
     db.exec("ALTER TABLE chat_sessions ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0");
-    console.log("[Database] Migration: Added pinned column to chat_sessions");
+    console.error("[Database] Migration: Added pinned column to chat_sessions");
   } catch {
     // Column already exists, ignore
   }
 
   try {
     db.exec("ALTER TABLE chat_sessions ADD COLUMN context_state TEXT");
-    console.log("[Database] Migration: Added context_state column to chat_sessions");
+    console.error("[Database] Migration: Added context_state column to chat_sessions");
   } catch {}
 
   try {
     db.exec("ALTER TABLE mcp_servers ADD COLUMN url TEXT");
-    console.log("[Database] Migration: Added url column to mcp_servers");
+    console.error("[Database] Migration: Added url column to mcp_servers");
   } catch {
     // Column already exists, ignore
   }

@@ -127,6 +127,7 @@ const safeToolNames = new Set([
   "tool_search",
   "tool_describe",
   "tool_call",
+  "skill_load",
   "summarization",
   "weather",
   "calc",
@@ -164,6 +165,7 @@ const directToolNames = new Set([
   "tool_search",
   "tool_describe",
   "tool_call",
+  "skill_load",
 ]);
 
 function stringList(value: unknown): string[] | undefined {

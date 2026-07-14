@@ -46,27 +46,28 @@ describe("desktop updater wiring", () => {
     expect(entitlements).toContain("com.apple.security.device.audio-input");
   });
 
-  test("tray update state becomes busy before frontend installation begins", () => {
+  test("tray and frontend share the Rust-owned updater state machine", () => {
     const trayRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "tray.rs"), "utf8");
     const mainRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "main.rs"), "utf8");
+    const updaterRs = readFileSync(join(ROOT_DIR, "src-tauri", "src", "desktop_update.rs"), "utf8");
     const mainTsx = readFileSync(join(ROOT_DIR, "ui", "src", "main.tsx"), "utf8");
     const updateStore = readFileSync(join(ROOT_DIR, "ui", "src", "lib", "updateStore.ts"), "utf8");
 
-    expect(trayRs).toContain(
-      'apply_update_state(app, true, None, Some("downloading".to_string()))'
-    );
+    expect(trayRs).toContain("crate::desktop_update::spawn_install(app.clone())");
     expect(trayRs).toContain('"Checking for updates…"');
-    expect(trayRs).toContain('Some("error") => "Unable to check for updates"');
-    expect(trayRs).toContain('log::warn!("Desktop update check failed: {error}")');
-    expect(trayRs).toContain('log::info!("Desktop update available: {}", update.version)');
+    expect(trayRs).toContain('"Update failed · Retry"');
+    expect(updaterRs).toContain('app.emit("cybara://update-state", &snapshot)');
+    expect(updaterRs).toContain("download_and_install(");
+    expect(updaterRs).toContain('snapshot.phase = "downloading".to_string()');
+    expect(updaterRs).toContain('snapshot.phase = "installing".to_string()');
+    expect(updaterRs).toContain('snapshot.phase = "available".to_string()');
     expect(mainTsx).toContain("ensureUpdatePolling()");
-    expect(updateStore).toContain("if (!state.available) await checkForUpdate()");
-    expect(updateStore).toContain('await notifyTray(true, update.version, "downloading")');
-    expect(updateStore).toContain('void notifyTray(false, null, "checking")');
-    expect(updateStore).toContain('void notifyTray(false, null, "error")');
-    expect(mainRs).toContain("std::sync::mpsc::sync_channel(1)");
-    expect(mainRs).toContain("app.run_on_main_thread");
-    expect(mainRs).toContain("receiver.recv()");
+    expect(updateStore).toContain("listenForDesktopUpdateState");
+    expect(updateStore).toContain("Click to install and restart Cybara");
+    expect(updateStore).toContain("notification.onclick = () =>");
+    expect(updateStore).toContain("void startUpdateInstall()");
+    expect(mainRs).toContain("desktop_update::install_desktop_update");
+    expect(mainRs).toContain("DesktopUpdateManager::default()");
     expect(trayRs).toContain("macos_template_icon");
   });
 

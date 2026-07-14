@@ -1,59 +1,121 @@
-import type { Agent, ToolDefinition } from "./database";
-import { config } from "./config";
 import {
-  providerManager,
-  getProviderBaseUrl,
-  getDefaultModel,
-  providers as providerCatalog,
-  type ProviderType,
-} from "./providers";
-import { toolSchemas, type ToolContext } from "./tools/index";
+  type ContentBlock as BedrockContentBlock,
+  type Message as BedrockMessage,
+  BedrockRuntimeClient,
+  ConverseCommand,
+  type ConverseCommandInput,
+  type ToolUseBlock,
+} from "@aws-sdk/client-bedrock-runtime";
+import type { DocumentType as SmithyDocumentType } from "@smithy/types";
+import type { AgentMessage } from "./agent";
+import {
+  compactAnthropicLoopMessagesForContext,
+  compactOpenAILoopMessagesForContext,
+  resolveContextGuardBudgets,
+  truncateTextWithHeadAndTail,
+  truncateToolResultContentForContext,
+} from "./agent-context-guard";
+import { type AgentHookContext, emitAgentHook } from "./agent-hooks";
+import {
+  type AgenticLoopPolicy,
+  type AgenticLoopState,
+  type AgentToolCallResult,
+  ANTHROPIC_CONTEXT_1M_BETA,
+  type AnthropicResponse,
+  CONTEXT_CHARS_PER_TOKEN_ESTIMATE,
+  DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
+  DEFAULT_MODEL_MAX_OUTPUT_TOKENS,
+  extractSandboxProviderFromToolResult,
+  formatToolActivityDetail,
+  type GoogleContent,
+  type GooglePart,
+  type GoogleResponse,
+  normalizeGoogleModelId,
+  type OpenAIChoice,
+  type OpenAICodexTurnResult,
+  type OpenAICodexUsage,
+  type OpenAIMessage,
+  type OpenAIResponse,
+  type OpenAIUsage,
+  parseAgentConfig,
+  parseGoogleAuthHeaders,
+  parseModelParams,
+  parseServerSentEvents,
+  parseToolArguments,
+  summarizeProgressThought,
+} from "./agent-internals";
+import { resolveAgenticLoopPolicyFromConfig } from "./agent-loop-policy";
+import {
+  type AgenticLoopRuntimeTracker,
+  agenticLoopClosingPrompt,
+  applyAgenticLoopLimitMessage,
+  consumeAgenticLoopBudgetWarning,
+  createAgenticLoopRuntimeTracker,
+  evaluateNoProgressLoop,
+  pauseAgenticLoopRuntime,
+  resolveAgenticLoopLimit,
+  resumeAgenticLoopRuntime,
+  updateNoProgressLoopState,
+} from "./agent-loop-runtime";
+import {
+  resolveModelContextWindowTokens,
+  resolveModelMaxOutputTokens,
+  shouldPreferMaxCompletionTokens,
+} from "./agent-model-limits";
+import { hasAgentTransferEnvelope } from "./agent-transfer";
+import {
+  countWebResearchCalls,
+  WEB_RESEARCH_SYNTHESIS_INSTRUCTION,
+  webResearchBudgetReached,
+} from "./agent-web-research";
+import { config } from "./config";
 import {
   acquireCredential,
   markCredentialCooldown,
   markCredentialHealthy,
   msUntilAnyAvailable,
-  poolSize,
   type PooledCredential,
+  poolSize,
 } from "./credential-pool";
-import { recordRateLimit } from "./rate-limit-tracker";
-import { applyAnthropicCacheControl, type AnthropicCacheRequest } from "./prompt-cache";
+import type { Agent, ToolDefinition } from "./database";
 import {
-  hasImages,
-  toAnthropicImageBlock,
-  toOpenAIImageBlock,
-  openAIResponsesUserContent,
+  anthropicEndpointPath,
+  anthropicRequestBase,
+  anthropicRequestHeaders,
+} from "./llm/anthropic-vertex";
+import { applyProviderApiKey } from "./llm/auth-headers";
+import { compactCodexInputItemsForContext, sanitizeCodexInputItems } from "./llm/codex-context";
+import { googleFunctionDeclaration } from "./llm/google-tool-schema";
+import {
   bedrockUserContent,
+  hasImages,
+  openAIResponsesUserContent,
+  toAnthropicImageBlock,
   toGoogleImagePart,
+  toOpenAIImageBlock,
 } from "./llm/image-blocks";
+import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
+import { canRunToolsInParallel } from "./llm/parallel-tools";
 import {
-  normalizeReasoningEffort,
-  coerceReasoningEffort,
-  openAICompatReasoningParams,
   anthropicThinkingBudget,
+  coerceReasoningEffort,
   googleThinkingConfig,
+  normalizeReasoningEffort,
+  openAICompatReasoningParams,
   usesAnthropicAdaptiveThinking,
 } from "./llm/reasoning";
-import { applyProviderApiKey } from "./llm/auth-headers";
 import { normalizeLlmTimeoutError, withLlmRequestTimeout } from "./llm/request-timeout";
+import {
+  getSessionTokenUsageSnapshot,
+  trackEstimatedSessionTokenUsage,
+} from "./llm/session-token-usage";
 import {
   createStreamWatchdog,
   resolveLlmWatchdogDefaults,
   type StreamWatchdog,
 } from "./llm/stream-watchdog";
 import { consumeOpenAIChatStream } from "./llm/streaming-completions";
-import {
-  getSessionTokenUsageSnapshot,
-  trackEstimatedSessionTokenUsage,
-} from "./llm/session-token-usage";
-import { compactCodexInputItemsForContext, sanitizeCodexInputItems } from "./llm/codex-context";
-import {
-  compactOpenAIRequestMessagesForContext as compactOpenAIRequestMessages,
-  isContextOverflowError,
-} from "./llm/tool-transcript";
-import { trackTokenUsage } from "./llm/token-usage-tracking";
-import { trackOpenAIResponseUsage } from "./llm/openai-response-usage";
-import { googleFunctionDeclaration } from "./llm/google-tool-schema";
+import { coalesceSystemMessages } from "./llm/system-messages";
 import {
   hasTextToolCallMarkup,
   normalizeAnthropicToolUses,
@@ -63,14 +125,34 @@ import {
   toAnthropicReplayContentWithNormalizedToolUses,
   toOpenAIReplayMessageWithNormalizedToolCalls,
 } from "./llm/text-tool-calls";
-import { canRunToolsInParallel } from "./llm/parallel-tools";
-import { coalesceSystemMessages } from "./llm/system-messages";
+import { trackTokenUsage } from "./llm/token-usage-tracking";
 import {
-  anthropicEndpointPath,
-  anthropicRequestBase,
-  anthropicRequestHeaders,
-} from "./llm/anthropic-vertex";
+  compactOpenAIRequestMessagesForContext as compactOpenAIRequestMessages,
+  isContextOverflowError,
+} from "./llm/tool-transcript";
+import {
+  extractOpenAICodexAccountId,
+  getOpenAICodexModelCandidates,
+  shouldRetryOpenAICodexModel,
+} from "./openai-codex-models";
+import { type AnthropicCacheRequest, applyAnthropicCacheControl } from "./prompt-cache";
+import {
+  getDefaultModel,
+  getProviderBaseUrl,
+  type ProviderType,
+  providers as providerCatalog,
+  providerManager,
+} from "./providers";
+import { recordRateLimit } from "./rate-limit-tracker";
 import { recordRateLimit as recordRouterRateLimit } from "./router";
+import {
+  type AgentStatus,
+  broadcastStatus,
+  broadcastTokenDelta,
+  type StatusPayload,
+} from "./status";
+import { coerceToolArguments } from "./tool-argument-coercion";
+import { isToolPolicyBlockedMessage, sanitizeToolErrorMessage } from "./tool-result-classification";
 import {
   executeTool,
   formatMissingRequiredToolArgumentsError,
@@ -78,88 +160,7 @@ import {
   hasTool,
 } from "./tools/handlers/index";
 import { noteToolActivityForTodoReminder } from "./tools/handlers/todo";
-import { hasAgentTransferEnvelope } from "./agent-transfer";
-import {
-  broadcastStatus,
-  broadcastTokenDelta,
-  type AgentStatus,
-  type StatusPayload,
-} from "./status";
-import {
-  ANTHROPIC_CONTEXT_1M_BETA,
-  CONTEXT_CHARS_PER_TOKEN_ESTIMATE,
-  DEFAULT_MODEL_CONTEXT_WINDOW_TOKENS,
-  DEFAULT_MODEL_MAX_OUTPUT_TOKENS,
-  extractSandboxProviderFromToolResult,
-  formatToolActivityDetail,
-  normalizeGoogleModelId,
-  parseAgentConfig,
-  parseGoogleAuthHeaders,
-  parseModelParams,
-  parseServerSentEvents,
-  parseToolArguments,
-  summarizeProgressThought,
-  type AgentToolCallResult,
-  type AgenticLoopPolicy,
-  type AgenticLoopState,
-  type AnthropicResponse,
-  type GoogleContent,
-  type GooglePart,
-  type GoogleResponse,
-  type OpenAICodexUsage,
-  type OpenAICodexTurnResult,
-  type OpenAIChoice,
-  type OpenAIMessage,
-  type OpenAIResponse,
-  type OpenAIUsage,
-} from "./agent-internals";
-import {
-  compactAnthropicLoopMessagesForContext,
-  compactOpenAILoopMessagesForContext,
-  resolveContextGuardBudgets,
-  truncateTextWithHeadAndTail,
-  truncateToolResultContentForContext,
-} from "./agent-context-guard";
-import {
-  applyAgenticLoopLimitMessage,
-  createAgenticLoopRuntimeTracker,
-  evaluateNoProgressLoop,
-  pauseAgenticLoopRuntime,
-  resolveAgenticLoopLimit,
-  resumeAgenticLoopRuntime,
-  updateNoProgressLoopState,
-  type AgenticLoopRuntimeTracker,
-} from "./agent-loop-runtime";
-import {
-  countWebResearchCalls,
-  WEB_RESEARCH_SYNTHESIS_INSTRUCTION,
-  webResearchBudgetReached,
-} from "./agent-web-research";
-import {
-  extractOpenAICodexAccountId,
-  getOpenAICodexModelCandidates,
-  shouldRetryOpenAICodexModel,
-} from "./openai-codex-models";
-import { emitAgentHook, type AgentHookContext } from "./agent-hooks";
-import {
-  resolveModelContextWindowTokens,
-  resolveModelMaxOutputTokens,
-  shouldPreferMaxCompletionTokens,
-} from "./agent-model-limits";
-import { coerceToolArguments } from "./tool-argument-coercion";
-import { isToolPolicyBlockedMessage, sanitizeToolErrorMessage } from "./tool-result-classification";
-import { resolveAgenticLoopPolicyFromConfig } from "./agent-loop-policy";
-import {
-  BedrockRuntimeClient,
-  ConverseCommand,
-  type ConverseCommandInput,
-  type ContentBlock as BedrockContentBlock,
-  type Message as BedrockMessage,
-  type ToolUseBlock,
-} from "@aws-sdk/client-bedrock-runtime";
-import type { DocumentType as SmithyDocumentType } from "@smithy/types";
-
-import type { AgentMessage } from "./agent";
+import { type ToolContext, toolSchemas } from "./tools/index";
 
 const SKILL_NUDGE_TRIVIAL_TOOLS = new Set([
   "read",
@@ -189,6 +190,10 @@ function sessionIdForVisibleTokenUsage(toolContext?: ToolContext): string | unde
   if (toolContext?.suppressStreaming) return undefined;
   const sessionId = typeof toolContext?.sessionId === "string" ? toolContext.sessionId.trim() : "";
   return sessionId || undefined;
+}
+
+function appendAgentBudgetWarning(content: string, warning?: string): string {
+  return warning ? `${content}\n\n${warning}` : content;
 }
 
 interface ProviderRateLimitContext {
@@ -1334,17 +1339,21 @@ export abstract class AgentProviderRuntime {
     let limitReason: "maxIterations" | "runtime" | undefined;
 
     while (true) {
-      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
-      if (limitReason) {
-        break;
-      }
-      iterations++;
-
-      const normalizedToolCalls = normalizeOpenAIToolCalls(message, iterations, allowedToolNames);
+      const nextIteration = iterations + 1;
+      const normalizedToolCalls = normalizeOpenAIToolCalls(
+        message,
+        nextIteration,
+        allowedToolNames
+      );
       if (normalizedToolCalls.length === 0) {
         finalContent = typeof message.content === "string" ? message.content : "";
         break;
       }
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
+      if (limitReason) {
+        break;
+      }
+      iterations = nextIteration;
 
       const progressThought = summarizeProgressThought(message.content);
       if (progressThought && progressThought !== lastProgressThought) {
@@ -1460,6 +1469,16 @@ export abstract class AgentProviderRuntime {
           finalContent = loopEvaluation.message || "I stopped due to a tool loop safety guard.";
         }
         break;
+      }
+
+      const budgetWarning = consumeAgenticLoopBudgetWarning(
+        loopPolicy,
+        iterations,
+        loopRuntimeTracker
+      );
+      const lastToolResult = toolResults.at(-1);
+      if (lastToolResult) {
+        lastToolResult.content = appendAgentBudgetWarning(lastToolResult.content, budgetWarning);
       }
 
       currentMessages.push(
@@ -1578,8 +1597,7 @@ export abstract class AgentProviderRuntime {
     }
 
     if (
-      !limitReason &&
-      !finalContent.trim() &&
+      (!finalContent.trim() || Boolean(limitReason)) &&
       allToolCalls.length > 0 &&
       !hasAgentTransferEnvelope(allToolCalls)
     ) {
@@ -1587,8 +1605,9 @@ export abstract class AgentProviderRuntime {
       try {
         currentMessages.push({
           role: "user",
-          content:
-            "Reply to the user now with your findings from the tool results above. Do not call any more tools.",
+          content: limitReason
+            ? agenticLoopClosingPrompt(limitReason, loopPolicy)
+            : "Reply to the user now with your findings from the tool results above. Do not call any more tools.",
         });
         const nudgeBody: Record<string, unknown> = {
           model: modelId,
@@ -2109,9 +2128,22 @@ export abstract class AgentProviderRuntime {
     while (true) {
       limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
       if (limitReason) {
-        break;
+        if (closingResponseRequested || allToolCalls.length === 0) {
+          break;
+        }
+        inputItems.push({
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: agenticLoopClosingPrompt(limitReason, loopPolicy),
+            },
+          ],
+        });
+        closingResponseRequested = true;
+      } else {
+        iterations++;
       }
-      iterations++;
 
       const sanitized = sanitizeCodexInputItems(inputItems);
       if (sanitized.droppedOutputs > 0) {
@@ -2193,9 +2225,15 @@ export abstract class AgentProviderRuntime {
         );
       }
 
+      if (closingResponseRequested && turn.toolCalls.length > 0) {
+        finalContent = turn.content.trim();
+        break;
+      }
+
       if (turn.toolCalls.length === 0) {
         if (turn.content.trim().length > 0) {
           if (
+            !closingResponseRequested &&
             !skillLearningNudged &&
             preservedFinalContent === null &&
             shouldNudgeSkillLearning(allToolCalls)
@@ -2319,6 +2357,19 @@ export abstract class AgentProviderRuntime {
         break;
       }
 
+      const budgetWarning = consumeAgenticLoopBudgetWarning(
+        loopPolicy,
+        iterations,
+        loopRuntimeTracker
+      );
+      const lastFunctionOutput = functionCallOutputs.at(-1);
+      if (lastFunctionOutput && typeof lastFunctionOutput.output === "string") {
+        lastFunctionOutput.output = appendAgentBudgetWarning(
+          lastFunctionOutput.output,
+          budgetWarning
+        );
+      }
+
       inputItems.push(...functionCallItems, ...functionCallOutputs);
       const steeringText = this.consumeSteeringText(toolContext);
       if (steeringText) {
@@ -2392,6 +2443,7 @@ export abstract class AgentProviderRuntime {
     const loopRuntimeTracker = createAgenticLoopRuntimeTracker();
     let iterations = 0;
     let finalContent = "";
+    let closingResponseRequested = false;
     let lastProgressThought = "";
     const allToolCalls: AgentToolCallResult[] = [];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
@@ -2408,9 +2460,17 @@ export abstract class AgentProviderRuntime {
     while (true) {
       limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
       if (limitReason) {
-        break;
+        if (closingResponseRequested || allToolCalls.length === 0) {
+          break;
+        }
+        contents.push({
+          role: "user",
+          parts: [{ text: agenticLoopClosingPrompt(limitReason, loopPolicy) }],
+        });
+        closingResponseRequested = true;
+      } else {
+        iterations++;
       }
-      iterations++;
 
       const googleGenConfig: Record<string, unknown> = { maxOutputTokens };
       const googleEffort = normalizeReasoningEffort(
@@ -2430,7 +2490,7 @@ export abstract class AgentProviderRuntime {
         };
       }
 
-      if (tools.length > 0) {
+      if (tools.length > 0 && !closingResponseRequested) {
         requestBody.tools = [
           {
             functionDeclarations: tools.map(googleFunctionDeclaration),
@@ -2492,6 +2552,9 @@ export abstract class AgentProviderRuntime {
         );
 
       if (toolCalls.length === 0) {
+        break;
+      }
+      if (closingResponseRequested) {
         break;
       }
 
@@ -2561,6 +2624,19 @@ export abstract class AgentProviderRuntime {
         break;
       }
 
+      const budgetWarning = consumeAgenticLoopBudgetWarning(
+        loopPolicy,
+        iterations,
+        loopRuntimeTracker
+      );
+      const lastToolResponse = toolResponses.at(-1)?.functionResponse;
+      if (lastToolResponse && budgetWarning) {
+        lastToolResponse.response = {
+          ...lastToolResponse.response,
+          _agent_budget: budgetWarning,
+        };
+      }
+
       contents.push({
         role: "model",
         parts,
@@ -2625,6 +2701,7 @@ export abstract class AgentProviderRuntime {
     const loopRuntimeTracker = createAgenticLoopRuntimeTracker();
     let iterations = 0;
     let finalContent = "";
+    let closingResponseRequested = false;
     let lastProgressThought = "";
     const allToolCalls: AgentToolCallResult[] = [];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
@@ -2641,9 +2718,17 @@ export abstract class AgentProviderRuntime {
     while (true) {
       limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
       if (limitReason) {
-        break;
+        if (closingResponseRequested || allToolCalls.length === 0) {
+          break;
+        }
+        conversation.push({
+          role: "user",
+          content: [{ text: agenticLoopClosingPrompt(limitReason, loopPolicy) }],
+        });
+        closingResponseRequested = true;
+      } else {
+        iterations++;
       }
-      iterations++;
 
       const requestPayload: ConverseCommandInput = {
         modelId,
@@ -2657,7 +2742,7 @@ export abstract class AgentProviderRuntime {
         requestPayload.system = [{ text: systemMessage.content }];
       }
 
-      if (tools.length > 0) {
+      if (tools.length > 0 && !closingResponseRequested) {
         const bedrockTools = tools.map((tool) => ({
           toolSpec: {
             name: tool.name,
@@ -2724,6 +2809,9 @@ export abstract class AgentProviderRuntime {
         }));
 
       if (toolUseBlocks.length === 0) {
+        break;
+      }
+      if (closingResponseRequested) {
         break;
       }
 
@@ -2793,6 +2881,12 @@ export abstract class AgentProviderRuntime {
         break;
       }
 
+      const budgetWarning = consumeAgenticLoopBudgetWarning(
+        loopPolicy,
+        iterations,
+        loopRuntimeTracker
+      );
+
       conversation.push({
         role: "assistant",
         content: outputContent,
@@ -2800,7 +2894,11 @@ export abstract class AgentProviderRuntime {
       const steeringText = this.consumeSteeringText(toolContext);
       conversation.push({
         role: "user",
-        content: steeringText ? [...toolResults, { text: steeringText }] : toolResults,
+        content: [
+          ...toolResults,
+          ...(budgetWarning ? [{ text: budgetWarning }] : []),
+          ...(steeringText ? [{ text: steeringText }] : []),
+        ],
       });
     }
 
@@ -3017,21 +3115,21 @@ export abstract class AgentProviderRuntime {
     let limitReason: "maxIterations" | "runtime" | undefined;
 
     while (true) {
-      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
-      if (limitReason) {
-        break;
-      }
-      iterations++;
-
+      const nextIteration = iterations + 1;
       const toolUseBlocks = normalizeAnthropicToolUses(
         currentData.content,
-        iterations,
+        nextIteration,
         allowedToolNames
       );
 
       if (toolUseBlocks.length === 0) {
         break;
       }
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
+      if (limitReason) {
+        break;
+      }
+      iterations = nextIteration;
 
       const progressThought = summarizeProgressThought(
         currentData.content?.find((c) => c.type === "text")?.text
@@ -3203,6 +3301,15 @@ export abstract class AgentProviderRuntime {
         iterationToolCalls.map((toolCall) => toolCall.name)
       );
       const forceResearchSynthesis = webResearchBudgetReached(webResearchToolCalls);
+      const budgetWarning = consumeAgenticLoopBudgetWarning(
+        loopPolicy,
+        iterations,
+        loopRuntimeTracker
+      );
+      const lastToolResult = toolResults.at(-1);
+      if (lastToolResult) {
+        lastToolResult.content = appendAgentBudgetWarning(lastToolResult.content, budgetWarning);
+      }
 
       const toolResultIds = new Set(toolResults.map((toolResult) => toolResult.tool_use_id));
       const assistantLoopContent = toAnthropicReplayContentWithNormalizedToolUses(
@@ -3381,6 +3488,60 @@ export abstract class AgentProviderRuntime {
       currentData = responseData;
     }
 
+    if (limitReason && allToolCalls.length > 0 && !hasAgentTransferEnvelope(allToolCalls)) {
+      try {
+        currentMessages.push({
+          role: "user",
+          content: agenticLoopClosingPrompt(limitReason, loopPolicy),
+        });
+        const closingBody: Record<string, unknown> = anthropicRequestBase(
+          modelId,
+          currentMessages,
+          maxOutputTokens,
+          vertex
+        );
+        if (systemMessage) {
+          closingBody.system = systemMessage.content;
+        }
+        const closingStartedAt = performance.now();
+        const closingResponse = await fetch(`${baseUrl}${anthropicEndpoint}`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(closingBody),
+          signal: withLlmRequestTimeout(toolContext?.abortSignal),
+        });
+        if (closingResponse.ok) {
+          const closingData = (await closingResponse.json()) as AnthropicResponse;
+          if (closingData.usage) {
+            trackTokenUsage(
+              modelId,
+              providerConfig,
+              baseUrl,
+              closingData.usage.input_tokens || 0,
+              closingData.usage.output_tokens || 0,
+              Math.round(performance.now() - closingStartedAt),
+              {
+                sessionId: sessionIdForVisibleTokenUsage(toolContext),
+                cachedInputTokens: closingData.usage.cache_read_input_tokens || 0,
+                cacheWriteTokens: closingData.usage.cache_creation_input_tokens || 0,
+                firstTokenMs: Math.round(performance.now() - closingStartedAt),
+              }
+            );
+          }
+          const closingText = closingData.content?.find((part) => part.type === "text")?.text;
+          if (closingText?.trim()) {
+            finalContent = closingText;
+          }
+        } else {
+          console.warn(`[Agent] Anthropic closing response failed with ${closingResponse.status}`);
+        }
+      } catch (error) {
+        console.warn(
+          `[Agent] Anthropic closing response failed: ${this.normalizeErrorMessage(error)}`
+        );
+      }
+    }
+
     if (limitReason) {
       finalContent = applyAgenticLoopLimitMessage(
         "anthropic",
@@ -3495,16 +3656,21 @@ export abstract class AgentProviderRuntime {
     let limitReason: "maxIterations" | "runtime" | undefined;
 
     while (true) {
+      const nextIteration = iterations + 1;
+      const normalizedToolCalls = normalizeOpenAIToolCalls(
+        message,
+        nextIteration,
+        allowedToolNames
+      );
+      if (normalizedToolCalls.length === 0) {
+        finalContent = message.content || finalContent;
+        break;
+      }
       limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
       if (limitReason) {
         break;
       }
-      iterations++;
-
-      const normalizedToolCalls = normalizeOpenAIToolCalls(message, iterations, allowedToolNames);
-      if (normalizedToolCalls.length === 0) {
-        break;
-      }
+      iterations = nextIteration;
 
       const progressThought = summarizeProgressThought(message.content);
       if (progressThought && progressThought !== lastProgressThought) {
@@ -3622,6 +3788,16 @@ export abstract class AgentProviderRuntime {
         break;
       }
 
+      const budgetWarning = consumeAgenticLoopBudgetWarning(
+        loopPolicy,
+        iterations,
+        loopRuntimeTracker
+      );
+      const lastToolResult = toolResults.at(-1);
+      if (lastToolResult) {
+        lastToolResult.content = appendAgentBudgetWarning(lastToolResult.content, budgetWarning);
+      }
+
       currentMessages.push(
         toOpenAIReplayMessageWithNormalizedToolCalls(message, normalizedToolCalls)
       );
@@ -3716,6 +3892,45 @@ export abstract class AgentProviderRuntime {
 
       if (message.content) {
         finalContent = message.content;
+      }
+    }
+
+    if (limitReason && allToolCalls.length > 0 && !hasAgentTransferEnvelope(allToolCalls)) {
+      try {
+        currentMessages.push({
+          role: "user",
+          content: agenticLoopClosingPrompt(limitReason, loopPolicy),
+        });
+        const closingBody: Record<string, unknown> = {
+          model: modelId,
+          messages: currentMessages,
+          max_tokens: maxOutputTokens,
+        };
+        const closingStartedAt = performance.now();
+        const closingData = await this.postOpenAIChatCompletions(
+          baseUrl,
+          headers,
+          closingBody,
+          "API error in agentic loop closing response",
+          toolContext?.abortSignal,
+          { providerType: "openai" },
+          { sessionId: sessionIdForVisibleTokenUsage(toolContext) }
+        );
+        trackOpenAIResponseUsage(closingData, {
+          model: modelId,
+          provider: "openai",
+          providerUrl: baseUrl,
+          durationMs: Math.round(performance.now() - closingStartedAt),
+          sessionId: sessionIdForVisibleTokenUsage(toolContext),
+        });
+        const closingContent = closingData.choices?.[0]?.message?.content;
+        if (typeof closingContent === "string" && closingContent.trim()) {
+          finalContent = closingContent;
+        }
+      } catch (error) {
+        console.warn(
+          `[Agent] OpenAI closing response failed: ${this.normalizeErrorMessage(error)}`
+        );
       }
     }
 

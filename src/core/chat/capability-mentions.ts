@@ -38,9 +38,7 @@ async function skillCapabilities(workspaceDir?: string): Promise<ResolvedChatCap
   const loaded = await loadAllSkills({ workspaceDir });
   return filterEligibleSkills(loaded, createEligibilityContext()).map((entry) => {
     const token = `@${normalizeCapabilityAlias(entry.skill.name)}`;
-    const instruction = entry.filePath.startsWith("builtin:")
-      ? `For ${token}, do not call read or search for a SKILL.md. Follow these complete inline skill instructions: ${JSON.stringify(entry.skill.instructions)}`
-      : `For ${token}, read ${JSON.stringify(entry.filePath)} with the read tool and follow that skill for this turn.`;
+    const instruction = `For ${token}, call skill_load with ${JSON.stringify(entry.skill.name)} and follow the returned instructions for this turn. Do not read or search for a SKILL.md path.`;
     return {
       kind: "skill",
       token,

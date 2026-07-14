@@ -163,6 +163,9 @@ export interface TauriReleaseConfigPatch {
     updater: {
       endpoints: string[];
       pubkey: string;
+      windows: {
+        installMode: "passive";
+      };
     };
   };
 }
@@ -276,6 +279,9 @@ export function buildTauriReleaseConfigPatch(
       updater: {
         endpoints: [endpoint],
         pubkey: trimmedPublicKey,
+        windows: {
+          installMode: "passive",
+        },
       },
     },
   };
