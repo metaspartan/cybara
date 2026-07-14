@@ -2,7 +2,9 @@ import Bonjour from "bonjour-service";
 import type Browser from "bonjour-service/dist/lib/browser";
 import type Service from "bonjour-service/dist/lib/service";
 import { randomUUID } from "crypto";
+import { networkInterfaces } from "os";
 import { createLogger } from "../logger";
+import { isWindows } from "../platform";
 import {
   createNearbyPairingProof,
   decryptNearbyEnvelope,
@@ -223,11 +225,78 @@ function addressUrl(address: string, port: number): string | null {
   }
 }
 
+interface NearbyMulticastNode {
+  bonjour: Bonjour;
+  browser: Browser;
+  published: Service | null;
+  interfaceIp: string | null;
+}
+
+interface BonjourBindOptions {
+  interface?: string;
+  bind?: string;
+}
+
+interface BonjourConstructor {
+  new (options?: BonjourBindOptions, errorCallback?: (error: Error) => void): Bonjour;
+}
+
+const BonjourWithBindOptions = Bonjour as unknown as BonjourConstructor;
+
+const MDNS_PORT = 5353;
+
+function ensureWindowsFirewallRules(port: number): void {
+  if (!isWindows()) return;
+  const rules: Array<{ name: string; protocol: string; localport: number }> = [
+    { name: `Cybara Nearby Peer ${port}`, protocol: "TCP", localport: port },
+    { name: "Cybara Nearby mDNS", protocol: "UDP", localport: MDNS_PORT },
+  ];
+  for (const rule of rules) {
+    try {
+      Bun.spawnSync(["netsh", "advfirewall", "firewall", "delete", "rule", `name=${rule.name}`]);
+      const result = Bun.spawnSync([
+        "netsh",
+        "advfirewall",
+        "firewall",
+        "add",
+        "rule",
+        `name=${rule.name}`,
+        "dir=in",
+        "action=allow",
+        `protocol=${rule.protocol}`,
+        `localport=${rule.localport}`,
+        "profile=private,domain",
+      ]);
+      if (result.exitCode !== 0) {
+        log.warn(
+          "Could not add Windows Firewall rule for Nearby; discovery and pairing may be blocked. Allow the port manually or run Cybara as administrator once.",
+          { rule: rule.name, port: rule.localport, protocol: rule.protocol }
+        );
+      }
+    } catch (error) {
+      log.warn("Windows Firewall rule setup failed for Nearby", {
+        rule: rule.name,
+        error: safeError(error),
+      });
+    }
+  }
+}
+
+function externalIpv4Interfaces(): string[] {
+  const addresses: string[] = [];
+  for (const entries of Object.values(networkInterfaces())) {
+    for (const entry of entries || []) {
+      if (entry.family === "IPv4" && !entry.internal && entry.address) {
+        addresses.push(entry.address);
+      }
+    }
+  }
+  return [...new Set(addresses)];
+}
+
 export class NearbyService {
   private server: Bun.Server<unknown> | null = null;
-  private bonjour: Bonjour | null = null;
-  private browser: Browser | null = null;
-  private publishedService: Service | null = null;
+  private multicast: NearbyMulticastNode[] = [];
   private discoverableUntilMs = 0;
   private discoverableTimer: ReturnType<typeof setTimeout> | null = null;
   private discoveryQueryTimer: ReturnType<typeof setInterval> | null = null;
@@ -280,57 +349,82 @@ export class NearbyService {
       port: settings.port,
       fetch: (req, server) => this.handlePeerRequest(req, server),
     });
-    this.bonjour = new Bonjour({}, (error: Error) => {
-      log.warn("Nearby discovery error", { error: error.message });
-    });
-    this.browser = this.bonjour.find({ type: NEARBY_SERVICE_TYPE, protocol: "tcp" });
-    this.browser.on("up", (service) => this.onServiceUp(service));
-    this.browser.on("srv-update", (service) => this.onServiceUp(service));
-    this.browser.on("txt-update", (service) => this.onServiceUp(service));
-    this.browser.on("down", (service) => this.onServiceDown(service));
+    ensureWindowsFirewallRules(settings.port);
+    const interfaceIps = externalIpv4Interfaces();
+    const bindTargets: Array<string | null> = interfaceIps.length ? interfaceIps : [null];
+    for (const interfaceIp of bindTargets) {
+      const bonjourOptions: BonjourBindOptions = interfaceIp
+        ? { interface: interfaceIp, bind: "0.0.0.0" }
+        : {};
+      const bonjour = new BonjourWithBindOptions(bonjourOptions, (error: Error) => {
+        log.warn("Nearby discovery error", { error: error.message, interfaceIp });
+      });
+      const browser = bonjour.find({ type: NEARBY_SERVICE_TYPE, protocol: "tcp" });
+      browser.on("up", (service) => this.onServiceUp(service));
+      browser.on("srv-update", (service) => this.onServiceUp(service));
+      browser.on("txt-update", (service) => this.onServiceUp(service));
+      browser.on("down", (service) => this.onServiceDown(service));
+      this.multicast.push({ bonjour, browser, published: null, interfaceIp });
+    }
     this.discoveryQueryTimer = setInterval(() => {
-      try {
-        this.browser?.update();
-      } catch {
-        void 0;
+      for (const node of this.multicast) {
+        try {
+          node.browser.update();
+        } catch {
+          void 0;
+        }
       }
     }, DISCOVERY_QUERY_INTERVAL_MS);
-    log.info("Nearby listener started", { port: settings.port });
+    log.info("Nearby listener started", {
+      port: settings.port,
+      interfaces: interfaceIps.length ? interfaceIps.join(",") : "default",
+    });
     if (settings.autoAdvertise) this.advertise();
   }
 
   private advertise(): void {
-    if (!this.bonjour) return;
     const settings = getNearbySettings();
     const identity = getNearbyIdentity();
-    this.publishedService?.stop();
-    this.publishedService =
-      this.bonjour.publish({
-        name: settings.displayName,
-        type: NEARBY_SERVICE_TYPE,
-        protocol: "tcp",
-        port: settings.port,
-        txt: {
-          protocol: NEARBY_PROTOCOL,
-          id: identity.id,
-          fingerprint: identity.fingerprint,
-        },
-      }) ?? null;
+    for (const node of this.multicast) {
+      node.published?.stop();
+      node.published =
+        node.bonjour.publish({
+          name: settings.displayName,
+          type: NEARBY_SERVICE_TYPE,
+          protocol: "tcp",
+          port: settings.port,
+          txt: {
+            protocol: NEARBY_PROTOCOL,
+            id: identity.id,
+            fingerprint: identity.fingerprint,
+          },
+        }) ?? null;
+    }
+  }
+
+  private stopAdvertisements(): void {
+    for (const node of this.multicast) {
+      node.published?.stop();
+      node.published = null;
+    }
+  }
+
+  private hasAdvertisement(): boolean {
+    return this.multicast.some((node) => node.published !== null);
   }
 
   private reconcileAdvertising(): void {
     const settings = getNearbySettings();
     if (!settings.enabled || !this.server) return;
     if (settings.autoAdvertise) {
-      if (!this.publishedService) this.advertise();
-    } else if (this.publishedService && this.discoverableUntilMs <= Date.now()) {
-      this.publishedService.stop();
-      this.publishedService = null;
+      if (!this.hasAdvertisement()) this.advertise();
+    } else if (this.hasAdvertisement() && this.discoverableUntilMs <= Date.now()) {
+      this.stopAdvertisements();
     }
   }
 
   private isDiscoverable(): boolean {
-    if (!this.server || !this.publishedService) return false;
+    if (!this.server || !this.hasAdvertisement()) return false;
     return getNearbySettings().autoAdvertise || this.discoverableUntilMs > Date.now();
   }
 
@@ -340,12 +434,12 @@ export class NearbyService {
     if (this.discoveryQueryTimer) clearInterval(this.discoveryQueryTimer);
     this.discoveryQueryTimer = null;
     this.discoverableUntilMs = 0;
-    this.publishedService?.stop();
-    this.publishedService = null;
-    this.browser?.stop();
-    this.browser = null;
-    this.bonjour?.destroy();
-    this.bonjour = null;
+    for (const node of this.multicast) {
+      node.published?.stop();
+      node.browser.stop();
+      node.bonjour.destroy();
+    }
+    this.multicast = [];
     this.server?.stop(true);
     this.server = null;
     this.discovered.clear();
@@ -355,7 +449,7 @@ export class NearbyService {
     if (!getNearbySettings().enabled) throw new Error("Nearby Cybara is disabled");
     await this.start();
     const settings = getNearbySettings();
-    if (!this.publishedService) this.advertise();
+    if (!this.hasAdvertisement()) this.advertise();
     this.discoverableUntilMs = Date.now() + settings.discoveryMinutes * 60 * 1000;
     if (this.discoverableTimer) clearTimeout(this.discoverableTimer);
     this.discoverableTimer = setTimeout(
@@ -366,8 +460,7 @@ export class NearbyService {
   }
 
   stopAdvertising(): void {
-    this.publishedService?.stop();
-    this.publishedService = null;
+    this.stopAdvertisements();
     this.discoverableUntilMs = 0;
     if (this.discoverableTimer) clearTimeout(this.discoverableTimer);
     this.discoverableTimer = null;
