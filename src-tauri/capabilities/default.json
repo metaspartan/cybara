@@ -32,6 +32,8 @@
         "notification:allow-show",
         "dialog:default",
         "dialog:allow-open",
+        "desktop-gateway",
+        "desktop-updater",
         "native-recording",
         "process:default",
         "updater:default"

@@ -387,6 +387,18 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Allows the Cybara interface to read local desktop gateway startup and authentication state.",
+          "type": "string",
+          "const": "desktop-gateway",
+          "markdownDescription": "Allows the Cybara interface to read local desktop gateway startup and authentication state."
+        },
+        {
+          "description": "Allows the Cybara interface to check, monitor, and install signed desktop updates.",
+          "type": "string",
+          "const": "desktop-updater",
+          "markdownDescription": "Allows the Cybara interface to check, monitor, and install signed desktop updates."
+        },
+        {
           "description": "Allows the Cybara interface to start and stop native microphone recording.",
           "type": "string",
           "const": "native-recording",

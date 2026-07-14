@@ -1,0 +1,4 @@
+[[permission]]
+identifier = "desktop-updater"
+description = "Allows the Cybara interface to check, monitor, and install signed desktop updates."
+commands.allow = ["get_desktop_update_state", "check_desktop_update", "install_desktop_update"]

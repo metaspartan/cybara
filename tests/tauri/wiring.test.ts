@@ -130,6 +130,25 @@ describe("Tauri wiring", () => {
     expect(capability.remote?.urls).not.toContain("http://localhost:*");
     expect(capability.permissions).not.toContain("shell:allow-spawn");
     expect(capability.permissions).not.toContain("shell:allow-execute");
+    expect(capability.permissions).toContain("desktop-gateway");
+    expect(capability.permissions).toContain("desktop-updater");
     expect(tauriConfig).toContain('"csp": "default-src');
+  });
+
+  test("desktop custom commands have narrow remote-webview permissions", () => {
+    const gatewayPermission = readFileSync(
+      join(ROOT_DIR, "src-tauri", "permissions", "desktop-gateway.toml"),
+      "utf8"
+    );
+    const updaterPermission = readFileSync(
+      join(ROOT_DIR, "src-tauri", "permissions", "desktop-updater.toml"),
+      "utf8"
+    );
+
+    expect(gatewayPermission).toContain('"read_cybara_api_key"');
+    expect(gatewayPermission).toContain('"get_gateway_startup_status"');
+    expect(updaterPermission).toContain('"get_desktop_update_state"');
+    expect(updaterPermission).toContain('"check_desktop_update"');
+    expect(updaterPermission).toContain('"install_desktop_update"');
   });
 });
