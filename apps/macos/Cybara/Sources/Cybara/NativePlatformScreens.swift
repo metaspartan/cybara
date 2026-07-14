@@ -454,11 +454,11 @@ extension GatewayClient {
         if !normalizedID.isEmpty { payload["clientId"] = normalizedID }
         if !normalizedSecret.isEmpty { payload["clientSecret"] = normalizedSecret }
         let body = try JSONSerialization.data(withJSONObject: payload)
-        _ = try await request("api/connectors/\(nativePathSegment(id))", method: "PUT", body: body)
+        _ = try await request("api/connectors/\(pathSegment(id))", method: "PUT", body: body)
     }
 
     func startAccountConnectorOAuth(_ id: String) async throws -> NativeAccountConnectorOAuthStart {
-        let data = try await request("api/connectors/\(nativePathSegment(id))/oauth/start", method: "POST")
+        let data = try await request("api/connectors/\(pathSegment(id))/oauth/start", method: "POST")
         return try JSONDecoder().decode(NativeAccountConnectorOAuthStart.self, from: data)
     }
 
@@ -471,7 +471,7 @@ extension GatewayClient {
     }
 
     func disconnectAccountConnector(_ id: String) async throws {
-        _ = try await request("api/connectors/\(nativePathSegment(id))", method: "DELETE")
+        _ = try await request("api/connectors/\(pathSegment(id))", method: "DELETE")
     }
 
     func nativeMCPServers() async throws -> [NativeMCPServer] {
@@ -495,11 +495,11 @@ extension GatewayClient {
     }
 
     func mcpAction(_ id: String, action: String) async throws {
-        _ = try await request("api/mcp/\(nativePathSegment(id))/\(action)", method: "POST")
+        _ = try await request("api/mcp/\(pathSegment(id))/\(pathSegment(action))", method: "POST")
     }
 
     func deleteMCPServer(_ id: String) async throws {
-        _ = try await request("api/mcp/\(nativePathSegment(id))", method: "DELETE")
+        _ = try await request("api/mcp/\(pathSegment(id))", method: "DELETE")
     }
 
     func nativeTools() async throws -> [NativeToolSummary] {
@@ -519,7 +519,7 @@ extension GatewayClient {
     }
 
     func nativeSubagent(_ id: String) async throws -> NativeSubagentSummary {
-        try await nativeGet("api/subagents/\(nativePathSegment(id))", as: NativeSubagentSummary.self)
+        try await nativeGet("api/subagents/\(pathSegment(id))", as: NativeSubagentSummary.self)
     }
 
     func spawnNativeSubagent(
@@ -543,11 +543,11 @@ extension GatewayClient {
     }
 
     func stopNativeSubagent(_ id: String) async throws {
-        _ = try await request("api/subagents/\(nativePathSegment(id))/kill", method: "POST")
+        _ = try await request("api/subagents/\(pathSegment(id))/kill", method: "POST")
     }
 
     func clearNativeSubagent(_ id: String) async throws {
-        _ = try await request("api/subagents/\(nativePathSegment(id))", method: "DELETE")
+        _ = try await request("api/subagents/\(pathSegment(id))", method: "DELETE")
     }
 
     func clearNativeSubagentHistory(sessionID: String) async throws {
@@ -731,7 +731,7 @@ extension GatewayClient {
 
     func readArtifact(_ artifact: NativeArtifactSummary) async throws -> NativeArtifactContent {
         let data = try await request(
-            "api/sessions/\(nativePathSegment(artifact.sessionId))/artifacts/\(nativePathSegment(artifact.fileName))"
+            "api/sessions/\(pathSegment(artifact.sessionId))/artifacts/\(pathSegment(artifact.fileName))"
         )
         let envelope = try JSONDecoder().decode(NativeArtifactContentEnvelope.self, from: data)
         return NativeArtifactContent(
@@ -743,7 +743,7 @@ extension GatewayClient {
 
     func deleteArtifact(_ artifact: NativeArtifactSummary) async throws {
         _ = try await request(
-            "api/sessions/\(nativePathSegment(artifact.sessionId))/artifacts/\(nativePathSegment(artifact.fileName))",
+            "api/sessions/\(pathSegment(artifact.sessionId))/artifacts/\(pathSegment(artifact.fileName))",
             method: "DELETE"
         )
     }
@@ -794,11 +794,6 @@ extension GatewayClient {
         return []
     }
 
-    private func nativePathSegment(_ value: String) -> String {
-        var allowed = CharacterSet.urlPathAllowed
-        allowed.remove(charactersIn: "/")
-        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
-    }
 }
 
 private struct NativeConnectorDraft {

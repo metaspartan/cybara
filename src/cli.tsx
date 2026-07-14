@@ -680,7 +680,7 @@ async function rawMetricsAnalysis(): Promise<void> {
 }
 
 async function rawAgents(): Promise<void> {
-  const data = await fetchAPI<AgentItem[]>("/api/agents");
+  const data = await fetchAPI<AgentItem[]>("/api/agents/summary");
   if (!data) {
     console.error("ERROR: Failed to fetch agents from", API_BASE);
     process.exit(1);
@@ -1767,7 +1767,7 @@ function sessionAgentLabel(session: SessionInfo, agentsById = new Map<string, Ag
 async function rawSessions(): Promise<void> {
   const [data, agents] = await Promise.all([
     fetchAPI<SessionInfo[]>("/api/sessions"),
-    fetchAPI<AgentItem[]>("/api/agents"),
+    fetchAPI<AgentItem[]>("/api/agents/summary"),
   ]);
   if (!data) {
     console.error("ERROR: Failed to fetch sessions from", API_BASE);
@@ -2570,7 +2570,7 @@ const TUIAgentsCommand = () => {
   );
 
   React.useEffect(() => {
-    fetchAPI<AgentItem[]>("/api/agents")
+    fetchAPI<AgentItem[]>("/api/agents/summary")
       .then((d) => {
         if (d) setData(Array.isArray(d) ? d : []);
         else setError("Failed to fetch agents");
@@ -2990,7 +2990,10 @@ const TUISessionsCommand = () => {
   );
 
   React.useEffect(() => {
-    Promise.all([fetchAPI<SessionInfo[]>("/api/sessions"), fetchAPI<AgentItem[]>("/api/agents")])
+    Promise.all([
+      fetchAPI<SessionInfo[]>("/api/sessions"),
+      fetchAPI<AgentItem[]>("/api/agents/summary"),
+    ])
       .then(([sessions, agents]) => {
         if (sessions) setData(Array.isArray(sessions) ? sessions : []);
         else setError("Failed to fetch sessions");

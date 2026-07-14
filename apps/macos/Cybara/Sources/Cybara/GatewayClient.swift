@@ -105,7 +105,7 @@ struct GatewayClient: Sendable {
         return data
     }
 
-    private func pathSegment(_ value: String) -> String {
+    func pathSegment(_ value: String) -> String {
         var allowed = CharacterSet.urlPathAllowed
         allowed.remove(charactersIn: "/")
         return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value

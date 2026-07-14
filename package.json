@@ -42,7 +42,7 @@
     "audit:mobile": "cd apps/mobile && bun audit --audit-level=moderate",
     "audit:ci": "bun run audit:root && bun run audit:ui && bun run audit:mobile",
     "security:osv": "go run github.com/google/osv-scanner/v2/cmd/osv-scanner@v2.3.8 scan source --config=osv-scanner.toml --lockfile=bun.lock --lockfile=ui/bun.lock --lockfile=apps/mobile/bun.lock --lockfile=src-tauri/Cargo.lock .",
-    "tauri:audit": "cd src-tauri && cargo audit --ignore RUSTSEC-2026-0194 --ignore RUSTSEC-2026-0195",
+    "tauri:audit": "cd src-tauri && cargo audit",
     "check:ci": "bun run typecheck && bun run ui:typecheck && bun run lint && bun run ui:lint && bun run format:check && bun run check:loc && bun run mobile:expo-check && bun run mobile:typecheck && bun run test:smoke && bun run deadcode",
     "check": "bun run typecheck && bun run lint && bun run format:check",
     "test:isolated": "bun run scripts/run-tests-isolated.ts",

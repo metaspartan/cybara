@@ -16,7 +16,7 @@ export const googleChatSessions = new Map<string, string>();
 
 interface GoogleChatConfig {
   webhookUrl: string;
-  verifyToken?: string;
+  verifyToken: string;
 }
 
 export class GoogleChatAdapter implements ChannelAdapter {
@@ -38,10 +38,12 @@ export class GoogleChatAdapter implements ChannelAdapter {
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const webhookUrl = typeof config.webhook_url === "string" ? config.webhook_url.trim() : "";
+    const verifyToken = typeof config.verify_token === "string" ? config.verify_token.trim() : "";
     if (!webhookUrl) throw new Error("Google Chat: webhook_url is required");
+    if (!verifyToken) throw new Error("Google Chat: verify_token is required");
     this.configs.set(channelId, {
       webhookUrl,
-      verifyToken: typeof config.verify_token === "string" ? config.verify_token.trim() : undefined,
+      verifyToken,
     });
     this.running.add(channelId);
     console.log(`[GoogleChat] ready for channel ${channelId}`);
@@ -78,14 +80,10 @@ export class GoogleChatAdapter implements ChannelAdapter {
     const cfg = this.configs.get(channelId);
     if (!cfg) return { status: 404 };
 
-    if (cfg.verifyToken) {
-      const provided =
-        payload.query.token ||
-        (payload.headers.authorization || "").replace(/^Bearer\s+/i, "") ||
-        "";
-      if (!constantTimeEqual(provided, cfg.verifyToken))
-        return { status: 401, body: { error: "invalid token" } };
-    }
+    const provided =
+      payload.query.token || (payload.headers.authorization || "").replace(/^Bearer\s+/i, "") || "";
+    if (!constantTimeEqual(provided, cfg.verifyToken))
+      return { status: 401, body: { error: "invalid token" } };
 
     const event = parseGoogleChatEvent(payload.body);
     if (!event) return { status: 200, body: {} };

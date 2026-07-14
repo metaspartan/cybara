@@ -12,7 +12,7 @@ describe("UI hooks API wiring", () => {
   test("agents/providers/channels/tasks hooks keep expected route contracts", () => {
     const source = readHooksSource();
 
-    expect(source).toContain("fetchApi<Agent[]>('/agents')");
+    expect(source).toContain("fetchApi<AgentSummary[]>('/agents/summary')");
     expect(source).toContain("fetchApi<Agent>(`/agents/${id}`)");
     expect(source).toContain("fetchApi<{ id: string }>('/agents/default', { method: 'POST' })");
 

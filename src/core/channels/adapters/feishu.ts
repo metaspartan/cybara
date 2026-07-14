@@ -22,7 +22,7 @@ export const feishuSessions = new Map<string, string>();
 interface FeishuConfig {
   appId: string;
   appSecret: string;
-  verificationToken?: string;
+  verificationToken: string;
   encryptKey?: string;
   domain: string;
 }
@@ -53,7 +53,10 @@ export class FeishuAdapter implements ChannelAdapter {
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const appId = typeof config.app_id === "string" ? config.app_id.trim() : "";
     const appSecret = typeof config.app_secret === "string" ? config.app_secret.trim() : "";
+    const verificationToken =
+      typeof config.verification_token === "string" ? config.verification_token.trim() : "";
     if (!appId || !appSecret) throw new Error("Feishu: app_id and app_secret are required");
+    if (!verificationToken) throw new Error("Feishu: verification_token is required");
     const domain =
       typeof config.domain === "string" && config.domain.trim()
         ? config.domain.trim().replace(/\/+$/, "")
@@ -61,10 +64,7 @@ export class FeishuAdapter implements ChannelAdapter {
     this.configs.set(channelId, {
       appId,
       appSecret,
-      verificationToken:
-        typeof config.verification_token === "string"
-          ? config.verification_token.trim()
-          : undefined,
+      verificationToken,
       encryptKey: typeof config.encrypt_key === "string" ? config.encrypt_key.trim() : undefined,
       domain,
     });
@@ -156,14 +156,12 @@ export class FeishuAdapter implements ChannelAdapter {
     const challenge = extractFeishuChallenge(body);
     if (challenge) return { status: 200, body: { challenge } };
 
-    if (cfg.verificationToken) {
-      const token =
-        (body as { token?: string; header?: { token?: string } })?.token ||
-        (body as { header?: { token?: string } })?.header?.token ||
-        "";
-      if (token && !constantTimeEqual(token, cfg.verificationToken)) {
-        return { status: 401, body: { error: "invalid token" } };
-      }
+    const token =
+      (body as { token?: string; header?: { token?: string } })?.token ||
+      (body as { header?: { token?: string } })?.header?.token ||
+      "";
+    if (!token || !constantTimeEqual(token, cfg.verificationToken)) {
+      return { status: 401, body: { error: "invalid token" } };
     }
 
     const message = parseFeishuMessage(body);

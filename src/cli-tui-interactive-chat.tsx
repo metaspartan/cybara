@@ -98,6 +98,7 @@ interface AgentSummary {
   providerId?: string;
   status?: string;
   reasoning_effort?: string | null;
+  tool_profile?: string;
   config?: unknown;
 }
 
@@ -319,6 +320,9 @@ function agentConfig(agent: AgentSummary | undefined): Record<string, unknown> {
 }
 
 function agentToolProfile(agent: AgentSummary | undefined): string {
+  if (typeof agent?.tool_profile === "string" && agent.tool_profile.trim()) {
+    return agent.tool_profile.trim();
+  }
   const value = agentConfig(agent).tool_profile;
   return typeof value === "string" && value.trim() ? value.trim() : "full";
 }
@@ -1051,7 +1055,7 @@ export function InteractiveChatTUI({
     React.useCallback(async (): Promise<ControlPlaneState> => {
       const [agentResponse, configResponse, routerResponse] = await Promise.all(
         [
-          fetchAPI<unknown>("/api/agents"),
+          fetchAPI<unknown>("/api/agents/summary"),
           fetchAPI<unknown>("/api/config"),
           fetchAPI<unknown>("/api/router/status"),
         ],
@@ -1515,13 +1519,16 @@ export function InteractiveChatTUI({
           setNotice("Usage: /tools full|coding|research|safe|show");
           return true;
         }
+        const detail = await fetchAPI<AgentSummary>(
+          `/api/agents/${encodeURIComponent(selectedAgentId)}`,
+        );
         const response = await fetchAPI<unknown>(
           `/api/agents/${encodeURIComponent(selectedAgentId)}`,
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              config: { ...agentConfig(selectedAgent), tool_profile: value },
+              config: { ...agentConfig(detail ?? selectedAgent), tool_profile: value },
             }),
           },
         );

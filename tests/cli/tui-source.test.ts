@@ -258,7 +258,7 @@ describe("CLI TUI source wiring", () => {
       expect(cliTuiInteractiveChatSource).toContain(command);
     }
     for (const route of [
-      "/api/agents",
+      "/api/agents/summary",
       "/api/config",
       "/api/tools/approvals",
       "/api/tools/approvals/resolve",

@@ -34,13 +34,13 @@ import {
   useUpdateChannel,
   useDeleteChannel,
   useToggleChannel,
-  useAgents,
+  useAgentSummaries,
 } from "../hooks/useApi";
 import { useUIStore } from "../stores/uiStore";
 import { PageLayout } from "@/components/layout";
 import { channelsApi, routerApi } from "@/lib/api";
 import { MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
-import type { Agent, Channel, AvailableChannel, ChannelField } from "../types";
+import type { AgentSummary, Channel, AvailableChannel, ChannelField } from "../types";
 
 interface PairingInfo {
   id: string;
@@ -83,7 +83,7 @@ export function Channels() {
 
   const { data: channels, isLoading } = useChannels();
   const { data: availableChannels } = useAvailableChannels();
-  const { data: agents = [] } = useAgents();
+  const { data: agents = [] } = useAgentSummaries();
   const { addToast } = useUIStore();
 
   const createChannel = useCreateChannel();
@@ -763,7 +763,7 @@ interface ChannelModalProps {
   title: string;
   channel?: Channel | null;
   availableChannels: AvailableChannel[];
-  agents: Agent[];
+  agents: AgentSummary[];
   modelRouterEnabled: boolean;
   isLoading: boolean;
   isEdit?: boolean;

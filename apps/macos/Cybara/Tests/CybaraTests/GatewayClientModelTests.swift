@@ -4,6 +4,13 @@ import XCTest
 
 final class GatewayClientModelTests: XCTestCase {
 
+    func testPathSegmentEncodesRouteSeparators() throws {
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:4269"))
+        let client = GatewayClient(baseURL: url)
+        XCTAssertEqual(client.pathSegment("../../wallet"), "..%2F..%2Fwallet")
+        XCTAssertFalse(client.pathSegment("../../wallet").contains("/"))
+    }
+
     func testEvalModelsDecodeSummaryAndLatestRun() throws {
         let data = Data(
             #"{"goldens":[{"id":"golden-1","name":"Read version","description":null,"tags":["repo"],"baseline":{"sessionId":"session-1","turnIndex":0,"provider":"openai","model":"gpt-5.4-mini","request":{"userMessage":{"content":"Read package.json"},"workspaceDir":"/tmp/repo"},"structure":{"tools":[{"name":"read","status":"completed"}]}}}],"runs":[{"id":"run-1","goldenId":"golden-1","replaySessionId":"replay-1","status":"passed","score":100,"error":null}]}"#.utf8

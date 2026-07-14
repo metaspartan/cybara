@@ -1,3 +1,4 @@
+import { credentialDestinationChanged } from "../credential-destination";
 import { isSealedSecret, openSecret, sealSecret } from "../secret-storage";
 
 export type MemoryProviderId =
@@ -186,7 +187,6 @@ export function normalizeMemoryProviderSettings(value: unknown): MemoryProviderS
   };
 }
 
-/** Replace stored secrets with a sentinel so API responses never leak keys. */
 export function redactMemoryProviderSettings(
   settings: MemoryProviderSettings
 ): MemoryProviderSettings {
@@ -201,33 +201,71 @@ export function redactMemoryProviderSettings(
   };
 }
 
-/** Merge an incoming (possibly redacted) update over stored settings, keeping
- *  existing secrets when the client echoes the redaction sentinel back. */
 export function mergeMemoryProviderSettingsUpdate(
   stored: MemoryProviderSettings,
   update: unknown
 ): MemoryProviderSettings {
   const incoming = normalizeMemoryProviderSettings(update);
-  const keepSecret = (next: string, previous: string): string =>
-    next === REDACTED_SECRET_SENTINEL ? previous : next;
+  const keepSecret = (
+    next: string,
+    previous: string,
+    previousBaseUrl: string,
+    nextBaseUrl: string
+  ): string => {
+    if (next !== REDACTED_SECRET_SENTINEL) return next;
+    if (previous && credentialDestinationChanged(previousBaseUrl, nextBaseUrl)) {
+      throw new Error(
+        "Validation error: the memory provider API key must be re-entered when changing the destination"
+      );
+    }
+    return previous;
+  };
   return {
     ...incoming,
     supermemory: {
       ...incoming.supermemory,
-      apiKey: keepSecret(incoming.supermemory.apiKey, stored.supermemory.apiKey),
+      apiKey: keepSecret(
+        incoming.supermemory.apiKey,
+        stored.supermemory.apiKey,
+        stored.supermemory.baseUrl,
+        incoming.supermemory.baseUrl
+      ),
     },
-    mem0: { ...incoming.mem0, apiKey: keepSecret(incoming.mem0.apiKey, stored.mem0.apiKey) },
+    mem0: {
+      ...incoming.mem0,
+      apiKey: keepSecret(
+        incoming.mem0.apiKey,
+        stored.mem0.apiKey,
+        stored.mem0.baseUrl,
+        incoming.mem0.baseUrl
+      ),
+    },
     honcho: {
       ...incoming.honcho,
-      apiKey: keepSecret(incoming.honcho.apiKey, stored.honcho.apiKey),
+      apiKey: keepSecret(
+        incoming.honcho.apiKey,
+        stored.honcho.apiKey,
+        stored.honcho.baseUrl,
+        incoming.honcho.baseUrl
+      ),
     },
     openviking: {
       ...incoming.openviking,
-      apiKey: keepSecret(incoming.openviking.apiKey, stored.openviking.apiKey),
+      apiKey: keepSecret(
+        incoming.openviking.apiKey,
+        stored.openviking.apiKey,
+        stored.openviking.baseUrl,
+        incoming.openviking.baseUrl
+      ),
     },
     hindsight: {
       ...incoming.hindsight,
-      apiKey: keepSecret(incoming.hindsight.apiKey, stored.hindsight.apiKey),
+      apiKey: keepSecret(
+        incoming.hindsight.apiKey,
+        stored.hindsight.apiKey,
+        stored.hindsight.baseUrl,
+        incoming.hindsight.baseUrl
+      ),
     },
   };
 }

@@ -78,6 +78,34 @@ describe("memory provider settings", () => {
     expect(replaced.mem0.apiKey).toBe("sk-new");
   });
 
+  test("merge rejects moving a redacted key to another destination", () => {
+    const stored = settingsWith({
+      provider: "mem0",
+      mem0: { apiKey: "sk-real", baseUrl: "https://api.mem0.ai", userId: "u", agentId: "a" },
+    });
+    const redacted = redactMemoryProviderSettings(stored);
+
+    expect(() =>
+      mergeMemoryProviderSettingsUpdate(stored, {
+        ...redacted,
+        mem0: {
+          ...redacted.mem0,
+          baseUrl: "https://replacement.invalid",
+        },
+      })
+    ).toThrow("must be re-entered");
+
+    const replaced = mergeMemoryProviderSettingsUpdate(stored, {
+      ...redacted,
+      mem0: {
+        ...redacted.mem0,
+        apiKey: "sk-replacement",
+        baseUrl: "https://replacement.invalid",
+      },
+    });
+    expect(replaced.mem0.apiKey).toBe("sk-replacement");
+  });
+
   test("catalog marks configured and active providers", () => {
     const settings = settingsWith({
       provider: "supermemory",

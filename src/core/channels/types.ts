@@ -312,8 +312,8 @@ export const channels = {
     color: "#0068FF",
     fields: [
       { name: "access_token", label: "OA Access Token", type: "password", required: true },
-      { name: "app_id", label: "App ID", type: "string", required: false },
-      { name: "app_secret", label: "App Secret", type: "password", required: false },
+      { name: "app_id", label: "App ID", type: "string", required: true },
+      { name: "app_secret", label: "App Secret", type: "password", required: true },
     ],
   },
   googlechat: {
@@ -323,7 +323,7 @@ export const channels = {
     color: "#1A73E8",
     fields: [
       { name: "webhook_url", label: "Space Webhook URL", type: "password", required: true },
-      { name: "verify_token", label: "Inbound Verify Token", type: "password", required: false },
+      { name: "verify_token", label: "Inbound Verify Token", type: "password", required: true },
     ],
   },
   homeassistant: {
@@ -333,7 +333,7 @@ export const channels = {
       "Trigger the agent from Home Assistant automations (webhook) and reply via a notify service",
     color: "#41BDF5",
     fields: [
-      { name: "verify_token", label: "Inbound Verify Token", type: "password", required: false },
+      { name: "verify_token", label: "Inbound Verify Token", type: "password", required: true },
       { name: "ha_url", label: "Home Assistant URL (for replies)", type: "text", required: false },
       { name: "ha_token", label: "Long-Lived Access Token", type: "password", required: false },
       {
@@ -389,7 +389,7 @@ export const channels = {
         name: "verification_token",
         label: "Verification Token",
         type: "password",
-        required: false,
+        required: true,
       },
       {
         name: "domain",

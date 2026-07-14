@@ -32,3 +32,24 @@ export function agentSupportsImages(
   if (!agent?.provider_id) return false;
   return providerModelSupportsImages(agent.provider_id, modelOverride || agent.model || "");
 }
+
+export function agentImageSupportById(
+  agents: readonly Pick<Agent, "id" | "provider_id" | "model">[]
+): Map<string, boolean> {
+  const modelsByProvider = providerManager.getModelsBatch(
+    agents.flatMap((agent) => (agent.provider_id ? [agent.provider_id] : []))
+  );
+  const support = new Map<string, boolean>();
+  for (const agent of agents) {
+    const target = agent.model?.trim().toLowerCase();
+    const models = agent.provider_id ? modelsByProvider.get(agent.provider_id) : undefined;
+    const model = target
+      ? models?.find((candidate) => candidate.model_id.trim().toLowerCase() === target)
+      : undefined;
+    support.set(
+      agent.id,
+      !!model && inputTypes(model.input_types).some((item) => item.toLowerCase() === "image")
+    );
+  }
+  return support;
+}

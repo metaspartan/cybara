@@ -10,7 +10,8 @@ import { ProviderIcon, hasProviderIcon } from "@/components/ProviderIcon";
 import { Select } from "@/components/ui/Input";
 import { PageLayout } from "@/components/layout";
 import {
-  useAgents,
+  useAgent,
+  useAgentSummaries,
   useProviders,
   useProviderModels,
   useCreateAgent,
@@ -27,7 +28,7 @@ import {
   supportedReasoningOptions,
 } from "@/lib/reasoning";
 import { buildAgentChatPath } from "./chat/chatRoute";
-import type { Agent } from "@/types";
+import type { Agent, AgentSummary } from "@/types";
 
 const agentTypes = [
   { value: "main", label: "Main Assistant" },
@@ -50,11 +51,11 @@ function agentToolProfile(agent: Pick<Agent, "config">): string {
   return typeof value === "string" && value ? value : "full";
 }
 
-function agentReasoningLabel(agent: Agent): string {
+function agentReasoningLabel(agent: AgentSummary): string {
   return reasoningEffortLabel(
-    readAgentReasoningEffort(agent.config),
+    agent.reasoning_effort ?? null,
     agent.provider_type ?? agent.provider,
-    agent.model
+    agent.model ?? ""
   );
 }
 
@@ -81,10 +82,11 @@ function buildConfig(formData: FormData, existing?: unknown): Record<string, unk
 export function Agents() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [editingAgent, setEditingAgent] = useState<Agent | null>(null);
-  const [deletingAgent, setDeletingAgent] = useState<Agent | null>(null);
+  const [editingAgentId, setEditingAgentId] = useState<string | null>(null);
+  const [deletingAgent, setDeletingAgent] = useState<AgentSummary | null>(null);
 
-  const { data: agents, isLoading } = useAgents();
+  const { data: agents, isLoading } = useAgentSummaries();
+  const { data: editingAgent } = useAgent(editingAgentId);
   const { data: providers } = useProviders();
   const { addToast } = useUIStore();
 
@@ -161,10 +163,10 @@ export function Agents() {
   };
 
   const handleUpdate = async (formData: FormData) => {
-    if (!editingAgent) return;
+    if (!editingAgentId || !editingAgent) return;
     try {
       await updateAgent.mutateAsync({
-        id: editingAgent.id,
+        id: editingAgentId,
         data: {
           name: formData.get("name") as string,
           type: formData.get("type") as string,
@@ -175,7 +177,7 @@ export function Agents() {
         },
       });
       addToast("success", "Agent updated successfully");
-      setEditingAgent(null);
+      setEditingAgentId(null);
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Failed to update agent");
     }
@@ -260,7 +262,7 @@ export function Agents() {
             <AgentCard
               key={agent.id}
               agent={agent}
-              onEdit={() => setEditingAgent(agent)}
+              onEdit={() => setEditingAgentId(agent.id)}
               onDelete={() => setDeletingAgent(agent)}
             />
           ))}
@@ -277,13 +279,13 @@ export function Agents() {
       />
 
       <AgentModal
-        isOpen={!!editingAgent}
-        onClose={() => setEditingAgent(null)}
+        isOpen={!!editingAgentId}
+        onClose={() => setEditingAgentId(null)}
         onSubmit={handleUpdate}
         title="Edit Agent"
         providers={providers || []}
         isLoading={updateAgent.isPending}
-        initialData={editingAgent || undefined}
+        initialData={editingAgent}
       />
 
       <ConfirmDialog
@@ -305,7 +307,7 @@ function AgentCard({
   onEdit,
   onDelete,
 }: {
-  agent: Agent;
+  agent: AgentSummary;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -350,7 +352,7 @@ function AgentCard({
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Tools</span>
-            <span className="text-gray-300 capitalize">{agentToolProfile(agent)}</span>
+            <span className="text-gray-300 capitalize">{agent.tool_profile || "full"}</span>
           </div>
           <div className="flex justify-between">
             <span className="text-gray-500">Created</span>

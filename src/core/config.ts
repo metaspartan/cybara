@@ -1,4 +1,5 @@
 import { tables } from "./database";
+import { credentialDestinationChanged } from "./credential-destination";
 import { resolve } from "path";
 import { homeDir } from "./paths";
 import { normalizeReasoningEffort } from "./llm/reasoning";
@@ -919,10 +920,18 @@ class ConfigManager {
   }
 
   setSandboxRuntime(runtime: unknown): SandboxRuntimeConfig {
+    const existing = this.getSandboxRuntime();
     const normalized = normalizeSandboxRuntime(runtime);
     if (normalized.remoteApiKey === REDACTED_SECRET_SENTINEL) {
-      const existing = this.getSandboxRuntime().remoteApiKey;
-      if (existing) normalized.remoteApiKey = existing;
+      if (
+        existing.remoteApiKey &&
+        credentialDestinationChanged(existing.remoteUrl, normalized.remoteUrl)
+      ) {
+        throw new Error(
+          "Validation error: the remote sandbox API key must be re-entered when changing the destination"
+        );
+      }
+      if (existing.remoteApiKey) normalized.remoteApiKey = existing.remoteApiKey;
       else delete normalized.remoteApiKey;
     }
     this.set("sandbox_runtime", sealSandboxRemoteApiKey(normalized));

@@ -134,8 +134,9 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("POST", "/api/wallet/swap")).toBe("wallet");
   });
 
-  test("wallet reads are not gated, but policy/access mutations require wallet scope", () => {
-    expect(routeRequiredScope("GET", "/api/wallet/status")).toBeNull();
+  test("wallet reads require read access and sensitive RPC configuration requires wallet access", () => {
+    expect(routeRequiredScope("GET", "/api/wallet/status")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/wallet/rpc")).toBe("wallet");
     expect(routeRequiredScope("PUT", "/api/wallet/agent-policy")).toBe("wallet");
     expect(routeRequiredScope("PUT", "/api/wallet/agent-access")).toBe("wallet");
   });
@@ -152,7 +153,7 @@ describe("route scope requirements", () => {
   });
 
   test("MCP install, mutation, start, and tool calls require the mcp scope", () => {
-    expect(routeRequiredScope("GET", "/api/mcp/registry/search")).toBeNull();
+    expect(routeRequiredScope("GET", "/api/mcp/registry/search")).toBe("read");
     expect(routeRequiredScope("POST", "/api/mcp/registry/install")).toBe("mcp");
     expect(routeRequiredScope("POST", "/api/mcp/abc/start")).toBe("mcp");
     expect(routeRequiredScope("POST", "/api/mcp/abc/call")).toBe("mcp");
@@ -160,7 +161,7 @@ describe("route scope requirements", () => {
   });
 
   test("ordinary routes need no special scope", () => {
-    expect(routeRequiredScope("GET", "/api/agents")).toBeNull();
+    expect(routeRequiredScope("GET", "/api/agents")).toBe("read");
     expect(routeRequiredScope("GET", "/api/mobile/device")).toBeNull();
     expect(routeRequiredScope("POST", "/api/mobile/push-token")).toBeNull();
     expect(routeRequiredScope("PUT", "/api/mobile/push-preferences")).toBeNull();
@@ -219,25 +220,57 @@ describe("route scope requirements", () => {
     }
   });
 
+  test("read-only mobile tokens cannot reach local mutation or browser automation", () => {
+    const previousApiKey = process.env.CYBARA_API_KEY;
+    process.env.CYBARA_API_KEY = "cybara_scope_test_key";
+    const { token } = createMobileDevice({
+      baseUrl: "http://127.0.0.1:4269",
+      scopes: ["read"],
+    });
+    try {
+      const headers = { authorization: `Bearer ${token}` };
+      const write = securityCheck("POST", "/api/ide/write", headers, "10.1.2.3");
+      const approve = securityCheck("POST", "/api/tools/approvals/resolve", headers, "10.1.2.3");
+      const browser = securityCheck(
+        "POST",
+        "/api/browser/tabs/tab-1/navigate",
+        headers,
+        "10.1.2.3"
+      );
+      expect(write.passed).toBe(false);
+      expect(write.error).toContain("'manage'");
+      expect(approve.passed).toBe(false);
+      expect(approve.error).toContain("'manage'");
+      expect(browser.passed).toBe(false);
+      expect(browser.error).toContain("'terminal'");
+    } finally {
+      if (previousApiKey === undefined) {
+        delete process.env.CYBARA_API_KEY;
+      } else {
+        process.env.CYBARA_API_KEY = previousApiKey;
+      }
+    }
+  });
+
   test("mutating management surfaces require the manage scope", () => {
-    expect(routeRequiredScope("GET", "/api/config")).toBeNull();
+    expect(routeRequiredScope("GET", "/api/config")).toBe("read");
     expect(routeRequiredScope("PUT", "/api/config")).toBe("manage");
-    expect(routeRequiredScope("GET", "/api/web-research/settings")).toBeNull();
+    expect(routeRequiredScope("GET", "/api/web-research/settings")).toBe("read");
     expect(routeRequiredScope("PUT", "/api/web-research/settings")).toBe("manage");
-    expect(routeRequiredScope("GET", "/api/integration-credentials")).toBeNull();
+    expect(routeRequiredScope("GET", "/api/integration-credentials")).toBe("read");
     expect(routeRequiredScope("PUT", "/api/integration-credentials")).toBe("manage");
     expect(routeRequiredScope("GET", "/api/migrations/sources")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/migrations/preview")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/migrations/run")).toBe("manage");
-    expect(routeRequiredScope("GET", "/api/providers")).toBeNull();
+    expect(routeRequiredScope("GET", "/api/providers")).toBe("read");
     expect(routeRequiredScope("POST", "/api/providers")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/providers/provider-1/test")).toBe("manage");
-    expect(routeRequiredScope("GET", "/api/agents/summary")).toBeNull();
-    expect(routeRequiredScope("GET", "/api/router/config")).toBeNull();
+    expect(routeRequiredScope("GET", "/api/agents/summary")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/router/config")).toBe("read");
     expect(routeRequiredScope("PUT", "/api/router/config")).toBe("manage");
-    expect(routeRequiredScope("GET", "/api/provider-plans/config")).toBeNull();
-    expect(routeRequiredScope("GET", "/api/provider-plans/availability")).toBeNull();
-    expect(routeRequiredScope("GET", "/api/provider-plans/status")).toBeNull();
+    expect(routeRequiredScope("GET", "/api/provider-plans/config")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/provider-plans/availability")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/provider-plans/status")).toBe("read");
     expect(routeRequiredScope("PUT", "/api/provider-plans/config")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/agents")).toBe("manage");
     expect(routeRequiredScope("POST", "/api/tasks")).toBe("manage");
@@ -245,6 +278,22 @@ describe("route scope requirements", () => {
     expect(routeRequiredScope("GET", "/api/checkpoints")).toBe("root");
     expect(routeRequiredScope("POST", "/api/checkpoints")).toBe("root");
     expect(routeRequiredScope("POST", "/api/setup/complete")).toBe("manage");
+  });
+
+  test("narrow tokens cannot mutate local developer and agent state", () => {
+    expect(routeRequiredScope("POST", "/api/tools/approvals/resolve")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/ide/write")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/ide/create")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/ide/replace")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/lsp/install")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/skills/install")).toBe("manage");
+    expect(routeRequiredScope("POST", "/api/memory")).toBe("manage");
+    expect(routeRequiredScope("GET", "/api/ide/read")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/lsp/definition")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/skills")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/memory")).toBe("read");
+    expect(routeRequiredScope("GET", "/api/ws/status")).toBe("read");
+    expect(routeRequiredScope("POST", "/api/browser/tabs/tab-1/navigate")).toBe("terminal");
   });
 });
 

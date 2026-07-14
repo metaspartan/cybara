@@ -78,7 +78,8 @@ import {
   summarizeResearchTraces,
   updateIntelligenceBenchmarkRun,
 } from "../core/agent-eval";
-import { agentSupportsImages } from "../core/agent-image-capabilities";
+import { agentImageSupportById, agentSupportsImages } from "../core/agent-image-capabilities";
+import { parseAgentConfig } from "../core/agent-internals";
 import {
   cancelAgentLoopRun,
   getAgentLoopRun,
@@ -107,6 +108,7 @@ import {
   restoreCheckpoint,
 } from "../core/checkpoint";
 import { config, redactSandboxRuntimeConfig } from "../core/config";
+import { credentialDestinationChanged } from "../core/credential-destination";
 import { resolveCybaraHome, setCybaraHomeOverride } from "../core/cybara-home";
 import { tables } from "../core/database";
 import { resolveGeminiCliOAuthClientConfig } from "../core/gemini-cli-oauth";
@@ -1068,19 +1070,28 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "GET /api/agents": () => agentManager.list(),
-  "GET /api/agents/summary": () =>
-    agentManager.list().map((agent) => ({
-      id: agent.id,
-      name: agent.name,
-      model: agent.model,
-      provider: agent.provider,
-      provider_id: agent.provider_id,
-      provider_type: agent.provider_type,
-      fallback_provider_id: agent.fallback_provider_id,
-      status: agent.status,
-      reasoning_effort: readAgentReasoningSetting(agent.config),
-      supports_images: agentSupportsImages(agent),
-    })),
+  "GET /api/agents/summary": () => {
+    const agents = agentManager.list();
+    const imageSupport = agentImageSupportById(agents);
+    return agents.map((agent) => {
+      const toolProfile = parseAgentConfig(agent.config).tool_profile;
+      return {
+        id: agent.id,
+        name: agent.name,
+        type: agent.type,
+        model: agent.model,
+        provider: agent.provider,
+        provider_id: agent.provider_id,
+        provider_type: agent.provider_type,
+        fallback_provider_id: agent.fallback_provider_id,
+        status: agent.status,
+        created_at: agent.created_at,
+        reasoning_effort: readAgentReasoningSetting(agent.config),
+        tool_profile: typeof toolProfile === "string" ? toolProfile : "full",
+        supports_images: imageSupport.get(agent.id) ?? false,
+      };
+    });
+  },
   "POST /api/agents": (body) => {
     const data = body as Parameters<typeof agentManager.create>[0];
     return agentManager.create(data);
@@ -1661,6 +1672,22 @@ const routes: Record<string, RouteHandler> = {
 
     if ("expires_at" in data && typeof data.expires_at === "number") {
       updates.expires_at = data.expires_at;
+    }
+
+    const existingProviderType = resolveProviderType(existing.provider);
+    const existingBaseUrl =
+      existing.base_url ||
+      (existingProviderType ? providers[existingProviderType]?.baseUrl : undefined);
+    if (
+      updates.base_url &&
+      credentialDestinationChanged(existingBaseUrl, updates.base_url) &&
+      ((existing.api_key && !updates.api_key) ||
+        (existing.access_token && !updates.access_token) ||
+        (existing.refresh_token && !updates.refresh_token))
+    ) {
+      throw new Error(
+        "Validation error: credentials must be re-entered when changing the provider destination"
+      );
     }
 
     validateProviderCredentialShape(existing.provider, {

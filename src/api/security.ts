@@ -871,7 +871,8 @@ export function routeRequiredScope(method: string, path: string): string | null 
     return "chat";
   }
   if (path.startsWith("/api/wallet")) {
-    if (method === "GET") return null;
+    if (path === "/api/wallet/rpc" && method === "GET") return "wallet";
+    if (method === "GET") return "read";
     return "wallet";
   }
   if (path === "/api/chat" || path.startsWith("/api/chat/")) {
@@ -894,8 +895,35 @@ export function routeRequiredScope(method: string, path: string): string | null 
   if (path.startsWith("/api/computer-use")) {
     return "terminal";
   }
+  if (path.startsWith("/api/browser") || path === "/api/open-url") {
+    return "terminal";
+  }
+  if (path.startsWith("/api/tools")) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/ide")) {
+    if (path === "/api/ide/inline-completion") return "chat";
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/lsp")) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/skills")) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/memory")) {
+    if (method === "GET") return "read";
+    return "manage";
+  }
+  if (path.startsWith("/api/status") || path === "/api/ws/status") {
+    return "read";
+  }
   if (path.startsWith("/api/mcp")) {
-    if (method === "GET") return null;
+    if (method === "GET") return "read";
     return "mcp";
   }
   if (path.startsWith("/api/plugins")) {
@@ -908,7 +936,7 @@ export function routeRequiredScope(method: string, path: string): string | null 
     return "manage";
   }
   if (path === "/api/config") {
-    if (method === "GET") return null;
+    if (method === "GET") return "read";
     return "manage";
   }
   if (path.startsWith("/api/speech")) {
@@ -918,23 +946,23 @@ export function routeRequiredScope(method: string, path: string): string | null 
     return "manage";
   }
   if (path === "/api/web-research/settings") {
-    if (method === "GET") return null;
+    if (method === "GET") return "read";
     return "manage";
   }
   if (path === "/api/integration-credentials") {
-    if (method === "GET") return null;
+    if (method === "GET") return "read";
     return "manage";
   }
   if (path.startsWith("/api/providers")) {
-    if (method === "GET") return null;
+    if (method === "GET") return "read";
     return "manage";
   }
   if (path.startsWith("/api/provider-plans")) {
-    if (method === "GET") return null;
+    if (method === "GET") return "read";
     return "manage";
   }
   if (path.startsWith("/api/router")) {
-    if (method === "GET") return null;
+    if (method === "GET") return "read";
     return "manage";
   }
   if (
@@ -944,7 +972,7 @@ export function routeRequiredScope(method: string, path: string): string | null 
     path.startsWith("/api/channels") ||
     path === "/api/setup/complete"
   ) {
-    if (method === "GET") return null;
+    if (method === "GET") return "read";
     return "manage";
   }
   return null;

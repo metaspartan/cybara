@@ -10,6 +10,8 @@ describe("agents are ready on demand across clients", () => {
   test("web links agent identities to the primary chat without runtime controls", () => {
     const source = read("ui/src/pages/Agents.tsx");
     expect(source).toContain("buildAgentChatPath(agent.id)");
+    expect(source).toContain("useAgentSummaries()");
+    expect(source).toContain("useAgent(editingAgentId)");
     expect(source).not.toContain("handleToggleStatus");
     expect(source).not.toContain("ChatModal");
   });

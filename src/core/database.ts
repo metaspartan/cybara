@@ -645,6 +645,10 @@ const stmts = {
     all: prepare("SELECT * FROM provider_models"),
     byProvider: prepare("SELECT * FROM provider_models WHERE provider_id = ?"),
     byModelId: prepare("SELECT * FROM provider_models WHERE model_id = ? LIMIT 1"),
+    deleteByProvider: prepare("DELETE FROM provider_models WHERE provider_id = ?"),
+    deleteOrphans: prepare(
+      "DELETE FROM provider_models WHERE provider_id NOT IN (SELECT id FROM providers)"
+    ),
     upsert: prepare(
       "INSERT OR REPLACE INTO provider_models (id, provider_id, model_id, model_name, context_window, max_tokens, reasoning, input_types, cost_input, cost_output, cost_cache_read, cost_cache_write) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ),
@@ -1028,6 +1032,8 @@ export const tables = {
   providerModels: {
     all: () => stmts.providerModels.all.all(),
     byProvider: (id: string) => stmts.providerModels.byProvider.all(id),
+    deleteByProvider: (id: string) => stmts.providerModels.deleteByProvider.run(id),
+    deleteOrphans: () => stmts.providerModels.deleteOrphans.run(),
     getByModelId: (modelId: string) =>
       stmts.providerModels.byModelId.get(modelId) as ProviderModel | undefined,
     upsert: (m: ProviderModel) =>
@@ -1452,6 +1458,9 @@ export const tables = {
   },
 };
 
+tables.providerModels.deleteOrphans();
+db.exec("CREATE INDEX IF NOT EXISTS idx_provider_models_provider ON provider_models(provider_id)");
+
 export interface Provider {
   id: string;
   provider: string;
@@ -1502,6 +1511,7 @@ export interface Agent {
   config?: Record<string, unknown>;
   status: "running" | "stopped" | "error";
   memory_enabled: boolean;
+  created_at?: string;
 }
 
 export interface ToolDefinition {

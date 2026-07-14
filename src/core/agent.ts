@@ -295,8 +295,11 @@ class AgentManager extends AgentProviderRuntime {
     typeConfig?: typeof AGENT_TYPES.main;
   })[] {
     const all = tables.agents.all() as Agent[];
+    const providersById = new Map(
+      providerManager.list().map((provider) => [provider.id, provider])
+    );
     return all.map((a) => {
-      const provider = a.provider_id ? providerManager.get(a.provider_id) : undefined;
+      const provider = a.provider_id ? providersById.get(a.provider_id) : undefined;
       const typeConfig = a.type ? AGENT_TYPES[a.type as keyof typeof AGENT_TYPES] : undefined;
       const status = this.runningAgents.has(a.id) ? "running" : "stopped";
       return {

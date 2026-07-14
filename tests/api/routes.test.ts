@@ -837,6 +837,7 @@ describe("Agents API", () => {
       expect(first.system_prompt).toBeUndefined();
       expect(first.config).toBeUndefined();
       expect(first.tools).toBeUndefined();
+      expect(typeof first.tool_profile).toBe("string");
     }
   });
 
@@ -1231,6 +1232,32 @@ describe("Providers API", () => {
 
     const after = getRawProviderRecord(providerId);
     expect(after?.base_url).not.toBe("https://user:pass@example.com/v1");
+
+    await api("DELETE", `/api/providers/${providerId}`);
+  });
+
+  test("PUT /api/providers/:id requires credentials when changing destination", async () => {
+    const provider = await api("POST", "/api/providers", {
+      provider: "openai",
+      name: `destination-bound-key-${Date.now()}`,
+      api_key: `sk-destination-${Date.now()}`,
+    });
+    expect(provider.status).toBe(200);
+    const providerId = provider.data.id as string;
+
+    const rejected = await api("PUT", `/api/providers/${providerId}`, {
+      base_url: "https://replacement.invalid/v1",
+    });
+    expect(rejected.status).toBe(400);
+    expect(rejected.data.code).toBe("VALIDATION_ERROR");
+    expect(String(rejected.data.error)).toContain("credentials must be re-entered");
+
+    const accepted = await api("PUT", `/api/providers/${providerId}`, {
+      base_url: "https://replacement.invalid/v1",
+      api_key: `sk-replacement-${Date.now()}`,
+    });
+    expect(accepted.status).toBe(200);
+    expect(accepted.data.success).toBe(true);
 
     await api("DELETE", `/api/providers/${providerId}`);
   });
@@ -3417,6 +3444,36 @@ describe("Config API", () => {
     expect(openSealedValue("sandbox-runtime:remote_api_key", parsed.remoteApiKey ?? "")).toBe(
       "e2b-live-secret"
     );
+
+    await api("PUT", "/api/config", {
+      sandbox_runtime: { enabled: false, provider: "auto", network: "deny" },
+    });
+  });
+
+  test("PUT /api/config binds a redacted sandbox key to its destination", async () => {
+    const configured = await api("PUT", "/api/config", {
+      sandbox_runtime: {
+        enabled: true,
+        provider: "auto",
+        network: "deny",
+        remoteUrl: "https://api.e2b.dev",
+        remoteApiKey: "sandbox-bound-secret",
+      },
+    });
+    expect(configured.status).toBe(200);
+
+    const rejected = await api("PUT", "/api/config", {
+      sandbox_runtime: {
+        enabled: true,
+        provider: "auto",
+        network: "deny",
+        remoteUrl: "https://replacement.invalid",
+        remoteApiKey: "***redacted***",
+      },
+    });
+    expect(rejected.status).toBe(400);
+    expect(rejected.data.code).toBe("VALIDATION_ERROR");
+    expect(String(rejected.data.error)).toContain("must be re-entered");
 
     await api("PUT", "/api/config", {
       sandbox_runtime: { enabled: false, provider: "auto", network: "deny" },

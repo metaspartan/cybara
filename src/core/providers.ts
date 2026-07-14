@@ -370,6 +370,7 @@ class ProviderManager {
 
   delete(id: string): boolean {
     this.authoritativeModelIds.delete(id);
+    tables.providerModels.deleteByProvider(id);
     const result = tables.providers.delete(id);
     return result.changes > 0;
   }
@@ -379,8 +380,11 @@ class ProviderManager {
     if (normalized.length > 0) this.authoritativeModelIds.set(providerId, new Set(normalized));
   }
 
-  private mergeStaticCatalogModels(providerId: string, cached: ProviderModel[]): ProviderModel[] {
-    const providerRow = tables.providers.get(providerId) as Provider | undefined;
+  private mergeStaticCatalogModels(
+    providerId: string,
+    cached: ProviderModel[],
+    providerRow = tables.providers.get(providerId) as Provider | undefined
+  ): ProviderModel[] {
     if (!providerRow) return cached;
 
     const resolvedType = resolveProviderType(providerRow.provider);
@@ -444,6 +448,33 @@ class ProviderManager {
     return authoritative
       ? merged.filter((model) => authoritative.has(model.model_id.trim().toLowerCase()))
       : merged;
+  }
+
+  getModelsBatch(providerIds: readonly string[]): Map<string, ProviderModel[]> {
+    const requested = new Set(providerIds.filter(Boolean));
+    if (requested.size === 0) return new Map();
+
+    const providerRows = new Map(
+      (tables.providers.all() as Provider[])
+        .filter((provider) => requested.has(provider.id))
+        .map((provider) => [provider.id, provider])
+    );
+    const result = new Map<string, ProviderModel[]>();
+    for (const providerId of requested) {
+      const merged = this.mergeStaticCatalogModels(
+        providerId,
+        tables.providerModels.byProvider(providerId) as ProviderModel[],
+        providerRows.get(providerId)
+      );
+      const authoritative = this.authoritativeModelIds.get(providerId);
+      result.set(
+        providerId,
+        authoritative
+          ? merged.filter((model) => authoritative.has(model.model_id.trim().toLowerCase()))
+          : merged
+      );
+    }
+    return result;
   }
 
   async discoverOllamaModels(): Promise<ProviderModel[]> {

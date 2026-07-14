@@ -25,13 +25,16 @@ export interface Agent {
 export interface AgentSummary {
   id: string;
   name: string;
+  type?: string;
   model?: string;
   provider?: string;
   provider_id?: string;
   provider_type?: string;
   fallback_provider_id?: string;
   status?: Agent["status"];
+  created_at?: string;
   reasoning_effort?: AgentReasoningEffort | null;
+  tool_profile?: string;
   supports_images?: boolean;
 }
 

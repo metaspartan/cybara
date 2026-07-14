@@ -17,8 +17,8 @@ const ZALO_SEND_URL = "https://openapi.zalo.me/v3.0/oa/message/cs";
 
 interface ZaloConfig {
   accessToken: string;
-  appId?: string;
-  appSecret?: string;
+  appId: string;
+  appSecret: string;
 }
 
 export class ZaloAdapter implements ChannelAdapter {
@@ -40,11 +40,14 @@ export class ZaloAdapter implements ChannelAdapter {
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
     const accessToken = typeof config.access_token === "string" ? config.access_token.trim() : "";
+    const appId = typeof config.app_id === "string" ? config.app_id.trim() : "";
+    const appSecret = typeof config.app_secret === "string" ? config.app_secret.trim() : "";
     if (!accessToken) throw new Error("Zalo: access_token is required");
+    if (!appId || !appSecret) throw new Error("Zalo: app_id and app_secret are required");
     this.configs.set(channelId, {
       accessToken,
-      appId: typeof config.app_id === "string" ? config.app_id.trim() : undefined,
-      appSecret: typeof config.app_secret === "string" ? config.app_secret.trim() : undefined,
+      appId,
+      appSecret,
     });
     this.running.add(channelId);
     console.log(`[Zalo] ready for channel ${channelId}`);
@@ -81,17 +84,15 @@ export class ZaloAdapter implements ChannelAdapter {
     const cfg = this.configs.get(channelId);
     if (!cfg) return { status: 404 };
 
-    if (cfg.appSecret && cfg.appId) {
-      const macBody = payload.body as { mac?: string; timestamp?: string };
-      const ok = verifyZaloMac(
-        cfg.appId,
-        payload.rawBody,
-        macBody.timestamp || "",
-        cfg.appSecret,
-        macBody.mac || ""
-      );
-      if (!ok) return { status: 401, body: { error: "invalid mac" } };
-    }
+    const macBody = payload.body as { mac?: string; timestamp?: string };
+    const ok = verifyZaloMac(
+      cfg.appId,
+      payload.rawBody,
+      macBody.timestamp || "",
+      cfg.appSecret,
+      macBody.mac || ""
+    );
+    if (!ok) return { status: 401, body: { error: "invalid mac" } };
 
     const inbound = parseZaloEvent(payload.body);
     if (inbound) await this.dispatch(channelId, inbound.senderId, inbound.text);

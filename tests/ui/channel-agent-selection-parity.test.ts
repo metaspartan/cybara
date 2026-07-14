@@ -17,7 +17,8 @@ describe("channel agent selection parity", () => {
     expect(channels).toContain('label="Default Routing"');
     expect(channels).toContain('label: "Gateway default"');
     expect(channels).toContain('label: "Model Router"');
-    expect(channels).toContain("useAgents()");
+    expect(channels).toContain("useAgentSummaries()");
+    expect(channels).not.toContain("useAgents()");
   });
 
   test("mobile channel summaries and settings preserve the assignment", () => {

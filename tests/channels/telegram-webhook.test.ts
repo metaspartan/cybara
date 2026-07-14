@@ -25,6 +25,15 @@ function makeChannelId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const TEST_WEBHOOK_SECRET = "test-webhook-secret";
+
+function processAuthenticatedTelegramWebhook(
+  channelId: string,
+  update: TelegramUpdate | Record<string, unknown>
+): Promise<boolean> {
+  return processTelegramWebhook(channelId, update, TEST_WEBHOOK_SECRET);
+}
+
 function makeTelegramUpdate(text: string): TelegramUpdate {
   return {
     update_id: Date.now(),
@@ -153,7 +162,7 @@ describe("Telegram webhook mocked flows", () => {
       type: "telegram",
       name: "Telegram Test",
       enabled: true,
-      config: { bot_token: "test-bot-token" },
+      config: { bot_token: "test-bot-token", webhook_secret: TEST_WEBHOOK_SECRET },
     });
 
     configureChannelChatRuntime({
@@ -242,7 +251,7 @@ describe("Telegram webhook mocked flows", () => {
     });
     securityManager.setConfig(channelId, { dm_policy: "pairing", allowed_senders: [] });
 
-    const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("hello"));
+    const ok = await processAuthenticatedTelegramWebhook(channelId, makeTelegramUpdate("hello"));
 
     expect(ok).toBe(true);
     expect(handlerCalls).toBe(0);
@@ -268,7 +277,7 @@ describe("Telegram webhook mocked flows", () => {
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
 
-    const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("ping"));
+    const ok = await processAuthenticatedTelegramWebhook(channelId, makeTelegramUpdate("ping"));
 
     expect(ok).toBe(true);
     expect(handlerInputs).toHaveLength(1);
@@ -316,7 +325,7 @@ describe("Telegram webhook mocked flows", () => {
       ],
     });
 
-    const ok = await processTelegramWebhook(channelId, update);
+    const ok = await processAuthenticatedTelegramWebhook(channelId, update);
 
     expect(ok).toBe(true);
     expect(handlerInputs).toHaveLength(1);
@@ -343,7 +352,7 @@ describe("Telegram webhook mocked flows", () => {
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
 
-    const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("ping"));
+    const ok = await processAuthenticatedTelegramWebhook(channelId, makeTelegramUpdate("ping"));
 
     expect(ok).toBe(true);
     const typingCalls = fetchCalls.filter((call) => call.url.includes("/sendChatAction")).length;
@@ -364,7 +373,7 @@ describe("Telegram webhook mocked flows", () => {
     };
 
     try {
-      const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("hello"));
+      const ok = await processAuthenticatedTelegramWebhook(channelId, makeTelegramUpdate("hello"));
       expect(ok).toBe(false);
       expect(fetchCalls).toHaveLength(0);
       expect(errorMessages.some((msg) => msg.includes("No bot token"))).toBe(true);
@@ -417,7 +426,10 @@ describe("Telegram webhook mocked flows", () => {
     securityManager.setConfig(channelId, { dm_policy: "open" });
 
     try {
-      const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("/model 2"));
+      const ok = await processAuthenticatedTelegramWebhook(
+        channelId,
+        makeTelegramUpdate("/model 2")
+      );
 
       expect(ok).toBe(true);
       expect(handlerCalls).toBe(0);
@@ -444,7 +456,7 @@ describe("Telegram webhook mocked flows", () => {
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
 
-    const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("/status"));
+    const ok = await processAuthenticatedTelegramWebhook(channelId, makeTelegramUpdate("/status"));
 
     expect(ok).toBe(true);
     expect(handlerCalls).toBe(0);
@@ -486,7 +498,10 @@ describe("Telegram webhook mocked flows", () => {
     securityManager.setConfig(channelId, { dm_policy: "open" });
 
     try {
-      const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("/agents"));
+      const ok = await processAuthenticatedTelegramWebhook(
+        channelId,
+        makeTelegramUpdate("/agents")
+      );
 
       expect(ok).toBe(true);
       expect(handlerCalls).toBe(0);
@@ -533,7 +548,10 @@ describe("Telegram webhook mocked flows", () => {
     securityManager.setConfig(channelId, { dm_policy: "open" });
 
     try {
-      const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("/providers"));
+      const ok = await processAuthenticatedTelegramWebhook(
+        channelId,
+        makeTelegramUpdate("/providers")
+      );
 
       expect(ok).toBe(true);
       expect(handlerCalls).toBe(0);
@@ -562,7 +580,7 @@ describe("Telegram webhook mocked flows", () => {
     const initialSessionId = "session-telegram-initial";
     telegramSessions.set(chatKey, initialSessionId);
 
-    const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("/new"));
+    const ok = await processAuthenticatedTelegramWebhook(channelId, makeTelegramUpdate("/new"));
 
     expect(ok).toBe(true);
     expect(handlerCalls).toBe(0);
@@ -584,14 +602,20 @@ describe("Telegram webhook mocked flows", () => {
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
 
-    const firstNewOk = await processTelegramWebhook(channelId, makeTelegramUpdate("/new"));
+    const firstNewOk = await processAuthenticatedTelegramWebhook(
+      channelId,
+      makeTelegramUpdate("/new")
+    );
     expect(firstNewOk).toBe(true);
     const firstSessionId = telegramSessions.get("880011");
     expect(firstSessionId).toBeDefined();
 
     fetchCalls = [];
 
-    const secondNewOk = await processTelegramWebhook(channelId, makeTelegramUpdate("/new"));
+    const secondNewOk = await processAuthenticatedTelegramWebhook(
+      channelId,
+      makeTelegramUpdate("/new")
+    );
     expect(secondNewOk).toBe(true);
     const secondSessionId = telegramSessions.get("880011");
     expect(secondSessionId).toBeDefined();
@@ -599,7 +623,10 @@ describe("Telegram webhook mocked flows", () => {
 
     fetchCalls = [];
 
-    const switchOk = await processTelegramWebhook(channelId, makeTelegramUpdate("/switch 2"));
+    const switchOk = await processAuthenticatedTelegramWebhook(
+      channelId,
+      makeTelegramUpdate("/switch 2")
+    );
     expect(switchOk).toBe(true);
     expect(handlerCalls).toBe(0);
     expect(telegramSessions.get("880011")).toBe(firstSessionId);
@@ -651,7 +678,7 @@ describe("Telegram webhook mocked flows", () => {
     securityManager.setConfig(channelId, { dm_policy: "open" });
 
     try {
-      const ok = await processTelegramWebhook(
+      const ok = await processAuthenticatedTelegramWebhook(
         channelId,
         makeTelegramUpdate(`/agent ${secondAgentId}`)
       );
@@ -724,7 +751,7 @@ describe("Telegram webhook mocked flows", () => {
     securityManager.setConfig(channelId, { dm_policy: "open" });
 
     try {
-      const ok = await processTelegramWebhook(
+      const ok = await processAuthenticatedTelegramWebhook(
         channelId,
         makeTelegramUpdate(`/provider ${providerB}`)
       );
@@ -770,7 +797,7 @@ describe("Telegram webhook mocked flows", () => {
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
 
-    const ok = await processTelegramWebhook(
+    const ok = await processAuthenticatedTelegramWebhook(
       channelId,
       makeTelegramUpdate("/subagents spawn summarize deployment status")
     );
@@ -797,7 +824,10 @@ describe("Telegram webhook mocked flows", () => {
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
 
-    const summaryOk = await processTelegramWebhook(channelId, makeTelegramUpdate("/memory"));
+    const summaryOk = await processAuthenticatedTelegramWebhook(
+      channelId,
+      makeTelegramUpdate("/memory")
+    );
     expect(summaryOk).toBe(true);
     expect(handlerCalls).toBe(0);
 
@@ -818,7 +848,7 @@ describe("Telegram webhook mocked flows", () => {
     ];
     memoryMockState.searchMethod = "semantic";
 
-    const searchOk = await processTelegramWebhook(
+    const searchOk = await processAuthenticatedTelegramWebhook(
       channelId,
       makeTelegramUpdate("/memory wallet policy")
     );
@@ -849,7 +879,10 @@ describe("Telegram webhook mocked flows", () => {
       },
     ];
 
-    const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("/sessions"));
+    const ok = await processAuthenticatedTelegramWebhook(
+      channelId,
+      makeTelegramUpdate("/sessions")
+    );
     expect(ok).toBe(true);
 
     const sendMessageCall = fetchCalls.find((call) => call.url.includes("/sendMessage"));
@@ -870,11 +903,12 @@ describe("Telegram webhook mocked flows", () => {
     tables.channels.update(channelId, {
       config: {
         bot_token: "test-bot-token",
+        webhook_secret: TEST_WEBHOOK_SECRET,
         reaction_notifications: "all",
       },
     });
 
-    const ok = await processTelegramWebhook(channelId, makeTelegramReactionUpdate());
+    const ok = await processAuthenticatedTelegramWebhook(channelId, makeTelegramReactionUpdate());
 
     expect(ok).toBe(true);
     expect(handlerCalls).toBe(0);
@@ -900,11 +934,12 @@ describe("Telegram webhook mocked flows", () => {
     tables.channels.update(channelId, {
       config: {
         bot_token: "test-bot-token",
+        webhook_secret: TEST_WEBHOOK_SECRET,
         reaction_notifications: "off",
       },
     });
 
-    const ok = await processTelegramWebhook(channelId, makeTelegramReactionUpdate());
+    const ok = await processAuthenticatedTelegramWebhook(channelId, makeTelegramReactionUpdate());
 
     expect(ok).toBe(true);
     expect(runtimeInjectedMessages).toHaveLength(0);
@@ -951,21 +986,17 @@ describe("Telegram webhook mocked flows", () => {
       return "should not run";
     });
     securityManager.setConfig(channelId, { dm_policy: "open" });
-    // Channel registered with a webhook secret (as start() now does).
     tables.channels.update(channelId, {
       config: { bot_token: "test-bot-token", webhook_secret: "s3cr3t-token" },
     });
 
-    // Missing token → rejected, handler never runs, no Telegram calls made.
     const missing = await processTelegramWebhook(channelId, makeTelegramUpdate("ping"));
     expect(missing).toBe(false);
-    // Wrong token → rejected.
     const wrong = await processTelegramWebhook(channelId, makeTelegramUpdate("ping"), "wrong");
     expect(wrong).toBe(false);
     expect(handlerCalls).toBe(0);
     expect(fetchCalls).toHaveLength(0);
 
-    // Correct token → accepted and processed.
     const ok = await processTelegramWebhook(channelId, makeTelegramUpdate("ping"), "s3cr3t-token");
     expect(ok).toBe(true);
     expect(handlerCalls).toBe(1);
@@ -1011,13 +1042,13 @@ describe("Telegram webhook secret verification helpers", () => {
     expect(verifyTelegramWebhookSecret("abc", "abc")).toBe(true);
     expect(verifyTelegramWebhookSecret("abc", "xyz")).toBe(false);
     expect(verifyTelegramWebhookSecret("abc", undefined)).toBe(false);
-    expect(verifyTelegramWebhookSecret("abc", "ab")).toBe(false); // length mismatch
+    expect(verifyTelegramWebhookSecret("abc", "ab")).toBe(false);
   });
 
-  test("verifyTelegramWebhookSecret allows when no secret is configured (legacy)", () => {
-    expect(verifyTelegramWebhookSecret(undefined, undefined)).toBe(true);
-    expect(verifyTelegramWebhookSecret(undefined, "anything")).toBe(true);
-    expect(verifyTelegramWebhookSecret("", "anything")).toBe(true);
+  test("verifyTelegramWebhookSecret rejects when no expected secret is configured", () => {
+    expect(verifyTelegramWebhookSecret(undefined, undefined)).toBe(false);
+    expect(verifyTelegramWebhookSecret(undefined, "anything")).toBe(false);
+    expect(verifyTelegramWebhookSecret("", "anything")).toBe(false);
   });
 
   test("generateTelegramWebhookSecret returns a Telegram-valid token", () => {

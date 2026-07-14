@@ -903,7 +903,7 @@ describe("native macOS shell wiring", () => {
       "utf8"
     );
 
-    expect(gatewayClient).toContain("private func pathSegment");
+    expect(gatewayClient).toContain("func pathSegment");
     expect(gatewayClient).toContain('allowed.remove(charactersIn: "/")');
     expect(gatewayClient).toContain('try await get("api/memory", as: GatewayMemoryList.self)');
     expect(gatewayClient).toContain('"api/memory/search"');

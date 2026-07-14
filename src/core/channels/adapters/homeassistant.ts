@@ -18,7 +18,7 @@ interface HaChannelConfig {
   haUrl?: string;
   haToken?: string;
   notifyService?: string;
-  verifyToken?: string;
+  verifyToken: string;
 }
 
 export class HomeAssistantAdapter implements ChannelAdapter {
@@ -39,6 +39,8 @@ export class HomeAssistantAdapter implements ChannelAdapter {
 
   async start(channelId: string, config: Record<string, unknown>): Promise<void> {
     securityManager.setConfig(channelId, buildChannelSecurityConfig(config));
+    const verifyToken = typeof config.verify_token === "string" ? config.verify_token.trim() : "";
+    if (!verifyToken) throw new Error("Home Assistant: verify_token is required");
     this.configs.set(channelId, {
       haUrl:
         typeof config.ha_url === "string" && config.ha_url.trim()
@@ -47,7 +49,7 @@ export class HomeAssistantAdapter implements ChannelAdapter {
       haToken: typeof config.ha_token === "string" ? config.ha_token.trim() : undefined,
       notifyService:
         typeof config.notify_service === "string" ? config.notify_service.trim() : undefined,
-      verifyToken: typeof config.verify_token === "string" ? config.verify_token.trim() : undefined,
+      verifyToken,
     });
     this.running.add(channelId);
     console.log(`[HomeAssistant] ready for channel ${channelId}`);
@@ -91,14 +93,10 @@ export class HomeAssistantAdapter implements ChannelAdapter {
     const cfg = this.configs.get(channelId);
     if (!cfg) return { status: 404 };
 
-    if (cfg.verifyToken) {
-      const provided =
-        payload.query.token ||
-        (payload.headers.authorization || "").replace(/^Bearer\s+/i, "") ||
-        "";
-      if (!constantTimeEqual(provided, cfg.verifyToken))
-        return { status: 401, body: { error: "invalid token" } };
-    }
+    const provided =
+      payload.query.token || (payload.headers.authorization || "").replace(/^Bearer\s+/i, "") || "";
+    if (!constantTimeEqual(provided, cfg.verifyToken))
+      return { status: 401, body: { error: "invalid token" } };
 
     const event = parseHomeAssistantWebhook(payload.body, payload.query);
     if (!event) return { status: 200, body: {} };

@@ -204,24 +204,15 @@ async function getTelegramBotInfo(
   }
 }
 
-/** Generate a Telegram webhook secret token (allowed chars: A-Z a-z 0-9 _ -). */
 export function generateTelegramWebhookSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
-/**
- * Constant-time check of an inbound webhook's `X-Telegram-Bot-Api-Secret-Token`
- * against the secret we registered with setWebhook. When a secret is configured
- * a request must present the matching token; unsigned/forged updates (anyone who
- * guesses the channel UUID) are rejected. When no secret is stored (legacy
- * channels registered before this existed) we cannot verify — allow but warn;
- * the secret is set on the next `start()`.
- */
 export function verifyTelegramWebhookSecret(
   expectedSecret: string | undefined,
   providedToken: string | undefined
 ): boolean {
-  if (!expectedSecret) return true;
+  if (!expectedSecret) return false;
   if (!providedToken) return false;
   const a = Buffer.from(expectedSecret);
   const b = Buffer.from(providedToken);
@@ -1782,13 +1773,6 @@ export class TelegramBotManager implements ChannelAdapter {
         );
         return false;
       }
-      if (!expectedSecret) {
-        console.warn(
-          `[Telegram Webhook] Channel ${channelId} has no webhook secret configured; ` +
-            `updates cannot be authenticated until the channel is restarted.`
-        );
-      }
-
       await this.processTelegramUpdate(update as unknown as TelegramUpdate, channelId, botToken);
       return true;
     } catch (error) {

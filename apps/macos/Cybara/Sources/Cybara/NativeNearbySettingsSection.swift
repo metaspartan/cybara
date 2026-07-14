@@ -124,32 +124,32 @@ extension GatewayClient {
     }
 
     func confirmNearbyPairing(_ id: String) async throws {
-        _ = try await request("api/nearby/pairings/\(id)/confirm", method: "POST")
+        _ = try await request("api/nearby/pairings/\(pathSegment(id))/confirm", method: "POST")
     }
 
     func rejectNearbyPairing(_ id: String) async throws {
-        _ = try await request("api/nearby/pairings/\(id)", method: "DELETE")
+        _ = try await request("api/nearby/pairings/\(pathSegment(id))", method: "DELETE")
     }
 
     func removeNearbyPeer(_ id: String) async throws {
-        _ = try await request("api/nearby/peers/\(id)", method: "DELETE")
+        _ = try await request("api/nearby/peers/\(pathSegment(id))", method: "DELETE")
     }
 
     func acceptNearbyTransfer(_ id: String) async throws {
         _ = try await request(
-            "api/nearby/transfers/\(id)/accept",
+            "api/nearby/transfers/\(pathSegment(id))/accept",
             method: "POST",
             body: try JSONEncoder().encode(NativeNearbyAcceptRequest(workspaceDir: nil))
         )
     }
 
     func dismissNearbyTransfer(_ id: String) async throws {
-        _ = try await request("api/nearby/transfers/\(id)", method: "DELETE")
+        _ = try await request("api/nearby/transfers/\(pathSegment(id))", method: "DELETE")
     }
 
     func sendNearbySession(peerID: String, sessionID: String) async throws {
         _ = try await request(
-            "api/nearby/peers/\(peerID)/sessions",
+            "api/nearby/peers/\(pathSegment(peerID))/sessions",
             method: "POST",
             body: try JSONEncoder().encode(NativeNearbySendRequest(sessionId: sessionID))
         )

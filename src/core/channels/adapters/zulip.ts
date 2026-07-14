@@ -96,7 +96,7 @@ export class ZulipAdapter implements ChannelAdapter {
     const message = parseZulipMessage(payload.body);
     if (!message) return { status: 200, body: {} };
 
-    if (cfg.token && message.token && !constantTimeEqual(message.token, cfg.token)) {
+    if (!message.token || !constantTimeEqual(message.token, cfg.token)) {
       return { status: 401, body: { error: "invalid token" } };
     }
 
