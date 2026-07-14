@@ -148,8 +148,8 @@ export function NearbySettingsSection() {
           <p className="text-sm text-[var(--text-secondary)]">
             Off by default. While enabled, this device is discoverable to others on your local
             network so they appear automatically on both ends. Pairing still requires confirming the
-            same code on both devices, and received chats require approval. Credentials, wallet data,
-            and workspace paths are not shared.
+            same code on both devices, and received chats require approval. Credentials, wallet
+            data, and workspace paths are not shared.
           </p>
         </div>
 
@@ -188,8 +188,8 @@ export function NearbySettingsSection() {
               Discoverable whenever enabled
             </p>
             <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-              Keep announcing on the local network so your other devices find this one automatically.
-              Turn off to only advertise for a limited window using the button below.
+              Keep announcing on the local network so your other devices find this one
+              automatically. Turn off to only advertise for a limited window using the button below.
             </p>
           </div>
           <Switch
