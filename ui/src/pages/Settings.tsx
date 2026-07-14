@@ -64,6 +64,7 @@ import {
 import { Input, Textarea, Select } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import {
+  defaultThemeAccentForMode,
   readThemeAccentFromConfig,
   readThemeModeFromIdentity,
   themeAccentKeys,
@@ -148,15 +149,35 @@ function ThemeSettings() {
 
   const updateThemeMode = async (next: ThemeMode) => {
     if (next === mode) return;
-    const previous = mode;
+    const previousMode = mode;
+    const previousAccent = accent;
+    const nextAccent = defaultThemeAccentForMode(next);
+    const current = (identity as IdentityConfig | undefined) ?? {};
     setMode(next);
+    setAccent(nextAccent);
+    setSavingAccent(nextAccent);
     try {
-      const current = (identity as IdentityConfig | undefined) ?? {};
-      await updateIdentity.mutateAsync({ ...current, theme: next });
-      addToast("success", `${t("settings.theme")} set to ${next}`);
+      const [, accentResult] = await Promise.all([
+        updateIdentity.mutateAsync({ ...current, theme: next }),
+        settingsApi.updateConfig(themeConfigPayload(nextAccent)),
+      ]);
+      if (!accentResult.success || !accentResult.data?.success) {
+        throw new Error(accentResult.error || "Highlight update failed");
+      }
+      addToast(
+        "success",
+        `${t("settings.theme")} set to ${next}; ${themeAccents[nextAccent].name} highlight applied`
+      );
     } catch (error) {
-      setMode(previous);
+      await Promise.allSettled([
+        updateIdentity.mutateAsync({ ...current, theme: previousMode }),
+        settingsApi.updateConfig(themeConfigPayload(previousAccent)),
+      ]);
+      setMode(previousMode);
+      setAccent(previousAccent);
       addToast("error", error instanceof Error ? error.message : "Failed to update theme");
+    } finally {
+      setSavingAccent(null);
     }
   };
 
@@ -212,7 +233,7 @@ function ThemeSettings() {
     <Card variant="liquid">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Palette className="w-5 h-5 text-indigo-400" />
+          <Palette className="w-5 h-5 text-[rgb(var(--accent-primary))]" />
           {t("settings.theme")}
         </CardTitle>
         <CardDescription>{t("settings.themeHelp")}</CardDescription>
@@ -252,7 +273,7 @@ function ThemeSettings() {
                     className={cn(
                       "flex min-h-10 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors",
                       selected
-                        ? "border border-white/10 bg-white/10 text-white shadow-sm"
+                        ? "border border-[rgba(var(--accent-primary),0.32)] bg-[rgba(var(--accent-primary),0.13)] text-[rgb(var(--accent-primary))] shadow-sm"
                         : "text-gray-400 hover:bg-white/5 hover:text-gray-200",
                       (updateIdentity.isPending || identityLoading) &&
                         "cursor-not-allowed opacity-60"
@@ -309,7 +330,7 @@ function ThemeSettings() {
               }}
               className={cn(
                 "relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors",
-                petEnabled ? "bg-emerald-500" : "bg-white/15"
+                petEnabled ? "bg-[rgb(var(--accent-primary))]" : "bg-white/15"
               )}
               aria-label={petEnabled ? "Hide pet" : "Show pet"}
             >

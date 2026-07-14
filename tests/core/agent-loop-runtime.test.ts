@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  agenticLoopActiveRuntimeMs,
   applyAgenticLoopLimitMessage,
+  createAgenticLoopRuntimeTracker,
   evaluateNoProgressLoop,
+  pauseAgenticLoopRuntime,
   resolveAgenticLoopLimit,
+  resumeAgenticLoopRuntime,
   updateNoProgressLoopState,
 } from "../../src/core/agent-loop-runtime";
 import type { AgenticLoopPolicy, AgenticLoopState } from "../../src/core/agent-internals";
@@ -38,9 +42,35 @@ describe("agent loop runtime", () => {
   });
 
   test("resolves iteration and runtime limits deterministically", () => {
-    expect(resolveAgenticLoopLimit(policy, 5, 1_000, 2_000)).toBe("maxIterations");
-    expect(resolveAgenticLoopLimit(policy, 1, 1_000, 11_000)).toBe("runtime");
-    expect(resolveAgenticLoopLimit(policy, 1, 1_000, 2_000)).toBeUndefined();
+    expect(resolveAgenticLoopLimit(policy, 5, createAgenticLoopRuntimeTracker(1_000), 2_000)).toBe(
+      "maxIterations"
+    );
+    expect(resolveAgenticLoopLimit(policy, 1, createAgenticLoopRuntimeTracker(1_000), 11_000)).toBe(
+      "runtime"
+    );
+    expect(
+      resolveAgenticLoopLimit(policy, 1, createAgenticLoopRuntimeTracker(1_000), 2_000)
+    ).toBeUndefined();
+  });
+
+  test("does not charge long-running tools against active agent runtime", () => {
+    const tracker = createAgenticLoopRuntimeTracker(1_000);
+    pauseAgenticLoopRuntime(tracker, 2_000);
+    resumeAgenticLoopRuntime(tracker, 32 * 60_000);
+
+    expect(agenticLoopActiveRuntimeMs(tracker, 32 * 60_000 + 8_999)).toBe(9_999);
+    expect(resolveAgenticLoopLimit(policy, 1, tracker, 32 * 60_000 + 8_999)).toBeUndefined();
+    expect(resolveAgenticLoopLimit(policy, 1, tracker, 32 * 60_000 + 9_000)).toBe("runtime");
+  });
+
+  test("counts parallel tool execution as one paused interval", () => {
+    const tracker = createAgenticLoopRuntimeTracker(1_000);
+    pauseAgenticLoopRuntime(tracker, 2_000);
+    pauseAgenticLoopRuntime(tracker, 3_000);
+    resumeAgenticLoopRuntime(tracker, 12_000);
+    resumeAgenticLoopRuntime(tracker, 22_000);
+
+    expect(agenticLoopActiveRuntimeMs(tracker, 23_000)).toBe(2_000);
   });
 
   test("keeps partial responses and supplies resumable empty-limit messages", () => {
@@ -48,7 +78,7 @@ describe("agent loop runtime", () => {
       "partial"
     );
     expect(applyAgenticLoopLimitMessage("test", "runtime", policy, "")).toContain(
-      "Ask me to continue"
+      "active agent runtime limit"
     );
   });
 });

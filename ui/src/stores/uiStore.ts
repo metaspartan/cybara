@@ -9,6 +9,7 @@ import {
   getChatLineHeight,
   normalizeChatAppearanceSettings,
 } from "../../../shared/chat-appearance";
+export { defaultThemeAccentForMode } from "../../../shared/theme-defaults";
 
 export type ThemeAccent =
   | "indigo"

@@ -3736,7 +3736,7 @@ export function Chat() {
                         type="button"
                         onClick={() => void handleSelectWorkspace()}
                         disabled={workspaceSaving}
-                        className="mt-3 inline-flex items-center gap-2 rounded-md border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5 hover:bg-blue-500/15 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                        className="mt-3 inline-flex max-w-[min(80vw,44rem)] items-center gap-2 rounded-md border border-[rgba(var(--accent-primary),0.32)] bg-[rgba(var(--accent-primary),0.1)] px-2.5 py-1.5 text-[rgb(var(--accent-primary))] transition-colors hover:bg-[rgba(var(--accent-primary),0.16)] disabled:cursor-not-allowed disabled:opacity-60"
                         title={
                           effectiveWorkspaceDir
                             ? "Click to change workspace"
@@ -3744,11 +3744,11 @@ export function Chat() {
                         }
                       >
                         {workspaceSaving ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-300" />
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
                         ) : (
-                          <Folder className="h-3.5 w-3.5 text-blue-300" />
+                          <Folder className="h-3.5 w-3.5 shrink-0" />
                         )}
-                        <span className="text-[12px] text-blue-200 font-mono">
+                        <span className="truncate font-mono text-[12px]">
                           {effectiveWorkspaceDir
                             ? `Workspace: ${effectiveWorkspaceDir}`
                             : "Select workspace"}

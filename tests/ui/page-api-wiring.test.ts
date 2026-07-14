@@ -129,6 +129,7 @@ describe("UI page API wiring", () => {
     const storeSource = readUiSource("stores/uiStore.ts");
 
     expect(settingsSource).toContain("settingsApi.updateConfig(themeConfigPayload(key))");
+    expect(settingsSource).toContain("defaultThemeAccentForMode(next)");
     expect(settingsSource).toContain("readThemeAccentFromConfig(result.data)");
     expect(appSource).toContain("function ThemeConfigSync()");
     expect(appSource).toContain("settingsApi.getConfig()");

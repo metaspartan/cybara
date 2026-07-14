@@ -65,6 +65,7 @@ describe("mobile theming", () => {
     const screen = read("screens/DashboardScreen.tsx") + read("screens/dashboardDetailPanels.tsx");
     expect(screen).toContain('title="Appearance"');
     expect(screen).toContain("setAppearanceMode");
+    expect(screen).toContain("defaultThemeAccentForMode(value)");
     expect(screen).toContain('{ label: "System", value: "system" }');
     expect(screen).toContain('label="Theme"');
     expect(screen).toContain('variant="segmented"');

@@ -55,6 +55,7 @@ import {
 import { haptics } from "../lib/haptics";
 import { type AccentKey, accentPalette, colors } from "../theme/liquidGlass";
 import { useThemeControls } from "../theme/ThemeContext";
+import { defaultThemeAccentForMode } from "cybara-shared/theme-defaults";
 import {
   DetailInfoSection,
   SettingSelector,
@@ -825,6 +826,7 @@ export function SettingsPanel({
                 onSelect={(value) => {
                   if (value === "system" || value === "light" || value === "dark") {
                     setAppearanceMode(value);
+                    void updateThemeAccent(defaultThemeAccentForMode(value));
                   }
                 }}
                 options={[

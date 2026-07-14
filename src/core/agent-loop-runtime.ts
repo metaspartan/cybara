@@ -8,9 +8,57 @@ import {
 
 export type AgenticLoopLimit = "maxIterations" | "runtime";
 
+export interface AgenticLoopRuntimeTracker {
+  activeToolCount: number;
+  pausedAt?: number;
+  pausedMs: number;
+  startedAt: number;
+}
+
 export interface LoopEvaluation {
   stop: boolean;
   message?: string;
+}
+
+export function createAgenticLoopRuntimeTracker(now = Date.now()): AgenticLoopRuntimeTracker {
+  return {
+    activeToolCount: 0,
+    pausedMs: 0,
+    startedAt: now,
+  };
+}
+
+export function pauseAgenticLoopRuntime(
+  tracker: AgenticLoopRuntimeTracker,
+  now = Date.now()
+): void {
+  if (tracker.activeToolCount === 0) {
+    tracker.pausedAt = now;
+  }
+  tracker.activeToolCount += 1;
+}
+
+export function resumeAgenticLoopRuntime(
+  tracker: AgenticLoopRuntimeTracker,
+  now = Date.now()
+): void {
+  if (tracker.activeToolCount <= 0) return;
+  tracker.activeToolCount -= 1;
+  if (tracker.activeToolCount === 0 && tracker.pausedAt !== undefined) {
+    tracker.pausedMs += Math.max(0, now - tracker.pausedAt);
+    tracker.pausedAt = undefined;
+  }
+}
+
+export function agenticLoopActiveRuntimeMs(
+  tracker: AgenticLoopRuntimeTracker,
+  now = Date.now()
+): number {
+  const currentPauseMs =
+    tracker.activeToolCount > 0 && tracker.pausedAt !== undefined
+      ? Math.max(0, now - tracker.pausedAt)
+      : 0;
+  return Math.max(0, now - tracker.startedAt - tracker.pausedMs - currentPauseMs);
 }
 
 export function updateNoProgressLoopState(
@@ -82,7 +130,7 @@ export function evaluateNoProgressLoop(
 export function resolveAgenticLoopLimit(
   loopPolicy: AgenticLoopPolicy,
   iterations: number,
-  loopStartedAt: number,
+  runtimeTracker: AgenticLoopRuntimeTracker,
   now = Date.now()
 ): AgenticLoopLimit | undefined {
   if (typeof loopPolicy.maxIterations === "number" && iterations >= loopPolicy.maxIterations) {
@@ -90,7 +138,7 @@ export function resolveAgenticLoopLimit(
   }
   if (
     typeof loopPolicy.maxRuntimeMs === "number" &&
-    now - loopStartedAt >= loopPolicy.maxRuntimeMs
+    agenticLoopActiveRuntimeMs(runtimeTracker, now) >= loopPolicy.maxRuntimeMs
   ) {
     return "runtime";
   }
@@ -121,8 +169,10 @@ export function applyAgenticLoopLimitMessage(
       : `I reached the configured tool-iteration limit (${loopPolicy.maxIterations}) for this turn. Ask me to continue and I'll resume from here.`;
   }
   const runtimeLabel = formatRuntimeLimitLabel(loopPolicy.maxRuntimeMs ?? 0);
-  console.log(`[Agent] ${providerLabel} agentic loop reached runtime limit (${runtimeLabel})`);
+  console.log(
+    `[Agent] ${providerLabel} agentic loop reached active runtime limit (${runtimeLabel})`
+  );
   return finalContent.trim()
     ? finalContent
-    : `I reached the tool-loop runtime limit (${runtimeLabel}) for this turn. Ask me to continue and I'll resume from here.`;
+    : `I reached the active agent runtime limit (${runtimeLabel}) for this turn. Ask me to continue and I'll resume from here.`;
 }

@@ -122,9 +122,13 @@ import {
 } from "./agent-context-guard";
 import {
   applyAgenticLoopLimitMessage,
+  createAgenticLoopRuntimeTracker,
   evaluateNoProgressLoop,
+  pauseAgenticLoopRuntime,
   resolveAgenticLoopLimit,
+  resumeAgenticLoopRuntime,
   updateNoProgressLoopState,
+  type AgenticLoopRuntimeTracker,
 } from "./agent-loop-runtime";
 import {
   countWebResearchCalls,
@@ -357,6 +361,37 @@ export abstract class AgentProviderRuntime {
   }
 
   private async executeToolWithHooks(
+    toolName: string,
+    args: Record<string, unknown>,
+    allowedToolNames: Set<string>,
+    toolContext: ToolContext | undefined,
+    hookContext: AgentHookContext,
+    runtimeTracker?: AgenticLoopRuntimeTracker
+  ): Promise<{ skipped: boolean; result?: unknown }> {
+    if (!runtimeTracker) {
+      return await this.executeToolWithHooksInternal(
+        toolName,
+        args,
+        allowedToolNames,
+        toolContext,
+        hookContext
+      );
+    }
+    pauseAgenticLoopRuntime(runtimeTracker);
+    try {
+      return await this.executeToolWithHooksInternal(
+        toolName,
+        args,
+        allowedToolNames,
+        toolContext,
+        hookContext
+      );
+    } finally {
+      resumeAgenticLoopRuntime(runtimeTracker);
+    }
+  }
+
+  private async executeToolWithHooksInternal(
     toolName: string,
     args: Record<string, unknown>,
     allowedToolNames: Set<string>,
@@ -1277,7 +1312,7 @@ export abstract class AgentProviderRuntime {
     }
 
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
-    const loopStartedAt = Date.now();
+    const loopRuntimeTracker = createAgenticLoopRuntimeTracker();
     let iterations = 0;
     const currentMessages: Record<string, unknown>[] = [
       ...messages.map((m) => ({
@@ -1299,7 +1334,7 @@ export abstract class AgentProviderRuntime {
     let limitReason: "maxIterations" | "runtime" | undefined;
 
     while (true) {
-      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
       if (limitReason) {
         break;
       }
@@ -1360,7 +1395,8 @@ export abstract class AgentProviderRuntime {
           args,
           allowedToolNames,
           toolContext,
-          hookContext
+          hookContext,
+          loopRuntimeTracker
         );
         const resultPayload =
           executed.result === undefined
@@ -2052,7 +2088,7 @@ export abstract class AgentProviderRuntime {
     this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
-    const loopStartedAt = Date.now();
+    const loopRuntimeTracker = createAgenticLoopRuntimeTracker();
     let iterations = 0;
     let activeModelId = modelId;
     let finalContent = "";
@@ -2071,7 +2107,7 @@ export abstract class AgentProviderRuntime {
     let limitReason: "maxIterations" | "runtime" | undefined;
 
     while (true) {
-      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
       if (limitReason) {
         break;
       }
@@ -2233,7 +2269,8 @@ export abstract class AgentProviderRuntime {
           toolCall.args,
           allowedToolNames,
           toolContext,
-          hookContext
+          hookContext,
+          loopRuntimeTracker
         );
         const resultPayload =
           executed.result === undefined ? { skipped: true, reason: "no result" } : executed.result;
@@ -2352,7 +2389,7 @@ export abstract class AgentProviderRuntime {
     const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
     const endpoint = `${normalizedBaseUrl}/models/${encodeURIComponent(normalizedModelId)}:generateContent`;
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
-    const loopStartedAt = Date.now();
+    const loopRuntimeTracker = createAgenticLoopRuntimeTracker();
     let iterations = 0;
     let finalContent = "";
     let lastProgressThought = "";
@@ -2369,7 +2406,7 @@ export abstract class AgentProviderRuntime {
     this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
     while (true) {
-      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
       if (limitReason) {
         break;
       }
@@ -2476,7 +2513,8 @@ export abstract class AgentProviderRuntime {
           args,
           allowedToolNames,
           toolContext,
-          hookContext
+          hookContext,
+          loopRuntimeTracker
         );
         if (executed.skipped || executed.result === undefined) {
           continue;
@@ -2584,7 +2622,7 @@ export abstract class AgentProviderRuntime {
           }) as unknown as BedrockMessage
       );
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
-    const loopStartedAt = Date.now();
+    const loopRuntimeTracker = createAgenticLoopRuntimeTracker();
     let iterations = 0;
     let finalContent = "";
     let lastProgressThought = "";
@@ -2601,7 +2639,7 @@ export abstract class AgentProviderRuntime {
     this.broadcastAgentStatus("generating", toolContext, "Generating response...");
 
     while (true) {
-      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
       if (limitReason) {
         break;
       }
@@ -2707,7 +2745,8 @@ export abstract class AgentProviderRuntime {
           args,
           allowedToolNames,
           toolContext,
-          hookContext
+          hookContext,
+          loopRuntimeTracker
         );
         if (executed.skipped || executed.result === undefined) {
           continue;
@@ -2953,7 +2992,7 @@ export abstract class AgentProviderRuntime {
       modelId
     );
     const contextGuard = resolveContextGuardBudgets(contextWindowTokens);
-    const loopStartedAt = Date.now();
+    const loopRuntimeTracker = createAgenticLoopRuntimeTracker();
     let iterations = 0;
     let currentData = data;
 
@@ -2978,7 +3017,7 @@ export abstract class AgentProviderRuntime {
     let limitReason: "maxIterations" | "runtime" | undefined;
 
     while (true) {
-      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
       if (limitReason) {
         break;
       }
@@ -3027,7 +3066,8 @@ export abstract class AgentProviderRuntime {
                 toolUse.args || {},
                 allowedToolNames,
                 toolContext,
-                hookContext
+                hookContext,
+                loopRuntimeTracker
               )
             );
           }
@@ -3070,7 +3110,14 @@ export abstract class AgentProviderRuntime {
         }
 
         const executed = await (preStarted.get(toolUseId) ??
-          this.executeToolWithHooks(toolName, args, allowedToolNames, toolContext, hookContext));
+          this.executeToolWithHooks(
+            toolName,
+            args,
+            allowedToolNames,
+            toolContext,
+            hookContext,
+            loopRuntimeTracker
+          ));
         const resultPayload =
           executed.result === undefined
             ? { error: `Tool execution skipped for ${toolName}` }
@@ -3431,7 +3478,7 @@ export abstract class AgentProviderRuntime {
     }
 
     const loopPolicy = this.resolveAgenticLoopPolicy(toolContext);
-    const loopStartedAt = Date.now();
+    const loopRuntimeTracker = createAgenticLoopRuntimeTracker();
     let iterations = 0;
     const currentMessages: Record<string, unknown>[] = [...chatMessages];
     const allowedToolNames = new Set(tools.map((tool) => tool.name));
@@ -3448,7 +3495,7 @@ export abstract class AgentProviderRuntime {
     let limitReason: "maxIterations" | "runtime" | undefined;
 
     while (true) {
-      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopStartedAt);
+      limitReason = resolveAgenticLoopLimit(loopPolicy, iterations, loopRuntimeTracker);
       if (limitReason) {
         break;
       }
@@ -3508,7 +3555,8 @@ export abstract class AgentProviderRuntime {
           args,
           allowedToolNames,
           toolContext,
-          hookContext
+          hookContext,
+          loopRuntimeTracker
         );
         const resultPayload =
           executed.result === undefined

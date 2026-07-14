@@ -52,6 +52,15 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain('setSearchQuery("")');
   });
 
+  test("uses the active theme highlight for the new-chat workspace", () => {
+    const source = chatSource();
+
+    expect(source).toContain("border-[rgba(var(--accent-primary),0.32)]");
+    expect(source).toContain("bg-[rgba(var(--accent-primary),0.1)]");
+    expect(source).toContain("text-[rgb(var(--accent-primary))]");
+    expect(source).not.toContain("border-blue-500/30 bg-blue-500/10");
+  });
+
   test("clicking a session exposes immediate loading state and ignores stale loads", () => {
     const source = chatSource();
     const hookSource = readFileSync(

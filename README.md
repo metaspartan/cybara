@@ -34,7 +34,7 @@
 ## Cybara in Action
 
 <p align="center">
-  <img src="docs/images/cybara-web-chat.jpg" alt="Cybara web chat showing a repository audit" width="100%" />
+  <img src="docs/images/cybara-web-chat.jpg" alt="Cybara web chat showing a Grok workspace review with grouped tool activity" width="100%" />
 </p>
 
 <p align="center"><strong>Web and desktop chat</strong> with persisted workspaces, grouped live activity, structured responses, context controls, and agent selection.</p>

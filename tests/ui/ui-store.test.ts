@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 import {
+  defaultThemeAccentForMode,
   readThemeAccentFromConfig,
   readThemeModeFromIdentity,
   themeAccentKeys,
@@ -66,6 +67,15 @@ afterEach(() => {
 });
 
 describe("UI store theme helpers", () => {
+  test("theme modes resolve to matching default accents", () => {
+    expect(defaultThemeAccentForMode("dark")).toBe("indigo");
+    expect(defaultThemeAccentForMode("sand-dune")).toBe("amber");
+    expect(defaultThemeAccentForMode("forest")).toBe("emerald");
+    expect(defaultThemeAccentForMode("lavender")).toBe("purple");
+    expect(defaultThemeAccentForMode("cake")).toBe("pink");
+    expect(defaultThemeAccentForMode("unknown")).toBe("indigo");
+  });
+
   test("every accent has a display name and rgb triple", () => {
     expect(themeAccentKeys.length).toBe(10);
     for (const key of themeAccentKeys) {

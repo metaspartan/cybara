@@ -29,6 +29,83 @@ afterEach(async () => {
 });
 
 describe("Agent hooks", () => {
+  test("long-running tools do not consume the active agent runtime budget", async () => {
+    const provider = providerManager.create({
+      provider: "openai",
+      name: "Long Tool Runtime Provider",
+      api_key: "sk-long-tool-runtime",
+      base_url: "https://api.openai.com/v1",
+    });
+    createdProviderIds.push(provider.id);
+
+    const calcTool: ToolDefinition = {
+      name: "calc",
+      description: "Evaluate math expressions",
+      input_schema: {
+        type: "object",
+        properties: { expression: { type: "string" } },
+        required: ["expression"],
+      },
+    };
+    const agent = agentManager.create({
+      name: "Long Tool Runtime Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "gpt-long-tool-runtime",
+      memory_enabled: false,
+      tools: [calcTool],
+      config: { model_params: { max_agentic_runtime_ms: 40 } },
+    });
+    createdAgentIds.push(agent.id);
+
+    registerAgentHook(async (event) => {
+      if (event.type === "tool_before") {
+        await Bun.sleep(80);
+      }
+    });
+
+    let requestCount = 0;
+    globalThis.fetch = (async () => {
+      requestCount += 1;
+      const message =
+        requestCount === 1
+          ? {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "call-long-tool-runtime",
+                  type: "function",
+                  function: { name: "calc", arguments: '{"expression":"20+22"}' },
+                },
+              ],
+            }
+          : { role: "assistant", content: "The completed result is 42." };
+      return new Response(
+        JSON.stringify({
+          id: `resp-long-tool-runtime-${requestCount}`,
+          object: "chat.completion",
+          model: "gpt-long-tool-runtime",
+          choices: [
+            { index: 0, finish_reason: requestCount === 1 ? "tool_calls" : "stop", message },
+          ],
+          usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }) as typeof fetch;
+
+    const result = await agentManager.execute(
+      agent.id,
+      [{ role: "user", content: "Calculate 20 plus 22 and report the result" }],
+      { useTools: true, sessionId: "long-tool-runtime-session" }
+    );
+
+    expect(requestCount).toBe(2);
+    expect(result.content).toBe("The completed result is 42.");
+    expect(result.tool_calls).toHaveLength(1);
+  });
+
   test("emits llm request and response lifecycle events", async () => {
     const provider = providerManager.create({
       provider: "openai",
