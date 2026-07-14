@@ -8,7 +8,7 @@ const explicitToolAgent = {
   id: "agent-token-lean",
   name: "Token Lean",
   model: "MiniMax-M3",
-  tools: [{ name: "read" }, { name: "wallet" }],
+  tools: [{ name: "read" }, { name: "browser" }],
   config: {},
   system_prompt: "",
 };
@@ -26,19 +26,19 @@ describe("chat agent prompt tool mode", () => {
 
     expect(prompt).toContain("No platform tools are enabled for this turn");
     expect(prompt).not.toContain("- read:");
-    expect(prompt).not.toContain("### Wallet Tool");
+    expect(prompt).not.toContain("### Browser Tool");
     expect(prompt.length).toBeLessThan(1200);
   });
 
   test("keeps explicit tool guidance when tools are enabled", async () => {
     const workspace = mkdtempSync(join(tmpdir(), "cybara-chat-prompt-"));
     const prompt = await activeAgentSystemPrompt(explicitToolAgent, workspace, [
-      { role: "user", content: "Check wallet status." },
+      { role: "user", content: "Inspect example.com." },
     ]);
     rmSync(workspace, { recursive: true, force: true });
 
     expect(prompt).toContain("- read:");
-    expect(prompt).toContain("### Wallet Tool");
+    expect(prompt).toContain("### Browser Tool");
   });
 
   test("loads workspace instructions into active chat prompts", async () => {

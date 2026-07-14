@@ -4,6 +4,7 @@ import {
   broadcastStatus,
   getSessionStatusSnapshot,
   listSessionStatusSnapshots,
+  setSessionStatusLivenessResolver,
 } from "../../src/core/status";
 import { isSessionStatusActive } from "../../src/api/routes/_shared";
 
@@ -350,8 +351,8 @@ describe("session status snapshots", () => {
     });
   });
 
-  test("bounds live activity snapshots while preserving the newest events", () => {
-    const sessionId = `status-bounded-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  test("preserves complete live activity snapshots until the turn is persisted", () => {
+    const sessionId = `status-complete-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const baseTimestamp = Date.now();
 
     for (let index = 0; index < 550; index += 1) {
@@ -364,8 +365,8 @@ describe("session status snapshots", () => {
     }
 
     const snapshot = getSessionStatusSnapshot(sessionId);
-    expect(snapshot?.activities).toHaveLength(500);
-    expect(snapshot?.activities[0]?.text).toBe("Reviewing item 50");
+    expect(snapshot?.activities).toHaveLength(550);
+    expect(snapshot?.activities[0]?.text).toBe("Reviewing item 0");
     expect(snapshot?.activities.at(-1)?.text).toBe("Reviewing item 549");
 
     broadcastStatus({
@@ -374,5 +375,31 @@ describe("session status snapshots", () => {
       sessionId,
       detail: "idle",
     });
+  });
+
+  test("keeps a quiet long-running session visible while its turn is active", () => {
+    const sessionId = `status-long-run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const oldTimestamp = Date.now() - 20 * 60 * 1000;
+
+    setSessionStatusLivenessResolver((candidate) => candidate === sessionId);
+    try {
+      broadcastStatus({
+        status: "tool_executing",
+        timestamp: oldTimestamp,
+        sessionId,
+        detail: "Copying files...",
+        toolName: "exec",
+      });
+
+      expect(getSessionStatusSnapshot(sessionId)?.status).toBe("tool_executing");
+    } finally {
+      setSessionStatusLivenessResolver();
+      broadcastStatus({
+        status: "idle",
+        timestamp: Date.now(),
+        sessionId,
+        detail: "idle",
+      });
+    }
   });
 });

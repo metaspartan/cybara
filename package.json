@@ -48,7 +48,7 @@
     "test:isolated": "bun run scripts/run-tests-isolated.ts",
     "test:core": "bun run test:isolated tests/core",
     "test:mobile": "bun run test:isolated tests/mobile",
-    "test:smoke": "bun run test:core && bun run test:isolated tests/runtime && bun run test:isolated tests/mobile && bun run test:isolated tests/ui && bun run test:isolated tests/api/security.test.ts tests/api/browser-routes-mocked.test.ts tests/api/channel-security-routes-mocked.test.ts && bun run test:isolated tests/e2e/security-auth-smoke.test.ts tests/e2e/chat-logs-metrics-smoke.test.ts tests/e2e/terminal-smoke.test.ts",
+    "test:smoke": "bun run test:core && bun run test:isolated tests/runtime && bun run test:isolated tests/mobile && bun run test:isolated tests/ui && bun run test:isolated tests/cli && bun run test:isolated tests/tauri && bun run test:isolated tests/api/security.test.ts tests/api/browser-routes-mocked.test.ts tests/api/channel-security-routes-mocked.test.ts && bun run test:isolated tests/e2e/security-auth-smoke.test.ts tests/e2e/chat-logs-metrics-smoke.test.ts tests/e2e/terminal-smoke.test.ts",
     "test:smoke:full": "bun run test:core && bun run test:isolated tests/runtime && bun run test:isolated tests/api/security.test.ts tests/api/browser-routes-mocked.test.ts tests/api/channel-security-routes-mocked.test.ts && bun run test:isolated tests/e2e",
     "test": "bun run test:isolated tests/core tests/api tests/channels tests/cli tests/runtime tests/mobile tests/ui",
     "sexy": "bun run typecheck && bun run lint && bun run format:check",

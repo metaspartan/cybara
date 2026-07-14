@@ -1,22 +1,27 @@
 # Cybara
 
-> Cybara is a self-hosted, open-source (MIT) AI agent platform. It pairs a Bun-based agent runtime with a web UI, desktop and mobile apps, a CLI, a broad tool layer, 26 messaging-channel adapters, MCP support, and encrypted wallet controls. Agents can code, automate browsers, run messaging workflows, and execute on-chain operations while the operator stays in control.
+> Cybara is a self-hosted, open-source (MIT) AI agent platform. It pairs a Bun-based agent runtime with a web UI, desktop and mobile apps, a CLI, a broad tool layer, messaging-channel adapters, MCP support, voice, scheduled automations, and encrypted wallet controls. Agents can code, automate browsers and desktops, run messaging workflows, and execute on-chain operations while the operator stays in control.
 
 ## What Cybara does
 
 - Multi-agent orchestration: fan a turn out to several proposer agents and synthesize one answer (Mixture of Agents), or route by weighted, round-robin, lowest-cost, and priority strategies.
 - Real tool execution: a large built-in tool library for code, files, browser and API automation, media generation, and a tool-calling code sandbox, all with interactive approval.
+- Computer use: agents drive the desktop in the background — capture, click, type, scroll, drag — without taking over the cursor.
+- Voice: hands-free conversations with local Kokoro TTS, OS or cloud voices, speech-to-text transcription, and a realtime full-duplex mode.
+- Scheduled automations: a built-in cron scheduler runs agents and tools on a timetable, delivering results to the UI or any connected channel.
 - Self-improving skills: agents codify a verified multi-step procedure once and reuse it in future sessions; memory and skills compound over time.
 - Encrypted wallet control: on-chain execution across ETH, BTC, and SOL behind an encrypted local wallet with policy caps, allowlists, and private-address SSRF protection.
-- Broad provider catalog: dynamic model discovery across major providers with multi-key credential pools, rate-limit rotation, spend caps, and circuit breakers.
+- Broad provider catalog: 50+ providers with dynamic model discovery, multi-key credential pools, rate-limit rotation, spend caps, and circuit breakers.
+- Plugins and account connectors: skill bundles, MCP services, and encrypted connectors for Google Workspace, Microsoft 365, Dropbox, and Notion — read-only by default.
 - Operator in the loop: per-session and persistent tool allowlists, filesystem checkpoint and rollback, transform hooks, and a localhost auth policy with rotatable API keys.
 
 ## Platforms
 
-- Desktop apps for macOS (Apple Silicon and Intel), Windows, and Linux (.deb / .rpm)
+- Desktop apps for macOS (Apple Silicon and Intel), Windows, and Linux (.deb / .rpm / .AppImage)
 - Native SwiftUI macOS app (.app bundle)
 - Mobile apps for iOS (.ipa) and Android (.apk)
-- Command-line binary for macOS and Linux (SHA256-verified installer)
+- Command-line binaries for macOS, Windows, and Linux (SHA256-verified installer)
+- VS Code extension and an Agent Client Protocol (ACP) server for editors like Zed
 - All builds are published on GitHub Releases; desktop apps self-update via a signed updater channel.
 
 ## Messaging channels
@@ -27,8 +32,18 @@ Telegram, Discord, Slack, WhatsApp, Signal, iMessage, Matrix, Mattermost, Micros
 
 Cybara imports data from other agents. Run `cybara migrate --from openclaw` or `cybara migrate --from hermes` for a dry-run preview, then `cybara migrate --apply --preset full`. It brings over skills and memory, resolves conflicts (skip / overwrite / rename), and imports secrets only when explicitly opted in.
 
+## Pages
+
+- Home: https://cybara.ai/
+- Features: https://cybara.ai/features
+- Model providers: https://cybara.ai/providers
+- Messaging channels: https://cybara.ai/channels
+- Download: https://cybara.ai/download
+- FAQ: https://cybara.ai/faq
+
 ## Links
 
 - Source and releases: https://github.com/metaspartan/cybara
-- Install (macOS/Linux CLI): curl -fsSL https://raw.githubusercontent.com/metaspartan/cybara/main/install.sh | bash
+- Install (macOS/Linux CLI): curl -fsSL https://cybara.ai/install.sh | bash
+- Install (Windows PowerShell): irm https://cybara.ai/install.ps1 | iex
 - License: MIT

@@ -10,7 +10,7 @@
     <title>Cybara — Self-Hosted Open-Source AI Agent Platform</title>
     <meta
       name="description"
-      content="Your agents. Your tools. Your runtime. Cybara is a self-hosted, open-source AI agent platform. Run agents that code, automate browsers, drive 25+ messaging channels, and execute on-chain operations — with full operator control. Desktop, mobile, and CLI, built on Bun."
+      content="Your agents. Your tools. Your runtime. Cybara is a self-hosted, open-source AI agent platform: agents that code, automate browsers and desktops, message across Telegram, Discord, Slack, and more, and execute on-chain operations — with full operator control."
     />
     <meta
       name="keywords"
@@ -23,11 +23,12 @@
 
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Cybara" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:url" content="https://cybara.ai/" />
     <meta property="og:title" content="Cybara — Self-hosted AI agent platform" />
     <meta
       property="og:description"
-      content="Your agents. Your tools. Your runtime. Harness the power of AI with one self-hosted, open-source stack for chat, multi-agent orchestration, tool execution, 25+ secure channels, and encrypted wallet operations."
+      content="Your agents. Your tools. Your runtime. Harness the power of AI with one self-hosted, open-source stack for chat, multi-agent orchestration, tool execution, secure messaging channels, and encrypted wallet operations."
     />
     <meta property="og:image" content="https://cybara.ai/cybara.png" />
     <meta property="og:image:type" content="image/png" />
@@ -35,11 +36,13 @@
     <meta property="og:image:height" content="689" />
     <meta property="og:image:alt" content="Cybara logo" />
 
-    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:site" content="@cybaraAI" />
+    <meta name="twitter:creator" content="@carsenklock" />
     <meta name="twitter:title" content="Cybara — Self-hosted AI agent platform" />
     <meta
       name="twitter:description"
-      content="Your agents. Your tools. Your runtime. Run AI agents that code, automate, message across 25+ channels, and execute on-chain — self-hosted, open source, operator-controlled."
+      content="Your agents. Your tools. Your runtime. Run AI agents that code, automate, message across your channels, and execute on-chain — self-hosted, open source, operator-controlled."
     />
     <meta name="twitter:image" content="https://cybara.ai/cybara.png" />
 
@@ -70,7 +73,7 @@
             "applicationSubCategory": "AI Agent Platform",
             "keywords": "AI agent platform, self-hosted AI, open source AI agents, autonomous agents, multi-agent orchestration, AI tools, MCP server, browser automation, AI coding agent, LLM agent runtime",
             "operatingSystem": "macOS, Windows, Linux, iOS, Android",
-            "description": "Self-hosted, open-source AI agent platform pairing a Bun agent runtime with a web UI, desktop and mobile apps, a CLI, a broad tool layer, 26 messaging-channel adapters, MCP support, and encrypted wallet controls.",
+            "description": "Self-hosted, open-source AI agent platform pairing a Bun agent runtime with a web UI, desktop and mobile apps, a CLI, a broad tool layer, messaging-channel adapters, MCP support, voice, scheduled automations, and encrypted wallet controls.",
             "url": "https://cybara.ai/",
             "downloadUrl": "https://github.com/metaspartan/cybara/releases/latest",
             "softwareVersion": "latest",
@@ -83,10 +86,14 @@
             "featureList": [
               "Multi-agent orchestration with Mixture of Agents and weighted routing",
               "Built-in tool library for code, files, browser and API automation",
+              "Computer use: background desktop control under operator approval",
+              "Voice conversations with local TTS, cloud voices, and speech-to-text",
               "Self-improving skills and persistent agent memory",
               "Encrypted local wallet control across Ethereum, Bitcoin, and Solana",
-              "26 messaging-channel adapters with pairing and per-channel policy",
-              "Model Context Protocol (MCP) server support",
+              "Messaging-channel adapters for Telegram, Discord, Slack, WhatsApp, Signal, and more, with pairing and per-channel policy",
+              "Model Context Protocol (MCP) support as both client and server",
+              "Cron-scheduled automations for recurring agent jobs",
+              "Plugin hub with encrypted account connectors for Google Workspace, Microsoft 365, Dropbox, and Notion",
               "Broad provider catalog with credential pooling and spend caps",
               "Operator controls: tool allowlists, checkpoints, and rollback"
             ]
@@ -118,13 +125,31 @@
                 "@type": "ListItem",
                 "position": 2,
                 "name": "Features",
-                "item": "https://cybara.ai/#features"
+                "item": "https://cybara.ai/features"
               },
               {
                 "@type": "ListItem",
                 "position": 3,
+                "name": "Model Providers",
+                "item": "https://cybara.ai/providers"
+              },
+              {
+                "@type": "ListItem",
+                "position": 4,
+                "name": "Messaging Channels",
+                "item": "https://cybara.ai/channels"
+              },
+              {
+                "@type": "ListItem",
+                "position": 5,
                 "name": "Download",
-                "item": "https://cybara.ai/#download"
+                "item": "https://cybara.ai/download"
+              },
+              {
+                "@type": "ListItem",
+                "position": 6,
+                "name": "FAQ",
+                "item": "https://cybara.ai/faq"
               }
             ]
           },
@@ -152,7 +177,7 @@
                 "name": "Which platforms does Cybara run on?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Cybara ships desktop apps for macOS, Windows, and Linux, a native SwiftUI macOS app, mobile apps for iOS and Android, and a command-line binary for macOS and Linux — all built from the same Bun runtime and published on GitHub Releases."
+                  "text": "Cybara ships desktop apps for macOS, Windows, and Linux, a native SwiftUI macOS app, mobile apps for iOS and Android, and command-line binaries for macOS, Windows, and Linux — plus a VS Code extension and an ACP server for editors — all built from the same Bun runtime and published on GitHub Releases."
                 }
               },
               {
@@ -192,7 +217,7 @@
                 "name": "Which model providers can I use with Cybara?",
                 "acceptedAnswer": {
                   "@type": "Answer",
-                  "text": "Cybara connects to 60+ providers including OpenAI, Anthropic, Google Gemini, xAI, Meta, DeepSeek, Qwen, Moonshot/Kimi, Z.ai/GLM, MiniMax, Groq, OpenRouter, and local Ollama. You bring your own keys; Cybara pools multiple keys per provider, rotates on rate limits, routes by weight or cost, and enforces spend caps."
+                  "text": "Cybara connects to 50+ providers including OpenAI, Anthropic, Google Gemini, xAI, Meta, DeepSeek, Qwen, Moonshot/Kimi, Z.ai/GLM, MiniMax, Groq, OpenRouter, Azure OpenAI, AWS Bedrock, Vertex AI, and local runtimes like Ollama, vLLM, LM Studio, and llama.cpp. You bring your own keys; Cybara pools multiple keys per provider, rotates on rate limits, routes by weight or cost, and enforces spend caps."
                 }
               },
               {
@@ -225,6 +250,30 @@
                 "acceptedAnswer": {
                   "@type": "Answer",
                   "text": "In both directions. Install Model Context Protocol servers as agent tools from the official MCP registry, Smithery, or npm, or expose Cybara's own tools to Claude Desktop and other MCP clients."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can agents use a real web browser?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Each session gets an embedded browser the agent drives — opening pages, clicking, scrolling, extracting data, and taking screenshots — and you watch it work live in the chat panel. It works cross-platform, including on Windows. Beyond the browser, a computer-use tool can drive the desktop in the background without taking over your cursor."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I talk to my agents with voice?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Cybara supports hands-free voice conversations with local Kokoro TTS, OS speech, or cloud voices, plus speech-to-text transcription — including a realtime full-duplex mode where you and the agent can speak naturally."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can agents run on a schedule?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. A built-in cron scheduler runs agents and tools on a timetable you set — recurring reports, monitors, and maintenance jobs — with results delivered to the UI or any connected messaging channel."
                 }
               },
               {

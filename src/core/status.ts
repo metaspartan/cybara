@@ -107,6 +107,7 @@ const sseClients = new Set<ReadableStreamDefaultController<Uint8Array>>();
 const encoder = new TextEncoder();
 const sessionStatusSnapshots = new Map<string, SessionStatusSnapshot>();
 const sessionPendingChatMessages = new Map<string, PendingChatMessageSnapshot[]>();
+let sessionStatusLivenessResolver: ((sessionId: string) => boolean) | undefined;
 const ACTIVE_STATUSES = new Set<AgentStatus>([
   "thinking",
   "generating",
@@ -116,7 +117,10 @@ const ACTIVE_STATUSES = new Set<AgentStatus>([
   "error",
 ]);
 const STATUS_STALE_MS = 15 * 60 * 1000;
-const MAX_LIVE_SESSION_ACTIVITIES = 500;
+
+export function setSessionStatusLivenessResolver(resolver?: (sessionId: string) => boolean): void {
+  sessionStatusLivenessResolver = resolver;
+}
 
 export function isSessionStatusActive(status?: string): boolean {
   return typeof status === "string" && ACTIVE_STATUSES.has(status as AgentStatus);
@@ -373,16 +377,13 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
     timestamp: payload.timestamp,
     detail: sanitizeActivityText(payload.detail),
     agentId: payload.agentId,
-    activities:
-      nextActivities.length > MAX_LIVE_SESSION_ACTIVITIES
-        ? nextActivities.slice(-MAX_LIVE_SESSION_ACTIVITIES)
-        : nextActivities,
+    activities: nextActivities,
   });
 }
 
 function cleanupStaleSnapshots(now = Date.now()): void {
   for (const [sessionId, snapshot] of sessionStatusSnapshots.entries()) {
-    if (now - snapshot.timestamp > STATUS_STALE_MS) {
+    if (now - snapshot.timestamp > STATUS_STALE_MS && !sessionStatusLivenessResolver?.(sessionId)) {
       sessionStatusSnapshots.delete(sessionId);
     }
   }

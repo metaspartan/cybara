@@ -66,7 +66,9 @@ const SECURITY_HEADERS: Record<string, string> = {
 
 function cacheControl(pathname: string): string {
   if (pathname.startsWith("/assets/")) return "public, max-age=31536000, immutable";
-  if (pathname === "/index.html" || pathname === "/") return "no-cache";
+  if (pathname === "/index.html" || pathname === "/" || pathname.endsWith(".html") || !extname(pathname)) {
+    return "no-cache";
+  }
   return "public, max-age=3600";
 }
 
@@ -126,13 +128,17 @@ async function respond(request: Request): Promise<Response> {
     });
   }
   const requested = url.pathname === "/" ? "/index.html" : url.pathname;
-  const target = resolve(root, `.${requested}`);
+  let target = resolve(root, `.${requested}`);
 
   if (target !== root && !target.startsWith(root + sep)) {
     return new Response("Forbidden", { status: 403 });
   }
 
   const accept = request.headers.get("accept-encoding") ?? "";
+  if (!extname(target)) {
+    const dirIndex = join(target, "index.html");
+    if (await file(dirIndex).exists()) target = dirIndex;
+  }
   const ext = extname(target);
   const base = file(target);
 

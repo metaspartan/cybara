@@ -23,6 +23,7 @@ import { ChannelsPage } from "./components/ChannelsPage";
 import { FaqPage } from "./components/FaqPage";
 import { A, usePath } from "./lib/router";
 import { useDocumentHead } from "./lib/head";
+import { PAGE_HEADS } from "./pageMeta";
 import { Icon, type IconName } from "./components/Icon";
 
 function SectionMore({ href, label }: { href: string; label: string }): React.ReactElement {
@@ -37,12 +38,7 @@ function SectionMore({ href, label }: { href: string; label: string }): React.Re
 }
 
 function LandingPage(): React.ReactElement {
-  useDocumentHead({
-    title: "Cybara — Self-Hosted Open-Source AI Agent Platform",
-    description:
-      "Your agents. Your tools. Your runtime. Cybara is a self-hosted, open-source AI agent platform. Run agents that code, automate browsers, drive 25+ messaging channels, and execute on-chain operations — with full operator control.",
-    canonical: "https://cybara.ai/",
-  });
+  useDocumentHead(PAGE_HEADS.landing);
 
   useEffect(() => {
     if (window.location.hash) {
@@ -58,10 +54,10 @@ function LandingPage(): React.ReactElement {
       <main>
         <Hero />
         <Principles />
-        <Features />
+        <Features limit={12} />
         <SectionMore href="/features" label="Explore all features" />
         <Providers />
-        <SectionMore href="/providers" label="See all 60+ providers" />
+        <SectionMore href="/providers" label="See all 50+ providers" />
         <Channels />
         <SectionMore href="/channels" label="See all 25+ channels" />
         <Platforms />

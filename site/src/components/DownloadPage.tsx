@@ -9,6 +9,7 @@ import { clientMatchesOS, osLabel, useDetectedOS, type DetectedOS } from "../lib
 import { DOWNLOAD_GROUPS, type DownloadClient } from "../content";
 import { InstallTabs } from "./InstallTabs";
 import { formatDownloadTotal, useDownloadTotal, useLatestRelease } from "../hooks/useLatestRelease";
+import { PAGE_HEADS } from "../pageMeta";
 
 type SectionKey = "mac" | "windows" | "linux" | "mobile" | "packages" | "cli";
 
@@ -67,12 +68,7 @@ export function DownloadPage(): React.ReactElement {
   const downloadTotal = useDownloadTotal();
   const os = useDetectedOS();
 
-  useDocumentHead({
-    title: "Download Cybara — macOS, Windows, Linux, iOS, Android & CLI",
-    description:
-      "Download Cybara, the self-hosted open-source AI agent platform. Signed desktop apps for macOS, Windows, and Linux, native mobile apps for iOS and Android, and a CLI — every asset with a published SHA256 checksum.",
-    canonical: "https://cybara.ai/download",
-  });
+  useDocumentHead(PAGE_HEADS.download);
 
   const sections: DownloadSection[] = SECTION_META.map((meta) => ({
     ...meta,

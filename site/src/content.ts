@@ -91,8 +91,8 @@ export const INSTALL_TABS: readonly InstallTab[] = [
 ];
 
 export const STATS: readonly Stat[] = [
-  { value: "60+", label: "model providers" },
-  { value: "90+", label: "built-in tools" },
+  { value: "50+", label: "model providers" },
+  { value: "80+", label: "built-in tools" },
   { value: "25+", label: "messaging channels" },
   { value: "100%", label: "self-hosted" },
 ];
@@ -231,6 +231,42 @@ export const FEATURES: readonly Feature[] = [
       "Browse and install reusable SKILL.md procedures from ClawHub, Skills.sh, and GitHub, or let agents author their own — self-improvement that grows your toolkit.",
     icon: "skills",
   },
+  {
+    title: "Voice, in and out",
+    description:
+      "Talk to your agents hands-free with local Kokoro TTS, OS and cloud voices, speech-to-text transcription, and a realtime full-duplex conversation mode.",
+    icon: "voice",
+  },
+  {
+    title: "Computer use",
+    description:
+      "Agents drive the desktop in the background — capture, click, type, scroll, and drag — without taking over your cursor, in a sandboxed flow you approve.",
+    icon: "cursor",
+  },
+  {
+    title: "Scheduled automations",
+    description:
+      "A built-in cron scheduler runs agents and tools on your timetable — recurring reports, monitors, and maintenance jobs that fire even while you're away.",
+    icon: "clock",
+  },
+  {
+    title: "Plugins & account connectors",
+    description:
+      "One hub for skill bundles, MCP services, and encrypted account connectors — Google Workspace, Microsoft 365, Dropbox, and Notion — read-only by default with approval-gated writes.",
+    icon: "plug",
+  },
+  {
+    title: "Media generation",
+    description:
+      "Generate images, video, music, and speech from chat through swappable media providers, with artifacts and a canvas to collect what agents produce.",
+    icon: "spark",
+  },
+  {
+    title: "Sandboxed execution",
+    description:
+      "Shell and git run inside a configurable command sandbox — sandbox-exec on macOS, Podman or Docker on Linux — with network allow/deny and path-safety guards for secrets.",
+    icon: "shield",
+  },
 ];
 
 export const CHANNELS: readonly string[] = [
@@ -279,8 +315,8 @@ export const PLATFORMS: readonly Platform[] = [
     icon: "mobile",
   },
   {
-    name: "CLI & ACP",
-    detail: "A Bun-based CLI plus an Agent Client Protocol server so editors can drive an agent.",
+    name: "CLI, ACP & VS Code",
+    detail: "A Bun-based CLI and terminal UI, an Agent Client Protocol server for editors like Zed, and a VS Code extension.",
     icon: "terminal",
   },
 ];
@@ -610,7 +646,7 @@ export const FAQS: readonly Faq[] = [
   {
     question: "Which platforms does Cybara run on?",
     answer:
-      "Cybara ships desktop apps for macOS, Windows, and Linux, a native SwiftUI macOS app, mobile apps for iOS and Android, and a command-line binary for macOS and Linux — all built from the same Bun runtime and published on GitHub Releases.",
+      "Cybara ships desktop apps for macOS, Windows, and Linux, a native SwiftUI macOS app, mobile apps for iOS and Android, and command-line binaries for macOS, Windows, and Linux — plus a VS Code extension and an ACP server for editors — all built from the same Bun runtime and published on GitHub Releases.",
   },
   {
     question: "Which messaging channels are supported?",
@@ -635,7 +671,7 @@ export const FAQS: readonly Faq[] = [
   {
     question: "Which model providers can I use?",
     answer:
-      "Cybara connects to 60+ providers — OpenAI, Anthropic, Google Gemini, xAI, Meta, DeepSeek, Qwen, Moonshot/Kimi, Z.ai/GLM, MiniMax, Groq, OpenRouter, local Ollama, and more. You bring your own keys; Cybara pools multiple keys per provider, rotates on rate limits, routes by weight or cost, and enforces spend caps.",
+      "Cybara connects to 50+ providers — OpenAI, Anthropic, Google Gemini, xAI, Meta, DeepSeek, Qwen, Moonshot/Kimi, Z.ai/GLM, MiniMax, Groq, OpenRouter, Azure OpenAI, AWS Bedrock, Vertex AI, and local runtimes like Ollama, vLLM, LM Studio, and llama.cpp. You bring your own keys; Cybara pools multiple keys per provider, rotates on rate limits, routes by weight or cost, and enforces spend caps.",
   },
   {
     question: "How does Cybara handle my API keys and data?",
@@ -660,7 +696,17 @@ export const FAQS: readonly Faq[] = [
   {
     question: "Can agents use a real web browser?",
     answer:
-      "Yes. Each session gets an embedded browser the agent drives — opening pages, clicking, scrolling, extracting data, and taking screenshots — and you watch it work live in the chat panel. It works cross-platform, including on Windows.",
+      "Yes. Each session gets an embedded browser the agent drives — opening pages, clicking, scrolling, extracting data, and taking screenshots — and you watch it work live in the chat panel. It works cross-platform, including on Windows. Beyond the browser, a computer-use tool can drive the desktop in the background without taking over your cursor.",
+  },
+  {
+    question: "Can I talk to my agents with voice?",
+    answer:
+      "Yes. Cybara supports hands-free voice conversations with local Kokoro TTS, OS speech, or cloud voices, plus speech-to-text transcription — including a realtime full-duplex mode where you and the agent can speak naturally.",
+  },
+  {
+    question: "Can agents run on a schedule?",
+    answer:
+      "Yes. A built-in cron scheduler runs agents and tools on a timetable you set — recurring reports, monitors, and maintenance jobs — with results delivered to the UI or any connected messaging channel.",
   },
   {
     question: "What does Cybara cost?",

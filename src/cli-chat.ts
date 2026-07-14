@@ -1,5 +1,6 @@
 import { createInterface } from "readline";
 import { getFlagValue } from "./cli-args";
+import { resolveAgentIdentifier } from "./cli-agent-resolution";
 import { limitTUIActivityDetails, presentTUIActivities } from "./cli-tui-activity";
 import {
   environmentSnapshotFromDetail,
@@ -245,12 +246,6 @@ function formatAgentLine(agent: CliAgentSummary): string {
   return `${agent.id}  ${name}${model}${status}`;
 }
 
-function matchAgent(agent: CliAgentSummary, query: string): boolean {
-  const normalized = query.trim().toLowerCase();
-  const name = (agent.name || "").trim().toLowerCase();
-  return agent.id.toLowerCase() === normalized || name === normalized || name.includes(normalized);
-}
-
 async function fetchChatAgents(): Promise<CliAgentSummary[]> {
   const agents = await chatContext().fetchAPI<CliAgentSummary[]>("/api/agents/summary");
   return Array.isArray(agents) ? agents : [];
@@ -260,7 +255,7 @@ async function resolveAgentId(query: string): Promise<string | undefined> {
   const trimmed = query.trim();
   if (!trimmed) return undefined;
   const agents = await fetchChatAgents();
-  return agents.find((agent) => matchAgent(agent, trimmed))?.id || trimmed;
+  return resolveAgentIdentifier(trimmed, agents) ?? trimmed;
 }
 
 function formatPendingLabel(message: CliPendingMessage): string {

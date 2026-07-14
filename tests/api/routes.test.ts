@@ -3410,6 +3410,8 @@ describe("Config API", () => {
     expect(getRes.data.computer_use).toEqual({
       driverCommand:
         "C:\\Users\\carsen\\AppData\\Local\\Programs\\Cua\\cua-driver\\bin\\cua-driver.exe",
+      trajectoryCaptureEnabled: false,
+      trajectoryVideoEnabled: false,
     });
 
     const resetRes = await api("PUT", "/api/config", {

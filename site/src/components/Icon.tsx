@@ -29,7 +29,12 @@ export type IconName =
   | "npm"
   | "nix"
   | "x"
-  | "star";
+  | "star"
+  | "voice"
+  | "cursor"
+  | "clock"
+  | "menu"
+  | "close";
 
 interface IconProps {
   name: IconName;
@@ -37,6 +42,34 @@ interface IconProps {
 }
 
 const PATHS: Record<IconName, React.ReactNode> = {
+  voice: (
+    <>
+      <rect x="9" y="3" width="6" height="11" rx="3" />
+      <path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6" />
+    </>
+  ),
+  cursor: (
+    <>
+      <path d="m5 4 6.5 15 1.9-6.6L20 10.5z" />
+      <path d="m13 13 5.5 5.5" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3.5 2" />
+    </>
+  ),
+  menu: (
+    <>
+      <path d="M4 7h16M4 12h16M4 17h16" />
+    </>
+  ),
+  close: (
+    <>
+      <path d="m6 6 12 12M18 6 6 18" />
+    </>
+  ),
   orchestration: (
     <>
       <circle cx="12" cy="5" r="2.4" />

@@ -224,6 +224,17 @@ describe("channel management commands", () => {
   });
 
   test("spawns subagents from command surface with session context", async () => {
+    const spawnArgs: Array<Record<string, unknown>> = [];
+    setChannelSubagentSpawnHandler(async (args) => {
+      spawnArgs.push(args);
+      return {
+        status: "accepted",
+        childSessionKey: "agent:default:subagent:command",
+        runId: "run-subagent-command",
+        task: String(args.task || ""),
+      };
+    });
+
     const response = await handleChannelManagementCommand(
       "/subagents spawn summarize recent logs",
       {
@@ -236,9 +247,11 @@ describe("channel management commands", () => {
       }
     );
 
+    expect(spawnArgs).toHaveLength(1);
+    expect(spawnArgs[0]?._requesterSessionKey).toBe("session-command-subagent");
     expect(response).toContain("Subagent spawned successfully.");
-    expect(response).toContain("Run ID:");
-    expect(response).toContain("Session:");
+    expect(response).toContain("run-subagent-command");
+    expect(response).toContain("agent:default:subagent:command");
     expect(response).toContain("summarize recent logs");
   });
 

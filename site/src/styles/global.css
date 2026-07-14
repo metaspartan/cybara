@@ -265,6 +265,11 @@ img {
   background: var(--glass-surface);
 }
 
+.nav-link--active {
+  color: var(--text);
+  background: var(--glass-surface-strong);
+}
+
 .nav-cta {
   padding: 9px 18px;
 }
@@ -319,6 +324,89 @@ img {
   height: 13px;
   color: #facc15;
   flex-shrink: 0;
+}
+
+.nav-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-surface);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.nav-menu-btn:hover {
+  border-color: var(--glass-border-strong);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-menu-icon {
+  width: 20px;
+  height: 20px;
+}
+
+.nav-mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 24px 18px;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  animation: navMobileIn 0.22s ease both;
+}
+
+.nav-mobile-link {
+  padding: 12px 14px;
+  border-radius: 12px;
+  color: var(--text-dim);
+  font-weight: 500;
+  font-size: 1rem;
+  transition: color 0.2s ease, background 0.2s ease;
+}
+
+.nav-mobile-link:hover {
+  color: var(--text);
+  background: var(--glass-surface);
+}
+
+.nav-mobile-link--active {
+  color: var(--text);
+  background: var(--glass-surface-strong);
+}
+
+.nav--open {
+  background: rgba(5, 5, 8, 0.92);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  border-bottom-color: var(--glass-border);
+}
+
+@keyframes navMobileIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 880px) {
+  .nav-links {
+    display: none;
+  }
+  .nav-menu-btn {
+    display: inline-flex;
+  }
+  .nav-star {
+    margin-left: auto;
+  }
 }
 
 .hero {
@@ -1823,9 +1911,6 @@ input:focus-visible {
 }
 
 @media (max-width: 640px) {
-  .nav-links {
-    display: none;
-  }
   .feature-grid,
   .platform-grid,
   .download-grid,

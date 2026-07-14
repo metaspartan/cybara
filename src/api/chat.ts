@@ -73,6 +73,7 @@ import {
   getSessionStatusSnapshot,
   isSessionStatusActive,
   setSessionPendingChatMessages,
+  setSessionStatusLivenessResolver,
   type PendingChatMessageSnapshot,
 } from "../core/status";
 import { emitAgentHook } from "../core/agent-hooks";
@@ -327,6 +328,7 @@ const persistedSessionIndex = new Map<string, PersistedSessionIndexEntry>();
 // session (e.g. a user retry, or several channel messages) can't interleave
 // their user/assistant pushes or race a mid-turn conversation compaction.
 const chatTurnMutex = new KeyedMutex();
+setSessionStatusLivenessResolver((sessionId) => chatTurnMutex.isLocked(sessionId));
 const MAX_PENDING_CHAT_MESSAGES_PER_SESSION = 20;
 
 interface PendingChatItem {
@@ -695,7 +697,7 @@ function getSessionProcessActivities(
 function sanitizeObservedProcessActivities(activities: unknown): ProcessActivityInfo[] | undefined {
   if (!Array.isArray(activities)) return undefined;
   const sanitized: ProcessActivityInfo[] = [];
-  for (const entry of activities.slice(-200)) {
+  for (const entry of activities) {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
     const record = entry as Record<string, unknown>;
     const rawText = typeof record.text === "string" ? record.text.trim() : "";

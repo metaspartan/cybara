@@ -1,6 +1,7 @@
 import React from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
+import { resolveAgentIdentifier } from "./cli-agent-resolution";
 import type { TUIFetchAPI } from "./cli-tui-chat";
 import {
   approvalDecisionForInput,
@@ -323,25 +324,6 @@ function agentToolProfile(agent: AgentSummary | undefined): string {
 
 function compact(value: string, max = 52): string {
   return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
-}
-
-function resolveAgentId(raw: string, agents: AgentSummary[]): string | null {
-  const needle = raw.trim().toLowerCase();
-  if (!needle) return null;
-  const exact = agents.find(
-    (agent) =>
-      agent.id?.toLowerCase() === needle ||
-      agent.name?.toLowerCase() === needle ||
-      agent.model?.toLowerCase() === needle,
-  );
-  if (exact?.id) return exact.id;
-  const partial = agents.find(
-    (agent) =>
-      agent.name?.toLowerCase().includes(needle) ||
-      agent.model?.toLowerCase().includes(needle) ||
-      agent.id?.toLowerCase().startsWith(needle),
-  );
-  return partial?.id || null;
 }
 
 function messagesFromResponse(value: unknown): ChatMessage[] {
@@ -1345,7 +1327,7 @@ export function InteractiveChatTUI({
           setNotice("Gateway default selected for new sessions.");
           return true;
         }
-        const agentId = resolveAgentId(argument, availableAgents);
+        const agentId = resolveAgentIdentifier(argument, availableAgents);
         if (!agentId) {
           setNotice("Agent not found. Use /agents to list available agents.");
           return true;
