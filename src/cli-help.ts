@@ -73,8 +73,8 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("  skills      List installed skills");
   console.log("  plugin      Plugin, account app, and MCP extension commands");
   console.log("    plugin list                List installed plugins");
-  console.log("    plugin validate <path>     Validate a plugin manifest and dirs");
-  console.log("    plugin install <path>      Install a local plugin");
+  console.log("    plugin validate <folder-or-zip>  Validate a plugin bundle");
+  console.log("    plugin install <folder-or-zip>   Install a local plugin bundle");
   console.log("    plugin remove <plugin-id>  Remove an installed local plugin");
   console.log("    plugin apps                List account apps");
   console.log("    plugin connect <app-id>    Connect an account app");

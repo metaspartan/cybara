@@ -245,6 +245,14 @@ export interface MetricsSnapshot {
 export interface SessionRuntimeMetrics {
   totals: SessionRuntimeMetricsTotals;
   sessions: SessionRuntimeMetricsRow[];
+  pagination?: {
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    totalItems: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
 }
 
 export interface SessionRuntimeMetricsTotals {

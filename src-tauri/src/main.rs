@@ -15,9 +15,39 @@ mod desktop_update;
 mod tray;
 
 const CYBARA_SERVER_ADDR: &str = "127.0.0.1:4269";
-const CYBARA_SERVER_URL: &str = "http://localhost:4269";
+const CYBARA_SERVER_URL: &str = "http://127.0.0.1:4269";
 const HEALTH_PROBE_TIMEOUT: Duration = Duration::from_millis(750);
 const MAX_NATIVE_RECORDING_BYTES: u64 = 64 * 1024 * 1024;
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct GatewayStartupStatus {
+    phase: String,
+    message: Option<String>,
+}
+
+impl GatewayStartupStatus {
+    fn starting() -> Self {
+        Self {
+            phase: "starting".into(),
+            message: None,
+        }
+    }
+
+    fn ready() -> Self {
+        Self {
+            phase: "ready".into(),
+            message: None,
+        }
+    }
+
+    fn failed(message: impl Into<String>) -> Self {
+        Self {
+            phase: "failed".into(),
+            message: Some(message.into()),
+        }
+    }
+}
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -151,6 +181,21 @@ fn should_log_sidecar_output() -> bool {
             std::env::var("CYBARA_TAURI_LOG_SIDECAR"),
             Ok(value) if value == "1" || value.eq_ignore_ascii_case("true")
         )
+}
+
+fn set_gateway_startup_status(app: &tauri::AppHandle, status: GatewayStartupStatus) {
+    if let Some(state) = app.try_state::<GatewayStartupState>()
+        && let Ok(mut guard) = state.0.lock()
+    {
+        *guard = status;
+    }
+}
+
+#[tauri::command]
+fn get_gateway_startup_status(app: tauri::AppHandle) -> GatewayStartupStatus {
+    app.try_state::<GatewayStartupState>()
+        .and_then(|state| state.0.lock().ok().map(|guard| guard.clone()))
+        .unwrap_or_else(GatewayStartupStatus::starting)
 }
 
 fn is_browser_diagnostic_line(value: &str) -> bool {
@@ -365,6 +410,7 @@ fn main() {
         .plugin(tauri_plugin_audio_recorder::init())
         .invoke_handler(tauri::generate_handler![
             read_cybara_api_key,
+            get_gateway_startup_status,
             start_native_recording,
             stop_native_recording,
             desktop_update::get_desktop_update_state,
@@ -374,6 +420,9 @@ fn main() {
         .setup(|app| {
             app.manage(SidecarState(std::sync::Mutex::new(None)));
             app.manage(PendingOpen(std::sync::Mutex::new(None)));
+            app.manage(GatewayStartupState(std::sync::Mutex::new(
+                GatewayStartupStatus::starting(),
+            )));
             app.manage(desktop_update::DesktopUpdateManager::default());
             tray::setup(app)?;
 
@@ -384,16 +433,24 @@ fn main() {
             if is_server_running() {
                 println!("[Cybara] Server already running on port 4269");
                 log::info!("Attached to existing Cybara gateway on port 4269");
+                set_gateway_startup_status(app.handle(), GatewayStartupStatus::ready());
 
                 navigate_after_ready(app.handle());
 
                 return Ok(());
             }
 
-            // Spawn the Cybara backend sidecar (for production builds)
             println!("[Cybara] Starting sidecar...");
             log::info!("Starting Cybara gateway sidecar");
-            let mut sidecar = app.shell().sidecar("cybara").unwrap();
+            let Ok(mut sidecar) = app.shell().sidecar("cybara") else {
+                let message = "The packaged Cybara gateway could not be located.";
+                log::error!("{message}");
+                set_gateway_startup_status(
+                    app.handle(),
+                    GatewayStartupStatus::failed(message),
+                );
+                return Ok(());
+            };
             if let Ok(resource_dir) = app.path().resource_dir() {
                 let resource_dir = resource_dir.to_string_lossy().to_string();
                 let resource_dir = resource_dir
@@ -402,13 +459,21 @@ fn main() {
                     .unwrap_or(resource_dir);
                 sidecar = sidecar.env("CYBARA_RESOURCE_DIR", resource_dir);
             }
-            let (mut rx, child) = sidecar
-                .args(["start"])
-                .spawn()
-                .expect("Failed to spawn Cybara sidecar");
+            let (mut rx, child) = match sidecar.args(["start"]).spawn() {
+                Ok(result) => result,
+                Err(error) => {
+                    let message = format!("The Cybara gateway could not start: {error}");
+                    log::error!("{message}");
+                    set_gateway_startup_status(
+                        app.handle(),
+                        GatewayStartupStatus::failed(message),
+                    );
+                    return Ok(());
+                }
+            };
 
-            // Log sidecar output
             let log_sidecar_output = should_log_sidecar_output();
+            let output_app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 use tauri_plugin_shell::process::CommandEvent;
                 while let Some(event) = rx.recv().await {
@@ -424,11 +489,16 @@ fn main() {
                         }
                         CommandEvent::Stderr(line) => {
                             let output = String::from_utf8_lossy(&line);
-                            if is_browser_diagnostic_line(&output) {
-                                log::warn!(target: "cybara::browser", "{}", output.trim());
+                            let output = output.trim();
+                            if !output.is_empty() {
+                                if is_browser_diagnostic_line(output) {
+                                    log::warn!(target: "cybara::browser", "{output}");
+                                } else {
+                                    log::warn!(target: "cybara::sidecar", "{output}");
+                                }
                             }
                             if log_sidecar_output {
-                                eprintln!("[Cybara] {}", output);
+                                eprintln!("[Cybara] {output}");
                             }
                         }
                         CommandEvent::Terminated(payload) => {
@@ -437,6 +507,15 @@ fn main() {
                                 "Cybara gateway sidecar terminated with code {:?}",
                                 payload.code
                             );
+                            set_gateway_startup_status(
+                                &output_app_handle,
+                                GatewayStartupStatus::failed(match payload.code {
+                                    Some(code) => {
+                                        format!("The Cybara gateway exited with code {code}.")
+                                    }
+                                    None => "The Cybara gateway exited unexpectedly.".into(),
+                                }),
+                            );
                             break;
                         }
                         _ => {}
@@ -444,21 +523,26 @@ fn main() {
                 }
             });
 
-            // Store the child process so we can kill it on exit
             if let Some(state) = app.try_state::<SidecarState>() {
                 if let Ok(mut guard) = state.0.lock() {
                     *guard = Some(child);
                 }
             }
 
-            // Wait for server readiness before navigating.
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 if wait_for_server_ready(Duration::from_secs(25)) {
+                    set_gateway_startup_status(&app_handle, GatewayStartupStatus::ready());
                     navigate_after_ready(&app_handle);
                 } else {
                     eprintln!("[Cybara] Sidecar did not become ready within timeout");
                     log::error!("Cybara gateway sidecar did not become ready within timeout");
+                    set_gateway_startup_status(
+                        &app_handle,
+                        GatewayStartupStatus::failed(
+                            "The Cybara gateway did not become ready within 25 seconds. Review the desktop logs for the underlying sidecar error.",
+                        ),
+                    );
                 }
             });
 
@@ -495,6 +579,8 @@ fn main() {
 struct SidecarState(std::sync::Mutex<Option<tauri_plugin_shell::process::CommandChild>>);
 
 struct PendingOpen(std::sync::Mutex<Option<String>>);
+
+struct GatewayStartupState(std::sync::Mutex<GatewayStartupStatus>);
 
 #[cfg(test)]
 mod tests {

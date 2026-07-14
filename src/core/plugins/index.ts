@@ -322,3 +322,4 @@ export function uninstallLocalPlugin(pluginId: string): boolean {
 }
 
 export * from "./install";
+export * from "./bundle";

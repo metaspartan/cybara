@@ -17,6 +17,9 @@ describe("plugin UI", () => {
 
   test("combines installed bundles, account apps, and MCP services", async () => {
     const page = await Bun.file(join(root, "ui/src/pages/Plugins.tsx")).text();
+    const installer = await Bun.file(
+      join(root, "ui/src/pages/plugins/PluginInstallDialog.tsx")
+    ).text();
     const styles = await Bun.file(join(root, "ui/src/index.css")).text();
     expect(page).toContain('label: "Installed"');
     expect(page).toContain('label: "Account apps"');
@@ -24,6 +27,12 @@ describe("plugin UI", () => {
     expect(page).toContain("pluginsApi.list()");
     expect(page).toContain("mcpApi.list()");
     expect(page).toContain("<AccountAppsPanel />");
+    expect(page).toContain("<PluginInstallDialog");
+    expect(installer).toContain("Choose folder");
+    expect(installer).toContain("Choose ZIP");
+    expect(installer).toContain("pluginsApi.validate(nextPayload)");
+    expect(installer).toContain('setAttribute("webkitdirectory", "")');
+    expect(installer).not.toContain('placeholder="/path/to/plugin"');
     expect(styles).toContain('.grid-cols-3:not([role="tablist"])');
     expect(page).not.toContain("border-white");
     expect(page).not.toContain("border-dashed");
@@ -59,6 +68,9 @@ describe("plugin UI", () => {
     expect(macos).toContain('ScreenHeader(title: "Plugins"');
     expect(macos).toContain("client.nativePlugins()");
     expect(macos).toContain("client.nativeMCPServers()");
+    expect(macos).toContain("Choose Plugin Folder or ZIP");
+    expect(macos).toContain("client.validateNativePlugin(path: url.path)");
+    expect(macos).toContain("client.installNativePlugin(path: url.path)");
 
     for (const id of ["google_workspace", "microsoft_365", "notion"]) {
       expect(web).toContain(id);

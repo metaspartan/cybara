@@ -38,6 +38,19 @@ function parseMemoryMs(date: string, timestamp: string): number {
   return 0;
 }
 
+export function journeyDisplayText(value: string, maxLength: number): string {
+  const plain = value
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/[*_`~>|]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (plain.length <= maxLength) return plain;
+  return `${plain.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
 export async function buildJourney(): Promise<JourneyResponse> {
   const events: JourneyEvent[] = [];
 
@@ -62,11 +75,12 @@ export async function buildJourney(): Promise<JourneyResponse> {
     for (const item of entry.entries) {
       const parsed = parseMemoryMs(item.date, item.timestamp);
       const createdAtMs = parsed > 0 ? parsed : fallbackMs;
+      const title = journeyDisplayText(item.content.split("\n")[0], 120);
       events.push({
         id: `memory:${entry.file}:${item.index}`,
         kind: "memory",
-        title: item.content.split("\n")[0].slice(0, 120) || item.type || "Memory",
-        detail: item.content,
+        title: title || item.type || "Memory",
+        detail: journeyDisplayText(item.content, 800),
         category: item.type || "note",
         createdAtMs,
         createdAt: createdAtMs > 0 ? new Date(createdAtMs).toISOString() : "",

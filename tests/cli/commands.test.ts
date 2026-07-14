@@ -405,7 +405,7 @@ function route(method: string, url: URL, body: string): Response {
     });
   }
 
-  if (method === "GET" && pathname === "/api/plugins/validate") {
+  if ((method === "GET" || method === "POST") && pathname === "/api/plugins/validate") {
     return json({
       valid: true,
       errors: [],

@@ -12,6 +12,8 @@ import {
   MessageSquare,
   Gauge,
   Clock,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { PageLayout } from "@/components/layout";
@@ -88,6 +90,8 @@ interface ProviderPlanMetricCard {
 export function Metrics() {
   const { data: overview, isLoading: loadingOverview } = useMetricsOverview();
   const [detailMetricsEnabled, setDetailMetricsEnabled] = useState(false);
+  const [sessionPage, setSessionPage] = useState(1);
+  const sessionPageSize = 20;
   const detailQueryOptions = useMemo(
     () => ({ enabled: detailMetricsEnabled }),
     [detailMetricsEnabled]
@@ -102,8 +106,11 @@ export function Metrics() {
   const { data: insights, isLoading: loadingInsights } = useMetricsInsights(detailQueryOptions);
   const { data: tokenAnalysis, isLoading: loadingTokenAnalysis } =
     useMetricsTokenAnalysis(detailQueryOptions);
-  const { data: sessionMetrics, isLoading: loadingSessionMetrics } =
-    useMetricsSessions(detailQueryOptions);
+  const { data: sessionMetrics, isLoading: loadingSessionMetrics } = useMetricsSessions(
+    sessionPage,
+    sessionPageSize,
+    detailQueryOptions
+  );
   const { data: storage, isLoading: loadingStorage } = useMetricsStorage(detailQueryOptions);
   const [providerPlanStatus, setProviderPlanStatus] = useState<ProviderPlanStatusResponse | null>(
     null
@@ -472,7 +479,11 @@ export function Metrics() {
         />
       </div>
 
-      <SessionRuntimeTable metrics={sessionMetrics} loading={sessionMetricsPending} />
+      <SessionRuntimeTable
+        metrics={sessionMetrics}
+        loading={sessionMetricsPending}
+        onPageChange={setSessionPage}
+      />
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 mb-8">
         <Card className="xl:col-span-2">
@@ -1704,14 +1715,22 @@ function formatLatency(value: number | null): string {
 function SessionRuntimeTable({
   metrics,
   loading,
+  onPageChange,
 }: {
   metrics?: SessionRuntimeMetrics;
   loading: boolean;
+  onPageChange: (page: number) => void;
 }) {
   const totals = metrics?.totals;
+  const pagination = metrics?.pagination;
+  const totalPromptTokens = (totals?.inputTokens || 0) + (totals?.cachedInputTokens || 0);
+  const cacheShare =
+    totals && totalPromptTokens > 0
+      ? Math.min(100, (totals.cachedInputTokens / totalPromptTokens) * 100)
+      : 0;
   return (
     <Card className="mb-8 overflow-hidden">
-      <CardHeader className="border-b border-white/10">
+      <CardHeader className="border-b border-[var(--surface-border)]">
         <CardTitle className="flex items-center gap-2">
           <Clock className="h-5 w-5 text-cyan-400" />
           Chat Runtime
@@ -1727,7 +1746,7 @@ function SessionRuntimeTable({
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-2 gap-px border-b border-white/10 bg-white/10 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-px border-b border-[var(--surface-border)] bg-[var(--surface-border)] md:grid-cols-3 xl:grid-cols-6">
               {[
                 ["Tracked chats", formatNumber(totals?.sessions || 0)],
                 ["Provider calls", formatNumber(totals?.callCount || 0)],
@@ -1736,16 +1755,18 @@ function SessionRuntimeTable({
                   totals?.tokensPerSecond ? `${totals.tokensPerSecond} tok/s` : "--",
                 ],
                 ["Average TTFT", formatLatency(totals?.firstTokenMs ?? null)],
+                ["Input cache", `${cacheShare.toFixed(1)}%`],
+                ["Compacted", formatNumber(totals?.compactedTokens || 0)],
               ].map(([label, value]) => (
-                <div key={label} className="bg-black/10 px-5 py-4">
-                  <p className="text-xs text-gray-500">{label}</p>
-                  <p className="mt-1 text-lg font-semibold tabular-nums text-white">{value}</p>
+                <div key={label} className="bg-[var(--surface-panel)] px-5 py-4">
+                  <p className="text-xs text-[var(--text-muted)]">{label}</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-gray-100">{value}</p>
                 </div>
               ))}
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-[1040px] w-full text-left text-sm">
-                <thead className="bg-white/[0.03] text-[11px] uppercase text-gray-500">
+                <thead className="bg-[var(--surface-raised)] text-[11px] uppercase text-[var(--text-muted)]">
                   <tr>
                     <th className="px-5 py-3 font-medium">Chat</th>
                     <th className="px-4 py-3 font-medium">Provider / model</th>
@@ -1757,9 +1778,12 @@ function SessionRuntimeTable({
                     <th className="px-5 py-3 text-right font-medium">Compaction</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/[0.07]">
+                <tbody className="divide-y divide-[var(--surface-border)]">
                   {(metrics?.sessions || []).map((session) => (
-                    <tr key={session.sessionId} className="transition-colors hover:bg-white/[0.03]">
+                    <tr
+                      key={session.sessionId}
+                      className="transition-colors hover:bg-[var(--surface-hover)]"
+                    >
                       <td className="max-w-[280px] px-5 py-3">
                         <p className="truncate font-medium text-gray-100">{session.title}</p>
                         <p className="mt-0.5 truncate text-xs text-gray-500">
@@ -1804,6 +1828,33 @@ function SessionRuntimeTable({
                 </p>
               ) : null}
             </div>
+            {pagination && pagination.totalPages > 1 ? (
+              <div className="flex items-center justify-between border-t border-[var(--surface-border)] px-5 py-3">
+                <p className="text-xs text-[var(--text-muted)]">
+                  Page {pagination.page} of {pagination.totalPages} · {pagination.totalItems} chats
+                </p>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onPageChange(pagination.page - 1)}
+                    disabled={!pagination.hasPreviousPage || loading}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-35"
+                    aria-label="Previous chat runtime page"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onPageChange(pagination.page + 1)}
+                    disabled={!pagination.hasNextPage || loading}
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] disabled:cursor-not-allowed disabled:opacity-35"
+                    aria-label="Next chat runtime page"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </>
         )}
       </CardContent>

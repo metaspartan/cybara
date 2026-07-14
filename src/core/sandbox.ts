@@ -390,6 +390,7 @@ export function buildSandboxedShellPlan(params: {
 
   if (resolution.provider === "apple_sandbox") {
     const policy = buildAppleSandboxPolicy(workdir, resolution.runtime.network);
+    const sandboxEnv = { ...env, TMPDIR: "/tmp", TMP: "/tmp", TEMP: "/tmp" };
     log.info("Prepared sandbox command", {
       provider: "apple_sandbox",
       cwd: workdir,
@@ -405,7 +406,7 @@ export function buildSandboxedShellPlan(params: {
     return {
       command: ["sandbox-exec", "-p", policy, "sh", "-lc", params.command],
       cwd: workdir,
-      env,
+      env: sandboxEnv,
       provider: "apple_sandbox",
       enabled: true,
     };

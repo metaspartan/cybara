@@ -773,7 +773,7 @@ async function rawPlugins(): Promise<void> {
   if (plugins.length === 0) {
     console.log("No plugins installed");
     console.log("");
-    console.log("Install one with: cybara plugin install <path>");
+    console.log("Install one with: cybara plugin install <folder-or-zip>");
     return;
   }
 
@@ -794,7 +794,10 @@ async function rawPluginValidate(inputPath: string): Promise<void> {
     errors: string[];
     warnings: string[];
     manifest?: { id: string; name: string; version: string };
-  }>(`/api/plugins/validate?path=${encodeURIComponent(inputPath)}`);
+  }>("/api/plugins/validate", {
+    method: "POST",
+    body: JSON.stringify({ path: inputPath }),
+  });
 
   if (!data) {
     console.error("ERROR: Failed to validate plugin path against", API_BASE);
@@ -3809,14 +3812,14 @@ async function main() {
           break;
         case "validate":
           if (!args[2]) {
-            console.error("Usage: cybara plugin validate <path>");
+            console.error("Usage: cybara plugin validate <folder-or-zip>");
             process.exit(1);
           }
           await rawPluginValidate(args[2]);
           break;
         case "install":
           if (!args[2]) {
-            console.error("Usage: cybara plugin install <path>");
+            console.error("Usage: cybara plugin install <folder-or-zip>");
             process.exit(1);
           }
           await rawPluginInstall(args[2]);
@@ -3842,8 +3845,8 @@ async function main() {
         default:
           console.log("Plugin Commands:");
           console.log("  cybara plugin list                - List installed plugins");
-          console.log("  cybara plugin validate <path>     - Validate a plugin manifest and dirs");
-          console.log("  cybara plugin install <path>      - Install a local plugin");
+          console.log("  cybara plugin validate <folder-or-zip>  - Validate a plugin bundle");
+          console.log("  cybara plugin install <folder-or-zip>   - Install a local plugin bundle");
           console.log("  cybara plugin remove <plugin-id>  - Remove an installed local plugin");
           console.log("  cybara plugin apps                - List account apps");
           console.log("  cybara plugin connect <app-id>    - Connect an account app");

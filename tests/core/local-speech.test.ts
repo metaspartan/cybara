@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import {
@@ -126,5 +126,17 @@ describe("local speech catalog", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  test("packaged transcription retries with the portable WASM runtime", () => {
+    const worker = readFileSync(
+      join(process.cwd(), "src", "core", "local-speech-worker.mjs"),
+      "utf8"
+    );
+    expect(worker).toContain('name: "native"');
+    expect(worker).toContain('name: "wasm"');
+    expect(worker).toContain('transformers.web.js"');
+    expect(worker).toContain("transformers.env.backends.onnx.wasm.wasmPaths");
+    expect(worker).toContain('device: "wasm"');
   });
 });

@@ -74,7 +74,8 @@ struct GatewayClient: Sendable {
         _ path: String,
         method: String = "GET",
         body: Data? = nil,
-        queryItems: [URLQueryItem] = []
+        queryItems: [URLQueryItem] = [],
+        timeoutInterval: TimeInterval = 120
     ) async throws -> Data {
         var url = URL(string: path, relativeTo: baseURL)?.absoluteURL
             ?? baseURL.appendingPathComponent(path)
@@ -85,7 +86,7 @@ struct GatewayClient: Sendable {
         }
         var req = URLRequest(url: url)
         req.httpMethod = method
-        req.timeoutInterval = 120
+        req.timeoutInterval = timeoutInterval
         if let key = Self.loadAPIKey() {
             req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
         }
@@ -356,7 +357,12 @@ struct GatewayClient: Sendable {
             payload["images"] = Array(images.prefix(8))
         }
         let body = try JSONSerialization.data(withJSONObject: payload)
-        let data = try await request("api/chat", method: "POST", body: body)
+        let data = try await request(
+            "api/chat",
+            method: "POST",
+            body: body,
+            timeoutInterval: 86_400
+        )
         return try JSONDecoder().decode(ChatSendResponse.self, from: data)
     }
 

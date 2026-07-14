@@ -13,6 +13,22 @@ interface CachedRouteEntry {
 const cachedRouteResponses = new Map<string, CachedRouteEntry>();
 const cachedRouteGenerations = new Map<string, number>();
 
+function requestCacheKey(
+  routeKey: string,
+  body?: unknown,
+  params?: Record<string, string>
+): string {
+  const query = params
+    ? Object.entries(params)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+        .join("&")
+    : "";
+  const bodyKey = body === undefined ? "" : JSON.stringify(body);
+  if (!query && !bodyKey) return routeKey;
+  return `${routeKey}?${query}#${bodyKey}`;
+}
+
 function routeGeneration(routeKey: string): number {
   return cachedRouteGenerations.get(routeKey) ?? 0;
 }
@@ -24,7 +40,8 @@ export function createCachedRouteHandler(
 ): CacheableRouteHandler {
   return async (body?: unknown, params?: Record<string, string>) => {
     const now = Date.now();
-    const cached = cachedRouteResponses.get(routeKey);
+    const cacheKey = requestCacheKey(routeKey, body, params);
+    const cached = cachedRouteResponses.get(cacheKey);
 
     if (cached?.hasValue) {
       if (cached.expiresAt <= now && !cached.pending) {
@@ -33,7 +50,7 @@ export function createCachedRouteHandler(
           .then(() => handler(body, params))
           .then((value) => {
             if (routeGeneration(routeKey) === generation) {
-              cachedRouteResponses.set(routeKey, {
+              cachedRouteResponses.set(cacheKey, {
                 expiresAt: Date.now() + ttlMs,
                 hasValue: true,
                 value,
@@ -54,7 +71,7 @@ export function createCachedRouteHandler(
     const pending = Promise.resolve(handler(body, params))
       .then((value) => {
         if (routeGeneration(routeKey) === generation) {
-          cachedRouteResponses.set(routeKey, {
+          cachedRouteResponses.set(cacheKey, {
             expiresAt: Date.now() + ttlMs,
             hasValue: true,
             value,
@@ -64,12 +81,12 @@ export function createCachedRouteHandler(
       })
       .catch((error) => {
         if (routeGeneration(routeKey) === generation) {
-          cachedRouteResponses.delete(routeKey);
+          cachedRouteResponses.delete(cacheKey);
         }
         throw error;
       });
 
-    cachedRouteResponses.set(routeKey, {
+    cachedRouteResponses.set(cacheKey, {
       expiresAt: now + ttlMs,
       hasValue: false,
       pending,
@@ -97,7 +114,9 @@ const isTestEnv = process.env.NODE_ENV === "test";
 
 export function invalidateCachedRoute(routeKey: string): void {
   cachedRouteGenerations.set(routeKey, routeGeneration(routeKey) + 1);
-  cachedRouteResponses.delete(routeKey);
+  for (const key of cachedRouteResponses.keys()) {
+    if (key === routeKey || key.startsWith(`${routeKey}?`)) cachedRouteResponses.delete(key);
+  }
 }
 
 export function cacheMetricsRoutes(routes: Record<string, CacheableRouteHandler>): void {

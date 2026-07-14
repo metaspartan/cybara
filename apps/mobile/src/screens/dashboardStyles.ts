@@ -334,6 +334,19 @@ const makeStyles = () =>
       fontSize: typography.label,
       fontWeight: "800",
     },
+    pagerRow: {
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginTop: spacing.sm,
+    },
+    inlineButtonRow: {
+      flexDirection: "row",
+      gap: spacing.sm,
+    },
+    controlDisabled: {
+      opacity: 0.4,
+    },
     newChatButton: {
       alignItems: "center",
       borderRadius: radius.lg,

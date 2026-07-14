@@ -110,4 +110,41 @@ describe("session runtime metrics", () => {
     expect(session?.firstTokenMs).toBeNull();
     expect(session?.latencyCallCount).toBe(0);
   });
+
+  test("pages chat runtime rows while retaining lifetime totals", () => {
+    const baseline = listSessionRuntimeMetrics(1, 100).totals.sessions;
+    const sessionIds = Array.from({ length: 7 }, (_, index) => {
+      const sessionId = crypto.randomUUID();
+      db.prepare(
+        `INSERT INTO chat_sessions (id, agent_id, title, messages, updated_at)
+         VALUES (?, ?, ?, '[]', ?)`
+      ).run(
+        sessionId,
+        "agent-pagination",
+        `Runtime page ${index + 1}`,
+        `2099-01-${String(index + 1).padStart(2, "0")} 00:00:00`
+      );
+      db.prepare(
+        `INSERT INTO metrics (id, type, key, value, metadata)
+         VALUES (?, 'token_usage_by_session', ?, 15, ?)`
+      ).run(
+        crypto.randomUUID(),
+        sessionId,
+        JSON.stringify({ inputTokens: 10, outputTokens: 5, durationMs: 100 })
+      );
+      return sessionId;
+    });
+
+    const first = listSessionRuntimeMetrics(1, 5);
+    const second = listSessionRuntimeMetrics(2, 5);
+
+    expect(first.pagination).toMatchObject({ page: 1, pageSize: 5, hasNextPage: true });
+    expect(first.totals.sessions).toBe(baseline + sessionIds.length);
+    expect(first.sessions).toHaveLength(5);
+    expect(second.pagination.page).toBe(2);
+    expect(second.pagination.hasPreviousPage).toBe(true);
+    expect(
+      first.sessions.some((row) => second.sessions.some((next) => next.sessionId === row.sessionId))
+    ).toBe(false);
+  });
 });

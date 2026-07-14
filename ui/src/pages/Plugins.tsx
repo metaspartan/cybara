@@ -14,12 +14,17 @@ import { useNavigate } from "react-router-dom";
 import { PageLayout } from "@/components/layout";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Modal } from "@/components/ui/Modal";
-import { type InstalledPluginSummary, type MCPServer, mcpApi, pluginsApi } from "@/lib/api";
+import {
+  type InstalledPluginSummary,
+  type MCPServer,
+  type PluginInstallPayload,
+  mcpApi,
+  pluginsApi,
+} from "@/lib/api";
 import { useUIStore } from "@/stores/uiStore";
 import { openExternal } from "@/utils/openExternal";
 import { AccountAppsPanel } from "./plugins/AccountAppsPanel";
+import { PluginInstallDialog } from "./plugins/PluginInstallDialog";
 
 type PluginTab = "installed" | "apps" | "services";
 
@@ -55,7 +60,6 @@ export function Plugins() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showInstall, setShowInstall] = useState(false);
-  const [installPath, setInstallPath] = useState("");
 
   const loadPlugins = useCallback(async (): Promise<void> => {
     const pluginResponse = await pluginsApi.list();
@@ -90,15 +94,12 @@ export function Plugins() {
       .finally(() => setLoading(false));
   }, [addToast, loadPlugins, loadServices]);
 
-  const install = async (): Promise<void> => {
-    const path = installPath.trim();
-    if (!path) return;
+  const install = async (payload: PluginInstallPayload): Promise<void> => {
     setBusyId("install");
     try {
-      const response = await pluginsApi.install(path);
+      const response = await pluginsApi.install(payload);
       if (!response.success) throw new Error(response.error || "Plugin installation failed");
       await loadPlugins();
-      setInstallPath("");
       setShowInstall(false);
       addToast("success", "Plugin installed");
     } catch (error) {
@@ -151,7 +152,7 @@ export function Plugins() {
             leftIcon={<FolderInput className="h-4 w-4" />}
             onClick={() => setShowInstall(true)}
           >
-            Install from folder
+            Install plugin
           </Button>
         ) : null
       }
@@ -323,36 +324,12 @@ export function Plugins() {
         ) : null}
       </div>
 
-      <Modal
+      <PluginInstallDialog
         isOpen={showInstall}
+        installing={busyId === "install"}
         onClose={() => setShowInstall(false)}
-        title="Install plugin"
-        description="Only install bundles you trust. Plugin skills run with the gateway's permissions."
-      >
-        <div className="space-y-4">
-          <Input
-            label="Plugin folder"
-            value={installPath}
-            placeholder="/path/to/plugin"
-            onChange={(event) => setInstallPath(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") void install();
-            }}
-          />
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setShowInstall(false)}>
-              Cancel
-            </Button>
-            <Button
-              isLoading={busyId === "install"}
-              disabled={!installPath.trim()}
-              onClick={() => void install()}
-            >
-              Install
-            </Button>
-          </div>
-        </div>
-      </Modal>
+        onInstall={install}
+      />
     </PageLayout>
   );
 }

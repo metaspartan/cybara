@@ -39,7 +39,7 @@ import {
   totalFileOperations,
   type MetricsSnapshot,
 } from "../lib/metrics";
-import type { ProviderPlanStatusResponse } from "../lib/api";
+import type { CybaraMobileApi, ProviderPlanStatusResponse } from "../lib/api";
 import {
   MOBILE_RECENT_ACTIVITY_CHROME,
   formatMobileValue,
@@ -110,6 +110,7 @@ function sortPlanRows(
 
 export function MetricsPanel({
   accentColor,
+  api,
   counts,
   metrics,
   metricsError,
@@ -117,12 +118,33 @@ export function MetricsPanel({
   openSurface,
 }: {
   accentColor: string;
+  api: CybaraMobileApi;
   counts: FeatureCounts;
   metrics: MetricsSnapshot | null;
   metricsError: string | null;
   summary: FeatureSummary | null;
   openSurface: (surface: MobileSurfaceKey) => void;
 }) {
+  const [sessionRuntime, setSessionRuntime] = useState(metrics?.sessions ?? null);
+  const [sessionRuntimeLoading, setSessionRuntimeLoading] = useState(false);
+
+  useEffect(() => {
+    setSessionRuntime(metrics?.sessions ?? null);
+  }, [metrics?.sessions]);
+
+  const loadSessionRuntimePage = useCallback(
+    async (page: number) => {
+      if (sessionRuntimeLoading) return;
+      setSessionRuntimeLoading(true);
+      try {
+        setSessionRuntime(await api.metricsSessions(page));
+      } finally {
+        setSessionRuntimeLoading(false);
+      }
+    },
+    [api, sessionRuntimeLoading]
+  );
+
   if (!metrics && !metricsError) {
     return (
       <MetricsPanelSkeleton
@@ -159,7 +181,8 @@ export function MetricsPanel({
   const modelRows = modelTokenShareRows(metrics);
   const storageRows = storageCategoryEntries(metrics?.storage ?? null).slice(0, 8);
   const providerPlanRows = mobileProviderPlanRows(metrics).slice(0, 8);
-  const sessionMetrics = metrics?.sessions;
+  const sessionMetrics = sessionRuntime ?? metrics?.sessions;
+  const sessionPagination = sessionMetrics?.pagination;
 
   return (
     <StableDetailPanel>
@@ -322,6 +345,29 @@ export function MetricsPanel({
           }))}
           tone={colors.cyan}
         />
+        {sessionPagination && sessionPagination.totalPages > 1 ? (
+          <View style={styles.pagerRow}>
+            <Text style={styles.counterText}>
+              Page {sessionPagination.page} of {sessionPagination.totalPages}
+            </Text>
+            <View style={styles.inlineButtonRow}>
+              <Pressable
+                style={[styles.smallButton, sessionRuntimeLoading && styles.controlDisabled]}
+                disabled={!sessionPagination.hasPreviousPage || sessionRuntimeLoading}
+                onPress={() => void loadSessionRuntimePage(sessionPagination.page - 1)}
+              >
+                <Text style={styles.smallButtonText}>Previous</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.smallButton, sessionRuntimeLoading && styles.controlDisabled]}
+                disabled={!sessionPagination.hasNextPage || sessionRuntimeLoading}
+                onPress={() => void loadSessionRuntimePage(sessionPagination.page + 1)}
+              >
+                <Text style={styles.smallButtonText}>Next</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
       </MetricSection>
 
       <MetricSection

@@ -29,11 +29,16 @@ describe("mobile eval and session runtime parity", () => {
     expect(api).toContain("exportEvals(");
     expect(api).toContain("importEvals(");
     expect(api).toContain("replayEval(");
-    expect(api).toContain('"/api/metrics/sessions"');
+    expect(api).toContain("async metricsSessions(");
+    expect(api).toContain("pageSize = 10");
+    expect(api).toContain("/api/metrics/sessions?page=");
+    expect(api).toContain("pageSize=${encodeURIComponent(String(pageSize))}");
     expect(detail).toContain('label: "Fork chat"');
     expect(detail).toContain('label: "Save golden run"');
     expect(metrics).toContain('title="Chat runtime"');
     expect(metrics).toContain('label="Average TTFT"');
+    expect(metrics).toContain("loadSessionRuntimePage");
+    expect(metrics).toContain("sessionPagination.totalPages");
     expect(evals).toContain("Copy redacted eval JSONL");
     expect(evals).toContain("Copy replayable eval suite");
     expect(evals).toContain("Import eval suite from clipboard");

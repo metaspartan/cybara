@@ -516,6 +516,8 @@ describe("native macOS shell wiring", () => {
     expect(gatewayClient).toContain("func sessionDetail(_ id: String)");
     expect(gatewayClient).toContain("func updateSessionAgent(");
     expect(gatewayClient).toContain("useModelRouter: Bool = false");
+    expect(gatewayClient).toContain("timeoutInterval: TimeInterval = 120");
+    expect(gatewayClient).toContain("timeoutInterval: 86_400");
     expect(gatewayClient).toContain('payload["useModelRouter"] = true');
     expect(gatewayClient).toContain('request("api/sessions/\\(id)/agent", method: "PUT"');
     expect(nativeScreens).toContain("private var composerControls: some View");
@@ -671,6 +673,9 @@ describe("native macOS shell wiring", () => {
     expect(metricsScreen).toContain("lastUpdated = Date()");
     expect(metricsScreen).toContain(".cybaraGlass(cornerRadius: 18)");
     expect(metricsScreen).toContain(".redacted(reason: .placeholder)");
+    expect(metricsScreen).toContain("NativeSessionRuntimePagination");
+    expect(metricsScreen).toContain("loadSessionRuntime(page: page)");
+    expect(metricsScreen).toContain("pagination.hasNextPage");
   });
 
   test("native journey uses glass timeline sections with loading and empty states", () => {
@@ -678,8 +683,9 @@ describe("native macOS shell wiring", () => {
 
     expect(journeyScreen).toContain("ScreenHeader(");
     expect(journeyScreen).toContain("JourneyLoadingSkeleton()");
-    expect(journeyScreen).toContain("JourneyStatsRow(counts: journey.counts)");
-    expect(journeyScreen).toContain("JourneyTimeline(groups: grouped)");
+    expect(journeyScreen).toContain("recentCount: journey.events.filter");
+    expect(journeyScreen).toContain("accentTint: accentTint");
+    expect(journeyScreen).toContain("JourneyTimeline(groups: grouped, accentTint: accentTint)");
     expect(journeyScreen).toContain("private struct JourneyDaySection");
     expect(journeyScreen).toContain("private struct JourneyTimelineRow");
     expect(journeyScreen).toContain("GlassCard {");

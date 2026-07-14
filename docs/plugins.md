@@ -49,6 +49,7 @@ Set `CYBARA_HOME` to override the runtime data directory when packaging or testi
 cybara plugin list
 cybara plugin validate /path/to/plugin
 cybara plugin install /path/to/plugin
+cybara plugin install /path/to/plugin.zip
 cybara plugin remove acme-plugin
 cybara plugin apps
 cybara plugin connect google_workspace
@@ -59,6 +60,7 @@ cybara plugin connect google_workspace
 ```text
 GET    /api/plugins
 GET    /api/plugins/validate?path=...
+POST   /api/plugins/validate
 POST   /api/plugins/install
 DELETE /api/plugins/:id
 ```
@@ -68,7 +70,9 @@ DELETE /api/plugins/:id
 - skill contribution paths must stay inside the plugin root
 - absolute contribution paths are ignored
 - only existing skill directories are loaded
-- plugin bundle installation uses local paths
+- local plugin installation accepts a folder, manifest, or ZIP bundle
+- browser installs upload a selected folder or ZIP for manifest review before installation
+- archives reject unsafe paths, links, ambiguous manifests, and oversized contents
 - account app writes remain approval-gated
 - MCP installation and execution require explicit trusted actions
 

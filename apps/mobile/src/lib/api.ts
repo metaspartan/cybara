@@ -3482,4 +3482,13 @@ export class CybaraMobileApi {
       availability,
     };
   }
+
+  async metricsSessions(
+    page = 1,
+    pageSize = 10
+  ): Promise<NonNullable<MetricsSnapshot["sessions"]>> {
+    return this.request(
+      `/api/metrics/sessions?page=${encodeURIComponent(String(page))}&pageSize=${encodeURIComponent(String(pageSize))}`
+    );
+  }
 }

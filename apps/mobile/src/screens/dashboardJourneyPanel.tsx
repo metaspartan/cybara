@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import type { CybaraMobileApi, JourneyEvent, JourneyResponse } from "../lib/api";
-import { colors } from "../theme/liquidGlass";
 import { SettingsSection, StableDetailPanel } from "./dashboardControls";
 import { EmptyState, LoadingState } from "./dashboardPrimitives";
 import { styles } from "./dashboardStyles";
@@ -46,6 +45,11 @@ function groupJourneyEvents(
   return [...groups].map(([day, groupedEvents]) => ({ day, events: groupedEvents }));
 }
 
+function recentJourneyCount(events: JourneyEvent[]): number {
+  const threshold = Date.now() - 7 * 86_400_000;
+  return events.filter((event) => event.createdAtMs >= threshold).length;
+}
+
 export function JourneyPanel({ accentColor, api }: { accentColor: string; api: CybaraMobileApi }) {
   const [journey, setJourney] = useState<JourneyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +92,7 @@ export function JourneyPanel({ accentColor, api }: { accentColor: string; api: C
           <View style={styles.journeyStatGrid}>
             <View style={styles.journeyStatCard}>
               <Text style={styles.gatewayDetailLabel}>Skills</Text>
-              <Text style={[styles.gatewayDetailValue, { color: colors.cyan }]}>
+              <Text style={[styles.gatewayDetailValue, { color: accentColor }]}>
                 {journey.counts.skills}
               </Text>
             </View>
@@ -99,8 +103,10 @@ export function JourneyPanel({ accentColor, api }: { accentColor: string; api: C
               </Text>
             </View>
             <View style={styles.journeyStatCard}>
-              <Text style={styles.gatewayDetailLabel}>Total</Text>
-              <Text style={styles.gatewayDetailValue}>{journey.counts.total}</Text>
+              <Text style={styles.gatewayDetailLabel}>This week</Text>
+              <Text style={[styles.gatewayDetailValue, { color: accentColor }]}>
+                {recentJourneyCount(journey.events)}
+              </Text>
             </View>
           </View>
         </SettingsSection>
@@ -120,12 +126,7 @@ export function JourneyPanel({ accentColor, api }: { accentColor: string; api: C
               ]}
             >
               <View style={styles.journeyEventMarkerRail}>
-                <View
-                  style={[
-                    styles.journeyEventMarker,
-                    { backgroundColor: event.kind === "skill" ? colors.cyan : accentColor },
-                  ]}
-                />
+                <View style={[styles.journeyEventMarker, { backgroundColor: accentColor }]} />
               </View>
               <View style={styles.journeyEventContent}>
                 <View style={styles.journeyEventHeader}>
@@ -141,13 +142,7 @@ export function JourneyPanel({ accentColor, api }: { accentColor: string; api: C
                     {event.detail}
                   </Text>
                 ) : null}
-                <Text
-                  style={[
-                    styles.journeyEventMeta,
-                    { color: event.kind === "skill" ? colors.cyan : accentColor },
-                  ]}
-                  numberOfLines={1}
-                >
+                <Text style={[styles.journeyEventMeta, { color: accentColor }]} numberOfLines={1}>
                   {event.kind}
                   {event.category ? ` · ${event.category}` : ""}
                 </Text>

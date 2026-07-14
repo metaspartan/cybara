@@ -379,12 +379,39 @@ export interface InstalledPluginSummary {
   skillCount: number;
 }
 
+export interface PluginManifestSummary {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author?: string;
+  homepage?: string;
+}
+
+export interface PluginValidationSummary {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  manifest?: PluginManifestSummary;
+}
+
+export interface PluginInstallPayload {
+  path?: string;
+  archive?: { name: string; dataBase64: string };
+  files?: Array<{ path: string; dataBase64: string }>;
+}
+
 export const pluginsApi = {
   list: () => fetchApi<{ plugins: InstalledPluginSummary[] }>("/plugins"),
-  install: (path: string) =>
+  validate: (payload: PluginInstallPayload) =>
+    fetchApi<PluginValidationSummary>("/plugins/validate", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  install: (payload: PluginInstallPayload) =>
     fetchApi<{ success: boolean; plugin?: InstalledPluginSummary }>("/plugins/install", {
       method: "POST",
-      body: JSON.stringify({ path }),
+      body: JSON.stringify(payload),
     }),
   remove: (id: string) =>
     fetchApi<{ success: boolean }>(`/plugins/${encodeURIComponent(id)}`, {

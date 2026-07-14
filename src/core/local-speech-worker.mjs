@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const models = new Map();
@@ -57,9 +57,9 @@ async function loadKokoroRuntime() {
   return KokoroTTS;
 }
 
-async function loadTransformersRuntime() {
+async function loadTransformersRuntime(moduleName) {
   const transformers = await import(
-    resolveSpeechModule("node_modules/@huggingface/transformers/dist/transformers.node.mjs")
+    resolveSpeechModule(`node_modules/@huggingface/transformers/dist/${moduleName}`)
   );
   transformers.env.cacheDir = cacheDir;
   return transformers;
@@ -81,18 +81,46 @@ async function loadModel(request) {
 async function loadTranscriber(request) {
   const ready = transcribers.get(request.model);
   if (ready) return ready;
-  const transformers = await loadTransformersRuntime();
-  const transcriber = await transformers.pipeline(
-    "automatic-speech-recognition",
-    request.model,
+  const failures = [];
+  const runtimes = [
     {
-      dtype: request.dtype,
+      name: "native",
+      load: () => loadTransformersRuntime("transformers.node.mjs"),
       device: "cpu",
-      progress_callback: (event) => sendProgress(request.id, event),
+    },
+    {
+      name: "wasm",
+      load: () => loadTransformersRuntime("transformers.web.js"),
+      device: "wasm",
+    },
+  ];
+
+  for (const runtime of runtimes) {
+    try {
+      const transformers = await runtime.load();
+      if (runtime.name === "wasm") {
+        const wasmPath = `${join(resourceDir, "node_modules", "onnxruntime-web", "dist")}${sep}`;
+        transformers.env.backends.onnx.wasm ??= {};
+        transformers.env.backends.onnx.wasm.wasmPaths = wasmPath;
+        transformers.env.backends.onnx.wasm.numThreads = 1;
+      }
+      const transcriber = await transformers.pipeline(
+        "automatic-speech-recognition",
+        request.model,
+        {
+          dtype: request.dtype,
+          device: runtime.device,
+          progress_callback: (event) => sendProgress(request.id, event),
+        }
+      );
+      transcribers.set(request.model, transcriber);
+      return transcriber;
+    } catch (error) {
+      failures.push(`${runtime.name}: ${errorMessage(error)}`);
     }
-  );
-  transcribers.set(request.model, transcriber);
-  return transcriber;
+  }
+
+  throw new Error(`Local transcription runtime failed (${failures.join("; ")})`);
 }
 
 async function handleRequest(request) {

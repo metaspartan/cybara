@@ -4,10 +4,12 @@ import { lazy, Suspense, useEffect } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { CybaraPet } from "@/components/CybaraPet";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { GatewayStartupFailure } from "@/components/GatewayStartupFailure";
 import { Sidebar, SidebarProvider, useSidebar } from "@/components/layout/Sidebar";
 import { UpdateBanner } from "@/components/layout/UpdateBanner";
 import { ToastContainer } from "@/components/ui/Toast";
 import { settingsApi, setupApi } from "@/lib/api";
+import { readGatewayStartupStatus } from "@/lib/desktopGatewayStartup";
 import { readSetupComplete, resolveSetupGate, writeSetupComplete } from "@/lib/setupGate";
 import { isPetWindow } from "@/lib/tauriPet";
 import { cn } from "@/lib/utils";
@@ -98,6 +100,13 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
   });
   const setupReady = setupStatusQuery.isSuccess;
   const setupComplete = setupStatusQuery.data?.complete === true;
+  const gatewayStartupQuery = useQuery({
+    queryKey: ["desktop", "gateway-startup"],
+    queryFn: readGatewayStartupStatus,
+    refetchInterval: (query) => (query.state.data?.phase === "ready" ? false : 500),
+    staleTime: 0,
+  });
+  const gatewayStartup = gatewayStartupQuery.data;
 
   useEffect(() => {
     if (setupReady) writeSetupComplete(setupComplete);
@@ -109,6 +118,14 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
     setupComplete,
     cachedSetupComplete,
   });
+
+  if (gatewayStartup?.phase === "failed") {
+    return (
+      <GatewayStartupFailure
+        message={gatewayStartup.message || "The packaged gateway exited before it was ready."}
+      />
+    );
+  }
 
   if (decision === "redirect") {
     return <Navigate to="/setup" replace />;

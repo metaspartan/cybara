@@ -31,6 +31,12 @@ describe("onboarding boot: no shell flash + full-screen spinner", () => {
     expect(guardBlock).not.toContain("useAgents()");
     expect(guardBlock).not.toContain("useProviders()");
   });
+
+  test("desktop gateway failures replace the indefinite setup spinner", () => {
+    expect(app).toContain("readGatewayStartupStatus");
+    expect(app).toContain('gatewayStartup?.phase === "failed"');
+    expect(app).toContain("<GatewayStartupFailure");
+  });
 });
 
 describe("Agents: ready-on-demand chat routing + default model", () => {

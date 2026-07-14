@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Brain, LibraryBig, Sparkles } from "lucide-react";
+import { Brain, CalendarDays, LibraryBig, Search, Sparkles } from "lucide-react";
 import { PageLayout } from "@/components/layout";
 import { apiFetch } from "@/lib/auth";
 
@@ -21,10 +21,12 @@ interface JourneyResponse {
   lastAt: string | null;
 }
 
+type JourneyFilter = "all" | JourneyEvent["kind"];
+
 function relativeTime(ms: number): string {
   if (!ms) return "unknown";
   const diff = Date.now() - ms;
-  const mins = Math.floor(diff / 60000);
+  const mins = Math.floor(diff / 60_000);
   if (mins < 1) return "just now";
   if (mins < 60) return `${mins}m ago`;
   const hours = Math.floor(mins / 60);
@@ -48,9 +50,20 @@ function dayKey(ms: number): string {
   });
 }
 
+function timeSpan(firstAt: string | null, lastAt: string | null): string {
+  if (!firstAt || !lastAt) return "No history yet";
+  const first = Date.parse(firstAt);
+  const last = Date.parse(lastAt);
+  if (!Number.isFinite(first) || !Number.isFinite(last)) return "History available";
+  const days = Math.max(1, Math.ceil((last - first) / 86_400_000));
+  return days === 1 ? "1 day" : `${days} days`;
+}
+
 export function Journey() {
   const [data, setData] = useState<JourneyResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<JourneyFilter>("all");
+  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -63,85 +76,121 @@ export function Journey() {
           setData(json);
           setError(null);
         }
-      } catch (err) {
-        if (mounted) setError(err instanceof Error ? err.message : "Failed to load journey");
+      } catch (loadError) {
+        if (mounted) {
+          setError(loadError instanceof Error ? loadError.message : "Failed to load journey");
+        }
       }
     };
     void load();
-    const interval = setInterval(load, 15000);
+    const interval = setInterval(load, 15_000);
     return () => {
       mounted = false;
       clearInterval(interval);
     };
   }, []);
 
+  const filteredEvents = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    return (data?.events ?? []).filter((event) => {
+      if (filter !== "all" && event.kind !== filter) return false;
+      if (!normalizedQuery) return true;
+      return `${event.title} ${event.detail} ${event.category}`
+        .toLowerCase()
+        .includes(normalizedQuery);
+    });
+  }, [data?.events, filter, query]);
+
   const grouped = useMemo(() => {
     const groups = new Map<string, JourneyEvent[]>();
-    for (const event of data?.events ?? []) {
+    for (const event of filteredEvents) {
       const key = dayKey(event.createdAtMs);
       const list = groups.get(key) ?? [];
       list.push(event);
       groups.set(key, list);
     }
     return Array.from(groups.entries());
+  }, [filteredEvents]);
+
+  const recentCount = useMemo(() => {
+    const threshold = Date.now() - 7 * 86_400_000;
+    return (data?.events ?? []).filter((event) => event.createdAtMs >= threshold).length;
   }, [data?.events]);
 
   return (
-    <PageLayout
-      title="Journey"
-      subtitle="Everything your agent has learned — skills and memories over time"
-    >
+    <PageLayout title="Journey" subtitle="Skills and durable memories learned over time">
       <div className="space-y-6">
-        <div className="grid grid-cols-3 gap-3">
-          <StatCard
-            icon={LibraryBig}
-            label="Skills"
-            value={data?.counts.skills ?? 0}
-            tone="text-cyan-300"
-          />
-          <StatCard
-            icon={Brain}
-            label="Memories"
-            value={data?.counts.memories ?? 0}
-            tone="text-indigo-300"
-          />
-          <StatCard
-            icon={Sparkles}
-            label="Total learned"
-            value={data?.counts.total ?? 0}
-            tone="text-amber-300"
+        <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-border)] lg:grid-cols-4">
+          <JourneyStat icon={LibraryBig} label="Skills" value={data?.counts.skills ?? 0} />
+          <JourneyStat icon={Brain} label="Memories" value={data?.counts.memories ?? 0} />
+          <JourneyStat icon={Sparkles} label="Learned this week" value={recentCount} />
+          <JourneyStat
+            icon={CalendarDays}
+            label="Learning span"
+            value={timeSpan(data?.firstAt ?? null, data?.lastAt ?? null)}
           />
         </div>
 
-        {error && (
-          <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="inline-flex w-fit rounded-md bg-[var(--surface-raised)] p-1">
+            {(["all", "skill", "memory"] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setFilter(option)}
+                className={`rounded px-3 py-1.5 text-xs font-medium capitalize transition-colors ${
+                  filter === option
+                    ? "bg-[rgb(var(--accent-primary))] text-white"
+                    : "text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+          <label className="flex h-9 w-full items-center gap-2 rounded-md border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 sm:max-w-xs">
+            <Search className="h-4 w-4 text-[var(--icon-muted)]" />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search learning history"
+              className="min-w-0 flex-1 border-0 bg-transparent text-sm text-gray-100 outline-none placeholder:text-[var(--text-subtle)]"
+            />
+          </label>
+        </div>
+
+        {error ? (
+          <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-300">
             {error}
           </div>
-        )}
+        ) : null}
 
-        {data && data.events.length === 0 && !error && (
-          <div className="rounded-xl border border-white/10 bg-white/[0.03] p-8 text-center">
-            <p className="text-sm font-medium text-white">No learning yet</p>
-            <p className="text-xs text-gray-400 mt-1">
-              As your agent saves skills and memories, they'll appear here on a timeline.
+        {data && filteredEvents.length === 0 && !error ? (
+          <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-10 text-center">
+            <Sparkles className="mx-auto h-5 w-5 text-[rgb(var(--accent-primary))]" />
+            <p className="mt-3 text-sm font-medium text-gray-100">
+              {data.events.length === 0 ? "No learning yet" : "No matching learning"}
+            </p>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
+              Skills and durable memories appear here as agents learn.
             </p>
           </div>
-        )}
+        ) : null}
 
         <div className="space-y-8">
           {grouped.map(([day, events]) => (
-            <div key={day}>
-              <div className="sticky top-0 z-10 -mx-1 mb-3 bg-gradient-to-r from-white/[0.06] to-transparent px-3 py-1.5 rounded-lg">
-                <span className="text-xs font-semibold uppercase tracking-wide text-gray-300">
+            <section key={day}>
+              <div className="sticky top-0 z-10 mb-3 bg-[var(--surface-backdrop)] py-2">
+                <span className="text-xs font-semibold uppercase text-[var(--text-muted)]">
                   {day}
                 </span>
               </div>
-              <div className="relative ml-3 border-l border-white/10 pl-6 space-y-4">
+              <div className="relative ml-3 space-y-3 border-l border-[var(--surface-border)] pl-6">
                 {events.map((event) => (
                   <JourneyRow key={event.id} event={event} />
                 ))}
               </div>
-            </div>
+            </section>
           ))}
         </div>
       </div>
@@ -149,65 +198,51 @@ export function Journey() {
   );
 }
 
-function StatCard({
+function JourneyStat({
   icon: Icon,
   label,
   value,
-  tone,
 }: {
   icon: typeof Brain;
   label: string;
-  value: number;
-  tone: string;
+  value: number | string;
 }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+    <div className="bg-[var(--surface-panel)] p-4">
       <div className="flex items-center gap-2">
-        <Icon className={`w-4 h-4 ${tone}`} />
-        <span className="text-xs text-gray-400">{label}</span>
+        <Icon className="h-4 w-4 text-[rgb(var(--accent-primary))]" />
+        <span className="text-xs text-[var(--text-muted)]">{label}</span>
       </div>
-      <p className={`mt-1 text-2xl font-bold ${tone}`}>{value}</p>
+      <p className="mt-1 text-xl font-semibold text-gray-100">{value}</p>
     </div>
   );
 }
 
 function JourneyRow({ event }: { event: JourneyEvent }) {
-  const isSkill = event.kind === "skill";
-  const Icon = isSkill ? LibraryBig : Brain;
-  const dot = isSkill ? "bg-cyan-400" : "bg-indigo-400";
+  const Icon = event.kind === "skill" ? LibraryBig : Brain;
   return (
-    <div className="relative">
-      <span
-        className={`absolute -left-[31px] top-1.5 h-3 w-3 rounded-full ring-4 ring-black/40 ${dot}`}
-      />
-      <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
-            <Icon className={`w-4 h-4 shrink-0 ${isSkill ? "text-cyan-300" : "text-indigo-300"}`} />
-            <span className="text-sm font-medium text-white truncate">{event.title}</span>
-          </div>
-          <span className="shrink-0 text-xs text-gray-500">{relativeTime(event.createdAtMs)}</span>
+    <article className="relative rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4 transition-colors hover:bg-[var(--surface-hover)]">
+      <span className="absolute -left-[31px] top-5 h-3 w-3 rounded-full border-2 border-[var(--surface-backdrop)] bg-[rgb(var(--accent-primary))]" />
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Icon className="h-4 w-4 shrink-0 text-[rgb(var(--accent-primary))]" />
+          <span className="truncate text-sm font-medium text-gray-100">{event.title}</span>
         </div>
-        {event.detail && event.detail !== event.title && (
-          <p className="mt-1.5 text-xs text-gray-400 line-clamp-3 whitespace-pre-wrap">
-            {event.detail}
-          </p>
-        )}
-        <div className="mt-2 flex items-center gap-2">
-          <span
-            className={`text-[10px] px-1.5 py-0.5 rounded ${
-              isSkill ? "bg-cyan-500/15 text-cyan-300" : "bg-indigo-500/15 text-indigo-300"
-            }`}
-          >
-            {isSkill ? "skill" : "memory"}
-          </span>
-          {event.category && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-gray-400">
-              {event.category}
-            </span>
-          )}
-        </div>
+        <span className="shrink-0 text-xs text-[var(--text-subtle)]">
+          {relativeTime(event.createdAtMs)}
+        </span>
       </div>
-    </div>
+      {event.detail && event.detail !== event.title ? (
+        <p className="mt-2 line-clamp-3 whitespace-pre-wrap text-xs leading-5 text-[var(--text-secondary)]">
+          {event.detail}
+        </p>
+      ) : null}
+      <div className="mt-3 flex items-center gap-2 text-[10px] font-medium uppercase">
+        <span className="rounded bg-[rgba(var(--accent-primary),0.12)] px-1.5 py-0.5 text-[rgb(var(--accent-primary))]">
+          {event.kind}
+        </span>
+        {event.category ? <span className="text-[var(--text-muted)]">{event.category}</span> : null}
+      </div>
+    </article>
   );
 }

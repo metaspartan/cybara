@@ -317,7 +317,11 @@ function installSharedOnnxRuntimeAt(
 
   copyPackageFromRoot(NODE_MODULES_ROOT, "onnxruntime-common", targetNodeModulesDir, ["dist"]);
   copyPackageFromRoot(NODE_MODULES_ROOT, "onnxruntime-web", targetNodeModulesDir, ["dist"]);
-  const nativeDir = copyOnnxRuntimeNodeFromRoot(sourceOnnxRoot, targetNodeModulesDir, runtimeTarget);
+  const nativeDir = copyOnnxRuntimeNodeFromRoot(
+    sourceOnnxRoot,
+    targetNodeModulesDir,
+    runtimeTarget
+  );
   if (!nativeDir) return null;
 
   copyPackageFromRoot(
@@ -597,6 +601,10 @@ export default instance.exports;
   let copiedOnnxNativeDir: string | null = null;
   for (const dir of [RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]) {
     const targetNodeModulesDir = join(dir, "node_modules");
+    if (existsSync(targetNodeModulesDir)) {
+      rmSync(targetNodeModulesDir, { recursive: true, force: true });
+    }
+    mkdirSync(targetNodeModulesDir, { recursive: true });
     const nativeDir = copyTransformersRuntime(targetNodeModulesDir, runtimeTarget);
     patchCopiedOnnxBinding(targetNodeModulesDir);
     copyOnnxRuntimeSidecarFolder(nativeDir, dir, runtimeTarget);

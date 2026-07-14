@@ -308,6 +308,15 @@ describe("build-sidecar host target mapping", () => {
     expect(worker).not.toContain('from "../node_modules/kokoro-js/dist/kokoro.js"');
   });
 
+  test("stages the portable speech worker and WASM runtime for every sidecar", () => {
+    const source = readFileSync(join(process.cwd(), "scripts", "build-sidecar.ts"), "utf8");
+    expect(source).toContain('join(packagedRuntimeDir, "local-speech-worker.mjs")');
+    expect(source).toContain('copyPackageDirectory("onnxruntime-web", "dist"');
+    expect(source).toContain("rmSync(targetNodeModulesDir, { recursive: true, force: true })");
+    expect(source).toContain("[RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]");
+    expect(source).toContain('removeAndCopyDirectory(packagedRuntimeDir, join(dir, "runtime"))');
+  });
+
   test("stages the same UI beside every generated sidecar", () => {
     const source = readFileSync(join(process.cwd(), "scripts", "build-sidecar.ts"), "utf8");
     expect(source).toContain("[RELEASE_DIR, TAURI_BIN_DIR, tauriDebugDir]");

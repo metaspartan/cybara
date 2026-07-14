@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct NativeMCPServer: Decodable, Identifiable, Hashable {
     let id: String
@@ -26,6 +27,27 @@ struct NativePluginSummary: Decodable, Identifiable, Hashable {
     let rootDir: String
     let skillDirs: [String]
     let skillCount: Int
+}
+
+struct NativePluginManifest: Decodable, Hashable {
+    let id: String
+    let name: String
+    let version: String
+    let description: String
+    let author: String?
+    let homepage: String?
+}
+
+struct NativePluginValidation: Decodable, Hashable {
+    let valid: Bool
+    let errors: [String]
+    let warnings: [String]
+    let manifest: NativePluginManifest?
+}
+
+private struct NativePluginInstallResponse: Decodable {
+    let success: Bool
+    let plugin: NativePluginSummary?
 }
 
 struct NativeAccountConnector: Decodable, Identifiable, Hashable {
@@ -385,6 +407,22 @@ struct NativeLSPInstallResult: Decodable {
 extension GatewayClient {
     func nativePlugins() async throws -> [NativePluginSummary] {
         try await nativeList("api/plugins", keys: ["plugins", "items"])
+    }
+
+    func validateNativePlugin(path: String) async throws -> NativePluginValidation {
+        let body = try JSONSerialization.data(withJSONObject: ["path": path])
+        let data = try await request("api/plugins/validate", method: "POST", body: body)
+        return try JSONDecoder().decode(NativePluginValidation.self, from: data)
+    }
+
+    func installNativePlugin(path: String) async throws -> NativePluginSummary {
+        let body = try JSONSerialization.data(withJSONObject: ["path": path])
+        let data = try await request("api/plugins/install", method: "POST", body: body)
+        let response = try JSONDecoder().decode(NativePluginInstallResponse.self, from: data)
+        guard response.success, let plugin = response.plugin else {
+            throw GatewayClientError.decodingFailed("api/plugins/install", "Plugin installation failed")
+        }
+        return plugin
     }
 
     func nativeAccountConnectors() async throws -> [NativeAccountConnector] {
@@ -828,8 +866,19 @@ struct PluginsScreen: View {
     private var pluginSummary: some View {
         GlassCard {
             VStack(alignment: .leading, spacing: 12) {
-                Label("Installed Plugins", systemImage: "shippingbox")
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                HStack {
+                    Label("Installed Plugins", systemImage: "shippingbox")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    Spacer()
+                    Button {
+                        Task { await chooseAndInstallPlugin() }
+                    } label: {
+                        Label("Install", systemImage: "plus")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(busyID != nil)
+                }
                 if plugins.isEmpty {
                     Text("No plugin bundles are installed.")
                         .font(.system(size: 12, design: .rounded))
@@ -994,6 +1043,48 @@ struct PluginsScreen: View {
         ].compactMap { $0 }
         error = unavailable.isEmpty ? nil : "Unavailable: \(unavailable.joined(separator: ", "))."
         loaded = true
+    }
+
+    private func chooseAndInstallPlugin() async {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Plugin Folder or ZIP"
+        panel.prompt = "Review Plugin"
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.zip]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        busyID = "plugin-install"
+        do {
+            let validation = try await client.validateNativePlugin(path: url.path)
+            guard validation.valid, let manifest = validation.manifest else {
+                throw GatewayClientError.decodingFailed(
+                    "api/plugins/validate",
+                    validation.errors.joined(separator: ". ")
+                )
+            }
+            let alert = NSAlert()
+            alert.messageText = "Install \(manifest.name)?"
+            alert.informativeText = [
+                "Version \(manifest.version)",
+                manifest.author.map { "By \($0)" },
+                manifest.description,
+                validation.warnings.isEmpty ? nil : validation.warnings.joined(separator: "\n"),
+                "Only install plugins you trust. Plugin skills use the gateway's permissions."
+            ].compactMap { $0 }.joined(separator: "\n\n")
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Install")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else {
+                busyID = nil
+                return
+            }
+            _ = try await client.installNativePlugin(path: url.path)
+            await load()
+        } catch {
+            self.error = error.localizedDescription
+        }
+        busyID = nil
     }
 
     private func connect(_ connector: NativeAccountConnector) async {

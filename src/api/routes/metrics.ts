@@ -908,7 +908,7 @@ async function buildMetricsSnapshot() {
     metricsSnapshotValue(availability, "providerPlans", null, () =>
       enrichProviderPlanStatusWithLiveUsage(getProviderPlanStatus())
     ),
-    metricsSnapshotValue(availability, "sessions", null, () => listSessionRuntimeMetrics()),
+    metricsSnapshotValue(availability, "sessions", null, () => listSessionRuntimeMetrics(1, 10)),
   ]);
 
   return {
@@ -969,7 +969,10 @@ export const metricsRoutes: Record<string, RouteHandler> = {
   "GET /api/metrics/insights": () => buildMetricsInsights(),
   "GET /api/metrics/token-analysis": () => buildMetricsTokenAnalysis(),
   "GET /api/metrics/sessions": (_body, params) =>
-    listSessionRuntimeMetrics(Number(params?.limit) || 200),
+    listSessionRuntimeMetrics(
+      Number(params?.page) || 1,
+      Number(params?.pageSize ?? params?.limit) || 25
+    ),
   "POST /api/metrics/track": (body) => {
     const data = body as {
       type: string;

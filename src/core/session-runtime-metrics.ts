@@ -40,6 +40,14 @@ export interface SessionRuntimeMetricsTotals {
 export interface SessionRuntimeMetrics {
   totals: SessionRuntimeMetricsTotals;
   sessions: SessionRuntimeMetricsRow[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    totalItems: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
 }
 
 interface SessionRuntimeMetricsDatabaseRow {
@@ -59,6 +67,21 @@ interface SessionRuntimeMetricsDatabaseRow {
   durationMs: number;
   firstTokenMs: number | null;
   latencyCallCount: number;
+  compactionCount: number;
+  compactedTokens: number;
+}
+
+interface SessionRuntimeMetricsTotalsDatabaseRow {
+  sessions: number;
+  inputTokens: number;
+  outputTokens: number;
+  cachedInputTokens: number;
+  cacheWriteTokens: number;
+  totalTokens: number;
+  callCount: number;
+  durationMs: number;
+  firstTokenTotal: number;
+  firstTokenCalls: number;
   compactionCount: number;
   compactedTokens: number;
 }
@@ -103,62 +126,30 @@ function runtimeRow(row: SessionRuntimeMetricsDatabaseRow): SessionRuntimeMetric
   };
 }
 
-function runtimeTotals(rows: SessionRuntimeMetricsRow[]): SessionRuntimeMetricsTotals {
-  const totals = rows.reduce(
-    (current, row) => ({
-      inputTokens: current.inputTokens + row.inputTokens,
-      outputTokens: current.outputTokens + row.outputTokens,
-      cachedInputTokens: current.cachedInputTokens + row.cachedInputTokens,
-      cacheWriteTokens: current.cacheWriteTokens + row.cacheWriteTokens,
-      totalTokens: current.totalTokens + row.totalTokens,
-      callCount: current.callCount + row.callCount,
-      durationMs: current.durationMs + row.durationMs,
-      compactionCount: current.compactionCount + row.compactionCount,
-      compactedTokens: current.compactedTokens + row.compactedTokens,
-      firstTokenTotal:
-        current.firstTokenTotal +
-        (row.firstTokenMs === null ? 0 : row.firstTokenMs * row.latencyCallCount),
-      firstTokenCalls: current.firstTokenCalls + row.latencyCallCount,
-    }),
-    {
-      inputTokens: 0,
-      outputTokens: 0,
-      cachedInputTokens: 0,
-      cacheWriteTokens: 0,
-      totalTokens: 0,
-      callCount: 0,
-      durationMs: 0,
-      compactionCount: 0,
-      compactedTokens: 0,
-      firstTokenTotal: 0,
-      firstTokenCalls: 0,
-    }
-  );
+function runtimeTotals(row: SessionRuntimeMetricsTotalsDatabaseRow): SessionRuntimeMetricsTotals {
+  const durationMs = nonNegative(row.durationMs);
+  const outputTokens = Math.round(nonNegative(row.outputTokens));
+  const firstTokenCalls = Math.round(nonNegative(row.firstTokenCalls));
   return {
-    sessions: rows.length,
-    inputTokens: totals.inputTokens,
-    outputTokens: totals.outputTokens,
-    cachedInputTokens: totals.cachedInputTokens,
-    cacheWriteTokens: totals.cacheWriteTokens,
-    totalTokens: totals.totalTokens,
-    callCount: totals.callCount,
-    durationMs: totals.durationMs,
+    sessions: Math.round(nonNegative(row.sessions)),
+    inputTokens: Math.round(nonNegative(row.inputTokens)),
+    outputTokens,
+    cachedInputTokens: Math.round(nonNegative(row.cachedInputTokens)),
+    cacheWriteTokens: Math.round(nonNegative(row.cacheWriteTokens)),
+    totalTokens: Math.round(nonNegative(row.totalTokens)),
+    callCount: Math.round(nonNegative(row.callCount)),
+    durationMs: Math.round(durationMs),
     tokensPerSecond:
-      totals.durationMs > 0
-        ? Number(((totals.outputTokens / totals.durationMs) * 1000).toFixed(2))
-        : null,
+      durationMs > 0 ? Number(((outputTokens / durationMs) * 1000).toFixed(2)) : null,
     firstTokenMs:
-      totals.firstTokenCalls > 0
-        ? Math.round(totals.firstTokenTotal / totals.firstTokenCalls)
-        : null,
-    compactionCount: totals.compactionCount,
-    compactedTokens: totals.compactedTokens,
+      firstTokenCalls > 0 ? Math.round(nonNegative(row.firstTokenTotal) / firstTokenCalls) : null,
+    compactionCount: Math.round(nonNegative(row.compactionCount)),
+    compactedTokens: Math.round(nonNegative(row.compactedTokens)),
   };
 }
 
-export function listSessionRuntimeMetrics(limit = 200): SessionRuntimeMetrics {
-  const normalizedLimit = Math.max(1, Math.min(500, Math.floor(limit)));
-  const rows = db
+function loadSessionRuntimeTotals(): SessionRuntimeMetricsTotals {
+  const row = db
     .prepare(
       `WITH usage AS (
          SELECT
@@ -173,19 +164,19 @@ export function listSessionRuntimeMetrics(limit = 200): SessionRuntimeMetrics {
              THEN CAST(json_extract(metadata, '$.durationMs') AS REAL)
              ELSE 0
            END) AS durationMs,
-           AVG(CASE
+           SUM(CASE
              WHEN json_type(metadata, '$.firstTokenMs') IN ('integer', 'real')
                AND CAST(json_extract(metadata, '$.firstTokenMs') AS REAL) > 0
              THEN CAST(json_extract(metadata, '$.firstTokenMs') AS REAL)
-           END) AS firstTokenMs,
+             ELSE 0
+           END) AS firstTokenTotal,
            SUM(CASE
              WHEN json_type(metadata, '$.firstTokenMs') IN ('integer', 'real')
                AND CAST(json_extract(metadata, '$.firstTokenMs') AS REAL) > 0
              THEN 1
              ELSE 0
-           END) AS latencyCallCount,
-           COUNT(*) AS callCount,
-           MAX(rowid) AS latestRowId
+           END) AS firstTokenCalls,
+           COUNT(*) AS callCount
          FROM metrics
          WHERE type = 'token_usage_by_session'
          GROUP BY key
@@ -194,6 +185,79 @@ export function listSessionRuntimeMetrics(limit = 200): SessionRuntimeMetrics {
          FROM metrics
          WHERE type = 'context_compaction'
          GROUP BY key
+       )
+       SELECT
+         COUNT(*) AS sessions,
+         COALESCE(SUM(usage.inputTokens), 0) AS inputTokens,
+         COALESCE(SUM(usage.outputTokens), 0) AS outputTokens,
+         COALESCE(SUM(usage.cachedInputTokens), 0) AS cachedInputTokens,
+         COALESCE(SUM(usage.cacheWriteTokens), 0) AS cacheWriteTokens,
+         COALESCE(SUM(usage.totalTokens), 0) AS totalTokens,
+         COALESCE(SUM(usage.callCount), 0) AS callCount,
+         COALESCE(SUM(usage.durationMs), 0) AS durationMs,
+         COALESCE(SUM(usage.firstTokenTotal), 0) AS firstTokenTotal,
+         COALESCE(SUM(usage.firstTokenCalls), 0) AS firstTokenCalls,
+         COALESCE(SUM(compaction.compactionCount), 0) AS compactionCount,
+         COALESCE(SUM(compaction.compactedTokens), 0) AS compactedTokens
+       FROM usage
+       JOIN chat_sessions cs ON cs.id = usage.sessionId
+       LEFT JOIN compaction ON compaction.sessionId = usage.sessionId`
+    )
+    .get() as SessionRuntimeMetricsTotalsDatabaseRow;
+  return runtimeTotals(row);
+}
+
+export function listSessionRuntimeMetrics(page = 1, pageSize = 25): SessionRuntimeMetrics {
+  const normalizedPageSize = Math.max(5, Math.min(100, Math.floor(pageSize)));
+  const totals = loadSessionRuntimeTotals();
+  const totalPages = Math.max(1, Math.ceil(totals.sessions / normalizedPageSize));
+  const normalizedPage = Math.max(1, Math.min(totalPages, Math.floor(page)));
+  const offset = (normalizedPage - 1) * normalizedPageSize;
+  const rows = db
+    .prepare(
+      `WITH selected AS (
+         SELECT DISTINCT metrics.key AS sessionId
+         FROM metrics
+         JOIN chat_sessions cs ON cs.id = metrics.key
+         WHERE metrics.type = 'token_usage_by_session'
+         ORDER BY cs.updated_at DESC
+         LIMIT ? OFFSET ?
+       ), usage AS (
+         SELECT
+           metrics.key AS sessionId,
+           SUM(CAST(json_extract(metrics.metadata, '$.inputTokens') AS REAL)) AS inputTokens,
+           SUM(CAST(json_extract(metrics.metadata, '$.outputTokens') AS REAL)) AS outputTokens,
+           SUM(CAST(json_extract(metrics.metadata, '$.cachedInputTokens') AS REAL)) AS cachedInputTokens,
+           SUM(CAST(json_extract(metrics.metadata, '$.cacheWriteTokens') AS REAL)) AS cacheWriteTokens,
+           SUM(metrics.value) AS totalTokens,
+           SUM(CASE
+             WHEN CAST(json_extract(metrics.metadata, '$.durationMs') AS REAL) > 0
+             THEN CAST(json_extract(metrics.metadata, '$.durationMs') AS REAL)
+             ELSE 0
+           END) AS durationMs,
+           AVG(CASE
+             WHEN json_type(metrics.metadata, '$.firstTokenMs') IN ('integer', 'real')
+               AND CAST(json_extract(metrics.metadata, '$.firstTokenMs') AS REAL) > 0
+             THEN CAST(json_extract(metrics.metadata, '$.firstTokenMs') AS REAL)
+           END) AS firstTokenMs,
+           SUM(CASE
+             WHEN json_type(metrics.metadata, '$.firstTokenMs') IN ('integer', 'real')
+               AND CAST(json_extract(metrics.metadata, '$.firstTokenMs') AS REAL) > 0
+             THEN 1
+             ELSE 0
+           END) AS latencyCallCount,
+           COUNT(*) AS callCount,
+           MAX(metrics.rowid) AS latestRowId
+         FROM metrics
+         JOIN selected ON selected.sessionId = metrics.key
+         WHERE metrics.type = 'token_usage_by_session'
+         GROUP BY metrics.key
+       ), compaction AS (
+         SELECT metrics.key AS sessionId, COUNT(*) AS compactionCount, SUM(metrics.value) AS compactedTokens
+         FROM metrics
+         JOIN selected ON selected.sessionId = metrics.key
+         WHERE metrics.type = 'context_compaction'
+         GROUP BY metrics.key
        )
        SELECT
          cs.id AS sessionId,
@@ -218,10 +282,20 @@ export function listSessionRuntimeMetrics(limit = 200): SessionRuntimeMetrics {
        JOIN chat_sessions cs ON cs.id = usage.sessionId
        JOIN metrics latest ON latest.rowid = usage.latestRowId
        LEFT JOIN compaction ON compaction.sessionId = usage.sessionId
-       ORDER BY cs.updated_at DESC
-       LIMIT ?`
+       ORDER BY cs.updated_at DESC`
     )
-    .all(normalizedLimit) as SessionRuntimeMetricsDatabaseRow[];
+    .all(normalizedPageSize, offset) as SessionRuntimeMetricsDatabaseRow[];
   const sessions = rows.map(runtimeRow);
-  return { totals: runtimeTotals(sessions), sessions };
+  return {
+    totals,
+    sessions,
+    pagination: {
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+      totalPages,
+      totalItems: totals.sessions,
+      hasNextPage: normalizedPage < totalPages,
+      hasPreviousPage: normalizedPage > 1,
+    },
+  };
 }

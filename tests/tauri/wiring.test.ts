@@ -53,10 +53,13 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain('sidecar("cybara")');
     expect(mainRs).toContain('.args(["start"])');
     expect(mainRs).not.toContain('.args(["start", "--enable-terminal"])');
-    expect(mainRs).toContain('const CYBARA_SERVER_URL: &str = "http://localhost:4269"');
+    expect(mainRs).toContain('const CYBARA_SERVER_URL: &str = "http://127.0.0.1:4269"');
     expect(mainRs).toContain("unwrap_or_else(|| CYBARA_SERVER_URL.parse().unwrap())");
     expect(mainRs).not.toContain('.env("CYBARA_HOST", "127.0.0.1")');
     expect(mainRs).toContain("child.kill()");
+    expect(mainRs).toContain("get_gateway_startup_status");
+    expect(mainRs).toContain('log::warn!(target: "cybara::sidecar"');
+    expect(mainRs).not.toContain('expect("Failed to spawn Cybara sidecar")');
   });
 
   test("main.rs exposes a narrow desktop API key reader command", () => {
@@ -67,7 +70,9 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("fn read_cybara_api_key()");
     expect(mainRs).toContain("tauri::generate_handler![");
     expect(mainRs).toContain("read_cybara_api_key,");
-    expect(mainRs).toContain("set_update_available");
+    expect(mainRs).toContain("desktop_update::get_desktop_update_state");
+    expect(mainRs).toContain("desktop_update::check_desktop_update");
+    expect(mainRs).toContain("desktop_update::install_desktop_update");
     expect(mainRs).toContain('std::env::var("CYBARA_API_KEY")');
     expect(mainRs).toContain('std::env::var_os("CYBARA_HOME")');
     expect(mainRs).toContain('std::env::var_os("USERPROFILE")');
@@ -85,6 +90,7 @@ describe("Tauri wiring", () => {
     expect(mainRs).toContain("SidecarState(std::sync::Mutex::new(None))");
     expect(mainRs).toContain("*guard = Some(child)");
     expect(mainRs).toContain("wait_for_server_ready(Duration::from_secs(25))");
+    expect(mainRs).toContain("GatewayStartupStatus::failed");
     expect(mainRs).toContain("tauri::WindowEvent::CloseRequested { api, .. }");
     expect(mainRs).toContain("api.prevent_close()");
     expect(mainRs).toContain("window.hide()");

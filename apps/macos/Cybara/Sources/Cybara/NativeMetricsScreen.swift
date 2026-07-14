@@ -3,6 +3,16 @@ import SwiftUI
 struct NativeSessionRuntimeMetrics: Decodable, Sendable {
     let totals: NativeSessionRuntimeTotals
     let sessions: [NativeSessionRuntimeRow]
+    let pagination: NativeSessionRuntimePagination?
+}
+
+struct NativeSessionRuntimePagination: Decodable, Sendable {
+    let page: Int
+    let pageSize: Int
+    let totalPages: Int
+    let totalItems: Int
+    let hasNextPage: Bool
+    let hasPreviousPage: Bool
 }
 
 struct NativeSessionRuntimeTotals: Decodable, Sendable {
@@ -32,8 +42,8 @@ struct NativeSessionRuntimeRow: Decodable, Identifiable, Sendable {
 }
 
 extension GatewayClient {
-    func metricsSessions() async throws -> NativeSessionRuntimeMetrics {
-        let data = try await request("api/metrics/sessions")
+    func metricsSessions(page: Int = 1, pageSize: Int = 20) async throws -> NativeSessionRuntimeMetrics {
+        let data = try await request("api/metrics/sessions?page=\(page)&pageSize=\(pageSize)")
         return try JSONDecoder().decode(NativeSessionRuntimeMetrics.self, from: data)
     }
 }
@@ -47,6 +57,8 @@ struct MetricsScreen: View {
     @State private var loading = false
     @State private var error: String?
     @State private var lastUpdated: Date?
+    @State private var sessionRuntime: NativeSessionRuntimeMetrics?
+    @State private var sessionRuntimeLoading = false
 
     private let summaryColumns = [
         GridItem(.adaptive(minimum: 172, maximum: 260), spacing: 12, alignment: .top),
@@ -136,7 +148,14 @@ struct MetricsScreen: View {
 
         MetricsInsightStrip(snapshot: snapshot, accent: accentTint)
 
-        NativeSessionRuntimeTable(metrics: snapshot.sessionRuntime, accent: accentTint)
+        NativeSessionRuntimeTable(
+            metrics: sessionRuntime,
+            accent: accentTint,
+            loading: sessionRuntimeLoading,
+            onPageChange: { page in
+                Task { await loadSessionRuntime(page: page) }
+            }
+        )
 
         MetricsResponsiveColumns {
             MetricsPanel(
@@ -456,9 +475,9 @@ struct MetricsScreen: View {
                 providers: await providersFetch,
                 modelMetrics: await modelsFetch,
                 insights: await insightsFetch,
-                providerPlans: await providerPlansFetch,
-                sessionRuntime: await sessionRuntimeFetch
+                providerPlans: await providerPlansFetch
             )
+            sessionRuntime = await sessionRuntimeFetch
             lastUpdated = Date()
             error = nil
         } catch {
@@ -468,6 +487,13 @@ struct MetricsScreen: View {
 
     private func loadOptional<T>(_ operation: () async throws -> T) async -> T? {
         try? await operation()
+    }
+
+    private func loadSessionRuntime(page: Int) async {
+        guard !sessionRuntimeLoading else { return }
+        sessionRuntimeLoading = true
+        defer { sessionRuntimeLoading = false }
+        sessionRuntime = try? await client.metricsSessions(page: page)
     }
 }
 
@@ -483,7 +509,6 @@ private struct NativeMetricsSnapshot {
     let modelMetrics: ModelMetrics?
     let insights: MetricsInsights?
     let providerPlans: ProviderPlanStatusResponse?
-    let sessionRuntime: NativeSessionRuntimeMetrics?
 
     var totalTokens: Int { overview.tokenUsage?.total ?? 0 }
     var inputTokens: Int { overview.tokenUsage?.input ?? 0 }
@@ -595,6 +620,8 @@ private struct NativeMetricsSnapshot {
 private struct NativeSessionRuntimeTable: View {
     let metrics: NativeSessionRuntimeMetrics?
     let accent: Color
+    let loading: Bool
+    let onPageChange: (Int) -> Void
 
     var body: some View {
         MetricsPanel(
@@ -635,6 +662,26 @@ private struct NativeSessionRuntimeTable: View {
                     .frame(minWidth: 920)
                 }
                 .frame(maxHeight: 380)
+                if let pagination = metrics.pagination, pagination.totalPages > 1 {
+                    HStack {
+                        Text("Page \(pagination.page) of \(pagination.totalPages) · \(pagination.totalItems) chats")
+                            .font(.system(size: 11, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button {
+                            onPageChange(pagination.page - 1)
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        .disabled(!pagination.hasPreviousPage || loading)
+                        Button {
+                            onPageChange(pagination.page + 1)
+                        } label: {
+                            Image(systemName: "chevron.right")
+                        }
+                        .disabled(!pagination.hasNextPage || loading)
+                    }
+                }
             } else {
                 MetricsEmptyState("No chat runtime metrics available")
             }

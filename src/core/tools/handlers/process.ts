@@ -272,8 +272,8 @@ export async function handleExec(
 
     const spawnEnv =
       plan.provider === "podman" || plan.provider === "docker"
-        ? { ...process.env, PATH: fullEnv.PATH }
-        : fullEnv;
+        ? { ...process.env, ...plan.env, PATH: fullEnv.PATH }
+        : { ...fullEnv, ...plan.env };
     if (args.background === true) {
       const proc = Bun.spawn(plan.command, {
         cwd: plan.cwd,
@@ -390,7 +390,7 @@ export async function handleExecAsync(
     command: plan.command,
     displayCommand: command,
     cwd: plan.cwd,
-    env: { ...process.env },
+    env: { ...process.env, ...plan.env },
     timeoutSeconds: 300,
     signal: context?.abortSignal,
     toolName: "exec-async",
@@ -578,6 +578,7 @@ export async function handleGit(
     cwd: plan.cwd,
     env: {
       ...baseEnv,
+      ...plan.env,
       GIT_TERMINAL_PROMPT: "0",
       GCM_INTERACTIVE: "Never",
     },

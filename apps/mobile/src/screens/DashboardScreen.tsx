@@ -798,6 +798,7 @@ export function DashboardScreen({
           {!detailRoute && activeTab === "metrics" ? (
             <MetricsPanel
               accentColor={accentColor}
+              api={api}
               counts={counts}
               metrics={metrics}
               metricsError={metricsError}

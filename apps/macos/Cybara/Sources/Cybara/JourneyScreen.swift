@@ -52,6 +52,8 @@ struct GatewayJourneyCounts: Decodable, Hashable {
 struct GatewayJourney: Decodable, Hashable {
     let events: [GatewayJourneyEvent]
     let counts: GatewayJourneyCounts
+    let firstAt: String?
+    let lastAt: String?
 }
 
 private func journeyRelativeTime(_ ms: Double) -> String {
@@ -78,6 +80,7 @@ private func journeyDayKey(_ ms: Double) -> String {
 
 struct JourneyScreen: View {
     let client: GatewayClient
+    @Environment(\.cybaraAccent) private var accentTint
     @State private var journey: GatewayJourney?
     @State private var loaded = false
     @State private var loading = false
@@ -117,11 +120,17 @@ struct JourneyScreen: View {
                 } else if let error {
                     LoadFailedView(message: error) { Task { await load(force: true) } }
                 } else if let journey {
-                    JourneyStatsRow(counts: journey.counts)
+                    JourneyStatsRow(
+                        counts: journey.counts,
+                        recentCount: journey.events.filter {
+                            $0.createdAtMs >= Date().addingTimeInterval(-604800).timeIntervalSince1970 * 1000
+                        }.count,
+                        accentTint: accentTint
+                    )
                     if grouped.isEmpty {
                         JourneyEmptyState()
                     } else {
-                        JourneyTimeline(groups: grouped)
+                        JourneyTimeline(groups: grouped, accentTint: accentTint)
                     }
                 } else {
                     JourneyEmptyState()
@@ -155,32 +164,34 @@ struct JourneyScreen: View {
 
 private struct JourneyStatsRow: View {
     let counts: GatewayJourneyCounts
+    let recentCount: Int
+    let accentTint: Color
 
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 12) {
-                stat("Skills", counts.skills, "books.vertical", .cyan)
-                stat("Memories", counts.memories, "brain", .indigo)
-                stat("Total Learned", counts.total, "sparkles", .orange)
+                stat("Skills", counts.skills, "books.vertical")
+                stat("Memories", counts.memories, "brain")
+                stat("This Week", recentCount, "sparkles")
             }
             LazyVGrid(
                 columns: [GridItem(.adaptive(minimum: 150), spacing: 12, alignment: .top)],
                 spacing: 12
             ) {
-                stat("Skills", counts.skills, "books.vertical", .cyan)
-                stat("Memories", counts.memories, "brain", .indigo)
-                stat("Total Learned", counts.total, "sparkles", .orange)
+                stat("Skills", counts.skills, "books.vertical")
+                stat("Memories", counts.memories, "brain")
+                stat("This Week", recentCount, "sparkles")
             }
         }
     }
 
-    private func stat(_ label: String, _ value: Int, _ symbol: String, _ tone: Color) -> some View {
+    private func stat(_ label: String, _ value: Int, _ symbol: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: symbol)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(tone)
+                .foregroundStyle(accentTint)
                 .frame(width: 30, height: 30)
-                .background(Circle().fill(tone.opacity(0.14)))
+                .background(Circle().fill(accentTint.opacity(0.14)))
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                     .font(.system(size: 10, weight: .semibold, design: .rounded))
@@ -199,11 +210,12 @@ private struct JourneyStatsRow: View {
 
 private struct JourneyTimeline: View {
     let groups: [(day: String, events: [GatewayJourneyEvent])]
+    let accentTint: Color
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             ForEach(groups, id: \.day) { group in
-                JourneyDaySection(day: group.day, events: group.events)
+                JourneyDaySection(day: group.day, events: group.events, accentTint: accentTint)
             }
         }
     }
@@ -212,6 +224,7 @@ private struct JourneyTimeline: View {
 private struct JourneyDaySection: View {
     let day: String
     let events: [GatewayJourneyEvent]
+    let accentTint: Color
 
     var body: some View {
         GlassCard {
@@ -221,7 +234,11 @@ private struct JourneyDaySection: View {
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(events.enumerated()), id: \.element.id) { index, event in
-                        JourneyTimelineRow(event: event, isLast: index == events.count - 1)
+                        JourneyTimelineRow(
+                            event: event,
+                            isLast: index == events.count - 1,
+                            accentTint: accentTint
+                        )
                     }
                 }
             }
@@ -232,9 +249,9 @@ private struct JourneyDaySection: View {
 private struct JourneyTimelineRow: View {
     let event: GatewayJourneyEvent
     let isLast: Bool
+    let accentTint: Color
 
     private var isSkill: Bool { event.kind == "skill" }
-    private var tone: Color { isSkill ? .cyan : .indigo }
     private var symbol: String { isSkill ? "books.vertical" : "brain" }
     private var label: String { isSkill ? "Skill" : "Memory" }
 
@@ -243,11 +260,11 @@ private struct JourneyTimelineRow: View {
             VStack(spacing: 0) {
                 ZStack {
                     Circle()
-                        .fill(tone.opacity(0.18))
+                        .fill(accentTint.opacity(0.18))
                         .frame(width: 24, height: 24)
                     Image(systemName: symbol)
                         .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(tone)
+                        .foregroundStyle(accentTint)
                 }
                 if !isLast {
                     Rectangle()
@@ -281,7 +298,7 @@ private struct JourneyTimelineRow: View {
                 HStack(spacing: 7) {
                     Text(label)
                         .font(.system(size: 10, weight: .semibold, design: .rounded))
-                        .foregroundStyle(tone)
+                        .foregroundStyle(accentTint)
                     if !event.category.isEmpty {
                         Text(event.category)
                             .font(.system(size: 10, weight: .medium, design: .rounded))

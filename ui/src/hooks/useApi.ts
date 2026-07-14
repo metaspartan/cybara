@@ -1500,12 +1500,26 @@ export interface SessionRuntimeMetrics {
     compactionCount: number;
     compactedTokens: number;
   }>;
+  pagination?: {
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    totalItems: number;
+    hasNextPage: boolean;
+    hasPreviousPage: boolean;
+  };
 }
 
-export function useMetricsSessions(options: MetricsQueryControlOptions = {}) {
+export function useMetricsSessions(
+  page: number,
+  pageSize: number,
+  options: MetricsQueryControlOptions = {}
+) {
   return useQuery({
-    queryKey: ["metrics", "sessions"],
-    queryFn: () => fetchApi<SessionRuntimeMetrics>("/metrics/sessions"),
+    queryKey: ["metrics", "sessions", page, pageSize],
+    queryFn: () =>
+      fetchApi<SessionRuntimeMetrics>(`/metrics/sessions?page=${page}&pageSize=${pageSize}`),
+    placeholderData: (previous) => previous,
     ...METRICS_QUERY_OPTIONS,
     ...options,
   });

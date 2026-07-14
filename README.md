@@ -323,7 +323,7 @@ The Plugins screen brings installed skill bundles, MCP services, and account app
 
 Plugins can be discovered from bundled, local, and workspace directories. Additional services can be connected through HTTPS or trusted local MCP servers.
 
-CLI: `cybara plugin list`, `cybara plugin install <path>`, `cybara plugin apps`, `cybara plugin configure <app-id> --client-id <id>`, `cybara plugin connect <app-id>`
+CLI: `cybara plugin list`, `cybara plugin install <folder-or-zip>`, `cybara plugin apps`, `cybara plugin configure <app-id> --client-id <id>`, `cybara plugin connect <app-id>`
 
 ---
 

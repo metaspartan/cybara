@@ -56,6 +56,8 @@ describe("mobile: iOS-style detail layout", () => {
     expect(journeyPanel).toContain("styles.journeyStatGrid");
     expect(journeyPanel).toContain("styles.journeyEventRow");
     expect(journeyPanel).toContain('label="Loading journey"');
+    expect(journeyPanel).toContain("{ color: accentColor }");
+    expect(journeyPanel).not.toContain("colors.cyan");
     expect(gatewayPanel).toContain('<SettingsSection title="Gateway runtime">');
     expect(gatewayPanel).toContain('<SettingsSection title="Storage">');
     expect(gatewayPanel).toContain('<SettingsSection title="Security">');

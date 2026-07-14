@@ -520,6 +520,23 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
       }
 
       if (pathname.startsWith("/api/")) {
+        const contentLength = Number(req.headers.get("content-length") || "0");
+        if (pathname.startsWith("/api/plugins/") && contentLength > 48 * 1024 * 1024) {
+          return new Response(
+            JSON.stringify({
+              error: "Plugin bundle upload is too large",
+              code: "PAYLOAD_TOO_LARGE",
+              path: pathname,
+            }),
+            {
+              status: 413,
+              headers: {
+                "Content-Type": "application/json",
+                ...commonSecurityHeaders,
+              },
+            }
+          );
+        }
         let body: unknown;
         let rawBody: string | undefined;
         let malformedBody = false;
@@ -530,6 +547,22 @@ function createGatewayServer(hostname: string): ReturnType<typeof Bun.serve<WsDa
             text = await req.text();
           } catch {
             text = "";
+          }
+          if (pathname.startsWith("/api/plugins/") && text.length > 48 * 1024 * 1024) {
+            return new Response(
+              JSON.stringify({
+                error: "Plugin bundle upload is too large",
+                code: "PAYLOAD_TOO_LARGE",
+                path: pathname,
+              }),
+              {
+                status: 413,
+                headers: {
+                  "Content-Type": "application/json",
+                  ...commonSecurityHeaders,
+                },
+              }
+            );
           }
           if (needsRaw) rawBody = text;
           if (text) {

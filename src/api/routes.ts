@@ -141,10 +141,12 @@ import { getVectorStore } from "../core/memory/vector-store";
 import { discoverProviderModels } from "../core/model-discovery";
 import { cybaraDir, homeDir as runtimeHomeDir } from "../core/paths";
 import {
-  installLocalPluginFromPath,
+  installPluginFromPayload,
   listInstalledPlugins,
+  parsePluginInstallPayload,
   uninstallLocalPlugin,
   validatePluginAtPath,
+  validatePluginInstallPayload,
 } from "../core/plugins";
 import {
   enrichProviderPlanStatusWithLiveUsage,
@@ -2778,12 +2780,11 @@ const routes: Record<string, RouteHandler> = {
     }
     return validatePluginAtPath(targetPath);
   },
-  "POST /api/plugins/install": (body) => {
-    const { path } = body as { path?: string };
-    if (!path || !path.trim()) {
-      throw new Error("Plugin path is required");
-    }
-    const plugin = installLocalPluginFromPath(path);
+  "POST /api/plugins/validate": async (body) => {
+    return await validatePluginInstallPayload(parsePluginInstallPayload(body));
+  },
+  "POST /api/plugins/install": async (body) => {
+    const plugin = await installPluginFromPayload(parsePluginInstallPayload(body));
     clearSkillsCache();
     return {
       success: true,

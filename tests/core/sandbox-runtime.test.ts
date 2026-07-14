@@ -85,6 +85,22 @@ describe("sandbox runtime planning", () => {
     }
   });
 
+  test("uses an authorized temporary directory for Apple sandbox commands", () => {
+    if (process.platform !== "darwin" || process.arch !== "arm64") return;
+    const available = Bun.spawnSync(["sh", "-lc", "command -v sandbox-exec >/dev/null 2>&1"]);
+    if (available.exitCode !== 0) return;
+    const previous = config.getSandboxRuntime();
+    try {
+      config.setSandboxRuntime({ enabled: true, provider: "apple_sandbox", network: "deny" });
+      const plan = buildSandboxedShellPlan({ command: "echo hello", workdir: process.cwd() });
+      expect(plan.env.TMPDIR).toBe("/tmp");
+      expect(plan.env.TMP).toBe("/tmp");
+      expect(plan.env.TEMP).toBe("/tmp");
+    } finally {
+      config.setSandboxRuntime(previous);
+    }
+  });
+
   test("reports provider diagnostics and resolution details", () => {
     const previous = config.getSandboxRuntime();
     try {

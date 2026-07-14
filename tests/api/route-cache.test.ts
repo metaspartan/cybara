@@ -68,6 +68,22 @@ describe("route response cache", () => {
     expect(await run()).toEqual({ calls: 2 });
   });
 
+  test("isolates cached pages by normalized query parameters", async () => {
+    const key = `GET /test/${crypto.randomUUID()}`;
+    routeKeys.add(key);
+    let calls = 0;
+    const run = createCachedRouteHandler(key, 10_000, (_body, params) => ({
+      call: ++calls,
+      page: params?.page,
+    }));
+
+    expect(await run(undefined, { pageSize: "20", page: "1" })).toEqual({ call: 1, page: "1" });
+    expect(await run(undefined, { page: "1", pageSize: "20" })).toEqual({ call: 1, page: "1" });
+    expect(await run(undefined, { page: "2", pageSize: "20" })).toEqual({ call: 2, page: "2" });
+    invalidateCachedRoute(key);
+    expect(await run(undefined, { page: "2", pageSize: "20" })).toEqual({ call: 3, page: "2" });
+  });
+
   test("does not restore an invalidated in-flight response", async () => {
     let calls = 0;
     const { key, run } = cachedHandler(10_000, async () => {
