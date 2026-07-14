@@ -393,6 +393,7 @@ export class NearbyService {
           type: NEARBY_SERVICE_TYPE,
           protocol: "tcp",
           port: settings.port,
+          probe: false,
           txt: {
             protocol: NEARBY_PROTOCOL,
             id: identity.id,

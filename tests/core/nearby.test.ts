@@ -135,6 +135,47 @@ describe("nearby network and settings boundaries", () => {
     }
   });
 
+  test("keeps advertising when a same-named peer runs on the same host (no probe self-conflict)", async () => {
+    const previous = getNearbySettings();
+    const probeA = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
+    const portA = probeA.port;
+    probeA.stop(true);
+    const probeB = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
+    const portB = probeB.port;
+    probeB.stop(true);
+    const serviceA = new NearbyService();
+    const serviceB = new NearbyService();
+    try {
+      await serviceA.configure({
+        enabled: true,
+        displayName: "Duplicate Name",
+        port: portA,
+        discoveryMinutes: 5,
+        autoAdvertise: true,
+      });
+      await serviceB.configure({
+        enabled: true,
+        displayName: "Duplicate Name",
+        port: portB,
+        discoveryMinutes: 5,
+        autoAdvertise: true,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      expect((await serviceA.status()).advertising).toBe(true);
+      expect((await serviceB.status()).advertising).toBe(true);
+      const [infoA, infoB] = await Promise.all([
+        fetch(`http://127.0.0.1:${portA}/v1/info`, { signal: AbortSignal.timeout(3000) }),
+        fetch(`http://127.0.0.1:${portB}/v1/info`, { signal: AbortSignal.timeout(3000) }),
+      ]);
+      expect(infoA.status).toBe(200);
+      expect(infoB.status).toBe(200);
+    } finally {
+      serviceA.stop();
+      serviceB.stop();
+      setNearbySettings(previous);
+    }
+  });
+
   test("stays private until made discoverable when auto-advertise is off", async () => {
     const previous = getNearbySettings();
     const portProbe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
