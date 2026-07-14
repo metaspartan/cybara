@@ -1,13 +1,18 @@
-import { KokoroTTS } from "../node_modules/kokoro-js/dist/kokoro.js";
-import { env as transformersEnv } from "../node_modules/kokoro-js/node_modules/@huggingface/transformers/dist/transformers.node.mjs";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const models = new Map();
 const transcribers = new Map();
 const progressByRequest = new Map();
 const cacheDir = process.env.CYBARA_SPEECH_CACHE_DIR?.trim();
+const resourceDir = process.env.CYBARA_RESOURCE_DIR?.trim();
 
 if (!cacheDir) throw new Error("Packaged speech runtime is not configured");
-transformersEnv.cacheDir = cacheDir;
+if (!resourceDir) throw new Error("Packaged speech runtime resource directory is not configured");
+
+function resolveSpeechModule(relativePath) {
+  return pathToFileURL(join(resourceDir, relativePath)).href;
+}
 
 function errorMessage(error) {
   if (error instanceof Error && error.message.trim()) return error.message;
@@ -39,9 +44,31 @@ function sendProgress(id, event) {
   send({ id, type: "progress", progress });
 }
 
+async function loadKokoroRuntime() {
+  const [{ KokoroTTS }, { env: transformersEnv }] = await Promise.all([
+    import(resolveSpeechModule("node_modules/kokoro-js/dist/kokoro.js")),
+    import(
+      resolveSpeechModule(
+        "node_modules/kokoro-js/node_modules/@huggingface/transformers/dist/transformers.node.mjs"
+      )
+    ),
+  ]);
+  transformersEnv.cacheDir = cacheDir;
+  return KokoroTTS;
+}
+
+async function loadTransformersRuntime() {
+  const transformers = await import(
+    resolveSpeechModule("node_modules/@huggingface/transformers/dist/transformers.node.mjs")
+  );
+  transformers.env.cacheDir = cacheDir;
+  return transformers;
+}
+
 async function loadModel(request) {
   const ready = models.get(request.model);
   if (ready) return ready;
+  const KokoroTTS = await loadKokoroRuntime();
   const model = await KokoroTTS.from_pretrained(request.model, {
     dtype: request.dtype,
     device: "cpu",
@@ -54,10 +81,7 @@ async function loadModel(request) {
 async function loadTranscriber(request) {
   const ready = transcribers.get(request.model);
   if (ready) return ready;
-  const transformers = await import(
-    "../node_modules/@huggingface/transformers/dist/transformers.node.mjs"
-  );
-  transformers.env.cacheDir = cacheDir;
+  const transformers = await loadTransformersRuntime();
   const transcriber = await transformers.pipeline(
     "automatic-speech-recognition",
     request.model,

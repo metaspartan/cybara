@@ -126,6 +126,8 @@
     "js-yaml": "5.2.0",
     "lodash": "4.18.1",
     "minimatch": "5.1.8",
+    "onnxruntime-common": "1.24.3",
+    "onnxruntime-node": "1.24.3",
     "path-to-regexp": "8.4.2",
     "protobufjs": "8.6.5",
     "qs": "6.15.3",

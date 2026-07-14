@@ -293,6 +293,48 @@ function copySharpRuntime(targetNodeModulesDir: string, runtimeTarget: RuntimeTa
   return true;
 }
 
+function installSharedOnnxRuntime(
+  targetNodeModulesDir: string,
+  runtimeTarget: RuntimeTarget
+): string | null {
+  copyPackageJson("onnxruntime-common", targetNodeModulesDir);
+  copyPackageDirectory("onnxruntime-common", "dist", targetNodeModulesDir, {
+    omitSourceMaps: true,
+  });
+
+  copyPackageJson("onnxruntime-web", targetNodeModulesDir);
+  copyPackageDirectory("onnxruntime-web", "dist", targetNodeModulesDir, { omitSourceMaps: true });
+
+  return copyOnnxRuntimeNodeRuntime(targetNodeModulesDir, runtimeTarget);
+}
+
+function installSharedOnnxRuntimeAt(
+  targetNodeModulesDir: string,
+  runtimeTarget: RuntimeTarget
+): string | null {
+  const sourceOnnxRoot = join(NODE_MODULES_ROOT, "onnxruntime-node");
+  if (!existsSync(sourceOnnxRoot)) return null;
+
+  copyPackageFromRoot(NODE_MODULES_ROOT, "onnxruntime-common", targetNodeModulesDir, ["dist"]);
+  copyPackageFromRoot(NODE_MODULES_ROOT, "onnxruntime-web", targetNodeModulesDir, ["dist"]);
+  const nativeDir = copyOnnxRuntimeNodeFromRoot(sourceOnnxRoot, targetNodeModulesDir, runtimeTarget);
+  if (!nativeDir) return null;
+
+  copyPackageFromRoot(
+    NODE_MODULES_ROOT,
+    "onnxruntime-common",
+    join(targetNodeModulesDir, "onnxruntime-node", "node_modules"),
+    ["dist"]
+  );
+  copyPackageFromRoot(
+    NODE_MODULES_ROOT,
+    "onnxruntime-common",
+    join(targetNodeModulesDir, "onnxruntime-web", "node_modules"),
+    ["dist"]
+  );
+  return nativeDir;
+}
+
 export function copyTransformersRuntime(
   targetNodeModulesDir: string,
   runtimeTarget: RuntimeTarget
@@ -307,65 +349,26 @@ export function copyTransformersRuntime(
   copyPackageDirectory("kokoro-js", "voices", targetNodeModulesDir);
   copyPackageFromRoot(NODE_MODULES_ROOT, "phonemizer", targetNodeModulesDir, ["dist"]);
 
-  const kokoroTransformersModules = join(
-    NODE_MODULES_ROOT,
-    "kokoro-js",
-    "node_modules",
-    "@huggingface",
-    "transformers",
-    "node_modules"
-  );
   const kokoroNodeModules = join(NODE_MODULES_ROOT, "kokoro-js", "node_modules");
   const targetKokoroNodeModules = join(targetNodeModulesDir, "kokoro-js", "node_modules");
   copyPackageFromRoot(kokoroNodeModules, "@huggingface/transformers", targetKokoroNodeModules, [
     "dist",
   ]);
-  copyPackageFromRoot(
-    kokoroTransformersModules,
-    "onnxruntime-web",
-    join(targetKokoroNodeModules, "@huggingface", "transformers", "node_modules"),
-    ["dist"]
-  );
   const targetKokoroTransformersModules = join(
     targetKokoroNodeModules,
     "@huggingface",
     "transformers",
     "node_modules"
   );
-  copyPackageFromRoot(
-    join(kokoroTransformersModules, "onnxruntime-web", "node_modules"),
-    "onnxruntime-common",
-    join(targetKokoroTransformersModules, "onnxruntime-web", "node_modules"),
-    ["dist"]
-  );
-  copyPackageFromRoot(
-    join(kokoroTransformersModules, "onnxruntime-node", "node_modules"),
-    "onnxruntime-common",
-    join(targetKokoroTransformersModules, "onnxruntime-node", "node_modules"),
-    ["dist"]
-  );
-  const kokoroNativeDir = copyOnnxRuntimeNodeFromRoot(
-    join(kokoroTransformersModules, "onnxruntime-node"),
+
+  const transformersNativeDir = installSharedOnnxRuntime(targetNodeModulesDir, runtimeTarget);
+  const kokoroNativeDir = installSharedOnnxRuntimeAt(
     targetKokoroTransformersModules,
     runtimeTarget
   );
 
-  copyPackageJson("onnxruntime-common", targetNodeModulesDir);
-  copyPackageDirectory("onnxruntime-common", "dist", targetNodeModulesDir, {
-    omitSourceMaps: true,
-  });
-
-  copyPackageJson("onnxruntime-web", targetNodeModulesDir);
-  copyPackageDirectory("onnxruntime-web", "dist", targetNodeModulesDir, { omitSourceMaps: true });
-
-  // The node build of Transformers.js statically imports sharp. Copy it when
-  // available for the release target; otherwise the runtime falls back to the
-  // bundled ONNX Web/WASM build. Copying the whole @img scope would ship
-  // host-architecture native libraries into cross-compiled macOS apps, which
-  // makes notarization fail on unrelated binaries.
   copySharpRuntime(targetNodeModulesDir, runtimeTarget);
 
-  const transformersNativeDir = copyOnnxRuntimeNodeRuntime(targetNodeModulesDir, runtimeTarget);
   return transformersNativeDir || kokoroNativeDir;
 }
 
@@ -441,10 +444,30 @@ exports.initOrt = initOrt;
 `.trim();
 }
 
+export function listPackagedOnnxBindingPaths(targetNodeModulesDir: string): string[] {
+  const bindings: string[] = [];
+  const rootBinding = join(targetNodeModulesDir, "onnxruntime-node", "dist", "binding.js");
+  if (existsSync(rootBinding)) bindings.push(rootBinding);
+  const nestedBinding = join(
+    targetNodeModulesDir,
+    "kokoro-js",
+    "node_modules",
+    "@huggingface",
+    "transformers",
+    "node_modules",
+    "onnxruntime-node",
+    "dist",
+    "binding.js"
+  );
+  if (existsSync(nestedBinding)) bindings.push(nestedBinding);
+  return bindings;
+}
+
 function patchCopiedOnnxBinding(targetNodeModulesDir: string): void {
-  const bindingPath = join(targetNodeModulesDir, "onnxruntime-node", "dist", "binding.js");
-  if (!existsSync(bindingPath)) return;
-  writeFileSync(bindingPath, patchedOnnxBindingSource(), "utf8");
+  const source = patchedOnnxBindingSource();
+  for (const bindingPath of listPackagedOnnxBindingPaths(targetNodeModulesDir)) {
+    writeFileSync(bindingPath, source, "utf8");
+  }
 }
 
 export async function buildSidecar(): Promise<void> {

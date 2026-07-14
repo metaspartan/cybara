@@ -11,6 +11,7 @@ import {
   getHostTargetFor,
   getRuntimeTargetFor,
   getSharpRuntimePackageNames,
+  listPackagedOnnxBindingPaths,
   patchedOnnxBindingSource,
 } from "../../scripts/build-sidecar";
 
@@ -216,7 +217,7 @@ describe("build-sidecar host target mapping", () => {
     }
   });
 
-  test("packages Kokoro with its compatible Transformers and Windows ONNX runtime", () => {
+  test("packages Kokoro and Whisper on a shared Windows ONNX runtime", () => {
     const dir = mkdtempSync(join(tmpdir(), "cybara-kokoro-package-test-"));
     try {
       const nativeDir = copyTransformersRuntime(dir, { platform: "win32", arch: "x64" });
@@ -229,9 +230,28 @@ describe("build-sidecar host target mapping", () => {
           "utf8"
         )
       ) as { version: string };
+      const rootOnnxPackage = JSON.parse(
+        readFileSync(join(dir, "onnxruntime-node", "package.json"), "utf8")
+      ) as { version: string };
+      const nestedOnnxPackage = JSON.parse(
+        readFileSync(
+          join(
+            dir,
+            "kokoro-js",
+            "node_modules",
+            "@huggingface",
+            "transformers",
+            "node_modules",
+            "onnxruntime-node",
+            "package.json"
+          ),
+          "utf8"
+        )
+      ) as { version: string };
 
       expect(kokoroPackage.version).toBe("1.2.1");
       expect(transformerPackage.version.startsWith("3.")).toBe(true);
+      expect(rootOnnxPackage.version).toBe(nestedOnnxPackage.version);
       expect(
         existsSync(
           join(
@@ -243,7 +263,7 @@ describe("build-sidecar host target mapping", () => {
             "node_modules",
             "onnxruntime-node",
             "bin",
-            "napi-v3",
+            "napi-v6",
             "win32",
             "x64",
             "onnxruntime_binding.node"
@@ -268,7 +288,8 @@ describe("build-sidecar host target mapping", () => {
           "utf8"
         )
       ) as { version: string };
-      expect(onnxCommonPackage.version).toBe("1.21.0");
+      expect(onnxCommonPackage.version).toBe(rootOnnxPackage.version);
+      expect(listPackagedOnnxBindingPaths(dir).length).toBeGreaterThanOrEqual(2);
       expect(nativeDir?.replace(/\\/g, "/")).toContain("/win32/x64");
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -282,6 +303,9 @@ describe("build-sidecar host target mapping", () => {
     );
     expect(worker).toContain("progressByRequest.get(id) === progress");
     expect(worker).toContain("progressByRequest.delete(request.id)");
+    expect(worker).toContain("resolveSpeechModule");
+    expect(worker).toContain("loadTransformersRuntime");
+    expect(worker).not.toContain('from "../node_modules/kokoro-js/dist/kokoro.js"');
   });
 
   test("stages the same UI beside every generated sidecar", () => {
