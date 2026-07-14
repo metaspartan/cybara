@@ -25,6 +25,11 @@ describe("plugin UI", () => {
     expect(page).toContain('label: "Account apps"');
     expect(page).toContain('label: "MCP services"');
     expect(page).toContain("pluginsApi.list()");
+    expect(page).toContain("pluginsApi.catalog()");
+    expect(page).toContain("pluginsApi.setEnabled(plugin.id, enabled)");
+    expect(page).toContain('placeholder="Search plugins..."');
+    expect(page).toContain('label: "Discover"');
+    expect(page).toContain("No installed plugins");
     expect(page).toContain("mcpApi.list()");
     expect(page).toContain("<AccountAppsPanel />");
     expect(page).toContain("<PluginInstallDialog");
@@ -64,9 +69,11 @@ describe("plugin UI", () => {
     ).text();
 
     expect(mobile).toContain("api.listPlugins()");
+    expect(mobile).toContain("api.setPluginEnabled(plugin.id, enabled)");
     expect(mobile).toContain("api.listMcpServers()");
     expect(macos).toContain('ScreenHeader(title: "Plugins"');
     expect(macos).toContain("client.nativePlugins()");
+    expect(macos).toContain("client.setNativePluginEnabled(plugin.id, enabled: enabled)");
     expect(macos).toContain("client.nativeMCPServers()");
     expect(macos).toContain("Choose Plugin Folder or ZIP");
     expect(macos).toContain("client.validateNativePlugin(path: url.path)");

@@ -10,7 +10,7 @@ import {
   Unplug,
 } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Switch, Text, View } from "react-native";
 import type {
   CybaraMobileApi,
   MobileAccountConnector,
@@ -150,6 +150,22 @@ export function MobilePluginsPanel({
     }
   };
 
+  const setPluginEnabled = async (plugin: MobilePlugin, enabled: boolean): Promise<void> => {
+    setBusy(plugin.id);
+    setPlugins((current) =>
+      current.map((entry) => (entry.id === plugin.id ? { ...entry, enabled } : entry))
+    );
+    try {
+      const updated = await api.setPluginEnabled(plugin.id, enabled);
+      setPlugins((current) => current.map((entry) => (entry.id === plugin.id ? updated : entry)));
+    } catch (error) {
+      setPlugins((current) => current.map((entry) => (entry.id === plugin.id ? plugin : entry)));
+      Alert.alert("Plugin update failed", error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   if (loading && connectors.length === 0 && plugins.length === 0 && services.length === 0) {
     return <ActivityIndicator color={accentColor} size="small" />;
   }
@@ -158,7 +174,9 @@ export function MobilePluginsPanel({
     <>
       <SettingsSection title="Installed plugins">
         {plugins.length === 0 ? (
-          <Text style={styles.settingsFieldHelp}>No plugin bundles are installed.</Text>
+          <Text style={styles.settingsFieldHelp}>
+            No installed plugins. Add a trusted plugin from a desktop client.
+          </Text>
         ) : (
           plugins.map((plugin) => (
             <View key={plugin.id} style={styles.listRow}>
@@ -172,6 +190,14 @@ export function MobilePluginsPanel({
                   {plugin.skillCount === 1 ? "" : "s"} · {plugin.source}
                 </Text>
               </View>
+              <Switch
+                accessibilityLabel={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.name}`}
+                disabled={busy === plugin.id}
+                ios_backgroundColor="rgba(120, 132, 143, 0.28)"
+                onValueChange={(enabled) => void setPluginEnabled(plugin, enabled)}
+                trackColor={{ false: "rgba(120, 132, 143, 0.28)", true: accentColor }}
+                value={plugin.enabled}
+              />
             </View>
           ))
         )}

@@ -27,6 +27,9 @@ struct NativePluginSummary: Decodable, Identifiable, Hashable {
     let rootDir: String
     let skillDirs: [String]
     let skillCount: Int
+    let skillNames: [String]
+    let enabled: Bool
+    let builtIn: Bool
 }
 
 struct NativePluginManifest: Decodable, Hashable {
@@ -425,6 +428,16 @@ extension GatewayClient {
         return plugin
     }
 
+    func setNativePluginEnabled(_ id: String, enabled: Bool) async throws -> NativePluginSummary {
+        let body = try JSONSerialization.data(withJSONObject: ["enabled": enabled])
+        let data = try await request("api/plugins/\(id)", method: "PUT", body: body)
+        let response = try JSONDecoder().decode(NativePluginInstallResponse.self, from: data)
+        guard response.success, let plugin = response.plugin else {
+            throw GatewayClientError.decodingFailed("api/plugins/\(id)", "Plugin update failed")
+        }
+        return plugin
+    }
+
     func nativeAccountConnectors() async throws -> [NativeAccountConnector] {
         try await nativeList("api/connectors", keys: ["connectors", "items"])
     }
@@ -809,7 +822,7 @@ struct PluginsScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                ScreenHeader(title: "Plugins", subtitle: "Skills, account apps, and MCP services")
+                ScreenHeader(title: "Plugins", subtitle: "Manage reusable skills, account apps, and MCP services")
 
                 if !loaded {
                     ProgressView().frame(maxWidth: .infinity)
@@ -880,7 +893,7 @@ struct PluginsScreen: View {
                     .disabled(busyID != nil)
                 }
                 if plugins.isEmpty {
-                    Text("No plugin bundles are installed.")
+                    Text("No installed plugins. Add a trusted folder or ZIP to get started.")
                         .font(.system(size: 12, design: .rounded))
                         .foregroundStyle(.secondary)
                 } else {
@@ -897,6 +910,13 @@ struct PluginsScreen: View {
                                     .foregroundStyle(.secondary)
                             }
                             Spacer()
+                            Toggle("", isOn: Binding(
+                                get: { plugin.enabled },
+                                set: { enabled in Task { await setPluginEnabled(plugin, enabled: enabled) } }
+                            ))
+                            .labelsHidden()
+                            .toggleStyle(.switch)
+                            .disabled(busyID == plugin.id)
                         }
                     }
                 }
@@ -1043,6 +1063,18 @@ struct PluginsScreen: View {
         ].compactMap { $0 }
         error = unavailable.isEmpty ? nil : "Unavailable: \(unavailable.joined(separator: ", "))."
         loaded = true
+    }
+
+    @MainActor
+    private func setPluginEnabled(_ plugin: NativePluginSummary, enabled: Bool) async {
+        busyID = plugin.id
+        do {
+            let updated = try await client.setNativePluginEnabled(plugin.id, enabled: enabled)
+            plugins = plugins.map { $0.id == updated.id ? updated : $0 }
+        } catch {
+            self.error = error.localizedDescription
+        }
+        busyID = nil
     }
 
     private func chooseAndInstallPlugin() async {

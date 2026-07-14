@@ -376,7 +376,24 @@ export interface InstalledPluginSummary {
   source: "bundled" | "local" | "workspace";
   rootDir: string;
   skillDirs: string[];
+  skillNames: string[];
   skillCount: number;
+  enabled: boolean;
+  builtIn: boolean;
+}
+
+export interface PluginCatalogSummary {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  tags: string[];
+  skillNames: string[];
+  installedByDefault: boolean;
+  enabledByDefault: boolean;
+  installed: boolean;
+  enabled: boolean;
 }
 
 export interface PluginManifestSummary {
@@ -403,6 +420,15 @@ export interface PluginInstallPayload {
 
 export const pluginsApi = {
   list: () => fetchApi<{ plugins: InstalledPluginSummary[] }>("/plugins"),
+  catalog: () => fetchApi<{ plugins: PluginCatalogSummary[] }>("/plugins/catalog"),
+  setEnabled: (id: string, enabled: boolean) =>
+    fetchApi<{ success: boolean; plugin: InstalledPluginSummary }>(
+      `/plugins/${encodeURIComponent(id)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
+      }
+    ),
   validate: (payload: PluginInstallPayload) =>
     fetchApi<PluginValidationSummary>("/plugins/validate", {
       method: "POST",

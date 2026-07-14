@@ -464,7 +464,10 @@ export interface MobilePlugin {
   source: "bundled" | "local" | "workspace";
   rootDir: string;
   skillDirs: string[];
+  skillNames: string[];
   skillCount: number;
+  enabled: boolean;
+  builtIn: boolean;
 }
 
 export type MobileAccountConnectorId = "google_workspace" | "microsoft_365" | "dropbox" | "notion";
@@ -2231,6 +2234,17 @@ export class CybaraMobileApi {
   async listPlugins(): Promise<MobilePlugin[]> {
     const response = await this.request<{ plugins: MobilePlugin[] }>("/api/plugins");
     return response.plugins;
+  }
+
+  async setPluginEnabled(id: string, enabled: boolean): Promise<MobilePlugin> {
+    const response = await this.request<{ success: boolean; plugin: MobilePlugin }>(
+      `/api/plugins/${encodeURIComponent(id)}`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
+      }
+    );
+    return response.plugin;
   }
 
   createMcpServer(input: {

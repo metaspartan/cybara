@@ -19,6 +19,8 @@ import type {
   PluginValidationResult,
 } from "./types";
 import { resolveCybaraHome } from "../cybara-home";
+import { getBuiltinPluginCatalog } from "./catalog";
+import { isPluginEnabled, persistPluginEnabled } from "./state";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const CYBARA_PLUGIN_MANIFEST = "cybara-plugin.json";
@@ -231,6 +233,29 @@ function pluginSourcePriority(source: CybaraPluginSource): number {
   return 1;
 }
 
+function listSkillNames(skillDirs: string[]): string[] {
+  const names = new Set<string>();
+  for (const skillDir of skillDirs) {
+    let entries: string[] = [];
+    try {
+      entries = readdirSync(skillDir);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const entryPath = join(skillDir, entry);
+      try {
+        if (statSync(entryPath).isDirectory() && existsSync(join(entryPath, "SKILL.md"))) {
+          names.add(entry);
+        }
+      } catch {
+        continue;
+      }
+    }
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
 export function loadPluginFromRoot(
   rootDir: string,
   source: CybaraPluginSource
@@ -249,11 +274,33 @@ export function loadPluginFromRoot(
     rootDir,
     source,
     skillDirs,
+    skillNames: listSkillNames(skillDirs),
+    enabled: isPluginEnabled(validation.manifest.id),
+    builtIn: false,
   };
 }
 
 export function listInstalledPlugins(options?: { workspaceDir?: string }): InstalledCybaraPlugin[] {
   const pluginsById = new Map<string, InstalledCybaraPlugin>();
+
+  for (const entry of getBuiltinPluginCatalog().filter((plugin) => plugin.installedByDefault)) {
+    pluginsById.set(entry.id, {
+      manifest: {
+        schemaVersion: 1,
+        id: entry.id,
+        name: entry.name,
+        version: entry.version,
+        description: entry.description,
+        author: entry.author,
+      },
+      rootDir: `builtin:${entry.id}`,
+      source: "bundled",
+      skillDirs: [],
+      skillNames: [...entry.skillNames],
+      enabled: isPluginEnabled(entry.id, entry.enabledByDefault),
+      builtIn: true,
+    });
+  }
 
   for (const root of getPluginRoots(options?.workspaceDir)) {
     if (!existsSync(root.path)) continue;
@@ -287,6 +334,13 @@ export function listInstalledPlugins(options?: { workspaceDir?: string }): Insta
   return Array.from(pluginsById.values()).sort((a, b) =>
     a.manifest.name.localeCompare(b.manifest.name)
   );
+}
+
+export function setPluginEnabled(pluginId: string, enabled: boolean): InstalledCybaraPlugin {
+  const plugin = listInstalledPlugins().find((entry) => entry.manifest.id === pluginId);
+  if (!plugin) throw new Error(`Plugin not found: ${pluginId}`);
+  persistPluginEnabled(pluginId, enabled);
+  return { ...plugin, enabled };
 }
 
 export function installLocalPluginFromPath(inputPath: string): InstalledCybaraPlugin {
@@ -323,3 +377,4 @@ export function uninstallLocalPlugin(pluginId: string): boolean {
 
 export * from "./install";
 export * from "./bundle";
+export * from "./catalog";

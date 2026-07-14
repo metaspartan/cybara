@@ -20,6 +20,21 @@ export type InstalledCybaraPlugin = {
   rootDir: string;
   source: CybaraPluginSource;
   skillDirs: string[];
+  skillNames: string[];
+  enabled: boolean;
+  builtIn: boolean;
+};
+
+export type PluginCatalogEntry = {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  tags: string[];
+  skillNames: string[];
+  installedByDefault: boolean;
+  enabledByDefault: boolean;
 };
 
 export type PluginValidationResult = {

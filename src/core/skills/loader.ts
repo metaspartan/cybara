@@ -2,7 +2,7 @@ import { readdir, readFile, stat, watch } from "fs/promises";
 import { existsSync } from "fs";
 import { join, resolve, dirname } from "path";
 import { homedir } from "os";
-import { getPluginRoots, listInstalledPlugins } from "../plugins";
+import { getBuiltinPluginForSkill, getPluginRoots, listInstalledPlugins } from "../plugins";
 import { getBuiltinSkillPacks } from "./builtin-packs";
 import type {
   Skill,
@@ -271,10 +271,13 @@ export async function loadAllSkills(options: {
   const dirs = getSkillDirectories(options.workspaceDir);
   const skillsByName = new Map<string, SkillEntry>();
   const plugins = listInstalledPlugins({ workspaceDir: options.workspaceDir });
+  const pluginEnabled = new Map(plugins.map((plugin) => [plugin.manifest.id, plugin.enabled]));
 
   // Curated built-in packs ship compiled into the binary (lowest priority, so
   // user/workspace skills of the same name override them).
   for (const pack of getBuiltinSkillPacks()) {
+    const owner = getBuiltinPluginForSkill(pack.skill.name);
+    if (owner && pluginEnabled.get(owner.id) === false) continue;
     const allowlist = options.config?.allowBundled;
     if (allowlist && !allowlist.includes(pack.skill.name)) continue;
     skillsByName.set(pack.skill.name, pack);
@@ -290,6 +293,8 @@ export async function loadAllSkills(options: {
 
   const bundledSkills = await scanSkillsDirectory(dirs.bundled, "bundled");
   for (const skill of bundledSkills) {
+    const owner = getBuiltinPluginForSkill(skill.skill.name);
+    if (owner && pluginEnabled.get(owner.id) === false) continue;
     const allowlist = options.config?.allowBundled;
     if (allowlist && !allowlist.includes(skill.skill.name)) {
       continue;
@@ -297,7 +302,7 @@ export async function loadAllSkills(options: {
     skillsByName.set(skill.skill.name, skill);
   }
 
-  for (const plugin of plugins.filter((entry) => entry.source === "bundled")) {
+  for (const plugin of plugins.filter((entry) => entry.source === "bundled" && entry.enabled)) {
     for (const dir of plugin.skillDirs) {
       const pluginSkills = await scanSkillsDirectory(dir, "plugin", {
         id: plugin.manifest.id,
@@ -316,7 +321,7 @@ export async function loadAllSkills(options: {
     skillsByName.set(skill.skill.name, skill);
   }
 
-  for (const plugin of plugins.filter((entry) => entry.source === "local")) {
+  for (const plugin of plugins.filter((entry) => entry.source === "local" && entry.enabled)) {
     for (const dir of plugin.skillDirs) {
       const pluginSkills = await scanSkillsDirectory(dir, "plugin", {
         id: plugin.manifest.id,
@@ -337,7 +342,7 @@ export async function loadAllSkills(options: {
     }
   }
 
-  for (const plugin of plugins.filter((entry) => entry.source === "workspace")) {
+  for (const plugin of plugins.filter((entry) => entry.source === "workspace" && entry.enabled)) {
     for (const dir of plugin.skillDirs) {
       const pluginSkills = await scanSkillsDirectory(dir, "plugin", {
         id: plugin.manifest.id,

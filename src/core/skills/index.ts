@@ -178,7 +178,7 @@ export function getSkills(): Skill[] {
     }
   }
 
-  for (const plugin of listInstalledPlugins()) {
+  for (const plugin of listInstalledPlugins().filter((entry) => entry.enabled)) {
     for (const dir of plugin.skillDirs) {
       if (!existsSync(dir)) continue;
       const entries = readdirSync(dir);

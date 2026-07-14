@@ -176,7 +176,10 @@ function applyHead(html: string, route: RoutePage): string {
 }
 
 function applyContent(html: string, route: RoutePage): string {
-  return html.replace('<div id="root"></div>', `<div id="root">${route.content}</div>`);
+  return html.replace(
+    '<div id="root"></div>',
+    `<div id="root"></div><noscript>${route.content}</noscript>`
+  );
 }
 
 async function main(): Promise<void> {

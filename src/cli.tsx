@@ -206,7 +206,10 @@ interface PluginItem {
   source: "bundled" | "local" | "workspace";
   rootDir: string;
   skillDirs: string[];
+  skillNames: string[];
   skillCount: number;
+  enabled: boolean;
+  builtIn: boolean;
 }
 
 interface AgentItem {
@@ -781,11 +784,65 @@ async function rawPlugins(): Promise<void> {
     console.log(`- ${plugin.name} (${plugin.version})`);
     console.log(`  id: ${plugin.id}`);
     console.log(`  source: ${plugin.source}`);
-    console.log(`  skills: ${plugin.skillDirs.length}`);
+    console.log(`  status: ${plugin.enabled ? "enabled" : "disabled"}`);
+    console.log(`  skills: ${plugin.skillCount}`);
     console.log(`  root: ${plugin.rootDir}`);
     if (plugin.author) console.log(`  author: ${plugin.author}`);
     if (plugin.description) console.log(`  description: ${plugin.description}`);
   }
+}
+
+async function rawPluginSetEnabled(pluginId: string, enabled: boolean): Promise<void> {
+  const data = await fetchAPI<{ success: boolean; plugin?: PluginItem }>(
+    `/api/plugins/${encodeURIComponent(pluginId)}`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ enabled }),
+    }
+  );
+  if (!data?.success || !data.plugin) {
+    console.error(`ERROR: Failed to ${enabled ? "enable" : "disable"} plugin ${pluginId}`);
+    process.exit(1);
+  }
+  console.log(`${data.plugin.name} ${enabled ? "enabled" : "disabled"}`);
+}
+
+async function rawPluginDiscover(query = ""): Promise<void> {
+  const data = await fetchAPI<{
+    plugins: Array<{
+      id: string;
+      name: string;
+      description: string;
+      tags: string[];
+      skillNames: string[];
+      installed: boolean;
+      enabled: boolean;
+    }>;
+  }>("/api/plugins/catalog");
+  if (!data) {
+    console.error("ERROR: Failed to fetch plugin catalog from", API_BASE);
+    process.exit(1);
+  }
+  const normalized = query.trim().toLowerCase();
+  const plugins = data.plugins.filter((plugin) =>
+    !normalized
+      ? true
+      : [plugin.name, plugin.description, ...plugin.tags, ...plugin.skillNames]
+          .join(" ")
+          .toLowerCase()
+          .includes(normalized)
+  );
+  console.log("PLUGIN CATALOG");
+  console.log("==============");
+  for (const plugin of plugins) {
+    const status = plugin.installed ? (plugin.enabled ? "enabled" : "disabled") : "available";
+    console.log(`- ${plugin.name} [${status}]`);
+    console.log(`  id: ${plugin.id}`);
+    console.log(`  skills: ${plugin.skillNames.length}`);
+    console.log(`  tags: ${plugin.tags.join(", ")}`);
+    console.log(`  ${plugin.description}`);
+  }
+  if (plugins.length === 0) console.log("No plugins found");
 }
 
 async function rawPluginValidate(inputPath: string): Promise<void> {
@@ -3810,6 +3867,17 @@ async function main() {
         case undefined:
           await rawPlugins();
           break;
+        case "discover":
+          await rawPluginDiscover(args.slice(2).join(" "));
+          break;
+        case "enable":
+        case "disable":
+          if (!args[2]) {
+            console.error(`Usage: cybara plugin ${args[1]} <plugin-id>`);
+            process.exit(1);
+          }
+          await rawPluginSetEnabled(args[2], args[1] === "enable");
+          break;
         case "validate":
           if (!args[2]) {
             console.error("Usage: cybara plugin validate <folder-or-zip>");
@@ -3845,6 +3913,9 @@ async function main() {
         default:
           console.log("Plugin Commands:");
           console.log("  cybara plugin list                - List installed plugins");
+          console.log("  cybara plugin discover [query]    - Search the plugin catalog");
+          console.log("  cybara plugin enable <plugin-id>  - Enable an installed plugin");
+          console.log("  cybara plugin disable <plugin-id> - Disable an installed plugin");
           console.log("  cybara plugin validate <folder-or-zip>  - Validate a plugin bundle");
           console.log("  cybara plugin install <folder-or-zip>   - Install a local plugin bundle");
           console.log("  cybara plugin remove <plugin-id>  - Remove an installed local plugin");

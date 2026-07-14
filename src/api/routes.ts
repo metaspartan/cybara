@@ -141,9 +141,11 @@ import { getVectorStore } from "../core/memory/vector-store";
 import { discoverProviderModels } from "../core/model-discovery";
 import { cybaraDir, homeDir as runtimeHomeDir } from "../core/paths";
 import {
+  getBuiltinPluginCatalog,
   installPluginFromPayload,
   listInstalledPlugins,
   parsePluginInstallPayload,
+  setPluginEnabled,
   uninstallLocalPlugin,
   validatePluginAtPath,
   validatePluginInstallPayload,
@@ -411,6 +413,24 @@ async function runQuickIntelligenceBenchmark(runId: string, agentId: string): Pr
     sessionIds.forEach((sessionId) => deleteSessionTrajectories(sessionId));
     if (workspaceDir) rmSync(workspaceDir, { recursive: true, force: true });
   }
+}
+
+function pluginSummary(plugin: ReturnType<typeof listInstalledPlugins>[number]) {
+  return {
+    id: plugin.manifest.id,
+    name: plugin.manifest.name,
+    version: plugin.manifest.version,
+    description: plugin.manifest.description,
+    author: plugin.manifest.author,
+    homepage: plugin.manifest.homepage,
+    source: plugin.source,
+    rootDir: plugin.rootDir,
+    skillDirs: plugin.skillDirs,
+    skillNames: plugin.skillNames,
+    skillCount: plugin.skillNames.length,
+    enabled: plugin.enabled,
+    builtIn: plugin.builtIn,
+  };
 }
 
 const routes: Record<string, RouteHandler> = {
@@ -2759,18 +2779,22 @@ const routes: Record<string, RouteHandler> = {
   },
   "GET /api/plugins": () => {
     return {
-      plugins: listInstalledPlugins().map((plugin) => ({
-        id: plugin.manifest.id,
-        name: plugin.manifest.name,
-        version: plugin.manifest.version,
-        description: plugin.manifest.description,
-        author: plugin.manifest.author,
-        homepage: plugin.manifest.homepage,
-        source: plugin.source,
-        rootDir: plugin.rootDir,
-        skillDirs: plugin.skillDirs,
-        skillCount: plugin.skillDirs.length,
-      })),
+      plugins: listInstalledPlugins().map(pluginSummary),
+    };
+  },
+  "GET /api/plugins/catalog": () => {
+    const installed = new Map(
+      listInstalledPlugins().map((plugin) => [plugin.manifest.id, plugin] as const)
+    );
+    return {
+      plugins: getBuiltinPluginCatalog().map((entry) => {
+        const plugin = installed.get(entry.id);
+        return {
+          ...entry,
+          installed: !!plugin,
+          enabled: plugin?.enabled ?? entry.enabledByDefault,
+        };
+      }),
     };
   },
   "GET /api/plugins/validate": (_body, params) => {
@@ -2788,19 +2812,20 @@ const routes: Record<string, RouteHandler> = {
     clearSkillsCache();
     return {
       success: true,
-      plugin: {
-        id: plugin.manifest.id,
-        name: plugin.manifest.name,
-        version: plugin.manifest.version,
-        description: plugin.manifest.description,
-        author: plugin.manifest.author,
-        homepage: plugin.manifest.homepage,
-        source: plugin.source,
-        rootDir: plugin.rootDir,
-        skillDirs: plugin.skillDirs,
-        skillCount: plugin.skillDirs.length,
-      },
+      plugin: pluginSummary(plugin),
     };
+  },
+  "PUT /api/plugins/:id": (body, params) => {
+    const record =
+      body && typeof body === "object" && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : {};
+    if (typeof record.enabled !== "boolean") {
+      throw new Error("Plugin enabled state must be a boolean");
+    }
+    const plugin = setPluginEnabled(params!.id, record.enabled);
+    clearSkillsCache();
+    return { success: true, plugin: pluginSummary(plugin) };
   },
   "DELETE /api/plugins/:id": (_body, params) => {
     const removed = uninstallLocalPlugin(params!.id);

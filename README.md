@@ -319,11 +319,11 @@ CLI: `cybara mcp list`, `cybara mcp search <query>`, `cybara mcp install <packag
 
 ### Plugins
 
-The Plugins screen brings installed skill bundles, MCP services, and account apps into one extension surface. Google Workspace, Microsoft 365, Dropbox, and Notion account apps default to read-only access; optional writes remain subject to Cybara's normal tool approval policy. Credentials and OAuth tokens use the encrypted secret store.
+The Plugins screen brings installed skill bundles, a searchable built-in catalog, MCP services, and account apps into one extension surface. Installed plugins can be enabled or disabled without restarting the gateway. Google Workspace, Microsoft 365, Dropbox, and Notion account apps default to read-only access; optional writes remain subject to Cybara's normal tool approval policy. Credentials and OAuth tokens use the encrypted secret store.
 
 Plugins can be discovered from bundled, local, and workspace directories. Additional services can be connected through HTTPS or trusted local MCP servers.
 
-CLI: `cybara plugin list`, `cybara plugin install <folder-or-zip>`, `cybara plugin apps`, `cybara plugin configure <app-id> --client-id <id>`, `cybara plugin connect <app-id>`
+CLI: `cybara plugin list`, `cybara plugin discover [query]`, `cybara plugin enable <id>`, `cybara plugin disable <id>`, `cybara plugin install <folder-or-zip>`, `cybara plugin apps`, `cybara plugin configure <app-id> --client-id <id>`, `cybara plugin connect <app-id>`
 
 ---
 

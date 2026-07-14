@@ -339,6 +339,9 @@ on stdin and writes responses on stdout.
 
 ```bash
 cybara plugin list
+cybara plugin discover [query]
+cybara plugin enable <plugin-id>
+cybara plugin disable <plugin-id>
 cybara plugin validate /path/to/plugin
 cybara plugin install /path/to/plugin
 cybara plugin remove <plugin-id>

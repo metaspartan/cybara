@@ -6,15 +6,18 @@ import { join } from "path";
 import {
   installPluginFromPayload,
   installLocalPluginFromPath,
+  getBuiltinPluginCatalog,
   listInstalledPlugins,
   MAX_PLUGIN_EXPANDED_BYTES,
   parsePluginInstallPayload,
+  setPluginEnabled,
   uninstallLocalPlugin,
   validatePluginArchiveEntries,
   validatePluginAtPath,
   validatePluginInstallPayload,
 } from "../../src/core/plugins";
-import { loadAllSkills } from "../../src/core/skills";
+import { clearSkillsCache, loadAllSkills } from "../../src/core/skills";
+import { getBuiltinSkillPacks } from "../../src/core/skills/builtin-packs";
 
 function writePlugin(rootDir: string, manifest: Record<string, unknown>, skillName: string): void {
   mkdirSync(join(rootDir, "skills", "example-skill"), { recursive: true });
@@ -92,6 +95,60 @@ afterAll(() => {
 });
 
 describe("plugin runtime", () => {
+  test("built-in catalog covers every embedded skill exactly once", () => {
+    const catalogNames = getBuiltinPluginCatalog()
+      .flatMap((plugin) => plugin.skillNames)
+      .sort();
+    const embeddedNames = getBuiltinSkillPacks()
+      .map((entry) => entry.skill.name)
+      .sort();
+    expect(catalogNames).toEqual(embeddedNames);
+    expect(new Set(catalogNames).size).toBe(catalogNames.length);
+  });
+
+  test("built-in plugins persist enablement and control embedded skill loading", async () => {
+    const originalHome = process.env.HOME;
+    const originalUserProfile = process.env.USERPROFILE;
+    const originalCybaraHome = process.env.CYBARA_HOME;
+    const tempRoot = mkdtempSync(join(tmpdir(), "cybara-builtin-plugin-test-"));
+    tempRoots.push(tempRoot);
+    const fakeHome = join(tempRoot, "home");
+    const fakeCybaraHome = join(fakeHome, ".cybara");
+    mkdirSync(fakeHome, { recursive: true });
+    process.env.HOME = fakeHome;
+    process.env.USERPROFILE = fakeHome;
+    process.env.CYBARA_HOME = fakeCybaraHome;
+
+    try {
+      const installed = listInstalledPlugins();
+      expect(installed.filter((plugin) => plugin.builtIn)).toHaveLength(5);
+      expect(installed.every((plugin) => plugin.enabled)).toBe(true);
+
+      setPluginEnabled("developer-essentials", false);
+      clearSkillsCache();
+      expect(
+        listInstalledPlugins().find((plugin) => plugin.manifest.id === "developer-essentials")
+          ?.enabled
+      ).toBe(false);
+      const disabledSkills = await loadAllSkills({});
+      expect(disabledSkills.some((entry) => entry.skill.name === "code-review")).toBe(false);
+      expect(disabledSkills.some((entry) => entry.skill.name === "web-research")).toBe(true);
+
+      setPluginEnabled("developer-essentials", true);
+      clearSkillsCache();
+      const restoredSkills = await loadAllSkills({});
+      expect(restoredSkills.some((entry) => entry.skill.name === "code-review")).toBe(true);
+    } finally {
+      clearSkillsCache();
+      if (originalHome === undefined) delete process.env.HOME;
+      else process.env.HOME = originalHome;
+      if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+      else process.env.USERPROFILE = originalUserProfile;
+      if (originalCybaraHome === undefined) delete process.env.CYBARA_HOME;
+      else process.env.CYBARA_HOME = originalCybaraHome;
+    }
+  });
+
   test("validates, installs, prefers workspace overrides, and exposes plugin skills", async () => {
     const originalHome = process.env.HOME;
     const originalUserProfile = process.env.USERPROFILE;

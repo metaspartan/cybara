@@ -47,6 +47,7 @@ interface PluginStatus {
   version: string;
   source: "bundled" | "local" | "workspace";
   skillCount: number;
+  enabled: boolean;
 }
 
 interface MCPServiceStatus {
@@ -188,7 +189,7 @@ export function TUIPluginsCommand({ fetchAPI }: { fetchAPI: TUIDataFetch }) {
             <Text bold>{compactPanelValue(plugin.name, layout.narrow ? 18 : 26)}</Text>
           </Box>
           <Text color="#9ca6b4">
-            v{plugin.version} · {plugin.skillCount} skills · {plugin.source}
+            {plugin.enabled ? "enabled" : "disabled"} · v{plugin.version} · {plugin.skillCount} skills · {plugin.source}
           </Text>
         </Box>
       ))}

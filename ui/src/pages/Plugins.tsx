@@ -5,6 +5,7 @@ import {
   Package,
   Play,
   Plug,
+  Search,
   Server,
   Square,
   Trash2,
@@ -14,9 +15,11 @@ import { useNavigate } from "react-router-dom";
 import { PageLayout } from "@/components/layout";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { Switch } from "@/components/ui/Switch";
 import {
   type InstalledPluginSummary,
   type MCPServer,
+  type PluginCatalogSummary,
   type PluginInstallPayload,
   mcpApi,
   pluginsApi,
@@ -26,7 +29,7 @@ import { openExternal } from "@/utils/openExternal";
 import { AccountAppsPanel } from "./plugins/AccountAppsPanel";
 import { PluginInstallDialog } from "./plugins/PluginInstallDialog";
 
-type PluginTab = "installed" | "apps" | "services";
+type PluginTab = "installed" | "discover" | "apps" | "services";
 
 const tabs: Array<{
   id: PluginTab;
@@ -34,6 +37,7 @@ const tabs: Array<{
   icon: typeof Package;
 }> = [
   { id: "installed", label: "Installed", icon: Package },
+  { id: "discover", label: "Discover", icon: Search },
   { id: "apps", label: "Account apps", icon: Plug },
   { id: "services", label: "MCP services", icon: Server },
 ];
@@ -56,17 +60,27 @@ export function Plugins() {
   const { addToast } = useUIStore();
   const [tab, setTab] = useState<PluginTab>("installed");
   const [plugins, setPlugins] = useState<InstalledPluginSummary[]>([]);
+  const [catalog, setCatalog] = useState<PluginCatalogSummary[]>([]);
+  const [pluginSearch, setPluginSearch] = useState("");
+  const [catalogFilter, setCatalogFilter] = useState<"all" | "installed">("all");
   const [services, setServices] = useState<MCPServer[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showInstall, setShowInstall] = useState(false);
 
   const loadPlugins = useCallback(async (): Promise<void> => {
-    const pluginResponse = await pluginsApi.list();
+    const [pluginResponse, catalogResponse] = await Promise.all([
+      pluginsApi.list(),
+      pluginsApi.catalog(),
+    ]);
     if (!pluginResponse.success || !pluginResponse.data) {
-      throw new Error(pluginResponse.error || "Failed to load plugins");
+      throw new Error(pluginResponse.error || "Failed to load installed plugins");
+    }
+    if (!catalogResponse.success || !catalogResponse.data) {
+      throw new Error(catalogResponse.error || "Failed to load plugin catalog");
     }
     setPlugins(pluginResponse.data.plugins);
+    setCatalog(catalogResponse.data.plugins);
   }, []);
 
   const loadServices = useCallback(async (): Promise<void> => {
@@ -126,6 +140,39 @@ export function Plugins() {
     }
   };
 
+  const setEnabled = async (plugin: InstalledPluginSummary, enabled: boolean): Promise<void> => {
+    setBusyId(plugin.id);
+    setPlugins((current) =>
+      current.map((entry) => (entry.id === plugin.id ? { ...entry, enabled } : entry))
+    );
+    setCatalog((current) =>
+      current.map((entry) => (entry.id === plugin.id ? { ...entry, enabled } : entry))
+    );
+    try {
+      const response = await pluginsApi.setEnabled(plugin.id, enabled);
+      if (!response.success || response.data?.success !== true) {
+        throw new Error(response.error || "Plugin update failed");
+      }
+      await loadPlugins();
+      addToast("success", `${plugin.name} ${enabled ? "enabled" : "disabled"}`);
+    } catch (error) {
+      await loadPlugins().catch(() => undefined);
+      addToast("error", error instanceof Error ? error.message : "Plugin update failed");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const normalizedSearch = pluginSearch.trim().toLowerCase();
+  const visibleCatalog = catalog.filter((plugin) => {
+    if (catalogFilter === "installed" && !plugin.installed) return false;
+    if (!normalizedSearch) return true;
+    return [plugin.name, plugin.description, ...plugin.tags, ...plugin.skillNames]
+      .join(" ")
+      .toLowerCase()
+      .includes(normalizedSearch);
+  });
+
   const setServiceRunning = async (service: MCPServer, running: boolean): Promise<void> => {
     setBusyId(service.id);
     try {
@@ -144,7 +191,7 @@ export function Plugins() {
   return (
     <PageLayout
       title="Plugins"
-      subtitle="Skills, account apps, and MCP services"
+      subtitle="Manage reusable skills, account apps, and MCP services"
       actions={
         tab === "installed" ? (
           <Button
@@ -159,7 +206,7 @@ export function Plugins() {
     >
       <div className="mx-auto flex w-full max-w-6xl flex-col gap-5">
         <div
-          className="grid grid-cols-3 rounded-lg bg-[var(--surface-panel)] p-1"
+          className="grid grid-cols-2 rounded-lg bg-[var(--surface-panel)] p-1 sm:grid-cols-4"
           role="tablist"
           aria-label="Plugin capabilities"
         >
@@ -200,10 +247,10 @@ export function Plugins() {
             <div className="flex min-h-56 flex-col items-center justify-center rounded-lg bg-[var(--surface-panel)] px-6 text-center">
               <Boxes className="mb-3 h-8 w-8 text-[var(--text-muted)]" />
               <h2 className="text-sm font-semibold text-[var(--text-primary)]">
-                No plugin bundles
+                No installed plugins
               </h2>
               <p className="mt-1 max-w-md text-sm text-[var(--text-muted)]">
-                Install a trusted local bundle to add reusable skills to this gateway.
+                Browse Discover or install a trusted folder or ZIP to add reusable skills.
               </p>
             </div>
           ) : (
@@ -234,6 +281,12 @@ export function Plugins() {
                     {plugin.description}
                   </p>
                   <div className="mt-auto flex items-center gap-2 pt-4">
+                    <Switch
+                      checked={plugin.enabled}
+                      disabled={busyId === plugin.id}
+                      ariaLabel={`${plugin.enabled ? "Disable" : "Enable"} ${plugin.name}`}
+                      onChange={(enabled) => void setEnabled(plugin, enabled)}
+                    />
                     {plugin.homepage ? (
                       <Button
                         size="sm"
@@ -260,6 +313,91 @@ export function Plugins() {
               ))}
             </div>
           )
+        ) : null}
+
+        {tab === "discover" ? (
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <label className="relative min-w-0 flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--text-muted)]" />
+                <input
+                  type="search"
+                  value={pluginSearch}
+                  onChange={(event) => setPluginSearch(event.target.value)}
+                  placeholder="Search plugins..."
+                  className="h-10 w-full rounded-md border border-[var(--surface-border)] bg-[var(--surface-panel)] pl-9 pr-3 text-sm text-[var(--text-primary)] outline-none placeholder:text-[var(--text-muted)] focus:border-[rgb(var(--accent-primary))]"
+                />
+              </label>
+              <div
+                className="flex rounded-md bg-[var(--surface-panel)] p-1"
+                aria-label="Plugin filter"
+              >
+                {(["all", "installed"] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setCatalogFilter(filter)}
+                    className={`rounded px-3 py-1.5 text-sm capitalize ${
+                      catalogFilter === filter
+                        ? "bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]"
+                        : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    {filter}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <p className="text-xs text-[var(--text-muted)]">
+              {visibleCatalog.length} {visibleCatalog.length === 1 ? "item" : "items"}
+            </p>
+            {visibleCatalog.length === 0 ? (
+              <div className="flex min-h-48 flex-col items-center justify-center bg-[var(--surface-panel)] px-6 text-center">
+                <Search className="mb-3 h-7 w-7 text-[var(--text-muted)]" />
+                <p className="text-sm font-semibold text-[var(--text-primary)]">No plugins found</p>
+                <p className="mt-1 text-sm text-[var(--text-muted)]">
+                  Try another name or category.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-[var(--surface-border)] overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]">
+                {visibleCatalog.map((plugin) => {
+                  const installed = plugins.find((entry) => entry.id === plugin.id);
+                  return (
+                    <section key={plugin.id} className="flex items-start gap-3 px-4 py-4">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-[rgba(var(--accent-primary),0.12)] text-[rgb(var(--accent-primary))]">
+                        <Package className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="text-sm font-semibold text-[var(--text-primary)]">
+                            {plugin.name}
+                          </h2>
+                          <Badge>{plugin.installed ? "Installed" : "Available"}</Badge>
+                        </div>
+                        <p className="mt-1 text-sm text-[var(--text-secondary)]">
+                          {plugin.description}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {plugin.tags.map((tag) => (
+                            <Badge key={tag}>{tag}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                      {installed ? (
+                        <Switch
+                          checked={installed.enabled}
+                          disabled={busyId === installed.id}
+                          ariaLabel={`${installed.enabled ? "Disable" : "Enable"} ${installed.name}`}
+                          onChange={(enabled) => void setEnabled(installed, enabled)}
+                        />
+                      ) : null}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         ) : null}
 
         {tab === "apps" ? <AccountAppsPanel /> : null}

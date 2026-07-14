@@ -400,8 +400,48 @@ function route(method: string, url: URL, body: string): Response {
           source: "local",
           rootDir: "/tmp/acme-plugin",
           skillDirs: ["/tmp/acme-plugin/skills"],
+          skillNames: ["acme-skill"],
+          skillCount: 1,
+          enabled: true,
+          builtIn: false,
         },
       ],
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/plugins/catalog") {
+    return json({
+      plugins: [
+        {
+          id: "developer-essentials",
+          name: "Developer Essentials",
+          description: "Development workflows",
+          tags: ["Development"],
+          skillNames: ["code-review", "testing"],
+          installed: true,
+          enabled: true,
+        },
+      ],
+    });
+  }
+
+  if (method === "PUT" && pathname === "/api/plugins/acme-plugin") {
+    const parsed = body ? (JSON.parse(body) as { enabled?: boolean }) : {};
+    return json({
+      success: true,
+      plugin: {
+        id: "acme-plugin",
+        name: "Acme Plugin",
+        version: "1.2.3",
+        description: "Example plugin",
+        source: "local",
+        rootDir: "/tmp/acme-plugin",
+        skillDirs: ["/tmp/acme-plugin/skills"],
+        skillNames: ["acme-skill"],
+        skillCount: 1,
+        enabled: parsed.enabled === true,
+        builtIn: false,
+      },
     });
   }
 
@@ -1853,6 +1893,16 @@ describe("CLI Commands", () => {
     expect(list.exitCode).toBe(0);
     expect(list.stdout).toContain("CYBARA PLUGINS");
     expect(list.stdout).toContain("Acme Plugin");
+    expect(list.stdout).toContain("status: enabled");
+
+    const discover = await runCli(["plugin", "discover", "developer"]);
+    expect(discover.exitCode).toBe(0);
+    expect(discover.stdout).toContain("PLUGIN CATALOG");
+    expect(discover.stdout).toContain("Developer Essentials");
+
+    const disable = await runCli(["plugin", "disable", "acme-plugin"]);
+    expect(disable.exitCode).toBe(0);
+    expect(disable.stdout).toContain("Acme Plugin disabled");
 
     const validate = await runCli(["plugin", "validate", "/tmp/acme-plugin"]);
     expect(validate.exitCode).toBe(0);
