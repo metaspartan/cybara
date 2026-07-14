@@ -195,6 +195,13 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiChatSource).toContain("/api/sessions");
     expect(cliTuiChatSource).toContain("/api/sessions?limit=48&includeTotal=1");
     expect(cliTuiChatSource).toContain("/api/agents/summary");
+    expect(cliTuiChatSource).toContain("const response = await sessionsRequest");
+    expect(cliTuiChatSource).toContain("const agentResponse = await agentsRequest");
+    expect(cliTuiChatSource).not.toContain("const [response, agentResponse] = await Promise.all");
+    expect(cliTuiChatSource).toContain("setSessions(nextSessions)");
+    expect(cliTuiChatSource).toContain("offset=${sessions.length}");
+    expect(cliTuiChatSource).toContain('input === "l"');
+    expect(cliTuiChatSource).toContain("Load more sessions");
     expect(cliTuiChatSource).toContain('input === "n"');
     expect(cliTuiChatSource).toContain("setSearchMode(true)");
     expect(cliTuiChatSource).toContain("InteractiveChatTUI");
@@ -333,8 +340,9 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("ACTIVITY_DETAIL_COLOR");
     expect(cliTuiInteractiveChatSource).toContain("key={`${row.id}-${rowIndex}`}");
     expect(cliTuiInteractiveChatSource).toContain(
-      "maxActivityDetails={expandedTranscript ? undefined : 0}"
+      "maxActivityDetails={expandedActivities ? undefined : 0}"
     );
+    expect(cliTuiInteractiveChatSource).toContain('normalizedCommand === "details"');
     expect(cliTuiInteractiveChatSource).toContain("strikethrough={part.strikethrough}");
     expect(cliTuiInteractiveChatSource).toContain("splitTerminalInline(line)");
     expect(cliTuiInteractiveChatSource).toContain('<Text wrap="wrap">');

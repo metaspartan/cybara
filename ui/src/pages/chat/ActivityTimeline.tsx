@@ -4,6 +4,7 @@ import {
   ArrowRightLeft,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   FileText,
   Folder,
@@ -258,6 +259,42 @@ export function ProcessActivityList({ activities }: { activities: LiveActivityIt
   if (visibleActivities.length === 0) return null;
 
   return <GroupedActivityRows activities={visibleActivities} />;
+}
+
+export function CompletedActivityTimeline({
+  activities,
+  label,
+}: {
+  activities: LiveActivityItem[];
+  label: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visibleActivities = activities.filter((activity) => !isGenericStatusLabel(activity.text));
+  if (visibleActivities.length === 0) return null;
+
+  return (
+    <div className="space-y-1.5">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="chat-activity-text flex w-full items-center gap-1.5 px-0.5 text-left text-gray-500 transition-colors hover:text-gray-300 cursor-pointer"
+        aria-expanded={expanded}
+        title={expanded ? "Hide work details" : "Show work details"}
+      >
+        {expanded ? (
+          <ChevronDown className="h-3 w-3 shrink-0 text-current" />
+        ) : (
+          <ChevronRight className="h-3 w-3 shrink-0 text-current" />
+        )}
+        <span>{label}</span>
+      </button>
+      {expanded ? (
+        <div className="ml-1 border-l border-white/10 pl-2.5">
+          <ProcessActivityList activities={visibleActivities} />
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function ActivityStepCard({

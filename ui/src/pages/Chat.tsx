@@ -97,7 +97,7 @@ import type {
   SessionContextUsage,
   SessionTokenUsage,
 } from "@/types";
-import { LiveActivityTimeline, ProcessActivityList } from "./chat/ActivityTimeline";
+import { CompletedActivityTimeline, LiveActivityTimeline } from "./chat/ActivityTimeline";
 import { ArtifactViewerPanel } from "./chat/ArtifactViewerPanel";
 import { AgentTransferTimeline } from "./chat/AgentTransferTimeline";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
@@ -603,21 +603,16 @@ function AssistantMetaInline({
 
   return (
     <div className={cn("space-y-2", isWorkSection ? "mb-3" : "mt-3")}>
-      {isWorkSection && (
-        <div className="chat-activity-text text-gray-500 px-0.5">
-          <span>
-            {t("chat.workedFor", {
-              duration:
-                workedDurationMs !== undefined
-                  ? formatWorkedDuration(workedDurationMs)
-                  : "0h 00m 00s",
-            })}
-          </span>
-        </div>
-      )}
-
       {isWorkSection && workActivitiesWithSandbox.length > 0 && (
-        <ProcessActivityList activities={workActivitiesWithSandbox} />
+        <CompletedActivityTimeline
+          activities={workActivitiesWithSandbox}
+          label={t("chat.workedFor", {
+            duration:
+              workedDurationMs !== undefined
+                ? formatWorkedDuration(workedDurationMs)
+                : "0h 00m 00s",
+          })}
+        />
       )}
 
       {!isWorkSection && hasFileChangeSummary && fileChangeSummary && (
@@ -3864,10 +3859,6 @@ export function Chat() {
                       mergedActivities.length > 0
                         ? finalizeCompletedActivities(mergedActivities)
                         : undefined;
-                    const hasAssistantToolCalls =
-                      message.role !== "user" &&
-                      Array.isArray(message.tool_calls) &&
-                      message.tool_calls.length > 0;
                     return (
                       <div
                         key={`${message.timestamp || "msg"}-${originalIndex}`}
@@ -3904,9 +3895,6 @@ export function Chat() {
                                 section="work"
                                 workspaceDir={effectiveWorkspaceDir}
                               />
-                            )}
-                            {hasAssistantToolCalls && (
-                              <div className="my-2 border-t border-white/12" />
                             )}
                             <AgentTransferTimeline transfers={message.agent_transfers} />
                             {message.images && message.images.length > 0 && (

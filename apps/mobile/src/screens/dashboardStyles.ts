@@ -1075,10 +1075,16 @@ const makeStyles = () =>
       gap: spacing.xs,
       marginBottom: spacing.xs,
     },
+    workTimelineHeader: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: 3,
+      minHeight: 24,
+      paddingHorizontal: 2,
+    },
     workedForText: {
       color: colors.textDim,
       fontSize: typography.label,
-      paddingHorizontal: 2,
     },
     messageActivityList: {
       gap: spacing.xs,

@@ -208,15 +208,15 @@ describe("Chat revert and diff wiring", () => {
     expect(source).not.toContain("Estimated from the active provider prompt");
   });
 
-  test("renders full tool-call timeline inline without truncation controls", () => {
+  test("keeps the full tool-call timeline behind the completed work disclosure", () => {
     const source = readChatSource();
     expect(source).not.toContain("const TOOL_CALL_PREVIEW_LIMIT = 50");
     expect(source).not.toContain("hiddenToolCallsCount");
     expect(source).not.toContain("View more");
     expect(source).toContain("getToolCallsInTimelineOrder");
-    expect(source).toContain("border-t border-white/12");
-    expect(source).toContain("function ProcessActivityList");
-    expect(source).toContain("<ProcessActivityList activities={workActivitiesWithSandbox} />");
+    expect(source).toContain("function CompletedActivityTimeline");
+    expect(source).toContain("<CompletedActivityTimeline");
+    expect(source).not.toContain("hasAssistantToolCalls");
   });
 
   test("shows effective workspace in empty state and uses robust tauri runtime detection", () => {

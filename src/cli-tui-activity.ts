@@ -21,6 +21,9 @@ export interface TUIToolCallItem {
   args?: Record<string, unknown>;
   status?: string;
   timeline_index?: number;
+  duration?: number | string;
+  durationMs?: number;
+  started_at?: number | string;
 }
 
 export interface TUIActivitySummary {
@@ -224,4 +227,41 @@ export function summarizeTUIActivities(
       new Set(raw.map((value) => compact(value.replace(/\s+/g, " ").trim(), 96)))
     ).slice(-5),
   };
+}
+
+function durationMs(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  if (typeof value !== "string" || !value.trim()) return 0;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function timestampMs(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export function formatTUIWorkedDuration(
+  activities: TUIActivityItem[],
+  tools: TUIToolCallItem[]
+): string {
+  const timestamps = [
+    ...activities.map((activity) => timestampMs(activity.timestamp)),
+    ...tools.map((tool) => timestampMs(tool.started_at)),
+  ].filter((value): value is number => value !== undefined);
+  const timelineDuration =
+    timestamps.length >= 2 ? Math.max(...timestamps) - Math.min(...timestamps) : 0;
+  const toolDuration = tools.reduce(
+    (total, tool) => total + Math.max(durationMs(tool.durationMs), durationMs(tool.duration)),
+    0
+  );
+  const totalSeconds = Math.max(0, Math.floor(Math.max(timelineDuration, toolDuration) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
 }

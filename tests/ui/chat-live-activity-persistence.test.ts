@@ -419,7 +419,8 @@ describe("Chat live activity persistence", () => {
 
   test("renders compact work timeline entries instead of large tool cards", () => {
     const source = readFileSync(chatSourcePath, "utf8") + readFileSync(chatModelPath, "utf8");
-    expect(source).toContain("<ProcessActivityList activities={workActivitiesWithSandbox} />");
+    expect(source).toContain("<CompletedActivityTimeline");
+    expect(source).toContain("activities={workActivitiesWithSandbox}");
     expect(source).not.toContain("function ToolCallItem(");
   });
 

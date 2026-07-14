@@ -209,7 +209,9 @@ describeOrSkip("IDE web UI browser smoke", () => {
       "alpha.ts"
     );
 
-    await targetPage.getByText("beta.ts", { exact: true }).click();
+    const betaFile = targetPage.getByText("beta.ts", { exact: true });
+    await betaFile.waitFor({ state: "visible", timeout: 15_000 });
+    await betaFile.click();
     await targetPage.waitForFunction(
       () => document.querySelector("textarea")?.value.includes("betaValue") === true,
       null,

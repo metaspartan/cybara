@@ -106,7 +106,6 @@ describe("chat appearance settings", () => {
     const subagents = await Bun.file(
       join(ROOT_DIR, "ui", "src", "pages", "chat", "SubagentPanel.tsx")
     ).text();
-    const chat = await Bun.file(join(ROOT_DIR, "ui", "src", "pages", "Chat.tsx")).text();
     const styles = await Bun.file(join(ROOT_DIR, "ui", "src", "index.css")).text();
     const routes = await Bun.file(join(ROOT_DIR, "src", "api", "routes.ts")).text();
 
@@ -131,7 +130,7 @@ describe("chat appearance settings", () => {
     expect(subagents).not.toContain("p-2 text-[11px] text-gray-400");
     expect(subagents).not.toContain("p-2 text-[11px] text-gray-300");
     expect(message).toContain('className="chat-code-text w-full border-collapse"');
-    expect(chat).toContain('className="chat-activity-text text-gray-500 px-0.5"');
+    expect(activity).toContain('className="chat-activity-text flex w-full');
     expect(activity).not.toContain("text-[10px] leading-none text-sky-200");
     expect(styles).toContain("font-size: var(--chat-font-size, 14px)");
     expect(styles).toContain("font-size: var(--chat-code-font-size, 12px)");

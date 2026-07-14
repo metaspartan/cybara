@@ -66,6 +66,7 @@ async function runCli(
       ...process.env,
       CYBARA_API: baseUrl,
       CYBARA_API_KEY: "",
+      CYBARA_HOME: join(homeDir, ".cybara"),
       HOME: homeDir,
       USERPROFILE: homeDir,
       ...envOverride,
@@ -109,6 +110,7 @@ describeOrSkip("CLI auth e2e", () => {
         ...process.env,
         NODE_ENV: "production",
         CYBARA_API_KEY: apiKey,
+        CYBARA_HOME: join(homeDir, ".cybara"),
         HOME: homeDir,
         USERPROFILE: homeDir,
         PORT: String(port),
@@ -211,9 +213,19 @@ describeOrSkip("CLI auth e2e", () => {
     expect(deleteProvider.exitCode).toBe(0);
     expect(deleteProvider.stdout).toContain(`Deleted provider: ${providerId}`);
 
-    const spawnSubagent = await runCli(["subagent", "spawn", "cli auth smoke subagent"], {
-      CYBARA_API_KEY: apiKey,
+    const agentResponse = await fetch(`${baseUrl}/api/agents/default`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
     });
+    expect(agentResponse.status).toBe(200);
+    const agent = (await agentResponse.json()) as { id?: string };
+    expect(typeof agent.id).toBe("string");
+    if (!agent.id) return;
+
+    const spawnSubagent = await runCli(
+      ["subagent", "spawn", "--agent", agent.id, "cli auth smoke subagent"],
+      { CYBARA_API_KEY: apiKey }
+    );
     expect(spawnSubagent.exitCode).toBe(0);
     const subagentIdMatch = spawnSubagent.stdout.match(/Spawned subagent:\s+([^\s]+)/);
     expect(subagentIdMatch).toBeTruthy();

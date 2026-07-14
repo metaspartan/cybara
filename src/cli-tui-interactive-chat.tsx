@@ -41,6 +41,7 @@ import {
 } from "./cli-tui-chat-inspection";
 import { parseTerminalListItem, splitTerminalInline } from "./cli-tui-markdown";
 import {
+  formatTUIWorkedDuration,
   limitTUIActivityDetails,
   presentTUIActivities,
   type TUIActivityItem,
@@ -170,7 +171,7 @@ const COMMANDS = [
   { name: "/copy", detail: "Copy the latest assistant response" },
   { name: "/raw", detail: "Toggle complete copy-friendly transcript messages" },
   { name: "/review", detail: "Load a workspace review prompt" },
-  { name: "/details", detail: "Toggle full transcript and tool details" },
+  { name: "/details", detail: "Expand or collapse completed work details" },
   { name: "/expand", detail: "Toggle full or compact transcript messages" },
   { name: "/clear", detail: "Clear the local view" },
   { name: "/new", detail: "Start a new session in this TUI" },
@@ -525,10 +526,14 @@ function MessageBody({
 }
 
 function ActivitySummary({
+  expanded = false,
+  live = false,
   message,
   maxDetails,
   maxColumns,
 }: {
+  expanded?: boolean;
+  live?: boolean;
   message: ChatMessage;
   maxDetails?: number;
   maxColumns: number;
@@ -538,6 +543,10 @@ function ActivitySummary({
     message.tool_calls || [],
   );
   if (rows.length === 0) return null;
+  const workedDuration = formatTUIWorkedDuration(
+    message.process_activities || [],
+    message.tool_calls || [],
+  );
   return (
     <Box
       paddingLeft={2}
@@ -545,50 +554,57 @@ function ActivitySummary({
       flexDirection="column"
       width={Math.max(12, maxColumns)}
     >
-      {rows.map((row, rowIndex) => (
-        <Box key={`${row.id}-${rowIndex}`} flexDirection="column">
-          {row.thought ? (
-            <InlineMarkdown line={row.label} />
-          ) : (
-            <Text
-              color={
-                row.phase === "error" || row.phase === "blocked"
-                  ? "red"
-                  : ACTIVITY_HEADING_COLOR
-              }
-              dimColor
-              wrap="wrap"
-            >
-              {row.icon ? `${row.icon} ` : ""}
-              {row.label}
-            </Text>
-          )}
-          {limitTUIActivityDetails(
-            row.details,
-            maxDetails ?? row.details.length,
-          ).map((label, index, details) => (
-            <Text
-              key={`${row.id}-${rowIndex}-${index}`}
-              color={ACTIVITY_DETAIL_COLOR}
-              dimColor
-              wrap="wrap"
-            >
-              {index === details.length - 1 ? "└" : "├"}{" "}
-              {label}
-            </Text>
-          ))}
-        </Box>
-      ))}
+      <Text color="gray" dimColor>
+        {live ? "◌" : expanded ? "▾" : "▸"} {live ? "Working" : "Worked"} for {workedDuration}
+      </Text>
+      {live || expanded
+        ? rows.map((row, rowIndex) => (
+            <Box key={`${row.id}-${rowIndex}`} flexDirection="column">
+              {row.thought ? (
+                <InlineMarkdown line={row.label} />
+              ) : (
+                <Text
+                  color={
+                    row.phase === "error" || row.phase === "blocked"
+                      ? "red"
+                      : ACTIVITY_HEADING_COLOR
+                  }
+                  dimColor
+                  wrap="wrap"
+                >
+                  {row.icon ? `${row.icon} ` : ""}
+                  {row.label}
+                </Text>
+              )}
+              {limitTUIActivityDetails(
+                row.details,
+                maxDetails ?? row.details.length,
+              ).map((label, index, details) => (
+                <Text
+                  key={`${row.id}-${rowIndex}-${index}`}
+                  color={ACTIVITY_DETAIL_COLOR}
+                  dimColor
+                  wrap="wrap"
+                >
+                  {index === details.length - 1 ? "└" : "├"}{" "}
+                  {label}
+                </Text>
+              ))}
+            </Box>
+          ))
+        : null}
     </Box>
   );
 }
 
 function MessageView({
+  expandedActivities,
   message,
   maxLines,
   maxActivityDetails,
   maxColumns,
 }: {
+  expandedActivities: boolean;
   message: ChatMessage;
   maxLines?: number;
   maxActivityDetails?: number;
@@ -603,6 +619,7 @@ function MessageView({
         </Text>
       </Box>
       <ActivitySummary
+        expanded={expandedActivities}
         message={message}
         maxColumns={maxColumns}
         maxDetails={maxActivityDetails}
@@ -643,6 +660,8 @@ function LiveRunView({
         ◆ Cybara <Text color="gray"><Spinner type="dots" /></Text>
       </Text>
       <ActivitySummary
+        expanded
+        live
         message={{ role: "assistant", content: "", process_activities: activities }}
         maxColumns={maxColumns}
       />
@@ -921,6 +940,7 @@ export function InteractiveChatTUI({
   const [subagents, setSubagents] = React.useState<TuiSubagentSummary[]>([]);
   const [showEnvironment, setShowEnvironment] = React.useState(false);
   const [expandedTranscript, setExpandedTranscript] = React.useState(true);
+  const [expandedActivities, setExpandedActivities] = React.useState(false);
   const [transcriptOffset, setTranscriptOffset] = React.useState(0);
   const [approvalRequests, setApprovalRequests] = React.useState<
     ToolApprovalRequest[]
@@ -1766,11 +1786,12 @@ export function InteractiveChatTUI({
         setNotice("Review prompt loaded. Edit it or press Enter to send.");
         return true;
       }
-      if (
-        normalizedCommand === "details" ||
-        normalizedCommand === "expand" ||
-        normalizedCommand === "raw"
-      ) {
+      if (normalizedCommand === "details") {
+        setExpandedActivities((value) => !value);
+        setNotice(`Work details ${expandedActivities ? "collapsed" : "expanded"}.`);
+        return true;
+      }
+      if (normalizedCommand === "expand" || normalizedCommand === "raw") {
         setExpandedTranscript((value) => !value);
         setNotice(
           `Transcript messages ${expandedTranscript ? "compacted" : "expanded"}.`,
@@ -2328,10 +2349,11 @@ export function InteractiveChatTUI({
           ) : null}
           {visibleMessages.map((message, index) => (
             <MessageView
+              expandedActivities={expandedActivities}
               key={`${index}-${message.role}-${message.content.slice(0, 12)}`}
               message={message}
               maxLines={expandedTranscript ? undefined : layout.messageLines}
-              maxActivityDetails={expandedTranscript ? undefined : 0}
+              maxActivityDetails={expandedActivities ? undefined : 0}
               maxColumns={Math.max(24, layout.columns - 8)}
             />
           ))}

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  formatTUIWorkedDuration,
   limitTUIActivityDetails,
   presentTUIActivities,
   summarizeTUIActivities,
@@ -130,5 +131,18 @@ describe("CLI TUI activity summaries", () => {
 
     expect(rows[1]?.label).toBe(`Ran ${command}`);
     expect(rows[1]?.label).not.toContain("...");
+  });
+
+  test("formats completed work duration from persisted activity and tool timing", () => {
+    expect(
+      formatTUIWorkedDuration(
+        [
+          { timestamp: 1_000, text: "Read a file" },
+          { timestamp: 63_000, text: "Ran tests" },
+        ],
+        []
+      )
+    ).toBe("0h 01m 02s");
+    expect(formatTUIWorkedDuration([], [{ durationMs: 3_725_000 }])).toBe("1h 02m 05s");
   });
 });

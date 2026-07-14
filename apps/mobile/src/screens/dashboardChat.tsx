@@ -15,6 +15,7 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Copy,
   FileText,
@@ -605,7 +606,7 @@ export function ChatMessageRow({
     if (isLiveMessage) {
       return (
         <View style={styles.agentMessageRow}>
-          <WorkTimeline appearance={appearance} message={message} nowMs={nowMs} />
+          <WorkTimeline appearance={appearance} message={message} nowMs={nowMs} live />
           {fileChanges ? <MobileFileChangesCard summary={fileChanges} /> : null}
           <ChatImageAttachments uris={toolImageUris} />
         </View>
@@ -741,15 +742,21 @@ function MobileActivityRow({
 
 export function WorkTimeline({
   appearance,
+  live = false,
   message,
   nowMs,
 }: {
   appearance: ChatAppearanceSettings;
+  live?: boolean;
   message: SessionDetailSummary["messages"][number];
   nowMs?: number;
 }) {
   const timeline = buildMobileWorkTimeline(message, nowMs);
+  const [expanded, setExpanded] = useState(live);
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  useEffect(() => {
+    setExpanded(live);
+  }, [live]);
   if (timeline.activities.length === 0) return null;
 
   const entries = groupMobileActivities(timeline.activities);
@@ -762,53 +769,80 @@ export function WorkTimeline({
 
   return (
     <View style={styles.workTimeline}>
-      <Text selectable style={[styles.workedForText, activityStyle]}>
-        Worked for {timeline.workedDuration}
-      </Text>
-      <View style={styles.messageActivityList}>
-        {entries.map((entry) => {
-          if (entry.type === "single") {
+      {live ? (
+        <View style={styles.workTimelineHeader}>
+          <Text selectable style={[styles.workedForText, activityStyle]}>
+            Working for {timeline.workedDuration}
+          </Text>
+        </View>
+      ) : (
+        <Pressable
+          accessibilityLabel={expanded ? "Hide work details" : "Show work details"}
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          onPress={() => setExpanded((value) => !value)}
+          style={styles.workTimelineHeader}
+        >
+          {expanded ? (
+            <ChevronDown color={colors.textMuted} size={13} strokeWidth={2.2} />
+          ) : (
+            <ChevronRight color={colors.textMuted} size={13} strokeWidth={2.2} />
+          )}
+          <Text style={[styles.workedForText, activityStyle]}>
+            Worked for {timeline.workedDuration}
+          </Text>
+        </Pressable>
+      )}
+      {live || expanded ? (
+        <View style={styles.messageActivityList}>
+          {entries.map((entry) => {
+            if (entry.type === "single") {
+              return (
+                <MobileActivityRow
+                  key={entry.activity.id}
+                  activity={entry.activity}
+                  appearance={appearance}
+                />
+              );
+            }
+            const groupExpanded = expandedGroups[entry.id] === true;
+            const GroupIcon = MOBILE_GROUP_ICONS[entry.kind];
             return (
-              <MobileActivityRow
-                key={entry.activity.id}
-                activity={entry.activity}
-                appearance={appearance}
-              />
+              <View key={entry.id}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: groupExpanded }}
+                  onPress={() =>
+                    setExpandedGroups((previous) => ({
+                      ...previous,
+                      [entry.id]: !groupExpanded,
+                    }))
+                  }
+                  style={styles.messageActivityRow}
+                >
+                  <View style={styles.messageActivityIcon}>
+                    <GroupIcon color={colors.textMuted} size={13} strokeWidth={2.2} />
+                  </View>
+                  <Text selectable style={[styles.messageActivityGroupLabel, activityStyle]}>
+                    {entry.label} {groupExpanded ? "▾" : "▸"}
+                  </Text>
+                </Pressable>
+                {groupExpanded ? (
+                  <View style={styles.messageActivityGroupItems}>
+                    {entry.items.map((activity) => (
+                      <MobileActivityRow
+                        key={activity.id}
+                        activity={activity}
+                        appearance={appearance}
+                      />
+                    ))}
+                  </View>
+                ) : null}
+              </View>
             );
-          }
-          const expanded = expandedGroups[entry.id] === true;
-          const GroupIcon = MOBILE_GROUP_ICONS[entry.kind];
-          return (
-            <View key={entry.id}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() =>
-                  setExpandedGroups((previous) => ({ ...previous, [entry.id]: !expanded }))
-                }
-                style={styles.messageActivityRow}
-              >
-                <View style={styles.messageActivityIcon}>
-                  <GroupIcon color={colors.textMuted} size={13} strokeWidth={2.2} />
-                </View>
-                <Text selectable style={[styles.messageActivityGroupLabel, activityStyle]}>
-                  {entry.label} {expanded ? "▾" : "▸"}
-                </Text>
-              </Pressable>
-              {expanded ? (
-                <View style={styles.messageActivityGroupItems}>
-                  {entry.items.map((activity) => (
-                    <MobileActivityRow
-                      key={activity.id}
-                      activity={activity}
-                      appearance={appearance}
-                    />
-                  ))}
-                </View>
-              ) : null}
-            </View>
-          );
-        })}
-      </View>
+          })}
+        </View>
+      ) : null}
     </View>
   );
 }

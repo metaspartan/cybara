@@ -725,19 +725,32 @@ export function IDE() {
   }, [resolveEmbeddingRuntimeSelection]);
 
   useEffect(() => {
-    const fetchRoot = async () => {
-      const res = await apiFetch(`/api/ide/browse?path=${encodeURIComponent(currentPath)}`);
-      const data: BrowseResult = await res.json();
-      if (data.success) {
-        setRootInfo(data);
-        return;
-      }
-      setRootInfo(null);
-      if (currentPath !== "~") {
-        setCurrentPath("~");
+    let cancelled = false;
+    const controller = new AbortController();
+    const fetchRoot = async (): Promise<void> => {
+      try {
+        const res = await apiFetch(`/api/ide/browse?path=${encodeURIComponent(currentPath)}`, {
+          signal: controller.signal,
+        });
+        const data: BrowseResult = await res.json();
+        if (cancelled) return;
+        if (data.success) {
+          setRootInfo(data);
+          return;
+        }
+        setRootInfo(null);
+        if (currentPath !== "~") {
+          setCurrentPath("~");
+        }
+      } catch {
+        if (!cancelled) setRootInfo(null);
       }
     };
-    fetchRoot();
+    void fetchRoot();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [currentPath, refreshKey]);
 
   const autoAssignIndexerWorkspace = Boolean(

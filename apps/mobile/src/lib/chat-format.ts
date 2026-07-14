@@ -44,6 +44,7 @@ export interface MobileWorkActivity {
   text: string;
   timestamp: number;
   toolName?: string;
+  toolCallId?: string;
 }
 
 export const MOBILE_VISIBLE_CHAT_MESSAGE_LIMIT = 80;
@@ -412,6 +413,7 @@ export function buildMobileWorkTimeline(
       text,
       timestamp: activityTimestamp(activity.timestamp, baseTimestamp + activities.length + 1),
       toolName: activity.toolName,
+      toolCallId: activity.toolCallId,
     });
   }
 
@@ -430,6 +432,7 @@ export function buildMobileWorkTimeline(
         baseTimestamp + activities.length + index + 1
       ),
       toolName: toolCall.name,
+      toolCallId: toolCall.id,
     });
   }
 
@@ -437,7 +440,9 @@ export function buildMobileWorkTimeline(
   const uniqueActivities = activities
     .sort((left, right) => left.timestamp - right.timestamp)
     .filter((activity) => {
-      const key = `${activity.phase}:${activity.toolName || ""}:${normalizeActivityText(activity.text).toLowerCase()}`;
+      const key = activity.toolCallId
+        ? `${activity.toolCallId}:${activity.phase}`
+        : `${activity.phase}:${activity.toolName || ""}:${normalizeActivityText(activity.text).toLowerCase()}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;

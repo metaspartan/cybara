@@ -363,7 +363,15 @@ describe("mobile device lifecycle e2e", () => {
     expect(redeemed.status).toBe(200);
     expect(redeemed.data.success).toBe(true);
     const device = redeemed.data.device as { scopes: string[] };
-    expect(device.scopes.sort()).toEqual(["chat", "manage", "mcp", "read", "terminal", "wallet"]);
+    expect(device.scopes.sort()).toEqual([
+      "chat",
+      "manage",
+      "mcp",
+      "nearby",
+      "read",
+      "terminal",
+      "wallet",
+    ]);
     const fullToken = redeemed.data.apiKey as string;
 
     const send = await api("POST", "/api/wallet/send", {

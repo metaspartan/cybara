@@ -6,6 +6,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const API_KEY = "server-cli-ui-e2e-key";
 
 // Skip spawn-heavy e2e in constrained sandboxes where child bun processes get SIGTERM'd.
 const SKIP_SPAWN =
@@ -63,6 +64,8 @@ async function runCli(
     env: {
       ...process.env,
       CYBARA_API: baseUrl,
+      CYBARA_API_KEY: API_KEY,
+      CYBARA_HOME: join(homeDir, ".cybara"),
       HOME: homeDir,
       USERPROFILE: homeDir,
     },
@@ -89,6 +92,8 @@ describeOrSkip("Server + CLI + UI smoke", () => {
       cwd: ROOT_DIR,
       env: {
         ...process.env,
+        CYBARA_API_KEY: API_KEY,
+        CYBARA_HOME: join(homeDir, ".cybara"),
         HOME: homeDir,
         USERPROFILE: homeDir,
         PORT: String(port),
@@ -120,7 +125,9 @@ describeOrSkip("Server + CLI + UI smoke", () => {
     expect(health.status).toBe("healthy");
     expect(typeof health.checks).toBe("object");
 
-    const walletRes = await fetch(`${baseUrl}/api/wallet/status`);
+    const walletRes = await fetch(`${baseUrl}/api/wallet/status`, {
+      headers: { Authorization: `Bearer ${API_KEY}` },
+    });
     // Wallet module may fail to load (WASM/dependency issues in some environments).
     // Accept 200 (success) or 500 (module unavailable) — the route itself must respond.
     expect([200, 500]).toContain(walletRes.status);
@@ -164,7 +171,9 @@ describeOrSkip("Server + CLI + UI smoke", () => {
   });
 
   test("terminal API is blocked when --enable-terminal is not set", async () => {
-    const res = await fetch(`${baseUrl}/api/terminal/sessions`);
+    const res = await fetch(`${baseUrl}/api/terminal/sessions`, {
+      headers: { Authorization: `Bearer ${API_KEY}` },
+    });
     expect(res.status).toBe(403);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toContain("Terminal disabled");

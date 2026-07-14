@@ -701,7 +701,7 @@ async function rawChatPendingCommand(rawArgs: string[]): Promise<boolean> {
 async function pickInitialSession(
   rl: ReturnType<typeof createInterface>
 ): Promise<string | undefined> {
-  const sessions = await chatContext().fetchAPI<CliChatSessionSummary[]>("/api/sessions");
+  const sessions = await chatContext().fetchAPI<CliChatSessionSummary[]>("/api/sessions?limit=10");
   if (!sessions?.length) {
     return undefined;
   }
@@ -799,6 +799,10 @@ async function rawChat(options: CliChatOptions): Promise<void> {
   let running = false;
   let followUpBehaviorEnabled = true;
   let pendingMessages: CliPendingMessage[] = [];
+
+  if (agentId) {
+    agentId = await resolveAgentId(agentId);
+  }
 
   try {
     const config = await chatContext().fetchAPI<CliGatewayConfig>("/api/config");

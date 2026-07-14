@@ -30,6 +30,7 @@ struct NativeToolTimelineView: View {
     let mediaBaseURL: URL
     let mediaToken: String?
     @Environment(\.nativeChatAppearance) private var appearance
+    @State private var expanded = false
 
     private var orderedToolCalls: [GatewayToolCall] {
         nativeOrderedToolCalls(message.tool_calls)
@@ -50,45 +51,62 @@ struct NativeToolTimelineView: View {
     var body: some View {
         if hasContent {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 7) {
-                    Image(systemName: "clock")
-                        .font(.system(size: 11.5, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    Text("Worked for \(nativeWorkedDurationLabel(for: message))")
-                        .font(.system(size: appearance.activityFontSize, weight: .medium, design: .rounded))
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                }
-
-                if !activities.isEmpty {
-                    NativeGroupedActivities(activities: activities)
-                }
-
-                if !orderedToolCalls.isEmpty {
-                    DisclosureGroup {
-                        VStack(alignment: .leading, spacing: 7) {
-                            ForEach(orderedToolCalls) { toolCall in
-                                NativeToolCallDetailRow(
-                                    toolCall: toolCall,
-                                    mediaBaseURL: mediaBaseURL,
-                                    mediaToken: mediaToken
-                                )
-                            }
-                        }
-                        .padding(.top, 6)
-                    } label: {
-                        Label("Tool calls (\(orderedToolCalls.count))", systemImage: "wrench.and.screwdriver")
-                            .font(.system(size: 11.5, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        expanded.toggle()
                     }
-                    .disclosureGroupStyle(.automatic)
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
+                            .font(.system(size: 9.5, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "clock")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Text("Worked for \(nativeWorkedDurationLabel(for: message))")
+                            .font(.system(size: appearance.activityFontSize, weight: .medium, design: .rounded))
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                    }
                 }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .accessibilityLabel(expanded ? "Hide work details" : "Show work details")
 
-                if hiddenToolCallCount > 0 {
-                    let verb = hiddenToolCallCount == 1 ? "was" : "were"
-                    Text("\(hiddenToolCallCount) tool call\(hiddenToolCallCount == 1 ? "" : "s") \(verb) hidden by the gateway response.")
-                        .font(.system(size: 10.5, design: .rounded))
-                        .foregroundStyle(.orange)
+                if expanded {
+                    VStack(alignment: .leading, spacing: 8) {
+                        if !activities.isEmpty {
+                            NativeGroupedActivities(activities: activities)
+                        }
+
+                        if !orderedToolCalls.isEmpty {
+                            DisclosureGroup {
+                                VStack(alignment: .leading, spacing: 7) {
+                                    ForEach(orderedToolCalls) { toolCall in
+                                        NativeToolCallDetailRow(
+                                            toolCall: toolCall,
+                                            mediaBaseURL: mediaBaseURL,
+                                            mediaToken: mediaToken
+                                        )
+                                    }
+                                }
+                                .padding(.top, 6)
+                            } label: {
+                                Label("Tool calls (\(orderedToolCalls.count))", systemImage: "wrench.and.screwdriver")
+                                    .font(.system(size: 11.5, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .disclosureGroupStyle(.automatic)
+                        }
+
+                        if hiddenToolCallCount > 0 {
+                            let verb = hiddenToolCallCount == 1 ? "was" : "were"
+                            Text("\(hiddenToolCallCount) tool call\(hiddenToolCallCount == 1 ? "" : "s") \(verb) hidden by the gateway response.")
+                                .font(.system(size: 10.5, design: .rounded))
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    .padding(.leading, 16)
                 }
             }
             .padding(.bottom, message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 3)

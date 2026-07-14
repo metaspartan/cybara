@@ -6,6 +6,7 @@ import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const API_KEY = "stateful-cli-e2e-key";
 
 // Skip spawn-heavy e2e in constrained environments (CI sandboxes, containers
 // where child bun processes get SIGTERM'd). Set SKIP_SPAWN_TESTS=1 to opt out.
@@ -57,109 +58,10 @@ async function waitForServerReady(url: string, timeoutMs = 30000): Promise<void>
   throw new Error(`Timed out waiting for server at ${url}`);
 }
 
-type MockX402Request = {
-  method: string;
-  hasPaymentHeader: boolean;
-  paymentHeaderName?: "payment-signature" | "x-payment";
-};
-
-interface MockX402MerchantConfig {
-  requirement?: Record<string, unknown>;
-  settlement?: Record<string, unknown>;
-  includePaymentRequiredHeader?: boolean;
-}
-
-const DEFAULT_X402_REQUIREMENT: Record<string, unknown> = {
-  x402Version: 2,
-  accepts: [
-    {
-      scheme: "exact",
-      network: "eip155:1",
-      amount: "10000",
-      asset: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
-      payTo: "0x0000000000000000000000000000000000000001",
-      maxTimeoutSeconds: 300,
-      extra: {
-        name: "USD Coin",
-        version: "2",
-        assetTransferMethod: "eip3009",
-      },
-    },
-  ],
-};
-
-const DEFAULT_X402_SETTLEMENT: Record<string, unknown> = {
-  success: true,
-  network: "eip155:1",
-  transaction: "0xmocksettlement",
-};
-
-async function startMockX402Merchant(config: MockX402MerchantConfig = {}): Promise<{
-  url: string;
-  requests: MockX402Request[];
-  stop: () => Promise<void>;
-}> {
-  const host = "127.0.0.1";
-  const port = await getFreePort();
-  const requests: MockX402Request[] = [];
-
-  const requirement = config.requirement || DEFAULT_X402_REQUIREMENT;
-  const settlement = config.settlement || DEFAULT_X402_SETTLEMENT;
-  const includePaymentRequiredHeader = config.includePaymentRequiredHeader !== false;
-  const encodedRequired = Buffer.from(JSON.stringify(requirement), "utf8").toString("base64");
-  const encodedSettlement = Buffer.from(JSON.stringify(settlement), "utf8").toString("base64");
-
-  const server = Bun.serve({
-    hostname: host,
-    port,
-    fetch: (request) => {
-      const paymentSignature = request.headers.get("payment-signature");
-      const legacyPayment = request.headers.get("x-payment");
-      const hasPaymentHeader = !!(paymentSignature || legacyPayment);
-      requests.push({
-        method: request.method,
-        hasPaymentHeader,
-        paymentHeaderName: paymentSignature
-          ? "payment-signature"
-          : legacyPayment
-            ? "x-payment"
-            : undefined,
-      });
-
-      if (!hasPaymentHeader) {
-        const headers: Record<string, string> = {
-          "content-type": "application/json",
-        };
-        if (includePaymentRequiredHeader) {
-          headers["PAYMENT-REQUIRED"] = encodedRequired;
-        }
-        return new Response(JSON.stringify(requirement), {
-          status: 402,
-          headers,
-        });
-      }
-
-      return new Response(JSON.stringify({ ok: true, paid: true }), {
-        status: 200,
-        headers: {
-          "content-type": "application/json",
-          "PAYMENT-RESPONSE": encodedSettlement,
-        },
-      });
-    },
-  });
-
-  return {
-    url: `http://${host}:${port}/x402`,
-    requests,
-    stop: async () => {
-      server.stop(true);
-    },
-  };
-}
-
 async function api(method: string, path: string, body?: unknown) {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${API_KEY}`,
+  };
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
   }
@@ -186,6 +88,8 @@ async function runCli(
     env: {
       ...process.env,
       CYBARA_API: baseUrl,
+      CYBARA_API_KEY: API_KEY,
+      CYBARA_HOME: join(homeDir, ".cybara"),
       HOME: homeDir,
       USERPROFILE: homeDir,
       // Skip auto-update checks during e2e to avoid network calls.
@@ -232,6 +136,8 @@ describeOrSkip("Stateful CLI + API e2e", () => {
       cwd: ROOT_DIR,
       env: {
         ...process.env,
+        CYBARA_API_KEY: API_KEY,
+        CYBARA_HOME: join(homeDir, ".cybara"),
         HOME: homeDir,
         USERPROFILE: homeDir,
         PORT: String(port),
@@ -279,7 +185,7 @@ describeOrSkip("Stateful CLI + API e2e", () => {
     const configValue = `e2e-theme-${Date.now()}`;
     const setConfig = await runCli(["config", "set", "theme", configValue]);
     expect(setConfig.exitCode).toBe(0);
-    expect(setConfig.stdout).toContain(`Set theme = ${configValue}`);
+    expect(setConfig.stdout).toContain(`Set theme = "${configValue}"`);
 
     const getConfig = await runCli(["config", "get", "theme"]);
     expect(getConfig.exitCode).toBe(0);
@@ -449,272 +355,64 @@ describeOrSkip("Stateful CLI + API e2e", () => {
     expect(dapps.stdout).toContain("WALLET DAPP ADAPTERS");
     expect(dapps.stdout).toContain("x402_http");
 
-    const merchant = await startMockX402Merchant();
-    try {
-      const x402DryRun = await runCli([
-        "wallet",
-        "x402",
-        "--url",
-        merchant.url,
-        "--network",
-        "eip155:1",
-        "--dry-run",
-      ]);
-      expect(x402DryRun.exitCode).toBe(0);
-      expect(x402DryRun.stdout).toContain("X402 RESULT");
-      expect(x402DryRun.stdout).toContain("status: 402");
-      expect(x402DryRun.stdout).toContain("paid: no");
+    const localX402Url = "http://127.0.0.1:4020/x402";
+    const x402DryRun = await runCli([
+      "wallet",
+      "x402",
+      "--url",
+      localX402Url,
+      "--network",
+      "eip155:1",
+      "--dry-run",
+    ]);
+    expect(x402DryRun.exitCode).toBe(1);
+    expect(x402DryRun.stderr).toContain("private address");
 
-      const x402Paid = await api("POST", "/api/wallet/x402", {
-        url: merchant.url,
+    const x402Api = await api("POST", "/api/wallet/x402", {
+      url: localX402Url,
+      network: "eip155:1",
+      method: "GET",
+      dryRun: true,
+    });
+    expect(x402Api.status).toBe(400);
+    expect(x402Api.data.code).toBe("VALIDATION_ERROR");
+
+    const policyUpdate = await api("PUT", "/api/wallet/agent-policy", {
+      allowDappInteraction: true,
+      allowX402Payments: true,
+      allowedDappHosts: ["127.0.0.1"],
+      allowedX402Networks: ["eip155:1"],
+      x402MaxAmountAtomic: "1000000",
+    });
+    expect(policyUpdate.status).toBe(200);
+
+    const allowToolExecution = await api("PUT", "/api/config", {
+      tool_approval_mode: "always_allow",
+    });
+    expect(allowToolExecution.status).toBe(200);
+    expect(allowToolExecution.data.success).toBe(true);
+
+    const deniedTool = await api("POST", "/api/tools/execute", {
+      name: "wallet",
+      args: {
+        action: "x402_request",
+        url: localX402Url,
         network: "eip155:1",
-        method: "GET",
-      });
-      expect(x402Paid.status).toBe(200);
-      expect(x402Paid.data.status).toBe(200);
-      expect(x402Paid.data.paid).toBe(true);
-      expect(x402Paid.data.attemptedPayment).toBe(true);
-
-      const dappX402 = await runCli([
-        "wallet",
-        "dapp",
-        "--adapter",
-        "x402_http",
-        "--json",
-        JSON.stringify({
-          url: merchant.url,
-          network: "eip155:1",
-          dryRun: true,
-        }),
-      ]);
-      expect(dappX402.exitCode).toBe(0);
-      expect(dappX402.stdout).toContain("DAPP RESULT");
-
-      const policyUpdate = await api("PUT", "/api/wallet/agent-policy", {
-        allowDappInteraction: true,
-        allowX402Payments: true,
-        allowedDappHosts: ["127.0.0.1"],
-        allowedX402Networks: ["eip155:1"],
-        x402MaxAmountAtomic: "1000000",
-      });
-      expect(policyUpdate.status).toBe(200);
-
-      const allowToolExecution = await api("PUT", "/api/config", {
-        tool_approval_mode: "always_allow",
-      });
-      expect(allowToolExecution.status).toBe(200);
-      expect(allowToolExecution.data.success).toBe(true);
-
-      const deniedByHost = await api("POST", "/api/tools/execute", {
-        name: "wallet",
-        args: {
-          action: "x402_request",
-          url: merchant.url.replace("127.0.0.1", "localhost"),
-          network: "eip155:1",
-        },
-      });
-      expect(deniedByHost.status).toBe(400);
-      expect(deniedByHost.data.code).toBe("VALIDATION_ERROR");
-
-      const dappCapabilities = await api("POST", "/api/tools/execute", {
-        name: "wallet",
-        args: {
-          action: "dapp_capabilities",
-        },
-      });
-      expect(dappCapabilities.status).toBe(200);
-      expect(Array.isArray(dappCapabilities.data.adapters)).toBe(true);
-      expect(
-        dappCapabilities.data.adapters.some(
-          (entry: { adapter: string }) => entry.adapter === "x402_http"
-        )
-      ).toBe(true);
-
-      const toolX402 = await api("POST", "/api/tools/execute", {
-        name: "wallet",
-        args: {
-          action: "x402_request",
-          url: merchant.url,
-          network: "eip155:1",
-          method: "GET",
-        },
-      });
-      expect(toolX402.status).toBe(200);
-      expect(toolX402.data.status).toBe(200);
-      expect(toolX402.data.paid).toBe(true);
-      expect(toolX402.data.attemptedPayment).toBe(true);
-
-      const toolDappCall = await api("POST", "/api/tools/execute", {
-        name: "wallet",
-        args: {
-          action: "dapp_call",
-          adapter: "x402_http",
-          payload: {
-            url: merchant.url,
-            network: "eip155:1",
-            method: "GET",
-          },
-        },
-      });
-      expect(toolDappCall.status).toBe(200);
-      expect(toolDappCall.data.status).toBe(200);
-      expect(toolDappCall.data.paid).toBe(true);
-
-      expect(merchant.requests.some((request) => request.hasPaymentHeader)).toBe(true);
-      expect(merchant.requests.some((request) => !request.hasPaymentHeader)).toBe(true);
-    } finally {
-      await merchant.stop();
-    }
-
-    const permit2Merchant = await startMockX402Merchant({
-      requirement: {
-        x402Version: 2,
-        accepts: [
-          {
-            scheme: "exact",
-            network: "eip155:1",
-            amount: "10000",
-            asset: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
-            payTo: "0x0000000000000000000000000000000000000001",
-            maxTimeoutSeconds: 300,
-            extra: {
-              assetTransferMethod: "permit2",
-            },
-          },
-        ],
-      },
-      settlement: {
-        success: true,
-        network: "eip155:1",
-        transaction: "0xmocksettlementpermit2",
       },
     });
-    try {
-      const permit2Paid = await api("POST", "/api/wallet/x402", {
-        url: permit2Merchant.url,
-        network: "eip155:1",
-        method: "GET",
-      });
-      expect(permit2Paid.status).toBe(200);
-      expect(permit2Paid.data.status).toBe(200);
-      expect(permit2Paid.data.paid).toBe(true);
-      expect(
-        permit2Merchant.requests.some(
-          (request) => request.paymentHeaderName === "payment-signature"
-        )
-      ).toBe(true);
-    } finally {
-      await permit2Merchant.stop();
-    }
+    expect(deniedTool.status).toBe(400);
+    expect(deniedTool.data.code).toBe("VALIDATION_ERROR");
 
-    const v1Merchant = await startMockX402Merchant({
-      requirement: {
-        x402Version: 1,
-        accepts: [
-          {
-            scheme: "exact",
-            network: "base",
-            maxAmountRequired: "10000",
-            resource: "https://merchant.example/v1",
-            description: "legacy x402",
-            mimeType: "application/json",
-            outputSchema: {},
-            payTo: "0x0000000000000000000000000000000000000001",
-            maxTimeoutSeconds: 300,
-            asset: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
-            extra: {
-              name: "USD Coin",
-              version: "2",
-              assetTransferMethod: "eip3009",
-            },
-          },
-        ],
-      },
-      settlement: {
-        success: true,
-        network: "base",
-        transaction: "0xmocksettlementv1",
-      },
-      includePaymentRequiredHeader: false,
+    const dappCapabilities = await api("POST", "/api/tools/execute", {
+      name: "wallet",
+      args: { action: "dapp_capabilities" },
     });
-    try {
-      const v1Paid = await api("POST", "/api/wallet/x402", {
-        url: v1Merchant.url,
-        network: "base",
-        method: "GET",
-      });
-      expect(v1Paid.status).toBe(200);
-      expect(v1Paid.data.status).toBe(200);
-      expect(v1Paid.data.paid).toBe(true);
-      expect(v1Merchant.requests.some((request) => request.paymentHeaderName === "x-payment")).toBe(
-        true
-      );
-    } finally {
-      await v1Merchant.stop();
-    }
-
-    const solanaNetwork = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
-    const solanaMerchant = await startMockX402Merchant({
-      requirement: {
-        x402Version: 2,
-        accepts: [
-          {
-            scheme: "exact",
-            network: solanaNetwork,
-            amount: "10000",
-            asset: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-            payTo: "11111111111111111111111111111111",
-            maxTimeoutSeconds: 300,
-            extra: {
-              feePayer: "11111111111111111111111111111111",
-            },
-          },
-        ],
-      },
-      settlement: {
-        success: true,
-        network: solanaNetwork,
-        transaction: "5mocksoltx",
-      },
-    });
-    try {
-      const solanaDryRun = await api("POST", "/api/wallet/x402", {
-        url: solanaMerchant.url,
-        network: solanaNetwork,
-        method: "GET",
-        dryRun: true,
-      });
-      expect(solanaDryRun.status).toBe(200);
-      expect(solanaDryRun.data.status).toBe(402);
-      expect(solanaDryRun.data.paid).toBe(false);
-      expect(solanaDryRun.data.paymentRequirement.network).toBe(solanaNetwork);
-      expect(solanaDryRun.data.paymentRequirement.scheme).toBe("exact");
-
-      const solanaPolicyUpdate = await api("PUT", "/api/wallet/agent-policy", {
-        allowDappInteraction: true,
-        allowX402Payments: true,
-        allowedDappHosts: ["127.0.0.1"],
-        allowedX402Networks: ["eip155:1", solanaNetwork],
-        x402MaxAmountAtomic: "1000000",
-      });
-      expect(solanaPolicyUpdate.status).toBe(200);
-
-      const solanaToolDryRun = await api("POST", "/api/tools/execute", {
-        name: "wallet",
-        args: {
-          action: "x402_request",
-          url: solanaMerchant.url,
-          network: solanaNetwork,
-          method: "GET",
-          dryRun: true,
-        },
-      });
-      expect(solanaToolDryRun.status).toBe(200);
-      expect(solanaToolDryRun.data.status).toBe(402);
-      expect(solanaToolDryRun.data.paid).toBe(false);
-      expect(solanaToolDryRun.data.paymentRequirement.network).toBe(solanaNetwork);
-    } finally {
-      await solanaMerchant.stop();
-    }
+    expect(dappCapabilities.status).toBe(200);
+    expect(Array.isArray(dappCapabilities.data.adapters)).toBe(true);
+    expect(
+      dappCapabilities.data.adapters.some(
+        (entry: { adapter: string }) => entry.adapter === "x402_http"
+      )
+    ).toBe(true);
   }, 120_000);
 });

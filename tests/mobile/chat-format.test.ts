@@ -165,4 +165,22 @@ describe("mobile chat formatting", () => {
       text: "Exploring package.json",
     });
   });
+
+  test("keeps repeated persisted tool calls with distinct ids", () => {
+    const timeline = buildMobileWorkTimeline({
+      id: "assistant-repeated-tools",
+      role: "assistant",
+      content: "Done",
+      toolCalls: [
+        { id: "read-1", name: "read", status: "completed", args: { path: "a.ts" } },
+        { id: "read-2", name: "read", status: "completed", args: { path: "a.ts" } },
+      ],
+    });
+
+    expect(timeline.activities).toHaveLength(2);
+    expect(timeline.activities.map((activity) => activity.toolCallId)).toEqual([
+      "read-1",
+      "read-2",
+    ]);
+  });
 });

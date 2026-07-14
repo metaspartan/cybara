@@ -43,6 +43,7 @@ function startServer(port: number): ReturnType<typeof Bun.spawn> {
       ...process.env,
       HOME: homeDir,
       USERPROFILE: homeDir,
+      CYBARA_HOME: join(homeDir, ".cybara"),
       PORT: String(port),
       CYBARA_API_KEY: API_KEY,
     },

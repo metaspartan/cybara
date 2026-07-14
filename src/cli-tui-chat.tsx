@@ -192,6 +192,7 @@ export function TUIChatCommand({
   const [sessions, setSessions] = React.useState<ChatSessionSummary[]>([]);
   const [totalSessions, setTotalSessions] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
+  const [loadingMore, setLoadingMore] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [updatedAt, setUpdatedAt] = React.useState<number | null>(null);
   const [agentsById, setAgentsById] = React.useState<
@@ -211,20 +212,27 @@ export function TUIChatCommand({
   const load = React.useCallback(async () => {
     setLoading(true);
     setError(null);
+    const sessionsRequest = fetchAPI<unknown>("/api/sessions?limit=48&includeTotal=1");
+    const agentsRequest = fetchAPI<unknown>("/api/agents/summary");
     try {
-      const [response, agentResponse] = await Promise.all([
-        fetchAPI<unknown>("/api/sessions?limit=48&includeTotal=1"),
-        fetchAPI<unknown>("/api/agents/summary"),
-      ]);
+      const response = await sessionsRequest;
       const nextSessions = sessionsFromResponse(response)
         .slice()
         .sort(
           (a, b) =>
             Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) ||
             sessionTimestamp(b) - sessionTimestamp(a),
-        );
-      setSessions(nextSessions.slice(0, 24));
+      );
+      setSessions(nextSessions);
       setTotalSessions(sessionTotalFromResponse(response, nextSessions.length));
+      setUpdatedAt(Date.now());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoading(false);
+    }
+    try {
+      const agentResponse = await agentsRequest;
       setAgentsById(
         new Map(
           agentsFromResponse(agentResponse).flatMap((agent) =>
@@ -232,13 +240,45 @@ export function TUIChatCommand({
           ),
         ),
       );
+    } catch {
+      setAgentsById(new Map());
+    }
+  }, [fetchAPI]);
+
+  const loadMore = React.useCallback(async () => {
+    if (loadingMore || sessions.length >= totalSessions) return;
+    setLoadingMore(true);
+    setError(null);
+    try {
+      const response = await fetchAPI<unknown>(
+        `/api/sessions?limit=48&offset=${sessions.length}&includeTotal=1`,
+      );
+      const incoming = sessionsFromResponse(response);
+      setSessions((current) => {
+        const merged = new Map(
+          current.flatMap((session) => (session.id ? [[session.id, session]] : [])),
+        );
+        const unidentified = current.filter((session) => !session.id);
+        for (const session of incoming) {
+          if (session.id) merged.set(session.id, session);
+          else unidentified.push(session);
+        }
+        return [...merged.values(), ...unidentified].sort(
+          (a, b) =>
+            Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) ||
+            sessionTimestamp(b) - sessionTimestamp(a),
+        );
+      });
+      setTotalSessions((current) =>
+        sessionTotalFromResponse(response, Math.max(current, sessions.length + incoming.length)),
+      );
       setUpdatedAt(Date.now());
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setLoading(false);
+      setLoadingMore(false);
     }
-  }, [fetchAPI]);
+  }, [fetchAPI, loadingMore, sessions.length, totalSessions]);
 
   React.useEffect(() => {
     void load();
@@ -357,6 +397,10 @@ export function TUIChatCommand({
       void load();
       return;
     }
+    if (input === "l") {
+      void loadMore();
+      return;
+    }
     if (input === "p") {
       void toggleSelectedPin();
       return;
@@ -370,6 +414,12 @@ export function TUIChatCommand({
       return;
     }
     if (key.downArrow || input === "j") {
+      if (
+        selectedIndex >= visibleSessions.length - 1 &&
+        sessions.length < totalSessions
+      ) {
+        void loadMore();
+      }
       setSelectedIndex((previous) =>
         Math.min(Math.max(0, visibleSessions.length - 1), previous + 1),
       );
@@ -453,6 +503,7 @@ export function TUIChatCommand({
           {activeCount > 0 ? ` · ${activeCount} running` : ""}
           {pendingCount > 0 ? ` · ${pendingCount} queued` : ""}
           {loading && sessions.length > 0 ? " · refreshing" : ""}
+          {loadingMore ? " · loading more" : ""}
         </Text>
         <Box marginTop={1}>
           <Text color={searchMode ? "cyan" : searchQuery ? "yellow" : "gray"}>
@@ -559,6 +610,11 @@ export function TUIChatCommand({
             more
           </Text>
         ) : null}
+        {!error && sessions.length < totalSessions ? (
+          <Text color={loadingMore ? "yellow" : "gray"}>
+            {loadingMore ? <Spinner type="dots" /> : "l"} Load more sessions
+          </Text>
+        ) : null}
       </Box>
       {confirmDeleteId ? (
         <Box
@@ -587,8 +643,8 @@ export function TUIChatCommand({
           </Text>
           <Text>
             {layout.narrow
-              ? "n new · p pin · x delete · r refresh"
-              : "n new · p pin/unpin · x delete · / search · r refresh · Esc/q quit"}
+              ? "n new · p pin · x delete · r refresh · l more"
+              : "n new · p pin/unpin · x delete · / search · r refresh · l more · Esc/q quit"}
           </Text>
           <Text>
             {layout.narrow

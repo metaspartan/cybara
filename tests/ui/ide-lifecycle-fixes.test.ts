@@ -23,6 +23,17 @@ describe("GitStatus refresh + cleanup", () => {
   });
 });
 
+describe("IDE workspace browse lifecycle", () => {
+  const src = read("../../ui/src/pages/IDE.tsx");
+
+  test("aborts superseded workspace requests and ignores stale responses", () => {
+    expect(src).toContain("const controller = new AbortController()");
+    expect(src).toContain("signal: controller.signal");
+    expect(src).toContain("if (cancelled) return");
+    expect(src).toContain("controller.abort()");
+  });
+});
+
 describe("Terminal WebSocket + xterm cleanup on unmount", () => {
   const src = read("../../ui/src/pages/Terminal.tsx");
 
