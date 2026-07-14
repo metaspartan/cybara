@@ -233,6 +233,7 @@ export class NearbyService {
   private readonly pairings = new Map<string, PendingPairing>();
   private readonly replayIds = new Map<string, number>();
   private readonly pairAttempts = new Map<string, number[]>();
+  private pairingRefreshPromise: Promise<void> | null = null;
 
   async initialize(): Promise<void> {
     if (getNearbySettings().enabled) await this.start();
@@ -481,8 +482,8 @@ export class NearbyService {
   }
 
   async status(): Promise<NearbyStatus> {
-    await this.refreshOutgoingPairings();
     this.pruneState();
+    this.refreshPairingsInBackground();
     const identity = getNearbyIdentity();
     const incoming = getNearbyIncomingTransfers();
     const peers = getNearbyPeers();
@@ -770,6 +771,14 @@ export class NearbyService {
       syncEnabled: false,
     };
     setNearbyPeers([...peers.filter((peer) => peer.id !== next.id), next]);
+    if (pairing.direction === "outgoing") this.pairings.delete(pairing.id);
+  }
+
+  private refreshPairingsInBackground(): void {
+    if (this.pairingRefreshPromise || this.pairings.size === 0) return;
+    this.pairingRefreshPromise = this.refreshOutgoingPairings().finally(() => {
+      this.pairingRefreshPromise = null;
+    });
   }
 
   private async sendPairingConfirmation(pairing: PendingPairing): Promise<void> {

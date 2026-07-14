@@ -159,6 +159,68 @@ describe("nearby network and settings boundaries", () => {
       remote.stop(true);
     }
   });
+
+  test("returns status without waiting for a slow pending peer probe", async () => {
+    const previous = getNearbySettings();
+    const remoteIdentity = createNearbyIdentity();
+    const pairingId = randomUUID();
+    const remote = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: async (request) => {
+        const url = new URL(request.url);
+        if (request.method === "GET" && url.pathname === "/v1/info") {
+          return Response.json({
+            protocol: "cybara-nearby-v1",
+            peerId: remoteIdentity.id,
+            peerName: "Slow Peer",
+            fingerprint: remoteIdentity.fingerprint,
+          });
+        }
+        if (request.method === "POST" && url.pathname === "/v1/pair/request") {
+          return Response.json({
+            protocol: "cybara-nearby-v1",
+            pairingId,
+            peerId: remoteIdentity.id,
+            peerName: "Slow Peer",
+            publicKey: remoteIdentity.publicKey,
+            fingerprint: remoteIdentity.fingerprint,
+          });
+        }
+        if (request.method === "POST" && url.pathname === "/v1/pair/confirm") {
+          return Response.json({ localConfirmed: false });
+        }
+        if (request.method === "POST" && url.pathname === "/v1/pair/status") {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          return Response.json({ localConfirmed: false });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+    const portProbe = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => new Response("probe"),
+    });
+    const nearbyPort = portProbe.port;
+    portProbe.stop(true);
+    const service = new NearbyService();
+    try {
+      await service.configure({ ...previous, enabled: true, port: nearbyPort });
+      const pairing = await service.pairByAddress(`http://127.0.0.1:${remote.port}`);
+      await service.confirmPairing(pairing.id);
+      const startedAt = performance.now();
+      const status = await service.status();
+      expect(performance.now() - startedAt).toBeLessThan(200);
+      expect(status.pairings).toHaveLength(1);
+      await new Promise((resolve) => setTimeout(resolve, 550));
+    } finally {
+      service.stop();
+      setNearbySettings(previous);
+      portProbe.stop(true);
+      remote.stop(true);
+    }
+  });
 });
 
 describe("nearby session transfer", () => {
