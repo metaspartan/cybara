@@ -1,4 +1,4 @@
-import { Accessibility } from "lucide-react";
+import { Accessibility, CheckCircle2, FilePenLine } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
 import { Switch } from "@/components/ui/Switch";
@@ -208,16 +208,50 @@ export function ChatAccessibilitySettings() {
           </div>
         </section>
 
-        <section className="border-t border-white/10 pt-4" aria-labelledby="accessibility-preview">
-          <h3
-            id="accessibility-preview"
-            className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500"
-          >
-            Preview
-          </h3>
-          <div className="chat-markdown text-gray-200">
-            Responses use your selected size and spacing. <code>Inline code</code> remains readable,
-            and <a href="#accessibility-preview">links stay recognizable</a> in every theme.
+        <section
+          className="space-y-3 border-t border-white/10 pt-5"
+          aria-labelledby="accessibility-preview"
+        >
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h3 id="accessibility-preview" className="text-sm font-semibold text-gray-200">
+                Conversation preview
+              </h3>
+              <p className="text-xs text-gray-500">Updates immediately as settings change.</p>
+            </div>
+            <span className="rounded-md border border-white/10 px-2 py-1 text-[11px] text-gray-500">
+              Live
+            </span>
+          </div>
+          <div className="glass-card overflow-hidden rounded-xl border border-white/10">
+            <div className="space-y-4 p-4 sm:p-5">
+              <div className="ml-auto max-w-[82%] rounded-xl bg-white/8 px-3 py-2 text-right">
+                <p className="chat-markdown text-gray-200">Make the settings screen accessible.</p>
+              </div>
+              <div className="space-y-3">
+                <div className="chat-activity-text flex items-center gap-2 text-gray-500">
+                  <FilePenLine className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span>Edited settings and verified contrast</span>
+                </div>
+                <div className="chat-markdown text-gray-200">
+                  The preview uses your selected size and spacing. <code>Inline code</code> remains
+                  readable, and <a href="#accessibility-preview">links stay recognizable</a> in
+                  every theme.
+                </div>
+                <div className="chat-code-block overflow-hidden rounded-lg border border-white/10 bg-black/35">
+                  <div className="border-b border-white/10 px-3 py-1.5 text-[11px] text-gray-500">
+                    settings.ts
+                  </div>
+                  <pre className="chat-code-text overflow-x-auto p-3 text-gray-300">
+                    <code>{`const accessible = true;`}</code>
+                  </pre>
+                </div>
+                <div className="chat-activity-text flex items-center gap-2 text-gray-500">
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span>Accessibility check completed</span>
+                </div>
+              </div>
+            </div>
           </div>
         </section>
       </CardContent>

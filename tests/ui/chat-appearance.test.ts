@@ -118,6 +118,9 @@ describe("chat appearance settings", () => {
     expect(settings).toContain("Increase contrast");
     expect(settings).toContain("Underline chat links");
     expect(settings).toContain("chat_appearance: next");
+    expect(settings).toContain("Conversation preview");
+    expect(settings).toContain("Edited settings and verified contrast");
+    expect(settings).toContain("chat-code-text");
     expect(settings).not.toContain("disabled={saving !== null}");
     expect(message).toContain('className="chat-markdown max-w-none text-gray-200"');
     expect(activity).toContain("chat-thought-text");

@@ -1,3 +1,5 @@
+import { isSealedSecret, openSecret, sealSecret } from "../secret-storage";
+
 export type MemoryProviderId =
   | "local"
   | "supermemory"
@@ -155,28 +157,28 @@ export function normalizeMemoryProviderSettings(value: unknown): MemoryProviderS
     autoCapture:
       typeof record.autoCapture === "boolean" ? record.autoCapture : defaults.autoCapture,
     supermemory: {
-      apiKey: readString(supermemory.apiKey, ""),
+      apiKey: readString(supermemory.apiKey, "", 4000),
       baseUrl: readBaseUrl(supermemory.baseUrl, defaults.supermemory.baseUrl),
       containerTag: readString(supermemory.containerTag, defaults.supermemory.containerTag, 120),
     },
     mem0: {
-      apiKey: readString(mem0.apiKey, ""),
+      apiKey: readString(mem0.apiKey, "", 4000),
       baseUrl: readBaseUrl(mem0.baseUrl, defaults.mem0.baseUrl),
       userId: readString(mem0.userId, defaults.mem0.userId, 120),
       agentId: readString(mem0.agentId, defaults.mem0.agentId, 120),
     },
     honcho: {
-      apiKey: readString(honcho.apiKey, ""),
+      apiKey: readString(honcho.apiKey, "", 4000),
       baseUrl: readBaseUrl(honcho.baseUrl, defaults.honcho.baseUrl),
       workspace: readString(honcho.workspace, defaults.honcho.workspace, 120),
       peer: readString(honcho.peer, defaults.honcho.peer, 120),
     },
     openviking: {
-      apiKey: readString(openviking.apiKey, ""),
+      apiKey: readString(openviking.apiKey, "", 4000),
       baseUrl: readBaseUrl(openviking.baseUrl, defaults.openviking.baseUrl),
     },
     hindsight: {
-      apiKey: readString(hindsight.apiKey, ""),
+      apiKey: readString(hindsight.apiKey, "", 4000),
       baseUrl: readBaseUrl(hindsight.baseUrl, defaults.hindsight.baseUrl),
       tenant: readString(hindsight.tenant, defaults.hindsight.tenant, 120),
       bankId: readString(hindsight.bankId, defaults.hindsight.bankId, 120),
@@ -228,6 +230,79 @@ export function mergeMemoryProviderSettingsUpdate(
       apiKey: keepSecret(incoming.hindsight.apiKey, stored.hindsight.apiKey),
     },
   };
+}
+
+function memoryProviderSecretContext(provider: ExternalMemoryProviderId): string {
+  return `memory-provider:${provider}:api_key`;
+}
+
+function sealProviderKey(provider: ExternalMemoryProviderId, apiKey: string): string {
+  return apiKey ? sealSecret(apiKey, memoryProviderSecretContext(provider)) : "";
+}
+
+function openProviderKey(provider: ExternalMemoryProviderId, apiKey: string): string {
+  if (!apiKey) return "";
+  try {
+    return openSecret(apiKey, memoryProviderSecretContext(provider));
+  } catch {
+    return "";
+  }
+}
+
+export function sealMemoryProviderSettings(
+  settings: MemoryProviderSettings
+): MemoryProviderSettings {
+  return {
+    ...settings,
+    supermemory: {
+      ...settings.supermemory,
+      apiKey: sealProviderKey("supermemory", settings.supermemory.apiKey),
+    },
+    mem0: { ...settings.mem0, apiKey: sealProviderKey("mem0", settings.mem0.apiKey) },
+    honcho: { ...settings.honcho, apiKey: sealProviderKey("honcho", settings.honcho.apiKey) },
+    openviking: {
+      ...settings.openviking,
+      apiKey: sealProviderKey("openviking", settings.openviking.apiKey),
+    },
+    hindsight: {
+      ...settings.hindsight,
+      apiKey: sealProviderKey("hindsight", settings.hindsight.apiKey),
+    },
+  };
+}
+
+export function openMemoryProviderSettings(
+  settings: MemoryProviderSettings
+): MemoryProviderSettings {
+  return {
+    ...settings,
+    supermemory: {
+      ...settings.supermemory,
+      apiKey: openProviderKey("supermemory", settings.supermemory.apiKey),
+    },
+    mem0: { ...settings.mem0, apiKey: openProviderKey("mem0", settings.mem0.apiKey) },
+    honcho: { ...settings.honcho, apiKey: openProviderKey("honcho", settings.honcho.apiKey) },
+    openviking: {
+      ...settings.openviking,
+      apiKey: openProviderKey("openviking", settings.openviking.apiKey),
+    },
+    hindsight: {
+      ...settings.hindsight,
+      apiKey: openProviderKey("hindsight", settings.hindsight.apiKey),
+    },
+  };
+}
+
+export function memoryProviderSettingsHavePlaintextSecrets(
+  settings: MemoryProviderSettings
+): boolean {
+  return [
+    settings.supermemory.apiKey,
+    settings.mem0.apiKey,
+    settings.honcho.apiKey,
+    settings.openviking.apiKey,
+    settings.hindsight.apiKey,
+  ].some((key) => key !== "" && !isSealedSecret(key));
 }
 
 const REQUEST_TIMEOUT_MS = 10_000;

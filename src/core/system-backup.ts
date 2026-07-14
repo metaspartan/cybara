@@ -15,6 +15,9 @@ import {
 } from "fs";
 import { basename, dirname, join, relative, resolve, sep } from "path";
 import { cybaraDir } from "./paths";
+import { unwrapStorageKey, wrapStorageKey } from "./secret-storage";
+
+export type SystemBackupKeyProtection = "local" | "password";
 
 export interface SystemBackupManifest {
   version: 1;
@@ -23,6 +26,7 @@ export interface SystemBackupManifest {
   createdAt: string;
   entries: string[];
   includesCredentials: true;
+  keyProtection?: SystemBackupKeyProtection;
 }
 
 export interface SystemBackupSummary extends SystemBackupManifest {
@@ -58,6 +62,10 @@ const excludedTopLevelNames = new Set([
   ".DS_Store",
 ]);
 const managedSQLitePaths = new Set(["data/platform.db", "kanban.db", "memory/vectors.db"]);
+const secureDirectoryName = "secure";
+const storageKeyFileName = "storage.key";
+const storageKeyRelativePath = `${secureDirectoryName}/${storageKeyFileName}`;
+const protectedStorageKeyFileName = "storage.key.enc";
 
 interface BackupCopyOptions {
   root: string;
@@ -144,6 +152,7 @@ function skipSQLiteSidecar(source: string, options: BackupCopyOptions): boolean 
 function excludedNestedPath(source: string, options: BackupCopyOptions): boolean {
   if (!options.snapshotManagedDatabases) return false;
   const path = portableRelativePath(options.root, source);
+  if (path === storageKeyRelativePath) return true;
   return path === "memory/transformers" || path.startsWith("memory/transformers/");
 }
 
@@ -173,6 +182,13 @@ function copyBackupEntry(source: string, destination: string, options: BackupCop
     return;
   }
   copyFileSync(source, destination);
+}
+
+function removeStagedStorageKey(payloadPath: string): void {
+  const payloadSecurePath = join(payloadPath, secureDirectoryName);
+  if (existsSync(join(payloadSecurePath, protectedStorageKeyFileName))) {
+    rmSync(join(payloadSecurePath, storageKeyFileName), { force: true });
+  }
 }
 
 function removeManagedSQLiteSidecars(root: string): void {
@@ -216,6 +232,10 @@ function readManifest(backupPath: string): SystemBackupManifest | null {
       createdAt: parsed.createdAt,
       entries: parsed.entries,
       includesCredentials: true,
+      keyProtection:
+        parsed.keyProtection === "password" || parsed.keyProtection === "local"
+          ? parsed.keyProtection
+          : undefined,
     };
   } catch {
     return null;
@@ -227,7 +247,15 @@ function backupPathForId(root: string, backupId: string): string {
   return containedPath(backupsDirectory(root), join(backupsDirectory(root), backupId));
 }
 
-export function createSystemBackup(label = "Manual backup", root = cybaraDir): SystemBackupSummary {
+export interface SystemBackupOptions {
+  password?: string;
+}
+
+export function createSystemBackup(
+  label = "Manual backup",
+  root = cybaraDir,
+  options?: SystemBackupOptions
+): SystemBackupSummary {
   ensurePrivateDirectory(root);
   const backupsRoot = backupsDirectory(root);
   ensurePrivateDirectory(backupsRoot);
@@ -249,6 +277,19 @@ export function createSystemBackup(label = "Manual backup", root = cybaraDir): S
       copyBackupEntry(entrySource, join(payloadPath, entry.name), copyOptions);
       entries.push(entry.name);
     }
+    let keyProtection: SystemBackupKeyProtection = "local";
+    const password = options?.password?.trim() ? options.password : undefined;
+    const storageKeyPath = join(root, secureDirectoryName, storageKeyFileName);
+    if (password && existsSync(storageKeyPath)) {
+      const wrapped = wrapStorageKey(readFileSync(storageKeyPath), password);
+      const payloadSecurePath = join(payloadPath, secureDirectoryName);
+      ensurePrivateDirectory(payloadSecurePath);
+      writeFileSync(join(payloadSecurePath, protectedStorageKeyFileName), wrapped, {
+        mode: 0o600,
+      });
+      if (!entries.includes(secureDirectoryName)) entries.push(secureDirectoryName);
+      keyProtection = "password";
+    }
     const manifest: SystemBackupManifest = {
       version: 1,
       id,
@@ -256,6 +297,7 @@ export function createSystemBackup(label = "Manual backup", root = cybaraDir): S
       createdAt: new Date().toISOString(),
       entries: entries.sort(),
       includesCredentials: true,
+      keyProtection,
     };
     writeFileSync(join(temporaryPath, manifestFileName), `${JSON.stringify(manifest, null, 2)}\n`, {
       mode: 0o600,
@@ -289,10 +331,25 @@ export function deleteSystemBackup(backupId: string, root = cybaraDir): boolean 
   return true;
 }
 
-export function scheduleSystemRestore(backupId: string, root = cybaraDir): SystemRestoreStatus {
+export function scheduleSystemRestore(
+  backupId: string,
+  root = cybaraDir,
+  password?: string
+): SystemRestoreStatus {
   const backupPath = backupPathForId(root, backupId);
   const manifest = readManifest(backupPath);
   if (!manifest) throw new Error("Backup is missing or invalid");
+  const payloadSecurePath = join(backupPath, payloadDirectoryName, secureDirectoryName);
+  const protectedKeyPath = join(payloadSecurePath, protectedStorageKeyFileName);
+  const trimmedPassword = password?.trim() ? password : undefined;
+  if (existsSync(protectedKeyPath)) {
+    if (trimmedPassword) {
+      const key = unwrapStorageKey(readFileSync(protectedKeyPath, "utf8"), trimmedPassword);
+      writeFileSync(join(payloadSecurePath, storageKeyFileName), key, { mode: 0o600 });
+    }
+  } else if (trimmedPassword) {
+    throw new Error("This backup is not password protected");
+  }
   const status: SystemRestoreStatus = {
     state: "pending",
     backupId,
@@ -350,6 +407,10 @@ export function applyPendingSystemRestore(root = cybaraDir): SystemRestoreStatus
       const source = containedPath(payloadPath, join(payloadPath, entry));
       if (!existsSync(source)) throw new Error(`Backup entry is missing: ${entry}`);
     }
+    const liveStorageKeyPath = join(root, secureDirectoryName, storageKeyFileName);
+    const preservedStorageKey = existsSync(liveStorageKeyPath)
+      ? readFileSync(liveStorageKeyPath)
+      : null;
     ensurePrivateDirectory(rollbackPath);
     const copyOptions: BackupCopyOptions = {
       root: payloadPath,
@@ -372,6 +433,11 @@ export function applyPendingSystemRestore(root = cybaraDir): SystemRestoreStatus
       stagedTargets.splice(stagedTargets.indexOf(staged), 1);
       installedTargets.push(target);
     }
+    if (!existsSync(liveStorageKeyPath) && preservedStorageKey) {
+      ensurePrivateDirectory(join(root, secureDirectoryName));
+      writeFileSync(liveStorageKeyPath, preservedStorageKey, { mode: 0o600 });
+    }
+    removeStagedStorageKey(payloadPath);
     removeManagedSQLiteSidecars(root);
     rmSync(rollbackPath, { recursive: true, force: true });
     rmSync(pendingPath, { force: true });
@@ -393,6 +459,11 @@ export function applyPendingSystemRestore(root = cybaraDir): SystemRestoreStatus
     }
     for (const moved of movedTargets.reverse()) {
       if (existsSync(moved.rollback)) renameSync(moved.rollback, moved.target);
+    }
+    if (backupId) {
+      try {
+        removeStagedStorageKey(join(backupPathForId(root, backupId), payloadDirectoryName));
+      } catch {}
     }
     rmSync(rollbackPath, { recursive: true, force: true });
     rmSync(pendingPath, { force: true });

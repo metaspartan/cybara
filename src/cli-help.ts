@@ -46,8 +46,10 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("  agents      List configured agents");
   console.log("  config      Config commands");
   console.log("    config            Show all config");
+  console.log("    config accessibility          Show shared accessibility settings");
   console.log("    config get <key>  Get config value");
-  console.log("    config set <k> <v> Set config value (for example: theme emerald)");
+  console.log("    config set <k> <v> Set a value, including nested keys and JSON objects");
+  console.log("    settings          Alias for config");
   console.log(
     "    config set reasoning_effort <minimal|low|medium|high|xhigh|max>  Default reasoning effort"
   );

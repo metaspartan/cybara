@@ -106,7 +106,7 @@ import {
   listCheckpoints,
   restoreCheckpoint,
 } from "../core/checkpoint";
-import { config } from "../core/config";
+import { config, redactSandboxRuntimeConfig } from "../core/config";
 import { resolveCybaraHome, setCybaraHomeOverride } from "../core/cybara-home";
 import { tables } from "../core/database";
 import { resolveGeminiCliOAuthClientConfig } from "../core/gemini-cli-oauth";
@@ -723,7 +723,7 @@ const routes: Record<string, RouteHandler> = {
     dangerous_tool_policy: config.getDangerousToolPolicy(),
     tool_approval_mode: config.getToolApprovalMode(),
     web_tool_url_policy: config.getWebToolUrlPolicy(),
-    sandbox_runtime: config.getSandboxRuntime(),
+    sandbox_runtime: redactSandboxRuntimeConfig(config.getSandboxRuntime()),
     workspace_indexer: config.getWorkspaceIndexerSettings(),
     memory: config.getMemoryBehaviorSettings(),
     llm_timeouts: config.getLlmTimeoutSettings(),
@@ -1719,17 +1719,25 @@ const routes: Record<string, RouteHandler> = {
     restore: readSystemRestoreStatus(),
   }),
   "POST /api/system/backups": (body) => {
-    const label =
-      typeof (body as { label?: unknown })?.label === "string"
-        ? (body as { label: string }).label
-        : "Manual backup";
-    return { success: true, backup: createSystemBackup(label) };
+    const data = (body || {}) as { label?: unknown; password?: unknown };
+    const label = typeof data.label === "string" ? data.label : "Manual backup";
+    const password =
+      typeof data.password === "string" && data.password.trim() ? data.password : undefined;
+    return {
+      success: true,
+      backup: createSystemBackup(label, undefined, password ? { password } : undefined),
+    };
   },
-  "POST /api/system/backups/:id/restore": (_body, params) => ({
-    success: true,
-    restore: scheduleSystemRestore(params?.id || ""),
-    restartRequired: true,
-  }),
+  "POST /api/system/backups/:id/restore": (body, params) => {
+    const data = (body || {}) as { password?: unknown };
+    const password =
+      typeof data.password === "string" && data.password.trim() ? data.password : undefined;
+    return {
+      success: true,
+      restore: scheduleSystemRestore(params?.id || "", undefined, password),
+      restartRequired: true,
+    };
+  },
   "DELETE /api/system/backups/:id": (_body, params) => ({
     success: deleteSystemBackup(params?.id || ""),
   }),

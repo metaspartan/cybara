@@ -504,6 +504,14 @@ describe("mobile dashboard model", () => {
     expect(dashboardScreenSource).toContain("Live signals are still available from Logs.");
   });
 
+  test("previews chat accessibility settings using the shared appearance contract", () => {
+    expect(dashboardScreenSource).toContain("MobileAccessibilityPreview");
+    expect(dashboardScreenSource).toContain('accessibilityLabel="Live accessibility preview"');
+    expect(dashboardScreenSource).toContain("getChatFontSizePixels");
+    expect(dashboardScreenSource).toContain("getChatCodeFontSizePixels");
+    expect(dashboardScreenSource).toContain("accessibilityPreviewCode");
+  });
+
   test("keeps logs paged while still showing the total count", () => {
     expect(MOBILE_LOGS_CHROME.showsTotalCount).toBe(true);
     expect(MOBILE_LOGS_CHROME.lazyLoadsOnScroll).toBe(true);

@@ -56,6 +56,7 @@ cybara tui lsp            # Language server availability
 cybara tui subagents      # Delegated agent runs
 cybara tui artifacts      # Persistent session deliverables
 cybara tui journey        # Learned skills and memory activity
+cybara tui settings       # Shared accessibility, chat, and safety settings
 ```
 
 `cybara chat` is the terminal chat surface. It supports session history, queued follow-ups while a
@@ -422,8 +423,10 @@ cybara config set reasoning_effort <minimal|low|medium|high|xhigh>   # default r
 
 ```bash
 cybara config             # Show current config
+cybara config accessibility # Show shared accessibility settings
 cybara config get <key>   # Get config value
 cybara config set <key> <val> # Set config value
+cybara config set chat_appearance.fontSize large # Update one nested setting
 ```
 
 ## Options

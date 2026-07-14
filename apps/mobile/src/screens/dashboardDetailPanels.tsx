@@ -2,8 +2,10 @@ import {
   Accessibility,
   Brain,
   CalendarCheck,
+  CheckCircle2,
   ChevronRight,
   Database,
+  FilePenLine,
   Folder,
   Network,
   Plus,
@@ -15,6 +17,9 @@ import {
   chatCodeFontSizeOptions,
   chatFontSizeOptions,
   chatLineSpacingOptions,
+  getChatCodeFontSizePixels,
+  getChatFontSizePixels,
+  getChatLineHeight,
   normalizeChatAppearanceSettings,
 } from "cybara-shared/chat-appearance";
 import { useState } from "react";
@@ -104,6 +109,75 @@ import {
   surfaceMeta,
   surfaceRows,
 } from "./dashboardSurfaceData";
+
+function MobileAccessibilityPreview({
+  appearance,
+  tone,
+}: {
+  appearance: ReturnType<typeof normalizeChatAppearanceSettings>;
+  tone: string;
+}) {
+  const bodySize = getChatFontSizePixels(appearance.fontSize);
+  const lineHeight = Math.round(bodySize * getChatLineHeight(appearance.lineSpacing));
+  const activityColor = appearance.highContrast ? colors.text : colors.textMuted;
+  return (
+    <SettingsSection title="Conversation preview">
+      <View
+        accessibilityLabel="Live accessibility preview"
+        style={[
+          styles.accessibilityPreview,
+          {
+            backgroundColor: appearance.reduceTransparency ? colors.surface : colors.glass,
+            borderColor: appearance.highContrast ? colors.borderStrong : colors.border,
+          },
+        ]}
+      >
+        <View style={styles.accessibilityPreviewUserRow}>
+          <View style={[styles.accessibilityPreviewUserBubble, { borderColor: tone + "66" }]}>
+            <Text style={[styles.accessibilityPreviewBody, { fontSize: bodySize, lineHeight }]}>
+              Make this settings screen accessible.
+            </Text>
+          </View>
+        </View>
+        <View style={styles.accessibilityPreviewActivity}>
+          <FilePenLine color={activityColor} size={14} strokeWidth={2} />
+          <Text style={[styles.accessibilityPreviewActivityText, { color: activityColor }]}>
+            Edited settings and verified contrast
+          </Text>
+        </View>
+        <Text style={[styles.accessibilityPreviewBody, { fontSize: bodySize, lineHeight }]}>
+          Responses use your selected size and spacing.{" "}
+          <Text
+            style={{
+              color: appearance.highContrast ? colors.text : colors.blueText,
+              textDecorationLine: appearance.underlineLinks ? "underline" : "none",
+            }}
+          >
+            Links stay recognizable
+          </Text>{" "}
+          in every theme.
+        </Text>
+        <View style={styles.accessibilityPreviewCode}>
+          <Text style={styles.accessibilityPreviewCodeLabel}>settings.ts</Text>
+          <Text
+            style={[
+              styles.accessibilityPreviewCodeText,
+              { fontSize: getChatCodeFontSizePixels(appearance.codeFontSize) },
+            ]}
+          >
+            const accessible = true;
+          </Text>
+        </View>
+        <View style={styles.accessibilityPreviewActivity}>
+          <CheckCircle2 color={activityColor} size={14} strokeWidth={2} />
+          <Text style={[styles.accessibilityPreviewActivityText, { color: activityColor }]}>
+            Accessibility check completed
+          </Text>
+        </View>
+      </View>
+    </SettingsSection>
+  );
+}
 
 export function TasksPanel({
   summary,
@@ -782,6 +856,7 @@ export function SettingsPanel({
                 />
               ))}
             </SettingsSection>
+            <MobileAccessibilityPreview appearance={chatAppearance} tone={accentColor} />
           </>
         ) : null}
         {showGatewaySettings && MOBILE_SETTINGS_ROOT_CHROME.gatewayConnectionDetails ? (

@@ -38,6 +38,7 @@ export type MainMenuAction =
   | "artifacts"
   | "journey"
   | "backups"
+  | "settings"
   | "ui"
   | "start"
   | "exit";
@@ -206,6 +207,14 @@ export const MAIN_TUI_MENU_ITEMS: MenuItem[] = [
     group: "Setup",
     kind: "panel",
     detail: "Bundled and installed language server availability",
+  },
+  {
+    label: "Settings",
+    action: "settings",
+    shortcut: "5",
+    group: "System",
+    kind: "panel",
+    detail: "Shared accessibility, chat behavior, and safety controls",
   },
   {
     label: "Status",

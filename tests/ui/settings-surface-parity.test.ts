@@ -10,6 +10,10 @@ const webPolicy = readFileSync(
   join(root, "ui/src/pages/settings/WebToolPolicySettings.tsx"),
   "utf8"
 );
+const webAccessibility = readFileSync(
+  join(root, "ui/src/pages/settings/ChatAccessibilitySettings.tsx"),
+  "utf8"
+);
 const mobileSettings = readFileSync(
   join(root, "apps/mobile/src/screens/dashboardDetailPanels.tsx"),
   "utf8"
@@ -27,6 +31,7 @@ const mobileSessionDetail = readFileSync(
   "utf8"
 );
 const mobileApi = readFileSync(join(root, "apps/mobile/src/lib/api.ts"), "utf8");
+const mobileStyles = readFileSync(join(root, "apps/mobile/src/screens/dashboardStyles.ts"), "utf8");
 const nativeSettings = readFileSync(
   join(root, "apps/macos/Cybara/Sources/Cybara/NativeSettingsScreen.swift"),
   "utf8"
@@ -103,6 +108,19 @@ describe("settings surface parity", () => {
     expect(mobileSessionDetail).toContain(
       'animationType={chatAppearance.reduceMotion ? "none" : "fade"}'
     );
+  });
+
+  test("accessibility settings have representative live previews on every visual client", () => {
+    expect(webAccessibility).toContain("Conversation preview");
+    expect(webAccessibility).toContain("chat-code-text");
+    expect(webAccessibility).toContain("FilePenLine");
+    expect(mobileSettings).toContain("MobileAccessibilityPreview");
+    expect(mobileSettings).toContain('accessibilityLabel="Live accessibility preview"');
+    expect(mobileSettings).toContain("getChatFontSizePixels");
+    expect(mobileStyles).toContain("accessibilityPreviewCode");
+    expect(nativeSettings).toContain('Text("Conversation Preview")');
+    expect(nativeSettings).toContain("let accessible = true");
+    expect(nativeSettings).toContain(".nativeChatAppearance(chatAppearance)");
   });
 
   test("wallet seed reveal requires fresh verification on web and native macOS", () => {

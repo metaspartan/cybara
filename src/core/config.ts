@@ -5,9 +5,14 @@ import { normalizeReasoningEffort } from "./llm/reasoning";
 import {
   type MemoryProviderSettings,
   DEFAULT_MEMORY_PROVIDER_SETTINGS,
+  REDACTED_SECRET_SENTINEL,
+  memoryProviderSettingsHavePlaintextSecrets,
   mergeMemoryProviderSettingsUpdate,
   normalizeMemoryProviderSettings,
+  openMemoryProviderSettings,
+  sealMemoryProviderSettings,
 } from "./memory/providers";
+import { isSealedSecret, openSecret, sealSecret } from "./secret-storage";
 import { type EmbeddingProviderPreference } from "./memory/embeddings";
 import {
   type ChatAppearanceSettings,
@@ -405,6 +410,35 @@ function normalizeSandboxRuntime(value: unknown): SandboxRuntimeConfig {
   if (remoteUrl) runtime.remoteUrl = remoteUrl;
   if (remoteApiKey) runtime.remoteApiKey = remoteApiKey;
   return runtime;
+}
+
+const SANDBOX_REMOTE_API_KEY_CONTEXT = "sandbox-runtime:remote_api_key";
+
+function openSandboxRemoteApiKey(runtime: SandboxRuntimeConfig): SandboxRuntimeConfig {
+  if (!runtime.remoteApiKey) return runtime;
+  try {
+    return {
+      ...runtime,
+      remoteApiKey: openSecret(runtime.remoteApiKey, SANDBOX_REMOTE_API_KEY_CONTEXT),
+    };
+  } catch {
+    const rest = { ...runtime };
+    delete rest.remoteApiKey;
+    return rest;
+  }
+}
+
+function sealSandboxRemoteApiKey(runtime: SandboxRuntimeConfig): SandboxRuntimeConfig {
+  if (!runtime.remoteApiKey) return runtime;
+  return {
+    ...runtime,
+    remoteApiKey: sealSecret(runtime.remoteApiKey, SANDBOX_REMOTE_API_KEY_CONTEXT),
+  };
+}
+
+export function redactSandboxRuntimeConfig(runtime: SandboxRuntimeConfig): SandboxRuntimeConfig {
+  if (!runtime.remoteApiKey) return runtime;
+  return { ...runtime, remoteApiKey: REDACTED_SECRET_SENTINEL };
 }
 
 function normalizePositiveInteger(
@@ -881,12 +915,17 @@ class ConfigManager {
 
   getSandboxRuntime(): SandboxRuntimeConfig {
     const stored = this.get<unknown>("sandbox_runtime");
-    return normalizeSandboxRuntime(stored);
+    return openSandboxRemoteApiKey(normalizeSandboxRuntime(stored));
   }
 
   setSandboxRuntime(runtime: unknown): SandboxRuntimeConfig {
     const normalized = normalizeSandboxRuntime(runtime);
-    this.set("sandbox_runtime", normalized);
+    if (normalized.remoteApiKey === REDACTED_SECRET_SENTINEL) {
+      const existing = this.getSandboxRuntime().remoteApiKey;
+      if (existing) normalized.remoteApiKey = existing;
+      else delete normalized.remoteApiKey;
+    }
+    this.set("sandbox_runtime", sealSandboxRemoteApiKey(normalized));
     return normalized;
   }
 
@@ -938,12 +977,12 @@ class ConfigManager {
 
   getMemoryProviderSettings(): MemoryProviderSettings {
     const stored = this.get<unknown>("memory_provider");
-    return normalizeMemoryProviderSettings(stored);
+    return openMemoryProviderSettings(normalizeMemoryProviderSettings(stored));
   }
 
   setMemoryProviderSettings(settings: unknown): MemoryProviderSettings {
     const merged = mergeMemoryProviderSettingsUpdate(this.getMemoryProviderSettings(), settings);
-    this.set("memory_provider", merged);
+    this.set("memory_provider", sealMemoryProviderSettings(merged));
     return merged;
   }
 
@@ -994,3 +1033,24 @@ class ConfigManager {
 }
 
 export const config = new ConfigManager();
+
+function sealStoredConfigSecrets(): void {
+  try {
+    const memoryStored = config.get<unknown>("memory_provider");
+    if (memoryStored !== undefined) {
+      const normalized = normalizeMemoryProviderSettings(memoryStored);
+      if (memoryProviderSettingsHavePlaintextSecrets(normalized)) {
+        config.set("memory_provider", sealMemoryProviderSettings(normalized));
+      }
+    }
+    const sandboxStored = config.get<unknown>("sandbox_runtime");
+    if (sandboxStored !== undefined) {
+      const normalized = normalizeSandboxRuntime(sandboxStored);
+      if (normalized.remoteApiKey && !isSealedSecret(normalized.remoteApiKey)) {
+        config.set("sandbox_runtime", sealSandboxRemoteApiKey(normalized));
+      }
+    }
+  } catch {}
+}
+
+sealStoredConfigSecrets();

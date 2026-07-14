@@ -15,6 +15,11 @@ import { rawHelp } from "./cli-help";
 import { printCompletion } from "./cli-completion";
 import { rawComputerUse } from "./cli-computer-use";
 import { runConnectorCommand, TUIPluginsCommand } from "./cli-connectors";
+import {
+  accessibilityConfigLines,
+  buildCliConfigPatch,
+  parseCliConfigValue,
+} from "./cli-config";
 import { configureChatCli, rawAgent, rawChatCommand } from "./cli-chat";
 import { runSubagentCommand } from "./cli-subagents";
 import { TUIChatCommand } from "./cli-tui-chat";
@@ -55,6 +60,7 @@ import {
   TUITable as Table,
 } from "./cli-tui-primitives";
 import { TUIMetricsCommand, TUIStatusCommand } from "./cli-tui-system-panels";
+import { TUISettingsCommand } from "./cli-tui-settings";
 import { commandExists } from "./core/platform";
 import {
   configureWalletCli,
@@ -2268,7 +2274,18 @@ async function rawChannels(): Promise<void> {
 }
 
 async function rawConfig(subCmd?: string, key?: string, value?: string): Promise<void> {
-  if (subCmd === "get" && key) {
+  if (subCmd === "accessibility") {
+    const data = await fetchAPI<Record<string, unknown>>("/api/config");
+    if (!data) {
+      console.error("ERROR: Failed to fetch config");
+      process.exit(1);
+    }
+    console.log("ACCESSIBILITY SETTINGS");
+    console.log("======================");
+    for (const line of accessibilityConfigLines(data)) console.log(`  ${line}`);
+    console.log("");
+    console.log("Edit with: cybara config set chat_appearance.<setting> <value>");
+  } else if (subCmd === "get" && key) {
     const data = await fetchAPI<Record<string, unknown>>("/api/config");
     if (!data) {
       console.error("ERROR: Failed to fetch config");
@@ -2277,18 +2294,28 @@ async function rawConfig(subCmd?: string, key?: string, value?: string): Promise
     const val = (data as Record<string, unknown>)[key];
     console.log(val !== undefined ? `${key} = ${JSON.stringify(val)}` : `Key '${key}' not found`);
   } else if (subCmd === "set" && key && value !== undefined) {
-    const coerced: unknown =
-      value === "true"
-        ? true
-        : value === "false"
-          ? false
-          : /^-?\d+(\.\d+)?$/.test(value)
-            ? Number(value)
-            : value; // boolean/number coercion
+    const current = key.includes(".")
+      ? await fetchAPI<Record<string, unknown>>("/api/config")
+      : {};
+    if (!current) {
+      console.error("ERROR: Failed to fetch config");
+      process.exit(1);
+      return;
+    }
+    let coerced: unknown;
+    let patch: Record<string, unknown>;
+    try {
+      coerced = parseCliConfigValue(value);
+      patch = buildCliConfigPatch(current, key, coerced);
+    } catch (error) {
+      console.error(`ERROR: ${error instanceof Error ? error.message : "Invalid config value"}`);
+      process.exit(1);
+      return;
+    }
     const resp = await fetch(`${API_BASE}/api/config`, {
       method: "PUT",
       headers: withCliAuthHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ [key]: coerced }),
+      body: JSON.stringify(patch),
     });
     if (resp.ok) {
       console.log(`✓ Set ${key} = ${JSON.stringify(coerced)}`);
@@ -3572,6 +3599,8 @@ function TUIContent({
       return <SetupWizard />;
     case "status":
       return <TUIStatusCommand fetchAPI={fetchAPI} />;
+    case "settings":
+      return <TUISettingsCommand fetchAPI={fetchAPI} />;
     case "metrics":
       return <TUIMetricsCommand fetchAPI={fetchAPI} />;
     case "tasks":
@@ -3993,6 +4022,9 @@ async function main() {
       await rawAgent(args.slice(1));
       break;
     case "config":
+      await rawConfig(args[1], args[2], args[3]);
+      break;
+    case "settings":
       await rawConfig(args[1], args[2], args[3]);
       break;
     case "migrate":

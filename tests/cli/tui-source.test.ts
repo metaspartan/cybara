@@ -25,6 +25,7 @@ const cliTuiChatEnvironmentViewSource = readFileSync(
   join(root, "src", "cli-tui-chat-environment-view.tsx"),
   "utf8"
 );
+const cliTuiSettingsSource = readFileSync(join(root, "src", "cli-tui-settings.tsx"), "utf8");
 const cliTuiApprovalsSource = readFileSync(join(root, "src", "cli-tui-approvals.tsx"), "utf8");
 const cliPluginsSource = readFileSync(join(root, "src", "cli-connectors.tsx"), "utf8");
 const cliDocs = readFileSync(join(root, "docs", "cli.md"), "utf8");
@@ -65,6 +66,7 @@ const tuiPanels = [
     label: "Artifacts",
   },
   { command: "journey", component: "TUIJourneyCommand", label: "Journey" },
+  { command: "settings", component: "TUISettingsCommand", label: "Settings" },
 ];
 
 describe("CLI TUI source wiring", () => {
@@ -132,6 +134,16 @@ describe("CLI TUI source wiring", () => {
     }
   });
 
+  test("settings panel edits shared accessibility, chat, and safety configuration", () => {
+    expect(cliTuiSettingsSource).toContain('fetchAPI<SettingsConfig>("/api/config")');
+    expect(cliTuiSettingsSource).toContain("chat_appearance");
+    expect(cliTuiSettingsSource).toContain("follow_up_behavior_enabled");
+    expect(cliTuiSettingsSource).toContain("tool_approval_mode");
+    expect(cliTuiSettingsSource).toContain("terminal_enabled");
+    expect(cliTuiSettingsSource).toContain("dangerous_tool_policy");
+    expect(cliTuiSettingsSource).toContain("Changes apply to every connected app.");
+  });
+
   test("plugins panel summarizes bundles, account apps, and MCP services", () => {
     expect(cliPluginsSource).toContain('fetchAPI<{ plugins: PluginStatus[] }>("/api/plugins")');
     expect(cliPluginsSource).toContain('fetchAPI<ConnectorStatus[]>("/api/connectors")');
@@ -173,6 +185,7 @@ describe("CLI TUI source wiring", () => {
       "subagents",
       "artifacts",
       "journey",
+      "settings",
     ]) {
       expect(cliDocs).toContain(`cybara tui ${command}`);
     }

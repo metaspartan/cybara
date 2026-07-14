@@ -613,17 +613,58 @@ struct NativeSettingsScreen: View {
                 }
 
                 GlassCard {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Preview")
-                            .font(.system(size: 11, weight: .semibold, design: .rounded))
-                            .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Conversation Preview")
+                                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                                Text("Updates immediately as settings change.")
+                                    .font(.system(size: 11, design: .rounded))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text("Live")
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+                        }
+                        HStack {
+                            Spacer(minLength: 48)
+                            Text("Make this settings screen accessible.")
+                                .font(.system(size: chatAppearance.bodyFontSize, design: .rounded))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                        }
+                        Label("Edited settings and verified contrast", systemImage: "pencil")
+                            .font(.system(size: chatAppearance.activityFontSize, design: .rounded))
+                            .foregroundStyle(chatAppearance.highContrast ? .primary : .secondary)
                         NativeMarkdownView(
                             content: "Responses use your selected size and spacing. `Inline code` remains readable, and [links](https://cybara.ai) stay recognizable.",
                             isUser: false
                         )
-                        .nativeChatAppearance(chatAppearance)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("settings.swift")
+                                .font(.system(size: 10, weight: .medium, design: .rounded))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(.primary.opacity(0.04))
+                            Text("let accessible = true")
+                                .font(.system(size: chatAppearance.codeTextSize, design: .monospaced))
+                                .padding(10)
+                        }
+                        .background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: 8))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(.primary.opacity(chatAppearance.highContrast ? 0.24 : 0.10)))
+                        Label("Accessibility check completed", systemImage: "checkmark.circle")
+                            .font(.system(size: chatAppearance.activityFontSize, design: .rounded))
+                            .foregroundStyle(chatAppearance.highContrast ? .primary : .secondary)
                     }
                 }
+                .nativeChatAppearance(chatAppearance)
             }
             .nativeSettingsContentLayout()
         }

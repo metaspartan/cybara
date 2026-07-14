@@ -154,6 +154,82 @@ describe("system backups", () => {
     expect(readSystemRestoreStatus(root).state).toBe("completed");
   });
 
+  test("never copies the credential encryption key into a backup payload", () => {
+    const root = createRoot();
+    mkdirSync(join(root, "secure"), { recursive: true });
+    const keyBytes = Buffer.alloc(32, 7);
+    writeFileSync(join(root, "secure", "storage.key"), keyBytes);
+    writeFileSync(join(root, "secure", "mobile-devices.json"), "{}");
+    writeDatabase(join(root, "data", "platform.db"), "sealed-data");
+
+    const backup = createSystemBackup("Key exclusion", root);
+    const payload = join(root, "backups", backup.id, "payload");
+
+    expect(backup.keyProtection).toBe("local");
+    expect(existsSync(join(payload, "secure", "storage.key"))).toBe(false);
+    expect(existsSync(join(payload, "secure", "storage.key.enc"))).toBe(false);
+    expect(existsSync(join(payload, "secure", "mobile-devices.json"))).toBe(true);
+    expect(existsSync(join(payload, "data", "platform.db"))).toBe(true);
+  });
+
+  test("preserves the machine-local encryption key across a restore", () => {
+    const root = createRoot();
+    mkdirSync(join(root, "secure"), { recursive: true });
+    const keyBytes = Buffer.alloc(32, 7);
+    writeFileSync(join(root, "secure", "storage.key"), keyBytes);
+    writeFileSync(join(root, "secure", "mobile-devices.json"), "before");
+    writeDatabase(join(root, "data", "platform.db"), "before");
+
+    const backup = createSystemBackup("Restore point", root);
+    writeFileSync(join(root, "secure", "mobile-devices.json"), "after");
+    writeDatabase(join(root, "data", "platform.db"), "after");
+
+    scheduleSystemRestore(backup.id, root);
+    const restored = applyPendingSystemRestore(root);
+
+    expect(restored.state).toBe("completed");
+    expect(readDatabase(join(root, "data", "platform.db"))).toBe("before");
+    expect(readFileSync(join(root, "secure", "mobile-devices.json"), "utf8")).toBe("before");
+    expect(readFileSync(join(root, "secure", "storage.key"))).toEqual(keyBytes);
+  });
+
+  test("wraps the encryption key under a password and restores it with that password", () => {
+    const root = createRoot();
+    mkdirSync(join(root, "secure"), { recursive: true });
+    const keyBytes = Buffer.alloc(32, 9);
+    writeFileSync(join(root, "secure", "storage.key"), keyBytes);
+    writeDatabase(join(root, "data", "platform.db"), "portable");
+
+    const backup = createSystemBackup("Portable", root, { password: "correct horse" });
+    const payload = join(root, "backups", backup.id, "payload");
+
+    expect(backup.keyProtection).toBe("password");
+    expect(existsSync(join(payload, "secure", "storage.key"))).toBe(false);
+    const wrapped = readFileSync(join(payload, "secure", "storage.key.enc"), "utf8");
+    expect(wrapped).toStartWith("cybara-keybackup:v1:");
+    expect(wrapped).not.toContain(keyBytes.toString("base64url"));
+
+    expect(() => scheduleSystemRestore(backup.id, root, "wrong password")).toThrow();
+
+    rmSync(join(root, "secure", "storage.key"));
+    scheduleSystemRestore(backup.id, root, "correct horse");
+    const restored = applyPendingSystemRestore(root);
+
+    expect(restored.state).toBe("completed");
+    expect(readFileSync(join(root, "secure", "storage.key"))).toEqual(keyBytes);
+    expect(existsSync(join(payload, "secure", "storage.key"))).toBe(false);
+  });
+
+  test("rejects a restore password for a backup that is not password protected", () => {
+    const root = createRoot();
+    writeDatabase(join(root, "data", "platform.db"), "value");
+    const backup = createSystemBackup("Plain", root);
+
+    expect(() => scheduleSystemRestore(backup.id, root, "some password")).toThrow(
+      "This backup is not password protected"
+    );
+  });
+
   test("rejects invalid identifiers and deletes valid backups", () => {
     const root = createRoot();
     writeDatabase(join(root, "data", "platform.db"), "value");

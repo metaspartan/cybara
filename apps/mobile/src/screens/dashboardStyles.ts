@@ -1762,6 +1762,57 @@ const makeStyles = () =>
       fontWeight: "900",
       letterSpacing: 2,
     },
+    accessibilityPreview: {
+      borderRadius: radius.md,
+      borderWidth: StyleSheet.hairlineWidth,
+      gap: spacing.md,
+      overflow: "hidden",
+      padding: spacing.md,
+    },
+    accessibilityPreviewUserRow: {
+      alignItems: "flex-end",
+    },
+    accessibilityPreviewUserBubble: {
+      backgroundColor: colors.inset,
+      borderRadius: radius.sm,
+      borderWidth: StyleSheet.hairlineWidth,
+      maxWidth: "86%",
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    accessibilityPreviewBody: {
+      color: colors.text,
+    },
+    accessibilityPreviewActivity: {
+      alignItems: "center",
+      flexDirection: "row",
+      gap: spacing.sm,
+    },
+    accessibilityPreviewActivityText: {
+      flex: 1,
+      fontSize: typography.label,
+      lineHeight: 18,
+    },
+    accessibilityPreviewCode: {
+      backgroundColor: colors.scrim,
+      borderColor: colors.border,
+      borderRadius: radius.sm,
+      borderWidth: StyleSheet.hairlineWidth,
+      overflow: "hidden",
+    },
+    accessibilityPreviewCodeLabel: {
+      borderBottomColor: colors.border,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      color: colors.textMuted,
+      fontSize: typography.tiny,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 5,
+    },
+    accessibilityPreviewCodeText: {
+      color: colors.text,
+      fontFamily: Platform.select({ ios: "Menlo", default: "monospace" }),
+      padding: spacing.sm,
+    },
     providerPlanUsageGrid: {
       gap: spacing.sm,
     },

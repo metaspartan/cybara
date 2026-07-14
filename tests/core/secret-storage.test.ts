@@ -97,6 +97,88 @@ describe("credential storage", () => {
     expect(result.openedMcp).toMatchObject({ env: "AUTHORIZATION=Bearer mcp-secret" });
   });
 
+  test("encrypts memory-provider and sandbox credentials in the config table", async () => {
+    const home = temporaryHome();
+    const output = await run(
+      home,
+      `
+        const { config } = await import("./src/core/config.ts");
+        const { Database } = await import("bun:sqlite");
+        config.setMemoryProviderSettings({ provider: "mem0", mem0: { apiKey: "memory-secret" } });
+        config.setSandboxRuntime({ enabled: true, provider: "auto", network: "deny", remoteUrl: "https://api.e2b.dev", remoteApiKey: "sandbox-secret" });
+        const sentinelRoundTrip = config.setSandboxRuntime({ enabled: true, provider: "auto", network: "deny", remoteUrl: "https://api.e2b.dev", remoteApiKey: "***redacted***" });
+        const db = new Database(process.env.CYBARA_HOME + "/data/platform.db");
+        const rows = db.query("SELECT key, value FROM config WHERE key IN ('memory_provider','sandbox_runtime')").all();
+        db.close();
+        console.log("RESULT=" + JSON.stringify({ rows, memory: config.getMemoryProviderSettings().mem0.apiKey, sandbox: config.getSandboxRuntime().remoteApiKey, sentinelRoundTrip: sentinelRoundTrip.remoteApiKey }));
+      `
+    );
+    const marker = output
+      .trim()
+      .split("\n")
+      .find((line) => line.startsWith("RESULT="));
+    expect(marker).toBeDefined();
+    const result = JSON.parse(marker?.slice("RESULT=".length) ?? "{}") as {
+      rows: Array<{ key: string; value: string }>;
+      memory: string;
+      sandbox: string;
+      sentinelRoundTrip: string;
+    };
+
+    expect(result.rows).toHaveLength(2);
+    for (const row of result.rows) {
+      expect(row.value).not.toContain("memory-secret");
+      expect(row.value).not.toContain("sandbox-secret");
+      expect(row.value).toContain("cybara-secret:v1:");
+    }
+    expect(result.memory).toBe("memory-secret");
+    expect(result.sandbox).toBe("sandbox-secret");
+    expect(result.sentinelRoundTrip).toBe("sandbox-secret");
+  });
+
+  test("migrates existing plaintext config secrets on startup", async () => {
+    const home = temporaryHome();
+    await run(
+      home,
+      `
+        await import("./src/core/database.ts");
+        const { Database } = await import("bun:sqlite");
+        const db = new Database(process.env.CYBARA_HOME + "/data/platform.db");
+        db.query("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run("memory_provider", JSON.stringify({ provider: "mem0", mem0: { apiKey: "legacy-memory-key" } }));
+        db.query("INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)").run("sandbox_runtime", JSON.stringify({ enabled: true, provider: "auto", network: "deny", remoteApiKey: "legacy-sandbox-key" }));
+        db.close();
+      `
+    );
+    const output = await run(
+      home,
+      `
+        const { config } = await import("./src/core/config.ts");
+        const { Database } = await import("bun:sqlite");
+        const db = new Database(process.env.CYBARA_HOME + "/data/platform.db");
+        const rows = db.query("SELECT key, value FROM config WHERE key IN ('memory_provider','sandbox_runtime')").all();
+        db.close();
+        console.log("RESULT=" + JSON.stringify({ rows, memory: config.getMemoryProviderSettings().mem0.apiKey, sandbox: config.getSandboxRuntime().remoteApiKey }));
+      `
+    );
+    const marker = output
+      .trim()
+      .split("\n")
+      .find((line) => line.startsWith("RESULT="));
+    const result = JSON.parse(marker?.slice("RESULT=".length) ?? "{}") as {
+      rows: Array<{ key: string; value: string }>;
+      memory: string;
+      sandbox: string;
+    };
+
+    for (const row of result.rows) {
+      expect(row.value).not.toContain("legacy-memory-key");
+      expect(row.value).not.toContain("legacy-sandbox-key");
+      expect(row.value).toContain("cybara-secret:v1:");
+    }
+    expect(result.memory).toBe("legacy-memory-key");
+    expect(result.sandbox).toBe("legacy-sandbox-key");
+  });
+
   test("migrates existing plaintext database credentials on startup", async () => {
     const home = temporaryHome();
     await run(
