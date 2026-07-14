@@ -125,7 +125,7 @@ describe("nearby network and settings boundaries", () => {
         if (request.method === "POST" && url.pathname === "/v1/pair/request") {
           return Response.json({
             protocol: "cybara-nearby-v1",
-            pairingId: crypto.randomUUID(),
+            pairingId: randomUUID(),
             peerId: remoteIdentity.id,
             peerName: "Manual Peer",
             publicKey: remoteIdentity.publicKey,
@@ -135,12 +135,19 @@ describe("nearby network and settings boundaries", () => {
         return new Response("not found", { status: 404 });
       },
     });
+    const portProbe = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () => new Response("probe"),
+    });
+    const nearbyPort = portProbe.port;
+    portProbe.stop(true);
     const service = new NearbyService();
     try {
       await service.configure({
         ...previous,
         enabled: true,
-        port: 0,
+        port: nearbyPort,
       });
       const pairing = await service.pairByAddress(`http://127.0.0.1:${remote.port}`);
       expect(pairing.peerId).toBe(remoteIdentity.id);

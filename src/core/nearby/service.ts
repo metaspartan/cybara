@@ -408,7 +408,8 @@ export class NearbyService {
       throw new Error(typeof result?.error === "string" ? result.error : "Cybara was not found");
     }
     const info = this.validatePeerInfo(result);
-    if (info.peerId === getNearbyIdentity().id) throw new Error("Cannot pair this Cybara with itself");
+    if (info.peerId === getNearbyIdentity().id)
+      throw new Error("Cannot pair this Cybara with itself");
     return this.beginPairing(info.peerId, baseUrl, info.fingerprint);
   }
 
