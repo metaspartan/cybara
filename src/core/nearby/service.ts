@@ -70,6 +70,12 @@ interface PairConfirmBody {
   proof: string;
 }
 
+interface NearbyPeerInfo {
+  peerId: string;
+  peerName: string;
+  fingerprint: string;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -329,7 +335,11 @@ export class NearbyService {
     this.discoverableTimer = null;
   }
 
-  async beginPairing(peerId: string, explicitBaseUrl?: string): Promise<NearbyPairingView> {
+  async beginPairing(
+    peerId: string,
+    explicitBaseUrl?: string,
+    expectedFingerprint?: string
+  ): Promise<NearbyPairingView> {
     if (!getNearbySettings().enabled) throw new Error("Nearby Cybara is disabled");
     await this.start();
     const discovered = this.discovered.get(peerId);
@@ -358,7 +368,8 @@ export class NearbyService {
       typeof result.publicKey !== "string" ||
       !verifyNearbyPeerIdentity(result.peerId, result.publicKey) ||
       result.peerId !== peerId ||
-      (discovered?.fingerprint && discovered.fingerprint !== getNearbyFingerprint(result.publicKey))
+      ((expectedFingerprint || discovered?.fingerprint) &&
+        (expectedFingerprint || discovered?.fingerprint) !== getNearbyFingerprint(result.publicKey))
     ) {
       throw new Error("Peer returned an invalid identity");
     }
@@ -384,6 +395,21 @@ export class NearbyService {
     };
     this.pairings.set(pairing.id, pairing);
     return this.pairingView(pairing);
+  }
+
+  async pairByAddress(value: string): Promise<NearbyPairingView> {
+    if (!getNearbySettings().enabled) throw new Error("Nearby Cybara is disabled");
+    const baseUrl = parseNearbyBaseUrl(value);
+    const response = await fetch(`${baseUrl}/v1/info`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    const result = asRecord(await response.json());
+    if (!response.ok) {
+      throw new Error(typeof result?.error === "string" ? result.error : "Cybara was not found");
+    }
+    const info = this.validatePeerInfo(result);
+    if (info.peerId === getNearbyIdentity().id) throw new Error("Cannot pair this Cybara with itself");
+    return this.beginPairing(info.peerId, baseUrl, info.fingerprint);
   }
 
   async confirmPairing(pairingId: string): Promise<NearbyPairingView> {
@@ -490,6 +516,9 @@ export class NearbyService {
       return jsonResponse({ error: "Private network required" }, 403);
     try {
       const url = new URL(req.url);
+      if (req.method === "GET" && url.pathname === "/v1/info") {
+        return jsonResponse(this.peerInfo());
+      }
       if (req.method === "POST" && url.pathname === "/v1/pair/request") {
         return jsonResponse(await this.handlePairRequest(await readJson(req), sourceAddress));
       }
@@ -507,6 +536,34 @@ export class NearbyService {
       log.warn("Nearby request rejected", { error: safeError(error), sourceAddress });
       return jsonResponse({ error: safeError(error) }, 400);
     }
+  }
+
+  private peerInfo(): Record<string, unknown> {
+    if (this.discoverableUntilMs <= Date.now()) throw new Error("This Cybara is not discoverable");
+    const identity = getNearbyIdentity();
+    return {
+      protocol: NEARBY_PROTOCOL,
+      peerId: identity.id,
+      peerName: getNearbySettings().displayName,
+      fingerprint: identity.fingerprint,
+    };
+  }
+
+  private validatePeerInfo(value: Record<string, unknown> | null): NearbyPeerInfo {
+    if (
+      value?.protocol !== NEARBY_PROTOCOL ||
+      !isBoundedString(value.peerId, MAX_ID_CHARS) ||
+      !isBoundedString(value.peerName, 64) ||
+      typeof value.fingerprint !== "string" ||
+      !/^[a-f0-9]{24}$/i.test(value.fingerprint)
+    ) {
+      throw new Error("Cybara returned an invalid identity");
+    }
+    return {
+      peerId: value.peerId,
+      peerName: value.peerName,
+      fingerprint: value.fingerprint,
+    };
   }
 
   private async handlePairRequest(

@@ -33,6 +33,10 @@ export const nearbyRoutes: Record<string, RouteHandler> = {
       typeof data.baseUrl === "string" ? data.baseUrl : undefined
     );
   },
+  "POST /api/nearby/pair-address": async (body) => {
+    const data = record(body);
+    return nearbyService.pairByAddress(requiredString(data.baseUrl, "Cybara address"));
+  },
   "POST /api/nearby/pairings/:id/confirm": async (_body, params) =>
     nearbyService.confirmPairing(requiredString(params?.id, "Pairing ID")),
   "DELETE /api/nearby/pairings/:id": (_body, params) => ({

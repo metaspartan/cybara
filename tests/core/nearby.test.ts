@@ -105,6 +105,53 @@ describe("nearby network and settings boundaries", () => {
       blocker.stop(true);
     }
   });
+
+  test("pairs by a private address when multicast discovery is unavailable", async () => {
+    const previous = getNearbySettings();
+    const remoteIdentity = createNearbyIdentity();
+    const remote = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: async (request) => {
+        const url = new URL(request.url);
+        if (request.method === "GET" && url.pathname === "/v1/info") {
+          return Response.json({
+            protocol: "cybara-nearby-v1",
+            peerId: remoteIdentity.id,
+            peerName: "Manual Peer",
+            fingerprint: remoteIdentity.fingerprint,
+          });
+        }
+        if (request.method === "POST" && url.pathname === "/v1/pair/request") {
+          return Response.json({
+            protocol: "cybara-nearby-v1",
+            pairingId: crypto.randomUUID(),
+            peerId: remoteIdentity.id,
+            peerName: "Manual Peer",
+            publicKey: remoteIdentity.publicKey,
+            fingerprint: remoteIdentity.fingerprint,
+          });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+    const service = new NearbyService();
+    try {
+      await service.configure({
+        ...previous,
+        enabled: true,
+        port: 0,
+      });
+      const pairing = await service.pairByAddress(`http://127.0.0.1:${remote.port}`);
+      expect(pairing.peerId).toBe(remoteIdentity.id);
+      expect(pairing.peerName).toBe("Manual Peer");
+      expect(pairing.verificationCode).toMatch(/^\d{6}$/);
+    } finally {
+      service.stop();
+      setNearbySettings(previous);
+      remote.stop(true);
+    }
+  });
 });
 
 describe("nearby session transfer", () => {

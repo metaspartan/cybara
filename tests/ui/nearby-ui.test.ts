@@ -18,6 +18,10 @@ describe("nearby UI", () => {
     expect(source).toContain("incomingTransfers");
     expect(source).toContain("status === null");
     expect(source).toContain("Nearby is unavailable in this gateway build");
+    expect(source).toContain("Start discovery on both installations");
+    expect(source).toContain("Connect by LAN address");
+    expect(source).toContain("nearbyApi.pairByAddress");
+    expect(source).toContain("queryClient.setQueryData(nearbyStatusQueryKey");
   });
 
   test("chat exposes nearby sharing only while the feature is enabled", () => {

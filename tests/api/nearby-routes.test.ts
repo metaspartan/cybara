@@ -19,6 +19,7 @@ describe("nearby routes", () => {
         "GET /api/nearby",
         "POST /api/nearby/discoverable",
         "POST /api/nearby/pair",
+        "POST /api/nearby/pair-address",
         "POST /api/nearby/pairings/:id/confirm",
         "POST /api/nearby/peers/:id/sessions",
         "POST /api/nearby/transfers/:id/accept",

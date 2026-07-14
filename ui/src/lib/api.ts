@@ -2505,6 +2505,11 @@ export const nearbyApi = {
       method: "POST",
       body: JSON.stringify({ peerId, baseUrl }),
     }),
+  pairByAddress: (baseUrl: string) =>
+    fetchApi<NearbyPairing>("/nearby/pair-address", {
+      method: "POST",
+      body: JSON.stringify({ baseUrl }),
+    }),
   confirmPairing: (pairingId: string) =>
     fetchApi<NearbyPairing>(`/nearby/pairings/${encodeURIComponent(pairingId)}/confirm`, {
       method: "POST",

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Check, Laptop, Link2, Network, RefreshCw, ShieldCheck, Trash2, X } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -6,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/Input";
 import { Switch } from "@/components/ui/Switch";
 import { nearbyApi, type NearbySettings, type NearbyStatus } from "@/lib/api";
+import { nearbyStatusQueryKey } from "@/hooks/useNearbyStatus";
 import { useUIStore } from "@/stores/uiStore";
 
 const fallbackSettings: NearbySettings = {
@@ -17,19 +19,23 @@ const fallbackSettings: NearbySettings = {
 
 export function NearbySettingsSection() {
   const { addToast } = useUIStore();
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<NearbyStatus | null>(null);
   const [settings, setSettings] = useState<NearbySettings>(fallbackSettings);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [pairAddress, setPairAddress] = useState("");
 
   const load = useCallback(async () => {
     const result = await nearbyApi.status();
     if (result.success && result.data) {
       setStatus(result.data);
       setSettings(result.data.settings);
+      queryClient.setQueryData(nearbyStatusQueryKey, result.data);
       setLoadError(null);
     } else {
+      setStatus(null);
       setLoadError(
         /not found/i.test(result.error || "")
           ? "Nearby is unavailable in this gateway build. Rebuild or update the gateway, then restart it."
@@ -37,7 +43,7 @@ export function NearbySettingsSection() {
       );
     }
     setLoading(false);
-  }, []);
+  }, [queryClient]);
 
   useEffect(() => {
     void load();
@@ -54,6 +60,7 @@ export function NearbySettingsSection() {
       }
       setSettings(result.data.settings);
       setStatus(result.data.status);
+      queryClient.setQueryData(nearbyStatusQueryKey, result.data.status);
       addToast("success", next.enabled ? "Nearby Cybara enabled" : "Nearby Cybara disabled");
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "Could not update Nearby Cybara");
@@ -86,6 +93,18 @@ export function NearbySettingsSection() {
     status?.discoverableUntil && Date.parse(status.discoverableUntil) > Date.now()
   );
   const pairedIds = new Set(status?.pairedPeers.map((peer) => peer.id) || []);
+  const availablePeers = status?.discoveredPeers.filter((peer) => !pairedIds.has(peer.id)) || [];
+
+  async function pairByAddress(): Promise<void> {
+    const value = pairAddress.trim();
+    if (!value) return;
+    const baseUrl = /^https?:\/\//i.test(value) ? value : `http://${value}`;
+    await action(
+      "pair-address",
+      () => nearbyApi.pairByAddress(baseUrl),
+      "Verify the code on both devices"
+    );
+  }
 
   return (
     <Card variant="liquid" className="overflow-hidden border border-[var(--surface-border)]">
@@ -186,21 +205,26 @@ export function NearbySettingsSection() {
                 }
                 disabled={busy !== null}
               >
-                <RefreshCw className="h-4 w-4" /> Find nearby
+                <RefreshCw className="h-4 w-4" /> Discover devices
               </Button>
             )}
             <Badge variant={status?.running ? "success" : "default"}>
               {status?.running ? "Listening privately" : "Stopped"}
             </Badge>
+            {discoverable ? <Badge variant="info">Discoverable now</Badge> : null}
           </div>
         ) : null}
 
-        {settings.enabled && status?.discoveredPeers.length ? (
+        {settings.enabled && discoverable ? (
           <section className="space-y-2">
-            <h4 className="text-sm font-medium text-[var(--text-primary)]">Available nearby</h4>
-            {status.discoveredPeers
-              .filter((peer) => !pairedIds.has(peer.id))
-              .map((peer) => (
+            <div>
+              <h4 className="text-sm font-medium text-[var(--text-primary)]">Available nearby</h4>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                Start discovery on both installations. New devices appear here automatically.
+              </p>
+            </div>
+            {availablePeers.length ? (
+              availablePeers.map((peer) => (
                 <div
                   key={peer.id}
                   className="flex items-center justify-between gap-3 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-2.5"
@@ -226,7 +250,48 @@ export function NearbySettingsSection() {
                     <Link2 className="h-4 w-4" /> Connect
                   </Button>
                 </div>
-              ))}
+              ))
+            ) : (
+              <div className="flex items-center gap-3 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-3 text-sm text-[var(--text-secondary)]">
+                <RefreshCw className="h-4 w-4 animate-spin text-[var(--text-muted)]" />
+                Looking for other Cybara installations on this network
+              </div>
+            )}
+          </section>
+        ) : null}
+
+        {settings.enabled ? (
+          <section className="space-y-2">
+            <div>
+              <h4 className="text-sm font-medium text-[var(--text-primary)]">
+                Connect by LAN address
+              </h4>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                Use this when your router blocks device discovery. Start discovery on the other
+                installation first.
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                aria-label="Nearby Cybara LAN address"
+                placeholder="192.168.1.73:4270"
+                value={pairAddress}
+                disabled={busy !== null}
+                onChange={(event) => setPairAddress(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void pairByAddress();
+                }}
+              />
+              <Button
+                variant="secondary"
+                className="shrink-0"
+                disabled={!pairAddress.trim() || busy !== null}
+                isLoading={busy === "pair-address"}
+                onClick={() => void pairByAddress()}
+              >
+                <Link2 className="h-4 w-4" /> Connect
+              </Button>
+            </div>
           </section>
         ) : null}
 
