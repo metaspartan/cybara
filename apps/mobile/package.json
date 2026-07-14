@@ -8,7 +8,7 @@
     "android": "bunx expo start --android",
     "ios": "bunx expo start --ios",
     "web": "bunx expo start --web",
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "bun ./node_modules/@typescript/native/bin/tsc --noEmit"
   },
   "dependencies": {
     "@expo/metro-runtime": "56.0.16",
@@ -35,6 +35,7 @@
   },
   "devDependencies": {
     "@types/react": "19.2.17",
+    "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "6.0.3"
   },
   "overrides": {

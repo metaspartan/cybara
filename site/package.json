@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 3399 --strictPort",
-    "build": "tsc --noEmit && vite build && bun run scripts/generate-pages.ts && bun run scripts/precompress.ts",
+    "build": "bun ./node_modules/@typescript/native/bin/tsc --noEmit && vite build && bun run scripts/generate-pages.ts && bun run scripts/precompress.ts",
     "preview": "vite preview --port 3399 --strictPort",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "bun ./node_modules/@typescript/native/bin/tsc --noEmit"
   },
   "dependencies": {
     "react": "19.2.7",
@@ -16,6 +16,7 @@
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@typescript/native": "npm:typescript@7.0.2",
     "@vitejs/plugin-react": "6.0.3",
     "typescript": "6.0.3",
     "vite": "8.1.0"

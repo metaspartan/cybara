@@ -11,7 +11,11 @@
         "tests/**/*.test.ts"
       ],
       "project": ["src/**/*.{ts,tsx}", "scripts/*.ts", "tests/**/*.ts"],
-      "ignoreDependencies": ["@huggingface/transformers", "typescript-language-server"],
+      "ignoreDependencies": [
+        "@huggingface/transformers",
+        "@typescript/native",
+        "typescript-language-server"
+      ],
       "ignoreBinaries": [
         "preview",
         "go",
@@ -29,11 +33,13 @@
     },
     "ui": {
       "entry": ["src/**/*.test.ts"],
-      "project": ["src/**/*.{ts,tsx}", "*.config.{js,ts}"]
+      "project": ["src/**/*.{ts,tsx}", "*.config.{js,ts}"],
+      "ignoreDependencies": ["@typescript/native"]
     },
     "apps/mobile": {
       "entry": ["App.tsx", "src/**/*.{ts,tsx}"],
-      "project": ["src/**/*.{ts,tsx}"]
+      "project": ["src/**/*.{ts,tsx}"],
+      "ignoreDependencies": ["@typescript/native"]
     }
   }
 }

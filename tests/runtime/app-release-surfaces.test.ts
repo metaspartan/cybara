@@ -213,7 +213,9 @@ describe("app release surface wiring", () => {
 
     expect(mobilePkg.scripts?.ios).toBe("bunx expo start --ios");
     expect(mobilePkg.scripts?.android).toBe("bunx expo start --android");
-    expect(mobilePkg.scripts?.typecheck).toBe("bunx tsc --noEmit");
+    expect(mobilePkg.scripts?.typecheck).toBe(
+      "bun ./node_modules/@typescript/native/bin/tsc --noEmit"
+    );
     expect(mobilePkg.dependencies?.["expo-glass-effect"]).toBeDefined();
     expect(mobilePkg.dependencies?.["expo-secure-store"]).toBeDefined();
   });

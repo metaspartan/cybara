@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "bunx vite",
     "lint": "bun eslint --quiet \"src/**/*.{ts,tsx}\"",
-    "typecheck": "bunx tsc -b",
-    "build": "bunx tsc -b && bunx vite build",
+    "typecheck": "bun ./node_modules/@typescript/native/bin/tsc -b",
+    "build": "bun ./node_modules/@typescript/native/bin/tsc -b && bunx vite build",
     "preview": "bunx vite preview"
   },
   "dependencies": {
@@ -39,6 +39,7 @@
     "@types/node": "26.0.1",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
+    "@typescript/native": "npm:typescript@7.0.2",
     "@vitejs/plugin-react": "6.0.3",
     "autoprefixer": "10.5.2",
     "eslint-plugin-react-hooks": "7.1.1",
@@ -47,7 +48,7 @@
     "postcss": "8.5.16",
     "tailwindcss": "4.3.2",
     "typescript": "6.0.3",
-    "typescript-eslint": "8.62.1",
+    "typescript-eslint": "8.64.0",
     "vite": "8.1.0"
   }
 }

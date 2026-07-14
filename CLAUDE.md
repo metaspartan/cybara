@@ -210,13 +210,13 @@ interface AXNode {
 Always verify changes compile:
 
 ```bash
-bunx tsc --noEmit
+bun run typecheck
 ```
 
 For UI changes:
 
 ```bash
-cd ui && bunx tsc --noEmit
+bun run ui:typecheck
 ```
 
 ## Directory Structure

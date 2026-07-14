@@ -15,15 +15,13 @@
       "ESNext"
     ],
     "types": [
-      "@types/bun"
+      "bun"
     ],
-    "ignoreDeprecations": "6.0",
     "paths": {
       "@/*": [
         "./src/*"
       ]
-    },
-    "baseUrl": "."
+    }
   },
   "include": [
     "src/**/*"

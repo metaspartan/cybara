@@ -15,7 +15,7 @@ bun run dev        # http://localhost:3399
 ```bash
 bun run build      # type-checks, then emits dist/
 bun run preview    # serve the production build on 3399
-bun run typecheck  # tsc --noEmit
+bun run typecheck  # native TypeScript 7 check
 ```
 
 ## Docker
