@@ -3,10 +3,13 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { chatWorkspaceTabLabel } from "../../ui/src/pages/chat/ChatWorkspacePanel";
 
-const chatSource = readFileSync(
-  fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url)),
-  "utf8"
-);
+const chatSource = [
+  "../../ui/src/pages/Chat.tsx",
+  "../../ui/src/pages/chat/ChatWorkspaceDock.tsx",
+  "../../ui/src/pages/chat/ChatPageHeader.tsx",
+]
+  .map((path) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), "utf8"))
+  .join("\n");
 const environmentSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/chat/ChatEnvironmentOverview.tsx", import.meta.url)),
   "utf8"
@@ -74,7 +77,7 @@ describe("chat workspace panel", () => {
   test("environment preview opens active workspace tabs", () => {
     expect(environmentSource).toContain('EnvironmentSection title="Preview"');
     expect(environmentSource).toContain("onOpenWorkspaceTab(tab)");
-    expect(chatSource).toContain("previewTabs={Array.from(");
+    expect(chatSource).toContain("previewTabs: Array.from(");
   });
 
   test("browser preview shares the chat session and fills the workspace panel", () => {
@@ -109,9 +112,7 @@ describe("chat workspace panel", () => {
     expect(browserSource).toContain("object-contain");
     expect(browserSource).not.toContain("object-fill");
     expect(browserSource).not.toContain("Close browser tab");
-    expect(chatSource).toContain(
-      "onTitleChange={(title) => updateWorkspaceTabTitle(instance.id, title)}"
-    );
+    expect(chatSource).toContain("onTitleChange={(title) => onUpdateTabTitle(instance.id, title)}");
     expect(browserManagerSource).toContain('button[aria-label^="Cybara pet"]');
     expect(nativeBrowserSource).toContain(
       ".animation(.easeOut(duration: 0.15), value: cursor.updatedAt ?? 0)"
@@ -134,10 +135,10 @@ describe("chat workspace panel", () => {
   });
 
   test("workspace tools remain mounted while switching tabs", () => {
-    expect(chatSource).toContain("workspaceTabs.map((instance)");
+    expect(chatSource).toContain("tabs.map((instance)");
     expect(chatSource).toContain('instance.kind === "terminal"');
     expect(chatSource).toContain('cn("h-full", !active && "hidden")');
-    expect(chatSource).toContain("visible={showWorkspacePanel && active}");
+    expect(chatSource).toContain("visible={isOpen && active}");
     expect(chatSource).toContain('instance.kind === "browser"');
   });
 

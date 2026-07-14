@@ -19,7 +19,14 @@ describe("native audio recorder errors", () => {
 
   test("sends native WAV recordings directly to the gateway for local Whisper", () => {
     for (const file of ["Chat.tsx", "Voice.tsx"]) {
-      const source = readFileSync(join(import.meta.dir, "../../ui/src/pages", file), "utf8");
+      const source =
+        readFileSync(join(import.meta.dir, "../../ui/src/pages", file), "utf8") +
+        (file === "Chat.tsx"
+          ? readFileSync(
+              join(import.meta.dir, "../../ui/src/pages/chat/useChatDictation.ts"),
+              "utf8"
+            )
+          : "");
       expect(source).toContain("...recording,");
       expect(source).not.toContain("audioBlobToLocalPcm(nativeRecordingBlob(recording))");
     }

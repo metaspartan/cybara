@@ -2,10 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
+  type ChatMessage,
   collectPlanTimelineFromMessages,
   extractLatestPlanFromMessages,
   isSessionPlanComplete,
-  type ChatMessage,
 } from "../../ui/src/pages/chat/chatModel";
 
 const chatPagePath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.meta.url));
@@ -14,6 +14,12 @@ const chatModelPath = fileURLToPath(
 );
 const planCardPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/PlanSummaryCard.tsx", import.meta.url)
+);
+const chatComposerPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ChatComposer.tsx", import.meta.url)
+);
+const chatPageHeaderPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ChatPageHeader.tsx", import.meta.url)
 );
 const environmentOverviewPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatEnvironmentOverview.tsx", import.meta.url)
@@ -31,6 +37,8 @@ function readUiSource(): string {
   return [
     readFileSync(chatPagePath, "utf8"),
     readFileSync(chatModelPath, "utf8"),
+    readFileSync(chatComposerPath, "utf8"),
+    readFileSync(chatPageHeaderPath, "utf8"),
     readFileSync(planCardPath, "utf8"),
     readFileSync(environmentOverviewPath, "utf8"),
     readFileSync(gitBranchSelectorPath, "utf8"),
@@ -41,7 +49,9 @@ function readUiSource(): string {
 }
 
 function readChatPageSource(): string {
-  return readFileSync(chatPagePath, "utf8");
+  return [chatPagePath, chatComposerPath, chatPageHeaderPath]
+    .map((path) => readFileSync(path, "utf8"))
+    .join("\n");
 }
 
 function readEnvironmentOverviewSource(): string {
@@ -65,7 +75,7 @@ describe("chat plan and artifact UI wiring", () => {
     expect(source).toContain('t("chat.plan.title")');
     expect(source).toContain("extractLatestPlanFromMessages(typedMessages, sessionId)");
     expect(chatPage).toContain("useEnvironmentGitBranches(effectiveWorkspaceDir)");
-    expect(chatPage).toContain("gitBranch={environmentGit.currentBranch}");
+    expect(chatPage).toContain("gitBranch: environmentGit.currentBranch");
     expect(source).toContain("/api/git/branches?path=");
     expect(source).toContain("GIT_BRANCH_LOAD_TIMEOUT_MS");
     expect(source).toContain("signal: controller.signal");
@@ -73,7 +83,7 @@ describe("chat plan and artifact UI wiring", () => {
     expect(source).toContain("function GitBranchSelector");
     expect(source).toContain("Search branches");
     expect(source).toContain("New branch name");
-    expect(chatPage).toContain('key={sessionId || "new-chat-environment"}');
+    expect(chatPage).toContain('environmentKey={sessionId || "new-chat-environment"}');
     expect(chatPage).toContain("setShowEnvironmentOverview(false);");
     expect(chatPage).toContain("sessionId={sessionId}");
     expect(chatPage).toContain("hiddenComposerPlanKey");

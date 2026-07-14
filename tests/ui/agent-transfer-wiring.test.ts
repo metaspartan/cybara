@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 const files = {
-  "ui/src/pages/Chat.tsx": "AgentTransferTimeline",
+  "ui/src/pages/chat/ChatMessageTimeline.tsx": "AgentTransferTimeline",
   "ui/src/pages/ide/IDEChatPanel.tsx": "AgentTransferTimeline",
   "apps/mobile/src/screens/dashboardChat.tsx": "MobileAgentTransferTimeline",
   "apps/macos/Cybara/Sources/Cybara/NativeScreens.swift": "Transferred from",

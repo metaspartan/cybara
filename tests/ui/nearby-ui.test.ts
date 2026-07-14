@@ -27,11 +27,15 @@ describe("nearby UI", () => {
   });
 
   test("chat exposes nearby sharing only while the feature is enabled", () => {
-    const source = readFileSync(join(root, "ui/src/pages/Chat.tsx"), "utf8");
+    const source =
+      readFileSync(join(root, "ui/src/pages/Chat.tsx"), "utf8") +
+      readFileSync(join(root, "ui/src/pages/chat/ChatPageHeader.tsx"), "utf8");
     expect(source).toContain("Send chat to nearby Cybara");
     expect(source).toContain("nearbyApi.sendSession");
     expect(source).toContain("Chat sent for approval on the other device");
-    expect(source).toContain("nearbyStatus?.settings.enabled === true");
+    expect(source).toContain(
+      "nearbyEnabled={Boolean(sessionId && nearbyStatus?.settings.enabled)}"
+    );
     expect(source).toContain("useNearbyStatus(Boolean(sessionId))");
   });
 

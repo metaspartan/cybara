@@ -25,7 +25,9 @@ describe("subagent panel sizing", () => {
 
   test("wires the persistent accessible resize handle and dedicated icon", async () => {
     const panelSource = await Bun.file("ui/src/pages/chat/SubagentPanel.tsx").text();
-    const chatSource = await Bun.file("ui/src/pages/Chat.tsx").text();
+    const chatSource =
+      (await Bun.file("ui/src/pages/Chat.tsx").text()) +
+      (await Bun.file("ui/src/pages/chat/ChatPageHeader.tsx").text());
     const activitySource = await Bun.file("ui/src/pages/chat/ActivityTimeline.tsx").text();
 
     expect(panelSource).toContain('aria-label="Resize subagent panel"');

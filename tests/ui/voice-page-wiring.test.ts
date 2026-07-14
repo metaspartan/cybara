@@ -4,7 +4,9 @@ import { join } from "path";
 
 const root = process.cwd();
 const voice = readFileSync(join(root, "ui", "src", "pages", "Voice.tsx"), "utf8");
-const chat = readFileSync(join(root, "ui", "src", "pages", "Chat.tsx"), "utf8");
+const chat =
+  readFileSync(join(root, "ui", "src", "pages", "Chat.tsx"), "utf8") +
+  readFileSync(join(root, "ui", "src", "pages", "chat", "ChatMessageTimeline.tsx"), "utf8");
 const app = readFileSync(join(root, "ui", "src", "App.tsx"), "utf8");
 
 describe("voice UI wiring", () => {

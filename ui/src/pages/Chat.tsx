@@ -1,23 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle,
   ArrowDown,
-  CheckCircle2,
-  FileText,
   Folder,
   Loader2,
-  MessageSquare,
-  Mic,
-  MicOff,
-  PanelRightOpen,
-  Paperclip,
   Plus,
   RotateCcw,
   Share2,
-  SlidersHorizontal,
   Sparkles,
   Square,
-  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -39,19 +29,15 @@ import {
 import { loadPersistedCompletion } from "@/lib/chatCompletion";
 import {
   type ChatFileAttachment,
-  chatImageSrc,
   fileToChatImage,
   fileToTextAttachment,
   formatAttachedFiles,
-  formatBytes,
-  imageAttachmentBytes,
   isSupportedImageType,
   isTextLikeFile,
   MAX_CHAT_IMAGE_BYTES,
   MAX_CHAT_IMAGES,
   MAX_TEXT_FILE_BYTES,
   MAX_TEXT_FILES,
-  mediaSummaryLabel,
 } from "@/lib/chatImages";
 import { isDesktopHostRuntime, openDesktopDirectoryDialog } from "@/lib/desktopHost";
 import { useI18n } from "@/lib/i18n";
@@ -74,20 +60,12 @@ import type {
 import { LiveActivityTimeline } from "./chat/ActivityTimeline";
 import { ArtifactViewerPanel } from "./chat/ArtifactViewerPanel";
 import { parseTimestampMs } from "./chat/assistantMetaModel";
-import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
-import { ChatCapabilityMenu } from "./chat/ChatCapabilityMenu";
-import { ChatComposerActionButton } from "./chat/ChatComposerActionButton";
-import { ChatEnvironmentOverview } from "./chat/ChatEnvironmentOverview";
-import {
-  ChatApprovalControls,
-  normalizeToolApprovalMode,
-  PendingChatQueue,
-  type ToolApprovalMode,
-} from "./chat/ChatFollowUpControls";
-import { ChatHeaderTitleMenu } from "./chat/ChatHeaderTitleMenu";
+import { MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
+import { ChatComposer } from "./chat/ChatComposer";
+import { normalizeToolApprovalMode, type ToolApprovalMode } from "./chat/ChatFollowUpControls";
 import { ChatImageLightbox, type ChatLightboxImage } from "./chat/ChatImageLightbox";
 import { ChatMessageTimeline } from "./chat/ChatMessageTimeline";
-import { ChatReasoningControl } from "./chat/ChatReasoningControl";
+import { ChatPageHeader } from "./chat/ChatPageHeader";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
 import {
   type ChatWorkspaceTab,
@@ -147,7 +125,6 @@ import {
 } from "./chat/liveSessionState";
 import { writeCachedSessionMessages } from "./chat/messageCache";
 import { PendingApprovalsBanner } from "./chat/PendingApprovalsBanner";
-import { PlanSummaryCard } from "./chat/PlanSummaryCard";
 import {
   clearCachedOptimisticPendingMessages,
   readCachedOptimisticPendingMessages,
@@ -155,12 +132,10 @@ import {
 } from "./chat/pendingQueueCache";
 import { mergePendingChatMessages, normalizePendingChatMessages } from "./chat/pendingQueueState";
 import { SessionsPanel } from "./chat/SessionSidebar";
-import { SubagentIcon } from "./chat/SubagentIcon";
 import { useChatCapabilityPicker } from "./chat/useChatCapabilityPicker";
 import { useChatDictation } from "./chat/useChatDictation";
 import { useEnvironmentGitBranches } from "./chat/useEnvironmentGitBranches";
 import { useSessionFileChanges } from "./chat/useSessionFileChanges";
-import { WorkspaceOpenMenu } from "./chat/WorkspaceOpenMenu";
 
 type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
 
@@ -2837,140 +2812,72 @@ export function Chat() {
           )}
         </div>
       </Modal>
-      <div className="relative flex items-center justify-between px-3 sm:px-4 py-2 border-b border-white/5 bg-[#0a0a0f]/90 backdrop-blur-xl flex-shrink-0">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <button
-            onClick={() => setShowSessionsPanel(!showSessionsPanel)}
-            className={cn(
-              "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
-              showSessionsPanel ? "accent-text" : "text-gray-500"
-            )}
-            title="Sessions"
-          >
-            <MessageSquare className="w-4 h-4" />
-          </button>
-          {sessionId ? (
-            <ChatHeaderTitleMenu
-              sessionId={sessionId}
-              messages={typedMessages}
-              agentId={chatAgentId ?? selectedAgentId ?? sessionAgentId ?? undefined}
-              workspaceDir={effectiveWorkspaceDir}
-              useModelRouter={useModelRouter}
-              contextUsage={sessionContextUsage}
-              tokenUsage={sessionTokenUsage}
-              appVersion={info?.version}
-              onDeleted={() => resetChatSession({ resetAgentSelection: false })}
-            />
-          ) : (
-            <h1 className="text-sm sm:text-base font-semibold text-white">New chat</h1>
-          )}
-        </div>
-        <div className="flex items-center gap-1 sm:gap-2">
-          <WorkspaceOpenMenu
-            workspaceDir={effectiveWorkspaceDir}
-            workspaceSaving={workspaceSaving}
-            onSelectWorkspace={() => void handleSelectWorkspace()}
-            onOpenCybaraIde={handleOpenWorkspaceInCybaraIde}
-          />
-          {sessionId && nearbyStatus?.settings.enabled === true && (
-            <button
-              type="button"
-              aria-label="Send chat to nearby Cybara"
-              onClick={() => void openNearbyShare()}
-              className="relative cursor-pointer rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-white/5 sm:p-2"
-              title="Send to nearby Cybara"
-            >
-              <Share2 className="h-4 w-4" />
-            </button>
-          )}
-          <button
-            aria-label="File diffs"
-            onClick={() => {
-              toggleWorkspaceTab("review");
-            }}
-            className={cn(
-              "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
-              showWorkspacePanel && activeWorkspaceKind === "review"
-                ? "text-indigo-300 bg-white/[0.04]"
-                : "text-gray-500"
-            )}
-            title="File diffs"
-          >
-            <FileText className="w-4 h-4" />
-          </button>
-          <button
-            aria-label="Environment overview"
-            onClick={() => {
-              setShowEnvironmentOverview((value) => !value);
-            }}
-            className={cn(
-              "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
-              showEnvironmentOverview ? "text-gray-200 bg-white/[0.04]" : "text-gray-500"
-            )}
-            title="Environment overview"
-          >
-            <SlidersHorizontal className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => {
-              toggleWorkspaceTab("subagents");
-            }}
-            className={cn(
-              "relative p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
-              showWorkspacePanel && activeWorkspaceKind === "subagents"
-                ? "text-gray-200 bg-white/[0.04]"
-                : "text-gray-500"
-            )}
-            title="Subagents"
-          >
-            <SubagentIcon className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowWorkspacePanel((value) => !value)}
-            className={cn(
-              "p-1.5 sm:p-2 rounded-lg hover:bg-white/5 transition-colors cursor-pointer",
-              showWorkspacePanel ? "text-gray-200 bg-white/[0.04]" : "text-gray-500"
-            )}
-            title="Workspace panel"
-            aria-label="Workspace panel"
-          >
-            <PanelRightOpen className="h-4 w-4" />
-          </button>
-          <ChatEnvironmentOverview
-            key={sessionId || "new-chat-environment"}
-            contextUsage={sessionContextUsage}
-            currentPlan={environmentPlan}
-            fileChanges={sessionFileChanges}
-            gitBranch={environmentGit.currentBranch}
-            gitBranchChanging={environmentGit.changingBranch}
-            gitBranchError={environmentGit.error}
-            gitBranchLoading={environmentGit.loading}
-            gitBranches={environmentGit.branches}
-            isOpen={showEnvironmentOverview}
-            onClose={() => setShowEnvironmentOverview(false)}
-            onCreateGitBranch={environmentGit.createAndCheckout}
-            onRefreshGitBranches={environmentGit.refresh}
-            onSwitchGitBranch={environmentGit.checkout}
-            onOpenWorkspaceTab={openWorkspaceTab}
-            previewTabs={Array.from(
-              new Set(
-                workspaceTabs
-                  .map((instance) => instance.kind)
-                  .filter((kind) => kind === "browser" || kind === "terminal" || kind === "files")
-              )
-            )}
-            agentUsingBrowser={agentUsingBrowser}
-            timeToFirstTokenMs={timeToFirstTokenMs}
-            onDismissPlan={dismissEnvironmentPlan}
-            sessionId={sessionId}
-            subagents={environmentSubagents}
-            tokenUsage={sessionTokenUsage}
-            toolNames={environmentToolNames}
-            workspaceDir={effectiveWorkspaceDir}
-          />
-        </div>
-      </div>
+      <ChatPageHeader
+        environmentKey={sessionId || "new-chat-environment"}
+        environmentOverview={{
+          contextUsage: sessionContextUsage,
+          currentPlan: environmentPlan,
+          fileChanges: sessionFileChanges,
+          gitBranch: environmentGit.currentBranch,
+          gitBranchChanging: environmentGit.changingBranch,
+          gitBranchError: environmentGit.error,
+          gitBranchLoading: environmentGit.loading,
+          gitBranches: environmentGit.branches,
+          isOpen: showEnvironmentOverview,
+          onClose: () => setShowEnvironmentOverview(false),
+          onCreateGitBranch: environmentGit.createAndCheckout,
+          onRefreshGitBranches: environmentGit.refresh,
+          onSwitchGitBranch: environmentGit.checkout,
+          onOpenWorkspaceTab: openWorkspaceTab,
+          previewTabs: Array.from(
+            new Set(
+              workspaceTabs
+                .map((instance) => instance.kind)
+                .filter((kind) => kind === "browser" || kind === "terminal" || kind === "files")
+            )
+          ),
+          agentUsingBrowser,
+          timeToFirstTokenMs,
+          onDismissPlan: dismissEnvironmentPlan,
+          sessionId,
+          subagents: environmentSubagents,
+          tokenUsage: sessionTokenUsage,
+          toolNames: environmentToolNames,
+          workspaceDir: effectiveWorkspaceDir,
+        }}
+        fileReviewActive={showWorkspacePanel && activeWorkspaceKind === "review"}
+        nearbyEnabled={Boolean(sessionId && nearbyStatus?.settings.enabled)}
+        sessionTitle={
+          sessionId
+            ? {
+                sessionId,
+                messages: typedMessages,
+                agentId: chatAgentId ?? selectedAgentId ?? sessionAgentId ?? undefined,
+                workspaceDir: effectiveWorkspaceDir,
+                useModelRouter,
+                contextUsage: sessionContextUsage,
+                tokenUsage: sessionTokenUsage,
+                appVersion: info?.version,
+                onDeleted: () => resetChatSession({ resetAgentSelection: false }),
+              }
+            : null
+        }
+        sessionsPanelOpen={showSessionsPanel}
+        subagentsActive={showWorkspacePanel && activeWorkspaceKind === "subagents"}
+        workspaceMenu={{
+          workspaceDir: effectiveWorkspaceDir,
+          workspaceSaving,
+          onSelectWorkspace: () => void handleSelectWorkspace(),
+          onOpenCybaraIde: handleOpenWorkspaceInCybaraIde,
+        }}
+        workspacePanelOpen={showWorkspacePanel}
+        onOpenNearbyShare={() => void openNearbyShare()}
+        onToggleEnvironment={() => setShowEnvironmentOverview((value) => !value)}
+        onToggleFileReview={() => toggleWorkspaceTab("review")}
+        onToggleSessionsPanel={() => setShowSessionsPanel((value) => !value)}
+        onToggleSubagents={() => toggleWorkspaceTab("subagents")}
+        onToggleWorkspacePanel={() => setShowWorkspacePanel((value) => !value)}
+      />
 
       <div className="flex-1 flex overflow-hidden">
         {!artifactViewerTarget && showSessionsPanel && (
@@ -3096,269 +3003,83 @@ export function Chat() {
                 </button>
               )}
 
-              <div
-                ref={composerRef}
-                className="chat-composer-responsive flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl"
-              >
-                {showComposerPlan && currentSessionPlan && currentSessionPlanKey && (
-                  <PlanSummaryCard
-                    plan={currentSessionPlan}
-                    compact
-                    dismissible
-                    expandable
-                    onDismiss={() => setHiddenComposerPlanKey(currentSessionPlanKey)}
-                  />
-                )}
-                {pendingMessages.length > 0 && (
-                  <PendingChatQueue
-                    messages={pendingMessages}
-                    onSteer={handleSteerPendingMessage}
-                    onReorder={handleReorderPendingMessages}
-                    onUpdate={handleUpdatePendingMessage}
-                    onDelete={handleDeletePendingMessage}
-                    steeringMessageId={steeringMessageId}
-                    mutatingMessageId={pendingMessageMutationId}
-                  />
-                )}
-                {(dictationError || dictationStatus) && (
-                  <div
-                    className={cn(
-                      "mb-2 flex items-center gap-2 rounded-lg border px-3 py-2 text-[12px]",
-                      dictationError
-                        ? "border-red-500/25 bg-red-500/10 text-red-200"
-                        : "border-emerald-500/20 bg-emerald-500/10 text-emerald-200"
-                    )}
-                    role={dictationError ? "alert" : "status"}
-                  >
-                    {dictationError ? (
-                      <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                    ) : dictating ? (
-                      <Mic className="h-3.5 w-3.5 shrink-0" />
-                    ) : (
-                      <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate">
-                      {dictationError || dictationStatus}
-                    </span>
-                  </div>
-                )}
-                <div
-                  className={cn(
-                    "relative rounded-[22px] border bg-white/[0.035] px-3 py-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors",
-                    imageDragActive ? "border-[rgba(var(--accent-primary),0.6)]" : "border-white/10"
-                  )}
-                  onDragOver={(e) => {
-                    if (Array.from(e.dataTransfer?.items || []).some((i) => i.kind === "file")) {
-                      e.preventDefault();
-                      setImageDragActive(true);
+              <ChatComposer
+                activeAgent={activeAgentForPlan}
+                agents={agents}
+                agentUpdating={updateSessionAgent.isPending}
+                approvalMode={toolApprovalMode}
+                approvalUpdating={savingToolApprovalMode}
+                capabilityPicker={capabilityPicker}
+                composerHasDraft={composerHasDraft}
+                composerRef={composerRef}
+                contextUsage={sessionContextUsage}
+                currentPlan={currentSessionPlan}
+                currentPlanKey={currentSessionPlanKey}
+                dictating={dictating}
+                dictationEngine={dictationRuntime.engine}
+                dictationError={dictationError}
+                dictationLabel={dictationRuntime.label}
+                dictationStatus={dictationStatus}
+                dictationTranscribing={dictationTranscribing}
+                dictationUnsupportedReason={dictationRuntime.unsupportedReason}
+                followUpBehaviorEnabled={followUpBehaviorEnabled}
+                imageDragActive={imageDragActive}
+                imageInputRef={imageInputRef}
+                input={input}
+                inputRef={inputRef}
+                isLoading={isLoading}
+                isStopping={isStoppingSession}
+                modelRouterEnabled={modelRouterEnabled}
+                mutatingMessageId={pendingMessageMutationId}
+                pendingFiles={pendingFiles}
+                pendingImages={pendingImages}
+                pendingMessages={pendingMessages}
+                placeholder={t("chat.composer.placeholder")}
+                providerPlan={activeProviderPlan}
+                queueing={sendQueuesFollowUp}
+                reasoningUpdating={updateAgentReasoning.isPending}
+                selectedAgentId={selectedAgentId}
+                showPlan={showComposerPlan}
+                showStop={showStopComposerButton}
+                showWorkingTimeline={showWorkingTimeline}
+                steeringMessageId={steeringMessageId}
+                useModelRouter={useModelRouter}
+                onAddAttachmentFiles={addAttachmentFiles}
+                onApprovalChange={(mode) => void updateToolApprovalMode(mode)}
+                onDeletePendingMessage={(id) => void handleDeletePendingMessage(id)}
+                onDismissPlan={() => {
+                  if (currentSessionPlanKey) setHiddenComposerPlanKey(currentSessionPlanKey);
+                }}
+                onDragActiveChange={setImageDragActive}
+                onDrop={handleComposerDrop}
+                onPaste={handleComposerPaste}
+                onReasoningChange={(effort) => {
+                  if (!activeAgentForPlan) return;
+                  updateAgentReasoning.mutate(
+                    { id: activeAgentForPlan.id, effort },
+                    {
+                      onError: (error) => {
+                        useUIStore
+                          .getState()
+                          .addToast("error", error.message || "Failed to update reasoning");
+                      },
                     }
-                  }}
-                  onDragLeave={() => setImageDragActive(false)}
-                  onDrop={handleComposerDrop}
-                >
-                  {(pendingImages.length > 0 || pendingFiles.length > 0) && (
-                    <div className="mb-2">
-                      <div className="mb-1 flex items-center gap-1.5 text-[11px] text-gray-400">
-                        <Paperclip className="h-3 w-3 shrink-0" />
-                        <span>{mediaSummaryLabel(pendingImages, pendingFiles)}</span>
-                        {pendingImages.length >= MAX_CHAT_IMAGES && (
-                          <span className="text-amber-300/80">· max {MAX_CHAT_IMAGES} images</span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {pendingImages.map((image, index) => (
-                          <div
-                            key={`pending-image-${index}`}
-                            className="group relative h-16 w-16 overflow-hidden rounded-lg border border-white/12"
-                            title={`${image.name || "image"}${
-                              imageAttachmentBytes(image)
-                                ? ` · ${formatBytes(imageAttachmentBytes(image))}`
-                                : ""
-                            }`}
-                          >
-                            <img
-                              src={chatImageSrc(image)}
-                              alt={image.name || "Attachment preview"}
-                              className="h-full w-full object-cover"
-                            />
-                            {imageAttachmentBytes(image) > 0 && (
-                              <span className="absolute bottom-0 left-0 right-0 bg-black/55 px-1 py-px text-[9px] leading-tight text-white/90">
-                                {formatBytes(imageAttachmentBytes(image))}
-                              </span>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => removePendingImage(index)}
-                              className="absolute right-0.5 top-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity hover:bg-black/80 group-hover:opacity-100"
-                              aria-label="Remove image"
-                            >
-                              <X className="h-2.5 w-2.5" />
-                            </button>
-                          </div>
-                        ))}
-                        {pendingFiles.map((file, index) => (
-                          <div
-                            key={`pending-file-${index}`}
-                            className="flex items-center gap-1.5 rounded-lg border border-white/12 bg-white/[0.04] px-2 py-1 text-xs text-gray-200"
-                          >
-                            <FileText className="h-3.5 w-3.5 shrink-0 text-gray-400" />
-                            <span className="flex min-w-0 flex-col leading-tight">
-                              <span className="max-w-[160px] truncate">{file.name}</span>
-                              {formatBytes(file.size) && (
-                                <span className="text-[10px] text-gray-500">
-                                  {formatBytes(file.size)}
-                                </span>
-                              )}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => removePendingFile(index)}
-                              className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-gray-400 hover:bg-white/10 hover:text-white"
-                              aria-label="Remove file"
-                            >
-                              <X className="h-2.5 w-2.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/gif,image/webp,text/*,.md,.markdown,.json,.jsonc,.csv,.tsv,.xml,.yaml,.yml,.toml,.ini,.log,.html,.css,.scss,.js,.jsx,.mjs,.cjs,.ts,.tsx,.py,.rb,.go,.rs,.java,.kt,.swift,.c,.h,.cpp,.hpp,.cc,.cs,.php,.sh,.bash,.zsh,.sql,.env,.vue,.svelte"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files) void addAttachmentFiles(e.target.files);
-                      e.target.value = "";
-                    }}
-                  />
-                  <textarea
-                    ref={inputRef}
-                    data-chat-composer-input="true"
-                    value={input}
-                    onChange={capabilityPicker.onChange}
-                    onKeyDown={capabilityPicker.onKeyDown}
-                    onClick={(e) => capabilityPicker.onCursorChange(e.currentTarget.selectionStart)}
-                    onKeyUp={(e) => capabilityPicker.onCursorChange(e.currentTarget.selectionStart)}
-                    onPaste={handleComposerPaste}
-                    placeholder={t("chat.composer.placeholder")}
-                    rows={1}
-                    className="w-full min-h-[38px] max-h-[220px] overflow-y-auto resize-none bg-transparent px-0 py-1 text-[13px] leading-5 text-white placeholder-gray-500 !outline-none"
-                  />
-                  {capabilityPicker.menuOpen && (
-                    <ChatCapabilityMenu
-                      options={capabilityPicker.options}
-                      selectedIndex={capabilityPicker.selectedIndex}
-                      loading={capabilityPicker.loading}
-                      onSelect={capabilityPicker.select}
-                    />
-                  )}
-                  <div className="mt-0.5 flex min-h-8 items-center gap-1.5">
-                    <ChatApprovalControls
-                      mode={toolApprovalMode}
-                      onChange={(mode) => void updateToolApprovalMode(mode)}
-                      updating={savingToolApprovalMode}
-                    />
-                    <div className="min-w-0 flex-1" />
-                    <ChatAgentControls
-                      agents={agents}
-                      selectedAgentId={selectedAgentId}
-                      modelRouterEnabled={modelRouterEnabled}
-                      useModelRouter={useModelRouter}
-                      contextUsage={sessionContextUsage}
-                      providerPlan={activeProviderPlan}
-                      onSelectAgent={(agentId) => void handleSelectAgent(agentId)}
-                      updating={updateSessionAgent.isPending}
-                    />
-                    <ChatReasoningControl
-                      effort={activeAgentForPlan?.reasoning_effort}
-                      provider={
-                        activeAgentForPlan?.provider_type ??
-                        activeAgentForPlan?.provider ??
-                        activeAgentForPlan?.provider_id
-                      }
-                      model={activeAgentForPlan?.model}
-                      disabled={useModelRouter || !activeAgentForPlan}
-                      updating={updateAgentReasoning.isPending}
-                      onChange={(effort) => {
-                        if (!activeAgentForPlan) return;
-                        updateAgentReasoning.mutate(
-                          { id: activeAgentForPlan.id, effort },
-                          {
-                            onError: (error) => {
-                              useUIStore
-                                .getState()
-                                .addToast("error", error.message || "Failed to update reasoning");
-                            },
-                          }
-                        );
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => imageInputRef.current?.click()}
-                      className="composer-icon-btn inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-gray-400 cursor-pointer hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-                      title="Attach image or file"
-                      aria-label="Attach image or file"
-                    >
-                      <Paperclip className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleToggleDictation()}
-                      disabled={showWorkingTimeline || dictationTranscribing}
-                      className={cn(
-                        "composer-icon-btn inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent text-gray-400 cursor-pointer hover:text-white disabled:cursor-not-allowed disabled:opacity-50",
-                        dictating
-                          ? "bg-red-500/20 text-red-300"
-                          : !dictationRuntime.engine
-                            ? "text-amber-200 hover:bg-amber-500/15"
-                            : ""
-                      )}
-                      title={
-                        dictationTranscribing
-                          ? "Transcribing..."
-                          : dictating
-                            ? "Stop dictation"
-                            : dictationRuntime.engine
-                              ? `Start ${dictationRuntime.label.toLowerCase()}`
-                              : dictationRuntime.unsupportedReason || "Dictation unavailable"
-                      }
-                      aria-label={
-                        dictationTranscribing
-                          ? "Transcribing dictation"
-                          : dictating
-                            ? "Stop dictation"
-                            : dictationRuntime.engine
-                              ? `Start ${dictationRuntime.label.toLowerCase()}`
-                              : "Show dictation support issue"
-                      }
-                    >
-                      {dictationTranscribing ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : dictating ? (
-                        <MicOff className="w-4 h-4" />
-                      ) : (
-                        <Mic className="w-4 h-4" />
-                      )}
-                    </button>
-                    <ChatComposerActionButton
-                      disabled={
-                        !composerHasDraft ||
-                        (showWorkingTimeline && !followUpBehaviorEnabled) ||
-                        (isLoading && !sendQueuesFollowUp)
-                      }
-                      isStopping={isStoppingSession}
-                      onSend={handleSend}
-                      onStop={() => void handleStopActive()}
-                      queueing={sendQueuesFollowUp}
-                      showStop={showStopComposerButton}
-                    />
-                  </div>
-                </div>
-              </div>
+                  );
+                }}
+                onRemovePendingFile={removePendingFile}
+                onRemovePendingImage={removePendingImage}
+                onReorderPendingMessages={(orderedIds) =>
+                  void handleReorderPendingMessages(orderedIds)
+                }
+                onSelectAgent={(agentId) => void handleSelectAgent(agentId)}
+                onSend={handleSend}
+                onSteerPendingMessage={(id) => void handleSteerPendingMessage(id)}
+                onStop={() => void handleStopActive()}
+                onToggleDictation={() => void handleToggleDictation()}
+                onUpdatePendingMessage={(id, content) =>
+                  void handleUpdatePendingMessage(id, content)
+                }
+              />
             </>
           )}
         </div>
@@ -3446,8 +3167,4 @@ export function Chat() {
       </div>
     </div>
   );
-}
-
-function cn(...classes: (string | boolean | undefined)[]) {
-  return classes.filter(Boolean).join(" ");
 }

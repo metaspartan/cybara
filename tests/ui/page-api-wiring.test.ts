@@ -390,7 +390,10 @@ describe("UI page API wiring", () => {
   test("Chat page wires live activity timeline to websocket status events", () => {
     // Chat page logic is split across the page + its extracted chat/ modules.
     const source =
-      readPage("Chat.tsx") + readPage("chat/chatModel.ts") + readPage("chat/MessageContent.tsx");
+      readPage("Chat.tsx") +
+      readPage("chat/chatModel.ts") +
+      readPage("chat/MessageContent.tsx") +
+      readPage("chat/ChatMessageTimeline.tsx");
     const statusStreamSource = readLib("status-stream.ts");
 
     expect(source).toContain("connectStatusStream({");
@@ -399,9 +402,10 @@ describe("UI page API wiring", () => {
     expect(source).toContain('status === "tool_executing"');
     expect(source).toContain('status === "tool_completed"');
     expect(source).toContain("<LiveActivityTimeline");
-    expect(source).toContain("status={timelineStatus}");
-    expect(source).toContain("activities={timelineActivities}");
-    expect(source).toContain("currentStep={liveCurrentStep}");
+    expect(source).toContain("liveStatus={timelineStatus}");
+    expect(source).toContain("liveActivities={timelineActivities}");
+    expect(source).toContain("liveCurrentStep={liveCurrentStep}");
+    expect(source).toContain("status={liveStatus}");
     expect(source).toContain("formatToolIntent(");
     expect(source).toContain("Highlight, themes");
     expect(source).toContain("function looksLikeDiffCode");

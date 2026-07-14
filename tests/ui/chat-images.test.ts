@@ -7,7 +7,9 @@ import {
 } from "../../ui/src/lib/chatImages";
 import { clampLightboxZoom, nextLightboxIndex } from "../../ui/src/pages/chat/imageLightboxModel";
 
-const chatSource = await Bun.file("ui/src/pages/Chat.tsx").text();
+const chatSource =
+  (await Bun.file("ui/src/pages/Chat.tsx").text()) +
+  (await Bun.file("ui/src/pages/chat/ChatMessageTimeline.tsx").text());
 const messageSource = await Bun.file("ui/src/pages/chat/MessageContent.tsx").text();
 const lightboxSource = await Bun.file("ui/src/pages/chat/ChatImageLightbox.tsx").text();
 

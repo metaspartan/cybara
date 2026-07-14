@@ -6,6 +6,9 @@ const chatPath = fileURLToPath(new URL("../../ui/src/pages/Chat.tsx", import.met
 const composerActionPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatComposerActionButton.tsx", import.meta.url)
 );
+const chatComposerPath = fileURLToPath(
+  new URL("../../ui/src/pages/chat/ChatComposer.tsx", import.meta.url)
+);
 const chatAgentControlsPath = fileURLToPath(
   new URL("../../ui/src/pages/chat/ChatAgentControls.tsx", import.meta.url)
 );
@@ -48,6 +51,7 @@ describe("status stream websocket wiring", () => {
   test("chat page uses shared status websocket stream helper", () => {
     const source = [
       readSource(chatPath),
+      readSource(chatComposerPath),
       readSource(chatAgentControlsPath),
       readSource(chatFollowUpControlsPath),
       readSource(composerActionPath),
@@ -126,7 +130,7 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("setSessionContextUsage(updated.contextUsage ?? null)");
     expect(source).toContain("setSessionTokenUsage(updated.tokenUsage ?? null)");
     expect(source).toContain("SessionTokenUsage");
-    expect(source).toContain("tokenUsage={sessionTokenUsage}");
+    expect(source).toContain("tokenUsage: sessionTokenUsage");
     expect(source).toContain("tokenUsage.totalTokens");
     expect(source).toContain("tokenUsage.tokensPerSecond");
     expect(source).toContain("clientPendingId: optimisticPendingMessageId");
@@ -199,7 +203,7 @@ describe("status stream websocket wiring", () => {
   });
 
   test("chat composer controls collapse by available composer width", () => {
-    const chatSource = readSource(chatPath);
+    const chatSource = readSource(chatPath) + readSource(chatComposerPath);
     const controlsSource = readSource(chatAgentControlsPath);
     const followUpControlsSource = readSource(chatFollowUpControlsPath);
     const cssSource = readSource(indexCssPath);

@@ -13,7 +13,7 @@ describe("agent eval UI wiring", () => {
     const research = read("ui/src/pages/research/TraceDatasetPanel.tsx");
     const computerUse = read("ui/src/pages/research/ComputerUseDatasetPanel.tsx");
     const benchmarks = read("ui/src/pages/research/BenchmarkPanel.tsx");
-    const chat = read("ui/src/pages/Chat.tsx");
+    const chat = read("ui/src/pages/Chat.tsx") + read("ui/src/pages/chat/ChatMessageTimeline.tsx");
 
     expect(app).toContain('path="/lab"');
     expect(app).toContain('path="/evals" element={<Navigate to="/lab" replace />}');

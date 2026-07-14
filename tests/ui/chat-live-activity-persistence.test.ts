@@ -17,6 +17,7 @@ import {
 const chatSourcePath = join(process.cwd(), "ui", "src", "pages", "Chat.tsx");
 const chatModelPath = join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts");
 const chatDictationPath = join(process.cwd(), "ui", "src", "pages", "chat", "useChatDictation.ts");
+const chatComposerPath = join(process.cwd(), "ui", "src", "pages", "chat", "ChatComposer.tsx");
 const assistantMetaModelPath = join(
   process.cwd(),
   "ui",
@@ -498,7 +499,8 @@ describe("Chat live activity persistence", () => {
     const source =
       readFileSync(chatSourcePath, "utf8") +
       readFileSync(chatModelPath, "utf8") +
-      readFileSync(chatDictationPath, "utf8");
+      readFileSync(chatDictationPath, "utf8") +
+      readFileSync(chatComposerPath, "utf8");
     expect(source).toContain("<textarea");
     expect(source).toContain("rows={1}");
     expect(source).toContain("onKeyDown={capabilityPicker.onKeyDown}");
