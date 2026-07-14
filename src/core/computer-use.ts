@@ -1,30 +1,16 @@
-/**
- * computer_use — background desktop control via the external cua-driver.
- *
- * The agent can capture screenshots, click, type, scroll, drag, and manage
- * apps WITHOUT stealing the user's cursor (background mode is a property of the
- * cua-driver backend). The heavy platform work (SkyLight SPIs on macOS, UIA on
- * Windows, X11 on Linux) lives in the external `cua-driver` binary; this module
- * is a thin MCP-stdio client to it.
- *
- * Safety hardening:
- *  - Un-overridable hard-blocked key combos (logout/lock) and type patterns
- *    (curl|bash, sudo rm -rf, fork bombs) — see BLOCKED_KEY_COMBOS / BLOCKED_TYPE_PATTERNS.
- *  - Action validation before dispatch (rejects unknown actions).
- *  - Reconnect-once on a closed driver session instead of failing every call.
- *  - MIME-aware screenshot envelope so vision models receive a real image block.
- *
- * Requires: `cua-driver` on $PATH, in a known platform install dir, or at
- * CYBARA_CUA_DRIVER_CMD.
- * On macOS also requires Accessibility + Screen Recording TCC grants to
- * cua-driver's identity (verified by computerUseDoctor()).
- */
 import { spawn, type ChildProcess } from "child_process";
 import { mkdirSync, existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
 import { homedir } from "os";
 import { PNG } from "pngjs";
 import { config } from "./config";
+import {
+  CUA_DRIVER_VERSION,
+  ensureManagedCuaDriver,
+  isExecutableFile,
+  managedCuaDriverDir,
+  packagedCuaDriverCandidates,
+} from "./cua-driver-runtime";
 import {
   appendComputerUseTrajectoryTurn,
   createComputerUseTrajectory,
@@ -40,7 +26,14 @@ const DEFAULT_CUA_DRIVER_CMD = "cua-driver";
 const CUA_DRIVER_CMD_ENV = "CYBARA_CUA_DRIVER_CMD";
 const REQUEST_TIMEOUT_MS = 30_000;
 
-export type CuaDriverCommandSource = "env" | "config" | "path" | "known-install-dir" | "default";
+export type CuaDriverCommandSource =
+  | "env"
+  | "config"
+  | "bundled"
+  | "managed-runtime"
+  | "path"
+  | "known-install-dir"
+  | "default";
 
 export interface CuaDriverResolution {
   command: string;
@@ -302,6 +295,13 @@ export function resolveCuaDriverCommand(
   }
 
   const searchedPaths: string[] = [];
+  for (const candidate of packagedCuaDriverCandidates(platform, env)) {
+    searchedPaths.push(candidate);
+    if (candidateExists(candidate)) {
+      return { command: candidate, source: "bundled", searchedPaths };
+    }
+  }
+
   const pathMatch = findDriverInDirs(splitPathEntries(env, platform), platform, searchedPaths);
   if (pathMatch) {
     return { command: pathMatch, source: "path", searchedPaths };
@@ -320,6 +320,16 @@ export function resolveCuaDriverCommand(
     };
   }
 
+  const home = defaultHomeForPlatform(env, platform);
+  if (home) {
+    const executableName = platform === "win32" ? "cua-driver.exe" : "cua-driver";
+    const managed = join(managedCuaDriverDir(home), executableName);
+    searchedPaths.push(managed);
+    if (candidateExists(managed)) {
+      return { command: managed, source: "managed-runtime", searchedPaths };
+    }
+  }
+
   return null;
 }
 
@@ -333,13 +343,21 @@ function getCuaDriverResolution(): CuaDriverResolution {
   );
 }
 
+async function getAvailableCuaDriverResolution(): Promise<CuaDriverResolution> {
+  const existing = resolveCuaDriverCommand();
+  if (existing) return existing;
+  const command = await ensureManagedCuaDriver();
+  if (!isExecutableFile(command)) throw new Error("Managed computer-use driver is not executable");
+  return {
+    command,
+    source: "managed-runtime",
+    searchedPaths: [command],
+  };
+}
+
 function driverInstallHint(platform: NodeJS.Platform = process.platform): string {
-  if (platform === "win32") {
-    return `Install it with PowerShell: irm https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.ps1 | iex. If it is already installed, restart Cybara or set ${CUA_DRIVER_CMD_ENV} to the full cua-driver.exe path.`;
-  }
-  const install =
-    '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/cua-driver/scripts/install.sh)"';
-  return `Install it with: ${install}. If it is already installed outside PATH, set ${CUA_DRIVER_CMD_ENV} to the full cua-driver path.`;
+  const executableName = platform === "win32" ? "cua-driver.exe" : "cua-driver";
+  return `Cybara normally includes or securely downloads ${executableName} v${CUA_DRIVER_VERSION}. Set ${CUA_DRIVER_CMD_ENV} only to use a custom driver build.`;
 }
 
 function driverUnavailableMessage(): string {
@@ -360,7 +378,7 @@ function spawnDriver(command: string, args: string[], options: Parameters<typeof
 async function ensureDriver(): Promise<void> {
   if (driverProcess && driverProcess.exitCode === null) return;
 
-  const { command } = getCuaDriverResolution();
+  const { command } = await getAvailableCuaDriverResolution();
   driverProcess = spawnDriver(command, ["mcp"], {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env },
@@ -2112,8 +2130,24 @@ export interface ComputerUseDoctorResult {
 /** Diagnostics: probe cua-driver install, version, health, and macOS TCC state. */
 export async function computerUseDoctor(): Promise<ComputerUseDoctorResult> {
   const platform = process.platform;
-  const resolution = getCuaDriverResolution();
   const configuredCommand = config.getComputerUseSettings().driverCommand || undefined;
+  let resolution: CuaDriverResolution;
+  try {
+    resolution = await getAvailableCuaDriverResolution();
+  } catch (error) {
+    const fallback = getCuaDriverResolution();
+    return {
+      available: false,
+      command: fallback.command,
+      driverSource: fallback.source,
+      configuredCommand,
+      platform,
+      ready: false,
+      installHint: driverInstallHint(platform),
+      searchedPaths: fallback.searchedPaths.slice(-20),
+      message: `Cybara could not prepare computer use: ${error instanceof Error ? error.message : String(error)}. ${driverInstallHint(platform)}`,
+    };
+  }
   const base = {
     available: false,
     command: resolution.command,
@@ -2198,7 +2232,7 @@ export async function requestComputerUsePermissionsGrant(): Promise<{
       message: "Permission grants are only needed on macOS.",
     };
   }
-  const { command } = getCuaDriverResolution();
+  const { command } = await getAvailableCuaDriverResolution();
   const res = await runDriverCommand(["permissions", "grant"], 60_000, command);
   return {
     ok: res.ok,

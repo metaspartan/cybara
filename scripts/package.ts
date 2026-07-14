@@ -12,6 +12,7 @@ import {
   writeFileSync,
 } from "fs";
 import { join } from "path";
+import { getCuaDriverTarget, installCuaDriverAt } from "../src/core/cua-driver-runtime";
 
 const DIST_DIR = "dist";
 const RELEASE_DIR = "release";
@@ -71,6 +72,11 @@ export async function runPackage(): Promise<void> {
   mkdirSync(join(RELEASE_DIR, "ui"), { recursive: true });
   cpSync(uiDistSrc, releaseUiPath, { recursive: true });
   console.log("   ✓ UI assets bundled with binary");
+
+  const driverTarget = getCuaDriverTarget(platform, arch);
+  if (!driverTarget) throw new Error(`Unsupported computer-use target: ${platform}/${arch}`);
+  await installCuaDriverAt(join(RELEASE_DIR, "cua-driver"), driverTarget);
+  console.log("   ✓ Computer-use driver bundled");
 
   const pkg = JSON.parse(readFileSync("package.json", "utf-8"));
   writeFileSync(join(RELEASE_DIR, "VERSION"), pkg.version);

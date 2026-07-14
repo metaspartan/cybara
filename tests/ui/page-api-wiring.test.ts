@@ -113,7 +113,7 @@ describe("UI page API wiring", () => {
     expect(source).toContain('useState<MigrationSourceKind>("openclaw")');
     expect(source).toContain("openDesktopFileDialog");
     expect(source).toContain("openDesktopDirectoryDialog");
-    expect(source).toContain("Driver path override");
+    expect(source).toContain("Custom driver");
     expect(source).toContain("ElevenLabs");
     expect(source).toContain("Local Whisper (offline)");
     expect(source).toContain("system, then local");

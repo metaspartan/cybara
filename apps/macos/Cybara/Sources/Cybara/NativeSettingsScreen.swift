@@ -1674,7 +1674,7 @@ struct NativeSettingsScreen: View {
                     if computerUseBusy {
                         ProgressView().controlSize(.small)
                     } else if let status = computerUseStatus {
-                        Text(status.ready ? "Ready" : status.available ? "Needs Attention" : "Not Installed")
+                        Text(status.ready ? "Ready" : status.available ? "Needs Attention" : "Unavailable")
                             .font(.system(size: 11, weight: .semibold, design: .rounded))
                             .foregroundStyle(status.ready ? .green : .secondary)
                     }
@@ -1691,7 +1691,7 @@ struct NativeSettingsScreen: View {
                         settingRow("Screen Recording", status.screenRecording == true ? "Granted" : "Required")
                     }
                 }
-                TextField("Driver path override", text: $computerUseDriverPath)
+                TextField("Custom driver path", text: $computerUseDriverPath)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { saveComputerUseDriverPath() }
                 HStack {
@@ -1706,7 +1706,7 @@ struct NativeSettingsScreen: View {
                         .disabled(computerUseBusy)
                     }
                     Spacer()
-                    Button("Save Driver Path") { saveComputerUseDriverPath() }
+                    Button("Save Custom Path") { saveComputerUseDriverPath() }
                         .buttonStyle(.borderedProminent)
                         .disabled(computerUseBusy)
                 }

@@ -34,13 +34,13 @@
 ## Cybara in Action
 
 <p align="center">
-  <img src="docs/images/cybara-web-chat.jpg" alt="Cybara web chat showing a Grok workspace review with grouped tool activity" width="100%" />
+  <img src="docs/images/cybara-web-chat.jpg" alt="Cybara web chat showing a repository security and performance audit" width="100%" />
 </p>
 
 <p align="center"><strong>Web and desktop chat</strong> with persisted workspaces, grouped live activity, structured responses, context controls, and agent selection.</p>
 
 <p align="center">
-  <img src="docs/images/cybara-tui-chat.png" alt="Cybara terminal chat showing tool activity and a code workspace result" width="100%" />
+  <img src="docs/images/cybara-tui-chat.png" alt="Cybara terminal chat showing a repository audit conversation" width="100%" />
 </p>
 
 <p align="center"><strong>Terminal chat</strong> with responsive layouts, grouped live activity, capability completion, session history, queueing, steering, approvals, and slash commands.</p>
@@ -123,10 +123,9 @@ On Windows (PowerShell, x64 & arm64):
 powershell -c "irm https://cybara.ai/install.ps1 | iex"
 ```
 
-Or run it instantly with npm or Bun:
+Or run it directly with Bun:
 
 ```bash
-npx cybara
 bunx cybara
 ```
 
@@ -227,7 +226,7 @@ Tool categories currently shipped:
 - `channel`: message/telegram_media
 - `planning`: **todo** (session task-list with status discipline) + **clarify** (structured multi-choice questions to the user)
 - `discovery`: **tool_search** / **tool_describe** / **tool_call** (dynamic discovery over built-in + MCP + skills) + **execute_code** (run code that calls cybara tools programmatically)
-- `media`: **computer_use** (background desktop control via cua-driver — capture/click/type/scroll/drag without stealing the cursor)
+- `media`: **computer_use** (bundled background desktop control for capture/click/type/scroll/drag without stealing the cursor)
 - `orchestration`: the **kanban** multi-agent tier — show/list/complete/block/heartbeat/comment/create/unblock/link for durable task graphs — plus **mixture_of_agents** (fan out to N proposer agents, synthesize one answer)
 
 See full reference: [docs/tools.md](docs/tools.md)

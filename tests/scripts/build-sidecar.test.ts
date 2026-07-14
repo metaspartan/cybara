@@ -15,7 +15,18 @@ import {
   patchedOnnxBindingSource,
 } from "../../scripts/build-sidecar";
 
+const buildSidecarSource = readFileSync(
+  join(import.meta.dirname, "..", "..", "scripts", "build-sidecar.ts"),
+  "utf8"
+);
+
 describe("build-sidecar host target mapping", () => {
+  test("stages the computer-use driver in desktop release resources", () => {
+    expect(buildSidecarSource).toContain("installCuaDriverAt(packagedCuaDriverDir");
+    expect(buildSidecarSource).toContain('join(TAURI_BIN_DIR, "cua-driver")');
+    expect(buildSidecarSource).toContain('join(dir, "cua-driver")');
+  });
+
   test("maps darwin/arm64", () => {
     expect(getHostTargetFor("darwin", "arm64")).toEqual({
       bunTarget: "bun-darwin-arm64",

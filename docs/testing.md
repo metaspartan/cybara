@@ -84,6 +84,9 @@ bun test tests/scripts
 # Sidecar runtime packaging and import guards
 bun test tests/scripts/build-sidecar.test.ts tests/core/sidecar-startup-imports.test.ts
 
+# Bundled and managed computer-use runtime resolution, checksums, and packaging
+bun test tests/core/cua-driver-runtime.test.ts tests/core/computer-use.test.ts tests/tauri/wiring.test.ts
+
 # End-to-end smoke flows (live server + CLI/UI/terminal)
 bun test tests/e2e
 
@@ -159,7 +162,7 @@ bun test tests/core/tool-schema-import.test.ts tests/core/agent-tool-allowlist.t
 - Live E2E CLI auth: protected command behavior with missing auth, `CYBARA_API_KEY` env auth, `~/.cybara/api_key` fallback, and env-vs-file precedence
 - Opt-in browser E2E: `RUN_BROWSER_E2E=1 bun test tests/e2e/ide-web-ui-browser-smoke.test.ts` builds the UI, starts a live isolated server, completes setup, opens a TypeScript file in `/ide`, switches to another TypeScript file through the explorer, and fails on React hook-order/runtime errors
 - Runtime guards: no hardcoded workspace paths, package script contracts, compiled UI path resolution
-- Sidecar runtime packaging: Tauri sidecar target mapping, dynamic ONNX `napi-v*` binding discovery, packaged `CYBARA_RESOURCE_DIR` runtime lookup, and lazy imports for `@huggingface/transformers` / ONNX Runtime
+- Sidecar runtime packaging: Tauri sidecar target mapping, platform computer-use driver selection, checksum-verified managed fallback, dynamic ONNX `napi-v*` binding discovery, packaged `CYBARA_RESOURCE_DIR` runtime lookup, and lazy imports for `@huggingface/transformers` / ONNX Runtime
 - Tauri wiring contracts: sidecar spawn/kill and bundled UI/resources configuration
 - Supply chain checks: Bun audit for root/UI packages, Cargo audit for desktop crates, and OSV source scanning for lockfile advisories
 

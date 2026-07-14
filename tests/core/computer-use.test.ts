@@ -388,6 +388,31 @@ describe("computer-use session previews", () => {
 });
 
 describe("cua-driver resolution", () => {
+  test("prefers the driver bundled in the Cybara resource directory", () =>
+    withTempDir("cua-bundled", (resourceDir) => {
+      const binary = join(resourceDir, "cua-driver", "cua-driver");
+      touchExecutable(binary);
+
+      const resolved = resolveCuaDriverCommand(
+        { CYBARA_RESOURCE_DIR: resourceDir, HOME: join(resourceDir, "home"), PATH: "" },
+        "darwin"
+      );
+
+      expect(resolved?.command).toBe(binary);
+      expect(resolved?.source).toBe("bundled");
+    }));
+
+  test("finds Cybara's managed driver runtime when no bundled driver is present", () =>
+    withTempDir("cua-managed", (home) => {
+      const binary = join(home, ".cybara", "runtime", "cua-driver", "0.7.1", "cua-driver");
+      touchExecutable(binary);
+
+      const resolved = resolveCuaDriverCommand({ HOME: home, PATH: "" }, "darwin");
+
+      expect(resolved?.command).toBe(binary);
+      expect(resolved?.source).toBe("managed-runtime");
+    }));
+
   test("uses explicit CYBARA_CUA_DRIVER_CMD before PATH probing", () =>
     withTempDir("cua-env", (dir) => {
       const pathBinary = join(dir, "cua-driver.exe");

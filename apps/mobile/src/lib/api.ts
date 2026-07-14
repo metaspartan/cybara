@@ -94,7 +94,14 @@ export interface ComputerUseStatus {
   available: boolean;
   command: string;
   configuredCommand?: string;
-  driverSource?: "env" | "config" | "path" | "known-install-dir" | "default";
+  driverSource?:
+    | "env"
+    | "config"
+    | "bundled"
+    | "managed-runtime"
+    | "path"
+    | "known-install-dir"
+    | "default";
   platform: string;
   version?: string;
   accessibility?: boolean;

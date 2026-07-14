@@ -137,6 +137,17 @@ describe("chat session sidebar layout", () => {
     expect(source).not.toContain("hover:bg-red-500/20 text-red-400");
   });
 
+  test("selects sessions without drawing an accent outline", () => {
+    const source = chatSource();
+
+    expect(source).toContain(
+      'isSessionSelected\n                            ? "bg-[rgba(var(--accent-primary),0.12)] border border-transparent"'
+    );
+    expect(source).not.toContain(
+      'isSessionSelected\n                            ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"'
+    );
+  });
+
   test("supports keyboard session selection", () => {
     const source = chatSource();
     expect(source).toContain('role="button"');

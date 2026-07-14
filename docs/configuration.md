@@ -100,9 +100,9 @@ Key-value settings are stored in the `config` table and exposed via `GET/PUT /ap
 
 `computer_use.driverCommand` is the persisted Web/Tauri settings override for the Cua Driver
 executable. `CYBARA_CUA_DRIVER_CMD` still takes precedence for scripts and operator-managed
-deployments. If neither is set, Cybara probes PATH and the known Cua installer locations, including
-Windows `%LOCALAPPDATA%\Programs\Cua\cua-driver\bin\cua-driver.exe` and
-`%USERPROFILE%\.cua-driver\packages\current`.
+deployments. If neither is set, desktop apps use their bundled runtime. Standalone gateway and CLI
+installs provision a checksum-verified runtime under `~/.cybara/runtime/cua-driver/` on first use,
+then fall back to compatible executables found on PATH or in known platform install locations.
 
 ## Gateway Auth And Operator Controls
 

@@ -4,6 +4,11 @@ import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } fro
 import { arch, platform } from "os";
 import { dirname, join } from "path";
 import { type BunRuntimeTarget, installBunRuntimeAt } from "../src/core/bun-runtime";
+import {
+  CUA_DRIVER_VERSION,
+  getCuaDriverTarget,
+  installCuaDriverAt,
+} from "../src/core/cua-driver-runtime";
 
 const TAURI_BIN_DIR = join(import.meta.dirname, "..", "src-tauri", "bin");
 const RELEASE_DIR = join(import.meta.dirname, "..", "release");
@@ -587,6 +592,19 @@ export default instance.exports;
     removeAndCopyDirectory(packagedRuntimeDir, join(dir, "runtime"));
   }
   console.log(`  📦 Copied Bun runtime for portable language servers`);
+
+  const cuaDriverTarget = getCuaDriverTarget(runtimeTarget.platform, runtimeTarget.arch);
+  if (!cuaDriverTarget) {
+    throw new Error(
+      `No computer-use driver is available for ${runtimeTarget.platform}/${runtimeTarget.arch}`
+    );
+  }
+  const packagedCuaDriverDir = join(TAURI_BIN_DIR, "cua-driver");
+  await installCuaDriverAt(packagedCuaDriverDir, cuaDriverTarget);
+  for (const dir of [RELEASE_DIR, tauriDebugDir]) {
+    removeAndCopyDirectory(packagedCuaDriverDir, join(dir, "cua-driver"));
+  }
+  console.log(`  📦 Copied computer-use driver v${CUA_DRIVER_VERSION}`);
 
   // Copy secp256k1.wasm alongside the binary
   if (existsSync(wasmSource)) {

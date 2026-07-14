@@ -628,6 +628,10 @@ function ComputerUseSettings() {
         return "Environment";
       case "config":
         return "Saved override";
+      case "bundled":
+        return "Included with Cybara";
+      case "managed-runtime":
+        return "Managed by Cybara";
       case "path":
         return "PATH";
       case "known-install-dir":
@@ -644,12 +648,12 @@ function ComputerUseSettings() {
       <CardHeader>
         <CardTitle>Computer Use</CardTitle>
         <CardDescription>
-          Background desktop control via the cua-driver engine.{" "}
+          Background desktop control with the computer-use engine included by Cybara.{" "}
           {status?.platform === "darwin"
-            ? "Install it and grant macOS Accessibility + Screen Recording permissions to let agents see and control the screen."
+            ? "Grant macOS Accessibility + Screen Recording permissions to let agents see and control the screen."
             : status?.platform === "win32"
               ? "Windows computer use runs on the active desktop, so keep the target app visible while agents work."
-              : "Install the cua-driver engine to let agents see and control the screen."}
+              : "Linux computer use runs in the active graphical session."}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -658,7 +662,7 @@ function ComputerUseSettings() {
         ) : status ? (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
-              <span className="flex items-center gap-2">Installed {yesNo(status.available)}</span>
+              <span className="flex items-center gap-2">Available {yesNo(status.available)}</span>
               {status.version && <span className="text-gray-400">v{status.version}</span>}
               {status.platform === "darwin" && (
                 <>
@@ -689,10 +693,9 @@ function ComputerUseSettings() {
             <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <p className="text-sm font-medium text-gray-200">Driver path override</p>
+                  <p className="text-sm font-medium text-gray-200">Custom driver</p>
                   <p className="text-xs text-gray-500">
-                    Use this when Windows/Tauri starts before the installer PATH update is visible,
-                    or when cua-driver is installed outside the default Cua folders.
+                    Optional override for development builds or a separately managed driver.
                   </p>
                 </div>
                 {status.driverSource === "config" && (
@@ -754,14 +757,6 @@ function ComputerUseSettings() {
               <Button variant="secondary" onClick={() => void load()}>
                 Recheck
               </Button>
-              {!status.available && (
-                <Button
-                  variant="secondary"
-                  onClick={() => openExternal("https://github.com/trycua/cua")}
-                >
-                  Install cua-driver
-                </Button>
-              )}
               {status.platform === "darwin" && status.available && !status.ready && (
                 <Button variant="primary" onClick={() => void grant()} disabled={granting}>
                   {granting ? "Requesting…" : "Grant Permissions"}

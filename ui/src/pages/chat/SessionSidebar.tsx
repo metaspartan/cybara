@@ -609,7 +609,7 @@ export function SessionsPanel({
                         key={session.id}
                         className={`deferred-list-row relative px-2.5 py-2 rounded-lg transition-all cursor-pointer group ${
                           isSessionSelected
-                            ? "bg-[rgba(var(--accent-primary),0.12)] border border-[rgba(var(--accent-primary),0.3)]"
+                            ? "bg-[rgba(var(--accent-primary),0.12)] border border-transparent"
                             : "bg-white/[0.03] border border-white/5 hover:border-white/15"
                         }`}
                         aria-label={tooltip}

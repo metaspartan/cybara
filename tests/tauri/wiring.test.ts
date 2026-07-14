@@ -24,6 +24,7 @@ describe("Tauri wiring", () => {
       expect(conf.bundle?.resources).toMatchObject({
         "bin/ui/dist": "ui/dist",
         "bin/node_modules": "node_modules",
+        "bin/cua-driver": "cua-driver",
       });
     }
     expect(conf.bundle?.externalBin).toContain("bin/cybara");
