@@ -15,6 +15,7 @@ const fallbackSettings: NearbySettings = {
   displayName: "Cybara",
   port: 4270,
   discoveryMinutes: 10,
+  autoAdvertise: true,
 };
 
 export function NearbySettingsSection() {
@@ -89,9 +90,11 @@ export function NearbySettingsSection() {
     }
   }
 
-  const discoverable = Boolean(
+  const timedDiscoverable = Boolean(
     status?.discoverableUntil && Date.parse(status.discoverableUntil) > Date.now()
   );
+  const advertising = Boolean(status?.advertising);
+  const showPeers = Boolean(settings.enabled && status?.running);
   const pairedIds = new Set(status?.pairedPeers.map((peer) => peer.id) || []);
   const availablePeers = status?.discoveredPeers.filter((peer) => !pairedIds.has(peer.id)) || [];
 
@@ -143,9 +146,10 @@ export function NearbySettingsSection() {
         <div className="flex items-start gap-3 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-3">
           <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[var(--text-secondary)]" />
           <p className="text-sm text-[var(--text-secondary)]">
-            Off by default. Discovery is temporary, both devices must confirm the same code, and
-            received chats require approval. Credentials, wallet data, and workspace paths are not
-            shared.
+            Off by default. While enabled, this device is discoverable to others on your local
+            network so they appear automatically on both ends. Pairing still requires confirming the
+            same code on both devices, and received chats require approval. Credentials, wallet data,
+            and workspace paths are not shared.
           </p>
         </div>
 
@@ -171,10 +175,32 @@ export function NearbySettingsSection() {
             min={1}
             max={60}
             value={settings.discoveryMinutes}
-            disabled={!settings.enabled || busy !== null}
+            disabled={!settings.enabled || settings.autoAdvertise || busy !== null}
             onChange={(event) =>
               setSettings({ ...settings, discoveryMinutes: Number(event.target.value) })
             }
+          />
+        </div>
+
+        <div className="flex items-start justify-between gap-4 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-3">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-[var(--text-primary)]">
+              Discoverable whenever enabled
+            </p>
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+              Keep announcing on the local network so your other devices find this one automatically.
+              Turn off to only advertise for a limited window using the button below.
+            </p>
+          </div>
+          <Switch
+            checked={settings.autoAdvertise}
+            disabled={!settings.enabled || busy !== null}
+            ariaLabel="Stay discoverable whenever Nearby is enabled"
+            onChange={(autoAdvertise) => {
+              const next = { ...settings, autoAdvertise };
+              setSettings(next);
+              void save(next);
+            }}
           />
         </div>
 
@@ -183,44 +209,45 @@ export function NearbySettingsSection() {
             <Button variant="primary" onClick={() => void save()} isLoading={busy === "save"}>
               Save
             </Button>
-            {discoverable ? (
-              <Button
-                variant="secondary"
-                onClick={() =>
-                  void action("discover", () => nearbyApi.stopDiscoverable(), "Discovery stopped")
-                }
-                disabled={busy !== null}
-              >
-                <X className="h-4 w-4" /> Stop discovery
-              </Button>
-            ) : (
-              <Button
-                variant="secondary"
-                onClick={() =>
-                  void action(
-                    "discover",
-                    () => nearbyApi.makeDiscoverable(),
-                    "This Cybara is temporarily discoverable"
-                  )
-                }
-                disabled={busy !== null}
-              >
-                <RefreshCw className="h-4 w-4" /> Discover devices
-              </Button>
-            )}
+            {!settings.autoAdvertise &&
+              (timedDiscoverable ? (
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    void action("discover", () => nearbyApi.stopDiscoverable(), "Discovery stopped")
+                  }
+                  disabled={busy !== null}
+                >
+                  <X className="h-4 w-4" /> Stop discovery
+                </Button>
+              ) : (
+                <Button
+                  variant="secondary"
+                  onClick={() =>
+                    void action(
+                      "discover",
+                      () => nearbyApi.makeDiscoverable(),
+                      "This Cybara is temporarily discoverable"
+                    )
+                  }
+                  disabled={busy !== null}
+                >
+                  <RefreshCw className="h-4 w-4" /> Discover devices
+                </Button>
+              ))}
             <Badge variant={status?.running ? "success" : "default"}>
               {status?.running ? "Listening privately" : "Stopped"}
             </Badge>
-            {discoverable ? <Badge variant="info">Discoverable now</Badge> : null}
+            {advertising ? <Badge variant="info">Discoverable now</Badge> : null}
           </div>
         ) : null}
 
-        {settings.enabled && discoverable ? (
+        {showPeers ? (
           <section className="space-y-2">
             <div>
               <h4 className="text-sm font-medium text-[var(--text-primary)]">Available nearby</h4>
               <p className="mt-1 text-xs text-[var(--text-muted)]">
-                Start discovery on both installations. New devices appear here automatically.
+                Enable Nearby on both installations. New devices appear here automatically.
               </p>
             </div>
             {availablePeers.length ? (

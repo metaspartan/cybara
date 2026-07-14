@@ -106,6 +106,67 @@ describe("nearby network and settings boundaries", () => {
     }
   });
 
+  test("is discoverable as soon as it is enabled when auto-advertise is on", async () => {
+    const previous = getNearbySettings();
+    const portProbe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
+    const nearbyPort = portProbe.port;
+    portProbe.stop(true);
+    const service = new NearbyService();
+    try {
+      await service.configure({
+        enabled: true,
+        displayName: "Auto Nearby",
+        port: nearbyPort,
+        discoveryMinutes: 5,
+        autoAdvertise: true,
+      });
+      expect((await service.status()).advertising).toBe(true);
+      const info = await fetch(`http://127.0.0.1:${nearbyPort}/v1/info`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      expect(info.status).toBe(200);
+      const body = (await info.json()) as { protocol: string; peerId: string };
+      expect(body.protocol).toBe("cybara-nearby-v1");
+      expect(typeof body.peerId).toBe("string");
+      expect(body.peerId.length).toBeGreaterThan(0);
+    } finally {
+      service.stop();
+      setNearbySettings(previous);
+    }
+  });
+
+  test("stays private until made discoverable when auto-advertise is off", async () => {
+    const previous = getNearbySettings();
+    const portProbe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
+    const nearbyPort = portProbe.port;
+    portProbe.stop(true);
+    const service = new NearbyService();
+    try {
+      await service.configure({
+        enabled: true,
+        displayName: "Manual Nearby",
+        port: nearbyPort,
+        discoveryMinutes: 5,
+        autoAdvertise: false,
+      });
+      expect((await service.status()).advertising).toBe(false);
+      const blocked = await fetch(`http://127.0.0.1:${nearbyPort}/v1/info`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      expect(blocked.status).toBe(400);
+
+      await service.makeDiscoverable();
+      expect((await service.status()).advertising).toBe(true);
+      const allowed = await fetch(`http://127.0.0.1:${nearbyPort}/v1/info`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      expect(allowed.status).toBe(200);
+    } finally {
+      service.stop();
+      setNearbySettings(previous);
+    }
+  });
+
   test("pairs by a private address when multicast discovery is unavailable", async () => {
     const previous = getNearbySettings();
     const remoteIdentity = createNearbyIdentity();

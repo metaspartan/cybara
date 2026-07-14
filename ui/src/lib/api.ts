@@ -51,6 +51,7 @@ export interface NearbySettings {
   displayName: string;
   port: number;
   discoveryMinutes: number;
+  autoAdvertise: boolean;
 }
 
 export interface NearbyPairing {
@@ -69,6 +70,7 @@ export interface NearbyStatus {
   settings: NearbySettings;
   identity: { id: string; fingerprint: string };
   running: boolean;
+  advertising: boolean;
   discoverableUntil: string | null;
   discoveredPeers: Array<{
     id: string;

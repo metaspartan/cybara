@@ -49,7 +49,12 @@ describe("nearby routes", () => {
       discoveryMinutes: 500,
     })) as {
       success: boolean;
-      settings: { displayName: string; port: number; discoveryMinutes: number };
+      settings: {
+        displayName: string;
+        port: number;
+        discoveryMinutes: number;
+        autoAdvertise: boolean;
+      };
     };
     expect(updated.success).toBe(true);
     expect(updated.settings).toEqual({
@@ -57,6 +62,7 @@ describe("nearby routes", () => {
       displayName: "Nearby Test",
       port: 1024,
       discoveryMinutes: 60,
+      autoAdvertise: true,
     });
   });
 });

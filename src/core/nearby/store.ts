@@ -16,6 +16,7 @@ export const DEFAULT_NEARBY_SETTINGS: NearbySettings = {
   displayName: hostname().trim().slice(0, 64) || "Cybara",
   port: 4270,
   discoveryMinutes: 10,
+  autoAdvertise: true,
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -45,6 +46,7 @@ export function normalizeNearbySettings(value: unknown): NearbySettings {
       1,
       60
     ),
+    autoAdvertise: record?.autoAdvertise !== false,
   };
 }
 

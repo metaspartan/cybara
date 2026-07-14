@@ -40,6 +40,7 @@ import {
 const log = createLogger("Nearby");
 const PAIRING_TTL_MS = 10 * 60 * 1000;
 const DISCOVERY_STALE_MS = 2 * 60 * 1000;
+const DISCOVERY_QUERY_INTERVAL_MS = 20 * 1000;
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
 const MAX_PAIRINGS = 100;
 const MAX_MESSAGES = 10_000;
@@ -229,6 +230,7 @@ export class NearbyService {
   private publishedService: Service | null = null;
   private discoverableUntilMs = 0;
   private discoverableTimer: ReturnType<typeof setTimeout> | null = null;
+  private discoveryQueryTimer: ReturnType<typeof setInterval> | null = null;
   private readonly discovered = new Map<string, NearbyDiscoveredPeer>();
   private readonly pairings = new Map<string, PendingPairing>();
   private readonly replayIds = new Map<string, number>();
@@ -266,6 +268,7 @@ export class NearbyService {
         throw error;
       }
     }
+    this.reconcileAdvertising();
     return next;
   }
 
@@ -282,13 +285,60 @@ export class NearbyService {
     });
     this.browser = this.bonjour.find({ type: NEARBY_SERVICE_TYPE, protocol: "tcp" });
     this.browser.on("up", (service) => this.onServiceUp(service));
+    this.browser.on("srv-update", (service) => this.onServiceUp(service));
+    this.browser.on("txt-update", (service) => this.onServiceUp(service));
     this.browser.on("down", (service) => this.onServiceDown(service));
+    this.discoveryQueryTimer = setInterval(() => {
+      try {
+        this.browser?.update();
+      } catch {
+        void 0;
+      }
+    }, DISCOVERY_QUERY_INTERVAL_MS);
     log.info("Nearby listener started", { port: settings.port });
+    if (settings.autoAdvertise) this.advertise();
+  }
+
+  private advertise(): void {
+    if (!this.bonjour) return;
+    const settings = getNearbySettings();
+    const identity = getNearbyIdentity();
+    this.publishedService?.stop();
+    this.publishedService =
+      this.bonjour.publish({
+        name: settings.displayName,
+        type: NEARBY_SERVICE_TYPE,
+        protocol: "tcp",
+        port: settings.port,
+        txt: {
+          protocol: NEARBY_PROTOCOL,
+          id: identity.id,
+          fingerprint: identity.fingerprint,
+        },
+      }) ?? null;
+  }
+
+  private reconcileAdvertising(): void {
+    const settings = getNearbySettings();
+    if (!settings.enabled || !this.server) return;
+    if (settings.autoAdvertise) {
+      if (!this.publishedService) this.advertise();
+    } else if (this.publishedService && this.discoverableUntilMs <= Date.now()) {
+      this.publishedService.stop();
+      this.publishedService = null;
+    }
+  }
+
+  private isDiscoverable(): boolean {
+    if (!this.server || !this.publishedService) return false;
+    return getNearbySettings().autoAdvertise || this.discoverableUntilMs > Date.now();
   }
 
   stop(): void {
     if (this.discoverableTimer) clearTimeout(this.discoverableTimer);
     this.discoverableTimer = null;
+    if (this.discoveryQueryTimer) clearInterval(this.discoveryQueryTimer);
+    this.discoveryQueryTimer = null;
     this.discoverableUntilMs = 0;
     this.publishedService?.stop();
     this.publishedService = null;
@@ -305,20 +355,7 @@ export class NearbyService {
     if (!getNearbySettings().enabled) throw new Error("Nearby Cybara is disabled");
     await this.start();
     const settings = getNearbySettings();
-    const identity = getNearbyIdentity();
-    this.publishedService?.stop();
-    this.publishedService =
-      this.bonjour?.publish({
-        name: settings.displayName,
-        type: NEARBY_SERVICE_TYPE,
-        protocol: "tcp",
-        port: settings.port,
-        txt: {
-          protocol: NEARBY_PROTOCOL,
-          id: identity.id,
-          fingerprint: identity.fingerprint,
-        },
-      }) ?? null;
+    if (!this.publishedService) this.advertise();
     this.discoverableUntilMs = Date.now() + settings.discoveryMinutes * 60 * 1000;
     if (this.discoverableTimer) clearTimeout(this.discoverableTimer);
     this.discoverableTimer = setTimeout(
@@ -491,6 +528,7 @@ export class NearbyService {
       settings: getNearbySettings(),
       identity: { id: identity.id, fingerprint: identity.fingerprint },
       running: this.server !== null,
+      advertising: this.isDiscoverable(),
       discoverableUntil:
         this.discoverableUntilMs > Date.now()
           ? new Date(this.discoverableUntilMs).toISOString()
@@ -541,7 +579,7 @@ export class NearbyService {
   }
 
   private peerInfo(): Record<string, unknown> {
-    if (this.discoverableUntilMs <= Date.now()) throw new Error("This Cybara is not discoverable");
+    if (!this.isDiscoverable()) throw new Error("This Cybara is not discoverable");
     const identity = getNearbyIdentity();
     return {
       protocol: NEARBY_PROTOCOL,
@@ -572,7 +610,7 @@ export class NearbyService {
     value: unknown,
     sourceAddress: string
   ): Promise<Record<string, unknown>> {
-    if (this.discoverableUntilMs <= Date.now()) throw new Error("This Cybara is not discoverable");
+    if (!this.isDiscoverable()) throw new Error("This Cybara is not discoverable");
     const now = Date.now();
     const recentAttempts = (this.pairAttempts.get(sourceAddress) || []).filter(
       (timestamp) => timestamp + 60_000 > now
