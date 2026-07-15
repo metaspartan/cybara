@@ -3,6 +3,7 @@ import {
   chatEscapeAction,
   clipboardCandidates,
   composerWindow,
+  resolveTerminalChatInspector,
   resolveTerminalLayout,
   terminalScreenSequence,
   transcriptMessageLimit,
@@ -26,6 +27,24 @@ describe("CLI TUI terminal behavior", () => {
     expect(wide.compact).toBe(false);
     expect(wide.composerLines).toBeGreaterThan(narrow.composerLines);
     expect(wide.transcriptMessages).toBeGreaterThan(narrow.transcriptMessages);
+  });
+
+  test("reserves a bounded right inspector only for wide chat terminals", () => {
+    expect(resolveTerminalChatInspector(100)).toEqual({
+      contentColumns: 100,
+      sidebar: false,
+      width: 0,
+    });
+    expect(resolveTerminalChatInspector(120)).toEqual({
+      contentColumns: 85,
+      sidebar: true,
+      width: 34,
+    });
+    expect(resolveTerminalChatInspector(220)).toEqual({
+      contentColumns: 175,
+      sidebar: true,
+      width: 44,
+    });
   });
 
   test("keeps the cursor line visible in bounded multiline prompts", () => {

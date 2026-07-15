@@ -1,6 +1,11 @@
 import React from "react";
 import { Box, Text } from "ink";
 import type { TuiContextUsage } from "./cli-tui-chat-environment";
+import {
+  resolveTuiColorScheme,
+  tuiChatPalette,
+  type TuiColorScheme,
+} from "./cli-tui-theme";
 
 export interface ChatHeaderState {
   approvalCount: number;
@@ -100,21 +105,28 @@ export function chatShortcutHints(state: ChatShortcutState): string[] {
     : base;
 }
 
-export function ChatHeader({ state }: { state: ChatHeaderState }): React.ReactElement {
+export function ChatHeader({
+  state,
+  colorScheme = resolveTuiColorScheme(process.env),
+}: {
+  state: ChatHeaderState;
+  colorScheme?: TuiColorScheme;
+}): React.ReactElement {
   const status = chatRunStatus(state.sending, state.status);
   const titleLimit = Math.max(18, state.columns - (state.sending ? 22 : 18));
+  const palette = tuiChatPalette(colorScheme);
   return (
     <Box flexDirection="column" paddingX={1} flexShrink={0}>
       <Box justifyContent="space-between">
-        <Text bold color="white">
-          <Text color="cyan">◆ </Text>
+        <Text bold color={palette.text}>
+          <Text color={palette.accent}>◆ </Text>
           {compact(state.title, titleLimit)}
         </Text>
         <Text color={state.sending ? "yellow" : "green"}>
           {state.sending ? "◌" : "●"} {status}
         </Text>
       </Box>
-      <Text color="gray" dimColor wrap="wrap">
+      <Text color={palette.muted} wrap="wrap">
         {chatHeaderMeta(state).join(" · ")}
       </Text>
     </Box>
@@ -123,12 +135,15 @@ export function ChatHeader({ state }: { state: ChatHeaderState }): React.ReactEl
 
 export function ChatShortcutRail({
   state,
+  colorScheme = resolveTuiColorScheme(process.env),
 }: {
   state: ChatShortcutState;
+  colorScheme?: TuiColorScheme;
 }): React.ReactElement {
+  const palette = tuiChatPalette(colorScheme);
   return (
     <Box paddingX={1} flexShrink={0}>
-      <Text color="gray" dimColor wrap="wrap">
+      <Text color={palette.subtle} wrap="wrap">
         {chatShortcutHints(state).join(" · ")}
       </Text>
     </Box>

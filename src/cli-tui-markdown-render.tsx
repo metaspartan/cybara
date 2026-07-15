@@ -2,6 +2,11 @@ import React from "react";
 import { Box, Text } from "ink";
 import { parseTerminalListItem, splitTerminalInline } from "./cli-tui-markdown";
 import { transcriptWindow } from "./cli-tui-terminal";
+import {
+  resolveTuiColorScheme,
+  tuiChatPalette,
+  type TuiColorScheme,
+} from "./cli-tui-theme";
 
 export function TerminalInlineSegments({
   line,
@@ -43,12 +48,15 @@ export function TerminalMessageBody({
   hiddenText,
   maxColumns,
   maxLines,
+  colorScheme = resolveTuiColorScheme(process.env),
 }: {
   content: string;
+  colorScheme?: TuiColorScheme;
   hiddenText?: string;
   maxColumns?: number;
   maxLines?: number;
 }): React.ReactElement {
+  const palette = tuiChatPalette(colorScheme);
   const lines = transcriptWindow(
     content,
     maxLines ?? Number.MAX_SAFE_INTEGER,
@@ -60,7 +68,7 @@ export function TerminalMessageBody({
       {lines.map((line, index) => {
         if (line.hidden) {
           return (
-            <Text key={index} color="#9ca6b4" wrap="wrap">
+            <Text key={index} color={palette.muted} wrap="wrap">
               {line.text}
             </Text>
           );
@@ -86,7 +94,7 @@ export function TerminalMessageBody({
           return (
             <Text key={index} wrap="wrap">
               {listItem.indent}
-              <Text color={listItem.checked ? "green" : "gray"}>
+              <Text color={listItem.checked ? "green" : palette.muted}>
                 {listItem.checked ? "☑ " : "☐ "}
               </Text>
               <TerminalInlineSegments line={listItem.content} />
@@ -97,7 +105,7 @@ export function TerminalMessageBody({
           return (
             <Text key={index} wrap="wrap">
               {listItem.indent}
-              <Text color="cyan">• </Text>
+              <Text color={palette.accent}>• </Text>
               <TerminalInlineSegments line={listItem.content} />
             </Text>
           );
@@ -106,21 +114,21 @@ export function TerminalMessageBody({
           return (
             <Text key={index} wrap="wrap">
               {listItem.indent}
-              <Text color="cyan">{listItem.number}. </Text>
+              <Text color={palette.accent}>{listItem.number}. </Text>
               <TerminalInlineSegments line={listItem.content} />
             </Text>
           );
         }
         if (/^#{1,6}\s/.test(line.text)) {
           return (
-            <Text key={index} bold wrap="wrap">
+            <Text key={index} bold color={palette.text} wrap="wrap">
               {line.text.replace(/^#{1,6}\s/, "")}
             </Text>
           );
         }
         if (/^\s*>\s?/.test(line.text)) {
           return (
-            <Text key={index} color="gray" wrap="wrap">
+            <Text key={index} color={palette.muted} wrap="wrap">
               ▏ {line.text.replace(/^\s*>\s?/, "")}
             </Text>
           );

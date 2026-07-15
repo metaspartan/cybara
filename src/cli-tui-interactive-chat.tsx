@@ -32,6 +32,7 @@ import {
   clipboardCandidates,
   composerWindow,
   copyTextToClipboard,
+  resolveTerminalChatInspector,
   transcriptMessageLimit,
   useTerminalLayout,
 } from "./cli-tui-terminal";
@@ -89,6 +90,12 @@ import {
   matchingTUIChatCommands,
   nextTUIChatCommandIndex,
 } from "./cli-tui-commands";
+import {
+  resolveTuiColorScheme,
+  tuiChatPalette,
+  type TuiColorScheme,
+  type TuiSurfacePalette,
+} from "./cli-tui-theme";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -156,15 +163,12 @@ interface InteractiveChatProps {
 
 const ROLE_META: Record<
   ChatMessage["role"],
-  { label: string; color: string; marker: string }
+  { label: string; marker: string }
 > = {
-  user: { label: "You", color: "cyan", marker: ">" },
-  assistant: { label: "Cybara", color: "white", marker: "◆" },
-  system: { label: "System", color: "#9ca6b4", marker: "-" },
+  user: { label: "You", marker: ">" },
+  assistant: { label: "Cybara", marker: "◆" },
+  system: { label: "System", marker: "-" },
 };
-
-const ACTIVITY_HEADING_COLOR = "#aab3bf";
-const ACTIVITY_DETAIL_COLOR = "#c0c7d1";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -389,12 +393,14 @@ function ActivitySummary({
   message,
   maxDetails,
   maxColumns,
+  palette,
 }: {
   expanded?: boolean;
   live?: boolean;
   message: ChatMessage;
   maxDetails?: number;
   maxColumns: number;
+  palette: TuiSurfacePalette;
 }): React.ReactElement | null {
   const steeringActivities = (message.process_activities || []).filter(
     (activity) => activity.toolName === "__steering",
@@ -419,7 +425,7 @@ function ActivitySummary({
       width={Math.max(12, maxColumns)}
     >
       {rows.length > 0 ? (
-        <Text color="gray" dimColor>
+        <Text color={palette.muted}>
           {live ? "◌" : expanded ? "▾" : "▸"} {live ? "Working" : "Worked"} for{" "}
           {workedDuration}
         </Text>
@@ -434,9 +440,8 @@ function ActivitySummary({
                   color={
                     row.phase === "error" || row.phase === "blocked"
                       ? "red"
-                      : ACTIVITY_HEADING_COLOR
+                      : palette.activity
                   }
-                  dimColor
                   wrap="wrap"
                 >
                   {row.icon ? `${row.icon} ` : ""}
@@ -449,8 +454,7 @@ function ActivitySummary({
               ).map((label, index, details) => (
                 <Text
                   key={`${row.id}-${rowIndex}-${index}`}
-                  color={ACTIVITY_DETAIL_COLOR}
-                  dimColor
+                  color={palette.detail}
                   wrap="wrap"
                 >
                   {index === details.length - 1 ? "└" : "├"} {label}
@@ -460,7 +464,7 @@ function ActivitySummary({
           ))
         : null}
       {steeringActivities.map((activity, index) => (
-        <Text key={activity.id || `steered-${index}`} color="gray" dimColor wrap="wrap">
+        <Text key={activity.id || `steered-${index}`} color={palette.muted} wrap="wrap">
           ↔ {activity.text || "Conversation steered."}
         </Text>
       ))}
@@ -475,6 +479,8 @@ function MessageView({
   maxLines,
   maxActivityDetails,
   maxColumns,
+  colorScheme,
+  palette,
 }: {
   expandedActivities: boolean;
   expandedMessage: boolean;
@@ -482,12 +488,20 @@ function MessageView({
   maxLines?: number;
   maxActivityDetails?: number;
   maxColumns: number;
+  colorScheme: TuiColorScheme;
+  palette: TuiSurfacePalette;
 }): React.ReactElement {
   const meta = ROLE_META[message.role];
+  const roleColor =
+    message.role === "user"
+      ? palette.user
+      : message.role === "assistant"
+        ? palette.text
+        : palette.muted;
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Box>
-        <Text bold color={meta.color}>
+        <Text bold color={roleColor}>
           {meta.marker} {meta.label}
         </Text>
       </Box>
@@ -496,12 +510,12 @@ function MessageView({
         message={message}
         maxColumns={maxColumns}
         maxDetails={maxActivityDetails}
+        palette={palette}
       />
       {message.agent_transfers?.map((transfer) => (
         <Text
           key={`${transfer.fromAgentId}-${transfer.toAgentId}-${transfer.requestedAt || "transfer"}`}
-          color={ACTIVITY_DETAIL_COLOR}
-          dimColor
+          color={palette.detail}
         >
           {"  ⇄ "}Transferred from {transfer.fromAgentName} to{" "}
           {transfer.toAgentName}
@@ -510,6 +524,7 @@ function MessageView({
       <Box paddingLeft={2} width="100%">
         <TerminalMessageBody
           content={message.content}
+          colorScheme={colorScheme}
           hiddenText={
             expandedMessage
               ? "… more content hidden · /copy copies the full response"
@@ -528,17 +543,21 @@ function LiveRunView({
   content,
   detail,
   maxColumns,
+  colorScheme,
+  palette,
 }: {
   activities: TUIStreamActivity[];
   content: string;
   detail: string;
   maxColumns: number;
+  colorScheme: TuiColorScheme;
+  palette: TuiSurfacePalette;
 }): React.ReactElement {
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text bold color="white">
+      <Text bold color={palette.text}>
         ◆ Cybara{" "}
-        <Text color="gray">
+        <Text color={palette.muted}>
           <Spinner type="dots" />
         </Text>
       </Text>
@@ -551,13 +570,14 @@ function LiveRunView({
           process_activities: activities,
         }}
         maxColumns={maxColumns}
+        palette={palette}
       />
       {content ? (
         <Box paddingLeft={2} width="100%">
-          <TerminalMessageBody content={content} />
+          <TerminalMessageBody content={content} colorScheme={colorScheme} />
         </Box>
       ) : detail ? (
-        <Text color="gray" wrap="wrap">
+        <Text color={palette.muted} wrap="wrap">
           {" "}
           {detail}
         </Text>
@@ -769,7 +789,9 @@ export function InteractiveChatTUI({
     React.useState<TuiEnvironmentSnapshot | null>(null);
   const [tasks, setTasks] = React.useState<TuiTaskSummary[]>([]);
   const [subagents, setSubagents] = React.useState<TuiSubagentSummary[]>([]);
-  const [showEnvironment, setShowEnvironment] = React.useState(false);
+  const [environmentPanelMode, setEnvironmentPanelMode] = React.useState<
+    "auto" | "shown" | "hidden"
+  >("auto");
   const [expandedTranscript, setExpandedTranscript] = React.useState(false);
   const [expandedActivities, setExpandedActivities] = React.useState(false);
   const [transcriptOffset, setTranscriptOffset] = React.useState(0);
@@ -781,6 +803,17 @@ export function InteractiveChatTUI({
   >([]);
   const [resolvingApproval, setResolvingApproval] = React.useState(false);
   const layout = useTerminalLayout();
+  const tuiColorScheme = resolveTuiColorScheme(process.env);
+  const tuiPalette = tuiChatPalette(tuiColorScheme);
+  const inspectorLayout = resolveTerminalChatInspector(layout.columns);
+  const environmentPanelVisible =
+    environmentPanelMode === "shown" ||
+    (environmentPanelMode === "auto" && inspectorLayout.sidebar);
+  const environmentSidebarVisible = environmentPanelVisible && inspectorLayout.sidebar;
+  const environmentStackedVisible = environmentPanelVisible && !inspectorLayout.sidebar;
+  const transcriptColumns = environmentSidebarVisible
+    ? inspectorLayout.contentColumns
+    : layout.columns;
   const sessionIdRef = React.useRef(localSessionId);
   const lastInterruptAtRef = React.useRef(0);
   const capabilitiesWorkspaceRef = React.useRef<string | null>(null);
@@ -788,6 +821,17 @@ export function InteractiveChatTUI({
     input: string;
     cursor: number;
   } | null>(null);
+
+  const toggleEnvironmentPanel = React.useCallback(() => {
+    setEnvironmentPanelMode((current) => {
+      const visible = current === "shown" || (current === "auto" && inspectorLayout.sidebar);
+      return visible ? "hidden" : "shown";
+    });
+  }, [inspectorLayout.sidebar]);
+
+  const dismissTransientEnvironmentPanel = React.useCallback(() => {
+    setEnvironmentPanelMode((current) => (current === "shown" ? "hidden" : current));
+  }, []);
 
   const activeCapabilityMention = React.useMemo(
     () => activeTUICapabilityMention(input, cursor),
@@ -982,11 +1026,14 @@ export function InteractiveChatTUI({
   }, [fetchAPI]);
 
   const loadSubagents = React.useCallback(async () => {
-    const response = await fetchAPI<unknown>("/api/subagents");
+    const query = localSessionId
+      ? "?sessionId=" + encodeURIComponent(localSessionId)
+      : "";
+    const response = await fetchAPI<unknown>("/api/subagents" + query);
     const next = subagentsFromResponse(response);
     setSubagents(next);
     return next;
-  }, [fetchAPI]);
+  }, [fetchAPI, localSessionId]);
 
   const loadMessagesForSession = React.useCallback(
     async (targetSessionId: string): Promise<ChatMessage[]> => {
@@ -1042,6 +1089,11 @@ export function InteractiveChatTUI({
       setError(cause instanceof Error ? cause.message : String(cause));
     });
   }, [loadControlPlane]);
+
+  React.useEffect(() => {
+    if (!environmentPanelVisible) return;
+    void Promise.all([loadTasks(), loadSubagents()]).catch(() => undefined);
+  }, [environmentPanelVisible, loadSubagents, loadTasks]);
 
   const loadApprovals = React.useCallback(async () => {
     const response = await fetchAPI<unknown>("/api/tools/approvals");
@@ -1112,10 +1164,10 @@ export function InteractiveChatTUI({
     setSearchQuery(query);
     setSearchIndex(0);
     setSearchOpen(true);
-    setShowEnvironment(false);
+    dismissTransientEnvironmentPanel();
     setShowHelp(false);
     setNotice(null);
-  }, []);
+  }, [dismissTransientEnvironmentPanel]);
 
   const finishLiveRun = React.useCallback(() => {
     setSending(false);
@@ -1563,7 +1615,7 @@ export function InteractiveChatTUI({
       if (normalizedCommand === "environment") {
         if (localSessionId) await loadEnvironmentForSession(localSessionId);
         await Promise.all([loadTasks(), loadSubagents()]);
-        setShowEnvironment((value) => !value);
+        toggleEnvironmentPanel();
         setNotice("Environment panel toggled.");
         return true;
       }
@@ -1937,6 +1989,7 @@ export function InteractiveChatTUI({
       selectedAgent,
       selectedAgentId,
       sessionTitle,
+      toggleEnvironmentPanel,
       useModelRouter,
       workspaceDir,
     ],
@@ -2114,7 +2167,7 @@ export function InteractiveChatTUI({
     layout.narrow &&
     (commandPaletteVisible ||
       capabilityPaletteVisible ||
-      showEnvironment ||
+      environmentStackedVisible ||
       showHelp ||
       searchOpen);
 
@@ -2226,7 +2279,7 @@ export function InteractiveChatTUI({
     if (key.ctrl && value === "p") {
       commandPaletteDraftRef.current = input ? { input, cursor } : null;
       setSearchOpen(false);
-      setShowEnvironment(false);
+      dismissTransientEnvironmentPanel();
       setShowHelp(false);
       setInput("/");
       setCursor(1);
@@ -2278,11 +2331,11 @@ export function InteractiveChatTUI({
         return;
       }
       const action = chatEscapeAction(
-        showEnvironment || showHelp,
+        environmentStackedVisible || showHelp,
         input.length > 0,
       );
       if (action === "close_panel") {
-        setShowEnvironment(false);
+        dismissTransientEnvironmentPanel();
         setShowHelp(false);
         setNotice("Panel closed.");
         return;
@@ -2441,11 +2494,12 @@ export function InteractiveChatTUI({
       : "Run in progress"
     : "Ask Cybara";
   const composerTextColor =
-    sending && !followUpBehaviorEnabled ? "gray" : "white";
+    sending && !followUpBehaviorEnabled ? tuiPalette.muted : tuiPalette.text;
 
   return (
     <Box flexDirection="column" height={layout.rows} width="100%">
       <ChatHeader
+        colorScheme={tuiColorScheme}
         state={{
           approvalCount: approvalRequests.length,
           approvalMode,
@@ -2464,77 +2518,78 @@ export function InteractiveChatTUI({
         }}
       />
 
-      {narrowOverlayVisible ? null : loading ? (
-        <Box
-          paddingX={1}
-          paddingY={1}
-          flexGrow={1}
-          flexShrink={1}
-          overflow="hidden"
-        >
-          <Text color="yellow">
-            <Spinner type="dots" /> Loading conversation
-          </Text>
+      <Box flexDirection="row" flexGrow={1} flexShrink={1} overflow="hidden">
+        <Box flexDirection="column" flexGrow={1} flexShrink={1} overflow="hidden">
+          {narrowOverlayVisible ? null : loading ? (
+            <Box paddingX={1} paddingY={1} flexGrow={1} flexShrink={1} overflow="hidden">
+              <Text color="yellow">
+                <Spinner type="dots" /> Loading conversation
+              </Text>
+            </Box>
+          ) : visibleMessages.length === 0 ? (
+            <Box paddingX={1} paddingY={1} flexGrow={1} flexShrink={1} overflow="hidden">
+              <Text color={tuiPalette.muted}>No messages yet. Type a prompt or /help.</Text>
+            </Box>
+          ) : (
+            <Box
+              flexDirection="column"
+              paddingX={1}
+              paddingTop={1}
+              flexGrow={1}
+              flexShrink={1}
+              overflow="hidden"
+            >
+              {visibleMessageEnd < transcriptMessages.length ? (
+                <Text color={tuiPalette.muted}>
+                  ↓ {transcriptMessages.length - visibleMessageEnd} newer messages
+                </Text>
+              ) : null}
+              {visibleMessages.map((message, index) => (
+                <MessageView
+                  expandedActivities={expandedActivities}
+                  expandedMessage={expandedTranscript}
+                  key={`${index}-${message.role}-${message.content.slice(0, 12)}`}
+                  message={message}
+                  maxLines={expandedTranscript ? expandedMessageLines : layout.messageLines}
+                  maxActivityDetails={expandedActivities ? undefined : 0}
+                  maxColumns={Math.max(24, transcriptColumns - 8)}
+                  colorScheme={tuiColorScheme}
+                  palette={tuiPalette}
+                />
+              ))}
+              {sending ? (
+                <LiveRunView
+                  activities={liveActivities}
+                  content={streamingText}
+                  detail={streamDetail}
+                  maxColumns={Math.max(24, transcriptColumns - 8)}
+                  colorScheme={tuiColorScheme}
+                  palette={tuiPalette}
+                />
+              ) : null}
+              {visibleMessageEnd - visibleMessages.length > 0 ? (
+                <Text color={tuiPalette.muted}>
+                  ↑ {visibleMessageEnd - visibleMessages.length} earlier messages · PageUp/PageDown
+                </Text>
+              ) : null}
+            </Box>
+          )}
         </Box>
-      ) : visibleMessages.length === 0 ? (
-        <Box
-          paddingX={1}
-          paddingY={1}
-          flexGrow={1}
-          flexShrink={1}
-          overflow="hidden"
-        >
-          <Text color="gray">No messages yet. Type a prompt or /help.</Text>
-        </Box>
-      ) : (
-        <Box
-          flexDirection="column"
-          paddingX={1}
-          paddingTop={1}
-          flexGrow={1}
-          flexShrink={1}
-          overflow="hidden"
-        >
-          {visibleMessageEnd < transcriptMessages.length ? (
-            <Text color="gray">
-              ↓ {transcriptMessages.length - visibleMessageEnd} newer messages
-            </Text>
-          ) : null}
-          {visibleMessages.map((message, index) => (
-            <MessageView
-              expandedActivities={expandedActivities}
-              expandedMessage={expandedTranscript}
-              key={`${index}-${message.role}-${message.content.slice(0, 12)}`}
-              message={message}
-              maxLines={
-                expandedTranscript
-                  ? expandedMessageLines
-                  : layout.messageLines
-              }
-              maxActivityDetails={expandedActivities ? undefined : 0}
-              maxColumns={Math.max(24, layout.columns - 8)}
-            />
-          ))}
-          {sending ? (
-            <LiveRunView
-              activities={liveActivities}
-              content={streamingText}
-              detail={streamDetail}
-              maxColumns={Math.max(24, layout.columns - 8)}
-            />
-          ) : null}
-          {visibleMessageEnd - visibleMessages.length > 0 ? (
-            <Text color="gray">
-              ↑ {visibleMessageEnd - visibleMessages.length} earlier messages ·
-              PageUp/PageDown
-            </Text>
-          ) : null}
-        </Box>
-      )}
+        {environmentSidebarVisible ? (
+          <EnvironmentPanel
+            snapshot={environmentSnapshot}
+            tasks={tasks}
+            subagents={subagents}
+            colorScheme={tuiColorScheme}
+            variant="sidebar"
+            width={inspectorLayout.width}
+          />
+        ) : null}
+      </Box>
 
       {sending ? (
         <Box paddingX={1}>
-          <Text color="cyan">
+          <Text color={tuiPalette.accent}>
             <Spinner type="dots" />{" "}
             {followUpBehaviorEnabled
               ? "Enter queues · /steer injects"
@@ -2551,11 +2606,12 @@ export function InteractiveChatTUI({
         />
       ) : null}
       <PendingQueue messages={pendingMessages} />
-      {showEnvironment ? (
+      {environmentStackedVisible ? (
         <EnvironmentPanel
           snapshot={environmentSnapshot}
           tasks={tasks}
           subagents={subagents}
+          colorScheme={tuiColorScheme}
           compact={layout.narrow}
         />
       ) : null}
@@ -2586,35 +2642,36 @@ export function InteractiveChatTUI({
       ) : null}
       {notice ? (
         <Box paddingX={1}>
-          <Text color="gray">{notice}</Text>
+          <Text color={tuiPalette.muted}>{notice}</Text>
         </Box>
       ) : null}
 
       <Box
         borderStyle="round"
-        borderColor={sending ? "cyan" : "gray"}
+        borderColor={sending ? tuiPalette.accent : tuiPalette.border}
         paddingX={1}
         flexDirection="column"
         flexShrink={0}
       >
         {sending ? (
-          <Text color={followUpBehaviorEnabled ? "cyan" : "gray"}>
+          <Text color={followUpBehaviorEnabled ? tuiPalette.accent : tuiPalette.muted}>
             {composerTitle}
           </Text>
         ) : null}
         {composerLines.map((line, index) => (
-          <Text key={index} color={input ? composerTextColor : "gray"}>
+          <Text key={index} color={input ? composerTextColor : tuiPalette.subtle}>
             {index === 0 ? "› " : "  "}
             {line}
           </Text>
         ))}
       </Box>
       <ChatShortcutRail
+        colorScheme={tuiColorScheme}
         state={{
           activeApproval: Boolean(activeApproval),
           columns: layout.columns,
           followUpsEnabled: followUpBehaviorEnabled,
-          panelOpen: showEnvironment || showHelp || searchOpen,
+          panelOpen: environmentStackedVisible || showHelp || searchOpen,
           paletteOpen:
             commandPaletteVisible || capabilityPaletteVisible || searchOpen,
           sending,

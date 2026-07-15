@@ -24,6 +24,12 @@ export interface TerminalScreenSequence {
   exit: string;
 }
 
+export interface TerminalChatInspectorLayout {
+  contentColumns: number;
+  sidebar: boolean;
+  width: number;
+}
+
 export type ChatEscapeAction = "close_panel" | "clear_draft" | "back";
 
 export function chatEscapeAction(hasPanel: boolean, hasDraft: boolean): ChatEscapeAction {
@@ -69,6 +75,19 @@ export function resolveTerminalLayout(columns?: number, rows?: number): Terminal
     messageLines: height <= 24 ? 3 : narrow ? (height < 28 ? 4 : 6) : 8,
     transcriptMessages:
       height < 34 ? 1 : Math.max(2, Math.min(8, Math.floor(height / (narrow ? 10 : 12)))),
+  };
+}
+
+export function resolveTerminalChatInspector(columns: number): TerminalChatInspectorLayout {
+  const safeColumns = Math.max(40, columns);
+  if (safeColumns < 118) {
+    return { contentColumns: safeColumns, sidebar: false, width: 0 };
+  }
+  const width = Math.max(34, Math.min(44, Math.floor(safeColumns * 0.28)));
+  return {
+    contentColumns: safeColumns - width - 1,
+    sidebar: true,
+    width,
   };
 }
 

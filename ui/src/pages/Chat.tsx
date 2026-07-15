@@ -3033,7 +3033,7 @@ export function Chat() {
                 ref={messagesContainerRef}
                 onScroll={refreshScrollToBottomVisibility}
                 className={cn(
-                  "flex-1 overflow-y-auto px-3 py-4 sm:px-4",
+                  "flex-1 overflow-y-auto px-5 py-4 sm:px-8",
                   typedMessages.length === 0 ? "flex items-center justify-center" : "space-y-4"
                 )}
               >

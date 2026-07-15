@@ -110,6 +110,12 @@ describe("index.css design-system utilities", () => {
     expect(sessionSidebar).not.toContain('text-blue-300" />');
   });
 
+  test("keeps assistant responses clear of the chat viewport edges", () => {
+    const chat = read("../../ui/src/pages/Chat.tsx");
+    expect(chat).toContain("flex-1 overflow-y-auto px-5 py-4 sm:px-8");
+    expect(chat).not.toContain("flex-1 overflow-y-auto px-3 py-4 sm:px-4");
+  });
+
   test("shared form controls and native select options use theme surface tokens", () => {
     const input = read("../../ui/src/components/ui/Input.tsx");
     const select = read("../../ui/src/components/ui/Select.tsx");

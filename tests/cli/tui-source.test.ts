@@ -328,8 +328,14 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("ChatHeader");
     expect(cliTuiInteractiveChatSource).toContain("ChatShortcutRail");
     expect(cliTuiInteractiveChatSource).not.toContain("<Box marginTop={1} flexShrink={0}>");
-    expect(cliTuiInteractiveChatSource).toContain('borderColor={sending ? "cyan" : "gray"}');
+    expect(cliTuiInteractiveChatSource).toContain(
+      "borderColor={sending ? tuiPalette.accent : tuiPalette.border}"
+    );
     expect(cliTuiInteractiveChatSource).toContain("EnvironmentPanel");
+    expect(cliTuiInteractiveChatSource).toContain("resolveTerminalChatInspector");
+    expect(cliTuiInteractiveChatSource).toContain('variant="sidebar"');
+    expect(cliTuiInteractiveChatSource).toContain("environmentSidebarVisible");
+    expect(cliTuiInteractiveChatSource).toContain("?sessionId=");
     expect(cliTuiInteractiveChatSource).toContain("environmentSnapshotFromDetail");
     expect(cliTuiInteractiveChatSource).toContain("formatContextUsageLine");
     expect(cliTuiInteractiveChatSource).toContain("formatTokenUsageLine");
@@ -369,8 +375,8 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("(key as { tab?: boolean }).tab");
     expect(cliTuiInteractiveChatSource).toContain("process_activities");
     expect(cliTuiInteractiveChatSource).toContain("tool_calls");
-    expect(cliTuiInteractiveChatSource).toContain("ACTIVITY_HEADING_COLOR");
-    expect(cliTuiInteractiveChatSource).toContain("ACTIVITY_DETAIL_COLOR");
+    expect(cliTuiInteractiveChatSource).toContain("palette.activity");
+    expect(cliTuiInteractiveChatSource).toContain("palette.detail");
     expect(cliTuiInteractiveChatSource).toContain("key={`${row.id}-${rowIndex}`}");
     expect(cliTuiInteractiveChatSource).toContain(
       "maxActivityDetails={expandedActivities ? undefined : 0}"
@@ -418,8 +424,11 @@ describe("CLI TUI source wiring", () => {
       expect(cliTuiChatEnvironmentSource).toContain(symbol);
     }
     expect(cliTuiChatEnvironmentViewSource).toContain("EnvironmentPanel");
-    expect(cliTuiChatEnvironmentViewSource).toContain("Workspace");
-    expect(cliTuiChatEnvironmentViewSource).toContain("Branch");
+    expect(cliTuiChatEnvironmentViewSource).toContain(
+      'EnvironmentPanelVariant = "stacked" | "sidebar"'
+    );
+    expect(cliTuiChatEnvironmentViewSource).toContain("Usage");
+    expect(cliTuiChatEnvironmentViewSource).toContain("Changes");
     expect(cliTuiChatEnvironmentViewSource).toContain("Subagents");
   });
 

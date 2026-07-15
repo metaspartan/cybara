@@ -72,6 +72,10 @@ and approval mode. `/agents`, `/agent <id|name|default>`, `/model <id|router|def
 `/subagent spawn <task>` mirror the same control-plane
 concepts used by the other clients. The environment panel summarizes workspace, branch, context
 window, token usage, file changes, plan progress, tasks, and subagents without leaving the terminal.
+Wide terminals keep this information visible in a persistent right-side inspector. Narrow terminals
+preserve the full chat width and open the same details as a stacked panel with `/environment`.
+The TUI follows `COLORFGBG` when the terminal exposes it. Set `CYBARA_TUI_THEME=light` or
+`CYBARA_TUI_THEME=dark` to override automatic color selection.
 `/goal start <objective>` creates persistent long-running work for the session, with `/loop` as an
 alias; goal status, pause, resume, completion, blocking, editing, and clearing use the shared chat
 runtime behavior.
