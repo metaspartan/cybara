@@ -22,6 +22,9 @@ describe("app release surface wiring", () => {
     expect(releaseWorkflow.indexOf("name: Sync version metadata")).toBeLessThan(
       releaseWorkflow.indexOf("name: Run CI checks")
     );
+    expect(releaseWorkflow.slice(0, releaseWorkflow.indexOf("build-cli:"))).toContain(
+      "fetch-depth: 2"
+    );
     expect(versionWorkflow).toContain("apps/mobile/app.json");
     expect(versionWorkflow).toContain(
       "git add package.json ui/package.json src-tauri/Cargo.toml src-tauri/tauri.conf.json apps/mobile/app.json"

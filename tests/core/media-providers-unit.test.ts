@@ -106,10 +106,12 @@ describe("media provider config resolution (isConfigured)", () => {
 });
 
 describe("resolveDefaultProvider fallback behavior", () => {
-  test("returns a provider even when none are configured (falls back to first)", () => {
+  test("returns a provider from the active registry", () => {
+    const registered = listMediaProviders("image");
     const p = resolveDefaultProvider("image");
+
     expect(p).not.toBeNull();
-    expect(["openai", "fal"]).toContain(p?.id);
+    expect(registered).toContain(p?.id);
   });
 
   test("prefers a configured provider", () => {
