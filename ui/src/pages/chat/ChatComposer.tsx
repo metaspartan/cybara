@@ -65,6 +65,7 @@ export interface ChatComposerProps {
   inputRef: RefObject<HTMLTextAreaElement | null>;
   isLoading: boolean;
   isStopping: boolean;
+  layout?: "default" | "new-chat";
   modelRouterEnabled: boolean;
   mutatingMessageId: string | null;
   pendingFiles: ChatFileAttachment[];
@@ -125,6 +126,7 @@ export function ChatComposer({
   inputRef,
   isLoading,
   isStopping,
+  layout = "default",
   modelRouterEnabled,
   mutatingMessageId,
   pendingFiles,
@@ -161,7 +163,13 @@ export function ChatComposer({
   return (
     <div
       ref={composerRef}
-      className="chat-composer-responsive flex-shrink-0 px-3 sm:px-4 py-3 border-t border-white/5 bg-[#0a0a0f]/80 backdrop-blur-xl"
+      data-layout={layout}
+      className={cn(
+        "chat-composer-responsive flex-shrink-0",
+        layout === "new-chat"
+          ? "w-full bg-transparent p-0"
+          : "border-t border-white/5 bg-[#0a0a0f]/80 px-3 py-3 backdrop-blur-xl sm:px-4"
+      )}
     >
       {showPlan && currentPlan && currentPlanKey ? (
         <PlanSummaryCard

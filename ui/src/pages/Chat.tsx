@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowDown, Folder, Loader2, Plus, RotateCcw, Share2, Square } from "lucide-react";
+import { ArrowDown, Loader2, Plus, RotateCcw, Share2, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { LocalFolderPickerModal } from "@/components/LocalFolderPickerModal";
@@ -9,12 +9,12 @@ import { useAgentSummaries, useInfo, useSubagents, useUpdateAgentReasoning } fro
 import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
 import { useNearbyStatus } from "@/hooks/useNearbyStatus";
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
-import { apiFetch, appendApiTokenParam } from "@/lib/auth";
 import {
   APP_HOTKEY_EVENT,
-  consumePendingChatHotkey,
   type AppHotkeyActionId,
+  consumePendingChatHotkey,
 } from "@/lib/appHotkeys";
+import { apiFetch, appendApiTokenParam } from "@/lib/auth";
 import {
   buildActivitiesFromToolCalls,
   finalizeCompletedActivities,
@@ -32,6 +32,7 @@ import {
   type StatusStreamStatusEvent,
   type StatusStreamTokenEvent,
 } from "@/lib/status-stream";
+import { cn } from "@/lib/utils";
 import { useUIStore } from "@/stores/uiStore";
 import type {
   Agent,
@@ -44,13 +45,13 @@ import { LiveActivityTimeline } from "./chat/ActivityTimeline";
 import { ArtifactViewerPanel } from "./chat/ArtifactViewerPanel";
 import { parseTimestampMs } from "./chat/assistantMetaModel";
 import { MODEL_ROUTER_SELECTOR_VALUE } from "./chat/ChatAgentControls";
-import { ChatComposer } from "./chat/ChatComposer";
+import { ChatComposer, type ChatComposerProps } from "./chat/ChatComposer";
+import { ChatEmptyState } from "./chat/ChatEmptyState";
 import { normalizeToolApprovalMode, type ToolApprovalMode } from "./chat/ChatFollowUpControls";
 import { ChatImageLightbox, type ChatLightboxImage } from "./chat/ChatImageLightbox";
 import { ChatMessageTimeline } from "./chat/ChatMessageTimeline";
 import { ChatPageHeader } from "./chat/ChatPageHeader";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
-import { NearbyShareModal } from "./chat/NearbyShareModal";
 import {
   type ArtifactSummaryView,
   applyLiveActivityEvent,
@@ -102,6 +103,7 @@ import {
   writeCachedLiveSessionState,
 } from "./chat/liveSessionState";
 import { writeCachedSessionMessages } from "./chat/messageCache";
+import { NearbyShareModal } from "./chat/NearbyShareModal";
 import { PendingApprovalsBanner } from "./chat/PendingApprovalsBanner";
 import {
   clearCachedOptimisticPendingMessages,
@@ -2670,6 +2672,77 @@ export function Chat() {
       (earliest, timestamp) => (earliest === undefined ? timestamp : Math.min(earliest, timestamp)),
       undefined
     );
+  const chatComposerProps: ChatComposerProps = {
+    activeAgent: activeAgentForPlan,
+    agents,
+    agentUpdating: updateSessionAgent.isPending,
+    approvalMode: toolApprovalMode,
+    approvalUpdating: savingToolApprovalMode,
+    capabilityPicker,
+    composerHasDraft,
+    composerRef,
+    contextUsage: sessionContextUsage,
+    currentPlan: currentSessionPlan,
+    currentPlanKey: currentSessionPlanKey,
+    dictating,
+    dictationEngine: dictationRuntime.engine,
+    dictationError,
+    dictationLabel: dictationRuntime.label,
+    dictationStatus,
+    dictationTranscribing,
+    dictationUnsupportedReason: dictationRuntime.unsupportedReason,
+    followUpBehaviorEnabled,
+    imageDragActive,
+    imageInputRef,
+    input,
+    inputRef,
+    isLoading,
+    isStopping: isStoppingSession,
+    modelRouterEnabled,
+    mutatingMessageId: pendingMessageMutationId,
+    pendingFiles,
+    pendingImages,
+    pendingMessages,
+    placeholder: t("chat.composer.placeholder"),
+    providerPlan: activeProviderPlan,
+    queueing: sendQueuesFollowUp,
+    reasoningUpdating: updateAgentReasoning.isPending,
+    selectedAgentId,
+    showPlan: showComposerPlan,
+    showStop: showStopComposerButton,
+    showWorkingTimeline,
+    steeringMessageId,
+    useModelRouter,
+    onAddAttachmentFiles: addAttachmentFiles,
+    onApprovalChange: (mode) => void updateToolApprovalMode(mode),
+    onDeletePendingMessage: (id) => void handleDeletePendingMessage(id),
+    onDismissPlan: () => {
+      if (currentSessionPlanKey) setHiddenComposerPlanKey(currentSessionPlanKey);
+    },
+    onDragActiveChange: setImageDragActive,
+    onDrop: handleComposerDrop,
+    onPaste: handleComposerPaste,
+    onReasoningChange: (effort) => {
+      if (!activeAgentForPlan) return;
+      updateAgentReasoning.mutate(
+        { id: activeAgentForPlan.id, effort },
+        {
+          onError: (error) => {
+            useUIStore.getState().addToast("error", error.message || "Failed to update reasoning");
+          },
+        }
+      );
+    },
+    onRemovePendingFile: removePendingFile,
+    onRemovePendingImage: removePendingImage,
+    onReorderPendingMessages: (orderedIds) => void handleReorderPendingMessages(orderedIds),
+    onSelectAgent: (agentId) => void handleSelectAgent(agentId),
+    onSend: handleSend,
+    onSteerPendingMessage: (id) => void handleSteerPendingMessage(id),
+    onStop: () => void handleStopActive(),
+    onToggleDictation: () => void handleToggleDictation(),
+    onUpdatePendingMessage: (id, content) => void handleUpdatePendingMessage(id, content),
+  };
 
   return (
     <div className="h-screen flex flex-col bg-[#050508]">
@@ -2686,70 +2759,68 @@ export function Chat() {
         onClose={() => setShowNearbyShare(false)}
         sessionId={sessionId}
       />
-      <ChatPageHeader
-        environmentKey={sessionId || "new-chat-environment"}
-        environmentOverview={{
-          contextUsage: sessionContextUsage,
-          currentPlan: environmentPlan,
-          fileChanges: sessionFileChanges,
-          gitBranch: environmentGit.currentBranch,
-          gitBranchChanging: environmentGit.changingBranch,
-          gitBranchError: environmentGit.error,
-          gitBranchLoading: environmentGit.loading,
-          gitBranches: environmentGit.branches,
-          isOpen: showEnvironmentOverview,
-          onClose: () => setShowEnvironmentOverview(false),
-          onCreateGitBranch: environmentGit.createAndCheckout,
-          onRefreshGitBranches: environmentGit.refresh,
-          onSwitchGitBranch: environmentGit.checkout,
-          onOpenWorkspaceTab: openWorkspaceTab,
-          previewTabs: Array.from(
-            new Set(
-              workspaceTabs
-                .map((instance) => instance.kind)
-                .filter((kind) => kind === "browser" || kind === "terminal" || kind === "files")
-            )
-          ),
-          agentUsingBrowser,
-          timeToFirstTokenMs,
-          onDismissPlan: dismissEnvironmentPlan,
-          sessionId,
-          subagents: environmentSubagents,
-          tokenUsage: sessionTokenUsage,
-          toolNames: environmentToolNames,
-          workspaceDir: effectiveWorkspaceDir,
-        }}
-        fileReviewActive={showWorkspacePanel && activeWorkspaceKind === "review"}
-        nearbyEnabled={Boolean(sessionId && nearbyStatus?.settings.enabled)}
-        sessionTitle={
-          sessionId
-            ? {
-                sessionId,
-                messages: typedMessages,
-                agentId: chatAgentId ?? selectedAgentId ?? sessionAgentId ?? undefined,
-                workspaceDir: effectiveWorkspaceDir,
-                useModelRouter,
-                contextUsage: sessionContextUsage,
-                tokenUsage: sessionTokenUsage,
-                appVersion: info?.version,
-                onDeleted: () => resetChatSession({ resetAgentSelection: false }),
-              }
-            : null
-        }
-        subagentsActive={showWorkspacePanel && activeWorkspaceKind === "subagents"}
-        workspaceMenu={{
-          workspaceDir: effectiveWorkspaceDir,
-          workspaceSaving,
-          onSelectWorkspace: () => void handleSelectWorkspace(),
-          onOpenCybaraIde: handleOpenWorkspaceInCybaraIde,
-        }}
-        workspacePanelOpen={showWorkspacePanel}
-        onOpenNearbyShare={() => setShowNearbyShare(true)}
-        onToggleEnvironment={() => setShowEnvironmentOverview((value) => !value)}
-        onToggleFileReview={() => toggleWorkspaceTab("review")}
-        onToggleSubagents={() => toggleWorkspaceTab("subagents")}
-        onToggleWorkspacePanel={() => setShowWorkspacePanel((value) => !value)}
-      />
+      {sessionId ? (
+        <ChatPageHeader
+          environmentKey={sessionId || "new-chat-environment"}
+          environmentOverview={{
+            contextUsage: sessionContextUsage,
+            currentPlan: environmentPlan,
+            fileChanges: sessionFileChanges,
+            gitBranch: environmentGit.currentBranch,
+            gitBranchChanging: environmentGit.changingBranch,
+            gitBranchError: environmentGit.error,
+            gitBranchLoading: environmentGit.loading,
+            gitBranches: environmentGit.branches,
+            isOpen: showEnvironmentOverview,
+            onClose: () => setShowEnvironmentOverview(false),
+            onCreateGitBranch: environmentGit.createAndCheckout,
+            onRefreshGitBranches: environmentGit.refresh,
+            onSwitchGitBranch: environmentGit.checkout,
+            onOpenWorkspaceTab: openWorkspaceTab,
+            previewTabs: Array.from(
+              new Set(
+                workspaceTabs
+                  .map((instance) => instance.kind)
+                  .filter((kind) => kind === "browser" || kind === "terminal" || kind === "files")
+              )
+            ),
+            agentUsingBrowser,
+            timeToFirstTokenMs,
+            onDismissPlan: dismissEnvironmentPlan,
+            sessionId,
+            subagents: environmentSubagents,
+            tokenUsage: sessionTokenUsage,
+            toolNames: environmentToolNames,
+            workspaceDir: effectiveWorkspaceDir,
+          }}
+          fileReviewActive={showWorkspacePanel && activeWorkspaceKind === "review"}
+          nearbyEnabled={Boolean(sessionId && nearbyStatus?.settings.enabled)}
+          sessionTitle={{
+            sessionId,
+            messages: typedMessages,
+            agentId: chatAgentId ?? selectedAgentId ?? sessionAgentId ?? undefined,
+            workspaceDir: effectiveWorkspaceDir,
+            useModelRouter,
+            contextUsage: sessionContextUsage,
+            tokenUsage: sessionTokenUsage,
+            appVersion: info?.version,
+            onDeleted: () => resetChatSession({ resetAgentSelection: false }),
+          }}
+          subagentsActive={showWorkspacePanel && activeWorkspaceKind === "subagents"}
+          workspaceMenu={{
+            workspaceDir: effectiveWorkspaceDir,
+            workspaceSaving,
+            onSelectWorkspace: () => void handleSelectWorkspace(),
+            onOpenCybaraIde: handleOpenWorkspaceInCybaraIde,
+          }}
+          workspacePanelOpen={showWorkspacePanel}
+          onOpenNearbyShare={() => setShowNearbyShare(true)}
+          onToggleEnvironment={() => setShowEnvironmentOverview((value) => !value)}
+          onToggleFileReview={() => toggleWorkspaceTab("review")}
+          onToggleSubagents={() => toggleWorkspaceTab("subagents")}
+          onToggleWorkspacePanel={() => setShowWorkspacePanel((value) => !value)}
+        />
+      ) : null}
 
       <div className="flex-1 flex overflow-hidden">
         <div className="relative flex-1 flex flex-col min-w-0">
@@ -2769,68 +2840,43 @@ export function Chat() {
               <div
                 ref={messagesContainerRef}
                 onScroll={refreshScrollToBottomVisibility}
-                className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-4"
-              >
-                {typedMessages.length === 0 && (
-                  <div className="flex h-[calc(100%-1rem)] items-center justify-center">
-                    <div className="text-center text-gray-500">
-                      <img
-                        src="/cybara.png"
-                        alt=""
-                        aria-hidden="true"
-                        className="mx-auto mb-4 h-16 w-16 object-contain opacity-40 grayscale brightness-[1.7] contrast-150"
-                      />
-                      <p className="text-sm font-medium">Start a conversation</p>
-                      <p className="mt-1 text-[12px] text-gray-600">
-                        Ask questions, get help with code, or chat with your agents
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => void handleSelectWorkspace()}
-                        disabled={workspaceSaving}
-                        className="mt-3 inline-flex max-w-[min(80vw,44rem)] items-center gap-2 rounded-md border border-[rgba(var(--accent-primary),0.32)] bg-[rgba(var(--accent-primary),0.1)] px-2.5 py-1.5 text-[rgb(var(--accent-primary))] transition-colors hover:bg-[rgba(var(--accent-primary),0.16)] disabled:cursor-not-allowed disabled:opacity-60"
-                        title={
-                          effectiveWorkspaceDir
-                            ? "Click to change workspace"
-                            : "Select workspace folder for this session"
-                        }
-                      >
-                        {workspaceSaving ? (
-                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                        ) : (
-                          <Folder className="h-3.5 w-3.5 shrink-0" />
-                        )}
-                        <span className="truncate font-mono text-[12px]">
-                          {effectiveWorkspaceDir
-                            ? `Workspace: ${effectiveWorkspaceDir}`
-                            : "Select workspace"}
-                        </span>
-                      </button>
-                    </div>
-                  </div>
+                className={cn(
+                  "flex-1 overflow-y-auto px-3 py-4 sm:px-4",
+                  typedMessages.length === 0 ? "flex items-center justify-center" : "space-y-4"
                 )}
-                <ChatMessageTimeline
-                  copiedMessageIndex={copiedMessageIndex}
-                  entries={visibleMessageEntries}
-                  forkingMessageIndex={forkingMessageIndex}
-                  liveActivities={timelineActivities}
-                  liveCurrentStep={liveCurrentStep}
-                  liveStatus={timelineStatus}
-                  liveStartedAtMs={timelineStartedAtMs}
-                  messageProcessMap={messageProcessMap}
-                  savingGoldenMessageIndex={savingGoldenMessageIndex}
-                  sessionId={sessionId}
-                  showWorkingTimeline={showWorkingTimeline}
-                  speakingMessageIndex={speakingMessageIndex}
-                  workspaceDir={effectiveWorkspaceDir}
-                  onCopyMessage={(index, content) => void handleCopyMessage(index, content)}
-                  onForkSession={(index) => void handleForkSession(index)}
-                  onOpenArtifact={(artifact) => void openArtifactViewer(artifact)}
-                  onOpenImage={openChatImage}
-                  onReadAloud={(index, content) => void handleReadAloud(index, content)}
-                  onRevert={setRevertTarget}
-                  onSaveGolden={(index) => void handleSaveGolden(index)}
-                />
+              >
+                {typedMessages.length === 0 ? (
+                  <ChatEmptyState
+                    workspaceDir={effectiveWorkspaceDir}
+                    workspaceSaving={workspaceSaving}
+                    onSelectWorkspace={() => void handleSelectWorkspace()}
+                  >
+                    <ChatComposer {...chatComposerProps} layout="new-chat" />
+                  </ChatEmptyState>
+                ) : (
+                  <ChatMessageTimeline
+                    copiedMessageIndex={copiedMessageIndex}
+                    entries={visibleMessageEntries}
+                    forkingMessageIndex={forkingMessageIndex}
+                    liveActivities={timelineActivities}
+                    liveCurrentStep={liveCurrentStep}
+                    liveStatus={timelineStatus}
+                    liveStartedAtMs={timelineStartedAtMs}
+                    messageProcessMap={messageProcessMap}
+                    savingGoldenMessageIndex={savingGoldenMessageIndex}
+                    sessionId={sessionId}
+                    showWorkingTimeline={showWorkingTimeline}
+                    speakingMessageIndex={speakingMessageIndex}
+                    workspaceDir={effectiveWorkspaceDir}
+                    onCopyMessage={(index, content) => void handleCopyMessage(index, content)}
+                    onForkSession={(index) => void handleForkSession(index)}
+                    onOpenArtifact={(artifact) => void openArtifactViewer(artifact)}
+                    onOpenImage={openChatImage}
+                    onReadAloud={(index, content) => void handleReadAloud(index, content)}
+                    onRevert={setRevertTarget}
+                    onSaveGolden={(index) => void handleSaveGolden(index)}
+                  />
+                )}
               </div>
 
               {showScrollToBottomButton && (
@@ -2846,83 +2892,7 @@ export function Chat() {
                 </button>
               )}
 
-              <ChatComposer
-                activeAgent={activeAgentForPlan}
-                agents={agents}
-                agentUpdating={updateSessionAgent.isPending}
-                approvalMode={toolApprovalMode}
-                approvalUpdating={savingToolApprovalMode}
-                capabilityPicker={capabilityPicker}
-                composerHasDraft={composerHasDraft}
-                composerRef={composerRef}
-                contextUsage={sessionContextUsage}
-                currentPlan={currentSessionPlan}
-                currentPlanKey={currentSessionPlanKey}
-                dictating={dictating}
-                dictationEngine={dictationRuntime.engine}
-                dictationError={dictationError}
-                dictationLabel={dictationRuntime.label}
-                dictationStatus={dictationStatus}
-                dictationTranscribing={dictationTranscribing}
-                dictationUnsupportedReason={dictationRuntime.unsupportedReason}
-                followUpBehaviorEnabled={followUpBehaviorEnabled}
-                imageDragActive={imageDragActive}
-                imageInputRef={imageInputRef}
-                input={input}
-                inputRef={inputRef}
-                isLoading={isLoading}
-                isStopping={isStoppingSession}
-                modelRouterEnabled={modelRouterEnabled}
-                mutatingMessageId={pendingMessageMutationId}
-                pendingFiles={pendingFiles}
-                pendingImages={pendingImages}
-                pendingMessages={pendingMessages}
-                placeholder={t("chat.composer.placeholder")}
-                providerPlan={activeProviderPlan}
-                queueing={sendQueuesFollowUp}
-                reasoningUpdating={updateAgentReasoning.isPending}
-                selectedAgentId={selectedAgentId}
-                showPlan={showComposerPlan}
-                showStop={showStopComposerButton}
-                showWorkingTimeline={showWorkingTimeline}
-                steeringMessageId={steeringMessageId}
-                useModelRouter={useModelRouter}
-                onAddAttachmentFiles={addAttachmentFiles}
-                onApprovalChange={(mode) => void updateToolApprovalMode(mode)}
-                onDeletePendingMessage={(id) => void handleDeletePendingMessage(id)}
-                onDismissPlan={() => {
-                  if (currentSessionPlanKey) setHiddenComposerPlanKey(currentSessionPlanKey);
-                }}
-                onDragActiveChange={setImageDragActive}
-                onDrop={handleComposerDrop}
-                onPaste={handleComposerPaste}
-                onReasoningChange={(effort) => {
-                  if (!activeAgentForPlan) return;
-                  updateAgentReasoning.mutate(
-                    { id: activeAgentForPlan.id, effort },
-                    {
-                      onError: (error) => {
-                        useUIStore
-                          .getState()
-                          .addToast("error", error.message || "Failed to update reasoning");
-                      },
-                    }
-                  );
-                }}
-                onRemovePendingFile={removePendingFile}
-                onRemovePendingImage={removePendingImage}
-                onReorderPendingMessages={(orderedIds) =>
-                  void handleReorderPendingMessages(orderedIds)
-                }
-                onSelectAgent={(agentId) => void handleSelectAgent(agentId)}
-                onSend={handleSend}
-                onSteerPendingMessage={(id) => void handleSteerPendingMessage(id)}
-                onStop={() => void handleStopActive()}
-                onToggleDictation={() => void handleToggleDictation()}
-                onUpdatePendingMessage={(id, content) =>
-                  void handleUpdatePendingMessage(id, content)
-                }
-              />
+              {typedMessages.length > 0 ? <ChatComposer {...chatComposerProps} /> : null}
             </>
           )}
         </div>

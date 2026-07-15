@@ -239,11 +239,15 @@ describe("Chat revert and diff wiring", () => {
 
   test("shows effective workspace in empty state and uses robust tauri runtime detection", () => {
     const source = readChatSource();
+    const emptyStateSource = readFileSync(
+      new URL("../../ui/src/pages/chat/ChatEmptyState.tsx", import.meta.url),
+      "utf8"
+    );
     const desktopHostSource = readDesktopHostSource();
     expect(desktopHostSource).toMatch(
       /\(["']__TAURI_INTERNALS__["'] in window \|\| ["']__TAURI__["'] in window\)/
     );
-    expect(source).toContain("Workspace: ${effectiveWorkspaceDir}");
+    expect(emptyStateSource).toContain("Workspace: ${workspaceDir}");
     expect(source).toContain("info?.defaultWorkspaceDir");
     expect(source).toContain("lastWorkspaceDir || configuredWorkspaceDir || homeWorkspaceDir");
     // Workspace chips are clickable-to-change (header + empty state), with no separate clear button.
