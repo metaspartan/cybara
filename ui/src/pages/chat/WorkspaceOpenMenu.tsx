@@ -290,13 +290,14 @@ export function WorkspaceOpenMenu({
   return (
     <div className="relative" ref={rootRef}>
       <button
+        type="button"
         onClick={() => {
           updateMenuPosition();
           setOpen((value) => !value);
         }}
         disabled={workspaceSaving}
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1.5 text-[11px] text-gray-200 transition-colors hover:border-white/15 hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-60",
+          "inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-white/10 bg-white/[0.06] px-2 py-1.5 text-[11px] text-gray-200 transition-colors hover:border-white/15 hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-60",
           open && "border-white/20 bg-white/[0.1]"
         )}
         title={`Workspace: ${trimmedWorkspace}`}

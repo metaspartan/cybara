@@ -257,6 +257,8 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("targetLoadAbortRef");
     expect(source).toContain("workspaceOpenApi.targets(trimmedWorkspace, controller.signal)");
     expect(source).toContain("if (!open || !trimmedWorkspace || targets.length > 0 || loading)");
+    expect(source).toContain("whitespace-nowrap rounded-lg");
+    expect(source).toMatch(/<button\s+type="button"\s+onClick=\{\(\) => \{/);
     const resetStart = source.indexOf("setTargets([]);");
     const resetEnd = source.indexOf("useEffect(() => {\n    if (!open", resetStart);
     const resetEffect = source.slice(resetStart, resetEnd);

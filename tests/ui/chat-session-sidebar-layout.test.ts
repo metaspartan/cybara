@@ -17,6 +17,9 @@ const chatSource = () =>
 const modalSource = () =>
   readFileSync(join(process.cwd(), "ui", "src", "components", "ui", "Modal.tsx"), "utf8");
 
+const sessionSidebarSource = () =>
+  readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "SessionSidebar.tsx"), "utf8");
+
 describe("chat session sidebar layout", () => {
   test("lets session text use the full row width while actions float above it", () => {
     const source = chatSource();
@@ -31,7 +34,9 @@ describe("chat session sidebar layout", () => {
       "const previewText = sessionPreviewText(session.last_message?.content)"
     );
     expect(source).toContain("deferred-list-row relative px-2.5 py-1.5");
-    expect(source).toContain('className="min-w-0 w-full"');
+    expect(source).toContain(
+      'className="min-w-0 w-full cursor-pointer text-left outline-none focus-visible:bg-[var(--surface-hover)]"'
+    );
     expect(source).toContain('className="text-[12px] text-white font-medium flex w-full min-w-0');
     expect(source).toContain('className="min-w-0 flex-1 truncate">{displayTitle}</span>');
     expect(source).toContain("absolute right-2 top-1/2");
@@ -193,10 +198,14 @@ describe("chat session sidebar layout", () => {
     );
   });
 
-  test("supports keyboard session selection", () => {
-    const source = chatSource();
-    expect(source).toContain('role="button"');
-    expect(source).toContain("tabIndex={0}");
-    expect(source).toContain('event.key !== "Enter" && event.key !== " "');
+  test("keeps session selection separate from row management controls", () => {
+    const source = sessionSidebarSource();
+    expect(source).toContain("aria-label={tooltip}");
+    expect(source).toContain("onClick={() => void handleLoadSession(session.id)}");
+    expect(source).not.toContain('role="button"');
+    expect(source).not.toContain("tabIndex={0}");
+    expect(source).not.toContain('event.key !== "Enter" && event.key !== " "');
+    expect(source).toContain("aria-label={`Rename ${displayTitle}`}");
+    expect(source.match(/type="button"/g)?.length ?? 0).toBeGreaterThan(10);
   });
 });

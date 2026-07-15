@@ -753,22 +753,12 @@ export function SessionsPanel({
                     return (
                       <div
                         key={session.id}
-                        className={`deferred-list-row relative px-2.5 py-1.5 rounded-lg transition-all cursor-pointer group ${
+                        className={`deferred-list-row relative px-2.5 py-1.5 rounded-lg transition-all group ${
                           isSessionSelected
                             ? "bg-[rgba(var(--accent-primary),0.12)] border border-transparent"
                             : "bg-white/[0.03] border border-white/5 hover:border-white/15"
                         }`}
-                        aria-label={tooltip}
-                        aria-busy={isRowLoading}
-                        role="button"
-                        tabIndex={0}
                         data-loading={isRowLoading ? "true" : undefined}
-                        onClick={() => void handleLoadSession(session.id)}
-                        onKeyDown={(event) => {
-                          if (event.key !== "Enter" && event.key !== " ") return;
-                          event.preventDefault();
-                          void handleLoadSession(session.id);
-                        }}
                         onMouseEnter={(event) => {
                           setHoveredSessionTooltip({
                             anchor: event.currentTarget.getBoundingClientRect(),
@@ -780,73 +770,77 @@ export function SessionsPanel({
                         }}
                         onMouseLeave={() => setHoveredSessionTooltip(null)}
                       >
-                        <div className="min-w-0 w-full">
-                          {editingSessionId === session.id ? (
-                            <div
-                              className="flex items-center gap-1.5"
-                              onClick={(event) => event.stopPropagation()}
-                            >
-                              <input
-                                value={editingTitle}
-                                autoFocus
-                                onChange={(event) => setEditingTitle(event.target.value)}
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter") {
-                                    event.preventDefault();
-                                    void submitRenameSession(session.id);
-                                  } else if (event.key === "Escape") {
-                                    event.preventDefault();
-                                    cancelRenameSession();
-                                  }
-                                }}
-                                className="min-w-0 flex-1 rounded-md border border-white/20 bg-black/40 px-2 py-1 text-[12px] text-white !outline-none focus:border-indigo-400/50"
-                              />
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
+                        {editingSessionId === session.id ? (
+                          <div className="flex min-w-0 w-full items-center gap-1.5">
+                            <input
+                              value={editingTitle}
+                              aria-label={`Rename ${displayTitle}`}
+                              autoFocus
+                              onChange={(event) => setEditingTitle(event.target.value)}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") {
+                                  event.preventDefault();
                                   void submitRenameSession(session.id);
-                                }}
-                                disabled={renameSession.isPending}
-                                className="p-1 rounded hover:bg-emerald-500/20 text-emerald-300 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="Save title"
-                              >
-                                {renameSession.isPending ? (
-                                  <Loader2 className="w-3 h-3 animate-spin" />
-                                ) : (
-                                  <Check className="w-3 h-3" />
-                                )}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={(event) => {
-                                  event.stopPropagation();
+                                } else if (event.key === "Escape") {
+                                  event.preventDefault();
                                   cancelRenameSession();
-                                }}
-                                className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer"
-                                title="Cancel rename"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="text-[12px] text-white font-medium flex w-full min-w-0 items-center gap-1.5">
-                              {session.pinned && (
-                                <Pin className="w-3 h-3 text-amber-400 flex-shrink-0 fill-amber-400/30" />
+                                }
+                              }}
+                              className="min-w-0 flex-1 rounded-md border border-white/20 bg-black/40 px-2 py-1 text-[12px] text-white !outline-none focus:border-indigo-400/50"
+                            />
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void submitRenameSession(session.id);
+                              }}
+                              disabled={renameSession.isPending}
+                              className="p-1 rounded hover:bg-emerald-500/20 text-emerald-300 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Save title"
+                            >
+                              {renameSession.isPending ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Check className="w-3 h-3" />
                               )}
-                              <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
-                              <span className="ml-1 flex h-4 w-8 shrink-0 items-center justify-end text-[11px] font-medium text-gray-500">
-                                {isSessionActive ? (
-                                  <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
-                                ) : (
-                                  compactSidebarRelativeTime(
-                                    session.updated_at || session.created_at
-                                  )
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                cancelRenameSession();
+                              }}
+                              className="p-1 rounded hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-pointer"
+                              title="Cancel rename"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              className="min-w-0 w-full cursor-pointer text-left outline-none focus-visible:bg-[var(--surface-hover)]"
+                              aria-label={tooltip}
+                              aria-busy={isRowLoading}
+                              onClick={() => void handleLoadSession(session.id)}
+                            >
+                              <div className="text-[12px] text-white font-medium flex w-full min-w-0 items-center gap-1.5">
+                                {session.pinned && (
+                                  <Pin className="w-3 h-3 text-amber-400 flex-shrink-0 fill-amber-400/30" />
                                 )}
-                              </span>
-                            </div>
-                          )}
-                          {editingSessionId !== session.id && (
+                                <span className="min-w-0 flex-1 truncate">{displayTitle}</span>
+                                <span className="ml-1 flex h-4 w-8 shrink-0 items-center justify-end text-[11px] font-medium text-gray-500">
+                                  {isSessionActive ? (
+                                    <Loader2 className="h-3 w-3 animate-spin text-gray-400" />
+                                  ) : (
+                                    compactSidebarRelativeTime(
+                                      session.updated_at || session.created_at
+                                    )
+                                  )}
+                                </span>
+                              </div>
+                            </button>
                             <div
                               className={cn(
                                 "pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-[var(--surface-panel,#11111a)] p-0.5 shadow-sm transition-opacity",
@@ -854,6 +848,7 @@ export function SessionsPanel({
                               )}
                             >
                               <button
+                                type="button"
                                 className={SIDEBAR_ACTION_BUTTON_CLASS}
                                 onClick={(event) =>
                                   handleTogglePin(event, session.id, !!session.pinned)
@@ -868,6 +863,7 @@ export function SessionsPanel({
                                 )}
                               </button>
                               <button
+                                type="button"
                                 className={SIDEBAR_ACTION_BUTTON_CLASS}
                                 onClick={(event) => beginRenameSession(event, session)}
                                 aria-label="Rename session"
@@ -876,6 +872,7 @@ export function SessionsPanel({
                                 <Pencil className="w-3 h-3" />
                               </button>
                               <button
+                                type="button"
                                 className={SIDEBAR_ACTION_BUTTON_CLASS}
                                 onClick={(event) => {
                                   event.stopPropagation();
@@ -886,8 +883,8 @@ export function SessionsPanel({
                                 <Trash2 className="w-3 h-3" />
                               </button>
                             </div>
-                          )}
-                        </div>
+                          </>
+                        )}
                       </div>
                     );
                   })}
