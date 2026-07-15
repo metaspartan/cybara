@@ -8,7 +8,7 @@ import { Badge, Button, GlassCard, Input, Modal } from "@/components/ui";
 import { useAgentSummaries, useInfo, useSubagents, useUpdateAgentReasoning } from "@/hooks/useApi";
 import { useChat, useLoadSession, useUpdateSessionAgent } from "@/hooks/useChat";
 import { useNearbyStatus } from "@/hooks/useNearbyStatus";
-import { chatApi, type NearbyStatus, nearbyApi, providerPlansApi, settingsApi } from "@/lib/api";
+import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
 import { apiFetch, appendApiTokenParam } from "@/lib/auth";
 import {
   buildActivitiesFromToolCalls,
@@ -45,6 +45,7 @@ import { ChatImageLightbox, type ChatLightboxImage } from "./chat/ChatImageLight
 import { ChatMessageTimeline } from "./chat/ChatMessageTimeline";
 import { ChatPageHeader } from "./chat/ChatPageHeader";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
+import { NearbyShareModal } from "./chat/NearbyShareModal";
 import {
   type ArtifactSummaryView,
   applyLiveActivityEvent,
@@ -210,9 +211,7 @@ export function Chat() {
   const [revertTarget, setRevertTarget] = useState<RevertTarget | null>(null);
   const [copiedMessageIndex, setCopiedMessageIndex] = useState<number | null>(null);
   const [forkingMessageIndex, setForkingMessageIndex] = useState<number | null>(null);
-  const [nearbyShareStatus, setNearbyShareStatus] = useState<NearbyStatus | null>(null);
   const [showNearbyShare, setShowNearbyShare] = useState(false);
-  const [sharingPeerId, setSharingPeerId] = useState<string | null>(null);
   const [savingGoldenMessageIndex, setSavingGoldenMessageIndex] = useState<number | null>(null);
   const [speakingMessageIndex, setSpeakingMessageIndex] = useState<number | null>(null);
   const [isStoppingSession, setIsStoppingSession] = useState(false);
@@ -547,32 +546,6 @@ export function Chat() {
       sessionId,
       syncSessionAgentSelection,
     ]
-  );
-
-  const openNearbyShare = useCallback(async () => {
-    const result = await nearbyApi.status();
-    if (!result.success || !result.data) {
-      useUIStore.getState().addToast("error", result.error || "Could not load nearby devices");
-      return;
-    }
-    setNearbyShareStatus(result.data);
-    setShowNearbyShare(true);
-  }, []);
-
-  const shareSessionNearby = useCallback(
-    async (peerId: string) => {
-      if (!sessionId) return;
-      setSharingPeerId(peerId);
-      const result = await nearbyApi.sendSession(peerId, sessionId);
-      setSharingPeerId(null);
-      if (!result.success) {
-        useUIStore.getState().addToast("error", result.error || "Could not send chat");
-        return;
-      }
-      setShowNearbyShare(false);
-      useUIStore.getState().addToast("success", "Chat sent for approval on the other device");
-    },
-    [sessionId]
   );
 
   const handleSaveGolden = useCallback(
@@ -2662,44 +2635,11 @@ export function Chat() {
         title="Select Session Workspace"
         description="Choose the local folder this chat should use for file tools, git context, and workspace-aware prompts."
       />
-      <Modal
+      <NearbyShareModal
         isOpen={showNearbyShare}
         onClose={() => setShowNearbyShare(false)}
-        title="Send chat to nearby Cybara"
-        size="sm"
-      >
-        <div className="space-y-2">
-          {nearbyShareStatus?.pairedPeers.length ? (
-            nearbyShareStatus.pairedPeers.map((peer) => (
-              <button
-                key={peer.id}
-                type="button"
-                disabled={sharingPeerId !== null}
-                onClick={() => void shareSessionNearby(peer.id)}
-                className="flex w-full items-center justify-between gap-3 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] px-3 py-3 text-left transition-colors hover:bg-[var(--surface-elevated)] disabled:opacity-50"
-              >
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium text-[var(--text-primary)]">
-                    {peer.name}
-                  </span>
-                  <span className="block truncate text-xs text-[var(--text-muted)]">
-                    {peer.baseUrl}
-                  </span>
-                </span>
-                {sharingPeerId === peer.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-[var(--text-muted)]" />
-                ) : (
-                  <Share2 className="h-4 w-4 text-[var(--text-muted)]" />
-                )}
-              </button>
-            ))
-          ) : (
-            <div className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)] p-4 text-sm text-[var(--text-secondary)]">
-              Pair another Cybara in Settings → Gateway before sending this chat.
-            </div>
-          )}
-        </div>
-      </Modal>
+        sessionId={sessionId}
+      />
       <ChatPageHeader
         environmentKey={sessionId || "new-chat-environment"}
         environmentOverview={{
@@ -2759,7 +2699,7 @@ export function Chat() {
           onOpenCybaraIde: handleOpenWorkspaceInCybaraIde,
         }}
         workspacePanelOpen={showWorkspacePanel}
-        onOpenNearbyShare={() => void openNearbyShare()}
+        onOpenNearbyShare={() => setShowNearbyShare(true)}
         onToggleEnvironment={() => setShowEnvironmentOverview((value) => !value)}
         onToggleFileReview={() => toggleWorkspaceTab("review")}
         onToggleSessionsPanel={() => setShowSessionsPanel((value) => !value)}

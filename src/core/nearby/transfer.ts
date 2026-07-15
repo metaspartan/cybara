@@ -48,18 +48,51 @@ function workspaceDescriptor(workspaceDir: string | null): NearbyWorkspaceDescri
   };
 }
 
+const MAX_TRANSFER_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_TRANSFER_IMAGES = 20;
+const MAX_TRANSFER_MESSAGE_CHARS = 4 * 1024 * 1024;
+
+interface TransferableImage {
+  data?: string;
+  url?: string;
+  mimeType?: string;
+}
+
+function toTransferableImage(image: {
+  data?: string;
+  url?: string;
+  mimeType?: string;
+}): TransferableImage | null {
+  const mimeType =
+    typeof image.mimeType === "string" && image.mimeType.startsWith("image/")
+      ? image.mimeType.slice(0, 64)
+      : undefined;
+  if (typeof image.data === "string" && /^[A-Za-z0-9+/]*={0,2}$/.test(image.data)) {
+    const byteLength = Buffer.from(image.data, "base64").length;
+    if (byteLength > 0 && byteLength <= MAX_TRANSFER_IMAGE_BYTES) {
+      return { data: image.data, mimeType };
+    }
+  }
+  if (typeof image.url === "string") {
+    try {
+      if (new URL(image.url).protocol === "https:") return { url: image.url, mimeType };
+    } catch {
+      // Relative or non-absolute URLs (e.g. /api/media?path=…) cannot be resolved by the peer.
+    }
+  }
+  return null;
+}
+
 function portableMessage(message: ChatMessage): NearbyTransferMessage {
-  const images = message.images?.map((image) => {
-    const hydrated = hydrateImageDataFromPath(image);
-    return {
-      data: hydrated.data,
-      url: hydrated.data ? undefined : hydrated.url,
-      mimeType: hydrated.mimeType,
-    };
-  });
+  const images = message.images
+    ?.map((image) => toTransferableImage(hydrateImageDataFromPath(image)))
+    .filter((image): image is TransferableImage => image !== null)
+    .slice(0, MAX_TRANSFER_IMAGES);
+  const content =
+    typeof message.content === "string" ? message.content.slice(0, MAX_TRANSFER_MESSAGE_CHARS) : "";
   const redacted = redactSecrets({
     role: message.role,
-    content: message.content,
+    content,
     timestamp: message.timestamp,
     provider: message.provider,
     provider_id: message.provider_id,

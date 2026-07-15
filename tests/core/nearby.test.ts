@@ -430,4 +430,45 @@ describe("nearby session transfer", () => {
       "Done",
     ]);
   });
+
+  test("produces a transferable bundle even when a message image cannot be sent", async () => {
+    const sourceSessionId = randomUUID();
+    sessionIds.push(sourceSessionId);
+    const sourceMessages = [
+      {
+        role: "user" as const,
+        content: "Here is a screenshot",
+        timestamp: "2026-07-14T12:00:00.000Z",
+      },
+      {
+        role: "assistant" as const,
+        content: "Looks good",
+        timestamp: "2026-07-14T12:00:01.000Z",
+      },
+    ];
+    expect(
+      await persistSession(sourceSessionId, "missing-source-agent", sourceMessages, null, "Image chat")
+    ).toBe(true);
+    await upsertPersistedSessionMessage(
+      sourceSessionId,
+      "missing-source-agent",
+      sourceMessages[0],
+      {
+        stableKey: "image:0",
+        metadata: {
+          attachments: [{ path: "attachments/does-not-exist-on-this-host.png", mimeType: "image/png" }],
+        },
+      }
+    );
+    await upsertPersistedSessionMessage(sourceSessionId, "missing-source-agent", sourceMessages[1], {
+      stableKey: "image:1",
+    });
+
+    const bundle = await createNearbySessionBundle(sourceSessionId);
+    expect(isNearbySessionBundle(bundle)).toBe(true);
+    const anyImagesRemain = bundle.messages.some(
+      (message) => Array.isArray(message.images) && message.images.length > 0
+    );
+    expect(anyImagesRemain).toBe(false);
+  });
 });
