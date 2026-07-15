@@ -13,7 +13,7 @@ community. Harassment, personal attacks, trolling, and discrimination are not to
   derogatory comments, personal or political attacks, and publishing others' private information
   without explicit permission.
 - **Enforcement**: instances of abusive, harassing, or otherwise unacceptable behavior may be
-  reported to the project maintainers at **carsenklock@gmail.com**. All complaints will be reviewed
+  reported to the project maintainers at [@carsenklock](https://x.com/carsenklock). All complaints will be reviewed
   and investigated and will result in a response that is deemed necessary and appropriate. Reports
   are kept confidential.
 
