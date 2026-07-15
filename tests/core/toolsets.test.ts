@@ -96,13 +96,18 @@ describe("agent toolsets", () => {
     expect(first.offeredTools.map((tool) => tool.name)).toContain("computer_use");
     expect(first.offeredTools.map((tool) => tool.name)).toContain("agents_list");
     expect(first.offeredTools.map((tool) => tool.name)).toContain("sessions_transfer");
+    expect(first.offeredTools.map((tool) => tool.name)).toContain("message");
   });
 
   test("supports profiles and additive toolsets", () => {
     const coding = resolveAgentToolPolicy(agent({ config: { tool_profile: "coding" } }));
     expect(coding.allowedToolNames).toContain("write");
     expect(coding.offeredTools.map((tool) => tool.name)).toContain("computer_use");
+    expect(coding.offeredTools.map((tool) => tool.name)).toContain("message");
     expect(coding.allowedToolNames).not.toContain("wallet");
+
+    const research = resolveAgentToolPolicy(agent({ config: { tool_profile: "research" } }));
+    expect(research.offeredTools.map((tool) => tool.name)).toContain("message");
 
     const codingAutomation = resolveAgentToolPolicy(
       agent({ config: { tool_profile: "coding", toolsets: ["automation"] } })
@@ -117,6 +122,7 @@ describe("agent toolsets", () => {
     expect(policy.allowedToolNames).not.toContain("write");
     expect(policy.allowedToolNames).not.toContain("exec");
     expect(policy.offeredTools.map((tool) => tool.name)).not.toContain("computer_use");
+    expect(policy.offeredTools.map((tool) => tool.name)).not.toContain("message");
     expect(policy.allowDynamicTools).toBe(false);
   });
 

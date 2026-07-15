@@ -7,6 +7,7 @@ import {
   DISCORD_REQUIRED_INTENTS,
   buildDiscordSlashCommands,
   discordSessions,
+  resolveDiscordTargetId,
 } from "../../src/core/channels/adapters/discord";
 import {
   clearChannelSubagentSpawnHandler,
@@ -85,6 +86,19 @@ afterEach(() => {
 });
 
 describe("Discord adapter intent configuration", () => {
+  test("resolves friendly channel names and rejects ambiguous names", () => {
+    const targets = [
+      { id: "111111", name: "cybara", label: "Alpha/#cybara", group: "Alpha" },
+      { id: "222222", name: "cybara", label: "Beta/#cybara", group: "Beta" },
+      { id: "333333", name: "general", label: "Alpha/#general", group: "Alpha" },
+    ];
+
+    expect(resolveDiscordTargetId(targets, "#general")).toBe("333333");
+    expect(resolveDiscordTargetId(targets, "Beta/#cybara")).toBe("222222");
+    expect(() => resolveDiscordTargetId(targets, "#cybara")).toThrow("Multiple Discord channels");
+    expect(() => resolveDiscordTargetId(targets, "#missing")).toThrow("action=list");
+  });
+
   test("includes intents required for guild and DM message handling", () => {
     expect(DISCORD_REQUIRED_INTENTS).toContain(GatewayIntentBits.Guilds);
     expect(DISCORD_REQUIRED_INTENTS).toContain(GatewayIntentBits.GuildMessages);
@@ -229,6 +243,48 @@ async function sendLongDiscordMessage(
 }
 
 describe("Discord adapter mocked message flows", () => {
+  test("lists connected text destinations without exposing credentials", async () => {
+    const adapter = new DiscordAdapter();
+    const channelId = makeChannelId("discord-target-list");
+    const fakeClient = {
+      isReady: () => true,
+      channels: {
+        cache: new Map([
+          [
+            "111111",
+            {
+              id: "111111",
+              name: "cybara",
+              isTextBased: () => true,
+              guild: { name: "Cybara" },
+            },
+          ],
+          [
+            "222222",
+            {
+              id: "222222",
+              name: "voice",
+              isTextBased: () => false,
+              guild: { name: "Cybara" },
+            },
+          ],
+        ]),
+      },
+      guilds: { cache: new Map() },
+    };
+
+    (
+      adapter as unknown as {
+        clients: Map<string, unknown>;
+      }
+    ).clients.set(channelId, fakeClient);
+
+    expect(await adapter.listTargets(channelId)).toEqual([
+      { id: "111111", name: "cybara", label: "Cybara/#cybara", group: "Cybara" },
+    ]);
+    expect(await adapter.resolveTarget(channelId, "#cybara")).toBe("111111");
+  });
+
   test("ignores guild messages when bot is not mentioned", async () => {
     const adapter = new DiscordAdapter();
     const channelId = makeChannelId("discord-ignore");

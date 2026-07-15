@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, rmSync } from "fs";
 import path from "path";
-import { SlackAdapter, slackSessions } from "../../src/core/channels/adapters/slack";
+import {
+  SlackAdapter,
+  resolveSlackTargetId,
+  slackSessions,
+} from "../../src/core/channels/adapters/slack";
 import {
   clearChannelSubagentSpawnHandler,
   setChannelSubagentSpawnHandler,
@@ -148,6 +152,50 @@ async function invokeSlackReaction(
 }
 
 describe("Slack adapter mocked flows", () => {
+  test("lists and resolves connected Slack channels across pages", async () => {
+    const adapter = new SlackAdapter();
+    const channelId = makeChannelId("slack-targets");
+    const cursors: Array<string | undefined> = [];
+    const fakeApp = {
+      client: {
+        conversations: {
+          list: async ({ cursor }: { cursor?: string }) => {
+            cursors.push(cursor);
+            return cursor
+              ? {
+                  channels: [{ id: "C2", name: "general" }],
+                  response_metadata: { next_cursor: "" },
+                }
+              : {
+                  channels: [
+                    { id: "C1", name: "cybara" },
+                    { id: undefined, name: "invalid" },
+                  ],
+                  response_metadata: { next_cursor: "next-page" },
+                };
+          },
+        },
+      },
+    };
+
+    (
+      adapter as unknown as {
+        apps: Map<string, unknown>;
+      }
+    ).apps.set(channelId, fakeApp);
+
+    expect(await adapter.listTargets(channelId)).toEqual([
+      { id: "C1", name: "cybara", label: "#cybara" },
+      { id: "C2", name: "general", label: "#general" },
+    ]);
+    expect(cursors).toEqual([undefined, "next-page"]);
+    expect(await adapter.resolveTarget(channelId, "#cybara")).toBe("C1");
+    expect(
+      resolveSlackTargetId([{ id: "C2", name: "general", label: "#general" }], "#general")
+    ).toBe("C2");
+    expect(() => resolveSlackTargetId([], "#missing")).toThrow("action=list");
+  });
+
   test("ignores bot messages", async () => {
     const adapter = new SlackAdapter();
     const channelId = makeChannelId("slack-ignore");

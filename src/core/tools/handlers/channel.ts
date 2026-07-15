@@ -8,10 +8,12 @@ import * as cron from "../../cron";
 import { agentManager } from "../../agent";
 import type { ToolContext } from "../index";
 import {
+  channels as channelDefinitions,
   channelManager,
   discordSessions,
   slackSessions,
   type ChannelAdapter,
+  type ChannelTarget,
   type ChannelType,
 } from "../../channels";
 import type { Channel } from "../../database";
@@ -892,15 +894,26 @@ type MessageToolContext = {
   sessionId?: string;
 };
 
-type MessageAction = "send" | "broadcast" | "react" | "unreact";
+type MessageAction = "list" | "send" | "broadcast" | "react" | "unreact";
+
+type MessageChannelSummary = {
+  id: string;
+  name: string;
+  type: ChannelType;
+  running: boolean;
+  targets: ChannelTarget[];
+  targetError?: string;
+};
 
 type MessageToolResult = {
   success: boolean;
   action: string;
   target: string;
+  resolvedTarget?: string;
   message?: string;
   channel?: string;
   channelId?: string;
+  channels?: MessageChannelSummary[];
   delivered?: number;
   attempted?: number;
 };
@@ -913,22 +926,14 @@ function asNonEmptyString(value: unknown): string | undefined {
 
 function resolveChannelType(value: unknown): ChannelType | undefined {
   const normalized = asNonEmptyString(value)?.toLowerCase();
-  if (
-    normalized === "telegram" ||
-    normalized === "whatsapp" ||
-    normalized === "discord" ||
-    normalized === "slack" ||
-    normalized === "signal" ||
-    normalized === "imessage" ||
-    normalized === "web"
-  ) {
-    return normalized;
-  }
-  return undefined;
+  return normalized && Object.hasOwn(channelDefinitions, normalized)
+    ? (normalized as ChannelType)
+    : undefined;
 }
 
 type EnabledChannel = {
   id: string;
+  name: string;
   type: ChannelType;
   enabled: boolean;
 };
@@ -938,9 +943,42 @@ function resolveEnabledChannels(): EnabledChannel[] {
     .filter((entry) => entry.enabled)
     .map((entry) => ({
       id: entry.id,
+      name: entry.name,
       type: entry.type as ChannelType,
       enabled: Boolean(entry.enabled),
     }));
+}
+
+async function summarizeChannel(channel: EnabledChannel): Promise<MessageChannelSummary> {
+  const adapter = channelManager.getAdapter(channel.type);
+  const running = adapter?.isRunning(channel.id) ?? false;
+  if (!adapter?.listTargets || !running) {
+    return {
+      id: channel.id,
+      name: channel.name,
+      type: channel.type,
+      running,
+      targets: [],
+    };
+  }
+  try {
+    return {
+      id: channel.id,
+      name: channel.name,
+      type: channel.type,
+      running,
+      targets: await adapter.listTargets(channel.id),
+    };
+  } catch (error) {
+    return {
+      id: channel.id,
+      name: channel.name,
+      type: channel.type,
+      running,
+      targets: [],
+      targetError: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function resolveChannelsForAction(args: {
@@ -1040,9 +1078,8 @@ function resolveTarget(args: Record<string, unknown>, context?: MessageToolConte
     return String(args.chatId);
   }
 
-  if (asNonEmptyString(context?.userId)) {
-    return context!.userId!.trim();
-  }
+  const contextTarget = asNonEmptyString(context?.userId);
+  if (contextTarget) return contextTarget;
 
   throw new Error("target is required (or provide to/chatId)");
 }
@@ -1078,17 +1115,21 @@ async function sendSingleMessage(
   target: string,
   messageText: string,
   args: Record<string, unknown>
-): Promise<boolean> {
+): Promise<{ success: boolean; resolvedTarget: string }> {
   const adapter = channelManager.getAdapter(channel.type);
   if (!adapter) {
     throw new Error(`Adapter not available for channel type '${channel.type}'`);
   }
 
-  return await adapter.sendMessage(channel.id, target, messageText, {
+  const resolvedTarget = adapter.resolveTarget
+    ? await adapter.resolveTarget(channel.id, target)
+    : target;
+  const success = await adapter.sendMessage(channel.id, resolvedTarget, messageText, {
     contentType: args.contentType,
     buffer: args.buffer,
     replyToId: args.replyToId,
   });
+  return { success, resolvedTarget };
 }
 
 async function runReactionAction(
@@ -1129,6 +1170,7 @@ export async function handleMessage(
 
   const normalizedAction = actionRaw.toLowerCase();
   const action: MessageAction =
+    normalizedAction === "list" ||
     normalizedAction === "send" ||
     normalizedAction === "broadcast" ||
     normalizedAction === "react" ||
@@ -1138,10 +1180,12 @@ export async function handleMessage(
           throw new Error(`Unknown message action: ${actionRaw}`);
         })();
 
+  const explicitChannelType = asNonEmptyString(args.channel) || asNonEmptyString(args.platform);
   const requestedChannelType =
-    resolveChannelType(args.channel) ||
-    resolveChannelType(args.platform) ||
-    resolveChannelType(context?.channel);
+    resolveChannelType(explicitChannelType) || resolveChannelType(context?.channel);
+  if (explicitChannelType && !resolveChannelType(explicitChannelType)) {
+    throw new Error(`Unknown channel type: ${explicitChannelType}`);
+  }
   const requestedChannelId =
     asNonEmptyString(args.channelId) || resolveChannelIdFromContext(requestedChannelType, context);
   const channels = resolveChannelsForAction({
@@ -1149,6 +1193,17 @@ export async function handleMessage(
     channelType: requestedChannelType,
     action,
   });
+
+  if (action === "list") {
+    const summaries = await Promise.all(channels.map(summarizeChannel));
+    return {
+      success: true,
+      action,
+      target: "",
+      channels: summaries,
+      message: `Found ${summaries.length} enabled channel connection${summaries.length === 1 ? "" : "s"}`,
+    };
+  }
 
   if ((action === "send" || action === "react" || action === "unreact") && channels.length > 1) {
     throw new Error(
@@ -1161,14 +1216,15 @@ export async function handleMessage(
   if (action === "send") {
     const channel = channels[0];
     const messageText = resolveMessageText(args);
-    const success = await sendSingleMessage(channel, target, messageText, args);
+    const delivery = await sendSingleMessage(channel, target, messageText, args);
     return {
-      success,
+      success: delivery.success,
       action,
       target,
+      resolvedTarget: delivery.resolvedTarget,
       channel: channel.type,
       channelId: channel.id,
-      message: success
+      message: delivery.success
         ? `Message sent to ${target} via ${channel.type}`
         : `Failed to send message to ${target} via ${channel.type}`,
     };
@@ -1179,7 +1235,7 @@ export async function handleMessage(
     const results = await Promise.all(
       channels.map(async (channel) => await sendSingleMessage(channel, target, messageText, args))
     );
-    const delivered = results.filter(Boolean).length;
+    const delivered = results.filter((result) => result.success).length;
     return {
       success: delivered > 0,
       action,
@@ -1200,7 +1256,11 @@ export async function handleMessage(
   }
 
   const channel = channels[0];
-  const success = await runReactionAction(action, channel, target, messageId, emoji, {
+  const adapter = channelManager.getAdapter(channel.type);
+  const resolvedTarget = adapter?.resolveTarget
+    ? await adapter.resolveTarget(channel.id, target)
+    : target;
+  const success = await runReactionAction(action, channel, resolvedTarget, messageId, emoji, {
     userId: args.userId,
   });
 
@@ -1208,6 +1268,7 @@ export async function handleMessage(
     success,
     action,
     target,
+    resolvedTarget,
     channel: channel.type,
     channelId: channel.id,
     message: success

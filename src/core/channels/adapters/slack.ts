@@ -1,5 +1,5 @@
 import { App } from "@slack/bolt";
-import type { ChannelAdapter, ToolCallInfo, MessageHandler } from "../types";
+import type { ChannelAdapter, ChannelTarget, ToolCallInfo, MessageHandler } from "../types";
 import { formatToolCallsPlain } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { tables } from "../../database";
@@ -27,6 +27,17 @@ interface SlackMessageEvent {
 }
 
 export const slackSessions = new Map<string, string>();
+
+function normalizeSlackTarget(value: string): string {
+  return value.trim().replace(/^#/, "").toLocaleLowerCase();
+}
+
+export function resolveSlackTargetId(targets: ChannelTarget[], requested: string): string {
+  const normalized = normalizeSlackTarget(requested);
+  const match = targets.find((target) => normalizeSlackTarget(target.name) === normalized);
+  if (match) return match.id;
+  throw new Error(`No Slack channel matches '${requested}'. Use action=list to discover targets.`);
+}
 
 type SlackReactionNotificationScope = "off" | "all" | "dm" | "channel";
 
@@ -510,6 +521,42 @@ export class SlackAdapter implements ChannelAdapter {
 
   isRunning(channelId: string): boolean {
     return this.apps.has(channelId);
+  }
+
+  async listTargets(channelId: string): Promise<ChannelTarget[]> {
+    const app = this.apps.get(channelId);
+    if (!app) {
+      throw new Error("Slack channel is not connected");
+    }
+
+    const targets = new Map<string, ChannelTarget>();
+    let cursor: string | undefined;
+    do {
+      const response = await app.client.conversations.list({
+        cursor,
+        exclude_archived: true,
+        limit: 200,
+        types: "public_channel,private_channel",
+      });
+      for (const channel of response.channels ?? []) {
+        if (typeof channel.id !== "string" || typeof channel.name !== "string") continue;
+        targets.set(channel.id, {
+          id: channel.id,
+          name: channel.name,
+          label: `#${channel.name}`,
+        });
+      }
+      const nextCursor = response.response_metadata?.next_cursor?.trim();
+      cursor = nextCursor || undefined;
+    } while (cursor);
+
+    return [...targets.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  async resolveTarget(channelId: string, target: string): Promise<string> {
+    const trimmed = target.trim();
+    if (!trimmed.startsWith("#")) return trimmed;
+    return resolveSlackTargetId(await this.listTargets(channelId), trimmed);
   }
 
   async sendMessage(

@@ -1427,20 +1427,19 @@ Use for tasks that may take longer or require separate context. For parallel del
   message: {
     name: "message",
     description:
-      "Send messages across channels and run channel actions (discord react/unreact supported)",
+      "List enabled channel connections and their safe destinations, send messages by destination id or friendly name, broadcast, and run supported reactions. Use action=list instead of inspecting local files or databases when a destination is unknown.",
     category: "channel",
     input_schema: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          enum: ["send", "broadcast", "react", "unreact"],
+          enum: ["list", "send", "broadcast", "react", "unreact"],
           description: "Message action",
         },
         channel: {
           type: "string",
-          description:
-            "Optional channel type (telegram|discord|slack|signal|whatsapp|imessage|web).",
+          description: "Optional configured channel type used to filter or route the action.",
         },
         channelId: {
           type: "string",
@@ -1448,7 +1447,8 @@ Use for tasks that may take longer or require separate context. For parallel del
         },
         target: {
           type: "string",
-          description: "Chat/channel target id. Alias: to",
+          description:
+            "Platform destination such as a conversation id, phone number, email address, topic, Telegram @channelusername, Slack #channel, or Discord #channel/Guild/#channel. Alias: to. Omit for action=list.",
         },
         to: {
           type: "string",

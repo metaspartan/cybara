@@ -115,7 +115,11 @@ export function classifyToolCapabilities(
       capabilities.add("write");
     }
     if (permission.startsWith("exec:")) capabilities.add("execution");
-    if (permission.startsWith("net:") || permission.startsWith("channel:")) {
+    if (
+      permission.startsWith("net:") ||
+      permission.startsWith("channel:") ||
+      permission.startsWith("message:")
+    ) {
       capabilities.add("network");
     }
     if (permission.startsWith("browser:") || permission.startsWith("computer:")) {

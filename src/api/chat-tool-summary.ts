@@ -214,6 +214,14 @@ export function requiredDirectToolForMessage(message: string): string | undefine
     return "computer_use";
   }
 
+  const requestsChannelAction = /\b(send|post|publish|broadcast|react)\b/.test(lower);
+  const namesChannelDestination =
+    /\b(discord|slack|telegram|whatsapp|signal|imessage|channel)\b/.test(lower) ||
+    /(?:^|\s)#[a-z0-9_-]+\b/.test(lower);
+  if (requestsChannelAction && namesChannelDestination) {
+    return "message";
+  }
+
   const requestsExecution = /\b(run|execute|use|call|invoke)\b/.test(lower);
   const namesExec = /\bexec(?:\s+tool)?\b/.test(lower);
   const namesShellCommand =

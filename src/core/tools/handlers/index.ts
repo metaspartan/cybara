@@ -535,7 +535,7 @@ export async function executeTool(
 
   const dangerousPolicy = getDangerousToolPolicy();
   const toolApprovalMode = getToolApprovalMode();
-  const isDangerous = isDangerousTool(name);
+  const isDangerous = isDangerousTool(name) && !(name === "message" && args.action === "list");
   const allowDangerous = context?.allowDangerousTools === true;
   if (isDangerous && dangerousPolicy.enabled && !allowDangerous) {
     if (dangerousPolicy.mode === "block") {

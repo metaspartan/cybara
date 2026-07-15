@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { channelManager, discordSessions, type ChannelAdapter } from "../../src/core/channels";
-import { tables } from "../../src/core/database";
+import {
+  channels as channelDefinitions,
+  channelManager,
+  discordSessions,
+  type ChannelAdapter,
+  type ChannelType,
+} from "../../src/core/channels";
+import { config } from "../../src/core/config";
+import { tables, type Channel } from "../../src/core/database";
+import { executeTool } from "../../src/core/tools/handlers";
 import { handleMessage } from "../../src/core/tools/handlers/channel";
 
 const createdChannels: string[] = [];
@@ -10,7 +18,7 @@ function id(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function createChannel(type: "web" | "discord" | "slack" | "telegram", name: string): string {
+function createChannel(type: Channel["type"], name: string): string {
   const channelId = id(type);
   tables.channels.create({
     id: channelId,
@@ -36,9 +44,122 @@ afterEach(() => {
     }
   }
   discordSessions.clear();
+  config.set("tool_approval_mode", "always_allow");
 });
 
 describe("message tool routing", () => {
+  test("lists enabled connections and safe friendly destinations", async () => {
+    const webChannelId = createChannel("web", "Web Discovery Test");
+    const adapter = channelManager.getAdapter("web");
+    expect(adapter).toBeDefined();
+    if (!adapter) {
+      throw new Error("web adapter not available");
+    }
+
+    const originalIsRunning = adapter.isRunning.bind(adapter);
+    const originalListTargets = adapter.listTargets;
+    adapter.isRunning = () => true;
+    adapter.listTargets = async () => [
+      { id: "chat-safe-1", name: "cybara", label: "#cybara", group: "Cybara" },
+    ];
+    restorers.push(() => {
+      adapter.isRunning = originalIsRunning;
+      adapter.listTargets = originalListTargets;
+    });
+
+    const result = await handleMessage({ action: "list", channelId: webChannelId });
+
+    expect(result.success).toBe(true);
+    expect(result.channels).toEqual([
+      {
+        id: webChannelId,
+        name: "Web Discovery Test",
+        type: "web",
+        running: true,
+        targets: [{ id: "chat-safe-1", name: "cybara", label: "#cybara", group: "Cybara" }],
+      },
+    ]);
+  });
+
+  test("filters discovery across every registered channel type", async () => {
+    const channelId = createChannel("ntfy", "Ntfy Discovery Test");
+
+    const result = await handleMessage({ action: "list", channel: "ntfy" });
+
+    expect(result.channels?.map((channel) => channel.id)).toEqual([channelId]);
+    expect(result.channels?.[0]?.type).toBe("ntfy");
+  });
+
+  test("rejects unknown channel types instead of silently listing everything", async () => {
+    createChannel("web", "Web Invalid Filter Test");
+
+    await expect(handleMessage({ action: "list", channel: "not-a-channel" })).rejects.toThrow(
+      "Unknown channel type"
+    );
+  });
+
+  test("lists destinations without requiring outbound-message approval", async () => {
+    const webChannelId = createChannel("web", "Web Read Only Discovery Test");
+    config.set("tool_approval_mode", "ask");
+
+    const result = await executeTool("message", {
+      action: "list",
+      channelId: webChannelId,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.channels).toHaveLength(1);
+  });
+
+  test("keeps outbound sends behind tool approval", async () => {
+    const webChannelId = createChannel("web", "Web Approval Test");
+    config.set("tool_approval_mode", "ask");
+
+    await expect(
+      executeTool("message", {
+        action: "send",
+        channelId: webChannelId,
+        target: "chat-approval",
+        message: "hello",
+      })
+    ).rejects.toThrow("requires approval");
+  });
+
+  test("resolves a friendly destination before sending", async () => {
+    const webChannelId = createChannel("web", "Web Friendly Send Test");
+    const adapter = channelManager.getAdapter("web");
+    expect(adapter).toBeDefined();
+    if (!adapter) {
+      throw new Error("web adapter not available");
+    }
+
+    const originalSendMessage = adapter.sendMessage.bind(adapter);
+    const originalResolveTarget = adapter.resolveTarget;
+    let sentTarget: string | undefined;
+    adapter.resolveTarget = async (_channelId, target) =>
+      target === "#cybara" ? "chat-resolved-1" : target;
+    adapter.sendMessage = async (_channelId, chatId) => {
+      sentTarget = String(chatId);
+      return true;
+    };
+    restorers.push(() => {
+      adapter.resolveTarget = originalResolveTarget;
+      adapter.sendMessage = originalSendMessage;
+    });
+
+    const result = await handleMessage({
+      action: "send",
+      channelId: webChannelId,
+      target: "#cybara",
+      message: "hi to buzz, luigi, and haz",
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.target).toBe("#cybara");
+    expect(result.resolvedTarget).toBe("chat-resolved-1");
+    expect(sentTarget).toBe("chat-resolved-1");
+  });
+
   test("send routes via selected channel and supports aliases", async () => {
     const webChannelId = createChannel("web", "Web Send Test");
     const adapter = channelManager.getAdapter("web");
@@ -76,6 +197,42 @@ describe("message tool routing", () => {
       target: "chat-web-1",
       text: "hello from message tool",
     });
+  });
+
+  test("send reaches every registered channel adapter", async () => {
+    const channelTypes = Object.keys(channelDefinitions) as ChannelType[];
+    const routedTypes: ChannelType[] = [];
+
+    for (const type of channelTypes) {
+      const channelId = createChannel(type, `${channelDefinitions[type].name} Routing Test`);
+      const adapter = channelManager.getAdapter(type);
+      expect(adapter).toBeDefined();
+      if (!adapter) throw new Error(`${type} adapter not available`);
+
+      const originalSendMessage = adapter.sendMessage.bind(adapter);
+      adapter.sendMessage = async (selectedChannelId, target, text) => {
+        expect(selectedChannelId).toBe(channelId);
+        expect(String(target)).toBe("destination-1");
+        expect(text).toBe("hello from Cybara");
+        routedTypes.push(type);
+        return true;
+      };
+
+      try {
+        const result = await handleMessage({
+          action: "send",
+          channelId,
+          target: "destination-1",
+          message: "hello from Cybara",
+        });
+        expect(result.success).toBe(true);
+        expect(result.channel).toBe(type);
+      } finally {
+        adapter.sendMessage = originalSendMessage;
+      }
+    }
+
+    expect(routedTypes).toEqual(channelTypes);
   });
 
   test("react routes to discord adapter", async () => {

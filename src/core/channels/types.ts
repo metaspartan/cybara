@@ -557,6 +557,13 @@ export interface ToolCallInfo {
   duration?: number;
 }
 
+export interface ChannelTarget {
+  id: string;
+  name: string;
+  label: string;
+  group?: string;
+}
+
 export interface ChannelAdapter {
   type: ChannelType;
   name: string;
@@ -564,6 +571,9 @@ export interface ChannelAdapter {
   start(channelId: string, config: Record<string, unknown>): Promise<void>;
   stop(channelId: string): Promise<void>;
   isRunning(channelId: string): boolean;
+
+  listTargets?(channelId: string): Promise<ChannelTarget[]>;
+  resolveTarget?(channelId: string, target: string): Promise<string>;
 
   sendMessage(
     channelId: string,

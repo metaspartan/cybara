@@ -5,6 +5,7 @@ export {
   type MessageHandler,
   type MessageHandlerFileInfo,
   type ToolCallInfo,
+  type ChannelTarget,
   type ChannelInfo,
 } from "./types";
 

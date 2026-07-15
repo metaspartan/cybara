@@ -16,7 +16,13 @@ import {
   type User,
   type PartialUser,
 } from "discord.js";
-import type { ChannelAdapter, ToolCallInfo, MessageHandler, ChannelEmbed } from "../types";
+import type {
+  ChannelAdapter,
+  ChannelTarget,
+  ToolCallInfo,
+  MessageHandler,
+  ChannelEmbed,
+} from "../types";
 import { formatToolCallsForDiscord } from "../formatting";
 import { logChannelMessage } from "../../logging";
 import { tables } from "../../database";
@@ -27,6 +33,72 @@ import { saveInboundMediaFromUrl } from "../media";
 import { cybaraDir } from "../../paths";
 
 export const discordSessions = new Map<string, string>();
+
+type DiscordNamedTextChannel = {
+  id: string;
+  name: string;
+  isTextBased: () => boolean;
+  guild?: { name?: string };
+};
+
+function asDiscordNamedTextChannel(value: unknown): DiscordNamedTextChannel | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as {
+    id?: unknown;
+    name?: unknown;
+    isTextBased?: unknown;
+    guild?: unknown;
+  };
+  if (
+    typeof candidate.id !== "string" ||
+    typeof candidate.name !== "string" ||
+    typeof candidate.isTextBased !== "function"
+  ) {
+    return undefined;
+  }
+  const channel = candidate as DiscordNamedTextChannel;
+  return channel.isTextBased() ? channel : undefined;
+}
+
+function discordChannelTarget(value: unknown): ChannelTarget | undefined {
+  const channel = asDiscordNamedTextChannel(value);
+  if (!channel) return undefined;
+  const group =
+    channel.guild && typeof channel.guild.name === "string" ? channel.guild.name : undefined;
+  return {
+    id: channel.id,
+    name: channel.name,
+    label: group ? `${group}/#${channel.name}` : `#${channel.name}`,
+    group,
+  };
+}
+
+function normalizeDiscordTargetPart(value: string): string {
+  return value.trim().replace(/^#/, "").toLocaleLowerCase();
+}
+
+export function resolveDiscordTargetId(targets: ChannelTarget[], requested: string): string {
+  const normalized = requested.trim().toLocaleLowerCase();
+  const slashIndex = normalized.lastIndexOf("/");
+  const requestedGroup = slashIndex >= 0 ? normalized.slice(0, slashIndex).trim() : undefined;
+  const requestedName = normalizeDiscordTargetPart(
+    slashIndex >= 0 ? normalized.slice(slashIndex + 1) : normalized
+  );
+  const matches = targets.filter((target) => {
+    if (normalizeDiscordTargetPart(target.name) !== requestedName) return false;
+    return requestedGroup ? target.group?.trim().toLocaleLowerCase() === requestedGroup : true;
+  });
+  const onlyMatch = matches.length === 1 ? matches[0] : undefined;
+  if (onlyMatch) return onlyMatch.id;
+  if (matches.length === 0) {
+    throw new Error(
+      `No Discord text channel matches '${requested}'. Use action=list to discover targets.`
+    );
+  }
+  throw new Error(
+    `Multiple Discord channels match '${requested}': ${matches.map((target) => target.label).join(", ")}. Use guild/#channel or an id.`
+  );
+}
 
 export const DISCORD_REQUIRED_INTENTS = [
   GatewayIntentBits.Guilds,
@@ -834,6 +906,37 @@ export class DiscordAdapter implements ChannelAdapter {
   isRunning(channelId: string): boolean {
     const client = this.clients.get(channelId);
     return client?.isReady() ?? false;
+  }
+
+  async listTargets(channelId: string): Promise<ChannelTarget[]> {
+    const client = this.clients.get(channelId);
+    if (!client?.isReady()) {
+      throw new Error("Discord channel is not connected");
+    }
+
+    const targets = new Map<string, ChannelTarget>();
+    const collect = (value: unknown): void => {
+      const target = discordChannelTarget(value);
+      if (target) targets.set(target.id, target);
+    };
+
+    for (const channel of client.channels.cache.values()) collect(channel);
+    for (const guild of client.guilds.cache.values()) {
+      try {
+        const fetched = await guild.channels.fetch();
+        for (const channel of fetched.values()) collect(channel);
+      } catch {
+        continue;
+      }
+    }
+
+    return [...targets.values()].sort((a, b) => a.label.localeCompare(b.label));
+  }
+
+  async resolveTarget(channelId: string, target: string): Promise<string> {
+    const trimmed = target.trim();
+    if (!trimmed.startsWith("#") && !trimmed.includes("/#")) return trimmed;
+    return resolveDiscordTargetId(await this.listTargets(channelId), trimmed);
   }
 
   async sendMessage(

@@ -24,6 +24,9 @@ describe("tool capability policy", () => {
     expect(isDestructiveToolCall("git", { command: "status" })).toBe(false);
     expect(isDestructiveToolCall("wallet", { action: "balance" })).toBe(false);
     expect(isDestructiveToolCall("wallet", { action: "send" })).toBe(true);
+    expect(classifyToolCapabilities("message", { action: "send" }, ["message:send"])).toEqual([
+      "network",
+    ]);
   });
 
   test("uses the most restrictive policy across a tool call", () => {

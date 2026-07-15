@@ -79,6 +79,18 @@ describe("chat tool summary utilities", () => {
     expect(requiredDirectToolForMessage("Explain how a shell command works")).toBeUndefined();
   });
 
+  test("binds explicit outbound channel messages without forcing channel explanations", () => {
+    expect(requiredDirectToolForMessage("Send a message to Carsen in Discord and say hello")).toBe(
+      "message"
+    );
+    expect(requiredDirectToolForMessage("Post in #cybara and say hi to everyone")).toBe("message");
+    expect(requiredDirectToolForMessage("Send this to @cybara_updates on Telegram")).toBe(
+      "message"
+    );
+    expect(requiredDirectToolForMessage("Publish this in the Slack channel")).toBe("message");
+    expect(requiredDirectToolForMessage("How does a Discord channel work?")).toBeUndefined();
+  });
+
   test("detects artifact-focused prompts for artifact-preferred tool execution", () => {
     expect(
       shouldPreferArtifactsForMessage("audit this codebase and create an artifact report when done")
