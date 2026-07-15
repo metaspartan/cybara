@@ -107,6 +107,19 @@ export function NearbySettingsSection() {
     status?.discoverableUntil && Date.parse(status.discoverableUntil) > Date.now()
   );
   const advertising = Boolean(status?.advertising);
+  const discoveryUnavailable = Boolean(
+    settings.enabled &&
+      status?.running &&
+      status.discovery !== undefined &&
+      !status.discovery.udp.running &&
+      !status.discovery.mdns.running
+  );
+  const discoveryFallback = Boolean(
+    settings.enabled &&
+      status?.running &&
+      !discoveryUnavailable &&
+      (status.discovery?.udp.error || status.discovery?.mdns.error)
+  );
   const showPeers = Boolean(settings.enabled && status?.running);
   const pairedIds = new Set(status?.pairedPeers.map((peer) => peer.id) || []);
   const availablePeers = status?.discoveredPeers.filter((peer) => !pairedIds.has(peer.id)) || [];
@@ -261,6 +274,8 @@ export function NearbySettingsSection() {
               {status?.running ? "Listening privately" : "Stopped"}
             </Badge>
             {advertising ? <Badge variant="info">Discoverable now</Badge> : null}
+            {discoveryUnavailable ? <Badge variant="error">Discovery unavailable</Badge> : null}
+            {discoveryFallback ? <Badge variant="warning">Discovery fallback active</Badge> : null}
             <Button
               variant="ghost"
               size="sm"

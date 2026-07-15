@@ -60,10 +60,30 @@ struct NativeNearbyStatus: Decodable, Hashable {
         let fingerprint: String
     }
 
+    struct Discovery: Decodable, Hashable {
+        struct UDP: Decodable, Hashable {
+            let running: Bool
+            let boundPort: Int?
+            let fallback: Bool
+            let error: String?
+        }
+
+        struct MDNS: Decodable, Hashable {
+            let running: Bool
+            let interfaceCount: Int
+            let error: String?
+        }
+
+        let udp: UDP
+        let mdns: MDNS
+        let lastRefreshAt: String?
+    }
+
     let settings: NativeNearbySettings
     let identity: Identity
     let running: Bool
     let discoverableUntil: String?
+    let discovery: Discovery?
     let localAddresses: [String]?
     let discoveredPeers: [NativeNearbyDiscoveredPeer]
     let pairedPeers: [NativeNearbyPairedPeer]
@@ -306,6 +326,19 @@ struct NativeNearbySettingsSection: View {
 
     @ViewBuilder
     private func nearbyContent(_ value: NativeNearbyStatus) -> some View {
+        if let discovery = value.discovery,
+           !discovery.udp.running,
+           !discovery.mdns.running {
+            Label("Automatic device discovery is unavailable.", systemImage: "exclamationmark.triangle")
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(.red)
+        } else if let discovery = value.discovery,
+                  discovery.udp.error != nil || discovery.mdns.error != nil {
+            Label("Using the available discovery fallback.", systemImage: "arrow.trianglehead.branch")
+                .font(.system(size: 11, design: .rounded))
+                .foregroundStyle(.secondary)
+        }
+
         if let addresses = value.localAddresses, !addresses.isEmpty {
             Divider().opacity(0.45)
             Text("This Device").font(.system(size: 12, weight: .semibold, design: .rounded))

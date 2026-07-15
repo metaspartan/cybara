@@ -109,8 +109,7 @@ export async function upsertPersistedSessionMessage(
        agent_id = excluded.agent_id,
        role = excluded.role,
        content = excluded.content,
-       metadata = excluded.metadata,
-       created_at = excluded.created_at`
+       metadata = excluded.metadata`
   ).run(id, sessionId, agentId, message.role, message.content, metadata ?? null, createdAt);
 }
 
@@ -1068,14 +1067,14 @@ function persistedSessionListSql(
           SELECT lm.role FROM session_messages lm WHERE lm.rowid = (
             SELECT lm2.rowid FROM session_messages lm2
             WHERE lm2.session_id = cs.id
-            ORDER BY lm2.created_at DESC, lm2.rowid DESC LIMIT 1
+            ORDER BY lm2.rowid DESC LIMIT 1
           )
         ), json_extract(cs.messages, '$[#-1].role')) as lastMessageRole,
         COALESCE((
           SELECT substr(lm.content, 1, 501) FROM session_messages lm WHERE lm.rowid = (
             SELECT lm2.rowid FROM session_messages lm2
             WHERE lm2.session_id = cs.id
-            ORDER BY lm2.created_at DESC, lm2.rowid DESC LIMIT 1
+            ORDER BY lm2.rowid DESC LIMIT 1
           )
         ), substr(json_extract(cs.messages, '$[#-1].content'), 1, 501)) as lastMessageContent,
         (
@@ -1085,7 +1084,7 @@ function persistedSessionListSql(
               AND lm2.role = 'assistant'
               AND lm2.metadata IS NOT NULL
               AND LENGTH(lm2.metadata) > 0
-            ORDER BY lm2.created_at DESC, lm2.rowid DESC LIMIT 1
+            ORDER BY lm2.rowid DESC LIMIT 1
           )
         ) as lastModelMetadata
       FROM chat_sessions cs

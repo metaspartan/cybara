@@ -386,6 +386,20 @@ export interface MobileNearbyStatus {
   identity: { id: string; fingerprint: string };
   running: boolean;
   discoverableUntil: string | null;
+  discovery?: {
+    udp: {
+      running: boolean;
+      boundPort: number | null;
+      fallback: boolean;
+      error: string | null;
+    };
+    mdns: {
+      running: boolean;
+      interfaceCount: number;
+      error: string | null;
+    };
+    lastRefreshAt: string | null;
+  };
   localAddresses: string[];
   discoveredPeers: Array<{
     id: string;

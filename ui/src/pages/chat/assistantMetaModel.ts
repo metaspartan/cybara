@@ -127,9 +127,7 @@ export function resolveWorkedDurationMs(
     ) {
       return false;
     }
-    return !(
-      typeof assistantTimestampMs === "number" && timestamp > assistantTimestampMs + 1_000
-    );
+    return !(typeof assistantTimestampMs === "number" && timestamp > assistantTimestampMs + 1_000);
   };
   const activityTimestamps = (processActivities ?? [])
     .map((activity) => activity.timestamp)

@@ -72,6 +72,20 @@ describe("CLI TUI terminal behavior", () => {
     );
   });
 
+  test("budgets compact transcript content by rendered terminal rows", () => {
+    const content = [
+      "A long first line that wraps across several rows in a narrow terminal viewport.",
+      "Middle content",
+      "A complete final line that remains available after compacting.",
+    ].join("\n");
+    const visible = transcriptWindow(content, 5, 24);
+    expect(visible.some((line) => line.hidden)).toBe(true);
+    expect(
+      visible.reduce((total, line) => total + Math.ceil(line.text.length / 24), 0)
+    ).toBeLessThanOrEqual(7);
+    expect(visible.at(-1)?.text).toContain("line that remains available");
+  });
+
   test("shows one complete message in expanded transcript mode", () => {
     expect(transcriptMessageLimit(5, true)).toBe(1);
     expect(transcriptMessageLimit(5, false)).toBe(5);

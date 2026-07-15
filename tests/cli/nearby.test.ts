@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { runNearbyCommand } from "../../src/cli-nearby";
 
 interface RequestCall {
@@ -15,6 +15,7 @@ const status = {
     autoAdvertise: true,
   },
   running: false,
+  advertising: false,
   discoverableUntil: null,
   localAddresses: ["http://192.168.1.15:4270"],
   discoveredPeers: [],
@@ -24,6 +25,29 @@ const status = {
 };
 
 describe("nearby CLI", () => {
+  test("reports automatic discovery and transport health accurately", async () => {
+    const log = spyOn(console, "log").mockImplementation(() => undefined);
+    const fetchAPI = async <T>(): Promise<T | null> =>
+      ({
+        ...status,
+        settings: { ...status.settings, enabled: true },
+        running: true,
+        advertising: true,
+        discovery: {
+          udp: { running: true, boundPort: 4270, fallback: false, error: null },
+          mdns: { running: true, interfaceCount: 1, error: null },
+          lastRefreshAt: "2026-07-15T11:00:00.000Z",
+        },
+      }) as T;
+    try {
+      await runNearbyCommand(["status"], fetchAPI);
+      expect(log).toHaveBeenCalledWith("Discovery: active");
+      expect(log).toHaveBeenCalledWith("Transport: UDP + mDNS");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   test("enables nearby through the shared gateway contract", async () => {
     const calls: RequestCall[] = [];
     const fetchAPI = async <T>(endpoint: string, options?: RequestInit): Promise<T | null> => {

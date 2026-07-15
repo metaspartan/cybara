@@ -217,7 +217,8 @@ describe("status stream websocket wiring", () => {
     expect(controlsSource).toContain("selectedAgent?.model || selectedAgent?.name");
     expect(cssSource).toContain("container-type: inline-size");
     expect(cssSource).toContain("@container (max-width: 460px)");
-    expect(cssSource).toContain("color: transparent");
+    expect(cssSource).toContain("color: transparent !important");
+    expect(cssSource).toContain("-webkit-text-fill-color: transparent");
   });
 
   test("sidebar status indicator uses websocket status stream", () => {

@@ -855,8 +855,8 @@ export function SessionDetailPanel({
 
         if (event.type === "snapshot") {
           const snapshot = event.activeSessions.find((entry) => entry.sessionId === sessionId);
-          setSessionActive(Boolean(snapshot));
           if (!snapshot) {
+            setSessionActive(false);
             const preserveOptimisticPending = shouldPreserveOptimisticPending();
             if (!preserveOptimisticPending) {
               clearCachedMobileOptimisticPendingMessages(sessionId);
@@ -868,7 +868,16 @@ export function SessionDetailPanel({
             );
             return;
           }
-          if (!acceptLiveEvent(snapshot)) return;
+          const snapshotAccepted = acceptLiveEvent(snapshot);
+          if (
+            !snapshotAccepted &&
+            snapshot.runId &&
+            liveEventCursorRef.current?.runId &&
+            snapshot.runId !== liveEventCursorRef.current.runId
+          ) {
+            return;
+          }
+          setSessionActive(true);
           const pendingMessages = snapshot.pendingMessages ?? [];
           const preserveOptimisticPending = shouldPreserveOptimisticPending();
           if (!preserveOptimisticPending && pendingMessages.length === 0) {

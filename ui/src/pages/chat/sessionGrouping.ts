@@ -107,3 +107,44 @@ export function groupSessionsForSidebar(
     return b.latestTime - a.latestTime || a.label.localeCompare(b.label);
   });
 }
+
+function selectedSessionGroup(
+  groups: ChatSidebarSessionGroup[],
+  currentSessionId: string | null
+): ChatSidebarSessionGroup | undefined {
+  if (currentSessionId) {
+    const matching = groups.find(
+      (group) =>
+        group.kind !== "pinned" && group.sessions.some((session) => session.id === currentSessionId)
+    );
+    if (matching) return matching;
+  }
+  return groups.find((group) => group.kind !== "pinned");
+}
+
+export function defaultCollapsedSessionGroupIds(
+  groups: ChatSidebarSessionGroup[],
+  currentSessionId: string | null
+): Set<string> {
+  const expandedGroupId = selectedSessionGroup(groups, currentSessionId)?.id;
+  const collapsedGroupIds = new Set<string>();
+  for (const group of groups) {
+    if (group.kind !== "pinned" && group.id !== expandedGroupId) {
+      collapsedGroupIds.add(group.id);
+    }
+  }
+  return collapsedGroupIds;
+}
+
+export function expandSelectedSessionGroup(
+  collapsedGroupIds: Set<string>,
+  groups: ChatSidebarSessionGroup[],
+  currentSessionId: string | null
+): Set<string> {
+  if (!currentSessionId) return collapsedGroupIds;
+  const groupId = selectedSessionGroup(groups, currentSessionId)?.id;
+  if (!groupId || !collapsedGroupIds.has(groupId)) return collapsedGroupIds;
+  const next = new Set(collapsedGroupIds);
+  next.delete(groupId);
+  return next;
+}

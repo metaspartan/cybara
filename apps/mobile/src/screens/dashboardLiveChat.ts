@@ -71,11 +71,11 @@ export function writeCachedMobileLiveAssistant(
     runId:
       typeof identity?.runId === "string" && identity.runId.trim()
         ? identity.runId.trim()
-        : previous?.runId ?? null,
+        : (previous?.runId ?? null),
     sequence:
       typeof identity?.sequence === "number" && Number.isFinite(identity.sequence)
         ? identity.sequence
-        : previous?.sequence ?? 0,
+        : (previous?.sequence ?? 0),
     updatedAt: Date.now(),
   });
   const cached = readCachedMobileLiveAssistant(key);

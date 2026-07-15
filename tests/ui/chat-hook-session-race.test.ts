@@ -19,7 +19,9 @@ describe("useChat session race guards", () => {
     expect(source).toContain("const queuedSend = !!queueMode");
     expect(source).toContain("useRef<Map<string, AbortController>>(new Map())");
     expect(source).toContain("activeRequestControllersRef.current.get(requestSessionId)?.abort()");
-    expect(source).toContain("activeRequestControllersRef.current.set(requestSessionId, controller)");
+    expect(source).toContain(
+      "activeRequestControllersRef.current.set(requestSessionId, controller)"
+    );
   });
 
   test("assigns a session id before the first response so follow-ups can queue", () => {
@@ -76,7 +78,9 @@ describe("useChat session race guards", () => {
     const stopEnd = source.indexOf("const loadSession", stopStart);
     const stopBlock = source.slice(stopStart, stopEnd);
     expect(stopBlock).toContain("targetSessionId?: string | null");
-    expect(stopBlock).toContain("activeRequestControllersRef.current.get(targetSessionId)?.abort()");
+    expect(stopBlock).toContain(
+      "activeRequestControllersRef.current.get(targetSessionId)?.abort()"
+    );
     expect(stopBlock).toContain("activeRequestControllersRef.current.delete(targetSessionId)");
   });
 

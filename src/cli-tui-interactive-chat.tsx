@@ -35,6 +35,10 @@ import {
   useTerminalLayout,
 } from "./cli-tui-terminal";
 import {
+  ChatHeader,
+  ChatShortcutRail,
+} from "./cli-tui-chat-chrome";
+import {
   compactInspectionLines,
   lspStatusLines,
   logLines,
@@ -453,12 +457,14 @@ function ActivitySummary({
 
 function MessageView({
   expandedActivities,
+  expandedMessage,
   message,
   maxLines,
   maxActivityDetails,
   maxColumns,
 }: {
   expandedActivities: boolean;
+  expandedMessage: boolean;
   message: ChatMessage;
   maxLines?: number;
   maxActivityDetails?: number;
@@ -489,7 +495,16 @@ function MessageView({
         </Text>
       ))}
       <Box paddingLeft={2} width="100%">
-          <TerminalMessageBody content={message.content} maxLines={maxLines} />
+        <TerminalMessageBody
+          content={message.content}
+          hiddenText={
+            expandedMessage
+              ? "… more content hidden · /copy copies the full response"
+              : "… more content hidden · /expand shows more"
+          }
+          maxColumns={maxColumns}
+          maxLines={maxLines}
+        />
       </Box>
     </Box>
   );
@@ -545,26 +560,23 @@ function PendingQueue({
 }): React.ReactElement | null {
   if (messages.length === 0) return null;
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor="gray"
-      paddingX={1}
-      marginTop={1}
-    >
-      <Text color="gray">Queued follow-ups</Text>
+    <Box flexDirection="column" paddingX={1} marginTop={1}>
+      <Text color="yellow" dimColor>
+        Queue · {messages.length}
+      </Text>
       {messages.slice(0, 4).map((message, index) => (
         <Text
           key={message.id}
           color={message.mode === "steering" ? "yellow" : "white"}
+          wrap="wrap"
         >
-          #{message.sequence || index + 1} {message.content.slice(0, 72)}
+          {"  "}#{message.sequence || index + 1} {message.content}
           <Text color="gray"> · {relativeTime(message.createdAt)}</Text>
         </Text>
       ))}
-      <Text color="gray">
-        /steer #1 · /edit #1 ... · /delete #1 · /reorder #2 #1
-      </Text>
+      {messages.length > 4 ? (
+        <Text color="gray">  +{messages.length - 4} more · /pending</Text>
+      ) : null}
     </Box>
   );
 }
@@ -674,83 +686,7 @@ function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
       <Text>
         /reload refetches · /new starts fresh · /resume returns to sessions
       </Text>
-      <Text>/raw or /expand toggles compact and complete message bodies</Text>
-    </Box>
-  );
-}
-
-function StatusRail({
-  agent,
-  approvalCount,
-  approvalMode,
-  pendingCount,
-  routerStatus,
-  sessionId,
-  modelOverride,
-  narrow,
-  useModelRouter,
-}: {
-  agent?: AgentSummary;
-  approvalCount: number;
-  approvalMode: string;
-  pendingCount: number;
-  routerStatus: RouterStatus | null;
-  sessionId: string;
-  modelOverride?: string;
-  narrow: boolean;
-  useModelRouter: boolean;
-}): React.ReactElement {
-  const routerLabel = useModelRouter
-    ? "selected"
-    : routerStatus?.enabled
-      ? routerStatus.strategy || "enabled"
-      : "off";
-  const shortSessionId = sessionId ? sessionId.slice(0, 8) : "new";
-  if (narrow) {
-    return (
-      <Box>
-        <Text>
-          <Text color="gray">Tools </Text>
-          <Text color={approvalMode === "ask" ? "yellow" : "white"}>
-            {approvalMode === "always_allow" ? "allow" : approvalMode}
-          </Text>
-          <Text color="gray"> · {agentReasoningEffort(agent)}</Text>
-          <Text color={pendingCount > 0 ? "yellow" : "gray"}>
-            {" "}
-            · q{pendingCount}
-          </Text>
-          <Text color="gray"> · {shortSessionId}</Text>
-        </Text>
-      </Box>
-    );
-  }
-  return (
-    <Box flexDirection="column">
-      <Text>
-        <Text color="gray">Tools </Text>
-        <Text color={approvalMode === "ask" ? "yellow" : "white"}>
-          {approvalMode === "always_allow" ? "allow" : approvalMode}
-        </Text>
-        {approvalCount > 0 ? (
-          <Text color="yellow"> · {approvalCount} waiting</Text>
-        ) : null}
-        <Text color="gray"> · Reasoning </Text>
-        <Text color="white">{agentReasoningEffort(agent)}</Text>
-        <Text color="gray"> · Profile </Text>
-        <Text color="white">{agentToolProfile(agent)}</Text>
-        {modelOverride ? (
-          <Text color="cyan"> · Model {compact(modelOverride, 28)}</Text>
-        ) : null}
-        {useModelRouter || routerStatus?.enabled ? (
-          <>
-            <Text color="gray"> · Router </Text>
-            <Text color="cyan">{routerLabel}</Text>
-          </>
-        ) : null}
-        <Text color="gray"> · Queue </Text>
-        <Text color={pendingCount > 0 ? "yellow" : "gray"}>{pendingCount}</Text>
-        <Text color="gray"> · {shortSessionId}</Text>
-      </Text>
+      <Text>/raw or /expand toggles compact and detailed message bodies</Text>
     </Box>
   );
 }
@@ -814,7 +750,7 @@ export function InteractiveChatTUI({
   const [tasks, setTasks] = React.useState<TuiTaskSummary[]>([]);
   const [subagents, setSubagents] = React.useState<TuiSubagentSummary[]>([]);
   const [showEnvironment, setShowEnvironment] = React.useState(false);
-  const [expandedTranscript, setExpandedTranscript] = React.useState(true);
+  const [expandedTranscript, setExpandedTranscript] = React.useState(false);
   const [expandedActivities, setExpandedActivities] = React.useState(false);
   const [transcriptOffset, setTranscriptOffset] = React.useState(0);
   const [approvalRequests, setApprovalRequests] = React.useState<
@@ -996,6 +932,13 @@ export function InteractiveChatTUI({
       const response = await fetchAPI<unknown>(
         `/api/sessions/${encodeURIComponent(targetSessionId)}`,
       );
+      if (
+        isRecord(response) &&
+        typeof response.title === "string" &&
+        response.title.trim()
+      ) {
+        setSessionTitle(response.title.trim());
+      }
       const snapshot = environmentSnapshotFromDetail(response);
       setEnvironmentSnapshot(snapshot);
       if (snapshot.workspaceDir) setWorkspaceDir(snapshot.workspaceDir);
@@ -1135,6 +1078,14 @@ export function InteractiveChatTUI({
     setInput("");
     setCursor(0);
     setHistoryIndex(null);
+  }, []);
+
+  const finishLiveRun = React.useCallback(() => {
+    setSending(false);
+    setStreamStatus("idle");
+    setStreamDetail("");
+    setStreamingText("");
+    setLiveActivities([]);
   }, []);
 
   const runCommand = React.useCallback(
@@ -1711,7 +1662,7 @@ export function InteractiveChatTUI({
       if (normalizedCommand === "expand" || normalizedCommand === "raw") {
         setExpandedTranscript((value) => !value);
         setNotice(
-          `Transcript messages ${expandedTranscript ? "compacted" : "expanded"}.`,
+          `Transcript detail ${expandedTranscript ? "compacted" : "expanded"}.`,
         );
         return true;
       }
@@ -1995,20 +1946,18 @@ export function InteractiveChatTUI({
           ) {
             setMessages([...persistedMessages, responseMessage]);
           }
+          finishLiveRun();
           await loadSubagents().catch(() => undefined);
         }
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
-        setSending(false);
-        setStreamStatus("idle");
-        setStreamDetail("");
-        setStreamingText("");
-        setLiveActivities([]);
+        finishLiveRun();
       }
     },
     [
       fetchAPI,
+      finishLiveRun,
       followUpBehaviorEnabled,
       loadMessagesForSession,
       loadSubagents,
@@ -2044,6 +1993,10 @@ export function InteractiveChatTUI({
     visibleMessageEnd,
   );
   const activeApproval = approvalRequests[0];
+  const expandedMessageLines = Math.max(
+    layout.messageLines,
+    layout.rows - (layout.narrow ? 9 : 10),
+  );
   const commandPaletteVisible = commandOptions.length > 0;
   const capabilityPaletteVisible = capabilityOptions.length > 0;
   const narrowOverlayVisible =
@@ -2102,6 +2055,23 @@ export function InteractiveChatTUI({
     if (key.ctrl && value === "l") {
       setMessages([]);
       setNotice("Cleared local view. Session history is unchanged.");
+      return;
+    }
+    if (key.ctrl && value === "t") {
+      setExpandedTranscript((current) => !current);
+      setTranscriptOffset(0);
+      setNotice(
+        expandedTranscript
+          ? "Showing more transcript turns."
+          : "Showing the latest turn with more detail.",
+      );
+      return;
+    }
+    if (key.ctrl && value === "o") {
+      setExpandedActivities((current) => !current);
+      setNotice(
+        expandedActivities ? "Work details collapsed." : "Work details expanded.",
+      );
       return;
     }
     if (activeApproval) {
@@ -2245,6 +2215,11 @@ export function InteractiveChatTUI({
       return;
     }
     if (value && !key.ctrl && !key.meta) {
+      if (value === "?" && input.length === 0) {
+        setShowHelp((current) => !current);
+        setNotice(null);
+        return;
+      }
       const [next, nextCursor] = insertAt(input, cursor, value);
       setInput(next);
       setCursor(nextCursor);
@@ -2260,7 +2235,9 @@ export function InteractiveChatTUI({
       : selectedAgent
         ? agentLine(selectedAgent)
         : modelLine || "Gateway default";
-  const composerLines = composerWindow(input, cursor, layout.composerLines);
+  const composerLines = input
+    ? composerWindow(input, cursor, layout.composerLines)
+    : ["Ask Cybara ▏"];
   const composerTitle = sending
     ? followUpBehaviorEnabled
       ? "Queue follow-up"
@@ -2271,42 +2248,24 @@ export function InteractiveChatTUI({
 
   return (
     <Box flexDirection="column" height={layout.rows} width="100%">
-      <Box
-        borderStyle="round"
-        borderColor="cyan"
-        paddingX={1}
-        flexDirection="column"
-        flexShrink={0}
-      >
-        <Box
-          flexDirection={layout.narrow ? "column" : "row"}
-          justifyContent="space-between"
-        >
-          <Text bold color="cyan">
-            Cybara Chat · {compact(headerTitle, layout.compact ? 44 : 64)}
-          </Text>
-          <Text color={sending ? "yellow" : "green"}>
-            {sending ? streamStatus.replaceAll("_", " ") : "ready"}
-          </Text>
-        </Box>
-        <Text color="gray">
-          {compact(activeModelLine, layout.narrow ? 38 : 72)}
-          {layout.narrow
-            ? ""
-            : ` · ${localSessionId || "session will be created on send"}`}
-        </Text>
-        <StatusRail
-          agent={selectedAgent}
-          approvalCount={approvalRequests.length}
-          approvalMode={approvalMode}
-          pendingCount={pendingMessages.length}
-          routerStatus={routerStatus}
-          sessionId={localSessionId}
-          modelOverride={modelOverride || undefined}
-          narrow={layout.compact}
-          useModelRouter={useModelRouter}
-        />
-      </Box>
+      <ChatHeader
+        state={{
+          approvalCount: approvalRequests.length,
+          approvalMode,
+          branch: environmentSnapshot?.gitBranch || null,
+          columns: layout.columns,
+          contextUsage: environmentSnapshot?.contextUsage || null,
+          model: activeModelLine,
+          pendingCount: pendingMessages.length,
+          profile: agentToolProfile(selectedAgent),
+          reasoning: agentReasoningEffort(selectedAgent),
+          sending,
+          sessionId: localSessionId,
+          status: streamStatus,
+          title: headerTitle,
+          workspaceDir,
+        }}
+      />
 
       {narrowOverlayVisible ? null : loading ? (
         <Box
@@ -2347,9 +2306,14 @@ export function InteractiveChatTUI({
           {visibleMessages.map((message, index) => (
             <MessageView
               expandedActivities={expandedActivities}
+              expandedMessage={expandedTranscript}
               key={`${index}-${message.role}-${message.content.slice(0, 12)}`}
               message={message}
-              maxLines={expandedTranscript ? undefined : layout.messageLines}
+              maxLines={
+                expandedTranscript
+                  ? expandedMessageLines
+                  : layout.messageLines
+              }
               maxActivityDetails={expandedActivities ? undefined : 0}
               maxColumns={Math.max(24, layout.columns - 8)}
             />
@@ -2428,23 +2392,28 @@ export function InteractiveChatTUI({
         flexDirection="column"
         flexShrink={0}
       >
-        <Text color={sending && followUpBehaviorEnabled ? "cyan" : "gray"}>
-          {composerTitle}
-        </Text>
+        {sending ? (
+          <Text color={followUpBehaviorEnabled ? "cyan" : "gray"}>
+            {composerTitle}
+          </Text>
+        ) : null}
         {composerLines.map((line, index) => (
-          <Text key={index} color={composerTextColor}>
+          <Text key={index} color={input ? composerTextColor : "gray"}>
             {index === 0 ? "› " : "  "}
             {line}
           </Text>
         ))}
       </Box>
-      <Box paddingX={1} flexShrink={0}>
-        <Text color="gray">
-          {layout.narrow
-            ? `${sending ? "Enter queue" : "Enter send"} · ^J newline · Tab complete · Esc dismiss/back`
-            : `${sending ? "Enter queues follow-up" : "Enter sends"} · ^J newline · ↑↓ palette/history · PgUp/Dn scroll · Tab complete · Esc dismiss/back · ^C stop/exit`}
-        </Text>
-      </Box>
+      <ChatShortcutRail
+        state={{
+          activeApproval: Boolean(activeApproval),
+          columns: layout.columns,
+          followUpsEnabled: followUpBehaviorEnabled,
+          panelOpen: showEnvironment || showHelp,
+          paletteOpen: commandPaletteVisible || capabilityPaletteVisible,
+          sending,
+        }}
+      />
     </Box>
   );
 }

@@ -301,7 +301,9 @@ describe("CLI TUI source wiring", () => {
       "Draft cleared. Press Esc again to return to sessions."
     );
     expect(cliTuiInteractiveChatSource).toContain("Queue follow-up");
-    expect(cliTuiInteractiveChatSource).toContain("Esc dismiss/back");
+    expect(cliTuiInteractiveChatSource).toContain('value === "?"');
+    expect(cliTuiInteractiveChatSource).toContain('value === "t"');
+    expect(cliTuiInteractiveChatSource).toContain('value === "o"');
     expect(cliTuiInteractiveChatSource).toContain("Follow-ups off");
     expect(cliTuiInteractiveChatSource).toContain("follow_up_behavior_enabled");
     expect(cliTuiCommandsSource).toContain('{ name: "/followups"');
@@ -310,7 +312,8 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("nextTUIChatCommandIndex");
     expect(cliTuiInteractiveChatSource).toContain("selectCommand");
     expect(cliTuiInteractiveChatSource).toContain("selectedIndex={commandIndex}");
-    expect(cliTuiInteractiveChatSource).toContain("StatusRail");
+    expect(cliTuiInteractiveChatSource).toContain("ChatHeader");
+    expect(cliTuiInteractiveChatSource).toContain("ChatShortcutRail");
     expect(cliTuiInteractiveChatSource).not.toContain("<Box marginTop={1} flexShrink={0}>");
     expect(cliTuiInteractiveChatSource).toContain('borderColor={sending ? "cyan" : "gray"}');
     expect(cliTuiInteractiveChatSource).toContain("EnvironmentPanel");
@@ -331,10 +334,10 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("pageUp");
     expect(cliTuiInteractiveChatSource).toContain("pageDown");
     expect(cliTuiInteractiveChatSource).toContain(
-      "maxLines={expandedTranscript ? undefined : layout.messageLines}"
+      "expandedTranscript\n                  ? expandedMessageLines"
     );
     expect(cliTuiInteractiveChatSource).toContain(
-      "const [expandedTranscript, setExpandedTranscript] = React.useState(true)"
+      "const [expandedTranscript, setExpandedTranscript] = React.useState(false)"
     );
     expect(cliTuiInteractiveChatSource).toContain("<TerminalInlineText line={row.label} />");
     expect(cliTuiInteractiveChatSource).not.toContain("compact(row.label");

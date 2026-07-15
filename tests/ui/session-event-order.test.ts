@@ -23,12 +23,8 @@ describe("session event ordering", () => {
 
   test("rejects duplicate and out-of-order sequence numbers", () => {
     const cursor = { runId: "run-a", sequence: 8, timestamp: 200 };
-    expect(resolveSessionEventOrder(cursor, { runId: "run-a", sequence: 8 }).accepted).toBe(
-      false
-    );
-    expect(resolveSessionEventOrder(cursor, { runId: "run-a", sequence: 7 }).accepted).toBe(
-      false
-    );
+    expect(resolveSessionEventOrder(cursor, { runId: "run-a", sequence: 8 }).accepted).toBe(false);
+    expect(resolveSessionEventOrder(cursor, { runId: "run-a", sequence: 7 }).accepted).toBe(false);
   });
 
   test("marks a newer run boundary and rejects delayed prior-run events", () => {

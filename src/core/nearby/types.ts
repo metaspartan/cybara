@@ -103,6 +103,20 @@ export interface NearbyStatus {
   running: boolean;
   advertising: boolean;
   discoverableUntil: string | null;
+  discovery: {
+    udp: {
+      running: boolean;
+      boundPort: number | null;
+      fallback: boolean;
+      error: string | null;
+    };
+    mdns: {
+      running: boolean;
+      interfaceCount: number;
+      error: string | null;
+    };
+    lastRefreshAt: string | null;
+  };
   localAddresses: string[];
   discoveredPeers: NearbyDiscoveredPeer[];
   pairedPeers: Array<Omit<NearbyPeer, "sharedKey" | "publicKey">>;

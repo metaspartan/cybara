@@ -21,6 +21,7 @@ import {
   NearbyLanDiscovery,
   NEARBY_DISCOVERY_PORT,
   type NearbyDiscoveryAnnouncement,
+  type NearbyLanDiscoveryOptions,
 } from "./discovery";
 import {
   isNearbyPrivateAddress,
@@ -262,6 +263,10 @@ const PEER_RULE_NAME = "Cybara Nearby Peer";
 const MDNS_RULE_NAME = "Cybara Nearby mDNS";
 const DISCOVERY_RULE_NAME = "Cybara Nearby Discovery";
 
+export type NearbyLanDiscoveryFactory = (
+  options: NearbyLanDiscoveryOptions
+) => Pick<NearbyLanDiscovery, "start" | "stop" | "refresh" | "status">;
+
 function windowsFirewallRuleExists(name: string): boolean {
   try {
     const result = Bun.spawnSync([
@@ -346,7 +351,12 @@ function ensureWindowsFirewallRules(port: number): void {
 export class NearbyService {
   private server: Bun.Server<unknown> | null = null;
   private multicast: NearbyMulticastNode[] = [];
-  private lanDiscovery: NearbyLanDiscovery | null = null;
+  private lanDiscovery: ReturnType<NearbyLanDiscoveryFactory> | null = null;
+  private lanDiscoveryStartPromise: Promise<void> | null = null;
+  private lanDiscoveryGeneration = 0;
+  private lanDiscoveryError: string | null = null;
+  private multicastError: string | null = null;
+  private lastDiscoveryRefreshAt: string | null = null;
   private discoverableUntilMs = 0;
   private discoverableTimer: ReturnType<typeof setTimeout> | null = null;
   private discoveryQueryTimer: ReturnType<typeof setInterval> | null = null;
@@ -356,7 +366,11 @@ export class NearbyService {
   private readonly pairAttempts = new Map<string, number[]>();
   private pairingRefreshPromise: Promise<void> | null = null;
 
-  constructor(private readonly discoveryPort: number = NEARBY_DISCOVERY_PORT) {}
+  constructor(
+    private readonly discoveryPort: number = NEARBY_DISCOVERY_PORT,
+    private readonly createLanDiscovery: NearbyLanDiscoveryFactory = (options) =>
+      new NearbyLanDiscovery(options)
+  ) {}
 
   async initialize(): Promise<void> {
     if (getNearbySettings().enabled) await this.start();
@@ -414,6 +428,7 @@ export class NearbyService {
           void 0;
         }
       }
+      if (!this.lanDiscovery) void this.startLanDiscovery();
     }, DISCOVERY_QUERY_INTERVAL_MS);
     log.info("Nearby listener started", {
       port: settings.port,
@@ -426,6 +441,7 @@ export class NearbyService {
   }
 
   private startMulticast(): void {
+    this.multicastError = null;
     const interfaceIps = nearbyLanInterfaces().map((entry) => entry.address);
     const bindTargets: Array<string | null> = interfaceIps.length ? interfaceIps : [null];
     for (const interfaceIp of bindTargets) {
@@ -433,6 +449,7 @@ export class NearbyService {
         ? { interface: interfaceIp, bind: "0.0.0.0" }
         : {};
       const bonjour = new BonjourWithBindOptions(options, (error: Error) => {
+        this.multicastError = error.message;
         log.warn("Nearby mDNS discovery error", { error: error.message, interfaceIp });
       });
       const browser = bonjour.find({ type: NEARBY_SERVICE_TYPE, protocol: "tcp" });
@@ -444,18 +461,40 @@ export class NearbyService {
   }
 
   private async startLanDiscovery(): Promise<void> {
-    const discovery = new NearbyLanDiscovery({
+    if (this.lanDiscovery) return;
+    if (this.lanDiscoveryStartPromise) return this.lanDiscoveryStartPromise;
+    const generation = this.lanDiscoveryGeneration;
+    const startPromise = this.openLanDiscovery(generation);
+    this.lanDiscoveryStartPromise = startPromise;
+    void startPromise.finally(() => {
+      if (this.lanDiscoveryStartPromise === startPromise) this.lanDiscoveryStartPromise = null;
+    });
+    return startPromise;
+  }
+
+  private async openLanDiscovery(generation: number): Promise<void> {
+    this.lastDiscoveryRefreshAt = new Date().toISOString();
+    const discovery = this.createLanDiscovery({
       discoveryPort: this.discoveryPort,
       getAnnouncement: () => this.discoveryAnnouncement(),
       onAnnouncement: (announcement, sourceAddress) =>
         this.onLanAnnouncement(announcement, sourceAddress),
-      onError: (error) => log.warn("Nearby LAN discovery error", { error: error.message }),
+      onError: (error) => {
+        this.lanDiscoveryError = error.message;
+        log.warn("Nearby LAN discovery error", { error: error.message });
+      },
     });
     try {
       await discovery.start();
+      if (generation !== this.lanDiscoveryGeneration || !this.server) {
+        discovery.stop();
+        return;
+      }
       this.lanDiscovery = discovery;
+      this.lanDiscoveryError = null;
     } catch (error) {
       discovery.stop();
+      this.lanDiscoveryError = safeError(error);
       log.warn("Nearby LAN discovery could not start; mDNS remains available", {
         error: safeError(error),
       });
@@ -526,8 +565,10 @@ export class NearbyService {
     this.discoveryQueryTimer = null;
     this.discoverableUntilMs = 0;
     this.stopMulticast();
+    this.lanDiscoveryGeneration += 1;
     this.lanDiscovery?.stop();
     this.lanDiscovery = null;
+    this.lanDiscoveryStartPromise = null;
     this.server?.stop(true);
     this.server = null;
     this.discovered.clear();
@@ -556,7 +597,9 @@ export class NearbyService {
     const settings = getNearbySettings();
     if (settings.autoAdvertise || this.discoverableUntilMs > Date.now()) this.advertise();
     for (const node of this.multicast) node.browser.update();
+    await this.startLanDiscovery();
     this.lanDiscovery?.refresh();
+    this.lastDiscoveryRefreshAt = new Date().toISOString();
   }
 
   stopAdvertising(): void {
@@ -717,6 +760,11 @@ export class NearbyService {
     const identity = getNearbyIdentity();
     const incoming = getNearbyIncomingTransfers();
     const peers = getNearbyPeers();
+    const udpStatus = this.lanDiscovery?.status() ?? {
+      running: false,
+      boundPort: null,
+      fallback: false,
+    };
     return {
       settings: getNearbySettings(),
       identity: { id: identity.id, fingerprint: identity.fingerprint },
@@ -726,6 +774,15 @@ export class NearbyService {
         this.discoverableUntilMs > Date.now()
           ? new Date(this.discoverableUntilMs).toISOString()
           : null,
+      discovery: {
+        udp: { ...udpStatus, error: this.lanDiscoveryError },
+        mdns: {
+          running: this.multicast.length > 0,
+          interfaceCount: this.multicast.length,
+          error: this.multicastError,
+        },
+        lastRefreshAt: this.lastDiscoveryRefreshAt,
+      },
       localAddresses: nearbyLanInterfaces().map(
         (entry) => `http://${entry.address}:${getNearbySettings().port}`
       ),

@@ -23,6 +23,19 @@ export function NearbyMobileSettings({ api }: { api: CybaraMobileApi }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pairAddress, setPairAddress] = useState("");
+  const discoveryUnavailable = Boolean(
+    settings.enabled &&
+      status?.running &&
+      status.discovery !== undefined &&
+      !status.discovery.udp.running &&
+      !status.discovery.mdns.running
+  );
+  const discoveryFallback = Boolean(
+    settings.enabled &&
+      status?.running &&
+      !discoveryUnavailable &&
+      (status.discovery?.udp.error || status.discovery?.mdns.error)
+  );
 
   const load = useCallback(
     async (syncSettings = true) => {
@@ -79,6 +92,12 @@ export function NearbyMobileSettings({ api }: { api: CybaraMobileApi }) {
           </Text>
         </View>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
+        {discoveryUnavailable ? (
+          <Text style={styles.errorText}>Automatic device discovery is unavailable.</Text>
+        ) : null}
+        {discoveryFallback ? (
+          <Text style={styles.settingsFieldHelp}>Using the available discovery fallback.</Text>
+        ) : null}
         {!error || status ? (
           <>
             <SettingToggle

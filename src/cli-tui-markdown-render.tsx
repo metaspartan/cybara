@@ -40,12 +40,21 @@ export function TerminalInlineText({
 
 export function TerminalMessageBody({
   content,
+  hiddenText,
+  maxColumns,
   maxLines,
 }: {
   content: string;
+  hiddenText?: string;
+  maxColumns?: number;
   maxLines?: number;
 }): React.ReactElement {
-  const lines = transcriptWindow(content, maxLines ?? Number.MAX_SAFE_INTEGER);
+  const lines = transcriptWindow(
+    content,
+    maxLines ?? Number.MAX_SAFE_INTEGER,
+    maxColumns,
+    hiddenText,
+  );
   return (
     <Box flexDirection="column" width="100%">
       {lines.map((line, index) => {

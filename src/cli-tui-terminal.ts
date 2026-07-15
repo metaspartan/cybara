@@ -109,7 +109,60 @@ export function composerWindow(value: string, cursor: number, maxLines: number):
   return window;
 }
 
-export function transcriptWindow(content: string, maxLines: number): TranscriptLine[] {
+function terminalLineRows(line: TranscriptLine, maxColumns: number): number {
+  if (!Number.isFinite(maxColumns)) return 1;
+  return Math.max(1, Math.ceil(Math.max(1, Array.from(line.text).length) / maxColumns));
+}
+
+function terminalLineFragment(
+  line: TranscriptLine,
+  maxColumns: number,
+  rows: number,
+  tail: boolean
+): TranscriptLine {
+  const characters = Math.max(1, maxColumns * rows);
+  const values = Array.from(line.text);
+  if (values.length <= characters) return line;
+  return {
+    ...line,
+    text: tail ? values.slice(-characters).join("") : values.slice(0, characters).join(""),
+  };
+}
+
+function terminalWindowSide(
+  lines: TranscriptLine[],
+  maxColumns: number,
+  rowBudget: number,
+  tail: boolean
+): TranscriptLine[] {
+  if (rowBudget <= 0) return [];
+  const selected: TranscriptLine[] = [];
+  let remaining = rowBudget;
+  const indexes = tail
+    ? Array.from({ length: lines.length }, (_, index) => lines.length - index - 1)
+    : Array.from({ length: lines.length }, (_, index) => index);
+  for (const index of indexes) {
+    const line = lines[index];
+    if (!line) continue;
+    const rows = terminalLineRows(line, maxColumns);
+    if (rows <= remaining) {
+      selected.push(line);
+      remaining -= rows;
+    } else {
+      selected.push(terminalLineFragment(line, maxColumns, remaining, tail));
+      remaining = 0;
+    }
+    if (remaining <= 0) break;
+  }
+  return tail ? selected.reverse() : selected;
+}
+
+export function transcriptWindow(
+  content: string,
+  maxLines: number,
+  maxColumns = Number.POSITIVE_INFINITY,
+  hiddenText = "… more content hidden · /expand shows more"
+): TranscriptLine[] {
   let inCode = false;
   const sourceLines = content
     .replace(/\r\n/g, "\n")
@@ -127,19 +180,30 @@ export function transcriptWindow(content: string, maxLines: number): TranscriptL
       };
     });
   const limit = Math.max(1, maxLines);
-  const selected =
-    sourceLines.length > limit
-      ? [
-          ...sourceLines.slice(0, Math.ceil((limit - 1) / 2)),
-          {
-            text: `… ${sourceLines.length - limit} lines hidden · /expand to show all`,
-            code: false,
-            hidden: true,
-          },
-          ...sourceLines.slice(-Math.floor((limit - 1) / 2)),
-        ]
-      : sourceLines;
-  return selected;
+  const columns = Number.isFinite(maxColumns) ? Math.max(12, Math.floor(maxColumns)) : maxColumns;
+  const renderedRows = sourceLines.reduce(
+    (total, line) => total + terminalLineRows(line, columns),
+    0
+  );
+  if (renderedRows <= limit) return sourceLines;
+  const contentRows = Math.max(1, limit - 1);
+  const headRows = Math.ceil(contentRows / 2);
+  const tailRows = Math.floor(contentRows / 2);
+  const head = terminalWindowSide(sourceLines, columns, headRows, false);
+  const usedHeadIndexes = new Set(
+    head.map((line) => sourceLines.indexOf(line)).filter((index) => index >= 0)
+  );
+  const tailSource = sourceLines.filter((_, index) => !usedHeadIndexes.has(index));
+  const tail = terminalWindowSide(tailSource, columns, tailRows, true);
+  return [
+    ...head,
+    {
+      text: hiddenText,
+      code: false,
+      hidden: true,
+    },
+    ...tail,
+  ];
 }
 
 export function clipboardCandidates(platform: NodeJS.Platform, env: NodeJS.ProcessEnv): string[][] {

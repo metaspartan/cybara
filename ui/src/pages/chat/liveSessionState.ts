@@ -10,7 +10,8 @@ export interface CachedLiveSessionState {
   updatedAt: number;
 }
 
-interface CachedLiveSessionWrite extends Omit<CachedLiveSessionState, "updatedAt" | "runId" | "startedAtMs"> {
+interface CachedLiveSessionWrite
+  extends Omit<CachedLiveSessionState, "updatedAt" | "runId" | "startedAtMs"> {
   runId?: string | null;
   startedAtMs?: number | null;
   updatedAt?: number;
@@ -51,9 +52,9 @@ export function writeCachedLiveSessionState(
   liveSessionStateCache.set(key, {
     ...state,
     activities: state.activities.map((activity) => ({ ...activity })),
-    runId: state.runId === undefined ? previous?.runId ?? null : state.runId,
+    runId: state.runId === undefined ? (previous?.runId ?? null) : state.runId,
     startedAtMs:
-      state.startedAtMs === undefined ? previous?.startedAtMs ?? null : state.startedAtMs,
+      state.startedAtMs === undefined ? (previous?.startedAtMs ?? null) : state.startedAtMs,
     updatedAt: state.updatedAt ?? Date.now(),
   });
 }

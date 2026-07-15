@@ -88,19 +88,22 @@ export function trackApiCall(
   );
 }
 
-const GATEWAY_TELEMETRY_COMPACTION_BATCH = 2_000;
-const GATEWAY_TELEMETRY_COMPACTION_INTERVAL_MS = 1_000;
+export const GATEWAY_TELEMETRY_MAINTENANCE = Object.freeze({
+  batchSize: 250,
+  intervalMs: 2_000,
+  initialDelayMs: 30_000,
+});
 let gatewayTelemetryMaintenanceStarted = false;
 
 export function startGatewayTelemetryMaintenance(): void {
   if (gatewayTelemetryMaintenanceStarted || process.env.NODE_ENV === "test") return;
   gatewayTelemetryMaintenanceStarted = true;
   const compact = (): void => {
-    const deleted = tables.metrics.compactGatewayTelemetry(GATEWAY_TELEMETRY_COMPACTION_BATCH);
+    const deleted = tables.metrics.compactGatewayTelemetry(GATEWAY_TELEMETRY_MAINTENANCE.batchSize);
     if (deleted <= 0) return;
-    setTimeout(compact, GATEWAY_TELEMETRY_COMPACTION_INTERVAL_MS);
+    setTimeout(compact, GATEWAY_TELEMETRY_MAINTENANCE.intervalMs);
   };
-  setTimeout(compact, 5_000);
+  setTimeout(compact, GATEWAY_TELEMETRY_MAINTENANCE.initialDelayMs);
 }
 
 export function trackFileOperation(

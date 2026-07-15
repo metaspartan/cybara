@@ -1258,12 +1258,7 @@ export function Chat() {
       });
       return true;
     },
-    [
-      acceptSessionEvent,
-      isSessionStopSuppressed,
-      resolveSnapshotLiveState,
-      snapshotLatestTimestamp,
-    ]
+    [acceptSessionEvent, isSessionStopSuppressed, resolveSnapshotLiveState, snapshotLatestTimestamp]
   );
 
   const cacheAssistantToken = useCallback(
@@ -1996,9 +1991,9 @@ export function Chat() {
           if (!loadingRef.current) {
             const sessionToRefresh = payloadSessionId || activeSession;
             const finalizeLiveState = () => {
+              setStreamingContent(null);
               liveRunStartedAtMsRef.current = null;
               setLiveRunStartedAtMs(null);
-              setStreamingContent(null);
               setLiveActivities([]);
               runActivityBufferRef.current = [];
               clearCachedLiveSessionState(sessionToRefresh);

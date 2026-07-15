@@ -48,6 +48,8 @@ import { sessionDisplayTitle, sessionPreviewText, sessionRouteLabel } from "./ch
 import {
   type ChatSidebarSession,
   type ChatSidebarSessionGroup,
+  defaultCollapsedSessionGroupIds,
+  expandSelectedSessionGroup,
   groupSessionsForSidebar,
 } from "./sessionGrouping";
 
@@ -302,6 +304,7 @@ export function SessionsPanel({
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const sessionsRefreshTimerRef = useRef<number | null>(null);
   const sessionLoadSequenceRef = useRef(0);
+  const collapsedGroupsInitializedRef = useRef(false);
   const sessionGroups = useMemo(() => {
     const groups = groupSessionsForSidebar(sessions, "");
     return [...groups].sort((a, b) => {
@@ -313,6 +316,9 @@ export function SessionsPanel({
       return 0;
     });
   }, [sessions, pinnedWorkspaceGroupIds]);
+  const visibleCollapsedGroupIds = collapsedGroupsInitializedRef.current
+    ? collapsedGroupIds
+    : defaultCollapsedSessionGroupIds(sessionGroups, currentSessionId);
   const activeTasks = useMemo(() => {
     return tasks
       .filter(
@@ -349,6 +355,18 @@ export function SessionsPanel({
       .slice(0, 12);
   }, [deferredSearchQuery, sessions]);
   const hasPinnedGroup = sessionGroups.some((group) => group.kind === "pinned");
+
+  useEffect(() => {
+    if (sessionGroups.length === 0) return;
+    if (!collapsedGroupsInitializedRef.current) {
+      collapsedGroupsInitializedRef.current = true;
+      setCollapsedGroupIds(defaultCollapsedSessionGroupIds(sessionGroups, currentSessionId));
+      return;
+    }
+    setCollapsedGroupIds((current) =>
+      expandSelectedSessionGroup(current, sessionGroups, currentSessionId)
+    );
+  }, [currentSessionId, sessionGroups]);
 
   const handleTogglePin = useCallback(
     (event: MouseEvent, sessionId: string, pinned: boolean) => {
@@ -595,7 +613,7 @@ export function SessionsPanel({
           ) : sessionGroups.length === 0 ? (
             <ActiveTasksSection
               tasks={activeTasks}
-              collapsed={collapsedGroupIds.has("active-tasks")}
+              collapsed={visibleCollapsedGroupIds.has("active-tasks")}
               onToggle={() => toggleGroupCollapsed("active-tasks")}
               onOpen={openTask}
             />
@@ -605,7 +623,7 @@ export function SessionsPanel({
                 {!hasPinnedGroup && index === 0 && (
                   <ActiveTasksSection
                     tasks={activeTasks}
-                    collapsed={collapsedGroupIds.has("active-tasks")}
+                    collapsed={visibleCollapsedGroupIds.has("active-tasks")}
                     onToggle={() => toggleGroupCollapsed("active-tasks")}
                     onOpen={openTask}
                   />
@@ -618,7 +636,7 @@ export function SessionsPanel({
                   data-testid="chat-session-group-header"
                   data-group-kind={group.kind}
                   data-group-id={group.id}
-                  aria-expanded={group.kind === "pinned" || !collapsedGroupIds.has(group.id)}
+                  aria-expanded={group.kind === "pinned" || !visibleCollapsedGroupIds.has(group.id)}
                 >
                   <button
                     type="button"
@@ -631,7 +649,7 @@ export function SessionsPanel({
                       group.kind === "pinned" ? "Pinned chats" : `${group.label} workspace`
                     }
                   >
-                    {group.kind === "pinned" ? null : collapsedGroupIds.has(group.id) ? (
+                    {group.kind === "pinned" ? null : visibleCollapsedGroupIds.has(group.id) ? (
                       <ChevronRight className="h-3 w-3 shrink-0" />
                     ) : (
                       <ChevronDown className="h-3 w-3 shrink-0" />
@@ -714,7 +732,7 @@ export function SessionsPanel({
                     <span className="text-[10px] text-gray-600">{group.sessions.length}</span>
                   )}
                 </div>
-                {(group.kind === "pinned" || !collapsedGroupIds.has(group.id)) &&
+                {(group.kind === "pinned" || !visibleCollapsedGroupIds.has(group.id)) &&
                   group.sessions.map((session) => {
                     const sessionRecord = session as unknown as Record<string, unknown>;
                     const displayTitle = sessionDisplayTitle(sessionRecord);
@@ -876,7 +894,7 @@ export function SessionsPanel({
                 {group.kind === "pinned" && (
                   <ActiveTasksSection
                     tasks={activeTasks}
-                    collapsed={collapsedGroupIds.has("active-tasks")}
+                    collapsed={visibleCollapsedGroupIds.has("active-tasks")}
                     onToggle={() => toggleGroupCollapsed("active-tasks")}
                     onOpen={openTask}
                   />

@@ -582,6 +582,7 @@ struct ChatScreen: View {
     @State private var liveCurrentStep: String?
     @State private var liveStartedAt: Date?
     @State private var streamingContent: String?
+    @State private var liveEventCursor = NativeSessionEventCursor()
     @State private var pendingMessages: [GatewayPendingChatMessage] = []
     @State private var steeringPendingID: String?
     @State private var pendingMutationID: String?
@@ -622,6 +623,7 @@ struct ChatScreen: View {
         }
         .task(id: selectedSessionID) {
             resetLiveTimeline(clearStartedAt: true)
+            liveEventCursor = NativeSessionEventCursor()
             pendingMessages = []
             if pendingAgentSessionID != selectedSessionID {
                 pendingAgentSessionID = nil
@@ -3556,18 +3558,28 @@ struct ChatScreen: View {
     }
 
     private func handleStatusEvent(_ event: GatewayStatusEvent) {
-        updateActiveSessionIDs(from: event)
         switch event.type {
         case "snapshot":
-            guard let snapshot = snapshotForVisibleSession(event) else { return }
+            guard let snapshot = snapshotForVisibleSession(event) else {
+                updateActiveSessionIDs(from: event)
+                return
+            }
+            guard acceptLiveEvent(runId: snapshot.runId, sequence: snapshot.sequence, timestamp: snapshot.timestamp) else { return }
+            updateActiveSessionIDs(from: event)
             applyStatusSnapshot(snapshot)
         case "assistant_token":
             guard eventMatchesVisibleSession(event) else { return }
             guard let delta = event.delta, !delta.isEmpty else { return }
+            guard acceptLiveEvent(runId: event.runId, sequence: event.sequence, timestamp: event.timestamp) else { return }
+            updateActiveSessionIDs(from: event)
             streamingContent = (streamingContent ?? "") + delta
             if liveStartedAt == nil { liveStartedAt = Date() }
             liveStatus = "generating"
         case "status", nil:
+            if eventMatchesVisibleSession(event) {
+                guard acceptLiveEvent(runId: event.runId, sequence: event.sequence, timestamp: event.timestamp) else { return }
+            }
+            updateActiveSessionIDs(from: event)
             applyStatusEvent(event)
         default:
             return
@@ -3601,6 +3613,14 @@ struct ChatScreen: View {
         guard !status.isEmpty else { return }
 
         if status == "idle" {
+            if firstNonEmptyGatewayString(event.detail)?.lowercased() == "steering to follow-up..." {
+                liveStatus = "thinking"
+                liveCurrentStep = "Steering to follow-up..."
+                if let id = selectedSessionID {
+                    Task { await loadMessages(id) }
+                }
+                return
+            }
             if !sending {
                 // Fetch the persisted reply before dropping the live timeline
                 // so the chat never goes blank right as a run finishes.
@@ -3687,6 +3707,18 @@ struct ChatScreen: View {
         if clearStartedAt {
             liveStartedAt = nil
         }
+    }
+
+    private func acceptLiveEvent(runId: String?, sequence: Double?, timestamp: Double?) -> Bool {
+        let decision = liveEventCursor.accept(runId: runId, sequence: sequence, timestamp: timestamp)
+        if decision.runChanged {
+            resetLiveTimeline(clearStartedAt: true)
+            liveStartedAt = timestamp.map { Date(timeIntervalSince1970: $0 / 1000) } ?? Date()
+            if let id = selectedSessionID {
+                Task { await loadMessages(id) }
+            }
+        }
+        return decision.accepted
     }
 }
 

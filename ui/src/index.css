@@ -903,7 +903,8 @@ textarea[data-chat-composer-input="true"]::placeholder {
 
   .chat-agent-selector:hover,
   .chat-agent-selector:focus {
-    color: transparent;
+    color: transparent !important;
+    -webkit-text-fill-color: transparent;
   }
 
   .chat-agent-selector-shell,
@@ -913,7 +914,8 @@ textarea[data-chat-composer-input="true"]::placeholder {
   }
 
   .chat-agent-selector {
-    color: transparent;
+    color: transparent !important;
+    -webkit-text-fill-color: transparent;
   }
 
   .chat-agent-selector-compact-label {

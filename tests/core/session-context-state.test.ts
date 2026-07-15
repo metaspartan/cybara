@@ -4,6 +4,7 @@ import { tables } from "../../src/core/database";
 import {
   clearSessionContextState,
   deletePersistedSession,
+  listPersistedSessions,
   loadPersistedSession,
   persistSession,
   persistSessionContextState,
@@ -76,5 +77,80 @@ describe("persisted active session context", () => {
     expect((await loadPersistedSession(sessionId))?.compactionCount).toBe(1);
     expect(clearSessionContextState(sessionId)).toBe(true);
     expect((await loadPersistedSession(sessionId))?.contextMessages).toBeNull();
+  });
+
+  test("stable retries preserve transcript append order and the final assistant", async () => {
+    const sessionId = `context-stable-order-${crypto.randomUUID()}`;
+    sessionIds.push(sessionId);
+    const messages: ChatMessage[] = [
+      {
+        role: "user",
+        content: "Start the long task",
+        timestamp: "2026-07-15T09:00:00.000Z",
+      },
+      {
+        role: "assistant",
+        content: "",
+        timestamp: "2026-07-15T09:00:05.000Z",
+        process_activities: [
+          {
+            id: "steered-boundary",
+            phase: "result",
+            text: "Conversation steered.",
+            timestamp: Date.parse("2026-07-15T09:00:05.000Z"),
+            toolName: "__steering",
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: "Change direction",
+        timestamp: "2026-07-15T09:00:05.001Z",
+      },
+      {
+        role: "assistant",
+        content: "Finished the steered task",
+        timestamp: "2026-07-15T09:00:08.000Z",
+      },
+    ];
+    expect(await persistSession(sessionId, "context-agent", messages)).toBe(true);
+    await upsertPersistedSessionMessage(sessionId, "context-agent", messages[0]!, {
+      stableKey: "initial-user",
+    });
+    await upsertPersistedSessionMessage(sessionId, "context-agent", messages[1]!, {
+      stableKey: "steering-boundary",
+    });
+    await upsertPersistedSessionMessage(sessionId, "context-agent", messages[2]!, {
+      stableKey: "steering-user",
+    });
+    await upsertPersistedSessionMessage(sessionId, "context-agent", messages[3]!, {
+      stableKey: "final-assistant",
+    });
+
+    await upsertPersistedSessionMessage(
+      sessionId,
+      "context-agent",
+      { ...messages[1]!, timestamp: "2026-07-15T15:00:00.000Z" },
+      { stableKey: "steering-boundary" }
+    );
+    await upsertPersistedSessionMessage(
+      sessionId,
+      "context-agent",
+      { ...messages[2]!, timestamp: "2026-07-15T15:00:00.001Z" },
+      { stableKey: "steering-user" }
+    );
+
+    const restored = await loadPersistedSession(sessionId);
+    expect(restored?.messages.map((message) => message.content)).toEqual([
+      "Start the long task",
+      "",
+      "Change direction",
+      "Finished the steered task",
+    ]);
+    expect(restored?.messages[1]?.timestamp).toBe("2026-07-15 09:00:05.000");
+    expect(restored?.messages.at(-1)?.content).toBe("Finished the steered task");
+    const summary = (await listPersistedSessions()).find((session) => session.id === sessionId);
+    expect(summary?.lastMessageRole).toBe("assistant");
+    expect(summary?.lastMessageContent).toBe("Finished the steered task");
   });
 });

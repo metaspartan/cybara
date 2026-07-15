@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { GATEWAY_TELEMETRY_MAINTENANCE } from "../../src/core/metrics";
 
 interface GatewayTelemetryResult {
   success: number;
@@ -14,6 +15,12 @@ interface GatewayTelemetryResult {
 }
 
 describe("gateway telemetry storage", () => {
+  test("keeps legacy cleanup work below interactive latency thresholds", () => {
+    expect(GATEWAY_TELEMETRY_MAINTENANCE.batchSize).toBeLessThanOrEqual(250);
+    expect(GATEWAY_TELEMETRY_MAINTENANCE.intervalMs).toBeGreaterThanOrEqual(2_000);
+    expect(GATEWAY_TELEMETRY_MAINTENANCE.initialDelayMs).toBeGreaterThanOrEqual(30_000);
+  });
+
   test("records request totals and daily counts without raw request rows", async () => {
     const home = mkdtempSync(join(tmpdir(), "cybara-gateway-telemetry-"));
     const metricsPath = join(import.meta.dir, "../../src/core/metrics.ts");

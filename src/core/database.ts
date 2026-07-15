@@ -786,9 +786,7 @@ const stmts = {
     ),
   },
   sessionMessages: {
-    getBySession: prepare(
-      "SELECT * FROM session_messages WHERE session_id = ? ORDER BY created_at ASC, rowid ASC"
-    ),
+    getBySession: prepare("SELECT * FROM session_messages WHERE session_id = ? ORDER BY rowid ASC"),
     add: prepare(
       "INSERT INTO session_messages (id, session_id, agent_id, channel_type, channel_id, role, content, metadata, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))"
     ),

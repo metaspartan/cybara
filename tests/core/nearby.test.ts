@@ -15,6 +15,7 @@ import {
   getNearbySettings,
   NearbyLanDiscovery,
   NearbyService,
+  type NearbyLanDiscoveryFactory,
   nearbyBroadcastAddresses,
   normalizeNearbySettings,
   parseNearbyDiscoveryDatagram,
@@ -249,6 +250,68 @@ describe("nearby network and settings boundaries", () => {
       sender.close();
       service.stop();
       remote.stop(true);
+      setNearbySettings(previous);
+    }
+  });
+
+  test("restarts UDP discovery after a transient startup failure", async () => {
+    const previous = getNearbySettings();
+    const portProbe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
+    const nearbyPort = portProbe.port;
+    portProbe.stop(true);
+    let attempts = 0;
+    let refreshes = 0;
+    const factory: NearbyLanDiscoveryFactory = () => {
+      attempts += 1;
+      if (attempts === 1) {
+        return {
+          start: async () => {
+            throw new Error("temporary UDP failure");
+          },
+          stop: () => undefined,
+          refresh: () => undefined,
+          status: () => ({ running: false, boundPort: null, fallback: false }),
+        };
+      }
+      return {
+        start: async () => undefined,
+        stop: () => undefined,
+        refresh: () => {
+          refreshes += 1;
+        },
+        status: () => ({ running: true, boundPort: 51_234, fallback: true }),
+      };
+    };
+    const service = new NearbyService(51_233, factory);
+    try {
+      await service.configure({
+        enabled: true,
+        displayName: "Recovering Nearby",
+        port: nearbyPort,
+        discoveryMinutes: 5,
+        autoAdvertise: true,
+      });
+      expect((await service.status()).discovery.udp).toEqual({
+        running: false,
+        boundPort: null,
+        fallback: false,
+        error: "temporary UDP failure",
+      });
+
+      await service.refreshDiscovery();
+
+      const recovered = (await service.status()).discovery;
+      expect(attempts).toBe(2);
+      expect(refreshes).toBeGreaterThan(0);
+      expect(recovered.udp).toEqual({
+        running: true,
+        boundPort: 51_234,
+        fallback: true,
+        error: null,
+      });
+      expect(recovered.lastRefreshAt).not.toBeNull();
+    } finally {
+      service.stop();
       setNearbySettings(previous);
     }
   });

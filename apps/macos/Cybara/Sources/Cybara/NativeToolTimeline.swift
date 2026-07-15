@@ -18,6 +18,30 @@ struct NativeToolActivity: Identifiable, Hashable {
     let sandboxProvider: String?
 }
 
+struct NativeSessionEventCursor: Equatable {
+    var runId: String?
+    var sequence = 0.0
+    var timestamp = 0.0
+
+    mutating func accept(runId incomingRunId: String?, sequence incomingSequence: Double?, timestamp incomingTimestamp: Double?) -> (accepted: Bool, runChanged: Bool) {
+        let normalizedRunId = incomingRunId?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nextRunId = normalizedRunId?.isEmpty == false ? normalizedRunId : nil
+        let nextSequence = incomingSequence.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 0
+        let nextTimestamp = incomingTimestamp.flatMap { $0.isFinite && $0 > 0 ? $0 : nil } ?? 0
+        if nextSequence > 0 && sequence > 0 && nextSequence <= sequence {
+            return (false, false)
+        }
+        if nextSequence == 0 && nextTimestamp > 0 && timestamp > 0 && nextTimestamp + 25 < timestamp {
+            return (false, false)
+        }
+        let runChanged = runId != nil && nextRunId != nil && runId != nextRunId
+        runId = nextRunId ?? runId
+        sequence = max(sequence, nextSequence)
+        timestamp = max(timestamp, nextTimestamp)
+        return (true, runChanged)
+    }
+}
+
 func nativeAgentUsingBrowser(_ activities: [NativeToolActivity], sessionActive: Bool) -> Bool {
     guard sessionActive else { return false }
     return activities.contains { activity in

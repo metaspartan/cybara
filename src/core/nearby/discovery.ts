@@ -32,6 +32,12 @@ export interface NearbyLanDiscoveryOptions {
   onError?: (error: Error) => void;
 }
 
+export interface NearbyLanDiscoveryStatus {
+  running: boolean;
+  boundPort: number | null;
+  fallback: boolean;
+}
+
 function ipv4Number(value: string): number | null {
   const parts = value.split(".").map(Number);
   if (
@@ -120,6 +126,14 @@ export class NearbyLanDiscovery {
     this.socket.setTTL(1);
     this.refresh();
     this.interval = setInterval(() => this.sendDiscovery(), ANNOUNCEMENT_INTERVAL_MS);
+  }
+
+  status(): NearbyLanDiscoveryStatus {
+    return {
+      running: this.socket !== null,
+      boundPort: this.socket?.port ?? null,
+      fallback: this.socket !== null && this.socket.port !== this.discoveryPort,
+    };
   }
 
   stop(): void {

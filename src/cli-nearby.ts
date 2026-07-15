@@ -33,12 +33,44 @@ interface NearbyTransferSummary {
 interface NearbyStatus {
   settings: NearbySettings;
   running: boolean;
+  advertising: boolean;
   discoverableUntil: string | null;
+  discovery?: {
+    udp: {
+      running: boolean;
+      boundPort: number | null;
+      fallback: boolean;
+      error: string | null;
+    };
+    mdns: {
+      running: boolean;
+      interfaceCount: number;
+      error: string | null;
+    };
+    lastRefreshAt: string | null;
+  };
   localAddresses: string[];
   discoveredPeers: NearbyPeerSummary[];
   pairedPeers: NearbyPeerSummary[];
   pairings: NearbyPairingSummary[];
   incomingTransfers: NearbyTransferSummary[];
+}
+
+function nearbyDiscoveryLabel(status: NearbyStatus): string {
+  if (!status.settings.enabled) return "off";
+  if (!status.running) return "unavailable";
+  if (!status.advertising) return "idle";
+  return status.discoverableUntil ? `active until ${status.discoverableUntil}` : "active";
+}
+
+function nearbyTransportLabel(status: NearbyStatus): string | null {
+  if (!status.discovery) return null;
+  const transports: string[] = [];
+  if (status.discovery.udp.running) {
+    transports.push(status.discovery.udp.fallback ? "UDP fallback" : "UDP");
+  }
+  if (status.discovery.mdns.running) transports.push("mDNS");
+  return transports.length ? transports.join(" + ") : "unavailable";
 }
 
 function nearbyHelp(): void {
@@ -59,7 +91,9 @@ function nearbyHelp(): void {
 function printNearbyStatus(status: NearbyStatus): void {
   console.log(`Nearby Cybara: ${status.settings.enabled ? "enabled" : "disabled"}`);
   console.log(`Listener: ${status.running ? `port ${status.settings.port}` : "stopped"}`);
-  console.log(`Discovery: ${status.discoverableUntil || "off"}`);
+  console.log(`Discovery: ${nearbyDiscoveryLabel(status)}`);
+  const transport = nearbyTransportLabel(status);
+  if (transport) console.log(`Transport: ${transport}`);
   for (const address of status.localAddresses || []) console.log(`Address: ${address}`);
   console.log("");
   console.log(`Trusted devices (${status.pairedPeers.length})`);

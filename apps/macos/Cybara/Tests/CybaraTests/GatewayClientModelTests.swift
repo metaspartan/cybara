@@ -1899,6 +1899,21 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(appearance.payload["fontSize"] as? String, "extra_large")
     }
 
+    func testNativeSessionEventCursorRejectsStaleEventsAcrossRuns() {
+        var cursor = NativeSessionEventCursor()
+        let first = cursor.accept(runId: "run-a", sequence: 4, timestamp: 100)
+        let nextRun = cursor.accept(runId: "run-b", sequence: 5, timestamp: 110)
+        let delayed = cursor.accept(runId: "run-a", sequence: 3, timestamp: 120)
+
+        XCTAssertTrue(first.accepted)
+        XCTAssertFalse(first.runChanged)
+        XCTAssertTrue(nextRun.accepted)
+        XCTAssertTrue(nextRun.runChanged)
+        XCTAssertFalse(delayed.accepted)
+        XCTAssertEqual(cursor.runId, "run-b")
+        XCTAssertEqual(cursor.sequence, 5)
+    }
+
     private func decodeSession(_ json: String) throws -> GatewaySession {
         try JSONDecoder().decode(GatewaySession.self, from: Data(json.utf8))
     }

@@ -62,10 +62,10 @@ The installer selects the correct release for the current platform and verifies 
 ## Cybara in Action
 
 <p align="center">
-  <img src="docs/images/cybara-web-chat.jpg" alt="Cybara web chat showing MiniMax building and verifying a SolarFlow energy dashboard" width="100%" />
+  <img src="docs/images/cybara-web-chat.jpg" alt="Cybara Web and Tauri chat showing MiniMax building and verifying a SolarFlow energy dashboard" width="100%" />
 </p>
 
-<p align="center"><strong>Web and desktop chat</strong> with persisted workspaces, plans, grouped live activity, file changes, embedded previews, context controls, and agent selection.</p>
+<p align="center"><strong>Web and Tauri chat</strong> with persisted workspaces, plans, grouped live activity, file changes, embedded previews, context controls, and agent selection.</p>
 
 <p align="center">
   <img src="docs/images/cybara-tui-chat.png" alt="Cybara terminal chat showing the MiniMax SolarFlow build handoff" width="100%" />

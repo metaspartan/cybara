@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
+  defaultCollapsedSessionGroupIds,
+  expandSelectedSessionGroup,
   groupSessionsForSidebar,
   workspaceSidebarLabel,
   type ChatSidebarSession,
@@ -74,5 +76,36 @@ describe("chat session sidebar grouping", () => {
   test("uses the workspace basename for section labels", () => {
     expect(workspaceSidebarLabel("/Users/carsen/Documents/GitHub/cybara")).toBe("cybara");
     expect(workspaceSidebarLabel(null)).toBe("No Workspace");
+  });
+
+  test("starts with only the selected workspace and pinned chats expanded", () => {
+    const groups = groupSessionsForSidebar(
+      [
+        session({ id: "pinned", pinned: true, workspace_dir: "/tmp/pinned" }),
+        session({ id: "active", workspace_dir: "/work/active" }),
+        session({ id: "other", workspace_dir: "/work/other" }),
+        session({ id: "none" }),
+      ],
+      ""
+    );
+
+    expect([...defaultCollapsedSessionGroupIds(groups, "active")]).toEqual([
+      "workspace:/work/other",
+      "__unassigned",
+    ]);
+  });
+
+  test("expands a collapsed workspace when its session becomes selected", () => {
+    const groups = groupSessionsForSidebar(
+      [
+        session({ id: "active", workspace_dir: "/work/active" }),
+        session({ id: "other", workspace_dir: "/work/other" }),
+      ],
+      ""
+    );
+    const collapsed = new Set(["workspace:/work/other"]);
+
+    expect([...expandSelectedSessionGroup(collapsed, groups, "other")]).toEqual([]);
+    expect([...collapsed]).toEqual(["workspace:/work/other"]);
   });
 });

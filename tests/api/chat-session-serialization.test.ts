@@ -17,6 +17,7 @@ import {
 } from "../../src/api/chat";
 import { broadcastStatus, onStatusStream } from "../../src/core/status";
 import { config } from "../../src/core/config";
+import { listSessionEvents } from "../../src/core/session-event-ledger";
 import {
   loadPersistedSession,
   upsertPersistedSessionMessage,
@@ -1232,6 +1233,13 @@ describe("handleChat per-session serialization", () => {
     expect(messages[2]?.content).toBe("adjust course");
     expect(messages[3]?.role).toBe("assistant");
     expect(messages[3]?.content).toBe("steer-reply-2");
+    const runEvents = listSessionEvents(sessionId);
+    const runStarts = runEvents.filter((event) => event.type === "run_started");
+    const firstRunCompletion = runEvents.find(
+      (event) => event.type === "run_completed" && event.runId === runStarts[0]?.runId
+    );
+    expect(new Set(runStarts.map((event) => event.runId)).size).toBeGreaterThanOrEqual(2);
+    expect(firstRunCompletion?.sequence).toBeLessThan(runStarts[1]?.sequence ?? 0);
   });
 
   test("steering during an aborted execution drains the materialized follow-up", async () => {
