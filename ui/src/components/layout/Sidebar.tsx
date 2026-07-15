@@ -515,7 +515,7 @@ export function Sidebar() {
                     title={collapsed ? t("chat.sidebar.newChat") : undefined}
                     aria-disabled={!hasAgents}
                     className={cn(
-                      "flex items-center gap-2.5 rounded-lg text-[13px] font-medium text-gray-400 transition-all duration-200 hover:bg-white/5 hover:text-white !ring-0 !border-transparent",
+                      "flex w-full items-center gap-2.5 rounded-lg text-[13px] font-medium text-gray-400 transition-all duration-200 hover:bg-white/5 hover:text-white !ring-0 !border-transparent",
                       collapsed ? "justify-center px-3 py-2.5" : "px-3.5 py-1.5",
                       !hasAgents && "pointer-events-none opacity-45"
                     )}

@@ -1,9 +1,9 @@
 import { Database } from "bun:sqlite";
+import { chmodSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
-import { mkdirSync, existsSync, chmodSync } from "fs";
 import { dataDir } from "./paths";
-import { applyPendingSystemRestore } from "./system-backup";
 import { isSealedSecret, openSecret, sealSecret } from "./secret-storage";
+import { applyPendingSystemRestore } from "./system-backup";
 
 const restoreStatus = applyPendingSystemRestore();
 if (restoreStatus.state === "completed") {
@@ -944,9 +944,8 @@ const stmts = {
     ),
     compactGatewayTelemetry: prepare(
       `DELETE FROM metrics WHERE rowid IN (
-         SELECT rowid FROM metrics
+         SELECT rowid FROM metrics INDEXED BY idx_metrics_type_created
          WHERE type IN ('api_status', 'api_endpoint')
-            OR (type = 'api_call' AND metadata LIKE '%"endpoint"%')
          LIMIT ?
        )`
     ),

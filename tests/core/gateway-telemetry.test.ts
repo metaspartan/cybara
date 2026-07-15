@@ -11,11 +11,12 @@ interface GatewayTelemetryResult {
   raw: number;
   compacted: number;
   rawAfterCompaction: number;
+  providerCallTotal: number;
   daily: Array<{ key: string; value: number }>;
 }
 
 describe("gateway telemetry storage", () => {
-  test("keeps legacy cleanup work below interactive latency thresholds", () => {
+  test("keeps cleanup batches below interactive latency thresholds", () => {
     expect(GATEWAY_TELEMETRY_MAINTENANCE.batchSize).toBeLessThanOrEqual(250);
     expect(GATEWAY_TELEMETRY_MAINTENANCE.intervalMs).toBeGreaterThanOrEqual(2_000);
     expect(GATEWAY_TELEMETRY_MAINTENANCE.initialDelayMs).toBeGreaterThanOrEqual(30_000);
@@ -33,6 +34,13 @@ describe("gateway telemetry storage", () => {
       const raw = tables.metrics.count();
       tables.metrics.add({
         id: crypto.randomUUID(),
+        type: "api_call",
+        key: "provider:minimax",
+        value: 7,
+        metadata: JSON.stringify({ endpoint: "https://api.minimax.io/anthropic/v1" })
+      });
+      tables.metrics.add({
+        id: crypto.randomUUID(),
         type: "api_status",
         key: "200",
         value: 1,
@@ -46,6 +54,7 @@ describe("gateway telemetry storage", () => {
         raw,
         compacted,
         rawAfterCompaction: tables.metrics.count(),
+        providerCallTotal: tables.metrics.getTotal("api_call", "provider:minimax"),
         daily: tables.metrics.getDaily(new Date().toISOString().slice(0, 10), "api_call")
       }));
     `;
@@ -73,7 +82,8 @@ describe("gateway telemetry storage", () => {
       expect(result.duration).toBe(20);
       expect(result.raw).toBe(0);
       expect(result.compacted).toBe(1);
-      expect(result.rawAfterCompaction).toBe(0);
+      expect(result.rawAfterCompaction).toBe(1);
+      expect(result.providerCallTotal).toBe(7);
       expect(result.daily).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ key: "success", value: 1 }),

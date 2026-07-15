@@ -1,14 +1,14 @@
-import { tables, type MCPServer } from "./database";
-import { spawn, ChildProcess } from "child_process";
+import { ChildProcess, spawn } from "child_process";
+import { EventEmitter } from "events";
+import { type MCPServer, tables } from "./database";
 import {
   decodeMcpOAuthEnvironment,
-  parseMcpHttpResponse,
   isHttpMcpUrl,
   normalizeRemoteMcpUrl,
+  parseMcpHttpResponse,
   refreshMcpOAuthCredential,
   replaceMcpOAuthEnvironment,
 } from "./mcp-http";
-import { EventEmitter } from "events";
 
 /**
  * Monotonic JSON-RPC request id. Using Date.now() (as before) collided when two
@@ -35,9 +35,14 @@ interface MCPServerInstance {
   lastError?: string;
   startedAt?: Date;
   httpSessionId?: string;
-  /** Accumulates partial stdout so newline-delimited JSON-RPC messages that
-   *  span multiple `data` chunks (responses > ~64KB) are reassembled. */
   stdoutBuffer?: string;
+  pendingRequests: Map<number, MCPPendingRequest>;
+}
+
+interface MCPPendingRequest {
+  resolve: (value: unknown) => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
 }
 
 export interface MCPServerSummary extends Omit<MCPServer, "env"> {
@@ -59,15 +64,36 @@ export function drainNdjsonLines(buffer: string): { lines: string[]; rest: strin
   return { lines: parts.filter((line) => line.trim().length > 0), rest };
 }
 
-type MCPToolListResponse = {
-  result?: {
-    tools?: Array<{
-      name?: string;
-      description?: string;
+interface MCPJsonRpcResponse {
+  id?: string | number | null;
+  result?: unknown;
+  error?: { message?: string };
+}
+
+function parseMcpTools(value: unknown): MCPTool[] | undefined {
+  if (!value || typeof value !== "object" || !("tools" in value)) return undefined;
+  const tools = (value as { tools?: unknown }).tools;
+  if (!Array.isArray(tools)) return undefined;
+  return tools.flatMap((tool) => {
+    if (!tool || typeof tool !== "object") return [];
+    const candidate = tool as {
+      name?: unknown;
+      description?: unknown;
       inputSchema?: unknown;
-    }>;
-  };
-};
+    };
+    if (typeof candidate.name !== "string") return [];
+    return [
+      {
+        name: candidate.name,
+        description: typeof candidate.description === "string" ? candidate.description : "",
+        inputSchema:
+          candidate.inputSchema && typeof candidate.inputSchema === "object"
+            ? (candidate.inputSchema as Record<string, unknown>)
+            : { type: "object", properties: {} },
+      },
+    ];
+  });
+}
 
 class MCPServerManager extends EventEmitter {
   private instances: Map<string, MCPServerInstance> = new Map();
@@ -87,6 +113,7 @@ class MCPServerManager extends EventEmitter {
           process: null,
           tools: [],
           status: "stopped",
+          pendingRequests: new Map(),
         });
       }
     } catch (error) {
@@ -157,6 +184,7 @@ class MCPServerManager extends EventEmitter {
       process: null,
       tools: [],
       status: "stopped",
+      pendingRequests: new Map(),
     });
 
     return server;
@@ -229,7 +257,6 @@ class MCPServerManager extends EventEmitter {
         }
       }
 
-      // Spawn the MCP server process
       const proc = spawn(cmd, cmdArgs, {
         env,
         stdio: ["pipe", "pipe", "pipe"],
@@ -239,8 +266,6 @@ class MCPServerManager extends EventEmitter {
       instance.startedAt = new Date();
       instance.stdoutBuffer = "";
 
-      // Handle process events. Buffer stdout and process only COMPLETE lines so
-      // multi-chunk JSON-RPC responses reassemble instead of being dropped.
       proc.stdout?.on("data", (data: Buffer) => {
         instance.stdoutBuffer = (instance.stdoutBuffer ?? "") + data.toString();
         const { lines, rest } = drainNdjsonLines(instance.stdoutBuffer);
@@ -255,6 +280,7 @@ class MCPServerManager extends EventEmitter {
       });
 
       proc.on("error", (error) => {
+        this.rejectPendingRequests(instance, error);
         instance.status = "error";
         instance.lastError = error.message;
         instance.process = null;
@@ -262,6 +288,10 @@ class MCPServerManager extends EventEmitter {
       });
 
       proc.on("exit", (code) => {
+        this.rejectPendingRequests(
+          instance,
+          new Error(`MCP server exited with code ${String(code)}`)
+        );
         if (instance.status !== "stopped") {
           instance.status = code === 0 ? "stopped" : "error";
           instance.lastError = code !== 0 ? `Process exited with code ${code}` : undefined;
@@ -270,29 +300,27 @@ class MCPServerManager extends EventEmitter {
         this.emit("statusChange", { id, status: instance.status });
       });
 
-      // Wait for initialization
-      await new Promise<void>((resolve) => setTimeout(resolve, 1000));
-
-      // If process exited during startup, treat as failed start
-      if (instance.process !== proc || proc.exitCode !== null) {
-        const exitCode = proc.exitCode;
-        const exitedMsg =
-          exitCode === 0
-            ? "MCP server exited before initialization"
-            : `MCP server exited with code ${String(exitCode)}`;
-        instance.status = exitCode === 0 ? "stopped" : "error";
-        instance.lastError = exitedMsg;
-        return { success: false, error: exitedMsg };
-      }
-
-      // Request tools list
-      await this.requestTools(id);
+      await this.stdioRpc(instance, "initialize", {
+        protocolVersion: "2025-06-18",
+        capabilities: {},
+        clientInfo: { name: "cybara", version: "1.0" },
+      });
+      this.sendStdioNotification(instance, "notifications/initialized", {});
+      const listed = await this.stdioRpc(instance, "tools/list", {});
+      instance.tools = parseMcpTools(listed) ?? [];
+      this.toolCache.set(id, instance.tools);
+      this.emit("toolsUpdated", { id, tools: instance.tools });
 
       instance.status = "running";
       this.emit("statusChange", { id, status: "running" });
 
       return { success: true };
     } catch (error) {
+      this.rejectPendingRequests(
+        instance,
+        error instanceof Error ? error : new Error(String(error))
+      );
+      instance.process?.kill("SIGTERM");
       instance.status = "error";
       instance.lastError = (error as Error).message;
       instance.process = null;
@@ -305,24 +333,22 @@ class MCPServerManager extends EventEmitter {
     if (!instance) return false;
 
     if (instance.process) {
-      // Capture the handle: `instance.process` is nulled synchronously below, so
-      // the escalation timer must hold its own reference or the SIGKILL guard
-      // (`instance.process && ...`) is always false and a SIGTERM-ignoring
-      // server is never force-killed.
       const proc = instance.process;
       proc.kill("SIGTERM");
 
-      // Force kill after timeout
-      setTimeout(() => {
-        if (!proc.killed) {
+      const escalation = setTimeout(() => {
+        if (proc.exitCode === null && proc.signalCode === null) {
           proc.kill("SIGKILL");
         }
       }, 5000);
+      escalation.unref();
     }
 
     instance.status = "stopped";
+    this.rejectPendingRequests(instance, new Error("MCP server stopped"));
     instance.process = null;
     instance.tools = [];
+    this.toolCache.delete(id);
     this.emit("statusChange", { id, status: "stopped" });
 
     return true;
@@ -437,51 +463,77 @@ class MCPServerManager extends EventEmitter {
     const instance = this.instances.get(id);
     if (!instance) return;
 
+    let response: MCPJsonRpcResponse;
     try {
-      // Parse JSON-RPC messages from the MCP server
-      const lines = message.split("\n").filter(Boolean);
-      for (const line of lines) {
-        try {
-          const msg = JSON.parse(line) as MCPToolListResponse;
-          if (Array.isArray(msg.result?.tools)) {
-            // Tools list response
-            instance.tools = msg.result.tools
-              .filter(
-                (tool): tool is { name: string; description?: string; inputSchema?: unknown } =>
-                  typeof tool.name === "string"
-              )
-              .map((tool) => ({
-                name: tool.name,
-                description: tool.description || "",
-                inputSchema:
-                  tool.inputSchema && typeof tool.inputSchema === "object"
-                    ? (tool.inputSchema as Record<string, unknown>)
-                    : { type: "object", properties: {} },
-              }));
-            this.toolCache.set(id, instance.tools);
-            this.emit("toolsUpdated", { id, tools: instance.tools });
-          }
-        } catch {
-          /* ignore */
+      response = JSON.parse(message) as MCPJsonRpcResponse;
+    } catch {
+      return;
+    }
+
+    if (typeof response.id === "number") {
+      const pending = instance.pendingRequests.get(response.id);
+      if (pending) {
+        clearTimeout(pending.timeout);
+        instance.pendingRequests.delete(response.id);
+        if (response.error) {
+          pending.reject(new Error(response.error.message || "MCP request failed"));
+        } else {
+          pending.resolve(response.result);
         }
       }
-    } catch (error) {
-      console.error(`[MCP ${instance.server.name}] Message parse error:`, error);
+    }
+
+    const tools = parseMcpTools(response.result);
+    if (tools) {
+      instance.tools = tools;
+      this.toolCache.set(id, tools);
+      this.emit("toolsUpdated", { id, tools });
     }
   }
 
-  private async requestTools(id: string): Promise<void> {
-    const instance = this.instances.get(id);
-    if (!instance?.process?.stdin) return;
+  private rejectPendingRequests(instance: MCPServerInstance, error: Error): void {
+    for (const pending of instance.pendingRequests.values()) {
+      clearTimeout(pending.timeout);
+      pending.reject(error);
+    }
+    instance.pendingRequests.clear();
+  }
 
-    const request = {
-      jsonrpc: "2.0",
-      id: nextMcpRequestId(),
-      method: "tools/list",
-      params: {},
-    };
+  private sendStdioNotification(
+    instance: MCPServerInstance,
+    method: string,
+    params: Record<string, unknown>
+  ): void {
+    if (!instance.process?.stdin)
+      throw new Error(`MCP server not running: ${instance.server.name}`);
+    instance.process.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`);
+  }
 
-    instance.process.stdin.write(JSON.stringify(request) + "\n");
+  private stdioRpc(
+    instance: MCPServerInstance,
+    method: string,
+    params: Record<string, unknown>
+  ): Promise<unknown> {
+    if (!instance.process?.stdin) {
+      return Promise.reject(new Error(`MCP server not running: ${instance.server.name}`));
+    }
+    const requestId = nextMcpRequestId();
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        instance.pendingRequests.delete(requestId);
+        reject(new Error(`MCP ${method} timeout`));
+      }, 30_000);
+      instance.pendingRequests.set(requestId, { resolve, reject, timeout });
+      try {
+        instance.process?.stdin?.write(
+          `${JSON.stringify({ jsonrpc: "2.0", id: requestId, method, params })}\n`
+        );
+      } catch (error) {
+        clearTimeout(timeout);
+        instance.pendingRequests.delete(requestId);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
   }
 
   async callTool(
@@ -505,63 +557,7 @@ class MCPServerManager extends EventEmitter {
       throw new Error(`MCP server not running: ${instance.server.name}`);
     }
 
-    return new Promise((resolve, reject) => {
-      const requestId = nextMcpRequestId();
-      const stdout = instance.process?.stdout;
-      const timeout = setTimeout(() => {
-        // Remove the listener on timeout — otherwise every timed-out call leaks a
-        // handler that keeps parsing all future stdout traffic for the life of
-        // the server (unbounded memory + MaxListeners warnings).
-        stdout?.off("data", responseHandler);
-        reject(new Error("MCP tool call timeout"));
-      }, 30000);
-
-      let callBuffer = "";
-      const responseHandler = (data: Buffer) => {
-        try {
-          callBuffer += data.toString();
-          // Buffer partial lines so a large tool result spanning multiple chunks
-          // reassembles instead of failing to parse and timing out.
-          const { lines, rest } = drainNdjsonLines(callBuffer);
-          callBuffer = rest;
-
-          for (const line of lines) {
-            try {
-              const msg = JSON.parse(line);
-              if (msg.id === requestId) {
-                clearTimeout(timeout);
-                stdout?.off("data", responseHandler);
-
-                if (msg.error) {
-                  reject(new Error(msg.error.message || "MCP tool error"));
-                } else {
-                  resolve(msg.result);
-                }
-                return;
-              }
-            } catch {
-              /* ignore */
-            }
-          }
-        } catch {
-          /* ignore */
-        }
-      };
-
-      stdout?.on("data", responseHandler);
-
-      const request = {
-        jsonrpc: "2.0",
-        id: requestId,
-        method: "tools/call",
-        params: {
-          name: toolName,
-          arguments: args,
-        },
-      };
-
-      instance.process?.stdin?.write(JSON.stringify(request) + "\n");
-    });
+    return this.stdioRpc(instance, "tools/call", { name: toolName, arguments: args });
   }
 
   getAllTools(): Array<MCPTool & { serverId: string; serverName: string }> {

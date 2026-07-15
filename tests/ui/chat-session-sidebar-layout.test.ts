@@ -90,6 +90,14 @@ describe("chat session sidebar layout", () => {
     expect(source).not.toContain("border-blue-500/30 bg-blue-500/10");
   });
 
+  test("uses a full-width new chat click target", () => {
+    const source = chatSource();
+
+    expect(source).toContain(
+      '"flex w-full items-center gap-2.5 rounded-lg text-[13px] font-medium text-gray-400'
+    );
+  });
+
   test("clicking a session exposes immediate loading state and ignores stale loads", () => {
     const source = chatSource();
     const hookSource = readFileSync(
