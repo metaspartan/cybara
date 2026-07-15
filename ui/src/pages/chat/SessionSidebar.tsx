@@ -1,6 +1,6 @@
 import {
-  Check,
   CalendarClock,
+  Check,
   ChevronDown,
   ChevronRight,
   Folder,
@@ -27,6 +27,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useNavigate } from "react-router-dom";
 import { Button, Modal } from "@/components/ui";
 import { useTasks } from "@/hooks/useApi";
 import {
@@ -41,9 +42,7 @@ import { apiFetch } from "@/lib/auth";
 import { useI18n } from "@/lib/i18n";
 import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
-import type { SessionContextUsage, SessionTokenUsage } from "@/types";
-import type { Task } from "@/types";
-import { useNavigate } from "react-router-dom";
+import type { SessionContextUsage, SessionTokenUsage, Task } from "@/types";
 import type { ChatMessage } from "./chatModel";
 import { sessionDisplayTitle, sessionPreviewText, sessionRouteLabel } from "./chatModel";
 import {
@@ -908,6 +907,7 @@ export function SessionsPanel({
         }}
         size="md"
         surface="bare"
+        backdrop="subtle"
       >
         <div className="space-y-2">
           <div className="theme-tooltip-panel relative rounded-xl p-2 shadow-2xl">

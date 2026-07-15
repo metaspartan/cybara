@@ -1,7 +1,7 @@
 import { X } from "lucide-react";
+import { useEffect, useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "../../lib/utils";
-import { useEffect, useId, useRef } from "react";
 
 interface ModalProps {
   isOpen: boolean;
@@ -11,6 +11,7 @@ interface ModalProps {
   children: React.ReactNode;
   size?: "sm" | "md" | "lg" | "xl";
   surface?: "default" | "bare";
+  backdrop?: "default" | "subtle";
 }
 
 export function Modal({
@@ -21,6 +22,7 @@ export function Modal({
   children,
   size = "md",
   surface = "default",
+  backdrop = "default",
 }: ModalProps) {
   const titleId = useId();
   const descriptionId = useId();
@@ -116,7 +118,10 @@ export function Modal({
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-md transition-opacity animate-in fade-in"
+        className={cn(
+          "absolute inset-0 transition-opacity animate-in fade-in",
+          backdrop === "subtle" ? "bg-black/25" : "bg-black/70 backdrop-blur-md"
+        )}
         onClick={onClose}
       />
 

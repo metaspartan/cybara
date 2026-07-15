@@ -6,8 +6,12 @@ const chatSource = () =>
   readFileSync(join(process.cwd(), "ui", "src", "pages", "Chat.tsx"), "utf8") +
   readFileSync(join(process.cwd(), "ui", "src", "components", "layout", "Sidebar.tsx"), "utf8") +
   readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts"), "utf8") +
+  readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "ChatEmptyState.tsx"), "utf8") +
   readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "SessionSidebar.tsx"), "utf8") +
   readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "sessionGrouping.ts"), "utf8");
+
+const modalSource = () =>
+  readFileSync(join(process.cwd(), "ui", "src", "components", "ui", "Modal.tsx"), "utf8");
 
 describe("chat session sidebar layout", () => {
   test("lets session text use the full row width while actions float above it", () => {
@@ -55,6 +59,7 @@ describe("chat session sidebar layout", () => {
     expect(source).toContain("searchResults.map");
     expect(source).toContain("data-autofocus");
     expect(source).toContain('surface="bare"');
+    expect(source).toContain('backdrop="subtle"');
     expect(source).toContain('role="searchbox"');
     expect(source).not.toContain('type="search"');
     expect(source).toContain("!border-0");
@@ -62,6 +67,9 @@ describe("chat session sidebar layout", () => {
       "focus:!border-0 focus:!outline-none focus:!ring-0 focus:!shadow-none"
     );
     expect(source).toContain('setSearchQuery("")');
+    expect(modalSource()).toContain(
+      'backdrop === "subtle" ? "bg-black/25" : "bg-black/70 backdrop-blur-md"'
+    );
   });
 
   test("uses the active theme highlight for the new-chat workspace", () => {
