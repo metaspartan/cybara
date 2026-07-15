@@ -63,6 +63,11 @@ import {
   matchingTUICapabilities,
   type TUICapabilityOption,
 } from "./cli-tui-capabilities";
+import {
+  completeTUIChatCommand,
+  matchingTUIChatCommands,
+  nextTUIChatCommandIndex,
+} from "./cli-tui-commands";
 
 interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -127,63 +132,6 @@ interface InteractiveChatProps {
   modelLine?: string;
   onExit: () => void;
 }
-
-const COMMANDS = [
-  { name: "/help", detail: "Show command reference" },
-  { name: "/status", detail: "Show session, model, and queue state" },
-  { name: "/agents", detail: "List available agents" },
-  { name: "/skills", detail: "Show installed and available skills" },
-  { name: "/mcp", detail: "Show connected MCP services" },
-  { name: "/lsp", detail: "Show language server status" },
-  { name: "/memory", detail: "Show memory and indexing health" },
-  { name: "/logs", detail: "Show recent gateway logs" },
-  { name: "/agent", detail: "Switch the active chat agent" },
-  { name: "/transfer", detail: "Transfer this chat to another agent" },
-  { name: "/model", detail: "Show or override the model for future turns" },
-  { name: "/router", detail: "Use or disable model router for new turns" },
-  { name: "/permissions", detail: "Show or change tool approval mode" },
-  { name: "/followups", detail: "Show or change queue and steer behavior" },
-  { name: "/tools", detail: "Show or change the active agent tool profile" },
-  {
-    name: "/reasoning",
-    detail: "Show or change reasoning effort for the active agent",
-  },
-  { name: "/title", detail: "Rename the current session" },
-  { name: "/workspace", detail: "Show or change the current workspace" },
-  { name: "/context", detail: "Show context, compaction, and token usage" },
-  { name: "/usage", detail: "Show token usage for this session" },
-  { name: "/environment", detail: "Toggle the environment panel" },
-  { name: "/plan", detail: "Show the latest plan state" },
-  {
-    name: "/goal",
-    detail: "Start, inspect, pause, resume, or complete a session goal",
-  },
-  { name: "/loop", detail: "Alias for session goal workflows" },
-  { name: "/diff", detail: "Show file changes detected in the session" },
-  { name: "/diffs", detail: "Show file changes detected in the session" },
-  { name: "/tasks", detail: "Show current tasks" },
-  { name: "/subagents", detail: "List or spawn subagents" },
-  { name: "/compact", detail: "Show compaction status" },
-  { name: "/pending", detail: "Refresh queued follow-ups" },
-  { name: "/queue", detail: "Queue a follow-up while the run continues" },
-  { name: "/steer", detail: "Inject a queued message into the active run" },
-  { name: "/edit", detail: "Edit a queued follow-up" },
-  { name: "/delete", detail: "Delete a queued follow-up" },
-  { name: "/reorder", detail: "Reorder queued follow-ups" },
-  { name: "/stop", detail: "Stop the active run" },
-  { name: "/reload", detail: "Refetch session messages" },
-  { name: "/copy", detail: "Copy the latest assistant response" },
-  { name: "/raw", detail: "Toggle complete copy-friendly transcript messages" },
-  { name: "/review", detail: "Load a workspace review prompt" },
-  { name: "/details", detail: "Expand or collapse completed work details" },
-  { name: "/expand", detail: "Toggle full or compact transcript messages" },
-  { name: "/clear", detail: "Clear the local view" },
-  { name: "/new", detail: "Start a new session in this TUI" },
-  { name: "/resume", detail: "Return to the saved session picker" },
-  { name: "/sessions", detail: "Return to the saved session picker" },
-  { name: "/quit", detail: "Return to the session list" },
-  { name: "/exit", detail: "Return to the session list" },
-];
 
 const ROLE_META: Record<
   ChatMessage["role"],
@@ -366,14 +314,6 @@ function messagesFromResponse(value: unknown): ChatMessage[] {
     }
   }
   return out;
-}
-
-function commandMatches(input: string) {
-  const trimmed = input.trim();
-  if (!trimmed.startsWith("/")) return [];
-  return COMMANDS.filter((command) =>
-    command.name.startsWith(trimmed.split(/\s+/)[0]),
-  ).slice(0, 6);
 }
 
 function isTransientRuntimeCommand(input: string): boolean {
@@ -731,12 +671,14 @@ function CommandPalette({
   input,
   compactMode,
   maxRows,
+  selectedIndex,
 }: {
   input: string;
   compactMode: boolean;
   maxRows: number;
+  selectedIndex: number;
 }): React.ReactElement | null {
-  const matches = commandMatches(input).slice(0, maxRows);
+  const matches = matchingTUIChatCommands(input, maxRows);
   if (matches.length === 0) return null;
   return (
     <Box
@@ -746,9 +688,12 @@ function CommandPalette({
       paddingX={1}
       marginTop={1}
     >
-      {matches.map((command) => (
-        <Text key={command.name}>
-          <Text color="cyan">{command.name}</Text>
+      {matches.map((command, index) => (
+        <Text key={command.name} inverse={index === selectedIndex}>
+          <Text color={index === selectedIndex ? "white" : "cyan"}>
+            {index === selectedIndex ? "› " : "  "}
+            {command.name}
+          </Text>
           {compactMode ? null : <Text color="gray"> — {command.detail}</Text>}
         </Text>
       ))}
@@ -789,8 +734,8 @@ function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
         Chat controls
       </Text>
       <Text>
-        Enter send · Ctrl+J newline · ←/→ move · ↑/↓ history · PgUp/PgDn
-        transcript
+        Enter send · Ctrl+J newline · ←/→ move · ↑/↓ palette or history ·
+        PgUp/PgDn transcript
       </Text>
       <Text>
         Tab completes slash commands and @ capabilities · approvals use 1/2/3/4
@@ -946,6 +891,7 @@ export function InteractiveChatTUI({
     [],
   );
   const [capabilityIndex, setCapabilityIndex] = React.useState(0);
+  const [commandIndex, setCommandIndex] = React.useState(0);
   const [loading, setLoading] = React.useState(Boolean(sessionId));
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
@@ -991,6 +937,10 @@ export function InteractiveChatTUI({
       ),
     [activeCapabilityMention, capabilities, layout.commandRows],
   );
+  const commandOptions = React.useMemo(
+    () => matchingTUIChatCommands(input, layout.commandRows),
+    [input, layout.commandRows],
+  );
 
   React.useEffect(() => {
     sessionIdRef.current = localSessionId;
@@ -999,6 +949,10 @@ export function InteractiveChatTUI({
   React.useEffect(() => {
     setCapabilityIndex(0);
   }, [activeCapabilityMention?.query]);
+
+  React.useEffect(() => {
+    setCommandIndex(0);
+  }, [input]);
 
   React.useEffect(() => {
     if (!activeCapabilityMention) return;
@@ -2185,7 +2139,7 @@ export function InteractiveChatTUI({
     visibleMessageEnd,
   );
   const activeApproval = approvalRequests[0];
-  const commandPaletteVisible = commandMatches(input).length > 0;
+  const commandPaletteVisible = commandOptions.length > 0;
   const capabilityPaletteVisible = capabilityOptions.length > 0;
   const narrowOverlayVisible =
     layout.narrow &&
@@ -2211,6 +2165,14 @@ export function InteractiveChatTUI({
     setCursor(inserted.cursor);
     return true;
   }, [activeCapabilityMention, capabilityIndex, capabilityOptions, input]);
+
+  const selectCommand = React.useCallback((): boolean => {
+    const completed = completeTUIChatCommand(input, commandIndex);
+    if (!completed) return false;
+    setInput(completed);
+    setCursor(completed.length);
+    return true;
+  }, [commandIndex, input]);
 
   useInput((value, key) => {
     if (key.ctrl && value === "c") {
@@ -2282,6 +2244,7 @@ export function InteractiveChatTUI({
     }
     if (key.return) {
       if (selectCapability()) return;
+      if (selectCommand()) return;
       const pending = input;
       resetInput();
       void send(pending);
@@ -2303,6 +2266,12 @@ export function InteractiveChatTUI({
         );
         return;
       }
+      if (commandOptions.length > 0) {
+        setCommandIndex((current) =>
+          nextTUIChatCommandIndex(current, -1, commandOptions.length),
+        );
+        return;
+      }
       if (history.length === 0) return;
       const nextIndex =
         historyIndex === null
@@ -2320,6 +2289,12 @@ export function InteractiveChatTUI({
         );
         return;
       }
+      if (commandOptions.length > 0) {
+        setCommandIndex((current) =>
+          nextTUIChatCommandIndex(current, 1, commandOptions.length),
+        );
+        return;
+      }
       if (history.length === 0) return;
       if (historyIndex === null) return;
       const nextIndex = historyIndex + 1;
@@ -2334,13 +2309,7 @@ export function InteractiveChatTUI({
     }
     if ((key as { tab?: boolean }).tab) {
       if (selectCapability()) return;
-      if (input.startsWith("/")) {
-        const match = commandMatches(input)[0];
-        if (match) {
-          setInput(`${match.name} `);
-          setCursor(match.name.length + 1);
-        }
-      }
+      if (selectCommand()) return;
       return;
     }
     if (key.backspace || key.delete) {
@@ -2534,6 +2503,7 @@ export function InteractiveChatTUI({
         input={input}
         compactMode={layout.compact}
         maxRows={layout.commandRows}
+        selectedIndex={commandIndex}
       />
       {error ? (
         <Box paddingX={1}>
@@ -2567,7 +2537,7 @@ export function InteractiveChatTUI({
         <Text color="gray">
           {layout.narrow
             ? `${sending ? "Enter queue" : "Enter send"} · ^J newline · Tab complete · Esc dismiss/back`
-            : `${sending ? "Enter queues follow-up" : "Enter sends"} · ^J newline · ↑↓ history · PgUp/Dn scroll · Tab complete · Esc dismiss/back · ^C stop/exit`}
+            : `${sending ? "Enter queues follow-up" : "Enter sends"} · ^J newline · ↑↓ palette/history · PgUp/Dn scroll · Tab complete · Esc dismiss/back · ^C stop/exit`}
         </Text>
       </Box>
     </Box>

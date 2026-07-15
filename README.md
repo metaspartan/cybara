@@ -31,6 +31,30 @@
 
 ---
 
+## Quick Install
+
+Install the latest Cybara CLI on macOS or Linux:
+
+```bash
+curl -fsSL https://cybara.ai/install.sh | bash
+```
+
+On Windows PowerShell:
+
+```powershell
+powershell -c "irm https://cybara.ai/install.ps1 | iex"
+```
+
+Then launch Cybara:
+
+```bash
+cybara
+```
+
+The installer selects the correct release for the current platform and verifies its published SHA256 checksum. You can also run Cybara without installing it with `bunx cybara`.
+
+---
+
 ## Cybara in Action
 
 <p align="center">
@@ -88,9 +112,9 @@ If you need an agent platform that can plan, execute, verify, and report with st
 
 ---
 
-## Quick Start (Bun-Only)
+## Build From Source
 
-Cybara uses **Bun only** for install, run, and test flows.
+Source development uses **Bun only** for dependency installation, tasks, and tests.
 
 ```bash
 # Clone
@@ -109,41 +133,13 @@ Then open:
 - UI: `http://localhost:4269`
 - API health: `http://localhost:4269/api/health`
 
-## Install CLI From Releases
-
-For a release binary install on macOS/Linux:
-
-```bash
-curl -fsSL https://cybara.ai/install.sh | bash
-```
-
-On Windows (PowerShell, x64 & arm64):
-
-```powershell
-powershell -c "irm https://cybara.ai/install.ps1 | iex"
-```
-
-Or run it directly with Bun:
-
-```bash
-bunx cybara
-```
-
-To pin a specific release:
-
-```bash
-curl -fsSL https://cybara.ai/install.sh | bash -s -- --version 1.0.818
-```
-
-Then update later with:
+Update an installed CLI with:
 
 ```bash
 cybara update              # verify SHA256, then download + install
 cybara update --check      # just report whether a newer release exists (non-zero if stale)
 cybara update --force      # reinstall even when already current
 ```
-
-Every CLI release ships with per-asset SHA256 sidecars; `cybara update` and `install.sh` both verify the checksum before installing, and refuse an unverified binary unless you pass `--force`.
 
 The desktop app now checks the same GitHub release channel from `Settings -> Desktop Updates` and can install signed app updates in place.
 

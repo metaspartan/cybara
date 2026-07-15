@@ -17,6 +17,7 @@ const cliTuiInteractiveChatSource = readFileSync(
   join(root, "src", "cli-tui-interactive-chat.tsx"),
   "utf8"
 );
+const cliTuiCommandsSource = readFileSync(join(root, "src", "cli-tui-commands.ts"), "utf8");
 const cliTuiChatEnvironmentSource = readFileSync(
   join(root, "src", "cli-tui-chat-environment.ts"),
   "utf8"
@@ -260,7 +261,7 @@ describe("CLI TUI source wiring", () => {
       "/resume",
       "/sessions",
     ]) {
-      expect(cliTuiInteractiveChatSource).toContain(command);
+      expect(`${cliTuiInteractiveChatSource}\n${cliTuiCommandsSource}`).toContain(command);
     }
     for (const route of [
       "/api/agents/summary",
@@ -299,9 +300,12 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("Esc dismiss/back");
     expect(cliTuiInteractiveChatSource).toContain("Follow-ups off");
     expect(cliTuiInteractiveChatSource).toContain("follow_up_behavior_enabled");
-    expect(cliTuiInteractiveChatSource).toContain('{ name: "/followups"');
+    expect(cliTuiCommandsSource).toContain('{ name: "/followups"');
     expect(cliTuiInteractiveChatSource).toContain("sessionIdRef.current = turnSessionId");
     expect(cliTuiInteractiveChatSource).toContain("CommandPalette");
+    expect(cliTuiInteractiveChatSource).toContain("nextTUIChatCommandIndex");
+    expect(cliTuiInteractiveChatSource).toContain("selectCommand");
+    expect(cliTuiInteractiveChatSource).toContain("selectedIndex={commandIndex}");
     expect(cliTuiInteractiveChatSource).toContain("StatusRail");
     expect(cliTuiInteractiveChatSource).not.toContain("<Box marginTop={1} flexShrink={0}>");
     expect(cliTuiInteractiveChatSource).toContain('borderColor={sending ? "cyan" : "gray"}');
