@@ -16,6 +16,7 @@ interface UseChatWorkspaceTabsResult {
   closeTab: (id: string) => void;
   isOpen: boolean;
   openTab: (kind: ChatWorkspaceTab) => void;
+  openFile: (path: string) => void;
   selectTab: Dispatch<SetStateAction<string | null>>;
   setOpen: Dispatch<SetStateAction<boolean>>;
   tabs: WorkspaceTabInstance[];
@@ -76,6 +77,28 @@ export function useChatWorkspaceTabs({
     [activeKind, isOpen, openTab]
   );
 
+  const openFile = useCallback(
+    (path: string): void => {
+      const normalizedPath = path.trim();
+      if (!normalizedPath) return;
+      setOpen(true);
+      onOpen();
+      setTabs((current) => {
+        const existing = current.find((instance) => instance.kind === "files");
+        if (existing) {
+          selectTab(existing.id);
+          return current.map((instance) =>
+            instance.id === existing.id ? { ...instance, pageKey: normalizedPath } : instance
+          );
+        }
+        const id = `files-${(tabIdRef.current += 1)}`;
+        selectTab(id);
+        return [...current, { id, kind: "files", pageKey: normalizedPath }];
+      });
+    },
+    [onOpen]
+  );
+
   const closeTab = useCallback((id: string): void => {
     setTabs((current) => {
       const index = current.findIndex((instance) => instance.id === id);
@@ -99,6 +122,7 @@ export function useChatWorkspaceTabs({
     activeTabId,
     closeTab,
     isOpen,
+    openFile,
     openTab,
     selectTab,
     setOpen,

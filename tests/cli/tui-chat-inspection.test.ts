@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   compactInspectionLines,
   logLines,
+  lspStatusLines,
   mcpStatusLines,
   memoryStatusLine,
   skillStatusLines,
@@ -29,6 +30,24 @@ describe("TUI chat inspection formatters", () => {
         { id: "stopped" },
       ])
     ).toEqual(["* Local tools · running · 4 tools", "- stopped · stopped"]);
+  });
+
+  test("formats language server installation status", () => {
+    expect(
+      lspStatusLines({
+        status: [
+          {
+            language: "typescript",
+            installed: true,
+            available: true,
+            command: "typescript-language-server",
+          },
+          { language: "python", installed: false, available: true },
+          null,
+        ],
+      })
+    ).toEqual(["* typescript · installed · typescript-language-server", "- python · available"]);
+    expect(lspStatusLines(null)).toEqual([]);
   });
 
   test("summarizes memory status across current response shapes", () => {

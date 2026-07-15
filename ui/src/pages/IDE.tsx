@@ -293,9 +293,10 @@ export function IDE() {
   const [refreshKey, setRefreshKey] = useState(0);
   const [saveRequestToken, setSaveRequestToken] = useState(0);
   const [requestedJumpLine, setRequestedJumpLine] = useState<number | null>(null);
-  const [cursorPosition, setCursorPosition] = useState<{ line: number; column: number } | null>(
-    null
-  );
+  const [cursorPosition, setCursorPosition] = useState<{
+    line: number;
+    column: number;
+  } | null>(null);
   const [gitHistoryStatus, setGitHistoryStatus] = useState<GitHistoryStatus>("idle");
   const [sidebarWidth, setSidebarWidth] = useState<number>(() => readPersistedSidebarWidth());
   const [sidebarMode, setSidebarMode] = useState<"explorer" | "search" | "outline">("explorer");
@@ -396,7 +397,10 @@ export function IDE() {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const explorerScrollRef = useRef<HTMLDivElement | null>(null);
   const lastIndexedWorkspaceAssignmentRef = useRef<string | null>(null);
-  const pendingCursorPositionRef = useRef<{ line: number; column: number } | null>(null);
+  const pendingCursorPositionRef = useRef<{
+    line: number;
+    column: number;
+  } | null>(null);
   const cursorPublishTimeoutRef = useRef<number | null>(null);
   const settingsSearchRef = useRef<HTMLInputElement | null>(null);
   const effectiveWorkspacePath = rootInfo?.path || currentPath;
@@ -446,6 +450,7 @@ export function IDE() {
                 ? agent.fallback_provider_id
                 : undefined,
             status: typeof agent.status === "string" ? agent.status : undefined,
+            reasoning_effort: agent.reasoning_effort ?? null,
           }))
           .filter((agent) => agent.id);
         setIdeAgentOptions(options);
@@ -1179,7 +1184,9 @@ export function IDE() {
     (filePath: string, line?: number | null, previewMode?: boolean) => {
       const separatorIndex = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
       const directoryPath = separatorIndex >= 0 ? filePath.slice(0, separatorIndex) : "";
-      openFileInEditor(fileEntryFromPath(filePath), line, { previewMode: previewMode === true });
+      openFileInEditor(fileEntryFromPath(filePath), line, {
+        previewMode: previewMode === true,
+      });
 
       if (directoryPath) {
         setCurrentPath((previous) => (previous === directoryPath ? previous : directoryPath));
@@ -2347,14 +2354,37 @@ export function IDE() {
     if (!normalizedSettingsSearch) return true;
     return parts.join(" ").toLowerCase().includes(normalizedSettingsSearch);
   };
-  const settingsSections: Array<{ id: IdeSettingsSectionId; label: string; description: string }> =
-    [
-      { id: "general", label: "General", description: "Workspace and layout defaults" },
-      { id: "editor", label: "Editor", description: "Font, line-height, minimap" },
-      { id: "indexing", label: "Indexing", description: "Workspace index and semantic search" },
-      { id: "shortcuts", label: "Shortcuts", description: "Customize keyboard shortcuts" },
-      { id: "terminal", label: "Terminal", description: "Integrated terminal behavior" },
-    ];
+  const settingsSections: Array<{
+    id: IdeSettingsSectionId;
+    label: string;
+    description: string;
+  }> = [
+    {
+      id: "general",
+      label: "General",
+      description: "Workspace and layout defaults",
+    },
+    {
+      id: "editor",
+      label: "Editor",
+      description: "Font, line-height, minimap",
+    },
+    {
+      id: "indexing",
+      label: "Indexing",
+      description: "Workspace index and semantic search",
+    },
+    {
+      id: "shortcuts",
+      label: "Shortcuts",
+      description: "Customize keyboard shortcuts",
+    },
+    {
+      id: "terminal",
+      label: "Terminal",
+      description: "Integrated terminal behavior",
+    },
+  ];
   const visibleSettingsSectionIds = useMemo(() => {
     if (!normalizedSettingsSearch) return settingsSections.map((section) => section.id);
     return settingsSections
@@ -3309,7 +3339,9 @@ export function IDE() {
                 "border-t border-white/10 bg-[#050508] overflow-hidden transition-[height] duration-150",
                 !isTerminalPanelOpen && "border-transparent"
               )}
-              style={{ height: isTerminalPanelOpen ? `${terminalPanelHeight}px` : "0px" }}
+              style={{
+                height: isTerminalPanelOpen ? `${terminalPanelHeight}px` : "0px",
+              }}
             >
               <EmbeddedTerminalPanel
                 workspacePath={effectiveWorkspacePath}
@@ -3851,7 +3883,10 @@ export function IDE() {
           return (
             <div
               className="fixed z-[80] min-w-[220px] rounded-md border border-white/15 bg-[#0a0a10] p-1 shadow-2xl"
-              style={{ left: `${contextMenuPosition.left}px`, top: `${contextMenuPosition.top}px` }}
+              style={{
+                left: `${contextMenuPosition.left}px`,
+                top: `${contextMenuPosition.top}px`,
+              }}
               onMouseDown={(event) => event.stopPropagation()}
             >
               <button

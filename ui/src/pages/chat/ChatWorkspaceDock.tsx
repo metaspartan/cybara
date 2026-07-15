@@ -27,7 +27,8 @@ interface ChatWorkspaceDockProps {
   workspaceDir: string | null;
   onClose: () => void;
   onCloseTab: (id: string) => void;
-  onOpenDiffInIde: (file: FileChangeItem) => void;
+  onOpenDiffInWorkspace: (file: FileChangeItem) => void;
+  onOpenFullIde: (path: string) => void;
   onOpenTab: (kind: ChatWorkspaceTab) => void;
   onRefreshDiff: () => void;
   onResizeStart: (event: MouseEvent<HTMLDivElement>) => void;
@@ -51,7 +52,8 @@ export function ChatWorkspaceDock({
   workspaceDir,
   onClose,
   onCloseTab,
-  onOpenDiffInIde,
+  onOpenDiffInWorkspace,
+  onOpenFullIde,
   onOpenTab,
   onRefreshDiff,
   onResizeStart,
@@ -87,7 +89,7 @@ export function ChatWorkspaceDock({
                 onClose={() => onCloseTab(instance.id)}
                 width={width}
                 onResizeStart={onResizeStart}
-                onOpenInIDE={onOpenDiffInIde}
+                onOpenInIDE={onOpenDiffInWorkspace}
                 workspaceDir={workspaceDir}
                 loading={diffLoading}
                 error={diffError}
@@ -125,7 +127,11 @@ export function ChatWorkspaceDock({
         if (instance.kind === "files") {
           return (
             <div key={instance.id} className={hiddenClass}>
-              <ChatWorkspaceFiles workspaceDir={workspaceDir} />
+              <ChatWorkspaceFiles
+                workspaceDir={workspaceDir}
+                initialPath={instance.pageKey}
+                onOpenFullIde={onOpenFullIde}
+              />
             </div>
           );
         }

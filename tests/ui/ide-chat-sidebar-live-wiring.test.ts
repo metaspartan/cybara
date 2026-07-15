@@ -61,9 +61,9 @@ describe("IDE chat sidebar live wiring", () => {
   test("renders assistant markdown and preserves multiline tool output cards", () => {
     const panelSource = readIdeChatPanelSource();
     const helpersSource = readIdeActivityHelpersSource();
-    expect(panelSource).toContain(
-      "<ReactMarkdown remarkPlugins={[remarkGfm]} components={ideMarkdownComponents}>"
-    );
+    expect(panelSource).toContain("<ReactMarkdown");
+    expect(panelSource).toContain("remarkPlugins={[remarkGfm]}");
+    expect(panelSource).toContain("components={ideMarkdownComponents}");
     expect(helpersSource).toContain('const normalized = value.replace(/\\r\\n/g, "\\n").trim();');
     expect(helpersSource).toContain("[output truncated]");
     expect(panelSource).toContain(
@@ -76,6 +76,8 @@ describe("IDE chat sidebar live wiring", () => {
     const controlsSource = readChatAgentControlsSource();
     expect(panelSource).toContain("ChatAgentControls");
     expect(panelSource).toContain("ChatComposerActionButton");
+    expect(panelSource).toContain("ChatReasoningControl");
+    expect(panelSource).toContain("useUpdateAgentReasoning");
     expect(panelSource).toContain("providerPlansApi.status()");
     expect(panelSource).toContain("setSessionContextUsage(response.data.contextUsage ?? null)");
     expect(panelSource).toContain("useModelRouter");

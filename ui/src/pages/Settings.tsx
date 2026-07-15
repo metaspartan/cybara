@@ -9,6 +9,7 @@ import { SystemBackupSettingsSection } from "@/components/settings/SystemBackupS
 import { SystemMonitorPanel } from "@/components/settings/SystemMonitorPanel";
 import { AiFeatureSettings } from "./settings/AiFeatureSettings";
 import { ChatAccessibilitySettings } from "./settings/ChatAccessibilitySettings";
+import { HotkeySettings } from "./settings/HotkeySettings";
 import { FeatureSettings } from "./settings/FeatureSettings";
 import { MemoryBehaviorSettings } from "./settings/MemoryBehaviorSettings";
 import { SpeechSettingsSection } from "./settings/SpeechSettingsSection";
@@ -2696,7 +2697,12 @@ export function Settings() {
         <SettingsNavigation activeSection={activeSection} onSelect={selectSection} />
 
         <div className="min-w-0 space-y-6">
-          {activeSection === "general" && <ThemeSettings />}
+          {activeSection === "general" && (
+            <>
+              <ThemeSettings />
+              <HotkeySettings />
+            </>
+          )}
 
           {activeSection === "accessibility" && <ChatAccessibilitySettings />}
 

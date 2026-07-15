@@ -80,6 +80,7 @@ describe("web settings navigation", () => {
     expect(settingsSource).toContain('activeSection === "gateway"');
     expect(settingsSource).toContain('activeSection === "accessibility"');
     expect(settingsSource).toContain("<ChatAccessibilitySettings />");
+    expect(settingsSource).toContain("<HotkeySettings />");
     expect(settingsSource).toContain("<GatewayPathSettingsSection");
     expect(settingsSource).toContain("<GatewayAuthSettingsSection");
     expect(settingsSource).toContain("<GatewayControlSection");

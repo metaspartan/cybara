@@ -39,8 +39,10 @@ import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/auth";
 import { chatApi, providerPlansApi } from "@/lib/api";
+import { useUpdateAgentReasoning } from "@/hooks/useApi";
 import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "../chat/ChatAgentControls";
 import { ChatComposerActionButton } from "../chat/ChatComposerActionButton";
+import { ChatReasoningControl } from "../chat/ChatReasoningControl";
 import { AgentTransferTimeline } from "../chat/AgentTransferTimeline";
 import {
   mergeActivityLists,
@@ -142,7 +144,7 @@ import {
   readPersistedIdePreferences,
 } from "./idePersistence";
 import type {
-  Agent,
+  AgentSummary,
   AgentTransferInfo,
   ProviderPlanSnapshot,
   ProviderPlanStatusResponse,
@@ -206,7 +208,11 @@ export function IDEChatPanel({
 }: {
   workspaceDir: string;
   contextPath: string | null;
-  terminalContext?: { isOpen: boolean; sessionCount: number; activeSessionId: string | null };
+  terminalContext?: {
+    isOpen: boolean;
+    sessionCount: number;
+    activeSessionId: string | null;
+  };
   onWorkspaceMutated: () => void;
   onClose: () => void;
   selectedAgentId: string;
@@ -215,6 +221,7 @@ export function IDEChatPanel({
   onPendingFileDiffsChange?: (diffs: IdePendingFileDiff[]) => void;
   onPendingFileDiffControllerChange?: (controller: IdePendingFileDiffController | null) => void;
 }) {
+  const updateAgentReasoning = useUpdateAgentReasoning();
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
@@ -271,7 +278,7 @@ export function IDEChatPanel({
     onSelectedAgentIdChange("");
   }, [agents, onSelectedAgentIdChange, selectedAgentId]);
 
-  const chatAgentOptions = useMemo<Agent[]>(
+  const chatAgentOptions = useMemo<AgentSummary[]>(
     () =>
       agents.map((agent) => ({
         id: agent.id,
@@ -280,7 +287,8 @@ export function IDEChatPanel({
         provider: agent.provider || "",
         provider_id: agent.provider_id,
         fallback_provider_id: agent.fallback_provider_id,
-        status: agent.status as Agent["status"],
+        status: agent.status as AgentSummary["status"],
+        reasoning_effort: agent.reasoning_effort ?? null,
       })),
     [agents]
   );
@@ -465,7 +473,10 @@ export function IDEChatPanel({
           const response = await apiFetch(`/api/git/diff?path=${encodeURIComponent(file.path)}`, {
             signal: controller.signal,
           });
-          const payload = (await response.json()) as { success?: boolean; diff?: string };
+          const payload = (await response.json()) as {
+            success?: boolean;
+            diff?: string;
+          };
           if (
             !response.ok ||
             !payload.success ||
@@ -748,7 +759,9 @@ export function IDEChatPanel({
         const snapshotActivities = toIdeLiveActivityItems(snapshot.activities);
         if (snapshotActivities.length > 0) {
           setLiveActivities(snapshotActivities);
-          liveRunBufferRef.current = snapshotActivities.map((activity) => ({ ...activity }));
+          liveRunBufferRef.current = snapshotActivities.map((activity) => ({
+            ...activity,
+          }));
         } else if (!sendingRef.current) {
           setLiveActivities([]);
           liveRunBufferRef.current = [];
@@ -1960,6 +1973,20 @@ export function IDEChatPanel({
               providerPlan={activeProviderPlan}
               onSelectAgent={handleSelectAgent}
               updating={false}
+            />
+            <ChatReasoningControl
+              effort={activeAgentForPlan?.reasoning_effort}
+              provider={activeAgentForPlan?.provider_id || activeAgentForPlan?.provider}
+              model={activeAgentForPlan?.model}
+              disabled={!activeAgentForPlan || useModelRouter}
+              updating={updateAgentReasoning.isPending}
+              onChange={(effort) => {
+                if (!activeAgentForPlan) return;
+                updateAgentReasoning.mutate({
+                  id: activeAgentForPlan.id,
+                  effort,
+                });
+              }}
             />
             <ChatComposerActionButton
               disabled={isSending || isReverting || isApplyingDiffAction || !input.trim()}

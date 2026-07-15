@@ -11,6 +11,11 @@ import { useNearbyStatus } from "@/hooks/useNearbyStatus";
 import { chatApi, providerPlansApi, settingsApi } from "@/lib/api";
 import { apiFetch, appendApiTokenParam } from "@/lib/auth";
 import {
+  APP_HOTKEY_EVENT,
+  consumePendingChatHotkey,
+  type AppHotkeyActionId,
+} from "@/lib/appHotkeys";
+import {
   buildActivitiesFromToolCalls,
   finalizeCompletedActivities,
   type LiveActivityItem,
@@ -52,7 +57,6 @@ import {
   buildPreSteeringActivityMessage,
   type ChatMessage,
   clampDiffPanelWidth,
-  extractFirstTargetLine,
   extractLatestPlanFromMessages,
   type FileChangeItem,
   type FileChangeSummary,
@@ -294,6 +298,7 @@ export function Chat() {
     closeTab: closeWorkspaceTab,
     isOpen: showWorkspacePanel,
     openTab: openWorkspaceTab,
+    openFile: openWorkspaceFile,
     selectTab: setActiveWorkspaceTab,
     setOpen: setShowWorkspacePanel,
     tabs: workspaceTabs,
@@ -1495,6 +1500,30 @@ export function Chat() {
   );
 
   useEffect(() => {
+    const handleAction = (action: AppHotkeyActionId) => {
+      if (action === "newChat") {
+        resetChatSession({ resetAgentSelection: true });
+        window.requestAnimationFrame(() => inputRef.current?.focus());
+        return;
+      }
+      if (action === "focusComposer") {
+        inputRef.current?.focus();
+        return;
+      }
+      if (action === "toggleWorkspace") {
+        setShowWorkspacePanel((value) => !value);
+      }
+    };
+    const onHotkey = (event: Event) => {
+      handleAction((event as CustomEvent<AppHotkeyActionId>).detail);
+    };
+    window.addEventListener(APP_HOTKEY_EVENT, onHotkey);
+    const pending = consumePendingChatHotkey();
+    if (pending) window.requestAnimationFrame(() => handleAction(pending));
+    return () => window.removeEventListener(APP_HOTKEY_EVENT, onHotkey);
+  }, [resetChatSession]);
+
+  useEffect(() => {
     activeSessionRef.current = sessionId;
   }, [sessionId]);
 
@@ -2323,20 +2352,26 @@ export function Chat() {
     [navigate]
   );
 
-  const handleOpenDiffFileInIde = useCallback(
-    (file: FileChangeItem) => {
-      const resolvedPath = resolvePathForIde(file.path, effectiveWorkspaceDir);
+  const handleOpenPathInIde = useCallback(
+    (path: string) => {
+      const resolvedPath = resolvePathForIde(path, effectiveWorkspaceDir);
       if (!resolvedPath) return;
       const params = new URLSearchParams();
       params.set("path", resolvedPath);
-      const line = extractFirstTargetLine(file.diff);
-      if (line) {
-        params.set("line", String(line));
-      }
-      params.set("from", "chat-diff");
+      if (effectiveWorkspaceDir) params.set("workspacePath", effectiveWorkspaceDir);
+      params.set("from", "chat-workspace");
       navigate(`/ide?${params.toString()}`);
     },
     [effectiveWorkspaceDir, navigate]
+  );
+
+  const handleOpenDiffFileInWorkspace = useCallback(
+    (file: FileChangeItem) => {
+      const resolvedPath = resolvePathForIde(file.path, effectiveWorkspaceDir);
+      if (!resolvedPath) return;
+      openWorkspaceFile(resolvedPath);
+    },
+    [effectiveWorkspaceDir, openWorkspaceFile]
   );
 
   const handleDiffPanelResizeStart = useCallback(
@@ -2932,7 +2967,8 @@ export function Chat() {
             workspaceDir={effectiveWorkspaceDir}
             onClose={() => setShowWorkspacePanel(false)}
             onCloseTab={closeWorkspaceTab}
-            onOpenDiffInIde={handleOpenDiffFileInIde}
+            onOpenDiffInWorkspace={handleOpenDiffFileInWorkspace}
+            onOpenFullIde={handleOpenPathInIde}
             onOpenTab={openWorkspaceTab}
             onRefreshDiff={refreshSessionFileChanges}
             onResizeStart={handleDiffPanelResizeStart}

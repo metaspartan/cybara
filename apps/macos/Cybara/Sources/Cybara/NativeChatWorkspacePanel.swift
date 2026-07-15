@@ -31,7 +31,7 @@ enum NativeChatWorkspaceTab: String, CaseIterable, Identifiable {
         case .terminal: "Terminal"
         case .browser: "Browser"
         case .computer: "Desktop"
-        case .files: "Files"
+        case .files: "IDE"
         case .subagents: "Side Task"
         }
     }
@@ -42,7 +42,7 @@ enum NativeChatWorkspaceTab: String, CaseIterable, Identifiable {
         case .terminal: "terminal"
         case .browser: "globe"
         case .computer: "display"
-        case .files: "folder"
+        case .files: "hammer"
         case .subagents: "person.2"
         }
     }
@@ -558,7 +558,11 @@ struct NativeChatFilesPanel: View {
     @State private var currentPath = ""
     @State private var browse: NativeIDEBrowseResult?
     @State private var selectedFile: NativeIDEReadResult?
+    @State private var fileContent = ""
+    @State private var savedContent = ""
+    @State private var lspStatus: NativeLSPStatus?
     @State private var loading = false
+    @State private var saving = false
     @State private var error: String?
 
     var body: some View {
@@ -601,12 +605,55 @@ struct NativeChatFilesPanel: View {
                 }
                 .frame(minWidth: 160, idealWidth: 210)
 
-                ScrollView {
-                    Text(selectedFile?.content ?? "Select a file to preview")
-                        .font(.system(size: 11, design: .monospaced))
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
-                        .padding(10)
+                VStack(spacing: 0) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "doc.text")
+                            .foregroundStyle(.secondary)
+                        Text(selectedFile?.path.split(separator: "/").last.map(String.init) ?? "Select a file")
+                            .font(.caption)
+                            .lineLimit(1)
+                        if fileContent != savedContent {
+                            Circle().fill(.secondary).frame(width: 5, height: 5)
+                        }
+                        Spacer()
+                        Button {
+                            Task { await save() }
+                        } label: {
+                            if saving { ProgressView().controlSize(.small) }
+                            else { Image(systemName: "square.and.arrow.down") }
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(selectedFile == nil || fileContent == savedContent || saving)
+                        .help("Save file")
+                    }
+                    .padding(.horizontal, 10)
+                    .frame(height: 34)
+
+                    Divider()
+
+                    if selectedFile == nil {
+                        ContentUnavailableView("Select a File", systemImage: "doc.text")
+                    } else {
+                        TextEditor(text: $fileContent)
+                            .font(.system(size: 11, design: .monospaced))
+                            .scrollContentBackground(.hidden)
+                            .padding(6)
+                    }
+
+                    Divider()
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "bolt.horizontal")
+                        Text("LSP")
+                        Text(lspStatus?.status ?? "unavailable")
+                            .foregroundStyle(lspStatus?.status == "healthy" ? .green : .secondary)
+                        Spacer()
+                        Text("\(lspStatus?.diagnosticsCount ?? 0) diagnostics")
+                    }
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .frame(height: 28)
                 }
                 .frame(minWidth: 180, maxWidth: .infinity)
             }
@@ -618,7 +665,9 @@ struct NativeChatFilesPanel: View {
         }
         .task(id: workspacePath) {
             currentPath = workspacePath ?? ""
+            async let statusLoad: Void = refreshLSP()
             if !currentPath.isEmpty { await load(currentPath) }
+            await statusLoad
         }
     }
 
@@ -640,9 +689,29 @@ struct NativeChatFilesPanel: View {
         defer { loading = false }
         do {
             selectedFile = try await client.readIDEFile(path: path)
+            fileContent = selectedFile?.content ?? ""
+            savedContent = fileContent
             error = nil
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    private func save() async {
+        guard let path = selectedFile?.path else { return }
+        saving = true
+        defer { saving = false }
+        do {
+            _ = try await client.writeIDEFile(path: path, content: fileContent)
+            savedContent = fileContent
+            await refreshLSP()
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    private func refreshLSP() async {
+        lspStatus = try? await client.lspStatus()
     }
 }

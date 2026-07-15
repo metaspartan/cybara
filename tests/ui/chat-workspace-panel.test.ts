@@ -50,6 +50,10 @@ const panelSource = readFileSync(
   fileURLToPath(new URL("../../ui/src/pages/chat/ChatWorkspacePanel.tsx", import.meta.url)),
   "utf8"
 );
+const filesSource = readFileSync(
+  fileURLToPath(new URL("../../ui/src/pages/chat/ChatWorkspaceFiles.tsx", import.meta.url)),
+  "utf8"
+);
 
 describe("chat workspace panel", () => {
   test("exposes the integrated workspace tools", () => {
@@ -67,12 +71,23 @@ describe("chat workspace panel", () => {
     expect(chatSource).toContain("ChatWorkspaceBrowser");
     expect(chatSource).toContain("ChatWorkspaceComputer");
     expect(chatSource).toContain("ChatWorkspaceFiles");
+    expect(chatSource).toContain("onOpenDiffInWorkspace");
+    expect(chatSource).toContain("openWorkspaceFile");
     expect(chatSource).toContain("<SessionDiffPanel");
     expect(chatSource).toContain("<SubagentPanel");
     expect(chatSource).toContain('toggleWorkspaceTab("review")');
     expect(chatSource).toContain('toggleWorkspaceTab("subagents")');
     expect(panelSource).toContain('aria-label="Add workspace tool"');
     expect(panelSource).toContain('role="menuitem"');
+  });
+
+  test("integrates file editing, saving, diagnostics, and full IDE expansion", () => {
+    expect(filesSource).toContain('apiFetch("/api/ide/write"');
+    expect(filesSource).toContain("/api/lsp/diagnostics/file?");
+    expect(filesSource).toContain("<LSPStatus");
+    expect(filesSource).toContain("compact");
+    expect(filesSource).toContain('aria-label="Workspace file editor"');
+    expect(filesSource).toContain("onOpenFullIde(selectedPath)");
   });
 
   test("environment preview opens active workspace tabs", () => {
@@ -154,9 +169,8 @@ describe("chat workspace panel", () => {
     expect(panelSource).toContain("WorkspaceTabInstance");
     expect(panelSource).toContain("WORKSPACE_SINGLETON_KINDS");
     expect(chatSource).toContain("tabIdRef");
-    expect(chatSource).toContain(
-      'kind === "browser" && current.some((instance) => instance.kind === "browser")'
-    );
+    expect(chatSource).toContain('kind === "browser"');
+    expect(chatSource).toContain('current.some((instance) => instance.kind === "browser")');
   });
 
   test("workspace tools remain mounted when the panel is hidden", () => {

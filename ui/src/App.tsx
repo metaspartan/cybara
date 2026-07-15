@@ -1,13 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
-import { lazy, Suspense, useEffect } from "react";
-import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { lazy, Suspense, useEffect, useState } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { CybaraPet } from "@/components/CybaraPet";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { GatewayStartupFailure } from "@/components/GatewayStartupFailure";
 import { Sidebar, SidebarProvider, useSidebar } from "@/components/layout/Sidebar";
 import { ToastContainer } from "@/components/ui/Toast";
 import { settingsApi, setupApi } from "@/lib/api";
+import {
+  APP_HOTKEYS_CHANGED_EVENT,
+  appHotkeyActionForEvent,
+  dispatchAppHotkey,
+  readAppHotkeyOverrides,
+  resolveAppHotkeys,
+  storePendingChatHotkey,
+  type AppHotkeyActionId,
+} from "@/lib/appHotkeys";
 import { readGatewayStartupStatus } from "@/lib/desktopGatewayStartup";
 import { readSetupComplete, resolveSetupGate, writeSetupComplete } from "@/lib/setupGate";
 import { isPetWindow } from "@/lib/tauriPet";
@@ -158,6 +167,56 @@ function MainContent({ children }: { children: React.ReactNode }) {
   );
 }
 
+function AppHotkeys() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { collapsed, setCollapsed } = useSidebar();
+  const [bindings, setBindings] = useState(() => resolveAppHotkeys(readAppHotkeyOverrides()));
+
+  useEffect(() => {
+    const refresh = () => setBindings(resolveAppHotkeys(readAppHotkeyOverrides()));
+    window.addEventListener(APP_HOTKEYS_CHANGED_EVENT, refresh);
+    return () => window.removeEventListener(APP_HOTKEYS_CHANGED_EVENT, refresh);
+  }, []);
+
+  useEffect(() => {
+    const openChatAction = (action: AppHotkeyActionId) => {
+      if (location.pathname === "/chat") {
+        dispatchAppHotkey(action);
+        return;
+      }
+      storePendingChatHotkey(action);
+      navigate("/chat");
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (location.pathname === "/setup" || event.defaultPrevented || event.repeat) return;
+      const action = appHotkeyActionForEvent(event, bindings);
+      if (!action) return;
+      event.preventDefault();
+      if (action === "newChat" || action === "focusComposer" || action === "toggleWorkspace") {
+        openChatAction(action);
+        return;
+      }
+      if (action === "toggleSidebar") {
+        setCollapsed(!collapsed);
+        return;
+      }
+      const routes: Partial<Record<AppHotkeyActionId, string>> = {
+        openChat: "/chat",
+        openIde: "/ide",
+        openTerminal: "/terminal",
+        openSettings: "/settings",
+      };
+      const route = routes[action];
+      if (route) navigate(route);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [bindings, collapsed, location.pathname, navigate, setCollapsed]);
+
+  return null;
+}
+
 function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
@@ -242,6 +301,7 @@ function App() {
       <SidebarProvider>
         <div className="flex min-h-screen bg-[#0a0a0f] overflow-hidden">
           <ThemeConfigSync />
+          <AppHotkeys />
           <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/setup" element={<Setup />} />

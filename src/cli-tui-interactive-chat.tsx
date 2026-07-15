@@ -35,6 +35,7 @@ import {
 } from "./cli-tui-terminal";
 import {
   compactInspectionLines,
+  lspStatusLines,
   logLines,
   mcpStatusLines,
   memoryStatusLine,
@@ -133,6 +134,7 @@ const COMMANDS = [
   { name: "/agents", detail: "List available agents" },
   { name: "/skills", detail: "Show installed and available skills" },
   { name: "/mcp", detail: "Show connected MCP services" },
+  { name: "/lsp", detail: "Show language server status" },
   { name: "/memory", detail: "Show memory and indexing health" },
   { name: "/logs", detail: "Show recent gateway logs" },
   { name: "/agent", detail: "Switch the active chat agent" },
@@ -225,12 +227,16 @@ function agentTransfersFrom(value: unknown): AgentTransferItem[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
     if (!isRecord(item)) return [];
-    const fromAgentId = typeof item.fromAgentId === "string" ? item.fromAgentId : "";
-    const fromAgentName = typeof item.fromAgentName === "string" ? item.fromAgentName : "";
+    const fromAgentId =
+      typeof item.fromAgentId === "string" ? item.fromAgentId : "";
+    const fromAgentName =
+      typeof item.fromAgentName === "string" ? item.fromAgentName : "";
     const toAgentId = typeof item.toAgentId === "string" ? item.toAgentId : "";
-    const toAgentName = typeof item.toAgentName === "string" ? item.toAgentName : "";
+    const toAgentName =
+      typeof item.toAgentName === "string" ? item.toAgentName : "";
     const reason = typeof item.reason === "string" ? item.reason : "";
-    if (!fromAgentId || !fromAgentName || !toAgentId || !toAgentName || !reason) return [];
+    if (!fromAgentId || !fromAgentName || !toAgentId || !toAgentName || !reason)
+      return [];
     return [
       {
         fromAgentId,
@@ -238,7 +244,8 @@ function agentTransfersFrom(value: unknown): AgentTransferItem[] {
         toAgentId,
         toAgentName,
         reason,
-        requestedAt: typeof item.requestedAt === "string" ? item.requestedAt : undefined,
+        requestedAt:
+          typeof item.requestedAt === "string" ? item.requestedAt : undefined,
       },
     ];
   });
@@ -560,7 +567,8 @@ function ActivitySummary({
       width={Math.max(12, maxColumns)}
     >
       <Text color="gray" dimColor>
-        {live ? "◌" : expanded ? "▾" : "▸"} {live ? "Working" : "Worked"} for {workedDuration}
+        {live ? "◌" : expanded ? "▾" : "▸"} {live ? "Working" : "Worked"} for{" "}
+        {workedDuration}
       </Text>
       {live || expanded
         ? rows.map((row, rowIndex) => (
@@ -591,8 +599,7 @@ function ActivitySummary({
                   dimColor
                   wrap="wrap"
                 >
-                  {index === details.length - 1 ? "└" : "├"}{" "}
-                  {label}
+                  {index === details.length - 1 ? "└" : "├"} {label}
                 </Text>
               ))}
             </Box>
@@ -635,14 +642,12 @@ function MessageView({
           color={ACTIVITY_DETAIL_COLOR}
           dimColor
         >
-          {"  ⇄ "}Transferred from {transfer.fromAgentName} to {transfer.toAgentName}
+          {"  ⇄ "}Transferred from {transfer.fromAgentName} to{" "}
+          {transfer.toAgentName}
         </Text>
       ))}
       <Box paddingLeft={2} width="100%">
-        <MessageBody
-          content={message.content}
-          maxLines={maxLines}
-        />
+        <MessageBody content={message.content} maxLines={maxLines} />
       </Box>
     </Box>
   );
@@ -662,12 +667,19 @@ function LiveRunView({
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text bold color="white">
-        ◆ Cybara <Text color="gray"><Spinner type="dots" /></Text>
+        ◆ Cybara{" "}
+        <Text color="gray">
+          <Spinner type="dots" />
+        </Text>
       </Text>
       <ActivitySummary
         expanded
         live
-        message={{ role: "assistant", content: "", process_activities: activities }}
+        message={{
+          role: "assistant",
+          content: "",
+          process_activities: activities,
+        }}
         maxColumns={maxColumns}
       />
       {content ? (
@@ -675,7 +687,10 @@ function LiveRunView({
           <MessageBody content={content} />
         </Box>
       ) : detail ? (
-        <Text color="gray" wrap="wrap">  {detail}</Text>
+        <Text color="gray" wrap="wrap">
+          {" "}
+          {detail}
+        </Text>
       ) : null}
     </Box>
   );
@@ -778,7 +793,8 @@ function HelpPanel({ narrow }: { narrow: boolean }): React.ReactElement {
         transcript
       </Text>
       <Text>
-        Tab completes slash commands and @ capabilities · approvals use 1/2/3/4 or y/s/a/n
+        Tab completes slash commands and @ capabilities · approvals use 1/2/3/4
+        or y/s/a/n
       </Text>
       <Text>
         /agents lists · /agent name switches · /router on|off · /permissions
@@ -919,11 +935,16 @@ export function InteractiveChatTUI({
   const [history, setHistory] = React.useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = React.useState<number | null>(null);
   const [sending, setSending] = React.useState(false);
-  const [streamStatus, setStreamStatus] = React.useState<TUIStreamStatus>("idle");
+  const [streamStatus, setStreamStatus] =
+    React.useState<TUIStreamStatus>("idle");
   const [streamDetail, setStreamDetail] = React.useState("");
   const [streamingText, setStreamingText] = React.useState("");
-  const [liveActivities, setLiveActivities] = React.useState<TUIStreamActivity[]>([]);
-  const [capabilities, setCapabilities] = React.useState<TUICapabilityOption[]>([]);
+  const [liveActivities, setLiveActivities] = React.useState<
+    TUIStreamActivity[]
+  >([]);
+  const [capabilities, setCapabilities] = React.useState<TUICapabilityOption[]>(
+    [],
+  );
   const [capabilityIndex, setCapabilityIndex] = React.useState(0);
   const [loading, setLoading] = React.useState(Boolean(sessionId));
   const [error, setError] = React.useState<string | null>(null);
@@ -935,7 +956,8 @@ export function InteractiveChatTUI({
   );
   const [useModelRouter, setUseModelRouter] = React.useState(false);
   const [approvalMode, setApprovalMode] = React.useState("always_allow");
-  const [followUpBehaviorEnabled, setFollowUpBehaviorEnabled] = React.useState(true);
+  const [followUpBehaviorEnabled, setFollowUpBehaviorEnabled] =
+    React.useState(true);
   const [routerStatus, setRouterStatus] = React.useState<RouterStatus | null>(
     null,
   );
@@ -958,16 +980,16 @@ export function InteractiveChatTUI({
 
   const activeCapabilityMention = React.useMemo(
     () => activeTUICapabilityMention(input, cursor),
-    [cursor, input]
+    [cursor, input],
   );
   const capabilityOptions = React.useMemo(
     () =>
       matchingTUICapabilities(
         capabilities,
         activeCapabilityMention,
-        Math.max(2, Math.min(6, layout.commandRows))
+        Math.max(2, Math.min(6, layout.commandRows)),
       ),
-    [activeCapabilityMention, capabilities, layout.commandRows]
+    [activeCapabilityMention, capabilities, layout.commandRows],
   );
 
   React.useEffect(() => {
@@ -983,11 +1005,15 @@ export function InteractiveChatTUI({
     const cacheKey = workspaceDir || "";
     if (capabilitiesWorkspaceRef.current === cacheKey) return;
     capabilitiesWorkspaceRef.current = cacheKey;
-    const suffix = workspaceDir ? `?workspaceDir=${encodeURIComponent(workspaceDir)}` : "";
-    void fetchAPI<unknown>(`/api/chat/capabilities${suffix}`).then((response) => {
-      if (response) setCapabilities(capabilitiesFromResponse(response));
-      else capabilitiesWorkspaceRef.current = null;
-    });
+    const suffix = workspaceDir
+      ? `?workspaceDir=${encodeURIComponent(workspaceDir)}`
+      : "";
+    void fetchAPI<unknown>(`/api/chat/capabilities${suffix}`).then(
+      (response) => {
+        if (response) setCapabilities(capabilitiesFromResponse(response));
+        else capabilitiesWorkspaceRef.current = null;
+      },
+    );
   }, [activeCapabilityMention, fetchAPI, workspaceDir]);
 
   React.useEffect(() => {
@@ -995,7 +1021,9 @@ export function InteractiveChatTUI({
     const appendStatusActivity = (event: TUIStatusStreamEvent): void => {
       const activeSessionId = sessionIdRef.current;
       if (event.type === "snapshot") {
-        const active = event.activeSessions.find((session) => session.sessionId === activeSessionId);
+        const active = event.activeSessions.find(
+          (session) => session.sessionId === activeSessionId,
+        );
         if (!active) {
           setStreamStatus("idle");
           setStreamDetail("");
@@ -1015,8 +1043,11 @@ export function InteractiveChatTUI({
       setStreamStatus(event.status);
       setStreamDetail(event.detail || "");
       if (!event.toolPhase && !event.toolName) return;
-      const phase = event.toolPhase || (event.status === "error" ? "error" : "result");
-      const id = event.toolCallId || `${event.toolName || "activity"}-${event.timestamp}`;
+      const phase =
+        event.toolPhase || (event.status === "error" ? "error" : "result");
+      const id =
+        event.toolCallId ||
+        `${event.toolName || "activity"}-${event.timestamp}`;
       const activity: TUIStreamActivity = {
         id,
         phase,
@@ -1029,7 +1060,9 @@ export function InteractiveChatTUI({
         ...current.filter(
           (item) =>
             item.id !== id &&
-            (!event.toolCallId || item.toolCallId !== event.toolCallId || item.phase === phase),
+            (!event.toolCallId ||
+              item.toolCallId !== event.toolCallId ||
+              item.phase === phase),
         ),
         activity,
       ]);
@@ -1068,7 +1101,8 @@ export function InteractiveChatTUI({
           ? configResponse.tool_approval_mode
           : approvalMode;
       const nextFollowUpBehaviorEnabled =
-        !isRecord(configResponse) || configResponse.follow_up_behavior_enabled !== false;
+        !isRecord(configResponse) ||
+        configResponse.follow_up_behavior_enabled !== false;
       const nextRouterStatus = isRecord(routerResponse)
         ? (routerResponse as RouterStatus)
         : null;
@@ -1309,6 +1343,16 @@ export function InteractiveChatTUI({
         );
         return true;
       }
+      if (normalizedCommand === "lsp") {
+        const response = await fetchAPI<unknown>("/api/lsp/install-status");
+        const lines = lspStatusLines(response);
+        setNotice(
+          lines.length
+            ? compactInspectionLines(lines)
+            : "No language servers returned by the gateway.",
+        );
+        return true;
+      }
       if (normalizedCommand === "memory") {
         const [status, memory] = await Promise.all([
           fetchAPI<unknown>("/api/memory/status"),
@@ -1474,7 +1518,9 @@ export function InteractiveChatTUI({
       if (["followups", "followup"].includes(normalizedCommand)) {
         const value = argument.trim().toLowerCase();
         if (!value || value === "show") {
-          setNotice(`Queue / Steer follow-ups: ${followUpBehaviorEnabled ? "on" : "off"}`);
+          setNotice(
+            `Queue / Steer follow-ups: ${followUpBehaviorEnabled ? "on" : "off"}`,
+          );
           return true;
         }
         const enabled = ["on", "enable", "enabled"].includes(value)
@@ -1500,7 +1546,9 @@ export function InteractiveChatTUI({
           return true;
         }
         setFollowUpBehaviorEnabled(enabled);
-        setNotice(`Queue / Steer follow-ups ${enabled ? "enabled" : "disabled"}.`);
+        setNotice(
+          `Queue / Steer follow-ups ${enabled ? "enabled" : "disabled"}.`,
+        );
         return true;
       }
       if (["tools", "toolset", "toolsets"].includes(normalizedCommand)) {
@@ -1529,7 +1577,10 @@ export function InteractiveChatTUI({
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              config: { ...agentConfig(detail ?? selectedAgent), tool_profile: value },
+              config: {
+                ...agentConfig(detail ?? selectedAgent),
+                tool_profile: value,
+              },
             }),
           },
         );
@@ -1796,7 +1847,9 @@ export function InteractiveChatTUI({
       }
       if (normalizedCommand === "details") {
         setExpandedActivities((value) => !value);
-        setNotice(`Work details ${expandedActivities ? "collapsed" : "expanded"}.`);
+        setNotice(
+          `Work details ${expandedActivities ? "collapsed" : "expanded"}.`,
+        );
         return true;
       }
       if (normalizedCommand === "expand" || normalizedCommand === "raw") {
@@ -1986,12 +2039,16 @@ export function InteractiveChatTUI({
       if (sending) {
         if (trimmed.startsWith("/") && (await runCommand(trimmed))) return;
         if (!followUpBehaviorEnabled) {
-          setNotice("Queue / Steer follow-ups are disabled. Use /followups on to enable them.");
+          setNotice(
+            "Queue / Steer follow-ups are disabled. Use /followups on to enable them.",
+          );
           return;
         }
         const activeSessionId = localSessionId || sessionIdRef.current;
         if (!activeSessionId) {
-          setNotice("Wait for the first session to start before queueing a follow-up.");
+          setNotice(
+            "Wait for the first session to start before queueing a follow-up.",
+          );
           return;
         }
         const queued = await fetchAPI<unknown>("/api/chat", {
@@ -2000,7 +2057,9 @@ export function InteractiveChatTUI({
           body: JSON.stringify({
             agentId: selectedAgentId || undefined,
             message: trimmed,
-            modelOverride: useModelRouter ? undefined : modelOverride || undefined,
+            modelOverride: useModelRouter
+              ? undefined
+              : modelOverride || undefined,
             queueMode: "queue",
             sessionId: activeSessionId,
             useModelRouter,
@@ -2051,7 +2110,11 @@ export function InteractiveChatTUI({
         const responseMessage = isRecord(response)
           ? messagesFromResponse([response.message])[0]
           : undefined;
-        if (isRecord(response) && isRecord(response.agent) && typeof response.agent.id === "string") {
+        if (
+          isRecord(response) &&
+          isRecord(response.agent) &&
+          typeof response.agent.id === "string"
+        ) {
           const nextAgentId = response.agent.id.trim();
           if (nextAgentId) setSelectedAgentId(nextAgentId);
         }
@@ -2126,13 +2189,24 @@ export function InteractiveChatTUI({
   const capabilityPaletteVisible = capabilityOptions.length > 0;
   const narrowOverlayVisible =
     layout.narrow &&
-    (commandPaletteVisible || capabilityPaletteVisible || showEnvironment || showHelp);
+    (commandPaletteVisible ||
+      capabilityPaletteVisible ||
+      showEnvironment ||
+      showHelp);
 
   const selectCapability = React.useCallback((): boolean => {
-    if (!activeCapabilityMention || capabilityOptions.length === 0) return false;
-    const option = capabilityOptions[Math.min(capabilityIndex, capabilityOptions.length - 1)];
+    if (!activeCapabilityMention || capabilityOptions.length === 0)
+      return false;
+    const option =
+      capabilityOptions[
+        Math.min(capabilityIndex, capabilityOptions.length - 1)
+      ];
     if (!option) return false;
-    const inserted = insertTUICapability(input, activeCapabilityMention, option);
+    const inserted = insertTUICapability(
+      input,
+      activeCapabilityMention,
+      option,
+    );
     setInput(inserted.value);
     setCursor(inserted.cursor);
     return true;
@@ -2142,7 +2216,11 @@ export function InteractiveChatTUI({
     if (key.ctrl && value === "c") {
       const now = Date.now();
       const activeSessionId = localSessionId || sessionIdRef.current;
-      if (sending && activeSessionId && now - lastInterruptAtRef.current > 1500) {
+      if (
+        sending &&
+        activeSessionId &&
+        now - lastInterruptAtRef.current > 1500
+      ) {
         lastInterruptAtRef.current = now;
         setNotice("Stopping active run. Press Ctrl+C again to exit.");
         void fetchAPI(
@@ -2165,7 +2243,10 @@ export function InteractiveChatTUI({
       return;
     }
     if (key.escape) {
-      const action = chatEscapeAction(showEnvironment || showHelp, input.length > 0);
+      const action = chatEscapeAction(
+        showEnvironment || showHelp,
+        input.length > 0,
+      );
       if (action === "close_panel") {
         setShowEnvironment(false);
         setShowHelp(false);
@@ -2216,8 +2297,9 @@ export function InteractiveChatTUI({
     }
     if (key.upArrow) {
       if (capabilityOptions.length > 0) {
-        setCapabilityIndex((current) =>
-          (current - 1 + capabilityOptions.length) % capabilityOptions.length
+        setCapabilityIndex(
+          (current) =>
+            (current - 1 + capabilityOptions.length) % capabilityOptions.length,
         );
         return;
       }
@@ -2233,7 +2315,9 @@ export function InteractiveChatTUI({
     }
     if (key.downArrow) {
       if (capabilityOptions.length > 0) {
-        setCapabilityIndex((current) => (current + 1) % capabilityOptions.length);
+        setCapabilityIndex(
+          (current) => (current + 1) % capabilityOptions.length,
+        );
         return;
       }
       if (history.length === 0) return;
@@ -2308,7 +2392,8 @@ export function InteractiveChatTUI({
       ? "Queue follow-up"
       : "Run in progress"
     : "Ask Cybara";
-  const composerTextColor = sending && !followUpBehaviorEnabled ? "gray" : "white";
+  const composerTextColor =
+    sending && !followUpBehaviorEnabled ? "gray" : "white";
 
   return (
     <Box flexDirection="column" height={layout.rows} width="100%">
@@ -2350,13 +2435,25 @@ export function InteractiveChatTUI({
       </Box>
 
       {narrowOverlayVisible ? null : loading ? (
-        <Box paddingX={1} paddingY={1} flexGrow={1} flexShrink={1} overflow="hidden">
+        <Box
+          paddingX={1}
+          paddingY={1}
+          flexGrow={1}
+          flexShrink={1}
+          overflow="hidden"
+        >
           <Text color="yellow">
             <Spinner type="dots" /> Loading conversation
           </Text>
         </Box>
       ) : visibleMessages.length === 0 ? (
-        <Box paddingX={1} paddingY={1} flexGrow={1} flexShrink={1} overflow="hidden">
+        <Box
+          paddingX={1}
+          paddingY={1}
+          flexGrow={1}
+          flexShrink={1}
+          overflow="hidden"
+        >
           <Text color="gray">No messages yet. Type a prompt or /help.</Text>
         </Box>
       ) : (
@@ -2404,8 +2501,10 @@ export function InteractiveChatTUI({
         <Box paddingX={1}>
           <Text color="cyan">
             <Spinner type="dots" />{" "}
-            {followUpBehaviorEnabled ? "Enter queues · /steer injects" : "Follow-ups off"} ·
-            Ctrl+C stops
+            {followUpBehaviorEnabled
+              ? "Enter queues · /steer injects"
+              : "Follow-ups off"}{" "}
+            · Ctrl+C stops
           </Text>
         </Box>
       ) : null}
@@ -2454,7 +2553,9 @@ export function InteractiveChatTUI({
         flexDirection="column"
         flexShrink={0}
       >
-        <Text color={sending && followUpBehaviorEnabled ? "cyan" : "gray"}>{composerTitle}</Text>
+        <Text color={sending && followUpBehaviorEnabled ? "cyan" : "gray"}>
+          {composerTitle}
+        </Text>
         {composerLines.map((line, index) => (
           <Text key={index} color={composerTextColor}>
             {index === 0 ? "› " : "  "}

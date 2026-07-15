@@ -103,6 +103,15 @@ describe("native macOS shell wiring", () => {
     expect(screens).toContain('["terminal_enabled": true]');
   });
 
+  test("native chat workspace provides an editable IDE surface with LSP status", () => {
+    const workspace = readFileSync(join(MACOS_APP_DIR, "NativeChatWorkspacePanel.swift"), "utf8");
+
+    expect(workspace).toContain('case .files: "IDE"');
+    expect(workspace).toContain("TextEditor(text: $fileContent)");
+    expect(workspace).toContain("client.writeIDEFile(path: path, content: fileContent)");
+    expect(workspace).toContain("client.lspStatus()");
+  });
+
   test("native shell exposes major web and Tauri destinations as SwiftUI screens", () => {
     const contentView = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
     const app = readFileSync(join(ROOT_DIR, "ui", "src", "App.tsx"), "utf8");

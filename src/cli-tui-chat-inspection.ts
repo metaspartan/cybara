@@ -34,6 +34,20 @@ export function mcpStatusLines(value: unknown): string[] {
   });
 }
 
+export function lspStatusLines(value: unknown): string[] {
+  if (!isRecord(value) || !Array.isArray(value.status)) return [];
+  return value.status.flatMap((item) => {
+    if (!isRecord(item)) return [];
+    const language = typeof item.language === "string" ? item.language : "";
+    if (!language) return [];
+    const installed = item.installed === true;
+    const available = item.available === true;
+    const state = installed ? "installed" : available ? "available" : "unavailable";
+    const command = typeof item.command === "string" && item.command ? ` · ${item.command}` : "";
+    return [`${installed ? "*" : "-"} ${language} · ${state}${command}`];
+  });
+}
+
 export function memoryStatusLine(status: unknown, memory: unknown): string {
   const statusRecord = isRecord(status) ? status : {};
   const memoryRecord = isRecord(memory) ? memory : {};

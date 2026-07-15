@@ -1,6 +1,5 @@
-/** Shared IDE type definitions — extracted from IDE.tsx. */
 import type { LiveActivityItem, ToolCallLike } from "@/lib/chatActivities";
-import type { AgentTransferInfo } from "@/types";
+import type { AgentReasoningEffort, AgentTransferInfo } from "@/types";
 export interface FileEntry {
   name: string;
   path: string;
@@ -279,6 +278,7 @@ export interface IdeChatAgentOption {
   provider_id?: string;
   fallback_provider_id?: string;
   status?: string;
+  reasoning_effort?: AgentReasoningEffort | null;
 }
 
 export type IdeProcessActivity = LiveActivityItem;
