@@ -15,12 +15,23 @@ export function anthropicRequestBase(
     : { model: modelId, messages, max_tokens: maxTokens };
 }
 
-export function anthropicRequestHeaders(auth: string, vertex: boolean): Record<string, string> {
-  return vertex
-    ? { "Content-Type": "application/json", Authorization: `Bearer ${auth}` }
-    : {
-        "Content-Type": "application/json",
-        "x-api-key": auth,
-        "anthropic-version": "2023-06-01",
-      };
+export function anthropicRequestHeaders(
+  auth: string,
+  vertex: boolean,
+  oauth = false
+): Record<string, string> {
+  if (vertex) return { "Content-Type": "application/json", Authorization: `Bearer ${auth}` };
+  if (oauth) {
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${auth}`,
+      "anthropic-version": "2023-06-01",
+      "anthropic-beta": "oauth-2025-04-20",
+    };
+  }
+  return {
+    "Content-Type": "application/json",
+    "x-api-key": auth,
+    "anthropic-version": "2023-06-01",
+  };
 }

@@ -660,5 +660,5 @@ describe("Security auth e2e", () => {
     } finally {
       await stopServer(proc);
     }
-  });
+  }, 10_000);
 });

@@ -149,6 +149,82 @@ describe("Agent provider API-family routing", () => {
     expect(requestBody.max_tokens).toBe(65536);
   });
 
+  test("routes Anthropic subscription providers with OAuth bearer authentication", async () => {
+    let requestUrl = "";
+    let requestHeaders = new Headers();
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestUrl = String(input);
+      requestHeaders = new Headers(init?.headers);
+      return Response.json({
+        id: "msg-oauth",
+        type: "message",
+        role: "assistant",
+        model: "claude-opus-4-8",
+        content: [{ type: "text", text: "oauth-ok" }],
+        usage: { input_tokens: 5, output_tokens: 2 },
+      });
+    }) as typeof fetch;
+    const provider = providerManager.create({
+      provider: "anthropic-oauth",
+      name: "Anthropic Subscription Test",
+      access_token: "oauth-access-token",
+      refresh_token: "oauth-refresh-token",
+      expires_at: Date.now() + 3_600_000,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Anthropic Subscription Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "claude-opus-4-8",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(agent.id, [{ role: "user", content: "hello" }], {
+      useTools: false,
+      sessionId: "anthropic-oauth-session",
+    });
+
+    expect(result.content).toBe("oauth-ok");
+    expect(requestUrl).toBe("https://api.anthropic.com/v1/messages");
+    expect(requestHeaders.get("authorization")).toBe("Bearer oauth-access-token");
+    expect(requestHeaders.get("x-api-key")).toBeNull();
+    expect(requestHeaders.get("anthropic-beta")).toBe("oauth-2025-04-20");
+  });
+
+  test("rejects account providers whose native transport is not implemented", async () => {
+    let requestCount = 0;
+    globalThis.fetch = (async () => {
+      requestCount += 1;
+      return Response.json({ error: "unexpected request" }, { status: 500 });
+    }) as typeof fetch;
+    const provider = providerManager.create({
+      provider: "cursor",
+      name: "Cursor Account Test",
+      access_token: "cursor-access-token",
+      refresh_token: "cursor-refresh-token",
+      expires_at: Date.now() + 3_600_000,
+    });
+    createdProviderIds.push(provider.id);
+    const agent = agentManager.create({
+      name: "Cursor Account Agent",
+      type: "main",
+      provider_id: provider.id,
+      model: "default",
+      tools: [],
+    });
+    createdAgentIds.push(agent.id);
+
+    const result = await agentManager.execute(agent.id, [{ role: "user", content: "hello" }], {
+      useTools: false,
+      sessionId: "cursor-account-session",
+    });
+
+    expect(result.content).toContain("Provider cursor uses unsupported API family cursor-agent");
+    expect(requestCount).toBe(0);
+  });
+
   test("adds anthropic 1M beta header when agent model params enable context1m", async () => {
     let requestHeaders = new Headers();
 

@@ -4,6 +4,7 @@ import {
   pollMiniMaxPortalOAuth,
   startMiniMaxPortalOAuth,
 } from "./provider-oauth-minimax";
+import { pollCursorOAuth, startCursorOAuth } from "./provider-oauth-cursor";
 
 interface DeviceOAuthConfig {
   clientId?: string;
@@ -117,6 +118,7 @@ export async function startProviderDeviceCodeOAuth(
 ): Promise<Record<string, unknown>> {
   const { providerType } = body as { providerType: string };
   if (isMiniMaxPortalOAuth(providerType)) return startMiniMaxPortalOAuth(providerType);
+  if (resolveProviderType(providerType) === "cursor") return startCursorOAuth();
   const { resolvedProviderType, oauthConfig } = getDeviceOAuthConfig(providerType);
   const endpoints = await discoverDeviceOAuthEndpoints(resolvedProviderType, oauthConfig);
 
@@ -177,6 +179,7 @@ export async function pollProviderDeviceCodeOAuth(body: unknown): Promise<Record
   if (isMiniMaxPortalOAuth(providerType)) {
     return pollMiniMaxPortalOAuth(providerType, deviceCode);
   }
+  if (resolveProviderType(providerType) === "cursor") return pollCursorOAuth(deviceCode);
   const { resolvedProviderType, oauthConfig } = getDeviceOAuthConfig(providerType);
   const endpoints = await discoverDeviceOAuthEndpoints(resolvedProviderType, oauthConfig);
 

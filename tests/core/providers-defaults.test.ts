@@ -16,6 +16,10 @@ describe("Provider model defaults and API-family parity", () => {
     expect(getDefaultModel("ds4")).toBe("deepseek-v4-flash");
     expect(getDefaultModel("inferrs")).toBe("google/gemma-4-E2B-it");
     expect(getDefaultModel("anthropic")).toBe("claude-opus-4-8");
+    expect(getDefaultModel("anthropic-oauth")).toBe("claude-opus-4-8");
+    expect(getDefaultModel("cursor")).toBe("default");
+    expect(getDefaultModel("devin")).toBe("claude-sonnet-5-medium");
+    expect(getDefaultModel("gitlab-duo")).toBe("duo-chat-sonnet-4-6");
     expect(getDefaultModel("minimax")).toBe("MiniMax-M3");
     expect(getDefaultModel("minimax-portal")).toBe("MiniMax-M3");
     expect(getDefaultModel("moonshot")).toBe("kimi-k2.6");
@@ -50,6 +54,9 @@ describe("Provider model defaults and API-family parity", () => {
 
   test("normalizes provider aliases", () => {
     expect(resolveProviderType("github-copilot")).toBe("github_copilot");
+    expect(resolveProviderType("claude-oauth")).toBe("anthropic-oauth");
+    expect(resolveProviderType("cursor-oauth")).toBe("cursor");
+    expect(resolveProviderType("devin-oauth")).toBe("devin");
     expect(resolveProviderType("google-antigravity")).toBe("antigravity");
     expect(resolveProviderType("gemini-cli")).toBe("google-gemini-cli");
     expect(resolveProviderType("opencode")).toBe("opencode_zen");
@@ -76,6 +83,10 @@ describe("Provider model defaults and API-family parity", () => {
     expect(providers.meta.api).toBe("openai-responses");
     expect(providers.ds4.api).toBe("openai-completions");
     expect(providers.inferrs.api).toBe("openai-completions");
+    expect(providers["anthropic-oauth"].api).toBe("anthropic-messages");
+    expect(providers.cursor.api).toBe("cursor-agent");
+    expect(providers.devin.api).toBe("devin-agent");
+    expect(providers["gitlab-duo"].api).toBe("gitlab-duo");
   });
 
   test("includes current OpenAI preview models in API and Codex catalogs", () => {
@@ -124,7 +135,14 @@ describe("Provider model defaults and API-family parity", () => {
     );
   });
 
-  test("includes newly added provider catalogs", () => {
+  test("includes native account OAuth provider definitions", () => {
+    expect(providers["anthropic-oauth"].oauthFlow).toBe("redirect");
+    expect(providers["anthropic-oauth"].models.length).toBe(providers.anthropic.models.length);
+    expect(providers.cursor.oauthFlow).toBe("device_code");
+    expect(providers.cursor.models.length).toBe(42);
+    expect(providers.devin.oauthFlow).toBe("redirect");
+    expect(providers.devin.models.length).toBe(59);
+    expect(providers["gitlab-duo"].models.length).toBe(10);
     expect(providers.meta.models.some((model) => model.id === "muse-spark-1.1")).toBe(true);
     expect(providers.ds4.models.some((model) => model.id === "deepseek-v4-flash")).toBe(true);
     expect(providers.inferrs.models.some((model) => model.id === "google/gemma-4-E2B-it")).toBe(

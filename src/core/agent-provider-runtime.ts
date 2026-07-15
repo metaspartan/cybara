@@ -753,20 +753,7 @@ export abstract class AgentProviderRuntime {
       );
     }
 
-    return this.callOpenAICompatAPI(
-      baseUrl,
-      resolvedAuth,
-      modelId,
-      messages,
-      tools,
-      mergedHeaders,
-      providerConfig,
-      toolContext,
-      {
-        maxOutputTokens: modelMaxOutputTokens,
-        contextWindowTokens: modelContextWindowTokens,
-      }
-    );
+    throw new Error(`Provider ${providerConfig} uses unsupported API family ${apiFamily}`);
   }
 
   private compactOpenAIRequestMessagesForContext(
@@ -2983,7 +2970,8 @@ export abstract class AgentProviderRuntime {
       requestBody.tool_choice = { type: "auto" };
     }
 
-    const headers: Record<string, string> = anthropicRequestHeaders(auth, vertex);
+    const oauth = providerConfig === "anthropic-oauth";
+    const headers: Record<string, string> = anthropicRequestHeaders(auth, vertex, oauth);
 
     if (!vertex && modelParams?.context1m === true) {
       headers["anthropic-beta"] = this.mergeHeaderToken(
@@ -3011,11 +2999,13 @@ export abstract class AgentProviderRuntime {
     let lastInitialError = "";
     const poolName = "anthropic";
     let activeCredential: PooledCredential | null =
-      !vertex && poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
+      !vertex && !oauth && poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
     let currentApiKey = activeCredential?.value ?? auth;
 
     for (let attempt = 0; attempt <= INITIAL_MAX_RETRIES; attempt++) {
       if (vertex) {
+        headers.Authorization = `Bearer ${currentApiKey}`;
+      } else if (oauth) {
         headers.Authorization = `Bearer ${currentApiKey}`;
       } else {
         headers["x-api-key"] = currentApiKey;
@@ -3044,7 +3034,8 @@ export abstract class AgentProviderRuntime {
         if (response.status === 429 && activeCredential) {
           markCredentialCooldown(poolName, activeCredential, "rate_limit");
         }
-        const rotated = !vertex && poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
+        const rotated =
+          !vertex && !oauth && poolSize(poolName) > 0 ? acquireCredential(poolName) : null;
         if (rotated) {
           activeCredential = rotated;
           currentApiKey = rotated.value;

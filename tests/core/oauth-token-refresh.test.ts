@@ -167,4 +167,65 @@ describe("OAuth token refresh (openai-codex)", () => {
     expect(called).toBe(false);
     expect(result).toBeUndefined();
   });
+
+  test("refreshes Anthropic subscription tokens with a JSON request", async () => {
+    const provider = providerManager.create({
+      provider: "anthropic-oauth",
+      name: "Anthropic OAuth Test",
+      access_token: "stale-token",
+      refresh_token: "refresh-token",
+      expires_at: Date.now() - 1000,
+    });
+    createdProviderIds.push(provider.id);
+    let request: RequestInit | undefined;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("https://api.anthropic.com/v1/oauth/token");
+      request = init;
+      return Response.json({
+        access_token: "fresh-token",
+        refresh_token: "fresh-refresh",
+        expires_in: 3600,
+      });
+    }) as typeof fetch;
+
+    const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(
+      providerManager.getWithCredentials(provider.id)
+    );
+    expect(request?.headers).toMatchObject({
+      "Content-Type": "application/json",
+      "anthropic-beta": "oauth-2025-04-20",
+    });
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      grant_type: "refresh_token",
+      refresh_token: "refresh-token",
+      client_id: "9d1c250a-e61b-44d9-88ed-5944d1962f5e",
+    });
+    expect(refreshed?.access_token).toBe("fresh-token");
+    expect(refreshed?.refresh_token).toBe("fresh-refresh");
+  });
+
+  test("refreshes Cursor tokens with bearer authentication", async () => {
+    const provider = providerManager.create({
+      provider: "cursor",
+      name: "Cursor OAuth Test",
+      access_token: "stale-token",
+      refresh_token: "cursor-refresh",
+      expires_at: Date.now() - 1000,
+    });
+    createdProviderIds.push(provider.id);
+    let request: RequestInit | undefined;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("https://api2.cursor.sh/auth/exchange_user_api_key");
+      request = init;
+      return Response.json({ accessToken: "fresh-token", refreshToken: "fresh-refresh" });
+    }) as typeof fetch;
+
+    const refreshed = await providerManager.refreshOAuthCredentialsIfNeeded(
+      providerManager.getWithCredentials(provider.id)
+    );
+    expect(request?.headers).toMatchObject({ Authorization: "Bearer cursor-refresh" });
+    expect(request?.body).toBe("{}");
+    expect(refreshed?.access_token).toBe("fresh-token");
+    expect(refreshed?.refresh_token).toBe("fresh-refresh");
+  });
 });

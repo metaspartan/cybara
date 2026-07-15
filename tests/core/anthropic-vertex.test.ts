@@ -39,6 +39,13 @@ describe("anthropic vertex request shaping", () => {
     expect(d["anthropic-version"]).toBe("2023-06-01");
     expect(d.Authorization).toBeUndefined();
   });
+
+  test("subscription OAuth uses Bearer auth and the OAuth beta", () => {
+    const headers = anthropicRequestHeaders("oauth-token", false, true);
+    expect(headers.Authorization).toBe("Bearer oauth-token");
+    expect(headers["x-api-key"]).toBeUndefined();
+    expect(headers["anthropic-beta"]).toBe("oauth-2025-04-20");
+  });
 });
 
 describe("vertex provider entries", () => {

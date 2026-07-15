@@ -3,12 +3,15 @@ import { codingProviderCatalog } from "./providers/catalog-coding";
 import { cloudProviderCatalog } from "./providers/catalog-cloud";
 import { foundationProviderCatalog } from "./providers/catalog-foundation";
 import { integrationProviderCatalog } from "./providers/catalog-integrations";
+import { accountOAuthProviders } from "./providers/account-oauth";
+import { parseOAuthTokenPayload, type ProviderOAuthConfig } from "./provider-oauth";
 
 export const providers = {
   ...foundationProviderCatalog,
   ...integrationProviderCatalog,
   ...codingProviderCatalog,
   ...cloudProviderCatalog,
+  ...accountOAuthProviders,
 } as const;
 
 export type ProviderType = keyof typeof providers;
@@ -17,6 +20,9 @@ const PROVIDER_TYPE_ALIASES: Record<string, ProviderType> = {
   "google-antigravity": "antigravity",
   "gemini-cli": "google-gemini-cli",
   "github-copilot": "github_copilot",
+  "claude-oauth": "anthropic-oauth",
+  "cursor-oauth": "cursor",
+  "devin-oauth": "devin",
   opencode: "opencode_zen",
   zai: "z.ai",
   "z-ai": "z.ai",
@@ -141,21 +147,10 @@ class ProviderManager {
     return this.mergeWithStaticConfig(dbProvider);
   }
 
-  // Dedupe concurrent refreshes per provider so parallel calls don't each
-  // rotate the refresh_token and invalidate one another.
   private oauthRefreshInFlight = new Map<string, Promise<Provider | undefined>>();
-  // Backoff for providers with unknown expiry whose refresh keeps failing, so
-  // a broken token doesn't hit the token endpoint on every single call.
   private oauthRefreshCooldownUntil = new Map<string, number>();
   private static readonly OAUTH_REFRESH_COOLDOWN_MS = 60_000;
 
-  /**
-   * Refresh an OAuth provider's access_token when it's expired (or its expiry
-   * is unknown) using the stored refresh_token. Returns the refreshed provider,
-   * or undefined when no refresh is applicable/possible (caller keeps the
-   * existing credentials). ChatGPT/Codex OAuth tokens are short-lived, so
-   * without this every Codex call fails once the token lapses.
-   */
   async refreshOAuthCredentialsIfNeeded(
     provider: Provider | undefined
   ): Promise<Provider | undefined> {
@@ -164,19 +159,14 @@ class ProviderManager {
       | { authType?: string; oauthConfig?: unknown }
       | undefined;
     if (!staticConfig || staticConfig.authType !== "oauth") return undefined;
-    const oauth = staticConfig.oauthConfig as
-      | { tokenUrl?: string; clientId?: string; clientSecret?: string; scope?: string }
-      | undefined;
-    if (!oauth?.tokenUrl || !oauth?.clientId) return undefined;
+    const oauth = staticConfig.oauthConfig as ProviderOAuthConfig | undefined;
+    if (!oauth?.tokenUrl || oauth.refreshMode === "none") return undefined;
     if (!provider.refresh_token) return undefined;
 
     const now = Date.now();
     const skewMs = 120_000;
     const expiresAt = typeof provider.expires_at === "number" ? provider.expires_at : 0;
-    // Refresh when expiry is unknown (never captured) or within the skew window.
     if (expiresAt > 0 && expiresAt - skewMs > now) return undefined;
-    // When expiry is unknown, back off after a recent attempt so a broken
-    // refresh doesn't hit the token endpoint on every call.
     if (expiresAt === 0) {
       const cooldownUntil = this.oauthRefreshCooldownUntil.get(provider.id) || 0;
       if (cooldownUntil > now) return undefined;
@@ -198,53 +188,41 @@ class ProviderManager {
 
   private async performOAuthRefresh(
     provider: Provider,
-    oauth: { tokenUrl?: string; clientId?: string; clientSecret?: string; scope?: string }
+    oauth: ProviderOAuthConfig
   ): Promise<Provider | undefined> {
     try {
-      const params = new URLSearchParams({
+      const fields: Record<string, string> = {
         grant_type: "refresh_token",
         refresh_token: provider.refresh_token || "",
-        client_id: oauth.clientId || "",
-      });
-      if (oauth.clientSecret) params.set("client_secret", oauth.clientSecret);
-      if (oauth.scope) params.set("scope", oauth.scope);
+      };
+      if (oauth.clientId) fields.client_id = oauth.clientId;
+      if (oauth.clientSecret) fields.client_secret = oauth.clientSecret;
+      if (oauth.scope) fields.scope = oauth.scope;
+      const cursor = oauth.refreshMode === "cursor";
+      const json = oauth.tokenRequestFormat === "json" || cursor;
 
       const response = await fetch(oauth.tokenUrl || "", {
         method: "POST",
         headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
           Accept: "application/json",
+          "Content-Type": json ? "application/json" : "application/x-www-form-urlencoded",
+          ...(cursor ? { Authorization: `Bearer ${provider.refresh_token}` } : {}),
+          ...oauth.refreshHeaders,
         },
-        body: params,
+        body: json ? JSON.stringify(cursor ? {} : fields) : new URLSearchParams(fields),
+        signal: AbortSignal.timeout(30_000),
       });
-      if (!response.ok) {
-        // Keep the existing token; the call itself will surface a clear auth error.
-        return undefined;
-      }
-      const data = (await response.json()) as {
-        access_token?: unknown;
-        refresh_token?: unknown;
-        expires_in?: unknown;
-      };
-      const accessToken = typeof data.access_token === "string" ? data.access_token : "";
-      if (!accessToken) return undefined;
-      const expiresInMs =
-        typeof data.expires_in === "number" && Number.isFinite(data.expires_in)
-          ? data.expires_in * 1000
-          : 3_600_000;
-      const nextRefresh =
-        typeof data.refresh_token === "string" && data.refresh_token
-          ? data.refresh_token
-          : provider.refresh_token;
+      if (!response.ok) return undefined;
+      const token = parseOAuthTokenPayload(await response.json(), oauth);
+      if (!token) return undefined;
 
-      // The update statement overwrites every column, so merge with the row.
       const current = tables.providers.get(provider.id) as Provider | undefined;
       if (!current) return undefined;
       tables.providers.update(provider.id, {
         ...current,
-        access_token: accessToken,
-        refresh_token: nextRefresh,
-        expires_at: Date.now() + expiresInMs,
+        access_token: token.accessToken,
+        refresh_token: token.refreshToken || provider.refresh_token,
+        expires_at: token.expiresAt,
       });
       return this.getWithCredentials(provider.id);
     } catch {
@@ -549,6 +527,10 @@ export function getDefaultModel(providerType: string): string {
     meta: "muse-spark-1.1",
     elevenlabs: "eleven_multilingual_v2",
     anthropic: "claude-opus-4-8",
+    "anthropic-oauth": "claude-opus-4-8",
+    cursor: "default",
+    devin: "claude-sonnet-5-medium",
+    "gitlab-duo": "duo-chat-sonnet-4-6",
     minimax: "MiniMax-M3",
     "minimax-portal": "MiniMax-M3",
     google: "gemini-3.1-pro-preview",

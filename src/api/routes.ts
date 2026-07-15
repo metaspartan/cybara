@@ -1,4 +1,3 @@
-import { createHash, randomBytes } from "crypto";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, isAbsolute, join, resolve } from "path";
@@ -111,7 +110,6 @@ import { config, redactSandboxRuntimeConfig } from "../core/config";
 import { credentialDestinationChanged } from "../core/credential-destination";
 import { resolveCybaraHome, setCybaraHomeOverride } from "../core/cybara-home";
 import { tables } from "../core/database";
-import { resolveGeminiCliOAuthClientConfig } from "../core/gemini-cli-oauth";
 import {
   LOCAL_STT_MODELS,
   LOCAL_TTS_MODELS,
@@ -227,11 +225,10 @@ import { checkForUpdate, isUpdateCheckDisabled } from "../core/update-check";
 import { workspaceIndexer } from "../core/workspace-indexer";
 import { getCybaraDataDirConfigInfo, getCybaraDataDirInfo } from "./data-dir-info";
 import { gatewayAuthSettingsResponse, updateGatewayHostSetting } from "./gateway-network";
-import { escapeHtml } from "./html-escape";
 import { buildJourney } from "./journey";
 import { mobileRoutes } from "./mobile";
-import { consumeOAuthCallback, deleteOAuthCallback, setOAuthCallback } from "./oauth-callbacks";
 import { pollProviderDeviceCodeOAuth, startProviderDeviceCodeOAuth } from "./provider-oauth-device";
+import { pollProviderRedirectOAuth, startProviderRedirectOAuth } from "./provider-oauth-redirect";
 import { getCombinedLogs, getCombinedLogsPage, getLogStats, normalizeTimestamp } from "./queries";
 import { cacheMetricsRoutes, invalidateCachedRoute, prewarmMetricsRoutes } from "./route-cache";
 import {
@@ -1809,275 +1806,8 @@ const routes: Record<string, RouteHandler> = {
     return { ok: true };
   },
 
-  "POST /api/providers/oauth/start": async (body) => {
-    const { providerType } = body as { providerType: string };
-    const resolvedProviderType = resolveProviderType(providerType);
-    const providerConfig = providers[resolvedProviderType as ProviderType] as Record<
-      string,
-      unknown
-    >;
-    if (!providerConfig) throw new Error(`Validation error: unknown provider '${providerType}'`);
-
-    const oauthConfigRaw = providerConfig.oauthConfig as
-      | {
-          authorizeUrl?: string;
-          tokenUrl?: string;
-          clientId?: string;
-          clientSecret?: string;
-          scope?: string;
-          callbackPort?: number;
-          callbackPath?: string;
-          authorizeParams?: Record<string, string>;
-        }
-      | undefined;
-
-    const oauthConfig = {
-      ...(oauthConfigRaw || {}),
-    };
-
-    if (resolvedProviderType === "google-gemini-cli") {
-      const clientConfig = resolveGeminiCliOAuthClientConfig();
-      if (clientConfig?.clientId) {
-        oauthConfig.clientId = clientConfig.clientId;
-        if (clientConfig.clientSecret && !oauthConfig.clientSecret) {
-          oauthConfig.clientSecret = clientConfig.clientSecret;
-        }
-      } else {
-        const antigravityConfig = (providers.antigravity as Record<string, unknown>)?.oauthConfig as
-          | { clientId?: string; clientSecret?: string }
-          | undefined;
-        if (antigravityConfig?.clientId) {
-          oauthConfig.clientId = antigravityConfig.clientId;
-          if (antigravityConfig.clientSecret && !oauthConfig.clientSecret) {
-            oauthConfig.clientSecret = antigravityConfig.clientSecret;
-          }
-        } else {
-          throw new Error(
-            "Validation error: Provider google-gemini-cli requires Gemini CLI OAuth credentials. Install Gemini CLI or set CYBARA_GEMINI_OAUTH_CLIENT_ID."
-          );
-        }
-      }
-    }
-
-    if (!oauthConfig.authorizeUrl || !oauthConfig.tokenUrl) {
-      throw new Error(`Provider ${providerType} does not support OAuth redirect flow`);
-    }
-    if (!oauthConfig.clientId || typeof oauthConfig.clientId !== "string") {
-      throw new Error(`Provider ${providerType} OAuth config is missing clientId`);
-    }
-
-    const pkceVerifier = randomBytes(32).toString("hex");
-    const pkceChallenge = createHash("sha256").update(pkceVerifier).digest("base64url");
-
-    const state = randomBytes(16).toString("hex");
-
-    const callbackPort = oauthConfig.callbackPort || 0;
-    const callbackPath = oauthConfig.callbackPath || "/callback";
-    const redirectUri = `http://localhost:${callbackPort}${callbackPath}`;
-
-    const renderOAuthCallbackHtml = (
-      rawTitle: string,
-      rawMessage: string,
-      tone: "success" | "error"
-    ) => {
-      const title = escapeHtml(rawTitle);
-      const message = escapeHtml(rawMessage);
-      return `<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${title}</title>
-    <style>
-      :root { color-scheme: dark; }
-      body {
-        margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background: radial-gradient(circle at top, #1f2937 0%, #020617 60%);
-        color: #e5e7eb;
-        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      }
-      .card {
-        width: min(520px, calc(100vw - 2rem));
-        border: 1px solid rgba(255,255,255,0.12);
-        background: rgba(15,23,42,0.7);
-        border-radius: 14px;
-        padding: 24px;
-        box-shadow: 0 20px 40px rgba(0,0,0,0.35);
-      }
-      h1 {
-        margin: 0 0 8px;
-        font-size: 22px;
-        line-height: 1.2;
-        color: ${tone === "success" ? "#86efac" : "#fca5a5"};
-      }
-      p { margin: 0; color: #cbd5e1; font-size: 15px; line-height: 1.5; }
-    </style>
-  </head>
-  <body>
-    <main class="card" role="main" aria-live="polite">
-      <h1>${title}</h1>
-      <p>${message}</p>
-    </main>
-  </body>
-</html>`;
-    };
-
-    const callbackServer = Bun.serve({
-      port: callbackPort,
-      fetch: async (req) => {
-        const url = new URL(req.url);
-        if (url.pathname !== callbackPath) {
-          return new Response("Not found", { status: 404 });
-        }
-
-        const code = url.searchParams.get("code");
-        const returnedState = url.searchParams.get("state");
-        const error = url.searchParams.get("error");
-
-        if (error) {
-          setOAuthCallback(state, { status: "error", error });
-          setTimeout(() => {
-            callbackServer.stop();
-            deleteOAuthCallback(state);
-          }, 5000);
-          return new Response(
-            renderOAuthCallbackHtml("Authorization failed", "You can close this tab.", "error"),
-            {
-              headers: {
-                "Content-Type": "text/html; charset=utf-8",
-                "Cache-Control": "no-store",
-              },
-            }
-          );
-        }
-
-        if (!code || returnedState !== state) {
-          setOAuthCallback(state, {
-            status: "error",
-            error: "Invalid callback (state mismatch)",
-          });
-          setTimeout(() => {
-            callbackServer.stop();
-            deleteOAuthCallback(state);
-          }, 5000);
-          return new Response("Invalid callback", { status: 400 });
-        }
-
-        try {
-          const tokenParams: Record<string, string> = {
-            code,
-            redirect_uri: redirectUri,
-            grant_type: "authorization_code",
-            code_verifier: pkceVerifier,
-          };
-          if (oauthConfig.clientId) tokenParams.client_id = oauthConfig.clientId;
-          if (oauthConfig.clientSecret) tokenParams.client_secret = oauthConfig.clientSecret;
-
-          const tokenRes = await fetch(oauthConfig.tokenUrl!, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
-              Accept: "application/json",
-            },
-            body: new URLSearchParams(tokenParams),
-          });
-
-          const tokenData = (await tokenRes.json()) as Record<string, unknown>;
-
-          if (tokenData.access_token && typeof tokenData.access_token === "string") {
-            setOAuthCallback(state, {
-              status: "success",
-              access_token: tokenData.access_token as string,
-              refresh_token: (tokenData.refresh_token as string) || undefined,
-            });
-          } else {
-            setOAuthCallback(state, {
-              status: "error",
-              error:
-                (tokenData.error_description as string) ||
-                (tokenData.error as string) ||
-                "Token exchange failed",
-            });
-          }
-        } catch (err) {
-          setOAuthCallback(state, { status: "error", error: String(err) });
-        }
-
-        setTimeout(() => {
-          callbackServer.stop();
-          deleteOAuthCallback(state);
-        }, 5000);
-        return new Response(
-          renderOAuthCallbackHtml(
-            "Connected",
-            "You can close this tab and return to Cybara.",
-            "success"
-          ),
-          {
-            headers: {
-              "Content-Type": "text/html; charset=utf-8",
-              "Cache-Control": "no-store",
-            },
-          }
-        );
-      },
-    });
-
-    setOAuthCallback(state, { status: "pending" });
-
-    const authParams = new URLSearchParams({
-      response_type: "code",
-      client_id: oauthConfig.clientId,
-      redirect_uri: redirectUri,
-      code_challenge: pkceChallenge,
-      code_challenge_method: "S256",
-      state,
-    });
-    if (oauthConfig.scope && typeof oauthConfig.scope === "string") {
-      authParams.set("scope", oauthConfig.scope);
-    }
-    const authorizeUrl = oauthConfig.authorizeUrl.toLowerCase();
-    if (authorizeUrl.includes("accounts.google.com")) {
-      authParams.set("access_type", "offline");
-      authParams.set("prompt", "consent");
-    }
-    if (oauthConfig.authorizeParams) {
-      for (const [key, value] of Object.entries(oauthConfig.authorizeParams)) {
-        if (typeof value === "string" && value.length > 0) {
-          authParams.set(key, value);
-        }
-      }
-    }
-
-    const authUrl = `${oauthConfig.authorizeUrl}?${authParams.toString()}`;
-
-    setTimeout(() => {
-      callbackServer.stop();
-      deleteOAuthCallback(state);
-    }, 600_000);
-
-    log.info(
-      `OAuth started for ${providerType}: callback on port ${callbackServer.port}, path ${callbackPath}`
-    );
-
-    return {
-      auth_url: authUrl,
-      state,
-      callback_port: callbackServer.port,
-    };
-  },
-
-  "POST /api/providers/oauth/callback-status": async (body) => {
-    const { state } = body as { state: string };
-    const result = consumeOAuthCallback(state);
-    if (!result) {
-      return { status: "not_found" };
-    }
-    return result;
-  },
+  "POST /api/providers/oauth/start": startProviderRedirectOAuth,
+  "POST /api/providers/oauth/callback-status": pollProviderRedirectOAuth,
   "GET /api/channels": () => channelManager.list(),
   "GET /api/channels/available": () =>
     Object.entries(channels).map(([key, value]) => ({
