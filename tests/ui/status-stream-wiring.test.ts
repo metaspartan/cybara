@@ -138,11 +138,13 @@ describe("status stream websocket wiring", () => {
     expect(source).toContain("cacheLiveStatusEvent(payload)");
     expect(source).toContain("cacheAssistantToken(payload)");
     expect(source).toContain("STOPPED_SESSION_STATUS_SUPPRESSION_MS");
-    expect(source).toContain("stoppedSessionUntilRef");
+    expect(source).toContain("stoppedRunSuppressionsRef");
+    expect(source).toContain("latestRunIdBySessionRef");
     expect(source).toContain("markSessionStopped(activeChatSessionId)");
-    expect(source).toContain("isSessionStopSuppressed(payloadSessionId)");
-    expect(source).toContain("isSessionStopSuppressed(tokenSessionId)");
-    expect(source).toContain("!isSessionStopSuppressed(candidate)");
+    expect(source).toContain("isSessionStopSuppressed(payloadSessionId, payload.runId)");
+    expect(source).toContain("isSessionStopSuppressed(tokenSessionId, payload.runId)");
+    expect(source).toContain("payload.activeSessions?.find");
+    expect(source).toContain("await refreshSessionMessagesRef.current(resolvedSessionId)");
     expect(source).toContain("activeSessionRef.current = sessionId");
     expect(source).toContain("const refreshed = await loadSessionMutation.mutateAsync(sessionId)");
     expect(source).not.toContain("appendSessionMessages(sessionId, [preSteerMessage");

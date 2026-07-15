@@ -20,7 +20,7 @@ describe("Sidebar status indicator behavior", () => {
     const source = readSidebarSource();
 
     expect(source).toContain("const sidebarDestinations");
-    expect(source).toContain('to="/chat?fresh=1"');
+    expect(source).toContain("navigate(buildFreshChatPath())");
     expect(source).toContain(
       '{ path: "/sessions", icon: MessagesSquare, labelKey: "nav.sessions" }'
     );

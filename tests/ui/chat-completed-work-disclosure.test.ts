@@ -21,6 +21,9 @@ describe("completed chat work disclosure parity", () => {
     expect(timeline).toContain('<ChevronRight className="h-3 w-3 shrink-0 text-current" />');
     expect(timeline).toContain("<ProcessActivityList activities={steeringActivities} />");
     expect(timeline).toContain("<ProcessActivityList activities={workActivities} />");
+    expect(timeline.indexOf("<ProcessActivityList activities={workActivities} />")).toBeLessThan(
+      timeline.indexOf("<ProcessActivityList activities={steeringActivities} />")
+    );
     expect(assistantMeta).toContain("<CompletedActivityTimeline");
     expect(assistantMeta).toContain('t("chat.workedFor", {');
     expect(chat).not.toContain("hasAssistantToolCalls");
@@ -37,6 +40,9 @@ describe("completed chat work disclosure parity", () => {
     expect(chat).toContain('activity.toolName === "__steering"');
     expect(chat).toContain("workActivities.length > 0 && (live || expanded)");
     expect(chat).toContain("accessibilityState={{ expanded }}");
+    expect(chat.indexOf("Working for {timeline.workedDuration}")).toBeLessThan(
+      chat.indexOf("steeringActivities.map")
+    );
     expect(chat).toContain("<ChevronDown color={colors.textMuted} size={13} strokeWidth={2.2} />");
     expect(chat).toContain("<ChevronRight color={colors.textMuted} size={13} strokeWidth={2.2} />");
   });
@@ -51,6 +57,9 @@ describe("completed chat work disclosure parity", () => {
     expect(completed).toContain("if hasWorkContent && expanded {");
     expect(completed).toContain("NativeLiveToolTimelineView");
     expect(completed).toContain("nativeLiveWorkedDurationLabel(startedAt:");
+    expect(completed.indexOf("if hasWorkContent {")).toBeLessThan(
+      completed.indexOf("if !steeringActivities.isEmpty {")
+    );
   });
 
   test("TUI collapses completed work and leaves active runs visible", () => {
@@ -64,5 +73,8 @@ describe("completed chat work disclosure parity", () => {
     expect(tui).toContain("rows.length > 0 && (live || expanded)");
     expect(tui).toContain('normalizedCommand === "details"');
     expect(tui).toContain("expandedActivities={expandedActivities}");
+    expect(tui.indexOf('{live ? "Working" : "Worked"} for')).toBeLessThan(
+      tui.indexOf("steeringActivities.map")
+    );
   });
 });

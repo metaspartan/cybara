@@ -24,3 +24,13 @@ export function buildAgentChatPath(agentId: string): string {
   const params = new URLSearchParams({ agent: agentId.trim(), fresh: "1" });
   return `/chat?${params.toString()}`;
 }
+
+export function buildFreshChatPath(workspaceDir?: string | null, requestId?: string): string {
+  const params = new URLSearchParams({
+    fresh: "1",
+    request: requestId?.trim() || crypto.randomUUID(),
+  });
+  const workspace = workspaceDir?.trim();
+  if (workspace) params.set("workspace", workspace);
+  return `/chat?${params.toString()}`;
+}

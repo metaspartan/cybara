@@ -1,6 +1,6 @@
 import { tables, type Task } from "./database";
 import { agentManager } from "./agent";
-import { handleChat } from "../api/chat";
+import { handleChat, waitForPendingChatCompletion } from "../api/chat";
 import { broadcastTaskEvent } from "./status";
 import { parseCronExpression, nextCronRun } from "./cron/cron-expr";
 
@@ -296,19 +296,22 @@ class TaskScheduler {
       }
 
       console.log(`[Task] Calling agent ${agent.name} with: "${action.slice(0, 100)}..."`);
-      const result = await handleChat({
+      const acceptedResult = await handleChat({
         message: action,
         agentId: agent.id,
         sessionId: assignedSessionId || `task:${task.id}:${Date.now()}`,
         queueMode: assignedSessionId ? "queue" : undefined,
         source: "task",
+        awaitQueuedCompletion: Boolean(assignedSessionId),
       });
+      const result =
+        acceptedResult.queued && acceptedResult.pendingMessage
+          ? await waitForPendingChatCompletion(acceptedResult.pendingMessage.id)
+          : acceptedResult;
 
       console.log(`[Task] Completed: ${task.name} - Session: ${result.sessionId}`);
 
-      const resultPreview = result.queued
-        ? "Queued in assigned chat"
-        : result.message?.content?.slice(0, 200);
+      const resultPreview = result.message?.content?.slice(0, 200);
       tables.taskRuns.complete(runId, {
         status: "completed",
         session_id: result.sessionId,

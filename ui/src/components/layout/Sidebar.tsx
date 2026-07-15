@@ -37,6 +37,7 @@ import type { SidebarDestinationId, SidebarPrimaryItemId } from "@/lib/sidebarNa
 import { connectStatusStream } from "@/lib/status-stream";
 import { cn } from "@/lib/utils";
 import { SessionsPanel } from "@/pages/chat/SessionSidebar";
+import { buildFreshChatPath } from "@/pages/chat/chatRoute";
 import type { TranslationKey } from "../../../../shared/i18n/catalog";
 import {
   clampMainSidebarChatHeight,
@@ -508,8 +509,9 @@ export function Sidebar() {
 
               <nav className="flex min-h-0 flex-1 flex-col p-2 pb-3">
                 <div className="min-h-[108px] shrink-0 space-y-0.5 overflow-y-auto pb-2">
-                  <NavLink
-                    to="/chat?fresh=1"
+                  <button
+                    type="button"
+                    onClick={() => navigate(buildFreshChatPath())}
                     title={collapsed ? t("chat.sidebar.newChat") : undefined}
                     aria-disabled={!hasAgents}
                     className={cn(
@@ -522,7 +524,7 @@ export function Sidebar() {
                     {!collapsed ? (
                       <span className="truncate">{t("chat.sidebar.newChat")}</span>
                     ) : null}
-                  </NavLink>
+                  </button>
                   {navigationLayout.primary.map(renderOrderedNavigationItem)}
                 </div>
 
@@ -579,9 +581,7 @@ export function Sidebar() {
                         onClose={() => undefined}
                         onLoadSession={() => undefined}
                         onNewSession={(workspaceDir) => {
-                          const params = new URLSearchParams({ fresh: "1" });
-                          if (workspaceDir) params.set("workspace", workspaceDir);
-                          navigate(`/chat?${params.toString()}`);
+                          navigate(buildFreshChatPath(workspaceDir));
                         }}
                       />
                     </div>

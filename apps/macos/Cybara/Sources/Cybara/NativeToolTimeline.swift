@@ -63,10 +63,6 @@ struct NativeToolTimelineView: View {
     var body: some View {
         if hasContent {
             VStack(alignment: .leading, spacing: 8) {
-                if !steeringActivities.isEmpty {
-                    NativeGroupedActivities(activities: steeringActivities)
-                }
-
                 if hasWorkContent {
                     Button {
                         withAnimation(.easeInOut(duration: 0.16)) {
@@ -125,6 +121,10 @@ struct NativeToolTimelineView: View {
                         }
                     }
                     .padding(.leading, 16)
+                }
+
+                if !steeringActivities.isEmpty {
+                    NativeGroupedActivities(activities: steeringActivities)
                 }
             }
             .padding(.bottom, message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0 : 3)

@@ -302,9 +302,6 @@ export function CompletedActivityTimeline({
 
   return (
     <div className="space-y-1.5">
-      {steeringActivities.length > 0 ? (
-        <ProcessActivityList activities={steeringActivities} />
-      ) : null}
       {workActivities.length > 0 ? (
         <>
           <button
@@ -327,6 +324,9 @@ export function CompletedActivityTimeline({
             </div>
           ) : null}
         </>
+      ) : null}
+      {steeringActivities.length > 0 ? (
+        <ProcessActivityList activities={steeringActivities} />
       ) : null}
     </div>
   );

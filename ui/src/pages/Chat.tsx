@@ -56,6 +56,7 @@ import { normalizeToolApprovalMode, type ToolApprovalMode } from "./chat/ChatFol
 import { ChatImageLightbox, type ChatLightboxImage } from "./chat/ChatImageLightbox";
 import { ChatMessageTimeline } from "./chat/ChatMessageTimeline";
 import { ChatPageHeader } from "./chat/ChatPageHeader";
+import { ChatSessionLoadingState } from "./chat/ChatSessionLoadingState";
 import { ChatWorkspaceDock } from "./chat/ChatWorkspaceDock";
 import {
   type ArtifactSummaryView,
@@ -122,6 +123,11 @@ import { useChatDictation } from "./chat/useChatDictation";
 import { useChatWorkspaceTabs } from "./chat/useChatWorkspaceTabs";
 import { useEnvironmentGitBranches } from "./chat/useEnvironmentGitBranches";
 import { useSessionFileChanges } from "./chat/useSessionFileChanges";
+import {
+  isStoppedRunSuppressed,
+  markStoppedRun,
+  type StoppedRunSuppressions,
+} from "./chat/stopSuppression";
 
 type LiveStatusSnapshotLike = StatusSessionSnapshot | SessionStatusSnapshot;
 
@@ -336,6 +342,9 @@ export function Chat() {
   const [steeringMessageId, setSteeringMessageId] = useState<string | null>(null);
   const [pendingMessageMutationId, setPendingMessageMutationId] = useState<string | null>(null);
   const [loadingSessionId, setLoadingSessionId] = useState<string | null>(null);
+  const [restoringInitialSession, setRestoringInitialSession] = useState(
+    !initialChatRoute.startFresh
+  );
   const [toolApprovalMode, setToolApprovalMode] = useState<ToolApprovalMode>("always_allow");
   const [followUpBehaviorEnabled, setFollowUpBehaviorEnabled] = useState(true);
   const [savingToolApprovalMode, setSavingToolApprovalMode] = useState(false);
@@ -388,7 +397,8 @@ export function Chat() {
   const runActivityBufferRef = useRef<LiveActivityItem[]>([]);
   const liveActivitiesRef = useRef<LiveActivityItem[]>([]);
   const latestStatusTimestampBySessionRef = useRef<Record<string, number>>({});
-  const stoppedSessionUntilRef = useRef<Record<string, number>>({});
+  const latestRunIdBySessionRef = useRef<Record<string, string>>({});
+  const stoppedRunSuppressionsRef = useRef<StoppedRunSuppressions>({});
   const configuredWorkspaceDir =
     typeof info?.defaultWorkspaceDir === "string" && info.defaultWorkspaceDir.trim().length > 0
       ? info.defaultWorkspaceDir.trim()
@@ -403,26 +413,20 @@ export function Chat() {
       : null;
   const effectiveWorkspaceDir = workspaceDir || fallbackWorkspaceDir || null;
   const markSessionStopped = useCallback((targetSessionId?: string | null) => {
-    const key =
-      typeof targetSessionId === "string" && targetSessionId.trim().length > 0
-        ? targetSessionId.trim()
-        : null;
-    if (!key) return;
-    stoppedSessionUntilRef.current[key] = Date.now() + STOPPED_SESSION_STATUS_SUPPRESSION_MS;
+    const key = typeof targetSessionId === "string" ? targetSessionId.trim() : "";
+    markStoppedRun(
+      stoppedRunSuppressionsRef.current,
+      key,
+      latestRunIdBySessionRef.current[key],
+      Date.now(),
+      STOPPED_SESSION_STATUS_SUPPRESSION_MS
+    );
   }, []);
-  const isSessionStopSuppressed = useCallback((targetSessionId?: string | null) => {
-    const key =
-      typeof targetSessionId === "string" && targetSessionId.trim().length > 0
-        ? targetSessionId.trim()
-        : null;
-    if (!key) return false;
-    const until = stoppedSessionUntilRef.current[key] || 0;
-    if (until <= Date.now()) {
-      delete stoppedSessionUntilRef.current[key];
-      return false;
-    }
-    return true;
-  }, []);
+  const isSessionStopSuppressed = useCallback(
+    (targetSessionId?: string | null, runId?: string | null) =>
+      isStoppedRunSuppressed(stoppedRunSuppressionsRef.current, targetSessionId, runId, Date.now()),
+    []
+  );
   const {
     summary: sessionFileChanges,
     loading: sessionFileChangesLoading,
@@ -879,7 +883,14 @@ export function Chat() {
   );
 
   useEffect(() => {
-    scrollToBottom();
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    if (!keepScrolledToBottomRef.current && !isChatNearBottom(container, 96)) {
+      setShowScrollToBottomButton(true);
+      return;
+    }
+    const rafId = window.requestAnimationFrame(() => scrollToBottom("auto"));
+    return () => window.cancelAnimationFrame(rafId);
   }, [messages, scrollToBottom]);
 
   useEffect(() => {
@@ -1165,8 +1176,9 @@ export function Chat() {
           : null;
       if (!snapshotSessionId) return;
       const snapshotStatus = typeof snapshot.status === "string" ? snapshot.status : "";
+      if (snapshot.runId) latestRunIdBySessionRef.current[snapshotSessionId] = snapshot.runId;
       if (
-        isSessionStopSuppressed(snapshotSessionId) &&
+        isSessionStopSuppressed(snapshotSessionId, snapshot.runId) &&
         snapshotStatus !== "idle" &&
         snapshotStatus !== "error"
       ) {
@@ -1200,7 +1212,8 @@ export function Chat() {
           : null;
       const delta = typeof payload.delta === "string" ? payload.delta : "";
       if (!tokenSessionId || !delta) return;
-      if (isSessionStopSuppressed(tokenSessionId)) return;
+      if (payload.runId) latestRunIdBySessionRef.current[tokenSessionId] = payload.runId;
+      if (isSessionStopSuppressed(tokenSessionId, payload.runId)) return;
       markFirstTokenLatency(tokenSessionId);
       const cached = readCachedLiveSessionState(tokenSessionId);
       writeCachedLiveSessionState(tokenSessionId, {
@@ -1220,9 +1233,14 @@ export function Chat() {
           ? payload.sessionId.trim()
           : null;
       if (!payloadSessionId) return;
+      if (payload.runId) latestRunIdBySessionRef.current[payloadSessionId] = payload.runId;
       const status = typeof payload.status === "string" ? payload.status : "";
       if (!status) return;
-      if (isSessionStopSuppressed(payloadSessionId) && status !== "idle" && status !== "error") {
+      if (
+        isSessionStopSuppressed(payloadSessionId, payload.runId) &&
+        status !== "idle" &&
+        status !== "error"
+      ) {
         return;
       }
       const statusDetail = typeof payload.detail === "string" ? payload.detail.trim() : "";
@@ -1392,6 +1410,13 @@ export function Chat() {
             activeSessionRef.current === resolvedSessionId
           ) {
             return;
+          }
+          if (
+            hasBufferedLive &&
+            !loadingRef.current &&
+            activeSessionRef.current === resolvedSessionId
+          ) {
+            await refreshSessionMessagesRef.current(resolvedSessionId);
           }
           if (
             !loadingRef.current &&
@@ -1671,7 +1696,11 @@ export function Chat() {
                 (candidate): candidate is string =>
                   typeof candidate === "string" &&
                   candidate.trim().length > 0 &&
-                  !isSessionStopSuppressed(candidate)
+                  !isSessionStopSuppressed(
+                    candidate,
+                    payload.activeSessions?.find((snapshot) => snapshot.sessionId === candidate)
+                      ?.runId
+                  )
               )
             : [];
           for (const snapshot of payload.activeSessions || []) {
@@ -1689,7 +1718,10 @@ export function Chat() {
             const delta = typeof payload.delta === "string" ? payload.delta : "";
             if (delta) {
               const sessionId = typeof payload.sessionId === "string" ? payload.sessionId : "";
-              if (isSessionStopSuppressed(sessionId)) return;
+              if (payload.runId && sessionId) {
+                latestRunIdBySessionRef.current[sessionId] = payload.runId;
+              }
+              if (isSessionStopSuppressed(sessionId, payload.runId)) return;
               cacheAssistantToken(payload);
               const activeSession = activeSessionRef.current;
               if (activeSession && sessionId === activeSession) {
@@ -1708,13 +1740,20 @@ export function Chat() {
           typeof payload.sessionId === "string" && payload.sessionId.trim()
             ? payload.sessionId
             : null;
+        if (payloadSessionId && payload.runId) {
+          latestRunIdBySessionRef.current[payloadSessionId] = payload.runId;
+        }
         const statusIsActive =
           status === "thinking" ||
           status === "generating" ||
           status === "compacting" ||
           status === "tool_executing" ||
           status === "tool_completed";
-        if (payloadSessionId && isSessionStopSuppressed(payloadSessionId) && statusIsActive) {
+        if (
+          payloadSessionId &&
+          isSessionStopSuppressed(payloadSessionId, payload.runId) &&
+          statusIsActive
+        ) {
           setActiveSessionIds((previous) => previous.filter((id) => id !== payloadSessionId));
           if (payloadSessionId === activeSessionRef.current) {
             setLiveStatus("idle");
@@ -2630,37 +2669,41 @@ export function Chat() {
     };
 
     void (async () => {
-      if (initialChatRoute.startFresh) {
-        suppressAutoRestoreRef.current = true;
-        persistSessionId(null);
-        if (initialChatRoute.workspaceDir) {
-          setWorkspaceDir(initialChatRoute.workspaceDir);
-          persistWorkspaceDir(initialChatRoute.workspaceDir);
-          setLastWorkspaceDir(initialChatRoute.workspaceDir);
-        }
-        window.history.replaceState({}, "", "/chat");
-        return;
-      }
-      if (sessionParam) {
-        await restoreSessionFromId(sessionParam, { replaceRoute: true });
-        return;
-      }
-      if (suppressAutoRestoreRef.current) return;
-      if (sessionId) return;
-      const activeSessionLookup = resolveFreshestActiveSessionId();
-      if (persistedSessionId) {
-        const restored = await restoreSessionFromId(persistedSessionId);
-        if (restored) return;
-        if (readPersistedSessionId() === persistedSessionId) {
+      try {
+        if (initialChatRoute.startFresh) {
+          suppressAutoRestoreRef.current = true;
           persistSessionId(null);
+          if (initialChatRoute.workspaceDir) {
+            setWorkspaceDir(initialChatRoute.workspaceDir);
+            persistWorkspaceDir(initialChatRoute.workspaceDir);
+            setLastWorkspaceDir(initialChatRoute.workspaceDir);
+          }
+          window.history.replaceState({}, "", "/chat");
+          return;
         }
+        if (sessionParam) {
+          await restoreSessionFromId(sessionParam, { replaceRoute: true });
+          return;
+        }
+        if (suppressAutoRestoreRef.current) return;
+        if (sessionId) return;
+        const activeSessionLookup = resolveFreshestActiveSessionId();
+        if (persistedSessionId) {
+          const restored = await restoreSessionFromId(persistedSessionId);
+          if (restored) return;
+          if (readPersistedSessionId() === persistedSessionId) {
+            persistSessionId(null);
+          }
+        }
+        const freshestActiveSessionId = await activeSessionLookup;
+        if (!freshestActiveSessionId) return;
+        persistSessionId(freshestActiveSessionId);
+        await restoreSessionFromId(freshestActiveSessionId);
+      } finally {
+        setRestoringInitialSession(false);
       }
-      const freshestActiveSessionId = await activeSessionLookup;
-      if (!freshestActiveSessionId) return;
-      persistSessionId(freshestActiveSessionId);
-      await restoreSessionFromId(freshestActiveSessionId);
     })();
-  }, []); // Only run on mount
+  }, []);
 
   const revertRemovedCount = revertTarget
     ? Math.max(0, typedMessages.length - revertTarget.index)
@@ -2878,21 +2921,25 @@ export function Chat() {
                 )}
               >
                 {typedMessages.length === 0 ? (
-                  <ChatEmptyState
-                    gitBranch={environmentGit.currentBranch}
-                    gitBranchChanging={environmentGit.changingBranch}
-                    gitBranchError={environmentGit.error}
-                    gitBranchLoading={environmentGit.loading}
-                    gitBranches={environmentGit.branches}
-                    workspaceDir={effectiveWorkspaceDir}
-                    workspaceSaving={workspaceSaving}
-                    onCreateGitBranch={environmentGit.createAndCheckout}
-                    onRefreshGitBranches={environmentGit.refresh}
-                    onSelectWorkspace={() => void handleSelectWorkspace()}
-                    onSwitchGitBranch={environmentGit.checkout}
-                  >
-                    <ChatComposer {...chatComposerProps} layout="new-chat" />
-                  </ChatEmptyState>
+                  restoringInitialSession ? (
+                    <ChatSessionLoadingState />
+                  ) : (
+                    <ChatEmptyState
+                      gitBranch={environmentGit.currentBranch}
+                      gitBranchChanging={environmentGit.changingBranch}
+                      gitBranchError={environmentGit.error}
+                      gitBranchLoading={environmentGit.loading}
+                      gitBranches={environmentGit.branches}
+                      workspaceDir={effectiveWorkspaceDir}
+                      workspaceSaving={workspaceSaving}
+                      onCreateGitBranch={environmentGit.createAndCheckout}
+                      onRefreshGitBranches={environmentGit.refresh}
+                      onSelectWorkspace={() => void handleSelectWorkspace()}
+                      onSwitchGitBranch={environmentGit.checkout}
+                    >
+                      <ChatComposer {...chatComposerProps} layout="new-chat" />
+                    </ChatEmptyState>
+                  )
                 ) : (
                   <ChatMessageTimeline
                     copiedMessageIndex={copiedMessageIndex}

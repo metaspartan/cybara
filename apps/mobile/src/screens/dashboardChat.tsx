@@ -783,9 +783,6 @@ export function WorkTimeline({
 
   return (
     <View style={styles.workTimeline}>
-      {steeringActivities.map((activity) => (
-        <MobileActivityRow key={activity.id} activity={activity} appearance={appearance} />
-      ))}
       {workActivities.length > 0 && live ? (
         <View style={styles.workTimelineHeader}>
           <Text selectable style={[styles.workedForText, activityStyle]}>
@@ -860,6 +857,9 @@ export function WorkTimeline({
           })}
         </View>
       ) : null}
+      {steeringActivities.map((activity) => (
+        <MobileActivityRow key={activity.id} activity={activity} appearance={appearance} />
+      ))}
     </View>
   );
 }

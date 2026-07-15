@@ -1,9 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { buildAgentChatPath, parseInitialChatRoute } from "../../ui/src/pages/chat/chatRoute";
+import {
+  buildAgentChatPath,
+  buildFreshChatPath,
+  parseInitialChatRoute,
+} from "../../ui/src/pages/chat/chatRoute";
 
 describe("chat route state", () => {
   test("builds a fresh chat link with the selected agent", () => {
     expect(buildAgentChatPath("agent/one")).toBe("/chat?agent=agent%2Fone&fresh=1");
+  });
+
+  test("builds distinct fresh chat routes that retain workspace selection", () => {
+    expect(buildFreshChatPath(" /tmp/cybara ", "request-one")).toBe(
+      "/chat?fresh=1&request=request-one&workspace=%2Ftmp%2Fcybara"
+    );
+    expect(buildFreshChatPath(null, "request-two")).toBe("/chat?fresh=1&request=request-two");
   });
 
   test("parses trimmed agent and session parameters", () => {

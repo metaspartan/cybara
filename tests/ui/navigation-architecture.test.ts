@@ -14,7 +14,7 @@ describe("application navigation architecture", () => {
     expect(sidebar).toContain('dashboard: { path: "/", icon: LayoutDashboard');
     expect(sidebar).toContain('ide: { path: "/ide", icon: FolderOpen');
     expect(sidebar).toContain('usage: { path: "/usage", icon: Gauge');
-    expect(sidebar).toContain('to="/chat?fresh=1"');
+    expect(sidebar).toContain("navigate(buildFreshChatPath())");
     expect(sidebar).toContain('placement="main"');
     expect(sidebar).toContain("navigationLayout.more.map");
     expect(sidebar).toContain("navigationLayout.primary.map(renderOrderedNavigationItem)");

@@ -94,6 +94,7 @@ export interface RevertTarget {
 }
 
 export interface StatusStreamEvent {
+  runId?: string;
   status?: string;
   timestamp?: number;
   detail?: string;
@@ -119,6 +120,7 @@ export interface SessionStatusActivity {
 
 export interface SessionStatusSnapshot {
   sessionId: string;
+  runId?: string;
   status: string;
   timestamp: number;
   detail?: string;

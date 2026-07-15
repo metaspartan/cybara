@@ -167,6 +167,7 @@ export interface ChatRequest {
   queueMode?: "queue" | "steer";
   recordedUserMessageId?: string;
   useModelRouter?: boolean;
+  awaitQueuedCompletion?: boolean;
   /** Optional image inputs (vision) for this user turn. */
   images?: AgentImage[];
 }
@@ -354,13 +355,55 @@ interface PendingChatItem {
   materialized?: boolean;
 }
 
+interface PendingChatCompletion {
+  promise: Promise<ChatResponse>;
+  resolve: (response: ChatResponse) => void;
+  reject: (error: unknown) => void;
+}
+
 const pendingChatQueues = new Map<string, PendingChatItem[]>();
+const pendingChatCompletions = new Map<string, PendingChatCompletion>();
 const pendingChatDrainScheduled = new Set<string>();
 const deferredSessionMessages = new Map<string, ChatMessage[]>();
 const activeChatTurnAbortControllers = new Map<string, AbortController>();
 const interruptedChatTurnSteeringIds = new WeakMap<AbortController, string>();
 const stoppedChatTurnControllers = new WeakSet<AbortController>();
 let pendingChatSequence = 0;
+
+function createPendingChatCompletion(id: string): void {
+  let resolveCompletion: ((response: ChatResponse) => void) | null = null;
+  let rejectCompletion: ((error: unknown) => void) | null = null;
+  const promise = new Promise<ChatResponse>((resolve, reject) => {
+    resolveCompletion = resolve;
+    rejectCompletion = reject;
+  });
+  if (!resolveCompletion || !rejectCompletion) {
+    throw new Error("Unable to initialize pending chat completion");
+  }
+  pendingChatCompletions.set(id, {
+    promise,
+    resolve: resolveCompletion,
+    reject: rejectCompletion,
+  });
+}
+
+function resolvePendingChatCompletion(id: string, response: ChatResponse): void {
+  pendingChatCompletions.get(id)?.resolve(response);
+}
+
+function rejectPendingChatCompletion(id: string, error: unknown): void {
+  pendingChatCompletions.get(id)?.reject(error);
+}
+
+export async function waitForPendingChatCompletion(id: string): Promise<ChatResponse> {
+  const completion = pendingChatCompletions.get(id);
+  if (!completion) throw new Error("Pending chat completion was not registered");
+  try {
+    return await completion.promise;
+  } finally {
+    pendingChatCompletions.delete(id);
+  }
+}
 
 function isChatTurnInterrupted(error: unknown, signal?: AbortSignal): boolean {
   if (signal?.aborted) return true;
@@ -572,11 +615,12 @@ function enqueuePendingChatMessage(
     sequence: ++pendingChatSequence,
   };
 
-  queue.push(item);
-  while (queue.length > MAX_PENDING_CHAT_MESSAGES_PER_SESSION) {
-    const dropIndex = queue.findIndex((candidate) => candidate.mode !== "steering");
-    queue.splice(dropIndex >= 0 ? dropIndex : 0, 1);
+  if (queue.length >= MAX_PENDING_CHAT_MESSAGES_PER_SESSION) {
+    throw new Error("Pending message queue is full");
   }
+  if (request.awaitQueuedCompletion) createPendingChatCompletion(item.id);
+
+  queue.push(item);
   pendingChatQueues.set(sessionId, queue);
 
   const pendingMessages = syncPendingChatStatus(sessionId);
@@ -978,7 +1022,7 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
       sessionId,
       agentId: next.request.agentId,
     });
-    await runChatTurnWithQueueDrain(
+    const response = await runChatTurnWithQueueDrain(
       {
         ...next.request,
         message: next.content,
@@ -988,7 +1032,9 @@ async function drainPendingChatQueue(sessionId: string): Promise<void> {
       },
       sessionId
     );
+    resolvePendingChatCompletion(next.id, response);
   } catch (error) {
+    rejectPendingChatCompletion(next.id, error);
     log.exception("Queued chat turn failed", error, { sessionId });
     schedulePendingChatDrain(sessionId);
   }
@@ -1773,6 +1819,7 @@ export function deletePendingChatMessage(
     pendingChatQueues.delete(key);
   }
   const pendingMessages = syncPendingChatStatus(key);
+  rejectPendingChatCompletion(pendingMessageId, new Error("Pending chat message was deleted"));
   return { success: true, pendingMessages };
 }
 

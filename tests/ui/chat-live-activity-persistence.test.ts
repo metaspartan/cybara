@@ -576,8 +576,8 @@ describe("Chat live activity persistence", () => {
     expect(chatSource).not.toContain("setShowSessionsPanel");
     expect(sidebarSource).toContain("<SessionsPanel");
     expect(sidebarSource).toContain('placement="main"');
-    expect(sidebarSource).toContain('const params = new URLSearchParams({ fresh: "1" });');
-    expect(sidebarSource).toContain('if (workspaceDir) params.set("workspace", workspaceDir);');
+    expect(sidebarSource).toContain("navigate(buildFreshChatPath())");
+    expect(sidebarSource).toContain("navigate(buildFreshChatPath(workspaceDir))");
     expect(sessionSidebarSource).toContain('if (placement === "main")');
     expect(sessionSidebarSource).toContain(
       "navigate(`/chat?session=${encodeURIComponent(sessionId)}`);"

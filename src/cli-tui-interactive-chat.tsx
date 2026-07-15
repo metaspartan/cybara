@@ -401,11 +401,6 @@ function ActivitySummary({
       flexDirection="column"
       width={Math.max(12, maxColumns)}
     >
-      {steeringActivities.map((activity, index) => (
-        <Text key={activity.id || `steered-${index}`} color="gray" dimColor wrap="wrap">
-          ↔ {activity.text || "Conversation steered."}
-        </Text>
-      ))}
       {rows.length > 0 ? (
         <Text color="gray" dimColor>
           {live ? "◌" : expanded ? "▾" : "▸"} {live ? "Working" : "Worked"} for{" "}
@@ -447,6 +442,11 @@ function ActivitySummary({
             </Box>
           ))
         : null}
+      {steeringActivities.map((activity, index) => (
+        <Text key={activity.id || `steered-${index}`} color="gray" dimColor wrap="wrap">
+          ↔ {activity.text || "Conversation steered."}
+        </Text>
+      ))}
     </Box>
   );
 }
