@@ -62,6 +62,7 @@ describe("desktop host runtime wiring", () => {
 
     expect(chatTsx).toContain("openDesktopDirectoryDialog");
     expect(chatTsx).toContain("isDesktopHostRuntime()");
+    expect(chatTsx).toContain('apiFetch("/api/system/folder-dialog"');
     expect(chatTsx).toContain("LocalFolderPickerModal");
     expect(chatTsx).not.toContain("Enter workspace folder path");
     expect(chatTsx).not.toContain("Unable to open native folder picker");

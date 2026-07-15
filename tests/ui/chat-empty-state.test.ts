@@ -27,7 +27,7 @@ describe("chat empty state", () => {
     expect(emptyState).toContain("<NewChatWorkspaceBar");
     expect(workspaceBar).toContain('appearance="inline"');
     expect(workspaceBar).toContain("workspaceName(workspaceDir)");
-    expect(workspaceBar).toContain("Local");
+    expect(workspaceBar).not.toContain("Local");
     expect(composer).toContain('layout?: "default" | "new-chat"');
     expect(composer).toContain("data-layout={layout}");
     expect(composer).toContain('layout === "new-chat"');

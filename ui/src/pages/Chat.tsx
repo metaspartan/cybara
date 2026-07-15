@@ -2313,15 +2313,33 @@ export function Chat() {
   );
 
   const handleSelectWorkspace = useCallback(async () => {
-    if (!isDesktopHostRuntime()) {
-      setShowWorkspacePicker(true);
-      return;
-    }
     try {
-      const selectedPath = await openDesktopDirectoryDialog({
-        defaultPath: effectiveWorkspaceDir || undefined,
-        title: "Select Session Workspace",
-      });
+      let selectedPath: string | null = null;
+      if (isDesktopHostRuntime()) {
+        selectedPath = await openDesktopDirectoryDialog({
+          defaultPath: effectiveWorkspaceDir || undefined,
+          title: "Select Session Workspace",
+        });
+      } else {
+        const response = await apiFetch("/api/system/folder-dialog", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            default_path: effectiveWorkspaceDir || undefined,
+            title: "Select Session Workspace",
+          }),
+        });
+        const result = (await response.json()) as {
+          path?: string | null;
+          success?: boolean;
+          supported?: boolean;
+        };
+        if (!response.ok || result.success === false || result.supported === false) {
+          setShowWorkspacePicker(true);
+          return;
+        }
+        selectedPath = result.path || null;
+      }
       if (selectedPath) {
         await applySessionWorkspace(selectedPath);
       }

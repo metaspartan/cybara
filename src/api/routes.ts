@@ -3471,6 +3471,7 @@ export async function handleRequest(req: {
 
   try {
     const result = await routes[routeKey](req.body, params, {
+      clientIp,
       headers: req.headers,
       rawBody: req.rawBody,
       url: req.url,

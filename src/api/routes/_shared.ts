@@ -139,6 +139,7 @@ export const WALLET_CHAIN_SET = new Set<WalletChain>(["eth", "btc", "sol"]);
 export const WALLET_TOKEN_CHAIN_SET = new Set<WalletTokenChain>(["eth", "sol"]);
 
 export interface RouteContext {
+  clientIp?: string;
   headers: Record<string, string>;
   rawBody?: string;
   url?: string;

@@ -21,6 +21,8 @@ import {
   listComputerUseTrajectories,
 } from "../../core/computer-use-trajectories";
 import { config } from "../../core/config";
+import { forwardedClientIp, isLoopbackIp } from "../client-ip";
+import { openNativeFolderDialog } from "../../core/native-folder-dialog";
 import { getSessionStatusSnapshot, listSessionStatusSnapshots } from "../../core/status";
 import { getSystemMonitorSnapshot } from "../../core/system-monitor";
 import {
@@ -89,6 +91,22 @@ function buildRestartCommand(argv: string[], cwd: string): string[] {
 }
 
 export const runtimeRoutes: Record<string, RouteHandler> = {
+  "POST /api/system/folder-dialog": async (body, _params, context) => {
+    const forwardedIp = forwardedClientIp(context?.headers ?? {});
+    const localClient =
+      isLoopbackIp(context?.clientIp) && (!forwardedIp || isLoopbackIp(forwardedIp));
+    if (!localClient) {
+      return { success: false, supported: false, error: "Native folder dialog is local-only" };
+    }
+    const input = typeof body === "object" && body !== null ? body : {};
+    const defaultPath = "default_path" in input ? input.default_path : undefined;
+    const title = "title" in input ? input.title : undefined;
+    const result = await openNativeFolderDialog({
+      defaultPath: typeof defaultPath === "string" ? defaultPath : undefined,
+      title: typeof title === "string" ? title : undefined,
+    });
+    return { success: true, ...result };
+  },
   "GET /api/computer-use/preview": (_body, params) => {
     const sessionId = browserSessionId(params?.sessionId);
     if (!sessionId) return { success: false, error: "Session ID is required" };

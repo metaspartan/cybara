@@ -72,21 +72,21 @@ export function GitBranchSelector({
           if (!open) void onRefresh();
         }}
         className={cn(
-          "inline-flex max-w-[180px] items-center gap-1.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]",
+          "inline-flex max-w-[180px] items-center gap-1.5 text-[12px] leading-4 text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]",
           appearance === "inline"
-            ? "rounded-md border-0 bg-transparent px-1 py-1"
+            ? "rounded-md border-0 bg-transparent px-1.5 py-1 hover:bg-[var(--surface-hover)]"
             : "rounded-lg border border-[var(--surface-border)] bg-[var(--surface-raised)] px-2 py-1 hover:bg-[var(--surface-hover)]",
           disabled && "cursor-not-allowed opacity-60"
         )}
         title="Change git branch"
       >
         {loading ? (
-          <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
         ) : (
-          <GitBranch className="h-3 w-3 shrink-0 text-[var(--icon-muted)]" />
+          <GitBranch className="h-3.5 w-3.5 shrink-0 text-[var(--icon-muted)]" />
         )}
-        <span className="truncate font-mono">{selectedBranch}</span>
-        <ChevronDown className="h-3 w-3 shrink-0 text-[var(--icon-muted)]" />
+        <span className="truncate">{selectedBranch}</span>
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 text-[var(--icon-muted)]" />
       </button>
 
       {open && (
