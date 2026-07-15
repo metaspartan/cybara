@@ -1038,6 +1038,8 @@ final class GatewayClientModelTests: XCTestCase {
               "status": "tool_executing",
               "timestamp": 1783015200500,
               "sessionId": "session-1",
+              "runId": "run-1",
+              "sequence": 3,
               "agentId": "agent-1",
               "detail": "Running bun test",
               "toolName": "exec_command",
@@ -1055,6 +1057,8 @@ final class GatewayClientModelTests: XCTestCase {
               "activeSessions": [
                 {
                   "sessionId": "session-1",
+                  "runId": "run-1",
+                  "sequence": 4,
                   "status": "tool_executing",
                   "timestamp": 1783015200600,
                   "detail": "Running bun test",
@@ -1087,6 +1091,8 @@ final class GatewayClientModelTests: XCTestCase {
         )
 
         XCTAssertEqual(status.toolName, "exec_command")
+        XCTAssertEqual(status.runId, "run-1")
+        XCTAssertEqual(status.sequence, 3)
         XCTAssertEqual(status.toolCallId, "tool-1")
         XCTAssertEqual(status.sandboxProvider, "host")
         let liveActivity = try XCTUnwrap(nativeLiveActivity(from: status))
@@ -1094,6 +1100,8 @@ final class GatewayClientModelTests: XCTestCase {
         XCTAssertEqual(liveActivity.text, "Running bun test")
         XCTAssertEqual(liveActivity.sandboxProvider, "host")
         XCTAssertEqual(snapshot.activeSessionIds, ["session-1"])
+        XCTAssertEqual(snapshot.activeSessions[0].runId, "run-1")
+        XCTAssertEqual(snapshot.activeSessions[0].sequence, 4)
         XCTAssertEqual(snapshot.activeSessions[0].pendingMessages.first?.content, "steer this")
         XCTAssertEqual(snapshot.activeSessions[0].pendingMessages.first?.mode, "steering")
         XCTAssertEqual(nativeLiveActivities(from: snapshot.activeSessions[0]).first?.phase, .start)

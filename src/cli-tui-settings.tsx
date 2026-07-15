@@ -15,9 +15,15 @@ type FetchAPI = <T>(endpoint: string, options?: RequestInit) => Promise<T | null
 
 type SettingsConfig = Record<string, unknown>;
 
+interface TelemetrySettings {
+  enabled: boolean;
+  prometheusEnabled: boolean;
+  otlpEnabled: boolean;
+}
+
 type SettingRow = {
   id: string;
-  group: "Accessibility" | "Chat" | "Safety";
+  group: "Accessibility" | "Chat" | "Safety" | "Operations";
   label: string;
   value: string;
   activate: () => Promise<void>;
@@ -56,6 +62,7 @@ export function TUISettingsCommand({ fetchAPI }: { fetchAPI: FetchAPI }): React.
   const exit = useTUIBack();
   const layout = useTerminalLayout();
   const [config, setConfig] = React.useState<SettingsConfig | null>(null);
+  const [telemetry, setTelemetry] = React.useState<TelemetrySettings | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -65,9 +72,13 @@ export function TUISettingsCommand({ fetchAPI }: { fetchAPI: FetchAPI }): React.
   const load = React.useCallback(async (): Promise<void> => {
     setLoading(true);
     setError(null);
-    const result = await fetchAPI<SettingsConfig>("/api/config");
+    const [result, telemetryResult] = await Promise.all([
+      fetchAPI<SettingsConfig>("/api/config"),
+      fetchAPI<TelemetrySettings>("/api/telemetry/settings"),
+    ]);
     if (!result) setError("Failed to load settings");
     else setConfig(result);
+    if (telemetryResult) setTelemetry(telemetryResult);
     setLoading(false);
   }, [fetchAPI]);
 
@@ -114,6 +125,22 @@ export function TUISettingsCommand({ fetchAPI }: { fetchAPI: FetchAPI }): React.
     const acpEnabled = config?.acp_enabled !== false;
     const followUpsEnabled = config?.follow_up_behavior_enabled !== false;
     const dangerousEnabled = dangerousPolicy.enabled !== false;
+    const updateTelemetry = async (patch: Partial<TelemetrySettings>, message: string): Promise<void> => {
+      if (!telemetry || saving) return;
+      setSaving(true);
+      const result = await fetchAPI<{ settings?: TelemetrySettings }>("/api/telemetry/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...telemetry, ...patch }),
+      });
+      if (result?.settings) {
+        setTelemetry(result.settings);
+        setNotice(message);
+      } else {
+        setNotice("Setting update failed");
+      }
+      setSaving(false);
+    };
     return [
       {
         id: "font-size",
@@ -207,8 +234,45 @@ export function TUISettingsCommand({ fetchAPI }: { fetchAPI: FetchAPI }): React.
             `Dangerous tool policy: ${booleanLabel(!dangerousEnabled)}`
           ),
       },
+      ...(telemetry
+        ? [
+            {
+              id: "telemetry",
+              group: "Operations" as const,
+              label: "External telemetry",
+              value: booleanLabel(telemetry.enabled),
+              activate: () =>
+                updateTelemetry(
+                  { enabled: !telemetry.enabled },
+                  `External telemetry: ${booleanLabel(!telemetry.enabled)}`
+                ),
+            },
+            {
+              id: "telemetry-otlp",
+              group: "Operations" as const,
+              label: "OTLP export",
+              value: booleanLabel(telemetry.otlpEnabled),
+              activate: () =>
+                updateTelemetry(
+                  { otlpEnabled: !telemetry.otlpEnabled },
+                  `OTLP export: ${booleanLabel(!telemetry.otlpEnabled)}`
+                ),
+            },
+            {
+              id: "telemetry-prometheus",
+              group: "Operations" as const,
+              label: "Prometheus endpoint",
+              value: booleanLabel(telemetry.prometheusEnabled),
+              activate: () =>
+                updateTelemetry(
+                  { prometheusEnabled: !telemetry.prometheusEnabled },
+                  `Prometheus endpoint: ${booleanLabel(!telemetry.prometheusEnabled)}`
+                ),
+            },
+          ]
+        : []),
     ];
-  }, [appearance, config, dangerousPolicy, save]);
+  }, [appearance, config, dangerousPolicy, fetchAPI, save, saving, telemetry]);
 
   useInput(
     (input, key) => {

@@ -2,6 +2,7 @@ import { tables } from "./database";
 import { randomUUID } from "crypto";
 import { redactSecretText, redactSecrets } from "./redaction";
 import { capSessionMessageMetadata } from "./session-message-metadata";
+import { appendSessionEvent, ensureSessionRunId } from "./session-event-ledger";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -102,6 +103,12 @@ export async function logSessionMessage(
 
   try {
     await tables.sessionMessages.add(message);
+    appendSessionEvent({
+      sessionId,
+      runId: ensureSessionRunId(sessionId),
+      type: "message",
+      payload: message,
+    });
   } catch (error) {
     console.error("[Logger] Failed to log session message:", error);
   }

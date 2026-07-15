@@ -1,5 +1,6 @@
 import { tables } from "./database";
 import { redactSecrets } from "./redaction";
+import { recordExternalMetric } from "./external-telemetry";
 
 function serializeMetricMetadata(metadata?: Record<string, unknown>): string | undefined {
   return metadata ? JSON.stringify(redactSecrets(metadata)) : undefined;
@@ -20,37 +21,17 @@ export function trackMetric(
       value,
       metadata: serializeMetricMetadata(metadata),
     });
+    recordExternalMetric(type, key, value, metadata);
   } catch {
     void 0;
   }
 }
 
 export function trackToolCall(toolName: string, duration: number, success: boolean): void {
-  try {
-    const id = crypto.randomUUID();
-
-    tables.metrics.add({ id, type: "tool_call", key: toolName, value: 1 });
-
-    const allId = crypto.randomUUID();
-    tables.metrics.add({ id: allId, type: "tool_call", key: "all", value: 1 });
-
-    if (duration > 0) {
-      const durationId = crypto.randomUUID();
-      tables.metrics.add({
-        id: durationId,
-        type: "tool_duration",
-        key: toolName,
-        value: duration,
-      });
-    }
-
-    if (!success) {
-      const errId = crypto.randomUUID();
-      tables.metrics.add({ id: errId, type: "tool_error", key: toolName, value: 1 });
-    }
-  } catch {
-    void 0;
-  }
+  trackMetric("tool_call", toolName, 1, { success });
+  trackMetric("tool_call", "all", 1, { tool: toolName, success });
+  if (duration > 0) trackMetric("tool_duration", toolName, duration, { success });
+  if (!success) trackMetric("tool_error", toolName, 1);
 }
 
 export function trackTokenUsage(
@@ -59,51 +40,13 @@ export function trackTokenUsage(
   inputTokens: number,
   outputTokens: number
 ): void {
-  try {
-    const totalTokens = inputTokens + outputTokens;
-
-    const totalId = crypto.randomUUID();
-    tables.metrics.add({
-      id: totalId,
-      type: "token_usage",
-      key: "all",
-      value: totalTokens,
-    });
-
-    const inputId = crypto.randomUUID();
-    tables.metrics.add({
-      id: inputId,
-      type: "token_usage",
-      key: "input",
-      value: inputTokens,
-    });
-
-    const outputId = crypto.randomUUID();
-    tables.metrics.add({
-      id: outputId,
-      type: "token_usage",
-      key: "output",
-      value: outputTokens,
-    });
-
-    const modelId = crypto.randomUUID();
-    tables.metrics.add({
-      id: modelId,
-      type: "token_usage",
-      key: model,
-      value: totalTokens,
-    });
-
-    const providerId = crypto.randomUUID();
-    tables.metrics.add({
-      id: providerId,
-      type: "token_usage",
-      key: provider,
-      value: totalTokens,
-    });
-  } catch {
-    void 0;
-  }
+  const totalTokens = inputTokens + outputTokens;
+  const metadata = { model, provider };
+  trackMetric("token_usage", "all", totalTokens, metadata);
+  trackMetric("token_usage", "input", inputTokens, metadata);
+  trackMetric("token_usage", "output", outputTokens, metadata);
+  trackMetric("token_usage", model, totalTokens, { provider });
+  trackMetric("token_usage", provider, totalTokens, { model });
 }
 
 export function trackApiCall(
@@ -112,27 +55,10 @@ export function trackApiCall(
   status: number,
   durationMs: number
 ): void {
-  try {
-    const id = crypto.randomUUID();
-    const success = status >= 200 && status < 400;
-
-    tables.metrics.add({
-      id,
-      type: "api_call",
-      key: success ? "success" : "error",
-      value: 1,
-    });
-
-    const endpointId = crypto.randomUUID();
-    tables.metrics.add({
-      id: endpointId,
-      type: "api_endpoint",
-      key: `${method} ${endpoint}`,
-      value: durationMs,
-    });
-  } catch {
-    void 0;
-  }
+  const success = status >= 200 && status < 400;
+  const metadata = { endpoint, method, status };
+  trackMetric("api_call", success ? "success" : "error", 1, metadata);
+  trackMetric("api_endpoint", `${method} ${endpoint}`, durationMs, { status, success });
 }
 
 export function trackFileOperation(

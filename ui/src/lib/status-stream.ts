@@ -32,6 +32,8 @@ export interface PendingChatMessage {
 
 export interface StatusSessionSnapshot {
   sessionId: string;
+  runId?: string;
+  sequence?: number;
   status: StreamAgentStatus;
   timestamp: number;
   detail?: string;
@@ -42,6 +44,8 @@ export interface StatusSessionSnapshot {
 
 export interface StatusStreamStatusEvent {
   type: "status";
+  runId?: string;
+  sequence?: number;
   status: StreamAgentStatus;
   timestamp: number;
   detail?: string;
@@ -76,6 +80,8 @@ export interface StatusStreamSnapshotEvent {
 export interface StatusStreamTokenEvent {
   type: "assistant_token";
   sessionId: string;
+  runId?: string;
+  sequence?: number;
   agentId?: string;
   delta: string;
   timestamp: number;

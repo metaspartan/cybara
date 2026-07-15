@@ -1736,6 +1736,8 @@ struct GatewaySkillInstallResult: Decodable, Hashable {
 
 struct GatewaySessionStatusSnapshot: Decodable, Hashable {
     let sessionId: String
+    let runId: String?
+    let sequence: Double?
     let status: String?
     let timestamp: Double?
     let detail: String?
@@ -1744,13 +1746,15 @@ struct GatewaySessionStatusSnapshot: Decodable, Hashable {
     let pendingMessages: [GatewayPendingChatMessage]
 
     private enum CodingKeys: String, CodingKey {
-        case sessionId, session_id, status, timestamp, detail, agentId, agent_id, activities
+        case sessionId, session_id, runId, run_id, sequence, status, timestamp, detail, agentId, agent_id, activities
         case pendingMessages, pending_messages
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         sessionId = try container.decodeFlexibleString(forKeys: [.sessionId, .session_id]) ?? ""
+        runId = try container.decodeFlexibleString(forKeys: [.runId, .run_id])
+        sequence = try container.decodeFlexibleDouble(forKey: .sequence)
         status = try container.decodeFlexibleString(forKeys: [.status])
         timestamp = try container.decodeFlexibleDouble(forKey: .timestamp)
         detail = try container.decodeFlexibleString(forKeys: [.detail])
@@ -1763,6 +1767,8 @@ struct GatewaySessionStatusSnapshot: Decodable, Hashable {
 
 struct GatewayStatusEvent: Decodable, Hashable {
     let type: String?
+    let runId: String?
+    let sequence: Double?
     let status: String?
     let detail: String?
     let timestamp: Double?
@@ -1780,7 +1786,7 @@ struct GatewayStatusEvent: Decodable, Hashable {
     let active: Bool?
 
     private enum CodingKeys: String, CodingKey {
-        case type, status, detail, timestamp, sessionId, session_id, agentId, agent_id
+        case type, runId, run_id, sequence, status, detail, timestamp, sessionId, session_id, agentId, agent_id
         case toolName, tool_name, toolCallId, tool_call_id, sandboxProvider, sandbox_provider
         case toolPhase, tool_phase, durationMs, duration_ms, delta
         case activeSessions, active_sessions, activeSessionIds, active_session_ids
@@ -1790,6 +1796,8 @@ struct GatewayStatusEvent: Decodable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         type = try container.decodeFlexibleString(forKeys: [.type])
+        runId = try container.decodeFlexibleString(forKeys: [.runId, .run_id])
+        sequence = try container.decodeFlexibleDouble(forKey: .sequence)
         status = try container.decodeFlexibleString(forKeys: [.status])
         detail = try container.decodeFlexibleString(forKeys: [.detail])
         timestamp = try container.decodeFlexibleDouble(forKey: .timestamp)

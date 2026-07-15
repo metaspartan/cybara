@@ -73,6 +73,7 @@ export interface Provider {
   isDefault?: boolean | number;
   is_default?: boolean | number;
   config?: Record<string, unknown>;
+  settings?: Record<string, unknown>;
   authType?: ProviderAuthType;
   createdAt?: string;
   created_at?: string;

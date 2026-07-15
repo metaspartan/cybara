@@ -117,6 +117,7 @@ import {
 } from "../index";
 import { createLogger } from "../../logger";
 import { requestToolApproval } from "../../tool-approval";
+import { resolveToolCapabilityDecision } from "../../tool-capability-policy";
 
 const log = createLogger("Tools");
 
@@ -512,6 +513,18 @@ export async function executeTool(
   }
 
   const requiredPermissions = getToolRequiredPermissions(name);
+  const capabilityDecision = resolveToolCapabilityDecision(name, args, requiredPermissions);
+  if (capabilityDecision.mode === "deny") {
+    trackMetric("tool_capability_policy", name, 1, {
+      blocked: true,
+      capabilities: capabilityDecision.capabilities.join(","),
+      sessionId: context?.sessionId,
+      agentId: context?.agentId,
+    });
+    throw new Error(
+      `Validation error: Tool '${name}' is denied by the ${capabilityDecision.capabilities.join(", ")} capability policy.`
+    );
+  }
   const contextPermissions = context?.permissions || [];
   const shouldEnforcePermissions = context?.enforcePermissions === true;
   if (shouldEnforcePermissions && !checkToolPermissions(requiredPermissions, contextPermissions)) {
@@ -552,7 +565,13 @@ export async function executeTool(
     });
   }
 
-  if (isDangerous && toolApprovalMode === "ask" && !allowDangerous) {
+  const capabilityAllows = capabilityDecision.mode === "allow";
+  const capabilityRequiresApproval = capabilityDecision.mode === "ask";
+  if (
+    (capabilityRequiresApproval || (isDangerous && toolApprovalMode === "ask")) &&
+    !allowDangerous &&
+    !capabilityAllows
+  ) {
     // Interactive approval: suspend the tool call and wait for user consent,
     // rather than throwing immediately. If no session context (e.g. CLI one-shot),
     // fall back to the throw.
@@ -563,6 +582,7 @@ export async function executeTool(
         toolName: name,
         argsSummary: createArgsPreview(args).slice(0, 200),
         argsPreview: args,
+        force: capabilityRequiresApproval,
       });
       if (decision === "deny") {
         trackMetric("dangerous_tool_usage", name, 1, {
@@ -668,6 +688,12 @@ export function registerToolHandler(
   handler: (args: Record<string, unknown>, context?: ToolContext) => Promise<unknown>
 ): void {
   toolHandlers[name] = handler;
+}
+
+export function unregisterToolHandler(name: string): boolean {
+  if (!(name in toolHandlers)) return false;
+  delete toolHandlers[name];
+  return true;
 }
 
 export function getToolHandler(

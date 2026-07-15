@@ -15,10 +15,19 @@ import {
   automationDriverForPlatform,
   type AutomationLocator as Locator,
   type AutomationPage as Page,
+  connectPuppeteerBrowser,
   launchPuppeteerBrowser,
   wrapPlaywrightBrowser,
 } from "./automation-driver";
 import { findHermeticPlaywrightBrowserPath, getChromium } from "./playwright-loader";
+import {
+  type BrowserSupervisionStatus,
+  getBrowserSupervisionSettings,
+  getBrowserSupervisionStatus,
+  recordBrowserDisconnect,
+  recordBrowserHealthy,
+  recordBrowserRestart,
+} from "./supervision";
 import {
   type BrowserProfile,
   type BrowserProfileConfig,
@@ -237,6 +246,7 @@ export interface BrowserStatus {
   headless: boolean;
   profiles: BrowserProfile[];
   launch: BrowserLaunchState;
+  supervision: BrowserSupervisionStatus;
 }
 
 function resetLegacyBrowserState(): void {
@@ -252,6 +262,24 @@ function resetLegacyBrowserState(): void {
 
 let legacyBrowserPromise: Promise<Browser> | null = null;
 let legacyContextPromise: Promise<BrowserContext> | null = null;
+let browserRestartTimer: ReturnType<typeof setTimeout> | null = null;
+
+function remoteBrowserHeaders(token: string): Record<string, string> | undefined {
+  return token ? { Authorization: `Bearer ${token}` } : undefined;
+}
+
+function scheduleBrowserRestart(hadActivePages: boolean): void {
+  const settings = getBrowserSupervisionSettings({ redact: false });
+  if (!settings.autoRestart || !hadActivePages || browserRestartTimer) return;
+  browserRestartTimer = setTimeout(() => {
+    browserRestartTimer = null;
+    recordBrowserRestart();
+    void getLegacyBrowser().catch((error: unknown) => {
+      recordBrowserDisconnect(error instanceof Error ? error.message : String(error));
+    });
+  }, 1_000);
+  browserRestartTimer.unref?.();
+}
 
 async function getLegacyBrowser(): Promise<Browser> {
   if (legacyBrowser) return legacyBrowser;
@@ -261,7 +289,28 @@ async function getLegacyBrowser(): Promise<Browser> {
     const chromium = await getChromium();
     try {
       let browser: Browser;
-      if (automationDriverForPlatform(process.platform) === "puppeteer") {
+      let owner: BrowserSupervisionStatus["owner"] = "local";
+      const supervisionSettings = getBrowserSupervisionSettings({ redact: false });
+      const remoteEndpoint = supervisionSettings.remoteRoutingEnabled
+        ? supervisionSettings.remoteEndpoint
+        : "";
+      if (remoteEndpoint && automationDriverForPlatform(process.platform) === "puppeteer") {
+        browser = await connectPuppeteerBrowser({
+          endpoint: remoteEndpoint,
+          headers: remoteBrowserHeaders(supervisionSettings.remoteToken),
+        });
+        browserLaunchState = { phase: "running", attempt: "remote browser" };
+        owner = "remote";
+      } else if (remoteEndpoint) {
+        browser = wrapPlaywrightBrowser(
+          await chromium.connectOverCDP(remoteEndpoint, {
+            headers: remoteBrowserHeaders(supervisionSettings.remoteToken),
+            timeout: 10_000,
+          })
+        );
+        browserLaunchState = { phase: "running", attempt: "remote browser" };
+        owner = "remote";
+      } else if (automationDriverForPlatform(process.platform) === "puppeteer") {
         const launchArgs = browserLaunchArgs();
         const headless = process.env.BROWSER_HEADLESS !== "false";
         browser = await launchWithFallback(chromium, headless, launchArgs);
@@ -272,6 +321,7 @@ async function getLegacyBrowser(): Promise<Browser> {
             await chromium.connectOverCDP("http://127.0.0.1:9222", { timeout: 750 })
           );
           browserLaunchState = { phase: "running", attempt: "existing browser" };
+          owner = "existing";
           console.log("[Browser] Connected to existing Chrome instance via CDP");
         } catch {
           const launchArgs = browserLaunchArgs();
@@ -281,16 +331,21 @@ async function getLegacyBrowser(): Promise<Browser> {
         }
       }
       browser.onDisconnected(() => {
+        const hadActivePages = legacyPages.size > 0;
         console.warn("[Browser] Browser disconnected; clearing cached state");
+        recordBrowserDisconnect("Browser process disconnected");
         resetLegacyBrowserState();
+        scheduleBrowserRestart(hadActivePages);
       });
       legacyBrowser = browser;
+      recordBrowserHealthy(owner);
       return browser;
     } catch (error) {
       legacyBrowserPromise = null;
       const detail = error instanceof Error ? error.message : String(error);
       console.error("[Browser] Failed to launch browser:", error);
       void systemLogger.error("Failed to launch browser preview", { error: detail });
+      recordBrowserDisconnect(detail);
       throw new Error(`Failed to launch browser: ${detail}`);
     }
   })();
@@ -1147,6 +1202,7 @@ export async function getStatus(): Promise<BrowserStatus> {
       headless: process.env.BROWSER_HEADLESS !== "false",
       profiles: listBrowserProfiles(),
       launch: browserLaunchState,
+      supervision: getBrowserSupervisionStatus(),
     };
   } catch {
     return {
@@ -1156,6 +1212,7 @@ export async function getStatus(): Promise<BrowserStatus> {
       headless: true,
       profiles: [],
       launch: browserLaunchState,
+      supervision: getBrowserSupervisionStatus(),
     };
   }
 }

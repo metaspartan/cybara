@@ -11,6 +11,9 @@ import { AiFeatureSettings } from "./settings/AiFeatureSettings";
 import { ChatAccessibilitySettings } from "./settings/ChatAccessibilitySettings";
 import { HotkeySettings } from "./settings/HotkeySettings";
 import { FeatureSettings } from "./settings/FeatureSettings";
+import { ToolCapabilitySettings } from "./settings/ToolCapabilitySettings";
+import { ExternalTelemetrySettings } from "./settings/ExternalTelemetrySettings";
+import { BrowserSupervisionSettings } from "./settings/BrowserSupervisionSettings";
 import { MemoryBehaviorSettings } from "./settings/MemoryBehaviorSettings";
 import { SpeechSettingsSection } from "./settings/SpeechSettingsSection";
 import { WebToolPolicySettings } from "./settings/WebToolPolicySettings";
@@ -2723,9 +2726,11 @@ export function Settings() {
           {activeSection === "safety" && (
             <>
               <FeatureSettings />
+              <ToolCapabilitySettings />
               <WebResearchSettings />
               <WebToolPolicySettings />
               <SandboxBrowserSettings />
+              <BrowserSupervisionSettings />
               <ComputerUseSettings />
             </>
           )}
@@ -2742,6 +2747,7 @@ export function Settings() {
                 releaseRepositoryUrl={infoData.releaseRepositoryUrl}
               />
               <SystemMonitorPanel />
+              <ExternalTelemetrySettings />
 
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card variant="liquid">

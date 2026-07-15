@@ -193,22 +193,20 @@ describe("Agent provider API-family routing", () => {
     expect(requestHeaders.get("anthropic-beta")).toBe("oauth-2025-04-20");
   });
 
-  test("rejects account providers whose native transport is not implemented", async () => {
+  test("routes Devin accounts through the native transport validation", async () => {
     let requestCount = 0;
     globalThis.fetch = (async () => {
       requestCount += 1;
       return Response.json({ error: "unexpected request" }, { status: 500 });
     }) as typeof fetch;
     const provider = providerManager.create({
-      provider: "cursor",
-      name: "Cursor Account Test",
-      access_token: "cursor-access-token",
-      refresh_token: "cursor-refresh-token",
-      expires_at: Date.now() + 3_600_000,
+      provider: "devin",
+      name: "Devin Account Test",
+      api_key: "cog_test",
     });
     createdProviderIds.push(provider.id);
     const agent = agentManager.create({
-      name: "Cursor Account Agent",
+      name: "Devin Account Agent",
       type: "main",
       provider_id: provider.id,
       model: "default",
@@ -221,7 +219,7 @@ describe("Agent provider API-family routing", () => {
       sessionId: "cursor-account-session",
     });
 
-    expect(result.content).toContain("Provider cursor uses unsupported API family cursor-agent");
+    expect(result.content).toContain("Devin requires an organization ID");
     expect(requestCount).toBe(0);
   });
 

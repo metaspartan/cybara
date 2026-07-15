@@ -113,6 +113,8 @@ export function rawHelp(version: string, apiBase: string): void {
   console.log("    nearby pair <peer-id> [--url URL]     Begin verified pairing");
   console.log("    nearby confirm <pairing-id>           Confirm the matching code");
   console.log("    nearby send <peer-id> <session-id>    Send a chat for approval");
+  console.log("    telemetry [status|enable|disable|test] Manage external telemetry");
+  console.log("    permissions [capability] [mode]       Manage agent capability access");
   console.log("  wallet      Wallet management commands");
   console.log("    wallet status                     Show wallet status and RPC settings");
   console.log("    wallet create --password <p>      Create 24-word wallet");

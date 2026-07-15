@@ -263,6 +263,7 @@ class ProviderManager {
     api_key?: string;
     access_token?: string;
     refresh_token?: string;
+    settings?: Record<string, unknown>;
     expires_at?: number;
     base_url?: string;
     is_default?: boolean;
@@ -278,6 +279,7 @@ class ProviderManager {
       api_key: data.api_key,
       access_token: data.access_token,
       refresh_token: data.refresh_token,
+      settings: data.settings,
       expires_at: data.expires_at,
       is_default: data.is_default || false,
     });
@@ -302,6 +304,7 @@ class ProviderManager {
       provider: data.provider,
       name: data.name,
       base_url: data.base_url,
+      settings: data.settings,
       is_default: data.is_default || false,
     };
   }

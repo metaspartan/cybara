@@ -754,6 +754,102 @@ export const settingsApi = {
     }),
 };
 
+export type ToolCapability =
+  | "read"
+  | "write"
+  | "execution"
+  | "network"
+  | "browser"
+  | "wallet"
+  | "destructive";
+
+export type ToolCapabilityPolicyMode = "inherit" | "ask" | "allow" | "deny";
+
+export type ToolCapabilityPolicy = Record<ToolCapability, ToolCapabilityPolicyMode>;
+
+export interface ExternalTelemetrySettings {
+  enabled: boolean;
+  serviceName: string;
+  environment: string;
+  prometheusEnabled: boolean;
+  otlpEnabled: boolean;
+  otlpEndpoint: string;
+  otlpHeaders: Record<string, string>;
+  metricsEnabled: boolean;
+  tracesEnabled: boolean;
+  exportIntervalMs: number;
+}
+
+export interface ExternalTelemetryStatus {
+  enabled: boolean;
+  queuedMetrics: number;
+  queuedSpans: number;
+  lastExportAt: string | null;
+  lastError: string | null;
+  exportedMetrics: number;
+  exportedSpans: number;
+}
+
+export const toolCapabilityPolicyApi = {
+  get: () => fetchApi<{ policy: ToolCapabilityPolicy }>("/settings/tool-capabilities"),
+  update: (policy: ToolCapabilityPolicy) =>
+    fetchApi<{ success: boolean; policy: ToolCapabilityPolicy }>("/settings/tool-capabilities", {
+      method: "PUT",
+      body: JSON.stringify(policy),
+    }),
+};
+
+export const externalTelemetryApi = {
+  getSettings: () => fetchApi<ExternalTelemetrySettings>("/telemetry/settings"),
+  updateSettings: (settings: ExternalTelemetrySettings) =>
+    fetchApi<{ success: boolean; settings: ExternalTelemetrySettings }>("/telemetry/settings", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    }),
+  getStatus: () => fetchApi<ExternalTelemetryStatus>("/telemetry/status"),
+  test: () =>
+    fetchApi<{ success: boolean; status: ExternalTelemetryStatus }>("/telemetry/test", {
+      method: "POST",
+    }),
+};
+
+export type BrowserDownloadPolicy = "ask" | "allow" | "deny";
+
+export interface BrowserSupervisionSettings {
+  autoRestart: boolean;
+  healthCheckIntervalMs: number;
+  downloadPolicy: BrowserDownloadPolicy;
+  remoteRoutingEnabled: boolean;
+  remoteEndpoint: string;
+  remoteToken: string;
+}
+
+export interface BrowserSupervisionStatus {
+  owner: "none" | "local" | "existing" | "remote";
+  healthy: boolean;
+  restartCount: number;
+  lastHealthCheckAt: string | null;
+  lastDisconnectAt: string | null;
+  lastError: string | null;
+}
+
+export const browserSupervisionApi = {
+  get: () =>
+    fetchApi<{
+      settings: BrowserSupervisionSettings;
+      status: BrowserSupervisionStatus;
+    }>("/browser/supervision"),
+  update: (settings: BrowserSupervisionSettings) =>
+    fetchApi<{
+      success: boolean;
+      settings: BrowserSupervisionSettings;
+      status: BrowserSupervisionStatus;
+    }>("/browser/supervision", {
+      method: "PUT",
+      body: JSON.stringify(settings),
+    }),
+};
+
 export type WebResearchCredentialId = "firecrawl" | "parallel" | "tavily" | "exa" | "brave";
 export type WebResearchSettingSource = "env" | "stored" | "none";
 

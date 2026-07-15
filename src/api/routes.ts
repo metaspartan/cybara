@@ -150,6 +150,15 @@ import {
   validatePluginAtPath,
   validatePluginInstallPayload,
 } from "../core/plugins";
+import {
+  activateInstalledPluginRuntimes,
+  activatePluginRuntime,
+  deactivatePluginRuntime,
+  getPluginProviderContribution,
+  listPluginChannelContributions,
+  listPluginCommands,
+  listPluginProviderContributions,
+} from "../core/plugins/runtime";
 import { discoverMarketplacePlugins, installMarketplacePlugin } from "./plugin-marketplace";
 import {
   enrichProviderPlanStatusWithLiveUsage,
@@ -164,6 +173,7 @@ import {
   providers,
   resolveProviderType,
 } from "../core/providers";
+import { normalizeProviderSettings } from "../core/provider-settings";
 import {
   createRealtimeVoiceSession,
   getRealtimeVoiceStatus,
@@ -236,6 +246,8 @@ import {
   decodeDictationAudioBase64,
   formatChannelTestError,
   isLikelyGoogleApiKey,
+  isRawHttpResponse,
+  makeRawHttpResponse,
   normalizeIdentityConfig,
   normalizeOptionalString,
   normalizeSecretString,
@@ -253,6 +265,10 @@ import { integrationCredentialRoutes } from "./routes/integration-credential-rou
 import { accountConnectorRoutes } from "./routes/account-connectors";
 import { mcpRoutes } from "./routes/mcp";
 import { metricsRoutes } from "./routes/metrics";
+import { sessionEventRoutes } from "./routes/session-events";
+import { externalTelemetryRoutes } from "./routes/external-telemetry";
+import { toolCapabilityPolicyRoutes } from "./routes/tool-capability-policy";
+import { browserSupervisionRoutes } from "./routes/browser-supervision";
 import { nearbyRoutes } from "./routes/nearby";
 import {
   validateProviderBaseUrlShape,
@@ -429,6 +445,9 @@ function pluginSummary(plugin: ReturnType<typeof listInstalledPlugins>[number]) 
     skillDirs: plugin.skillDirs,
     skillNames: plugin.skillNames,
     skillCount: plugin.skillNames.length,
+    contributions: Object.fromEntries(
+      Object.entries(plugin.contributionFiles).map(([kind, files]) => [kind, files.length])
+    ),
     enabled: plugin.enabled,
     builtIn: plugin.builtIn,
   };
@@ -438,6 +457,10 @@ const routes: Record<string, RouteHandler> = {
   ...walletRoutes,
   ...mobileRoutes,
   ...metricsRoutes,
+  ...sessionEventRoutes,
+  ...externalTelemetryRoutes,
+  ...toolCapabilityPolicyRoutes,
+  ...browserSupervisionRoutes,
   ...ideLspRoutes,
   ...runtimeRoutes,
   ...mcpRoutes,
@@ -1305,8 +1328,8 @@ const routes: Record<string, RouteHandler> = {
   },
 
   "GET /api/providers": () => providerManager.list(),
-  "GET /api/providers/available": () =>
-    Object.entries(providers).map(([key, value]) => ({
+  "GET /api/providers/available": () => [
+    ...Object.entries(providers).map(([key, value]) => ({
       id: key,
       name: value.name,
       description: `Use ${value.name} models`,
@@ -1324,6 +1347,22 @@ const routes: Record<string, RouteHandler> = {
         input: m.input,
       })),
     })),
+    ...listPluginProviderContributions().map((provider) => ({
+      id: provider.runtimeId,
+      name: provider.name,
+      description: `Use ${provider.name} models`,
+      baseUrl: provider.baseUrl,
+      authType: provider.authType === "none" ? "none" : "api_key",
+      oauthFlow: null,
+      hasOAuthConfig: false,
+      oauthLoginUrl: null,
+      models: provider.models.map((model) => ({
+        id: model,
+        name: model,
+        input: ["text"],
+      })),
+    })),
+  ],
   "GET /api/providers/health": () => {
     const providerRows = tables.providers.all() as Array<{
       id: string;
@@ -1586,6 +1625,7 @@ const routes: Record<string, RouteHandler> = {
       refresh_token?: string;
       expires_at?: number;
       base_url?: string;
+      settings?: Record<string, unknown>;
       is_default?: boolean;
     };
 
@@ -1597,20 +1637,52 @@ const routes: Record<string, RouteHandler> = {
       validateProviderBaseUrlShape(normalizedBaseUrl);
     }
     const resolvedProviderType = resolveProviderType(data.provider);
-    if (!resolvedProviderType) {
+    const pluginProvider = getPluginProviderContribution(data.provider);
+    if (!resolvedProviderType && !pluginProvider) {
       throw new Error(`Validation error: unknown provider '${data.provider}'`);
     }
-    validateProviderCredentialShape(resolvedProviderType, {
-      apiKey,
-      accessToken,
-    });
+    if (resolvedProviderType) {
+      validateProviderCredentialShape(resolvedProviderType, {
+        apiKey,
+        accessToken,
+      });
+    } else if (pluginProvider?.authType !== "none" && !apiKey && !accessToken) {
+      throw new Error("Validation error: plugin provider API key is required");
+    }
+    const providerSettings = normalizeProviderSettings(resolvedProviderType || "", data.settings);
+    if (resolvedProviderType === "devin" && data.settings && !providerSettings) {
+      throw new Error("Validation error: Devin organization ID is invalid");
+    }
 
+    if (pluginProvider) {
+      const id = crypto.randomUUID();
+      tables.providers.create({
+        id,
+        provider: pluginProvider.runtimeId,
+        name: normalizeOptionalString(data.name) || data.name,
+        api_key: apiKey,
+        access_token: accessToken,
+        base_url: normalizedBaseUrl || pluginProvider.baseUrl,
+        is_default: data.is_default === true,
+      });
+      for (const model of pluginProvider.models) {
+        tables.providerModels.upsert({
+          id: crypto.randomUUID(),
+          provider_id: id,
+          model_id: model,
+          model_name: model,
+        });
+      }
+      invalidateCachedRoute("GET /api/provider-plans/status");
+      return providerManager.get(id);
+    }
     const created = providerManager.create({
       provider: resolvedProviderType as Parameters<typeof providerManager.create>[0]["provider"],
       name: normalizeOptionalString(data.name) || data.name,
       api_key: apiKey,
       access_token: accessToken,
       refresh_token: refreshToken,
+      settings: providerSettings,
       expires_at: typeof data.expires_at === "number" ? data.expires_at : undefined,
       base_url: normalizedBaseUrl,
       is_default: data.is_default,
@@ -1644,6 +1716,14 @@ const routes: Record<string, RouteHandler> = {
 
     if ("is_default" in data) {
       updates.is_default = data.is_default === true;
+    }
+
+    if ("settings" in data) {
+      const providerSettings = normalizeProviderSettings(existing.provider, data.settings);
+      if (existing.provider === "devin" && !providerSettings) {
+        throw new Error("Validation error: Devin organization ID is invalid");
+      }
+      updates.settings = providerSettings;
     }
 
     if ("api_key" in data) {
@@ -2566,6 +2646,11 @@ const routes: Record<string, RouteHandler> = {
       }),
     };
   },
+  "GET /api/plugins/contributions": () => ({
+    commands: listPluginCommands(),
+    providers: listPluginProviderContributions(),
+    channels: listPluginChannelContributions(),
+  }),
   "GET /api/plugins/marketplace": async (_body, params) => {
     const query = typeof params?.q === "string" ? params.q : undefined;
     const filter =
@@ -2588,7 +2673,10 @@ const routes: Record<string, RouteHandler> = {
       id: record.id,
       marketplace: typeof record.marketplace === "string" ? record.marketplace : undefined,
     });
-    if (result.success) clearSkillsCache();
+    if (result.success) {
+      activateInstalledPluginRuntimes(listInstalledPlugins());
+      clearSkillsCache();
+    }
     return result;
   },
   "GET /api/plugins/validate": (_body, params) => {
@@ -2603,6 +2691,12 @@ const routes: Record<string, RouteHandler> = {
   },
   "POST /api/plugins/install": async (body) => {
     const plugin = await installPluginFromPayload(parsePluginInstallPayload(body));
+    try {
+      activatePluginRuntime(plugin);
+    } catch (error) {
+      uninstallLocalPlugin(plugin.manifest.id);
+      throw error;
+    }
     clearSkillsCache();
     return {
       success: true,
@@ -2617,11 +2711,22 @@ const routes: Record<string, RouteHandler> = {
     if (typeof record.enabled !== "boolean") {
       throw new Error("Plugin enabled state must be a boolean");
     }
+    const previous = listInstalledPlugins().find((plugin) => plugin.manifest.id === params!.id);
     const plugin = setPluginEnabled(params!.id, record.enabled);
+    try {
+      activatePluginRuntime(plugin);
+    } catch (error) {
+      if (previous) {
+        const restored = setPluginEnabled(previous.manifest.id, previous.enabled);
+        activatePluginRuntime(restored);
+      }
+      throw error;
+    }
     clearSkillsCache();
     return { success: true, plugin: pluginSummary(plugin) };
   },
   "DELETE /api/plugins/:id": (_body, params) => {
+    deactivatePluginRuntime(params!.id);
     const removed = uninstallLocalPlugin(params!.id);
     clearSkillsCache();
     return { success: removed };
@@ -3241,27 +3346,6 @@ function getCircuitBreakersStatus(): Record<string, { state: string; failureCoun
   }
 
   return breakers;
-}
-
-const RAW_HTTP_RESPONSE = Symbol.for("cybara.rawHttpResponse");
-
-interface RawHttpResponse {
-  [RAW_HTTP_RESPONSE]: true;
-  status: number;
-  contentType: string;
-  body: string;
-}
-
-function makeRawHttpResponse(body: string, contentType: string, status = 200): RawHttpResponse {
-  return { [RAW_HTTP_RESPONSE]: true, status, contentType, body };
-}
-
-function isRawHttpResponse(value: unknown): value is RawHttpResponse {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as Record<symbol, unknown>)[RAW_HTTP_RESPONSE] === true
-  );
 }
 
 async function dispatchChannelWebhook(

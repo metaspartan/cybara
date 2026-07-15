@@ -1799,6 +1799,10 @@ struct NativeSettingsScreen: View {
             NativeBackupsScreen(client: client)
         case .logs:
             LogsScreen(client: client)
+        case .telemetry:
+            NativeTelemetrySettingsScreen(client: client)
+        case .permissions:
+            NativeToolCapabilitySettingsScreen(client: client)
         }
     }
 
@@ -2564,6 +2568,8 @@ struct NativeSettingsScreen: View {
         case skills
         case backups
         case logs
+        case telemetry
+        case permissions
 
         var id: String { rawValue }
 
@@ -2576,6 +2582,8 @@ struct NativeSettingsScreen: View {
             case .skills: return "Skills"
             case .backups: return "Backups"
             case .logs: return "Logs"
+            case .telemetry: return "Telemetry"
+            case .permissions: return "Permissions"
             }
         }
 
@@ -2588,6 +2596,8 @@ struct NativeSettingsScreen: View {
             case .skills: return "wand.and.stars"
             case .backups: return "externaldrive.badge.timemachine"
             case .logs: return "list.bullet.rectangle"
+            case .telemetry: return "waveform.path.ecg.rectangle"
+            case .permissions: return "key.horizontal"
             }
         }
     }

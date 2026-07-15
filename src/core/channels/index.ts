@@ -16,6 +16,13 @@ export {
 } from "./formatting";
 
 export {
+  inspectChannelAdapter,
+  inspectChannelAdapters,
+  type ChannelCapability,
+  type ChannelConformanceReport,
+} from "./conformance";
+
+export {
   securityManager,
   generatePairingCode,
   type DMPolicy,

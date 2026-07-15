@@ -868,3 +868,20 @@ export async function launchPuppeteerBrowser(options: {
     })
   );
 }
+
+export async function connectPuppeteerBrowser(options: {
+  endpoint: string;
+  headers?: Record<string, string>;
+}): Promise<AutomationBrowser> {
+  const endpoint = new URL(options.endpoint);
+  const connection =
+    endpoint.protocol === "ws:" || endpoint.protocol === "wss:"
+      ? { browserWSEndpoint: options.endpoint }
+      : { browserURL: options.endpoint };
+  return new PuppeteerBrowserAdapter(
+    await puppeteer.connect({
+      ...connection,
+      headers: options.headers,
+    })
+  );
+}

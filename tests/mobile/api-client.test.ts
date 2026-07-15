@@ -188,6 +188,8 @@ describe("mobile API client", () => {
         activeSessions: [
           {
             sessionId: "s1",
+            runId: "run-1",
+            sequence: 4,
             status: "tool_executing",
             timestamp: 999,
             pendingMessages: [
@@ -219,6 +221,8 @@ describe("mobile API client", () => {
       activeSessions: [
         {
           sessionId: "s1",
+          runId: "run-1",
+          sequence: 4,
           pendingMessages: [{ content: "follow up", mode: "queued" }],
           activities: [{ text: "Exploring package.json", toolCallId: "read-1" }],
         },

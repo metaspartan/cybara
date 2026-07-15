@@ -62,6 +62,8 @@ import {
 } from "./core/tools/handlers/memory";
 import { toolSchemas } from "./core/tools/index";
 import { providerManager } from "./core/providers";
+import { listInstalledPlugins } from "./core/plugins";
+import { activateInstalledPluginRuntimes } from "./core/plugins/runtime";
 import { taskScheduler } from "./core/scheduler";
 import {
   onStatus,
@@ -856,6 +858,11 @@ function printStartupSecurityWarnings(): void {
 printStartupSecurityWarnings();
 
 providerManager.seedDefaults();
+try {
+  activateInstalledPluginRuntimes(listInstalledPlugins());
+} catch (error) {
+  console.error("[Plugins] Runtime activation failed:", error);
+}
 
 // First-run nudge: if no LLM provider has credentials yet, the agent can't do
 // anything useful — point the user at setup instead of leaving them guessing.

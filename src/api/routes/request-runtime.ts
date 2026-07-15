@@ -1,4 +1,5 @@
 import { trackApiCall, trackMetric } from "../../core/metrics";
+import { recordExternalSpan } from "../../core/external-telemetry";
 
 export interface RequestLog {
   timestamp: string;
@@ -51,6 +52,14 @@ export function recordApiMetrics(
 ): void {
   trackApiCall(path, method, status, durationMs);
   trackMetric("api_status", String(status), 1, { method, path, durationMs });
+  const endedAt = Date.now();
+  recordExternalSpan({
+    name: `${method} ${path}`,
+    startedAt: endedAt - Math.max(0, durationMs),
+    endedAt,
+    statusCode: status,
+    attributes: { method, path, durationMs },
+  });
 }
 
 export function redactSecretConfig(cfg: Record<string, unknown>): Record<string, unknown> {

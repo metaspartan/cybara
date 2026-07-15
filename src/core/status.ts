@@ -2,6 +2,13 @@ import { createLogger } from "./logger";
 import { redactSecrets, redactSecretText } from "./redaction";
 import { stripReasoningTagTokens } from "./agent-internals";
 import { notifyMobilePushForStatus, notifyMobilePushForTask } from "./mobile-push";
+import {
+  appendSessionEvent,
+  beginSessionRun,
+  completeSessionRun,
+  ensureSessionRunId,
+  getActiveSessionRunId,
+} from "./session-event-ledger";
 
 export type AgentStatus =
   | "idle"
@@ -25,6 +32,8 @@ export interface StatusPayload {
   sandboxProvider?: string;
   toolPhase?: ToolStatusPhase;
   durationMs?: number;
+  runId?: string;
+  sequence?: number;
 }
 
 export interface TaskEventPayload {
@@ -73,6 +82,8 @@ export interface TokenStreamEventPayload {
   /** The text delta (may be a few characters or a line). */
   delta: string;
   timestamp: number;
+  runId?: string;
+  sequence?: number;
 }
 
 export interface SessionActivitySnapshot {
@@ -87,6 +98,8 @@ export interface SessionActivitySnapshot {
 
 export interface SessionStatusSnapshot {
   sessionId: string;
+  runId?: string;
+  sequence?: number;
   status: AgentStatus;
   timestamp: number;
   detail?: string;
@@ -373,6 +386,8 @@ function upsertSessionStatusSnapshot(payload: StatusPayload): void {
 
   sessionStatusSnapshots.set(sessionId, {
     sessionId,
+    runId: payload.runId || previous?.runId,
+    sequence: payload.sequence ?? previous?.sequence,
     status: payload.status,
     timestamp: payload.timestamp,
     detail: sanitizeActivityText(payload.detail),
@@ -505,18 +520,60 @@ export function broadcastStatusSnapshot(): void {
 
 export function broadcastStatus(status: StatusPayload): void {
   const sanitizedStatus = redactSecrets(status) as StatusPayload;
-  upsertSessionStatusSnapshot(sanitizedStatus);
-  notifyMobilePushForStatus(sanitizedStatus);
+  const sessionId = sanitizedStatus.sessionId?.trim();
+  let runId = sanitizedStatus.runId;
+  let sequence = sanitizedStatus.sequence;
+  if (sessionId) {
+    const activeRunId = getActiveSessionRunId(sessionId);
+    runId = activeRunId || beginSessionRun(sessionId, runId);
+    try {
+      if (!activeRunId) {
+        appendSessionEvent({
+          sessionId,
+          runId,
+          type: "run_started",
+          payload: { timestamp: Date.now() },
+        });
+      }
+      sequence = appendSessionEvent({
+        sessionId,
+        runId,
+        type: sanitizedStatus.status === "error" ? "error" : "status",
+        payload: sanitizedStatus,
+      }).sequence;
+    } catch {
+      sequence = undefined;
+    }
+  }
+  const sequencedStatus = { ...sanitizedStatus, runId, sequence };
+  upsertSessionStatusSnapshot(sequencedStatus);
+  notifyMobilePushForStatus(sequencedStatus);
 
   for (const callback of statusCallbacks) {
     try {
-      callback(sanitizedStatus);
+      callback(sequencedStatus);
     } catch {
       // Ignore callback errors
     }
   }
 
-  emitStatusStreamEvent({ ...sanitizedStatus, type: "status" });
+  emitStatusStreamEvent({ ...sequencedStatus, type: "status" });
+
+  if (sessionId && sequencedStatus.status === "idle") {
+    if (runId) {
+      try {
+        appendSessionEvent({
+          sessionId,
+          runId,
+          type: "run_completed",
+          payload: { timestamp: Date.now() },
+        });
+      } catch {
+        void 0;
+      }
+    }
+    completeSessionRun(sessionId);
+  }
 
   log.debug("Broadcast status", {
     status: status.status,
@@ -548,11 +605,28 @@ export function broadcastTokenDelta(event: {
   agentId?: string;
   delta: string;
 }): void {
+  const sessionId = event.sessionId.trim();
+  const runId = getActiveSessionRunId(sessionId) || ensureSessionRunId(sessionId);
+  const timestamp = Date.now();
+  const sanitizedDelta = redactSecretText(event.delta);
+  let sequence: number | undefined;
+  try {
+    sequence = appendSessionEvent({
+      sessionId,
+      runId,
+      type: "assistant_delta",
+      payload: { agentId: event.agentId, delta: sanitizedDelta, timestamp },
+    }).sequence;
+  } catch {
+    sequence = undefined;
+  }
   emitStatusStreamEvent({
     type: "assistant_token",
-    sessionId: event.sessionId,
+    sessionId,
     agentId: event.agentId,
-    delta: redactSecretText(event.delta),
-    timestamp: Date.now(),
+    delta: sanitizedDelta,
+    timestamp,
+    runId,
+    sequence,
   });
 }

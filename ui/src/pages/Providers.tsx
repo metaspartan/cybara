@@ -57,6 +57,15 @@ function parsePlanLimitInput(value: FormDataEntryValue | null): number | undefin
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function providerSettingsFromForm(
+  providerType: string,
+  formData: FormData
+): Record<string, unknown> | undefined {
+  if (providerType !== "devin") return undefined;
+  const organizationId = String(formData.get("organization_id") ?? "").trim();
+  return organizationId ? { organizationId } : undefined;
+}
+
 export function Providers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -259,12 +268,14 @@ export function Providers() {
 
   const handleCreate = async (formData: FormData) => {
     try {
+      const providerType = formData.get("provider") as string;
       await createProvider.mutateAsync({
-        provider: formData.get("provider") as string,
+        provider: providerType,
         name: formData.get("name") as string,
         api_key: (formData.get("api_key") as string) || undefined,
         access_token: (formData.get("access_token") as string) || undefined,
         refresh_token: (formData.get("refresh_token") as string) || undefined,
+        settings: providerSettingsFromForm(providerType, formData),
         expires_at: Number(formData.get("expires_at")) || undefined,
         is_default: formData.get("is_default") === "on",
       });
@@ -285,6 +296,7 @@ export function Providers() {
           api_key: (formData.get("api_key") as string) || undefined,
           access_token: (formData.get("access_token") as string) || undefined,
           refresh_token: (formData.get("refresh_token") as string) || undefined,
+          settings: providerSettingsFromForm(editingProvider.provider, formData),
           expires_at: Number(formData.get("expires_at")) || undefined,
           is_default: formData.get("is_default") === "on",
         },
@@ -900,14 +912,33 @@ function ProviderModal({
         />
 
         {authType === "api_key" && (
-          <Input
-            name="api_key"
-            label="API Key"
-            type="password"
-            placeholder="sk-..."
-            defaultValue={provider?.config?.api_key as string}
-            helperText="Your API key from the provider's dashboard"
-          />
+          <div className="space-y-3">
+            <Input
+              name="api_key"
+              label={selectedProvider === "devin" ? "Service-user API Key" : "API Key"}
+              type="password"
+              placeholder={selectedProvider === "devin" ? "cog_..." : "sk-..."}
+              defaultValue={provider?.config?.api_key as string}
+              helperText={
+                selectedProvider === "devin"
+                  ? "Create a service user in your Devin organization"
+                  : "Your API key from the provider's dashboard"
+              }
+            />
+            {selectedProvider === "devin" && (
+              <Input
+                name="organization_id"
+                label="Organization ID"
+                placeholder="Organization ID"
+                defaultValue={
+                  typeof provider?.settings?.organizationId === "string"
+                    ? provider.settings.organizationId
+                    : ""
+                }
+                required
+              />
+            )}
+          </div>
         )}
 
         {authType === "oauth" && (

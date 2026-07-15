@@ -337,6 +337,42 @@ export interface GatewayRemoteAccessSettings {
   message: string;
 }
 
+export interface ExternalTelemetrySettings {
+  enabled: boolean;
+  serviceName: string;
+  environment: string;
+  prometheusEnabled: boolean;
+  otlpEnabled: boolean;
+  otlpEndpoint: string;
+  otlpHeaders: Record<string, string>;
+  metricsEnabled: boolean;
+  tracesEnabled: boolean;
+  exportIntervalMs: number;
+}
+
+export interface ExternalTelemetryStatus {
+  enabled: boolean;
+  queuedMetrics: number;
+  queuedSpans: number;
+  lastExportAt: string | null;
+  lastError: string | null;
+  exportedMetrics: number;
+  exportedSpans: number;
+}
+
+export type ToolCapability =
+  | "read"
+  | "write"
+  | "execution"
+  | "network"
+  | "browser"
+  | "wallet"
+  | "destructive";
+
+export type ToolCapabilityPolicyMode = "inherit" | "ask" | "allow" | "deny";
+
+export type ToolCapabilityPolicy = Record<ToolCapability, ToolCapabilityPolicyMode>;
+
 export interface MobileNearbySettings {
   enabled: boolean;
   displayName: string;
@@ -951,6 +987,8 @@ export type MobileAgentStatus =
 
 export interface MobileStatusSessionSnapshot {
   sessionId: string;
+  runId?: string;
+  sequence?: number;
   status: MobileAgentStatus | string;
   timestamp: number;
   detail?: string;
@@ -961,6 +999,8 @@ export interface MobileStatusSessionSnapshot {
 
 export interface MobileStatusStreamStatusEvent {
   type: "status";
+  runId?: string;
+  sequence?: number;
   status: MobileAgentStatus | string;
   timestamp: number;
   detail?: string;
@@ -983,6 +1023,8 @@ export interface MobileStatusStreamSnapshotEvent {
 export interface MobileStatusStreamTokenEvent {
   type: "assistant_token";
   sessionId: string;
+  runId?: string;
+  sequence?: number;
   agentId?: string;
   delta: string;
   timestamp: number;
@@ -1834,6 +1876,8 @@ function normalizeStatusSnapshot(
     readString(record, ["sessionId", "session_id"]) || `session-${fallbackIndex + 1}`;
   return {
     sessionId,
+    runId: readString(record, ["runId", "run_id"]),
+    sequence: readNumber(record, ["sequence"]),
     status: readString(record, ["status"]) || "thinking",
     timestamp: readNumber(record, ["timestamp"]) ?? Date.now(),
     detail: readString(record, ["detail", "message", "text"]),
@@ -1877,6 +1921,8 @@ export function normalizeMobileStatusStreamEvent(value: unknown): MobileStatusSt
     return {
       type,
       sessionId,
+      runId: readString(record, ["runId", "run_id"]),
+      sequence: readNumber(record, ["sequence"]),
       agentId: readString(record, ["agentId", "agent_id"]),
       delta,
       timestamp: readNumber(record, ["timestamp"]) ?? Date.now(),
@@ -1899,6 +1945,8 @@ export function normalizeMobileStatusStreamEvent(value: unknown): MobileStatusSt
   if (type !== "status") return null;
   return {
     type,
+    runId: readString(record, ["runId", "run_id"]),
+    sequence: readNumber(record, ["sequence"]),
     status: readString(record, ["status"]) || "thinking",
     timestamp: readNumber(record, ["timestamp"]) ?? Date.now(),
     detail: readString(record, ["detail", "message", "text"]),
@@ -3139,6 +3187,43 @@ export class CybaraMobileApi {
 
   gatewayAuthSettings(): Promise<GatewayAuthSettings> {
     return this.request<GatewayAuthSettings>("/api/auth/settings");
+  }
+
+  externalTelemetrySettings(): Promise<ExternalTelemetrySettings> {
+    return this.request<ExternalTelemetrySettings>("/api/telemetry/settings");
+  }
+
+  externalTelemetryStatus(): Promise<ExternalTelemetryStatus> {
+    return this.request<ExternalTelemetryStatus>("/api/telemetry/status");
+  }
+
+  updateExternalTelemetrySettings(
+    settings: ExternalTelemetrySettings
+  ): Promise<{ success: boolean; settings: ExternalTelemetrySettings }> {
+    return this.request<{ success: boolean; settings: ExternalTelemetrySettings }>(
+      "/api/telemetry/settings",
+      { method: "PUT", body: JSON.stringify(settings) }
+    );
+  }
+
+  testExternalTelemetry(): Promise<{ success: boolean; status: ExternalTelemetryStatus }> {
+    return this.request<{ success: boolean; status: ExternalTelemetryStatus }>(
+      "/api/telemetry/test",
+      { method: "POST" }
+    );
+  }
+
+  toolCapabilityPolicy(): Promise<{ policy: ToolCapabilityPolicy }> {
+    return this.request<{ policy: ToolCapabilityPolicy }>("/api/settings/tool-capabilities");
+  }
+
+  updateToolCapabilityPolicy(
+    policy: ToolCapabilityPolicy
+  ): Promise<{ success: boolean; policy: ToolCapabilityPolicy }> {
+    return this.request<{ success: boolean; policy: ToolCapabilityPolicy }>(
+      "/api/settings/tool-capabilities",
+      { method: "PUT", body: JSON.stringify(policy) }
+    );
   }
 
   nearbyStatus(): Promise<MobileNearbyStatus> {

@@ -180,6 +180,7 @@ export async function requestToolApproval(params: {
   argsPreview?: Record<string, unknown>;
   /** Allowlist key; defaults to a key derived from tool name + args. */
   approvalKey?: string;
+  force?: boolean;
 }): Promise<ApprovalDecision> {
   const { sessionId, agentId, toolName, argsSummary, argsPreview } = params;
   const approvalKey = params.approvalKey ?? buildApprovalKey(toolName, argsPreview);
@@ -191,7 +192,7 @@ export async function requestToolApproval(params: {
 
   // Check if approval mode is "always_allow" — skip entirely.
   const mode = config.getToolApprovalMode();
-  if (mode === "always_allow") {
+  if (mode === "always_allow" && params.force !== true) {
     return "approve_always";
   }
 

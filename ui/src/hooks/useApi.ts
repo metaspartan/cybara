@@ -243,6 +243,7 @@ export function useCreateProvider() {
       api_key?: string;
       access_token?: string;
       refresh_token?: string;
+      settings?: Record<string, unknown>;
       expires_at?: number;
       is_default?: boolean;
     }) =>

@@ -103,6 +103,10 @@ export class ChannelManager {
     return this.adapters.get(type);
   }
 
+  listAdapters(): ChannelAdapter[] {
+    return Array.from(this.adapters.values());
+  }
+
   list(): (Channel & { info?: (typeof channels)[ChannelType] })[] {
     const all = tables.channels.all() as Channel[];
     return all.map((c) => {

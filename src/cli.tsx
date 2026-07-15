@@ -48,6 +48,8 @@ import { rawUpdate } from "./cli-update";
 import { connectCliProviderOAuth } from "./cli-provider-oauth";
 import { runEvalCommand, TUIEvalsCommand } from "./cli-evals";
 import { runSystemBackupCommand, TUIBackupsCommand } from "./cli-system-backup";
+import { runTelemetryCommand } from "./cli-telemetry";
+import { runPermissionsCommand } from "./cli-permissions";
 import { TUIBackProvider, useTUIBack } from "./cli-tui-navigation";
 import { useTerminalScreen } from "./cli-tui-terminal";
 import { TUIBrowserCommand, TUIWalletCommand } from "./cli-tui-operations-panels";
@@ -3523,6 +3525,12 @@ async function main() {
       break;
     case "settings":
       await rawConfig(args[1], args[2], args[3]);
+      break;
+    case "telemetry":
+      await runTelemetryCommand(args.slice(1), { fetchAPI });
+      break;
+    case "permissions":
+      await runPermissionsCommand(args.slice(1), { fetchAPI });
       break;
     case "migrate":
     case "migration":

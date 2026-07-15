@@ -77,13 +77,18 @@ import {
   type PooledCredential,
   poolSize,
 } from "./credential-pool";
-import type { Agent, ToolDefinition } from "./database";
+import type { Agent, Provider, ToolDefinition } from "./database";
 import {
   anthropicEndpointPath,
   anthropicRequestBase,
   anthropicRequestHeaders,
 } from "./llm/anthropic-vertex";
 import { applyProviderApiKey } from "./llm/auth-headers";
+import {
+  callCursorAgentTransport,
+  callDevinAgentTransport,
+  callGitLabDuoTransport,
+} from "./llm/agent-provider-transports";
 import { compactCodexInputItemsForContext, sanitizeCodexInputItems } from "./llm/codex-context";
 import { googleFunctionDeclaration } from "./llm/google-tool-schema";
 import {
@@ -118,13 +123,12 @@ import { consumeOpenAIChatStream } from "./llm/streaming-completions";
 import { coalesceSystemMessages } from "./llm/system-messages";
 import {
   hasTextToolCallMarkup,
-  normalizeAnthropicToolUses,
-  normalizeOpenAIToolCalls,
   sanitizeAssistantContent,
   shouldUseMiniMaxReasoningSplit,
   toAnthropicReplayContentWithNormalizedToolUses,
   toOpenAIReplayMessageWithNormalizedToolCalls,
 } from "./llm/text-tool-calls";
+import { normalizeAnthropicModelToolUses, normalizeModelToolCalls } from "./llm/model-dialect";
 import { trackTokenUsage } from "./llm/token-usage-tracking";
 import {
   compactOpenAIRequestMessagesForContext as compactOpenAIRequestMessages,
@@ -143,6 +147,7 @@ import {
   providers as providerCatalog,
   providerManager,
 } from "./providers";
+import { getPluginProviderContribution } from "./plugins/provider-registry";
 import { recordRateLimit } from "./rate-limit-tracker";
 import { recordRateLimit as recordRouterRateLimit } from "./router";
 import {
@@ -634,13 +639,26 @@ export abstract class AgentProviderRuntime {
       base_url?: string;
       api_key?: string;
       access_token?: string;
+      settings?: Record<string, unknown>;
     };
     const providerConfig = providerInfo.provider;
     const baseUrl = providerInfo.base_url || getProviderBaseUrl(providerConfig);
     const auth = providerInfo.api_key || providerInfo.access_token;
-    const providerDefinition = providerCatalog[providerConfig as ProviderType] as
+    const catalogProviderDefinition = providerCatalog[providerConfig as ProviderType] as
       | { api?: string; headers?: Record<string, string>; authType?: string }
       | undefined;
+    const pluginProviderDefinition = getPluginProviderContribution(providerConfig);
+    const providerDefinition =
+      catalogProviderDefinition ||
+      (pluginProviderDefinition
+        ? {
+            api:
+              pluginProviderDefinition.api === "anthropic-compatible"
+                ? "anthropic-messages"
+                : "openai-completions",
+            authType: pluginProviderDefinition.authType === "none" ? "none" : "api_key",
+          }
+        : undefined);
     const providerAuthType = providerDefinition?.authType || "api_key";
     const requiresTokenAuth = providerAuthType !== "none" && providerAuthType !== "aws-sdk";
 
@@ -649,7 +667,7 @@ export abstract class AgentProviderRuntime {
     }
     const resolvedAuth = auth || "";
 
-    const modelId = model || getDefaultModel(providerConfig);
+    const modelId = model || pluginProviderDefinition?.models[0] || getDefaultModel(providerConfig);
     const apiFamily = providerDefinition?.api || "openai-completions";
     const providerHeaders = providerDefinition?.headers || {};
     const customHeaders = (providerInfo as { headers?: Record<string, string> }).headers || {};
@@ -665,6 +683,18 @@ export abstract class AgentProviderRuntime {
       providerInfo.id,
       modelId
     );
+
+    if (apiFamily === "cursor-agent") {
+      return callCursorAgentTransport(providerInfo as Provider, modelId, messages, toolContext);
+    }
+
+    if (apiFamily === "devin-agent") {
+      return callDevinAgentTransport(providerInfo as Provider, messages, toolContext);
+    }
+
+    if (apiFamily === "gitlab-duo") {
+      return callGitLabDuoTransport(providerInfo as Provider, messages, toolContext);
+    }
 
     if (apiFamily === "anthropic-messages" || apiFamily === "anthropic-vertex") {
       return this.callAnthropicAPI(
@@ -1327,11 +1357,13 @@ export abstract class AgentProviderRuntime {
 
     while (true) {
       const nextIteration = iterations + 1;
-      const normalizedToolCalls = normalizeOpenAIToolCalls(
+      const normalizedToolCalls = normalizeModelToolCalls({
+        provider: providerConfig || "openai-compatible",
+        model: modelId,
         message,
-        nextIteration,
-        allowedToolNames
-      );
+        iteration: nextIteration,
+        allowedToolNames,
+      });
       if (normalizedToolCalls.length === 0) {
         finalContent = typeof message.content === "string" ? message.content : "";
         break;
@@ -3107,11 +3139,13 @@ export abstract class AgentProviderRuntime {
 
     while (true) {
       const nextIteration = iterations + 1;
-      const toolUseBlocks = normalizeAnthropicToolUses(
-        currentData.content,
-        nextIteration,
-        allowedToolNames
-      );
+      const toolUseBlocks = normalizeAnthropicModelToolUses({
+        provider: providerConfig,
+        model: modelId,
+        content: currentData.content,
+        iteration: nextIteration,
+        allowedToolNames,
+      });
 
       if (toolUseBlocks.length === 0) {
         break;
@@ -3648,11 +3682,13 @@ export abstract class AgentProviderRuntime {
 
     while (true) {
       const nextIteration = iterations + 1;
-      const normalizedToolCalls = normalizeOpenAIToolCalls(
+      const normalizedToolCalls = normalizeModelToolCalls({
+        provider: "openai",
+        model: modelId,
         message,
-        nextIteration,
-        allowedToolNames
-      );
+        iteration: nextIteration,
+        allowedToolNames,
+      });
       if (normalizedToolCalls.length === 0) {
         finalContent = message.content || finalContent;
         break;

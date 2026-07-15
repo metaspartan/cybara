@@ -67,6 +67,7 @@ try {
     api_key TEXT,
     access_token TEXT,
     refresh_token TEXT,
+    settings TEXT,
     expires_at INTEGER,
     is_default INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -213,6 +214,18 @@ try {
     FOREIGN KEY (session_id) REFERENCES chat_sessions(id)
   );
 
+  CREATE TABLE IF NOT EXISTS session_events (
+    id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL,
+    run_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    event_type TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(session_id, sequence),
+    FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+  );
+
   CREATE TABLE IF NOT EXISTS agent_trajectories (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
@@ -349,6 +362,8 @@ try {
   CREATE INDEX IF NOT EXISTS idx_session_messages_session ON session_messages(session_id);
   CREATE INDEX IF NOT EXISTS idx_session_messages_session_created ON session_messages(session_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_session_messages_created ON session_messages(created_at);
+  CREATE INDEX IF NOT EXISTS idx_session_events_session_sequence ON session_events(session_id, sequence);
+  CREATE INDEX IF NOT EXISTS idx_session_events_run_sequence ON session_events(run_id, sequence);
   CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(level);
   CREATE INDEX IF NOT EXISTS idx_system_logs_source ON system_logs(source);
   CREATE INDEX IF NOT EXISTS idx_system_logs_created ON system_logs(created_at);
@@ -391,6 +406,11 @@ try {
   } catch (error) {
     console.warn("[Database] metrics_totals backfill failed:", error);
   }
+
+  try {
+    db.exec("ALTER TABLE providers ADD COLUMN settings TEXT");
+    console.error("[Database] Migration: Added settings column to providers");
+  } catch {}
 
   try {
     db.exec("ALTER TABLE agents ADD COLUMN fallback_provider_id TEXT");
@@ -471,6 +491,7 @@ db.exec(`
     api_key TEXT,
     access_token TEXT,
     refresh_token TEXT,
+    settings TEXT,
     expires_at INTEGER,
     is_default INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -631,10 +652,10 @@ const stmts = {
     all: prepare("SELECT * FROM providers ORDER BY created_at DESC"),
     get: prepare("SELECT * FROM providers WHERE id = ?"),
     create: prepare(
-      "INSERT INTO providers (id, provider, name, base_url, api_key, access_token, refresh_token, expires_at, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+      "INSERT INTO providers (id, provider, name, base_url, api_key, access_token, refresh_token, settings, expires_at, is_default) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
     ),
     update: prepare(
-      "UPDATE providers SET name=?, base_url=?, api_key=?, access_token=?, refresh_token=?, expires_at=?, is_default=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
+      "UPDATE providers SET name=?, base_url=?, api_key=?, access_token=?, refresh_token=?, settings=?, expires_at=?, is_default=?, updated_at=CURRENT_TIMESTAMP WHERE id=?"
     ),
     delete: prepare("DELETE FROM providers WHERE id = ?"),
     migrateSecrets: prepare(
@@ -774,6 +795,21 @@ const stmts = {
     search: prepare(
       "SELECT * FROM session_messages WHERE content LIKE ? ORDER BY created_at DESC LIMIT ?"
     ),
+  },
+  sessionEvents: {
+    append: prepare(
+      `INSERT INTO session_events (id, session_id, run_id, sequence, event_type, payload)
+       VALUES (?, ?, ?, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM session_events WHERE session_id = ?), ?, ?)
+       RETURNING id, session_id, run_id, sequence, event_type, payload, created_at`
+    ),
+    bySession: prepare(
+      "SELECT * FROM session_events WHERE session_id = ? AND sequence > ? ORDER BY sequence ASC LIMIT ?"
+    ),
+    byRun: prepare("SELECT * FROM session_events WHERE run_id = ? ORDER BY sequence ASC LIMIT ?"),
+    latestSequence: prepare(
+      "SELECT COALESCE(MAX(sequence), 0) AS sequence FROM session_events WHERE session_id = ?"
+    ),
+    deleteBySession: prepare("DELETE FROM session_events WHERE session_id = ?"),
   },
   systemLogs: {
     add: prepare(
@@ -933,6 +969,19 @@ function openProviderRow(row: unknown): Provider | undefined {
       else result[field] = opened;
     }
   }
+  const settings = storedString(result.settings);
+  if (settings) {
+    try {
+      const parsed = JSON.parse(settings) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        result.settings = parsed;
+      } else {
+        delete result.settings;
+      }
+    } catch {
+      delete result.settings;
+    }
+  }
   return result as unknown as Provider;
 }
 
@@ -1013,6 +1062,7 @@ export const tables = {
         sealProviderValue(p.id, "api_key", p.api_key),
         sealProviderValue(p.id, "access_token", p.access_token),
         sealProviderValue(p.id, "refresh_token", p.refresh_token),
+        p.settings ? JSON.stringify(p.settings) : null,
         p.expires_at || null,
         p.is_default ? 1 : 0
       ),
@@ -1023,6 +1073,7 @@ export const tables = {
         sealProviderValue(id, "api_key", p.api_key),
         sealProviderValue(id, "access_token", p.access_token),
         sealProviderValue(id, "refresh_token", p.refresh_token),
+        p.settings ? JSON.stringify(p.settings) : null,
         p.expires_at || null,
         p.is_default ? 1 : 0,
         id
@@ -1286,6 +1337,31 @@ export const tables = {
     search: (query: string, limit = 100) =>
       stmts.sessionMessages?.search.all(`%${query}%`, limit) || [],
   },
+  sessionEvents: {
+    append: (event: {
+      id: string;
+      session_id: string;
+      run_id: string;
+      event_type: string;
+      payload: string;
+    }) =>
+      stmts.sessionEvents.append.get(
+        event.id,
+        event.session_id,
+        event.run_id,
+        event.session_id,
+        event.event_type,
+        event.payload
+      ),
+    bySession: (sessionId: string, afterSequence = 0, limit = 1000) =>
+      stmts.sessionEvents.bySession.all(sessionId, afterSequence, limit),
+    byRun: (runId: string, limit = 1000) => stmts.sessionEvents.byRun.all(runId, limit),
+    latestSequence: (sessionId: string): number => {
+      const row = stmts.sessionEvents.latestSequence.get(sessionId) as { sequence?: number } | null;
+      return typeof row?.sequence === "number" ? row.sequence : 0;
+    },
+    deleteBySession: (sessionId: string) => stmts.sessionEvents.deleteBySession.run(sessionId),
+  },
   systemLogs: {
     add: (log: { id: string; level: string; source: string; message: string; metadata?: string }) =>
       stmts.systemLogs?.add.run(log.id, log.level, log.source, log.message, log.metadata || null),
@@ -1469,6 +1545,7 @@ export interface Provider {
   api_key?: string;
   access_token?: string;
   refresh_token?: string;
+  settings?: Record<string, unknown>;
   expires_at?: number;
   is_default: boolean;
   headers?: Record<string, string>; // For provider-specific headers (e.g., User-Agent for Kimi Code)

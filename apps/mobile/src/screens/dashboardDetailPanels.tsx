@@ -102,6 +102,8 @@ import { SpeechSettingsPanel } from "./dashboardSpeechSettingsPanel";
 import { MobileMcpSettingsPanel } from "./dashboardMcpPanel";
 import { MobilePluginsPanel } from "./dashboardPluginsPanel";
 import { MobileEvalsPanel } from "./dashboardEvalsPanel";
+import { MobileTelemetrySettingsPanel } from "./dashboardTelemetryPanel";
+import { MobileToolCapabilityPanel } from "./dashboardToolCapabilityPanel";
 import { styles } from "./dashboardStyles";
 import {
   type DetailRoute,
@@ -1184,6 +1186,7 @@ export function SettingsPanel({
                   refreshSummary={refreshSummary}
                 />
                 <MobileComputerUsePanel api={api} />
+                <MobileToolCapabilityPanel accentColor={accentColor} api={api} />
               </>
             ) : null}
           </>
@@ -1495,33 +1498,36 @@ export function SettingsPanel({
           </SettingsSection>
         ) : null}
         {showSystemSettings ? (
-          <SettingsSection title="System">
-            {MOBILE_SETTINGS_SURFACES.filter((surface) => surface !== "wallet").map((surface) => {
-              const meta = surfaceMeta[surface];
-              const Icon = meta.Icon;
-              const rows = surfaceRows(surface, summary);
-              return (
-                <Pressable
-                  key={surface}
-                  style={styles.settingsNavigationRow}
-                  onPress={() => openSurface(surface)}
-                >
-                  <View
-                    style={[styles.settingsNavigationIcon, { backgroundColor: `${meta.tone}18` }]}
+          <>
+            <SettingsSection title="System">
+              {MOBILE_SETTINGS_SURFACES.filter((surface) => surface !== "wallet").map((surface) => {
+                const meta = surfaceMeta[surface];
+                const Icon = meta.Icon;
+                const rows = surfaceRows(surface, summary);
+                return (
+                  <Pressable
+                    key={surface}
+                    style={styles.settingsNavigationRow}
+                    onPress={() => openSurface(surface)}
                   >
-                    <Icon color={meta.tone} size={20} strokeWidth={2.1} />
-                  </View>
-                  <View style={styles.listText}>
-                    <Text style={styles.listTitle}>{meta.title}</Text>
-                    <Text style={styles.listDetail} numberOfLines={1}>
-                      {surfaceMenuDetail(surface, summary, counts, rows.length)}
-                    </Text>
-                  </View>
-                  <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
-                </Pressable>
-              );
-            })}
-          </SettingsSection>
+                    <View
+                      style={[styles.settingsNavigationIcon, { backgroundColor: `${meta.tone}18` }]}
+                    >
+                      <Icon color={meta.tone} size={20} strokeWidth={2.1} />
+                    </View>
+                    <View style={styles.listText}>
+                      <Text style={styles.listTitle}>{meta.title}</Text>
+                      <Text style={styles.listDetail} numberOfLines={1}>
+                        {surfaceMenuDetail(surface, summary, counts, rows.length)}
+                      </Text>
+                    </View>
+                    <ChevronRight color={colors.textMuted} size={20} strokeWidth={2} />
+                  </Pressable>
+                );
+              })}
+            </SettingsSection>
+            <MobileTelemetrySettingsPanel accentColor={accentColor} api={api} />
+          </>
         ) : null}
         {showSystemSettings ? (
           <View style={styles.settingsSection}>

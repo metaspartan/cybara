@@ -1,3 +1,5 @@
+import { listPluginCommands } from "./plugins/runtime";
+
 const LEARN_TEMPLATE = (subject: string) =>
   [
     "You are being asked to LEARN a new reusable skill and save it for future sessions.",
@@ -103,11 +105,17 @@ export function expandPromptCommand(message: string): string | null {
   const trimmed = message.trimStart();
   const match = trimmed.match(/^\/([a-z][a-z0-9_-]*)\b[ \t]*([\s\S]*)$/i);
   if (!match) return null;
-  const command = COMMANDS[match[1].toLowerCase()];
-  if (!command) return null;
-  return command.expand(match[2] ?? "");
+  const commandName = match[1].toLowerCase();
+  const command = COMMANDS[commandName];
+  if (command) return command.expand(match[2] ?? "");
+  const pluginCommand = listPluginCommands().find(
+    (entry) => entry.id.toLowerCase() === commandName
+  );
+  if (!pluginCommand) return null;
+  const args = match[2]?.trim() || "";
+  return args ? `${pluginCommand.prompt}\n\nUser arguments: ${args}` : pluginCommand.prompt;
 }
 
 export function listPromptCommands(): string[] {
-  return Object.keys(COMMANDS);
+  return [...Object.keys(COMMANDS), ...listPluginCommands().map((command) => command.id)];
 }

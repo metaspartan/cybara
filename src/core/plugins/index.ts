@@ -14,6 +14,7 @@ import { fileURLToPath } from "url";
 
 import type {
   CybaraPluginManifest,
+  CybaraPluginContributionKind,
   CybaraPluginSource,
   InstalledCybaraPlugin,
   PluginValidationResult,
@@ -133,6 +134,66 @@ function resolveContributionDirs(
   return [...new Set(resolvedDirs)];
 }
 
+const FILE_CONTRIBUTION_KINDS: readonly CybaraPluginContributionKind[] = [
+  "tools",
+  "commands",
+  "hooks",
+  "mcpServers",
+  "providers",
+  "channels",
+];
+
+function resolveContributionFiles(
+  rootDir: string,
+  files: string[] | undefined,
+  warnings: string[]
+): string[] {
+  if (!Array.isArray(files)) return [];
+  const resolvedFiles: string[] = [];
+  const lexicalRoot = resolve(rootDir);
+  const canonicalRoot = realpathSync(rootDir);
+  for (const file of files) {
+    if (typeof file !== "string" || !file.trim()) continue;
+    if (isAbsolute(file)) {
+      warnings.push(`Ignoring absolute contribution path: ${file}`);
+      continue;
+    }
+    const nextPath = resolve(rootDir, file);
+    if (!isWithinDirectory(lexicalRoot, nextPath)) {
+      warnings.push(`Ignoring contribution path outside plugin root: ${file}`);
+      continue;
+    }
+    if (!existsSync(nextPath) || !statSync(nextPath).isFile()) {
+      warnings.push(`Contribution file not found: ${file}`);
+      continue;
+    }
+    const canonicalNext = realpathSync(nextPath);
+    if (!isWithinDirectory(canonicalRoot, canonicalNext)) {
+      warnings.push(`Ignoring symlinked contribution path outside plugin root: ${file}`);
+      continue;
+    }
+    if (!canonicalNext.endsWith(".json")) {
+      warnings.push(`Contribution file must be JSON: ${file}`);
+      continue;
+    }
+    resolvedFiles.push(canonicalNext);
+  }
+  return [...new Set(resolvedFiles)];
+}
+
+function resolveAllContributionFiles(
+  rootDir: string,
+  manifest: Partial<CybaraPluginManifest>,
+  warnings: string[]
+): Record<CybaraPluginContributionKind, string[]> {
+  return Object.fromEntries(
+    FILE_CONTRIBUTION_KINDS.map((kind) => [
+      kind,
+      resolveContributionFiles(rootDir, manifest.contributions?.[kind]?.files, warnings),
+    ])
+  ) as Record<CybaraPluginContributionKind, string[]>;
+}
+
 export function validatePluginAtPath(pluginPath: string): PluginValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -191,7 +252,11 @@ export function validatePluginAtPath(pluginPath: string): PluginValidationResult
     manifest.contributions?.skills?.dirs,
     warnings
   );
-  if (skillDirs.length === 0) {
+  const contributionFiles = resolveAllContributionFiles(rootDir, manifest, warnings);
+  if (
+    skillDirs.length === 0 &&
+    FILE_CONTRIBUTION_KINDS.every((kind) => contributionFiles[kind].length === 0)
+  ) {
     warnings.push("Plugin does not expose any existing skill directories");
   }
 
@@ -222,6 +287,14 @@ export function validatePluginAtPath(pluginPath: string): PluginValidationResult
             .map((dir) => relative(rootDir, dir))
             .filter((dir) => !!dir && dir !== "."),
         },
+        ...Object.fromEntries(
+          FILE_CONTRIBUTION_KINDS.map((kind) => [
+            kind,
+            {
+              files: contributionFiles[kind].map((file) => relative(rootDir, file)),
+            },
+          ])
+        ),
       },
     },
   };
@@ -269,12 +342,14 @@ export function loadPluginFromRoot(
     validation.manifest.contributions?.skills?.dirs,
     []
   );
+  const contributionFiles = resolveAllContributionFiles(rootDir, validation.manifest, []);
   return {
     manifest: validation.manifest,
     rootDir,
     source,
     skillDirs,
     skillNames: listSkillNames(skillDirs),
+    contributionFiles,
     enabled: isPluginEnabled(validation.manifest.id),
     builtIn: false,
   };
@@ -297,6 +372,14 @@ export function listInstalledPlugins(options?: { workspaceDir?: string }): Insta
       source: "bundled",
       skillDirs: [],
       skillNames: [...entry.skillNames],
+      contributionFiles: {
+        tools: [],
+        commands: [],
+        hooks: [],
+        mcpServers: [],
+        providers: [],
+        channels: [],
+      },
       enabled: isPluginEnabled(entry.id, entry.enabledByDefault),
       builtIn: true,
     });
