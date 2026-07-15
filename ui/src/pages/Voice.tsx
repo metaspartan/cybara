@@ -632,7 +632,7 @@ export function Voice() {
               }}
               rows={1}
               placeholder="Type instead of talking"
-              className="min-h-9 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-gray-200 outline-none placeholder:text-gray-600"
+              className="min-h-9 flex-1 resize-none bg-transparent px-2 py-1.5 text-sm text-gray-200 outline-none placeholder:text-[var(--form-control-placeholder)]"
             />
             <button
               type="button"

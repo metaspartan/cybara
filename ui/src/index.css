@@ -35,18 +35,19 @@
   --context-tooltip-bg: rgba(43, 43, 47, 0.96);
   --context-tooltip-border: rgba(255, 255, 255, 0.1);
   --context-tooltip-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
-  --context-tooltip-title: #9ca3af;
-  --context-tooltip-body: #e5e7eb;
-  --context-tooltip-detail: #f3f4f6;
+  --context-tooltip-title: var(--text-muted);
+  --context-tooltip-body: var(--text-secondary);
+  --context-tooltip-detail: var(--text-primary);
   --chat-environment-panel-bg: #0d0f15;
   --chat-environment-panel-border: #343843;
-  --chat-environment-panel-text: #e5e7eb;
+  --chat-environment-panel-text: var(--text-primary);
   --workspace-open-menu-bg: #202126;
   --text-secondary: #c6c7cd;
   --text-muted: #92949d;
   --text-subtle: #6f727c;
   --icon-muted: #747782;
   --icon-hover: #e5e7eb;
+  --text-primary: var(--icon-hover);
   --surface-backdrop: #050508;
   --surface-panel: #11131c;
   --surface-raised: #171b24;
@@ -55,7 +56,7 @@
   --form-control-bg: color-mix(in srgb, var(--surface-raised) 72%, var(--surface-panel));
   --form-control-bg-hover: var(--surface-hover);
   --form-control-border: var(--glass-border);
-  --form-control-text: var(--context-tooltip-body);
+  --form-control-text: var(--text-primary);
   --form-control-placeholder: var(--text-muted);
   --form-control-popover: var(--surface-panel);
   --form-control-option-hover: var(--surface-hover);
@@ -228,6 +229,29 @@ body::before {
 
 .theme-muted-icon {
   color: var(--icon-muted);
+}
+
+.theme-text-primary {
+  color: var(--text-primary);
+}
+
+.theme-text-secondary {
+  color: var(--text-secondary);
+}
+
+.theme-text-muted {
+  color: var(--text-muted);
+}
+
+.theme-text-subtle {
+  color: var(--text-subtle);
+}
+
+.theme-tooltip-panel {
+  background: var(--context-tooltip-bg);
+  border-color: var(--context-tooltip-border);
+  color: var(--context-tooltip-body);
+  box-shadow: var(--context-tooltip-shadow);
 }
 
 .theme-muted-icon-button,
@@ -1097,6 +1121,11 @@ html.light {
   --glass-highlight: rgba(15, 23, 42, 0.08);
   --glass-bg: rgba(255, 255, 255, 0.78);
   --glass-bg-strong: rgba(248, 250, 252, 0.95);
+  --text-secondary: #374151;
+  --text-muted: #556275;
+  --text-subtle: #6b7280;
+  --icon-muted: #64748b;
+  --icon-hover: #111827;
   --context-ring-ok: #059669;
   --context-ring-warn: #d97706;
   --context-ring-danger: #dc2626;
@@ -1105,12 +1134,12 @@ html.light {
   --context-tooltip-bg: rgba(255, 255, 255, 0.96);
   --context-tooltip-border: rgba(15, 23, 42, 0.14);
   --context-tooltip-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
-  --context-tooltip-title: #64748b;
-  --context-tooltip-body: #1f2937;
-  --context-tooltip-detail: #111827;
+  --context-tooltip-title: var(--text-muted);
+  --context-tooltip-body: var(--text-secondary);
+  --context-tooltip-detail: var(--text-primary);
   --chat-environment-panel-bg: #ffffff;
   --chat-environment-panel-border: rgba(15, 23, 42, 0.14);
-  --chat-environment-panel-text: #1f2937;
+  --chat-environment-panel-text: var(--text-primary);
   --workspace-open-menu-bg: #ffffff;
 }
 
@@ -1257,17 +1286,17 @@ html.light[data-runtime="tauri"][data-platform="linux"] body::before {
 }
 
 /* Text utilities: white/light grays become ink on light surfaces. */
-html.light .text-white { color: #111827; }
-html.light .text-gray-100 { color: #1f2937; }
-html.light .text-gray-200 { color: #374151; }
-html.light .text-gray-300 { color: #4b5563; }
-html.light .text-gray-400 { color: #556275; }
+html.light .text-white { color: var(--text-primary); }
+html.light .text-gray-100 { color: var(--text-primary); }
+html.light .text-gray-200 { color: var(--text-secondary); }
+html.light .text-gray-300 { color: var(--text-secondary); }
+html.light .text-gray-400 { color: var(--text-muted); }
 html.light .text-gray-500 { color: var(--text-muted); }
 html.light .text-gray-600 { color: var(--text-subtle); }
-html.light .hover\:text-white:hover { color: #111827; }
-html.light .hover\:text-gray-200:hover { color: #374151; }
-html.light .hover\:text-gray-300:hover { color: #4b5563; }
-html.light .hover\:text-gray-400:hover { color: #556275; }
+html.light .hover\:text-white:hover { color: var(--text-primary); }
+html.light .hover\:text-gray-200:hover { color: var(--text-secondary); }
+html.light .hover\:text-gray-300:hover { color: var(--text-secondary); }
+html.light .hover\:text-gray-400:hover { color: var(--text-muted); }
 
 /* Surface utilities: translucent white becomes translucent ink. */
 html.light .bg-white\/5 { background-color: rgba(15, 23, 42, 0.05); }
@@ -1534,9 +1563,17 @@ html.theme-tinted:not(.light) {
   background-color: var(--surface-backdrop);
 }
 
-html.theme-tinted:not(.light) .text-gray-400 { color: var(--text-secondary); }
+html.theme-tinted:not(.light) .text-white,
+html.theme-tinted:not(.light) .text-gray-100 { color: var(--text-primary); }
+html.theme-tinted:not(.light) .text-gray-200,
+html.theme-tinted:not(.light) .text-gray-300 { color: var(--text-secondary); }
+html.theme-tinted:not(.light) .text-gray-400 { color: var(--text-muted); }
 html.theme-tinted:not(.light) .text-gray-500 { color: var(--text-muted); }
 html.theme-tinted:not(.light) .text-gray-600 { color: var(--text-subtle); }
+html.theme-tinted:not(.light) .hover\:text-white:hover { color: var(--text-primary); }
+html.theme-tinted:not(.light) .hover\:text-gray-200:hover,
+html.theme-tinted:not(.light) .hover\:text-gray-300:hover { color: var(--text-secondary); }
+html.theme-tinted:not(.light) .hover\:text-gray-400:hover { color: var(--text-muted); }
 
 html.theme-tinted:not(.light) body {
   background: var(--surface-backdrop);

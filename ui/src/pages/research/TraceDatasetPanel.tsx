@@ -310,7 +310,7 @@ export function TraceDatasetPanel() {
               value={queryText}
               onChange={(event) => setQueryText(event.target.value)}
               placeholder="Search prompts, responses, models, or agents"
-              className="h-8 w-full rounded-md border border-white/10 bg-black/20 pl-8 pr-3 text-[11px] text-white outline-none placeholder:text-gray-500 focus:border-indigo-400"
+              className="h-8 w-full rounded-md border border-white/10 bg-black/20 pl-8 pr-3 text-[11px] text-white outline-none placeholder:text-[var(--form-control-placeholder)] focus:border-indigo-400"
             />
           </div>
           <span className="text-[10px] text-gray-500">

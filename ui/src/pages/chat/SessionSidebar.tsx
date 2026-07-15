@@ -156,26 +156,30 @@ function SessionHoverCard({ tooltip }: { tooltip: SessionTooltipState | null }) 
 
   return (
     <div
-      className="pointer-events-none fixed z-[80] w-72 rounded-xl border border-white/12 bg-[#181820]/95 p-3 text-left shadow-2xl shadow-black/45 backdrop-blur-xl"
+      className="theme-tooltip-panel pointer-events-none fixed z-[80] w-72 rounded-xl border p-3 text-left"
       style={{ left, top }}
       data-testid="chat-session-hover-card"
     >
-      <div className="truncate text-[13px] font-semibold text-white">{tooltip.displayTitle}</div>
-      <div className="mt-1 text-[11px] text-gray-400">{tooltip.routeLabel || "Model pending"}</div>
+      <div className="theme-text-primary truncate text-[13px] font-semibold">
+        {tooltip.displayTitle}
+      </div>
+      <div className="theme-text-muted mt-1 text-[11px]">
+        {tooltip.routeLabel || "Model pending"}
+      </div>
       {tooltip.session.workspace_dir && (
-        <div className="mt-2 rounded-lg border border-white/8 bg-white/[0.035] px-2 py-1.5 text-[11px] leading-relaxed text-gray-300">
-          <div className="text-gray-500">Workspace</div>
+        <div className="theme-text-secondary mt-2 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-raised)] px-2 py-1.5 text-[11px] leading-relaxed">
+          <div className="theme-text-muted">Workspace</div>
           <div className="truncate">{tooltip.session.workspace_dir}</div>
         </div>
       )}
-      <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-gray-500">
+      <div className="theme-text-muted mt-2 flex items-center justify-between gap-3 text-[11px]">
         <span>{tooltip.session.message_count || 0} messages</span>
         <span className="truncate">
           {updated ? new Date(updated).toLocaleString() : "Updated recently"}
         </span>
       </div>
       {tooltip.previewText && (
-        <div className="mt-2 line-clamp-2 text-[11px] leading-relaxed text-gray-300">
+        <div className="theme-text-secondary mt-2 line-clamp-2 text-[11px] leading-relaxed">
           {tooltip.previewText}
         </div>
       )}
@@ -425,7 +429,7 @@ export function SessionsPanel({
       >
         <div className="px-3 pt-3 pb-2 border-b border-white/5">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+            <Search className="theme-text-subtle absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5" />
             <input
               type="search"
               aria-label="Search sessions"
@@ -438,12 +442,12 @@ export function SessionsPanel({
                 }
               }}
               placeholder={t("chat.sidebar.search")}
-              className="w-full rounded-lg border border-white/10 bg-black/30 pl-8 pr-7 py-1.5 text-[12px] text-white placeholder:text-gray-600 !outline-none focus:border-indigo-400/50"
+              className="themed-form-control w-full rounded-lg border pl-8 pr-7 py-1.5 text-[12px]"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-white cursor-pointer"
+                className="theme-muted-icon-button absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer"
                 title="Clear search"
                 aria-label="Clear session search"
               >
@@ -550,7 +554,7 @@ export function SessionsPanel({
                         </button>
                       </div>
                       {openGroupMenuId === group.id && (
-                        <div className="absolute right-0 top-6 z-50 w-48 overflow-hidden rounded-xl border border-white/12 bg-[#181820]/95 p-1.5 text-[12px] text-[var(--text-secondary)] shadow-2xl shadow-black/45 backdrop-blur-xl">
+                        <div className="theme-tooltip-panel absolute right-0 top-6 z-50 w-48 overflow-hidden rounded-xl border p-1.5 text-[12px]">
                           <button
                             type="button"
                             className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left hover:bg-white/[0.08]"

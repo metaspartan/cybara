@@ -87,7 +87,7 @@ export function GitBranchSelector({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search branches"
-              className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[12px] text-gray-200 outline-none placeholder:text-gray-600 focus:ring-0"
+              className="min-w-0 flex-1 border-0 bg-transparent p-0 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--form-control-placeholder)] focus:ring-0"
             />
           </div>
 
@@ -124,7 +124,7 @@ export function GitBranchSelector({
                 value={newBranch}
                 onChange={(event) => setNewBranch(event.target.value)}
                 placeholder="New branch name"
-                className="min-w-0 flex-1 rounded-lg border border-[#2b303b] bg-[#0a0c11] px-2 py-1.5 text-[12px] text-gray-200 outline-none placeholder:text-gray-600 focus:ring-0"
+                className="min-w-0 flex-1 rounded-lg border border-[var(--surface-border)] bg-[var(--surface-backdrop)] px-2 py-1.5 text-[12px] text-[var(--text-primary)] outline-none placeholder:text-[var(--form-control-placeholder)] focus:ring-0"
               />
               <button
                 type="button"

@@ -6,6 +6,7 @@ const read = (rel: string) => readFileSync(fileURLToPath(new URL(rel, import.met
 
 describe("index.css design-system utilities", () => {
   const css = read("../../ui/src/index.css");
+  const sessionSidebar = read("../../ui/src/pages/chat/SessionSidebar.tsx");
 
   test("defines the glass utilities that shared primitives reference", () => {
     // These were used by TextArea / GlassButton / GlassCard / Button but defined
@@ -42,6 +43,9 @@ describe("index.css design-system utilities", () => {
     expect(css).toContain("--context-ring-track");
     expect(css).toContain("--context-ring-inner");
     expect(css).toContain("--context-tooltip-bg");
+    expect(css).toContain("--context-tooltip-title: var(--text-muted)");
+    expect(css).toContain("--context-tooltip-body: var(--text-secondary)");
+    expect(css).toContain("--context-tooltip-detail: var(--text-primary)");
     expect(css).toContain(".context-usage-ring-fill");
     expect(css).toContain(".context-usage-tooltip");
     expect(css).toContain(".context-usage-tooltip-title");
@@ -54,6 +58,17 @@ describe("index.css design-system utilities", () => {
     expect(css).toMatch(
       /\.context-usage-ring-fill\s*\{[\s\S]*background:\s*var\(--context-ring-inner\)/
     );
+  });
+
+  test("chat sidebar neutral colors follow semantic theme tokens", () => {
+    expect(css).toContain("--text-primary: var(--icon-hover)");
+    expect(css).toMatch(/html\[data-theme-mode="sand-dune"\][\s\S]*--text-muted:\s*#a39785/);
+    expect(css).toMatch(/html\[data-theme-mode="sand-dune"\][\s\S]*--text-subtle:\s*#7d7467/);
+    expect(css).toContain(".theme-tooltip-panel");
+    expect(sessionSidebar).toContain("theme-tooltip-panel");
+    expect(sessionSidebar).toContain("themed-form-control");
+    expect(sessionSidebar).not.toContain("placeholder:text-gray-600");
+    expect(sessionSidebar).not.toContain("bg-[#181820]/95");
   });
 
   test("honors prefers-reduced-motion", () => {

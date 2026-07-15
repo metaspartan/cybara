@@ -50,7 +50,7 @@ function targetIcon(target: WorkspaceOpenTarget) {
     );
   }
   if (target.id === "cybara_ide") return <Monitor className="h-3.5 w-3.5 text-amber-300" />;
-  if (target.kind === "terminal") return <Terminal className="h-3.5 w-3.5 text-slate-300" />;
+  if (target.kind === "terminal") return <Terminal className="theme-muted-icon h-3.5 w-3.5" />;
   if (target.kind === "file-manager") return <FolderOpen className="h-3.5 w-3.5 text-blue-300" />;
   if (target.id === "xcode") return <Compass className="h-3.5 w-3.5 text-sky-300" />;
   return <Code2 className="h-3.5 w-3.5 text-emerald-300" />;

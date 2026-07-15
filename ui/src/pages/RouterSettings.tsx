@@ -624,7 +624,7 @@ export function RouterSettings() {
                     globalSpendLimitDaily: normalizedSpendLimit(e.target.value),
                   })
                 }
-                className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-gray-600"
+                className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-[var(--form-control-placeholder)]"
               />
             </label>
             <label className="space-y-1">
@@ -649,7 +649,7 @@ export function RouterSettings() {
                     globalSpendLimitDaily: monthly ? monthly / 30 : undefined,
                   });
                 }}
-                className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-gray-600"
+                className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-[var(--form-control-placeholder)]"
               />
             </label>
           </div>
@@ -1177,7 +1177,7 @@ function RouteRow({
                       defaultValue={planConfig?.planName || plan?.planName || ""}
                       placeholder="$20 coding plan"
                       onBlur={(e) => updatePlan("planName", e.target.value)}
-                      className="w-full rounded bg-black/25 border border-white/10 px-2 py-1 text-xs text-white placeholder:text-gray-600"
+                      className="w-full rounded bg-black/25 border border-white/10 px-2 py-1 text-xs text-white placeholder:text-[var(--form-control-placeholder)]"
                     />
                   </label>
                   <RoutePlanField
@@ -1383,7 +1383,7 @@ function RoutePlanField({
         defaultValue={value || ""}
         placeholder={placeholder}
         onBlur={(e) => onChange(e.target.value)}
-        className="w-full rounded bg-black/25 border border-white/10 px-2 py-1 text-xs text-white placeholder:text-gray-600"
+        className="w-full rounded bg-black/25 border border-white/10 px-2 py-1 text-xs text-white placeholder:text-[var(--form-control-placeholder)]"
       />
     </label>
   );

@@ -487,7 +487,7 @@ export function FeatureSettings() {
                   onBlur={() => void saveRemoteSandbox()}
                   placeholder="https://cube.example.com:12088"
                   disabled={savingSandboxRuntime}
-                  className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-[var(--form-control-placeholder)] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 />
               </div>
               <div>
@@ -499,7 +499,7 @@ export function FeatureSettings() {
                   onBlur={() => void saveRemoteSandbox()}
                   placeholder="Leave blank if the endpoint needs no key"
                   disabled={savingSandboxRuntime}
-                  className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  className="w-full rounded-lg bg-white/5 border border-white/10 px-3 py-2 text-sm text-white placeholder:text-[var(--form-control-placeholder)] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 />
               </div>
             </div>
