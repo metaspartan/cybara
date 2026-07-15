@@ -24,25 +24,28 @@ export function NearbyMobileSettings({ api }: { api: CybaraMobileApi }) {
   const [error, setError] = useState<string | null>(null);
   const [pairAddress, setPairAddress] = useState("");
 
-  const load = useCallback(async () => {
-    try {
-      const next = await api.nearbyStatus();
-      setStatus(next);
-      setSettings(next.settings);
-      setError(null);
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Nearby settings unavailable";
-      setError(
-        message.includes("403")
-          ? "Full-access pairing is required to manage nearby devices."
-          : message
-      );
-    }
-  }, [api]);
+  const load = useCallback(
+    async (syncSettings = true) => {
+      try {
+        const next = await api.nearbyStatus();
+        setStatus(next);
+        if (syncSettings) setSettings(next.settings);
+        setError(null);
+      } catch (caught) {
+        const message = caught instanceof Error ? caught.message : "Nearby settings unavailable";
+        setError(
+          message.includes("403")
+            ? "Full-access pairing is required to manage nearby devices."
+            : message
+        );
+      }
+    },
+    [api]
+  );
 
   useEffect(() => {
     void load();
-    const timer = setInterval(() => void load(), 4000);
+    const timer = setInterval(() => void load(false), 2000);
     return () => clearInterval(timer);
   }, [load]);
 

@@ -1,5 +1,5 @@
 import { Check, ChevronDown, GitBranch, Loader2, Plus, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { type ReactElement, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
 
 export interface GitBranchOption {
@@ -14,6 +14,7 @@ export function GitBranchSelector({
   disabled = false,
   error,
   loading,
+  appearance = "control",
   onCheckout,
   onCreate,
   onRefresh,
@@ -24,10 +25,11 @@ export function GitBranchSelector({
   disabled?: boolean;
   error?: string | null;
   loading?: boolean;
+  appearance?: "control" | "inline";
   onCheckout: (branch: string) => Promise<void> | void;
   onCreate: (branch: string) => Promise<void> | void;
   onRefresh: () => Promise<void> | void;
-}) {
+}): ReactElement {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [newBranch, setNewBranch] = useState("");
@@ -56,7 +58,12 @@ export function GitBranchSelector({
   };
 
   return (
-    <div className="relative ml-auto flex min-w-0 justify-end">
+    <div
+      className={cn(
+        "relative flex min-w-0",
+        appearance === "inline" ? "justify-start" : "ml-auto justify-end"
+      )}
+    >
       <button
         type="button"
         disabled={disabled}
@@ -65,7 +72,10 @@ export function GitBranchSelector({
           if (!open) void onRefresh();
         }}
         className={cn(
-          "inline-flex max-w-[180px] items-center gap-1.5 rounded-lg border border-[#2b303b] bg-[#12151d] px-2 py-1 text-[11px] text-gray-300 transition-colors hover:border-[#3d4350] hover:bg-[#171b24]",
+          "inline-flex max-w-[180px] items-center gap-1.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]",
+          appearance === "inline"
+            ? "rounded-md border-0 bg-transparent px-1 py-1"
+            : "rounded-lg border border-[var(--surface-border)] bg-[var(--surface-raised)] px-2 py-1 hover:bg-[var(--surface-hover)]",
           disabled && "cursor-not-allowed opacity-60"
         )}
         title="Change git branch"
@@ -73,16 +83,16 @@ export function GitBranchSelector({
         {loading ? (
           <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
         ) : (
-          <GitBranch className="h-3 w-3 shrink-0 text-gray-500" />
+          <GitBranch className="h-3 w-3 shrink-0 text-[var(--icon-muted)]" />
         )}
         <span className="truncate font-mono">{selectedBranch}</span>
-        <ChevronDown className="h-3 w-3 shrink-0 text-gray-500" />
+        <ChevronDown className="h-3 w-3 shrink-0 text-[var(--icon-muted)]" />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-8 z-[2147483001] w-[286px] rounded-xl border border-[#343843] bg-[#10131a] p-2 text-left shadow-[0_24px_70px_rgba(0,0,0,0.85)]">
-          <div className="flex items-center gap-2 rounded-lg border border-[#2b303b] bg-[#0a0c11] px-2 py-1.5">
-            <Search className="h-3.5 w-3.5 text-gray-500" />
+        <div className="theme-tooltip-panel absolute right-0 top-8 z-[2147483001] w-[286px] rounded-xl border p-2 text-left">
+          <div className="flex items-center gap-2 rounded-lg border border-[var(--form-control-border)] bg-[var(--form-control-bg)] px-2 py-1.5">
+            <Search className="h-3.5 w-3.5 text-[var(--icon-muted)]" />
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
@@ -91,7 +101,7 @@ export function GitBranchSelector({
             />
           </div>
 
-          <div className="mt-2 text-[11px] text-gray-500">Branches</div>
+          <div className="mt-2 text-[11px] text-[var(--text-muted)]">Branches</div>
           <div className="mt-1 max-h-48 overflow-y-auto">
             {filteredBranches.length > 0 ? (
               filteredBranches.map((branch) => (
@@ -100,25 +110,27 @@ export function GitBranchSelector({
                   type="button"
                   disabled={activeChangingBranch !== null && activeChangingBranch !== branch.name}
                   onClick={() => void handleCheckout(branch.name)}
-                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] text-gray-300 transition-colors hover:bg-[#1c202a] disabled:cursor-wait disabled:opacity-60"
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:cursor-wait disabled:opacity-60"
                 >
                   {activeChangingBranch === branch.name ? (
-                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-gray-500" />
+                    <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[var(--icon-muted)]" />
                   ) : (
-                    <GitBranch className="h-3.5 w-3.5 shrink-0 text-gray-500" />
+                    <GitBranch className="h-3.5 w-3.5 shrink-0 text-[var(--icon-muted)]" />
                   )}
                   <span className="min-w-0 flex-1 truncate font-mono">{branch.name}</span>
                   {(branch.current || branch.name === currentBranch) && (
-                    <Check className="h-3.5 w-3.5 shrink-0 text-gray-300" />
+                    <Check className="h-3.5 w-3.5 shrink-0 text-[var(--text-primary)]" />
                   )}
                 </button>
               ))
             ) : (
-              <div className="px-2 py-3 text-[12px] text-gray-500">No matching branches</div>
+              <div className="px-2 py-3 text-[12px] text-[var(--text-muted)]">
+                No matching branches
+              </div>
             )}
           </div>
 
-          <div className="mt-2 border-t border-[#2b303b] pt-2">
+          <div className="mt-2 border-t border-[var(--surface-border)] pt-2">
             <div className="flex items-center gap-2">
               <input
                 value={newBranch}
@@ -130,7 +142,7 @@ export function GitBranchSelector({
                 type="button"
                 disabled={!canCreate || activeChangingBranch !== null}
                 onClick={() => void handleCreate()}
-                className="rounded-lg border border-[#343843] bg-[#171b24] p-1.5 text-gray-300 transition-colors hover:border-[#4a5060] hover:bg-[#202633] disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-lg border border-[var(--surface-border)] bg-[var(--surface-raised)] p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-50"
                 title="Create and checkout branch"
               >
                 <Plus className="h-3.5 w-3.5" />

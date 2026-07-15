@@ -98,7 +98,7 @@ function CopyCodeButton({ code }: { code: string }) {
     <button
       type="button"
       onClick={() => void handleCopy()}
-      className="inline-flex items-center gap-1 rounded-md border border-white/15 bg-white/[0.04] px-2 py-1 text-[12px] text-gray-300 hover:text-white hover:bg-white/[0.08] transition-colors cursor-pointer"
+      className="inline-flex items-center gap-1 rounded-md border border-[var(--surface-border)] bg-[var(--surface-raised)] px-2 py-1 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--text-primary)] cursor-pointer"
       title={copied ? "Copied" : "Copy code"}
       aria-label={copied ? "Copied code block" : "Copy code block"}
     >
@@ -129,7 +129,7 @@ function InlineCodeSnippet({
   return (
     <code
       className={cn(
-        "inline rounded-md border border-white/15 bg-white/[0.07] px-1.5 py-0.5 align-baseline font-mono text-[0.85em] text-indigo-100 whitespace-normal break-words",
+        "chat-inline-code inline rounded-md border px-1.5 py-0.5 align-baseline font-mono text-[0.85em] whitespace-normal break-words",
         className
       )}
       {...codeProps}
@@ -192,11 +192,11 @@ export function DiffCodeBlock({ code, fill = false }: { code: string; fill?: boo
   return (
     <div
       className={cn(
-        "chat-code-block flex min-h-0 min-w-0 flex-col overflow-hidden border border-white/10 bg-slate-950/70",
+        "chat-code-block chat-code-surface flex min-h-0 min-w-0 flex-col overflow-hidden border",
         fill ? "h-full rounded-none border-0" : "my-3 rounded-xl"
       )}
     >
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-[12px] uppercase tracking-[0.08em] text-gray-400">
+      <div className="chat-code-header flex shrink-0 items-center justify-between gap-2 border-b px-3 py-1.5 text-[12px] uppercase tracking-[0.08em]">
         <span>diff</span>
         <CopyCodeButton code={code} />
       </div>
@@ -238,8 +238,8 @@ function SyntaxCodeBlock({ code, language }: { code: string; language: string })
   const displayLanguage = language === "plaintext" ? "text" : language;
   const lineCount = code ? code.split(/\r?\n/).length : 0;
   return (
-    <div className="chat-code-block my-3 overflow-hidden rounded-xl border border-white/10 bg-black/55 shadow-[0_8px_24px_rgba(0,0,0,0.22)]">
-      <div className="flex items-center justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-3 py-1.5 text-[12px] uppercase tracking-[0.08em] text-gray-400">
+    <div className="chat-code-block chat-code-surface my-3 overflow-hidden rounded-xl border shadow-[0_8px_24px_rgba(0,0,0,0.22)]">
+      <div className="chat-code-header flex items-center justify-between gap-2 border-b px-3 py-1.5 text-[12px] uppercase tracking-[0.08em]">
         <span className="inline-flex items-center gap-2">
           <span>{displayLanguage}</span>
           <span className="text-[10px] normal-case tracking-normal text-gray-500">

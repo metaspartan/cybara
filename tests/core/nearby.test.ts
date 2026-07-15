@@ -13,8 +13,11 @@ import {
   isNearbyEncryptedEnvelope,
   isNearbySessionBundle,
   getNearbySettings,
+  NearbyLanDiscovery,
   NearbyService,
+  nearbyBroadcastAddresses,
   normalizeNearbySettings,
+  parseNearbyDiscoveryDatagram,
   parseNearbyBaseUrl,
   selectNearbyAddress,
   setNearbySettings,
@@ -93,11 +96,158 @@ describe("nearby network and settings boundaries", () => {
   });
 
   test("repairs a missing Windows multicast rule even when the peer rule exists", () => {
-    const script = createWindowsNearbyFirewallScript(4270, true, false);
+    const script = createWindowsNearbyFirewallScript(4270, true, false, false);
     expect(script).not.toContain("protocol=TCP");
     expect(script).toContain("protocol=UDP localport=5353");
+    expect(script).toContain("protocol=UDP localport=4270");
     expect(script).toContain("remoteip=LocalSubnet");
     expect(script).toContain('del "%~f0"');
+  });
+
+  test("calculates directed broadcast targets for every LAN interface", () => {
+    expect(
+      nearbyBroadcastAddresses([
+        { address: "192.168.1.155", netmask: "255.255.255.0" },
+        { address: "10.42.7.3", netmask: "255.255.0.0" },
+      ])
+    ).toEqual(["192.168.1.255", "10.42.255.255", "255.255.255.255"]);
+  });
+
+  test("validates compact LAN discovery datagrams", () => {
+    const valid = Buffer.from(
+      JSON.stringify({
+        protocol: "cybara-nearby-v1",
+        kind: "announce",
+        peerId: "peer-1",
+        peerName: "Studio",
+        fingerprint: "0123456789abcdef01234567",
+        port: 4270,
+      })
+    );
+    expect(parseNearbyDiscoveryDatagram(valid)).toEqual({
+      protocol: "cybara-nearby-v1",
+      kind: "announce",
+      peerId: "peer-1",
+      peerName: "Studio",
+      fingerprint: "0123456789abcdef01234567",
+      port: 4270,
+    });
+    expect(parseNearbyDiscoveryDatagram(Buffer.from('{"kind":"announce"}'))).toBeNull();
+    expect(
+      parseNearbyDiscoveryDatagram(
+        Buffer.from(
+          JSON.stringify({
+            protocol: "cybara-nearby-v1",
+            kind: "announce",
+            peerId: "peer-1",
+            peerName: "Studio",
+            fingerprint: "invalid",
+            port: 80,
+          })
+        )
+      )
+    ).toBeNull();
+  });
+
+  test("discovers peers when a second client must use an ephemeral UDP listener", async () => {
+    const reservation = await Bun.udpSocket({ hostname: "127.0.0.1", port: 0 });
+    const discoveryPort = reservation.port;
+    reservation.close();
+    const firstSeen = new Set<string>();
+    const secondSeen = new Set<string>();
+    const first = new NearbyLanDiscovery({
+      discoveryPort,
+      targetAddresses: ["127.0.0.1"],
+      getAnnouncement: () => ({
+        protocol: "cybara-nearby-v1",
+        kind: "announce",
+        peerId: "first-peer",
+        peerName: "First",
+        fingerprint: "111111111111111111111111",
+        port: 4270,
+      }),
+      onAnnouncement: (announcement) => firstSeen.add(announcement.peerId),
+    });
+    const second = new NearbyLanDiscovery({
+      discoveryPort,
+      targetAddresses: ["127.0.0.1"],
+      getAnnouncement: () => ({
+        protocol: "cybara-nearby-v1",
+        kind: "announce",
+        peerId: "second-peer",
+        peerName: "Second",
+        fingerprint: "222222222222222222222222",
+        port: 4271,
+      }),
+      onAnnouncement: (announcement) => secondSeen.add(announcement.peerId),
+    });
+    try {
+      await first.start();
+      await second.start();
+      first.refresh();
+      second.refresh();
+      const deadline = Date.now() + 2000;
+      while (
+        (!firstSeen.has("second-peer") || !secondSeen.has("first-peer")) &&
+        Date.now() < deadline
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      expect(firstSeen.has("second-peer")).toBe(true);
+      expect(secondSeen.has("first-peer")).toBe(true);
+    } finally {
+      first.stop();
+      second.stop();
+    }
+  });
+
+  test("adds a LAN broadcast announcement to service discovery", async () => {
+    const previous = getNearbySettings();
+    const portProbe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
+    const nearbyPort = portProbe.port;
+    portProbe.stop(true);
+    const remote = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
+    const service = new NearbyService();
+    const sender = await Bun.udpSocket({ hostname: "127.0.0.1", port: 0 });
+    try {
+      await service.configure({
+        enabled: true,
+        displayName: "Local Service",
+        port: nearbyPort,
+        discoveryMinutes: 5,
+        autoAdvertise: true,
+      });
+      sender.send(
+        JSON.stringify({
+          protocol: "cybara-nearby-v1",
+          kind: "announce",
+          peerId: "broadcast-peer",
+          peerName: "Windows Studio",
+          fingerprint: "333333333333333333333333",
+          port: remote.port,
+        }),
+        4270,
+        "127.0.0.1"
+      );
+      const deadline = Date.now() + 2000;
+      let discovered = (await service.status()).discoveredPeers;
+      while (!discovered.some((peer) => peer.id === "broadcast-peer") && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        discovered = (await service.status()).discoveredPeers;
+      }
+      expect(discovered).toContainEqual(
+        expect.objectContaining({
+          id: "broadcast-peer",
+          name: "Windows Studio",
+          baseUrl: `http://127.0.0.1:${remote.port}`,
+        })
+      );
+    } finally {
+      sender.close();
+      service.stop();
+      remote.stop(true);
+      setNearbySettings(previous);
+    }
   });
 
   test("rolls settings back when the listener cannot start", async () => {

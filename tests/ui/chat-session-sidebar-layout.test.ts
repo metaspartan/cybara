@@ -7,6 +7,10 @@ const chatSource = () =>
   readFileSync(join(process.cwd(), "ui", "src", "components", "layout", "Sidebar.tsx"), "utf8") +
   readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "chatModel.ts"), "utf8") +
   readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "ChatEmptyState.tsx"), "utf8") +
+  readFileSync(
+    join(process.cwd(), "ui", "src", "pages", "chat", "NewChatWorkspaceBar.tsx"),
+    "utf8"
+  ) +
   readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "SessionSidebar.tsx"), "utf8") +
   readFileSync(join(process.cwd(), "ui", "src", "pages", "chat", "sessionGrouping.ts"), "utf8");
 
@@ -72,12 +76,12 @@ describe("chat session sidebar layout", () => {
     );
   });
 
-  test("uses the active theme highlight for the new-chat workspace", () => {
+  test("uses semantic theme surfaces for the new-chat workspace", () => {
     const source = chatSource();
 
-    expect(source).toContain("border-[rgba(var(--accent-primary),0.32)]");
-    expect(source).toContain("bg-[rgba(var(--accent-primary),0.1)]");
-    expect(source).toContain("text-[rgb(var(--accent-primary))]");
+    expect(source).toContain("new-chat-workspace-bar");
+    expect(source).toContain("text-[var(--text-secondary)]");
+    expect(source).toContain("text-[var(--icon-muted)]");
     expect(source).not.toContain("border-blue-500/30 bg-blue-500/10");
   });
 

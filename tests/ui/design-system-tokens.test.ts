@@ -34,6 +34,25 @@ describe("index.css design-system utilities", () => {
     expect(css).toMatch(
       /textarea\[data-chat-composer-input="true"\]:focus,[\s\S]*?box-shadow:\s*none;/
     );
+    expect(css).toMatch(
+      /textarea\[data-chat-composer-input="true"\]::placeholder\s*\{[\s\S]*?color:\s*var\(--form-control-placeholder\)/
+    );
+  });
+
+  test("chat code and composer surfaces follow semantic theme tokens", () => {
+    const composer = read("../../ui/src/pages/chat/ChatComposer.tsx");
+    const messageContent = read("../../ui/src/pages/chat/MessageContent.tsx");
+    const branchSelector = read("../../ui/src/pages/chat/GitBranchSelector.tsx");
+
+    expect(css).toContain("--chat-inline-code-bg:");
+    expect(css).toContain("--chat-code-bg:");
+    expect(css).toContain(".chat-inline-code");
+    expect(css).toContain(".chat-code-surface");
+    expect(css).toContain(".new-chat-workspace-bar");
+    expect(composer).not.toContain("placeholder-gray-500");
+    expect(messageContent).not.toContain("text-indigo-100");
+    expect(branchSelector).not.toContain("border-[#2b303b]");
+    expect(branchSelector).toContain("theme-tooltip-panel");
   });
 
   test("chat context ring and tooltip have light and dark theme tokens", () => {

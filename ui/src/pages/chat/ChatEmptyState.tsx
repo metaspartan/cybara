@@ -1,11 +1,20 @@
-import { Folder, Loader2 } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
+import type { GitBranchOption } from "./GitBranchSelector";
+import { NewChatWorkspaceBar } from "./NewChatWorkspaceBar";
 
 interface ChatEmptyStateProps {
   children: ReactNode;
   onSelectWorkspace: () => void;
   workspaceDir: string;
   workspaceSaving: boolean;
+  gitBranches: GitBranchOption[];
+  gitBranch: string | null;
+  gitBranchChanging: string | null;
+  gitBranchError: string | null;
+  gitBranchLoading: boolean;
+  onCreateGitBranch: (branch: string) => Promise<void> | void;
+  onRefreshGitBranches: () => Promise<void> | void;
+  onSwitchGitBranch: (branch: string) => Promise<void> | void;
 }
 
 export function ChatEmptyState({
@@ -13,6 +22,14 @@ export function ChatEmptyState({
   onSelectWorkspace,
   workspaceDir,
   workspaceSaving,
+  gitBranches,
+  gitBranch,
+  gitBranchChanging,
+  gitBranchError,
+  gitBranchLoading,
+  onCreateGitBranch,
+  onRefreshGitBranches,
+  onSwitchGitBranch,
 }: ChatEmptyStateProps): ReactElement {
   return (
     <div
@@ -30,26 +47,23 @@ export function ChatEmptyState({
         <p className="mt-1 text-[12px] text-gray-600">
           Ask questions, get help with code, or chat with your agents
         </p>
-        <button
-          type="button"
-          onClick={onSelectWorkspace}
-          disabled={workspaceSaving}
-          className="mt-3 inline-flex max-w-full items-center gap-2 rounded-md border border-[rgba(var(--accent-primary),0.32)] bg-[rgba(var(--accent-primary),0.1)] px-2.5 py-1.5 text-[rgb(var(--accent-primary))] transition-colors hover:bg-[rgba(var(--accent-primary),0.16)] disabled:cursor-not-allowed disabled:opacity-60"
-          title={
-            workspaceDir ? "Click to change workspace" : "Select workspace folder for this session"
-          }
-        >
-          {workspaceSaving ? (
-            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-          ) : (
-            <Folder className="h-3.5 w-3.5 shrink-0" />
-          )}
-          <span className="truncate font-mono text-[12px]">
-            {workspaceDir ? `Workspace: ${workspaceDir}` : "Select workspace"}
-          </span>
-        </button>
       </div>
-      <div className="mt-4 w-full text-left">{children}</div>
+      <div className="mt-4 w-full text-left">
+        <NewChatWorkspaceBar
+          branches={gitBranches}
+          changingBranch={gitBranchChanging}
+          currentBranch={gitBranch}
+          error={gitBranchError}
+          loading={gitBranchLoading}
+          onCreateBranch={onCreateGitBranch}
+          onRefreshBranches={onRefreshGitBranches}
+          onSelectWorkspace={onSelectWorkspace}
+          onSwitchBranch={onSwitchGitBranch}
+          workspaceDir={workspaceDir}
+          workspaceSaving={workspaceSaving}
+        />
+        {children}
+      </div>
     </div>
   );
 }

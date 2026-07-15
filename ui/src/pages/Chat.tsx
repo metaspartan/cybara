@@ -2861,9 +2861,17 @@ export function Chat() {
               >
                 {typedMessages.length === 0 ? (
                   <ChatEmptyState
+                    gitBranch={environmentGit.currentBranch}
+                    gitBranchChanging={environmentGit.changingBranch}
+                    gitBranchError={environmentGit.error}
+                    gitBranchLoading={environmentGit.loading}
+                    gitBranches={environmentGit.branches}
                     workspaceDir={effectiveWorkspaceDir}
                     workspaceSaving={workspaceSaving}
+                    onCreateGitBranch={environmentGit.createAndCheckout}
+                    onRefreshGitBranches={environmentGit.refresh}
                     onSelectWorkspace={() => void handleSelectWorkspace()}
+                    onSwitchGitBranch={environmentGit.checkout}
                   >
                     <ChatComposer {...chatComposerProps} layout="new-chat" />
                   </ChatEmptyState>

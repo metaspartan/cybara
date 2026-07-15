@@ -211,8 +211,8 @@ export function ChatComposer({
       ) : null}
       <div
         className={cn(
-          "relative rounded-[22px] border bg-white/[0.035] px-3 py-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors",
-          imageDragActive ? "border-[rgba(var(--accent-primary),0.6)]" : "border-white/10"
+          "chat-composer-surface relative rounded-[22px] border px-3 py-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.35)] transition-colors",
+          imageDragActive && "border-[rgba(var(--accent-primary),0.6)]"
         )}
         onDragOver={(event) => {
           if (Array.from(event.dataTransfer?.items || []).some((item) => item.kind === "file")) {
@@ -310,7 +310,7 @@ export function ChatComposer({
           onPaste={onPaste}
           placeholder={placeholder}
           rows={1}
-          className="w-full min-h-[38px] max-h-[220px] overflow-y-auto resize-none bg-transparent px-0 py-1 text-[13px] leading-5 text-white placeholder-gray-500 !outline-none"
+          className="w-full min-h-[38px] max-h-[220px] overflow-y-auto resize-none bg-transparent px-0 py-1 text-[13px] leading-5 text-[var(--text-primary)] !outline-none"
         />
         {capabilityPicker.menuOpen ? (
           <ChatCapabilityMenu

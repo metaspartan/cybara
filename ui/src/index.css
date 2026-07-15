@@ -60,6 +60,12 @@
   --form-control-placeholder: var(--text-muted);
   --form-control-popover: var(--surface-panel);
   --form-control-option-hover: var(--surface-hover);
+  --chat-inline-code-bg: color-mix(in srgb, var(--surface-raised) 82%, transparent);
+  --chat-inline-code-border: var(--surface-border);
+  --chat-inline-code-text: var(--text-primary);
+  --chat-code-bg: color-mix(in srgb, var(--surface-backdrop) 72%, var(--surface-panel));
+  --chat-code-header-bg: color-mix(in srgb, var(--surface-raised) 64%, transparent);
+  --chat-code-border: var(--surface-border);
 
   /* Theme accent color (set dynamically via JS) */
   --accent-primary: 99, 102, 241;
@@ -751,6 +757,11 @@ textarea[data-chat-composer-input="true"]:focus-visible {
   box-shadow: none;
 }
 
+textarea[data-chat-composer-input="true"]::placeholder {
+  color: var(--form-control-placeholder);
+  opacity: 1;
+}
+
 .chat-approval-toggle,
 .chat-agent-selector,
 .chat-approval-toggle:hover,
@@ -813,6 +824,21 @@ textarea[data-chat-composer-input="true"]:focus-visible {
 
 .chat-composer-responsive {
   container-type: inline-size;
+}
+
+.chat-composer-surface {
+  background: color-mix(in srgb, var(--surface-raised) 42%, transparent);
+  border-color: var(--surface-border);
+}
+
+.chat-composer-responsive[data-layout="new-chat"] .chat-composer-surface {
+  margin-top: -1px;
+}
+
+.new-chat-workspace-bar {
+  background: color-mix(in srgb, var(--surface-panel) 88%, var(--surface-raised));
+  border-color: var(--surface-border);
+  color: var(--text-secondary);
 }
 
 .chat-reasoning-popover {
@@ -1030,6 +1056,23 @@ textarea[data-chat-composer-input="true"]:focus-visible {
 .chat-markdown {
   font-size: var(--chat-font-size, 14px);
   line-height: var(--chat-line-height, 1.6);
+}
+
+.chat-inline-code {
+  background: var(--chat-inline-code-bg);
+  border-color: var(--chat-inline-code-border);
+  color: var(--chat-inline-code-text);
+}
+
+.chat-code-surface {
+  background: var(--chat-code-bg);
+  border-color: var(--chat-code-border);
+}
+
+.chat-code-header {
+  background: var(--chat-code-header-bg);
+  border-color: var(--chat-code-border);
+  color: var(--text-muted);
 }
 
 .chat-activity-text,

@@ -38,27 +38,30 @@ export function NearbySettingsSection() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pairAddress, setPairAddress] = useState("");
 
-  const load = useCallback(async () => {
-    const result = await nearbyApi.status();
-    if (result.success && result.data) {
-      setStatus(result.data);
-      setSettings(result.data.settings);
-      queryClient.setQueryData(nearbyStatusQueryKey, result.data);
-      setLoadError(null);
-    } else {
-      setStatus(null);
-      setLoadError(
-        /not found/i.test(result.error || "")
-          ? "Nearby is unavailable in this gateway build. Rebuild or update the gateway, then restart it."
-          : result.error || "Could not load Nearby Cybara"
-      );
-    }
-    setLoading(false);
-  }, [queryClient]);
+  const load = useCallback(
+    async (syncSettings = true) => {
+      const result = await nearbyApi.status();
+      if (result.success && result.data) {
+        setStatus(result.data);
+        if (syncSettings) setSettings(result.data.settings);
+        queryClient.setQueryData(nearbyStatusQueryKey, result.data);
+        setLoadError(null);
+      } else {
+        setStatus(null);
+        setLoadError(
+          /not found/i.test(result.error || "")
+            ? "Nearby is unavailable in this gateway build. Rebuild or update the gateway, then restart it."
+            : result.error || "Could not load Nearby Cybara"
+        );
+      }
+      setLoading(false);
+    },
+    [queryClient]
+  );
 
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => void load(), 4000);
+    const timer = window.setInterval(() => void load(false), 2000);
     return () => window.clearInterval(timer);
   }, [load]);
 

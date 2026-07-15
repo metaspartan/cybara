@@ -14,6 +14,7 @@ describe("chat empty state", () => {
     const chat = await Bun.file("ui/src/pages/Chat.tsx").text();
     const emptyState = await Bun.file("ui/src/pages/chat/ChatEmptyState.tsx").text();
     const composer = await Bun.file("ui/src/pages/chat/ChatComposer.tsx").text();
+    const workspaceBar = await Bun.file("ui/src/pages/chat/NewChatWorkspaceBar.tsx").text();
     const header = await Bun.file("ui/src/pages/chat/ChatPageHeader.tsx").text();
 
     expect(chat).toContain("{sessionId ? (");
@@ -23,6 +24,10 @@ describe("chat empty state", () => {
     expect(emptyState).toContain("max-w-[42rem]");
     expect(emptyState).toContain('data-chat-empty-state="true"');
     expect(emptyState).toContain("mt-4 w-full");
+    expect(emptyState).toContain("<NewChatWorkspaceBar");
+    expect(workspaceBar).toContain('appearance="inline"');
+    expect(workspaceBar).toContain("workspaceName(workspaceDir)");
+    expect(workspaceBar).toContain("Local");
     expect(composer).toContain('layout?: "default" | "new-chat"');
     expect(composer).toContain("data-layout={layout}");
     expect(composer).toContain('layout === "new-chat"');

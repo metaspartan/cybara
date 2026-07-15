@@ -283,9 +283,11 @@ struct NativeNearbySettingsSection: View {
             }
         }
         .task {
+            var syncSettings = true
             while !Task.isCancelled {
-                await load()
-                try? await Task.sleep(for: .seconds(4))
+                await load(syncSettings: syncSettings)
+                syncSettings = false
+                try? await Task.sleep(for: .seconds(2))
             }
         }
     }
@@ -420,11 +422,13 @@ struct NativeNearbySettingsSection: View {
         busy = false
     }
 
-    private func load() async {
+    private func load(syncSettings: Bool = true) async {
         do {
             let loaded = try await client.nearbyStatus()
             status = loaded
-            settings = loaded.settings
+            if syncSettings {
+                settings = loaded.settings
+            }
             error = nil
         } catch {
             self.error = error.localizedDescription

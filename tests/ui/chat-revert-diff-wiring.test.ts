@@ -243,11 +243,16 @@ describe("Chat revert and diff wiring", () => {
       new URL("../../ui/src/pages/chat/ChatEmptyState.tsx", import.meta.url),
       "utf8"
     );
+    const workspaceBarSource = readFileSync(
+      new URL("../../ui/src/pages/chat/NewChatWorkspaceBar.tsx", import.meta.url),
+      "utf8"
+    );
     const desktopHostSource = readDesktopHostSource();
     expect(desktopHostSource).toMatch(
       /\(["']__TAURI_INTERNALS__["'] in window \|\| ["']__TAURI__["'] in window\)/
     );
-    expect(emptyStateSource).toContain("Workspace: ${workspaceDir}");
+    expect(emptyStateSource).toContain("<NewChatWorkspaceBar");
+    expect(workspaceBarSource).toContain("workspaceName(workspaceDir)");
     expect(source).toContain("info?.defaultWorkspaceDir");
     expect(source).toContain("lastWorkspaceDir || configuredWorkspaceDir || homeWorkspaceDir");
     // Workspace chips are clickable-to-change (header + empty state), with no separate clear button.
