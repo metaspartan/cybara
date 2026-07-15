@@ -43,7 +43,7 @@ describe("IDE bounded-search UI wiring", () => {
     expect(nativeIdeSource).toContain('Text("Index").tag("index")');
     expect(nativeIdeSource).toContain(".pickerStyle(.segmented)");
     expect(nativeIdeSource).toContain(".frame(width: 286)");
-    expect(nativeIdeSource).toContain(".frame(width: 318)");
+    expect(nativeIdeSource).toContain('.frame(width: inspectorSection == "chat" ? 460 : 318)');
     expect(nativeIdeSource).toContain(".padding(.horizontal, 18)");
   });
 });

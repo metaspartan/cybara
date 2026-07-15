@@ -1,7 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback, useDeferredValue } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { Highlight, themes } from "prism-react-renderer";
+import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import {
   Loader2,
   Check,
@@ -39,10 +36,12 @@ import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/auth";
 import { chatApi, providerPlansApi } from "@/lib/api";
+import { chatImageSrc } from "@/lib/chatImages";
 import { useUpdateAgentReasoning } from "@/hooks/useApi";
-import { ChatAgentControls, MODEL_ROUTER_SELECTOR_VALUE } from "../chat/ChatAgentControls";
-import { ChatComposerActionButton } from "../chat/ChatComposerActionButton";
-import { ChatReasoningControl } from "../chat/ChatReasoningControl";
+import { MODEL_ROUTER_SELECTOR_VALUE } from "../chat/ChatAgentControls";
+import { ChatImageLightbox, type ChatLightboxImage } from "../chat/ChatImageLightbox";
+import { isChatNearBottom } from "../chat/chatScroll";
+import { MessageContent } from "../chat/MessageContent";
 import { AgentTransferTimeline } from "../chat/AgentTransferTimeline";
 import {
   mergeActivityLists,
@@ -84,13 +83,11 @@ import {
   getFileIcon,
   formatSize,
   getLineAndColumn,
-  getPrismLanguage,
   splitPathForBreadcrumbs,
   flattenOutlineSymbols,
   getSymbolKindLabel,
   fileEntryFromPath,
   isMarkdownExtension,
-  ideMarkdownComponents,
   formatBlameStamp,
   formatBlameDateTime,
   scoreQuickOpenResult,
@@ -136,13 +133,20 @@ import {
 } from "./ideActivityHelpers";
 import {
   persistIdeChatAgentId,
+  persistIdeChatSessionId,
   readPersistedChatOpen,
   persistChatOpen,
   readPersistedChatWidth,
   persistChatWidth,
   readPersistedIdeChatAgentId,
+  readPersistedIdeChatSessionId,
   readPersistedIdePreferences,
 } from "./idePersistence";
+import {
+  IDEChatComposer,
+  type IdeChatComposerResult,
+  type IdeChatComposerSubmission,
+} from "./IDEChatComposer";
 import type {
   AgentSummary,
   AgentTransferInfo,
@@ -222,7 +226,9 @@ export function IDEChatPanel({
   onPendingFileDiffControllerChange?: (controller: IdePendingFileDiffController | null) => void;
 }) {
   const updateAgentReasoning = useUpdateAgentReasoning();
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(() =>
+    readPersistedIdeChatSessionId(workspaceDir)
+  );
   const [sessionTitle, setSessionTitle] = useState<string | null>(null);
   const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [messages, setMessages] = useState<IdeChatMessage[]>([]);
@@ -248,7 +254,11 @@ export function IDEChatPanel({
   const [collapseProgressUpdates, setCollapseProgressUpdates] = useState(false);
   const [isStoppingSession, setIsStoppingSession] = useState(false);
   const [copiedToolCallKey, setCopiedToolCallKey] = useState<string | null>(null);
+  const [lightbox, setLightbox] = useState<{ images: ChatLightboxImage[]; index: number } | null>(
+    null
+  );
   const listRef = useRef<HTMLDivElement | null>(null);
+  const shouldFollowOutputRef = useRef(true);
   const activeRequestAbortRef = useRef<AbortController | null>(null);
   const activeSessionRef = useRef<string | null>(null);
   const sendingRef = useRef(false);
@@ -258,8 +268,24 @@ export function IDEChatPanel({
   useEffect(() => {
     const list = listRef.current;
     if (!list) return;
-    list.scrollTop = list.scrollHeight;
+    if (shouldFollowOutputRef.current) list.scrollTop = list.scrollHeight;
   }, [liveActivities.length, messages, isSending]);
+
+  useEffect(() => {
+    const persistedSessionId = readPersistedIdeChatSessionId(workspaceDir);
+    setMessages([]);
+    setSessionTitle(null);
+    setSessionContextUsage(null);
+    setLiveStatus("idle");
+    setLiveCurrentStep(null);
+    setLiveActivities([]);
+    liveRunBufferRef.current = [];
+    setSessionId(persistedSessionId);
+  }, [workspaceDir]);
+
+  useEffect(() => {
+    persistIdeChatSessionId(workspaceDir, sessionId);
+  }, [sessionId, workspaceDir]);
 
   useEffect(() => {
     activeSessionRef.current = sessionId;
@@ -515,7 +541,7 @@ export function IDEChatPanel({
       typeof value.timestamp === "string" && value.timestamp
         ? value.timestamp
         : new Date().toISOString();
-    if (!role || !content.trim()) return null;
+    if (!role) return null;
 
     const toolCalls = Array.isArray(value.tool_calls)
       ? value.tool_calls.filter((entry): entry is ToolCallLike => isIdeToolCallLike(entry))
@@ -599,6 +625,27 @@ export function IDEChatPanel({
           })
           .filter((entry): entry is AgentTransferInfo => entry !== null)
       : undefined;
+    const images = Array.isArray(value.images)
+      ? value.images
+          .filter(isPlainRecord)
+          .map((image) => ({
+            data: typeof image.data === "string" ? image.data : undefined,
+            url: typeof image.url === "string" ? image.url : undefined,
+            path: typeof image.path === "string" ? image.path : undefined,
+            mimeType: typeof image.mimeType === "string" ? image.mimeType : undefined,
+            name: typeof image.name === "string" ? image.name : undefined,
+            size: typeof image.size === "number" ? image.size : undefined,
+          }))
+          .filter((image) => !!image.data || !!image.url || !!image.path)
+      : undefined;
+    if (
+      !content.trim() &&
+      (!toolCalls || toolCalls.length === 0) &&
+      (!processActivities || processActivities.length === 0) &&
+      (!images || images.length === 0)
+    ) {
+      return null;
+    }
 
     return {
       role,
@@ -609,8 +656,40 @@ export function IDEChatPanel({
       process_activities:
         processActivities && processActivities.length > 0 ? processActivities : undefined,
       agent_transfers: agentTransfers && agentTransfers.length > 0 ? agentTransfers : undefined,
+      images: images && images.length > 0 ? images : undefined,
     };
   }, []);
+
+  const refreshSession = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      if (!sessionId) return;
+      try {
+        const response = await chatApi.getSession(sessionId, { signal });
+        if (signal?.aborted || !response.success || !response.data) return;
+        setSessionTitle(
+          typeof response.data.title === "string" && response.data.title.trim()
+            ? response.data.title.trim()
+            : null
+        );
+        if (typeof response.data.agent_id === "string" && response.data.agent_id.trim()) {
+          const nextAgentId = response.data.agent_id.trim();
+          setActiveAgentId(nextAgentId);
+          onSelectedAgentIdChange(nextAgentId);
+        }
+        setMessages(
+          response.data.messagesList
+            .map((message) => mapApiMessageToIde(message))
+            .filter((message): message is IdeChatMessage => !!message)
+        );
+        setSessionContextUsage(response.data.contextUsage ?? null);
+      } catch (error) {
+        if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError"))
+          return;
+        return;
+      }
+    },
+    [mapApiMessageToIde, onSelectedAgentIdChange, sessionId]
+  );
 
   const clearLiveRunState = useCallback(() => {
     setLiveStatus("idle");
@@ -798,9 +877,7 @@ export function IDEChatPanel({
         } else if (!sendingRef.current) {
           setLiveCurrentStep(null);
         }
-      } catch {
-        // Keep the IDE chat usable if status hydration fails.
-      }
+      } catch {}
     },
     [clearLiveRunState]
   );
@@ -818,42 +895,11 @@ export function IDEChatPanel({
       return;
     }
 
-    let isCancelled = false;
-    const hydrateSessionMeta = async () => {
-      try {
-        const response = await chatApi.getSession(sessionId);
-        if (!response.success || !response.data || isCancelled) return;
-        setSessionTitle(
-          typeof response.data.title === "string" && response.data.title.trim()
-            ? response.data.title.trim()
-            : null
-        );
-        if (typeof response.data.agent_id === "string" && response.data.agent_id.trim()) {
-          const nextAgentId = response.data.agent_id.trim();
-          setActiveAgentId(nextAgentId);
-          onSelectedAgentIdChange(nextAgentId);
-        }
-        setSessionContextUsage(response.data.contextUsage ?? null);
-      } catch {
-        if (!isCancelled) {
-          setSessionTitle(null);
-        }
-      }
-    };
-
-    void hydrateSessionMeta();
+    const controller = new AbortController();
+    void refreshSession(controller.signal);
     void hydrateSessionStatus(sessionId);
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [
-    clearLiveRunState,
-    hydrateSessionStatus,
-    onSelectedAgentIdChange,
-    selectedAgentId,
-    sessionId,
-  ]);
+    return () => controller.abort();
+  }, [clearLiveRunState, hydrateSessionStatus, refreshSession, selectedAgentId, sessionId]);
 
   useEffect(() => {
     const disconnect = connectStatusStream({
@@ -913,6 +959,7 @@ export function IDEChatPanel({
 
         if (payload.status === "idle") {
           setLiveStatus("idle");
+          void refreshSession();
           if (!sendingRef.current) {
             clearLiveRunState();
           }
@@ -953,7 +1000,7 @@ export function IDEChatPanel({
     return () => {
       disconnect();
     };
-  }, [appendLiveActivity, clearLiveRunState, hydrateSessionStatus]);
+  }, [appendLiveActivity, clearLiveRunState, hydrateSessionStatus, refreshSession]);
 
   useEffect(() => {
     return () => {
@@ -962,142 +1009,165 @@ export function IDEChatPanel({
     };
   }, []);
 
-  const handleSend = useCallback(async () => {
-    const trimmed = input.trim();
-    const sessionCurrentlyActive =
-      liveStatus !== "idle" || liveActivities.length > 0 || !!liveCurrentStep;
-    if (!trimmed || isSending || isReverting || sessionCurrentlyActive) return;
-
-    activeRequestAbortRef.current?.abort();
-    const controller = new AbortController();
-    activeRequestAbortRef.current = controller;
-    const requestSessionId = sessionId || crypto.randomUUID();
-
-    const userMessage: IdeChatMessage = {
-      role: "user",
-      content: trimmed,
-      timestamp: new Date().toISOString(),
-    };
-    setSessionId(requestSessionId);
-    setMessages((previous) => [...previous, userMessage]);
-    setInput("");
-    setIsSending(true);
-    setError(null);
-    setActiveAgentId(selectedAgentId || activeAgentId);
-    setLiveStatus("thinking");
-    setLiveCurrentStep("Thinking...");
-    setLiveActivities([]);
-    liveRunBufferRef.current = [];
-    latestStatusTimestampBySessionRef.current[requestSessionId] = 0;
-
-    const contextParts: string[] = [];
-    if (contextPath) {
-      contextParts.push(`Current IDE file context: ${contextPath}`);
-    }
-    if (terminalContext?.isOpen) {
-      contextParts.push(
-        `IDE terminal context: open (${terminalContext.sessionCount} session${terminalContext.sessionCount === 1 ? "" : "s"})${terminalContext.activeSessionId ? `, active=${terminalContext.activeSessionId}` : ""}`
-      );
-    }
-    const contextualPrompt =
-      contextParts.length > 0 ? `${trimmed}\n\n${contextParts.join("\n")}` : trimmed;
-
-    try {
-      const response = await chatApi.send(
-        contextualPrompt,
-        selectedAgentId || undefined,
-        requestSessionId,
-        workspaceDir || null,
-        controller.signal,
-        undefined,
-        undefined,
-        undefined,
-        useModelRouter
-      );
-      if (activeRequestAbortRef.current !== controller) return;
-      if (!response.success || !response.data) {
-        clearLiveRunState();
-        setError(response.error || "Failed to send message");
-        return;
+  const handleSend = useCallback(
+    async (submission: IdeChatComposerSubmission): Promise<IdeChatComposerResult> => {
+      const trimmed = submission.message.trim();
+      const sessionCurrentlyActive =
+        liveStatus !== "idle" || liveActivities.length > 0 || !!liveCurrentStep;
+      const queueing = submission.queueMode === "queue";
+      if (
+        (!trimmed && submission.images.length === 0) ||
+        isReverting ||
+        (sessionCurrentlyActive && !queueing)
+      ) {
+        return {};
       }
-      setSessionId(response.data.sessionId || requestSessionId);
-      setSessionContextUsage(response.data.contextUsage ?? null);
-      if (isPlainRecord(response.data.agent) && typeof response.data.agent.id === "string") {
-        const nextAgentId = response.data.agent.id.trim();
-        if (nextAgentId) {
-          setActiveAgentId(nextAgentId);
-          onSelectedAgentIdChange(nextAgentId);
+
+      const controller = queueing ? null : new AbortController();
+      if (controller) {
+        activeRequestAbortRef.current?.abort();
+        activeRequestAbortRef.current = controller;
+      }
+      const requestSessionId = sessionId || crypto.randomUUID();
+
+      const userMessage: IdeChatMessage = {
+        role: "user",
+        content: trimmed,
+        timestamp: new Date().toISOString(),
+        images: submission.images.length > 0 ? submission.images : undefined,
+      };
+      setSessionId(requestSessionId);
+      if (!queueing) setMessages((previous) => [...previous, userMessage]);
+      setIsSending(!queueing);
+      setError(null);
+      setActiveAgentId(selectedAgentId || activeAgentId);
+      if (!queueing) {
+        setLiveStatus("thinking");
+        setLiveCurrentStep("Thinking...");
+        setLiveActivities([]);
+        liveRunBufferRef.current = [];
+        latestStatusTimestampBySessionRef.current[requestSessionId] = 0;
+      }
+
+      const contextParts: string[] = [];
+      if (contextPath) {
+        contextParts.push(`Current IDE file context: ${contextPath}`);
+      }
+      if (terminalContext?.isOpen) {
+        contextParts.push(
+          `IDE terminal context: open (${terminalContext.sessionCount} session${terminalContext.sessionCount === 1 ? "" : "s"})${terminalContext.activeSessionId ? `, active=${terminalContext.activeSessionId}` : ""}`
+        );
+      }
+      const contextualPrompt =
+        contextParts.length > 0 ? `${trimmed}\n\n${contextParts.join("\n")}` : trimmed;
+
+      try {
+        const response = await chatApi.send(
+          contextualPrompt,
+          selectedAgentId || undefined,
+          requestSessionId,
+          workspaceDir || null,
+          controller?.signal,
+          submission.queueMode,
+          submission.clientPendingId,
+          submission.images.length > 0 ? submission.images : undefined,
+          useModelRouter
+        );
+        if (controller && activeRequestAbortRef.current !== controller) return {};
+        if (!response.success || !response.data) {
+          if (!queueing) clearLiveRunState();
+          setError(response.error || "Failed to send message");
+          return {};
         }
-      }
-      const mappedAssistant = mapApiMessageToIde(response.data.message);
-      const bufferedActivities = finalizeCompletedActivities(
-        mergeActivityLists([], liveRunBufferRef.current)
-      );
-      const assistantMessageBase: IdeChatMessage =
-        mappedAssistant ||
-        ({
-          role: "assistant",
-          content: response.data.message?.content || "(No assistant response)",
-          timestamp: new Date().toISOString(),
-        } satisfies IdeChatMessage);
-      const toolFallbackActivities =
-        bufferedActivities.length === 0
-          ? finalizeCompletedActivities(
-              buildActivitiesFromToolCalls(
-                assistantMessageBase.tool_calls,
-                (toolName, _args, phase) => formatIdeStatusEventText(toolName, phase)
+        if (response.data.queued) {
+          return {
+            queued: true,
+            pendingMessages: response.data.pendingMessages,
+          };
+        }
+        setSessionId(response.data.sessionId || requestSessionId);
+        setSessionContextUsage(response.data.contextUsage ?? null);
+        if (isPlainRecord(response.data.agent) && typeof response.data.agent.id === "string") {
+          const nextAgentId = response.data.agent.id.trim();
+          if (nextAgentId) {
+            setActiveAgentId(nextAgentId);
+            onSelectedAgentIdChange(nextAgentId);
+          }
+        }
+        const mappedAssistant = mapApiMessageToIde(response.data.message);
+        const bufferedActivities = finalizeCompletedActivities(
+          mergeActivityLists([], liveRunBufferRef.current)
+        );
+        const assistantMessageBase: IdeChatMessage =
+          mappedAssistant ||
+          ({
+            role: "assistant",
+            content: response.data.message?.content || "(No assistant response)",
+            timestamp: new Date().toISOString(),
+          } satisfies IdeChatMessage);
+        const toolFallbackActivities =
+          bufferedActivities.length === 0
+            ? finalizeCompletedActivities(
+                buildActivitiesFromToolCalls(
+                  assistantMessageBase.tool_calls,
+                  (toolName, _args, phase) => formatIdeStatusEventText(toolName, phase)
+                )
               )
-            )
-          : [];
-      const resolvedFallbackActivities =
-        bufferedActivities.length > 0 ? bufferedActivities : toolFallbackActivities;
-      const assistantMessage: IdeChatMessage =
-        !assistantMessageBase.process_activities ||
-        assistantMessageBase.process_activities.length === 0
-          ? resolvedFallbackActivities.length > 0
-            ? {
-                ...assistantMessageBase,
-                process_activities: resolvedFallbackActivities.map((activity) => ({ ...activity })),
-              }
-            : assistantMessageBase
-          : assistantMessageBase;
-      setMessages((previous) => [...previous, assistantMessage]);
-      clearLiveRunState();
-    } catch (sendError) {
-      clearLiveRunState();
-      const isAbortError =
-        sendError instanceof DOMException
-          ? sendError.name === "AbortError"
-          : !!sendError &&
-            typeof sendError === "object" &&
-            "name" in sendError &&
-            (sendError as { name?: string }).name === "AbortError";
-      if (isAbortError) return;
-      setError(String(sendError));
-    } finally {
-      if (activeRequestAbortRef.current === controller) {
-        activeRequestAbortRef.current = null;
+            : [];
+        const resolvedFallbackActivities =
+          bufferedActivities.length > 0 ? bufferedActivities : toolFallbackActivities;
+        const assistantMessage: IdeChatMessage =
+          !assistantMessageBase.process_activities ||
+          assistantMessageBase.process_activities.length === 0
+            ? resolvedFallbackActivities.length > 0
+              ? {
+                  ...assistantMessageBase,
+                  process_activities: resolvedFallbackActivities.map((activity) => ({
+                    ...activity,
+                  })),
+                }
+              : assistantMessageBase
+            : assistantMessageBase;
+        setMessages((previous) => [...previous, assistantMessage]);
+        clearLiveRunState();
+        return { queued: false, pendingMessages: response.data.pendingMessages };
+      } catch (sendError) {
+        if (!queueing) clearLiveRunState();
+        const isAbortError =
+          sendError instanceof DOMException
+            ? sendError.name === "AbortError"
+            : !!sendError &&
+              typeof sendError === "object" &&
+              "name" in sendError &&
+              (sendError as { name?: string }).name === "AbortError";
+        if (isAbortError) return {};
+        setError(String(sendError));
+        return {};
+      } finally {
+        if (controller && activeRequestAbortRef.current === controller) {
+          activeRequestAbortRef.current = null;
+        }
+        if (!queueing) setIsSending(false);
       }
-      setIsSending(false);
-    }
-  }, [
-    activeAgentId,
-    clearLiveRunState,
-    contextPath,
-    input,
-    isReverting,
-    isSending,
-    liveActivities.length,
-    liveCurrentStep,
-    liveStatus,
-    mapApiMessageToIde,
-    onSelectedAgentIdChange,
-    selectedAgentId,
-    sessionId,
-    terminalContext,
-    useModelRouter,
-    workspaceDir,
-  ]);
+    },
+    [
+      activeAgentId,
+      clearLiveRunState,
+      contextPath,
+      isReverting,
+      isSending,
+      liveActivities.length,
+      liveCurrentStep,
+      liveStatus,
+      mapApiMessageToIde,
+      onSelectedAgentIdChange,
+      selectedAgentId,
+      sessionId,
+      terminalContext,
+      useModelRouter,
+      workspaceDir,
+    ]
+  );
 
   const handleStopActive = useCallback(async () => {
     if (!sessionId || isStoppingSession) return;
@@ -1437,22 +1507,24 @@ export function IDEChatPanel({
   }, [onPendingFileDiffControllerChange]);
 
   return (
-    <div className="h-full flex flex-col bg-[#0a0a12]">
-      <div className="px-3 py-2 border-b border-white/10 flex items-start justify-between gap-3">
-        <div className="min-w-0 flex items-start gap-2 text-xs text-gray-300">
-          <div className="mt-0.5 rounded-md border border-indigo-500/30 bg-indigo-500/10 p-1.5">
-            <MessageSquare className="w-3.5 h-3.5 text-indigo-300" />
+    <div className="h-full flex flex-col bg-[var(--surface-panel)] text-[var(--text-primary)]">
+      <div className="px-3 py-2 max-md:pr-16 border-b border-[var(--surface-border)] flex items-start justify-between gap-3">
+        <div className="min-w-0 flex items-start gap-2 text-xs text-[var(--text-secondary)]">
+          <div className="mt-0.5 rounded-md border border-[var(--surface-border)] bg-[var(--surface-raised)] p-1.5">
+            <MessageSquare className="w-3.5 h-3.5 text-[var(--text-secondary)]" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="truncate font-medium text-gray-100">{conversationTitle}</span>
+              <span className="truncate font-medium text-[var(--text-primary)]">
+                {conversationTitle}
+              </span>
               {showWorkingTimeline && (
                 <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-200">
                   Working
                 </span>
               )}
             </div>
-            <div className="mt-0.5 flex items-center gap-2 text-[10px] text-gray-500">
+            <div className="mt-0.5 flex items-center gap-2 text-[10px] text-[var(--text-muted)]">
               <span>{conversationAgentLabel}</span>
               {sessionId && (
                 <span className="font-mono text-gray-600">{sessionId.slice(0, 8)}</span>
@@ -1509,14 +1581,20 @@ export function IDEChatPanel({
 
       {contextPath && (
         <div
-          className="px-3 py-2 border-b border-white/10 text-[11px] text-gray-500 truncate"
+          className="px-3 py-2 border-b border-[var(--surface-border)] text-[11px] text-[var(--text-muted)] truncate"
           title={contextPath}
         >
           Context: {contextPath}
         </div>
       )}
 
-      <div ref={listRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+      <div
+        ref={listRef}
+        onScroll={(event) => {
+          shouldFollowOutputRef.current = isChatNearBottom(event.currentTarget, 80);
+        }}
+        className="flex-1 overflow-y-auto px-3 py-2 space-y-2"
+      >
         {messages.length === 0 ? (
           <div className="text-xs text-gray-500">
             Ask about the current workspace or file. This panel shares session context while open.
@@ -1596,15 +1674,51 @@ export function IDEChatPanel({
                   {message.role === "assistant" && (
                     <AgentTransferTimeline transfers={message.agent_transfers} />
                   )}
-                  {message.role === "assistant" ? (
-                    <div className="text-[12px] leading-6">
-                      <ReactMarkdown remarkPlugins={[remarkGfm]} components={ideMarkdownComponents}>
-                        {message.content}
-                      </ReactMarkdown>
+                  {message.images && message.images.length > 0 ? (
+                    <div
+                      className={cn(
+                        "mb-2 flex flex-wrap gap-2",
+                        message.role === "user" && "justify-end"
+                      )}
+                    >
+                      {message.images.map((image, imageIndex) => {
+                        const src = chatImageSrc(image);
+                        if (!src) return null;
+                        const alt = image.name || "Attachment";
+                        const allImages =
+                          message.images
+                            ?.map((candidate) => ({
+                              src: chatImageSrc(candidate),
+                              alt: candidate.name || "Attachment",
+                            }))
+                            .filter(
+                              (candidate): candidate is ChatLightboxImage => !!candidate.src
+                            ) || [];
+                        return (
+                          <button
+                            type="button"
+                            key={`${messageKey}:image:${imageIndex}`}
+                            onClick={() => setLightbox({ images: allImages, index: imageIndex })}
+                            className="block max-w-[220px] cursor-zoom-in overflow-hidden rounded-lg border border-[var(--surface-border)]"
+                            aria-label={`Open ${alt} preview`}
+                          >
+                            <img
+                              src={src}
+                              alt={alt}
+                              loading="lazy"
+                              className="h-auto max-h-64 w-full object-contain"
+                            />
+                          </button>
+                        );
+                      })}
                     </div>
-                  ) : (
-                    <div>{message.content}</div>
-                  )}
+                  ) : null}
+                  <div className="text-[12px] leading-6">
+                    <MessageContent
+                      content={message.content}
+                      onOpenImage={(src, alt) => setLightbox({ images: [{ src, alt }], index: 0 })}
+                    />
+                  </div>
 
                   {message.role === "assistant" && message.thinking && (
                     <div className="mt-2 rounded border border-indigo-500/20 bg-indigo-500/10 px-2 py-1 text-[11px] text-indigo-200">
@@ -1945,60 +2059,39 @@ export function IDEChatPanel({
         </div>
       )}
 
-      <div className="border-t border-white/10 p-3">
-        <div className="chat-composer-responsive rounded-2xl border border-white/10 bg-[#111118] px-3 py-2 shadow-[0_12px_40px_rgba(0,0,0,0.24)]">
-          <textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing) return;
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void handleSend();
-              }
-            }}
-            placeholder="Ask about this workspace..."
-            disabled={isApplyingDiffAction}
-            rows={1}
-            className="w-full min-h-[38px] max-h-[180px] resize-none overflow-y-auto bg-transparent px-0 py-1 text-[13px] leading-5 text-white placeholder-gray-500 !outline-none disabled:opacity-60"
-          />
-          <div className="mt-0.5 flex min-h-8 items-center gap-1.5">
-            <div className="min-w-0 flex-1" />
-            <ChatAgentControls
-              agents={chatAgentOptions}
-              selectedAgentId={selectedAgentId}
-              modelRouterEnabled={modelRouterEnabled}
-              useModelRouter={useModelRouter}
-              contextUsage={sessionContextUsage}
-              providerPlan={activeProviderPlan}
-              onSelectAgent={handleSelectAgent}
-              updating={false}
-            />
-            <ChatReasoningControl
-              effort={activeAgentForPlan?.reasoning_effort}
-              provider={activeAgentForPlan?.provider_id || activeAgentForPlan?.provider}
-              model={activeAgentForPlan?.model}
-              disabled={!activeAgentForPlan || useModelRouter}
-              updating={updateAgentReasoning.isPending}
-              onChange={(effort) => {
-                if (!activeAgentForPlan) return;
-                updateAgentReasoning.mutate({
-                  id: activeAgentForPlan.id,
-                  effort,
-                });
-              }}
-            />
-            <ChatComposerActionButton
-              disabled={isSending || isReverting || isApplyingDiffAction || !input.trim()}
-              isStopping={isStoppingSession}
-              queueing={showWorkingTimeline}
-              showStop={showWorkingTimeline}
-              onSend={() => void handleSend()}
-              onStop={() => void handleStopActive()}
-            />
-          </div>
-        </div>
-      </div>
+      <IDEChatComposer
+        active={showWorkingTimeline}
+        activeAgent={activeAgentForPlan || undefined}
+        agents={chatAgentOptions}
+        contextUsage={sessionContextUsage}
+        disabled={isReverting || isApplyingDiffAction}
+        input={input}
+        isLoading={isSending}
+        isStopping={isStoppingSession}
+        modelRouterEnabled={modelRouterEnabled}
+        providerPlan={activeProviderPlan}
+        reasoningUpdating={updateAgentReasoning.isPending}
+        selectedAgentId={selectedAgentId}
+        sessionId={sessionId}
+        setInput={setInput}
+        useModelRouter={useModelRouter}
+        workspaceDir={workspaceDir}
+        onReasoningChange={(effort) => {
+          if (!activeAgentForPlan) return;
+          updateAgentReasoning.mutate({ id: activeAgentForPlan.id, effort });
+        }}
+        onRefreshSession={refreshSession}
+        onSelectAgent={handleSelectAgent}
+        onStop={() => void handleStopActive()}
+        onSubmit={handleSend}
+      />
+      {lightbox ? (
+        <ChatImageLightbox
+          images={lightbox.images}
+          initialIndex={lightbox.index}
+          onClose={() => setLightbox(null)}
+        />
+      ) : null}
     </div>
   );
 }

@@ -247,6 +247,7 @@ describe("native macOS shell wiring", () => {
       join(MACOS_APP_DIR, "NativePlatformScreens.swift"),
       "utf8"
     );
+    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
 
     for (const snippet of [
       "NativeIDEBrowseResult",
@@ -267,9 +268,14 @@ describe("native macOS shell wiring", () => {
       "revealIDEPath",
       "openIDETerminal",
       "idePermalink",
+      'Text("Chat").tag("chat")',
+      "ChatScreen(",
+      "preferredWorkspaceDir: firstNonEmptyGatewayString",
     ]) {
       expect(nativePlatformScreens).toContain(snippet);
     }
+    expect(nativeScreens).toContain("var preferredWorkspaceDir: String? = nil");
+    expect(nativeScreens).toContain("preferredWorkspaceDir,");
   });
 
   test("native settings centers its content column and keeps cards left-aligned", () => {

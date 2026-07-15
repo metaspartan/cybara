@@ -356,6 +356,8 @@ export class NearbyService {
   private readonly pairAttempts = new Map<string, number[]>();
   private pairingRefreshPromise: Promise<void> | null = null;
 
+  constructor(private readonly discoveryPort: number = NEARBY_DISCOVERY_PORT) {}
+
   async initialize(): Promise<void> {
     if (getNearbySettings().enabled) await this.start();
   }
@@ -443,6 +445,7 @@ export class NearbyService {
 
   private async startLanDiscovery(): Promise<void> {
     const discovery = new NearbyLanDiscovery({
+      discoveryPort: this.discoveryPort,
       getAnnouncement: () => this.discoveryAnnouncement(),
       onAnnouncement: (announcement, sourceAddress) =>
         this.onLanAnnouncement(announcement, sourceAddress),

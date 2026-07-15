@@ -36,7 +36,9 @@ import {
 import { Highlight, themes } from "prism-react-renderer";
 import {
   type CSSProperties,
+  lazy,
   memo,
+  Suspense,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -83,7 +85,6 @@ import { CodeViewer } from "./ide/CodeViewer";
 import { CreateDialog } from "./ide/CreateDialog";
 import { FileTree, treeBrowseCache } from "./ide/FileTree";
 import { GitStatus } from "./ide/GitStatus";
-import { IDEChatPanel } from "./ide/IDEChatPanel";
 import { IDEKeyboardSettingsPanel } from "./ide/IDEKeyboardSettingsPanel";
 import { IDETerminalSettingsPanel } from "./ide/IDETerminalSettingsPanel";
 import { IDEWelcomeScreen } from "./ide/IDEWelcomeScreen";
@@ -254,6 +255,10 @@ import {
   resolveEmbeddingRuntimeSelection as resolveEmbeddingRuntimeSelectionModel,
 } from "./ide/indexerModel";
 import { LSPStatus } from "./ide/LSPStatus";
+
+const IDEChatPanel = lazy(() =>
+  import("./ide/IDEChatPanel").then((module) => ({ default: module.IDEChatPanel }))
+);
 
 function formatIdeScannedFiles(value?: number): string | null {
   if (!Number.isFinite(value)) return null;
@@ -3130,7 +3135,7 @@ export function IDE() {
           />
         </div>
 
-        <div className="flex-1 flex min-w-0 overflow-hidden bg-[#0d0d12]">
+        <div className="relative flex-1 flex min-w-0 overflow-hidden bg-[#0d0d12]">
           <div className="flex-1 flex flex-col overflow-hidden min-w-0">
             <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
               <div
@@ -3363,25 +3368,34 @@ export function IDE() {
                 className="hidden w-1.5 cursor-col-resize bg-transparent hover:bg-indigo-500/40 transition-colors md:block"
               />
               <div
-                className="hidden border-l border-white/10 bg-[#0b0b12] h-full md:block"
-                style={{ width: `${chatPanelWidth}px` }}
+                className="absolute inset-0 z-40 h-full w-full border-l border-[var(--surface-border)] bg-[var(--surface-panel)] md:relative md:inset-auto md:z-auto md:min-w-[300px] md:w-[min(var(--ide-chat-width),48%)]"
+                style={{ "--ide-chat-width": `${chatPanelWidth}px` } as CSSProperties}
               >
-                <IDEChatPanel
-                  workspaceDir={rootInfo?.path || currentPath}
-                  contextPath={selectedFile?.path || null}
-                  terminalContext={{
-                    isOpen: isTerminalPanelOpen,
-                    sessionCount: terminalPanelState.sessionCount,
-                    activeSessionId: terminalPanelState.activeSessionId,
-                  }}
-                  onWorkspaceMutated={handleRefresh}
-                  onClose={() => setIsIdeChatOpen(false)}
-                  selectedAgentId={ideChatSelectedAgentId}
-                  onSelectedAgentIdChange={setIdeChatSelectedAgentId}
-                  agents={ideAgentOptions}
-                  onPendingFileDiffsChange={setIdePendingFileDiffs}
-                  onPendingFileDiffControllerChange={setIdePendingFileDiffController}
-                />
+                <Suspense
+                  fallback={
+                    <div className="flex h-full items-center justify-center text-sm text-[var(--text-muted)]">
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Loading chat...
+                    </div>
+                  }
+                >
+                  <IDEChatPanel
+                    workspaceDir={rootInfo?.path || currentPath}
+                    contextPath={selectedFile?.path || null}
+                    terminalContext={{
+                      isOpen: isTerminalPanelOpen,
+                      sessionCount: terminalPanelState.sessionCount,
+                      activeSessionId: terminalPanelState.activeSessionId,
+                    }}
+                    onWorkspaceMutated={handleRefresh}
+                    onClose={() => setIsIdeChatOpen(false)}
+                    selectedAgentId={ideChatSelectedAgentId}
+                    onSelectedAgentIdChange={setIdeChatSelectedAgentId}
+                    agents={ideAgentOptions}
+                    onPendingFileDiffsChange={setIdePendingFileDiffs}
+                    onPendingFileDiffControllerChange={setIdePendingFileDiffController}
+                  />
+                </Suspense>
               </div>
             </>
           )}

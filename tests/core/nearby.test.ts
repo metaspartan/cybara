@@ -206,8 +206,11 @@ describe("nearby network and settings boundaries", () => {
     const portProbe = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
     const nearbyPort = portProbe.port;
     portProbe.stop(true);
+    const discoveryProbe = await Bun.udpSocket({ hostname: "127.0.0.1", port: 0 });
+    const discoveryPort = discoveryProbe.port;
+    discoveryProbe.close();
     const remote = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response("") });
-    const service = new NearbyService();
+    const service = new NearbyService(discoveryPort);
     const sender = await Bun.udpSocket({ hostname: "127.0.0.1", port: 0 });
     try {
       await service.configure({
@@ -226,7 +229,7 @@ describe("nearby network and settings boundaries", () => {
           fingerprint: "333333333333333333333333",
           port: remote.port,
         }),
-        4270,
+        discoveryPort,
         "127.0.0.1"
       );
       const deadline = Date.now() + 2000;

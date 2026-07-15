@@ -6,6 +6,7 @@ export const IDE_SIDEBAR_MIN_WIDTH = 220;
 export const IDE_SIDEBAR_MAX_WIDTH = 520;
 export const IDE_CHAT_WIDTH_STORAGE_KEY = "cybara.ide.chat.width";
 export const IDE_CHAT_OPEN_STORAGE_KEY = "cybara.ide.chat.open";
+export const IDE_CHAT_SESSIONS_STORAGE_KEY = "cybara.ide.chat.sessions";
 export const IDE_CHAT_DEFAULT_WIDTH = 420;
 export const IDE_CHAT_MIN_WIDTH = 320;
 export const IDE_CHAT_MAX_WIDTH = 720;

@@ -14,6 +14,7 @@ import {
   IDE_SIDEBAR_WIDTH_STORAGE_KEY,
   IDE_CHAT_WIDTH_STORAGE_KEY,
   IDE_CHAT_OPEN_STORAGE_KEY,
+  IDE_CHAT_SESSIONS_STORAGE_KEY,
   IDE_WORKSPACE_PATH_STORAGE_KEY,
   IDE_CHAT_AGENT_STORAGE_KEY,
   IDE_TERMINAL_OPEN_STORAGE_KEY,
@@ -66,6 +67,48 @@ export function readPersistedChatOpen(): boolean {
 export function persistChatOpen(isOpen: boolean): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(IDE_CHAT_OPEN_STORAGE_KEY, isOpen ? "1" : "0");
+}
+
+const IDE_CHAT_SESSION_LIMIT = 40;
+
+function normalizeWorkspaceSessionKey(workspaceDir: string): string {
+  return workspaceDir.trim().replace(/[\\/]+$/, "") || "~";
+}
+
+function readIdeChatSessionMap(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(IDE_CHAT_SESSIONS_STORAGE_KEY) || "{}"
+    ) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const sessions: Record<string, string> = {};
+    for (const [workspaceDir, sessionId] of Object.entries(parsed)) {
+      if (typeof sessionId === "string" && sessionId.trim()) {
+        sessions[workspaceDir] = sessionId.trim();
+      }
+    }
+    return sessions;
+  } catch {
+    return {};
+  }
+}
+
+export function readPersistedIdeChatSessionId(workspaceDir: string): string | null {
+  return readIdeChatSessionMap()[normalizeWorkspaceSessionKey(workspaceDir)] || null;
+}
+
+export function persistIdeChatSessionId(workspaceDir: string, sessionId: string | null): void {
+  if (typeof window === "undefined") return;
+  const workspaceKey = normalizeWorkspaceSessionKey(workspaceDir);
+  const sessions = readIdeChatSessionMap();
+  delete sessions[workspaceKey];
+  if (sessionId?.trim()) sessions[workspaceKey] = sessionId.trim();
+  const entries = Object.entries(sessions).slice(-IDE_CHAT_SESSION_LIMIT);
+  window.localStorage.setItem(
+    IDE_CHAT_SESSIONS_STORAGE_KEY,
+    JSON.stringify(Object.fromEntries(entries))
+  );
 }
 
 export function readPersistedWorkspacePath(): string {

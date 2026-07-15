@@ -1,5 +1,5 @@
 import type { LiveActivityItem, ToolCallLike } from "@/lib/chatActivities";
-import type { AgentReasoningEffort, AgentTransferInfo } from "@/types";
+import type { AgentReasoningEffort, AgentTransferInfo, ChatImageAttachment } from "@/types";
 export interface FileEntry {
   name: string;
   path: string;
@@ -268,6 +268,7 @@ export interface IdeChatMessage {
   tool_calls?: ToolCallLike[];
   process_activities?: IdeProcessActivity[];
   agent_transfers?: AgentTransferInfo[];
+  images?: ChatImageAttachment[];
 }
 
 export interface IdeChatAgentOption {

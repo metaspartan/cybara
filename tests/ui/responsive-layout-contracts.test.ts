@@ -33,7 +33,8 @@ describe("responsive layout contracts", () => {
     expect(ideSource).toContain("hidden items-center gap-1 relative md:flex");
     expect(ideSource).toContain("relative md:flex");
     expect(ideSource).toContain("hidden h-full w-1.5");
-    expect(ideSource).toContain("hidden border-l border-white/10");
+    expect(ideSource).toContain("absolute inset-0 z-40 h-full w-full");
+    expect(ideSource).toContain("md:w-[min(var(--ide-chat-width),48%)]");
     expect(ideSource).toContain("hidden text-gray-600 md:inline");
     expect(ideSource).toContain("hidden md:block");
     expect(ideSource).toContain('<span className="max-md:hidden">Terminal</span>');

@@ -514,6 +514,7 @@ struct ChatScreen: View {
     let client: GatewayClient
     @Binding var selectedSessionID: String?
     var showsSessionList = true
+    var preferredWorkspaceDir: String? = nil
     var openCybaraIDEWorkspace: (String) -> Void = { _ in }
     @Environment(\.cybaraAccent) private var accentTint
 
@@ -1419,6 +1420,7 @@ struct ChatScreen: View {
         if selectedSessionID != nil { return nil }
         return firstNonEmptyGatewayString(
             pendingWorkspaceDir,
+            preferredWorkspaceDir,
             lastWorkspaceDir,
             FileManager.default.homeDirectoryForCurrentUser.path
         )

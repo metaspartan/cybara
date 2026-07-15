@@ -1504,6 +1504,7 @@ struct IDEScreen: View {
     @State private var renameName = ""
     @State private var renamePath = ""
     @State private var inspectorSection = "search"
+    @State private var ideChatSessionID: String?
     @State private var editorMode = "view"
     @State private var showBlame = false
     @State private var blameByLine: [Int: NativeIDEBlameLine] = [:]
@@ -1578,7 +1579,7 @@ struct IDEScreen: View {
                         .frame(width: 286)
                     editorPane
                     searchReplacePane
-                        .frame(width: 318)
+                        .frame(width: inspectorSection == "chat" ? 460 : 318)
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
             }
@@ -1841,11 +1842,20 @@ struct IDEScreen: View {
                 Text("Search").tag("search")
                 Text("Results").tag("results")
                 Text("Index").tag("index")
+                Text("Chat").tag("chat")
             }
             .pickerStyle(.segmented)
             .labelsHidden()
 
-            if inspectorSection == "index" {
+            if inspectorSection == "chat" {
+                ChatScreen(
+                    client: client,
+                    selectedSessionID: $ideChatSessionID,
+                    showsSessionList: false,
+                    preferredWorkspaceDir: firstNonEmptyGatewayString(workspacePath, browse?.path, currentPath)
+                )
+                .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity)
+            } else if inspectorSection == "index" {
                 indexCard
             } else if inspectorSection == "results" {
                 searchResultsPane
