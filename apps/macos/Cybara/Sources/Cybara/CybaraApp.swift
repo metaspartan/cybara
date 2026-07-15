@@ -1,10 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Menu/keyboard-driven actions, dispatched via NotificationCenter so the
-/// SwiftUI `.commands` block stays decoupled from view/model instances.
 extension Notification.Name {
-    static let cybaraReloadWebView = Notification.Name("cybara.reloadWebView")
     static let cybaraRestartSidecar = Notification.Name("cybara.restartSidecar")
     static let cybaraOpenInBrowser = Notification.Name("cybara.openInBrowser")
     static let cybaraCopyURL = Notification.Name("cybara.copyURL")
@@ -62,7 +59,6 @@ struct CybaraApp: App {
                 .task {
                     appDelegate.sidecar = sidecar
                     await sidecar.startIfNeeded()
-                    // Quiet background check on launch; only nags if newer exists.
                     await updateChecker.check(userInitiated: false)
                 }
                 .onReceive(NotificationCenter.default.publisher(for: .cybaraCheckForUpdates)) { _ in
@@ -72,20 +68,17 @@ struct CybaraApp: App {
         .defaultSize(width: 1440, height: 920)
         .windowResizability(.contentMinSize)
         .commands {
-            // Reload the web UI (Cmd-R), like a browser.
-            CommandGroup(after: .toolbar) {
-                Button("Reload") {
-                    NotificationCenter.default.post(name: .cybaraReloadWebView, object: nil)
+            CommandGroup(replacing: .newItem) {
+                Button("New Chat") {
+                    NotificationCenter.default.post(name: .cybaraOpenChat, object: nil)
                 }
-                .keyboardShortcut("r", modifiers: .command)
+                .keyboardShortcut("n", modifiers: .command)
             }
-            // Manual update check, alongside the standard App menu items.
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") {
                     NotificationCenter.default.post(name: .cybaraCheckForUpdates, object: nil)
                 }
             }
-            // Gateway controls under a dedicated top-level menu.
             CommandMenu("Gateway") {
                 Button("Restart Gateway") {
                     NotificationCenter.default.post(name: .cybaraRestartSidecar, object: nil)

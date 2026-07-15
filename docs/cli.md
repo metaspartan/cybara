@@ -123,7 +123,7 @@ cybara journey            # Show learned skills and memory activity
 cybara journey --json     # Emit journey data for scripts
 ```
 
-### Agent Evals
+### Lab and Evals
 
 ```bash
 cybara evals list [--json]                  # List golden tests and latest results

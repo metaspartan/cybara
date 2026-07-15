@@ -1,8 +1,6 @@
 import AppKit
 import SwiftUI
 
-// Accent palette shared with the web/Tauri and mobile UIs; the key is synced
-// through gateway config so all clients highlight in the same color.
 enum CybaraAccent {
     static let orderedKeys = [
         "indigo",
@@ -47,7 +45,6 @@ private struct CybaraAccentKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// The gateway-synced highlight color, matching web/Tauri and mobile.
     var cybaraAccent: Color {
         get { self[CybaraAccentKey.self] }
         set { self[CybaraAccentKey.self] = newValue }
@@ -166,10 +163,11 @@ struct ContentView: View {
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationSplitViewColumnWidth(min: 210, ideal: 235, max: 280)
+                .navigationSplitViewColumnWidth(min: 196, ideal: 220, max: 272)
         } detail: {
             detail
         }
+        .navigationSplitViewStyle(.balanced)
         .tint(accent)
         .environment(\.cybaraAccent, accent)
         .task(id: sidecar.isReady) {
@@ -254,7 +252,7 @@ struct ContentView: View {
 
             List(selection: $destination) {
                 Section {
-                    ForEach([NativeDestination.dashboard, .chat, .agents, .providers, .router, .channels, .mobile, .voice, .plugins]) { item in
+                    ForEach([NativeDestination.dashboard, .agents, .providers, .router, .channels, .mobile, .plugins]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
@@ -265,14 +263,42 @@ struct ContentView: View {
                             .tag(item)
                     }
                 }
+                Section {
+                    ForEach([NativeDestination.chat, .voice]) { item in
+                        Label(item.title, systemImage: item.systemImage)
+                            .tag(item)
+                    }
+                }
                 Section(NativeI18n.t("nav.system")) {
-                    ForEach([NativeDestination.memory, .journey, .wallet, .artifacts, .metrics, .tasks, .logs, .settings]) { item in
+                    ForEach([NativeDestination.memory, .journey, .wallet, .artifacts, .metrics, .tasks, .logs]) { item in
                         Label(item.title, systemImage: item.systemImage)
                             .tag(item)
                     }
                 }
             }
             .listStyle(.sidebar)
+
+            Divider()
+
+            Button {
+                destination = .settings
+            } label: {
+                Label(NativeDestination.settings.title, systemImage: NativeDestination.settings.systemImage)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 7)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(destination == .settings ? Color.primary : Color.secondary)
+            .background {
+                if destination == .settings {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(accent.opacity(0.16))
+                }
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 8)
         }
     }
 

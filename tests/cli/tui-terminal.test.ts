@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  chatEscapeAction,
   clipboardCandidates,
   composerWindow,
   resolveTerminalLayout,
@@ -33,6 +34,12 @@ describe("CLI TUI terminal behavior", () => {
     expect(visible).toHaveLength(3);
     expect(visible.join("\n")).toContain("▏");
     expect(visible.join("\n").replace("▏", "")).toContain("four");
+  });
+
+  test("dismisses chat overlays and drafts before leaving the session", () => {
+    expect(chatEscapeAction(true, true)).toBe("close_panel");
+    expect(chatEscapeAction(false, true)).toBe("clear_draft");
+    expect(chatEscapeAction(false, false)).toBe("back");
   });
 
   test("bounds transcript rows without shortening their content", () => {

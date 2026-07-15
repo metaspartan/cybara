@@ -24,6 +24,14 @@ export interface TerminalScreenSequence {
   exit: string;
 }
 
+export type ChatEscapeAction = "close_panel" | "clear_draft" | "back";
+
+export function chatEscapeAction(hasPanel: boolean, hasDraft: boolean): ChatEscapeAction {
+  if (hasPanel) return "close_panel";
+  if (hasDraft) return "clear_draft";
+  return "back";
+}
+
 export function terminalScreenSequence(
   isTTY: boolean,
   env: NodeJS.ProcessEnv

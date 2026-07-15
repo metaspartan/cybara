@@ -44,6 +44,7 @@ describe("native macOS shell wiring", () => {
 
   test("native shell does not embed the web UI as a detail pane", () => {
     const contentView = readFileSync(join(MACOS_APP_DIR, "ContentView.swift"), "utf8");
+    const app = readFileSync(join(MACOS_APP_DIR, "CybaraApp.swift"), "utf8");
 
     expect(existsSync(join(MACOS_APP_DIR, "CybaraWebView.swift"))).toBe(false);
     expect(contentView).not.toContain("CybaraWebView");
@@ -51,6 +52,9 @@ describe("native macOS shell wiring", () => {
     expect(contentView).not.toContain("webRoute");
     expect(contentView).not.toContain("webUI");
     expect(contentView).not.toContain("Web UI");
+    expect(app).not.toContain("cybaraReloadWebView");
+    expect(app).toContain('Button("New Chat")');
+    expect(app).toContain('.keyboardShortcut("n", modifiers: .command)');
   });
 
   test("native workspace open targets use a stable optical icon column", () => {
@@ -106,6 +110,7 @@ describe("native macOS shell wiring", () => {
       join(MACOS_APP_DIR, "NativePlatformScreens.swift"),
       "utf8"
     );
+    const nativeScreens = readFileSync(join(MACOS_APP_DIR, "NativeScreens.swift"), "utf8");
 
     for (const route of [
       "/agents",
@@ -188,6 +193,11 @@ describe("native macOS shell wiring", () => {
 
     expect(contentView).toContain('Section(NativeI18n.t("nav.developer"))');
     expect(contentView).toContain('Section(NativeI18n.t("nav.system"))');
+    expect(contentView).toContain("ForEach([NativeDestination.chat, .voice])");
+    expect(contentView).toContain("destination = .settings");
+    expect(contentView).toContain(".navigationSplitViewStyle(.balanced)");
+    expect(nativeScreens).toContain("GridItem(.adaptive(minimum: 168)");
+    expect(nativeScreens).toContain(".font(.title2.weight(.semibold))");
   });
 
   test("native voice workspace uses gateway speech contracts without embedding web content", () => {

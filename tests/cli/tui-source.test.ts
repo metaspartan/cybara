@@ -41,7 +41,7 @@ const tuiPanels = [
   },
   { command: "router", component: "TUIRouterCommand", label: "Model Router" },
   { command: "usage", component: "TUIUsageCommand", label: "Usage" },
-  { command: "evals", component: "TUIEvalsCommand", label: "Agent Evals" },
+  { command: "evals", component: "TUIEvalsCommand", label: "Lab" },
   { command: "channels", component: "TUIChannelsCommand", label: "Channels" },
   { command: "memory", component: "TUIMemoryCommand", label: "Memory" },
   { command: "tools", component: "TUIToolsCommand", label: "Tools" },
@@ -286,6 +286,11 @@ describe("CLI TUI source wiring", () => {
     expect(cliTuiInteractiveChatSource).toContain("/api/chat/capabilities");
     expect(cliTuiInteractiveChatSource).toContain("CapabilityPalette");
     expect(cliTuiInteractiveChatSource).toContain("Enter queues · /steer injects");
+    expect(cliTuiInteractiveChatSource).toContain(
+      "Draft cleared. Press Esc again to return to sessions."
+    );
+    expect(cliTuiInteractiveChatSource).toContain("Queue follow-up");
+    expect(cliTuiInteractiveChatSource).toContain("Esc dismiss/back");
     expect(cliTuiInteractiveChatSource).toContain("Follow-ups off");
     expect(cliTuiInteractiveChatSource).toContain("follow_up_behavior_enabled");
     expect(cliTuiInteractiveChatSource).toContain('{ name: "/followups"');

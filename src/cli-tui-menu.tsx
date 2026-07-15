@@ -105,12 +105,12 @@ export const MAIN_TUI_MENU_ITEMS: MenuItem[] = [
     detail: "Active and completed delegated agent runs",
   },
   {
-    label: "Agent Evals",
+    label: "Lab",
     action: "evals",
     shortcut: "3",
     group: "Workflows",
     kind: "panel",
-    detail: "Golden trajectories and structural regression status",
+    detail: "Agent trajectories, datasets, benchmarks, and structural regression runs",
   },
   {
     label: "Artifacts",

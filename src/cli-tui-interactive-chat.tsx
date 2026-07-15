@@ -27,6 +27,7 @@ import {
 } from "./cli-tui-chat-environment";
 import { EnvironmentPanel } from "./cli-tui-chat-environment-view";
 import {
+  chatEscapeAction,
   composerWindow,
   copyTextToClipboard,
   transcriptWindow,
@@ -2164,6 +2165,18 @@ export function InteractiveChatTUI({
       return;
     }
     if (key.escape) {
+      const action = chatEscapeAction(showEnvironment || showHelp, input.length > 0);
+      if (action === "close_panel") {
+        setShowEnvironment(false);
+        setShowHelp(false);
+        setNotice("Panel closed.");
+        return;
+      }
+      if (action === "clear_draft") {
+        resetInput();
+        setNotice("Draft cleared. Press Esc again to return to sessions.");
+        return;
+      }
       onExit();
       return;
     }
@@ -2290,6 +2303,12 @@ export function InteractiveChatTUI({
         ? agentLine(selectedAgent)
         : modelLine || "Gateway default";
   const composerLines = composerWindow(input, cursor, layout.composerLines);
+  const composerTitle = sending
+    ? followUpBehaviorEnabled
+      ? "Queue follow-up"
+      : "Run in progress"
+    : "Ask Cybara";
+  const composerTextColor = sending && !followUpBehaviorEnabled ? "gray" : "white";
 
   return (
     <Box flexDirection="column" height={layout.rows} width="100%">
@@ -2307,7 +2326,7 @@ export function InteractiveChatTUI({
           <Text bold color="cyan">
             Cybara Chat · {compact(headerTitle, layout.compact ? 44 : 64)}
           </Text>
-          <Text color={sending ? "yellow" : "gray"}>
+          <Text color={sending ? "yellow" : "green"}>
             {sending ? streamStatus.replaceAll("_", " ") : "ready"}
           </Text>
         </Box>
@@ -2435,9 +2454,9 @@ export function InteractiveChatTUI({
         flexDirection="column"
         flexShrink={0}
       >
-        <Text color="gray">Ask Cybara</Text>
+        <Text color={sending && followUpBehaviorEnabled ? "cyan" : "gray"}>{composerTitle}</Text>
         {composerLines.map((line, index) => (
-          <Text key={index} color={sending ? "gray" : "white"}>
+          <Text key={index} color={composerTextColor}>
             {index === 0 ? "› " : "  "}
             {line}
           </Text>
@@ -2446,8 +2465,8 @@ export function InteractiveChatTUI({
       <Box paddingX={1} flexShrink={0}>
         <Text color="gray">
           {layout.narrow
-            ? "Enter send · ^J newline · Tab complete · @ capabilities · Esc"
-            : "Enter send · ^J newline · ↑↓ history · PgUp/Dn scroll · Tab · @ capabilities · Esc"}
+            ? `${sending ? "Enter queue" : "Enter send"} · ^J newline · Tab complete · Esc dismiss/back`
+            : `${sending ? "Enter queues follow-up" : "Enter sends"} · ^J newline · ↑↓ history · PgUp/Dn scroll · Tab complete · Esc dismiss/back · ^C stop/exit`}
         </Text>
       </Box>
     </Box>

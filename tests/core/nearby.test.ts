@@ -447,7 +447,13 @@ describe("nearby session transfer", () => {
       },
     ];
     expect(
-      await persistSession(sourceSessionId, "missing-source-agent", sourceMessages, null, "Image chat")
+      await persistSession(
+        sourceSessionId,
+        "missing-source-agent",
+        sourceMessages,
+        null,
+        "Image chat"
+      )
     ).toBe(true);
     await upsertPersistedSessionMessage(
       sourceSessionId,
@@ -456,13 +462,20 @@ describe("nearby session transfer", () => {
       {
         stableKey: "image:0",
         metadata: {
-          attachments: [{ path: "attachments/does-not-exist-on-this-host.png", mimeType: "image/png" }],
+          attachments: [
+            { path: "attachments/does-not-exist-on-this-host.png", mimeType: "image/png" },
+          ],
         },
       }
     );
-    await upsertPersistedSessionMessage(sourceSessionId, "missing-source-agent", sourceMessages[1], {
-      stableKey: "image:1",
-    });
+    await upsertPersistedSessionMessage(
+      sourceSessionId,
+      "missing-source-agent",
+      sourceMessages[1],
+      {
+        stableKey: "image:1",
+      }
+    );
 
     const bundle = await createNearbySessionBundle(sourceSessionId);
     expect(isNearbySessionBundle(bundle)).toBe(true);

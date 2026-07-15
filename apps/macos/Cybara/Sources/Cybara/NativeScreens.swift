@@ -11,9 +11,9 @@ struct ScreenHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .font(.title2.weight(.semibold))
             Text(subtitle)
-                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -272,7 +272,11 @@ struct DashboardScreen: View {
             VStack(alignment: .leading, spacing: 18) {
                 ScreenHeader(title: "Dashboard", subtitle: "Local gateway status and activity")
 
-                HStack(spacing: 14) {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 168), spacing: 14)],
+                    alignment: .leading,
+                    spacing: 14
+                ) {
                     statTile(
                         label: "Gateway",
                         value: health?.status?.capitalized ?? "…",
@@ -373,6 +377,7 @@ struct DashboardScreen: View {
                 .lineLimit(1)
         }
         .padding(16)
+        .frame(minHeight: 96, alignment: .topLeading)
         .frame(maxWidth: .infinity, alignment: .leading)
         .cybaraGlass(cornerRadius: 16)
     }
