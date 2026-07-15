@@ -1,7 +1,7 @@
 {
   "name": "cybara-ui",
   "private": true,
-  "version": "1.0.1608",
+  "version": "1.0.1610",
   "type": "module",
   "scripts": {
     "dev": "bunx vite",
