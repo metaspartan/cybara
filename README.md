@@ -494,6 +494,12 @@ If Cybara saves you time, consider supporting its development:
 - X: [@cybaraAI](https://x.com/cybaraAI)
 - Creator: [Carsen Klock](https://x.com/carsenklock)
 
+## Contributing
+
+Create contribution branches from `dev` and open pull requests against `dev`.
+The `main` branch is reserved for releases. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for setup, validation, and review requirements.
+
 ## License
 
 MIT — [Carsen Klock](https://github.com/metaspartan)

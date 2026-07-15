@@ -7,8 +7,7 @@ export interface DashboardCheckStatus {
 
 function normalizeStatus(value: string): DashboardHealthStatus {
   const status = value.trim().toLowerCase();
-  if (status === "healthy" || status === "ok" || status === "passing")
-    return "healthy";
+  if (status === "healthy" || status === "ok" || status === "passing") return "healthy";
   if (status === "warning" || status === "degraded") return "warning";
   return "error";
 }

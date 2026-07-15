@@ -25,6 +25,8 @@ mentions npm-style commands, translate them to Bun before running:
 ```bash
 git clone https://github.com/metaspartan/cybara.git
 cd cybara
+git switch dev
+git pull --ff-only origin dev
 bun install            # installs server + CLI dependencies
 cd ui && bun install   # installs web UI dependencies
 ```
@@ -68,28 +70,40 @@ Prefer OpenAI-compatible providers (`api: "openai-completions"`) — they need n
 new protocol code. New API protocols require matching branches in the agent loop
 (`src/core/agent.ts`).
 
+## Development workflow
+
+`dev` is the integration branch for ongoing development. Create contribution
+branches from the latest `dev` branch and open pull requests against `dev`:
+
+```bash
+git switch dev
+git pull --ff-only origin dev
+git switch -c <type>/<short-description>
+```
+
+Keep an existing contribution branch current with `origin/dev` before requesting
+review. The `main` branch is reserved for tested release merges from `dev` and
+maintainer-directed hotfixes.
+
 ## Pull requests
 
-- Branch off `main`. Keep PRs focused.
+- Branch off `dev` and target `dev`. Keep pull requests focused.
 - Ensure `bun run check:ci` is green before requesting review.
 - Don't commit `release/` artifacts, build output, or signing keys.
-- Don't bump the version yourself — the `main-version-tag.yml` workflow derives
+- Don't bump the version yourself. The `main-version-tag.yml` workflow derives
   it from the commit count and syncs it across files automatically.
 
 ## Release process
 
 Releases are **fully automated** from git tags:
 
-1. Push to `main` → `main-version-tag.yml` syncs the version across
+1. A tested release merge from `dev` to `main` triggers
+   `main-version-tag.yml`, which syncs the version across
    `package.json`, `ui/package.json`, `src-tauri/Cargo.toml`, and
    `src-tauri/tauri.conf.json`, then tags `v<version>`.
-2. The `v*` tag triggers two workflows:
-   - `release.yml` — builds 6 compiled CLI binaries (linux/darwin/windows ×
-     x64/arm64), generates SHA256 sidecars + `checksums.txt`, and creates the
-     GitHub Release. Gated on the CI quality job passing.
-   - `publish-desktop.yml` — builds signed Tauri desktop apps and native macOS
-     `.app` bundles. Refuses to publish if `latest.json` is missing (i.e. if
-     the Tauri signing secret is absent). Gated on the CI quality job passing.
+2. The `v*` tag triggers `release.yml`, which runs the quality gate and produces
+   the supported CLI, desktop, native macOS, mobile, and package release
+   artifacts.
 3. Users update with `cybara update` (verifies SHA256) or the in-app desktop
    updater (verifies the Tauri signature + `latest.json`).
 

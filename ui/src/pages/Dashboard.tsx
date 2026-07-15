@@ -89,9 +89,7 @@ function Panel({
   return (
     <section className="overflow-hidden rounded-lg border border-[var(--surface-border)] bg-[var(--surface-panel)]">
       <div className="border-b border-[var(--surface-border)] px-4 py-3 sm:px-5">
-        <h2 className="text-base font-semibold text-[var(--text-primary)]">
-          {title}
-        </h2>
+        <h2 className="text-base font-semibold text-[var(--text-primary)]">{title}</h2>
         <p className="mt-0.5 text-sm text-[var(--text-muted)]">{description}</p>
       </div>
       {children}
@@ -108,9 +106,7 @@ function StatLink({ stat }: { stat: DashboardStat }) {
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-[var(--text-muted)]">
-            {stat.name}
-          </p>
+          <p className="text-sm font-medium text-[var(--text-muted)]">{stat.name}</p>
           <p className="mt-1 text-3xl font-semibold tabular-nums text-[var(--text-primary)]">
             {stat.value}
           </p>
@@ -143,12 +139,8 @@ function QuickStartPanel() {
                 <Icon className="h-4.5 w-4.5" />
               </div>
               <div className="min-w-0 flex-1">
-                <h3 className="text-sm font-medium text-[var(--text-primary)]">
-                  {action.title}
-                </h3>
-                <p className="mt-0.5 text-sm text-[var(--text-muted)]">
-                  {action.description}
-                </p>
+                <h3 className="text-sm font-medium text-[var(--text-primary)]">{action.title}</h3>
+                <p className="mt-0.5 text-sm text-[var(--text-muted)]">{action.description}</p>
               </div>
               <ArrowRight className="h-4 w-4 shrink-0 text-[var(--icon-muted)] transition-all group-hover:translate-x-0.5 group-hover:text-[var(--icon-hover)]" />
             </Link>
@@ -161,15 +153,7 @@ function QuickStartPanel() {
 
 function HealthBadge({ status }: { status: DashboardHealthStatus }) {
   return (
-    <Badge
-      variant={
-        status === "healthy"
-          ? "success"
-          : status === "warning"
-            ? "warning"
-            : "error"
-      }
-    >
+    <Badge variant={status === "healthy" ? "success" : status === "warning" ? "warning" : "error"}>
       {status === "healthy" ? (
         <CheckCircle className="mr-1 h-3 w-3" />
       ) : (
@@ -180,11 +164,7 @@ function HealthBadge({ status }: { status: DashboardHealthStatus }) {
   );
 }
 
-function ServiceHealthPanel({
-  health,
-}: {
-  health: ReturnType<typeof useHealth>["data"];
-}) {
+function ServiceHealthPanel({ health }: { health: ReturnType<typeof useHealth>["data"] }) {
   const overallStatus: DashboardHealthStatus =
     health?.status === "healthy"
       ? "healthy"
@@ -192,9 +172,7 @@ function ServiceHealthPanel({
         ? "warning"
         : "error";
   const checks = health?.checks
-    ? Object.entries(health.checks).filter(
-        ([key]) => key !== "memory" && key !== "system",
-      )
+    ? Object.entries(health.checks).filter(([key]) => key !== "memory" && key !== "system")
     : [];
 
   return (
@@ -206,12 +184,8 @@ function ServiceHealthPanel({
             style={{ background: statusColor(overallStatus) }}
           />
           <div className="min-w-0">
-            <p className="text-sm font-medium text-[var(--text-primary)]">
-              Overall Status
-            </p>
-            <p className="text-xs text-[var(--text-muted)]">
-              Gateway and configured services
-            </p>
+            <p className="text-sm font-medium text-[var(--text-primary)]">Overall Status</p>
+            <p className="text-xs text-[var(--text-muted)]">Gateway and configured services</p>
           </div>
         </div>
         <HealthBadge status={overallStatus} />
@@ -237,9 +211,7 @@ function ServiceHealthPanel({
                     {key}
                   </p>
                   {check.details ? (
-                    <p className="text-xs text-[var(--text-muted)]">
-                      {check.details}
-                    </p>
+                    <p className="text-xs text-[var(--text-muted)]">{check.details}</p>
                   ) : null}
                 </div>
               </div>

@@ -7,6 +7,7 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const DOC_FILES = [
   "README.md",
+  "CONTRIBUTING.md",
   "docs/README.md",
   "docs/agent-runtime.md",
   "docs/configuration.md",
@@ -77,6 +78,18 @@ describe("documentation consistency", () => {
     expect(docs).toContain("APPLE_PROVISIONING_PROFILE_BASE64");
     expect(docs).toContain("ASC_API_KEY_BASE64");
     expect(docs).toContain(".github/workflows/release.yml");
+  });
+
+  test("contributions target dev while main remains the release branch", () => {
+    const contributing = read("CONTRIBUTING.md");
+    const readme = read("README.md");
+
+    expect(contributing).toContain("git switch dev");
+    expect(contributing).toContain("Branch off `dev` and target `dev`");
+    expect(contributing).toContain("release merge from `dev` to `main`");
+    expect(contributing).not.toContain("Branch off `main`");
+    expect(readme).toContain("open pull requests against `dev`");
+    expect(readme).toContain("`main` branch is reserved for releases");
   });
 
   test("changed documentation keeps internal markdown links resolvable", () => {

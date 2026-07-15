@@ -45,18 +45,14 @@ describe("dashboard theme contract", () => {
     expect(dashboard).toContain("bg-[rgba(var(--accent-primary),0.12)]");
     expect(dashboard).not.toContain("bg-white/");
     expect(dashboard).not.toContain("text-white");
-    expect(dashboard).not.toMatch(
-      /(?:indigo|blue|emerald|violet|cyan|teal|amber|orange)-\d/,
-    );
+    expect(dashboard).not.toMatch(/(?:indigo|blue|emerald|violet|cyan|teal|amber|orange)-\d/);
     expect(dashboard).not.toContain("bg-gradient");
   });
 
   test("uses flat grouped lists for quick actions and health checks", () => {
     const dashboard = read("../../ui/src/pages/Dashboard.tsx");
     expect(dashboard).toContain("divide-y divide-[var(--surface-border)]");
-    expect(dashboard).toContain(
-      "xl:grid-cols-[minmax(0,1.08fr)_minmax(21rem,0.92fr)]",
-    );
+    expect(dashboard).toContain("xl:grid-cols-[minmax(0,1.08fr)_minmax(21rem,0.92fr)]");
     expect(dashboard).toContain('aria-label="Platform summary"');
   });
 });
